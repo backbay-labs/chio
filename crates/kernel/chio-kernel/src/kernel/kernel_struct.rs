@@ -6,6 +6,241 @@ use dashmap::DashMap;
 
 use super::*;
 
+use std::collections::BTreeMap;
+use std::time::Duration;
+
+use super::construction::KernelBuildError;
+
+/// Wall-clock budgets for the mediation hot path. All values are milliseconds.
+/// `0` means "no deadline" (unbounded) for the opt-in guard and dispatch
+/// budgets, so a deployment that never sets one runs byte-for-byte as it did
+/// before deadlines existed. The receipt-append budget may not be `0`: an
+/// unbounded wedged-writer stall is never a valid posture, so it is rejected at
+/// load time and floor-clamped at read time as defense in depth.
+#[derive(Debug, Clone)]
+pub struct HotPathDeadlineConfig {
+    /// Budget for the whole guard pipeline, enforced around `run_guards`.
+    /// `0` disables (preserves the inline path).
+    pub guard_pipeline_budget_ms: u64,
+    /// Per-guard overrides keyed by `Guard::name()`. A named guard is enforced
+    /// against its own budget instead of the pipeline budget; `0` disables the
+    /// override for that guard. Any entry forces per-guard offload. A `BTreeMap`
+    /// keeps the canonical key order deterministic.
+    pub per_guard_budget_ms: BTreeMap<String, u64>,
+    /// Offload the guard pipeline to `spawn_blocking` even with no budget set,
+    /// so a blocking guard never pins an async worker. Default `false`.
+    pub always_offload_guards: bool,
+    /// Default per-dispatch budget, enforced around the tool-server call.
+    /// `0` disables. Default `0`.
+    pub dispatch_budget_ms: u64,
+    /// Per-tool-server dispatch overrides keyed by `ServerId` string.
+    pub per_server_dispatch_budget_ms: BTreeMap<String, u64>,
+    /// Watchdog bound on one receipt-append round trip through the commit
+    /// actor. Must be `>= MIN_RECEIPT_APPEND_BUDGET_MS`. Default 5000.
+    pub receipt_append_budget_ms: u64,
+    /// Writer-liveness watchdog poll cadence.
+    pub receipt_writer_poll_ms: u64,
+    /// Staleness threshold before a stuck writer is judged wedged.
+    pub receipt_writer_stall_ms: u64,
+}
+
+pub const DEFAULT_RECEIPT_APPEND_BUDGET_MS: u64 = 5_000;
+pub const MIN_RECEIPT_APPEND_BUDGET_MS: u64 = 250;
+pub const DEFAULT_RECEIPT_WRITER_POLL_MS: u64 = 1_000;
+pub const DEFAULT_RECEIPT_WRITER_STALL_MS: u64 = 10_000;
+
+impl Default for HotPathDeadlineConfig {
+    fn default() -> Self {
+        Self {
+            guard_pipeline_budget_ms: 0,
+            per_guard_budget_ms: BTreeMap::new(),
+            always_offload_guards: false,
+            dispatch_budget_ms: 0,
+            per_server_dispatch_budget_ms: BTreeMap::new(),
+            receipt_append_budget_ms: DEFAULT_RECEIPT_APPEND_BUDGET_MS,
+            receipt_writer_poll_ms: DEFAULT_RECEIPT_WRITER_POLL_MS,
+            receipt_writer_stall_ms: DEFAULT_RECEIPT_WRITER_STALL_MS,
+        }
+    }
+}
+
+impl HotPathDeadlineConfig {
+    /// Fail-closed load-time validation, run before kernel construction and
+    /// mirrored in the config-file validator.
+    pub fn validate(&self) -> Result<(), KernelBuildError> {
+        if self.receipt_append_budget_ms < MIN_RECEIPT_APPEND_BUDGET_MS {
+            return Err(KernelBuildError::InvalidDeadlineConfig(format!(
+                "receipt_append_budget_ms must be >= {MIN_RECEIPT_APPEND_BUDGET_MS}"
+            )));
+        }
+        if self.receipt_writer_poll_ms == 0 || self.receipt_writer_stall_ms == 0 {
+            return Err(KernelBuildError::InvalidDeadlineConfig(
+                "receipt writer poll and stall thresholds must be non-zero".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn ms_to_budget(ms: u64) -> Option<Duration> {
+        match ms {
+            0 => None,
+            v => Some(Duration::from_millis(v)),
+        }
+    }
+
+    pub fn guard_pipeline_budget(&self) -> Option<Duration> {
+        Self::ms_to_budget(self.guard_pipeline_budget_ms)
+    }
+
+    pub fn guard_budget_for(&self, name: &str) -> Option<Duration> {
+        match self.per_guard_budget_ms.get(name) {
+            // A per-guard `0` disables only this guard's override, not the
+            // pipeline deadline: any per-guard entry forces the offloaded path,
+            // so falling through to the pipeline budget keeps an override-of-zero
+            // guard bounded instead of running unbounded.
+            None | Some(0) => self.guard_pipeline_budget(),
+            Some(ms) => Self::ms_to_budget(*ms),
+        }
+    }
+
+    pub fn dispatch_budget_for(&self, server_id: &str) -> Option<Duration> {
+        match self.per_server_dispatch_budget_ms.get(server_id) {
+            Some(ms) => Self::ms_to_budget(*ms),
+            None => Self::ms_to_budget(self.dispatch_budget_ms),
+        }
+    }
+
+    /// Effective append bound, clamped to the floor so a host that constructs a
+    /// `KernelConfig` without running validation still never gets an unbounded
+    /// (or below-floor) append.
+    pub fn receipt_append_budget(&self) -> Duration {
+        Duration::from_millis(
+            self.receipt_append_budget_ms
+                .max(MIN_RECEIPT_APPEND_BUDGET_MS),
+        )
+    }
+}
+
+#[cfg(test)]
+mod hot_path_deadline_config_tests {
+    use super::*;
+
+    #[test]
+    fn default_disables_guard_and_dispatch_but_bounds_append() {
+        let cfg = HotPathDeadlineConfig::default();
+        assert_eq!(cfg.guard_pipeline_budget(), None);
+        assert_eq!(cfg.dispatch_budget_for("any-server"), None);
+        assert_eq!(
+            cfg.receipt_append_budget(),
+            Duration::from_millis(DEFAULT_RECEIPT_APPEND_BUDGET_MS)
+        );
+    }
+
+    #[test]
+    fn validate_rejects_zero_append_budget() {
+        let cfg = HotPathDeadlineConfig {
+            receipt_append_budget_ms: 0,
+            ..HotPathDeadlineConfig::default()
+        };
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn validate_rejects_below_floor_append_budget() {
+        let cfg = HotPathDeadlineConfig {
+            receipt_append_budget_ms: MIN_RECEIPT_APPEND_BUDGET_MS - 1,
+            ..HotPathDeadlineConfig::default()
+        };
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn validate_rejects_zero_poll_or_stall() {
+        let cfg = HotPathDeadlineConfig {
+            receipt_writer_poll_ms: 0,
+            ..HotPathDeadlineConfig::default()
+        };
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn append_budget_is_clamped_to_floor_even_without_validation() {
+        // A host that bypasses validation still never runs an unbounded (or
+        // below-floor) append.
+        let cfg = HotPathDeadlineConfig {
+            receipt_append_budget_ms: 1,
+            ..HotPathDeadlineConfig::default()
+        };
+        assert_eq!(
+            cfg.receipt_append_budget(),
+            Duration::from_millis(MIN_RECEIPT_APPEND_BUDGET_MS)
+        );
+    }
+
+    #[test]
+    fn per_guard_and_per_server_overrides_resolve() {
+        let mut per_guard = BTreeMap::new();
+        per_guard.insert("slow-guard".to_string(), 200u64);
+        let mut per_server = BTreeMap::new();
+        per_server.insert("slow-srv".to_string(), 300u64);
+        let cfg = HotPathDeadlineConfig {
+            guard_pipeline_budget_ms: 100,
+            per_guard_budget_ms: per_guard,
+            dispatch_budget_ms: 150,
+            per_server_dispatch_budget_ms: per_server,
+            ..HotPathDeadlineConfig::default()
+        };
+        assert_eq!(
+            cfg.guard_budget_for("slow-guard"),
+            Some(Duration::from_millis(200))
+        );
+        assert_eq!(
+            cfg.guard_budget_for("other-guard"),
+            Some(Duration::from_millis(100))
+        );
+        assert_eq!(
+            cfg.dispatch_budget_for("slow-srv"),
+            Some(Duration::from_millis(300))
+        );
+        assert_eq!(
+            cfg.dispatch_budget_for("other-srv"),
+            Some(Duration::from_millis(150))
+        );
+    }
+
+    #[test]
+    fn per_guard_zero_override_inherits_pipeline_budget() {
+        // A per-guard entry of `0` disables only that guard's own override; the
+        // guard must still inherit the overall pipeline budget rather than run
+        // unbounded (any per-guard entry forces the offloaded, timed path).
+        let mut per_guard = BTreeMap::new();
+        per_guard.insert("disabled-override".to_string(), 0u64);
+        let cfg = HotPathDeadlineConfig {
+            guard_pipeline_budget_ms: 1_000,
+            per_guard_budget_ms: per_guard,
+            ..HotPathDeadlineConfig::default()
+        };
+        assert_eq!(
+            cfg.guard_budget_for("disabled-override"),
+            Some(Duration::from_millis(1_000))
+        );
+    }
+
+    #[test]
+    fn per_guard_zero_override_stays_unbounded_without_pipeline_budget() {
+        // With no pipeline budget configured, a `0` override genuinely means no
+        // deadline for that guard.
+        let mut per_guard = BTreeMap::new();
+        per_guard.insert("disabled-override".to_string(), 0u64);
+        let cfg = HotPathDeadlineConfig {
+            guard_pipeline_budget_ms: 0,
+            per_guard_budget_ms: per_guard,
+            ..HotPathDeadlineConfig::default()
+        };
+        assert_eq!(cfg.guard_budget_for("disabled-override"), None);
+    }
+}
+
 /// Configuration for the Chio Runtime Kernel.
 pub struct KernelConfig {
     /// Ed25519 keypair for signing receipts and issuing capabilities.
@@ -60,6 +295,10 @@ pub struct KernelConfig {
 
     /// Per-process memory budget (bounded-structure caps + RSS soft ceiling).
     pub memory_budget: MemoryBudgetConfig,
+
+    /// Wall-clock budgets for the mediation hot path. Construction input only,
+    /// not a wire payload, so this changes no signed or transmitted bytes.
+    pub deadlines: HotPathDeadlineConfig,
 }
 
 impl KernelConfig {
@@ -283,13 +522,20 @@ fn read_process_rss_bytes() -> Option<u64> {
 /// signing key, address, or internal state to the agent.
 pub struct ChioKernel {
     pub(super) config: KernelConfig,
-    pub(super) guards: Vec<Box<dyn Guard>>,
+    /// Guards are stored behind `Arc` so a single guard can be cloned into a
+    /// `spawn_blocking` task without moving the whole pipeline, letting the
+    /// deadline wrapper bound a blocking guard off the async worker.
+    pub(super) guards: Arc<Vec<Arc<dyn Guard>>>,
     pub(super) post_invocation_pipeline: crate::post_invocation::PostInvocationPipeline,
     pub(super) budget_store: Arc<dyn BudgetStore>,
     pub(super) budget_store_lock: Mutex<()>,
     pub(super) revocation_store: Arc<dyn RevocationStore>,
     pub(super) capability_authority: Box<dyn CapabilityAuthority>,
-    pub(super) tool_servers: HashMap<ServerId, Box<dyn ToolServerConnection>>,
+    // Held behind `Arc` so a single connection can be cloned into a
+    // `spawn_blocking` task, letting the dispatch deadline drive the call off the
+    // async worker (a connection that blocks before its first `.await` cannot then
+    // pin the worker).
+    pub(super) tool_servers: HashMap<ServerId, Arc<dyn ToolServerConnection>>,
     pub(super) resource_providers: Vec<Box<dyn ResourceProvider>>,
     pub(super) prompt_providers: Vec<Box<dyn PromptProvider>>,
     pub(super) sessions: DashMap<SessionId, Arc<Session>>,
@@ -444,6 +690,12 @@ pub struct ChioKernel {
     pub(super) rss_shed: Arc<AtomicBool>,
     /// Owns the sampler thread when a soft limit is configured; joins on drop.
     pub(super) rss_sampler: Option<RssSamplerHandle>,
+    /// Receipt-writer liveness watchdog. Opt-in: the hosting edge spawns the
+    /// poll task, which publishes the latest verdict into an `ArcSwap` the
+    /// pre-dispatch readiness gate reads. Absent watchdog leaves the verdict
+    /// `Unknown` and the gate behaves as before.
+    pub(super) receipt_writer_watchdog:
+        std::sync::Arc<receipt_writer_watchdog::ReceiptWriterWatchdogHandle>,
 }
 
 impl ChioKernel {

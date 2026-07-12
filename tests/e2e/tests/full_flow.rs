@@ -100,6 +100,7 @@ fn make_kernel_with_guards() -> (ChioKernel, Keypair) {
         checkpoint_batch_size: chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
+        deadlines: chio_kernel::HotPathDeadlineConfig::default(),
     };
     let mut kernel = ChioKernel::new(config);
     kernel
@@ -132,6 +133,7 @@ fn make_kernel_bare() -> (ChioKernel, Keypair) {
         checkpoint_batch_size: chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
+        deadlines: chio_kernel::HotPathDeadlineConfig::default(),
     };
     let mut kernel = ChioKernel::new(config);
     kernel
@@ -636,6 +638,7 @@ async fn full_flow_guard_pipeline_mixed_verdicts() {
         checkpoint_batch_size: chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
+        deadlines: chio_kernel::HotPathDeadlineConfig::default(),
     };
     let mut kernel = ChioKernel::new(config);
     kernel.register_tool_server(Box::new(EchoServer("srv")));

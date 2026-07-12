@@ -87,6 +87,7 @@ fn metrics_kernel_with_web3_evidence(
         checkpoint_batch_size: chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
+        deadlines: chio_kernel::HotPathDeadlineConfig::default(),
         allow_ephemeral_receipt_log: true,
     };
     let mut kernel = chio_kernel::ChioKernel::new(config);
@@ -368,7 +369,9 @@ fn mcp_edge_emits_chio_receipt_write_total() -> Result<(), Box<dyn Error>> {
         "mcp edge kernel error path must advance receipt write error"
     );
 
-    let body = chio_mcp_edge::render_mcp_edge_metrics_prometheus();
+    let body = chio_mcp_edge::render_mcp_edge_metrics_prometheus(
+        chio_kernel::ReceiptWriterLiveness::Unknown,
+    );
     assert!(body.contains(CHIO_RECEIPT_WRITE_TOTAL));
     assert!(body.contains("outcome=\"allow\""));
     assert!(body.contains("outcome=\"pending_approval\""));
@@ -471,7 +474,9 @@ fn acp_edge_emits_chio_receipt_write_total() -> Result<(), Box<dyn Error>> {
         "acp edge orchestrator error path must advance receipt write error"
     );
 
-    let body = chio_acp_edge::render_acp_edge_metrics_prometheus();
+    let body = chio_acp_edge::render_acp_edge_metrics_prometheus(
+        chio_kernel::ReceiptWriterLiveness::Unknown,
+    );
     assert!(body.contains(CHIO_RECEIPT_WRITE_TOTAL));
     assert!(body.contains("outcome=\"allow\""));
     assert!(body.contains("outcome=\"pending_approval\""));
@@ -578,7 +583,9 @@ fn a2a_edge_emits_chio_receipt_write_total() -> Result<(), Box<dyn Error>> {
         "a2a edge orchestrator error path must advance receipt write error"
     );
 
-    let body = chio_a2a_edge::render_a2a_edge_metrics_prometheus();
+    let body = chio_a2a_edge::render_a2a_edge_metrics_prometheus(
+        chio_kernel::ReceiptWriterLiveness::Unknown,
+    );
     assert!(body.contains(CHIO_RECEIPT_WRITE_TOTAL));
     assert!(body.contains("outcome=\"allow\""));
     assert!(body.contains("outcome=\"pending_approval\""));
@@ -1454,7 +1461,9 @@ fn existing_infra_driver(name: &str) -> Result<Option<String>, Box<dyn Error>> {
                 peer_supports_chio_tool_streaming: false,
             },
         )?;
-        return Ok(Some(chio_mcp_edge::render_mcp_edge_metrics_prometheus()));
+        return Ok(Some(chio_mcp_edge::render_mcp_edge_metrics_prometheus(
+            chio_kernel::ReceiptWriterLiveness::Unknown,
+        )));
     }
     Ok(None)
 }

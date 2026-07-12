@@ -5,6 +5,7 @@ include!("tests/support_delegation_plain.rs");
 include!("tests/support_monetary.rs");
 include!("tests/capability_validation.rs");
 include!("tests/guard_pipeline.rs");
+include!("tests/hot_path_deadlines.rs");
 include!("tests/receipts.rs");
 include!("tests/session.rs");
 include!("tests/budget.rs");

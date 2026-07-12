@@ -549,7 +549,7 @@ struct ModelDropGuard {
 #[cfg(any(loom, chio_kernel_loom))]
 /// Models the kernel's receipt store (see
 /// chio-kernel/src/kernel/responses/receipt_persistence.rs::record_chio_receipt
-/// and dispatch.rs::record_child_receipts) as a non-atomic check-then-write:
+/// and dispatch.rs::record_child_receipt) as a non-atomic check-then-write:
 /// snapshot the next free slot, yield (so loom can schedule a competing
 /// append between the read and the write), then write the receipt into
 /// that slot and publish the new length. A single call is race-free only
@@ -711,5 +711,32 @@ fn loom_disarmed_drop_guard_is_noop() {
             0,
             "a disarmed guard must not release reservations"
         );
+    });
+}
+
+// Writer-liveness verdict publish/read. The production cell is an
+// `ArcSwap<ReceiptWriterLiveness>` with a single publisher (the watchdog task)
+// and many lock-free readers (every evaluate call). ArcSwap's internals are not
+// loom-visible, so the publish/read is modeled here as an atomic verdict.
+// Encoding: 0=Unknown, 1=Healthy, 2=Wedged. Proves the reader never observes a
+// non-published (torn) value and that the last publish wins.
+#[cfg(any(loom, chio_kernel_loom))]
+#[test]
+fn receipt_writer_liveness_no_lost_wakeup() {
+    loom::model(|| {
+        let cell = Arc::new(AtomicUsize::new(0));
+        let publisher_cell = Arc::clone(&cell);
+        let publisher = thread::spawn(move || {
+            publisher_cell.store(1, Ordering::SeqCst);
+            publisher_cell.store(2, Ordering::SeqCst);
+        });
+        let reader_cell = Arc::clone(&cell);
+        let reader = thread::spawn(move || {
+            let observed = reader_cell.load(Ordering::SeqCst);
+            assert!(observed <= 2, "verdict must be a published value");
+        });
+        join_ok(publisher);
+        join_ok(reader);
+        assert_eq!(cell.load(Ordering::SeqCst), 2, "last publish must win");
     });
 }

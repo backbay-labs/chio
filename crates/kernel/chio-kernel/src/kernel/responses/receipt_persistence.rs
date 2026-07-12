@@ -173,7 +173,17 @@ impl ChioKernel {
             let _receipt_store_write = self.receipt_store_write_lock.lock().map_err(|_| {
                 KernelError::Internal("receipt store write lock poisoned".to_string())
             })?;
-            self.with_receipt_store(|store| Ok(store.append_chio_receipt_returning_seq(receipt)?))?;
+            // Bound the commit round trip so a wedged writer cannot pin the
+            // kernel-wide receipt write lock (and thus every subsequent tool
+            // call) indefinitely. On timeout this fails closed with
+            // ReceiptPersistence(Timeout); no allow response is signed until the
+            // append succeeds.
+            self.with_receipt_store(|store| {
+                Ok(store.append_chio_receipt_with_timeout(
+                    receipt,
+                    self.config.deadlines.receipt_append_budget(),
+                )?)
+            })?;
             self.append_chio_receipt_to_local_log(receipt.clone());
         }
         let _settlement_status = self.run_settlement_observer(receipt);

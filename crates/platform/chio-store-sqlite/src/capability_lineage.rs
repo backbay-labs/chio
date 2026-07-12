@@ -5,7 +5,7 @@ pub use chio_kernel::capability_lineage::{
 use rusqlite::types::Type;
 use rusqlite::{params, OptionalExtension, Row};
 
-use crate::receipt_store::SqliteReceiptStore;
+use crate::receipt_store::{SqliteReceiptStore, SqliteStoreConnection};
 
 fn snapshot_from_row(row: &Row<'_>) -> rusqlite::Result<CapabilitySnapshot> {
     Ok(CapabilitySnapshot {
@@ -61,31 +61,56 @@ impl SqliteReceiptStore {
         token: &CapabilityToken,
         parent_capability_id: Option<&str>,
     ) -> Result<(), CapabilityLineageError> {
+        self.record_capability_snapshot_bounded(token, parent_capability_id, None)
+    }
+
+    /// Bounded variant of [`record_capability_snapshot`]: the writer round trip
+    /// is capped at `budget`. The evaluation hot path uses this so a wedged or
+    /// dying commit writer that passed the pre-dispatch liveness check but stalls
+    /// on this snapshot cannot hang the request inside an unbounded write.
+    pub fn record_capability_snapshot_with_timeout(
+        &self,
+        token: &CapabilityToken,
+        parent_capability_id: Option<&str>,
+        budget: std::time::Duration,
+    ) -> Result<(), CapabilityLineageError> {
+        self.record_capability_snapshot_bounded(token, parent_capability_id, Some(budget))
+    }
+
+    fn record_capability_snapshot_bounded(
+        &self,
+        token: &CapabilityToken,
+        parent_capability_id: Option<&str>,
+        budget: Option<std::time::Duration>,
+    ) -> Result<(), CapabilityLineageError> {
         let grants_json = serde_json::to_string(&token.scope)?;
         let subject_key = token.subject.to_hex();
         let issuer_key = token.issuer.to_hex();
-
-        // Compute delegation depth from parent if present.
-        let delegation_depth: u64 = if let Some(parent_id) = parent_capability_id {
-            let parent_depth: Option<u64> = self
-                .connection()?
-                .query_row(
-                    "SELECT delegation_depth FROM capability_lineage WHERE capability_id = ?1",
-                    params![parent_id],
-                    |row: &Row<'_>| non_negative_u64_from_column(row, 0, "delegation_depth"),
-                )
-                .optional()?;
-
-            parent_depth.map(|d| d.saturating_add(1)).unwrap_or(1)
-        } else {
-            0
-        };
 
         let capability_id = token.id.clone();
         let issued_at = token.issued_at;
         let expires_at = token.expires_at;
         let parent_capability_id = parent_capability_id.map(ToString::to_string);
-        self.writer_handle().run_write(move |connection| {
+        let job = move |connection: &mut SqliteStoreConnection| {
+            // Resolve the parent's delegation depth on the writer connection,
+            // inside the bounded job, so the read shares the same wall-clock
+            // budget as the insert. Running it earlier on a reader-pool
+            // connection would leave a stalled or pool-starved lookup unbounded
+            // on the pre-dispatch hot path, defeating the snapshot deadline.
+            let delegation_depth: u64 = if let Some(parent_id) = parent_capability_id.as_deref() {
+                let parent_depth: Option<u64> = connection
+                    .query_row(
+                        "SELECT delegation_depth FROM capability_lineage WHERE capability_id = ?1",
+                        params![parent_id],
+                        |row: &Row<'_>| non_negative_u64_from_column(row, 0, "delegation_depth"),
+                    )
+                    .optional()?;
+
+                parent_depth.map(|d| d.saturating_add(1)).unwrap_or(1)
+            } else {
+                0
+            };
+
             connection.execute(
                 r#"
                 INSERT OR IGNORE INTO capability_lineage (
@@ -111,7 +136,11 @@ impl SqliteReceiptStore {
                 ],
             )?;
             Ok(())
-        })?;
+        };
+        match budget {
+            Some(budget) => self.writer_handle().run_write_with_timeout(job, budget)?,
+            None => self.writer_handle().run_write(job)?,
+        }
 
         Ok(())
     }
@@ -465,6 +494,56 @@ mod tests {
         assert_eq!(snap.expires_at, 2000);
         assert_eq!(snap.delegation_depth, 0);
         assert!(snap.parent_capability_id.is_none());
+
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn delegated_bounded_snapshot_reads_parent_depth_inside_the_writer_job() {
+        // The parent-depth lookup for a delegated capability must run on the
+        // writer connection inside the bounded job, not on a reader-pool
+        // connection ahead of it. With every reader-pool connection checked
+        // out, a delegated bounded snapshot must still resolve the parent depth
+        // and persist quickly, proving the read no longer sits unbounded on the
+        // pre-dispatch hot path where an exhausted pool would stall it.
+        let path = unique_db_path("cl-bounded-parent-read");
+        let store = SqliteReceiptStore::open(&path).unwrap();
+
+        let kp_root = Keypair::generate();
+        let kp_child = Keypair::generate();
+        let root = make_token("cap-root-bounded", &kp_root, &kp_root, 1000, 9000);
+        let child = make_token("cap-child-bounded", &kp_child, &kp_root, 1100, 8000);
+
+        store.record_capability_snapshot(&root, None).unwrap();
+
+        // Exhaust the reader pool: hold every reader connection so any
+        // reader-pool checkout on the hot path would block.
+        let mut held = Vec::new();
+        for _ in 0..crate::DEFAULT_READER_POOL_MAX_SIZE {
+            held.push(store.connection().unwrap());
+        }
+
+        let start = std::time::Instant::now();
+        store
+            .record_capability_snapshot_with_timeout(
+                &child,
+                Some("cap-root-bounded"),
+                std::time::Duration::from_millis(500),
+            )
+            .unwrap();
+        assert!(
+            start.elapsed() < std::time::Duration::from_secs(2),
+            "delegated bounded snapshot must not wait on the exhausted reader pool"
+        );
+
+        // Release the reader pool so the read-back can observe the persisted row.
+        drop(held);
+
+        let snap = store.get_lineage("cap-child-bounded").unwrap().unwrap();
+        assert_eq!(
+            snap.delegation_depth, 1,
+            "child depth must be resolved from the parent inside the bounded job"
+        );
 
         let _ = fs::remove_file(path);
     }

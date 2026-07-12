@@ -15,7 +15,7 @@
 //! non-zero count after a synthetic tool-call dispatch.
 
 use chio_edge_metrics::ReceiptWriteCounters;
-use chio_kernel::Verdict;
+use chio_kernel::{ReceiptWriterLiveness, Verdict};
 
 pub use chio_edge_metrics::{
     receipt_write_outcome_for_verdict, CHIO_RECEIPT_WRITE_TOTAL, RECEIPT_WRITE_OUTCOME_ALLOW,
@@ -48,12 +48,21 @@ pub fn receipt_write_total(outcome: &str) -> u64 {
     COUNTERS.total(outcome)
 }
 
-/// Render the MCP edge Prometheus exposition for the registry-keyed
-/// series. The format is intentionally kept minimal: one
-/// `# HELP`/`# TYPE` block plus one labelled sample per outcome.
+/// Render the MCP edge Prometheus exposition for the registry-keyed series.
+///
+/// Emits the receipt-write outcome counters followed by the serving store's
+/// receipt-writer liveness gauges, so a wedged or dead writer is visible on the
+/// same scrape as the outcome totals. `writer_liveness` is the serving kernel or
+/// store's current [`ReceiptWriterLiveness`]; pass
+/// [`ReceiptWriterLiveness::Unknown`] when no async writer is wired.
 #[must_use]
-pub fn render_mcp_edge_metrics_prometheus() -> String {
-    COUNTERS.render_prometheus()
+pub fn render_mcp_edge_metrics_prometheus(writer_liveness: ReceiptWriterLiveness) -> String {
+    let mut output = COUNTERS.render_prometheus();
+    output.push_str(&chio_edge_metrics::render_receipt_writer_liveness(
+        writer_liveness.as_label(),
+        writer_liveness.healthy(),
+    ));
+    output
 }
 
 #[cfg(test)]
@@ -68,9 +77,19 @@ mod tests {
     #[test]
     fn render_includes_registry_name_and_outcome_labels() {
         record_receipt_write(RECEIPT_WRITE_OUTCOME_ALLOW);
-        let body = render_mcp_edge_metrics_prometheus();
+        let body = render_mcp_edge_metrics_prometheus(ReceiptWriterLiveness::Healthy);
         assert!(body.contains(CHIO_RECEIPT_WRITE_TOTAL));
         assert!(body.contains("outcome=\"allow\""));
         assert!(body.contains("outcome=\"pending_approval\""));
+    }
+
+    #[test]
+    fn render_exposes_writer_liveness_gauges() {
+        // The exposition must carry the receipt-writer liveness gauges so a
+        // wedged or dead writer is observable at the edge scrape, not just via
+        // the local CLI.
+        let body = render_mcp_edge_metrics_prometheus(ReceiptWriterLiveness::Dead);
+        assert!(body.contains("chio_receipt_writer_healthy 0"));
+        assert!(body.contains("chio_receipt_writer_liveness{state=\"dead\"} 1"));
     }
 }

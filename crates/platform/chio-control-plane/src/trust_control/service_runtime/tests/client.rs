@@ -787,6 +787,170 @@ fn trust_control_post_wrappers_send_json_bodies_and_encoded_paths() {
     );
 }
 
+#[test]
+fn remote_receipt_store_append_fails_closed_at_the_configured_budget() {
+    // A control plane that accepts the connection but never answers must not let
+    // a --control-url receipt append block past the configured append budget.
+    // The bounded override fails closed at the budget instead of waiting on the
+    // coarse control-client network timeout.
+    let listener =
+        std::net::TcpListener::bind("127.0.0.1:0").test_expect("bind stalling control plane");
+    let addr = listener.local_addr().test_expect("stalling server addr");
+    // Hold the accepted connection open without responding so the append blocks
+    // reading the response. Detached: the test never joins it.
+    std::thread::spawn(move || {
+        if let Ok((stream, _)) = listener.accept() {
+            std::thread::sleep(std::time::Duration::from_secs(5));
+            drop(stream);
+        }
+    });
+
+    let store = super::super::remote_stores::build_remote_receipt_store(
+        &format!("http://{addr}"),
+        "secret",
+    )
+    .test_expect("build remote receipt store");
+    let receipt = sample_tool_receipt("receipt-budget");
+
+    let budget = std::time::Duration::from_millis(250);
+    let start = std::time::Instant::now();
+    let result = store.append_chio_receipt_with_timeout(&receipt, budget);
+    let elapsed = start.elapsed();
+
+    assert!(
+        matches!(result, Err(chio_kernel::ReceiptStoreError::Timeout { .. })),
+        "remote append must fail closed at the budget, got {result:?}"
+    );
+    assert!(
+        elapsed < std::time::Duration::from_secs(2),
+        "remote append must return near the budget, took {elapsed:?}"
+    );
+}
+
+#[test]
+fn remote_receipt_store_capability_snapshot_fails_closed_at_the_configured_budget() {
+    // The pre-dispatch capability snapshot commits through the receipt writer. A
+    // control plane that accepts the connection but never answers must not pin
+    // that write past the configured budget: the bounded override fails closed at
+    // the budget instead of waiting on the coarse control-client network timeout.
+    let listener =
+        std::net::TcpListener::bind("127.0.0.1:0").test_expect("bind stalling control plane");
+    let addr = listener.local_addr().test_expect("stalling server addr");
+    std::thread::spawn(move || {
+        if let Ok((stream, _)) = listener.accept() {
+            std::thread::sleep(std::time::Duration::from_secs(5));
+            drop(stream);
+        }
+    });
+
+    let store = super::super::remote_stores::build_remote_receipt_store(
+        &format!("http://{addr}"),
+        "secret",
+    )
+    .test_expect("build remote receipt store");
+    let token = sample_capability_token();
+
+    let budget = std::time::Duration::from_millis(250);
+    let start = std::time::Instant::now();
+    let result = store.record_capability_snapshot_with_timeout(&token, None, budget);
+    let elapsed = start.elapsed();
+
+    assert!(
+        matches!(result, Err(chio_kernel::ReceiptStoreError::Timeout { .. })),
+        "remote capability snapshot must fail closed at the budget, got {result:?}"
+    );
+    assert!(
+        elapsed < std::time::Duration::from_secs(2),
+        "remote capability snapshot must return near the budget, took {elapsed:?}"
+    );
+}
+
+#[test]
+fn bounded_receipt_writer_does_not_grow_threads_per_stalled_write() {
+    // Every timed-out write against a stalled control plane must reuse the fixed
+    // worker pool, never spawn a thread of its own. The pool caps the number of
+    // worker threads and fails saturating submissions closed at the budget, so
+    // sustained traffic against a stalled endpoint cannot grow the thread count.
+    use std::collections::HashSet;
+    use std::sync::atomic::{AtomicU64, Ordering};
+    use std::sync::{Arc, Condvar, Mutex, PoisonError};
+
+    const WORKERS: usize = 2;
+    let writer = super::super::remote_stores::BoundedReceiptWriter::new(WORKERS, WORKERS);
+
+    let concurrent = Arc::new(AtomicU64::new(0));
+    let peak = Arc::new(AtomicU64::new(0));
+    let worker_threads = Arc::new(Mutex::new(HashSet::new()));
+    // A latch the writes park on, modeling a stalled control-plane round trip.
+    let release = Arc::new((Mutex::new(false), Condvar::new()));
+
+    let budget = std::time::Duration::from_millis(50);
+    for _ in 0..64 {
+        let concurrent = Arc::clone(&concurrent);
+        let peak = Arc::clone(&peak);
+        let worker_threads = Arc::clone(&worker_threads);
+        let release = Arc::clone(&release);
+        let result = writer.run_within_budget::<_, ()>(budget, "stalled write", move || {
+            worker_threads
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .insert(std::thread::current().id());
+            let running = concurrent.fetch_add(1, Ordering::SeqCst) + 1;
+            peak.fetch_max(running, Ordering::SeqCst);
+            let (lock, cvar) = &*release;
+            let mut released = lock.lock().unwrap_or_else(PoisonError::into_inner);
+            while !*released {
+                released = cvar.wait(released).unwrap_or_else(PoisonError::into_inner);
+            }
+            concurrent.fetch_sub(1, Ordering::SeqCst);
+            Ok(())
+        });
+        assert!(
+            matches!(result, Err(chio_kernel::ReceiptStoreError::Timeout { .. })),
+            "a write parked on a stalled control plane must fail closed at the budget, got {result:?}"
+        );
+    }
+
+    let distinct_threads = worker_threads
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .len();
+    assert!(
+        distinct_threads <= WORKERS,
+        "the pool must not spawn a thread per write; saw {distinct_threads} worker threads"
+    );
+    assert!(
+        peak.load(Ordering::SeqCst) <= WORKERS as u64,
+        "blocked writes must stay bounded by the worker count, saw {}",
+        peak.load(Ordering::SeqCst)
+    );
+
+    // Release the parked workers so their threads unwind cleanly.
+    let (lock, cvar) = &*release;
+    *lock.lock().unwrap_or_else(PoisonError::into_inner) = true;
+    cvar.notify_all();
+}
+
+fn sample_capability_token() -> chio_core::capability::token::CapabilityToken {
+    let issuer = Keypair::generate();
+    let subject = Keypair::generate();
+    let body = chio_core::capability::token::CapabilityTokenBody {
+        id: "cap-snapshot-budget".to_string(),
+        issuer: issuer.public_key(),
+        subject: subject.public_key(),
+        scope: chio_core::capability::scope::ChioScope {
+            grants: Vec::new(),
+            resource_grants: Vec::new(),
+            prompt_grants: Vec::new(),
+        },
+        issued_at: 0,
+        expires_at: 3_600,
+        delegation_chain: Vec::new(),
+    };
+    chio_core::capability::token::CapabilityToken::sign(body, &issuer)
+        .test_expect("sign sample capability")
+}
+
 fn sample_tool_receipt(id: &str) -> ChioReceipt {
     let keypair = Keypair::generate();
     ChioReceipt::sign(

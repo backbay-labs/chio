@@ -432,6 +432,7 @@ mod tests {
             checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
             retention_config: None,
             memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
+            deadlines: chio_kernel::HotPathDeadlineConfig::default(),
         }
     }
 
@@ -471,7 +472,7 @@ mod tests {
     }
 
     fn assert_receipt_write_prometheus_sample_at_least(outcome: &str, minimum: u64) {
-        let body = render_a2a_edge_metrics_prometheus();
+        let body = render_a2a_edge_metrics_prometheus(chio_kernel::ReceiptWriterLiveness::Healthy);
         let prefix = format!("{CHIO_RECEIPT_WRITE_TOTAL}{{outcome=\"{outcome}\"}} ");
         let sample = body
             .lines()

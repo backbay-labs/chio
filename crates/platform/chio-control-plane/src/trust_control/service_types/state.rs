@@ -81,6 +81,10 @@ pub(crate) struct RemoteRevocationStore {
 
 pub(crate) struct RemoteReceiptStore {
     pub(crate) client: TrustControlClient,
+    /// Fixed-size worker pool that bounds concurrent blocking writes to a stalled
+    /// control plane, so a slow `--control-url` cannot accumulate one parked
+    /// thread per write.
+    pub(crate) writer: crate::trust_control::service_runtime::remote_stores::BoundedReceiptWriter,
 }
 
 pub(crate) struct RemoteBudgetStore {

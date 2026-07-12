@@ -307,12 +307,15 @@ mod receipt_operator_tests {
             failed_total: 1,
             saturated_total: 2,
             inflight: 3,
+            queue_depth: 2,
             last_commit_unix_ms: Some(1234),
+            first_accept_unix_ms: Some(1000),
             last_error: Some("writer lag".to_string()),
         };
         let health = chio_kernel::ReceiptStoreHealthReport {
             healthy: false,
             writer: counters.clone(),
+            writer_liveness: "wedged".to_string(),
             latest_committed_entry_seq: 12,
             latest_checkpoint_seq: Some(2),
             latest_checkpointed_entry_seq: 8,

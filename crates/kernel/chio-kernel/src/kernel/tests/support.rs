@@ -889,6 +889,7 @@ fn make_config() -> KernelConfig {
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
         memory_budget: crate::MemoryBudgetConfig::defaults(),
+        deadlines: crate::HotPathDeadlineConfig::default(),
     }
 }
 

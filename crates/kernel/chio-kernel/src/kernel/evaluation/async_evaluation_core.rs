@@ -434,12 +434,15 @@ impl ChioKernel {
         let _governed_call_chain_receipt_evidence_scope =
             scope_governed_call_chain_receipt_evidence(governed_call_chain_receipt_evidence);
 
-        let pre_invocation_guard_evidence = match self.run_guards(
-            request,
-            &cap.scope,
-            session_filesystem_roots,
-            Some(matched_grant_index),
-        ) {
+        let pre_invocation_guard_evidence = match self
+            .run_guards_within_budget(
+                request,
+                &cap.scope,
+                session_filesystem_roots,
+                Some(matched_grant_index),
+            )
+            .await
+        {
             Ok(evidence) => evidence,
             Err(e) => {
                 let msg = e.error.to_string();
@@ -635,9 +638,7 @@ impl ChioKernel {
             budget_lease_acquired,
         );
         post_admission_drop_guard.mark_dispatch_started();
-        let dispatch_result = self
-            .dispatch_tool_call_with_cost_after_nonce_check(request, has_monetary)
-            .await;
+        let dispatch_result = self.dispatch_within_budget(request, has_monetary).await;
         post_admission_drop_guard.disarm();
         drop(post_admission_drop_guard);
         let (tool_output, reported_cost) = match dispatch_result {
@@ -762,6 +763,50 @@ impl ChioKernel {
                     reason = %redacted!(&reason),
                     "tool call cancelled"
                 );
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_cancelled_response_with_metadata(
+                            request,
+                            &reason,
+                            now,
+                            Some(matched_grant_index),
+                            self.mark_runtime_admission_reservations_retained_fail_closed(
+                                match (budget_mutation.charge_result(), unwind.as_ref()) {
+                                    (Some(charge), Some(reverse)) => self
+                                        .merge_budget_receipt_metadata(
+                                            extra_metadata.clone(),
+                                            self.budget_execution_receipt_metadata(
+                                                charge,
+                                                Some(("reversed", reverse)),
+                                            ),
+                                        ),
+                                    _ => extra_metadata.clone(),
+                                },
+                            ),
+                        )
+                    },
+                );
+            }
+            Err(KernelError::HotPathDeadlineExceeded { stage, budget_ms }) => {
+                let reason = format!("hot-path deadline exceeded at {stage}: budget {budget_ms}ms");
+                let unwind = self.unwind_aborted_monetary_invocation(
+                    request,
+                    cap,
+                    budget_mutation.charge_result(),
+                    payment_authorization.as_ref(),
+                )?;
+                warn!(
+                    request_id = %request.request_id,
+                    reason = %redacted!(&reason),
+                    "tool call deadline expired"
+                );
+                // A timed-out dispatch may already have applied its side effect,
+                // so the runtime-admission reservation is NOT released; it is
+                // retained and marked auditable, exactly as the cancellation arm
+                // does. Releasing here would be fail-open: a single-use
+                // destructive lease could be replayed after the destructive
+                // action already executed.
                 return self.with_pre_invocation_guard_evidence(
                     &pre_invocation_guard_evidence,
                     || {

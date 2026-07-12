@@ -13,6 +13,14 @@ use dashmap::DashMap;
 
 use super::*;
 
+/// Fail-closed kernel build error. Lets deadline config be validated at
+/// construction time without making the infallible `ChioKernel::new` fallible.
+#[derive(Debug, thiserror::Error)]
+pub enum KernelBuildError {
+    #[error("invalid hot-path deadline config: {0}")]
+    InvalidDeadlineConfig(String),
+}
+
 impl ChioKernel {
     pub(crate) fn with_sessions_read<R>(
         &self,
@@ -130,6 +138,16 @@ impl ChioKernel {
         f(store.as_ref()).map(Some)
     }
 
+    /// Fallible constructor that runs fail-closed validation of the hot-path
+    /// deadline config before building. This is the documented entrypoint for
+    /// hosts that set `[deadlines]`. `new` stays infallible for existing
+    /// callers; the append bound is additionally floor-clamped at read time so
+    /// even a host that bypasses this path can never run an unbounded append.
+    pub fn try_new(config: KernelConfig) -> Result<Self, KernelBuildError> {
+        config.deadlines.validate()?;
+        Ok(Self::new(config))
+    }
+
     /// Flush any queued receipt writes to durable storage, bounded by `timeout`.
     ///
     /// A shutdown drain calls this to prove the commit-actor queue is empty
@@ -206,7 +224,7 @@ impl ChioKernel {
         let federation_dsse_envelopes_gauge;
         let mut kernel = Self {
             config,
-            guards: Vec::new(),
+            guards: std::sync::Arc::new(Vec::new()),
             post_invocation_pipeline: crate::post_invocation::PostInvocationPipeline::new(),
             budget_store: Arc::new(InMemoryBudgetStore::new()),
             budget_store_lock: Mutex::new(()),
@@ -288,6 +306,9 @@ impl ChioKernel {
             budget_registry: Mutex::new(chio_kernel_core::InMemoryBudgetRegistry::new()),
             rss_shed: Arc::new(AtomicBool::new(false)),
             rss_sampler: None,
+            receipt_writer_watchdog: std::sync::Arc::new(
+                receipt_writer_watchdog::ReceiptWriterWatchdogHandle::new(),
+            ),
         };
         // Start the RSS soft-ceiling sampler only when a limit is configured; with
         // no limit set, no thread is spawned.
@@ -356,12 +377,104 @@ impl ChioKernel {
                 ));
             }
         }
-        if self.receipt_store.is_some() || self.config.allow_ephemeral_receipt_log {
-            return Ok(());
+        if self.receipt_store.is_none() && !self.config.allow_ephemeral_receipt_log {
+            return Err(KernelError::Internal(
+                "durable receipt persistence unavailable: no receipt store configured".to_string(),
+            ));
         }
-        Err(KernelError::Internal(
-            "durable receipt persistence unavailable: no receipt store configured".to_string(),
-        ))
+        // A configured store is not enough: if the commit writer is wedged,
+        // saturated, or dead, dispatching would run a tool side effect that
+        // could never be durably receipted. Deny before that happens.
+        // `receipt_writer_liveness` samples the store directly when no watchdog
+        // has published a verdict, so the gate fails closed on a wedged writer
+        // whether or not the host started the background watchdog.
+        let liveness = self.receipt_writer_liveness();
+        if liveness.healthy() {
+            Ok(())
+        } else {
+            Err(KernelError::ReceiptWriterUnavailable(format!(
+                "receipt commit writer is {liveness:?}; denying before dispatch"
+            )))
+        }
+    }
+
+    /// Receipt-writer liveness verdict the pre-dispatch gate reads. Prefers the
+    /// watchdog's most recent published verdict; when no watchdog is running the
+    /// published verdict stays `Unknown`, which the gate would otherwise treat as
+    /// permissive. Fall back to sampling the installed store directly in that
+    /// case so a durable store with a wedged commit writer is denied regardless
+    /// of whether the host started the watchdog. A store without an async writer
+    /// reports `Unknown` from the sample too, preserving the permissive behavior
+    /// for writer-less stores.
+    pub(crate) fn receipt_writer_liveness(&self) -> crate::receipt_store::ReceiptWriterLiveness {
+        let published = self.receipt_writer_watchdog.current();
+        if published != crate::receipt_store::ReceiptWriterLiveness::Unknown {
+            return published;
+        }
+        self.sample_receipt_writer_liveness()
+    }
+
+    /// Sample the installed store's commit-writer liveness against the configured
+    /// stall threshold. Reads the store's in-memory writer counters, so it is
+    /// cheap enough to run inline on the pre-dispatch path. Returns `Unknown`
+    /// when no store is installed or the store has no async writer.
+    fn sample_receipt_writer_liveness(&self) -> crate::receipt_store::ReceiptWriterLiveness {
+        let stall_threshold =
+            std::time::Duration::from_millis(self.config.deadlines.receipt_writer_stall_ms);
+        match self.with_receipt_store(|store| Ok(store.writer_liveness(stall_threshold))) {
+            Ok(Some(verdict)) => verdict,
+            _ => crate::receipt_store::ReceiptWriterLiveness::Unknown,
+        }
+    }
+
+    /// Sample the installed store's writer liveness once and publish it into the
+    /// gate's cell, without spawning the background poll task. Test-only shim so
+    /// the pre-dispatch gate can be exercised deterministically.
+    #[cfg(test)]
+    pub(crate) fn refresh_receipt_writer_liveness_for_test(&self) {
+        self.receipt_writer_watchdog
+            .publish(self.sample_receipt_writer_liveness());
+    }
+
+    /// Whether the background receipt-writer watchdog poll task is installed.
+    #[cfg(test)]
+    pub(crate) fn receipt_writer_watchdog_is_running(&self) -> bool {
+        self.receipt_writer_watchdog.is_running()
+    }
+
+    /// Start the receipt-writer liveness watchdog. Opt-in: the hosting edge
+    /// calls this in an async context. It polls the store's liveness on the
+    /// configured cadence and publishes the verdict the pre-dispatch gate reads.
+    pub fn spawn_receipt_writer_watchdog(self: &std::sync::Arc<Self>) {
+        // The watchdog polls on a `tokio::time::interval`, which panics in a
+        // runtime built without a time driver. Skip the background poll in that
+        // case rather than crash the host: the pre-dispatch gate already falls
+        // back to sampling the store's writer liveness directly when no verdict
+        // is published, so a timerless host stays fail-closed without the task.
+        if !super::dispatch::dispatch_timer_available() {
+            return;
+        }
+        let poll =
+            std::time::Duration::from_millis(self.config.deadlines.receipt_writer_poll_ms.max(1));
+        // Hold a weak reference between ticks. The kernel owns this task's join
+        // handle, so a strong reference here would form a cycle (kernel -> handle
+        // -> task -> kernel) that keeps the kernel and its receipt store alive
+        // forever when the last external Arc is dropped without calling
+        // shutdown(). Upgrade only to take a sample, then release before awaiting
+        // the next tick, and exit once the kernel is gone.
+        let kernel = std::sync::Arc::downgrade(self);
+        let handle = tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(poll);
+            loop {
+                ticker.tick().await;
+                let Some(kernel) = kernel.upgrade() else {
+                    return;
+                };
+                let verdict = kernel.sample_receipt_writer_liveness();
+                kernel.receipt_writer_watchdog.publish(verdict);
+            }
+        });
+        self.receipt_writer_watchdog.set_join_handle(handle);
     }
 
     pub(crate) fn scope_receipt_federation_admission_for_request(
@@ -499,6 +612,7 @@ impl ChioKernel {
     /// [`Self::emergency_stop`] in addition.
     pub async fn shutdown(&self) {
         self.signing_task.shutdown().await;
+        self.receipt_writer_watchdog.shutdown().await;
     }
 
     pub fn set_receipt_store(
@@ -1465,7 +1579,11 @@ impl ChioKernel {
     /// Register a policy guard. Guards are evaluated in registration order.
     /// If any guard denies, the request is denied.
     pub fn add_guard(&mut self, guard: Box<dyn Guard>) {
-        self.guards.push(guard);
+        // `Box<dyn Guard>` converts directly to `Arc<dyn Guard>`, and
+        // `Vec<Arc<dyn Guard>>` is `Clone`, so `make_mut` copies-on-write only
+        // while guards are still being registered (the kernel is single-owner
+        // at that point).
+        std::sync::Arc::make_mut(&mut self.guards).push(std::sync::Arc::from(guard));
     }
 
     /// Install a product-specific runtime admission hook. The hook runs after
@@ -1483,7 +1601,7 @@ impl ChioKernel {
     pub fn register_tool_server(&mut self, connection: Box<dyn ToolServerConnection>) {
         let id = connection.server_id().to_owned();
         info!(server_id = %id, "registering tool server");
-        self.tool_servers.insert(id, connection);
+        self.tool_servers.insert(id, Arc::from(connection));
     }
 
     /// Register a resource provider.

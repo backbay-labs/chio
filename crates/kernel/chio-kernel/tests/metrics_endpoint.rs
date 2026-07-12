@@ -147,6 +147,7 @@ fn watchdog_gauges_render_from_health_report() {
             last_commit_unix_ms: Some(1_000_000),
             ..Default::default()
         },
+        writer_liveness: "healthy".to_string(),
         latest_committed_entry_seq: 50,
         latest_checkpoint_seq: Some(4),
         latest_checkpointed_entry_seq: 40,
