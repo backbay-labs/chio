@@ -165,14 +165,41 @@ chio check --policy policy.yaml --server hello --tool drop_tables --params '{}'
 `chio init` scaffolds a project with an editable HushSpec `policy.yaml`; `chio check` evaluates
 one tool call against it and prints the verdict.
 
-### 5. Give the agent a portable identity
+### 5. Prove the agent's standing to a counterparty
 
 ```sh
-chio passport generate --agent did:chio:<agent-key> --output passport.json
+# Mint an Agent Passport from the agent's signed receipt history
+chio passport create --subject-public-key <agent-key> --signing-seed-file ./agent.seed --output passport.json
+
+# A relying party evaluates it against their own bar, then admits or rejects the agent
+chio passport evaluate --input passport.json --policy verifier-policy.yaml
 ```
 
-An Agent Passport bundles signed credentials (identity and reputation tier) into one document
-that travels with the agent and verifies independently, with no server to call.
+An Agent Passport bundles the agent's `did:chio` identity and a signed reputation credential
+built from its receipts. A counterparty verifies it with no shared server and, on accept, mints
+it a scoped capability with `chio trust federated-issue`. This is how reputation and admission
+cross operator boundaries.
+
+### 6. Budget, meter, and settle
+
+A capability caps what the agent may spend, and the kernel holds funds before each call and
+denies anything over budget. Add ceilings to your policy (amounts in minor units, e.g. cents):
+
+```yaml
+# policy.yaml, under `rules:`
+velocity:      { enabled: true, max_spend_per_window: 50000, window_secs: 60 }
+human_in_loop: { enabled: true, approve_above: 15000, approve_above_currency: USD }
+```
+
+Every metered call records its cost in the receipt. Inspect spend and settlement:
+
+```sh
+chio --receipt-db ./chio.db receipt list --admin-all --min-cost 1   # metered receipts, by cost
+chio settle status --store ./chio.db                                # pending, settled, dead-lettered
+```
+
+For a full market with buyers, providers, budgets, and settlement, run
+[`examples/agent-commerce-network`](examples/agent-commerce-network).
 
 ---
 
