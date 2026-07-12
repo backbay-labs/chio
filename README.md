@@ -496,6 +496,13 @@ targeting completion by Q1 2027; the windows below are indicative.
 
 ## Choose your path
 
+<p align="center">
+  <picture>
+    <source media="(max-width: 500px)" srcset="docs/assets/paths-mobile.svg" />
+    <img src="docs/assets/paths.svg" alt="Three ways in: migrate a coding agent from MCP, protect a web backend, or author a native Chio tool server" width="900" />
+  </picture>
+</p>
+
 - **Migrating an MCP server or coding-agent flow:**
   [docs/guides/MIGRATING-FROM-MCP.md](docs/guides/MIGRATING-FROM-MCP.md)
 - **Protecting a web backend:**

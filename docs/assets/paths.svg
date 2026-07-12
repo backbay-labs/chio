@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" role="img" aria-label="Three ways in: migrate a coding agent from MCP, protect a web backend, or author a native Chio tool server">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#130d0a"/>
+      <stop offset="1" stop-color="#1b140d"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#8f7ff2" stop-opacity="0.32"/>
+      <stop offset="0.6" stop-color="#8f7ff2" stop-opacity="0.07"/>
+      <stop offset="1" stop-color="#8f7ff2" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="300" fill="url(#bg)"/>
+
+  <g stroke="#b08d5b" stroke-opacity="0.35" stroke-width="1">
+    <path d="M38 44 H50 M44 38 V50"/><path d="M1150 44 H1162 M1156 38 V50"/>
+    <path d="M38 256 H50 M44 250 V262"/><path d="M1150 256 H1162 M1156 250 V262"/>
+  </g>
+
+  <text x="600" y="46" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" letter-spacing="4" fill="#d8cfc0" fill-opacity="0.55">THREE WAYS IN</text>
+
+  <!-- forking paths -->
+  <g fill="none" stroke="#b08d5b" stroke-opacity="0.5" stroke-width="1.5">
+    <path d="M188 155 C 380 155, 440 82, 636 82"/>
+    <path d="M188 155 H636"/>
+    <path d="M188 155 C 380 155, 440 228, 636 228"/>
+  </g>
+  <g fill="none" stroke="#b08d5b" stroke-opacity="0.7" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M630 78 L637 82 L630 86"/><path d="M630 151 L637 155 L630 159"/><path d="M630 224 L637 228 L630 232"/>
+  </g>
+
+  <!-- start node -->
+  <circle cx="150" cy="155" r="50" fill="url(#glow)"/>
+  <circle cx="150" cy="155" r="36" fill="#16101c" fill-opacity="0.55" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1.2"/>
+  <g transform="translate(150,155) scale(1.5)" fill="none" stroke="#c3b6ff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="0" cy="0" r="9"/>
+    <path d="M0 -6 L3.5 0 L0 6 L-3.5 0 Z" fill="#c3b6ff" fill-opacity="0.35"/>
+  </g>
+  <text x="150" y="228" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="2.5" fill="#b08d5b">START</text>
+
+  <!-- destination nodes -->
+  <g>
+    <circle cx="662" cy="82" r="34" fill="url(#glow)"/><circle cx="662" cy="155" r="34" fill="url(#glow)"/><circle cx="662" cy="228" r="34" fill="url(#glow)"/>
+  </g>
+  <g fill="#16101c" fill-opacity="0.55" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1.2">
+    <circle cx="662" cy="82" r="22"/><circle cx="662" cy="155" r="22"/><circle cx="662" cy="228" r="22"/>
+  </g>
+  <g fill="none" stroke="#c3b6ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <!-- migrate: swap arrows -->
+    <g transform="translate(662,82)"><path d="M-8 -3 H5"/><path d="M2 -7 L6 -3 L2 1"/><path d="M8 3 H-5"/><path d="M-2 -1 L-6 3 L-2 7"/></g>
+    <!-- web backend: globe -->
+    <g transform="translate(662,155)"><circle cx="0" cy="0" r="9"/><path d="M-9 0 H9"/><path d="M0 -9 C-5 -4 -5 4 0 9 C5 4 5 -4 0 -9 Z"/></g>
+    <!-- native server: cylinder -->
+    <g transform="translate(662,228)"><ellipse cx="0" cy="-6" rx="8" ry="3"/><path d="M-8 -6 V6"/><path d="M8 -6 V6"/><path d="M-8 6 C-8 9 8 9 8 6"/><path d="M-8 0 C-8 3 8 3 8 0"/></g>
+  </g>
+
+  <!-- destination labels -->
+  <g font-family="Georgia, 'Times New Roman', serif" font-size="19" fill="#efe7db">
+    <text x="700" y="79">Migrate from MCP</text><text x="700" y="152">Protect a web backend</text><text x="700" y="225">Author a native server</text>
+  </g>
+  <g font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" fill="#b3a99b">
+    <text x="700" y="98">wrap a coding agent's MCP tools</text><text x="700" y="171">a zero-code proxy for your API</text><text x="700" y="244">build a governed tool server</text>
+  </g>
+
+  <text x="600" y="280" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-size="13.5" fill="#d8cfc0" fill-opacity="0.7">New to Chio? The progressive tutorial walks the whole path.</text>
+</svg>
