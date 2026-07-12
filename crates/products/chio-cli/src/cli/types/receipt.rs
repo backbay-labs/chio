@@ -62,6 +62,11 @@ pub(crate) enum ReceiptCommands {
         #[arg(long, default_value_t = false)]
         repair: bool,
     },
+    /// Inspect or repair the receipt-store retention state.
+    Retention {
+        #[command(subcommand)]
+        command: ReceiptRetentionCommands,
+    },
     /// Inspect or advance the receipt-checkpoint chain.
     Checkpoint {
         #[command(subcommand)]
@@ -111,6 +116,20 @@ pub(crate) enum ReceiptCommands {
         /// Explicitly read across all tenants as an administrative operation.
         #[arg(long, default_value_t = false, conflicts_with = "tenant")]
         admin_all: bool,
+    },
+}
+
+#[derive(Subcommand)]
+pub(crate) enum ReceiptRetentionCommands {
+    /// Repair a receipt store bricked by a retention rotation that left
+    /// orphaned claim-log rows: remove the rows whose source receipts were
+    /// archived and deleted, restoring a writable, reopenable store.
+    /// Fail-closed.
+    Repair {
+        /// Archive file that holds the co-archived claim-log rows to validate
+        /// the removal against.
+        #[arg(long)]
+        archive: PathBuf,
     },
 }
 

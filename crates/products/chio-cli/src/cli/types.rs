@@ -198,6 +198,32 @@ mod cli_env_tests {
     }
 
     #[test]
+    fn receipt_retention_repair_uses_the_advertised_nested_command() {
+        // The bricked-store error text and operator guidance tell operators to
+        // run `chio receipt retention repair --archive <path>`. That advertised
+        // command must actually parse and route to the repair path.
+        let parsed = parse_cli([
+            "chio",
+            "receipt",
+            "retention",
+            "repair",
+            "--archive",
+            "archive.sqlite3",
+        ]);
+        assert!(
+            parsed.is_ok(),
+            "advertised `chio receipt retention repair` must parse: {:?}",
+            parsed.err().map(|error| error.to_string())
+        );
+        // The advertised nested spelling is the single supported one: the flat
+        // `retention-repair` form must not linger and diverge from the guidance.
+        assert!(
+            parse_cli(["chio", "receipt", "retention-repair", "--archive", "a.sqlite3"]).is_err(),
+            "the flat `retention-repair` spelling must not be accepted"
+        );
+    }
+
+    #[test]
     fn guard_publish_reads_registry_password_env_var() {
         let _guard = env_lock();
         let prior = std::env::var_os("CHIO_GUARD_REGISTRY_PASSWORD");

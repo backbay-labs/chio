@@ -457,23 +457,17 @@ fn open_backfills_claim_log_and_checkpoint_transparency_projections() {
     let path = unique_db_path("chio-receipts-legacy-projections");
     let tool_receipt = sample_receipt_with_id_and_timestamp("legacy-tool-1", 20);
     let child_receipt = sample_child_receipt_with_id_and_timestamp("legacy-child-1", 21);
-    let checkpoint_kp = receipt_test_keypair();
-    let first = build_checkpoint(1, 1, 1, &[b"legacy-one".to_vec()], &checkpoint_kp).test_unwrap();
-    let second = build_checkpoint_with_previous(
-        2,
-        2,
-        2,
-        &[b"legacy-two".to_vec()],
-        &checkpoint_kp,
-        Some(&first),
-    )
-    .test_unwrap();
 
+    // Seed a legacy pre-projection store with only the raw receipt tables,
+    // no checkpoints yet. The claim log backfill fail-closes whenever a
+    // checkpoint already exists over an empty projection, so the legacy
+    // checkpoint rows below are introduced only once the claim log projection
+    // is already populated by this first open.
     seed_pre_projection_store(
         &path,
         std::slice::from_ref(&tool_receipt),
         std::slice::from_ref(&child_receipt),
-        &[first.clone(), second.clone()],
+        &[],
     );
 
     let store = SqliteReceiptStore::open(&path).test_unwrap();
@@ -496,6 +490,30 @@ fn open_backfills_claim_log_and_checkpoint_transparency_projections() {
             ),
         ]
     );
+
+    // Now land legacy checkpoints on top of the already-backfilled claim
+    // log, inserted directly (bypassing `store_checkpoint`'s validation
+    // path) to simulate a store that predates checkpoint_tree_heads /
+    // checkpoint_predecessor_witnesses / checkpoint_publication_metadata.
+    let checkpoint_kp = receipt_test_keypair();
+    let first = build_checkpoint(1, 1, 1, &[b"legacy-one".to_vec()], &checkpoint_kp).test_unwrap();
+    let second = build_checkpoint_with_previous(
+        2,
+        2,
+        2,
+        &[b"legacy-two".to_vec()],
+        &checkpoint_kp,
+        Some(&first),
+    )
+    .test_unwrap();
+    insert_checkpoint_row(&store, &first, first.body.batch_end_seq);
+    insert_checkpoint_row(&store, &second, second.body.batch_end_seq);
+
+    // Reopening backfills the checkpoint transparency projections from the
+    // now-persisted legacy checkpoint rows. The claim log is already
+    // populated, so the (unaffected) validate branch runs, not the guarded
+    // empty-projection repair branch.
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
     assert_eq!(
         load_checkpoint_tree_head_rows(&store),
         vec![

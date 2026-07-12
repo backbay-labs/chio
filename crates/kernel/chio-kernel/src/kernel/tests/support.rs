@@ -1912,6 +1912,30 @@ impl ReceiptStore for AppendOnlyReceiptStore {
     }
 }
 
+/// A store that reports retention support but, like the real prefix-watermark
+/// store, cannot honor a tenant-scoped policy (it inherits the default
+/// `supports_tenant_scoped_retention` = false). Used to prove the attach path
+/// rejects a tenant-scoped retention config before spawning the worker.
+#[derive(Default)]
+struct RetentionCapableReceiptStore;
+
+impl ReceiptStore for RetentionCapableReceiptStore {
+    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    fn append_child_receipt(
+        &self,
+        _receipt: &ChildRequestReceipt,
+    ) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    fn supports_retention(&self) -> bool {
+        true
+    }
+}
+
 /// A receipt store whose supervised commit writer has died. Appends would still
 /// nominally succeed, but the writer flag reports serving-closed, so the kernel
 /// pre-dispatch gate must fail closed before any tool executes.

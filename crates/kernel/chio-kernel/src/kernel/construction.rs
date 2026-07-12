@@ -251,6 +251,7 @@ impl ChioKernel {
             child_receipt_mirror_gauge,
             receipt_store: None,
             receipt_store_write_lock: Mutex::new(()),
+            retention_maintenance: None,
             payment_adapter: None,
             price_oracle: None,
             runtime_admission_hook: None,
@@ -698,6 +699,60 @@ impl ChioKernel {
                         .to_string(),
                 ));
             }
+        }
+        // Spawn the retention maintenance worker only when retention is
+        // configured; an unconfigured deployment gets no background thread.
+        if let Some(config) = self.config.retention_config.clone() {
+            // Fail-closed: prefix retention can only archive receipts already
+            // covered by a kernel checkpoint (the archival watermark advances to
+            // checkpoint boundaries). With automatic checkpointing disabled
+            // (`checkpoint_batch_size == 0`) no background signer was installed
+            // above, so the checkpoint chain can never advance past 0 and the
+            // retention worker could never archive anything: the store would
+            // serve forever under a policy it can never honor, silently retaining
+            // every receipt. Reject the attach rather than run a retention policy
+            // that can never advance its watermark.
+            if self.checkpoint_batch_size == 0 {
+                return Err(KernelError::Internal(
+                    "KernelConfig.retention_config is set but automatic checkpointing is disabled \
+                     (checkpoint_batch_size == 0); prefix retention can only archive \
+                     checkpoint-covered receipts, so refusing to attach a store that could never \
+                     advance its retention watermark"
+                        .to_string(),
+                ));
+            }
+            // Fail-closed: configured retention is a storage/compliance control.
+            // A store whose rotate_receipts is the default unsupported stub would
+            // attach and then only log "retention not supported" on every worker
+            // interval, silently never archiving. Reject the attach rather than
+            // serve traffic under a retention policy the store cannot honor.
+            if !receipt_store.supports_retention() {
+                return Err(KernelError::Internal(
+                    "receipt store does not support retention but KernelConfig.retention_config \
+                     is set; refusing to attach a store that cannot honor the configured \
+                     retention policy"
+                        .to_string(),
+                ));
+            }
+            // Fail-closed: a tenant-scoped retention policy cannot be honored by a
+            // prefix-watermark store (rotation archives a contiguous checkpointed
+            // prefix of the whole log, not one tenant's rows), so its rotate call
+            // fails closed and the worker would only log "tenant scope
+            // unsupported" every interval and never archive. Reject the attach
+            // rather than serve traffic under a policy the store cannot honor.
+            if config.tenant_id.is_some() && !receipt_store.supports_tenant_scoped_retention() {
+                return Err(KernelError::Internal(
+                    "KernelConfig.retention_config sets a tenant scope but the receipt store does \
+                     not support tenant-scoped retention; refusing to attach a store that cannot \
+                     honor the configured retention policy"
+                        .to_string(),
+                ));
+            }
+            self.retention_maintenance =
+                Some(crate::receipt_store::RetentionMaintenanceHandle::spawn(
+                    Arc::clone(&receipt_store),
+                    config,
+                ));
         }
         self.receipt_store = Some(receipt_store);
         Ok(())

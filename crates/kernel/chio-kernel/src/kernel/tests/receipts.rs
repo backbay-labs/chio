@@ -217,6 +217,70 @@ fn kernel_persists_tool_receipts_to_sqlite_store() {
     let _ = std::fs::remove_file(path);
 }
 
+/// Configured retention is a storage/compliance control. Attaching a store
+/// that cannot rotate (the default `rotate_receipts` stub) while
+/// `retention_config` is set must fail closed: otherwise the kernel would serve
+/// traffic while the background worker only logs "not supported" every interval
+/// and never archives anything.
+#[test]
+fn attach_rejects_configured_retention_on_unsupported_store() {
+    let mut config = make_config();
+    config.retention_config = Some(crate::RetentionConfig::default());
+    let mut kernel = make_kernel(config);
+    let error = kernel
+        .set_receipt_store(Box::new(AppendOnlyReceiptStore))
+        .expect_err("attach must reject a retention-configured store that cannot rotate");
+    assert!(
+        matches!(&error, KernelError::Internal(message) if message.contains("does not support retention")),
+        "unexpected error: {error:?}"
+    );
+}
+
+/// A tenant-scoped retention policy cannot be honored by a prefix-watermark
+/// store: rotation archives a contiguous checkpointed prefix of the whole log,
+/// not one tenant's rows, so `rotate_receipts` fails closed. Attaching a store
+/// that supports retention but not tenant scope under such a policy must fail
+/// closed at attach time, not spawn a worker that logs "unsupported" every
+/// interval while the kernel serves traffic the policy can never cover.
+#[test]
+fn attach_rejects_tenant_scoped_retention() {
+    let mut config = make_config();
+    config.retention_config = Some(crate::RetentionConfig {
+        tenant_id: Some("tenant-a".to_string()),
+        ..crate::RetentionConfig::default()
+    });
+    let mut kernel = make_kernel(config);
+    let error = kernel
+        .set_receipt_store(Box::new(RetentionCapableReceiptStore))
+        .expect_err("attach must reject a tenant-scoped retention policy the store cannot honor");
+    assert!(
+        matches!(&error, KernelError::Internal(message) if message.contains("tenant-scoped retention")),
+        "unexpected error: {error:?}"
+    );
+}
+
+/// Prefix retention only ever archives receipts covered by a kernel checkpoint,
+/// so it depends on automatic checkpointing being enabled. Attaching a
+/// retention-configured store while `checkpoint_batch_size == 0` installs no
+/// background signer, so the checkpoint chain never advances past 0 and the
+/// retention worker could never archive anything: the store would silently
+/// retain every receipt forever. The attach must fail closed rather than serve
+/// under a retention policy that can never advance its watermark.
+#[test]
+fn attach_rejects_retention_when_checkpointing_disabled() {
+    let mut config = make_config();
+    config.checkpoint_batch_size = 0;
+    config.retention_config = Some(crate::RetentionConfig::default());
+    let mut kernel = make_kernel(config);
+    let error = kernel
+        .set_receipt_store(Box::new(RetentionCapableReceiptStore))
+        .expect_err("attach must reject retention when automatic checkpointing is disabled");
+    assert!(
+        matches!(&error, KernelError::Internal(message) if message.contains("automatic checkpointing is disabled")),
+        "unexpected error: {error:?}"
+    );
+}
+
 #[test]
 fn all_calls_produce_verified_receipts() {
     let mut kernel = make_kernel(make_config());

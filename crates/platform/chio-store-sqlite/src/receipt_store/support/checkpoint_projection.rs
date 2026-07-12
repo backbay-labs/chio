@@ -521,12 +521,42 @@ pub(crate) fn load_child_claim_receipt_projection_row_by_id(
 /// NEVER invoked, so the single-writer no-stale-head path (empty delta) is a
 /// no-op and the flat per-append cost holds. Runs inside the caller's
 /// already-open transaction (no nested transaction).
+///
+/// Entries at or below the retention watermark were archived and deleted, so
+/// their absence is expected rather than a gap. The contiguity floor is raised
+/// to the watermark; the surviving range above it must still be contiguous, so
+/// a real hole in the live log is still rejected.
+///
+/// Only a TRUSTED watermark raises the floor. The watermark ledger's DB triggers
+/// enforce monotonicity alone, not that the covered prefix was ever archived, so
+/// a raw INSERT could plant a high but bogus watermark while the covered rows are
+/// still live. Trusting the raw value would let a stale writer skip the
+/// contiguity and source-row projection checks for a delta at or below that
+/// watermark, silently adopting corrupted or orphaned claim-log rows. Deferring
+/// to `trusted_retention_watermark` (which additionally requires the value to
+/// land on a checkpoint boundary and no live prefix row to survive) makes an
+/// unarchived watermark fall back to 0, so the full delta is still validated and
+/// the append fails closed.
 pub(crate) fn validate_adopted_claim_log_delta(
     connection: &Connection,
     floor_entry_seq: u64,
     max_entry_seq: u64,
 ) -> Result<(), ReceiptStoreError> {
-    if max_entry_seq <= floor_entry_seq {
+    // `trusted_retention_watermark` opens the archive and re-hashes every
+    // covered checkpoint, so calling it on every append would make steady-state
+    // appends O(archived history) once the store has ever rotated. The trusted
+    // watermark is always bounded above by the raw ledger watermark (a cheap
+    // indexed read), so it can only raise the floor when the raw watermark
+    // exceeds `floor_entry_seq`. Gate the archive scan on that fast check: when
+    // the floor already sits at or above the raw watermark the trusted value
+    // cannot move it, and the hot path skips the archive entirely.
+    let raw_watermark = retention_watermark(connection)?.unwrap_or(0);
+    let effective_floor = if raw_watermark > floor_entry_seq {
+        floor_entry_seq.max(trusted_retention_watermark(connection)?)
+    } else {
+        floor_entry_seq
+    };
+    if max_entry_seq <= effective_floor {
         return Ok(());
     }
     let entries = {
@@ -540,7 +570,7 @@ pub(crate) fn validate_adopted_claim_log_delta(
         )?;
         let rows = statement.query_map(
             params![
-                sqlite_i64(floor_entry_seq, "adopted delta floor entry_seq")?,
+                sqlite_i64(effective_floor, "adopted delta floor entry_seq")?,
                 sqlite_i64(max_entry_seq, "adopted delta max entry_seq")?,
             ],
             |row| {
@@ -572,18 +602,18 @@ pub(crate) fn validate_adopted_claim_log_delta(
     // gap so the whole adopted delta is rejected, mirroring the contiguity rule
     // enforced for the checkpoint build range. `entries` is ordered ASC by the
     // query above.
-    let mut expected_seq = floor_entry_seq.saturating_add(1);
+    let mut expected_seq = effective_floor.saturating_add(1);
     for (entry_seq, _, _) in &entries {
         if *entry_seq != expected_seq {
             return Err(ReceiptStoreError::Conflict(format!(
-                "adopted claim receipt log delta ({floor_entry_seq}, {max_entry_seq}] is not contiguous: expected entry_seq {expected_seq}, found {entry_seq}; run `chio receipt audit`"
+                "adopted claim receipt log delta ({effective_floor}, {max_entry_seq}] is not contiguous: expected entry_seq {expected_seq}, found {entry_seq}; run `chio receipt audit`"
             )));
         }
         expected_seq = expected_seq.saturating_add(1);
     }
     if expected_seq != max_entry_seq.saturating_add(1) {
         return Err(ReceiptStoreError::Conflict(format!(
-            "adopted claim receipt log delta ({floor_entry_seq}, {max_entry_seq}] is missing trailing entries after entry_seq {}; run `chio receipt audit`",
+            "adopted claim receipt log delta ({effective_floor}, {max_entry_seq}] is missing trailing entries after entry_seq {}; run `chio receipt audit`",
             expected_seq.saturating_sub(1)
         )));
     }

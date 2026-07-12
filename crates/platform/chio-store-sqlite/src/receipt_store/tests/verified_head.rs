@@ -626,6 +626,74 @@ fn reseed_clears_stale_flush_error() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+/// `retention_repair` reseeds the head on success exactly like
+/// `reseed_verified_head`, so it must ALSO clear the actor loop's separate
+/// `pending_flush_error` set by an earlier poisoned append. Otherwise a store
+/// whose head was poisoned before the repair keeps returning the stale
+/// pre-repair append error from a subsequent STANDALONE `flush_receipt_writes()`
+/// even though the repair reseeded a revalidated head.
+#[test]
+fn retention_repair_clears_stale_flush_error() -> Result<(), Box<dyn std::error::Error>> {
+    let path = unique_db_path("chio-repair-clears-flush-error");
+    let keypair = receipt_test_keypair();
+    let store = SqliteReceiptStore::open(&path)?;
+    for i in 0..3 {
+        let receipt = sample_receipt_with_keypair(
+            &format!("rcpt-repair-flush-{i}"),
+            (i + 1) as u64,
+            &keypair,
+        );
+        store.append_chio_receipt_returning_seq(&receipt)?;
+    }
+    store.flush_receipt_writes()?;
+    store.create_next_receipt_checkpoint(3, &keypair)?;
+
+    // Poison: tamper the latest checkpoint so the next append is denied. The
+    // denied append records the actor loop's `pending_flush_error`.
+    let connection = store.connection()?;
+    let original: String = connection.query_row(
+        "SELECT statement_json FROM kernel_checkpoints WHERE checkpoint_seq = 1",
+        [],
+        |row| row.get(0),
+    )?;
+    connection.execute_batch("DROP TRIGGER IF EXISTS kernel_checkpoints_reject_update;")?;
+    connection.execute(
+        "UPDATE kernel_checkpoints SET statement_json = replace(statement_json, '\"batch_end_seq\":3', '\"batch_end_seq\":2')",
+        [],
+    )?;
+    drop(connection);
+
+    let denied = sample_receipt_with_keypair("rcpt-repair-flush-denied", 50, &keypair);
+    assert!(store.append_chio_receipt_returning_seq(&denied).is_err());
+    assert!(
+        store.flush_receipt_writes().is_err(),
+        "a poisoned append must leave the standalone flush returning the stale error"
+    );
+
+    // Repair the DB out of band, then run retention repair. The denied append
+    // re-created the immutability trigger, so drop it again before the write.
+    let connection = store.connection()?;
+    connection.execute_batch("DROP TRIGGER IF EXISTS kernel_checkpoints_reject_update;")?;
+    connection.execute(
+        "UPDATE kernel_checkpoints SET statement_json = ?1 WHERE checkpoint_seq = 1",
+        rusqlite::params![original],
+    )?;
+    drop(connection);
+    // The store has no orphaned claim-log rows, so the repair is a clean no-op
+    // that still reseeds the head; the archive path is never touched.
+    store.retention_repair("unused-archive.sqlite3")?;
+
+    // A subsequent STANDALONE flush returns Ok, not the stale append error.
+    let report = store.flush_receipt_writes();
+    assert!(
+        report.is_ok(),
+        "retention repair success must clear the stale flush error: {report:?}"
+    );
+
+    let _ = fs::remove_file(path);
+    Ok(())
+}
+
 /// When another writer extends the checkpoint chain out of band, the catch-up
 /// adoption path verifies signature + predecessor + claim-log range but must
 /// ALSO validate the adopted checkpoint's transparency projection rows (which
@@ -1182,6 +1250,70 @@ fn adopted_delta_rejects_interior_gap() -> Result<(), Box<dyn std::error::Error>
             assert!(
                 message.contains("chio receipt audit"),
                 "Conflict must point the operator at the audit CLI, got: {message}"
+            );
+        }
+        other => return Err(format!("expected Conflict, got {other}").into()),
+    }
+
+    let _ = fs::remove_file(path);
+    Ok(())
+}
+
+/// The watermark ledger's DB triggers enforce monotonicity but not archival, so
+/// a raw INSERT can plant a high but bogus watermark while the covered rows stay
+/// live. `validate_adopted_claim_log_delta` must raise its contiguity floor only
+/// to the TRUSTED watermark; trusting the raw value would let a delta at or below
+/// the bogus mark short-circuit before the contiguity and projection checks,
+/// silently adopting corrupted claim-log rows. Here rows {1,2,4} are live (an
+/// interior hole at 3) and a bogus watermark of 4 is planted without archiving;
+/// the validator must still fail closed on the gap because the watermark is not
+/// trustworthy.
+#[test]
+fn adopted_delta_ignores_untrusted_watermark() -> Result<(), Box<dyn std::error::Error>> {
+    let path = unique_db_path("chio-adopted-delta-bogus-watermark");
+    let keypair = receipt_test_keypair();
+    let store = SqliteReceiptStore::open(&path)?;
+    for i in 0..4 {
+        let receipt =
+            sample_receipt_with_keypair(&format!("rcpt-bogus-wm-{i}"), (i + 1) as u64, &keypair);
+        store.append_chio_receipt_returning_seq(&receipt)?;
+    }
+    store.flush_receipt_writes()?;
+
+    let connection = store.connection()?;
+
+    // Punch an interior hole: delete entry_seq 3, leaving a non-contiguous
+    // {1,2,4}. The three survivors still project cleanly, so only the contiguity
+    // scan can reject the delta.
+    connection.execute_batch("DROP TRIGGER IF EXISTS claim_receipt_log_entries_reject_delete;")?;
+    let deleted = connection.execute(
+        "DELETE FROM claim_receipt_log_entries WHERE entry_seq = 3",
+        [],
+    )?;
+    assert_eq!(deleted, 1, "expected to remove exactly one claim-log row");
+
+    // Plant a bogus watermark of 4 without archiving anything: the rows covered
+    // by it are still live. The monotonicity trigger accepts it as the first
+    // mark. A raw watermark floor would lift the effective floor to 4 and, since
+    // the delta max (4) equals it, return early before validating the range.
+    connection.execute(
+        "INSERT INTO receipt_retention_watermark \
+         (archived_through_entry_seq, archived_through_timestamp, archive_path, rotated_at) \
+         VALUES (4, 0, '', 0)",
+        [],
+    )?;
+
+    // Because the covered prefix is still live, the watermark is untrusted, so
+    // the floor stays at 0 and the contiguity scan detects the hole at entry_seq
+    // 3, failing closed.
+    let error = validate_adopted_claim_log_delta(&connection, 0, 4)
+        .err()
+        .ok_or("an untrusted watermark must not let a non-contiguous delta pass")?;
+    match &error {
+        ReceiptStoreError::Conflict(message) => {
+            assert!(
+                message.contains("not contiguous") && message.contains('3'),
+                "Conflict should identify the interior gap, got: {message}"
             );
         }
         other => return Err(format!("expected Conflict, got {other}").into()),

@@ -3,6 +3,7 @@ use chio_core::capability::token::CapabilityToken;
 use chio_core::credit::CreditBondRow;
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{body::ChioReceipt, lineage::ChildRequestReceipt};
+use chio_log_redact::redacted;
 
 use crate::capability_lineage::CapabilitySnapshot;
 use crate::checkpoint::KernelCheckpoint;
@@ -23,6 +24,13 @@ pub struct RetentionConfig {
     /// Optional tenant scope for retention. When set, rotation only archives
     /// receipts for this tenant and leaves other tenant evidence untouched.
     pub tenant_id: Option<String>,
+    /// How often the kernel maintenance task evaluates rotation, in seconds.
+    /// Default: 3600 (one hour).
+    pub check_interval_secs: u64,
+    /// Internal: set by `archive_receipts_before` to bypass the day/size
+    /// threshold and rotate at an explicit cutoff. Not part of any wire form
+    /// (no serialized representation of `RetentionConfig` exists).
+    pub explicit_cutoff_unix_secs: Option<u64>,
 }
 
 impl Default for RetentionConfig {
@@ -32,6 +40,94 @@ impl Default for RetentionConfig {
             max_size_bytes: 10_737_418_240,
             archive_path: "receipts-archive.sqlite3".to_string(),
             tenant_id: None,
+            check_interval_secs: 3_600,
+            explicit_cutoff_unix_secs: None,
+        }
+    }
+}
+
+/// Owns the retention maintenance worker thread; signals stop and joins on
+/// drop. Spawned by [`crate::kernel::ChioKernel::try_set_receipt_store_handle`]
+/// when `KernelConfig.retention_config` is `Some`, so retention rotation runs
+/// on an interval without operator-driven polling.
+///
+/// The worker thread NEVER PANICS: a rotation call is wrapped in
+/// `catch_unwind` so a panic inside the receipt store's rotation path is
+/// caught, logged, and retried on the next interval rather than unwinding the
+/// worker thread (which would silently and permanently stop maintenance).
+pub struct RetentionMaintenanceHandle {
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    join: Option<std::thread::JoinHandle<()>>,
+}
+
+impl RetentionMaintenanceHandle {
+    /// Spawn the maintenance worker. `store` is a dedicated `Arc` clone held
+    /// by the worker thread for its lifetime, independent of the kernel's own
+    /// `receipt_store` handle.
+    pub(crate) fn spawn(store: std::sync::Arc<dyn ReceiptStore>, config: RetentionConfig) -> Self {
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let worker_stop = std::sync::Arc::clone(&stop);
+        let interval = std::time::Duration::from_secs(config.check_interval_secs.max(1));
+        let join = std::thread::spawn(move || {
+            while !worker_stop.load(std::sync::atomic::Ordering::SeqCst) {
+                // Sleep in short slices so shutdown is responsive.
+                let mut waited = std::time::Duration::ZERO;
+                let slice = std::time::Duration::from_millis(200);
+                while waited < interval && !worker_stop.load(std::sync::atomic::Ordering::SeqCst) {
+                    std::thread::sleep(slice);
+                    waited += slice;
+                }
+                if worker_stop.load(std::sync::atomic::Ordering::SeqCst) {
+                    break;
+                }
+                // Never panic: a rotation error OR a caught panic is surfaced
+                // as a warning and retried next interval, rather than
+                // crashing the worker thread (and, unwrapped, the kernel).
+                let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    store.rotate_receipts(&config)
+                }));
+                // Persist the outcome into health so a persistent rotation
+                // failure (an unwritable archive path, a missing/replaced
+                // archive that no longer backs the ledger) is observable outside
+                // this log: a store serving under a retention policy that is not
+                // being honored must not keep reporting healthy. A success clears
+                // the prior failure.
+                match outcome {
+                    Ok(Ok(_archived)) => {
+                        store.record_retention_rotation_outcome(None);
+                    }
+                    Ok(Err(error)) => {
+                        store.record_retention_rotation_outcome(Some(&error.to_string()));
+                        tracing::warn!(
+                            target: "chio::retention",
+                            error = %redacted!(&error),
+                            "receipt rotation failed; will retry next interval"
+                        );
+                    }
+                    Err(_panic) => {
+                        store.record_retention_rotation_outcome(Some(
+                            "receipt rotation panicked",
+                        ));
+                        tracing::warn!(
+                            target: "chio::retention",
+                            "receipt rotation panicked; will retry next interval"
+                        );
+                    }
+                }
+            }
+        });
+        Self {
+            stop,
+            join: Some(join),
+        }
+    }
+}
+
+impl Drop for RetentionMaintenanceHandle {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::SeqCst);
+        if let Some(join) = self.join.take() {
+            let _ = join.join();
         }
     }
 }
@@ -107,6 +203,12 @@ pub struct ReceiptCheckpointStatusReport {
     pub next_range: Option<ReceiptCheckpointRange>,
     #[serde(default)]
     pub checkpoint_error: Option<String>,
+    /// Current receipt-retention archival high-water mark (the highest
+    /// `entry_seq` archived so far), or `None` if retention has never run.
+    /// Reported even when retention is disabled so unbounded growth is
+    /// visible in health/status output.
+    #[serde(default)]
+    pub retention_watermark_entry_seq: Option<u64>,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -131,6 +233,19 @@ pub struct ReceiptStoreHealthReport {
     pub checkpoint_error: Option<String>,
     #[serde(default)]
     pub db_size_bytes: Option<u64>,
+    /// Current receipt-retention archival high-water mark (the highest
+    /// `entry_seq` archived so far), or `None` if retention has never run.
+    /// Reported even when retention is disabled so unbounded growth is
+    /// visible in health output.
+    #[serde(default)]
+    pub retention_watermark_entry_seq: Option<u64>,
+    /// Last error from the background retention maintenance worker, or `None`
+    /// when the most recent rotation succeeded (or retention is not configured).
+    /// A persistent value means the store is serving under a retention policy
+    /// that is not being honored; `healthy` is `false` while it is set so
+    /// operators and automation can alert on a silently-failing background task.
+    #[serde(default)]
+    pub retention_error: Option<String>,
     /// Supervised health of the commit-writer thread. A durable store reports this
     /// so a dead or degraded writer can never be masked by a last-batch success.
     #[serde(default)]
@@ -207,6 +322,24 @@ pub enum ReceiptStoreError {
 
     #[error("not found: {0}")]
     NotFound(String),
+
+    #[error("retention co-archival incomplete for {table}: {live} live rows, {archived} archived; aborting delete to preserve inclusion-proof integrity")]
+    RetentionArchiveIncomplete {
+        table: &'static str,
+        live: u64,
+        archived: u64,
+    },
+
+    #[error(
+        "retention watermark regression: attempted {attempted}, current high-water mark {current}"
+    )]
+    RetentionWatermarkRegression { attempted: u64, current: u64 },
+
+    #[error("claim receipt log projection is missing over a checkpointed or archived range (watermark {watermark}); the entry ordering cannot be safely regenerated to match committed checkpoint boundaries; restore the claim_receipt_log_entries projection from a backup taken before it was lost")]
+    ArchivedRangeProjection { watermark: u64 },
+
+    #[error("tenant-scoped retention is not expressible as a prefix watermark and is unsupported; no data was modified")]
+    RetentionTenantScopeUnsupported,
 
     #[error("receipt commit writer is not serving after {restarts} restart(s): {last_error}")]
     WriterDead { restarts: u64, last_error: String },
@@ -481,6 +614,46 @@ pub trait ReceiptStore: Send + Sync {
         Ok(false)
     }
 
+    /// Whether this store actually implements retention rotation
+    /// (`rotate_receipts`). Default `false`: the default `rotate_receipts` is a
+    /// fail-closed stub, so a kernel configured with `retention_config` uses
+    /// this to refuse attaching a store that cannot rotate, rather than serving
+    /// traffic under a retention policy whose background worker would only log
+    /// "not supported" on every interval and never archive.
+    fn supports_retention(&self) -> bool {
+        false
+    }
+
+    /// Whether this store can honor a TENANT-SCOPED retention config
+    /// (`RetentionConfig.tenant_id` set). Default `false`: prefix-watermark
+    /// retention archives a contiguous checkpointed prefix of the WHOLE log and
+    /// cannot carve out a single tenant, so a tenant-scoped `rotate_receipts`
+    /// fails closed. A kernel configured with a tenant-scoped retention policy
+    /// uses this to refuse attaching a store that could never archive under it,
+    /// rather than spawning a worker that only logs "unsupported" every interval.
+    fn supports_tenant_scoped_retention(&self) -> bool {
+        false
+    }
+
+    /// Archive receipts that have aged out under `config` (day/size
+    /// threshold, or an explicit cutoff). Returns the number of archived
+    /// tool-receipt rows. Default: unsupported (fail-closed) for stores that
+    /// do not implement retention.
+    fn rotate_receipts(&self, _config: &RetentionConfig) -> Result<u64, ReceiptStoreError> {
+        Err(ReceiptStoreError::Conflict(
+            "receipt retention is not supported by this receipt store".to_string(),
+        ))
+    }
+
+    /// Record the outcome of a background retention rotation so a persistent
+    /// failure is observable in `receipt_store_health` (and any health/flush
+    /// report) rather than living only in logs. `None` clears a prior failure
+    /// after a successful rotation; `Some(message)` records a rotation error or
+    /// panic so a silently-failing background retention task marks the store
+    /// unhealthy and surfaces the cause to operators and automation. Default
+    /// no-op for stores without a health surface.
+    fn record_retention_rotation_outcome(&self, _failure: Option<&str>) {}
+
     fn record_capability_snapshot(
         &self,
         _token: &CapabilityToken,
@@ -664,7 +837,110 @@ mod tests {
             Err(ReceiptStoreError::Conflict(message))
                 if message.contains("receipt checkpoint storage is not supported")
         ));
+        assert!(matches!(
+            store.rotate_receipts(&RetentionConfig::default()),
+            Err(ReceiptStoreError::Conflict(message))
+                if message.contains("receipt retention is not supported")
+        ));
         Ok(())
+    }
+
+    /// A store whose background rotation always fails, recording the outcome the
+    /// maintenance worker hands it and reflecting it in health, so a persistent
+    /// retention failure is observable rather than silently healthy.
+    #[derive(Default)]
+    struct FailingRetentionStore {
+        retention_error: std::sync::Mutex<Option<String>>,
+        rotations: std::sync::atomic::AtomicU64,
+    }
+
+    impl ReceiptStore for FailingRetentionStore {
+        fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+            Ok(())
+        }
+
+        fn append_child_receipt(
+            &self,
+            _receipt: &ChildRequestReceipt,
+        ) -> Result<(), ReceiptStoreError> {
+            Ok(())
+        }
+
+        fn supports_retention(&self) -> bool {
+            true
+        }
+
+        fn rotate_receipts(&self, _config: &RetentionConfig) -> Result<u64, ReceiptStoreError> {
+            self.rotations
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Err(ReceiptStoreError::Conflict(
+                "archive path is unwritable".to_string(),
+            ))
+        }
+
+        fn record_retention_rotation_outcome(&self, failure: Option<&str>) {
+            if let Ok(mut guard) = self.retention_error.lock() {
+                *guard = failure.map(ToString::to_string);
+            }
+        }
+
+        fn receipt_store_health(&self) -> Result<ReceiptStoreHealthReport, ReceiptStoreError> {
+            let retention_error = self.retention_error.lock().ok().and_then(|g| g.clone());
+            Ok(ReceiptStoreHealthReport {
+                healthy: retention_error.is_none(),
+                retention_error,
+                ..ReceiptStoreHealthReport::default()
+            })
+        }
+    }
+
+    #[test]
+    fn background_retention_failure_surfaces_in_health() {
+        let store = std::sync::Arc::new(FailingRetentionStore::default());
+        // A store with no rotation attempt yet reports healthy.
+        assert!(
+            store
+                .receipt_store_health()
+                .expect("health report")
+                .healthy
+        );
+
+        let config = RetentionConfig {
+            check_interval_secs: 1,
+            ..RetentionConfig::default()
+        };
+        let handle = RetentionMaintenanceHandle::spawn(store.clone(), config);
+
+        // The worker sleeps one interval (in 200ms slices) before its first
+        // rotation, then records the failure into health. Poll until it appears.
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while std::time::Instant::now() < deadline
+            && store
+                .receipt_store_health()
+                .expect("health report")
+                .retention_error
+                .is_none()
+        {
+            std::thread::sleep(std::time::Duration::from_millis(50));
+        }
+
+        let report = store.receipt_store_health().expect("health report");
+        drop(handle);
+        assert!(
+            store.rotations.load(std::sync::atomic::Ordering::SeqCst) > 0,
+            "the maintenance worker never attempted a rotation"
+        );
+        assert!(
+            !report.healthy,
+            "a persistently failing background rotation must mark the store unhealthy"
+        );
+        let message = report
+            .retention_error
+            .expect("the background rotation failure must surface in health");
+        assert!(
+            message.contains("archive path is unwritable"),
+            "unexpected retention error: {message}"
+        );
     }
 }
 

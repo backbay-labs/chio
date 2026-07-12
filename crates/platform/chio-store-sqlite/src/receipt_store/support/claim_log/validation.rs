@@ -12,7 +12,7 @@ pub(crate) fn validate_claim_receipt_log_entries(
     validate_or_backfill_claim_receipt_log_entries(connection, false)
 }
 
-fn validate_or_backfill_claim_receipt_log_entries(
+pub(crate) fn validate_or_backfill_claim_receipt_log_entries(
     connection: &Connection,
     repair_empty_projection: bool,
 ) -> Result<(), ReceiptStoreError> {
@@ -62,6 +62,30 @@ fn validate_or_backfill_claim_receipt_log_entries(
             return Err(ReceiptStoreError::Conflict(
                 "claim receipt log projection is missing for persisted receipt rows".to_string(),
             ));
+        }
+        // A fully archived store legitimately has BOTH empty source tables and
+        // an empty projection: retention co-archived and deleted the entire
+        // checkpointed prefix. There is nothing to regenerate, so the empty
+        // expected + empty existing state is consistent and reopenable even
+        // though a checkpoint or watermark exists. Returning here keeps a valid
+        // full-prefix rotation followed by a restart from bricking the store on
+        // the next writable open; the checkpointed-range refusal below is only
+        // for the case where SOURCE rows survived and their entry_seq ordering
+        // would have to be guessed against committed checkpoint boundaries.
+        if expected.is_empty() {
+            return Ok(());
+        }
+        // Fail-closed: only regenerate a never-checkpointed, never-archived
+        // projection. Once a checkpoint has committed a batch_end_seq boundary
+        // or an archival watermark exists, re-deriving entry_seq from surviving
+        // source rows in (timestamp, kind_rank, source_seq, receipt_id) order
+        // can assign fresh sequence numbers that no longer line up with the
+        // checkpoint boundaries. Refuse instead of guessing.
+        let watermark = retention_watermark(&tx)?;
+        if kernel_checkpoints_exist(&tx)? || watermark.is_some() {
+            return Err(ReceiptStoreError::ArchivedRangeProjection {
+                watermark: watermark.unwrap_or(0),
+            });
         }
         for row in &expected {
             insert_claim_receipt_log_projection_row(&tx, row)?;

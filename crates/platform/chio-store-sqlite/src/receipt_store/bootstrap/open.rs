@@ -40,6 +40,7 @@ fn configure_sqlite_connection(connection: &mut Connection) -> Result<(), Receip
         PRAGMA synchronous = FULL;
         PRAGMA busy_timeout = 5000;
         PRAGMA foreign_keys = ON;
+        PRAGMA auto_vacuum = INCREMENTAL;
         "#,
     )?;
     assert_sqlite_durability_pragmas(connection)?;
@@ -1120,6 +1121,15 @@ impl SqliteReceiptStore {
             CREATE INDEX IF NOT EXISTS idx_federated_share_lineage_subject
                 ON federated_share_capability_lineage(subject_key);
 
+            CREATE TABLE IF NOT EXISTS receipt_retention_watermark (
+                archived_through_entry_seq INTEGER NOT NULL,
+                archived_through_timestamp INTEGER NOT NULL,
+                archive_path               TEXT NOT NULL,
+                archive_sha256             TEXT,
+                rotated_at                 INTEGER NOT NULL,
+                CHECK (archived_through_entry_seq >= 0)
+            );
+
             "#,
         )?;
         connection.execute_batch(crate::IOU_ENVELOPE_MIGRATION)?;
@@ -1127,6 +1137,8 @@ impl SqliteReceiptStore {
         super::support::ensure_receipt_lineage_statement_columns(&connection)?;
         super::support::drop_transparency_projection_guards(&connection)?;
         let backfill_result = (|| -> Result<(), ReceiptStoreError> {
+            super::support::ensure_receipt_retention_watermark_table(&connection)?;
+            super::support::ensure_receipt_retention_tombstones(&connection)?;
             backfill_tool_receipt_attribution_columns(&connection)?;
             super::support::backfill_provenance_lineage_tables(&mut connection)?;
             super::support::backfill_claim_receipt_log_entries(&mut connection)?;

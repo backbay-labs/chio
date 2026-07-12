@@ -157,6 +157,11 @@ struct ReceiptCommitWriterHealth {
     /// it re-stamps on each new backlog and a growing backlog keeps its start.
     backlog_started_unix_ms: AtomicU64,
     last_error: Mutex<Option<String>>,
+    // Last background-retention rotation failure, set by the kernel maintenance
+    // worker via `record_retention_rotation_outcome` and cleared on the next
+    // successful rotation. Surfaced by `receipt_store_health` so a silently
+    // failing background retention task is observable rather than healthy.
+    retention_error: Mutex<Option<String>>,
     // Verified-head snapshot, written only by the actor thread; read by
     // flush_report / receipt_store_health / kernel counters.
     head_checkpoint_seq: AtomicU64,
@@ -185,6 +190,7 @@ impl Default for ReceiptCommitWriterHealth {
             first_accept_unix_ms: AtomicU64::new(0),
             backlog_started_unix_ms: AtomicU64::new(0),
             last_error: Mutex::new(None),
+            retention_error: Mutex::new(None),
             head_checkpoint_seq: AtomicU64::new(0),
             head_checkpointed_entry_seq: AtomicU64::new(0),
             head_claim_log_count: AtomicU64::new(0),
@@ -324,6 +330,23 @@ enum ReceiptCommitCommand {
     /// Install (or replace) the background checkpoint signer on the actor
     /// thread. Delivered over the command channel: no shared state, no lock.
     InstallSigner(BackgroundCheckpointSigner),
+    /// Run a checkpoint-aligned co-archive-and-delete on the writer connection.
+    /// Serialized with appends by the single writer; drains any in-flight
+    /// append batch first. Returns the number of tool-receipt rows archived.
+    Rotate {
+        config: Box<RetentionConfig>,
+        response: mpsc::SyncSender<Result<u64, ReceiptStoreError>>,
+    },
+    /// Recover a store whose claim-log rows survived a source-row delete:
+    /// remove the orphaned projection rows. Runs unconditionally regardless of
+    /// head state, like `ReseedHead`
+    /// (the entire point is to repair a poisoned head), and on success
+    /// reseeds the head so the same store instance is appendable again
+    /// without requiring a fresh open. Returns the number of rows removed.
+    RetentionRepair {
+        archive_path: String,
+        response: mpsc::SyncSender<Result<u64, ReceiptStoreError>>,
+    },
 }
 
 impl ReceiptCommitActor {
@@ -1241,6 +1264,118 @@ fn handle_non_append_command(
                 }
             }
         }
+        ReceiptCommitCommand::Rotate { config, response } => {
+            // Unconditional decrement pairs with the pre-send increment in
+            // `SqliteReceiptStore::dispatch_rotate` (mirrors the Write arm's
+            // dequeue decrement above). It runs before every early return
+            // below, so no dequeue path (poisoned head, pool-acquire error,
+            // the panic-guarded rotation, success, or error) can leak the
+            // in-flight rotation writer.
+            atomic_saturating_sub(&health.inflight, 1);
+            // Fail-closed: rotation deletes evidence, so it must never run on a
+            // store whose chain integrity is unverified. Refuse on a poisoned
+            // head (mirrors the Write arm) and point at the repair path.
+            if let WriterHeadState::Poisoned(message) = head_state {
+                let _ = response.send(Err(poisoned_head_error(message)));
+                return;
+            }
+            let mut connection = match pool.get() {
+                Ok(connection) => connection,
+                Err(error) => {
+                    let _ = response.send(Err(ReceiptStoreError::Pool(error.to_string())));
+                    return;
+                }
+            };
+            // Fail-closed: rotation deletes evidence, so it must audit the FULL
+            // persisted checkpoint chain against the live claim log before pruning,
+            // in BOTH verification modes. A non-incremental store seeds its head
+            // via `seed_head_snapshot`, which defers the checkpoint-chain audit to
+            // the next append, so its Verified state is not proof of integrity. An
+            // incremental store maintains a per-append verified head, but that head
+            // only attests NEW appends: it never notices a retroactive deletion of
+            // a checkpoint-covered source row AND its claim-log projection row after
+            // the store was opened. That drift leaves the source and projection sets
+            // matching (so the projection audit below passes) while the covering
+            // checkpoint's claim-log range falls short of its signed tree_size, and
+            // rotating over it would co-archive only the survivors, delete the rest,
+            // and stamp a watermark the archive cannot back. The full chain audit
+            // rejects exactly that. Rotation is off the append hot path, so the O(N)
+            // rebuild is affordable here even in incremental mode.
+            let verified_latest_checkpoint = match verify_checkpoint_chain_integrity(&connection) {
+                Ok(latest) => latest,
+                Err(error) => {
+                    let _ = response.send(Err(error));
+                    return;
+                }
+            };
+            // The claim-log projection audit runs before EVERY rotation,
+            // regardless of verification mode. A store in the drift shape (source
+            // receipts deleted but their claim-log rows left behind, the shape
+            // `retention_repair` recovers from) is NOT caught by the per-append
+            // verified head an incremental store maintains: that head verifies new
+            // appends, never a retroactive source-row deletion. Rotating over such
+            // a store would co-archive orphaned claim-log rows without their
+            // receipts (`verify_co_archival_complete` only compares surviving
+            // source rows) and then delete the live claim log, destroying the
+            // evidence repair needs to recover. Refuse fail-closed instead.
+            if let Err(error) = validate_claim_receipt_log_entries(&connection) {
+                let _ = response.send(Err(error));
+                return;
+            }
+            // In incremental mode the rotation trusts the per-append verified head
+            // rather than an O(N) rebuild on the append hot path, but that head can
+            // lag `kernel_checkpoints`: a second store instance or an operator
+            // import may have appended checkpoint rows this handle has not yet
+            // adopted, so `head.checkpointed_entry_seq()` stays at the boundary the
+            // head was seeded at until a later append catches it up. Capping the
+            // archival watermark at that stale boundary would make a quiet store
+            // archive nothing on every retention interval despite holding aged,
+            // checkpointed receipts. The full chain audit just above validated
+            // every persisted checkpoint, so cap instead at the freshest VERIFIED
+            // boundary: the latest persisted checkpoint's batch_end_seq (pinned
+            // from that audit, so a checkpoint appended after it cannot widen the
+            // cap). Non-incremental mode runs the same audit in its rotation path
+            // and computes the watermark from every persisted checkpoint, so it
+            // needs no cap.
+            let verified_ceiling = if incremental_verification {
+                Some(
+                    verified_latest_checkpoint
+                        .as_ref()
+                        .map_or(0, |checkpoint| checkpoint.body.batch_end_seq),
+                )
+            } else {
+                None
+            };
+            // Panic isolation: the writer actor re-acquires a fresh connection
+            // for every command, so a caught panic fails only THIS rotation
+            // (fail-closed) and no state from the panicking closure is reused
+            // afterward.
+            let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                evidence_retention::rotate_on_writer_connection(
+                    &mut connection,
+                    &config,
+                    verified_ceiling,
+                )
+            }))
+            .unwrap_or_else(|payload| Err(receipt_writer_job_panic_error(&payload)));
+            // After a successful bottom-of-log delete the cached head's
+            // latest_checkpoint and claim_log_max_seq are unchanged (rotation
+            // never deletes checkpoints and never touches the max entry_seq),
+            // but claim_log_count shrank. Refresh it so diagnostics stay
+            // accurate; correctness does not depend on this (no hot path
+            // asserts count equality).
+            if outcome.is_ok() {
+                if let WriterHeadState::Verified(head) = head_state {
+                    if let Ok((count, max_seq)) = claim_log_delta_count_and_max_seq(&connection, 0)
+                    {
+                        head.claim_log_count = count;
+                        head.claim_log_max_seq = max_seq;
+                    }
+                    health.store_head_snapshot(head);
+                }
+            }
+            let _ = response.send(outcome);
+        }
         ReceiptCommitCommand::InstallSigner(signer) => {
             *checkpoint_signer = Some(signer);
             // Install-time catch-up. The store can
@@ -1345,6 +1480,70 @@ fn handle_non_append_command(
                 }
             };
             let _ = response.send(result);
+        }
+        ReceiptCommitCommand::RetentionRepair {
+            archive_path,
+            response,
+        } => {
+            // Unconditional decrement pairs with the pre-send increment in
+            // `SqliteReceiptStore::retention_repair` (mirrors the Rotate arm's
+            // dequeue decrement above).
+            atomic_saturating_sub(&health.inflight, 1);
+            // Runs regardless of `head_state` (like ReseedHead): the whole
+            // point of this command is to repair a store whose head is
+            // already Poisoned by the drift the repair removes, so gating it
+            // on `WriterHeadState::Verified` (the Write arm's guard) would
+            // make it unusable on exactly the store it exists to fix.
+            let outcome = pool
+                .get()
+                .map_err(|error| ReceiptStoreError::Pool(error.to_string()))
+                .and_then(|mut connection| {
+                    evidence_retention::retention_repair_on_writer(&mut connection, &archive_path)
+                });
+            if outcome.is_ok() {
+                // Reseed the head so this same store instance is appendable
+                // immediately, mirroring ReseedHead: the repair just removed
+                // the drift that poisoned it (or was a no-op on an already
+                // healthy store). A reseed failure here does not change the
+                // repair's own outcome -- the archive rows are already
+                // committed -- but it does update head_state/health so a
+                // subsequent health check or write surfaces the real cause
+                // instead of a stale poisoned message.
+                let reseed = pool
+                    .get()
+                    .map_err(|error| ReceiptStoreError::Pool(error.to_string()))
+                    .and_then(|connection| {
+                        if incremental_verification {
+                            seed_verified_head(&connection)
+                        } else {
+                            seed_head_snapshot(&connection)
+                        }
+                    });
+                match reseed {
+                    Ok(head) => {
+                        health.store_head_snapshot(&head);
+                        if let Ok(mut last_error) = health.last_error.lock() {
+                            *last_error = None;
+                        }
+                        // Clear the actor loop's stale flush error, mirroring the
+                        // ReseedHead recovery path: if an earlier append poisoned
+                        // the head and set `pending_flush_error`, the repair has
+                        // now reseeded a revalidated head, so a subsequent
+                        // STANDALONE `flush_receipt_writes()` must not keep
+                        // returning the pre-repair append error. Fail-closed is
+                        // unaffected: a real later batch failure re-sets it.
+                        *pending_flush_error = None;
+                        *head_state = WriterHeadState::Verified(Box::new(head));
+                    }
+                    Err(error) => {
+                        if let Ok(mut last_error) = health.last_error.lock() {
+                            *last_error = Some(error.to_string());
+                        }
+                        *head_state = WriterHeadState::Poisoned(error.to_string());
+                    }
+                }
+            }
+            let _ = response.send(outcome);
         }
         // Append/Flush are handled by the main loop; reaching here is
         // impossible by construction but must stay fail-safe.
@@ -2223,6 +2422,14 @@ fn catch_up_verified_head_to(
     latest_seq: u64,
 ) -> Result<(), ReceiptStoreError> {
     let mut cursor = head.checkpoint_seq();
+    // A checkpoint fully covered by a trusted archival watermark has had its
+    // claim-log rows co-archived and deleted, so its Merkle range is served from
+    // the archive exactly as the full chain walk exempts it. Without this the
+    // incremental catch-up path would rebuild the deleted prefix from the live
+    // claim log and fail: a stale writer that had not yet adopted a checkpoint
+    // another handle archived could never catch up across the boundary, and its
+    // next append would poison the head. Computed once for the caught-up span.
+    let watermark = trusted_retention_watermark(connection)?;
     while cursor < latest_seq {
         let next_seq = cursor.saturating_add(1);
         let Some(row) = load_persisted_checkpoint_row(connection, next_seq)? else {
@@ -2238,7 +2445,9 @@ fn catch_up_verified_head_to(
             }
             None => validate_checkpoint_base(&checkpoint)?,
         }
-        validate_checkpoint_against_claim_log(connection, &checkpoint)?;
+        if checkpoint.body.batch_end_seq > watermark {
+            validate_checkpoint_against_claim_log(connection, &checkpoint)?;
+        }
         // Projection validation before adoption: the
         // catch-up path verified signature + predecessor + claim-log range but
         // not the transparency projection rows that full
@@ -2461,6 +2670,29 @@ fn receipt_store_error_snapshot(error: &ReceiptStoreError) -> ReceiptStoreError 
         }
         ReceiptStoreError::Conflict(message) => ReceiptStoreError::Conflict(message.clone()),
         ReceiptStoreError::NotFound(message) => ReceiptStoreError::NotFound(message.clone()),
+        ReceiptStoreError::RetentionArchiveIncomplete {
+            table,
+            live,
+            archived,
+        } => ReceiptStoreError::RetentionArchiveIncomplete {
+            table,
+            live: *live,
+            archived: *archived,
+        },
+        ReceiptStoreError::RetentionWatermarkRegression { attempted, current } => {
+            ReceiptStoreError::RetentionWatermarkRegression {
+                attempted: *attempted,
+                current: *current,
+            }
+        }
+        ReceiptStoreError::ArchivedRangeProjection { watermark } => {
+            ReceiptStoreError::ArchivedRangeProjection {
+                watermark: *watermark,
+            }
+        }
+        ReceiptStoreError::RetentionTenantScopeUnsupported => {
+            ReceiptStoreError::RetentionTenantScopeUnsupported
+        }
         ReceiptStoreError::WriterDead {
             restarts,
             last_error,
@@ -2616,6 +2848,13 @@ impl SqliteReceiptStore {
         self.pool
             .get()
             .map_err(|error| ReceiptStoreError::Pool(error.to_string()))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn reader_connection_for_test(
+        &self,
+    ) -> Result<SqliteStoreConnection, ReceiptStoreError> {
+        self.connection()
     }
 
     pub(crate) fn writer_handle(&self) -> WriterHandle {
@@ -2807,6 +3046,57 @@ impl SqliteReceiptStore {
         self.flush_report(wal_checkpoint)
     }
 
+    /// Recover a store whose claim-log projection rows survived a source-row
+    /// delete. Fail-closed: only removes claim-log `extra` rows (absent from
+    /// both source tables) that are (a) present in the named archive and (b) at
+    /// or below the smallest checkpoint batch_end_seq that covers them, so the
+    /// uncheckpointed suffix is never touched. Returns the number of rows
+    /// removed.
+    ///
+    /// Dispatched as its own writer-actor command (`RetentionRepair`), not
+    /// `writer_handle().run_write`: a `Write` job is rejected outright while
+    /// the head is `Poisoned` (see `handle_non_append_command`'s `Write`
+    /// arm), which is exactly the state a bricked store's writer actor is in
+    /// on open, so `run_write` can never reach the store this method exists
+    /// to repair. `RetentionRepair` runs unconditionally on the single writer
+    /// connection (still fully serialized with every other writer command,
+    /// same single-writer discipline as `run_write`), like `ReseedHead` and
+    /// `Rotate`, and reseeds the head on success so the same store instance
+    /// is appendable again without requiring a fresh open.
+    pub fn retention_repair(&self, archive_path: &str) -> Result<u64, ReceiptStoreError> {
+        let (response, result) = mpsc::sync_channel(1);
+        let health = &self.receipt_commit_actor.health;
+        // In-flight writer, same accounting discipline as a rotation
+        // (`dispatch_rotate`): increment before handing the command to the
+        // actor so a concurrent `receipt_store_health` cannot observe a
+        // dequeued-but-uncounted repair. The `RetentionRepair` arm
+        // decrements unconditionally on dequeue; any send/recv failure here
+        // undoes the speculative increment so a rejected repair never leaks
+        // inflight.
+        health.inflight.fetch_add(1, Ordering::SeqCst);
+        if let Err(error) =
+            self.receipt_commit_actor
+                .sender
+                .try_send(ReceiptCommitCommand::RetentionRepair {
+                    archive_path: archive_path.to_string(),
+                    response,
+                })
+        {
+            atomic_saturating_sub(&health.inflight, 1);
+            return Err(match error {
+                mpsc::TrySendError::Full(_) => receipt_actor_saturated_error(),
+                mpsc::TrySendError::Disconnected(_) => receipt_actor_unavailable_error(),
+            });
+        }
+        match result.recv() {
+            Ok(outcome) => outcome,
+            Err(_) => {
+                atomic_saturating_sub(&health.inflight, 1);
+                Err(receipt_actor_unavailable_error())
+            }
+        }
+    }
+
     /// Rerun the one-time full verification on the writer connection and
     /// adopt the resulting head. This is the `chio receipt audit --repair`
     /// entry point; it is also safe to call on a healthy store.
@@ -2883,10 +3173,34 @@ impl SqliteReceiptStore {
         self.flush_report(wal_checkpoint)
     }
 
+    /// Record the outcome of a background retention rotation into health.
+    /// `None` clears a prior failure after a successful rotation; `Some(message)`
+    /// records a rotation error or panic so a persistently failing background
+    /// maintenance task surfaces as unhealthy in `receipt_store_health` instead
+    /// of the failure living only in the worker's logs. Called by the kernel
+    /// maintenance worker on the store handle it holds; the health snapshot is
+    /// shared across all handles of this store, so the failure is visible to any
+    /// other handle sampling health.
+    pub fn record_retention_rotation_outcome(&self, failure: Option<&str>) {
+        if let Ok(mut retention_error) = self.receipt_commit_actor.health.retention_error.lock() {
+            *retention_error = failure.map(ToString::to_string);
+        }
+    }
+
     pub fn receipt_store_health(&self) -> Result<ReceiptStoreHealthReport, ReceiptStoreError> {
         self.validate_claim_receipt_log_projection_current()?;
         let status = self.receipt_checkpoint_status(Some(1))?;
-        if status.latest_committed_entry_seq > status.latest_checkpointed_entry_seq {
+        // A checkpoint-chain error already produced an unhealthy status: the
+        // checkpointed boundary drops to 0, so the committed floor (which folds
+        // in a retention watermark whose live prefix rows were archived and
+        // deleted) reads as a whole-log backlog. Re-probing that range would
+        // decode rows retention intentionally removed and turn the prepared
+        // unhealthy report (carrying the checkpoint_error operators need) into a
+        // hard error. Only decode-probe the uncheckpointed suffix when the
+        // checkpoint status itself is clean.
+        if status.checkpoint_error.is_none()
+            && status.latest_committed_entry_seq > status.latest_checkpointed_entry_seq
+        {
             let connection = self.connection()?;
             let start_seq = status.latest_checkpointed_entry_seq + 1;
             load_claim_tree_canonical_bytes_range(
@@ -2904,19 +3218,28 @@ impl SqliteReceiptStore {
         let writer_liveness = self.writer_liveness(std::time::Duration::from_millis(
             chio_kernel::DEFAULT_RECEIPT_WRITER_STALL_MS,
         ));
+        let retention_error = self
+            .receipt_commit_actor
+            .health
+            .retention_error
+            .lock()
+            .ok()
+            .and_then(|guard| guard.clone());
         // A writer that cannot be trusted to persist can never read green. This is
         // the same predicate the pre-dispatch gate denies on, so readiness and the
         // gate never disagree: it covers a wedged, saturated, or dead writer by
         // liveness, a dead or degraded supervised thread by level, and a poisoned
         // verified head via `writer_serving_closed`, where the thread is still
         // Healthy and no batch recorded a `last_error` yet every append is already
-        // rejected.
+        // rejected. A persistently failing background retention rotation also
+        // forces unhealthy so a silently unenforced retention policy is not masked.
         let healthy = receipt_store_healthy(
             status.healthy,
             writer_counters.last_error.as_deref(),
             writer_liveness,
         ) && !self.receipt_commit_actor.writer_serving_closed()
-            && matches!(writer_level, HealthLevel::Healthy);
+            && matches!(writer_level, HealthLevel::Healthy)
+            && retention_error.is_none();
         let (uncheckpointed_start_seq, uncheckpointed_end_seq) = uncheckpointed_range(
             status.latest_checkpointed_entry_seq,
             status.latest_committed_entry_seq,
@@ -2932,6 +3255,8 @@ impl SqliteReceiptStore {
             uncheckpointed_end_seq,
             checkpoint_error: status.checkpoint_error,
             db_size_bytes: self.db_size_bytes().ok(),
+            retention_watermark_entry_seq: status.retention_watermark_entry_seq,
+            retention_error,
             writer_level,
             writer_restart_total,
         })
@@ -2978,7 +3303,16 @@ impl SqliteReceiptStore {
                 ReceiptStoreError::Sqlite(error)
             }
         })?;
-        let latest_committed_entry_seq = latest_claim_log_entry_seq(&connection)?;
+        let live_committed_entry_seq = latest_claim_log_entry_seq(&connection)?;
+        let retention_watermark_entry_seq = support::retention_watermark(&connection)?;
+        // A full rotation deletes every live claim-log row, so the live
+        // MAX(entry_seq) drops to 0 while the latest checkpoint still sits at the
+        // archived watermark. Committed progress must fold in the archived prefix,
+        // otherwise this read-only watchdog reports a healthy, fully-archived
+        // store as behind its checkpoints (committed 0 < checkpointed W). Floor
+        // the committed seq at the watermark.
+        let latest_committed_entry_seq =
+            live_committed_entry_seq.max(retention_watermark_entry_seq.unwrap_or(0));
         // Catch a checkpoint-chain-integrity failure into a report with the
         // checkpoint_error set rather than propagating Err. The watchdog samples
         // this on a fixed interval; if corruption made this return Err, the
@@ -3013,6 +3347,11 @@ impl SqliteReceiptStore {
                     uncheckpointed_end_seq,
                     checkpoint_error: None,
                     db_size_bytes: None,
+                    retention_watermark_entry_seq,
+                    // A read-only observer cannot see the owning writer's
+                    // in-memory background-retention state, so it is defaulted
+                    // like the writer counters above.
+                    retention_error: None,
                     // A read-only observer cannot see the owning writer's supervisor.
                     writer_level: HealthLevel::default(),
                     writer_restart_total: 0,
@@ -3034,6 +3373,8 @@ impl SqliteReceiptStore {
                     uncheckpointed_end_seq,
                     checkpoint_error: Some(error.to_string()),
                     db_size_bytes: None,
+                    retention_watermark_entry_seq,
+                    retention_error: None,
                     writer_level: HealthLevel::default(),
                     writer_restart_total: 0,
                 })
@@ -3043,7 +3384,16 @@ impl SqliteReceiptStore {
 
     pub fn latest_committed_entry_seq(&self) -> Result<u64, ReceiptStoreError> {
         let connection = self.connection()?;
-        latest_claim_log_entry_seq(&connection)
+        // After a full-prefix rotation the live claim-log table is empty, so
+        // MAX(entry_seq) drops to 0 while the latest checkpoint and the
+        // retention watermark still sit at the archived boundary W. Committed
+        // progress must fold in the archived prefix; floor the live committed
+        // seq at the watermark so a direct trait caller does not see committed
+        // regress to 0 behind its checkpoints. Mirrors receipt_checkpoint_status,
+        // receipt_store_health_read_only, and flush_report.
+        let live = latest_claim_log_entry_seq(&connection)?;
+        let watermark = support::retention_watermark(&connection)?.unwrap_or(0);
+        Ok(live.max(watermark))
     }
 
     pub fn latest_checkpointed_entry_seq(&self) -> Result<u64, ReceiptStoreError> {
@@ -3065,7 +3415,19 @@ impl SqliteReceiptStore {
     ) -> Result<ReceiptCheckpointStatusReport, ReceiptStoreError> {
         self.validate_claim_receipt_log_projection_current()?;
         let connection = self.connection()?;
-        let latest_committed_entry_seq = latest_claim_log_entry_seq(&connection)?;
+        // Read once and reuse across every branch below: the watermark is
+        // reported even on an error/unhealthy status so retention visibility
+        // does not depend on checkpoint health.
+        let retention_watermark_entry_seq = support::retention_watermark(&connection)?;
+        // After a full-prefix rotation the live claim-log table is empty, so
+        // MAX(entry_seq) drops to 0 while the latest checkpoint and the
+        // retention watermark still sit at the archived boundary W. Committed
+        // progress must fold in the archived prefix; floor the live committed
+        // seq at the watermark so a fully-archived store does not report
+        // committed regressing to 0 behind its checkpoints. Mirrors
+        // receipt_store_health_read_only.
+        let latest_committed_entry_seq = latest_claim_log_entry_seq(&connection)?
+            .max(retention_watermark_entry_seq.unwrap_or(0));
         match verify_checkpoint_chain_integrity(&connection) {
             Ok(latest) => {
                 let latest_checkpoint_seq = latest
@@ -3089,6 +3451,7 @@ impl SqliteReceiptStore {
                             latest_checkpointed_entry_seq,
                             next_range: None,
                             checkpoint_error: Some(error.to_string()),
+                            retention_watermark_entry_seq,
                         });
                     }
                 }
@@ -3105,6 +3468,7 @@ impl SqliteReceiptStore {
                     latest_checkpointed_entry_seq,
                     next_range,
                     checkpoint_error: None,
+                    retention_watermark_entry_seq,
                 })
             }
             Err(error) => Ok(ReceiptCheckpointStatusReport {
@@ -3114,6 +3478,7 @@ impl SqliteReceiptStore {
                 latest_checkpointed_entry_seq: 0,
                 next_range: None,
                 checkpoint_error: Some(error.to_string()),
+                retention_watermark_entry_seq,
             }),
         }
     }
@@ -3136,7 +3501,16 @@ impl SqliteReceiptStore {
     ) -> Result<ReceiptFlushReport, ReceiptStoreError> {
         let head = self.writer_head_snapshot();
         let connection = self.connection()?;
-        let latest_committed_entry_seq = latest_claim_log_entry_seq(&connection)?;
+        // After a full-prefix rotation the live claim-log table is empty, so
+        // MAX(entry_seq) drops to 0 while the latest checkpoint and the retention
+        // watermark still sit at the archived boundary W. Committed progress must
+        // fold in the archived prefix; floor the live committed seq at the
+        // watermark so a fully-archived store does not report committed
+        // regressing to 0 behind its checkpoints and corrupt operators' flush
+        // metrics. Mirrors receipt_checkpoint_status and
+        // receipt_store_health_read_only.
+        let latest_committed_entry_seq = latest_claim_log_entry_seq(&connection)?
+            .max(support::retention_watermark(&connection)?.unwrap_or(0));
         // The writer head snapshot is only refreshed by this handle's own
         // appends/writes. When another store instance or the operator CLI
         // extends the checkpoint chain and this handle has had no intervening
@@ -3178,11 +3552,26 @@ impl SqliteReceiptStore {
         // mismatch (fall back to the actor's verified head). Bounded O(b) over the
         // single latest checkpoint's own batch on the operator/health surface, NOT
         // a full O(N) chain walk on the per-append hot path.
+        //
+        // Watermark exemption: a checkpoint fully covered by a TRUSTED archival
+        // watermark has had its claim-log rows co-archived and deleted, so a live
+        // Merkle rebuild would fail for a perfectly valid checkpoint. Mirror the
+        // full chain verification (`verify_checkpoint_chain_integrity`): skip only
+        // the live rebuild for a watermark-covered checkpoint and trust the archive
+        // to serve that deep verification; its signature, column agreement, and
+        // chain connectivity above still run. Without this, a fully-archived latest
+        // checkpoint is discarded and flush reports a stale `checkpointed_entry_seq`
+        // and a spurious uncheckpointed range until a later write catches the head
+        // up. `trusted_retention_watermark` is fail-closed (0 unless the boundary,
+        // the absent live prefix, and the backing archive all check out), so a
+        // forged watermark cannot suppress the rebuild for an unarchived range.
+        let trusted_watermark = trusted_retention_watermark(&connection)?;
         let verified_persisted = load_latest_persisted_checkpoint_row(&connection)?
             .and_then(|row| parse_persisted_checkpoint_row(row).ok())
             .filter(|checkpoint| {
                 latest_checkpoint_is_chain_connected(&connection, checkpoint).is_ok()
-                    && validate_checkpoint_against_claim_log(&connection, checkpoint).is_ok()
+                    && (checkpoint.body.batch_end_seq <= trusted_watermark
+                        || validate_checkpoint_against_claim_log(&connection, checkpoint).is_ok())
             });
         let persisted_checkpoint_seq = verified_persisted
             .as_ref()

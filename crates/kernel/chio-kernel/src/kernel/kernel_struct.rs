@@ -556,6 +556,12 @@ pub struct ChioKernel {
     pub(super) child_receipt_mirror_gauge: chio_bounded::SizeGauge,
     pub(super) receipt_store: Option<Arc<dyn ReceiptStore>>,
     pub(super) receipt_store_write_lock: Mutex<()>,
+    /// Retention maintenance worker, spawned at store attach when
+    /// `config.retention_config` is `Some`. Owns a dedicated OS thread that
+    /// calls `ReceiptStore::rotate_receipts` on `RetentionConfig.check_interval_secs`;
+    /// joined when this field is dropped (kernel drop). `None` when
+    /// retention is unconfigured or before a store is attached.
+    pub(super) retention_maintenance: Option<crate::receipt_store::RetentionMaintenanceHandle>,
     pub(super) payment_adapter: Option<Box<dyn PaymentAdapter>>,
     pub(super) price_oracle: Option<Box<dyn PriceOracle>>,
     pub(super) runtime_admission_hook: Option<Arc<dyn RuntimeAdmissionHook>>,

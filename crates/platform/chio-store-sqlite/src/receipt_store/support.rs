@@ -10,6 +10,8 @@ mod claim_log;
 mod lineage;
 #[path = "support/receipt_verify.rs"]
 mod receipt_verify;
+#[path = "support/retention_watermark.rs"]
+mod retention_watermark;
 #[path = "support/store_impl.rs"]
 mod store_impl;
 
@@ -18,4 +20,5 @@ pub(crate) use self::checkpoint_validate::*;
 pub(crate) use self::claim_log::*;
 pub(crate) use self::lineage::*;
 pub(crate) use self::receipt_verify::*;
+pub(crate) use self::retention_watermark::*;
 pub(crate) use self::store_impl::*;
