@@ -112,66 +112,73 @@ receipt.
 
 ## Quickstart
 
-Chio is pre-release (0.1.0) and not yet published to a package registry, so build the `chio`
-binary from source:
+Bond Claude Code to a policy in one line, then verify everything it did.
 
-```bash
-git clone https://github.com/backbay-labs/chio.git
-cd chio
-cargo build --release -p chio-cli   # produces ./target/release/chio
-./target/release/chio --help
+### 1. Install
+
+```sh
+curl -fsSL https://www.chio.computer/install.sh | sh
 ```
 
-For the current source install path and the planned binary/Homebrew release contract, see
-[docs/install/README.md](docs/install/README.md).
+<sub>Or from source: <code>git clone https://github.com/backbay-labs/chio.git && cd chio && cargo build --release -p chio-cli</code></sub>
 
-Now evaluate a single tool call against a policy. The example policy
-[`examples/policies/hushspec-tool-allow.yaml`](examples/policies/hushspec-tool-allow.yaml)
-allows a narrow read-only tool surface and blocks everything else. Chio is fail-closed: it
-signs a receipt for every decision, so `chio check` needs a receipt database to record one.
+### 2. Put Claude Code under policy
 
-An allowed call (`read_file` is in the allowlist) returns `ALLOW` and exits 0:
+Claude Code reaches its file, shell, and git tools over MCP. Wrap that server with Chio so
+every call is checked by the kernel and sealed into a signed receipt. The bundled `code-agent`
+preset is a safe starting policy: reads are allowed, writes to `.env`, `.git/`, and `.ssh/` are
+denied, and so is `git push --force`.
 
-```bash
-./target/release/chio --receipt-db /tmp/chio.db check \
-  --policy examples/policies/hushspec-tool-allow.yaml \
-  --tool read_file --params '{"path":"README.md"}'
+```sh
+claude mcp add fs -- \
+  chio --receipt-db ./chio.db mcp serve --preset code-agent -- \
+  npx -y @modelcontextprotocol/server-filesystem .
 ```
 
-```
-verdict:    ALLOW
-tool:       read_file
-server:     *
-receipt_id: 84c7f76d...
-policy:     40f2f61d...
-mode:       preflight
-```
+You use Claude Code exactly as before; every tool call it routes through that server is now
+checked against policy and sealed into a receipt. To govern an entire session, including Claude
+Code's native tools, use the [Claude Code plugin](https://github.com/backbay-labs/chio-claude-code-plugin)
+and its `/chio:bond` command.
 
-A call to a tool that is not in the allowlist returns `DENY` and exits 2:
+### 3. Read the receipts
 
-```bash
-./target/release/chio --receipt-db /tmp/chio.db check \
-  --policy examples/policies/hushspec-tool-allow.yaml \
-  --tool delete_database --params '{}'
+```sh
+chio --receipt-db ./chio.db receipt list    --admin-all --limit 20
+chio --receipt-db ./chio.db receipt explain <receipt-id> --admin-all
 ```
 
-```
-verdict:    DENY
-tool:       delete_database
-reason:     requested tool delete_database on server * is not in capability scope
-receipt_id: 66db67f0...
+Every decision (allow, deny, cancelled, incomplete) is a signed, content-addressed receipt you
+can verify offline.
+
+### 4. Dry-run a policy, no agent required
+
+```sh
+chio init my-agent && cd my-agent
+
+# allowed by the starter policy
+chio check --policy policy.yaml --server hello --tool hello_world --params '{}'
+
+# anything out of scope is denied, fail-closed
+chio check --policy policy.yaml --server hello --tool drop_tables --params '{}'
 ```
 
-Both decisions are recorded as signed receipts. List them as one JSON object per line (the
-read fails closed without an explicit tenant boundary, so pass `--admin-all` for this local
-demo):
+`chio init` scaffolds a project with an editable HushSpec `policy.yaml`; `chio check` evaluates
+one tool call against it and prints the verdict.
 
-```bash
-./target/release/chio --receipt-db /tmp/chio.db receipt list --admin-all
+### 5. Give the agent a portable identity
+
+```sh
+chio passport generate --agent did:chio:<agent-key> --output passport.json
 ```
 
-Each line carries the decision verdict, the policy hash, the signing kernel key, and an
-Ed25519 signature over the receipt.
+An Agent Passport bundles signed credentials (identity and reputation tier) into one document
+that travels with the agent and verifies independently, with no server to call.
+
+---
+
+**More:** `chio mcp serve-http` (hosted HTTP edge with OAuth/OIDC) &middot; `chio api` (zero-code
+reverse proxy for any OpenAPI service) &middot; `chio federation` (cross-kernel treaties and
+quorum) &middot; `chio trust` (revocation and trust-plane state).
 
 ## Architecture
 
