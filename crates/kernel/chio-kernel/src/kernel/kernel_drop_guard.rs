@@ -67,7 +67,7 @@ pub(crate) struct PostAdmissionDropGuard<'a> {
     /// Signed child-request receipts buffered by the nested-flow bridge during
     /// dispatch. Owned by the guard (rather than the evaluation stack frame) so
     /// a post-dispatch drop can still flush them onto the append-only log,
-    /// preserving receipt-completeness for nested child operations (RFC-0002).
+    /// preserving receipt-completeness for nested child operations.
     child_receipts: Vec<ChildRequestReceipt>,
     /// Whether THIS evaluation acquired a sibling-sum child-budget holder lease
     /// (the `Ok(true)` from `admit_capability_budget`). `false` means the
@@ -178,11 +178,11 @@ impl<'a> PostAdmissionDropGuard<'a> {
 
     /// Fully unwind a future dropped BEFORE tool-server dispatch. No side
     /// effect is possible, so every pre-execution mutation is reversed: the
-    /// monetary hold, an invocation-only budget increment (Finding A),
+    /// monetary hold, an invocation-only budget increment,
     /// runtime-admission reservations, and an admitted child/delegated
-    /// capability budget share (Finding B). A clean unwind records NO receipt
+    /// capability budget share. A clean unwind records NO receipt
     /// (the intended receipt-free exit). If ANY step fails, a signed fault
-    /// receipt is recorded (Finding C) so a stuck hold/reservation is on the
+    /// receipt is recorded so a stuck hold/reservation is on the
     /// append-only log rather than silently burned. Best-effort from Drop:
     /// each step is attempted independently and failures are collected.
     fn handle_pre_dispatch_drop(&self) {
@@ -220,7 +220,7 @@ impl<'a> PostAdmissionDropGuard<'a> {
             }
         }
 
-        // 2. Invocation-only budget reversal (Finding A). A non-monetary grant
+        // 2. Invocation-only budget reversal. A non-monetary grant
         //    with `max_invocations` incremented the invocation counter at
         //    admission; reverse it so a never-dispatched call does not
         //    permanently consume a slot. Reuse the same primitive the
@@ -308,7 +308,7 @@ impl<'a> PostAdmissionDropGuard<'a> {
             }
         }
 
-        // 5. Fault receipt (Finding C). Clean cleanup is receipt-free (the
+        // 5. Fault receipt. Clean cleanup is receipt-free (the
         //    intended design); any fault records a signed receipt.
         if !faults.is_empty() {
             self.record_pre_dispatch_cleanup_fault_receipt(&faults);
@@ -407,7 +407,7 @@ impl Drop for PostAdmissionDropGuard<'_> {
         // so on the append-only log they precede the parent cancellation
         // receipt recorded below. Without this flush the already-signed child
         // receipts would be discarded with the dropped future, leaving the
-        // completed child requests off the log (RFC-0002 receipt-completeness).
+        // completed child requests off the log and breaking receipt-completeness.
         self.flush_buffered_child_receipts_from_drop();
 
         // Charge-gated section: reverse the pre-execution monetary hold, if
@@ -421,9 +421,8 @@ impl Drop for PostAdmissionDropGuard<'_> {
         // admission reservations (releasing a single-use destructive lease
         // here would license a replay) and ALWAYS record a cancellation
         // receipt so the executed-or-not side effect is on the append-only
-        // log (closes F02). The retained reservations are marked in the
-        // receipt metadata so the burned lease is auditable and
-        // operator-recoverable (closes the F08 audit gap).
+        // log. The retained reservations are marked in the receipt metadata
+        // so the burned lease is auditable and operator-recoverable.
         let receipt_metadata = self
             .kernel
             .mark_runtime_admission_reservations_retained_fail_closed(reversed_metadata);

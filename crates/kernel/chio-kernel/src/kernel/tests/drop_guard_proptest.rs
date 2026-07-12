@@ -1,4 +1,4 @@
-// RFC-0002 disposition-table property test. For every combination of
+// Post-admission drop-guard disposition-table property test. For every combination of
 // {monetary, non-monetary} x {pre-dispatch, post-dispatch} x {lease
 // present, absent}, a directly constructed PostAdmissionDropGuard must
 // obey the fail-closed disposition table:
@@ -89,8 +89,8 @@ fn drop_guard_disposition_table() -> Result<(), TestCaseError> {
         });
         if monetary {
             // A monetary drop reverses a real hold; authorize one so the
-            // pre-dispatch unwind is clean (a failed reversal would, after
-            // RFC-0002 Finding C, record a fault receipt).
+            // pre-dispatch unwind is clean (a failed reversal would record a
+            // fault receipt).
             authorize_fabricated_drop_hold(&kernel, &cap.id)
                 .map_err(|error| TestCaseError::fail(error.to_string()))?;
         }

@@ -49,11 +49,11 @@ impl ChioKernel {
     /// FAILS. The URL-elicitation arm returns `Err(UrlElicitationsRequired)` to
     /// propagate the elicitation payload and so records NO terminal receipt; a
     /// failed reservation release would therefore leave the stuck lease on NO
-    /// append-only entry (round-9 finding). When
+    /// append-only entry. When
     /// `release_runtime_admission_reservations_for_pre_dispatch_denial` folds a
     /// `reservation_release_failed` marker into the returned metadata, record a
     /// signed cancellation/fault receipt naming the stuck lease id(s) and the
-    /// failure reason (the round-8 pre-dispatch fault-receipt shape) so an
+    /// failure reason (the standard pre-dispatch fault-receipt shape) so an
     /// operator can locate the possibly-stuck reservation. Best-effort: a
     /// receipt-recording failure is logged with an `audit_fault` field. The
     /// caller still returns `Err(UrlElicitationsRequired)`, preserving the
@@ -80,7 +80,7 @@ impl ChioKernel {
         }
         // The `released` metadata already carries the stuck lease's reserved
         // ids and the `reservation_release_failure_reason`; fold in an explicit
-        // cleanup-fault entry (step + reason + hold_ids) mirroring the round-8
+        // cleanup-fault entry (step + reason + hold_ids) mirroring the standard
         // pre-dispatch fault-receipt shape so the stuck lease is queryable.
         let reason = runtime
             .and_then(|runtime| runtime.get("reservation_release_failure_reason"))

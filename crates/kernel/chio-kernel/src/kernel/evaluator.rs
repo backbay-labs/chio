@@ -8,10 +8,10 @@
 //! intentionally enter the synchronous bridge.
 //!
 //! Futures dropped after budget admission are handled by the post-admission
-//! drop guard (RFC-0002): a cancellation receipt is recorded whenever
-//! dispatch was in flight and runtime-admission reservations get an explicit
-//! fail-closed disposition. Hard process death mid-dispatch remains the
-//! charter of the dispatch-intent journal (RFC-0003).
+//! drop guard: a cancellation receipt is recorded whenever dispatch was in
+//! flight and runtime-admission reservations get an explicit fail-closed
+//! disposition. Hard process death mid-dispatch remains the charter of the
+//! dispatch-intent journal.
 
 use crate::kernel::ChioKernel;
 use crate::{

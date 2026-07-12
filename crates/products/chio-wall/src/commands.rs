@@ -485,7 +485,8 @@ fn write_chio_evidence_package(
     denied_access_record: &ChioWallDeniedAccessRecord,
     policy_snapshot: &ChioWallPolicySnapshot,
 ) -> Result<(), CliError> {
-    let receipt_db_path = output.join(".chio-wall-receipts.sqlite3");
+    let receipt_staging = tempfile::tempdir()?;
+    let receipt_db_path = receipt_staging.path().join("chio-wall-receipts.sqlite3");
     let chio_evidence_dir = output.join("chio-evidence");
 
     create_chio_wall_receipt_db(
@@ -1447,8 +1448,10 @@ pub fn cmd_chio_wall_control_path_validate(output: &Path, json: bool) -> Result<
 #[allow(clippy::expect_used, clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use std::sync::{Arc, Mutex};
-    use std::time::{SystemTime, UNIX_EPOCH};
+    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::{Arc, Barrier, Mutex};
+    use std::thread;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
     use chio_core::receipt::decision::Decision;
     use chio_siem::event::SiemEvent;
@@ -1591,6 +1594,49 @@ mod tests {
             .expect_err("missing guard outcome should fail reconciliation");
 
         assert!(error.to_string().contains("guard-outcome.json"));
+        let _ = fs::remove_dir_all(output);
+    }
+
+    #[test]
+    fn control_path_export_keeps_sqlite_staging_outside_package() {
+        let output = unique_test_dir("chio-wall-export-staging");
+        fs::create_dir_all(&output).expect("create output directory");
+        let started = Arc::new(Barrier::new(2));
+        let stop = Arc::new(AtomicBool::new(false));
+        let saw_sqlite_staging = Arc::new(AtomicBool::new(false));
+        let monitor = {
+            let output = output.clone();
+            let started = Arc::clone(&started);
+            let stop = Arc::clone(&stop);
+            let saw_sqlite_staging = Arc::clone(&saw_sqlite_staging);
+            thread::spawn(move || {
+                started.wait();
+                while !stop.load(Ordering::Acquire) {
+                    let found = fs::read_dir(&output)
+                        .expect("read output directory")
+                        .filter_map(Result::ok)
+                        .any(|entry| {
+                            entry
+                                .file_name()
+                                .to_string_lossy()
+                                .starts_with(".chio-wall-receipts.sqlite3")
+                        });
+                    if found {
+                        saw_sqlite_staging.store(true, Ordering::Release);
+                        break;
+                    }
+                    thread::sleep(Duration::from_millis(1));
+                }
+            })
+        };
+
+        started.wait();
+        let export = export_control_path(&output);
+        stop.store(true, Ordering::Release);
+        monitor.join().expect("join package monitor");
+
+        export.expect("export control path");
+        assert!(!saw_sqlite_staging.load(Ordering::Acquire));
         let _ = fs::remove_dir_all(output);
     }
 

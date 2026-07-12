@@ -77,9 +77,9 @@ struct IncompleteStreamAfterSideEffectServer {
 // still fires and reserves) whose dispatch call itself fails with
 // `KernelError::ToolNotRegistered`. This is the only way to exercise the
 // generic-error arm's `dispatch_error_precedes_tool_side_effect(&e) ==
-// true` branch: after Task 3's pre-dispatch hoist, an actually-unregistered
-// server_id is denied before the admission hook ever runs, so it can never
-// reach that arm.
+// true` branch: the pre-dispatch registration check denies an
+// actually-unregistered server_id before the admission hook ever runs, so
+// it can never reach that arm.
 struct ToolNotRegisteredDispatchServer {
     id: String,
     tools: Vec<String>,

@@ -78,6 +78,11 @@ impl ChioConfig {
             max_stream_total_bytes: chio_kernel::DEFAULT_MAX_STREAM_TOTAL_BYTES,
             require_web3_evidence: false,
             allow_ephemeral_receipt_log: false,
+            // Fail-closed like the receipt log above: a file-configured
+            // deployment must wire a durable revocation store rather than
+            // silently accepting an in-memory set that forgets revocations on
+            // restart.
+            allow_ephemeral_revocation_store: false,
             // Honor the operator's `[receipts]` settings: the checkpoint cadence
             // and the retention window are parsed by this same crate, so they
             // must reach the kernel instead of reverting to hard-coded defaults.
