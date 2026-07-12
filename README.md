@@ -63,6 +63,10 @@ the risk of an agent or a task and sell insurance against it, and claims pay out
 receipts that recorded what happened. Payments settle on-chain, anchored across EVM, Bitcoin,
 and Solana. Each of these clears against receipts the kernel signed when the calls ran.
 
+The formal model behind Chio is written up in [**Programmable Sovereignty**](docs/papers/programmable-sovereignty):
+Lean-attestable constitutions over capability-bounded, federated receipts, a machine-checked
+account of how agents and organizations govern themselves.
+
 ## The three pillars
 
 <p align="center">
