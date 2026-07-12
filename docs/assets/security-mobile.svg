@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 556" width="480" height="556" role="img" aria-label="Chio defense in depth: a trusted core, fail-closed admission, a guard pipeline, active defense, and signed evidence">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#130d0a"/>
+      <stop offset="1" stop-color="#1b140d"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#8f7ff2" stop-opacity="0.34"/>
+      <stop offset="0.6" stop-color="#8f7ff2" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#8f7ff2" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="480" height="556" fill="url(#bg)"/>
+
+  <g stroke="#b08d5b" stroke-opacity="0.35" stroke-width="1">
+    <path d="M22 28 H34 M28 22 V34"/><path d="M446 28 H458 M452 22 V34"/>
+    <path d="M22 528 H34 M28 522 V534"/><path d="M446 528 H458 M452 522 V534"/>
+  </g>
+
+  <text x="240" y="42" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" letter-spacing="2.5" fill="#d8cfc0" fill-opacity="0.55">DEFENSE IN DEPTH</text>
+
+  <g stroke="#b08d5b" stroke-opacity="0.1" stroke-width="1">
+    <path d="M40 136 H440"/><path d="M40 226 H440"/><path d="M40 316 H440"/><path d="M40 406 H440"/>
+  </g>
+
+  <!-- glows + rings -->
+  <g>
+    <circle cx="70" cy="92" r="42" fill="url(#glow)"/><circle cx="70" cy="182" r="42" fill="url(#glow)"/><circle cx="70" cy="272" r="42" fill="url(#glow)"/><circle cx="70" cy="362" r="42" fill="url(#glow)"/><circle cx="70" cy="452" r="42" fill="url(#glow)"/>
+  </g>
+  <g fill="#16101c" fill-opacity="0.55" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1.2">
+    <circle cx="70" cy="92" r="30"/><circle cx="70" cy="182" r="30"/><circle cx="70" cy="272" r="30"/><circle cx="70" cy="362" r="30"/><circle cx="70" cy="452" r="30"/>
+  </g>
+
+  <!-- icons -->
+  <g fill="none" stroke="#c3b6ff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="translate(70,92) scale(1.15)"><path d="M0 -13 L11 -8 L11 1 C11 8 6 13 0 15 C-6 13 -11 8 -11 1 L-11 -8 Z"/><path d="M-4.5 0 L-1 4 L5.5 -5" stroke="#f2eadc" stroke-width="2"/></g>
+    <g transform="translate(70,182) scale(1.15)"><rect x="-8" y="-1" width="16" height="12" rx="2"/><path d="M-5 -1 V-5 A5 5 0 0 1 5 -5 V-1"/><circle cx="0" cy="4.5" r="1.5" fill="#c3b6ff" stroke="none"/></g>
+    <g transform="translate(70,272) scale(1.15)"><path d="M-10 -8 H10 L2.5 1 V9 L-2.5 6.5 V1 Z"/></g>
+    <g transform="translate(70,362) scale(1.15)"><circle cx="0" cy="0" r="9"/><circle cx="0" cy="0" r="4.2"/><path d="M0 -12 V-8 M0 12 V8 M-12 0 H-8 M12 0 H8"/><circle cx="4.5" cy="-4.5" r="1.6" fill="#f2eadc" stroke="none"/></g>
+    <g transform="translate(70,452) scale(1.15)"><circle cx="0" cy="-3" r="7"/><path d="M-3 -3 L-1 -1 L3 -5.5" stroke="#f2eadc" stroke-width="1.8"/><path d="M-3.5 3 L-5 10 L-1.5 7.5"/><path d="M3.5 3 L5 10 L1.5 7.5"/></g>
+  </g>
+
+  <!-- numbers -->
+  <g font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="1.5" fill="#b08d5b">
+    <text x="118" y="78">01</text><text x="118" y="168">02</text><text x="118" y="258">03</text><text x="118" y="348">04</text><text x="118" y="438">05</text>
+  </g>
+  <!-- names -->
+  <g font-family="Georgia, 'Times New Roman', serif" font-size="21" fill="#efe7db">
+    <text x="118" y="99">Trusted core</text><text x="118" y="189">Fail-closed</text><text x="118" y="279">Guard pipeline</text><text x="118" y="369">Active defense</text><text x="118" y="459">Signed evidence</text>
+  </g>
+  <!-- one-liners -->
+  <g font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="13" fill="#b3a99b">
+    <text x="118" y="120">only the kernel is trusted (TCB)</text><text x="118" y="210">errors deny; no receipt, no call</text><text x="118" y="300">native, data, WASM, and external guards</text><text x="118" y="390">IFC, decoys, reversible quarantine</text><text x="118" y="480">canonical (RFC 8785), post-quantum-ready</text>
+  </g>
+
+  <text x="240" y="522" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-size="14" fill="#d8cfc0" fill-opacity="0.75">Every layer fails closed.</text>
+</svg>
