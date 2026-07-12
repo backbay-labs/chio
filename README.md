@@ -48,12 +48,18 @@ cannot sign.
 > MCP tells an agent *how* to call a tool.
 > Chio proves *what it was allowed to do, what it cost, and what happened.*
 
-Because the receipt records what a call cost and how it was paid, an agent can spend and be
-billed like any other economic actor. A capability comes with a spending limit; the kernel
-meters the real cost of a call, settles the bill, and writes the price into the receipt beside
-the authority and the outcome. With every action priced and signed, agents can hire one
-another, extend credit, carry insurance, and clear payments on-chain. Every charge, claim, and
-credit check is backed by the receipt that was signed when the call ran.
+Because the receipt records what a call cost and how it was paid, an agent can hold a balance
+and be billed for what it spends, like any other economic actor. Each capability carries a
+spending limit. The kernel meters the real cost of a call, holds the funds before it runs,
+settles the bill afterward, and writes the price into the receipt beside the authority and the
+outcome. A service sets its own price, and an agent with a long record of clean receipts pays
+less for the same work.
+
+The same receipts support a full financial layer. Agents bid for one another's work in open
+markets, draw credit, and post bonds to take on jobs they cannot yet cover. Underwriters price
+the risk of an agent or a task and sell insurance against it, and claims pay out against the
+receipts that recorded what happened. Payments settle on-chain, anchored across EVM, Bitcoin,
+and Solana. Each of these clears against receipts the kernel signed when the calls ran.
 
 ## The three pillars
 
