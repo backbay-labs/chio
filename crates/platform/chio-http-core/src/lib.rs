@@ -39,9 +39,9 @@ pub use approvals::{
     PendingQuery, RespondRequest, RespondResponse,
 };
 pub use authority::{
-    http_authority_tool_grant, HttpAuthority, HttpAuthorityError, HttpAuthorityEvaluation,
-    HttpAuthorityInput, HttpAuthorityPolicy, PreparedHttpEvaluation, TransportDenyInput,
-    HTTP_AUTHORITY_SERVER_ID, HTTP_AUTHORITY_TOOL_NAME,
+    http_authority_tool_grant, HttpAuthority, HttpAuthorityBuilder, HttpAuthorityError,
+    HttpAuthorityEvaluation, HttpAuthorityInput, HttpAuthorityPolicy, PreparedHttpEvaluation,
+    TransportDenyInput, HTTP_AUTHORITY_SERVER_ID, HTTP_AUTHORITY_TOOL_NAME,
 };
 pub use compliance::{
     handle_compliance_score, ComplianceScoreError, ComplianceScoreRequest, ComplianceScoreResponse,

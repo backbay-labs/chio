@@ -545,7 +545,8 @@ pub(crate) enum Commands {
     /// evaluate, HITL approval endpoints) but with:
     ///
     /// - no upstream proxy (the catch-all `/{*path}` 502s loud);
-    /// - in-memory stores by default (no `--receipt-db`);
+    /// - durable receipts by default (pass `--allow-ephemeral-receipts` for
+    ///   the in-memory quickstart that leaves no on-disk artifacts);
     /// - a friendly startup banner that prints the bound address.
     ///
     /// `chio api protect` remains the canonical name for production
@@ -559,10 +560,15 @@ pub(crate) enum Commands {
         #[arg(long, default_value = "127.0.0.1:9090")]
         listen: String,
 
-        /// Optional SQLite receipt store path. Defaults to in-memory
-        /// so the first run leaves no on-disk artifacts.
+        /// Optional SQLite receipt store path for a durable audit log.
         #[arg(long = "receipt-store")]
         receipt_store: Option<PathBuf>,
+
+        /// Permit in-memory receipts, whose audit evidence is lost on every
+        /// restart. Required to boot without `--receipt-store`. For local
+        /// development only.
+        #[arg(long, default_value_t = false)]
+        allow_ephemeral_receipts: bool,
 
         /// Print the chio-hermes config snippet (env vars + slash
         /// commands) on startup so users can copy/paste into their

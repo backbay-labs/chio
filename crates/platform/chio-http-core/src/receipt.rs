@@ -272,17 +272,25 @@ impl HttpReceipt {
         self.verdict.is_denied()
     }
 
-    fn chio_receipt_body(&self) -> chio_core_types::receipt::body::ChioReceiptBody {
-        let action = chio_core_types::receipt::decision::ToolCallAction {
-            parameters: serde_json::json!({
+    fn chio_receipt_body(
+        &self,
+    ) -> chio_core_types::Result<chio_core_types::receipt::body::ChioReceiptBody> {
+        // A durable receipt store verifies `ToolCallAction::verify_hash()` before
+        // accepting a receipt, so `parameter_hash` must be the canonical hash of
+        // the action parameters, not the HTTP body content hash. Deriving it from
+        // the parameters keeps the converted receipt verifiable end to end; a
+        // store that recomputes the hash then accepts the record instead of
+        // rejecting it. The HTTP body content hash stays bound to the receipt
+        // through the `content_hash` field below.
+        let action = chio_core_types::receipt::decision::ToolCallAction::from_parameters(
+            serde_json::json!({
                 "method": self.method.to_string(),
                 "route": self.route_pattern,
                 "request_id": self.request_id,
             }),
-            parameter_hash: self.content_hash.clone(),
-        };
+        )?;
 
-        chio_core_types::receipt::body::ChioReceiptBody {
+        Ok(chio_core_types::receipt::body::ChioReceiptBody {
             id: self.id.clone(),
             timestamp: self.timestamp,
             capability_id: self.capability_id.clone().unwrap_or_default(),
@@ -304,7 +312,7 @@ impl HttpReceipt {
             tenant_id: None,
             kernel_key: self.kernel_key.clone(),
             bbs_projection_version: None,
-        }
+        })
     }
 
     /// Convert this HTTP receipt into a signed core ChioReceipt for unified storage.
@@ -312,7 +320,7 @@ impl HttpReceipt {
         &self,
         keypair: &Keypair,
     ) -> chio_core_types::Result<chio_core_types::receipt::body::ChioReceipt> {
-        let mut chio_body = self.chio_receipt_body();
+        let mut chio_body = self.chio_receipt_body()?;
         let canonical = canonical_json_bytes(&chio_body)?;
         chio_body.content_hash = sha256_hex(&canonical);
         chio_core_types::receipt::body::ChioReceipt::sign(chio_body, keypair)
@@ -550,6 +558,27 @@ mod tests {
         let chio_receipt = receipt.to_chio_receipt_with_keypair(&kp).test_unwrap();
         assert_eq!(chio_receipt.capability_id, "cap-xyz-789");
         assert!(chio_receipt.verify_signature().test_unwrap());
+    }
+
+    #[test]
+    fn converted_receipt_has_a_verifiable_action_hash() {
+        // A durable receipt store recomputes the action parameter hash and
+        // rejects a receipt whose hash does not match its parameters. Signing
+        // alone is not enough: a receipt can carry a valid signature yet still be
+        // refused for a mismatched action hash, which would fail every durable
+        // append closed. The converted core receipt must therefore verify both.
+        let kp = test_keypair();
+        let body = sample_body(&kp);
+        let receipt = HttpReceipt::sign(body, &kp).test_unwrap();
+        let chio_receipt = receipt.to_chio_receipt_with_keypair(&kp).test_unwrap();
+        assert!(
+            chio_receipt.verify_signature().test_unwrap(),
+            "converted receipt signature must verify"
+        );
+        assert!(
+            chio_receipt.action.verify_hash().test_unwrap(),
+            "converted receipt action hash must match its parameters so a durable store accepts it"
+        );
     }
 
     #[test]

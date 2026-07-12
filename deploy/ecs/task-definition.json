@@ -62,20 +62,16 @@
         "--spec",
         "/etc/chio/spec/openapi.yaml",
         "--listen",
-        "0.0.0.0:9090"
+        "0.0.0.0:9090",
+        "--receipt-store",
+        "/var/lib/chio/receipts.db",
+        "--authority-seed-file",
+        "/etc/chio/seed/authority.seed"
       ],
       "environment": [
         { "name": "CHIO_LOG_LEVEL", "value": "info" }
       ],
       "secrets": [
-        {
-          "name": "CHIO_SIGNING_KEY",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:chio/signing-key"
-        },
-        {
-          "name": "CHIO_CAPABILITY_AUTHORITY_URL",
-          "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:chio/capability-authority-url"
-        },
         {
           "name": "CHIO_SIDECAR_CONTROL_TOKEN",
           "valueFrom": "arn:aws:secretsmanager:us-east-1:ACCOUNT_ID:secret:chio/sidecar-control-token"
@@ -86,6 +82,16 @@
           "sourceVolume": "chio-config",
           "containerPath": "/etc/chio",
           "readOnly": true
+        },
+        {
+          "sourceVolume": "chio-seed",
+          "containerPath": "/etc/chio/seed",
+          "readOnly": true
+        },
+        {
+          "sourceVolume": "chio-receipts",
+          "containerPath": "/var/lib/chio",
+          "readOnly": false
         }
       ],
       "healthCheck": {
@@ -124,6 +130,21 @@
           "iam": "ENABLED"
         }
       }
+    },
+    {
+      "name": "chio-seed",
+      "efsVolumeConfiguration": {
+        "fileSystemId": "EFS_FILESYSTEM_ID",
+        "transitEncryption": "ENABLED",
+        "authorizationConfig": {
+          "accessPointId": "EFS_SEED_ACCESS_POINT_ID",
+          "iam": "ENABLED"
+        }
+      }
+    },
+    {
+      "name": "chio-receipts",
+      "configuredAtLaunch": true
     }
   ]
 }

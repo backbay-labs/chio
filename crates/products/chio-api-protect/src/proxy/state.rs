@@ -25,6 +25,23 @@ fn proxy_drain_timeout(upstream_request_timeout: Duration) -> Duration {
     upstream_request_timeout.saturating_add(PROXY_DRAIN_MARGIN)
 }
 
+/// Derive the revocation store path that sits beside a receipt store path.
+///
+/// The revocation store lives in a sibling database so a revoked capability
+/// survives a restart. When the receipt path is a SQLite URI carrying query
+/// parameters (for example `file:/var/lib/chio/receipts.db?mode=rwc`), the
+/// `.revocations` suffix must land on the database filename, not inside the
+/// query string, or the revocation store opens the wrong URI. Split any URI
+/// query off first and re-attach it after the suffix, matching how the receipt
+/// store itself interprets the path, so a plain filesystem path and a URI both
+/// resolve to a distinct sibling database.
+fn revocation_sibling_path(receipt_path: &str) -> String {
+    match receipt_path.split_once('?') {
+        Some((base, query)) => format!("{base}.revocations?{query}"),
+        None => format!("{receipt_path}.revocations"),
+    }
+}
+
 /// Stored receipts for inspection and querying.
 pub(crate) struct ReceiptLog {
     pub(crate) receipts: Vec<HttpReceipt>,
@@ -46,6 +63,22 @@ pub(crate) struct SqliteReceiptStore {
 impl SqliteReceiptStore {
     pub(crate) fn open(path: &str) -> Result<Self, ProtectError> {
         let connection = Connection::open(path)
+            .map_err(|error| ProtectError::ReceiptStore(error.to_string()))?;
+        // `chio api protect` co-locates the approval store, the kernel receipt
+        // store, and this HTTP receipt table in one SQLite file. The kernel
+        // receipt store runs that file in WAL mode with a busy timeout; a writer
+        // on the same file without a busy timeout turns a lock another writer
+        // holds for a moment into an immediate SQLITE_BUSY error, so this
+        // connection matches the same durability and timeout pragmas.
+        connection
+            .execute_batch(
+                "
+                PRAGMA journal_mode = WAL;
+                PRAGMA synchronous = FULL;
+                PRAGMA busy_timeout = 5000;
+                PRAGMA foreign_keys = ON;
+                ",
+            )
             .map_err(|error| ProtectError::ReceiptStore(error.to_string()))?;
         connection
             .execute_batch(
@@ -198,10 +231,48 @@ pub(crate) struct ProxyState {
     pub(crate) receipt_log: Mutex<ReceiptLog>,
     pub(crate) tool_receipt_log: Mutex<ToolReceiptLog>,
     pub(crate) receipt_store: Option<Mutex<SqliteReceiptStore>>,
+    /// Revocation store shared with the embedded kernel. With a receipt database
+    /// it is the durable sibling file, so releases persist and a sibling replica
+    /// on the same volume observes them even though its in-memory set is loaded
+    /// once at boot and never reloaded. In ephemeral mode it is an in-memory
+    /// store, so a release is still honored in-process rather than leaving the
+    /// token live until it expires.
+    pub(crate) revocation_store: Option<Arc<dyn chio_kernel::RevocationStore>>,
     pub(crate) revoked_capability_ids: Mutex<HashSet<String>>,
     pub(crate) trusted_capability_issuers: Vec<PublicKey>,
     pub(crate) trusted_receipt_signers: Vec<PublicKey>,
     pub(crate) sidecar_control_token: Option<String>,
+    pub(crate) receipt_backend: &'static str,
+    pub(crate) revocation_backend: &'static str,
+}
+
+impl ProxyState {
+    /// Whether a capability has been revoked. The in-memory set is loaded once at
+    /// boot, so a revocation a sibling replica recorded after this process
+    /// started is only visible in the shared durable store; consult it as well.
+    /// Fails closed: if the durable store cannot be queried, treat the capability
+    /// as revoked rather than admit one that may have been released.
+    pub(crate) async fn capability_is_revoked(&self, capability_id: &str) -> bool {
+        if self
+            .revoked_capability_ids
+            .lock()
+            .await
+            .contains(capability_id)
+        {
+            return true;
+        }
+        if let Some(revocation_store) = &self.revocation_store {
+            match revocation_store.is_revoked(capability_id) {
+                Ok(false) => {}
+                Ok(true) => return true,
+                Err(error) => {
+                    warn!("failed to query durable revocation store: {error}");
+                    return true;
+                }
+            }
+        }
+        false
+    }
 }
 
 impl ProxyState {
@@ -293,6 +364,34 @@ impl ProtectProxy {
     where
         F: FnOnce(SocketAddr),
     {
+        // Durable-by-default: a missing receipt store means in-memory receipts
+        // and revocations that are lost on every restart, so refuse to start
+        // unless the embedder explicitly opted into ephemeral operation. This
+        // mirrors the CLI boot gate for library callers that construct
+        // `ProtectConfig` directly and would otherwise silently lose audit
+        // evidence.
+        //
+        // An in-memory SQLite path (`:memory:` or a `file:...?mode=memory` URI)
+        // opens a database that vanishes on restart just like a missing path, so
+        // it is filtered out here. The gate and every store opened below key off
+        // this durable path; treating an in-memory path as durable would open
+        // in-memory stores yet advertise a durable receipt backend and silently
+        // lose audit evidence.
+        let durable_receipt_db: Option<&str> = self
+            .config
+            .receipt_db
+            .as_deref()
+            .filter(|path| !chio_store_sqlite::is_in_memory_sqlite_path(path));
+
+        if durable_receipt_db.is_none() && !self.config.allow_ephemeral_receipts {
+            return Err(ProtectError::Config(
+                "refusing to start without a durable receipt store: set receipt_db to a durable \
+                 SQLite path, or set allow_ephemeral_receipts to run with in-memory receipts that \
+                 are lost on every restart"
+                    .to_string(),
+            ));
+        }
+
         let spec_content = self.load_spec_content().await?;
         let routes = Self::build_routes(&spec_content)?;
         let route_count = routes.len();
@@ -304,9 +403,24 @@ impl ProtectProxy {
         };
         let policy_hash = chio_core_types::sha256_hex(spec_content.as_bytes());
 
-        let approval_store: Arc<dyn ApprovalStore> = if let Some(path) = &self.config.receipt_db {
+        // Open the durable receipt store first so it owns the shared sidecar
+        // file's provenance anchor; the approval store then co-locates onto that
+        // file. Opening receipt-first fails closed on a path mistargeted at a
+        // foreign approval database: it carries no receipt anchor, so the receipt
+        // store refuses it here instead of adopting it and commingling receipt
+        // tables into another store's file.
+        let durable_receipt_store: Option<Arc<dyn chio_kernel::ReceiptStore>> =
+            match durable_receipt_db {
+                Some(path) => Some(Arc::new(
+                    chio_store_sqlite::SqliteReceiptStore::open(path)
+                        .map_err(|error| ProtectError::ReceiptStore(error.to_string()))?,
+                )),
+                None => None,
+            };
+
+        let approval_store: Arc<dyn ApprovalStore> = if let Some(path) = durable_receipt_db {
             Arc::new(
-                SqliteApprovalStore::open(path)
+                SqliteApprovalStore::open_colocated_with_receipt_store(path)
                     .map_err(|error| ProtectError::ReceiptStore(error.to_string()))?,
             )
         } else {
@@ -320,13 +434,34 @@ impl ProtectProxy {
         }
         let trusted_receipt_signers = vec![signer_public_key];
 
-        let evaluator = RequestEvaluator::new_with_approval_store_and_trusted_capability_issuers(
+        // The revocation store lives in a sibling file so a revoked capability
+        // survives a restart. In ephemeral mode there is no durable file, but a
+        // shared in-memory store still makes a release effective for the running
+        // process: the same handle backs the embedded kernel's mediated checks
+        // and the sidecar's release endpoint, so a token can be revoked in-process
+        // rather than staying live until it expires.
+        let revocation_store: Option<Arc<dyn chio_kernel::RevocationStore>> =
+            match durable_receipt_db {
+                Some(path) => Some(Arc::new(
+                    chio_store_sqlite::SqliteRevocationStore::open(revocation_sibling_path(path))
+                        .map_err(|error| ProtectError::ReceiptStore(error.to_string()))?,
+                )),
+                None => Some(Arc::new(chio_kernel::InMemoryRevocationStore::new())),
+            };
+
+        let evaluator = RequestEvaluator::new_with_durable_stores(
             routes,
             keypair.clone(),
             policy_hash,
             Arc::clone(&approval_store),
             self.config.trusted_capability_issuers.clone(),
-        );
+            durable_receipt_store,
+            revocation_store.clone(),
+            self.config.allow_ephemeral_receipts,
+        )
+        .map_err(|error| ProtectError::Config(error.to_string()))?;
+        let receipt_backend = evaluator.receipt_backend();
+        let revocation_backend = evaluator.revocation_backend();
 
         let (receipt_log, tool_receipt_log, receipt_store, revoked_capability_ids) =
             if let Some(path) = &self.config.receipt_db {
@@ -369,10 +504,13 @@ impl ProtectProxy {
             receipt_log: Mutex::new(receipt_log),
             tool_receipt_log: Mutex::new(tool_receipt_log),
             receipt_store,
+            revocation_store,
             revoked_capability_ids: Mutex::new(revoked_capability_ids),
             trusted_capability_issuers,
             trusted_receipt_signers,
             sidecar_control_token: self.config.sidecar_control_token.clone(),
+            receipt_backend,
+            revocation_backend,
         });
 
         let app = build_app(Arc::clone(&state));
@@ -447,6 +585,60 @@ fn protect_serve_error(error: ServeError) -> ProtectError {
     match error {
         ServeError::Io(source) => ProtectError::Io(source),
         ServeError::Flush(message) => ProtectError::Io(std::io::Error::other(message)),
+    }
+}
+
+#[cfg(test)]
+mod durability_tests {
+    use super::{revocation_sibling_path, SqliteReceiptStore};
+    use chio_test_support::prelude::*;
+
+    #[test]
+    fn revocation_sibling_path_appends_suffix_to_a_plain_path() {
+        assert_eq!(
+            revocation_sibling_path("/var/lib/chio/receipts.db"),
+            "/var/lib/chio/receipts.db.revocations"
+        );
+    }
+
+    #[test]
+    fn revocation_sibling_path_keeps_the_uri_query_after_the_suffix() {
+        // The suffix must land on the database filename, not inside the query,
+        // so the revocation store opens a distinct sibling database rather than
+        // a bad `mode=rwc.revocations` URI or the receipt database itself.
+        assert_eq!(
+            revocation_sibling_path("file:/var/lib/chio/receipts.db?mode=rwc"),
+            "file:/var/lib/chio/receipts.db.revocations?mode=rwc"
+        );
+    }
+
+    #[test]
+    fn http_receipt_store_open_configures_wal_and_a_busy_timeout() {
+        let mut path = std::env::temp_dir();
+        path.push(format!("chio-http-receipts-{}.db", uuid::Uuid::now_v7()));
+        let path_str = path.to_string_lossy().into_owned();
+
+        let store = SqliteReceiptStore::open(&path_str).test_unwrap();
+
+        let busy_timeout: i64 = store
+            .connection
+            .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
+            .test_unwrap();
+        assert!(
+            busy_timeout >= 5000,
+            "the http receipt writer must share the receipt store busy timeout, got {busy_timeout}"
+        );
+
+        let journal_mode: String = store
+            .connection
+            .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+            .test_unwrap();
+        assert!(
+            journal_mode.eq_ignore_ascii_case("wal"),
+            "the http receipt writer must run in WAL mode, got {journal_mode}"
+        );
+
+        let _ = std::fs::remove_file(&path);
     }
 }
 

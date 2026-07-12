@@ -280,6 +280,13 @@ pub struct KernelConfig {
     /// durable receipt persistence before any tool side effect.
     pub allow_ephemeral_receipt_log: bool,
 
+    /// Allow a process-local (in-memory) revocation store when no durable or
+    /// remote revocation source is installed. This is for tests and local
+    /// scaffolds only; deployments should leave it false so a revoked
+    /// capability cannot be re-accepted after a restart drops the revocation
+    /// set.
+    pub allow_ephemeral_revocation_store: bool,
+
     /// Number of receipts between Merkle checkpoint snapshots. Default: 100.
     ///
     /// Set to 0 to disable automatic checkpointing for deployments that do not

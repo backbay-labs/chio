@@ -34,6 +34,8 @@ http-body-util = "0.1"
 bytes = "1"
 
 [dev-dependencies]
+chio-store-sqlite = { workspace = true }
+tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util", "macros"] }
 axum = "0.8"
 hyper = { version = "1", features = ["full"] }

@@ -98,6 +98,145 @@ fn sqlite_receipt_store_configures_durable_pragmas() {
 }
 
 #[test]
+fn sqlite_receipt_store_stamps_application_id_and_refuses_future_database() {
+    let path = unique_db_path("chio-receipts-schema-stamp");
+
+    // A fresh open stamps the Chio application_id and leaves the database-wide
+    // user_version untouched: the schema revision lives in keyed metadata so
+    // co-located stores can version independently.
+    {
+        let store = SqliteReceiptStore::open(&path).test_unwrap();
+        let connection = store.connection().test_unwrap();
+        let app_id: i32 = connection
+            .query_row("PRAGMA application_id", [], |row| row.get(0))
+            .test_unwrap();
+        assert_eq!(app_id, crate::CHIO_SQLITE_APPLICATION_ID);
+        let user_version: i32 = connection
+            .query_row("PRAGMA user_version", [], |row| row.get(0))
+            .test_unwrap();
+        assert_eq!(user_version, 0);
+    }
+
+    // Simulate a database written by a newer binary and confirm the older binary
+    // refuses to open it rather than silently misreading a future schema. The
+    // receipt store records its revision under its own key in the shared metadata
+    // table, so the future revision is staged there.
+    {
+        let connection = rusqlite::Connection::open(&path).test_unwrap();
+        crate::stamp_schema_version(&connection, "receipt", 99).test_unwrap();
+    }
+    assert!(
+        SqliteReceiptStore::open_existing(&path).is_err(),
+        "a future-version receipt database must be refused"
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn open_refuses_foreign_database_without_switching_it_to_wal() {
+    let path = unique_db_path("chio-receipts-foreign-no-wal");
+
+    // A pre-existing, unrelated SQLite database on the target path, in the
+    // default rollback-journal mode.
+    {
+        let foreign = rusqlite::Connection::open(&path).test_unwrap();
+        foreign
+            .execute_batch("CREATE TABLE someone_elses_table (id TEXT PRIMARY KEY);")
+            .test_unwrap();
+        let journal_mode: String = foreign
+            .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+            .test_unwrap();
+        assert!(
+            !journal_mode.eq_ignore_ascii_case("wal"),
+            "precondition: the foreign database is not in WAL mode"
+        );
+    }
+
+    // Opening it as a receipt store must fail closed as foreign.
+    let error = SqliteReceiptStore::open(&path).test_unwrap_err();
+    assert!(
+        error.to_string().contains("not a Chio store"),
+        "unexpected error: {error}"
+    );
+
+    // The refused foreign database must be left untouched: the durability
+    // pragmas must not have rewritten its header into WAL mode.
+    let reopened = rusqlite::Connection::open(&path).test_unwrap();
+    let journal_mode: String = reopened
+        .query_row("PRAGMA journal_mode", [], |row| row.get(0))
+        .test_unwrap();
+    assert!(
+        !journal_mode.eq_ignore_ascii_case("wal"),
+        "a refused foreign database must not be switched to WAL, got {journal_mode}"
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn open_refuses_a_foreign_db_with_a_lookalike_legacy_receipt_table() {
+    let path = unique_db_path("chio-receipts-foreign-lookalike");
+
+    // An unrelated SQLite database that merely happens to carry a table named
+    // `tool_receipts` with an unrelated shape (no receipt payload column).
+    {
+        let foreign = rusqlite::Connection::open(&path).test_unwrap();
+        foreign
+            .execute_batch("CREATE TABLE tool_receipts (id INTEGER PRIMARY KEY, note TEXT);")
+            .test_unwrap();
+    }
+
+    let error = SqliteReceiptStore::open(&path).test_unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("refusing to adopt a foreign database"),
+        "unexpected error: {error}"
+    );
+
+    // The refused database must not be stamped as a Chio store.
+    let reopened = rusqlite::Connection::open(&path).test_unwrap();
+    let app_id: i32 = reopened
+        .query_row("PRAGMA application_id", [], |row| row.get(0))
+        .test_unwrap();
+    assert_eq!(app_id, 0, "a refused foreign database must not be stamped");
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
+fn open_adopts_a_legacy_receipt_db_carrying_the_payload_column() {
+    let path = unique_db_path("chio-receipts-legacy-adopt");
+
+    // A pre-stamping receipt database: a legacy anchor table carrying the
+    // receipt payload column, which the store must still adopt and upgrade.
+    {
+        let legacy = rusqlite::Connection::open(&path).test_unwrap();
+        legacy
+            .execute_batch(
+                "CREATE TABLE tool_receipts (id TEXT PRIMARY KEY, receipt_json TEXT NOT NULL);",
+            )
+            .test_unwrap();
+    }
+
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    drop(store);
+
+    let reopened = rusqlite::Connection::open(&path).test_unwrap();
+    let app_id: i32 = reopened
+        .query_row("PRAGMA application_id", [], |row| row.get(0))
+        .test_unwrap();
+    assert_eq!(
+        app_id,
+        crate::CHIO_SQLITE_APPLICATION_ID,
+        "a legacy receipt database with the payload column is adopted and stamped"
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn flush_receipt_writes_reports_prior_committed_entries() {
     let path = unique_db_path("chio-receipts-flush");
     let store = SqliteReceiptStore::open(&path).test_unwrap();

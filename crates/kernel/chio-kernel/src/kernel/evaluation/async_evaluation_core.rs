@@ -163,6 +163,21 @@ impl ChioKernel {
                 extra_metadata.clone(),
             );
         }
+        if let Err(error) = self.ensure_revocation_durability_ready() {
+            let msg = error.to_string();
+            warn!(
+                request_id = %request.request_id,
+                reason = %redacted!(&msg),
+                "revocation durability unavailable pre-dispatch"
+            );
+            return self.build_receipt_persistence_failclosed_deny_response_with_metadata(
+                request,
+                &msg,
+                now,
+                None,
+                extra_metadata.clone(),
+            );
+        }
 
         let cap = &request.capability;
 

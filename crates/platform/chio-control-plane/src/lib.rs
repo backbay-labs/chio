@@ -340,6 +340,7 @@ pub fn build_kernel(loaded_policy: policy::LoadedPolicy, kernel_kp: &Keypair) ->
         max_stream_total_bytes: chio_kernel::DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: kernel_policy.require_web3_evidence,
         allow_ephemeral_receipt_log: kernel_policy.allow_ephemeral_receipt_log,
+        allow_ephemeral_revocation_store: kernel_policy.allow_ephemeral_revocation_store,
         checkpoint_batch_size: kernel_policy.checkpoint_batch_size,
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
@@ -401,6 +402,26 @@ pub fn configure_receipt_store(
             ));
         }
         (Some(path), None) => {
+            // An in-memory SQLite path (`:memory:`, `file::memory:`, or a
+            // `?mode=memory` URI) opens a database that is discarded when the
+            // process exits. Attaching it here would satisfy the kernel's
+            // receipt-persistence gate (`receipt_store.is_some()`) while silently
+            // losing every receipt on restart, so refuse it: durable receipts
+            // require a filesystem path, and an intentionally ephemeral log is
+            // requested by omitting the path and setting
+            // `allow_ephemeral_receipt_log` in policy.
+            if path
+                .to_str()
+                .is_some_and(chio_store_sqlite::is_in_memory_sqlite_path)
+            {
+                return Err(CliError::cli_other_error(
+                    "refusing to attach an in-memory receipt database as a durable store: an \
+                     in-memory SQLite path loses every receipt on restart. Point --receipt-db at \
+                     a filesystem path for durable receipts, or omit it and set \
+                     allow_ephemeral_receipt_log in policy to run with an in-memory receipt log."
+                        .to_string(),
+                ));
+            }
             kernel
                 .set_receipt_store(Box::new(chio_store_sqlite::SqliteReceiptStore::open(path)?))?;
         }
@@ -659,6 +680,7 @@ mod tests {
             memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
             deadlines: chio_kernel::HotPathDeadlineConfig::default(),
             allow_ephemeral_receipt_log: true,
+            allow_ephemeral_revocation_store: true,
         })
     }
 
@@ -764,6 +786,34 @@ mod tests {
             error,
             CliError::Kernel(chio_kernel::KernelError::Web3EvidenceUnavailable(_))
         ));
+    }
+
+    #[test]
+    fn configure_receipt_store_refuses_in_memory_sqlite_paths() {
+        // Every in-memory SQLite spelling must be refused so no store-wiring
+        // caller can attach an ephemeral database while claiming durable
+        // receipts. A durable filesystem path is accepted so the guard does not
+        // over-reject real receipt databases.
+        for path in [
+            ":memory:",
+            "file::memory:",
+            "file:receipts.db?mode=memory",
+            "file:receipts.db?cache=shared&mode=memory",
+        ] {
+            let mut kernel = make_kernel(false);
+            let error = configure_receipt_store(&mut kernel, Some(Path::new(path)), None, None)
+                .unwrap_err();
+            assert!(
+                error.to_string().contains("in-memory receipt database"),
+                "{path} must be refused as a non-durable receipt store, got: {error}"
+            );
+        }
+
+        let durable = unique_receipt_db_path("chio-control-plane-durable-receipts");
+        let mut kernel = make_kernel(false);
+        configure_receipt_store(&mut kernel, Some(&durable), None, None)
+            .expect("durable filesystem receipt path must be accepted");
+        let _ = std::fs::remove_file(durable);
     }
 
     #[test]

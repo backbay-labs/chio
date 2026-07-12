@@ -142,6 +142,10 @@ impl RevocationStore for RemoteRevocationStore {
             .map(|response| response.newly_revoked)
             .map_err(into_revocation_store_error)
     }
+
+    fn is_ephemeral(&self) -> bool {
+        false
+    }
 }
 
 impl ReceiptStore for RemoteReceiptStore {

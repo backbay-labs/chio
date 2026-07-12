@@ -176,6 +176,13 @@ pub struct KernelPolicyConfig {
     #[serde(default)]
     pub allow_ephemeral_receipt_log: bool,
 
+    /// Allow an in-memory revocation store when no durable or remote revocation
+    /// source is configured. This is intended for tests and local scaffolds
+    /// only; leaving it false denies dispatch rather than risk re-accepting a
+    /// revoked capability after a restart.
+    #[serde(default)]
+    pub allow_ephemeral_revocation_store: bool,
+
     /// Number of receipts between Merkle checkpoint snapshots.
     #[serde(default = "default_checkpoint_batch_size")]
     pub checkpoint_batch_size: u64,
@@ -191,6 +198,7 @@ impl Default for KernelPolicyConfig {
             allow_elicitation: false,
             require_web3_evidence: false,
             allow_ephemeral_receipt_log: false,
+            allow_ephemeral_revocation_store: false,
             checkpoint_batch_size: default_checkpoint_batch_size(),
         }
     }

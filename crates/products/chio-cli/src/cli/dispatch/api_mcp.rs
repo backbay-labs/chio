@@ -14,6 +14,7 @@ pub(crate) fn dispatch_api(
                 spec,
                 listen,
                 receipt_store,
+                allow_ephemeral_receipts,
                 upstream_timeout_secs,
             } => cmd_api_protect(
                 &upstream,
@@ -21,6 +22,7 @@ pub(crate) fn dispatch_api(
                 &listen,
                 receipt_store.as_deref().or(receipt_db.as_deref()),
                 authority_seed_file.as_deref(),
+                allow_ephemeral_receipts,
                 upstream_timeout_secs,
             ),
     }

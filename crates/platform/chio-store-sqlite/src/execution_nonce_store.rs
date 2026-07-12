@@ -69,15 +69,25 @@ pub struct SqliteExecutionNonceStore {
     pool: Pool<SqliteConnectionManager>,
 }
 
+/// Execution-nonce-store schema revision. Bump on every schema-affecting change.
+const EXECUTION_NONCE_STORE_SUPPORTED_SCHEMA_VERSION: i32 = 0;
+/// Stable key under which this store records its schema revision in the shared
+/// keyed metadata table, distinct from any co-located store's key.
+const EXECUTION_NONCE_STORE_SCHEMA_KEY: &str = "execution_nonce";
+/// Tables shipped before schema stamping existed, used to adopt a pre-stamping
+/// execution-nonce database rather than reject it as foreign.
+const EXECUTION_NONCE_STORE_LEGACY_ANCHOR_TABLES: &[&str] = &["chio_execution_nonces"];
+
 impl SqliteExecutionNonceStore {
     /// Open the store at the given path. Creates the parent directory
     /// if needed.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, SqliteExecutionNonceStoreError> {
         let path = path.as_ref();
-        if let Some(parent) = path.parent() {
-            if !parent.as_os_str().is_empty() {
-                fs::create_dir_all(parent)?;
-            }
+        // Resolve any `file:` URI to its on-disk parent before creating it, so a
+        // URI-configured store creates the real backing directory rather than a
+        // bogus scheme-prefixed one.
+        if let Some(parent) = crate::sqlite_parent_dir_to_create(path) {
+            fs::create_dir_all(&parent)?;
         }
         let manager = SqliteConnectionManager::file(path);
         let pool = Pool::builder().max_size(8).build(manager)?;
@@ -100,6 +110,13 @@ impl SqliteExecutionNonceStore {
             .pool
             .get()
             .map_err(|e| SqliteExecutionNonceStoreError(format!("pool acquire: {e}")))?;
+        crate::check_schema_version(
+            &conn,
+            EXECUTION_NONCE_STORE_SCHEMA_KEY,
+            EXECUTION_NONCE_STORE_SUPPORTED_SCHEMA_VERSION,
+            EXECUTION_NONCE_STORE_LEGACY_ANCHOR_TABLES,
+        )
+        .map_err(|error| SqliteExecutionNonceStoreError(error.to_string()))?;
         conn.execute_batch(
             r#"
             PRAGMA journal_mode = WAL;
@@ -116,6 +133,12 @@ impl SqliteExecutionNonceStore {
                 ON chio_execution_nonces(expires_at);
             "#,
         )?;
+        crate::stamp_schema_version(
+            &conn,
+            EXECUTION_NONCE_STORE_SCHEMA_KEY,
+            EXECUTION_NONCE_STORE_SUPPORTED_SCHEMA_VERSION,
+        )
+        .map_err(|error| SqliteExecutionNonceStoreError(error.to_string()))?;
         Ok(())
     }
 

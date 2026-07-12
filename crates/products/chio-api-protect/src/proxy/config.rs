@@ -19,6 +19,12 @@ pub struct ProtectConfig {
     pub listen_addr: String,
     /// Optional SQLite path for receipt persistence.
     pub receipt_db: Option<String>,
+    /// Explicit opt-in to run without a durable receipt store. A durable audit
+    /// log is the product's core promise, so a `None` `receipt_db` is refused at
+    /// startup unless this is set, mirroring the CLI boot gate. When set, the
+    /// proxy runs with in-memory receipts and revocations that are lost on every
+    /// restart. Leave it `false` for durable-by-default embedding.
+    pub allow_ephemeral_receipts: bool,
     /// Optional bearer token that authorizes remote sidecar control requests.
     pub sidecar_control_token: Option<String>,
     /// Optional seed used to keep the sidecar signer stable across restarts.
@@ -44,6 +50,7 @@ impl std::fmt::Debug for ProtectConfig {
             .field("spec_path", &self.spec_path)
             .field("listen_addr", &self.listen_addr)
             .field("receipt_db", &self.receipt_db)
+            .field("allow_ephemeral_receipts", &self.allow_ephemeral_receipts)
             .field(
                 "sidecar_control_token",
                 &self.sidecar_control_token.as_ref().map(|_| "<redacted>"),

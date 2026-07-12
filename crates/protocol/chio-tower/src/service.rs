@@ -155,6 +155,13 @@ where
                 let receipt = evaluator
                     .finalize_receipt(&prepared, status.as_u16())
                     .map_err(|error| Box::new(error) as Box<dyn std::error::Error + Send + Sync>)?;
+                // Fail closed on a durable append error: a denial's audit record
+                // must be as durable as an allow's, so a configured store that
+                // cannot record the deny receipt surfaces an error instead of a
+                // 403 whose evidence was silently lost.
+                evaluator
+                    .persist_http_receipt(&receipt)
+                    .map_err(|error| Box::new(error) as Box<dyn std::error::Error + Send + Sync>)?;
 
                 let mut response = http::Response::new(ResBody::default());
                 *response.status_mut() = status;
@@ -167,10 +174,30 @@ where
                 return Ok(response);
             }
 
+            // Durable-by-default: when a durable receipt store is configured,
+            // record the authorization decision before the protected effect
+            // runs. Signing and appending the decision receipt up front means an
+            // allowed request cannot reach the inner service unless its audit
+            // record is durably persisted; a store append failure denies the
+            // request rather than letting the effect complete unaudited. With no
+            // durable sink this is skipped so the ephemeral hot path avoids the
+            // extra signing.
+            if evaluator.has_durable_receipt_sink() {
+                let decision_receipt = evaluator
+                    .sign_decision_receipt(&prepared)
+                    .map_err(|error| Box::new(error) as Box<dyn std::error::Error + Send + Sync>)?;
+                evaluator
+                    .persist_http_receipt(&decision_receipt)
+                    .map_err(|error| Box::new(error) as Box<dyn std::error::Error + Send + Sync>)?;
+            }
+
             // Forward to inner service.
             let mut response = inner.call(req).await.map_err(Into::into)?;
             let receipt = evaluator
                 .finalize_receipt(&prepared, response.status().as_u16())
+                .map_err(|error| Box::new(error) as Box<dyn std::error::Error + Send + Sync>)?;
+            evaluator
+                .persist_http_receipt(&receipt)
                 .map_err(|error| Box::new(error) as Box<dyn std::error::Error + Send + Sync>)?;
 
             // Attach receipt ID to response.
@@ -219,6 +246,22 @@ where
 {
     use chio_http_core::TransportDenyInput;
 
+    // Route the transport-level denial through the same durability gate as the
+    // normal request path. When the evaluator has neither a durable receipt sink
+    // nor an explicit ephemeral opt-in, `prepare` denies normal requests with a
+    // durable-persistence error (surfaced as a 502 by the service), so an
+    // oversized body must not slip past that gate with a signed 413 whose audit
+    // record cannot be recorded. Fail closed with the same server error.
+    if !evaluator.receipts_are_audited() {
+        tracing::error!(
+            target: "chio::tower",
+            "refusing to sign a transport-deny receipt without durable receipt storage; failing closed"
+        );
+        let mut response = http::Response::new(ResBody::default());
+        *response.status_mut() = http::StatusCode::BAD_GATEWAY;
+        return response;
+    }
+
     let status = http::StatusCode::PAYLOAD_TOO_LARGE;
     let caller_identity_hash = caller.identity_hash().ok();
 
@@ -252,6 +295,19 @@ where
     *response.status_mut() = status;
 
     if let Some(receipt) = receipt {
+        // Fail closed on a durable append error: the signed 413 must not go out
+        // while its audit record was dropped by the configured store. Return the
+        // same server error the durability gate uses above.
+        if let Err(error) = evaluator.persist_http_receipt(&receipt) {
+            tracing::error!(
+                target: "chio::tower",
+                %error,
+                "failed to persist transport-deny receipt to durable store; failing closed"
+            );
+            let mut response = http::Response::new(ResBody::default());
+            *response.status_mut() = http::StatusCode::BAD_GATEWAY;
+            return response;
+        }
         if let Ok(val) = http::HeaderValue::from_str(&receipt.id) {
             response.headers_mut().insert("x-chio-receipt-id", val);
         }
@@ -389,7 +445,7 @@ mod tests {
 
     fn make_service() -> (Keypair, ChioEvaluator) {
         let keypair = Keypair::generate();
-        let evaluator = ChioEvaluator::new(keypair.clone(), "test-policy".to_string());
+        let evaluator = ChioEvaluator::new_ephemeral(keypair.clone(), "test-policy".to_string());
         (keypair, evaluator)
     }
 
@@ -859,6 +915,57 @@ mod tests {
         );
     }
 
+    /// Durability parity for the transport-deny path: an evaluator with neither
+    /// a durable receipt store nor an explicit ephemeral opt-in is fail-closed,
+    /// so an oversized body must not receive a signed 413 whose audit record is
+    /// silently dropped. It fails closed with the same server error the normal
+    /// request path returns for a missing durable store.
+    #[tokio::test]
+    async fn service_413_fails_closed_without_durable_receipts() {
+        let keypair = Keypair::generate();
+        // `ChioEvaluator::new` attaches no durable store and does not opt into
+        // ephemeral receipts, matching a misconfigured production deployment.
+        let evaluator = ChioEvaluator::new(keypair, "fail-closed-policy".to_string());
+
+        let inner = tower::service_fn(|_req: http::Request<TestBody>| async {
+            panic!("inner should not be called for oversized requests");
+            #[allow(unreachable_code)]
+            Ok::<http::Response<TestBody>, Box<dyn std::error::Error + Send + Sync>>(
+                http::Response::new(Full::new(Bytes::new())),
+            )
+        });
+
+        let mut service = ChioService::new(inner, evaluator).with_max_body_bytes(16);
+
+        let oversized = Bytes::from(vec![b'x'; 64]);
+        let req = http::Request::builder()
+            .method("POST")
+            .uri("/pets")
+            .body(Full::new(oversized))
+            .unwrap_or_else(|e| panic!("build failed: {e}"));
+
+        let resp: http::Response<TestBody> = service
+            .ready()
+            .await
+            .unwrap_or_else(|e| panic!("ready failed: {e}"))
+            .call(req)
+            .await
+            .unwrap_or_else(|e| panic!("call failed: {e}"));
+
+        // Fail closed exactly like the normal path's durability denial: a server
+        // error, and no signed receipt implying an audit trail that never landed.
+        assert_eq!(resp.status(), http::StatusCode::BAD_GATEWAY);
+        assert!(resp.extensions().get::<HttpReceipt>().is_none());
+        assert!(resp.headers().get("x-chio-receipt-id").is_none());
+        let body_bytes = resp
+            .into_body()
+            .collect()
+            .await
+            .unwrap_or_else(|e| panic!("collect failed: {e}"))
+            .to_bytes();
+        assert!(body_bytes.is_empty());
+    }
+
     #[tokio::test]
     async fn service_413_without_receipt_body_omits_json_content_type() {
         let (_kp, evaluator) = make_service();
@@ -985,5 +1092,184 @@ mod tests {
             .get::<HttpReceipt>()
             .unwrap_or_else(|| panic!("missing receipt extension on 413"));
         assert_eq!(receipt.route_pattern, "/pets/{petId}");
+    }
+
+    /// A recording receipt store that captures every appended core receipt, used
+    /// to assert the tower service persists its outer HTTP receipts to a durable
+    /// store rather than leaving them only in the response extensions.
+    #[derive(Default)]
+    struct RecordingReceiptStore {
+        receipts: std::sync::Mutex<Vec<chio_core_types::receipt::body::ChioReceipt>>,
+    }
+
+    impl RecordingReceiptStore {
+        fn stored_ids(&self) -> Vec<String> {
+            let receipts = match self.receipts.lock() {
+                Ok(receipts) => receipts,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            receipts.iter().map(|receipt| receipt.id.clone()).collect()
+        }
+    }
+
+    impl chio_kernel::ReceiptStore for RecordingReceiptStore {
+        fn append_chio_receipt(
+            &self,
+            receipt: &chio_core_types::receipt::body::ChioReceipt,
+        ) -> Result<(), chio_kernel::ReceiptStoreError> {
+            match self.receipts.lock() {
+                Ok(mut receipts) => receipts.push(receipt.clone()),
+                Err(poisoned) => poisoned.into_inner().push(receipt.clone()),
+            }
+            Ok(())
+        }
+
+        fn append_child_receipt(
+            &self,
+            _receipt: &chio_core_types::receipt::lineage::ChildRequestReceipt,
+        ) -> Result<(), chio_kernel::ReceiptStoreError> {
+            Ok(())
+        }
+    }
+
+    /// Durable-by-default for tower embedders: when an evaluator is built with a
+    /// durable receipt store, the outer HTTP receipt the service signs for the
+    /// HTTP decision must be appended to that store, not just placed in the
+    /// response extensions where it vanishes on restart.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn service_persists_http_receipt_to_durable_store() {
+        let keypair = Keypair::generate();
+        let store = std::sync::Arc::new(RecordingReceiptStore::default());
+        let evaluator = ChioEvaluator::builder(keypair.clone(), "durable-policy".to_string())
+            .receipt_store(store.clone())
+            .allow_ephemeral(true)
+            .build()
+            .unwrap_or_else(|e| panic!("build failed: {e}"));
+
+        let inner = tower::service_fn(|_req: http::Request<TestBody>| async {
+            Ok::<http::Response<TestBody>, Box<dyn std::error::Error + Send + Sync>>(
+                http::Response::new(Full::new(Bytes::new())),
+            )
+        });
+        let mut service = ChioService::new(inner, evaluator);
+
+        let req = http::Request::builder()
+            .method("GET")
+            .uri("/pets")
+            .body(Full::new(Bytes::new()))
+            .unwrap_or_else(|e| panic!("build failed: {e}"));
+
+        let resp: http::Response<TestBody> = service
+            .ready()
+            .await
+            .unwrap_or_else(|e| panic!("ready failed: {e}"))
+            .call(req)
+            .await
+            .unwrap_or_else(|e| panic!("call failed: {e}"));
+
+        assert_eq!(resp.status(), http::StatusCode::OK);
+        let http_receipt = resp
+            .extensions()
+            .get::<HttpReceipt>()
+            .unwrap_or_else(|| panic!("missing receipt extension"))
+            .clone();
+
+        // Converting the signed HTTP receipt with the kernel keypair reproduces
+        // the exact core receipt the durable sink appended, so its id must be
+        // present in the store after the call.
+        let expected = http_receipt
+            .to_chio_receipt_with_keypair(&keypair)
+            .unwrap_or_else(|e| panic!("convert failed: {e}"));
+        let stored_ids = store.stored_ids();
+        assert!(
+            stored_ids.contains(&expected.id),
+            "durable store must contain the HTTP decision receipt {}; stored: {stored_ids:?}",
+            expected.id
+        );
+    }
+
+    /// A receipt store that accepts the embedded kernel's own authorization
+    /// receipt (the first append during evaluation) but then rejects every
+    /// later append, standing in for a volume that fills up (or turns
+    /// read-only) after the kernel has recorded its decision but before the
+    /// outer HTTP receipt lands.
+    #[derive(Default)]
+    struct FailAfterFirstAppend {
+        appended: std::sync::atomic::AtomicUsize,
+    }
+
+    impl chio_kernel::ReceiptStore for FailAfterFirstAppend {
+        fn append_chio_receipt(
+            &self,
+            _receipt: &chio_core_types::receipt::body::ChioReceipt,
+        ) -> Result<(), chio_kernel::ReceiptStoreError> {
+            if self
+                .appended
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+                == 0
+            {
+                Ok(())
+            } else {
+                Err(chio_kernel::ReceiptStoreError::Conflict(
+                    "durable receipt append failed (volume full)".to_string(),
+                ))
+            }
+        }
+
+        fn append_child_receipt(
+            &self,
+            _receipt: &chio_core_types::receipt::lineage::ChildRequestReceipt,
+        ) -> Result<(), chio_kernel::ReceiptStoreError> {
+            Ok(())
+        }
+    }
+
+    /// Durable-by-default fail-closed for the outer HTTP receipt: when a durable
+    /// receipt store is configured and the append of the HTTP decision receipt
+    /// fails, an allowed request must not reach the inner service. The protected
+    /// effect must not run while its audit record is silently dropped, so the
+    /// request fails closed instead of returning a success.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn service_fails_closed_when_durable_http_receipt_append_fails() {
+        let keypair = Keypair::generate();
+        let store = std::sync::Arc::new(FailAfterFirstAppend::default());
+        let evaluator = ChioEvaluator::builder(keypair, "durable-policy".to_string())
+            .receipt_store(store)
+            .allow_ephemeral(true)
+            .build()
+            .unwrap_or_else(|e| panic!("build failed: {e}"));
+
+        let inner = tower::service_fn(|_req: http::Request<TestBody>| async {
+            panic!("inner service must not run when the durable HTTP receipt append fails");
+            #[allow(unreachable_code)]
+            Ok::<http::Response<TestBody>, Box<dyn std::error::Error + Send + Sync>>(
+                http::Response::new(Full::new(Bytes::new())),
+            )
+        });
+        let mut service = ChioService::new(inner, evaluator);
+
+        let req = http::Request::builder()
+            .method("GET")
+            .uri("/pets")
+            .body(Full::new(Bytes::new()))
+            .unwrap_or_else(|e| panic!("build failed: {e}"));
+
+        let result = service
+            .ready()
+            .await
+            .unwrap_or_else(|e| panic!("ready failed: {e}"))
+            .call(req)
+            .await;
+
+        // Fail closed: an error is unambiguously fail-closed, and any response
+        // must be a server error, never a 2xx success whose HTTP audit record
+        // was dropped by the durable store.
+        if let Ok(response) = result {
+            assert!(
+                response.status().is_server_error(),
+                "a durable HTTP receipt append failure must fail closed, got {}",
+                response.status()
+            );
+        }
     }
 }

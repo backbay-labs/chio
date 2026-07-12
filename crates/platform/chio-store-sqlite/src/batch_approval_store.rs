@@ -18,14 +18,24 @@ pub struct SqliteBatchApprovalStore {
     pool: Pool<SqliteConnectionManager>,
 }
 
+/// Batch-approval-store schema revision. Bump on every schema-affecting change.
+const BATCH_APPROVAL_STORE_SUPPORTED_SCHEMA_VERSION: i32 = 0;
+/// Stable key under which this store records its schema revision in the shared
+/// keyed metadata table, distinct from any co-located store's key.
+const BATCH_APPROVAL_STORE_SCHEMA_KEY: &str = "batch_approval";
+/// Tables shipped before schema stamping existed, used to adopt a pre-stamping
+/// batch-approval database rather than reject it as foreign.
+const BATCH_APPROVAL_STORE_LEGACY_ANCHOR_TABLES: &[&str] = &["chio_hitl_batches"];
+
 impl SqliteBatchApprovalStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, ApprovalStoreError> {
         let path = path.as_ref();
-        if let Some(parent) = path.parent() {
-            if !parent.as_os_str().is_empty() {
-                fs::create_dir_all(parent)
-                    .map_err(|e| ApprovalStoreError::Backend(format!("create dir: {e}")))?;
-            }
+        // Resolve any `file:` URI to its on-disk parent before creating it, so a
+        // URI-configured store creates the real backing directory rather than a
+        // bogus scheme-prefixed one.
+        if let Some(parent) = crate::sqlite_parent_dir_to_create(path) {
+            fs::create_dir_all(&parent)
+                .map_err(|e| ApprovalStoreError::Backend(format!("create dir: {e}")))?;
         }
         let manager = SqliteConnectionManager::file(path);
         let pool = Pool::builder()
@@ -53,6 +63,13 @@ impl SqliteBatchApprovalStore {
             .pool
             .get()
             .map_err(|e| ApprovalStoreError::Backend(format!("pool get: {e}")))?;
+        crate::check_schema_version(
+            &conn,
+            BATCH_APPROVAL_STORE_SCHEMA_KEY,
+            BATCH_APPROVAL_STORE_SUPPORTED_SCHEMA_VERSION,
+            BATCH_APPROVAL_STORE_LEGACY_ANCHOR_TABLES,
+        )
+        .map_err(|error| ApprovalStoreError::Backend(error.to_string()))?;
         conn.execute_batch(
             r#"
             PRAGMA journal_mode = WAL;
@@ -81,6 +98,12 @@ impl SqliteBatchApprovalStore {
             "#,
         )
         .map_err(|e| ApprovalStoreError::Backend(format!("migration: {e}")))?;
+        crate::stamp_schema_version(
+            &conn,
+            BATCH_APPROVAL_STORE_SCHEMA_KEY,
+            BATCH_APPROVAL_STORE_SUPPORTED_SCHEMA_VERSION,
+        )
+        .map_err(|error| ApprovalStoreError::Backend(error.to_string()))?;
         Ok(())
     }
 }

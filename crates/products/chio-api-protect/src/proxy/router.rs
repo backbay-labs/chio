@@ -341,10 +341,11 @@ pub(crate) async fn find_revoked_capability_id(
 ) -> Option<String> {
     let capability_id = presented_capability_id(raw_capability)
         .or_else(|| capability_id_hint.map(ToOwned::to_owned))?;
-    let revoked_capability_ids = state.revoked_capability_ids.lock().await;
-    revoked_capability_ids
-        .contains(&capability_id)
-        .then_some(capability_id)
+    if state.capability_is_revoked(&capability_id).await {
+        Some(capability_id)
+    } else {
+        None
+    }
 }
 
 pub(crate) async fn revoked_proxy_response(

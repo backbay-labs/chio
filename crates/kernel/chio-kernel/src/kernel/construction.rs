@@ -477,6 +477,23 @@ impl ChioKernel {
         self.receipt_writer_watchdog.set_join_handle(handle);
     }
 
+    pub(crate) fn ensure_revocation_durability_ready(&self) -> Result<(), KernelError> {
+        // A remote revocation view (federation/oracle) is consulted on every
+        // delegated dispatch and is re-synced from its source after a restart, so
+        // an installed view is itself a durable revocation source: it satisfies
+        // the gate even when the local per-row store is the default in-memory one.
+        if self.revocation_view.is_some() {
+            return Ok(());
+        }
+        let ephemeral = self.with_revocation_store(|store| Ok(store.is_ephemeral()))?;
+        if !ephemeral || self.config.allow_ephemeral_revocation_store {
+            return Ok(());
+        }
+        Err(KernelError::Internal(
+            "durable revocation state unavailable: no revocation store configured".to_string(),
+        ))
+    }
+
     pub(crate) fn scope_receipt_federation_admission_for_request(
         &self,
         request_id: &str,
@@ -699,6 +716,18 @@ impl ChioKernel {
         attestation_trust_policy: AttestationTrustPolicy,
     ) {
         self.attestation_trust_policy = Some(attestation_trust_policy);
+    }
+
+    /// Accept the default in-memory revocation store instead of requiring a
+    /// durable one. A locally-run kernel with no durable or remote revocation
+    /// backend keeps its revocation set in memory, so the durability gate would
+    /// otherwise deny every dispatch. Opting in here relaxes the gate
+    /// only while the store is genuinely ephemeral: installing a durable store
+    /// (or a revocation view) satisfies the gate on its own regardless of this
+    /// flag. Intended for local, interactive runtimes; deployments that must
+    /// survive restart should wire a durable store instead of calling this.
+    pub fn opt_in_ephemeral_revocation_store(&mut self) {
+        self.config.allow_ephemeral_revocation_store = true;
     }
 
     pub fn set_revocation_store(&mut self, revocation_store: Box<dyn RevocationStore>) {

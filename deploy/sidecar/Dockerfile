@@ -6,9 +6,10 @@
 #   docker build -f deploy/sidecar/Dockerfile -t ghcr.io/backbay-labs/chio-sidecar:latest .
 #
 # The sidecar exposes :9090 and responds to GET /chio/health. It is configured
-# via CLI flags (see the ENTRYPOINT/CMD notes below). Config-loading subcommands
-# such as `chio mcp serve-http --policy <file>` read a mounted policy/config file
-# that may reference secrets like ${CHIO_SIGNING_KEY} via env interpolation
+# entirely via CLI flags (see the ENTRYPOINT/CMD notes below): the route and
+# scope table come from the OpenAPI document passed with `--spec`, receipts are
+# written to the durable store at `--receipt-store`, and the signing seed is read
+# from the file at `--authority-seed-file`
 # (see docs/protocols/CLOUD-SIDECAR-INTEGRATION.md). If the process cannot start
 # serving the health endpoint it exits non-zero and the platform marks the
 # container unhealthy (fail closed).

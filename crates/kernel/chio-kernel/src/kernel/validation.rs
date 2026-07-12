@@ -53,6 +53,16 @@ impl ChioKernel {
         Ok(())
     }
 
+    /// Whether a capability id is present in the installed revocation store.
+    ///
+    /// Callers that authorize a token minted outside the kernel (an HTTP
+    /// authority projecting a presented capability, for example) use this to
+    /// check the caller's token against revocations, since the kernel's own
+    /// revocation check runs against the internal capability it evaluates.
+    pub fn is_capability_revoked(&self, capability_id: &str) -> Result<bool, KernelError> {
+        self.with_revocation_store(|store| Ok(store.is_revoked(capability_id)?))
+    }
+
     /// Read-only access to the receipt log.
     pub fn receipt_log(&self) -> ReceiptLog {
         match self.receipt_log.lock() {

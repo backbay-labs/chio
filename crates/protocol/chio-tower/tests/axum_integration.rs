@@ -55,7 +55,7 @@ struct AxumChioLayer {
 impl AxumChioLayer {
     fn new(keypair: Keypair, policy_hash: String) -> Self {
         Self {
-            evaluator: ChioEvaluator::new(keypair, policy_hash),
+            evaluator: ChioEvaluator::new_ephemeral(keypair, policy_hash),
         }
     }
 }

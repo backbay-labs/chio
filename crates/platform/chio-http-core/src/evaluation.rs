@@ -108,4 +108,11 @@ pub enum SidecarStatus {
 pub struct HealthResponse {
     pub status: SidecarStatus,
     pub version: String,
+    /// Backend of the embedded kernel's receipt log ("durable" or "ephemeral").
+    #[serde(default)]
+    pub receipt_backend: String,
+    /// Backend of the embedded kernel's revocation state ("durable", "remote",
+    /// or "ephemeral").
+    #[serde(default)]
+    pub revocation_backend: String,
 }

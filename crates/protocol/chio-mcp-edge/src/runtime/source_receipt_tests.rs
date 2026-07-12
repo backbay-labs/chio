@@ -157,6 +157,7 @@ fn make_kernel() -> ChioKernel {
         max_stream_total_bytes: chio_kernel::DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: false,
         allow_ephemeral_receipt_log: true,
+        allow_ephemeral_revocation_store: true,
         checkpoint_batch_size: chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),

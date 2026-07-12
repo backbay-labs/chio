@@ -258,11 +258,13 @@ pub(crate) fn run() {
         Commands::Start {
             listen,
             receipt_store,
+            allow_ephemeral_receipts,
             print_config,
         } => cmd_start(
             &listen,
             receipt_store.as_deref().or(receipt_db.as_deref()),
             authority_seed_file.as_deref(),
+            allow_ephemeral_receipts,
             print_config,
         ),
     };

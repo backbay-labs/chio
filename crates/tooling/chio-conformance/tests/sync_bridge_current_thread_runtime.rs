@@ -82,6 +82,7 @@ fn make_kernel(receipt_store_path: &std::path::Path) -> ChioKernel {
         max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: false,
         allow_ephemeral_receipt_log: true,
+        allow_ephemeral_revocation_store: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),

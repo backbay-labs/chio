@@ -5,7 +5,7 @@
 #   ghcr.io/backbay-labs/chio-sidecar      -- replace with the sidecar image you pushed
 #   PROJECT_ID / REGION              -- substitute for your GCP project and region
 #   projects/PROJECT_ID/secrets/...  -- create the secrets in Secret Manager first
-#   chio-kernel-config / chio-openapi-spec -- Secret Manager secrets mounted below
+#   chio-openapi-spec / chio-authority-seed -- Secret Manager secrets mounted below
 #   chio-sidecar-control-token       -- bearer token gating /metrics + control
 #                                       endpoints (a metrics scraper presents it)
 #
@@ -28,8 +28,14 @@ spec:
     metadata:
       annotations:
         # Keep at least one warm instance to amortise sidecar cold starts.
+        # This reference runs an explicitly ephemeral in-memory audit log
+        # (--allow-ephemeral-receipts): Cloud Run has no per-instance persistent
+        # disk, so there is no durable local backend to pin. maxScale stays 1 so a
+        # single instance keeps one coherent in-memory audit stream; for a durable
+        # audit trail across scale or restart, front a client-server audit store
+        # or move to a per-instance-disk platform (see the sidecar args note).
         autoscaling.knative.dev/minScale: "1"
-        autoscaling.knative.dev/maxScale: "100"
+        autoscaling.knative.dev/maxScale: "1"
         # App waits until chio-sidecar startupProbe succeeds.
         run.googleapis.com/container-dependencies: '{"app":["chio-sidecar"]}'
         run.googleapis.com/execution-environment: gen2
@@ -103,19 +109,18 @@ spec:
             - "/etc/chio/spec/openapi.yaml"
             - "--listen"
             - "0.0.0.0:9090"
+            # Cloud Run has no per-instance persistent disk, so the audit log
+            # cannot be durable here. Opt into ephemeral in-memory receipts
+            # explicitly instead of pointing --receipt-store at scratch storage,
+            # which would boot reporting a durable backend yet lose every receipt
+            # on revision recycle. For a durable audit trail, front a client-server
+            # store or run on a per-instance-disk platform.
+            - "--allow-ephemeral-receipts"
+            - "--authority-seed-file"
+            - "/etc/chio/seed/authority.seed"
           env:
             - name: CHIO_LOG_LEVEL
               value: "info"
-            - name: CHIO_CAPABILITY_AUTHORITY_URL
-              valueFrom:
-                secretKeyRef:
-                  name: chio-capability-authority-url
-                  key: latest
-            - name: CHIO_SIGNING_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: chio-signing-key
-                  key: latest
             # Sidecar-control bearer token that gates /metrics and the control
             # endpoints. A remote metrics scraper must send it as
             # `Authorization: Bearer <token>`; a co-located loopback collector
@@ -127,10 +132,10 @@ spec:
                   name: chio-sidecar-control-token
                   key: latest
           volumeMounts:
-            - name: chio-kernel-config
-              mountPath: /etc/chio/kernel
             - name: chio-openapi-spec
               mountPath: /etc/chio/spec
+            - name: chio-authority-seed
+              mountPath: /etc/chio/seed
           resources:
             limits:
               cpu: "500m"
@@ -163,15 +168,22 @@ spec:
             periodSeconds: 10
             failureThreshold: 3
       volumes:
-        - name: chio-kernel-config
-          secret:
-            secretName: chio-kernel-config
-            items:
-              - key: latest
-                path: kernel.yaml
         - name: chio-openapi-spec
           secret:
             secretName: chio-openapi-spec
             items:
               - key: latest
                 path: openapi.yaml
+        - name: chio-authority-seed
+          secret:
+            secretName: chio-authority-seed
+            items:
+              - key: latest
+                path: authority.seed
+        # No receipt-store volume: this reference keeps the audit log in memory
+        # (--allow-ephemeral-receipts) because Cloud Run offers no per-instance
+        # persistent disk. A durable receipt log is a single-writer SQLite database
+        # in WAL mode, which needs a local (non-network) filesystem and so cannot
+        # run on Filestore/NFS. For a durable audit trail, run on a platform with a
+        # per-instance disk (a StatefulSet PVC, an ECS task with an attached block
+        # volume) or front a client-server audit store.

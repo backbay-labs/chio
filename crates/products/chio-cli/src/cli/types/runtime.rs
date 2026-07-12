@@ -846,6 +846,12 @@ pub(crate) enum ApiCommands {
         #[arg(long = "receipt-store")]
         receipt_store: Option<PathBuf>,
 
+        /// Permit in-memory receipts, whose audit evidence is lost on every
+        /// restart. Required to boot without `--receipt-store`. For local
+        /// development only.
+        #[arg(long, default_value_t = false)]
+        allow_ephemeral_receipts: bool,
+
         /// Wall-clock ceiling in seconds on a single upstream hop, including
         /// reading the full response. Raise it for upstreams with legitimately
         /// slow calls or large bounded responses. Defaults to 20 seconds.

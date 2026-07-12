@@ -5,6 +5,12 @@
 //   ghcr.io/backbay-labs/chio-sidecar    -- replace with the sidecar image you pushed
 //   Key Vault secrets must be created before deploy; the Container Apps
 //   environment's managed identity needs GET on those secrets.
+//   The AzureFile-backed spec storage (specStorageName) must be registered on
+//   the managed environment before deploy. The receipt store is a single-writer
+//   SQLite database in WAL mode, which needs a local filesystem, so it runs on a
+//   per-replica local volume rather than an Azure Files share; this template
+//   runs one replica for one coherent audit stream (see the maxReplicas and
+//   volume notes).
 //
 // Deploy:
 //   az deployment group create \
@@ -33,14 +39,14 @@ param appImage string = 'APP_IMAGE_PLACEHOLDER'
 @description('Chio sidecar container image.')
 param chioSidecarImage string = 'ghcr.io/backbay-labs/chio-sidecar:latest'
 
-@description('Key Vault URI that holds the Chio signing key secret.')
-param chioSigningKeySecretUri string
-
-@description('Key Vault URI that holds the capability authority URL secret.')
-param chioCapabilityAuthoritySecretUri string
+@description('Key Vault URI that holds the authority signing seed, delivered to the sidecar as a mounted secret file.')
+param chioAuthoritySeedSecretUri string
 
 @description('User-assigned managed identity resource ID with Key Vault read access.')
 param userAssignedIdentityId string
+
+@description('Container Apps environment storage name backing the read-only OpenAPI spec share.')
+param specStorageName string
 
 resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
   name: containerAppName
@@ -68,13 +74,8 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
       }
       secrets: [
         {
-          name: 'chio-signing-key'
-          keyVaultUrl: chioSigningKeySecretUri
-          identity: userAssignedIdentityId
-        }
-        {
-          name: 'chio-capability-authority-url'
-          keyVaultUrl: chioCapabilityAuthoritySecretUri
+          name: 'chio-authority-seed'
+          keyVaultUrl: chioAuthoritySeedSecretUri
           identity: userAssignedIdentityId
         }
       ]
@@ -129,8 +130,19 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             'protect'
             '--upstream'
             'http://127.0.0.1:8080'
+            '--spec'
+            '/etc/chio/spec/openapi.yaml'
             '--listen'
             '0.0.0.0:9090'
+            // Container Apps has no per-replica persistent disk, so the audit log
+            // cannot be durable here. Opt into ephemeral in-memory receipts
+            // explicitly instead of pointing --receipt-store at scratch storage,
+            // which would boot reporting a durable backend yet lose every receipt
+            // on revision recycle. For a durable audit trail, front a client-server
+            // store or run on a per-instance-disk platform.
+            '--allow-ephemeral-receipts'
+            '--authority-seed-file'
+            '/etc/chio/seed/authority.seed'
           ]
           resources: {
             cpu: json('0.25')
@@ -141,13 +153,15 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
               name: 'CHIO_LOG_LEVEL'
               value: 'info'
             }
+          ]
+          volumeMounts: [
             {
-              name: 'CHIO_SIGNING_KEY'
-              secretRef: 'chio-signing-key'
+              volumeName: 'chio-openapi-spec'
+              mountPath: '/etc/chio/spec'
             }
             {
-              name: 'CHIO_CAPABILITY_AUTHORITY_URL'
-              secretRef: 'chio-capability-authority-url'
+              volumeName: 'chio-authority-seed'
+              mountPath: '/etc/chio/seed'
             }
           ]
           probes: [
@@ -184,19 +198,41 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           ]
         }
       ]
+      volumes: [
+        // OpenAPI spec share (read-only). The kernel derives its route and
+        // scope table from this operator-provided document, never from the
+        // upstream.
+        {
+          name: 'chio-openapi-spec'
+          storageType: 'AzureFile'
+          storageName: specStorageName
+        }
+        // Authority signing seed, delivered from Key Vault as a mounted file.
+        {
+          name: 'chio-authority-seed'
+          storageType: 'Secret'
+          secrets: [
+            {
+              secretRef: 'chio-authority-seed'
+              path: 'authority.seed'
+            }
+          ]
+        }
+        // No receipt-store volume: this template keeps the audit log in memory
+        // (--allow-ephemeral-receipts) because Container Apps offers no per-replica
+        // persistent disk. A durable receipt log is a single-writer SQLite database
+        // in WAL mode, which needs a local (non-network) filesystem and so cannot
+        // run on an Azure Files share. For a durable audit trail, front a
+        // client-server audit store or move to a per-instance disk platform (a
+        // StatefulSet PVC, or an ECS task with an attached block volume).
+      ]
+      // The audit log is an explicitly ephemeral in-memory stream, so maxReplicas
+      // is pinned to 1: one replica keeps one coherent stream. Fanning out gives
+      // each replica its own separate log; for a single durable audit trail across
+      // scale or restart, front a client-server audit store.
       scale: {
         minReplicas: 1
-        maxReplicas: 20
-        rules: [
-          {
-            name: 'http-scale'
-            http: {
-              metadata: {
-                concurrentRequests: '50'
-              }
-            }
-          }
-        ]
+        maxReplicas: 1
       }
     }
   }

@@ -33,6 +33,7 @@ pub(crate) fn cmd_run(
     let mut kernel = build_kernel(loaded_policy, &kernel_kp);
     configure_receipt_store(&mut kernel, receipt_db_path, control_url, control_token)?;
     configure_revocation_store(&mut kernel, revocation_db_path, control_url, control_token)?;
+    opt_in_ephemeral_revocation_for_local_session(&mut kernel, revocation_db_path, control_url);
     configure_capability_authority(
         &mut kernel,
         &kernel_kp,
@@ -146,14 +147,164 @@ pub(crate) fn cmd_run(
     }
 }
 
+/// Whether a `--receipt-store` value opens a SQLite database that lives only in
+/// memory for the life of the process. A non-UTF-8 path is always a real
+/// filesystem path, so it is never in-memory; otherwise the shared
+/// [`chio_store_sqlite::is_in_memory_sqlite_path`] classifier decides, keeping a
+/// single source of truth for what counts as a non-durable receipt database
+/// across the boot gate, the store-wiring path, and this sidecar.
+fn is_in_memory_sqlite_path(path: &Path) -> bool {
+    path.to_str()
+        .is_some_and(chio_store_sqlite::is_in_memory_sqlite_path)
+}
+
+/// Refuse to boot without a durable receipt store unless the operator has
+/// explicitly opted into ephemeral receipts, and warn when the sidecar cannot
+/// deliver its audit guarantee. A durable audit log is the product's core
+/// promise; a missing `--receipt-store` or an in-memory SQLite path should fail
+/// loudly at startup rather than run and silently lose every receipt on restart.
+fn require_durable_or_ephemeral_optin(
+    receipt_store: Option<&Path>,
+    allow_ephemeral_receipts: bool,
+    authority_seed_path: Option<&Path>,
+) -> Result<(), CliError> {
+    // A durable receipt store is a real filesystem path. A missing path and
+    // SQLite's in-memory sentinels are equally ephemeral (both lose the audit
+    // log on restart), so both require the explicit ephemeral opt-in.
+    let ephemeral_receipts = receipt_store.is_none_or(is_in_memory_sqlite_path);
+
+    if ephemeral_receipts && !allow_ephemeral_receipts {
+        return Err(CliError::cli_other_error(
+            "refusing to start without durable receipts: pass --receipt-store <path> for a \
+             durable audit log on a filesystem path, or --allow-ephemeral-receipts to run with \
+             in-memory receipts that are lost on every restart"
+                .to_string(),
+        ));
+    }
+    if ephemeral_receipts {
+        tracing::warn!(
+            target: "chio::sidecar",
+            "running with in-memory receipts (--allow-ephemeral-receipts): audit evidence is lost on every restart"
+        );
+    }
+    if authority_seed_path.is_none() {
+        tracing::warn!(
+            target: "chio::sidecar",
+            "no --authority-seed-file: a fresh signer is generated per boot, so receipts signed before a restart are unverifiable"
+        );
+    }
+    Ok(())
+}
+
+/// A one-shot `chio run` or `chio check` invocation issues fresh capabilities,
+/// evaluates within a single process lifetime, and exits, so revocation state
+/// never needs to survive a restart. Such a session keeps its revocation set in
+/// an in-memory store unless the operator wires a durable `--revocation-db` or a
+/// remote control plane, and this explicitly accepts that ephemeral store so the
+/// kernel's revocation-durability gate does not deny dispatch. A configured
+/// durable backend satisfies the gate on its own, so this only ever relaxes the
+/// genuinely in-memory case (an in-memory SQLite path counts as no durable
+/// backend, mirroring the receipt-store durability check).
+///
+/// Long-running servers must NOT use this: a persistent edge accepts requests
+/// across capability releases and restarts, so it requires a durable revocation
+/// backend or an explicit `allow_ephemeral_revocation_store` opt-in in policy
+/// (see [`build_mcp_edge_kernel`]).
+pub(crate) fn opt_in_ephemeral_revocation_for_local_session(
+    kernel: &mut ChioKernel,
+    revocation_db_path: Option<&Path>,
+    control_url: Option<&str>,
+) {
+    let durable_backend = revocation_db_path.is_some_and(|path| !is_in_memory_sqlite_path(path))
+        || control_url.is_some();
+    if !durable_backend {
+        kernel.opt_in_ephemeral_revocation_store();
+    }
+}
+
+/// Durable store and authority paths for the long-running MCP edge kernel.
+pub(crate) struct McpEdgeStores<'a> {
+    pub receipt_db_path: Option<&'a Path>,
+    pub revocation_db_path: Option<&'a Path>,
+    pub authority_seed_path: Option<&'a Path>,
+    pub authority_db_path: Option<&'a Path>,
+    pub budget_db_path: Option<&'a Path>,
+    pub control_url: Option<&'a str>,
+    pub control_token: Option<&'a str>,
+}
+
+/// Build the kernel that backs the long-running `chio mcp serve` edge.
+///
+/// Unlike the one-shot `chio run` / `chio check` sessions, the MCP edge outlives
+/// many capability releases and is expected to survive restarts (operators wire
+/// it with a durable `--receipt-db`). It therefore never auto-opts into an
+/// ephemeral revocation store: revocation durability must come from a
+/// `--revocation-db`, a control plane, or an explicit
+/// `allow_ephemeral_revocation_store` in policy. When none is present the
+/// kernel's revocation-durability gate denies dispatch, which is the intended
+/// fail-closed behavior for a server that would otherwise keep accepting a token
+/// it had already revoked before a restart.
+pub(crate) fn build_mcp_edge_kernel(
+    loaded_policy: policy::LoadedPolicy,
+    kernel_kp: &Keypair,
+    stores: &McpEdgeStores<'_>,
+) -> Result<ChioKernel, CliError> {
+    let issuance_policy = loaded_policy.issuance_policy.clone();
+    let runtime_assurance_policy = loaded_policy.runtime_assurance_policy.clone();
+    let mut kernel = build_kernel(loaded_policy, kernel_kp);
+    configure_receipt_store(
+        &mut kernel,
+        stores.receipt_db_path,
+        stores.control_url,
+        stores.control_token,
+    )?;
+    configure_revocation_store(
+        &mut kernel,
+        stores.revocation_db_path,
+        stores.control_url,
+        stores.control_token,
+    )?;
+    configure_capability_authority(
+        &mut kernel,
+        kernel_kp,
+        stores.authority_seed_path,
+        stores.authority_db_path,
+        stores.receipt_db_path,
+        stores.budget_db_path,
+        stores.control_url,
+        stores.control_token,
+        issuance_policy,
+        runtime_assurance_policy,
+    )?;
+    configure_budget_store(
+        &mut kernel,
+        stores.budget_db_path,
+        stores.control_url,
+        stores.control_token,
+    )?;
+    Ok(kernel)
+}
+
+/// The receipt-store path to hand the proxy as a durable backend, or `None` when
+/// the configured path only opens an in-memory database. The boot gate already
+/// forces an explicit ephemeral opt-in for in-memory paths; passing such a path
+/// on as `receipt_db` would make the proxy open in-memory stores yet advertise a
+/// durable receipt backend, so it is mapped to the same no-store path an operator
+/// gets from `--allow-ephemeral-receipts` without a `--receipt-store`.
+fn durable_receipt_db_path(receipt_store: Option<&Path>) -> Option<&Path> {
+    receipt_store.filter(|path| !is_in_memory_sqlite_path(path))
+}
+
 pub(crate) fn cmd_api_protect(
     upstream: &str,
     spec_path: Option<&Path>,
     listen_addr: &str,
     receipt_store: Option<&Path>,
     authority_seed_path: Option<&Path>,
+    allow_ephemeral_receipts: bool,
     upstream_timeout_secs: Option<u64>,
 ) -> Result<(), CliError> {
+    require_durable_or_ephemeral_optin(receipt_store, allow_ephemeral_receipts, authority_seed_path)?;
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -177,7 +328,11 @@ pub(crate) fn cmd_api_protect(
             spec_content: None,
             spec_path: spec_path.map(|path| path.display().to_string()),
             listen_addr: listen_addr.to_string(),
-            receipt_db: receipt_store.map(|path| path.display().to_string()),
+            receipt_db: durable_receipt_db_path(receipt_store).map(|path| path.display().to_string()),
+            // The boot gate above already required an explicit opt-in when the
+            // receipt store is missing or in-memory, so mirror the operator's
+            // choice into the proxy's own durable-by-default gate.
+            allow_ephemeral_receipts,
             sidecar_control_token,
             signer_seed_hex,
             trusted_capability_issuers,
@@ -211,8 +366,10 @@ pub(crate) fn cmd_start(
     listen_addr: &str,
     receipt_store: Option<&Path>,
     authority_seed_path: Option<&Path>,
+    allow_ephemeral_receipts: bool,
     print_config: bool,
 ) -> Result<(), CliError> {
+    require_durable_or_ephemeral_optin(receipt_store, allow_ephemeral_receipts, authority_seed_path)?;
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -242,7 +399,11 @@ pub(crate) fn cmd_start(
             spec_content: Some(CHIO_START_SIDECAR_OPENAPI_SPEC.to_string()),
             spec_path: None,
             listen_addr: listen_addr.to_string(),
-            receipt_db: receipt_store.map(|path| path.display().to_string()),
+            receipt_db: durable_receipt_db_path(receipt_store).map(|path| path.display().to_string()),
+            // The boot gate above already required an explicit opt-in when the
+            // receipt store is missing or in-memory, so mirror the operator's
+            // choice into the proxy's own durable-by-default gate.
+            allow_ephemeral_receipts,
             sidecar_control_token,
             signer_seed_hex,
             trusted_capability_issuers,
@@ -340,6 +501,7 @@ pub(crate) fn cmd_check(
     let mut kernel = build_kernel(loaded_policy, &kernel_kp);
     configure_receipt_store(&mut kernel, receipt_db_path, control_url, control_token)?;
     configure_revocation_store(&mut kernel, revocation_db_path, control_url, control_token)?;
+    opt_in_ephemeral_revocation_for_local_session(&mut kernel, revocation_db_path, control_url);
     configure_capability_authority(
         &mut kernel,
         &kernel_kp,
@@ -599,8 +761,6 @@ pub(crate) fn cmd_mcp_serve(
     let loaded_policy = load_policy(resolved_policy_path)?;
     let policy_identity = loaded_policy.identity.clone();
     let default_capabilities = loaded_policy.default_capabilities.clone();
-    let issuance_policy = loaded_policy.issuance_policy.clone();
-    let runtime_assurance_policy = loaded_policy.runtime_assurance_policy.clone();
 
     info!(
         policy_path = %resolved_policy_path.display(),
@@ -613,22 +773,19 @@ pub(crate) fn cmd_mcp_serve(
     );
 
     let kernel_kp = Keypair::generate();
-    let mut kernel = build_kernel(loaded_policy, &kernel_kp);
-    configure_receipt_store(&mut kernel, receipt_db_path, control_url, control_token)?;
-    configure_revocation_store(&mut kernel, revocation_db_path, control_url, control_token)?;
-    configure_capability_authority(
-        &mut kernel,
+    let mut kernel = build_mcp_edge_kernel(
+        loaded_policy,
         &kernel_kp,
-        authority_seed_path,
-        authority_db_path,
-        receipt_db_path,
-        budget_db_path,
-        control_url,
-        control_token,
-        issuance_policy,
-        runtime_assurance_policy,
+        &McpEdgeStores {
+            receipt_db_path,
+            revocation_db_path,
+            authority_seed_path,
+            authority_db_path,
+            budget_db_path,
+            control_url,
+            control_token,
+        },
     )?;
-    configure_budget_store(&mut kernel, budget_db_path, control_url, control_token)?;
 
     let (wrapped_cmd, wrapped_args) = command
         .split_first()
@@ -1187,6 +1344,69 @@ mod runtime_local_error_domain_tests {
         );
 
         assert_registry_error(&error, "urn:chio:error:cli:other", "cli");
+    }
+
+    #[test]
+    fn in_memory_receipt_store_is_refused_without_ephemeral_optin() {
+        for sentinel in [
+            ":memory:",
+            "file::memory:",
+            "file:audit?mode=memory&cache=shared",
+        ] {
+            let error = must_err(
+                require_durable_or_ephemeral_optin(Some(Path::new(sentinel)), false, None),
+                "an in-memory receipt store must fail closed without --allow-ephemeral-receipts",
+            );
+            let message = error.to_string();
+            assert!(
+                message.contains("without durable receipts"),
+                "unexpected error for {sentinel}: {message}"
+            );
+        }
+    }
+
+    #[test]
+    fn in_memory_receipt_store_boots_only_with_the_ephemeral_optin() {
+        assert!(
+            require_durable_or_ephemeral_optin(Some(Path::new(":memory:")), true, None).is_ok(),
+            "an in-memory receipt store is allowed once ephemeral receipts are opted into"
+        );
+    }
+
+    #[test]
+    fn durable_receipt_path_boots_without_the_ephemeral_optin() {
+        assert!(
+            require_durable_or_ephemeral_optin(
+                Some(Path::new("/var/lib/chio/receipts.db")),
+                false,
+                None,
+            )
+            .is_ok(),
+            "a filesystem receipt path is durable and needs no ephemeral opt-in"
+        );
+    }
+
+    #[test]
+    fn in_memory_receipt_store_is_not_carried_through_as_durable() {
+        // An in-memory path that cleared the boot gate must not reach the proxy
+        // as a receipt_db, or the proxy opens in-memory stores yet reports a
+        // durable receipt backend. It collapses to the no-store ephemeral path.
+        for sentinel in [
+            ":memory:",
+            "file::memory:",
+            "file:audit?mode=memory&cache=shared",
+        ] {
+            assert!(
+                durable_receipt_db_path(Some(Path::new(sentinel))).is_none(),
+                "in-memory path {sentinel} must not be treated as a durable receipt_db"
+            );
+        }
+        assert!(durable_receipt_db_path(None).is_none());
+        assert_eq!(
+            durable_receipt_db_path(Some(Path::new("/var/lib/chio/receipts.db"))),
+            Some(Path::new("/var/lib/chio/receipts.db")),
+            "a filesystem path is a durable receipt_db and passes through"
+        );
     }
 
     #[test]

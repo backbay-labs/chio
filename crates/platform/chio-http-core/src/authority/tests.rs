@@ -83,19 +83,19 @@ fn caller() -> CallerIdentity {
 }
 
 fn authority() -> HttpAuthority {
-    HttpAuthority::new(Keypair::generate(), "policy-hash".to_string())
+    HttpAuthority::new_ephemeral(Keypair::generate(), "policy-hash".to_string())
 }
 
 fn authority_with_issuer() -> (HttpAuthority, Keypair) {
     let issuer = Keypair::generate();
     (
-        HttpAuthority::new(issuer.clone(), "policy-hash".to_string()),
+        HttpAuthority::new_ephemeral(issuer.clone(), "policy-hash".to_string()),
         issuer,
     )
 }
 
 fn authority_with_trusted_issuer(trusted_issuer: PublicKey) -> HttpAuthority {
-    HttpAuthority::new_with_approval_store_and_trusted_issuers(
+    HttpAuthority::new_ephemeral_with_approval_store_and_trusted_issuers(
         Keypair::generate(),
         "policy-hash".to_string(),
         Arc::new(InMemoryApprovalStore::new()),
@@ -156,6 +156,103 @@ fn safe_policy_allows_without_capability() {
             .and_then(Value::as_str),
         Some("native")
     );
+}
+
+fn safe_get_input<'a>(query: &'a HashMap<String, String>) -> HttpAuthorityInput<'a> {
+    HttpAuthorityInput {
+        request_id: "req-durability-probe".to_string(),
+        method: HttpMethod::Get,
+        route_pattern: "/pets".to_string(),
+        path: "/pets",
+        query,
+        caller: caller(),
+        body_hash: None,
+        body_length: 0,
+        session_id: None,
+        capability_id_hint: None,
+        presented_capability: None,
+        requested_tool_server: None,
+        requested_tool_name: None,
+        requested_arguments: None,
+        model_metadata: None,
+        execution_nonce: None,
+        policy: HttpAuthorityPolicy::SessionAllow,
+    }
+}
+
+#[test]
+fn new_is_failclosed_without_a_durable_store() {
+    let authority = HttpAuthority::new(Keypair::generate(), "policy-hash".to_string());
+    let query = HashMap::new();
+    let error = authority.evaluate(safe_get_input(&query)).test_unwrap_err();
+    let message = error.to_string();
+    assert!(
+        message.contains("durable receipt persistence unavailable")
+            || message.contains("durable revocation state unavailable"),
+        "fail-closed new must deny the first mediated call, got: {message}"
+    );
+}
+
+#[test]
+fn failclosed_authority_surfaces_durability_error_for_denied_projection() {
+    // A request projected as denied (deny-by-default with no capability) must
+    // still fail closed when no durable store is attached. The kernel's
+    // durability gate runs before the projection guard, so without this the
+    // authority would return a signed deny receipt and silently drop the denial
+    // audit record until an allowed request happened to surface the error.
+    let authority = HttpAuthority::new(Keypair::generate(), "policy-hash".to_string());
+    let query = HashMap::new();
+    let error = authority
+        .evaluate(HttpAuthorityInput {
+            request_id: "req-denied-durability".to_string(),
+            method: HttpMethod::Post,
+            route_pattern: "/pets".to_string(),
+            path: "/pets",
+            query: &query,
+            caller: caller(),
+            body_hash: Some("abc".to_string()),
+            body_length: 3,
+            session_id: None,
+            capability_id_hint: None,
+            presented_capability: None,
+            requested_tool_server: None,
+            requested_tool_name: None,
+            requested_arguments: None,
+            model_metadata: None,
+            execution_nonce: None,
+            policy: HttpAuthorityPolicy::DenyByDefault,
+        })
+        .test_unwrap_err();
+    let message = error.to_string();
+    assert!(
+        message.contains("durable receipt persistence unavailable")
+            || message.contains("durable revocation state unavailable"),
+        "a denied projection must fail closed on missing durable persistence, got: {message}"
+    );
+}
+
+#[test]
+fn builder_with_durable_stores_evaluates_without_persistence_deny(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let receipt_store: Arc<dyn chio_kernel::ReceiptStore> = Arc::new(
+        chio_store_sqlite::SqliteReceiptStore::open(dir.path().join("receipts.db"))?,
+    );
+    let revocation_store: Arc<dyn chio_kernel::RevocationStore> = Arc::new(
+        chio_store_sqlite::SqliteRevocationStore::open(dir.path().join("revocations.db"))?,
+    );
+    let authority = HttpAuthority::builder()
+        .receipt_store(receipt_store)
+        .revocation_store(revocation_store)
+        .build(Keypair::generate(), "policy-hash".to_string())?;
+
+    let query = HashMap::new();
+    let result = authority.evaluate(safe_get_input(&query)).test_unwrap();
+    assert!(
+        result.verdict.is_allowed(),
+        "a durable-backed authority must not deny an allowed request on persistence grounds"
+    );
+    Ok(())
 }
 
 #[test]
@@ -340,6 +437,82 @@ fn valid_capability_allows_deny_by_default() {
 }
 
 #[test]
+fn approval_store_constructor_fails_closed_without_durable_stores() {
+    // Passing a caller-provided approval store must not silently opt the embedded
+    // kernel out of durable persistence: with no receipt or revocation store
+    // attached, a mediated side effect fails closed instead of running on
+    // in-memory audit state. The same request is allowed only when ephemerality
+    // is opted into explicitly.
+    let query = HashMap::new();
+    let issuer = Keypair::generate();
+    let capability = signed_capability_token_json(&issuer, "cap-durable-gate");
+
+    let fail_closed = HttpAuthority::new_with_approval_store_and_trusted_issuers(
+        issuer.clone(),
+        "policy-hash".to_string(),
+        Arc::new(InMemoryApprovalStore::new()),
+        Vec::new(),
+    );
+    let error = fail_closed
+        .evaluate(HttpAuthorityInput {
+            request_id: "req-fail-closed".to_string(),
+            method: HttpMethod::Patch,
+            route_pattern: "/pets/{petId}".to_string(),
+            path: "/pets/42",
+            query: &query,
+            caller: caller(),
+            body_hash: Some("def".to_string()),
+            body_length: 3,
+            session_id: Some("session-1".to_string()),
+            capability_id_hint: None,
+            presented_capability: Some(&capability),
+            requested_tool_server: None,
+            requested_tool_name: None,
+            requested_arguments: None,
+            model_metadata: None,
+            execution_nonce: None,
+            policy: HttpAuthorityPolicy::DenyByDefault,
+        })
+        .test_unwrap_err();
+    assert!(
+        error.to_string().contains("durable receipt persistence"),
+        "fail-closed constructor must refuse a side effect for missing durable persistence, got {error}"
+    );
+
+    let ephemeral = HttpAuthority::new_ephemeral_with_approval_store_and_trusted_issuers(
+        issuer.clone(),
+        "policy-hash".to_string(),
+        Arc::new(InMemoryApprovalStore::new()),
+        Vec::new(),
+    );
+    let allowed = ephemeral
+        .evaluate(HttpAuthorityInput {
+            request_id: "req-ephemeral".to_string(),
+            method: HttpMethod::Patch,
+            route_pattern: "/pets/{petId}".to_string(),
+            path: "/pets/42",
+            query: &query,
+            caller: caller(),
+            body_hash: Some("def".to_string()),
+            body_length: 3,
+            session_id: Some("session-1".to_string()),
+            capability_id_hint: None,
+            presented_capability: Some(&capability),
+            requested_tool_server: None,
+            requested_tool_name: None,
+            requested_arguments: None,
+            model_metadata: None,
+            execution_nonce: None,
+            policy: HttpAuthorityPolicy::DenyByDefault,
+        })
+        .test_unwrap();
+    assert!(
+        allowed.verdict.is_allowed(),
+        "explicit ephemeral constructor still allows the same request"
+    );
+}
+
+#[test]
 fn direct_v2_capability_denies_without_http_trust_root_resolver() {
     let query = HashMap::new();
     let (authority, issuer) = authority_with_issuer();
@@ -473,6 +646,67 @@ fn configured_external_issuer_allows_deny_by_default() {
         result.receipt.capability_id.as_deref(),
         Some("cap-external")
     );
+}
+
+#[test]
+fn revoked_presented_capability_denies_deny_by_default() -> Result<(), Box<dyn std::error::Error>> {
+    let dir = tempfile::tempdir()?;
+    let receipt_store: Arc<dyn chio_kernel::ReceiptStore> = Arc::new(
+        chio_store_sqlite::SqliteReceiptStore::open(dir.path().join("receipts.db"))?,
+    );
+    let revocation_store: Arc<dyn chio_kernel::RevocationStore> = Arc::new(
+        chio_store_sqlite::SqliteRevocationStore::open(dir.path().join("revocations.db"))?,
+    );
+    // The caller presents a validly-signed capability whose id has since been
+    // revoked in the durable store.
+    revocation_store.revoke("cap-revoked")?;
+
+    let external_issuer = Keypair::generate();
+    let authority = HttpAuthority::builder()
+        .receipt_store(receipt_store)
+        .revocation_store(revocation_store)
+        .trusted_capability_issuers(vec![external_issuer.public_key()])
+        .build(Keypair::generate(), "policy-hash".to_string())?;
+
+    let capability = signed_capability_token_json(&external_issuer, "cap-revoked");
+    let query = HashMap::new();
+    let result = authority
+        .evaluate(HttpAuthorityInput {
+            request_id: "req-revoked".to_string(),
+            method: HttpMethod::Post,
+            route_pattern: "/pets".to_string(),
+            path: "/pets",
+            query: &query,
+            caller: caller(),
+            body_hash: Some("revoked".to_string()),
+            body_length: 7,
+            session_id: None,
+            capability_id_hint: None,
+            presented_capability: Some(&capability),
+            requested_tool_server: None,
+            requested_tool_name: None,
+            requested_arguments: None,
+            model_metadata: None,
+            execution_nonce: None,
+            policy: HttpAuthorityPolicy::DenyByDefault,
+        })
+        .test_unwrap();
+
+    assert!(
+        result.verdict.is_denied(),
+        "a revoked presented capability must be denied"
+    );
+    assert!(result.receipt.capability_id.is_none());
+    assert!(
+        result.receipt.evidence[0]
+            .details
+            .as_deref()
+            .is_some_and(|details| details.contains("revoked")),
+        "evidence should record the revocation, got {:?}",
+        result.receipt.evidence
+    );
+
+    Ok(())
 }
 
 #[test]

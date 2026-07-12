@@ -9,6 +9,11 @@ pub enum ChioTowerError {
     Evaluation(String),
     /// Failed to sign a receipt.
     ReceiptSign(String),
+    /// Failed to persist a signed receipt to the configured durable receipt
+    /// store. A durable store is attached but its append (or the conversion of
+    /// the HTTP receipt into a core receipt) failed, so the request fails closed
+    /// rather than completing without a recorded audit trail.
+    ReceiptPersist(String),
     /// Failed to extract caller identity.
     IdentityExtraction(String),
     /// Inner service error.
@@ -20,6 +25,7 @@ impl fmt::Display for ChioTowerError {
         match self {
             Self::Evaluation(msg) => write!(f, "Chio evaluation error: {msg}"),
             Self::ReceiptSign(msg) => write!(f, "Chio receipt signing error: {msg}"),
+            Self::ReceiptPersist(msg) => write!(f, "Chio receipt persistence error: {msg}"),
             Self::IdentityExtraction(msg) => write!(f, "Chio identity extraction error: {msg}"),
             Self::Inner(err) => write!(f, "inner service error: {err}"),
         }
