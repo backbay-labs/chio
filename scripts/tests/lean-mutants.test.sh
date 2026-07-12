@@ -63,6 +63,9 @@ if comparison_tokens != [">", "≤"]:
     raise SystemExit(f"Lean comparison mutator missed real operators: {comparison_tokens}")
 
 repo = Path.cwd().resolve()
+input_paths = module.lean_input_paths(repo)
+if any(".lake" in path.parts for path in input_paths):
+    raise SystemExit("Lean evidence inputs included the materialized .lake cache")
 drift_root = repo / "target/formal/lean-mutants-drift-selftest"
 drift_root.mkdir(parents=True)
 

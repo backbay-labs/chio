@@ -158,6 +158,7 @@ def lean_input_paths(root: Path) -> list[Path]:
         raise LeanMutationError("Lean project root is not a regular repository directory")
     for directory, directories, filenames in os.walk(project_root, followlinks=False):
         directory_path = Path(directory)
+        directories[:] = [name for name in directories if name != ".lake"]
         for name in directories:
             candidate = directory_path / name
             if candidate.is_symlink():
