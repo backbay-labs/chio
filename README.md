@@ -6,7 +6,6 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue?style=flat-square" alt="License: Apache-2.0"></a>
   <img src="https://img.shields.io/badge/MSRV-1.93-orange?style=flat-square&logo=rust" alt="MSRV: 1.93">
   <a href="spec/PROTOCOL.md"><img src="https://img.shields.io/badge/protocol-v1-5b4bdb?style=flat-square" alt="Protocol v1"></a>
-  <a href="CHANGELOG.md"><img src="https://img.shields.io/badge/status-0.1.0%20pre--release-yellow?style=flat-square" alt="Status: 0.1.0 pre-release"></a>
   <a href="docs/README.md"><img src="https://img.shields.io/badge/docs-read-blue?style=flat-square" alt="Docs"></a>
 </p>
 
