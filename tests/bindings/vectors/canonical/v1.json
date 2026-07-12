@@ -31,6 +31,12 @@
       "input_json": "{\"text\":\"line\\n\\\"quoted\\\"\\\\path\"}"
     },
     {
+      "canonical_json": "\"\\u007f\"",
+      "description": "The production control-character category escapes U+007F using lowercase hexadecimal.",
+      "id": "u007f_escape",
+      "input_json": "\"\\u007f\""
+    },
+    {
       "canonical_json": "{}",
       "description": "An empty object renders to the two-character literal {}.",
       "id": "empty_object",

@@ -5,6 +5,9 @@ cd "$(dirname "$0")/.."
 
 formal_root="formal/lean4/Chio"
 
+echo "==> Canonical JSON Lean fixture drift"
+python3 scripts/generate-lean-json-fixtures.py --check
+
 if ! command -v lake >/dev/null 2>&1; then
   echo "formal proof check requires lake on PATH (install Lean 4 / elan first)" >&2
   exit 1
@@ -177,20 +180,42 @@ approved_open_modules = set(manifest.get("allowed_open_modules", []))
 if sorted(assumption.get("leanName") for assumption in assumptions) != sorted(approved_axioms):
     raise SystemExit("approved axiom list does not match theorem inventory assumptions")
 
+axiom_declaration = re.compile(
+    r"^\s*(?:@\[[^]]*\]\s*)*"
+    r"(?:(?:private|protected|noncomputable|unsafe|partial)\s+)*"
+    r"(?:axiom|opaque|constant)\s+([A-Za-z0-9_']+)\b"
+)
+
+for declaration in (
+    "axiom plain : Prop",
+    "private axiom hidden : Prop",
+    "@[irreducible] protected opaque sealed : Nat",
+    "noncomputable constant oracle : Nat",
+):
+    if axiom_declaration.match(declaration) is None:
+        raise SystemExit(f"Lean assumption scanner missed declaration: {declaration}")
+
 def lean_axioms_in_file(lean_file):
     namespace_stack = []
+    mutual_depth = 0
     axioms = []
     text = lean_file.read_text(encoding="utf-8")
     for line in text.splitlines():
+        if line.strip() == "mutual":
+            mutual_depth += 1
+            continue
         namespace_match = re.match(r"^\s*namespace\s+([A-Za-z0-9_.']+)\b", line)
         if namespace_match:
             namespace_stack.append(namespace_match.group(1))
             continue
         end_match = re.match(r"^\s*end(?:\s+([A-Za-z0-9_.']+))?\s*$", line)
-        if end_match and namespace_stack:
-            namespace_stack.pop()
+        if end_match:
+            if mutual_depth:
+                mutual_depth -= 1
+            elif namespace_stack:
+                namespace_stack.pop()
             continue
-        axiom_match = re.match(r"^\s*axiom\s+([A-Za-z0-9_']+)\b", line)
+        axiom_match = axiom_declaration.match(line)
         if axiom_match:
             prefix = ".".join(namespace_stack)
             short_name = axiom_match.group(1)
@@ -200,17 +225,24 @@ def lean_axioms_in_file(lean_file):
 
 def lean_surface_controls_in_file(lean_file):
     namespace_stack = []
+    mutual_depth = 0
     opens = []
     exports = []
     abbrevs = []
     for line_number, line in enumerate(lean_file.read_text(encoding="utf-8").splitlines(), 1):
+        if line.strip() == "mutual":
+            mutual_depth += 1
+            continue
         namespace_match = re.match(r"^\s*namespace\s+([A-Za-z0-9_.']+)\b", line)
         if namespace_match:
             namespace_stack.append(namespace_match.group(1))
             continue
         end_match = re.match(r"^\s*end(?:\s+([A-Za-z0-9_.']+))?\s*$", line)
-        if end_match and namespace_stack:
-            namespace_stack.pop()
+        if end_match:
+            if mutual_depth:
+                mutual_depth -= 1
+            elif namespace_stack:
+                namespace_stack.pop()
             continue
         open_match = re.match(r"^\s*open\s+(.+)$", line)
         if open_match:
@@ -231,15 +263,22 @@ def lean_surface_controls_in_file(lean_file):
 
 def lean_named_declarations_in_file(lean_file):
     namespace_stack = []
+    mutual_depth = 0
     declarations = set()
     for line in lean_file.read_text(encoding="utf-8").splitlines():
+        if line.strip() == "mutual":
+            mutual_depth += 1
+            continue
         namespace_match = re.match(r"^\s*namespace\s+([A-Za-z0-9_.']+)\b", line)
         if namespace_match:
             namespace_stack.append(namespace_match.group(1))
             continue
         end_match = re.match(r"^\s*end(?:\s+([A-Za-z0-9_.']+))?\s*$", line)
-        if end_match and namespace_stack:
-            namespace_stack.pop()
+        if end_match:
+            if mutual_depth:
+                mutual_depth -= 1
+            elif namespace_stack:
+                namespace_stack.pop()
             continue
         declaration_match = re.match(
             r"^\s*(?:theorem|lemma)\s+([A-Za-z0-9_.']+)\b",
@@ -381,7 +420,10 @@ unexpected_axioms = sorted(
     if name not in approved_axiom_names
 )
 if unexpected_axioms:
-    raise SystemExit(f"unexpected Lean axioms found: {', '.join(unexpected_axioms)}")
+    raise SystemExit(
+        "unexpected Lean axiom, opaque, or constant declarations found: "
+        f"{', '.join(unexpected_axioms)}"
+    )
 
 unexpected_open_modules = sorted(
     f"{module} ({file}:{line})"

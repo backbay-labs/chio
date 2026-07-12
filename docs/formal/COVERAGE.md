@@ -16,11 +16,12 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 | `chio-attest-verify::*` | - | - | - | 4 | - | - | 1 | 2 | - | - |
 | `chio-config::*` | - | - | - | - | - | - | 1 | - | - | - |
 | `chio-core-types::*` | - | - | - | - | - | - | 1 | - | - | - |
-| `chio-core-types::canonical.rs` | - | - | - | - | - | - | 1 | - | - | - |
+| `chio-core-types::canonical.rs` | 4 | - | - | - | - | - | 1 | - | - | - |
 | `chio-core-types::capability/mod.rs` | 3 | - | - | 1 | - | - | - | - | - | - |
 | `chio-core-types::delegation_receipt.rs` | - | - | - | 1 | - | - | - | - | - | - |
 | `chio-core-types::merkle.rs` | - | - | - | 1 | - | - | - | - | - | - |
 | `chio-core-types::merkle_steps.rs` | - | - | - | 1 | - | - | - | - | - | - |
+| `chio-core-types::receipt/mod.rs` | 2 | - | - | - | - | - | - | - | - | - |
 | `chio-credentials::*` | - | - | - | - | - | - | 2 | 1 | - | - |
 | `chio-data-guards::*` | - | - | - | - | - | - | 1 | - | - | - |
 | `chio-did::*` | - | - | - | - | - | - | 1 | - | - | - |
@@ -119,6 +120,13 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 
 ### `chio-core-types::canonical.rs`
 
+**lean**
+
+- `formal/MAPPING.md::Lean canonical JSON theorems/canonical_inj`
+- `formal/MAPPING.md::Lean canonical JSON theorems/escape_string_inj`
+- `formal/MAPPING.md::Lean canonical JSON theorems/render_int_inj`
+- `formal/MAPPING.md::Lean canonical JSON theorems/sorted_assoc_ext`
+
 **fuzz**
 
 - `fuzz/target-map.toml::canonical_json`
@@ -152,6 +160,13 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 **kani**
 
 - `.kani/harnesses.toml::chio-kernel-core/verify_inclusion_step_equivalence` (execution_lane=pr)
+
+### `chio-core-types::receipt/mod.rs`
+
+**lean**
+
+- `formal/MAPPING.md::Lean canonical JSON theorems/receipt_id_collision_resistant`
+- `formal/MAPPING.md::Lean canonical JSON theorems/receipt_id_input_collision_resistant`
 
 ### `chio-credentials::*`
 
@@ -563,6 +578,7 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 - `formal/rust-verification/creusot-contracts.toml::goal-5:receipt signing refuses kernel-key mismatch before invoking the signing backend` (`creusot`): registry does not link this goal to one covered symbol
 - `formal/rust-verification/creusot-contracts.toml::goal-6:proof-facing Creusot wrappers verify single-sourced bodies included from formal_aeneas.rs` (`creusot`): registry does not link this goal to one covered symbol
 - `formal/rust-verification/creusot-contracts.toml::goal-7:reservation ledger transitions preserve amount totals, reject invalid updates unchanged, and make finalized states absorbing` (`creusot`): registry does not link this goal to one covered symbol
+- `formal/theorem-inventory.json::assume.hash.collision_resistant` (`lean`) (claim_class=symbolic_crypto, kind=axiom, status=assumed): formal/lean4/Chio/Chio/Json/Hash.lean has property links but no machine-readable Rust surface link Properties: P4, P7.
 - `formal/theorem-inventory.json::core.scope.empty_isSubsetOf` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Core/Scope.lean has property links but no machine-readable Rust surface link Properties: P1.
 - `formal/theorem-inventory.json::core.tool_grant.isSubsetOf_refl` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Core/Scope.lean has property links but no machine-readable Rust surface link Properties: P1.
 - `formal/theorem-inventory.json::proof.added_constraint_is_subset` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Monotonicity.lean has property links but no machine-readable Rust surface link Properties: P1.
@@ -585,6 +601,7 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 - `formal/theorem-inventory.json::proof.budgetCommit_none_when_precheck_fails` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Protocol.lean has property links but no machine-readable Rust surface link Properties: P3.
 - `formal/theorem-inventory.json::proof.budgetPrecheck_commit_preserves_bounds` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Protocol.lean has property links but no machine-readable Rust surface link Properties: P3.
 - `formal/theorem-inventory.json::proof.budgetTwoCommit_preserves_bounds` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Protocol.lean has property links but no machine-readable Rust surface link Properties: P3.
+- `formal/theorem-inventory.json::proof.canonical_inj` (`lean`) (claim_class=bounded_model, kind=theorem, status=proved): formal/lean4/Chio/Chio/Proofs/CanonicalInjective.lean has property links but no machine-readable Rust surface link Properties: P4, P7.
 - `formal/theorem-inventory.json::proof.capability_lineage_consistency_sound` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Protocol.lean has property links but no machine-readable Rust surface link Properties: P9.
 - `formal/theorem-inventory.json::proof.checkRevocation_ok_implies_not_revoked` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Revocation.lean has property links but no machine-readable Rust surface link Properties: P2.
 - `formal/theorem-inventory.json::proof.checkRevocation_revoked_ancestor_never_ok` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Revocation.lean has property links but no machine-readable Rust surface link Properties: P2.
@@ -602,6 +619,7 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 - `formal/theorem-inventory.json::proof.dpop_required_invalid_proof_rejects` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Protocol.lean has property links but no machine-readable Rust surface link Properties: P3, P8.
 - `formal/theorem-inventory.json::proof.dpop_required_missing_proof_rejects` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Protocol.lean has property links but no machine-readable Rust surface link Properties: P3, P8.
 - `formal/theorem-inventory.json::proof.dpop_reused_nonce_rejects` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Protocol.lean has property links but no machine-readable Rust surface link Properties: P8.
+- `formal/theorem-inventory.json::proof.escape_string_inj` (`lean`) (claim_class=bounded_model, kind=theorem, status=proved): formal/lean4/Chio/Chio/Proofs/CanonicalInjective.lean has property links but no machine-readable Rust surface link Properties: P4, P7.
 - `formal/theorem-inventory.json::proof.essential_preserved_chain` (`lean`) (claim_class=bounded_model, kind=theorem, status=proved): formal/lean4/Chio/Chio/Treaty/PredicateLang.lean has property links but no machine-readable Rust surface link Properties: P3.
 - `formal/theorem-inventory.json::proof.evalToolCall_all_checks_pass_allow` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Evaluation.lean has property links but no machine-readable Rust surface link Properties: P3.
 - `formal/theorem-inventory.json::proof.evalToolCall_expired_denies` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Evaluation.lean has property links but no machine-readable Rust surface link Properties: P3.
@@ -649,12 +667,15 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 - `formal/theorem-inventory.json::proof.path_prefix_rejects_normalized_traversal_escape` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/FormalClosure.lean has property links but no machine-readable Rust surface link Properties: P3.
 - `formal/theorem-inventory.json::proof.path_prefix_rejects_sibling_prefix` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/FormalClosure.lean has property links but no machine-readable Rust surface link Properties: P3.
 - `formal/theorem-inventory.json::proof.receiptFieldsCoupled_preserves_all_fields` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Protocol.lean has property links but no machine-readable Rust surface link Properties: P4.
+- `formal/theorem-inventory.json::proof.receipt_id_collision_resistant` (`lean`) (claim_class=symbolic_crypto, kind=theorem, status=proved): formal/lean4/Chio/Chio/Proofs/Receipt.lean has property links but no machine-readable Rust surface link Properties: P4, P7.
+- `formal/theorem-inventory.json::proof.receipt_id_input_collision_resistant` (`lean`) (claim_class=symbolic_crypto, kind=theorem, status=proved): formal/lean4/Chio/Chio/Proofs/Receipt.lean has property links but no machine-readable Rust surface link Properties: P4, P7.
 - `formal/theorem-inventory.json::proof.receipt_immutability` (`lean`) (claim_class=symbolic_crypto, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Receipt.lean has property links but no machine-readable Rust surface link Properties: P4.
 - `formal/theorem-inventory.json::proof.receipt_sign_then_verify` (`lean`) (claim_class=symbolic_crypto, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Receipt.lean has property links but no machine-readable Rust surface link Properties: P4.
 - `formal/theorem-inventory.json::proof.reduced_budget_is_subset` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Monotonicity.lean has property links but no machine-readable Rust surface link Properties: P1.
 - `formal/theorem-inventory.json::proof.registry_publish_requires_valid_signature` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Protocol.lean has property links but no machine-readable Rust surface link Properties: P10.
 - `formal/theorem-inventory.json::proof.registry_resolve_published_valid_record` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Protocol.lean has property links but no machine-readable Rust surface link Properties: P10.
 - `formal/theorem-inventory.json::proof.registry_revoke_deactivates_published_record` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Protocol.lean has property links but no machine-readable Rust surface link Properties: P10.
+- `formal/theorem-inventory.json::proof.render_int_inj` (`lean`) (claim_class=bounded_model, kind=theorem, status=proved): formal/lean4/Chio/Chio/Proofs/CanonicalInjective.lean has property links but no machine-readable Rust surface link Properties: P4, P7.
 - `formal/theorem-inventory.json::proof.report_truthfulness_asserted_not_verified` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Protocol.lean has property links but no machine-readable Rust surface link Properties: P10.
 - `formal/theorem-inventory.json::proof.report_truthfulness_observed_not_verified` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Protocol.lean has property links but no machine-readable Rust surface link Properties: P10.
 - `formal/theorem-inventory.json::proof.revocationSnapshot_revoked_ancestor_denies` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Protocol.lean has property links but no machine-readable Rust surface link Properties: P2, P3.
@@ -663,6 +684,7 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 - `formal/theorem-inventory.json::proof.revoke_preserves_existing_revocation` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Revocation.lean has property links but no machine-readable Rust surface link Properties: P2.
 - `formal/theorem-inventory.json::proof.scope_subset_of_grants_subset` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Monotonicity.lean has property links but no machine-readable Rust surface link Properties: P1.
 - `formal/theorem-inventory.json::proof.session_continuity_sound` (`lean`) (claim_class=bounded_model, kind=theorem, status=unknown): formal/lean4/Chio/Chio/Proofs/Protocol.lean has property links but no machine-readable Rust surface link Properties: P8.
+- `formal/theorem-inventory.json::proof.sorted_assoc_ext` (`lean`) (claim_class=bounded_model, kind=theorem, status=proved): formal/lean4/Chio/Chio/Proofs/CanonicalInjective.lean has property links but no machine-readable Rust surface link Properties: P4, P7.
 - `formal/theorem-inventory.json::proof.stepFoldLoop_eq_directedProofLoop_map` (`lean`) (claim_class=bounded_model, kind=theorem, status=proved): formal/lean4/Chio/Chio/Proofs/MerkleWalk.lean has property links but no machine-readable Rust surface link Properties: P4, P7.
 - `formal/theorem-inventory.json::proof.stepFold_eq_applyProof` (`lean`) (claim_class=bounded_model, kind=theorem, status=proved): formal/lean4/Chio/Chio/Proofs/MerkleWalk.lean has property links but no machine-readable Rust surface link Properties: P4, P7.
 - `formal/theorem-inventory.json::proof.stepFold_eq_directedProof_map` (`lean`) (claim_class=bounded_model, kind=theorem, status=proved): formal/lean4/Chio/Chio/Proofs/MerkleWalk.lean has property links but no machine-readable Rust surface link Properties: P4, P7.
@@ -679,7 +701,6 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 - `formal/theorem-inventory.json::theorem.budget.reservation_terminal_unique` (`lean`) (claim_class=bounded_model, kind=theorem, status=proved): formal/lean4/Chio/Chio/Proofs/ReservationLedger.lean has property links but no machine-readable Rust surface link Properties: P1.
 - `formal/theorem-inventory.json::theorem.budget.sibling_sum_soundness` (`lean`) (claim_class=bounded_model, kind=theorem, status=proved): formal/lean4/Chio/Chio/Proofs/SiblingSumBudget.lean has property links but no machine-readable Rust surface link Properties: P1.
 - `formal/theorem-inventory.json::theorem.handshake.negotiation_safety` (`lean`) (claim_class=bounded_model, kind=theorem, status=proved): formal/lean4/Chio/Chio/Proofs/HandshakeNegotiation.lean has property links but no machine-readable Rust surface link Properties: P3.
-- `formal/theorem-inventory.json::theorem.receipt.id_input_set_pinned` (`lean`) (claim_class=symbolic_crypto, kind=axiom, status=assumed): formal/lean4/Chio/Chio/Proofs/Receipt.lean has property links but no machine-readable Rust surface link Properties: P4.
 - `formal/theorem-inventory.json::treaty.bridge.constitution_domain_completeness` (`lean`) (claim_class=bounded_model, kind=theorem, status=proved): formal/lean4/Chio/Chio/Treaty/PredicateLang.lean has property links but no machine-readable Rust surface link Properties: P3.
 - `formal/theorem-inventory.json::treaty.bridge.decidable_soundness` (`lean`) (claim_class=bounded_model, kind=theorem, status=proved): formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean has property links but no machine-readable Rust surface link Properties: P3.
 - `formal/theorem-inventory.json::treaty.bridge.equivalence_admits` (`lean`) (claim_class=bounded_model, kind=theorem, status=proved): formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean has property links but no machine-readable Rust surface link Properties: P3.
@@ -717,7 +738,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `formal/proof-manifest.toml::mirror::crates/core/chio-core-types/src/capability/token.rs->formal/lean4/Chio/Chio/Core/Capability.lean` (`manual_mirror`, `transliteration`): `crates/core/chio-core-types/src/capability/token.rs` -> `formal/lean4/Chio/Chio/Core/Capability.lean` (model_kind=lean, normalized_sha256=20a8b198b713519f18f9b8b306f601110651714d72f5b7a8908e5e283aee2f55, rust_symbols=CapabilityToken,CapabilityToken::is_valid_at,CapabilityToken::is_expired_at)
 - `formal/proof-manifest.toml::mirror::crates/core/chio-core-types/src/merkle.rs->formal/lean4/Chio/Chio/Core/Receipt.lean` (`manual_mirror`, `transliteration`): `crates/core/chio-core-types/src/merkle.rs` -> `formal/lean4/Chio/Chio/Core/Receipt.lean` (model_kind=lean, normalized_sha256=e6b3e89a5516c905c3407f78531d0dea49049c1560919d8b2322acf2fa9ce5c2, rust_symbols=leaf_hash,node_hash,MerkleTree,MerkleTree::from_leaves,MerkleTree::root,MerkleTree::inclusion_proof,MerkleProof,MerkleProof::compute_root,MerkleProof::compute_root_from_hash,MerkleProof::verify)
 - `formal/proof-manifest.toml::mirror::crates/core/chio-core-types/src/merkle_steps.rs->formal/lean4/Chio/Chio/Core/MerkleWalk.lean` (`manual_mirror`, `transliteration`): `crates/core/chio-core-types/src/merkle_steps.rs` -> `formal/lean4/Chio/Chio/Core/MerkleWalk.lean` (model_kind=lean, normalized_sha256=056c4638fec152fa7eb4af55b18362ff3e45e67055f640d1989eb44950db49c1, rust_symbols=InclusionStep,inclusion_step)
-- `formal/proof-manifest.toml::mirror::crates/core/chio-core-types/src/receipt/body.rs->formal/lean4/Chio/Chio/Core/Receipt.lean` (`manual_mirror`, `transliteration`): `crates/core/chio-core-types/src/receipt/body.rs` -> `formal/lean4/Chio/Chio/Core/Receipt.lean` (model_kind=lean, normalized_sha256=85d4012dda69d54abf2d81de780de87ad7fad09f1fb24976d6f543af000c6711, rust_symbols=ChioReceiptBody,ChioReceipt,ChioReceipt::verify_signature)
+- `formal/proof-manifest.toml::mirror::crates/core/chio-core-types/src/receipt/body.rs->formal/lean4/Chio/Chio/Core/Receipt.lean` (`manual_mirror`, `transliteration`): `crates/core/chio-core-types/src/receipt/body.rs` -> `formal/lean4/Chio/Chio/Core/Receipt.lean` (model_kind=lean, normalized_sha256=2870754ee499f222d5286cfd97731ffd31707af1fa55b99526e6a003de9c0dbd, rust_symbols=ChioReceiptBody,ChioReceiptIdInput,chio_receipt_id,ChioReceipt,ChioReceipt::verify_signature)
 - `formal/proof-manifest.toml::mirror::crates/kernel/chio-kernel-core/src/evaluate.rs->formal/lean4/Chio/Chio/Core/Protocol.lean` (`manual_mirror`, `transliteration`): `crates/kernel/chio-kernel-core/src/evaluate.rs` -> `formal/lean4/Chio/Chio/Core/Protocol.lean` (model_kind=lean, normalized_sha256=d7694e9d974054637b0873022c1df5b5fce91d07f71ddc14ee5543e9e77bae22, rust_symbols=finish_verified_evaluation)
 - `formal/proof-manifest.toml::mirror::crates/kernel/chio-kernel-core/src/evaluate.rs->formal/lean4/Chio/Chio/Core/Revocation.lean` (`manual_mirror`, `transliteration`): `crates/kernel/chio-kernel-core/src/evaluate.rs` -> `formal/lean4/Chio/Chio/Core/Revocation.lean` (model_kind=lean, normalized_sha256=91ed2a71889559334eb12ddddf7fbee2c4e14d5404298141ec701f068ae5baf9, rust_symbols=evaluate)
 - `formal/proof-manifest.toml::mirror::crates/kernel/chio-kernel-core/src/formal_aeneas.rs->formal/lean4/Chio/Chio/Core/MerkleWalk.lean` (`manual_mirror`, `transliteration`): `crates/kernel/chio-kernel-core/src/formal_aeneas.rs` -> `formal/lean4/Chio/Chio/Core/MerkleWalk.lean` (model_kind=lean, normalized_sha256=1d6e3d557bd434794b80eddf86ef281695aaa7ef2efe6c5ad6bf16d7c8d84b96, rust_symbols=InclusionStep,inclusion_step)
@@ -786,6 +807,8 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - Cross-row receipt and budget crash recovery, ordering, and conservation until implementation trace validation and crash-reopen gates establish refinement
 - Runtime trace callbacks omitted, reordered, or rewritten before delivery to the installed synchronous observer and calibration-free recorder deployment, as recorded by ASSUME-TRACE-OBSERVER
 - Treaty PredicateLang parsing, canonical hashing, signature verification, store lookup, and completeness outside its explicit AdmissionView decision domain
+- float-valued JSON leaves in action, metadata, or other compound ChioReceiptIdInput fields are outside the mechanized canonical JSON domain; their production rendering remains covered by frozen vectors and ASSUME-CANONICAL-JSON
+- refinement from the mechanized canonical semantic projection to crates/core/chio-core-types/src/canonical.rs beyond the checked integer-domain fixtures and differential tests
 
 ## Lane Postures
 
@@ -809,7 +832,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 
 - Generator version: `3`
 - Regenerate: `cargo xtask gen proof-coverage`
-- Input digest: `ab168d9c4edd813b5e55fad3a3bf188ce0bdf94b8d7d72dc96416c8384768e22`
+- Input digest: `bc275cd6bed6ed75b56f3ed1baea88ae1cc84f7525f705d80cbb103c2324432b`
 - Git commit: `@GIT_COMMIT@` (resolved in coverage.json and Proof Room packages)
 - Row identity: file rows use package-relative Rust paths; crate-only artifacts use `package::*`.
 
@@ -834,7 +857,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `crates/core/chio-core-types/Cargo.toml`: `a0e83083639abad81e44e57e5c12bc57de6c88ac173ce1af89ee3deee0e36402`
 - `crates/core/chio-core-types/src/_generated/chio_wire_v1.rs`: `fb741c322ed553457a21b9bc30bd5dab60ed42479cacf117847b0e3dab66a3a5`
 - `crates/core/chio-core-types/src/_generated/mod.rs`: `6a8f664ceb143338fff9e0dec10f70fc8c3962d8a0d1d33d7103b971446c19d1`
-- `crates/core/chio-core-types/src/canonical.rs`: `7c12e2d2b1b8c5922a8dd946d2d889f1d81a360c7b5b21c996758d67edf11a00`
+- `crates/core/chio-core-types/src/canonical.rs`: `9b5f1786880080495e471e38004c87b6ad929edbc1864bc3c9ba6e25481553bb`
 - `crates/core/chio-core-types/src/capability/attenuation.rs`: `65355556de6428e23cb81c8885f8605bfa23c84a55d96e561404395ce2173933`
 - `crates/core/chio-core-types/src/capability/caveat.rs`: `f1417d4110fc9e371e5389139a3a5e8f0f8dee1f829415269035abba347d0591`
 - `crates/core/chio-core-types/src/capability/caveat_and_delegation_guard_tests.rs`: `01b5ef095685c9804f057495a248fd10ebf73e770795516d5e35601c75e869c4`
@@ -930,7 +953,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `crates/trust/chio-revocation-oracle/src/api.rs`: `b1bfcf2fa979f132693ef895f40512b53a5797b8ca2dbe609c3524eac58d0375`
 - `crates/trust/chio-revocation-oracle/src/freshness.rs`: `d699d5c59f1c5a660d9c06f294bb2ac1ee2c0fcd00cd9eebbe043df74ba733b8`
 - `docs/fuzzing/trust-boundary-mutants-baseline.toml`: `7331fb69499474ca22b14b6fb5a6f9a966eae2e2a26d3433d9030a4c985efee9`
-- `formal/MAPPING.md`: `108f353e620296bf0459f208b4c4a5decbfeab194120abc5522a741df269dbb8`
+- `formal/MAPPING.md`: `49674851460a4ee6d90a65de300f6042a6ca77c7de063d402efdfb2698b8ec7b`
 - `formal/aeneas/pilot.toml`: `86627b363717b47ced94caeb826185d400cf70fe357a55fe34d02ea70670956c`
 - `formal/aeneas/production.toml`: `bf12eb05f9cab8917087b7d8d460e833fef93b44f7bbeb8a0ba715a67d5ebca9`
 - `formal/aeneas/verified_core.rs`: `44ef85fbe6c537e8c65a483a67c167f502ca1a108a25293414b27ab2a85046b8`
@@ -968,7 +991,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `formal/apalache/_negative_tests/ReceiptBeforeAllowBroken.tla`: `ac2c1f05d18a87260f718406b37316dab32b8780176f9c498db0b9089c14c32c`
 - `formal/apalache/_negative_tests/RevocationCutCompletenessBroken.tla`: `c44beb693e3e91cf16978ebcdfeb5ae6e4114cc1bc03400934ed0a567198e67c`
 - `formal/apalache/spec-mutants-allowlist.toml`: `9cf0565d72b0918c0d2d88ec9935645d13236e0ac10ec2ffae4df5e229b6bbcc`
-- `formal/assumptions.toml`: `96d162e2a69c72ebc00e517548b9537db2a0b6257a70a0dc796f4fadcc8516b9`
+- `formal/assumptions.toml`: `9157a81e3130f2b5dc006d30d7a4fd73f8f805bd7d7968f6a898fcf176ebe852`
 - `formal/diff-tests/tests/anchored_root.rs`: `2a124cb1b9ff64a6be9fdb6ea2cd9b7a65b14c92af48c2a814f7909120979031`
 - `formal/diff-tests/tests/anchored_root_tamper.rs`: `0ca70da5f3b57c4c4f92871c4614c4de7987e9d8186ce9e7d55213341a57c7c5`
 - `formal/diff-tests/tests/browser_canonical_json_diff.rs`: `f7dc5b5cd3e0f74bd1e3e449c0e7c447e3c9b0bdcf0ea5f747c0e2eb332569b0`
@@ -977,13 +1000,15 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `formal/diff-tests/tests/regression_formal_receipt_before_allow_c01406cfbbeb.rs`: `50ee14b6a785532e22e6cd9c4f8b41078556a4c75e18e7dfeea46597a1399deb`
 - `formal/diff-tests/tests/scope_diff.rs`: `c21aaa2cb891fd1fc19482ec6f8dc9c81930b5890af74f86c6fb5dd3104489ab`
 - `formal/lean4/Chio/Chio/Capability/Delegation.lean`: `a6a44ca25cb3fec5385b6a2d6703d933236453d8d5b9b336061a42f675d2cfa6`
+- `formal/lean4/Chio/Chio/Proofs/CanonicalInjective.lean`: `a75b5101c8c2c7b62d90ea6909558aca59b1e0a8a5960237825f17e527e71d04`
+- `formal/lean4/Chio/Chio/Proofs/Receipt.lean`: `9c99eff785748b03d1086ed3c8c6e802ca1f0dd538332204b666af16f4987dd5`
 - `formal/mutation/registry.toml`: `0bb747ad45b19c6fd163c3a0ffab4ffc473df96c1f93b123d014915a39212844`
-- `formal/proof-manifest.toml`: `641ea86315e04e747044f97d0ba950d69706d4e793f8ad87f19d3a4dddfbd434`
+- `formal/proof-manifest.toml`: `f09750843726175415cf29f04e5f8133ea0651219a5b442a353c8f544b341af9`
 - `formal/rust-verification/creusot-contracts.toml`: `83000c98743013d3d6d468976a163edaf16d0d621070410d741f146bf61a28a5`
 - `formal/rust-verification/formal-mutants.toml`: `5f15de2f3833b11db3d783d05ab6efcd2c49840ede010fe7ec54fc2846c48fc6`
 - `formal/rust-verification/kani-harnesses.toml`: `f82442bef24ae67283c3f171cff15e8aa6cc4d808c7893b9e349b6bf315b50ce`
 - `formal/rust-verification/kani-public-harnesses.toml`: `41f5b881fee73c0691ec3d200da8a6e5ccc3236c2a3368615e743acd365283a7`
-- `formal/theorem-inventory.json`: `056a5fb3c9caa63358ddb20aad9aa20efe3408f21d8ef1bd5d06e9a077e36a46`
+- `formal/theorem-inventory.json`: `12bd58c040dd8604a7f597ac37dc894552af3ec74e11951479ed687d6792e9b4`
 - `formal/tla/DelegationDepthBound.tla`: `69c28ca6b16ef3b2174235347d8bb2aab40fce4cbb79123e4512f363b9717be9`
 - `formal/tla/MCDelegationDepthBound.cfg`: `147ac36dc8b9a6804e64ff78cae40f09ec8cdf225347de4e0adb059f2074f099`
 - `formal/tla/MCRevocationPropagation.cfg`: `c71faf1f2d8f5646890b5a7cc2e4264f4aae9518d953fc3393b78a7335a74355`
@@ -1003,4 +1028,4 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `scripts/proof-mutants.sh`: `b6a8709ff3d15e8e58521ed60efda0e344733a81b1902dc314928cdedec479a7`
 - `scripts/spec-mutants.py`: `7da21cca4bac3c1ac5f6946251509b3dfcaf7e043ed2b99ee86b491fcb1d9891`
 - `tools/install-apalache.sh`: `3f50745f56521685d30d18669bddb64a4bff060b40c121b30cdbf61fe26f4cc5`
-- `xtask/src/proof_coverage.rs`: `f2c640c8b025ded3e7a3969ea0ae48e354117282d47110ed8608574822534b54`
+- `xtask/src/proof_coverage.rs`: `62d78bcbf6506fa0bca7193bb667b043545b7f1d8cd4db40ff3209fc79198804`

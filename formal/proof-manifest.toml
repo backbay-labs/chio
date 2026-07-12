@@ -12,6 +12,10 @@ pilot_toolchain = ["aeneas"]
 
 root_modules = [
   "formal/lean4/Chio/Chio.lean",
+  "formal/lean4/Chio/Chio/Json/Value.lean",
+  "formal/lean4/Chio/Chio/Json/Canonical.lean",
+  "formal/lean4/Chio/Chio/Json/Hash.lean",
+  "formal/lean4/Chio/Chio/Json/Fixtures.lean",
   "formal/lean4/Chio/Chio/Core/Capability.lean",
   "formal/lean4/Chio/Chio/Core/Scope.lean",
   "formal/lean4/Chio/Chio/Core/Receipt.lean",
@@ -20,6 +24,7 @@ root_modules = [
   "formal/lean4/Chio/Chio/Core/Protocol.lean",
   "formal/lean4/Chio/Chio/Spec/Properties.lean",
   "formal/lean4/Chio/Chio/Proofs/Monotonicity.lean",
+  "formal/lean4/Chio/Chio/Proofs/CanonicalInjective.lean",
   "formal/lean4/Chio/Chio/Proofs/Receipt.lean",
   "formal/lean4/Chio/Chio/Proofs/MerkleWalk.lean",
   "formal/lean4/Chio/Chio/Proofs/Revocation.lean",
@@ -131,10 +136,10 @@ property_matrix = [
   "P1|capability attenuation|lean_root_imported,differential_test,rust_projection,aeneas_equivalence,public_kani|spec.capability_monotonicity,proof.scope_subset_of_grants_subset,proof.reduced_budget_is_subset,proof.added_constraint_is_subset,proof.generated_optional_u32_cap_is_subset_preserves_parent_cap,proof.generated_ledger_apply_eq_model",
   "P2|presented revocation coverage|lean_root_imported,audited_storage_assumption,sqlite_projection,aeneas_equivalence|proof.revoke_marks_capability_revoked,proof.checkRevocation_revoked_token_errors,proof.evalToolCall_revoked_token_never_allows,proof.revocationSnapshot_revoked_token_denies,proof.revocationSnapshot_revoked_ancestor_denies,proof.generated_revocation_snapshot_denies_eq_model",
   "P3|fail-closed evaluation|lean_root_imported,rust_core,audited_subprocess_assumption,public_kani,adapter_no_bypass,aeneas_equivalence|proof.evalToolCall_total,proof.evalToolCall_invalid_signature_denies,proof.evalToolCall_out_of_scope_denies,proof.admitSession_invalid_dpop_rejects,proof.governedApproval_required_without_token_fails,proof.dpop_required_missing_proof_rejects,proof.dpop_required_invalid_proof_rejects,proof.guardPipeline_deny_dominates,proof.guardPipeline_error_dominates,proof.delegation_max_depth_failure_denies,proof.generated_time_window_valid_eq_model,proof.generated_budget_commit_eq_model,proof.generated_guard_step_allows_eq_model,treaty.predicate.unsupported_denies,treaty.predicate.runtime_policy_exact,treaty.syntactic.decision_exact,treaty.bridge.refinement_on_iff",
-  "P4|receipt integrity|lean_root_imported,symbolic_crypto,audited_crypto_assumption,receipt_totality,aeneas_equivalence,public_kani,differential_test|proof.membership_proof_sound,proof.stepFold_eq_applyProof,proof.stepFold_membership_sound_if_geometry_agrees,proof.boundedWalkGeometry_decodes,proof.bounded_stepFold_sound,proof.generated_inclusion_step_eq_model,proof.receipt_sign_then_verify,proof.receipt_immutability,proof.receiptFieldsCoupled_preserves_all_fields,proof.generated_receipt_fields_coupled_eq_model",
+  "P4|receipt integrity|lean_root_imported,symbolic_crypto,audited_crypto_assumption,receipt_totality,aeneas_equivalence,public_kani,differential_test|proof.canonical_inj,proof.receipt_id_input_collision_resistant,proof.receipt_id_collision_resistant,proof.membership_proof_sound,proof.stepFold_eq_applyProof,proof.stepFold_membership_sound_if_geometry_agrees,proof.boundedWalkGeometry_decodes,proof.bounded_stepFold_sound,proof.generated_inclusion_step_eq_model,proof.receipt_sign_then_verify,proof.receipt_immutability,proof.receiptFieldsCoupled_preserves_all_fields,proof.generated_receipt_fields_coupled_eq_model",
   "P5|presented delegation-chain semantic validity|lean_root_imported,sqlite_projection|proof.delegation_chain_integrity,proof.delegation_step_allow_requires_attenuation,proof.delegation_step_allow_requires_subject_continuity,proof.delegation_step_allow_requires_expiry_monotonicity,proof.delegation_revoked_ancestor_denies,proof.delegation_max_depth_failure_denies",
   "P6|local parent-link soundness|lean_root_imported,audited_storage_assumption|proof.observed_parent_edge_sound",
-  "P7|receipt-lineage soundness|lean_root_imported,symbolic_crypto,audited_crypto_assumption|proof.verified_receipt_lineage_sound",
+  "P7|receipt-lineage soundness|lean_root_imported,symbolic_crypto,audited_crypto_assumption|proof.canonical_inj,proof.verified_receipt_lineage_sound",
   "P8|session continuity soundness|lean_root_imported,audited_transport_assumption,dpop_binding_tests,aeneas_equivalence|proof.session_continuity_sound,proof.admitSession_invalid_anchor_rejects,proof.dpop_reused_nonce_rejects,proof.dpop_binding_allows_only_when_all_fields_match,proof.generated_dpop_admits_eq_model",
   "P9|delegation and provenance consistency|lean_root_imported,audited_registry_assumption|proof.capability_lineage_consistency_sound",
   "P10|report truthfulness|lean_root_imported,claim_gate|proof.report_truthfulness_asserted_not_verified,proof.report_truthfulness_observed_not_verified",
@@ -157,6 +162,7 @@ claim_gate_inputs = [
 ]
 
 allowed_assumption_modules = [
+  "Chio.Json",
   "Chio.Core.Capability",
   "Chio.Core.Scope",
   "Chio.Core.Receipt",
@@ -164,16 +170,14 @@ allowed_assumption_modules = [
 ]
 
 allowed_axioms = [
-  # ASSUMED, not proven. Receipt content-addressing injectivity over the
-  # ChioReceiptIdInput canonical-bytes set. Declared as a Lean axiom because
-  # the bounded ReceiptBody model has no modeled JCS canonicalizer or hash;
-  # see assume.receipt.id_collision_resistant in theorem-inventory.json and
-  # ASSUME-SHA256 in formal/assumptions.toml.
-  "Chio.Proofs.receipt_id_collision_resistant",
+  # Symbolic collision resistance over the image of the mechanized canonical
+  # UTF-8 renderer. This is the Lean idealization registered as ASSUME-SHA256.
+  "Chio.Json.hash_collision_resistant",
 ]
 
 allowed_open_modules = [
   "Chio.Core",
+  "Chio.Json",
   "Chio.Proofs",
   "Chio.Spec",
   "Aeneas",
@@ -195,6 +199,8 @@ excluded_surfaces = [
   "Cross-row receipt and budget crash recovery, ordering, and conservation until implementation trace validation and crash-reopen gates establish refinement",
   "Runtime trace callbacks omitted, reordered, or rewritten before delivery to the installed synchronous observer and calibration-free recorder deployment, as recorded by ASSUME-TRACE-OBSERVER",
   "Treaty PredicateLang parsing, canonical hashing, signature verification, store lookup, and completeness outside its explicit AdmissionView decision domain",
+  "float-valued JSON leaves in action, metadata, or other compound ChioReceiptIdInput fields are outside the mechanized canonical JSON domain; their production rendering remains covered by frozen vectors and ASSUME-CANONICAL-JSON",
+  "refinement from the mechanized canonical semantic projection to crates/core/chio-core-types/src/canonical.rs beyond the checked integer-domain fixtures and differential tests",
 ]
 
 notes = [
@@ -212,6 +218,7 @@ notes = [
   "The Rust relying-party inclusion walk is bound to the symbolic Lean walk by paired manual-mirror hashes, an authenticated generated-output Aeneas theorem for the scalar step, bounded Kani parity with unwinding assertions over runtime-cross-checked fixtures for every size from 1 through 8, and required Rust-TypeScript tamper differentials. Hash collision resistance remains ASSUME-SHA256.",
   "The treaty PredicateLang is a bounded post-validation abstraction over production-shaped federation inputs. Its Lean abstraction anchors are drift tripwires, not a Rust refinement proof.",
   "docs/formal/COVERAGE.md is the generated per-surface join of declared verification registries. It reports evidence identity and attribution without licensing claims beyond docs/reference/CLAIM_REGISTRY.md.",
+  "Canonical JSON injectivity is proved over actual UTF-8 bytes for normalized signed-decimal integers, Unicode scalar strings, arrays, and ordered object entries. The symbolic receipt projection uses the 20 named ChioReceiptIdInput fields in checked UTF-16 order with production omission rules; production serde agreement for compound values and float-bearing cases remain audited assumptions.",
 ]
 
 # Discharged assumptions: prior audited assumptions that are no longer
@@ -394,10 +401,18 @@ model_file = "formal/lean4/Chio/Chio/Core/Receipt.lean"
 model_kind = "lean"
 relationship = "transliteration"
 rust_source = "crates/core/chio-core-types/src/receipt/body.rs"
-rust_symbols = ["ChioReceiptBody", "ChioReceipt", "ChioReceipt::verify_signature"]
-normalized_sha256 = "85d4012dda69d54abf2d81de780de87ad7fad09f1fb24976d6f543af000c6711"
+rust_symbols = [
+  "ChioReceiptBody",
+  "ChioReceiptIdInput",
+  "chio_receipt_id",
+  "ChioReceipt",
+  "ChioReceipt::verify_signature",
+]
+normalized_sha256 = "2870754ee499f222d5286cfd97731ffd31707af1fa55b99526e6a003de9c0dbd"
 symbol_sha256 = [
   { symbol = "ChioReceiptBody", sha256 = "90fe86e569459e661660ad2eea836ef946dfb74b09fe55d3cfe4d5c891caaf3c" },
+  { symbol = "ChioReceiptIdInput", sha256 = "90c7537cf420597782fa473b268bd67648ce4f076e2edf6f5e63db7bb66d0d6b" },
+  { symbol = "chio_receipt_id", sha256 = "7b78cc054ecf0694eb25b0bf10aa521a7a18f0af85717b4316bf9cf7ce6005ba" },
   { symbol = "ChioReceipt", sha256 = "b8b0e499c681ef9280a93db4e8b5d3b746401bfa10ccff6db0dddea53977dd59" },
   { symbol = "ChioReceipt::verify_signature", sha256 = "d349bb636064ad739af50b0fe2ab037f454e013f504eef207d127a59294a772c" },
 ]

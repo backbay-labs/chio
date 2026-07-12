@@ -3,15 +3,15 @@
   "rootModule": "formal/lean4/Chio/Chio.lean",
   "assumptions": [
     {
-      "id": "theorem.receipt.id_input_set_pinned",
-      "leanName": "Chio.Proofs.receipt_id_collision_resistant",
-      "file": "formal/lean4/Chio/Chio/Proofs/Receipt.lean",
+      "id": "assume.hash.collision_resistant",
+      "leanName": "Chio.Json.hash_collision_resistant",
+      "file": "formal/lean4/Chio/Chio/Json/Hash.lean",
       "kind": "axiom",
       "rootImported": true,
       "claimClass": "symbolic_crypto",
       "status": "assumed",
-      "mapsTo": ["P4"],
-      "notes": "ASSUMED, not proven in Lean. Receipt content-addressing: the kernel mints ChioReceipt whose id field equals H(canonical_jcs(ChioReceiptIdInput)) and the replay store keys exclusively on id; the load-bearing property is injectivity (distinct canonical id inputs never collide). Declared as a Lean axiom rather than a theorem because the bounded ReceiptBody model treats id as an opaque String with no modeled canonicalizer or hash, so there is nothing in this development to prove injectivity against. Mechanizing it requires a Lean model of the JCS serializer, a model of H, and a collision-resistance assumption on H (ASSUME-SHA256 in formal/assumptions.toml)."
+      "mapsTo": ["P4", "P7"],
+      "notes": "Symbolic hash collision resistance over the image of the mechanized canonical UTF-8 renderer. This is the sole explicit root-imported Lean axiom and is registered one-to-one as ASSUME-SHA256; concrete SHA-256 remains outside Lean."
     }
   ],
   "theorems": [
@@ -254,6 +254,72 @@
       "claimClass": "bounded_model",
       "mapsTo": ["P3"],
       "notes": "The bounded evaluator allows when signature, time, revocation, and scope checks all pass."
+    },
+    {
+      "id": "proof.escape_string_inj",
+      "leanName": "Chio.Proofs.escape_string_inj",
+      "file": "formal/lean4/Chio/Chio/Proofs/CanonicalInjective.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P4", "P7"],
+      "notes": "A checked decoder proves that C0 and C1 escaping, short escapes, quotes, reverse solidus, and literal Unicode scalar rendering are injective."
+    },
+    {
+      "id": "proof.render_int_inj",
+      "leanName": "Chio.Proofs.render_int_inj",
+      "file": "formal/lean4/Chio/Chio/Proofs/CanonicalInjective.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P4", "P7"],
+      "notes": "Canonical sign and decimal-digit rendering is injective across the signed i64 and unsigned u64 modeled range."
+    },
+    {
+      "id": "proof.sorted_assoc_ext",
+      "leanName": "Chio.Proofs.sorted_assoc_ext",
+      "file": "formal/lean4/Chio/Chio/Proofs/CanonicalInjective.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P4", "P7"],
+      "notes": "Strictly UTF-16-sorted unique object entries are determined by their canonical rendering."
+    },
+    {
+      "id": "proof.canonical_inj",
+      "leanName": "Chio.Proofs.canonical_inj",
+      "file": "formal/lean4/Chio/Chio/Proofs/CanonicalInjective.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P4", "P7"],
+      "notes": "A proved injective Unicode-scalar-to-UTF-8 boundary plus deterministic lexical recovery and structural parsing establish canonical byte injectivity for normalized integers, scalar strings, and arbitrary finite arrays and objects."
+    },
+    {
+      "id": "proof.receipt_id_input_collision_resistant",
+      "leanName": "Chio.Proofs.receipt_id_input_collision_resistant",
+      "file": "formal/lean4/Chio/Chio/Proofs/Receipt.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "symbolic_crypto",
+      "status": "proved",
+      "mapsTo": ["P4", "P7"],
+      "notes": "Equal symbolic identifiers bind an injective named-object projection of all 20 ChioReceiptIdInput fields. The projection follows UTF-16 field-key order and Rust serde omission rules. Compound action, decision, actor-chain, evidence, metadata, and key values must inhabit bounded JValue; production serde correspondence remains ASSUME-CANONICAL-JSON."
+    },
+    {
+      "id": "proof.receipt_id_collision_resistant",
+      "leanName": "Chio.Proofs.receipt_id_collision_resistant",
+      "file": "formal/lean4/Chio/Chio/Proofs/Receipt.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "symbolic_crypto",
+      "status": "proved",
+      "mapsTo": ["P4", "P7"],
+      "notes": "Equal symbolic receipt identifiers imply equal modeled content and policy hashes as a corollary of full 20-field projection binding plus the audited hash collision-resistance idealization."
     },
     {
       "id": "proof.applyProof_append",

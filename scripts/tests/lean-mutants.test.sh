@@ -25,7 +25,14 @@ allowed = {(entry["path"], entry["name"]) for entry in allowlist["definition"]}
 allowed_roots = (
     "formal/lean4/Chio/Chio/Core/",
     "formal/lean4/Chio/Chio/Treaty/",
+    "formal/lean4/Chio/Chio/Json/",
 )
+expected_json = {
+    ("formal/lean4/Chio/Chio/Json/Value.lean", "IsLiteralScalar"),
+    ("formal/lean4/Chio/Chio/Json/Value.lean", "CanonicalInteger"),
+}
+if not expected_json.issubset(allowed):
+    raise SystemExit("Lean pilot is missing the canonical JSON targets")
 if len(mutants) < 5:
     raise SystemExit("Lean pilot enumerated fewer than five mutants")
 if len({mutant["id"] for mutant in mutants}) != len(mutants):
@@ -37,6 +44,12 @@ for mutant in mutants:
         raise SystemExit(f"Lean mutant escaped the approved model roots: {mutant}")
 if not any(mutant["path"].startswith(allowed_roots[1]) for mutant in mutants):
     raise SystemExit("Lean treaty definitions produced no mutants")
+for path, name in expected_json:
+    if not any(
+        mutant["path"] == path and mutant["definition"] == name
+        for mutant in mutants
+    ):
+        raise SystemExit(f"canonical JSON Lean target yielded no mutants: {name}")
 PY
 
 python3 - <<'PY'
@@ -66,6 +79,50 @@ repo = Path.cwd().resolve()
 input_paths = module.lean_input_paths(repo)
 if any(".lake" in path.parts for path in input_paths):
     raise SystemExit("Lean evidence inputs included the materialized .lake cache")
+
+default_sample, default_timeout, default_baseline_timeout, _ = (
+    module.load_allowlist(repo)
+)
+if (default_sample, default_timeout, default_baseline_timeout) != (5, 300, 1800):
+    raise SystemExit("Lean mutation time bounds drifted")
+if module.report_bounds(5, 300, 1800) != {
+    "sample_size": 5,
+    "clean_baseline_timeout_secs": 1800,
+    "per_mutant_timeout_secs": 300,
+}:
+    raise SystemExit("Lean mutation report omitted its independent time bounds")
+parsed = module.parse_arguments(["--baseline-timeout-secs", "17"])
+if parsed.baseline_timeout_secs != 17:
+    raise SystemExit("Lean clean-baseline timeout override was ignored")
+
+input_root = repo / "target/formal/lean-mutants-input-selftest"
+required_inputs = {
+    module.ALLOWLIST: "fixture\n",
+    module.LEAN_TOOLCHAIN: "fixture\n",
+    module.LEAN_PROJECT / "lakefile.lean": "fixture\n",
+    module.LEAN_PROJECT / "lake-manifest.json": "{}\n",
+    Path("scripts/lean-mutants.py"): "fixture\n",
+    module.LEAN_PROJECT / "Chio/Tracked.lean": "def tracked := true\n",
+    module.LEAN_PROJECT / ".lake/Generated.lean": "def generated := true\n",
+}
+for relative, contents in required_inputs.items():
+    path = input_root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(contents, encoding="utf-8")
+try:
+    input_paths = module.lean_input_paths(input_root)
+    if module.LEAN_PROJECT / "Chio/Tracked.lean" not in input_paths:
+        raise SystemExit("Lean tracked source disappeared from evidence inputs")
+    if any(".lake" in path.parts for path in input_paths):
+        raise SystemExit("ignored Lake build output entered evidence inputs")
+finally:
+    shutil.rmtree(input_root)
+
+if list(module.COMPARISON.finditer("Nat -> Bool")):
+    raise SystemExit("Lean comparison mutation matched a function arrow")
+if [match.group(1) for match in module.COMPARISON.finditer("left > right")] != [">"]:
+    raise SystemExit("Lean comparison mutation stopped matching greater-than")
+
 drift_root = repo / "target/formal/lean-mutants-drift-selftest"
 drift_root.mkdir(parents=True)
 
@@ -112,22 +169,26 @@ original_load_allowlist = module.load_allowlist
 original_enumerate = module.enumerate_mutations
 tracked_source.write_text("transient main-tree source\n", encoding="utf-8")
 module.lean_input_paths = lambda _root: [Path("source.txt")]
-module.load_allowlist = lambda _root: (5, 1, [Path("source.txt")])
+module.load_allowlist = lambda _root: (5, 1, 9, [Path("source.txt")])
 module.enumerate_mutations = lambda frozen_root, _definitions: [
     (frozen_root / "source.txt").read_text(encoding="utf-8")
 ]
 try:
-    frozen_sample, frozen_timeout, frozen_inventory = module.enumerate_at_snapshot(
-        drift_root, source_snapshot
-    )
+    (
+        frozen_sample,
+        frozen_timeout,
+        frozen_baseline_timeout,
+        frozen_inventory,
+    ) = module.enumerate_at_snapshot(drift_root, source_snapshot)
 finally:
     module.lean_input_paths = original_input_paths
     module.load_allowlist = original_load_allowlist
     module.enumerate_mutations = original_enumerate
     tracked_source.write_text("captured source\n", encoding="utf-8")
-if (frozen_sample, frozen_timeout, frozen_inventory) != (
+if (frozen_sample, frozen_timeout, frozen_baseline_timeout, frozen_inventory) != (
     5,
     1,
+    9,
     ["captured source\n"],
 ):
     raise SystemExit("Lean enumeration followed a transient main-tree edit")
@@ -182,7 +243,7 @@ else:
     raise SystemExit("Lean Git HEAD drift was accepted")
 shutil.rmtree(drift_root)
 
-_, _, definitions = module.load_allowlist(repo)
+_, _, _, definitions = module.load_allowlist(repo)
 inventory = module.enumerate_mutations(repo, definitions)
 if module.repo_file(
     repo, "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean"
@@ -289,7 +350,8 @@ allowlist_path.parent.mkdir(parents=True, exist_ok=True)
 allowlist_path.write_text(
     'schema = "chio.lean-mutants-allowlist.v1"\n'
     "sample_size = 5\n"
-    "timeout_secs = 1\n\n"
+    "timeout_secs = 1\n"
+    "baseline_timeout_secs = 9\n\n"
     "[[definition]]\n"
     'name = "guarded"\n'
     f'path = "{relative_source.as_posix()}"\n',

@@ -192,15 +192,21 @@ files, and cycle coverage is measured from recorded mutant identities.
 ## Lean sensitivity pilot
 
 `scripts/lean-mutants.py` enumerates comparison, Boolean literal, and Boolean
-connective mutations in seven allowlisted definitions under `Chio/Core`. A
+connective mutations in allowlisted definitions under `Chio/Core`,
+`Chio/Treaty`, and `Chio/Json`. A
 rotating sample of five runs after a clean `lake build` baseline in a detached
 scratch worktree. A nonzero build counts as a kill only when its log contains a
 Lean source diagnostic; an unclassified tool or infrastructure failure aborts
 the run. A successful build is a survivor, and a wall timeout is reported
-separately. This pilot is not an activation ratchet.
+separately. The clean baseline has an independent 1,800-second timeout while
+each mutant retains a 300-second timeout. Both bounds are recorded in the
+report. Ignored `.lake` trees are excluded from the frozen input snapshot, and
+comparison discovery excludes the `>` in Lean function arrows. This pilot is
+not an activation ratchet.
 
-On an unchanged commit, four consecutive epochs cover the current 20-mutant
-pilot inventory.
+With the Treaty and canonical targets integrated, ten consecutive epochs cover
+the 47-mutant pilot inventory. The two canonical-JSON targets exercise the
+domain predicates protected by `escape_string_inj` and `render_int_inj`.
 
 The report is `target/formal/lean-mutants/report.json`, schema
 `chio.lean-mutants-report.v1`. It records both the exact Lake version and the

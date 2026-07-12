@@ -176,6 +176,12 @@ theorems, lemmas, or axioms are never mutation candidates. A failed `lake
 build` kills the mutant only when the log contains a Lean source diagnostic;
 unknown tool failures abort the run. A successful build records a survivor
 and files the same disposition issue used by the two scored lanes.
+The allowlist includes the canonical-JSON domain predicates
+`IsLiteralScalar` and `CanonicalInteger`, which calibrate sensitivity of the
+named `escape_string_inj` and `render_int_inj` proof surfaces.
+Approved sources are restricted to the bounded `Core`, `Treaty`, and `Json`
+model roots. The clean Lean build has a separate 1,800-second budget; mutant
+builds keep the 300-second bound recorded in the allowlist.
 
 ```bash
 python3 scripts/spec-mutants.py --list

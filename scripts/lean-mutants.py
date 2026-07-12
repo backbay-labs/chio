@@ -34,6 +34,7 @@ LEAN_TOOLCHAIN = LEAN_PROJECT / "lean-toolchain"
 MUTABLE_MODEL_ROOTS = (
     Path("formal/lean4/Chio/Chio/Core"),
     Path("formal/lean4/Chio/Chio/Treaty"),
+    Path("formal/lean4/Chio/Chio/Json"),
 )
 DECLARATION = re.compile(
     r"^(?:(?:private|noncomputable|protected)\s+)*(def|theorem|lemma|axiom|abbrev|structure|inductive|class|instance)\s+([A-Za-z_][A-Za-z0-9_.']*)"
@@ -47,7 +48,7 @@ TOP_LEVEL_COMMAND = re.compile(
 )
 BOOLEAN = re.compile(r"\b(true|false)\b")
 CONNECTIVE = re.compile(r"&&|\|\|")
-COMPARISON = re.compile(r"(?<![:<>=!-])([<>=]|≤|≥|≠)(?![=>])")
+COMPARISON = re.compile(r"(?<![-:<>=!])([<>=]|≤|≥|≠)(?![=>])")
 LEAN_DIAGNOSTIC = re.compile(
     r"(?m)^(?:error: .*\.lean:[0-9]+:[0-9]+:|"
     r".*\.lean:[0-9]+:[0-9]+: (?:error|unsolved goals):)"
@@ -208,21 +209,30 @@ def repo_file(root: Path, raw: Any) -> Path:
     return relative
 
 
-def load_allowlist(root: Path) -> tuple[int, int, list[Definition]]:
+def load_allowlist(root: Path) -> tuple[int, int, int, list[Definition]]:
     try:
         data = tomllib.loads((root / ALLOWLIST).read_text(encoding="utf-8"))
     except tomllib.TOMLDecodeError as error:
         raise LeanMutationError(f"cannot parse {ALLOWLIST}: {error}") from error
-    if set(data) != {"schema", "sample_size", "timeout_secs", "definition"}:
+    if set(data) != {
+        "schema",
+        "sample_size",
+        "timeout_secs",
+        "baseline_timeout_secs",
+        "definition",
+    }:
         raise LeanMutationError("Lean mutation allowlist has missing or unknown fields")
     if data["schema"] != ALLOWLIST_SCHEMA:
         raise LeanMutationError(f"Lean mutation schema must be {ALLOWLIST_SCHEMA}")
     sample_size = data["sample_size"]
     timeout_secs = data["timeout_secs"]
+    baseline_timeout_secs = data["baseline_timeout_secs"]
     if type(sample_size) is not int or sample_size < 5:
         raise LeanMutationError("Lean mutation sample size must be at least 5")
     if type(timeout_secs) is not int or timeout_secs < 1:
         raise LeanMutationError("Lean mutation timeout must be positive")
+    if type(baseline_timeout_secs) is not int or baseline_timeout_secs < 1:
+        raise LeanMutationError("Lean clean-baseline timeout must be positive")
     raw_definitions = data["definition"]
     if not isinstance(raw_definitions, list) or not raw_definitions:
         raise LeanMutationError("Lean mutation allowlist has no definitions")
@@ -239,7 +249,7 @@ def load_allowlist(root: Path) -> tuple[int, int, list[Definition]]:
             raise LeanMutationError(f"Lean definition {index} is repeated")
         identities.add((path, name))
         definitions.append(Definition(name, path))
-    return sample_size, timeout_secs, definitions
+    return sample_size, timeout_secs, baseline_timeout_secs, definitions
 
 
 def mask_comments(lines: list[str]) -> list[str]:
@@ -506,7 +516,7 @@ def verify_execution_snapshot(
 
 def enumerate_at_snapshot(
     root: Path, snapshot: ExecutionSnapshot
-) -> tuple[int, int, list[Mutation]]:
+) -> tuple[int, int, int, list[Mutation]]:
     scratch_parent = Path(tempfile.mkdtemp(prefix="chio-lean-discovery-"))
     scratch = scratch_parent / "worktree"
     worktree_added = False
@@ -529,8 +539,15 @@ def enumerate_at_snapshot(
             raise LeanMutationError(
                 "detached Lean discovery inputs differ from the starting snapshot"
             )
-        sample_size, timeout_secs, definitions = load_allowlist(scratch)
-        return sample_size, timeout_secs, enumerate_mutations(scratch, definitions)
+        sample_size, timeout_secs, baseline_timeout_secs, definitions = (
+            load_allowlist(scratch)
+        )
+        return (
+            sample_size,
+            timeout_secs,
+            baseline_timeout_secs,
+            enumerate_mutations(scratch, definitions),
+        )
     finally:
         if worktree_added:
             subprocess.run(
@@ -622,12 +639,23 @@ def safe_output(root: Path) -> Path:
     return candidate
 
 
+def report_bounds(
+    sample_size: int, timeout_secs: int, baseline_timeout_secs: int
+) -> dict[str, int]:
+    return {
+        "sample_size": sample_size,
+        "clean_baseline_timeout_secs": baseline_timeout_secs,
+        "per_mutant_timeout_secs": timeout_secs,
+    }
+
+
 def execute(
     root: Path,
     mutants: list[Mutation],
     *,
     sample_size: int,
     timeout_secs: int,
+    baseline_timeout_secs: int,
     full: bool,
     lake: str,
     sample_epoch: int,
@@ -687,13 +715,14 @@ def execute(
             )
         baseline_log = output / "baseline.log"
         baseline_exit, baseline_wall = run_process(
-            [lake, "build"], lean_root, baseline_log, timeout_secs
+            [lake, "build"], lean_root, baseline_log, baseline_timeout_secs
         )
         commands.append(
             {
                 "kind": "clean-baseline",
                 "argv": [lake, "build"],
                 "exit_code": baseline_exit,
+                "timeout_secs": baseline_timeout_secs,
                 "wall_secs": round(baseline_wall, 3),
                 "log_sha256": sha256_file(baseline_log),
             }
@@ -721,7 +750,13 @@ def execute(
                 }
             )
             results.append(result)
-            commands.append({"mutant_id": mutant.id, "argv": [lake, "build"]})
+            commands.append(
+                {
+                    "mutant_id": mutant.id,
+                    "argv": [lake, "build"],
+                    "timeout_secs": timeout_secs,
+                }
+            )
             write_mutable_source(scratch, mutant.path, original)
             status = subprocess.run(
                 ["git", "status", "--porcelain", "--untracked-files=normal"],
@@ -763,7 +798,7 @@ def execute(
             "lean_toolchain": toolchain,
             "python": sys.version.split()[0],
         },
-        "bounds": {"sample_size": sample_size, "per_mutant_timeout_secs": timeout_secs},
+        "bounds": report_bounds(sample_size, timeout_secs, baseline_timeout_secs),
         "inputs": snapshot.report_inputs(),
         "commands": commands,
         "mutants": results,
@@ -786,6 +821,7 @@ def parse_arguments(arguments: list[str]) -> argparse.Namespace:
     parser.add_argument("--full", action="store_true")
     parser.add_argument("--sample-size", type=int)
     parser.add_argument("--timeout-secs", type=int)
+    parser.add_argument("--baseline-timeout-secs", type=int)
     parser.add_argument(
         "--sample-epoch",
         type=int,
@@ -800,17 +836,24 @@ def main(arguments: list[str]) -> int:
     options = parse_arguments(arguments)
     root = REPO_ROOT.resolve()
     if options.list:
-        _, _, definitions = load_allowlist(root)
+        _, _, _, definitions = load_allowlist(root)
         mutants = enumerate_mutations(root, definitions)
         print(json.dumps([mutant.public() for mutant in mutants], indent=2, sort_keys=True))
         return 0
     snapshot = capture_execution_snapshot(root)
-    default_sample, default_timeout, mutants = enumerate_at_snapshot(root, snapshot)
+    default_sample, default_timeout, default_baseline_timeout, mutants = (
+        enumerate_at_snapshot(root, snapshot)
+    )
     verify_execution_snapshot(root, snapshot)
     sample_size = default_sample if options.sample_size is None else options.sample_size
     timeout_secs = default_timeout if options.timeout_secs is None else options.timeout_secs
-    if sample_size < 1 or timeout_secs < 1:
-        raise LeanMutationError("sample size and timeout must be positive")
+    baseline_timeout_secs = (
+        default_baseline_timeout
+        if options.baseline_timeout_secs is None
+        else options.baseline_timeout_secs
+    )
+    if sample_size < 1 or timeout_secs < 1 or baseline_timeout_secs < 1:
+        raise LeanMutationError("sample size and timeouts must be positive")
     if options.sample_epoch < 0:
         raise LeanMutationError("sample epoch must be non-negative")
     return execute(
@@ -818,6 +861,7 @@ def main(arguments: list[str]) -> int:
         mutants,
         sample_size=sample_size,
         timeout_secs=timeout_secs,
+        baseline_timeout_secs=baseline_timeout_secs,
         full=options.full,
         lake=options.lake,
         sample_epoch=options.sample_epoch,

@@ -29,9 +29,11 @@ on:
       - "formal/theorem-inventory.json"
       - "fuzz/**"
       - "scripts/check-formal-proofs.sh"
+      - "scripts/generate-lean-json-fixtures.py"
       - "scripts/check-kani-public-core.sh"
       - "scripts/check-rust-verification-gates.sh"
       - "scripts/run-kani-manifest.sh"
+      - "tests/bindings/vectors/canonical/v1.json"
   workflow_dispatch:
 
 permissions:
@@ -99,7 +101,7 @@ jobs:
 
           workflow='^\.github/workflows/formal-pr-smoke\.yml$'
           rust_common="${workflow}|^(Cargo\.lock|Cargo\.toml|rust-toolchain\.toml)$"
-          set_output lean "${workflow}|^(formal/lean4/|formal/(proof-manifest\.toml|theorem-inventory\.json|assumptions\.toml)$|docs/reference/CLAIM_REGISTRY\.md$|scripts/check-formal-proofs\.sh$)"
+          set_output lean "${workflow}|^(formal/lean4/|formal/(proof-manifest\.toml|theorem-inventory\.json|assumptions\.toml)$|docs/reference/CLAIM_REGISTRY\.md$|scripts/(check-formal-proofs\.sh|generate-lean-json-fixtures\.py)$|tests/bindings/vectors/canonical/v1\.json$)"
           set_output kani_core "${rust_common}|^(\.kani/harnesses\.toml$|formal/rust-verification/kani-public-harnesses\.toml$|scripts/check-kani-public-core\.sh$|crates/(kernel/chio-kernel-core|core/chio-core-types|trust/chio-revocation-oracle)/(src/|Cargo\.toml$))"
           set_output kani_manifest "${rust_common}|^(\.kani/harnesses\.toml$|scripts/run-kani-manifest\.sh$|crates/(economy/chio-anchor|trust/chio-attest-verify|trust/chio-weights)/(src/|Cargo\.toml$))"
           set_output metadata "${workflow}|^(formal/rust-verification/|scripts/check-rust-verification-gates\.sh$)"

@@ -19,7 +19,7 @@ required_assumption_ids = [
 assumptions = [
   "ASSUME-ED25519|audited_crypto|Ed25519 verification and signing are assumed to satisfy standard unforgeability for trusted public keys.|P2,P3,P4",
   "ASSUME-SHA256|audited_crypto|SHA-256 and Merkle hash collision resistance are assumed for concrete receipt and checkpoint evidence.|P4,P7",
-  "ASSUME-CANONICAL-JSON|audited_serialization|RFC 8785 canonical JSON serialization is assumed to be deterministic and byte-stable for signed Chio payloads.|P4,P7,P10",
+  "ASSUME-CANONICAL-JSON|audited_serialization|The production canonicalizer is assumed to agree byte-for-byte with the mechanized UTF-8 renderer on Unicode scalar strings, normalized bounded integers, arbitrary finite arrays, and UTF-16-ordered objects. Float rendering and float-bearing compound receipt fields outside that domain remain assumed deterministic and byte-stable.|P4,P7,P10",
   "ASSUME-OS-CLOCK|audited_platform|The injected clock is assumed to report operator-accepted Unix time within the deployment tolerance.|P2,P3,P8",
   "ASSUME-SQLITE-ATOMICITY|audited_storage|SQLite transactions are assumed to provide atomic committed updates for revocation, budget, receipt, and registry state per single-row write. Cross-row crash recovery, ordering, and conservation are not assumed or discharged and remain outside the current formal claim boundary.|P2,P4,P6,P7",
   "ASSUME-TLS|audited_transport|TLS endpoint authentication and channel confidentiality are assumed for configured remote control and hosted HTTP surfaces.|P8,P9",

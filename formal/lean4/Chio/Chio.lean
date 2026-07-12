@@ -1,5 +1,9 @@
 -- Chio formal verification root module.
 
+import Chio.Json.Value
+import Chio.Json.Canonical
+import Chio.Json.Hash
+import Chio.Json.Fixtures
 import Chio.Core.Capability
 import Chio.Core.MerkleWalk
 import Chio.Core.Receipt
@@ -9,6 +13,7 @@ import Chio.Core.Protocol
 import Chio.Spec.Properties
 import Chio.Proofs.Monotonicity
 import Chio.Proofs.MerkleWalk
+import Chio.Proofs.CanonicalInjective
 import Chio.Proofs.Receipt
 import Chio.Proofs.Revocation
 import Chio.Proofs.Evaluation

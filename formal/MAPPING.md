@@ -251,6 +251,22 @@ harness that witness it.
 | `revocation_is_cut`            | `formal/lean4/Chio/Chio/Capability/Delegation.lean` (~L120)     | `chio_kernel::ChioKernel::check_revocation`                                                   | `formal/proof-manifest.toml` covered_rust_symbols `formal_core::revocation_snapshot_denies`; P2 | Revoking any ancestor in the delegation chain forces `checkRevocation` to return `Except.error` (revocation is a cut in the DAG). |
 | `compose_preserves_algebra`    | `formal/lean4/Chio/Chio/Capability/Delegation.lean` (~L141)     | `chio_core_types::capability::ChioScope::is_subset_of`                                       | `formal/proof-manifest.toml` covered_rust_symbols `formal_core::*`; P1                | Composing two attenuated chains preserves the capability-algebra subset relation; closure under composition.                  |
 
+## Lean canonical JSON theorems
+
+Source files: `formal/lean4/Chio/Chio/Json/` and
+`formal/lean4/Chio/Chio/Proofs/CanonicalInjective.lean`. These rows constrain
+the normalized semantic projection. They do not assert injectivity of raw
+`serde_json::Value` representations or a proved Rust refinement.
+
+| Property | Source | Rust path constrained | Assumption discharge | One-line description |
+| --- | --- | --- | --- | --- |
+| `escape_string_inj` | `formal/lean4/Chio/Chio/Proofs/CanonicalInjective.lean` | `chio_core_types::canonical::canonical_json_bytes` string rendering | Model theorem; production agreement remains `ASSUME-CANONICAL-JSON` | The production C0 and C1 escape category is injective over modeled Unicode scalar sequences. |
+| `render_int_inj` | `formal/lean4/Chio/Chio/Proofs/CanonicalInjective.lean` | `chio_core_types::canonical::canonical_json_bytes` integer rendering | Model theorem; production agreement remains `ASSUME-CANONICAL-JSON` | Canonical signed-decimal rendering is injective over the modeled i64 and u64 range. |
+| `sorted_assoc_ext` | `formal/lean4/Chio/Chio/Proofs/CanonicalInjective.lean` | `chio_core_types::canonical::canonical_json_bytes` object rendering | Model theorem; production agreement remains `ASSUME-CANONICAL-JSON` | UTF-16-sorted unique object entries are determined by their canonical rendering. |
+| `canonical_inj` | `formal/lean4/Chio/Chio/Proofs/CanonicalInjective.lean` | `chio_core_types::canonical::canonical_json_bytes` normalized semantic projection | Model theorem; fixture and differential bridge remains `ASSUME-CANONICAL-JSON` | Canonical UTF-8 byte rendering is injective for scalar strings, normalized integers, arrays, and ordered object entries. |
+| `receipt_id_input_collision_resistant` | `formal/lean4/Chio/Chio/Proofs/Receipt.lean` | all 20 fields of `chio_core_types::receipt::body::ChioReceiptIdInput` | `ASSUME-SHA256`; production serde projection remains `ASSUME-CANONICAL-JSON` | Equal symbolic receipt identifiers bind the named-object projection with production field order and omission rules when all compound values inhabit bounded `JValue`. |
+| `receipt_id_collision_resistant` | `formal/lean4/Chio/Chio/Proofs/Receipt.lean` | `chio_core_types::receipt::chio_receipt_id` content and policy implication | `ASSUME-SHA256`; production serde projection remains `ASSUME-CANONICAL-JSON` | Equal symbolic receipt identifiers imply equal modeled content and policy hashes as a downstream corollary of full projection binding. |
+
 ## Runtime reservation conservation checks
 
 These debug and stateful-test rows bind the model-level conservation algebra

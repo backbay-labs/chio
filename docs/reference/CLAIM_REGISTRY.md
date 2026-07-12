@@ -36,10 +36,10 @@ and does not license claim wording.
 
 | Assumption ID | Status | Allowed wording | Evidence |
 | --- | --- | --- | --- |
-| `ASSUME-SIG-CHECK` | approved_with_scope | The bounded Lean revocation or evaluation model assumes a trusted capability-signature check oracle. | `audited_axiom` |
+| `ASSUME-SIG-CHECK` | approved_with_scope | The bounded Lean revocation or evaluation model represents trusted capability-signature admission as issuer-key membership, not concrete signature verification. | `lean_root_imported` |
 | `ASSUME-ED25519` | approved_with_scope | Concrete signature soundness depends on the audited Ed25519 implementation contract. | `audited_assumption` |
 | `ASSUME-SHA256` | approved_with_scope | Concrete receipt/checkpoint collision resistance depends on the audited SHA-256 contract. | `audited_assumption` |
-| `ASSUME-CANONICAL-JSON` | approved_with_scope | Signed payload stability depends on deterministic RFC 8785 canonical JSON behavior. | `audited_assumption` |
+| `ASSUME-CANONICAL-JSON` | approved_with_scope | Signed payload stability depends on byte-for-byte production agreement with the mechanized UTF-8 projection; float rendering and float-bearing compound receipt fields remain outside the modeled domain. | `audited_assumption` |
 | `ASSUME-OS-CLOCK` | approved_with_scope | Time-window proofs rely on the injected deployment clock meeting the operator's accepted tolerance. | `audited_assumption` |
 | `ASSUME-SQLITE-ATOMICITY` | approved_with_scope | Store-backed revocation, budget, receipt, and registry transitions rely on atomic SQLite commits. | `audited_assumption` |
 | `ASSUME-TLS` | approved_with_scope | Remote session and control-plane evidence relies on configured TLS endpoint authentication. | `audited_assumption` |
@@ -48,10 +48,10 @@ and does not license claim wording.
 | `ASSUME-SUBPROCESS-ISOLATION` | approved_with_scope | Tool effects after an allow verdict rely on OS process and sandbox boundaries. | `audited_assumption` |
 | `ASSUME-CHAIN-FINALITY` | approved_with_scope | Chain evidence is accepted only after the configured finality policy. | `audited_assumption` |
 
-That assumption is machine-readably enumerated as
-`Chio.Core.verifyCapabilitySignature` in `formal/theorem-inventory.json` and
-must remain allowlisted in `formal/proof-manifest.toml`. External assumptions
-are machine-readably enumerated in `formal/assumptions.toml`.
+The sole explicit root-imported Lean axiom is machine-readably enumerated as
+`Chio.Json.hash_collision_resistant` in `formal/theorem-inventory.json` and
+allowlisted in `formal/proof-manifest.toml`. External assumptions are
+machine-readably enumerated in `formal/assumptions.toml`.
 
 ## Approved Claims
 
@@ -60,6 +60,7 @@ are machine-readably enumerated in `formal/assumptions.toml`.
 | `FORM-BOUNDARY` | approved | Chio has an implementation-linked verified core defined in `formal/proof-manifest.toml`. | `lean_root_imported`, `differential_test`, `runtime_qualification` |
 | `FORM-IMPLEMENTATION-LINKED` | approved_with_scope | Chio's bounded budget, DPoP, nonce replay, guard, revocation, and receipt-coupling runtime paths project their admission inputs into verified pure helpers, and helper approval is required before continuation or signing. Caller-side projection, storage, clocks, cryptography, error attribution, and orchestration remain covered by runtime tests, audited assumptions, and strict Rust verification gates rather than by the pure-helper proofs alone. | `lean_root_imported`, `audited_assumption`, `aeneas_production`, `aeneas_equivalence`, `public_kani`, `adapter_no_bypass`, `runtime_projection_tests`, `target/formal/proof-report.json` |
 | `TRACE-VALIDATED` | approved_with_scope | Chio captures real kernel revocation commits, revocation admissions, and receipt appends into callback-accounted, canonical, signed traces, then checks the full-state ITF against `RevocationPropagation` on the nightly qualification lane. The observer key is supplied out of band, receipt signatures are reverified, each invariant requires a non-vacuous witness and a registered real-runtime negative calibration, and the claim covers only the observed `Revoke` and `Evaluate` actions. Callback delivery and field integrity before recorder observation and mutation-free recorder mode remain the audited `ASSUME-TRACE-OBSERVER` boundary. | `runtime_qualification`, `differential_test`, `target/formal/trace-validation.json`, `target/formal/receipt-trace/bindings.json`, `formal/tla/trace/negative-registry.toml` |
+| `FORM-NO-SOFTWARE-AXIOMS` | approved_with_scope | Every explicit axiom in Chio's root-imported Lean development is a named cryptographic idealization registered in `formal/assumptions.toml`; no serializer, protocol, or kernel behavior is axiomatized in Lean. Production Rust refinement and float-bearing compound receipt values remain audited external assumptions. | `lean_root_imported`, `audited_axiom`, `audited_assumption` |
 | `P1` | approved_with_scope | Chio has bounded Lean mechanization and executable tests for capability attenuation over the current verified-core model. | `lean_root_imported`, `differential_test` |
 | `P2` | approved_with_scope | Chio has bounded Lean proofs that revoked tokens and revoked presented ancestors cannot pass the pure revocation/evaluation model. | `lean_root_imported` |
 | `P3` | approved_with_scope | Chio has bounded Lean proofs that the pure evaluator is total and fail-closed for invalid signature, time-window, revocation, and out-of-scope paths. | `lean_root_imported` |

@@ -1,6 +1,7 @@
 schema = "chio.lean-mutants-allowlist.v1"
 sample_size = 5
 timeout_secs = 300
+baseline_timeout_secs = 1800
 
 [[definition]]
 name = "CapabilityToken.isValidAt"
@@ -49,3 +50,11 @@ path = "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean"
 [[definition]]
 name = "ofDecide"
 path = "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean"
+
+[[definition]]
+name = "IsLiteralScalar"
+path = "formal/lean4/Chio/Chio/Json/Value.lean"
+
+[[definition]]
+name = "CanonicalInteger"
+path = "formal/lean4/Chio/Chio/Json/Value.lean"
