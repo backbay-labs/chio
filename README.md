@@ -14,7 +14,10 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/subhead.svg" alt="Proof-carrying autonomous commerce &middot; Decentralized agentic authority and security &middot; A substrate for agentic economic sovereignty" width="880" />
+  <picture>
+    <source media="(max-width: 500px)" srcset="docs/assets/subhead-mobile.svg" />
+    <img src="docs/assets/subhead.svg" alt="Proof-carrying autonomous commerce &middot; Decentralized agentic authority and security &middot; A substrate for agentic economic sovereignty" width="880" />
+  </picture>
 </p>
 
 <p align="center">
@@ -179,7 +182,10 @@ governance) and an **economy plane** (metering, budgets, settlement) draw on the
 kernel signs, and every decision is committed to the **Receipt Log**.
 
 <p align="center">
-  <img src="docs/assets/architecture.svg" alt="Chio system map: an untrusted agent and untrusted tool servers around a single trusted Runtime Kernel that verifies, guards, dispatches, and signs; capability authority and policy feed in, and receipts flow to the trust and economy planes" width="960" />
+  <picture>
+    <source media="(max-width: 500px)" srcset="docs/assets/architecture-mobile.svg" />
+    <img src="docs/assets/architecture.svg" alt="Chio system map: an untrusted agent and untrusted tool servers around a single trusted Runtime Kernel that verifies, guards, dispatches, and signs; capability authority and policy feed in, and receipts flow to the trust and economy planes" width="960" />
+  </picture>
 </p>
 
 Only the Runtime Kernel is trusted (the TCB). The agent and tool servers are untrusted and
@@ -189,7 +195,10 @@ any registry or artifact mismatch fails closed.
 ### Life of a tool call
 
 <p align="center">
-  <img src="docs/assets/lifecycle.svg" alt="Life of a tool call: present, verify, budget, guard in, dispatch, guard out, meter and sign, commit - every outcome becomes a signed receipt" width="900" />
+  <picture>
+    <source media="(max-width: 500px)" srcset="docs/assets/lifecycle-mobile.svg" />
+    <img src="docs/assets/lifecycle.svg" alt="Life of a tool call: present, verify, budget, guard in, dispatch, guard out, meter and sign, commit - every outcome becomes a signed receipt" width="900" />
+  </picture>
 </p>
 
 | Step | What happens |
@@ -408,7 +417,10 @@ lives in [spec/SECURITY.md](spec/SECURITY.md) and the coverage map in
 ## Roadmap
 
 <p align="center">
-  <img src="docs/assets/roadmap.svg" alt="Chio roadmap timeline: a monthly sprint from August 2026 to March 2027 (Q1 2027), culminating in Chiodos: sovereign agent economies" width="900" />
+  <picture>
+    <source media="(max-width: 500px)" srcset="docs/assets/roadmap-mobile.svg" />
+    <img src="docs/assets/roadmap.svg" alt="Chio roadmap timeline: a monthly sprint from August 2026 to March 2027 (Q1 2027), culminating in Chiodos: sovereign agent economies" width="900" />
+  </picture>
 </p>
 
 The protocol is in place. What follows is the frontier it opens: an agent economy that is
