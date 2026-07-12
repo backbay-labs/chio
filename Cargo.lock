@@ -3652,6 +3652,7 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
+ "toml 0.8.23",
  "tracing",
  "ureq 2.12.1",
  "uuid",

@@ -159,6 +159,43 @@ globally and for each source; timeouts count as not killed. The Rust mutator
 changes only `formal_core.rs` and `formal_aeneas.rs`; Kani harness assertions
 and assumptions are outside its discovery set.
 
+## Loom interleaving harnesses
+
+Source file: `crates/kernel/chio-kernel/tests/loom_concurrency.rs`. These rows
+map bounded test-local synchronization models to the production surfaces whose
+ordering obligations they approximate. They do not substitute Loom primitives
+into the kernel and do not prove the behavior of production std, Tokio,
+DashMap, or ArcSwap primitives. `.loom/harnesses.toml` records this boundary as
+`scope = "bounded_abstract_model"` for every entry.
+
+| Property | Source | Rust path constrained | Evidence boundary | One-line description |
+| -------- | ------ | --------------------- | ----------------- | -------------------- |
+| `loom_session_create_lookup_terminal_same_id` | `crates/kernel/chio-kernel/tests/loom_concurrency.rs` | `crates/kernel/chio-kernel/src/session.rs`, `crates/kernel/chio-kernel/src/request_matching.rs` | Bounded abstract model; no production-primitive proof | Session creation, lookup, and terminal observation preserve one identity without duplicate allowance. |
+| `loom_parent_signs_receipt_while_child_spawns` | `crates/kernel/chio-kernel/tests/loom_concurrency.rs` | `crates/kernel/chio-kernel/src/kernel/dispatch.rs`, `crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs` | Bounded abstract model; no production-primitive proof | A child receipt is observable only after its parent receipt is present in the modeled log. |
+| `loom_revocation_race_eval` | `crates/kernel/chio-kernel/tests/loom_concurrency.rs` | `crates/kernel/chio-kernel/src/revocation_runtime.rs`, `crates/kernel/chio-kernel/src/kernel/delegation.rs` | Bounded abstract model; no production-primitive proof | Serialized evaluation events never allow after the modeled revocation event. |
+| `loom_receipt_channel_producer_drain` | `crates/kernel/chio-kernel/tests/loom_concurrency.rs` | `crates/kernel/chio-kernel/src/kernel/signing_task.rs` | Bounded abstract model; no production-primitive proof | Bounded queue backpressure and draining lose no accepted receipt and sign no receipt twice. |
+| `loom_inflight_increment_decrement_storm` | `crates/kernel/chio-kernel/tests/loom_concurrency.rs` | `crates/kernel/chio-kernel/src/session.rs` | Bounded abstract model; no production-primitive proof | Concurrent track, complete, and cancel operations return the modeled in-flight count to zero without underflow. |
+| `loom_dashmap_session_insert_remove_concurrent` | `crates/kernel/chio-kernel/tests/loom_concurrency.rs` | `crates/kernel/chio-kernel/src/request_matching.rs` | Bounded abstract model; no production-primitive proof | A modeled shard under insert, remove, and lookup never exposes a torn duplicate session. |
+| `loom_emergency_stop_arcswap` | `crates/kernel/chio-kernel/tests/loom_concurrency.rs` | `crates/kernel/chio-kernel/src/kernel/construction.rs` | Bounded abstract model; no production-primitive proof | Emergency-stop publication never exposes a partial reason in the modeled state. |
+| `loom_budget_atomic_decrement` | `crates/kernel/chio-kernel/tests/loom_concurrency.rs` | `crates/kernel/chio-kernel/src/budget_store/in_memory.rs` | Bounded abstract model; no production-primitive proof | Two modeled charges against one unit yield exactly one allowance and one depletion. |
+| `loom_post_admission_drop_guards_race_on_receipt_store_write_lock` | `crates/kernel/chio-kernel/tests/loom_concurrency.rs` | `crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs`, `crates/kernel/chio-kernel/src/kernel/dispatch.rs`, `crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs` | Bounded abstract model; no production-primitive proof | Two armed post-dispatch guards serialize deliberately non-atomic receipt appends without loss or duplication. |
+| `loom_disarmed_drop_guard_is_noop` | `crates/kernel/chio-kernel/tests/loom_concurrency.rs` | `crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs` | Bounded abstract model; no production-primitive proof | A disarmed modeled guard does not release reservations or append a receipt while another writer proceeds. |
+
+## Deterministic simulation harnesses
+
+Source target: `crates/kernel/chio-kernel/tests/dst_drop_injection.rs`, with
+support in `tests/dst/support.rs`. These are runtime witnesses over the real
+`ChioKernel` and real store traits. The crash rows close and reopen SQLite.
+Their scope is single-process and single-store, not distributed refinement.
+
+| Property | Source | Rust path constrained | Evidence boundary | One-line description |
+| -------- | ------ | --------------------- | ----------------- | -------------------- |
+| `dst_fixed_seed_corpus` | `crates/kernel/chio-kernel/tests/dst_drop_injection.rs` | `crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs`, `crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs`, `crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs`, `crates/kernel/chio-kernel/src/budget_store/in_memory.rs` | 64 seeded single-process runtime episodes | Partially polls and drops real evaluation futures on both sides of dispatch-start, injects receipt, budget, and admission faults, and checks ReceiptBeforeAllow, exact disposition, and reservation conservation after every episode. |
+| `dst_sqlite_crash_reopen_boundaries` | `crates/kernel/chio-kernel/tests/dst_drop_injection.rs` | `crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs`, `crates/platform/chio-store-sqlite/src/receipt_store.rs`, `crates/platform/chio-store-sqlite/src/budget_store.rs` | Real SQLite close and reopen; injected process-crash boundary | Crashes immediately before and after synchronous receipt persistence, closes every handle, reopens both databases, and checks recovered ReceiptBeforeAllow and budget conservation. |
+| `dst_child_receipt_flush_regression_is_killed` | `crates/kernel/chio-kernel/tests/dst_drop_injection.rs` | `crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs`, `crates/kernel/chio-kernel/src/kernel/evaluation/nested_flow_evaluation.rs` | Deliberate store-boundary mutation over a real nested-flow evaluation | Proves the unmodified child-receipt flush and demonstrates that suppressing the completed child append is rejected by the ChildReceiptsFlushed oracle. |
+| `dst_wide_sweep` | `crates/kernel/chio-kernel/tests/dst_drop_injection.rs` | `crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs`, `crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs`, `crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs` | 10,000 seeded single-process runtime episodes | Runs the same closed episode grammar and three oracles over the nightly wide corpus. |
+| `dst_replay_seed` | `crates/kernel/chio-kernel/tests/dst_drop_injection.rs` | `crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs`, `crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs` | Exact seed and derived plan replay | Reconstructs one episode from `CHIO_DST_SEED` and prints the seed and full fault plan for one-command reproduction. |
+
 ## Kani public harnesses (kani_public_harnesses.rs)
 
 Source file: `crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs`. The
@@ -221,8 +258,9 @@ to the concrete single-node journal without claiming a proved refinement.
 ## Adding a new property
 
 1. Add the named TLA+ definition to `formal/tla/RevocationPropagation.tla`
-   (top-level `<Name> ==` form), or add the `#[kani::proof]` attribute and
-   harness function to `crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs`.
+   (top-level `<Name> ==` form), add the `#[kani::proof]` attribute and harness
+   function to `crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs`, or
+   register a new Loom test in `.loom/harnesses.toml`.
 2. Add a row to the appropriate table above. Use the literal name in a
    backtick code span so `scripts/check-mapping.sh` can find it.
 3. Wire the assumption-discharge column into `formal/assumptions.toml`

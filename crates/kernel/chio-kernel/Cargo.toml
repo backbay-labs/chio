@@ -87,6 +87,7 @@ loom = { workspace = true }
 # - tests/property_reservation_ledger.rs
 # - tests/replay_proptest.rs (replay-invariance suite)
 proptest = { workspace = true }
+toml = { workspace = true }
 
 [[bench]]
 name = "cap_verify_ed25519"

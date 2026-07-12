@@ -93,6 +93,74 @@ jobs:
           LANE_GATE_RATE_LIMIT_MODE: warn
         run: bash scripts/lane-gate.sh fuzz-corpus-smoke-nightly
 
+  loom-nightly:
+    name: loom-nightly (bounded abstract models)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install --profile minimal
+          rustup show active-toolchain
+
+      - name: Install protobuf compiler
+        uses: ./.github/actions/apt-install
+        with:
+          packages: protobuf-compiler
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+
+      - name: Run registered Loom models
+        env:
+          CARGO_BUILD_JOBS: "1"
+          RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+        run: bash scripts/run-loom-manifest.sh --lane nightly
+
+      - name: Upload Loom timings and logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: loom-nightly
+          path: target/loom
+          if-no-files-found: warn
+          retention-days: 21
+
+  dst-nightly:
+    name: dst-nightly (10k real-kernel episodes)
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install --profile minimal
+          rustup show active-toolchain
+
+      - name: Install protobuf compiler
+        uses: ./.github/actions/apt-install
+        with:
+          packages: protobuf-compiler
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+
+      - name: Run deterministic simulation sweep
+        env:
+          CARGO_BUILD_JOBS: "1"
+          RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+        run: bash scripts/run-dst.sh --lane nightly
+
+      - name: Upload DST timings and logs
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: dst-nightly
+          path: target/dst
+          if-no-files-found: error
+          retention-days: 21
+
   # The nightly RevocationEventuallySeen liveness check runs in the dedicated
   # fail-closed apalache-temporal.yml workflow at length=24. Keeping it in a
   # separate scheduled workflow avoids duplicating the safety sweep here while

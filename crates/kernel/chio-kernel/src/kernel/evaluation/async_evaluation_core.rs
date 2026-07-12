@@ -518,7 +518,28 @@ impl ChioKernel {
             }
         };
 
+        let has_monetary = budget_mutation.charge_result().is_some();
+        let mut post_admission_drop_guard = PostAdmissionDropGuard::new(
+            self,
+            request,
+            cap,
+            Some(matched_grant_index),
+            &budget_mutation,
+            payment_authorization.as_ref(),
+            PostAdmissionReceiptContext {
+                extra_metadata: extra_metadata.clone(),
+                pre_invocation_guard_evidence: pre_invocation_guard_evidence.clone(),
+            },
+            budget_lease_acquired,
+        );
+        // Do not consume a single-use execution nonce until the admission
+        // readiness future is ready. A drop while readiness is pending is
+        // pre-dispatch and must not burn the nonce for a call that never ran.
+        self.wait_for_runtime_admission_dispatch_readiness(request)
+            .await;
         if let Err(error) = self.require_presented_execution_nonce(request, cap) {
+            post_admission_drop_guard.disarm();
+            drop(post_admission_drop_guard);
             let msg = error.to_string();
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "execution nonce denied");
             return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
@@ -535,22 +556,7 @@ impl ChioKernel {
                 })
             });
         }
-
         let tool_started_at = Instant::now();
-        let has_monetary = budget_mutation.charge_result().is_some();
-        let mut post_admission_drop_guard = PostAdmissionDropGuard::new(
-            self,
-            request,
-            cap,
-            Some(matched_grant_index),
-            &budget_mutation,
-            payment_authorization.as_ref(),
-            PostAdmissionReceiptContext {
-                extra_metadata: extra_metadata.clone(),
-                pre_invocation_guard_evidence: pre_invocation_guard_evidence.clone(),
-            },
-            budget_lease_acquired,
-        );
         post_admission_drop_guard.mark_dispatch_started();
         let dispatch_result = self
             .dispatch_tool_call_with_cost_after_nonce_check(request, has_monetary)

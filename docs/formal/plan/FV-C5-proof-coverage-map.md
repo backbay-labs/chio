@@ -4,15 +4,15 @@
 - Theme: C - Turn verification into product surface
 - Effort: S
 - Depends on: none (all input registries exist today)
-- Feeds: roadmap prioritization (single-lane surfaces stand out), the external evidence page behind FORM-* claims; strengthened when [FV-B4](FV-B4-loom-registry-and-dst.md) and [FV-E5](FV-E5-lane-ratchets.md) add their registries
+- Feeds: roadmap prioritization (single-lane surfaces stand out), the external evidence page behind FORM-* claims; consumes the [FV-B4](FV-B4-loom-registry-and-dst.md) Loom and DST registries plus advisory postures, with promotion governed by [FV-E5](FV-E5-lane-ratchets.md)
 - Related docs: [../GAP_ANALYSIS.md](../GAP_ANALYSIS.md), [../CURRENT_STATE.md](../CURRENT_STATE.md), [FV-E3](FV-E3-pr-formal-smoke-tier.md), [FV-C1](FV-C1-receipt-trace-validation.md)
 
 ## Summary
 
 `cargo xtask gen proof-coverage` joins the declared evidence registries into
 `docs/formal/COVERAGE.md` and `target/formal/coverage.json`. The committed page
-contains 35 primary Rust-surface rows, 101 attributed artifacts, 122 explicitly
-unattributed artifacts, 42 content-addressed inputs, and zero mapping parse
+contains 41 primary Rust-surface rows, 111 attributed artifacts, 122 explicitly
+unattributed artifacts, 44 content-addressed inputs, and zero mapping parse
 warnings on the current tree. Required PR CI regenerates the page in memory and
 fails on byte drift.
 
@@ -62,9 +62,12 @@ unattributed rather than inferring coverage from names.
   and Proof Room distribution; a shorter second source would create drift.
 - Exclude last-green timestamps from deterministic coverage. Runtime freshness
   remains in `target/formal/proof-report.json`.
-- Feature-detect `.loom/harnesses.toml`, `.dst/harnesses.toml`, and
-  `releases.toml` gate tables. Optional evidence columns and posture metadata
-  appear only when those inputs exist.
+- Consume the active `.loom/harnesses.toml` and `.dst/harnesses.toml`
+  registries plus their advisory postures in `releases.toml`. Registry
+  presence does not license claims absent from `MAPPING.md`.
+- Preserve Loom's required `scope = "bounded_abstract_model"` qualifier in
+  both renderings. A Loom artifact cannot be displayed as production-primitive
+  proof.
 - Preserve A4 manual mirrors and Creusot contract twins as non-proof linkage
   metadata. These records support review and drift navigation but never add an
   evidence cell or license a claim.
@@ -190,10 +193,12 @@ companion, and compares the committed page byte-for-byte.
 - Manual mirrors and Creusot contract twins: validate their declared pairings
   and preserve them under `review_links`, separate from attributed and
   unattributed proof artifacts.
-- Optional concurrency registries: Loom validates the B4 crate, test,
-  preemption, lane, notes, integration target, and named test declaration. The
-  local DST v1 loader validates only declared crate and test identity; it does
-  not infer seed coverage or oracle strength.
+- Concurrency registries: Loom validates crate, test, preemption, lane, abstract
+  scope, notes, integration target, and named test declaration. DST identities
+  join to exact MAPPING rows and carry `scope=single_process_single_store`;
+  `scripts/run-dst.sh` separately validates the 64-seed corpus,
+  10,000-episode count, source declarations, and compiled discovery. Coverage
+  does not infer oracle strength beyond those mappings.
 
 ### Consistency checks (free with the join)
 
@@ -239,6 +244,8 @@ file or exact owner key; and malformed present optional registries.
 - [x] Consistency checks reject a seeded registry naming a nonexistent crate.
 - [x] Fuzz owner keys match target-map keys exactly; Loom and gate-posture
   registries reject missing, unknown, or unsupported fields and values.
+- [x] The active DST registry contributes five mapped artifacts with the
+  `single_process_single_store` qualifier and an advisory nightly posture.
 - [x] Manual mirrors and Creusot contract twins are rendered as non-proof
   linkage metadata and never counted as evidence artifacts.
 - [x] The matrix renders under 120 columns per Markdown source row.

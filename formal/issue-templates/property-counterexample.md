@@ -1,6 +1,6 @@
 ---
 name: Property counterexample
-about: File a counterexample report for a TLA+ invariant, Kani harness, or proptest.
+about: File a counterexample report for a TLA+, Kani, Loom, DST, or proptest failure.
 title: "[counterexample] <named invariant or harness> failing on <git sha>"
 labels: ["formal-verification", "counterexample"]
 assignees: []
@@ -8,7 +8,7 @@ assignees: []
 
 <!--
 This template is referenced by formal/MAPPING.md and by the property-failure
-triage runbook. Use it whenever Apalache, Kani, or a proptest produces a
+  triage runbook. Use it whenever Apalache, Kani, Loom, DST, or a proptest produces a
 counterexample on PR or nightly. The cross-ref gate in scripts/check-mapping.sh
 runs on every PR; the named property below MUST correspond to a row in
 formal/MAPPING.md.
@@ -16,7 +16,7 @@ formal/MAPPING.md.
 
 ## Summary
 
-- **Lens** (pick one): `proptest` | `kani` | `apalache`
+- **Lens** (pick one): `proptest` | `kani` | `apalache` | `loom` | `dst`
 - **Named property** (full canonical name as it appears in
   `formal/MAPPING.md`): `<name>`
 - **Source file** (TLA+ module / Kani harness / proptest): `<path>`
@@ -68,6 +68,61 @@ relevant excerpt below. The full trace can be attached as a file.
 - **Failing assertion**: `<line and assert! text>`
 - **Kani version / unwind bound**: `<version> / unwind=<n>`
 - **Concrete inputs** (one per `kani::any` axis): `<paste>`
+
+### Loom schedule failure
+
+Start with the registered runner so the manifest bound and crate-local cfg are
+identical to CI:
+
+```bash
+bash scripts/run-loom-manifest.sh --lane nightly
+```
+
+The runner prints an exact command for the failing model. Set a model-specific
+checkpoint file on the first run, then rerun with a checkpoint interval of one
+to isolate the next failing schedule. Add `LOOM_LOG=trace LOOM_LOCATION=1` only
+after the checkpoint reproduces.
+
+```bash
+RUSTFLAGS="--cfg chio_kernel_loom" \
+  LOOM_MAX_PREEMPTIONS=<bound> \
+  LOOM_CHECKPOINT_FILE=target/loom/checkpoints/<model>.json \
+  cargo test -p chio-kernel --release --test loom_concurrency \
+  <model> -- --exact --nocapture
+
+LOOM_CHECKPOINT_INTERVAL=1 \
+  RUSTFLAGS="--cfg chio_kernel_loom" \
+  LOOM_MAX_PREEMPTIONS=<bound> \
+  LOOM_CHECKPOINT_FILE=target/loom/checkpoints/<model>.json \
+  cargo test -p chio-kernel --release --test loom_concurrency \
+  <model> -- --exact --nocapture
+```
+
+- **Failing model**: `<full test name from .loom/harnesses.toml>`
+- **Preemption bound**: `<LOOM_MAX_PREEMPTIONS>`
+- **Checkpoint path**: `<path>`
+- **Model scope**: `bounded_abstract_model`
+- **Production behavior reproduced separately**: `yes` / `no`
+
+Loom rows in this repository are test-local abstract synchronization models.
+A schedule failure is evidence against the modeled ordering obligation, but a
+green model is not proof over the kernel's production synchronization
+primitives.
+
+### Deterministic simulation failure
+
+Replay the exact seed through the closed runner. It prints the derived poll,
+drop, and fault plan before executing the real kernel episode.
+
+```bash
+bash scripts/run-dst.sh --lane replay --seed <u64>
+```
+
+- **Failing seed**: `<u64>`
+- **Derived plan**: `<plan printed by dst_replay_seed>`
+- **Failed oracle**: `ReceiptBeforeAllow` | `drop disposition` | `reservation conservation` | `ChildReceiptsFlushed`
+- **Regression corpus path**: `crates/kernel/chio-kernel/tests/dst/dst-regressions.toml`
+- **Scope**: `single_process_single_store`
 
 ### Proptest minimized failure
 

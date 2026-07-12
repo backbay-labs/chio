@@ -157,6 +157,7 @@ struct LoomHarness {
     test: String,
     max_preemptions: u32,
     lane: String,
+    scope: String,
     notes: String,
 }
 
@@ -4472,6 +4473,9 @@ fn add_optional_concurrency_artifacts(
                 "max_preemptions".to_string(),
                 harness.max_preemptions.to_string(),
             );
+            artifact
+                .qualifiers
+                .insert("scope".to_string(), harness.scope);
         }
     }
 
@@ -4504,14 +4508,29 @@ fn add_optional_concurrency_artifacts(
             if !ids.insert(id.clone()) {
                 return Err(format!("duplicate DST harness: {id}"));
             }
+            let short_name = harness.test.rsplit("::").next().unwrap_or(&harness.test);
+            let surfaces = mapping_surfaces
+                .get(short_name)
+                .cloned()
+                .unwrap_or_default();
+            let (primary, related) =
+                conservative_harness_attribution(surfaces, crate_surface(&harness.crate_name));
+            let artifact_id = format!("{dst_path}::{id}");
             add_artifact(
                 rows,
                 artifacts,
-                format!("{dst_path}::{id}"),
+                artifact_id.clone(),
                 "dst",
-                crate_surface(&harness.crate_name),
-                Vec::new(),
+                primary,
+                related,
             )?;
+            let artifact = artifacts
+                .get_mut(&artifact_id)
+                .ok_or_else(|| format!("internal missing DST artifact: {artifact_id}"))?;
+            artifact.qualifiers.insert(
+                "scope".to_string(),
+                "single_process_single_store".to_string(),
+            );
         }
     }
     lanes.sort_by_key(|lane| {
@@ -4546,8 +4565,14 @@ fn validate_loom_harness(
             harness.lane, harness.test
         ));
     }
+    if harness.scope != "bounded_abstract_model" {
+        return Err(format!(
+            "loom harness has unsupported scope {}: {}",
+            harness.scope, harness.test
+        ));
+    }
     let components = harness.test.split("::").collect::<Vec<_>>();
-    if components.len() < 2 || components.iter().any(|component| component.is_empty()) {
+    if components.len() != 2 || components.iter().any(|component| component.is_empty()) {
         return Err(format!(
             "loom harness test must be <integration-target>::<test-name>: {}",
             harness.test
@@ -4578,8 +4603,8 @@ fn validate_loom_harness(
     })?;
     let mut tests = BTreeSet::new();
     collect_rust_tests(&parsed.items, "", &mut tests);
-    let test_name = components[1..].join("::");
-    if !tests.contains(&test_name) {
+    let test_name = components[1];
+    if !tests.contains(test_name) {
         return Err(format!(
             "loom test not found in {}: {test_name}",
             source.display()
@@ -4980,7 +5005,7 @@ mod tests {
         let parsed = parse_mapping(include_str!("../../formal/MAPPING.md"));
 
         assert!(parsed.warnings.is_empty(), "{:?}", parsed.warnings);
-        assert_eq!(parsed.rows.len(), 49);
+        assert_eq!(parsed.rows.len(), 64);
     }
 
     #[test]
@@ -5524,7 +5549,7 @@ mod tests {
         }
         if let Err(error) = fs::write(
             root.join(".loom/harnesses.toml"),
-            "schema = \"chio.loom.v1\"\n\n[[harness]]\ncrate = \"chio-kernel\"\ntest = \"loom_concurrency::drop_race\"\nmax_preemptions = 3\nlane = \"nightly\"\nnotes = \"drop race model\"\n",
+            "schema = \"chio.loom.v1\"\n\n[[harness]]\ncrate = \"chio-kernel\"\ntest = \"loom_concurrency::drop_race\"\nmax_preemptions = 3\nlane = \"nightly\"\nscope = \"bounded_abstract_model\"\nnotes = \"drop race model\"\n",
         ) {
             panic!("cannot write loom fixture: {error}");
         }
@@ -5591,6 +5616,13 @@ mod tests {
                 .map(String::as_str),
             Some("nightly")
         );
+        assert_eq!(
+            artifacts
+                .get(".loom/harnesses.toml::chio-kernel/loom_concurrency::drop_race")
+                .and_then(|artifact| artifact.qualifiers.get("scope"))
+                .map(String::as_str),
+            Some("bounded_abstract_model")
+        );
         let package = match workspace.packages.get("chio-kernel") {
             Some(package) => package,
             None => panic!("loom fixture package is missing"),
@@ -5600,6 +5632,7 @@ mod tests {
             test: "loom_concurrency::missing_test".to_string(),
             max_preemptions: 3,
             lane: "nightly".to_string(),
+            scope: "bounded_abstract_model".to_string(),
             notes: "missing test".to_string(),
         };
         let error = match validate_loom_harness(&root, package, &missing_test) {
@@ -5649,14 +5682,14 @@ mod tests {
 
     #[test]
     fn loom_registry_schema_and_values_fail_closed() {
-        let missing_field = "schema = \"chio.loom.v1\"\n\n[[harness]]\ncrate = \"chio-kernel\"\ntest = \"loom_concurrency::drop_race\"\nlane = \"nightly\"\nnotes = \"drop race\"\n";
+        let missing_field = "schema = \"chio.loom.v1\"\n\n[[harness]]\ncrate = \"chio-kernel\"\ntest = \"loom_concurrency::drop_race\"\nlane = \"nightly\"\nscope = \"bounded_abstract_model\"\nnotes = \"drop race\"\n";
         let error = match parse_toml::<LoomManifest>("fixture", missing_field) {
             Ok(_) => panic!("loom harness without max_preemptions unexpectedly passed"),
             Err(error) => error,
         };
         assert!(error.contains("max_preemptions"));
 
-        let unknown_field = "schema = \"chio.loom.v1\"\n\n[[harness]]\ncrate = \"chio-kernel\"\ntest = \"loom_concurrency::drop_race\"\nmax_preemptions = 3\nlane = \"nightly\"\nnotes = \"drop race\"\nfuture = true\n";
+        let unknown_field = "schema = \"chio.loom.v1\"\n\n[[harness]]\ncrate = \"chio-kernel\"\ntest = \"loom_concurrency::drop_race\"\nmax_preemptions = 3\nlane = \"nightly\"\nscope = \"bounded_abstract_model\"\nnotes = \"drop race\"\nfuture = true\n";
         let error = match parse_toml::<LoomManifest>("fixture", unknown_field) {
             Ok(_) => panic!("unknown loom harness field unexpectedly passed"),
             Err(error) => error,
@@ -5673,6 +5706,7 @@ mod tests {
             test: "loom_concurrency::drop_race".to_string(),
             max_preemptions: 0,
             lane: "nightly".to_string(),
+            scope: "bounded_abstract_model".to_string(),
             notes: "drop race".to_string(),
         };
         let error = match validate_loom_harness(Path::new("/missing"), &package, &harness) {
@@ -5690,6 +5724,14 @@ mod tests {
         assert!(error.contains("unsupported lane"));
 
         harness.lane = "nightly".to_string();
+        harness.scope = "production_primitive_proof".to_string();
+        let error = match validate_loom_harness(Path::new("/missing"), &package, &harness) {
+            Ok(()) => panic!("unknown loom scope unexpectedly passed"),
+            Err(error) => error,
+        };
+        assert!(error.contains("unsupported scope"));
+
+        harness.scope = "bounded_abstract_model".to_string();
         harness.test = "drop_race".to_string();
         let error = match validate_loom_harness(Path::new("/missing"), &package, &harness) {
             Ok(()) => panic!("malformed loom test name unexpectedly passed"),

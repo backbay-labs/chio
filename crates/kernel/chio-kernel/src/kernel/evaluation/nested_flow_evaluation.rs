@@ -442,25 +442,6 @@ impl ChioKernel {
             }
         };
 
-        if let Err(error) = self.require_presented_execution_nonce(request, cap) {
-            let msg = error.to_string();
-            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "execution nonce denied");
-            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
-                self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
-                    request,
-                    reason: &msg,
-                    timestamp: now,
-                    matched_grant_index,
-                    cap,
-                    budget_mutation: &budget_mutation,
-                    payment_authorization: payment_authorization.as_ref(),
-                    runtime_admission_metadata,
-                    budget_lease_acquired,
-                })
-            });
-        }
-
-        let tool_started_at = Instant::now();
         // The tool-server lookup is hoisted above the drop-guard
         // construction so its failure can never early-return through `?`
         // while the guard is armed. ToolNotRegistered precedes any tool
@@ -507,6 +488,30 @@ impl ChioKernel {
             },
             budget_lease_acquired,
         );
+        // Keep single-use nonce consumption after the cancellable readiness
+        // boundary so a pre-dispatch drop cannot burn an unused nonce.
+        self.wait_for_runtime_admission_dispatch_readiness(request)
+            .await;
+        if let Err(error) = self.require_presented_execution_nonce(request, cap) {
+            post_admission_drop_guard.disarm();
+            drop(post_admission_drop_guard);
+            let msg = error.to_string();
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "execution nonce denied");
+            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                    request,
+                    reason: &msg,
+                    timestamp: now,
+                    matched_grant_index,
+                    cap,
+                    budget_mutation: &budget_mutation,
+                    payment_authorization: payment_authorization.as_ref(),
+                    runtime_admission_metadata,
+                    budget_lease_acquired,
+                })
+            });
+        }
+        let tool_started_at = Instant::now();
         // Mark dispatch started before lending the child-receipt buffer to the
         // bridge: the bridge borrows the guard for the whole dispatch block, so
         // the `&mut self` call must happen first. There is no await between here

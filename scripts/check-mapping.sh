@@ -5,10 +5,11 @@
 # TLA+ safety/liveness invariant in formal/tla/RevocationPropagation.tla,
 # every required leaf invariant in its model's aggregate SafetyInv,
 # every drop-guard invariant in formal/apalache/PostAdmissionDropGuard.tla,
-# and every #[kani::proof] harness in
-# crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs has a
-# corresponding row in formal/MAPPING.md. Exits non-zero with a
-# human-readable diff if any property is unmapped.
+# every #[kani::proof] harness in
+# crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs, every registered
+# Loom model, and every deterministic simulation harness has a corresponding
+# row in formal/MAPPING.md. Exits non-zero with a human-readable diff if any
+# property is unmapped.
 
 set -euo pipefail
 
@@ -22,6 +23,10 @@ mapping="formal/MAPPING.md"
 tla="formal/tla/RevocationPropagation.tla"
 drop_guard_tla="formal/apalache/PostAdmissionDropGuard.tla"
 kani="crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs"
+loom_manifest=".loom/harnesses.toml"
+loom_runner="scripts/run-loom-manifest.sh"
+dst_manifest=".dst/harnesses.toml"
+dst_runner="scripts/run-dst.sh"
 required_model_files=(
   "formal/tla/RevocationPropagation.tla"
   "formal/apalache/ReceiptBeforeAllow.tla"
@@ -35,7 +40,7 @@ required_model_invariants=(
 
 # --- Sanity: source files must exist ----------------------------------------
 missing_inputs=0
-for f in "${mapping}" "${tla}" "${drop_guard_tla}" "${kani}" "${required_model_files[@]}"; do
+for f in "${mapping}" "${tla}" "${drop_guard_tla}" "${kani}" "${loom_manifest}" "${loom_runner}" "${dst_manifest}" "${dst_runner}" "${required_model_files[@]}"; do
   if [[ ! -f "${f}" ]]; then
     echo "check-mapping: required input is missing: ${f}" >&2
     missing_inputs=1
@@ -44,6 +49,47 @@ done
 if [[ "${missing_inputs}" -ne 0 ]]; then
   exit 1
 fi
+
+# --- Concurrency registries -------------------------------------------------
+registry_mapping_lists() {
+  local runner="$1"
+  local heading="$2"
+  local registry_list mapping_list
+  registry_list="$(bash "${runner}" --lane all --list | sed 's/.*:://' | LC_ALL=C sort)"
+  if [[ -z "${registry_list}" ]]; then
+    echo "check-mapping: ${heading} registry produced no harnesses" >&2
+    return 1
+  fi
+  if [[ -n "$(printf '%s\n' "${registry_list}" | uniq -d)" ]]; then
+    echo "check-mapping: ${heading} registry has duplicate short names" >&2
+    return 1
+  fi
+  mapping_list="$(
+    awk -v heading="## ${heading}" '
+      $0 == heading { inside = 1; next }
+      /^## / && inside { exit }
+      inside && /^[[:space:]]*\|[[:space:]]*`/ {
+        line = $0
+        sub(/^[[:space:]]*\|[[:space:]]*`/, "", line)
+        sub(/`.*/, "", line)
+        print line
+      }
+    ' "${mapping}" | LC_ALL=C sort
+  )"
+  printf '%s\034%s\n' "${registry_list}" "${mapping_list}"
+}
+
+loom_lists="$(registry_mapping_lists "${loom_runner}" "Loom interleaving harnesses")"
+loom_harness_list="${loom_lists%%$'\034'*}"
+loom_mapping_list="${loom_lists#*$'\034'}"
+dst_lists="$(registry_mapping_lists "${dst_runner}" "Deterministic simulation harnesses")"
+dst_harness_list="${dst_lists%%$'\034'*}"
+dst_mapping_list="${dst_lists#*$'\034'}"
+
+unmapped_loom="$(comm -23 <(printf '%s\n' "${loom_harness_list}") <(printf '%s\n' "${loom_mapping_list}"))"
+extra_loom_mapping="$(comm -13 <(printf '%s\n' "${loom_harness_list}") <(printf '%s\n' "${loom_mapping_list}"))"
+unmapped_dst="$(comm -23 <(printf '%s\n' "${dst_harness_list}") <(printf '%s\n' "${dst_mapping_list}"))"
+extra_dst_mapping="$(comm -13 <(printf '%s\n' "${dst_harness_list}") <(printf '%s\n' "${dst_mapping_list}"))"
 
 # --- Required model leaf invariants -----------------------------------------
 # These leaves are part of the release evidence contract. Unlike the legacy
@@ -240,6 +286,10 @@ for name in "${kani_harnesses[@]}"; do
     echo "    - ${name}"
   fi
 done
+echo "  Loom harnesses enforced ($(printf '%s\n' "${loom_harness_list}" | awk 'NF { count++ } END { print count + 0 }') from ${loom_manifest}):"
+printf '%s\n' "${loom_harness_list}" | sed 's/^/    - /'
+echo "  DST harnesses enforced ($(printf '%s\n' "${dst_harness_list}" | awk 'NF { count++ } END { print count + 0 }') from ${dst_manifest}):"
+printf '%s\n' "${dst_harness_list}" | sed 's/^/    - /'
 
 failures=0
 
@@ -307,6 +357,32 @@ if [[ "${#unmapped_kani[@]}" -gt 0 ]]; then
   echo "  Add a row to the 'Kani public harnesses' table in ${mapping}." >&2
   echo "  The literal token must appear as \`${unmapped_kani[0]}\` (backtick-wrapped)." >&2
 fi
+
+for registry in loom dst; do
+  if [[ "${registry}" == "loom" ]]; then
+    label="Loom"
+    missing="${unmapped_loom}"
+    extra="${extra_loom_mapping}"
+  else
+    label="DST"
+    missing="${unmapped_dst}"
+    extra="${extra_dst_mapping}"
+  fi
+  if [[ -n "${missing}" ]]; then
+    count="$(printf '%s\n' "${missing}" | awk 'NF { count++ } END { print count + 0 }')"
+    failures=$((failures + count))
+    echo "" >&2
+    echo "check-mapping: FAIL - ${count} registered ${label} harness(es) are not mapped:" >&2
+    printf '%s\n' "${missing}" | sed 's/^/  - /' >&2
+  fi
+  if [[ -n "${extra}" ]]; then
+    count="$(printf '%s\n' "${extra}" | awk 'NF { count++ } END { print count + 0 }')"
+    failures=$((failures + count))
+    echo "" >&2
+    echo "check-mapping: FAIL - ${count} ${label} mapping row(s) are not registered:" >&2
+    printf '%s\n' "${extra}" | sed 's/^/  - /' >&2
+  fi
+done
 
 if [[ "${failures}" -ne 0 ]]; then
   echo "" >&2

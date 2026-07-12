@@ -486,9 +486,9 @@ model_kind = "tla"
 relationship = "abstraction_anchor"
 rust_source = "crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs"
 rust_symbols = ["ChioKernel::evaluate_tool_call_async_with_session_context"]
-normalized_sha256 = "faa233cf415c2058b03f795fc641e67753d65a2b3c9d1d4390c287e23d962577"
+normalized_sha256 = "b2abbc5c5c6f70bdd900c7a6c966f7b5e808a5b02ef9c54ccbb1a3bc09af802a"
 symbol_sha256 = [
-  { symbol = "ChioKernel::evaluate_tool_call_async_with_session_context", sha256 = "af954a00d3e6f9304f94ea99a01ad7eb476c847e846566d35343400dbce37be8" },
+  { symbol = "ChioKernel::evaluate_tool_call_async_with_session_context", sha256 = "4f021e5a649b2f997d466ff0987d65276de01eb3b4d650b60d39e550bd1e314c" },
 ]
 
 [[mirror]]

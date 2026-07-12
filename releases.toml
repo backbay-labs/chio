@@ -1,4 +1,25 @@
 # releases.toml - Release qualification and evidence-gate state.
+
+[gates.loom-nightly]
+workflow = "nightly.yml"
+job = "loom-nightly (bounded abstract models)"
+event = "schedule"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 0
+max_age_hours = 48
+
+[gates.dst-nightly]
+workflow = "nightly.yml"
+job = "dst-nightly (10k real-kernel episodes)"
+event = "schedule"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 0
+max_age_hours = 48
+
+# Mutation-testing release-cycle gate state follows. Its scored, reviewed
+# evidence lifecycle remains separate from pass/fail lane posture.
 #
 # Pass/fail lane posture is read by scripts/lane-gate.sh. Mutation scoring is
 # governed separately by scripts/mutants-gate.sh because its evidence requires

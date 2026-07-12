@@ -95,6 +95,21 @@ pub trait RuntimeAdmissionHook: Send + Sync {
         context: &RuntimeAdmissionContext<'_>,
     ) -> Result<RuntimeAdmissionDecision, KernelError>;
 
+    /// Poll readiness after admission state has been reserved but before tool
+    /// dispatch is marked as started. The default is immediately ready.
+    ///
+    /// Hooks with asynchronous admission dependencies may return `Pending` and
+    /// must arrange a wakeup. Dropping the evaluation while this method is
+    /// pending takes the pre-dispatch cleanup path, so reserved state is
+    /// released before any tool side effect is possible.
+    fn poll_ready_before_dispatch(
+        &self,
+        _request: &ToolCallRequest,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<()> {
+        std::task::Poll::Ready(())
+    }
+
     fn release_reserved(&self, _metadata: &serde_json::Value) -> Result<(), KernelError> {
         Ok(())
     }

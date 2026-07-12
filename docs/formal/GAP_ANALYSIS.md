@@ -99,20 +99,32 @@ Evidence:
   (`Commit` is guarded on `cancel_pending = FALSE`), does not model the Rust
   reversal transition, and excludes post-dispatch, fault, and concurrent
   commit-vs-cancel paths.
-- A loom race model for the drop guard exists in chio-kernel but has no
-  registry or CI lane.
+- All ten Loom models, including the drop-guard race, now have a closed
+  `.loom/harnesses.toml` registry and a scheduled `loom-nightly` lane with
+  timing and log artifacts. They remain bounded test-local synchronization
+  models and do not substitute Loom primitives into production kernel code.
+- The deterministic simulation lane now partially polls and drops real
+  `ChioKernel` futures on both sides of dispatch-start, injects receipt,
+  budget, and admission faults, and applies ReceiptBeforeAllow, exact drop
+  disposition, and reservation-conservation oracles after every episode. The
+  fixed PR corpus has 64 seeds; the locally executed wide sweep passed 10,000
+  episodes.
+- Crash episodes now close and reopen real SQLite receipt and budget stores at
+  both sides of receipt persistence. This covers single-process,
+  single-store recovery. Distributed message loss and cross-store atomicity
+  remain outside the claim boundary.
 
 Consequence: the single most bug-productive region of the TCB has the weakest
 formal coverage. The models passed while production was wrong, which is the
 worst failure mode a formal estate can have (false confidence).
 
-Current mitigation: `PostAdmissionDropGuard.tla` now models the lifecycle and
-its fixed defect classes have required counterexample variants. The shared
+Current mitigation: `PostAdmissionDropGuard.tla` models the lifecycle and its
+fixed defect classes have required counterexample variants. The shared
 reservation law adds a counted Apalache partition, a pure Kani/Creusot/Lean
-transition, a debug replay of concrete single-node journal events, and a
-stateful real-store proptest. This does not close concurrent execution or crash
-recovery coverage; the registered Loom and deterministic-scheduler work remains
-the outstanding part of G3.
+transition, a debug replay of concrete single-node journal events, a stateful
+real-store proptest, registered Loom models, and the real-kernel deterministic
+simulation lane. G3 remains open only for production-primitive refinement and
+distributed recovery, not for the implemented single-process DST scope.
 
 Addressed by: [plan/FV-B1-drop-guard-model.md](plan/FV-B1-drop-guard-model.md),
 [plan/FV-B2-regression-negative-tests.md](plan/FV-B2-regression-negative-tests.md),

@@ -22,6 +22,16 @@ impl GuardRunError {
 }
 
 impl ChioKernel {
+    pub(crate) async fn wait_for_runtime_admission_dispatch_readiness(
+        &self,
+        request: &ToolCallRequest,
+    ) {
+        let Some(hook) = self.runtime_admission_hook.as_ref() else {
+            return;
+        };
+        std::future::poll_fn(|cx| hook.poll_ready_before_dispatch(request, cx)).await;
+    }
+
     pub(crate) fn validate_parent_request_continuation(
         &self,
         request: &ToolCallRequest,
