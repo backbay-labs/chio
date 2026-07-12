@@ -21,6 +21,8 @@ The root module defines the activation, quorum, admission, reputation, and quali
 - `error.rs`: public federation contract error type.
 - `bilateral.rs`, `bilateral_dsse.rs`, `metrics.rs`, `pheromone_gossip.rs`, `revocation_gossip.rs`, `treaty.rs`, and `trust_establishment.rs` own their specialized surfaces.
 - `bilateral_dsse.rs`: DSSE constants, signature-slice and strict Chio bilateral invocation predicate types, statement/envelope builders, signing flows, and verification helpers.
+- `bilateral_dsse/typestate_handlers.rs`: canonical construction, host signing, origin co-signing, and strict envelope verification for the ordered producer path.
+- `src/_generated/bilateral_dsse_producer_typestate.rs`: private-field stage wrappers and consuming transitions enabled by the `typestate` feature.
 - `bilateral_dsse/tests.rs`: DSSE encoding, signing, verification, predicate, and policy-summary regressions.
 - `bilateral_verifier.rs`: public API root for partial local verifier and strict treaty-bound review exports.
 - `bilateral_verifier/error.rs`: verifier error codes and bilateral DSSE error mapping.

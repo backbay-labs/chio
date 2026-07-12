@@ -51,7 +51,7 @@ chio-weights = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 chio-kernel-core = { workspace = true }
 chio-credit = { workspace = true }
-chio-federation = { workspace = true }
+chio-federation = { workspace = true, features = ["typestate"] }
 chio-link = { path = "../../economy/chio-link", default-features = false }
 chio-log-redact = { workspace = true }
 chio-metrics-spec = { workspace = true }

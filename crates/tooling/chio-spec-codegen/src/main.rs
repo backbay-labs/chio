@@ -10,6 +10,7 @@
 //! ```text
 //! chio-spec-codegen <schemas-dir> <out-dir>
 //! chio-spec-codegen --errors-only
+//! chio-spec-codegen --statemachines [--check] [--repo-root <path>]
 //! chio-spec-codegen --threat-model <input.json> --out <stubs-dir>
 //! ```
 //!
@@ -23,6 +24,7 @@ use std::process::ExitCode;
 
 const USAGE: &str = "usage: chio-spec-codegen <schemas-dir> <out-dir>\n\
                      \x20      chio-spec-codegen --errors-only\n\
+                     \x20      chio-spec-codegen --statemachines [--check] [--repo-root <path>]\n\
                      \x20      chio-spec-codegen --threat-model <input.json> --out <stubs-dir>\n\
                      \x20      chio-spec-codegen --threat-model-doc [--repo-root <path>]";
 
@@ -54,6 +56,50 @@ fn main() -> ExitCode {
                     out.join(chio_spec_codegen::ERROR_CODES_OUTPUT).display(),
                     out.join(chio_spec_codegen::MOD_FILE).display()
                 );
+                ExitCode::SUCCESS
+            }
+            Err(err) => {
+                eprintln!("chio-spec-codegen: {err}");
+                ExitCode::FAILURE
+            }
+        };
+    }
+
+    if schemas_dir == "--statemachines" {
+        let mut check = false;
+        let mut repo_root = None;
+        while let Some(arg) = args.next() {
+            match arg.as_str() {
+                "--check" => check = true,
+                "--repo-root" => {
+                    let Some(path) = args.next() else {
+                        eprintln!("error: --repo-root requires a path argument");
+                        return ExitCode::FAILURE;
+                    };
+                    repo_root = Some(PathBuf::from(path));
+                }
+                other => {
+                    eprintln!("error: unexpected argument {other}");
+                    return ExitCode::FAILURE;
+                }
+            }
+        }
+        let repo_root = match repo_root.map_or_else(workspace_root, Ok) {
+            Ok(root) => root,
+            Err(err) => {
+                eprintln!("error: {err}");
+                return ExitCode::FAILURE;
+            }
+        };
+        let input = repo_root.join(chio_spec_codegen::STATEMACHINES_INPUT);
+        let result = if check {
+            chio_spec_codegen::check_statemachine_outputs(&input, &repo_root)
+        } else {
+            chio_spec_codegen::codegen_statemachines(&input, &repo_root)
+        };
+        return match result {
+            Ok(outputs) => {
+                println!("processed {} state-machine outputs", outputs.len());
                 ExitCode::SUCCESS
             }
             Err(err) => {

@@ -14,12 +14,19 @@ single `typify::TypeSpace`, renders the resulting token stream through
 `_generated_check` integration test always finds a generated Rust file to
 validate even on a fresh clone.
 
+The same Rust lane loads `spec/statemachines/*.toml`, validates each complete
+transition relation, and emits generated typestates, conformance non-edge
+data, and the state-machine reference. The check mode compares every expected
+file and rejects obsolete managed outputs that no longer have an input.
+
 ## Toolchain
 
 - typify pin: `=0.4.3` (see `xtask/codegen-tools.lock.toml` for the full
   cross-language pin set).
 - schemars 0.8 for the `RootSchema` parsing surface.
 - prettyplease 0.2 for deterministic formatting of the emitted Rust source.
+- rustfmt from the active Rust toolchain for workspace-consistent layout of
+  distributed state-machine Rust outputs.
 
 The version pin is enforced at `Cargo.toml`. Bumping typify is a deliberate,
 spec-affecting change; coordinate with the spec-drift CI workflow before
@@ -46,6 +53,7 @@ do not want to take a dependency on the xtask harness:
 ```bash
 cargo run -p chio-spec-codegen -- spec/schemas/chio-wire/v1 \
     crates/core/chio-core-types/src/_generated
+cargo run -p chio-spec-codegen -- --statemachines --check
 ```
 
 After regeneration, run:
@@ -61,6 +69,12 @@ cargo test  -p chio-core-types --test _generated_check
 crates/core/chio-core-types/src/_generated/
   chio_wire_v1.rs   # all types, header-stamped, prettyplease-formatted
   mod.rs            # header-only marker; not yet wired into lib.rs
+crates/trust/chio-federation/src/_generated/
+  bilateral_dsse_producer_typestate.rs
+crates/tooling/chio-conformance/tests/_generated/
+  *_ordering.rs
+docs/reference/generated/
+  STATE_MACHINES.md
 ```
 
 The `mod.rs` intentionally declares no submodules. Generated wire bindings are
@@ -76,3 +90,5 @@ requires a deliberate API decision so the no_std + alloc build of
 - No em dashes (U+2014); use `-` or parentheses.
 - The `// DO NOT EDIT` header must remain byte-for-byte identical with the
   string consumed by `crates/core/chio-core-types/tests/_generated_check.rs`.
+- State-machine owners, states, messages, guards, and output paths are
+  validated before any managed output is written.

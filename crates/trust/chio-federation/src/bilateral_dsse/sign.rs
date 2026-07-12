@@ -246,64 +246,31 @@ pub fn sign_chio_bilateral_dsse_envelope_with_cosigner(
     extensions: BilateralPredicateExtensions,
     cosigner: &dyn BilateralCoSigningProtocol,
 ) -> Result<DsseEnvelope, BilateralCoSigningError> {
-    let org_a_keyid = Keyid::from_public_key(org_a_public_key);
-    let org_b_pub = org_b_keypair.public_key();
-    let org_b_keyid = Keyid::from_public_key(&org_b_pub);
-
-    let predicate = build_chio_bilateral_invocation_predicate(
+    let drafted = super::typestate_handlers::draft(
         receipt,
-        KernelIdentity {
-            kernel_id: org_a_kernel_id.to_string(),
-            passport_key_fingerprint: org_a_keyid.clone(),
-            alg: "ed25519".to_string(),
-        },
-        KernelIdentity {
-            kernel_id: org_b_kernel_id.to_string(),
-            passport_key_fingerprint: org_b_keyid.clone(),
-            alg: "ed25519".to_string(),
-        },
+        org_a_public_key,
+        org_b_keypair,
+        org_a_kernel_id,
+        org_b_kernel_id,
         tool_name,
         timestamp_unix_ms,
         extensions,
+        cosigner,
     )?;
 
-    let statement = build_chio_bilateral_invocation_statement(receipt, predicate)?;
-    let statement_bytes = statement.canonical_bytes()?;
-    let pae_bytes = pae(PAYLOAD_TYPE_IN_TOTO, &statement_bytes);
-
-    let backend_b = Ed25519Backend::new(org_b_keypair.clone());
-    let sig_b = backend_b
-        .sign_bytes(&pae_bytes)
-        .map_err(|e| BilateralCoSigningError::TransportFailure(e.to_string()))?;
-    let request = DsseCoSigningRequest::new(
-        org_a_kernel_id.to_string(),
-        org_b_kernel_id.to_string(),
-        pae_bytes.clone(),
-        sig_b.clone(),
-    );
-    let response = cosigner.request_dsse_cosignature(&request)?;
-    if response.schema != crate::bilateral::BILATERAL_DSSE_COSIGNING_SCHEMA {
-        return Err(BilateralCoSigningError::UnsupportedSchema(response.schema));
-    }
-    if !org_a_public_key.verify(&pae_bytes, &response.org_a_signature) {
-        return Err(BilateralCoSigningError::OrgASignatureInvalid);
+    #[cfg(feature = "typestate")]
+    {
+        Ok(super::typestate::Drafted::from_data(drafted)
+            .sign_host()?
+            .request_cosignature()?
+            .verify_envelope()?
+            .into_envelope())
     }
 
-    let envelope = DsseEnvelope {
-        payload_type: PAYLOAD_TYPE_IN_TOTO.to_string(),
-        payload: BASE64_STANDARD.encode(&statement_bytes),
-        signatures: vec![
-            DsseSignature {
-                keyid: org_a_keyid.0.clone(),
-                sig: BASE64_STANDARD.encode(response.org_a_signature.to_bytes()),
-            },
-            DsseSignature {
-                keyid: org_b_keyid.0.clone(),
-                sig: BASE64_STANDARD.encode(sig_b.to_bytes()),
-            },
-        ],
-    };
-
-    verify_chio_bilateral_dsse_envelope(&envelope, org_a_public_key, &org_b_pub)?;
-    Ok(envelope)
+    #[cfg(not(feature = "typestate"))]
+    {
+        let host_signed = super::typestate_handlers::sign_host(drafted)?;
+        let cosigned = super::typestate_handlers::request_cosignature(host_signed)?;
+        super::typestate_handlers::verify_envelope(cosigned)
+    }
 }

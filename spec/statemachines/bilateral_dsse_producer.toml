@@ -1,0 +1,36 @@
+schema = "chio.statemachine.v1"
+machine = "bilateral_dsse_producer"
+title = "Bilateral DSSE producer"
+scope = "The strict bilateral DSSE producer from canonical statement construction through local host signing, origin co-signing, and final envelope verification."
+owner = "crates/trust/chio-federation"
+doc_refs = ["spec/CHIO_BILATERAL_COSIGN_INVOCATION.md#7-verification-algorithm"]
+emit = ["rust", "conformance", "docs"]
+states = ["Drafted", "HostSigned", "Cosigned", "EnvelopeVerified"]
+initial = "Drafted"
+terminal = ["EnvelopeVerified"]
+
+[rust]
+public_module = "chio_federation::bilateral_dsse::typestate"
+handlers = "crate::bilateral_dsse::typestate_handlers"
+error = "crate::bilateral::BilateralCoSigningError"
+lifetime = true
+terminal_output_type = "crate::bilateral_dsse::DsseEnvelope"
+terminal_output_method = "into_envelope"
+
+[[transitions]]
+from = "Drafted"
+to = "HostSigned"
+message = "sign_host"
+guards = ["host_signature_created"]
+
+[[transitions]]
+from = "HostSigned"
+to = "Cosigned"
+message = "request_cosignature"
+guards = ["cosigning_schema_matches", "origin_signature_valid"]
+
+[[transitions]]
+from = "Cosigned"
+to = "EnvelopeVerified"
+message = "verify_envelope"
+guards = ["signer_keys_independent", "strict_envelope_valid"]

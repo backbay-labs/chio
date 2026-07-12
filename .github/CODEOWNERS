@@ -4,6 +4,7 @@
 # ones. Narrow, security-sensitive paths are listed last so they override any
 # broader pattern above.
 spec/schemas/**/*.json                       @backbay-labs/chio-maintainers
+spec/statemachines/**                        @backbay-labs/chio-maintainers
 tests/bindings/vectors/**                    @backbay-labs/chio-maintainers
 tests/conformance/**                         @backbay-labs/chio-maintainers
 tests/replay/fixtures/**                     @backbay-labs/chio-maintainers
@@ -35,9 +36,12 @@ crates/trust/chio-revocation-oracle/**             @backbay-labs/chio-maintainer
 crates/trust/chio-credentials/src/passport.rs      @backbay-labs/chio-maintainers
 crates/trust/chio-federation/src/revocation*.rs    @backbay-labs/chio-maintainers
 crates/trust/chio-federation/src/lib.rs            @backbay-labs/chio-maintainers
+crates/trust/chio-federation/src/_generated/**     @backbay-labs/chio-maintainers
 crates/protocol/chio-tool-call-fabric/**              @backbay-labs/chio-maintainers
 crates/protocol/chio-openai-adapter/**                        @backbay-labs/chio-maintainers
 crates/tooling/chio-conformance/**                   @backbay-labs/chio-maintainers
+crates/tooling/chio-spec-codegen/**                  @backbay-labs/chio-maintainers
+docs/reference/generated/STATE_MACHINES.md           @backbay-labs/chio-maintainers
 sdks/typescript/packages/browser/**          @backbay-labs/chio-maintainers
 sdks/typescript/packages/workers/**          @backbay-labs/chio-maintainers
 sdks/typescript/packages/edge/**             @backbay-labs/chio-maintainers

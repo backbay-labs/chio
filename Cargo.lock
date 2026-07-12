@@ -4365,6 +4365,7 @@ dependencies = [
  "serde",
  "serde_json",
  "syn 2.0.117",
+ "toml 0.8.23",
  "typify",
 ]
 
