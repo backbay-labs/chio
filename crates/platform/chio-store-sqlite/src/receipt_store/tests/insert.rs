@@ -158,7 +158,7 @@ fn append_receipt_batch_commits_multiple_receipts_together(
     }
 
     let seqs: Vec<u64> =
-        append_receipt_batch(&store.pool, &mut VerifiedHead::default(), true, &requests)
+        append_receipt_batch(&store.pool, &mut VerifiedHead::default(), true, &requests)?
             .into_iter()
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -291,7 +291,7 @@ fn append_receipt_batch_isolates_per_record_error() -> Result<(), Box<dyn std::e
         });
     }
 
-    let results = append_receipt_batch(&store.pool, &mut VerifiedHead::default(), true, &requests);
+    let results = append_receipt_batch(&store.pool, &mut VerifiedHead::default(), true, &requests)?;
 
     assert!(
         results[0].is_ok(),
@@ -420,7 +420,7 @@ fn append_receipt_batch_isolates_trailing_invalid_in_full_batch(
         });
     }
 
-    let results = append_receipt_batch(&store.pool, &mut VerifiedHead::default(), true, &requests);
+    let results = append_receipt_batch(&store.pool, &mut VerifiedHead::default(), true, &requests)?;
     let last = results.len() - 1;
     for (index, result) in results.iter().enumerate() {
         if index == last {
@@ -799,7 +799,7 @@ fn batched_duplicate_receipts_commit_without_false_drift() -> Result<(), Box<dyn
         &mut head,
         store.incremental_verification,
         &requests,
-    );
+    )?;
 
     // The batch COMMITS: no projection-drift Conflict. Both results carry the
     // same entry_seq (the idempotent duplicate returns the original's E).
@@ -881,7 +881,7 @@ fn group_commit_isolates_per_record_failure() -> Result<(), Box<dyn std::error::
         &mut head,
         store.incremental_verification,
         &requests,
-    );
+    )?;
 
     // The two valid appends COMMIT; only the conflicting middle request fails.
     // A whole-batch rollback would instead fail all three and persist neither

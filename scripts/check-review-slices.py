@@ -67,6 +67,7 @@ SLICES: tuple[ReviewSlice, ...] = (
             "crates/kernel/chio-runtime-harness/**",
             "crates/kernel/chio-runtime-proof-parity/**",
             "crates/kernel/chio-swarm-authority/**",
+            "crates/core/chio-supervisor/**",
             "crates/protocol/chio-tool-call-fabric/**",
             "crates/protocol/chio-tower/**",
         ),

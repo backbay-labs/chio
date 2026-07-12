@@ -330,6 +330,10 @@ impl ReceiptStore for SqliteReceiptStore {
         SqliteReceiptStore::receipt_store_health(self)
     }
 
+    fn writer_serving_closed(&self) -> bool {
+        SqliteReceiptStore::writer_serving_closed(self)
+    }
+
     fn latest_committed_entry_seq(&self) -> Result<u64, ReceiptStoreError> {
         SqliteReceiptStore::latest_committed_entry_seq(self)
     }

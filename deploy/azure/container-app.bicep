@@ -162,9 +162,11 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
               failureThreshold: 30
             }
             {
+              // Process-only liveness: a dependency blip must not restart a
+              // container that is still serving. Readiness gates on /chio/health.
               type: 'Liveness'
               httpGet: {
-                path: '/chio/health'
+                path: '/chio/live'
                 port: 9090
               }
               periodSeconds: 10

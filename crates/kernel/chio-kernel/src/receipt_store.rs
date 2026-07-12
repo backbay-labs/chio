@@ -114,6 +114,14 @@ pub struct ReceiptStoreHealthReport {
     pub checkpoint_error: Option<String>,
     #[serde(default)]
     pub db_size_bytes: Option<u64>,
+    /// Supervised health of the commit-writer thread. A durable store reports this
+    /// so a dead or degraded writer can never be masked by a last-batch success.
+    #[serde(default)]
+    pub writer_level: chio_supervisor::HealthLevel,
+    /// Cumulative writer restarts observed by the supervisor. Non-zero after any
+    /// writer fault, even once the writer recovers.
+    #[serde(default)]
+    pub writer_restart_total: u64,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -182,6 +190,9 @@ pub enum ReceiptStoreError {
 
     #[error("not found: {0}")]
     NotFound(String),
+
+    #[error("receipt commit writer is not serving after {restarts} restart(s): {last_error}")]
+    WriterDead { restarts: u64, last_error: String },
 }
 
 pub trait ReceiptStore: Send + Sync {
@@ -276,6 +287,17 @@ pub trait ReceiptStore: Send + Sync {
         Err(ReceiptStoreError::Conflict(
             "receipt store health is not supported by this receipt store".to_string(),
         ))
+    }
+
+    /// Whether the store's commit writer has degraded to the point that durable
+    /// persistence can no longer be trusted, so evaluations must fail closed before
+    /// dispatch rather than after executing a tool with no receipt path.
+    ///
+    /// The default is `false`: a store with no supervised background writer has
+    /// nothing to trip. Stores that supervise a writer thread override this to read
+    /// the writer's health flag.
+    fn writer_serving_closed(&self) -> bool {
+        false
     }
 
     fn latest_committed_entry_seq(&self) -> Result<u64, ReceiptStoreError> {

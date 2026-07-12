@@ -1,11 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::mpsc;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::thread;
 use std::time::Duration;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -96,6 +95,7 @@ use chio_kernel::{
     LIABILITY_CLAIM_WORKFLOW_REPORT_SCHEMA, LIABILITY_MARKET_WORKFLOW_REPORT_SCHEMA,
     LIABILITY_PROVIDER_LIST_REPORT_SCHEMA, LIABILITY_PROVIDER_RESOLUTION_REPORT_SCHEMA,
 };
+use chio_supervisor::{HealthLevel, SupervisedOutcome, SupervisedThread, SupervisorConfig};
 use r2d2::{Pool, PooledConnection};
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -127,9 +127,12 @@ const RECEIPT_COMMIT_ACTOR_CHANNEL_CAPACITY: usize = RECEIPT_GROUP_COMMIT_MAX_BA
 struct ReceiptCommitActor {
     sender: mpsc::SyncSender<ReceiptCommitCommand>,
     health: Arc<ReceiptCommitWriterHealth>,
+    /// Retains the writer thread's join handle and its supervised health flag. The
+    /// flag is TCB-critical: any writer death or degradation trips it, and the kernel
+    /// pre-dispatch gate reads it to fail closed before a tool executes.
+    writer: SupervisedThread,
 }
 
-#[derive(Default)]
 struct ReceiptCommitWriterHealth {
     accepted_total: AtomicU64,
     committed_total: AtomicU64,
@@ -144,9 +147,47 @@ struct ReceiptCommitWriterHealth {
     head_checkpointed_entry_seq: AtomicU64,
     head_claim_log_count: AtomicU64,
     head_claim_log_max_seq: AtomicU64,
+    // Mirror of the actor thread's `WriterHeadState` poison bit. The head lives
+    // only on the actor thread, so a poisoned head (every append rejected with a
+    // Conflict) is invisible to the supervised thread flag: the writer thread is
+    // still alive. Publishing it here lets `writer_serving_closed` deny at the
+    // pre-dispatch gate, so a tool is never executed against a store that cannot
+    // persist its receipt.
+    head_poisoned: AtomicBool,
+}
+
+impl Default for ReceiptCommitWriterHealth {
+    fn default() -> Self {
+        Self {
+            accepted_total: AtomicU64::new(0),
+            committed_total: AtomicU64::new(0),
+            failed_total: AtomicU64::new(0),
+            saturated_total: AtomicU64::new(0),
+            inflight: AtomicU64::new(0),
+            last_commit_unix_ms: AtomicU64::new(0),
+            last_error: Mutex::new(None),
+            head_checkpoint_seq: AtomicU64::new(0),
+            head_checkpointed_entry_seq: AtomicU64::new(0),
+            head_claim_log_count: AtomicU64::new(0),
+            head_claim_log_max_seq: AtomicU64::new(0),
+            // Fail closed until the actor thread seeds a verified head. The head
+            // is seeded asynchronously after construction, so starting open would
+            // let a corrupt or still-attaching store pass the pre-dispatch gate
+            // and run a tool before the first append could reject. The seed path
+            // clears this the moment it succeeds.
+            head_poisoned: AtomicBool::new(true),
+        }
+    }
 }
 
 impl ReceiptCommitWriterHealth {
+    /// Publish whether the writer head is poisoned. Written only by the actor
+    /// thread at every head-state transition (seed, post-write resync, reseed)
+    /// and read by `writer_serving_closed` from other threads.
+    fn set_head_poisoned(&self, poisoned: bool) {
+        self.head_poisoned.store(poisoned, Ordering::SeqCst);
+    }
+
     fn store_head_snapshot(&self, head: &VerifiedHead) {
         self.head_checkpoint_seq
             .store(head.checkpoint_seq(), Ordering::SeqCst);
@@ -223,10 +264,65 @@ impl ReceiptCommitActor {
         let (sender, receiver) = receipt_commit_channel();
         let health = Arc::new(ReceiptCommitWriterHealth::default());
         let actor_health = Arc::clone(&health);
-        thread::spawn(move || {
-            receipt_commit_actor_loop(pool, receiver, actor_health, incremental_verification)
+        let config = SupervisorConfig {
+            name: "chio-receipt-writer",
+            // Durable receipt persistence is on the money path: a degraded writer must
+            // fail evaluations closed rather than execute tools without a receipt.
+            tcb_critical: true,
+            // Any writer fault is immediately operator-visible on this surface.
+            trip_after: 1,
+            max_restarts: 5,
+            base_backoff: Duration::from_millis(100),
+            max_backoff: Duration::from_secs(30),
+        };
+        // The loop body borrows the receiver so it survives a restart with the same
+        // still-open channel; the caller's sender stays valid across restarts. The
+        // pool and health handle are cheap to clone (an Arc bump each) per attempt.
+        let writer = SupervisedThread::spawn(config, move |_shutdown| {
+            receipt_commit_actor_loop(
+                pool.clone(),
+                &receiver,
+                Arc::clone(&actor_health),
+                incremental_verification,
+            );
+            // The loop returns only once every command sender has dropped: an orderly
+            // store shutdown, not a fault. Do not restart or trip the flag.
+            SupervisedOutcome::Shutdown
         });
-        Self { sender, health }
+        Self {
+            sender,
+            health,
+            writer,
+        }
+    }
+
+    /// Typed error for a commit writer that is no longer serving, carrying the
+    /// supervisor's restart count and last recorded reason so the condition is
+    /// inspectable rather than an opaque pool-error string.
+    fn writer_dead_error(&self) -> ReceiptStoreError {
+        let snapshot = self.writer.health().snapshot();
+        ReceiptStoreError::WriterDead {
+            restarts: snapshot.restart_total,
+            last_error: snapshot
+                .reason
+                .unwrap_or_else(|| "receipt commit writer channel disconnected".to_string()),
+        }
+    }
+
+    /// True when durable persistence can no longer be trusted, so the kernel
+    /// pre-dispatch gate must fail closed. This is either the supervised writer
+    /// thread leaving the healthy state, or a poisoned verified head: the thread
+    /// is alive but every append is rejected with a Conflict until an operator
+    /// reseeds, which the thread flag alone cannot see.
+    fn writer_serving_closed(&self) -> bool {
+        self.writer.health().is_serving_closed() || self.health.head_poisoned.load(Ordering::SeqCst)
+    }
+
+    /// The supervised writer's severity and cumulative restart count, for the
+    /// health report.
+    fn writer_health_summary(&self) -> (HealthLevel, u64) {
+        let snapshot = self.writer.health().snapshot();
+        (snapshot.level, snapshot.restart_total)
     }
 
     fn append(
@@ -263,7 +359,7 @@ impl ReceiptCommitActor {
             }
             Err(mpsc::TrySendError::Disconnected(_)) => {
                 atomic_saturating_sub(&self.health.inflight, 1);
-                return Err(receipt_actor_unavailable_error());
+                return Err(self.writer_dead_error());
             }
         }
         match result.recv() {
@@ -271,24 +367,22 @@ impl ReceiptCommitActor {
             Err(_) => {
                 atomic_saturating_sub(&self.health.inflight, 1);
                 self.health.failed_total.fetch_add(1, Ordering::SeqCst);
-                Err(receipt_actor_unavailable_error())
+                Err(self.writer_dead_error())
             }
         }
     }
 
     fn flush(&self) -> Result<(), ReceiptStoreError> {
-        self.flush_with_receiver(|receiver| {
-            receiver
-                .recv()
-                .map_err(|_| receipt_actor_unavailable_error())?
-        })
+        let dead = self.writer_dead_error();
+        self.flush_with_receiver(|receiver| receiver.recv().map_err(|_| dead)?)
     }
 
     fn flush_with_timeout(&self, timeout: Duration) -> Result<(), ReceiptStoreError> {
+        let dead = self.writer_dead_error();
         self.flush_with_receiver(|receiver| match receiver.recv_timeout(timeout) {
             Ok(result) => result,
             Err(mpsc::RecvTimeoutError::Timeout) => Err(receipt_actor_flush_timeout_error(timeout)),
-            Err(mpsc::RecvTimeoutError::Disconnected) => Err(receipt_actor_unavailable_error()),
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(dead),
         })
     }
 
@@ -306,7 +400,7 @@ impl ReceiptCommitActor {
                 return Err(receipt_actor_saturated_error());
             }
             Err(mpsc::TrySendError::Disconnected(_)) => {
-                return Err(receipt_actor_unavailable_error());
+                return Err(self.writer_dead_error());
             }
         }
         receive(result)
@@ -507,7 +601,7 @@ fn poisoned_head_error(message: &str) -> ReceiptStoreError {
 
 fn receipt_commit_actor_loop(
     pool: Pool<SqliteConnectionManager>,
-    receiver: mpsc::Receiver<ReceiptCommitCommand>,
+    receiver: &mpsc::Receiver<ReceiptCommitCommand>,
     health: Arc<ReceiptCommitWriterHealth>,
     incremental_verification: bool,
 ) {
@@ -523,12 +617,16 @@ fn receipt_commit_actor_loop(
         }) {
         Ok(head) => {
             health.store_head_snapshot(&head);
+            // Seeding is authoritative: clear any poison a prior thread run (a
+            // panic-then-restart of the supervised writer) may have published.
+            health.set_head_poisoned(false);
             WriterHeadState::Verified(Box::new(head))
         }
         Err(error) => {
             if let Ok(mut last_error) = health.last_error.lock() {
                 *last_error = Some(error.to_string());
             }
+            health.set_head_poisoned(true);
             WriterHeadState::Poisoned(error.to_string())
         }
     };
@@ -589,11 +687,23 @@ fn receipt_commit_actor_loop(
                         )
                     })) {
                         Ok(flush_error) => flush_error,
-                        Err(payload) => Some(fan_out_batch_panic_error(
-                            &health,
-                            request_responses,
-                            receipt_writer_job_panic_error(&payload),
-                        )),
+                        Err(payload) => {
+                            // A panic inside the append or lineage commit is at
+                            // least as serious as the store-wide append faults
+                            // `commit_receipt_batch` already poisons on: the
+                            // batch's durable position can no longer be trusted.
+                            // Poison the head so the pre-dispatch gate fails closed
+                            // rather than admitting more tools whose receipts may
+                            // not persist, until an operator reseeds.
+                            let panic_error = receipt_writer_job_panic_error(&payload);
+                            health.set_head_poisoned(true);
+                            head_state = WriterHeadState::Poisoned(panic_error.to_string());
+                            Some(fan_out_batch_panic_error(
+                                &health,
+                                request_responses,
+                                panic_error,
+                            ))
+                        }
                     };
                 // Checkpoint construction runs AFTER commit_receipt_batch has
                 // already sent every APPEND durability response, so ADR-0013
@@ -845,6 +955,7 @@ fn handle_non_append_command(
                             // reaches the caller.
                             drop(inflight_guard);
                             record_write_job_outcome(health, respond(Err(error)));
+                            health.set_head_poisoned(true);
                             *head_state = WriterHeadState::Poisoned(poison_message);
                         }
                     }
@@ -923,6 +1034,7 @@ fn handle_non_append_command(
                     // though the store recovered. Fail-closed is unaffected: a
                     // real later batch failure re-sets `pending_flush_error`.
                     *pending_flush_error = None;
+                    health.set_head_poisoned(false);
                     *head_state = WriterHeadState::Verified(Box::new(head));
                     // Build owed checkpoints after a successful reseed. If the
                     // background signer was installed
@@ -948,6 +1060,7 @@ fn handle_non_append_command(
                     if let Ok(mut last_error) = health.last_error.lock() {
                         *last_error = Some(error.to_string());
                     }
+                    health.set_head_poisoned(true);
                     *head_state = WriterHeadState::Poisoned(error.to_string());
                     Err(error)
                 }
@@ -1145,14 +1258,35 @@ fn commit_receipt_batch(
     requests: Vec<ReceiptCommitRequest>,
     health: &ReceiptCommitWriterHealth,
 ) -> Option<ReceiptStoreError> {
-    let results = match head_state {
+    let batch_outcome = match head_state {
         WriterHeadState::Verified(head) => {
-            let results = append_receipt_batch(pool, head, incremental_verification, &requests);
-            health.store_head_snapshot(head);
-            results
+            match append_receipt_batch(pool, head, incremental_verification, &requests) {
+                Ok(results) => {
+                    health.store_head_snapshot(head);
+                    Ok(results)
+                }
+                Err(error) => Err(error),
+            }
         }
-        WriterHeadState::Poisoned(message) => {
-            receipt_batch_error_results(requests.len(), poisoned_head_error(message))
+        WriterHeadState::Poisoned(message) => Ok(receipt_batch_error_results(
+            requests.len(),
+            poisoned_head_error(message),
+        )),
+    };
+    let results = match batch_outcome {
+        Ok(results) => results,
+        Err(error) => {
+            // A store-wide append fault (a failed checkpoint or predecessor
+            // verification, a transaction that will not open, a disk-full commit)
+            // rejects every receipt in this batch and will reject every future
+            // append until an operator reseeds. Poison the head so the
+            // pre-dispatch gate fails closed rather than letting tools run against
+            // a store that can no longer persist their receipts.
+            let message = error.to_string();
+            let results = receipt_batch_error_results(requests.len(), error);
+            health.set_head_poisoned(true);
+            *head_state = WriterHeadState::Poisoned(message);
+            results
         }
     };
     let flush_error = results
@@ -1539,51 +1673,40 @@ fn append_single_receipt_record(
     Ok(seq)
 }
 
+/// Append a coalesced group-commit batch.
+///
+/// `Err` is a STORE-WIDE fault (pool acquisition, checkpoint or predecessor
+/// verification, transaction open/commit, projection drift, a disk-full commit)
+/// that rejected the whole batch and will reject every future append until an
+/// operator reseeds: the caller poisons the head. `Ok` carries one result per
+/// request; a single malformed receipt fails only its own slot via its
+/// per-record savepoint and leaves the head intact.
 fn append_receipt_batch(
     pool: &Pool<SqliteConnectionManager>,
     head: &mut VerifiedHead,
     incremental_verification: bool,
     requests: &[ReceiptCommitRequest],
-) -> Vec<Result<u64, ReceiptStoreError>> {
-    let mut connection = match pool.get() {
-        Ok(connection) => connection,
-        Err(error) => {
-            return receipt_batch_error_results(
-                requests.len(),
-                ReceiptStoreError::Pool(error.to_string()),
-            );
-        }
-    };
-    if let Err(error) = ensure_checkpoint_transparency_guards(&connection) {
-        return receipt_batch_error_results(requests.len(), error);
-    }
+) -> Result<Vec<Result<u64, ReceiptStoreError>>, ReceiptStoreError> {
+    let mut connection = pool
+        .get()
+        .map_err(|error| ReceiptStoreError::Pool(error.to_string()))?;
+    ensure_checkpoint_transparency_guards(&connection)?;
     if incremental_verification {
         // O(1) predecessor check (+ bounded catch-up), not a chain rebuild.
-        if let Err(error) = verify_head_against_latest_checkpoint(&connection, head) {
-            return receipt_batch_error_results(requests.len(), error);
-        }
-    } else if let Err(error) = validate_claim_receipt_log_entries(&connection) {
-        return receipt_batch_error_results(requests.len(), error);
+        verify_head_against_latest_checkpoint(&connection, head)?;
+    } else {
+        validate_claim_receipt_log_entries(&connection)?;
     }
-    let tx = match connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate) {
-        Ok(tx) => tx,
-        Err(error) => {
-            return receipt_batch_error_results(requests.len(), ReceiptStoreError::Sqlite(error));
-        }
-    };
+    let tx = connection
+        .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
+        .map_err(ReceiptStoreError::Sqlite)?;
     if !incremental_verification {
-        if let Err(error) = verify_latest_checkpoint_integrity(&tx) {
-            return receipt_batch_error_results(requests.len(), error);
-        }
+        verify_latest_checkpoint_integrity(&tx)?;
     }
     // Baseline inside the IMMEDIATE tx: rows another store instance committed
     // since our last look are adopted as pre-existing, so the cross-check
     // below measures exactly what THIS batch inserted.
-    let (pre_delta, baseline_max) =
-        match claim_log_delta_count_and_max_seq(&tx, head.claim_log_max_seq) {
-            Ok(pair) => pair,
-            Err(error) => return receipt_batch_error_results(requests.len(), error),
-        };
+    let (pre_delta, baseline_max) = claim_log_delta_count_and_max_seq(&tx, head.claim_log_max_seq)?;
     // Validate the ADOPTED baseline delta before trusting it. Rows another
     // store instance committed since our last look
     // (head.claim_log_max_seq + 1 ..= baseline_max) are absorbed as
@@ -1594,11 +1717,7 @@ fn append_receipt_batch(
     // single-writer hot path the head is never stale, so pre_delta is 0 and
     // this is a no-op (zero added cost).
     if pre_delta > 0 {
-        if let Err(error) =
-            validate_adopted_claim_log_delta(&tx, head.claim_log_max_seq, baseline_max)
-        {
-            return receipt_batch_error_results(requests.len(), error);
-        }
+        validate_adopted_claim_log_delta(&tx, head.claim_log_max_seq, baseline_max)?;
     }
     let mut results = Vec::with_capacity(requests.len());
     for request in requests {
@@ -1617,17 +1736,12 @@ fn append_receipt_batch(
         // contiguous - and the loop continues with the others. Two extra SQL
         // statements per record: O(1) per record, O(b) per batch, never a
         // full-history scan, so the flat per-append cost holds.
-        if let Err(error) = tx.execute_batch("SAVEPOINT chio_append_record") {
-            return receipt_batch_error_results(requests.len(), ReceiptStoreError::Sqlite(error));
-        }
+        tx.execute_batch("SAVEPOINT chio_append_record")
+            .map_err(ReceiptStoreError::Sqlite)?;
         match append_single_receipt_record(&tx, request) {
             Ok(seq) => {
-                if let Err(error) = tx.execute_batch("RELEASE chio_append_record") {
-                    return receipt_batch_error_results(
-                        requests.len(),
-                        ReceiptStoreError::Sqlite(error),
-                    );
-                }
+                tx.execute_batch("RELEASE chio_append_record")
+                    .map_err(ReceiptStoreError::Sqlite)?;
                 results.push(Ok(seq));
             }
             Err(error) => {
@@ -1635,14 +1749,8 @@ fn append_receipt_batch(
                 // for the others. A savepoint that will not unwind is a
                 // transaction-integrity fault, so fail the whole batch closed in
                 // that (unexpected) case.
-                if let Err(rollback) =
-                    tx.execute_batch("ROLLBACK TO chio_append_record; RELEASE chio_append_record")
-                {
-                    return receipt_batch_error_results(
-                        requests.len(),
-                        ReceiptStoreError::Sqlite(rollback),
-                    );
-                }
+                tx.execute_batch("ROLLBACK TO chio_append_record; RELEASE chio_append_record")
+                    .map_err(ReceiptStoreError::Sqlite)?;
                 results.push(Err(error));
             }
         }
@@ -1667,18 +1775,11 @@ fn append_receipt_batch(
     // O(b) projection cross-check over the delta only: the claim-log
     // projection triggers (bootstrap/open.rs:676 tool, :711 child) must have
     // advanced the projection by exactly the rows this batch inserted.
-    let (delta_count, post_max) = match claim_log_delta_count_and_max_seq(&tx, baseline_max) {
-        Ok(pair) => pair,
-        Err(error) => return receipt_batch_error_results(requests.len(), error),
-    };
+    let (delta_count, post_max) = claim_log_delta_count_and_max_seq(&tx, baseline_max)?;
     if delta_count != inserted || post_max < baseline_max {
-        return receipt_batch_error_results(
-            requests.len(),
-            ReceiptStoreError::Conflict(
-                "claim receipt log projection drift on append; run `chio receipt audit`"
-                    .to_string(),
-            ),
-        );
+        return Err(ReceiptStoreError::Conflict(
+            "claim receipt log projection drift on append; run `chio receipt audit`".to_string(),
+        ));
     }
     // Validate the NEWLY-projected rows before advancing the head. The
     // count/MAX cross-check above only proves the projection
@@ -1696,21 +1797,15 @@ fn append_receipt_batch(
     // batch projects nothing, so this is a no-op). Fail-closed: a divergent row
     // returns the Conflict before `tx.commit()`, so the head never advances.
     if delta_count > 0 {
-        if let Err(error) = validate_adopted_claim_log_delta(&tx, baseline_max, post_max) {
-            return receipt_batch_error_results(requests.len(), error);
-        }
+        validate_adopted_claim_log_delta(&tx, baseline_max, post_max)?;
     }
-    match tx.commit() {
-        Ok(()) => {
-            head.claim_log_count = head
-                .claim_log_count
-                .saturating_add(pre_delta)
-                .saturating_add(delta_count);
-            head.claim_log_max_seq = post_max.max(baseline_max);
-            results
-        }
-        Err(error) => receipt_batch_error_results(requests.len(), ReceiptStoreError::Sqlite(error)),
-    }
+    tx.commit().map_err(ReceiptStoreError::Sqlite)?;
+    head.claim_log_count = head
+        .claim_log_count
+        .saturating_add(pre_delta)
+        .saturating_add(delta_count);
+    head.claim_log_max_seq = post_max.max(baseline_max);
+    Ok(results)
 }
 
 fn receipt_batch_error_results(
@@ -1761,6 +1856,13 @@ fn receipt_store_error_snapshot(error: &ReceiptStoreError) -> ReceiptStoreError 
         }
         ReceiptStoreError::Conflict(message) => ReceiptStoreError::Conflict(message.clone()),
         ReceiptStoreError::NotFound(message) => ReceiptStoreError::NotFound(message.clone()),
+        ReceiptStoreError::WriterDead {
+            restarts,
+            last_error,
+        } => ReceiptStoreError::WriterDead {
+            restarts: *restarts,
+            last_error: last_error.clone(),
+        },
     }
 }
 
@@ -2130,12 +2232,23 @@ impl SqliteReceiptStore {
                 status.latest_committed_entry_seq,
             )?;
         }
+        let (writer_level, writer_restart_total) =
+            self.receipt_commit_actor.writer_health_summary();
+        // A writer that cannot be trusted to persist can never read green. This is
+        // the same predicate the pre-dispatch gate denies on, so readiness and the
+        // gate never disagree: it covers a dead or degraded supervised thread AND a
+        // poisoned verified head, where the thread is still Healthy and no batch
+        // recorded a `last_error` yet every append is already rejected (the window
+        // right after opening a store, before the head has been seeded). Neither
+        // the thread level nor `last_error` alone can see the poisoned head.
         let healthy = status.healthy
+            && !self.receipt_commit_actor.writer_serving_closed()
             && self
                 .receipt_commit_actor
                 .writer_counters()
                 .last_error
-                .is_none();
+                .is_none()
+            && matches!(writer_level, HealthLevel::Healthy);
         let (uncheckpointed_start_seq, uncheckpointed_end_seq) = uncheckpointed_range(
             status.latest_checkpointed_entry_seq,
             status.latest_committed_entry_seq,
@@ -2150,7 +2263,18 @@ impl SqliteReceiptStore {
             uncheckpointed_end_seq,
             checkpoint_error: status.checkpoint_error,
             db_size_bytes: self.db_size_bytes().ok(),
+            writer_level,
+            writer_restart_total,
         })
+    }
+
+    /// Whether the commit writer can no longer be trusted to persist receipts, so
+    /// the kernel pre-dispatch gate must deny before a tool executes. True when the
+    /// supervised writer thread has left the healthy state, and also when the
+    /// writer's verified head is poisoned: the thread is alive but every append is
+    /// rejected until an operator reseeds.
+    pub fn writer_serving_closed(&self) -> bool {
+        self.receipt_commit_actor.writer_serving_closed()
     }
 
     /// Sample receipt-store health from a READ-ONLY connection.
@@ -2215,6 +2339,9 @@ impl SqliteReceiptStore {
                     uncheckpointed_end_seq,
                     checkpoint_error: None,
                     db_size_bytes: None,
+                    // A read-only observer cannot see the owning writer's supervisor.
+                    writer_level: HealthLevel::default(),
+                    writer_restart_total: 0,
                 })
             }
             Err(error) => {
@@ -2230,6 +2357,8 @@ impl SqliteReceiptStore {
                     uncheckpointed_end_seq,
                     checkpoint_error: Some(error.to_string()),
                     db_size_bytes: None,
+                    writer_level: HealthLevel::default(),
+                    writer_restart_total: 0,
                 })
             }
         }
@@ -2783,6 +2912,43 @@ fn canonical_receipt_json(canonical: &CanonicalBytes) -> Result<&str, ReceiptSto
 mod receipt_commit_actor_tests {
     use super::*;
 
+    #[test]
+    fn writer_health_starts_with_a_poisoned_head_until_seeding_clears_it() {
+        // The commit writer seeds its verified head asynchronously on the actor
+        // thread. Until that seed succeeds, durable persistence is unproven, so a
+        // freshly constructed health mirror must report a poisoned head. Starting
+        // open would let a corrupt or still-attaching store pass
+        // `writer_serving_closed` and execute a tool before its first append can
+        // reject, which is exactly the fail-open window the pre-dispatch gate
+        // exists to prevent.
+        let health = ReceiptCommitWriterHealth::default();
+        assert!(
+            health.head_poisoned.load(Ordering::SeqCst),
+            "writer health must start head-poisoned (serving closed) until a seeded head clears it"
+        );
+    }
+
+    /// A supervised writer that parks until shutdown, for actor send-path tests that
+    /// drive the channel directly and do not need a real commit loop consuming it.
+    fn idle_writer() -> SupervisedThread {
+        SupervisedThread::spawn(
+            SupervisorConfig {
+                name: "test-idle-writer",
+                tcb_critical: true,
+                trip_after: 1,
+                max_restarts: 1,
+                base_backoff: Duration::from_millis(1),
+                max_backoff: Duration::from_millis(1),
+            },
+            |shutdown| {
+                while !shutdown.load(Ordering::SeqCst) {
+                    std::thread::sleep(Duration::from_millis(1));
+                }
+                SupervisedOutcome::Shutdown
+            },
+        )
+    }
+
     fn actor_test_receipt() -> Result<ChioReceipt, ReceiptStoreError> {
         let keypair = chio_core::crypto::Keypair::generate();
         ChioReceipt::sign(
@@ -2844,7 +3010,11 @@ mod receipt_commit_actor_tests {
             let (response, _result) = mpsc::sync_channel(1);
             sender.try_send(ReceiptCommitCommand::Flush(response))?;
         }
-        let actor = ReceiptCommitActor { sender, health };
+        let actor = ReceiptCommitActor {
+            sender,
+            health,
+            writer: idle_writer(),
+        };
 
         let error = actor.append(actor_test_receipt()?, "{}".to_string(), false);
 
@@ -2860,7 +3030,11 @@ mod receipt_commit_actor_tests {
     fn receipt_commit_actor_flush_honors_timeout() -> Result<(), Box<dyn std::error::Error>> {
         let (sender, _receiver) = receipt_commit_channel();
         let health = Arc::new(ReceiptCommitWriterHealth::default());
-        let actor = ReceiptCommitActor { sender, health };
+        let actor = ReceiptCommitActor {
+            sender,
+            health,
+            writer: idle_writer(),
+        };
 
         let error = actor.flush_with_timeout(Duration::from_millis(1));
 

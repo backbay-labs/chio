@@ -96,6 +96,89 @@ fn local_default_without_store_invokes_tool() {
 }
 
 #[test]
+fn admit_capability_budget_fails_closed_on_a_poisoned_registry() {
+    let kernel = make_kernel(make_config());
+
+    // Poison the monetary lock by panicking while it is held: the exact hazard a
+    // panicking critical section leaves behind.
+    let poison = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _guard = kernel.budget_registry.lock().expect("uncontended lock");
+        panic!("poison the budget registry");
+    }));
+    assert!(poison.is_err());
+    assert!(
+        kernel.budget_registry.lock().is_err(),
+        "the budget registry lock must now be poisoned"
+    );
+
+    // A delegated capability drives admission through the poisoned lock. It must
+    // fail closed with an error rather than recover the half-mutated guard, and
+    // the kernel-wide degraded flag must trip.
+    let subject = make_keypair();
+    let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
+    let link = make_chain_bound_delegation_link(
+        "cap-parent",
+        &kernel.config.keypair,
+        &subject.public_key(),
+        &scope,
+        1,
+    );
+    let delegated = make_chain_bound_capability(
+        &kernel,
+        "cap-delegated-poison",
+        subject.public_key(),
+        scope.clone(),
+        vec![link],
+        &scope,
+        Some(5_000),
+    );
+
+    let result = kernel.admit_capability_budget(&delegated);
+    assert!(
+        result.is_err(),
+        "a poisoned monetary lock must deny admission, got {result:?}"
+    );
+    assert!(kernel.ensure_tcb_locks_healthy().is_err());
+}
+
+#[test]
+fn poisoned_tcb_lock_denies_at_the_pre_dispatch_gate() {
+    let mut kernel = make_kernel(make_config());
+    let invocations = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(SideEffectServer::new(
+        "srv-a",
+        vec!["read_file"],
+        std::sync::Arc::clone(&invocations),
+    )));
+
+    let subject = make_keypair();
+    let capability = make_capability(
+        &kernel,
+        &subject,
+        make_scope(vec![make_grant("srv-a", "read_file")]),
+        60,
+    );
+
+    // A prior panic poisoned a TCB lock; the kernel recorded it.
+    kernel.record_tcb_lock_poison("budget_registry");
+
+    let response = kernel
+        .evaluate_tool_call_blocking(&make_request(
+            "req-poisoned-gate",
+            &capability,
+            "read_file",
+            "srv-a",
+        ))
+        .expect("evaluation returns a verdict rather than an error");
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert_eq!(
+        invocations.load(Ordering::SeqCst),
+        0,
+        "a poisoned TCB lock must deny before the tool executes"
+    );
+}
+
+#[test]
 fn issue_and_use_capability() {
     let mut kernel = make_kernel(make_config());
     kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));

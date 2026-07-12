@@ -142,9 +142,23 @@ spec:
             initialDelaySeconds: 1
             periodSeconds: 1
             failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              # Dependency-aware readiness: /chio/health returns 503 when the
+              # receipt store can no longer persist, so a post-startup outage
+              # pulls the instance from rotation instead of routing traffic to a
+              # sidecar that can only deny. Without this probe, readiness never
+              # re-checks after the startup gate and the instance stays in
+              # rotation despite /chio/health failing.
+              path: /chio/health
+              port: 9090
+            periodSeconds: 10
+            failureThreshold: 3
           livenessProbe:
             httpGet:
-              path: /chio/health
+              # Process-only liveness: a dependency blip must not restart a
+              # container that is still serving. Readiness gates on /chio/health.
+              path: /chio/live
               port: 9090
             periodSeconds: 10
             failureThreshold: 3

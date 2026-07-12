@@ -122,10 +122,11 @@ USER 65532:65532
 
 EXPOSE 9090
 
-# Fail closed: if the health endpoint is not reachable the platform recycles
-# the container. The probe uses the baked-in curl binary to hit localhost.
+# Container liveness: recycle only when the process itself is unreachable. A
+# dependency blip must not recycle a serving container, so this uses the
+# process-only /chio/live route; platform readiness gates on /chio/health.
 HEALTHCHECK --interval=10s --timeout=5s --start-period=15s --retries=3 \
-  CMD ["/usr/bin/curl", "-fsS", "http://localhost:9090/chio/health"]
+  CMD ["/usr/bin/curl", "-fsS", "http://localhost:9090/chio/live"]
 
 ENTRYPOINT ["/usr/local/bin/chio-sidecar"]
 # No zero-argument default is meaningful: every chio subcommand needs

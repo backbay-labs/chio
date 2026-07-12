@@ -27,6 +27,7 @@ chio-core = { package = "chio-core-types", path = "../../core/chio-core-types" }
 chio-credit = { workspace = true }
 chio-kernel = { workspace = true }
 chio-settle = { workspace = true }
+chio-supervisor = { workspace = true }
 thiserror = { workspace = true }
 r2d2 = "0.8"
 r2d2_sqlite = "0.33.0"

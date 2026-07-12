@@ -22,6 +22,10 @@ pub(crate) fn build_app(state: Arc<ProxyState>) -> Router {
     Router::new()
         .route("/chio/evaluate", post(sidecar_evaluate_handler))
         .route("/chio/verify", post(sidecar_verify_handler))
+        // Liveness is process-only; readiness is dependency-aware. Splitting them
+        // lets a liveness probe keep a healthy process alive through a dependency
+        // blip while a readiness probe pulls it from rotation when it can only deny.
+        .route("/chio/live", get(sidecar_liveness_handler))
         .route("/chio/health", get(sidecar_health_handler))
         .merge(approval_routes)
         .route("/v1/capabilities/mint", post(sidecar_mint_handler))

@@ -154,6 +154,7 @@ fn watchdog_gauges_render_from_health_report() {
         uncheckpointed_end_seq: Some(50),
         checkpoint_error: None,
         db_size_bytes: None,
+        ..Default::default()
     };
     // Checkpoint staleness is based on checkpoint PROGRESS, not write-commit
     // freshness. The first sample seeds the staleness clock at 0; a later sample

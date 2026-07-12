@@ -348,6 +348,13 @@ pub struct ChioKernel {
     /// `emergency_stop`, cleared on `emergency_resume`. Stored behind
     /// ArcSwap so health probes can read the current reason without blocking.
     pub(super) emergency_stop_reason: ArcSwap<Option<String>>,
+    /// Persistent degraded flag for the trusted computing base's locks. A
+    /// poisoned budget-registry or session lock means a panic unwound
+    /// mid-mutation, so the state it guarded may be half-updated. Tripping this
+    /// flag makes the pre-dispatch gate fail evaluations closed until an
+    /// operator-visible recovery, rather than silently proceeding on the
+    /// recovered `into_inner` state. It is TCB-critical: any poison denies.
+    pub(super) lock_poison: chio_supervisor::HealthFlag,
     /// Memory-provenance chain. When installed, every
     /// governed `MemoryWrite` action appends an entry after the allow
     /// receipt is signed, and every `MemoryRead` attaches the latest

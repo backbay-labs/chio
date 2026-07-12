@@ -61,24 +61,27 @@ fn writer_job_panic_does_not_kill_the_actor() -> Result<(), Box<dyn std::error::
     Ok(())
 }
 
-/// A panic inside `commit_receipt_batch`
-/// (the append path itself, not a Write-routed job) must not take down the
-/// writer thread either. Uses the `test_hooks::PANIC_DURING_APPEND_BATCH`
-/// fault hook, which fires inside the per-request insert loop, before the
-/// interrupted request's transaction has committed and before any
-/// response in the batch has been sent -- exercising the
-/// `fan_out_batch_panic_error` path (the pre-cloned response senders, not
-/// the normal `receipt_batch_error_results` fan-out).
+/// A panic inside `commit_receipt_batch` (the append path itself, not a
+/// Write-routed job) is at least as serious as the store-wide append faults
+/// that path already poisons on: the writer's durable position is now
+/// unverifiable, so the head is poisoned and the pre-dispatch gate fails closed.
+/// The writer thread itself survives (the panic is caught), so an operator
+/// reseed recovers the store. Uses the `test_hooks::PANIC_DURING_APPEND_BATCH`
+/// fault hook, which fires inside the per-request insert loop before the
+/// interrupted request's transaction commits and before any response is sent,
+/// exercising the `fan_out_batch_panic_error` path (the pre-cloned response
+/// senders, not the normal `receipt_batch_error_results` fan-out).
 ///
-/// This crate's tests run in parallel and the fault-hook flag is
-/// process-global, so the hook is additionally gated on
-/// `PANIC_DURING_APPEND_BATCH_MARKER_CONTENT_HASH`: only a request carrying
-/// that exact `content_hash` can panic (not `receipt.id` -- `ChioReceipt::sign`
+/// This crate's tests run in parallel and the fault-hook flag is process-global,
+/// so the hook is additionally gated on
+/// `PANIC_DURING_APPEND_BATCH_MARKER_CONTENT_HASH`: only a request carrying that
+/// exact `content_hash` can panic (not `receipt.id` -- `ChioReceipt::sign`
 /// always overwrites `id` with a content-derived hash, so a caller-chosen id
-/// string does not survive signing), so a concurrently running, unrelated
-/// append test cannot be hit by this test's injected panic.
+/// string does not survive signing), so a concurrently running, unrelated append
+/// test cannot be hit by this test's injected panic.
 #[test]
-fn append_batch_panic_does_not_kill_the_actor() -> Result<(), Box<dyn std::error::Error>> {
+fn append_batch_panic_poisons_the_head_and_fails_closed() -> Result<(), Box<dyn std::error::Error>>
+{
     let path = unique_db_path("chio-append-batch-panic");
     let store = SqliteReceiptStore::open(&path)?;
 
@@ -100,21 +103,46 @@ fn append_batch_panic_does_not_kill_the_actor() -> Result<(), Box<dyn std::error
         "unexpected error message: {error}"
     );
 
-    // Teeth: the writer thread survived, and the interrupted append's
-    // transaction rolled back (no partial row) -- the next append gets
-    // seq 1, not seq 2.
-    let receipt = sample_receipt_with_id("rcpt-after-append-panic");
-    let seq = store.append_chio_receipt_returning_seq(&receipt)?;
-    assert_eq!(
-        seq, 1,
-        "the panicking append's tx must roll back cleanly, leaving seq 1 free"
+    // Teeth: the caught panic poisoned the head, so the pre-dispatch gate reports
+    // the writer is no longer serving and denies before another tool runs.
+    assert!(
+        store.writer_serving_closed(),
+        "a caught append-batch panic must trip the serving-closed gate"
     );
 
-    store.flush_receipt_writes()?;
-    let health = store.receipt_store_health()?;
+    // The writer THREAD survived the caught panic (a dead thread would answer
+    // Disconnected): the next append is rejected with the recoverable
+    // poisoned-head Conflict, not an actor-unavailable error.
+    match store
+        .append_chio_receipt_returning_seq(&sample_receipt_with_id("rcpt-after-append-panic"))
+    {
+        Ok(seq) => {
+            return Err(format!(
+                "expected the poisoned head to reject the next append, got seq {seq}"
+            )
+            .into())
+        }
+        Err(rejected) => assert!(
+            rejected
+                .to_string()
+                .contains("verified head is unavailable"),
+            "expected a poisoned-head rejection, got: {rejected}"
+        ),
+    }
+
+    // An operator reseed clears the poison; the interrupted append's transaction
+    // rolled back cleanly, so the store resumes serving at seq 1.
+    store.reseed_verified_head()?;
+    assert!(
+        !store.writer_serving_closed(),
+        "reseed must clear the poisoned head"
+    );
+    let seq = store.append_chio_receipt_returning_seq(&sample_receipt_with_id(
+        "rcpt-after-append-recovered",
+    ))?;
     assert_eq!(
-        health.writer.inflight, 0,
-        "inflight must drain to zero across the panicking append and the append after it"
+        seq, 1,
+        "the panicking append's tx must have rolled back cleanly, leaving seq 1 free"
     );
 
     let _ = fs::remove_file(path);

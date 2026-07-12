@@ -119,11 +119,33 @@ pub(crate) async fn sidecar_verify_handler(
     (StatusCode::OK, axum::Json(verification)).into_response()
 }
 
-pub(crate) async fn sidecar_health_handler(State(_state): State<Arc<ProxyState>>) -> Response {
+/// Process-only liveness. Returns `200` while the process runs. A dependency blip
+/// must not trip liveness, or an orchestrator would restart a container that is
+/// serving correctly; dependency health is reported by `/chio/health` instead.
+pub(crate) async fn sidecar_liveness_handler() -> Response {
     (
         StatusCode::OK,
         axum::Json(HealthResponse {
             status: SidecarStatus::Healthy,
+            version: env!("CARGO_PKG_VERSION").to_string(),
+        }),
+    )
+        .into_response()
+}
+
+/// Dependency-aware readiness. Consults the proxy state instead of reporting a
+/// constant healthy, so a broken runtime dependency yields a non-200 that pulls the
+/// instance from routing.
+pub(crate) async fn sidecar_health_handler(State(state): State<Arc<ProxyState>>) -> Response {
+    let status = state.readiness_status().await;
+    let code = match status {
+        SidecarStatus::Healthy => StatusCode::OK,
+        SidecarStatus::Degraded | SidecarStatus::Unhealthy => StatusCode::SERVICE_UNAVAILABLE,
+    };
+    (
+        code,
+        axum::Json(HealthResponse {
+            status,
             version: env!("CARGO_PKG_VERSION").to_string(),
         }),
     )

@@ -1,0 +1,36 @@
+[package]
+name = "chio-supervisor"
+description = "Task supervision and monotonic health flags for Chio serving processes: restart with capped backoff, never self-heal, fail closed"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_supervisor"
+
+[features]
+# Enables the tokio task supervisor. Kept optional so the synchronous thread
+# supervisor and the health flag stay usable by callers that do not link tokio.
+async = ["dep:tokio"]
+
+[dependencies]
+serde = { workspace = true }
+tokio = { workspace = true, optional = true }
+
+[target.'cfg(loom)'.dependencies]
+loom = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(loom)"] }

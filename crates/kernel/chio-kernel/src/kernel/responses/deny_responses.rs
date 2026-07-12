@@ -306,7 +306,12 @@ impl ChioKernel {
             tenant_id: None,
         })?;
 
-        self.record_chio_receipt(&receipt)?;
+        // A fail-closed deny admits no tool, so it must always surface as a signed
+        // verdict rather than a 500. When the deny fires because durable
+        // persistence is down, appending to that same closed store would fail and
+        // mask the verdict, so this records best-effort and never fails the deny on
+        // a serving-closed store.
+        self.record_failclosed_deny_receipt(&receipt)?;
 
         Ok(ToolCallResponse {
             request_id: request.request_id.clone(),

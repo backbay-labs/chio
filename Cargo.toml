@@ -8,6 +8,7 @@ members = [
     "crates/core/chio-adversarial-suite",
     "crates/core/chio-arena",
     "crates/core/chio-bounded",
+    "crates/core/chio-supervisor",
     #
     # Kernel variants
     "crates/kernel/chio-kernel",
@@ -365,6 +366,7 @@ chio-autonomy = { path = "crates/economy/chio-autonomy" }
 chio-bedrock-converse-adapter = { path = "crates/protocol/chio-bedrock-converse-adapter" }
 chio-binding-helpers = { path = "crates/sdk/chio-binding-helpers" }
 chio-bounded = { path = "crates/core/chio-bounded" }
+chio-supervisor = { path = "crates/core/chio-supervisor" }
 chio-cohere-tools-adapter = { path = "crates/protocol/chio-cohere-tools-adapter" }
 chio-config = { path = "crates/platform/chio-config" }
 chio-conformance = { path = "crates/tooling/chio-conformance" }

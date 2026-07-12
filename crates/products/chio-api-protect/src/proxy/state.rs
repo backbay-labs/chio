@@ -35,6 +35,10 @@ pub(crate) struct ToolReceiptLog {
     pub(crate) receipts: Vec<ChioReceipt>,
 }
 
+/// Reserved primary key the readiness probe writes and immediately rolls back,
+/// so exercising the receipt write path never leaves a durable row.
+const RECEIPT_READINESS_PROBE_ID: &str = "__chio_readiness_probe__";
+
 pub(crate) struct SqliteReceiptStore {
     connection: Connection,
 }
@@ -61,6 +65,30 @@ impl SqliteReceiptStore {
             )
             .map_err(|error| ProtectError::ReceiptStore(error.to_string()))?;
         Ok(Self { connection })
+    }
+
+    /// Reachability check of the receipt write path, for the readiness probe.
+    /// A bare `SELECT 1` answers even when the receipt tables have been dropped or
+    /// the database has gone read-only or full, so it would keep an instance in
+    /// rotation while every append fails after an already-allowed upstream call.
+    /// This exercises the real receipt tables and the write path inside a
+    /// transaction that is always rolled back: a dropped table, a read-only mount,
+    /// or a full disk fails readiness, and no probe row is ever persisted.
+    pub(crate) fn is_reachable(&self) -> bool {
+        self.probe_receipt_write_path().is_ok()
+    }
+
+    fn probe_receipt_write_path(&self) -> Result<(), rusqlite::Error> {
+        let tx = self.connection.unchecked_transaction()?;
+        tx.execute(
+            "INSERT OR REPLACE INTO http_receipts (id, receipt_json) VALUES (?1, ?2)",
+            params![RECEIPT_READINESS_PROBE_ID, "{}"],
+        )?;
+        tx.execute(
+            "INSERT OR REPLACE INTO tool_receipts (id, receipt_json) VALUES (?1, ?2)",
+            params![RECEIPT_READINESS_PROBE_ID, "{}"],
+        )?;
+        tx.rollback()
     }
 
     pub(crate) fn load_receipts(&self) -> Result<Vec<HttpReceipt>, ProtectError> {
@@ -174,6 +202,25 @@ pub(crate) struct ProxyState {
     pub(crate) trusted_capability_issuers: Vec<PublicKey>,
     pub(crate) trusted_receipt_signers: Vec<PublicKey>,
     pub(crate) sidecar_control_token: Option<String>,
+}
+
+impl ProxyState {
+    /// Dependency-aware readiness for the `/chio/health` probe.
+    ///
+    /// Unlike liveness, this reports the state of the runtime dependencies the
+    /// sidecar needs to serve honestly. When the durable receipt store's supervised
+    /// commit writer has stopped serving, every mediated call would be denied fail
+    /// closed, so readiness reports unhealthy and a platform probe pulls the instance
+    /// from rotation rather than routing traffic to a sidecar that can only deny.
+    pub(crate) async fn readiness_status(&self) -> SidecarStatus {
+        if let Some(store) = &self.receipt_store {
+            let store = store.lock().await;
+            if !store.is_reachable() {
+                return SidecarStatus::Unhealthy;
+            }
+        }
+        SidecarStatus::Healthy
+    }
 }
 
 /// The protect proxy.

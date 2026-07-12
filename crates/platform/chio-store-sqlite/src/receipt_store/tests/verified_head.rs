@@ -432,6 +432,132 @@ fn reseed_on_still_corrupt_store_stays_poisoned() -> Result<(), Box<dyn std::err
     Ok(())
 }
 
+/// A poisoned verified head must report the writer as serving-closed even though
+/// the supervised writer thread is still alive. The kernel pre-dispatch gate
+/// reads `writer_serving_closed`; if a poisoned head read healthy there, a tool
+/// would execute and only then fail to persist its receipt, the exact
+/// evidence-less side effect the gate exists to prevent. Recovery clears it.
+#[test]
+fn poisoned_head_reports_writer_serving_closed() -> Result<(), Box<dyn std::error::Error>> {
+    let path = unique_db_path("chio-head-poison-serving");
+    let keypair = receipt_test_keypair();
+    let store = SqliteReceiptStore::open(&path)?;
+    for i in 0..3 {
+        let receipt = sample_receipt_with_keypair(
+            &format!("rcpt-poison-serving-{i}"),
+            (i + 1) as u64,
+            &keypair,
+        );
+        store.append_chio_receipt_returning_seq(&receipt)?;
+    }
+    store.flush_receipt_writes()?;
+    store.create_next_receipt_checkpoint(3, &keypair)?;
+
+    // A healthy writer with a verified head serves.
+    assert!(
+        !store.writer_serving_closed(),
+        "a healthy writer with a verified head must serve"
+    );
+
+    // Tamper the latest checkpoint so the writer's predecessor check diverges,
+    // surface the divergence with a denied append, then run a reseed over the
+    // still-corrupt log: it fails closed and leaves the head Poisoned. The
+    // writer thread never dies through any of this.
+    let connection = store.connection()?;
+    let original: String = connection.query_row(
+        "SELECT statement_json FROM kernel_checkpoints WHERE checkpoint_seq = 1",
+        [],
+        |row| row.get(0),
+    )?;
+    connection.execute_batch("DROP TRIGGER IF EXISTS kernel_checkpoints_reject_update;")?;
+    connection.execute(
+        "UPDATE kernel_checkpoints SET statement_json = replace(statement_json, '\"batch_end_seq\":3', '\"batch_end_seq\":2')",
+        [],
+    )?;
+    drop(connection);
+    let denied = sample_receipt_with_keypair("rcpt-poison-serving-denied", 50, &keypair);
+    assert!(store.append_chio_receipt_returning_seq(&denied).is_err());
+    assert!(
+        store.reseed_verified_head().is_err(),
+        "a reseed over a corrupt log must fail closed and poison the head"
+    );
+
+    // The poisoned head reads serving-closed even though the supervised writer
+    // thread is still alive, so the pre-dispatch gate denies before dispatch.
+    assert!(
+        store.writer_serving_closed(),
+        "a poisoned head must report the writer serving-closed"
+    );
+
+    // Repair the data out of band and reseed: the head is verified again, so the
+    // store serves once more (the poison signal is cleared, not sticky).
+    let connection = store.connection()?;
+    connection.execute_batch("DROP TRIGGER IF EXISTS kernel_checkpoints_reject_update;")?;
+    connection.execute(
+        "UPDATE kernel_checkpoints SET statement_json = ?1 WHERE checkpoint_seq = 1",
+        rusqlite::params![original],
+    )?;
+    drop(connection);
+    store.reseed_verified_head()?;
+    assert!(
+        !store.writer_serving_closed(),
+        "a reseeded, verified head must serve again"
+    );
+
+    let _ = fs::remove_file(path);
+    Ok(())
+}
+
+/// A poisoned verified head must read the whole STORE as unhealthy, not only
+/// close the pre-dispatch gate. Right after a store opens, the supervised writer
+/// thread is still Healthy and no batch has recorded a `last_error`, yet every
+/// append is already rejected until the head is seeded. If store health ignored
+/// the poisoned head it would report green to readiness and the watchdog during
+/// the exact window in which the gate denies every tool call, so the two
+/// surfaces must agree.
+#[test]
+fn poisoned_head_reads_store_unhealthy() -> Result<(), Box<dyn std::error::Error>> {
+    let (path, store, keypair) = open_seeded_store("chio-head-poison-health", 3)?;
+    store.create_next_receipt_checkpoint(3, &keypair)?;
+
+    // Baseline: a seeded, verified head with no write error reads green on both
+    // surfaces.
+    let baseline = store.receipt_store_health()?;
+    assert!(
+        baseline.healthy,
+        "a verified head with no write error must read healthy"
+    );
+    assert!(!store.writer_serving_closed());
+
+    // Poison the head directly: the supervised writer thread stays alive and no
+    // batch error is recorded, so `last_error` is empty and the thread level is
+    // still Healthy. This is the fresh-open window where the summary counters
+    // look green but the writer cannot persist a single receipt.
+    store.receipt_commit_actor.health.set_head_poisoned(true);
+
+    assert!(
+        store.writer_serving_closed(),
+        "a poisoned head must fail the pre-dispatch gate closed"
+    );
+    let report = store.receipt_store_health()?;
+    assert!(
+        report.writer.last_error.is_none(),
+        "the poison window records no per-batch last_error"
+    );
+    assert_eq!(
+        report.writer_level,
+        HealthLevel::Healthy,
+        "the supervised writer thread is still alive"
+    );
+    assert!(
+        !report.healthy,
+        "a store whose verified head is poisoned must read unhealthy so readiness and the pre-dispatch gate agree"
+    );
+
+    let _ = fs::remove_file(path);
+    Ok(())
+}
+
 /// `reseed_verified_head()` success clears `last_error` and replaces the head,
 /// and must ALSO clear the actor loop's separate `pending_flush_error` (set by
 /// an earlier poisoned append). Otherwise a subsequent STANDALONE
@@ -692,11 +818,7 @@ fn stale_head_validates_adopted_delta_before_trusting() -> Result<(), Box<dyn st
         ensure_lineage: false,
         response,
     }];
-    let results = append_receipt_batch(&store.pool, &mut stale_head, true, &requests);
-    let error = results
-        .into_iter()
-        .next()
-        .ok_or("expected one append result")?
+    let error = append_receipt_batch(&store.pool, &mut stale_head, true, &requests)
         .err()
         .ok_or("stale-head append over an out-of-band orphan row must be denied")?;
     match &error {
@@ -726,7 +848,7 @@ fn stale_head_validates_adopted_delta_before_trusting() -> Result<(), Box<dyn st
         ensure_lineage: false,
         response,
     }];
-    let results = append_receipt_batch(&store.pool, &mut fresh_head, true, &requests);
+    let results = append_receipt_batch(&store.pool, &mut fresh_head, true, &requests)?;
     assert!(
         results.iter().all(|result| result.is_ok()),
         "empty-delta append must add no validation and succeed: {results:?}"
@@ -1439,6 +1561,80 @@ fn seq_unchanged_recheck_catches_projection_tamper() -> Result<(), Box<dyn std::
     );
 
     drop(connection);
+    let _ = fs::remove_file(path);
+    Ok(())
+}
+
+/// A store-wide append fault (a stale head that adopts an out-of-band orphan
+/// row, a disk-full commit, a transaction that will not open) rejects the
+/// ENTIRE batch and will reject every future append until an operator reseeds.
+/// Recording the error alone leaves the pre-dispatch gate reading serving, so
+/// tools keep executing while no receipt can be persisted. The batch must
+/// poison the head so `writer_serving_closed` fails closed.
+#[test]
+fn store_wide_append_failure_poisons_the_head() -> Result<(), Box<dyn std::error::Error>> {
+    let path = unique_db_path("chio-store-wide-poison");
+    let keypair = receipt_test_keypair();
+    let store = SqliteReceiptStore::open(&path)?;
+    // Three real receipts -> claim-log entries 1..=3.
+    for i in 0..3 {
+        let receipt =
+            sample_receipt_with_keypair(&format!("rcpt-poison-{i}"), (i + 1) as u64, &keypair);
+        store.append_chio_receipt_returning_seq(&receipt)?;
+    }
+    store.flush_receipt_writes()?;
+
+    // An out-of-band ORPHAN claim-log row at entry_seq 4 (no source receipt). A
+    // stale head (max_seq = 3) adopts it as baseline; the delta validator then
+    // rejects the whole batch closed, which is a store-wide fault.
+    {
+        let connection = store.connection()?;
+        connection.execute(
+            r#"
+            INSERT INTO claim_receipt_log_entries (
+                entry_seq, receipt_id, receipt_kind, source_seq, timestamp,
+                capability_id, tool_server, tool_name, raw_json
+            ) VALUES (4, 'orphan-poison-4', 'tool_receipt', 999, 1, 'cap-oob', 'shell', 'bash', '{}')
+            "#,
+            [],
+        )?;
+    }
+
+    let health = ReceiptCommitWriterHealth::default();
+    // Start from a serving-open writer so the store-wide append below is the
+    // only thing that can close the gate.
+    health.set_head_poisoned(false);
+    let mut head_state = WriterHeadState::Verified(Box::new(VerifiedHead {
+        latest_checkpoint: None,
+        claim_log_count: 3,
+        claim_log_max_seq: 3,
+    }));
+
+    let receipt = sample_receipt_with_keypair("rcpt-poison-append", 10, &keypair);
+    let raw_json = serde_json::to_string(&receipt)?;
+    let (response, _rx) = std::sync::mpsc::sync_channel(1);
+    let requests = vec![ReceiptCommitRequest {
+        receipt,
+        raw_json,
+        ensure_lineage: false,
+        response,
+    }];
+
+    let flush_error = commit_receipt_batch(&store.pool, &mut head_state, true, requests, &health);
+
+    assert!(
+        flush_error.is_some(),
+        "a store-wide append failure must surface a flush error"
+    );
+    assert!(
+        health.head_poisoned.load(Ordering::SeqCst),
+        "a store-wide append failure must poison the head so the pre-dispatch gate fails closed"
+    );
+    assert!(
+        matches!(head_state, WriterHeadState::Poisoned(_)),
+        "a store-wide append failure must transition the head to Poisoned"
+    );
+
     let _ = fs::remove_file(path);
     Ok(())
 }
