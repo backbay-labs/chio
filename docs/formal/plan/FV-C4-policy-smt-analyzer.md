@@ -68,6 +68,43 @@ For each block, compute the relation between every atom pair over the decidable 
 
 `chio policy analyze --against old.yaml new.yaml` answers: is `new` a strict narrowing of `old`? Per block, compute the admitted set relation using the same pairwise algebra; the policy refines iff every input admitted by `new` is admitted by `old` (deny-side monotonicity: everything `old` denied, `new` still denies). When refinement fails, emit a witness: a concrete synthesized input (tool name, path, or host string) admitted by `new` and denied by `old`, constructed from the glob product automaton's distinguishing path. This is the attenuation question (`NormalizedScope::is_subset_of`) lifted to policy documents, and the implementation reuses the normalized subset helpers where the types line up (tool/resource grants derived from `tool_access` via the compiler's `compile_scope`) instead of duplicating them. Conceptually this is `refinesOn` from PredicateLang.lean with the sample quantifier replaced by the decidable fragment's exact relation - the doc for FV-D2 should cite this section when building its bridge.
 
+### Lean algebra handoff
+
+The Lean algebra is not a production wire format. It is a tagged `Predicate`
+enum with `atom`, `top`, `bot`, `conj`, `disj`, and `neg`, evaluated over an
+`AdmissionView` projection of `TreatyScope`, `LadderIntersection`,
+`BilateralInvocation`, evidence, verifier-owned expected hashes, mode, time,
+and joint policy state. `AtomTag` names the modeled runtime gates: current
+schemas, treaty freshness, scope/intersection agreement, intersection binding,
+invocation binding, allowed action class, signer pair, continuation binding,
+required evidence presence and verification, joint policy allow, and a mode
+floor. `.unsupported` has no denotation.
+
+The fail-closed contract is two-stage. `supported` rejects any syntax tree
+containing an unsupported atom before Boolean connectives run. `defined`
+rejects a tree when a required projected value is unavailable. This means
+neither `.neg (.atom (.unsupported name))` nor a negated mode predicate with an
+unknown mode can produce allow.
+
+Refinement completeness is intentionally domain-scoped:
+
+```
+refinesOnConstitution new old domain = true <->
+  forall input, input in domain -> admits new input -> admits old input
+```
+
+The policy analyzer must not reinterpret this as global completeness from a
+sample. Its direct glob/set/range relation can issue a global refinement result
+only when that relation is exact for every analyzed atom. Opaque or unsupported
+matchers produce an indeterminate result. If the analyzer serializes a future
+shared predicate shape, its parser must reject unknown variants before
+negation, and its witness domain must be named in any finite decision.
+
+Two `abstraction_anchor` mirror entries bind the Lean projection to the exact
+Rust record and validator symbols. They are drift tripwires, not semantic
+equivalence evidence and not permission to call the Lean shape serialized
+production policy.
+
 ### Why not SMT first
 
 A z3 (or cvc5) binding is the standard route (Zelkova, Cedar both went semantic). Weighed honestly:
@@ -170,13 +207,15 @@ chio policy analyze <policy.yaml> [--against <old.yaml>] [--format table|json] [
 - Should `when`-condition filtering (evaluate_with_context, engine.rs:57) be in phase 1 scope as context-conditional atoms, or analyzed pessimistically (conditions treated as opaque, findings marked conditional)?
 - Witness synthesis for numeric blocks: is a boundary value (max_additions + 1) an acceptable witness format alongside string witnesses?
 - Does refinement across `extends`/`merge_strategy` inheritance chains (models.rs:52-54, merge.rs) analyze the merged effective policy, the delta, or both? (Proposal: merged effective policy, since that is what the engine sees.)
-- Should the analyzer verdict for a policy pair be embeddable in the treaty/bilateral flow that PredicateLang models, once FV-D2's bridge lands?
+- Should the analyzer verdict for a policy pair be embeddable in the treaty
+  flow through an explicit, versioned adapter to the bounded admission algebra?
 - Is `chio policy analyze` also the home for lints that are not relations (unused profiles, expired `expiry_date` in metadata), or does lint scope dilute the product story?
 
 ## Manifest and registry updates
 
 - formal/proof-manifest.toml: no change in phases 1-2 (the analyzer is tooling, not proof evidence). If phase 3's cross-check lane becomes a gate, add it to `gate_commands`.
-- formal/theorem-inventory.json: not applicable now; FV-D2 owns the Lean-side refinement entries and should cite the analyzer's relation semantics.
+- formal/theorem-inventory.json: not applicable now. The treaty bridge owns
+  bounded admission-refinement entries, but does not prove analyzer semantics.
 - formal/MAPPING.md: no named-property rows; add an informational pointer from the PredicateLang cross-reference section to `analyze/refine.rs` when phase 2 lands.
 - fuzz/target-map.toml and fuzz/owners.toml: add the `policy_analyze` target (crate chio-policy, triggers on `crates/guards/chio-policy/src/analyze/**` and matcher sources, seeds from the policy corpus).
-- docs/reference/CLAIM_REGISTRY.md: propose claim `POLICY-ANALYZE` (approved_with_scope): "Chio ships a policy analyzer that decides rule shadowing, unreachability, contradiction, and policy-diff refinement over the decidable HushSpec fragment, with engine-confirmed witnesses for refinement failures." Evidence classes: `differential_test`, `runtime_qualification`. Do not claim "formally verified policy analysis" - no Lean artifact backs the analyzer itself until FV-D2.
+- docs/reference/CLAIM_REGISTRY.md: propose claim `POLICY-ANALYZE` (approved_with_scope): "Chio ships a policy analyzer that decides rule shadowing, unreachability, contradiction, and policy-diff refinement over the decidable HushSpec fragment, with engine-confirmed witnesses for refinement failures." Evidence classes: `differential_test`, `runtime_qualification`. Do not claim "formally verified policy analysis"; the treaty Lean model does not prove the analyzer.

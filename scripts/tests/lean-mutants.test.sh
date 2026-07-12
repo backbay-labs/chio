@@ -22,6 +22,10 @@ allowlist = tomllib.loads(
     Path("formal/lean4/lean-mutants-allowlist.toml").read_text(encoding="utf-8")
 )
 allowed = {(entry["path"], entry["name"]) for entry in allowlist["definition"]}
+allowed_roots = (
+    "formal/lean4/Chio/Chio/Core/",
+    "formal/lean4/Chio/Chio/Treaty/",
+)
 if len(mutants) < 5:
     raise SystemExit("Lean pilot enumerated fewer than five mutants")
 if len({mutant["id"] for mutant in mutants}) != len(mutants):
@@ -29,8 +33,10 @@ if len({mutant["id"] for mutant in mutants}) != len(mutants):
 for mutant in mutants:
     if (mutant["path"], mutant["definition"]) not in allowed:
         raise SystemExit(f"Lean mutant escaped its definition allowlist: {mutant}")
-    if not mutant["path"].startswith("formal/lean4/Chio/Chio/Core/"):
-        raise SystemExit(f"Lean mutant escaped the core model: {mutant}")
+    if not mutant["path"].startswith(allowed_roots):
+        raise SystemExit(f"Lean mutant escaped the approved model roots: {mutant}")
+if not any(mutant["path"].startswith(allowed_roots[1]) for mutant in mutants):
+    raise SystemExit("Lean treaty definitions produced no mutants")
 PY
 
 python3 - <<'PY'
@@ -46,6 +52,15 @@ module = importlib.util.module_from_spec(module_spec)
 assert module_spec.loader is not None
 sys.modules[module_spec.name] = module
 module_spec.loader.exec_module(module)
+
+if module.COMPARISON.search("def map : Bool -> Bool := fun value => value") is not None:
+    raise SystemExit("Lean comparison mutator treated arrow syntax as a comparison")
+comparison_tokens = [
+    match.group(1)
+    for match in module.COMPARISON.finditer("left > right && low ≤ high")
+]
+if comparison_tokens != [">", "≤"]:
+    raise SystemExit(f"Lean comparison mutator missed real operators: {comparison_tokens}")
 
 repo = Path.cwd().resolve()
 drift_root = repo / "target/formal/lean-mutants-drift-selftest"
@@ -166,6 +181,20 @@ shutil.rmtree(drift_root)
 
 _, _, definitions = module.load_allowlist(repo)
 inventory = module.enumerate_mutations(repo, definitions)
+if module.repo_file(
+    repo, "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean"
+) != Path("formal/lean4/Chio/Chio/Treaty/PredicateLang.lean"):
+    raise SystemExit("Lean treaty source was not accepted")
+for rejected in (
+    "formal/lean4/Chio/Chio/Proofs/Evaluation.lean",
+    "formal/lean4/Chio/Chio/TreatyNested/Fixture.lean",
+):
+    try:
+        module.repo_file(repo, rejected)
+    except module.LeanMutationError:
+        pass
+    else:
+        raise SystemExit(f"Lean source outside approved roots was accepted: {rejected}")
 first, first_seed = module.select_mutants(inventory, "a" * 40, 5, False, 1)
 second, second_seed = module.select_mutants(inventory, "a" * 40, 5, False, 2)
 if first_seed != second_seed or [item.id for item in first] == [item.id for item in second]:

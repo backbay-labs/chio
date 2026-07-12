@@ -179,6 +179,7 @@ fn validate_entries(entries: &[MirrorEntry], root: &Path) -> Result<(), String> 
 fn validate_relationship(entry: &MirrorEntry) -> Result<(), String> {
     match (entry.model_kind, entry.relationship) {
         (ModelKind::Lean, MirrorRelationship::Transliteration)
+        | (ModelKind::Lean, MirrorRelationship::AbstractionAnchor)
         | (ModelKind::Tla, MirrorRelationship::AbstractionAnchor) => Ok(()),
         _ => Err(format!(
             "model_kind and relationship disagree for {}",
@@ -414,7 +415,7 @@ fn drift_message(entry: &MirrorEntry, changed_symbols: &[&str]) -> String {
             "\n  This Rust symbol is hand-transliterated into the Lean model above.\n  1. Review the Lean mirror and update it if the semantics changed.",
         ),
         MirrorRelationship::AbstractionAnchor => message.push_str(
-            "\n  This Rust symbol is an implementation anchor for the TLA model above.\n  1. Review the model abstraction and update it if the contract changed.\n  A matching hash does not claim that Rust enforces the modeled property.",
+            "\n  This Rust symbol is an implementation anchor for the model above.\n  1. Review the model abstraction and update it if the contract changed.\n  A matching hash does not claim that Rust enforces the modeled property.",
         ),
     }
     message.push_str(
@@ -543,13 +544,23 @@ mod tests {
     #[test]
     fn model_kind_and_relationship_must_agree() {
         let mut mirror = entry(&["allows"]);
-        mirror.relationship = MirrorRelationship::AbstractionAnchor;
+        mirror.model_file = "formal/apalache/ReceiptBeforeAllow.tla".to_string();
+        mirror.model_kind = ModelKind::Tla;
+        mirror.relationship = MirrorRelationship::Transliteration;
 
         let error = match validate_relationship(&mirror) {
             Ok(()) => panic!("invalid model relationship unexpectedly passed"),
             Err(error) => error,
         };
         assert!(error.contains("model_kind and relationship disagree"));
+    }
+
+    #[test]
+    fn lean_abstraction_anchor_is_explicitly_supported() {
+        let mut mirror = entry(&["allows"]);
+        mirror.relationship = MirrorRelationship::AbstractionAnchor;
+
+        assert!(validate_relationship(&mirror).is_ok());
     }
 
     #[test]

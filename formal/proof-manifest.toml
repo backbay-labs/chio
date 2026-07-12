@@ -35,6 +35,9 @@ root_modules = [
   "formal/lean4/Chio/Chio/Capability/Delegation.lean",
   "formal/lean4/Chio/Chio/Treaty/Intersection.lean",
   "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+  "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
+  "formal/lean4/Chio/Chio/Treaty/IntersectionLegacy.lean",
+  "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
   "formal/lean4/Chio/Chio/Treaty/BilateralAccept.lean",
 ]
 
@@ -127,7 +130,7 @@ required_property_ids = ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "
 property_matrix = [
   "P1|capability attenuation|lean_root_imported,differential_test,rust_projection,aeneas_equivalence,public_kani|spec.capability_monotonicity,proof.scope_subset_of_grants_subset,proof.reduced_budget_is_subset,proof.added_constraint_is_subset,proof.generated_optional_u32_cap_is_subset_preserves_parent_cap,proof.generated_ledger_apply_eq_model",
   "P2|presented revocation coverage|lean_root_imported,audited_storage_assumption,sqlite_projection,aeneas_equivalence|proof.revoke_marks_capability_revoked,proof.checkRevocation_revoked_token_errors,proof.evalToolCall_revoked_token_never_allows,proof.revocationSnapshot_revoked_token_denies,proof.revocationSnapshot_revoked_ancestor_denies,proof.generated_revocation_snapshot_denies_eq_model",
-  "P3|fail-closed evaluation|lean_root_imported,rust_core,audited_subprocess_assumption,public_kani,adapter_no_bypass,aeneas_equivalence|proof.evalToolCall_total,proof.evalToolCall_invalid_signature_denies,proof.evalToolCall_out_of_scope_denies,proof.admitSession_invalid_dpop_rejects,proof.governedApproval_required_without_token_fails,proof.dpop_required_missing_proof_rejects,proof.dpop_required_invalid_proof_rejects,proof.guardPipeline_deny_dominates,proof.guardPipeline_error_dominates,proof.delegation_max_depth_failure_denies,proof.generated_time_window_valid_eq_model,proof.generated_budget_commit_eq_model,proof.generated_guard_step_allows_eq_model",
+  "P3|fail-closed evaluation|lean_root_imported,rust_core,audited_subprocess_assumption,public_kani,adapter_no_bypass,aeneas_equivalence|proof.evalToolCall_total,proof.evalToolCall_invalid_signature_denies,proof.evalToolCall_out_of_scope_denies,proof.admitSession_invalid_dpop_rejects,proof.governedApproval_required_without_token_fails,proof.dpop_required_missing_proof_rejects,proof.dpop_required_invalid_proof_rejects,proof.guardPipeline_deny_dominates,proof.guardPipeline_error_dominates,proof.delegation_max_depth_failure_denies,proof.generated_time_window_valid_eq_model,proof.generated_budget_commit_eq_model,proof.generated_guard_step_allows_eq_model,treaty.predicate.unsupported_denies,treaty.predicate.runtime_policy_exact,treaty.syntactic.decision_exact,treaty.bridge.refinement_on_iff",
   "P4|receipt integrity|lean_root_imported,symbolic_crypto,audited_crypto_assumption,receipt_totality,aeneas_equivalence,public_kani,differential_test|proof.membership_proof_sound,proof.stepFold_eq_applyProof,proof.stepFold_membership_sound_if_geometry_agrees,proof.boundedWalkGeometry_decodes,proof.bounded_stepFold_sound,proof.generated_inclusion_step_eq_model,proof.receipt_sign_then_verify,proof.receipt_immutability,proof.receiptFieldsCoupled_preserves_all_fields,proof.generated_receipt_fields_coupled_eq_model",
   "P5|presented delegation-chain semantic validity|lean_root_imported,sqlite_projection|proof.delegation_chain_integrity,proof.delegation_step_allow_requires_attenuation,proof.delegation_step_allow_requires_subject_continuity,proof.delegation_step_allow_requires_expiry_monotonicity,proof.delegation_revoked_ancestor_denies,proof.delegation_max_depth_failure_denies",
   "P6|local parent-link soundness|lean_root_imported,audited_storage_assumption|proof.observed_parent_edge_sound",
@@ -191,6 +194,7 @@ excluded_surfaces = [
   "Symlink resolution and OS filesystem root enforcement beyond Chio's normalized path-prefix fail-closed checks",
   "Cross-row receipt and budget crash recovery, ordering, and conservation until implementation trace validation and crash-reopen gates establish refinement",
   "Runtime trace callbacks omitted, reordered, or rewritten before delivery to the installed synchronous observer and calibration-free recorder deployment, as recorded by ASSUME-TRACE-OBSERVER",
+  "Treaty PredicateLang parsing, canonical hashing, signature verification, store lookup, and completeness outside its explicit AdmissionView decision domain",
 ]
 
 notes = [
@@ -206,6 +210,7 @@ notes = [
   "ReceiptBeforeAllow proves the abstract persist-before-publish ordering and its production replay exercises the native happy path. It does not discharge concrete cross-row crash recovery, which remains excluded until implementation trace validation and crash-reopen conservation gates establish refinement.",
   "Manual Rust-to-model hashes are enforced by cargo xtask check formal-mirrors; transliteration and abstraction-anchor records require review, but matching hashes do not prove semantic equivalence or modeled properties.",
   "The Rust relying-party inclusion walk is bound to the symbolic Lean walk by paired manual-mirror hashes, an authenticated generated-output Aeneas theorem for the scalar step, bounded Kani parity with unwinding assertions over runtime-cross-checked fixtures for every size from 1 through 8, and required Rust-TypeScript tamper differentials. Hash collision resistance remains ASSUME-SHA256.",
+  "The treaty PredicateLang is a bounded post-validation abstraction over production-shaped federation inputs. Its Lean abstraction anchors are drift tripwires, not a Rust refinement proof.",
   "docs/formal/COVERAGE.md is the generated per-surface join of declared verification registries. It reports evidence identity and attribution without licensing claims beyond docs/reference/CLAIM_REGISTRY.md.",
 ]
 
@@ -812,4 +817,49 @@ normalized_sha256 = "1d6e3d557bd434794b80eddf86ef281695aaa7ef2efe6c5ad6bf16d7c8d
 symbol_sha256 = [
   { symbol = "InclusionStep", sha256 = "6a16b005ea025862aeb47b8188a6f08bb0cc4182c4cdd545013a3fd40a4cc443" },
   { symbol = "inclusion_step", sha256 = "9b5909acc603bfdcaa6bb6209e3e05a132a5e0ef236dacb5ecbbf40ef398e593" },
+]
+
+# PredicateLang is a bounded post-validation projection, not a
+# transliteration. These anchors require model review when either the runtime
+# records or the admission functions drift.
+[[mirror]]
+model_file = "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean"
+model_kind = "lean"
+relationship = "abstraction_anchor"
+rust_source = "crates/kernel/chio-runtime-core/src/types.rs"
+rust_symbols = [
+  "TreatyScope",
+  "LadderIntersection",
+  "BilateralInvocation",
+  "CrossBoundaryEvidenceRef",
+  "CrossBoundaryAdmissionInput",
+]
+normalized_sha256 = "2004c0e5a291eec0bd988fa3c2582cefb82f12b8db2a535b9e87ec0bfddf8fbd"
+symbol_sha256 = [
+  { symbol = "TreatyScope", sha256 = "94008ea1650eab1f4252bdad5a55491468e28e12e4bf51d44486cc84d3993015" },
+  { symbol = "LadderIntersection", sha256 = "62ca745ae5b3d58ade9f90b22d049085f8543802000b0c144dde85bbdb91ef1c" },
+  { symbol = "BilateralInvocation", sha256 = "6efcd3a56ed3109d037c80134d762a8e99d6d54ae0e4efdb560f66e37ec74d5e" },
+  { symbol = "CrossBoundaryEvidenceRef", sha256 = "b403c3fdda722fa9ff8ffc500113ecb62c703c7220be22de3200443d5bd142f9" },
+  { symbol = "CrossBoundaryAdmissionInput", sha256 = "411959defcf7c2fa3e257759beafb755e4a49932f0212f8656aadea0d9ef43a7" },
+]
+
+[[mirror]]
+model_file = "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean"
+model_kind = "lean"
+relationship = "abstraction_anchor"
+rust_source = "crates/kernel/chio-runtime-core/src/treaty.rs"
+rust_symbols = [
+  "validate_treaty_scope",
+  "validate_ladder_intersection",
+  "evaluate_cross_boundary_admission",
+  "validate_bilateral_invocation",
+  "ladder_mode_rank",
+]
+normalized_sha256 = "e89e80a24c0af0ff55fed385370f50efc33bf3c85a44ef33aa4bb7a9cf51752d"
+symbol_sha256 = [
+  { symbol = "validate_treaty_scope", sha256 = "43adb46fce2bfe544198af880bc5c27a73592c2a3bdbee6d3ad8e6d165802f9f" },
+  { symbol = "validate_ladder_intersection", sha256 = "f9f18a3eb5fd14a24852afafea7fce07c78dccf46fc62df0b93a792907c6ead6" },
+  { symbol = "evaluate_cross_boundary_admission", sha256 = "769e6a63b246337c8e5505917bbebc500f31d0a9085050da59a0af84a8f196fb" },
+  { symbol = "validate_bilateral_invocation", sha256 = "404dddde3595e23e82ae0f39ca360fc2a7258a5c359b7d54f94e293c2d78a366" },
+  { symbol = "ladder_mode_rank", sha256 = "d673d2d5ac1ae7de5799aad2d92ea9d7db7ee07e3c151778904959e88f8a16ac" },
 ]

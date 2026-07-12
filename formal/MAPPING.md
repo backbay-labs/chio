@@ -31,11 +31,11 @@ When you add a new TLA+ named safety/liveness invariant or a new
 same PR or `scripts/check-mapping.sh` will fail.
 
 Manual Rust-to-model seams are registered separately as `[[mirror]]` entries
-in `formal/proof-manifest.toml`. Lean entries are transliterations, while TLA+
-entries are abstraction anchors. The required `cargo xtask check
-formal-mirrors` gate hashes the named Rust items and fails when their normalized
-tokens drift. A hash bless records review; it is not an equivalence proof and
-does not establish a modeled property in Rust.
+in `formal/proof-manifest.toml`. Lean entries declare either a transliteration
+or an abstraction anchor; TLA+ entries are abstraction anchors. The required
+`cargo xtask check formal-mirrors` gate hashes the named Rust items and fails
+when their normalized tokens drift. A hash bless records review; it is not an
+equivalence proof and does not establish a modeled property in Rust.
 
 ## TLA+ named invariants (RevocationPropagation.tla)
 
@@ -91,6 +91,13 @@ Lean cross-references (informational; the script does not enforce these):
   `verify_reservation_ledger_conservation`, and the runtime pair
   `kernel/ledger_audit.rs` plus `tests/property_reservation_ledger.rs`.
   Scalar admission is linked; production ledger linkage is not established.
+- `Chio.Treaty.PredicateLang.runtime_admission_policy_exact` is the bounded
+  fail-closed projection for P3. Its two Lean abstraction anchors bind the
+  projected `TreatyScope`, `LadderIntersection`, `BilateralInvocation`, and
+  evidence records plus `validate_treaty_scope`,
+  `validate_ladder_intersection`, `evaluate_cross_boundary_admission`,
+  `validate_bilateral_invocation`, and `ladder_mode_rank`. The hashes detect
+  Rust drift; they do not prove the projection refines those Rust functions.
 
 ## Trace validation
 

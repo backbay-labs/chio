@@ -31,6 +31,10 @@ ALLOWLIST = Path("formal/lean4/lean-mutants-allowlist.toml")
 OUTPUT = Path("target/formal/lean-mutants")
 LEAN_PROJECT = Path("formal/lean4/Chio")
 LEAN_TOOLCHAIN = LEAN_PROJECT / "lean-toolchain"
+MUTABLE_MODEL_ROOTS = (
+    Path("formal/lean4/Chio/Chio/Core"),
+    Path("formal/lean4/Chio/Chio/Treaty"),
+)
 DECLARATION = re.compile(
     r"^(?:(?:private|noncomputable|protected)\s+)*(def|theorem|lemma|axiom|abbrev|structure|inductive|class|instance)\s+([A-Za-z_][A-Za-z0-9_.']*)"
 )
@@ -43,7 +47,7 @@ TOP_LEVEL_COMMAND = re.compile(
 )
 BOOLEAN = re.compile(r"\b(true|false)\b")
 CONNECTIVE = re.compile(r"&&|\|\|")
-COMPARISON = re.compile(r"(?<![:<>=!])([<>=]|≤|≥|≠)(?![=>])")
+COMPARISON = re.compile(r"(?<![:<>=!-])([<>=]|≤|≥|≠)(?![=>])")
 LEAN_DIAGNOSTIC = re.compile(
     r"(?m)^(?:error: .*\.lean:[0-9]+:[0-9]+:|"
     r".*\.lean:[0-9]+:[0-9]+: (?:error|unsolved goals):)"
@@ -195,10 +199,10 @@ def repo_file(root: Path, raw: Any) -> Path:
     relative = Path(raw)
     if relative.is_absolute():
         raise LeanMutationError(f"Lean source path escapes the repository: {raw}")
-    if relative.suffix != ".lean" or not relative.as_posix().startswith(
-        "formal/lean4/Chio/Chio/Core/"
+    if relative.suffix != ".lean" or not any(
+        root in relative.parents for root in MUTABLE_MODEL_ROOTS
     ):
-        raise LeanMutationError(f"Lean source path escapes the core model: {raw}")
+        raise LeanMutationError(f"Lean source path escapes the approved model roots: {raw}")
     require_regular_repo_file(root, relative, "Lean source path")
     return relative
 

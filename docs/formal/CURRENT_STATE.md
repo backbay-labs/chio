@@ -40,8 +40,8 @@ what may be claimed publicly.
 - Toolchain: `leanprover/lean4:v4.28.0`, lake, the vendored Aeneas support
   library, and an exact Mathlib dependency closure recorded in
   `lake-manifest.json`.
-- 25 root-imported modules (all imported by `Chio.lean`; "root-imported" is a
-  release-evidence precondition), 116 catalogued theorems, exactly one
+- 28 root-imported modules (all imported by `Chio.lean`; "root-imported" is a
+  release-evidence precondition), 139 catalogued theorems, exactly one
   axiom, zero `sorry` (enforced by `scripts/check-formal-proofs.sh`: lake
   build plus a sorry scan plus manifest cross-ref sanity).
 - Core models: `Core/Capability.lean`, `Core/Scope.lean`, `Core/Receipt.lean`
@@ -58,16 +58,20 @@ what may be claimed publicly.
   `receipt_sign_then_verify`, `receipt_immutability`, P5 delegation-step
   closure theorems, P8 DPoP binding, P10 report truthfulness. A treaty lane
   (`Treaty/Intersection.lean`, `Treaty/PredicateLang.lean`,
-  `Treaty/BilateralAccept.lean`) supports the governance/paper surface.
+  `Treaty/IntersectionSyntactic.lean`, `Treaty/IntersectionLegacy.lean`,
+  `Treaty/BridgeEquivalence.lean`, `Treaty/BilateralAccept.lean`) supports the
+  governance/paper surface.
 - The single axiom: `receipt_id_collision_resistant`
   (`Chio/Proofs/Receipt.lean`, near L140). Whitelisted by name in
   `formal/proof-manifest.toml` `allowed_axioms`, justified in-file (the
   bounded model has no JCS canonicalizer or hash to prove injectivity
   against), and tied to `ASSUME-SHA256`.
 - Model gaps are documented in-file rather than hidden: signature verification
-  is trusted-issuer membership, receipt signatures are symbolic
-  (`signature := body`), and `Treaty/PredicateLang.lean` names its own missing
-  bridge-soundness theorem.
+  is trusted-issuer membership and receipt signatures are symbolic
+  (`signature := body`). The treaty predicate model is a bounded projection of
+  validated runtime records; parsing, canonical hashing, signature checks,
+  store lookups, and completeness beyond the explicit admission domain are not
+  proved by its bridge.
 - `Proofs/ReservationLedger.lean` proves pure reservation-fold conservation,
   terminal absorption, and the sibling-share bound. It is model-level evidence;
   concrete store linkage remains runtime-tested.
@@ -246,8 +250,10 @@ nightly).
   A nightly co-coverage lane replays the fuzz corpus against surviving mutants
   (`mutants-fuzz-cocoverage.yml`). The formal modules themselves are excluded
   from mutation with the rationale "covered by the proof lane".
-- Concurrency: chio-kernel has a loom dev-dependency and a drop-guard race
-  model test; there is no loom registry or dedicated CI lane.
+- Concurrency: the checked registry names 10 Loom harnesses, and deterministic
+  simulation registers five drop-injection scenarios with replayable seeds.
+  Pull-request and nightly lanes enforce the registered scope; the hosted
+  nightly activation streak remains advisory until its release ratchet matures.
 - Timing: nightly dudect harnesses with a two-consecutive-nightly threshold
   rule before auto-filing a `timing-leak` issue (wholly advisory).
 
@@ -260,17 +266,17 @@ differential-test joins, theorem status, and model-only Kani scope remain
 explicit there.
 
 - `formal/proof-manifest.toml` (schema `chio.proof-manifest.v1`) is the hub:
-  `root_modules` (25 Lean files), `gate_commands` (13 commands), 9
+  `root_modules` (28 Lean files), `gate_commands` (14 commands), 9
   `covered_rust_modules`, 33 `covered_rust_symbols`, 14 `shell_entrypoints`,
   the P1-P10 `property_matrix` with per-property evidence-lane tags,
   `rust_refinement_lanes`, `allowed_axioms` (exactly one),
-  `excluded_surfaces`, and `discharged_assumptions`. Forty-one `[[mirror]]`
-  entries bind 96 parser-resolved Rust symbol references to six Lean models
+  `excluded_surfaces`, and `discharged_assumptions`. Forty-three `[[mirror]]`
+  entries bind 106 parser-resolved Rust symbol references to seven Lean models
   and six TLA+ models with ordered rollup and per-symbol hashes. Lean entries
-  are transliterations; TLA+ entries are explicitly labeled abstraction
-  anchors. `cargo xtask check formal-mirrors` enforces those hashes in required
-  PR CI.
-- `formal/theorem-inventory.json` (116 theorem entries plus a separate
+  are labeled as transliterations or abstraction anchors; TLA+ entries are
+  abstraction anchors. `cargo xtask check formal-mirrors` enforces those hashes
+  in required PR CI.
+- `formal/theorem-inventory.json` (139 theorem entries plus a separate
   assumptions block): per-theorem id, Lean name,
   file, kind, `rootImported` flag, claim class, `mapsTo` property ids.
 - `formal/MAPPING.md`: the cross-reference table from TLA invariants, Kani

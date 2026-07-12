@@ -23,4 +23,7 @@ import Chio.Proofs.ReservationLedger
 import Chio.Capability.Delegation
 import Chio.Treaty.Intersection
 import Chio.Treaty.PredicateLang
+import Chio.Treaty.IntersectionSyntactic
+import Chio.Treaty.IntersectionLegacy
+import Chio.Treaty.BridgeEquivalence
 import Chio.Treaty.BilateralAccept

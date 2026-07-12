@@ -1136,7 +1136,9 @@ fn mirror_review_links(entries: &[MirrorEntry]) -> Result<Vec<ReviewLink>, Strin
     for entry in entries {
         let valid_relationship = matches!(
             (entry.model_kind.as_str(), entry.relationship.as_str()),
-            ("lean", "transliteration") | ("tla", "abstraction_anchor")
+            ("lean", "transliteration")
+                | ("lean", "abstraction_anchor")
+                | ("tla", "abstraction_anchor")
         );
         if !valid_relationship {
             return Err(format!(
@@ -4999,6 +5001,25 @@ fn verify_committed_markdown(existing: &str, generated: &str) -> Result<(), Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lean_abstraction_anchor_is_review_metadata() {
+        let entries = [MirrorEntry {
+            model_file: "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean".to_string(),
+            model_kind: "lean".to_string(),
+            relationship: "abstraction_anchor".to_string(),
+            rust_source: "crates/kernel/chio-runtime-core/src/treaty.rs".to_string(),
+            rust_symbols: vec!["evaluate_cross_boundary_admission".to_string()],
+            normalized_sha256: "0".repeat(64),
+        }];
+
+        let links = match mirror_review_links(&entries) {
+            Ok(links) => links,
+            Err(error) => panic!("valid Lean anchor was rejected: {error}"),
+        };
+        assert_eq!(links.len(), 1);
+        assert_eq!(links[0].relationship, "abstraction_anchor");
+    }
 
     #[test]
     fn current_mapping_parses_without_warnings() {

@@ -1109,8 +1109,8 @@
       "rootImported": true,
       "claimClass": "bounded_model",
       "status": "proved",
-      "mapsTo": ["P7"],
-      "notes": "Bounded treaty model showing bilateral treaty admission is equivalent to the intersection of treaty, left-polity, and right-polity predicates."
+      "mapsTo": ["P3"],
+      "notes": "Public bounded treaty model showing bilateral admission is equivalent to the conjunction of syntactic treaty, left-polity, and right-polity predicates over the production-shaped admission projection."
     },
     {
       "id": "proof.treaty_admission_stable_under_ladder_floor",
@@ -1120,8 +1120,8 @@
       "rootImported": true,
       "claimClass": "bounded_model",
       "status": "proved",
-      "mapsTo": ["P7"],
-      "notes": "Bounded treaty model showing a satisfied quorum-required trust-ladder floor leaves treaty predicate intersection admission unchanged."
+      "mapsTo": ["P3"],
+      "notes": "Public bounded treaty model showing a satisfied governance-mode floor leaves the fail-closed syntactic admission decision unchanged."
     },
     {
       "id": "proof.amendment_admissible_iff_backward_refinement",
@@ -1132,7 +1132,7 @@
       "claimClass": "bounded_model",
       "status": "proved",
       "mapsTo": ["P3"],
-      "notes": "Bounded amendment model tying enactable constitutional amendments to an explicit backward-refinement proof witness."
+      "notes": "Public bounded amendment model equating admissibility with semantic backward refinement on the candidate's explicit admission domain."
     },
     {
       "id": "proof.amendment_without_refinement_rejected",
@@ -1143,7 +1143,7 @@
       "claimClass": "bounded_model",
       "status": "proved",
       "mapsTo": ["P3"],
-      "notes": "Bounded amendment model showing a candidate with no backward-refinement proof witness is rejected."
+      "notes": "Public bounded amendment model showing a failed finite refinement check produces a rejected verdict."
     },
     {
       "id": "proof.freestanding_accept_set_theorem",
@@ -1153,8 +1153,8 @@
       "rootImported": true,
       "claimClass": "bounded_model",
       "status": "proved",
-      "mapsTo": ["P7"],
-      "notes": "Bounded bilateral DSSE model showing verifier acceptance is exactly issuer-key trust, kernel-key trust, and scope-predicate satisfaction."
+      "mapsTo": ["P3"],
+      "notes": "Bounded bilateral DSSE accept-set model showing acceptance is exactly issuer-key trust, kernel-key trust, and fail-closed predicate satisfaction over the admission projection. Signature verification remains abstracted."
     },
     {
       "id": "proof.essential_preserved_chain",
@@ -1199,6 +1199,259 @@
       "status": "proved",
       "mapsTo": ["P7"],
       "notes": "Bounded lane-quorum model showing a witness with undeclared contributing lanes fails closed before quorum counting."
+    },
+    {
+      "id": "treaty.predicate.unsupported_denies",
+      "leanName": "Chio.Treaty.PredicateLang.unsupported_predicate_denies",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Any predicate containing unsupported syntax denies before Boolean evaluation, including under unrestricted negation."
+    },
+    {
+      "id": "treaty.predicate.undefined_denies",
+      "leanName": "Chio.Treaty.PredicateLang.undefined_predicate_denies",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "A supported predicate whose projected runtime field is unavailable denies before Boolean evaluation."
+    },
+    {
+      "id": "treaty.predicate.negated_unknown_atom_denies",
+      "leanName": "Chio.Treaty.PredicateLang.negated_unknown_atom_denies",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "A direct negative regression theorem prevents an unknown atom from becoming true through negation."
+    },
+    {
+      "id": "treaty.predicate.negated_unknown_mode_denies",
+      "leanName": "Chio.Treaty.PredicateLang.negated_unknown_mode_denies",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "An unavailable governance mode remains denied when a mode predicate is negated."
+    },
+    {
+      "id": "treaty.predicate.runtime_policy_exact",
+      "leanName": "Chio.Treaty.PredicateLang.runtime_admission_policy_exact",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "The bounded runtime admission constitution accepts exactly when every registered production-shaped gate is supported, defined, and true. Parsing, hashing, signatures, and store lookup are outside this theorem."
+    },
+    {
+      "id": "treaty.predicate.action_missing_denies",
+      "leanName": "Chio.Treaty.PredicateLang.action_class_missing_from_intersection_denies",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "An invocation action absent from the ladder intersection fails the modeled action-class gate."
+    },
+    {
+      "id": "treaty.predicate.signer_count_denies",
+      "leanName": "Chio.Treaty.PredicateLang.signer_count_mismatch_denies",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "A bilateral invocation without exactly two signer ids fails the modeled signer gate."
+    },
+    {
+      "id": "treaty.predicate.signer_reuse_denies",
+      "leanName": "Chio.Treaty.PredicateLang.signer_alias_reuse_denies",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "A bilateral invocation whose deduplicated signer list is not a pair fails the modeled signer gate."
+    },
+    {
+      "id": "treaty.predicate.signer_scope_denies",
+      "leanName": "Chio.Treaty.PredicateLang.signer_outside_scope_denies",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "A signer outside the treaty participant list fails the modeled signer gate."
+    },
+    {
+      "id": "treaty.bridge.fragment_completeness",
+      "leanName": "Chio.Treaty.PredicateLang.refinesOn_complete_on_fragment",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Finite predicate checking is equivalent to semantic refinement on the exact verifier-owned admission domain. It makes no completeness claim outside that domain."
+    },
+    {
+      "id": "treaty.bridge.constitution_domain_completeness",
+      "leanName": "Chio.Treaty.PredicateLang.refinesOnConstitution_complete_on_fragment",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "The finite constitution checker is a complete decision procedure for refinement on its explicit admission domain."
+    },
+    {
+      "id": "treaty.syntactic.decision_exact",
+      "leanName": "Chio.Treaty.PredicateLang.ConstitutionalDeltaSyn.ofDecide_isSome_iff",
+      "file": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "The amendment constructor returns a proof-carrying delta exactly when finite domain refinement holds; callers do not supply its proof result."
+    },
+    {
+      "id": "treaty.syntactic.admission_iff_intersection",
+      "leanName": "Chio.Treaty.PredicateLang.synTreaty_admission_iff_predicate_intersection",
+      "file": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Syntactic bilateral admission is equivalent to the fail-closed conjunction of treaty, left-polity, and right-polity predicates."
+    },
+    {
+      "id": "treaty.syntactic.ladder_floor_stable",
+      "leanName": "Chio.Treaty.PredicateLang.synTreaty_admission_stable_under_ladder_floor",
+      "file": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "A satisfied governance-mode floor leaves syntactic treaty admission unchanged."
+    },
+    {
+      "id": "treaty.syntactic.amendment_iff_refinement",
+      "leanName": "Chio.Treaty.PredicateLang.synAmendment_admissible_iff_backward_refinement",
+      "file": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Amendment admissibility is equivalent to semantic backward refinement on the candidate's explicit admission domain."
+    },
+    {
+      "id": "treaty.syntactic.failed_check_rejected",
+      "leanName": "Chio.Treaty.PredicateLang.synAmendment_without_refinement_rejected",
+      "file": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "A failed finite refinement decision produces a rejected amendment verdict."
+    },
+    {
+      "id": "treaty.bridge.pointwise",
+      "leanName": "Chio.Treaty.PredicateLang.bridge_pointwise",
+      "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Syntactic constitution admission agrees pointwise with admission after lifting to the comparison-only closure representation."
+    },
+    {
+      "id": "treaty.bridge.refinement_on_iff",
+      "leanName": "Chio.Treaty.PredicateLang.bridge_refinement_on_iff",
+      "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Domain-scoped backward refinement is equivalent in the syntactic and lifted closure representations."
+    },
+    {
+      "id": "treaty.bridge.global_iff",
+      "leanName": "Chio.Treaty.PredicateLang.bridge_global_iff",
+      "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Global backward refinement is equivalent in the syntactic and lifted closure representations."
+    },
+    {
+      "id": "treaty.bridge.soundness",
+      "leanName": "Chio.Treaty.PredicateLang.bridge_soundness",
+      "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Global syntactic refinement transports to the lifted closure representation."
+    },
+    {
+      "id": "treaty.bridge.decidable_soundness",
+      "leanName": "Chio.Treaty.PredicateLang.bridge_decidable_soundness",
+      "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "A successful finite constitution decision transports to closure refinement on exactly the checked admission domain."
+    },
+    {
+      "id": "treaty.bridge.equivalence_admits",
+      "leanName": "Chio.Treaty.PredicateLang.toClosure_treatyAdmits_agrees",
+      "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Lifting a syntactic bilateral treaty to closures preserves admission for every production-shaped input projection."
+    },
+    {
+      "id": "treaty.bridge.equivalence_verdict",
+      "leanName": "Chio.Treaty.PredicateLang.toClosure_amendmentVerdict_agrees",
+      "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "The syntactic finite decision and the lifted closure candidate produce the same amendment verdict."
     }
   ]
 }

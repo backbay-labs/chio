@@ -29,3 +29,23 @@ path = "formal/lean4/Chio/Chio/Core/Protocol.lean"
 [[definition]]
 name = "inclusionStep"
 path = "formal/lean4/Chio/Chio/Core/MerkleWalk.lean"
+
+[[definition]]
+name = "supported"
+path = "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean"
+
+[[definition]]
+name = "defined"
+path = "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean"
+
+[[definition]]
+name = "denote"
+path = "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean"
+
+[[definition]]
+name = "refinesOnConstitution"
+path = "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean"
+
+[[definition]]
+name = "ofDecide"
+path = "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean"
