@@ -237,8 +237,33 @@ def ledger_apply
                 | none => ok (state, false)
                 | some next => ok (next, true)
 
+/-- [formal_aeneas::inclusion_step]:
+    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 157:0-175:1
+    Visibility: public -/
+def inclusion_step
+  (index : Std.U64) (size : Std.U64) : Result InclusionStep := do
+  let i ← index % 2#u64
+  let o ← lift (U64.checked_add index 1#u64)
+  let right_sibling_exists ←
+    match o with
+    | none => ok false
+    | some sibling => if sibling < size
+                      then ok true
+                      else ok false
+  let (sibling_on_left, b) ←
+    if i != 0#u64
+    then ok (true, true)
+    else ok (false, right_sibling_exists)
+  let i1 ← index / 2#u64
+  let i2 ← size / 2#u64
+  let i3 ← size % 2#u64
+  let i4 ← i2 + i3
+  ok
+    { consume_sibling := b, sibling_on_left, next_index := i1, next_size := i4
+    }
+
 /-- [formal_aeneas::classify_time_window_code]:
-    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 161:0-169:1
+    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 189:0-197:1
     Visibility: public -/
 def classify_time_window_code
   (now : Std.U64) (issued_at : Std.U64) (expires_at : Std.U64) :
@@ -251,7 +276,7 @@ def classify_time_window_code
        else ok 0#u8
 
 /-- [formal_aeneas::time_window_valid]:
-    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 175:0-177:1
+    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 203:0-205:1
     Visibility: public -/
 def time_window_valid
   (now : Std.U64) (issued_at : Std.U64) (expires_at : Std.U64) :
@@ -261,7 +286,7 @@ def time_window_valid
   ok (i = 0#u8)
 
 /-- [formal_aeneas::exact_or_wildcard_covers_by_flags]:
-    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 179:0-184:1
+    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 207:0-212:1
     Visibility: public -/
 def exact_or_wildcard_covers_by_flags
   (parent_is_wildcard : Bool) (parent_equals_child : Bool) : Result Bool := do
@@ -270,7 +295,7 @@ def exact_or_wildcard_covers_by_flags
   else ok parent_equals_child
 
 /-- [formal_aeneas::prefix_wildcard_or_exact_covers_by_flags]:
-    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 186:0-193:1
+    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 214:0-221:1
     Visibility: public -/
 def prefix_wildcard_or_exact_covers_by_flags
   (parent_is_wildcard : Bool) (parent_has_prefix_wildcard : Bool)
@@ -287,7 +312,7 @@ def prefix_wildcard_or_exact_covers_by_flags
     else ok exact_matches
 
 /-- [formal_aeneas::optional_u32_cap_is_subset]:
-    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 199:0-206:1
+    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 227:0-234:1
     Visibility: public -/
 def optional_u32_cap_is_subset
   (child_has_cap : Bool) (child_value : Std.U32) (parent_has_cap : Bool)
@@ -301,7 +326,7 @@ def optional_u32_cap_is_subset
   else ok true
 
 /-- [formal_aeneas::required_true_is_preserved]:
-    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 212:0-214:1
+    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 240:0-242:1
     Visibility: public -/
 def required_true_is_preserved
   (parent_requires_true : Bool) (child_requires_true : Bool) :
@@ -312,7 +337,7 @@ def required_true_is_preserved
   else ok true
 
 /-- [formal_aeneas::monetary_cap_is_subset_by_parts]:
-    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 216:0-224:1
+    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 244:0-252:1
     Visibility: public -/
 def monetary_cap_is_subset_by_parts
   (child_has_cap : Bool) (child_units : Std.U64) (parent_has_cap : Bool)
@@ -330,7 +355,7 @@ def monetary_cap_is_subset_by_parts
   else ok true
 
 /-- [formal_aeneas::budget_precheck]:
-    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 232:0-239:1
+    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 260:0-267:1
     Visibility: public -/
 def budget_precheck
   (remaining_invocations : Std.U64) (remaining_units : Std.U64)
@@ -342,7 +367,7 @@ def budget_precheck
   else ok false
 
 /-- [formal_aeneas::budget_commit]:
-    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 267:0-291:1
+    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 295:0-319:1
     Visibility: public -/
 def budget_commit
   (remaining_invocations : Std.U64) (remaining_units : Std.U64)
@@ -360,7 +385,7 @@ def budget_commit
   else ok { accepted := false, remaining_invocations, remaining_units }
 
 /-- [formal_aeneas::dpop_freshness_valid]:
-    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 293:0-295:1
+    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 321:0-323:1
     Visibility: public -/
 def dpop_freshness_valid
   (now : Std.U64) (issued_at : Std.U64) (ttl_secs : Std.U64)
@@ -375,7 +400,7 @@ def dpop_freshness_valid
   else ok false
 
 /-- [formal_aeneas::dpop_admits]:
-    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 301:0-308:1
+    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 329:0-336:1
     Visibility: public -/
 def dpop_admits
   (dpop_required : Bool) (proof_present : Bool) (proof_valid : Bool)
@@ -392,13 +417,13 @@ def dpop_admits
   else ok true
 
 /-- [formal_aeneas::nonce_admits]:
-    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 310:0-312:1
+    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 338:0-340:1
     Visibility: public -/
 def nonce_admits (already_live : Bool) : Result Bool := do
   ok (¬ already_live)
 
 /-- [formal_aeneas::guard_step_allows]:
-    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 314:0-316:1
+    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 342:0-344:1
     Visibility: public -/
 def guard_step_allows
   (core_authorized : Bool) (guard_allows : Bool) : Result Bool := do
@@ -407,7 +432,7 @@ def guard_step_allows
   else ok false
 
 /-- [formal_aeneas::revocation_snapshot_denies]:
-    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 322:0-324:1
+    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 350:0-352:1
     Visibility: public -/
 def revocation_snapshot_denies
   (token_revoked : Bool) (ancestor_revoked : Bool) : Result Bool := do
@@ -416,7 +441,7 @@ def revocation_snapshot_denies
   else ok ancestor_revoked
 
 /-- [formal_aeneas::receipt_fields_coupled]:
-    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 336:0-348:1
+    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 364:0-376:1
     Visibility: public -/
 def receipt_fields_coupled
   (capability_matches : Bool) (request_matches : Bool) (verdict_matches : Bool)

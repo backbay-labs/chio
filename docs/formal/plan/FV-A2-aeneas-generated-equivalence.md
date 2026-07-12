@@ -9,16 +9,16 @@
 
 ## Summary
 
-The production lane now extracts `crates/kernel/chio-kernel-core/src/formal_aeneas.rs` with authenticated Charon and Aeneas binaries, commits byte-identical emitted-path Lean snapshots, and proves every generated production function equivalent to its registered semantic target. The 15 decision helpers are tied to `AeneasMirror` and the existing Chio models; `ledger_is_terminal` and `ledger_apply` are tied directly to the reservation-ledger model. All 17 functions have `generated_equivalence` status, with no lower-assurance escape hatch or semantic external model.
+The production lane now extracts `crates/kernel/chio-kernel-core/src/formal_aeneas.rs` with authenticated Charon and Aeneas binaries, commits byte-identical emitted-path Lean snapshots, and proves every generated production function equivalent to its registered semantic target. The 15 decision helpers are tied to `AeneasMirror` and the existing Chio models; `ledger_is_terminal` and `ledger_apply` are tied directly to the reservation-ledger model; `inclusion_step` is tied directly to `Chio.Core.inclusionStep`. All 18 functions have `generated_equivalence` status, with no lower-assurance escape hatch or semantic external model.
 
 ## Implementation outcome
 
 - `formal/aeneas/production.toml` is schema v2 and carries exact x86_64 and aarch64 archive, binary, and repaired-runtime hashes. `scripts/install-aeneas-toolchain.py` installs into a fixed architecture path, verifies the official archive and binaries, applies the deterministic aarch64 interpreter repair, and writes a registry-bound receipt.
 - `formal/lean4/vendor/aeneas/` contains the explicit transitive import closure for both `Aeneas` and `AeneasMeta`. Its vendor manifest pins the release, source archive, content digest, and Mathlib revision; the root Lake manifest records the real dependency closure.
 - `formal/lean4/Chio/FormalAeneas/Funs.lean` and `Types.lean` are identity-normalized snapshots at the emitted module path. The production gate regenerates them with the authenticated toolchain and fails on any byte drift.
-- `Chio.Proofs.AeneasGeneratedEquivalence` contains 30 axiom-audited declarations and covers all 17 production functions. The generated ledger transition is related directly to `Chio.Proofs.ReservationLedger.ledgerApply` over the full checked-arithmetic branch structure.
+- `Chio.Proofs.AeneasGeneratedEquivalence` contains 34 axiom-audited declarations and covers all 18 production functions. The generated ledger transition is related directly to `Chio.Proofs.ReservationLedger.ledgerApply` over the full checked-arithmetic branch structure, and the generated inclusion step is related directly to the Merkle-walk model. Three private scalar-result lemmas make the generated remainder, division, and addition branches explicit.
 - `formal/aeneas/negative-tests.toml` registers six fail-closed mutations: status downgrade, theorem removal, archive substitution, driver substitution, snapshot drift, and a semantic generated-code change. The targeted campaign requires all six to be killed and records hashed logs.
-- Local completion evidence: authenticated production extraction and equivalence passed, 17 production artifacts appeared in proof coverage, all 18 proof-coverage unit tests passed, the full Lean proof check passed, `lake build Aeneas AeneasMeta` passed, and focused Rust tests plus package clippy passed.
+- Local completion evidence: authenticated production extraction and equivalence passed, all registered production artifacts appeared in proof coverage, focused proof-coverage tests passed, the full Lean proof check passed, `lake build Aeneas AeneasMeta` passed, and focused Rust tests plus package clippy passed.
 
 ## Pre-implementation evidence
 
@@ -32,7 +32,7 @@ The production lane now extracts `crates/kernel/chio-kernel-core/src/formal_aene
 - `scripts/check-aeneas-production.sh` validates the schema-v2 registry before running tools, authenticates all three installed executables and their receipt, invokes the exact Charon driver, extracts all registered functions, and always chains into the equivalence gate.
 - `scripts/check-aeneas-equivalence.sh` validates snapshot identity, vendor closure, exact Lake pins, theorem inventory, source and generated hashes, architecture-specific tool evidence, and the `#print axioms` output before writing a schema-v3 artifact report.
 - The Lean project imports `FormalAeneas.Types` and `FormalAeneas.Funs` through a separate library rooted at the emitted snapshot path. Its local Aeneas dependency and complete Mathlib closure are recorded in `lakefile.lean` and `lake-manifest.json`.
-- `production.toml` has two target groups containing 17 functions. Each function has one registered equivalence theorem, and both groups require `generated_equivalence`.
+- `production.toml` has three target groups containing 18 functions. Each function has one registered equivalence theorem, and every group requires `generated_equivalence`.
 
 ## Design
 
@@ -53,7 +53,7 @@ Committed snapshot vs build-time-only generation, decided: committed.
 - Reviewability: a Rust edit to `formal_aeneas.rs` produces a visible generated-Lean diff in the same PR, reviewable by people who do not run Charon.
 - PR-time checking: Lean-side jobs (and FV-E3's smoke tier) can build and prove against the snapshot with only `lake`, no Charon/Aeneas toolchain, closing part of G1 for this lane.
 - Drift is still caught: nightly regenerates with the pinned toolchain and fails on any difference from the snapshot, so the snapshot cannot go stale silently.
-- Cost: a two-file committed artifact that changes only when the 140-line source [v] changes; accepted.
+- Cost: a two-file committed artifact that changes only when the registered production source changes; accepted.
 
 ### Drift gate
 
@@ -71,7 +71,7 @@ The snapshot script has explicit `--check` and `--write` modes and fixture-only 
 
 ### Generated-equivalence proofs
 
-`formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean` imports the emitted snapshots, vendored support library, reservation-ledger model, and existing decision proofs. It covers 17 functions: the 15 decision functions agree with `AeneasMirror`, while the two ledger functions agree directly with the handwritten ledger model. Registered composed theorems connect the generated decisions to the Chio models cited by the property matrix.
+`formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean` imports the emitted snapshots, vendored support library, reservation-ledger and Merkle-walk models, and existing decision proofs. It covers 18 functions: the 15 decision functions agree with `AeneasMirror`, the two ledger functions agree directly with the handwritten ledger model, and `inclusion_step` agrees directly with `Chio.Core.inclusionStep`. Registered composed theorems connect the generated functions to the Chio models cited by the property matrix.
 
 The main friction is that Aeneas emits Result-typed, machine-integer code. Generated functions return `Result Bool` (or `Result BudgetCommitResult`) and operate on `U32`/`U64` scalars with wrapped arithmetic, so the theorems are not literally `rfl` against `Nat`-and-`Bool` mirror functions. The implemented proof structure is:
 
@@ -109,7 +109,7 @@ Exact generated names and the `Result`/scalar spellings follow whatever the pinn
 
 1. Vendored the authenticated Aeneas and AeneasMeta closure, pinned the real Lake dependency graph, and passed `lake build Aeneas AeneasMeta`.
 2. Chose emitted-path, identity-normalized snapshots and added deterministic check/write tooling plus a drift selftest.
-3. Added root-imported generated-code proofs for all 17 production functions, including checked subtraction, saturating addition, overflow, terminal-state, and all ledger operation branches.
+3. Added root-imported generated-code proofs for all 18 production functions, including checked subtraction, saturating addition, overflow, terminal-state, all ledger operation branches, and the checked Merkle inclusion step.
 4. Made the production gate registry-driven and fail-closed, demoted the decision mirror, and linked the generated ledger directly to its model.
 5. Added authenticated x86_64 and aarch64 installation, including exact deterministic aarch64 interpreter repair and a receipt binding the installed binaries to the registry.
 6. Added six registered negative mutations and required structured killed results with hashed logs.
@@ -125,7 +125,7 @@ Exact generated names and the `Result`/scalar spellings follow whatever the pinn
 
 - [x] Vendored Aeneas and AeneasMeta support builds under the repository toolchain, with release, archive, content, and Mathlib pins checked by script.
 - [x] Identity-normalized `Funs.lean` and `Types.lean` snapshots are committed, and the drift mutation proves a changed generated file is rejected.
-- [x] All 17 production functions have a registered, sorry-free generated-equivalence theorem and the proof module is root-imported.
+- [x] All 18 production functions have a registered, sorry-free generated-equivalence theorem and the proof module is root-imported.
 - [x] Composed generated-vs-model theorems exist for the property-matrix decision evidence, and `ledger_apply` is registered as P1 evidence against the ledger model.
 - [x] `AeneasMirror` is documented as derived; the ledger functions do not depend on it.
 - [x] `equivalence-artifacts.json` ties the registry, source, tools, raw output, snapshots, proof module, vendor closure, Lake files, and architecture report together.
@@ -136,7 +136,7 @@ Exact generated names and the `Result`/scalar spellings follow whatever the pinn
 - Toolchain incompatibility (support library vs `v4.28.0-rc1`). Resolution: the authenticated vendored closure builds under the pinned repository toolchain, and any future lockstep bump must rebuild the whole proof tree.
 - Aeneas output format churn: a future `CHIO_AENEAS_RELEASE_TAG` bump can rewrite the generated code shape and break every per-symbol proof at once. Mitigation: snapshots make the churn visible as a diff before any proof work starts; the scalar-lemma layer concentrates the U*/Result plumbing so most breakage lands in one file; tag bumps are already deliberate (sha256-pinned binaries).
 - Snapshot normalization could mask a real generated-code change. Resolution: normalization is identity, so any emitted byte change is visible and fails the gate.
-- Checked-arithmetic proof cost could leave partial coverage. Resolution: the registry rejects any non-equivalence target or missing function-to-theorem row; all 17 functions now compile and pass the axiom audit.
+- Checked-arithmetic proof cost could leave partial coverage. Resolution: the registry rejects any non-equivalence target or missing function-to-theorem row; all 18 functions now compile and pass the axiom audit.
 - Vendored-library bloat and license obligations. Mitigation: vendor only the Lean support library (not the toolchain), record upstream license alongside `VENDOR.toml`, and keep the re-vendor script the only write path.
 
 ## Decisions
@@ -149,7 +149,7 @@ Exact generated names and the `Result`/scalar spellings follow whatever the pinn
 ## Manifest and registry updates
 
 - `formal/proof-manifest.toml` registers the generated proof, production and negative-test gates, target artifacts, and P1 ledger evidence.
-- `formal/aeneas/production.toml` records the snapshots, vendor release, two architecture toolchains, 17 functions, and exact theorem rows.
+- `formal/aeneas/production.toml` records the snapshots, vendor release, two architecture toolchains, 18 functions in three targets, and exact theorem rows.
 - `formal/theorem-inventory.json` records the generated decision, composed model, and direct ledger theorems.
 - `formal/MAPPING.md` names the generated module and states that it covers every production function.
 - `docs/reference/CLAIM_REGISTRY.md` binds the implementation-linked claim to authenticated extraction, generated proofs, snapshots, vendor closure, and negative evidence.

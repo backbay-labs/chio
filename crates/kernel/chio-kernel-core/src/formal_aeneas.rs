@@ -146,6 +146,34 @@ pub fn ledger_apply(state: ReservationLedger, op: u8, amount: u64) -> (Reservati
     }
 }
 
+pub struct InclusionStep {
+    pub consume_sibling: bool,
+    pub sibling_on_left: bool,
+    pub next_index: u64,
+    pub next_size: u64,
+}
+
+#[allow(clippy::manual_is_multiple_of, clippy::needless_bool)] // Aeneas scalar subset.
+pub fn inclusion_step(index: u64, size: u64) -> InclusionStep {
+    let sibling_on_left = index % 2 != 0;
+    let right_sibling_exists = match index.checked_add(1) {
+        Some(sibling) => {
+            if sibling < size {
+                true
+            } else {
+                false
+            }
+        }
+        None => false,
+    };
+    InclusionStep {
+        consume_sibling: sibling_on_left || right_sibling_exists,
+        sibling_on_left,
+        next_index: index / 2,
+        next_size: size / 2 + size % 2,
+    }
+}
+
 #[cfg_attr(
     chio_creusot_contracts,
     ensures(now@ < issued_at@ ==> result == 1u8)

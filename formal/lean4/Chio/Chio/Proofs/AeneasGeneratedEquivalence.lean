@@ -1,5 +1,6 @@
 import Chio.Proofs.AeneasEquivalence
 import Chio.Proofs.ReservationLedger
+import Chio.Core.MerkleWalk
 import FormalAeneas.Funs
 
 set_option autoImplicit false
@@ -37,6 +38,14 @@ private def generatedLedgerResultToModel
     (result : Chio.AeneasProduction.ReservationLedger × Bool) :
     Chio.Proofs.ReservationLedger.Ledger × Bool :=
   (generatedLedgerToModel result.1, result.2)
+
+private def generatedInclusionStepToModel
+    (step : Chio.AeneasProduction.InclusionStep) : StepDecision := {
+  consumeSibling := step.consume_sibling
+  siblingOnLeft := step.sibling_on_left
+  nextIndex := step.next_index.val
+  nextSize := step.next_size.val
+}
 
 private theorem uscalar_eq_iff_val_eq {scalarType : UScalarTy}
     (left right : UScalar scalarType) :
@@ -94,6 +103,57 @@ private theorem u64_checked_add_none (left right : U64)
   simpa [resultEq] using specification
 
 #print axioms u64_checked_add_none
+
+private theorem u64_rem_result (value divisor : U64)
+    (nonzero : divisor.val ≠ 0) :
+    Exists fun remainder : U64 =>
+      value % divisor = ok remainder ∧
+      remainder.val = value.val % divisor.val := by
+  have specification := U64.rem_spec value nonzero
+  cases resultEq : value % divisor with
+  | ok remainder =>
+      refine Exists.intro remainder (And.intro rfl ?_)
+      simpa [WP.spec, WP.theta, resultEq] using specification
+  | fail error =>
+      simp [WP.spec, WP.theta, resultEq] at specification
+  | div =>
+      simp [WP.spec, WP.theta, resultEq] at specification
+
+#print axioms u64_rem_result
+
+private theorem u64_div_result (value divisor : U64)
+    (nonzero : divisor.val ≠ 0) :
+    Exists fun quotient : U64 =>
+      value / divisor = ok quotient ∧
+      quotient.val = value.val / divisor.val := by
+  have specification := U64.div_spec value nonzero
+  cases resultEq : value / divisor with
+  | ok quotient =>
+      refine Exists.intro quotient (And.intro rfl ?_)
+      simpa [WP.spec, WP.theta, resultEq] using specification
+  | fail error =>
+      simp [WP.spec, WP.theta, resultEq] at specification
+  | div =>
+      simp [WP.spec, WP.theta, resultEq] at specification
+
+#print axioms u64_div_result
+
+private theorem u64_add_result (left right : U64)
+    (fits : left.val + right.val <= U64.max) :
+    Exists fun sum : U64 =>
+      left + right = ok sum ∧
+      sum.val = left.val + right.val := by
+  have specification := U64.add_spec fits
+  cases resultEq : left + right with
+  | ok sum =>
+      refine Exists.intro sum (And.intro rfl ?_)
+      simpa [WP.spec, WP.theta, resultEq] using specification
+  | fail error =>
+      simp [WP.spec, WP.theta, resultEq] at specification
+  | div =>
+      simp [WP.spec, WP.theta, resultEq] at specification
+
+#print axioms u64_add_result
 
 private theorem reservation_ledger_max_eq :
     Chio.Proofs.ReservationLedger.maxU64 = U64.max := by
@@ -745,5 +805,94 @@ theorem generated_receipt_fields_coupled_eq_model
   congr 1
 
 #print axioms generated_receipt_fields_coupled_eq_model
+
+theorem generated_inclusion_step_eq_model (index size : U64) :
+    mapResult generatedInclusionStepToModel
+        (Chio.AeneasProduction.inclusion_step index size) =
+      ok (inclusionStep index.val size.val) := by
+  obtain ⟨indexRemainder, indexRemainderEq, indexRemainderVal⟩ :=
+    u64_rem_result index 2#u64 (by norm_num)
+  obtain ⟨nextIndex, nextIndexEq, nextIndexVal⟩ :=
+    u64_div_result index 2#u64 (by norm_num)
+  obtain ⟨sizeQuotient, sizeQuotientEq, sizeQuotientVal⟩ :=
+    u64_div_result size 2#u64 (by norm_num)
+  obtain ⟨sizeRemainder, sizeRemainderEq, sizeRemainderVal⟩ :=
+    u64_rem_result size 2#u64 (by norm_num)
+  norm_num at indexRemainderVal nextIndexVal sizeQuotientVal sizeRemainderVal
+  have nextSizeFits : sizeQuotient.val + sizeRemainder.val <= U64.max := by
+    rw [sizeQuotientVal, sizeRemainderVal]
+    scalar_tac
+  obtain ⟨nextSize, nextSizeEq, nextSizeVal⟩ :=
+    u64_add_result sizeQuotient sizeRemainder nextSizeFits
+  cases checkedEq : U64.checked_add index 1#u64 with
+  | none =>
+      have overflow := u64_checked_add_none index 1#u64 checkedEq
+      norm_num at overflow
+      have rightAbsent : ¬ index.val + 1 < size.val := by
+        scalar_tac
+      by_cases remainderZero : indexRemainder.val = 0
+      · have indexModZero : index.val % 2 = 0 := by
+          rw [← indexRemainderVal]
+          exact remainderZero
+        simp [Chio.AeneasProduction.inclusion_step, lift, indexRemainderEq,
+          indexRemainderVal, checkedEq, nextIndexEq, nextIndexVal,
+          sizeQuotientEq, sizeQuotientVal, sizeRemainderEq, sizeRemainderVal,
+          nextSizeEq, nextSizeVal, mapResult, generatedInclusionStepToModel,
+          inclusionStep, indexModZero, rightAbsent]
+      · have indexModOne : index.val % 2 = 1 := by
+          have remainderBound : index.val % 2 < 2 := Nat.mod_lt _ (by omega)
+          rw [← indexRemainderVal] at remainderBound ⊢
+          omega
+        simp [Chio.AeneasProduction.inclusion_step, lift, indexRemainderEq,
+          indexRemainderVal, checkedEq, nextIndexEq, nextIndexVal,
+          sizeQuotientEq, sizeQuotientVal, sizeRemainderEq, sizeRemainderVal,
+          nextSizeEq, nextSizeVal, mapResult, generatedInclusionStepToModel,
+          inclusionStep, indexModOne, rightAbsent]
+  | some sibling =>
+      have checked := u64_checked_add_some index 1#u64 sibling checkedEq
+      norm_num at checked
+      by_cases siblingLess : sibling.val < size.val
+      · have rightExists : index.val + 1 < size.val := by
+          omega
+        by_cases remainderZero : indexRemainder.val = 0
+        · have indexModZero : index.val % 2 = 0 := by
+            rw [← indexRemainderVal]
+            exact remainderZero
+          simp [Chio.AeneasProduction.inclusion_step, lift, indexRemainderEq,
+            indexRemainderVal, checkedEq, nextIndexEq, nextIndexVal,
+            sizeQuotientEq, sizeQuotientVal, sizeRemainderEq, sizeRemainderVal,
+            nextSizeEq, nextSizeVal, mapResult, generatedInclusionStepToModel,
+            inclusionStep, siblingLess, indexModZero, rightExists]
+        · have indexModOne : index.val % 2 = 1 := by
+            have remainderBound : index.val % 2 < 2 := Nat.mod_lt _ (by omega)
+            rw [← indexRemainderVal] at remainderBound ⊢
+            omega
+          simp [Chio.AeneasProduction.inclusion_step, lift, indexRemainderEq,
+            indexRemainderVal, checkedEq, nextIndexEq, nextIndexVal,
+            sizeQuotientEq, sizeQuotientVal, sizeRemainderEq, sizeRemainderVal,
+            nextSizeEq, nextSizeVal, mapResult, generatedInclusionStepToModel,
+            inclusionStep, siblingLess, indexModOne, rightExists]
+      · have rightAbsent : ¬ index.val + 1 < size.val := by
+          omega
+        by_cases remainderZero : indexRemainder.val = 0
+        · have indexModZero : index.val % 2 = 0 := by
+            rw [← indexRemainderVal]
+            exact remainderZero
+          simp [Chio.AeneasProduction.inclusion_step, lift, indexRemainderEq,
+            indexRemainderVal, checkedEq, nextIndexEq, nextIndexVal,
+            sizeQuotientEq, sizeQuotientVal, sizeRemainderEq, sizeRemainderVal,
+            nextSizeEq, nextSizeVal, mapResult, generatedInclusionStepToModel,
+            inclusionStep, siblingLess, indexModZero, rightAbsent]
+        · have indexModOne : index.val % 2 = 1 := by
+            have remainderBound : index.val % 2 < 2 := Nat.mod_lt _ (by omega)
+            rw [← indexRemainderVal] at remainderBound ⊢
+            omega
+          simp [Chio.AeneasProduction.inclusion_step, lift, indexRemainderEq,
+            indexRemainderVal, checkedEq, nextIndexEq, nextIndexVal,
+            sizeQuotientEq, sizeQuotientVal, sizeRemainderEq, sizeRemainderVal,
+            nextSizeEq, nextSizeVal, mapResult, generatedInclusionStepToModel,
+            inclusionStep, siblingLess, indexModOne, rightAbsent]
+
+#print axioms generated_inclusion_step_eq_model
 
 end Chio.Proofs

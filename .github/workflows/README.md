@@ -45,7 +45,7 @@ verification check names are:
 - "kani-manifest-pr (non-core lanes.pr sweep)"
 - "rust-verification-metadata (schema only, no proofs)"
 
-The core Kani job reads all 20 PR harnesses from
+The core Kani job reads all 24 PR harnesses from
 `formal/rust-verification/kani-public-harnesses.toml`. The non-core job reads
 the 12 matching entries for chio-attest-verify, chio-anchor, and chio-weights
 from `.kani/harnesses.toml`. The metadata job validates registry structure only;
@@ -136,6 +136,8 @@ The tests run in two steps, not one, and they do *not* uniformly cover
 integration-test targets:
 
 - "Workspace tests" runs `cargo test --workspace --exclude chio-wasm-guards`.
+  The job installs Bun 1.3.3 first because the anchored-root tamper tests run
+  required Rust-TypeScript differentials and fail when Bun is unavailable.
   Across every other workspace member this compiles and runs `#[cfg(test)]`
   unit tests *and* the `tests/` integration targets, extending the
   build-breakage guarantee above to test code. Note this lane does not pass

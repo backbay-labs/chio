@@ -1,6 +1,8 @@
 schema = "chio.kani-public-harnesses.v1"
 crate = "chio-kernel-core"
 script = "scripts/check-kani-public-core.sh"
+# Named harnesses omit the legacy `--no-unwinding-checks` runner flag.
+unwinding_checks = ["verify_oracle_inclusion_soundness"]
 
 # `harness_groups` is the flat-array catalog (one entry per logical edge or
 # algebraic property the harnesses exercise). Entries cover scope intersection
@@ -24,7 +26,8 @@ harness_groups = [
   "verify recursive delegation no widening",
   "verify delegation receipt canonical-bytes determinism",
   "verify revocation view freshness fail-closed gate",
-  "verify oracle inclusion proof soundness",
+  "verify inclusion step production-extraction equivalence",
+  "verify relying-party inclusion walk soundness under ASSUME-SHA256",
 ]
 
 # Public Rust symbols witnessed by the harnesses above.
@@ -47,7 +50,8 @@ covered_symbols = [
   "chio_core_types::capability::delegate",
   "chio_core_types::delegation_receipt::DelegationReceipt::canonical_bytes",
   "chio_kernel_core::revocation_view::RevocationView::install_if_newer",
-  "chio_revocation_oracle::api::InclusionProof::verify",
+  "chio_core_types::merkle::MerkleProof::compute_root_from_hash",
+  "chio_core_types::merkle_steps::inclusion_step",
 ]
 
 # Lane assignment.
@@ -88,6 +92,7 @@ harnesses = [
   "verify_delegate_no_widen",
   "verify_delegation_receipt_canonical",
   "verify_revocation_view_freshness",
+  "verify_inclusion_step_equivalence",
   "verify_oracle_inclusion_soundness",
 ]
 

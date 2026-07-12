@@ -15,11 +15,13 @@ root_modules = [
   "formal/lean4/Chio/Chio/Core/Capability.lean",
   "formal/lean4/Chio/Chio/Core/Scope.lean",
   "formal/lean4/Chio/Chio/Core/Receipt.lean",
+  "formal/lean4/Chio/Chio/Core/MerkleWalk.lean",
   "formal/lean4/Chio/Chio/Core/Revocation.lean",
   "formal/lean4/Chio/Chio/Core/Protocol.lean",
   "formal/lean4/Chio/Chio/Spec/Properties.lean",
   "formal/lean4/Chio/Chio/Proofs/Monotonicity.lean",
   "formal/lean4/Chio/Chio/Proofs/Receipt.lean",
+  "formal/lean4/Chio/Chio/Proofs/MerkleWalk.lean",
   "formal/lean4/Chio/Chio/Proofs/Revocation.lean",
   "formal/lean4/Chio/Chio/Proofs/Evaluation.lean",
   "formal/lean4/Chio/Chio/Proofs/Protocol.lean",
@@ -61,6 +63,8 @@ covered_rust_modules = [
   "crates/kernel/chio-kernel-core/src/formal_core.rs",
   "crates/kernel/chio-kernel-core/src/normalized.rs",
   "crates/kernel/chio-kernel-core/src/receipts.rs",
+  "crates/core/chio-core-types/src/merkle.rs",
+  "crates/core/chio-core-types/src/merkle_steps.rs",
 ]
 
 covered_rust_symbols = [
@@ -76,6 +80,8 @@ covered_rust_symbols = [
   "chio_kernel_core::normalized::NormalizedScope::is_subset_of",
   "chio_kernel_core::normalized::NormalizedEvaluationVerdict::try_from_evaluation",
   "chio_kernel_core::receipts::sign_receipt",
+  "chio_core_types::merkle::MerkleProof::compute_root_from_hash",
+  "chio_core_types::merkle_steps::inclusion_step",
   "chio_kernel_core::formal_core::classify_time_window",
   "chio_kernel_core::formal_core::budget_precheck",
   "chio_kernel_core::formal_core::budget_commit",
@@ -97,7 +103,6 @@ covered_rust_symbols = [
   "chio_core_types::capability::delegate",
   "chio_core_types::delegation_receipt::DelegationReceipt::canonical_bytes",
   "chio_kernel_core::revocation_view::RevocationView::install_if_newer",
-  "chio_revocation_oracle::api::InclusionProof::verify",
 ]
 
 shell_entrypoints = [
@@ -123,7 +128,7 @@ property_matrix = [
   "P1|capability attenuation|lean_root_imported,differential_test,rust_projection,aeneas_equivalence,public_kani|spec.capability_monotonicity,proof.scope_subset_of_grants_subset,proof.reduced_budget_is_subset,proof.added_constraint_is_subset,proof.generated_optional_u32_cap_is_subset_preserves_parent_cap,proof.generated_ledger_apply_eq_model",
   "P2|presented revocation coverage|lean_root_imported,audited_storage_assumption,sqlite_projection,aeneas_equivalence|proof.revoke_marks_capability_revoked,proof.checkRevocation_revoked_token_errors,proof.evalToolCall_revoked_token_never_allows,proof.revocationSnapshot_revoked_token_denies,proof.revocationSnapshot_revoked_ancestor_denies,proof.generated_revocation_snapshot_denies_eq_model",
   "P3|fail-closed evaluation|lean_root_imported,rust_core,audited_subprocess_assumption,public_kani,adapter_no_bypass,aeneas_equivalence|proof.evalToolCall_total,proof.evalToolCall_invalid_signature_denies,proof.evalToolCall_out_of_scope_denies,proof.admitSession_invalid_dpop_rejects,proof.governedApproval_required_without_token_fails,proof.dpop_required_missing_proof_rejects,proof.dpop_required_invalid_proof_rejects,proof.guardPipeline_deny_dominates,proof.guardPipeline_error_dominates,proof.delegation_max_depth_failure_denies,proof.generated_time_window_valid_eq_model,proof.generated_budget_commit_eq_model,proof.generated_guard_step_allows_eq_model",
-  "P4|receipt integrity|lean_root_imported,symbolic_crypto,audited_crypto_assumption,receipt_totality,aeneas_equivalence|proof.membership_proof_sound,proof.receipt_sign_then_verify,proof.receipt_immutability,proof.receiptFieldsCoupled_preserves_all_fields,proof.generated_receipt_fields_coupled_eq_model",
+  "P4|receipt integrity|lean_root_imported,symbolic_crypto,audited_crypto_assumption,receipt_totality,aeneas_equivalence,public_kani,differential_test|proof.membership_proof_sound,proof.stepFold_eq_applyProof,proof.stepFold_membership_sound_if_geometry_agrees,proof.boundedWalkGeometry_decodes,proof.bounded_stepFold_sound,proof.generated_inclusion_step_eq_model,proof.receipt_sign_then_verify,proof.receipt_immutability,proof.receiptFieldsCoupled_preserves_all_fields,proof.generated_receipt_fields_coupled_eq_model",
   "P5|presented delegation-chain semantic validity|lean_root_imported,sqlite_projection|proof.delegation_chain_integrity,proof.delegation_step_allow_requires_attenuation,proof.delegation_step_allow_requires_subject_continuity,proof.delegation_step_allow_requires_expiry_monotonicity,proof.delegation_revoked_ancestor_denies,proof.delegation_max_depth_failure_denies",
   "P6|local parent-link soundness|lean_root_imported,audited_storage_assumption|proof.observed_parent_edge_sound",
   "P7|receipt-lineage soundness|lean_root_imported,symbolic_crypto,audited_crypto_assumption|proof.verified_receipt_lineage_sound",
@@ -200,6 +205,7 @@ notes = [
   "Release-facing formal claims must name this manifest, the theorem inventory, and the audited assumptions.",
   "ReceiptBeforeAllow proves the abstract persist-before-publish ordering and its production replay exercises the native happy path. It does not discharge concrete cross-row crash recovery, which remains excluded until implementation trace validation and crash-reopen conservation gates establish refinement.",
   "Manual Rust-to-model hashes are enforced by cargo xtask check formal-mirrors; transliteration and abstraction-anchor records require review, but matching hashes do not prove semantic equivalence or modeled properties.",
+  "The Rust relying-party inclusion walk is bound to the symbolic Lean walk by paired manual-mirror hashes, an authenticated generated-output Aeneas theorem for the scalar step, bounded Kani parity with unwinding assertions over runtime-cross-checked fixtures for every size from 1 through 8, and required Rust-TypeScript tamper differentials. Hash collision resistance remains ASSUME-SHA256.",
   "docs/formal/COVERAGE.md is the generated per-surface join of declared verification registries. It reports evidence identity and attribution without licensing claims beyond docs/reference/CLAIM_REGISTRY.md.",
 ]
 
@@ -405,18 +411,20 @@ rust_symbols = [
   "MerkleTree::inclusion_proof",
   "MerkleProof",
   "MerkleProof::compute_root",
+  "MerkleProof::compute_root_from_hash",
   "MerkleProof::verify",
 ]
-normalized_sha256 = "fc84abe7a587fb1461a08343e2b96da107429a7710ce270cb7879132ed6203ed"
+normalized_sha256 = "e6b3e89a5516c905c3407f78531d0dea49049c1560919d8b2322acf2fa9ce5c2"
 symbol_sha256 = [
   { symbol = "leaf_hash", sha256 = "b4db61a20d6638c532d285fb7fe05a601b8a3f2faee5226533463f8ae9374a3d" },
-  { symbol = "node_hash", sha256 = "0aa11b565a8edc8fabaf5a8b7cf29cf3403de1525cb41471e235f4a3a0290b22" },
+  { symbol = "node_hash", sha256 = "ca2f58af6ea3f6b26e2e5eb787854029d6b965ee4cb1c616f5937bd57ff5f34d" },
   { symbol = "MerkleTree", sha256 = "5c33a91e34394dea1498d2325ab81d2eb0cab31f9105d13038c35b76d2e4a67f" },
   { symbol = "MerkleTree::from_leaves", sha256 = "fdb3f21e5120fe91e5b6fe925b4896eab7b77e82eafa4f8a0744fdbeb3d699f2" },
   { symbol = "MerkleTree::root", sha256 = "1a3ee23e8a58937e0afb3fb119df09c159104892e31d113b0e51175ae70139eb" },
   { symbol = "MerkleTree::inclusion_proof", sha256 = "8aad4f8ca03ef5bede44d85bbcac3b116fe3d37b97abb3684239a0714a19fb5a" },
   { symbol = "MerkleProof", sha256 = "73a372d92e97db2d3428dfbc7d44d33eae42ac1fb09ca1ac160dec8fb050f40e" },
   { symbol = "MerkleProof::compute_root", sha256 = "2b90481b412b567a651cb3357aa70f5e11debd9da4a995b48632b57f2a791974" },
+  { symbol = "MerkleProof::compute_root_from_hash", sha256 = "7c9beb4b748a2874444bd54e5a6317cb42a36f9e24f0d88efba19d4a7c81ce8a" },
   { symbol = "MerkleProof::verify", sha256 = "6654cd86c9a696878feac7ab0bc67c92eecc22297b725084fe3528f67e6e0358" },
 ]
 
@@ -780,4 +788,28 @@ rust_symbols = ["consult_revocation_view_at"]
 normalized_sha256 = "8ddea5aab9990a12163a919f4aacc576f76c165bf4ce193670ae71c381470158"
 symbol_sha256 = [
   { symbol = "consult_revocation_view_at", sha256 = "8d81fbbf3f53335a1be8f3ee6760a073f9cc1e0c21e583044a7c69f4683c84b7" },
+]
+
+[[mirror]]
+model_file = "formal/lean4/Chio/Chio/Core/MerkleWalk.lean"
+model_kind = "lean"
+relationship = "transliteration"
+rust_source = "crates/core/chio-core-types/src/merkle_steps.rs"
+rust_symbols = ["InclusionStep", "inclusion_step"]
+normalized_sha256 = "056c4638fec152fa7eb4af55b18362ff3e45e67055f640d1989eb44950db49c1"
+symbol_sha256 = [
+  { symbol = "InclusionStep", sha256 = "4dce261d1a3822cf7e53acfc4ba32dc23ed377eabba354a04a429e2020306fb9" },
+  { symbol = "inclusion_step", sha256 = "bfb93503b8a1d89a94437a44e5314a00869bf7395e23ba1b327a425998f0440a" },
+]
+
+[[mirror]]
+model_file = "formal/lean4/Chio/Chio/Core/MerkleWalk.lean"
+model_kind = "lean"
+relationship = "transliteration"
+rust_source = "crates/kernel/chio-kernel-core/src/formal_aeneas.rs"
+rust_symbols = ["InclusionStep", "inclusion_step"]
+normalized_sha256 = "1d6e3d557bd434794b80eddf86ef281695aaa7ef2efe6c5ad6bf16d7c8d84b96"
+symbol_sha256 = [
+  { symbol = "InclusionStep", sha256 = "6a16b005ea025862aeb47b8188a6f08bb0cc4182c4cdd545013a3fd40a4cc443" },
+  { symbol = "inclusion_step", sha256 = "9b5909acc603bfdcaa6bb6209e3e05a132a5e0ef236dacb5ecbbf40ef398e593" },
 ]

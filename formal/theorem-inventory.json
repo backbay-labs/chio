@@ -286,6 +286,72 @@
       "notes": "Executable verification theorem for symbolic membership proofs."
     },
     {
+      "id": "proof.stepFoldLoop_eq_directedProofLoop_map",
+      "leanName": "Chio.Proofs.stepFoldLoop_eq_directedProofLoop_map",
+      "file": "formal/lean4/Chio/Chio/Proofs/MerkleWalk.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P4", "P7"],
+      "notes": "Inductive equivalence between the executable hash fold and the direction-tagged proof decoder at the same bounded fuel."
+    },
+    {
+      "id": "proof.stepFold_eq_directedProof_map",
+      "leanName": "Chio.Proofs.stepFold_eq_directedProof_map",
+      "file": "formal/lean4/Chio/Chio/Proofs/MerkleWalk.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P4", "P7"],
+      "notes": "The checked inclusion walk and direction-tagged proof decoder agree on invalid geometry, carry levels, path consumption, and trailing-path rejection."
+    },
+    {
+      "id": "proof.stepFold_eq_applyProof",
+      "leanName": "Chio.Proofs.stepFold_eq_applyProof",
+      "file": "formal/lean4/Chio/Chio/Proofs/MerkleWalk.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P4", "P7"],
+      "notes": "A successfully decoded index-directed audit path produces exactly the existing Receipt.applyProof result."
+    },
+    {
+      "id": "proof.stepFold_membership_sound_if_geometry_agrees",
+      "leanName": "Chio.Proofs.stepFold_membership_sound_if_geometry_agrees",
+      "file": "formal/lean4/Chio/Chio/Proofs/MerkleWalk.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "symbolic_crypto",
+      "status": "proved",
+      "mapsTo": ["P4", "P7"],
+      "notes": "Conditional composition of the index-directed fold with membership_proof_sound. The separate bounded geometry theorem discharges traversal shape for the supported domain."
+    },
+    {
+      "id": "proof.boundedWalkGeometry_decodes",
+      "leanName": "Chio.Proofs.boundedWalkGeometry_decodes",
+      "file": "formal/lean4/Chio/Chio/Proofs/MerkleWalk.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P4", "P7"],
+      "notes": "All 36 carry-last-node geometries through eight leaves decode to a direction-tagged proof whose application reaches the declared symbolic root."
+    },
+    {
+      "id": "proof.bounded_stepFold_sound",
+      "leanName": "Chio.Proofs.bounded_stepFold_sound",
+      "file": "formal/lean4/Chio/Chio/Proofs/MerkleWalk.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "symbolic_crypto",
+      "status": "proved",
+      "mapsTo": ["P4", "P7"],
+      "notes": "The checked fold reaches the declared symbolic root for every leaf index at every tree size from one through eight. Hashing remains under ASSUME-SHA256."
+    },
+    {
       "id": "proof.checkpoint_consistency",
       "leanName": "Chio.Proofs.checkpoint_consistency",
       "file": "formal/lean4/Chio/Chio/Proofs/Receipt.lean",
@@ -644,6 +710,16 @@
       "claimClass": "aeneas_equivalence",
       "mapsTo": ["P4"],
       "notes": "Derived ordinary-value receipt bridge; proof.generated_receipt_fields_coupled_eq_model is the generated-code successor. Body construction, canonicalization, and cryptography remain runtime-owned."
+    },
+    {
+      "id": "proof.generated_inclusion_step_eq_model",
+      "leanName": "Chio.Proofs.generated_inclusion_step_eq_model",
+      "file": "formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "aeneas_equivalence",
+      "mapsTo": ["P4", "P7"],
+      "notes": "The authenticated generated machine-integer inclusion step projects exactly to the checked Lean Merkle-walk model for every U64 input. Hashing remains outside this scalar theorem."
     },
     {
       "id": "proof.generated_ledger_is_terminal_eq_model",

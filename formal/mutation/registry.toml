@@ -94,7 +94,7 @@ lane = "proof-mutants"
 source = "crates/kernel/chio-kernel-core/src/formal_core.rs"
 report = "target/formal/proof-mutants/outcomes.json"
 activation_target_percent = 90.0
-inventory_sha256 = "aa7bddb103eb1baf2c5fda36f656e69f613a0cb25ca77cbba0b5c03b7719079c"
+inventory_sha256 = "211e7169745334d8070dbc0d84c783e61ba30023acb69490eda10520ecf5e16f"
 rust_paths = ["crates/kernel/chio-kernel-core/src/formal_core.rs"]
 
 [[target]]
@@ -103,5 +103,5 @@ lane = "proof-mutants"
 source = "crates/kernel/chio-kernel-core/src/formal_aeneas.rs"
 report = "target/formal/proof-mutants/outcomes.json"
 activation_target_percent = 90.0
-inventory_sha256 = "aa7bddb103eb1baf2c5fda36f656e69f613a0cb25ca77cbba0b5c03b7719079c"
+inventory_sha256 = "211e7169745334d8070dbc0d84c783e61ba30023acb69490eda10520ecf5e16f"
 rust_paths = ["crates/kernel/chio-kernel-core/src/formal_aeneas.rs"]

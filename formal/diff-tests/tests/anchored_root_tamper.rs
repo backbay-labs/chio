@@ -4,9 +4,9 @@
 //!
 //! The canary replay fixture is used to build the same
 //! `(receipt_id, leaf_hash, inclusion_proof, root)` tuple shape as the
-//! differential anchored-root harness. The test flips exactly one byte in
-//! the receipt leaf bytes and requires both Rust and TypeScript verification
-//! paths to fail closed.
+//! differential anchored-root harness. The tests mutate a receipt byte, reverse
+//! odd-index sibling order, truncate a path, and pad a path. Rust and TypeScript
+//! must reject the same malformed tuples.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -86,6 +86,18 @@ try {
   process.exit(1);
 }
 "#;
+const TYPESCRIPT_PROOF_SCRIPT: &str = r#"
+try {
+  const input = JSON.parse(process.env.CHIO_MERKLE_PROOF_CASE ?? "");
+  const { verifyInclusionProof } = await import("./src/replay.ts");
+  process.stdout.write(JSON.stringify({
+    verified: verifyInclusionProof(input.leaf_hash, input.proof, input.root),
+  }));
+} catch (error) {
+  process.stderr.write(error && error.stack ? error.stack : String(error));
+  process.exit(1);
+}
+"#;
 
 #[derive(Debug)]
 struct RustAnchoredRootPath {
@@ -100,22 +112,26 @@ struct TypeScriptTamperError {
     error_message: String,
 }
 
+#[derive(Debug)]
+struct TypeScriptProofResult {
+    verified: bool,
+}
+
 mod formal {
     pub mod anchored_root_tamper {
         use chio_anchor::AnchorError;
 
         use crate::{
-            build_rust_anchored_root_path, byte_diff_count, command_available,
-            mutate_one_leaf_byte, run_typescript_leaf_tamper, verify_rust_anchored_root_path,
-            CANARY_RECEIPT_ID,
+            assert_proof_rejected_by_both, build_rust_anchored_root_path, byte_diff_count,
+            mutate_one_leaf_byte, require_bun, run_typescript_leaf_tamper,
+            verify_rust_anchored_root_path, CANARY_RECEIPT_ID,
         };
+        use chio_core::hashing::Hash;
+        use chio_core::merkle::{node_hash, MerkleProof, MerkleTree};
 
         #[test]
         fn single_byte_flip_fails_closed_on_both() -> Result<(), String> {
-            if !command_available("bun", "--version") {
-                eprintln!("skipping TypeScript anchored-root tamper differential; bun not on PATH");
-                return Ok(());
-            }
+            require_bun()?;
             let path = build_rust_anchored_root_path()?;
             let tampered_leaf_bytes = mutate_one_leaf_byte(&path.leaf_bytes)?;
             assert_eq!(
@@ -144,6 +160,46 @@ mod formal {
             );
 
             Ok(())
+        }
+
+        #[test]
+        fn odd_index_cannot_reverse_sibling_order() -> Result<(), String> {
+            let leaf = Hash::from_bytes([0x11; 32]);
+            let sibling = Hash::from_bytes([0x22; 32]);
+            let proof = MerkleProof {
+                tree_size: 2,
+                leaf_index: 1,
+                audit_path: vec![sibling],
+            };
+            let reversed_root = node_hash(&leaf, &sibling);
+
+            assert_proof_rejected_by_both(leaf, &proof, reversed_root)
+        }
+
+        #[test]
+        fn padded_path_fails_closed_on_both() -> Result<(), String> {
+            let hashes: Vec<Hash> = (1..=5).map(|byte| Hash::from_bytes([byte; 32])).collect();
+            let tree = MerkleTree::from_hashes(hashes.clone())
+                .map_err(|error| format!("build five-leaf tree: {error}"))?;
+            let mut proof = tree
+                .inclusion_proof(4)
+                .map_err(|error| format!("build five-leaf proof: {error}"))?;
+            proof.audit_path.push(Hash::zero());
+
+            assert_proof_rejected_by_both(hashes[4], &proof, tree.root())
+        }
+
+        #[test]
+        fn truncated_path_fails_closed_on_both() -> Result<(), String> {
+            let hashes: Vec<Hash> = (1..=8).map(|byte| Hash::from_bytes([byte; 32])).collect();
+            let tree = MerkleTree::from_hashes(hashes.clone())
+                .map_err(|error| format!("build eight-leaf tree: {error}"))?;
+            let mut proof = tree
+                .inclusion_proof(3)
+                .map_err(|error| format!("build eight-leaf proof: {error}"))?;
+            proof.audit_path.pop();
+
+            assert_proof_rejected_by_both(hashes[3], &proof, tree.root())
         }
     }
 }
@@ -196,14 +252,19 @@ fn verify_rust_anchored_root_path(
     }
 }
 
-fn command_available(program: &str, version_arg: &str) -> bool {
-    Command::new(program)
-        .arg(version_arg)
+fn require_bun() -> Result<(), String> {
+    let available = Command::new("bun")
+        .arg("--version")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()
         .map(|status| status.success())
-        .unwrap_or(false)
+        .unwrap_or(false);
+    if available {
+        Ok(())
+    } else {
+        Err("anchored-root differential requires bun on PATH".to_string())
+    }
 }
 
 fn run_typescript_leaf_tamper(receipt_id: &str) -> Result<TypeScriptTamperError, String> {
@@ -255,6 +316,71 @@ fn run_typescript_leaf_tamper(receipt_id: &str) -> Result<TypeScriptTamperError,
         )?
         .to_string(),
     })
+}
+
+fn assert_proof_rejected_by_both(
+    leaf: Hash,
+    proof: &MerkleProof,
+    root: Hash,
+) -> Result<(), String> {
+    if proof.verify_hash(leaf, &root) {
+        return Err("malformed Rust inclusion proof unexpectedly verified".to_string());
+    }
+    require_bun()?;
+    let result = run_typescript_proof(leaf, proof, root)?;
+    if result.verified {
+        return Err("malformed TypeScript inclusion proof unexpectedly verified".to_string());
+    }
+    Ok(())
+}
+
+fn run_typescript_proof(
+    leaf: Hash,
+    proof: &MerkleProof,
+    root: Hash,
+) -> Result<TypeScriptProofResult, String> {
+    let conformance_dir = workspace_root().join("sdks/typescript/packages/conformance");
+    let case = json!({
+        "leaf_hash": leaf.to_hex_prefixed(),
+        "proof": proof,
+        "root": root.to_hex_prefixed(),
+    });
+    let case_json = serde_json::to_string(&case)
+        .map_err(|error| format!("serialize inclusion-proof case: {error}"))?;
+    let output = Command::new("bun")
+        .arg("--silent")
+        .arg("--eval")
+        .arg(TYPESCRIPT_PROOF_SCRIPT)
+        .current_dir(&conformance_dir)
+        .env("CHIO_MERKLE_PROOF_CASE", case_json)
+        .output()
+        .map_err(|error| {
+            format!(
+                "spawn TypeScript inclusion-proof runner in {}: {error}",
+                conformance_dir.display(),
+            )
+        })?;
+
+    if !output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!(
+            "TypeScript inclusion-proof runner failed: status={} stdout={} stderr={}",
+            output.status,
+            stdout.trim(),
+            stderr.trim(),
+        ));
+    }
+
+    let value: Value = serde_json::from_slice(&output.stdout)
+        .map_err(|error| format!("parse TypeScript inclusion-proof output: {error}"))?;
+    let verified = value
+        .get("verified")
+        .and_then(Value::as_bool)
+        .ok_or_else(|| {
+            "TypeScript inclusion-proof output missing boolean field verified".to_string()
+        })?;
+    Ok(TypeScriptProofResult { verified })
 }
 
 fn mutate_one_leaf_byte(bytes: &[u8]) -> Result<Vec<u8>, String> {

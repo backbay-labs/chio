@@ -15,7 +15,7 @@ Closure:
 
 - `.github/workflows/formal-pr-smoke.yml` now classifies affected paths and
   runs Lean compilation, sorry scanning, proof-registry cross-references, all
-  23 public kernel-core PR Kani harnesses, the 12 non-core PR Kani harnesses,
+  24 public kernel-core PR Kani harnesses, the 12 non-core PR Kani harnesses,
   and explicitly metadata-only Rust verification checks.
 - `.github/workflows/mutants.yml` now triggers on changes to six
   trust-boundary crates and skips untouched matrix packages before tool setup.
@@ -48,6 +48,12 @@ Closure:
 - The proof manifest names every absorbed helper and its runtime shell
   entrypoints. Hold settlement and release remain outside this closure because
   they implement a separate ledger law.
+- The Rust relying-party Merkle verifier now calls a checked scalar walk step.
+  Lean proves the fold against the existing receipt model, the authenticated
+  Aeneas production registry extracts the step mirror and requires its
+  generated-to-model theorem, Kani binds both scalar copies and the real
+  bounded proof walk, and Rust-TypeScript tamper differentials pin non-Rust
+  replay behavior.
 
 Original evidence:
 
@@ -135,8 +141,8 @@ Evidence (details and exact fixes in [HYGIENE_PASS.md](HYGIENE_PASS.md)):
   in CI", while a third theorem proved under the same conditions is marked
   `proved`.
 - The original `proof-manifest.toml` synchronized mirrors by symbol name only.
-  This is now mechanically closed for the five core Lean models and five TLA+
-  models: 34 mirror entries hash 80 parser-resolved Rust symbol references,
+  This is now mechanically closed for the six core Lean models and six TLA+
+  models: 41 mirror entries hash 96 parser-resolved Rust symbol references,
   with per-symbol diagnostics in required PR CI. The repaired TLA+ records are
   labeled abstraction anchors so their hashes require review without claiming
   that the Rust code establishes a modeled property.

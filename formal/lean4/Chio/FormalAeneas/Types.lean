@@ -28,4 +28,13 @@ structure ReservationLedger where
   released : Std.U64
   retained : Std.U64
 
+/-- [formal_aeneas::InclusionStep]
+    Source: 'crates/kernel/chio-kernel-core/src/formal_aeneas.rs', lines 149:0-154:1
+    Visibility: public -/
+structure InclusionStep where
+  consume_sibling : Bool
+  sibling_on_left : Bool
+  next_index : Std.U64
+  next_size : Std.U64
+
 end Chio.AeneasProduction

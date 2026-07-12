@@ -97,3 +97,16 @@ equivalence_theorems = [
   "ledger_is_terminal|Chio.Proofs.generated_ledger_is_terminal_eq_model",
   "ledger_apply|Chio.Proofs.generated_ledger_apply_eq_model",
 ]
+
+[[targets]]
+name = "merkle_walk"
+status = "generated_equivalence"
+types = [
+  "InclusionStep",
+]
+functions = [
+  "inclusion_step",
+]
+equivalence_theorems = [
+  "inclusion_step|Chio.Proofs.generated_inclusion_step_eq_model",
+]

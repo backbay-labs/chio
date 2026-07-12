@@ -63,7 +63,7 @@ are machine-readably enumerated in `formal/assumptions.toml`.
 | `P1` | approved_with_scope | Chio has bounded Lean mechanization and executable tests for capability attenuation over the current verified-core model. | `lean_root_imported`, `differential_test` |
 | `P2` | approved_with_scope | Chio has bounded Lean proofs that revoked tokens and revoked presented ancestors cannot pass the pure revocation/evaluation model. | `lean_root_imported` |
 | `P3` | approved_with_scope | Chio has bounded Lean proofs that the pure evaluator is total and fail-closed for invalid signature, time-window, revocation, and out-of-scope paths. | `lean_root_imported` |
-| `P4` | approved_with_scope | Chio has symbolic Lean proofs for receipt and checkpoint properties plus runtime receipt-signing checks in Rust. | `symbolic_crypto`, `runtime_qualification` |
+| `P4` | approved_with_scope | Within the published eight-leaf verification bound, the inclusion-proof walk executed by Rust relying parties refines the proved index-directed model, with hash collision resistance under ASSUME-SHA256. Receipt signing and concrete hashing remain runtime-qualified rather than proved here. | `lean_root_imported`, `symbolic_crypto`, `aeneas_production`, `aeneas_equivalence`, `public_kani`, `differential_test`, `runtime_qualification` |
 | `P5` | approved_with_scope | Chio has bounded structural delegation-chain theorems for the presented-chain model. | `lean_root_imported` |
 | `P6` | approved_with_scope | Chio has bounded Lean proofs that observed local parent edges imply a parent request existed in the same authenticated session. | `lean_root_imported`, `audited_assumption` |
 | `P7` | approved_with_scope | Chio has bounded Lean proofs that verified receipt lineage requires verified receipts, trusted kernel signature, and signed linkage. | `lean_root_imported`, `symbolic_crypto`, `audited_assumption` |
@@ -79,7 +79,7 @@ are machine-readably enumerated in `formal/assumptions.toml`.
 | `LEAN-4-VERIFIED` | disallowed | "Lean 4 verified" without boundary text | name the proof manifest and theorem inventory explicitly |
 | `P2-END-TO-END` | disallowed | "runtime revocation is formally verified end to end" | say P2 has bounded Lean coverage for the pure model and runtime revocation-store behavior is separately qualified |
 | `P3-END-TO-END` | disallowed | "all kernel fail-closed behavior is formally verified end to end" | say P3 has bounded Lean coverage for the pure evaluator and shell/runtime behavior is separately qualified |
-| `P4-END-TO-END` | disallowed | "Ed25519 receipts and Merkle log semantics are formally verified end to end" | say receipt proofs are symbolic/model-level and runtime signing is separately tested |
+| `P4-END-TO-END` | disallowed | "Ed25519 receipts and Merkle log semantics are formally verified end to end" | say the Rust inclusion-proof walk has bounded refinement evidence under ASSUME-SHA256, while concrete hashing and receipt signatures are separately runtime-qualified |
 | `P5-ACYCLICITY` | downgraded | "delegation graph acyclicity is proven" | say presented delegation-chain structure is proven in the bounded model |
 
 ## Current Source Notes

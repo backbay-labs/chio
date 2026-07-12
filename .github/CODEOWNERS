@@ -18,6 +18,9 @@ crates/core/chio-arena/**                         @backbay-labs/chio-maintainers
 crates/core/chio-core-types/src/capability/**          @backbay-labs/chio-maintainers
 crates/core/chio-core-types/src/capability/scope.rs    @backbay-labs/chio-maintainers
 crates/core/chio-core-types/src/receipt/**             @backbay-labs/chio-maintainers
+crates/core/chio-core-types/src/merkle.rs              @backbay-labs/chio-maintainers
+crates/core/chio-core-types/src/merkle_fixtures.rs     @backbay-labs/chio-maintainers
+crates/core/chio-core-types/src/merkle_steps.rs        @backbay-labs/chio-maintainers
 crates/core/chio-core-types/src/capability/governance.rs @backbay-labs/chio-maintainers
 crates/protocol/chio-tower/src/**                     @backbay-labs/chio-maintainers
 crates/protocol/chio-tower/src/host_call.rs           @backbay-labs/chio-maintainers

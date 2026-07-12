@@ -31,6 +31,10 @@ pub mod hashing;
 pub mod loaded_weights;
 pub mod manifest;
 pub mod merkle;
+#[cfg(any(kani, test))]
+#[doc(hidden)]
+pub mod merkle_fixtures;
+pub mod merkle_steps;
 pub mod message;
 pub mod oracle;
 pub mod plan;
@@ -64,6 +68,7 @@ pub use manifest::{
     PricingModel, ToolAnnotations, ToolDefinition, ToolManifest, ToolManifestBody, ToolPricing,
 };
 pub use merkle::{leaf_hash, node_hash, MerkleProof, MerkleTree};
+pub use merkle_steps::{inclusion_step, InclusionStep};
 pub use message::{AgentMessage, KernelMessage, ToolCallError, ToolCallResult};
 pub use oracle::{OracleConversionEvidence, CHIO_ORACLE_CONVERSION_EVIDENCE_SCHEMA};
 pub use plan::{

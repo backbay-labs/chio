@@ -184,23 +184,22 @@ fallback for native cargo-mutants scoring.
 The runner records the actual cargo-mutants, Kani, rustc, and Python versions.
 Its default per-run cap is 1,800 seconds because the measured 35-harness clean
 baseline exceeds the original 600-second estimate on the local arm64 host.
-On the integrated tree, cargo-mutants 25.3.1 discovers 150 focused Rust
-mutants with inventory digest
-`aa7bddb103eb1baf2c5fda36f656e69f613a0cb25ca77cbba0b5c03b7719079c`.
-Each aligned ten-epoch rotation cycle covers that inventory while including
-both model files in every sample.
+On the integrated tree, cargo-mutants 25.3.1 discovers 166 focused Rust
+mutants. The non-divisible inventory uses the general rotating schedule rather
+than the former ten-epoch aligned schedule. Every sample includes both model
+files, and cycle coverage is measured from recorded mutant identities.
 
 ## Lean sensitivity pilot
 
 `scripts/lean-mutants.py` enumerates comparison, Boolean literal, and Boolean
-connective mutations in six allowlisted definitions under `Chio/Core`. A
+connective mutations in seven allowlisted definitions under `Chio/Core`. A
 rotating sample of five runs after a clean `lake build` baseline in a detached
 scratch worktree. A nonzero build counts as a kill only when its log contains a
 Lean source diagnostic; an unclassified tool or infrastructure failure aborts
 the run. A successful build is a survivor, and a wall timeout is reported
 separately. This pilot is not an activation ratchet.
 
-On an unchanged commit, four consecutive epochs cover the current 18-mutant
+On an unchanged commit, four consecutive epochs cover the current 20-mutant
 pilot inventory.
 
 The report is `target/formal/lean-mutants/report.json`, schema

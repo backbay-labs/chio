@@ -73,7 +73,7 @@ unattributed rather than inferring coverage from names.
 
 - The inputs exist and are already load-bearing [v], verified present this session:
   - formal/proof-manifest.toml: `covered_rust_modules`, `covered_rust_symbols`, `property_matrix` P1-P10, `gate_commands`, `rust_refinement_lanes`.
-  - formal/theorem-inventory.json: 83 theorem entries (fields `id, leanName, file, kind, rootImported, claimClass, mapsTo, notes`) plus a separate `assumptions` block.
+  - formal/theorem-inventory.json: theorem entries with fields `id, leanName, file, kind, rootImported, claimClass, mapsTo, notes`, plus a separate `assumptions` block.
   - formal/MAPPING.md: grep-enforced property-to-Rust rows (scripts/check-mapping.sh).
   - formal/assumptions.toml: audited and retired assumptions.
   - .kani/harnesses.toml (schema `chio.kani.multi-crate.v1`, per-harness crate/lane/unwind) and formal/rust-verification/{kani-harnesses,kani-public-harnesses,creusot-contracts}.toml; formal/aeneas/{pilot,production}.toml named by `rust_refinement_lanes`.
@@ -252,7 +252,7 @@ file or exact owner key; and malformed present optional registries.
 - The page overstates: readers may misread "cell has an id" as "surface fully verified". Mitigation: cells carry artifact ids, not checkmarks; the page header links CLAIM_REGISTRY.md and repeats its constraint that per-lane evidence classes, not this matrix, license claims (LEAN-4-VERIFIED and P4-END-TO-END remain disallowed [v]).
 - MAPPING.md format drift breaks the parser. Mitigation: tolerant parsing with deterministic warnings; scripts/check-mapping.sh already constrains the file's content; a golden test pins the parse of the current file.
 - Row-granularity churn (module vs crate) makes diffs noisy. Mitigation: granularity rules are fixed in the generator and documented in the page footer; changing them is a reviewed generator change, and the drift gate makes every output change visible in the same PR as its cause.
-- theorem-inventory count drift (this session measured 83 theorem entries where earlier notes said 84): the generator never hardcodes counts; it reports what it parses, and the consistency checks make dangling references loud.
+- theorem-inventory count drift: the generator never hardcodes inventory counts; it reports what it parses, and the consistency checks make dangling references loud.
 - Two sources of truth (COVERAGE.md vs CURRENT_STATE.md prose). Mitigation: CURRENT_STATE.md gets a pointer to the generated page for per-surface questions; prose keeps narrative, the matrix keeps facts.
 
 ## Resolved questions

@@ -667,9 +667,11 @@ commands = [
     for line in Path(sys.argv[1]).read_bytes().splitlines()
     if line
 ]
-if len(commands) != 2:
-    raise SystemExit(f"expected priority and full Kani commands, found: {commands}")
-priority, full = commands
+if len(commands) != 3:
+    raise SystemExit(
+        f"expected priority, full, and sound inclusion Kani commands, found: {commands}"
+    )
+priority, full, sound_inclusion = commands
 priority_required = {
     b"kani",
     b"-p",
@@ -686,6 +688,24 @@ if not priority_required.issubset(priority):
 full_required = {b"kani", b"-p", b"chio-kernel-core", b"--lib", b"--fail-fast"}
 if not full_required.issubset(full) or b"--harness" in full:
     raise SystemExit(f"full Kani command was narrowed: {full}")
+sound_required = {
+    b"kani",
+    b"-p",
+    b"chio-kernel-core",
+    b"--lib",
+    b"--harness",
+    b"verify_oracle_inclusion_soundness",
+    b"--default-unwind",
+    b"8",
+}
+if not sound_required.issubset(sound_inclusion):
+    raise SystemExit(
+        f"sound inclusion Kani command omitted required arguments: {sound_inclusion}"
+    )
+if b"--no-unwinding-checks" in sound_inclusion:
+    raise SystemExit(
+        f"sound inclusion Kani command disabled unwinding checks: {sound_inclusion}"
+    )
 PY
 
 echo "PASS: proof mutation discovery, sharding, application, and scoring"

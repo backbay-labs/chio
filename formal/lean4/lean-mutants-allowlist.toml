@@ -25,3 +25,7 @@ path = "formal/lean4/Chio/Chio/Core/Protocol.lean"
 [[definition]]
 name = "revocationSnapshotDenies"
 path = "formal/lean4/Chio/Chio/Core/Protocol.lean"
+
+[[definition]]
+name = "inclusionStep"
+path = "formal/lean4/Chio/Chio/Core/MerkleWalk.lean"

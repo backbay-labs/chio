@@ -6,7 +6,7 @@ schema = "chio.kani.multi-crate.v1"
 # iterate. The runner invokes the harness with:
 #
 #     cargo kani -p <crate> --lib --harness <name> \
-#       --default-unwind <default_unwind> --no-unwinding-checks
+#       --default-unwind <default_unwind> [--no-unwinding-checks]
 #
 # Wrapped under a per-harness wall-clock cap of `timeout_secs`.
 #
@@ -30,9 +30,11 @@ schema = "chio.kani.multi-crate.v1"
 #   crate           string  Cargo package name (-p flag value).
 #   harness         string  Symbol passed to `--harness`.
 #   default_unwind  int     Value for `--default-unwind`.
+#   unwinding_checks bool   Optional; defaults false. True keeps CBMC checks on.
 #   timeout_secs    int     Per-harness wall-clock cap.
 #   lane            string  "pr" | "nightly".
 #   features        list    Optional Cargo features (e.g. ["pq"]).
+#   primary_rust_symbol string Optional explicit coverage owner for cross-module harnesses.
 #   notes           string  Free-form comment for future maintainers.
 
 # ---------------------------------------------------------------------
@@ -202,10 +204,22 @@ lane = "pr"
 
 [[harness]]
 crate = "chio-kernel-core"
+harness = "verify_inclusion_step_equivalence"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+primary_rust_symbol = "chio_core_types::merkle_steps::inclusion_step"
+notes = "Production and extraction-safe inclusion-step equality through the eight-leaf bound."
+
+[[harness]]
+crate = "chio-kernel-core"
 harness = "verify_oracle_inclusion_soundness"
 default_unwind = 8
 timeout_secs = 1800
 lane = "pr"
+unwinding_checks = true
+primary_rust_symbol = "chio_core_types::merkle::MerkleProof::compute_root_from_hash"
+notes = "Exact production compute_root_from_hash traversal over every leaf and tree size from 1 through 8, with CBMC unwinding assertions. Under cfg(kani), node_hash is an order-sensitive two-byte algebra; collision resistance remains ASSUME-SHA256 and standard builds retain RFC 6962 SHA-256."
 
 
 # ---------------------------------------------------------------------

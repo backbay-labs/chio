@@ -78,6 +78,16 @@ lanes = data.get("lanes")
 if not isinstance(lanes, dict):
     raise SystemExit("check-kani-public-core.sh: manifest has no lanes table")
 
+unwinding_checks = data.get("unwinding_checks", [])
+if not isinstance(unwinding_checks, list) or not all(
+    isinstance(name, str) and name for name in unwinding_checks
+):
+    raise SystemExit(
+        "check-kani-public-core.sh: unwinding_checks must be a string list"
+    )
+if len(set(unwinding_checks)) != len(unwinding_checks):
+    raise SystemExit("check-kani-public-core.sh: duplicate unwinding_checks entry")
+
 selected_lanes = ("pr", "nightly_only") if lane_filter == "all" else (lane_filter,)
 harnesses = []
 seen = set()
@@ -119,13 +129,31 @@ missing = [
 if missing:
     raise SystemExit(f"check-kani-public-core.sh: missing harness functions: {missing}")
 
-print("\n".join(harnesses))
+known_harnesses = {
+    name
+    for lane in lanes.values()
+    if isinstance(lane, dict)
+    for name in lane.get("harnesses", [])
+    if isinstance(name, str)
+}
+unknown_checks = sorted(set(unwinding_checks) - known_harnesses)
+if unknown_checks:
+    raise SystemExit(
+        f"check-kani-public-core.sh: unwinding_checks names unknown harnesses: {unknown_checks}"
+    )
+
+print("\n".join(
+    f"{name}\t{'true' if name in unwinding_checks else 'false'}"
+    for name in harnesses
+))
 PY
 )
 
 if [[ "$LIST_ONLY" -eq 1 ]]; then
   if [[ -n "$HARNESSES" ]]; then
-    printf '%s\n' "$HARNESSES"
+    while IFS=$'\t' read -r harness _; do
+      [[ -n "$harness" ]] && printf '%s\n' "$harness"
+    done <<< "$HARNESSES"
   fi
   exit 0
 fi
@@ -136,11 +164,17 @@ if ! cargo kani --version >/dev/null 2>&1; then
 fi
 
 COUNT=0
-while IFS= read -r harness; do
+while IFS=$'\t' read -r harness unwinding_checks; do
   [[ -n "$harness" ]] || continue
   echo "::group::cargo kani --harness ${harness}"
-  cargo kani -p chio-kernel-core --lib --harness "$harness" \
-    --default-unwind 8 --no-unwinding-checks
+  args=(
+    -p chio-kernel-core --lib --harness "$harness"
+    --default-unwind 8
+  )
+  if [[ "$unwinding_checks" != "true" ]]; then
+    args+=(--no-unwinding-checks)
+  fi
+  cargo kani "${args[@]}"
   echo "::endgroup::"
   COUNT=$((COUNT + 1))
 done <<< "$HARNESSES"

@@ -51,6 +51,8 @@ struct KaniHarness {
     lane: String,
     #[serde(default)]
     notes: String,
+    #[serde(default)]
+    primary_rust_symbol: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize)]
@@ -630,7 +632,7 @@ fn build_coverage(root: &Path) -> Result<CoverageBuild, String> {
         let source = validate_mapping_source(row, root, &mut input_hashes)?;
         let resolution = surfaces_from_mapping(&row.rust_paths, root, &workspace)?;
         let candidates = if resolution.unresolved.is_empty() {
-            conservative_primary_candidates(&resolution.surfaces)
+            resolution.surfaces.clone()
         } else {
             Vec::new()
         };
@@ -667,7 +669,8 @@ fn build_coverage(root: &Path) -> Result<CoverageBuild, String> {
         }
     }
     for surfaces in mapping_surfaces.values_mut() {
-        *surfaces = conservative_primary_candidates(surfaces);
+        surfaces.sort();
+        surfaces.dedup();
     }
 
     add_kani_artifacts(
@@ -1781,7 +1784,23 @@ fn add_kani_artifacts(
             .cloned()
             .unwrap_or_default();
         let fallback = infer_harness_surface(harness, root, workspace);
-        let (primary, related) = conservative_harness_attribution(surfaces, fallback);
+        let (primary, related) = if let Some(symbol) = &harness.primary_rust_symbol {
+            let primary = surface_from_symbol(symbol, root, workspace).ok_or_else(|| {
+                format!(
+                    "Kani harness {} has an unresolved primary_rust_symbol: {symbol}",
+                    harness.harness
+                )
+            })?;
+            if !surfaces.contains(&primary) {
+                return Err(format!(
+                    "Kani harness {} primary_rust_symbol is absent from its MAPPING surfaces: {symbol}",
+                    harness.harness
+                ));
+            }
+            (primary, surfaces)
+        } else {
+            conservative_harness_attribution(surfaces, fallback)
+        };
         let id = format!(
             ".kani/harnesses.toml::{}/{}",
             harness.crate_name, harness.harness
@@ -4961,7 +4980,7 @@ mod tests {
         let parsed = parse_mapping(include_str!("../../formal/MAPPING.md"));
 
         assert!(parsed.warnings.is_empty(), "{:?}", parsed.warnings);
-        assert_eq!(parsed.rows.len(), 48);
+        assert_eq!(parsed.rows.len(), 49);
     }
 
     #[test]
@@ -5195,6 +5214,7 @@ mod tests {
             harness: "public_missing".to_string(),
             lane: "pr".to_string(),
             notes: String::new(),
+            primary_rust_symbol: None,
         }];
         let workspace_members = BTreeSet::from(["chio-core".to_string()]);
 
@@ -5275,12 +5295,14 @@ mod tests {
             harness: "future_unmapped_harness".to_string(),
             lane: "pr".to_string(),
             notes: String::new(),
+            primary_rust_symbol: None,
         };
         let receipt = KaniHarness {
             crate_name: "chio-kernel-core".to_string(),
             harness: "public_sign_receipt_refuses_content_hash_mismatch".to_string(),
             lane: "pr".to_string(),
             notes: String::new(),
+            primary_rust_symbol: None,
         };
 
         assert_eq!(

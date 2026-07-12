@@ -4,8 +4,8 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 mapfile -t pr_harnesses < <(scripts/check-kani-public-core.sh --lane pr --list)
-if [[ "${#pr_harnesses[@]}" -ne 23 ]]; then
-  echo "expected 23 public core PR harnesses, found ${#pr_harnesses[@]}" >&2
+if [[ "${#pr_harnesses[@]}" -ne 24 ]]; then
+  echo "expected 24 public core PR harnesses, found ${#pr_harnesses[@]}" >&2
   exit 1
 fi
 
@@ -24,7 +24,28 @@ mirrored = [
 ]
 if mirrored != public["lanes"]["pr"]["harnesses"]:
     raise SystemExit("public-core PR registries have drifted")
+multi_unwinding_checks = [
+    entry["harness"]
+    for entry in multi["harness"]
+    if entry["crate"] == "chio-kernel-core"
+    and entry["lane"] == "pr"
+    and entry.get("unwinding_checks", False)
+]
+if multi_unwinding_checks != public["unwinding_checks"]:
+    raise SystemExit("public-core unwinding-check posture has drifted")
 PY
+
+dry_run="$(scripts/run-kani-manifest.sh --lane pr --crate chio-kernel-core --dry-run)"
+oracle_line="$(grep -F -- '--harness verify_oracle_inclusion_soundness ' <<<"$dry_run")"
+if grep -Fq -- '--no-unwinding-checks' <<<"$oracle_line"; then
+  echo "inclusion-walk proof unexpectedly disables unwinding checks" >&2
+  exit 1
+fi
+ordinary_line="$(grep -F -- '--harness verify_revocation_view_freshness ' <<<"$dry_run")"
+if ! grep -Fq -- '--no-unwinding-checks' <<<"$ordinary_line"; then
+  echo "ordinary public harness unexpectedly changed unwinding posture" >&2
+  exit 1
+fi
 
 mapfile -t all_harnesses < <(scripts/check-kani-public-core.sh --lane all --list)
 if [[ "${pr_harnesses[*]}" != "${all_harnesses[*]}" ]]; then
@@ -64,6 +85,27 @@ TOML
 if KANI_PUBLIC_HARNESSES_MANIFEST="${tmp_dir}/missing-harness.toml" \
   scripts/check-kani-public-core.sh --lane pr --list >/dev/null 2>&1; then
   echo "missing harness function unexpectedly succeeded" >&2
+  exit 1
+fi
+
+cat > "${tmp_dir}/unknown-unwinding-check.toml" <<'TOML'
+schema = "chio.kani-public-harnesses.v1"
+crate = "chio-kernel-core"
+script = "scripts/check-kani-public-core.sh"
+unwinding_checks = ["missing_public_harness"]
+
+[lanes.pr]
+description = "negative fixture"
+harnesses = ["verify_revocation_view_freshness"]
+
+[lanes.nightly_only]
+description = "reserved"
+harnesses = []
+TOML
+
+if KANI_PUBLIC_HARNESSES_MANIFEST="${tmp_dir}/unknown-unwinding-check.toml" \
+  scripts/check-kani-public-core.sh --lane pr --list >/dev/null 2>&1; then
+  echo "unknown unwinding-check harness unexpectedly succeeded" >&2
   exit 1
 fi
 

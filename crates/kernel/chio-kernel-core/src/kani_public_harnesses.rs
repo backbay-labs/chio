@@ -9,6 +9,10 @@ use chio_core_types::capability::{
     token::CapabilityToken,
 };
 use chio_core_types::crypto::{PublicKey, Signature, SigningAlgorithm, SigningBackend};
+use chio_core_types::hashing::Hash;
+use chio_core_types::merkle::node_hash;
+use chio_core_types::merkle_fixtures::bounded_merkle_case;
+use chio_core_types::merkle_steps::inclusion_step;
 use chio_core_types::receipt::{
     body::ChioReceiptBody, decision::Decision, decision::ToolCallAction, kinds::TrustLevel,
 };
@@ -19,10 +23,10 @@ use crate::clock::FixedClock;
 use crate::evaluate::EvaluateInput;
 use crate::formal_aeneas::{ledger_apply, ReservationLedger};
 use crate::formal_core::{
-    budget_charge_admits, budget_increment_admits, guard_pipeline_allows,
-    monetary_cap_is_subset_by_parts, optional_u32_cap_is_subset, receipt_fields_coupled,
-    required_true_is_preserved, revocation_lookup_denies, revocation_snapshot_denies,
-    time_window_valid, BudgetAdmissionProjectionError, GuardStep, RevocationCheckTarget,
+    budget_charge_admits, budget_increment_admits, monetary_cap_is_subset_by_parts,
+    optional_u32_cap_is_subset, required_true_is_preserved, revocation_lookup_denies,
+    revocation_snapshot_denies, time_window_valid, BudgetAdmissionProjectionError,
+    RevocationCheckTarget,
 };
 use crate::guard::PortableToolCallRequest;
 use crate::normalized::{NormalizedOperation, NormalizedScope, NormalizedToolGrant};
@@ -1289,8 +1293,7 @@ pub fn verify_budget_admission_projection() {
 
 // =====================================================================
 // Public harnesses for recursive delegation, the signed delegation
-// receipt, the revocation-view freshness gate, and sparse-Merkle
-// inclusion soundness.
+// receipt, the revocation-view freshness gate, and Merkle inclusion.
 //
 // Each harness mirrors a property already proved (or pending proof) on
 // the Lean and TLA+ sides:
@@ -1300,11 +1303,10 @@ pub fn verify_budget_admission_projection() {
 //     determinism on canonical bytes.
 //   * verify_revocation_view_freshness   - RevocationView::install_if_newer
 //     monotone-epoch fail-closed gate (revocation_view.rs).
-//   * verify_oracle_inclusion_soundness  - sparse-Merkle inclusion proof
-//     soundness modulo a symbolic hash function (chio-revocation-oracle).
+//   * verify_inclusion_step_equivalence  - production/extraction step parity.
+//   * verify_oracle_inclusion_soundness  - production inclusion-walk parity.
 //
-// Each property is modelled at the algebraic level so the symbolic search
-// space stays bounded.
+// Each property uses a bounded input domain.
 // =====================================================================
 
 #[kani::proof]
@@ -1429,37 +1431,157 @@ pub fn verify_revocation_view_freshness() {
 }
 
 #[kani::proof]
+pub fn verify_inclusion_step_equivalence() {
+    let index = u64::from(kani::any::<u8>());
+    let size = u64::from(kani::any::<u8>());
+    kani::assume(index <= 8);
+    kani::assume(size <= 8);
+
+    let production = inclusion_step(index, size);
+    let extracted = crate::formal_aeneas::inclusion_step(index, size);
+    assert_eq!(production.consume_sibling, extracted.consume_sibling);
+    assert_eq!(production.sibling_on_left, extracted.sibling_on_left);
+    assert_eq!(production.next_index, extracted.next_index);
+    assert_eq!(production.next_size, extracted.next_size);
+}
+
+fn model_inclusion_root(
+    mut current: Hash,
+    mut index: u64,
+    mut size: u64,
+    audit_path: &[Hash],
+) -> Option<Hash> {
+    if size == 0 || index >= size {
+        return None;
+    }
+
+    let mut path_index = 0usize;
+    while size > 1 {
+        let sibling_on_left = index % 2 != 0;
+        let right_sibling_exists = index.checked_add(1).is_some_and(|sibling| sibling < size);
+        if sibling_on_left || right_sibling_exists {
+            let sibling = audit_path.get(path_index)?;
+            path_index = path_index.checked_add(1)?;
+            current = if sibling_on_left {
+                node_hash(sibling, &current)
+            } else {
+                node_hash(&current, sibling)
+            };
+        }
+        index /= 2;
+        size = size / 2 + size % 2;
+    }
+
+    (path_index == audit_path.len()).then_some(current)
+}
+
+fn perturb_symbolic_hash(hash: &mut Hash, first: u8, second: u8) {
+    let mut bytes = *hash.as_bytes();
+    bytes[0] ^= first;
+    bytes[1] ^= second;
+    *hash = Hash::from_bytes(bytes);
+}
+
+fn abstract_hash_options_equal(actual: Option<Hash>, model: Option<Hash>) -> bool {
+    match (actual, model) {
+        (None, None) => true,
+        (Some(actual), Some(model)) => {
+            let actual = actual.as_bytes();
+            let model = model.as_bytes();
+            actual[0] == model[0]
+                && actual[1] == model[1]
+                && actual[2] == model[2]
+                && actual[3] == model[3]
+                && actual[4] == model[4]
+                && actual[5] == model[5]
+                && actual[6] == model[6]
+                && actual[7] == model[7]
+                && actual[8] == model[8]
+                && actual[9] == model[9]
+                && actual[10] == model[10]
+                && actual[11] == model[11]
+                && actual[12] == model[12]
+                && actual[13] == model[13]
+                && actual[14] == model[14]
+                && actual[15] == model[15]
+                && actual[16] == model[16]
+                && actual[17] == model[17]
+                && actual[18] == model[18]
+                && actual[19] == model[19]
+                && actual[20] == model[20]
+                && actual[21] == model[21]
+                && actual[22] == model[22]
+                && actual[23] == model[23]
+                && actual[24] == model[24]
+                && actual[25] == model[25]
+                && actual[26] == model[26]
+                && actual[27] == model[27]
+                && actual[28] == model[28]
+                && actual[29] == model[29]
+                && actual[30] == model[30]
+                && actual[31] == model[31]
+        }
+        _ => false,
+    }
+}
+
+#[kani::proof]
+#[kani::unwind(5)]
 pub fn verify_oracle_inclusion_soundness() {
-    let leaf_present = kani::any::<bool>();
-    let chain_hashes_to_root = kani::any::<bool>();
+    let tree_size = usize::from((kani::any::<u8>() & 7) + 1);
+    let leaf_index = usize::from(kani::any::<u8>());
+    kani::assume(leaf_index < tree_size);
+    let fixture = bounded_merkle_case(tree_size, leaf_index);
+    assert!(fixture.is_some());
+    let Some((mut leaf, _expected_root, mut proof)) = fixture else {
+        return;
+    };
+    perturb_symbolic_hash(&mut leaf, kani::any(), kani::any());
 
-    let verifier_accepts = guard_pipeline_allows(
-        leaf_present,
-        &[if chain_hashes_to_root {
-            GuardStep::Allow
-        } else {
-            GuardStep::Deny
-        }],
-    );
+    if let Some(sibling) = proof.audit_path.get_mut(0) {
+        perturb_symbolic_hash(sibling, kani::any(), kani::any());
+    }
+    if let Some(sibling) = proof.audit_path.get_mut(1) {
+        perturb_symbolic_hash(sibling, kani::any(), kani::any());
+    }
+    if let Some(sibling) = proof.audit_path.get_mut(2) {
+        perturb_symbolic_hash(sibling, kani::any(), kani::any());
+    }
 
-    assert_eq!(verifier_accepts, leaf_present && chain_hashes_to_root);
-    assert!(
-        receipt_fields_coupled(
-            leaf_present,
-            chain_hashes_to_root,
-            verifier_accepts,
-            true,
-            true
-        ) || !verifier_accepts
-    );
+    match kani::any::<u8>() % 6 {
+        1 => {
+            if proof.audit_path.pop().is_none() {
+                proof.tree_size = 0;
+            }
+        }
+        2 => {
+            if proof.audit_path.is_empty() {
+                proof.tree_size = 0;
+            } else {
+                proof.tree_size = 1;
+                proof.leaf_index = 0;
+            }
+        }
+        3 => {
+            if proof.audit_path.len() > 1 {
+                proof.audit_path.swap(0, 1);
+            } else {
+                proof.leaf_index = proof.tree_size;
+            }
+        }
+        4 => proof.tree_size = 0,
+        5 => proof.leaf_index = proof.tree_size,
+        _ => {}
+    }
 
-    let retry = guard_pipeline_allows(
-        leaf_present,
-        &[if chain_hashes_to_root {
-            GuardStep::Allow
-        } else {
-            GuardStep::Deny
-        }],
-    );
-    assert_eq!(retry, verifier_accepts);
+    let model_index = u64::try_from(proof.leaf_index);
+    let model_size = u64::try_from(proof.tree_size);
+    assert!(model_index.is_ok());
+    assert!(model_size.is_ok());
+    let (Ok(model_index), Ok(model_size)) = (model_index, model_size) else {
+        return;
+    };
+    let model_root = model_inclusion_root(leaf, model_index, model_size, &proof.audit_path);
+    let actual_root = proof.compute_root_from_hash(leaf).ok();
+    assert!(abstract_hash_options_equal(actual_root, model_root));
 }
