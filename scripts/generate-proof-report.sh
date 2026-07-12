@@ -69,6 +69,9 @@ AENEAS_ARTIFACTS = [
     "target/formal/aeneas-production/llbc/formal_aeneas.llbc",
     "target/formal/aeneas-production/lean/Funs.lean",
     "target/formal/aeneas-production/lean/Types.lean",
+    "target/formal/aeneas-production/economy/llbc/formal_economy.llbc",
+    "target/formal/aeneas-production/economy/lean/Funs.lean",
+    "target/formal/aeneas-production/economy/lean/Types.lean",
     "target/formal/aeneas-production/equivalence-artifacts.json",
     "target/formal/aeneas-production/negative-tests.json",
 ]

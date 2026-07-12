@@ -238,6 +238,23 @@ themselves harnesses and are not enforced.
 | `verify_inclusion_step_equivalence`                                | ~L1430      | `chio_core_types::merkle_steps::inclusion_step`, `chio_kernel_core::formal_aeneas::inclusion_step`     | `proof.generated_inclusion_step_eq_model`; `formal/aeneas/production.toml` `merkle_walk` target; paired manual-mirror hashes | The production and extraction-safe scalar steps agree for every symbolic index and size through the eight-leaf bound, including invalid geometry. The authenticated Aeneas snapshot theorem proves the generated machine-integer step refines the Lean model. |
 | `verify_oracle_inclusion_soundness`                                | ~L1500      | `chio_core_types::merkle::MerkleProof::compute_root_from_hash`, `chio_core_types::merkle_steps::inclusion_step` | `proof.stepFold_eq_applyProof`, `proof.boundedWalkGeometry_decodes`, `proof.bounded_stepFold_sound`; ASSUME-SHA256 | Rebound replacement for the former two-boolean algebraic body. Fixed proof fixtures for every index at every tree size from 1 through 8 are runtime-cross-checked against `MerkleTree`; two symbolic hash-relevant bytes per audit node and malformed path shapes compare the production verifier with an independent bounded fold under enabled unwinding assertions. |
 
+## Kani checked-conversion harnesses
+
+Source file: `crates/economy/chio-credit/src/kani_public_harnesses.rs`.
+
+| Property | Source | Rust path constrained | Assumption discharge | One-line description |
+| --- | --- | --- | --- | --- |
+| `public_convert_rounding_envelope` | `crates/economy/chio-credit/src/kani_public_harnesses.rs` | `crates/economy/chio-credit/src/formal_economy.rs::convert_ceil_scalar`, `crates/economy/chio-credit/src/formal_economy.rs::convert_floor_scalar` | n/a (pure checked integer arithmetic) | Successful conversions over the exhaustive four-bit input cube lie inside the exact ceil or floor rounding envelope, including the zero-value ceil case. |
+| `public_convert_overflow_fails_closed` | `crates/economy/chio-credit/src/kani_public_harnesses.rs` | `crates/economy/chio-credit/src/formal_economy.rs::convert_ceil_scalar`, `crates/economy/chio-credit/src/formal_economy.rs::convert_floor_scalar` | n/a (pure checked integer arithmetic) | Full-width products that cannot narrow to `u64` fail closed, while the largest identity conversion and zero units remain exact. |
+
+## Kani settlement-state harnesses
+
+Source file: `crates/economy/chio-web3/src/kani_public_harnesses.rs`.
+
+| Property | Source | Rust path constrained | Assumption discharge | One-line description |
+| --- | --- | --- | --- | --- |
+| `public_settlement_state_id_fixed_point` | `crates/economy/chio-web3/src/kani_public_harnesses.rs` | `crates/economy/chio-web3/src/settlement.rs::settlement_state_id` | n/a (finite enum truth table) | Every lifecycle variant maps to its stable public identifier, and repeated evaluation returns the same identifier. |
+
 ## Lean recursive-delegation theorems (Capability/Delegation.lean)
 
 Source file: `formal/lean4/Chio/Chio/Capability/Delegation.lean`. Rows

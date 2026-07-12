@@ -40,6 +40,9 @@ managed_paths=(
   target/formal/aeneas-production/llbc/formal_aeneas.llbc
   target/formal/aeneas-production/lean/Funs.lean
   target/formal/aeneas-production/lean/Types.lean
+  target/formal/aeneas-production/economy/llbc/formal_economy.llbc
+  target/formal/aeneas-production/economy/lean/Funs.lean
+  target/formal/aeneas-production/economy/lean/Types.lean
   target/formal/aeneas-production/equivalence-artifacts.json
   target/formal/aeneas-production/negative-tests.json
   "${trace_generated_paths[@]}"
@@ -299,10 +302,15 @@ PY
 
 mkdir -p \
   target/formal/aeneas-production/llbc \
-  target/formal/aeneas-production/lean
+  target/formal/aeneas-production/lean \
+  target/formal/aeneas-production/economy/llbc \
+  target/formal/aeneas-production/economy/lean
 printf '%s\n' llbc >target/formal/aeneas-production/llbc/formal_aeneas.llbc
 printf '%s\n' funs >target/formal/aeneas-production/lean/Funs.lean
 printf '%s\n' types >target/formal/aeneas-production/lean/Types.lean
+printf '%s\n' economy-llbc >target/formal/aeneas-production/economy/llbc/formal_economy.llbc
+printf '%s\n' economy-funs >target/formal/aeneas-production/economy/lean/Funs.lean
+printf '%s\n' economy-types >target/formal/aeneas-production/economy/lean/Types.lean
 printf '%s\n' '{}' >target/formal/aeneas-production/equivalence-artifacts.json
 python3 - <<'PY'
 import hashlib
@@ -485,6 +493,9 @@ generated_paths = [
     "target/formal/aeneas-production/llbc/formal_aeneas.llbc",
     "target/formal/aeneas-production/lean/Funs.lean",
     "target/formal/aeneas-production/lean/Types.lean",
+    "target/formal/aeneas-production/economy/llbc/formal_economy.llbc",
+    "target/formal/aeneas-production/economy/lean/Funs.lean",
+    "target/formal/aeneas-production/economy/lean/Types.lean",
     "target/formal/aeneas-production/equivalence-artifacts.json",
     "target/formal/aeneas-production/negative-tests.json",
     "target/formal/trace-validation.json",

@@ -41,3 +41,10 @@ surface = "formal/lean4/Chio/FormalAeneas/Funs.lean"
 operator = "replace nonce negation in both generated copies"
 expected_gate = "lake build Chio.Proofs.AeneasGeneratedEquivalence"
 expected_evidence = "generated_nonce_admits_eq_mirror"
+
+[[mutation]]
+name = "economy-conversion-semantic-change"
+surface = "formal/lean4/Chio/FormalEconomy/Funs.lean"
+operator = "reverse the generated ceil overflow comparison in both generated copies"
+expected_gate = "lake build Chio.Proofs.AeneasGeneratedEquivalence"
+expected_evidence = "generated_convert_ceil_scalar_eq_model"

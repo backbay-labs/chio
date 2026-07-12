@@ -16,6 +16,22 @@ generated_snapshot = [
   "formal/lean4/Chio/FormalAeneas/Types.lean",
 ]
 
+[[sources]]
+id = "kernel_core"
+path = "crates/kernel/chio-kernel-core/src/formal_aeneas.rs"
+namespace = "Chio.AeneasProduction"
+work_dir = "target/formal/aeneas-production"
+generated_module = "FormalAeneas"
+snapshot_dir = "formal/lean4/Chio/FormalAeneas"
+
+[[sources]]
+id = "economy_conversion"
+path = "crates/economy/chio-credit/src/formal_economy.rs"
+namespace = "Chio.AeneasEconomy"
+work_dir = "target/formal/aeneas-production/economy"
+generated_module = "FormalEconomy"
+snapshot_dir = "formal/lean4/Chio/FormalEconomy"
+
 [[toolchains]]
 architecture = "x86_64"
 archive_asset = "aeneas-linux-x86_64.tar.gz"
@@ -44,6 +60,7 @@ interpreter_after = "/lib/ld-linux-aarch64.so.1"
 
 [[targets]]
 name = "decision_core"
+source = "kernel_core"
 status = "generated_equivalence"
 types = [
   "BudgetCommitResult",
@@ -85,6 +102,7 @@ equivalence_theorems = [
 
 [[targets]]
 name = "reservation_ledger"
+source = "kernel_core"
 status = "generated_equivalence"
 types = [
   "ReservationLedger",
@@ -100,6 +118,7 @@ equivalence_theorems = [
 
 [[targets]]
 name = "merkle_walk"
+source = "kernel_core"
 status = "generated_equivalence"
 types = [
   "InclusionStep",
@@ -109,4 +128,18 @@ functions = [
 ]
 equivalence_theorems = [
   "inclusion_step|Chio.Proofs.generated_inclusion_step_eq_model",
+]
+
+[[targets]]
+name = "economy_conversion"
+source = "economy_conversion"
+status = "generated_equivalence"
+types = []
+functions = [
+  "convert_ceil_scalar",
+  "convert_floor_scalar",
+]
+equivalence_theorems = [
+  "convert_ceil_scalar|Chio.Proofs.generated_convert_ceil_scalar_eq_model",
+  "convert_floor_scalar|Chio.Proofs.generated_convert_floor_scalar_eq_model",
 ]

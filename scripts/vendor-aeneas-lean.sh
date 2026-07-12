@@ -46,6 +46,7 @@ support_roots = [
     "Aeneas.Std.Scalar.EqOrd",
     "Aeneas.Std.Scalar.Default",
     "Aeneas.Std.Scalar.CloneCopy",
+    "Aeneas.Std.Scalar.Casts",
     "Aeneas.Std.Scalar.CheckedOps",
     "Aeneas.Std.Scalar.Ops.Sub",
     "Aeneas.Std.Scalar.SaturatingOps",

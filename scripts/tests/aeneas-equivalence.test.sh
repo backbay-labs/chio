@@ -16,12 +16,15 @@ registry="formal/aeneas/production.toml"
 proof="formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean"
 snapshot_funs="formal/lean4/Chio/FormalAeneas/Funs.lean"
 generated_funs="target/formal/aeneas-production/lean/Funs.lean"
+economy_snapshot_funs="formal/lean4/Chio/FormalEconomy/Funs.lean"
+economy_generated_funs="target/formal/aeneas-production/economy/lean/Funs.lean"
 driver="target/formal/aeneas-toolchain/${architecture}/bin/charon-driver"
 if [[ ! -x "${driver}" || -L "${driver}" ]]; then
   echo "Aeneas binding tests require the authenticated toolchain installer" >&2
   exit 1
 fi
-for path in "${snapshot_funs}" "${generated_funs}"; do
+for path in "${snapshot_funs}" "${generated_funs}" \
+  "${economy_snapshot_funs}" "${economy_generated_funs}"; do
   if [[ ! -f "${path}" || -L "${path}" ]]; then
     echo "Aeneas equivalence tests require current generated output: ${path}" >&2
     exit 1
@@ -34,8 +37,11 @@ restore() {
   cp -p "${temporary_dir}/AeneasGeneratedEquivalence.lean" "${proof}"
   cp -p "${temporary_dir}/snapshot-Funs.lean" "${snapshot_funs}"
   cp -p "${temporary_dir}/generated-Funs.lean" "${generated_funs}"
+  cp -p "${temporary_dir}/economy-snapshot-Funs.lean" "${economy_snapshot_funs}"
+  cp -p "${temporary_dir}/economy-generated-Funs.lean" "${economy_generated_funs}"
   cp -p "${temporary_dir}/charon-driver" "${driver}"
-  touch "${snapshot_funs}" "${generated_funs}"
+  touch "${snapshot_funs}" "${generated_funs}" \
+    "${economy_snapshot_funs}" "${economy_generated_funs}"
   rm -rf "${temporary_dir}"
 }
 trap restore EXIT
@@ -44,6 +50,8 @@ cp -p "${registry}" "${temporary_dir}/production.toml"
 cp -p "${proof}" "${temporary_dir}/AeneasGeneratedEquivalence.lean"
 cp -p "${snapshot_funs}" "${temporary_dir}/snapshot-Funs.lean"
 cp -p "${generated_funs}" "${temporary_dir}/generated-Funs.lean"
+cp -p "${economy_snapshot_funs}" "${temporary_dir}/economy-snapshot-Funs.lean"
+cp -p "${economy_generated_funs}" "${temporary_dir}/economy-generated-Funs.lean"
 cp -p "${driver}" "${temporary_dir}/charon-driver"
 
 python3 - <<'PY'
@@ -62,6 +70,7 @@ expected = [
     "charon-driver-substitution",
     "generated-snapshot-drift",
     "nonce-decision-semantic-change",
+    "economy-conversion-semantic-change",
 ]
 if names != expected or any(not mutation.get("expected_evidence") for mutation in mutations):
     raise SystemExit("Aeneas negative-test registry inventory mismatch")
@@ -161,10 +170,38 @@ touch "${snapshot_funs}" "${generated_funs}"
 (cd formal/lean4/Chio && lake build Chio.Proofs.AeneasGeneratedEquivalence) \
   >"${temporary_dir}/restore.out" 2>"${temporary_dir}/restore.err"
 
+python3 - "${economy_snapshot_funs}" "${economy_generated_funs}" <<'PY'
+import sys
+from pathlib import Path
+
+needle = "if rounded > i3"
+replacement = "if rounded < i3"
+for argument in sys.argv[1:]:
+    path = Path(argument)
+    text = path.read_text(encoding="utf-8")
+    if text.count(needle) != 1:
+        raise SystemExit(f"expected one ceil overflow comparison in {path}")
+    path.write_text(text.replace(needle, replacement), encoding="utf-8")
+PY
+if (cd formal/lean4/Chio && lake build Chio.Proofs.AeneasGeneratedEquivalence) \
+  >"${temporary_dir}/economy.out" 2>"${temporary_dir}/economy.err"; then
+  echo "Aeneas generated proof accepted a changed economy conversion" >&2
+  exit 1
+fi
+grep -Fq "generated_convert_ceil_scalar_eq_model" \
+  "${temporary_dir}/economy.out" "${temporary_dir}/economy.err"
+cp -p "${temporary_dir}/economy-snapshot-Funs.lean" "${economy_snapshot_funs}"
+cp -p "${temporary_dir}/economy-generated-Funs.lean" "${economy_generated_funs}"
+touch "${economy_snapshot_funs}" "${economy_generated_funs}"
+(cd formal/lean4/Chio && lake build Chio.Proofs.AeneasGeneratedEquivalence) \
+  >"${temporary_dir}/economy-restore.out" 2>"${temporary_dir}/economy-restore.err"
+
 cmp -s "${temporary_dir}/production.toml" "${registry}"
 cmp -s "${temporary_dir}/AeneasGeneratedEquivalence.lean" "${proof}"
 cmp -s "${temporary_dir}/snapshot-Funs.lean" "${snapshot_funs}"
 cmp -s "${temporary_dir}/generated-Funs.lean" "${generated_funs}"
+cmp -s "${temporary_dir}/economy-snapshot-Funs.lean" "${economy_snapshot_funs}"
+cmp -s "${temporary_dir}/economy-generated-Funs.lean" "${economy_generated_funs}"
 cmp -s "${temporary_dir}/charon-driver" "${driver}"
 
 python3 - "${temporary_dir}" <<'PY'
@@ -185,6 +222,7 @@ logs = {
     "charon-driver-substitution": ("driver.out", "driver.err"),
     "generated-snapshot-drift": ("snapshot.out", "snapshot.err"),
     "nonce-decision-semantic-change": ("semantic.out", "semantic.err"),
+    "economy-conversion-semantic-change": ("economy.out", "economy.err"),
 }
 results = []
 for mutation in registry["mutation"]:

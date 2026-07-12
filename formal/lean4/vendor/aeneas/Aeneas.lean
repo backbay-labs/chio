@@ -10,6 +10,7 @@ import Aeneas.Std.Scalar.Elab
 import Aeneas.Std.Scalar.EqOrd
 import Aeneas.Std.Scalar.Default
 import Aeneas.Std.Scalar.CloneCopy
+import Aeneas.Std.Scalar.Casts
 import Aeneas.Std.Scalar.CheckedOps
 import Aeneas.Std.Scalar.Ops.Sub
 import Aeneas.Std.Scalar.SaturatingOps

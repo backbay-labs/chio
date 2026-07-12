@@ -16,3 +16,8 @@ lean_lib Chio where
 lean_lib FormalAeneas where
   srcDir := "."
   roots := #[`FormalAeneas.Types, `FormalAeneas.Funs]
+
+@[default_target]
+lean_lib FormalEconomy where
+  srcDir := "."
+  roots := #[`FormalEconomy.Types, `FormalEconomy.Funs]

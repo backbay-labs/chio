@@ -40,8 +40,8 @@ what may be claimed publicly.
 - Toolchain: `leanprover/lean4:v4.28.0`, lake, the vendored Aeneas support
   library, and an exact Mathlib dependency closure recorded in
   `lake-manifest.json`.
-- 28 root-imported modules (all imported by `Chio.lean`; "root-imported" is a
-  release-evidence precondition), 139 catalogued theorems, exactly one
+- 34 root-imported modules (all imported by `Chio.lean`; "root-imported" is a
+  release-evidence precondition), 145 catalogued theorems, exactly one
   axiom, zero `sorry` (enforced by `scripts/check-formal-proofs.sh`: lake
   build plus a sorry scan plus manifest cross-ref sanity).
 - Core models: `Core/Capability.lean`, `Core/Scope.lean`, `Core/Receipt.lean`
@@ -61,11 +61,12 @@ what may be claimed publicly.
   `Treaty/IntersectionSyntactic.lean`, `Treaty/IntersectionLegacy.lean`,
   `Treaty/BridgeEquivalence.lean`, `Treaty/BilateralAccept.lean`) supports the
   governance/paper surface.
-- The single axiom: `receipt_id_collision_resistant`
-  (`Chio/Proofs/Receipt.lean`, near L140). Whitelisted by name in
-  `formal/proof-manifest.toml` `allowed_axioms`, justified in-file (the
-  bounded model has no JCS canonicalizer or hash to prove injectivity
-  against), and tied to `ASSUME-SHA256`.
+- The single axiom is the registered cryptographic idealization
+  `Chio.Json.hash_collision_resistant`. The mechanized canonical renderer is
+  injective on its modeled domain, and the receipt-id collision property is a
+  theorem derived from that proof and the symbolic hash assumption. The axiom
+  is allowlisted by exact name in `formal/proof-manifest.toml` and tied to
+  `ASSUME-SHA256`.
 - Model gaps are documented in-file rather than hidden: signature verification
   is trusted-issuer membership and receipt signatures are symbolic
   (`signature := body`). The treaty predicate model is a bounded projection of
@@ -84,13 +85,17 @@ Two lanes, one diagnostic fixture and one production lane:
   `toolchain_upgrade_fixture`): a standalone 56-line extraction input with 6
   symbols, retained to diagnose Aeneas and Charon upgrades independently of
   the production module.
-- Production (`production.toml`, status `generated_equivalence`): the source
-  is the real in-crate `crates/kernel/chio-kernel-core/src/formal_aeneas.rs`.
-  Its 18 functions are partitioned into three `generated_equivalence` targets:
-  15 decision helpers, two reservation-ledger helpers, and `inclusion_step`.
+- Production (`production.toml`, status `generated_equivalence`) has two
+  manifest-registered in-crate sources. The kernel source
+  `crates/kernel/chio-kernel-core/src/formal_aeneas.rs` contributes 18
+  functions and three targets: 15 decision helpers, two reservation-ledger
+  helpers, and `inclusion_step`. The economy source
+  `crates/economy/chio-credit/src/formal_economy.rs` contributes two scalar
+  conversion functions and one target.
   `scripts/check-aeneas-production.sh` drives authenticated Charon to LLBC to
   Aeneas to Lean under `target/formal/aeneas-production/lean/`, then checks the
-  result byte-for-byte against the committed `FormalAeneas` snapshots.
+  result byte-for-byte against the committed `FormalAeneas` and
+  `FormalEconomy` snapshots.
   `scripts/check-aeneas-equivalence.sh` validates exact source, type, function,
   and theorem inventories and hashes the authenticated tools, source,
   generated output, snapshots, proof module, and compiled equivalence `.olean`
@@ -98,19 +103,22 @@ Two lanes, one diagnostic fixture and one production lane:
 - The main Lean project imports the committed generated snapshots directly.
   `Chio/Proofs/AeneasEquivalence.lean` remains the model layer for the 15
   decision helpers, while `Chio/Proofs/AeneasGeneratedEquivalence.lean` proves
-  every registered generated function against its target. The Merkle theorem
+  every registered generated function against its target. The economy
+  theorems `generated_convert_ceil_scalar_eq_model` and
+  `generated_convert_floor_scalar_eq_model` establish the registered scalar
+  rounding models. The Merkle theorem
   `generated_inclusion_step_eq_model` projects the generated machine-integer
   result directly to `Chio.Core.inclusionStep`. There is no handwritten
   external implementation or semantic escape hatch in that path.
 - Aeneas and Charon binaries are pinned (release tag plus sha256) in
   `.github/workflows/nightly.yml`.
 
-The extraction discipline in `formal_aeneas.rs` is strict: no traits, no
-generics, no borrows, no `Option`/`Result` in public signatures, no strings or
-slices or `Vec`, and no heap. Checked scalar arithmetic may use an internal
-`Option` that Charon lowers. Callers project strings and structs to booleans
-and bounded integers before crossing the boundary. `formal_core.rs` (341 lines) is the typed,
-`pub(crate)` facade that does those projections.
+The registered extraction sources use bounded, safe Rust surfaces without
+traits, generics, borrows, strings, slices, vectors, or heap allocation at the
+proof boundary. Checked scalar arithmetic uses `Option` results that Charon
+lowers explicitly. Kernel callers project strings and structs to booleans and
+bounded integers before crossing the boundary. `formal_core.rs` (341 lines) is
+the typed, `pub(crate)` facade that performs those kernel projections.
 
 ## Lane 3: Creusot (`formal/rust-verification/creusot-core`)
 
@@ -126,10 +134,11 @@ and bounded integers before crossing the boundary. `formal_core.rs` (341 lines) 
 ## Lane 4: Kani
 
 - Registry-driven. `.kani/harnesses.toml` (schema `chio.kani.multi-crate.v1`)
-  covers four crates: chio-kernel-core (24 public harnesses), chio-anchor (5,
-  behind a `kani = ["web3"]` feature), chio-attest-verify (4), chio-weights
-  (4). kernel-core additionally has 12 internal model-level harnesses in
-  `kani_harnesses.rs`. Kani is version-pinned (`CHIO_KANI_VERSION=0.67.0`).
+  covers six crates: chio-kernel-core (24 public harnesses), chio-anchor (5,
+  behind a `kani = ["web3"]` feature), chio-attest-verify (4), chio-credit
+  (2), chio-web3 (1), and chio-weights (4). kernel-core additionally has 12
+  internal model-level harnesses in `kani_harnesses.rs`. Kani is version-pinned
+  (`CHIO_KANI_VERSION=0.67.0`).
 - The public kernel-core lane (`kani_public_harnesses.rs`, ~1600 lines) calls
   the real public API and shared public projections (`verify_capability`,
   `evaluate`, `NormalizedScope::is_subset_of`, `resolve_matching_grants`,
@@ -168,7 +177,7 @@ and bounded integers before crossing the boundary. `formal_core.rs` (341 lines) 
     harness), the module docs state the honesty boundary and name the runtime
     tests covering the gap.
 - Cadence: `formal-pr-smoke.yml` runs the 24 public kernel-core `lanes.pr`
-  harnesses and the 12 non-core manifest PR harnesses on scoped pull-request
+  harnesses and the 15 non-core manifest PR harnesses on scoped pull-request
   changes. `kani-public-nightly` in `nightly.yml` runs the union of core PR and
   nightly-only lanes plus every non-core PR and nightly manifest entry.
 
@@ -266,17 +275,17 @@ differential-test joins, theorem status, and model-only Kani scope remain
 explicit there.
 
 - `formal/proof-manifest.toml` (schema `chio.proof-manifest.v1`) is the hub:
-  `root_modules` (28 Lean files), `gate_commands` (14 commands), 9
-  `covered_rust_modules`, 33 `covered_rust_symbols`, 14 `shell_entrypoints`,
+  `root_modules` (34 Lean files), `gate_commands` (14 commands), 11
+  `covered_rust_modules`, 36 `covered_rust_symbols`, 14 `shell_entrypoints`,
   the P1-P10 `property_matrix` with per-property evidence-lane tags,
   `rust_refinement_lanes`, `allowed_axioms` (exactly one),
   `excluded_surfaces`, and `discharged_assumptions`. Forty-three `[[mirror]]`
-  entries bind 106 parser-resolved Rust symbol references to seven Lean models
+  entries bind 108 parser-resolved Rust symbol references to seven Lean models
   and six TLA+ models with ordered rollup and per-symbol hashes. Lean entries
   are labeled as transliterations or abstraction anchors; TLA+ entries are
   abstraction anchors. `cargo xtask check formal-mirrors` enforces those hashes
   in required PR CI.
-- `formal/theorem-inventory.json` (139 theorem entries plus a separate
+- `formal/theorem-inventory.json` (145 theorem entries plus a separate
   assumptions block): per-theorem id, Lean name,
   file, kind, `rootImported` flag, claim class, `mapsTo` property ids.
 - `formal/MAPPING.md`: the cross-reference table from TLA invariants, Kani
@@ -288,8 +297,9 @@ explicit there.
   the formal claim boundary until implementation trace validation and
   crash-reopen conservation establish refinement.
 - `docs/reference/CLAIM_REGISTRY.md`: evidence classes and approved claims
-  (`FORM-BOUNDARY`, `FORM-IMPLEMENTATION-LINKED`, P1-P10 approved with
-  scope), and explicitly disallowed claims (`FORM-OVERALL`,
+  (`FORM-BOUNDARY`, `FORM-IMPLEMENTATION-LINKED`, `TRACE-VALIDATED`,
+  `FORM-NO-SOFTWARE-AXIOMS`, and P1-P10 approved with scope), and explicitly
+  disallowed claims (`FORM-OVERALL`,
   `LEAN-4-VERIFIED`, `P2-END-TO-END`, `P3-END-TO-END`, `P4-END-TO-END`,
   `P5-ACYCLICITY`).
 - `docs/release/RISK_REGISTER.md` claim rules, including: do not say the
@@ -309,13 +319,14 @@ explicit there.
 | Cadence | Formal content |
 | --- | --- |
 | Every PR (required) | diff-tests via workspace tests; `cargo xtask check crate-paths` (manifest path integrity); `cargo xtask check formal-mirrors` (Rust-to-model review tripwire); proptest invariant-naming gate; regression-test deletion gate; threat-model coverage gate; registry status ban (`implementation_backed`) |
-| PR, path-scoped | Apalache safety (6 spec/cfg pairs); Lean build plus sorry and manifest checks; 24 core and 12 non-core Kani PR harnesses; Rust verification metadata with no Creusot proofs; ClusterFuzzLite change-scoped fuzzing; cargo-mutants for touched trust-boundary crates |
+| PR, path-scoped | Apalache safety (6 spec/cfg pairs); Lean build plus sorry and manifest checks; 24 core and 15 non-core Kani PR harnesses; Rust verification metadata with no Creusot proofs; ClusterFuzzLite change-scoped fuzzing; cargo-mutants for touched trust-boundary crates |
 | Nightly | Kani (all lanes), Lean/Aeneas/Creusot proof report (`formal-qualification`), Apalache temporal (liveness; known-unreliable), proptest 4096-case tier plus a 10000-case reservation-ledger sequence target, mutants full sweeps (advisory), mutants-fuzz co-coverage, dudect, fuzz rotation and native sweep |
 | Push to main / release | `release-qualification.yml` runs the full gate battery: `check-formal-proofs.sh`, both Aeneas checks, equivalence, Creusot and Kani strict lanes, adapter no-bypass, portable kernel, proof report |
 
 ## Strengths worth preserving
 
-1. Single-source hub: the extraction source is production code, not a copy.
+1. Registered production sources: extraction inputs are production code, not
+   copies.
 2. Honest scoping everywhere: by-construction admissions in spec headers,
    model-only harnesses that name the runtime tests covering their gap,
    in-file model-gap documentation, disallowed-claim lists.
@@ -324,4 +335,5 @@ explicit there.
    retirement.
 5. Registry-driven harness execution (adding a harness is data, not YAML).
 6. Executable drift gates with committed evidence of real catches.
-7. A single whitelisted axiom with a written mechanization path.
+7. A single registered cryptographic idealization with an explicit claim
+   boundary.

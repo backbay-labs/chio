@@ -20,10 +20,14 @@ pub use chio_appraisal as appraisal;
 pub use chio_core_types::{capability, crypto, receipt};
 pub use chio_underwriting as underwriting;
 
+pub mod formal_economy;
 pub mod hook;
 pub mod local_account;
 pub mod risk_reports;
 pub mod store_binding;
+
+#[cfg(kani)]
+mod kani_public_harnesses;
 
 pub use hook::{
     CreditEvaluatorError, CreditEvaluatorHook, IouEnvelope, IouEnvelopeBody, IOU_ENVELOPE_SCHEMA,

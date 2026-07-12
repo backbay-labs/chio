@@ -233,6 +233,8 @@ notes = "Exact production compute_root_from_hash traversal over every leaf and t
 #
 #   * chio-attest-verify
 #   * chio-anchor
+#   * chio-credit
+#   * chio-web3
 #   * chio-weights
 #
 # Integrator merges combine the per-crate sections additively. Adding a
@@ -341,6 +343,41 @@ timeout_secs = 1800
 lane = "pr"
 features = ["kani"]
 notes = "MODEL-ONLY: proves the local model_evaluate_witness_policy decision algebra, not the production chio_anchor::witness::evaluate_witness_policy. Live runtime regression is checked separately by crates/economy/chio-anchor/tests/integration_smoke.rs and the chio-conformance negative tests. See the model-scope notes and harness module docstring for the future hardening follow-up."
+
+# ---------------------------------------------------------------------
+# chio-credit checked-conversion evidence
+# ---------------------------------------------------------------------
+
+[[harness]]
+crate = "chio-credit"
+harness = "public_convert_rounding_envelope"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+features = ["kani"]
+notes = "Direct calls into the public checked ceil and floor scalar helpers over exhaustive four-bit inputs. The envelope handles zero converted units separately so the predecessor bound never underflows; full-width randomized cases run in the helper property test."
+
+[[harness]]
+crate = "chio-credit"
+harness = "public_convert_overflow_fails_closed"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+features = ["kani"]
+notes = "Direct full-width boundary calls prove both helpers reject a result above u64::MAX while preserving the largest representable identity conversion and the zero-unit result."
+
+# ---------------------------------------------------------------------
+# chio-web3 settlement-state evidence
+# ---------------------------------------------------------------------
+
+[[harness]]
+crate = "chio-web3"
+harness = "public_settlement_state_id_fixed_point"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+features = ["kani"]
+notes = "Truth table over the public settlement_state_id helper used by the production public settlement verifier. Exact byte-slice patterns avoid bounded string-comparison loops."
 
 # ---------------------------------------------------------------------
 # chio-weights Kani harness evidence

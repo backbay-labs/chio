@@ -26,7 +26,7 @@ and does not license claim wording.
 | `audited_axiom` | an explicit Lean `axiom` is allowed only because it is listed in `formal/theorem-inventory.json` and `formal/proof-manifest.toml` |
 | `audited_assumption` | an external primitive or platform service is named in `formal/assumptions.toml` with the properties Chio relies on |
 | `aeneas_pilot` | safe Rust extraction through Charon/Aeneas has generated Lean for the current proof-facing pilot source |
-| `aeneas_production` | safe Rust extraction through Charon/Aeneas has generated Lean for the production-linked pure core in `chio-kernel-core` |
+| `aeneas_production` | safe Rust extraction through Charon/Aeneas has generated Lean for the manifest-registered kernel and economy production sources |
 | `rust_refinement_gate` | Creusot/Kani linkage is declared for strict CI and must pass before claiming concrete Rust refinement beyond the current pure core |
 | `claim_gate` | release-facing language is constrained by this registry and the proof manifest |
 | `differential_test` | executable spec or diff test is the release gate |
@@ -93,12 +93,13 @@ machine-readably enumerated in `formal/assumptions.toml`.
   and P1-P10 audited; any new Lean `axiom` must be added there and allowlisted
   in the proof manifest before the formal lane should pass.
 - `formal/assumptions.toml` is the external-system assumption registry.
-- `scripts/check-aeneas-production.sh` extracts the production-linked pure
-  core from `crates/kernel/chio-kernel-core/src/formal_aeneas.rs`, and
+- `scripts/check-aeneas-production.sh` extracts the manifest-registered kernel
+  and `chio-credit` production sources, and
   `scripts/check-aeneas-equivalence.sh` requires byte-identical committed
-  generated output and builds generated-to-model Lean equivalence theorems
-  before the Aeneas lane can pass. Extraction uses architecture-specific
-  archive and binary hashes from `formal/aeneas/production.toml`, while
+  `FormalAeneas` and `FormalEconomy` output and builds generated-to-model Lean
+  equivalence theorems before the Aeneas lane can pass. Extraction uses
+  architecture-specific archive and binary hashes from
+  `formal/aeneas/production.toml`, while
   `formal/aeneas/negative-tests.toml` registers drift, proof, and tool-binding
   mutations. The older pilot remains as compatibility evidence for
   `formal/aeneas/pilot.toml`.

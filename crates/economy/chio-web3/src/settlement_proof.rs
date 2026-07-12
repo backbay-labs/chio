@@ -11,8 +11,8 @@ use crate::identity::{
     verify_web3_identity_binding, SignedWeb3IdentityBinding, Web3KeyBindingPurpose,
 };
 use crate::settlement::{
-    validate_web3_settlement_execution_receipt, Web3SettlementExecutionReceiptArtifact,
-    Web3SettlementLifecycleState,
+    settlement_state_id, validate_web3_settlement_execution_receipt,
+    Web3SettlementExecutionReceiptArtifact, Web3SettlementLifecycleState,
 };
 use crate::trust_profile::Web3SettlementPath;
 use crate::validation::{ensure_money, ensure_non_empty};
@@ -1609,20 +1609,6 @@ fn validate_dispute_snapshot(
         ));
     }
     Ok(())
-}
-
-fn settlement_state_id(state: Web3SettlementLifecycleState) -> &'static str {
-    match state {
-        Web3SettlementLifecycleState::PendingDispatch => "pending_dispatch",
-        Web3SettlementLifecycleState::EscrowLocked => "escrow_locked",
-        Web3SettlementLifecycleState::PartiallySettled => "partially_settled",
-        Web3SettlementLifecycleState::Settled => "settled",
-        Web3SettlementLifecycleState::Reversed => "reversed",
-        Web3SettlementLifecycleState::ChargedBack => "charged_back",
-        Web3SettlementLifecycleState::TimedOut => "timed_out",
-        Web3SettlementLifecycleState::Failed => "failed",
-        Web3SettlementLifecycleState::Reorged => "reorged",
-    }
 }
 
 fn push_claim_once(target: &mut Vec<String>, claim: &str) {

@@ -1,7 +1,9 @@
 import Chio.Proofs.AeneasEquivalence
 import Chio.Proofs.ReservationLedger
 import Chio.Core.MerkleWalk
+import Chio.Economy.Conversion
 import FormalAeneas.Funs
+import FormalEconomy.Funs
 
 set_option autoImplicit false
 
@@ -46,6 +48,10 @@ private def generatedInclusionStepToModel
   nextIndex := step.next_index.val
   nextSize := step.next_size.val
 }
+
+private def generatedEconomyOptionToModel : Option U64 -> Option Nat
+  | none => none
+  | some value => some value.val
 
 private theorem uscalar_eq_iff_val_eq {scalarType : UScalarTy}
     (left right : UScalar scalarType) :
@@ -154,6 +160,80 @@ private theorem u64_add_result (left right : U64)
       simp [WP.spec, WP.theta, resultEq] at specification
 
 #print axioms u64_add_result
+
+private theorem u128_mul_result (left right : U128)
+    (fits : left.val * right.val <= U128.max) :
+    Exists fun product : U128 =>
+      left * right = ok product ∧
+      product.val = left.val * right.val := by
+  have specification := U128.mul_spec fits
+  cases resultEq : left * right with
+  | ok product =>
+      refine Exists.intro product (And.intro rfl ?_)
+      simpa [WP.spec, WP.theta, resultEq] using specification
+  | fail error =>
+      simp [WP.spec, WP.theta, resultEq] at specification
+  | div =>
+      simp [WP.spec, WP.theta, resultEq] at specification
+
+#print axioms u128_mul_result
+
+private theorem u128_rem_result (value divisor : U128)
+    (nonzero : divisor.val ≠ 0) :
+    Exists fun remainder : U128 =>
+      value % divisor = ok remainder ∧
+      remainder.val = value.val % divisor.val := by
+  have specification := U128.rem_spec value nonzero
+  cases resultEq : value % divisor with
+  | ok remainder =>
+      refine Exists.intro remainder (And.intro rfl ?_)
+      simpa [WP.spec, WP.theta, resultEq] using specification
+  | fail error =>
+      simp [WP.spec, WP.theta, resultEq] at specification
+  | div =>
+      simp [WP.spec, WP.theta, resultEq] at specification
+
+#print axioms u128_rem_result
+
+private theorem u128_div_result (value divisor : U128)
+    (nonzero : divisor.val ≠ 0) :
+    Exists fun quotient : U128 =>
+      value / divisor = ok quotient ∧
+      quotient.val = value.val / divisor.val := by
+  have specification := U128.div_spec value nonzero
+  cases resultEq : value / divisor with
+  | ok quotient =>
+      refine Exists.intro quotient (And.intro rfl ?_)
+      simpa [WP.spec, WP.theta, resultEq] using specification
+  | fail error =>
+      simp [WP.spec, WP.theta, resultEq] at specification
+  | div =>
+      simp [WP.spec, WP.theta, resultEq] at specification
+
+#print axioms u128_div_result
+
+private theorem u128_add_result (left right : U128)
+    (fits : left.val + right.val <= U128.max) :
+    Exists fun sum : U128 =>
+      left + right = ok sum ∧
+      sum.val = left.val + right.val := by
+  have specification := U128.add_spec fits
+  cases resultEq : left + right with
+  | ok sum =>
+      refine Exists.intro sum (And.intro rfl ?_)
+      simpa [WP.spec, WP.theta, resultEq] using specification
+  | fail error =>
+      simp [WP.spec, WP.theta, resultEq] at specification
+  | div =>
+      simp [WP.spec, WP.theta, resultEq] at specification
+
+#print axioms u128_add_result
+
+private theorem economy_u64_max_eq :
+    Chio.Economy.Conversion.u64Max = U64.max := by
+  rw [Chio.Economy.Conversion.u64Max, U64.max_eq]
+
+#print axioms economy_u64_max_eq
 
 private theorem reservation_ledger_max_eq :
     Chio.Proofs.ReservationLedger.maxU64 = U64.max := by
@@ -894,5 +974,257 @@ theorem generated_inclusion_step_eq_model (index size : U64) :
             inclusionStep, siblingLess, indexModOne, rightAbsent]
 
 #print axioms generated_inclusion_step_eq_model
+
+theorem generated_convert_floor_scalar_eq_model
+    (units numerator denominator : U64) :
+    mapResult generatedEconomyOptionToModel
+        (Chio.AeneasEconomy.convert_floor_scalar units numerator denominator) =
+      ok (Chio.Economy.Conversion.convertFloor
+        units.val numerator.val denominator.val) := by
+  by_cases numeratorZero : numerator.val = 0
+  · have numeratorEq : numerator = 0#u64 := by
+      apply UScalar.eq_of_val_eq
+      simpa using numeratorZero
+    simp [Chio.AeneasEconomy.convert_floor_scalar,
+      Chio.Economy.Conversion.convertFloor, numeratorEq, numeratorZero,
+      generatedEconomyOptionToModel, mapResult]
+  · have numeratorNe : numerator ≠ 0#u64 := by
+      intro numeratorEq
+      apply numeratorZero
+      simpa using UScalar.val_eq_of_eq numeratorEq
+    by_cases denominatorZero : denominator.val = 0
+    · have denominatorEq : denominator = 0#u64 := by
+        apply UScalar.eq_of_val_eq
+        simpa using denominatorZero
+      simp [Chio.AeneasEconomy.convert_floor_scalar,
+        Chio.Economy.Conversion.convertFloor, numeratorNe, numeratorZero,
+        denominatorEq, denominatorZero, generatedEconomyOptionToModel, mapResult]
+    · have denominatorNe : denominator ≠ 0#u64 := by
+        intro denominatorEq
+        apply denominatorZero
+        simpa using UScalar.val_eq_of_eq denominatorEq
+      let unitsWide : U128 := UScalar.cast .U128 units
+      let numeratorWide : U128 := UScalar.cast .U128 numerator
+      let denominatorWide : U128 := UScalar.cast .U128 denominator
+      have unitsWideVal : unitsWide.val = units.val := by simp [unitsWide]
+      have numeratorWideVal : numeratorWide.val = numerator.val := by
+        simp [numeratorWide]
+      have denominatorWideVal : denominatorWide.val = denominator.val := by
+        simp [denominatorWide]
+      have productFits : unitsWide.val * numeratorWide.val <= U128.max := by
+        simp only [unitsWideVal, numeratorWideVal]
+        scalar_tac
+      obtain ⟨product, productEq, productVal⟩ :=
+        u128_mul_result unitsWide numeratorWide productFits
+      obtain ⟨quotient, quotientEq, quotientVal⟩ :=
+        u128_div_result product denominatorWide (by
+          rw [denominatorWideVal]
+          exact denominatorZero)
+      let maxWide : U128 := UScalar.cast .U128 core.num.U64.MAX
+      have maxWideVal : maxWide.val = U64.max := by
+        simp only [maxWide, U64.cast_U128_val_eq, UScalar.val, BitVec.toNat_ofNat]
+        rw [U64.max_eq]
+        norm_num [U64.rMax]
+      have quotientModelVal :
+          quotient.val = units.val * numerator.val / denominator.val := by
+        rw [quotientVal, productVal, unitsWideVal, numeratorWideVal,
+          denominatorWideVal]
+      by_cases overflow :
+          U64.max < units.val * numerator.val / denominator.val
+      · simp [Chio.AeneasEconomy.convert_floor_scalar,
+          Chio.Economy.Conversion.convertFloor, numeratorNe, numeratorZero,
+          denominatorNe, denominatorZero, unitsWide, numeratorWide,
+          denominatorWide, productEq, productVal, quotientEq, quotientVal, maxWide,
+          maxWideVal, overflow, unitsWideVal, numeratorWideVal,
+          denominatorWideVal, quotientModelVal, economy_u64_max_eq,
+          generatedEconomyOptionToModel, lift, mapResult]
+      · have quotientFits : quotient.val <= U64.max := by
+          rw [quotientModelVal]
+          exact Nat.le_of_not_gt overflow
+        have narrowedVal : (UScalar.cast .U64 quotient).val = quotient.val := by
+          apply UScalar.cast_val_mod_pow_of_inBounds_eq
+          rw [UScalarTy.numBits]
+          scalar_tac
+        simp [Chio.AeneasEconomy.convert_floor_scalar,
+          Chio.Economy.Conversion.convertFloor, numeratorNe, numeratorZero,
+          denominatorNe, denominatorZero, unitsWide, numeratorWide,
+          denominatorWide, productEq, productVal, quotientEq, quotientVal, maxWide,
+          maxWideVal, overflow, unitsWideVal, numeratorWideVal,
+          denominatorWideVal, quotientModelVal, narrowedVal,
+          generatedEconomyOptionToModel,
+          economy_u64_max_eq, lift, mapResult]
+
+#print axioms generated_convert_floor_scalar_eq_model
+
+theorem generated_convert_ceil_scalar_eq_model
+    (units numerator denominator : U64) :
+    mapResult generatedEconomyOptionToModel
+        (Chio.AeneasEconomy.convert_ceil_scalar units numerator denominator) =
+      ok (Chio.Economy.Conversion.convertCeil
+        units.val numerator.val denominator.val) := by
+  by_cases numeratorZero : numerator.val = 0
+  · have numeratorEq : numerator = 0#u64 := by
+      apply UScalar.eq_of_val_eq
+      simpa using numeratorZero
+    simp [Chio.AeneasEconomy.convert_ceil_scalar,
+      Chio.Economy.Conversion.convertCeil, numeratorEq,
+      generatedEconomyOptionToModel, mapResult]
+  · have numeratorNe : numerator ≠ 0#u64 := by
+      intro numeratorEq
+      apply numeratorZero
+      simpa using UScalar.val_eq_of_eq numeratorEq
+    by_cases denominatorZero : denominator.val = 0
+    · have denominatorEq : denominator = 0#u64 := by
+        apply UScalar.eq_of_val_eq
+        simpa using denominatorZero
+      simp [Chio.AeneasEconomy.convert_ceil_scalar,
+        Chio.Economy.Conversion.convertCeil, numeratorNe, numeratorZero,
+        denominatorEq, generatedEconomyOptionToModel, mapResult]
+    · have denominatorNe : denominator ≠ 0#u64 := by
+        intro denominatorEq
+        apply denominatorZero
+        simpa using UScalar.val_eq_of_eq denominatorEq
+      let unitsWide : U128 := UScalar.cast .U128 units
+      let numeratorWide : U128 := UScalar.cast .U128 numerator
+      let denominatorWide : U128 := UScalar.cast .U128 denominator
+      have unitsWideVal : unitsWide.val = units.val := by simp [unitsWide]
+      have numeratorWideVal : numeratorWide.val = numerator.val := by
+        simp [numeratorWide]
+      have denominatorWideVal : denominatorWide.val = denominator.val := by
+        simp [denominatorWide]
+      have productFits : unitsWide.val * numeratorWide.val <= U128.max := by
+        simp only [unitsWideVal, numeratorWideVal]
+        scalar_tac
+      obtain ⟨product, productEq, productVal⟩ :=
+        u128_mul_result unitsWide numeratorWide productFits
+      obtain ⟨quotient, quotientEq, quotientVal⟩ :=
+        u128_div_result product denominatorWide (by
+          rw [denominatorWideVal]
+          exact denominatorZero)
+      obtain ⟨remainder, remainderEq, remainderVal⟩ :=
+        u128_rem_result product denominatorWide (by
+          rw [denominatorWideVal]
+          exact denominatorZero)
+      have quotientModelVal :
+          quotient.val = units.val * numerator.val / denominator.val := by
+        rw [quotientVal, productVal, unitsWideVal, numeratorWideVal,
+          denominatorWideVal]
+      have remainderModelVal :
+          remainder.val = units.val * numerator.val % denominator.val := by
+        rw [remainderVal, productVal, unitsWideVal, numeratorWideVal,
+          denominatorWideVal]
+      obtain ⟨rounded, roundedEq, roundedModelVal⟩ :
+          Exists fun rounded : U128 =>
+            (if remainder = 0#u128 then ok quotient else quotient + 1#u128) =
+                ok rounded ∧
+              rounded.val = Chio.Economy.Conversion.roundUp
+                (units.val * numerator.val) denominator.val := by
+        by_cases remainderZero : remainder.val = 0
+        · have remainderScalarZero : remainder = 0#u128 := by
+            apply UScalar.eq_of_val_eq
+            simpa using remainderZero
+          refine ⟨quotient, by simp [remainderScalarZero], ?_⟩
+          have modelRemainderZero :
+              units.val * numerator.val % denominator.val = 0 := by
+            rw [← remainderModelVal]
+            exact remainderZero
+          simp [Chio.Economy.Conversion.roundUp, quotientModelVal,
+            modelRemainderZero]
+        · have remainderScalarNe : remainder ≠ 0#u128 := by
+            intro remainderEq
+            apply remainderZero
+            simpa using UScalar.val_eq_of_eq remainderEq
+          have denominatorPositive : 0 < denominatorWide.val :=
+            Nat.pos_of_ne_zero (by
+              rw [denominatorWideVal]
+              exact denominatorZero)
+          have remainderModelNe : product.val % denominatorWide.val ≠ 0 := by
+            rw [← remainderVal]
+            exact remainderZero
+          have productPositive : 0 < product.val := by
+            by_contra productNotPositive
+            have productZero : product.val = 0 := by omega
+            simp [productZero] at remainderModelNe
+          have denominatorGreaterOne : 1 < denominatorWide.val := by
+            by_contra denominatorNotGreater
+            have denominatorOne : denominatorWide.val = 1 := by omega
+            rw [denominatorOne] at remainderModelNe
+            exact remainderModelNe (Nat.mod_one product.val)
+          have quotientLessProduct : quotient.val < product.val := by
+            rw [quotientVal]
+            exact Nat.div_lt_self productPositive denominatorGreaterOne
+          have sumFits : quotient.val + 1 <= U128.max := by
+            have productBound := product.hBounds
+            omega
+          obtain ⟨sum, sumEq, sumVal⟩ :=
+            u128_add_result quotient 1#u128 sumFits
+          refine ⟨sum, by simp [remainderScalarNe, sumEq], ?_⟩
+          have modelRemainderNe :
+              units.val * numerator.val % denominator.val ≠ 0 := by
+            rw [← remainderModelVal]
+            exact remainderZero
+          simp [Chio.Economy.Conversion.roundUp, quotientModelVal,
+            modelRemainderNe, sumVal]
+      let maxWide : U128 := UScalar.cast .U128 core.num.U64.MAX
+      have maxWideVal : maxWide.val = U64.max := by
+        simp only [maxWide, U64.cast_U128_val_eq, UScalar.val, BitVec.toNat_ofNat]
+        rw [U64.max_eq]
+        norm_num [U64.rMax]
+      by_cases remainderScalarZero : remainder = 0#u128
+      · have quotientRounded : quotient = rounded := by
+          simpa [remainderScalarZero] using roundedEq
+        subst rounded
+        by_cases overflow : U64.max <
+            Chio.Economy.Conversion.roundUp
+              (units.val * numerator.val) denominator.val
+        · simp [Chio.AeneasEconomy.convert_ceil_scalar,
+            Chio.Economy.Conversion.convertCeil, numeratorNe, numeratorZero,
+            denominatorNe, denominatorZero, unitsWide, numeratorWide,
+            denominatorWide, productEq, quotientEq, remainderEq,
+            remainderScalarZero, roundedModelVal, maxWide, maxWideVal,
+            overflow, economy_u64_max_eq, generatedEconomyOptionToModel,
+            lift, mapResult]
+        · have quotientFits : quotient.val <= U64.max := by
+            rw [roundedModelVal]
+            exact Nat.le_of_not_gt overflow
+          have narrowedVal : (UScalar.cast .U64 quotient).val = quotient.val := by
+            apply UScalar.cast_val_mod_pow_of_inBounds_eq
+            rw [UScalarTy.numBits]
+            scalar_tac
+          simp [Chio.AeneasEconomy.convert_ceil_scalar,
+            Chio.Economy.Conversion.convertCeil, numeratorNe, numeratorZero,
+            denominatorNe, denominatorZero, unitsWide, numeratorWide,
+            denominatorWide, productEq, quotientEq, remainderEq,
+            remainderScalarZero, roundedModelVal, maxWide, maxWideVal,
+            overflow, narrowedVal, economy_u64_max_eq,
+            generatedEconomyOptionToModel, lift, mapResult]
+      · have sumEq : quotient + 1#u128 = ok rounded := by
+          simpa [remainderScalarZero] using roundedEq
+        by_cases overflow : U64.max <
+            Chio.Economy.Conversion.roundUp
+              (units.val * numerator.val) denominator.val
+        · simp [Chio.AeneasEconomy.convert_ceil_scalar,
+            Chio.Economy.Conversion.convertCeil, numeratorNe, numeratorZero,
+            denominatorNe, denominatorZero, unitsWide, numeratorWide,
+            denominatorWide, productEq, quotientEq, remainderEq,
+            remainderScalarZero, sumEq, roundedModelVal, maxWide,
+            maxWideVal, overflow, economy_u64_max_eq,
+            generatedEconomyOptionToModel, lift, mapResult]
+        · have roundedFits : rounded.val <= U64.max := by
+            rw [roundedModelVal]
+            exact Nat.le_of_not_gt overflow
+          have narrowedVal : (UScalar.cast .U64 rounded).val = rounded.val := by
+            apply UScalar.cast_val_mod_pow_of_inBounds_eq
+            rw [UScalarTy.numBits]
+            scalar_tac
+          simp [Chio.AeneasEconomy.convert_ceil_scalar,
+            Chio.Economy.Conversion.convertCeil, numeratorNe, numeratorZero,
+            denominatorNe, denominatorZero, unitsWide, numeratorWide,
+            denominatorWide, productEq, quotientEq, remainderEq,
+            remainderScalarZero, sumEq, roundedModelVal, maxWide,
+            maxWideVal, overflow, narrowedVal, economy_u64_max_eq,
+            generatedEconomyOptionToModel, lift, mapResult]
+
+#print axioms generated_convert_ceil_scalar_eq_model
 
 end Chio.Proofs

@@ -3,24 +3,46 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-source_file="crates/kernel/chio-kernel-core/src/formal_aeneas.rs"
 work_dir="target/formal/aeneas-production"
-source_stamp="${work_dir}/source.sha256"
-current_source_sha256="$(sha256sum "${source_file}" | awk '{print $1}')"
-generated_source_sha256=""
-if [[ -f "${source_stamp}" ]]; then
-  generated_source_sha256="$(tr -d '\r\n' <"${source_stamp}")"
-fi
+if ! python3 - <<'PY'
+import hashlib
+import tomllib
+from pathlib import Path
 
-if [[ ! -f "${work_dir}/lean/Funs.lean" ]] || \
-  [[ ! -f "${work_dir}/lean/Types.lean" ]] || \
-  [[ ! -f "${work_dir}/toolchain.json" ]] || \
-  [[ "${generated_source_sha256}" != "${current_source_sha256}" ]]; then
+registry = tomllib.loads(Path("formal/aeneas/production.toml").read_text(encoding="utf-8"))
+report = Path("target/formal/aeneas-production/toolchain.json")
+if not report.is_file() or report.is_symlink():
+    raise SystemExit(1)
+for source in registry.get("sources", []):
+    path = Path(source["path"])
+    work = Path(source["work_dir"])
+    required = [work / "lean/Funs.lean", work / "lean/Types.lean"]
+    if not path.is_file() or any(not candidate.is_file() for candidate in required):
+        raise SystemExit(1)
+    stamp = work / "source.sha256"
+    if not stamp.is_file():
+        raise SystemExit(1)
+    actual = hashlib.sha256(path.read_bytes()).hexdigest()
+    if stamp.read_text(encoding="utf-8").strip() != actual:
+        raise SystemExit(1)
+PY
+then
   ./scripts/check-aeneas-production.sh
   exit 0
 fi
 
-./scripts/snapshot-aeneas-generated.sh --check
+while IFS=$'\t' read -r generated_dir snapshot_dir; do
+  ./scripts/snapshot-aeneas-generated.sh --check \
+    --generated-dir "${generated_dir}" --snapshot-dir "${snapshot_dir}"
+done < <(python3 - <<'PY'
+import tomllib
+from pathlib import Path
+
+registry = tomllib.loads(Path("formal/aeneas/production.toml").read_text(encoding="utf-8"))
+for source in registry["sources"]:
+    print(f"{source['work_dir']}/lean\t{source['snapshot_dir']}")
+PY
+)
 
 python3 - <<'PY'
 import hashlib
@@ -206,9 +228,18 @@ for key, value in expected_report_fields.items():
             f"expected={value} actual={toolchain_report.get(key)}"
         )
 
-source_file = repo / registry["source"]
-generated_dir = repo / "target/formal/aeneas-production/lean"
-snapshot_paths = [repo / path for path in registry.get("generated_snapshot", [])]
+sources = registry.get("sources", [])
+source_files = [repo / source["path"] for source in sources]
+generated_files = [
+    repo / source["work_dir"] / "lean" / name
+    for source in sources
+    for name in ("Funs.lean", "Types.lean")
+]
+snapshot_paths = [
+    repo / source["snapshot_dir"] / name
+    for source in sources
+    for name in ("Funs.lean", "Types.lean")
+]
 
 def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
@@ -216,14 +247,13 @@ def digest(path: Path) -> str:
 hash_paths = [
     registry_path,
     repo / registry["negative_registry"],
-    source_file,
+    *source_files,
     repo / "scripts/install-aeneas-toolchain.py",
     repo / "scripts/snapshot-aeneas-generated.sh",
     repo / "scripts/tests/aeneas-equivalence.test.sh",
     repo / "scripts/tests/snapshot-aeneas-generated.test.sh",
     repo / "scripts/vendor-aeneas-lean.sh",
-    generated_dir / "Funs.lean",
-    generated_dir / "Types.lean",
+    *generated_files,
     *snapshot_paths,
     equivalence_module,
     vendor_manifest_path,
@@ -241,7 +271,17 @@ artifact_file.write_text(
     json.dumps(
         {
             "schema": "chio.aeneas-equivalence-artifacts.v3",
-            "source": str(source_file),
+            "source": registry["source"],
+            "sources": [
+                {
+                    "id": source["id"],
+                    "path": source["path"],
+                    "namespace": source["namespace"],
+                    "workDir": source["work_dir"],
+                    "snapshotDir": source["snapshot_dir"],
+                }
+                for source in sources
+            ],
             "vendor": {
                 "manifest": str(vendor_manifest_path),
                 "releaseTag": vendor_tag,
@@ -250,9 +290,17 @@ artifact_file.write_text(
             },
             "toolchain": toolchain_report,
             "regenerated": {
-                "funs": str(generated_dir / "Funs.lean"),
-                "types": str(generated_dir / "Types.lean"),
+                "funs": "target/formal/aeneas-production/lean/Funs.lean",
+                "types": "target/formal/aeneas-production/lean/Types.lean",
             },
+            "regeneratedSources": [
+                {
+                    "id": source["id"],
+                    "funs": f"{source['work_dir']}/lean/Funs.lean",
+                    "types": f"{source['work_dir']}/lean/Types.lean",
+                }
+                for source in sources
+            ],
             "snapshots": [str(path) for path in snapshot_paths],
             "sha256": {str(path): digest(path) for path in hash_paths},
             "targets": [

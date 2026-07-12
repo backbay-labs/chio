@@ -6,6 +6,7 @@ import Chio.Json.Hash
 import Chio.Json.Fixtures
 import Chio.Core.Capability
 import Chio.Core.MerkleWalk
+import Chio.Economy.Conversion
 import Chio.Core.Receipt
 import Chio.Core.Scope
 import Chio.Core.Revocation

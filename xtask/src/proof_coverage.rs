@@ -1926,25 +1926,24 @@ fn add_refinement_artifacts(
                 });
             }
         } else if lane == "aeneas" {
-            let extracted = aeneas_extracted_symbols(&value, &path)?;
-            let source = value.get("source").and_then(TomlValue::as_str);
-            let source = source.ok_or_else(|| format!("Aeneas manifest has no source: {path}"))?;
-            let normalized = normalized_repo_path(source)?;
-            let _source_raw = read_input(root, &normalized, inputs)?;
-            let surface = surface_from_repo_path(&normalized, workspace, true).ok();
-            for symbol in extracted {
-                let id = format!("{path}::{symbol}");
-                if let Some(surface) = surface.clone() {
-                    add_artifact(rows, artifacts, id, lane, surface, Vec::new())?;
-                } else {
-                    unattributed.push(UnattributedArtifact {
-                        id,
-                        lane: lane.to_string(),
-                        reason: "extraction source is not a workspace Rust surface".to_string(),
-                        related_properties: Vec::new(),
-                        related_surfaces: Vec::new(),
-                        qualifiers: BTreeMap::new(),
-                    });
+            for (source, extracted) in aeneas_extracted_symbols_by_source(&value, &path)? {
+                let normalized = normalized_repo_path(&source)?;
+                let _source_raw = read_input(root, &normalized, inputs)?;
+                let surface = surface_from_repo_path(&normalized, workspace, true).ok();
+                for symbol in extracted {
+                    let id = format!("{path}::{symbol}");
+                    if let Some(surface) = surface.clone() {
+                        add_artifact(rows, artifacts, id, lane, surface, Vec::new())?;
+                    } else {
+                        unattributed.push(UnattributedArtifact {
+                            id,
+                            lane: lane.to_string(),
+                            reason: "extraction source is not a workspace Rust surface".to_string(),
+                            related_properties: Vec::new(),
+                            related_surfaces: Vec::new(),
+                            qualifiers: BTreeMap::new(),
+                        });
+                    }
                 }
             }
         } else {
@@ -2022,6 +2021,80 @@ fn aeneas_extracted_symbols(value: &TomlValue, path: &str) -> Result<Vec<String>
         }
     }
     Ok(extracted)
+}
+
+fn aeneas_extracted_symbols_by_source(
+    value: &TomlValue,
+    path: &str,
+) -> Result<Vec<(String, Vec<String>)>, String> {
+    let extracted = aeneas_extracted_symbols(value, path)?;
+    if path != "formal/aeneas/production.toml" {
+        let source = value
+            .get("source")
+            .and_then(TomlValue::as_str)
+            .ok_or_else(|| format!("Aeneas manifest has no source: {path}"))?;
+        return Ok(vec![(source.to_string(), extracted)]);
+    }
+
+    let sources = value
+        .get("sources")
+        .and_then(TomlValue::as_array)
+        .ok_or_else(|| format!("Aeneas production manifest has no sources: {path}"))?;
+    if sources.is_empty() {
+        return Err(format!(
+            "Aeneas production manifest has empty sources: {path}"
+        ));
+    }
+
+    let mut source_paths = BTreeMap::new();
+    for source in sources {
+        let id = source
+            .get("id")
+            .and_then(TomlValue::as_str)
+            .ok_or_else(|| format!("Aeneas production source has no id: {path}"))?;
+        let source_path = source
+            .get("path")
+            .and_then(TomlValue::as_str)
+            .ok_or_else(|| format!("Aeneas production source has no path: {path}::{id}"))?;
+        if source_paths
+            .insert(id.to_string(), (source_path.to_string(), Vec::new()))
+            .is_some()
+        {
+            return Err(format!(
+                "Aeneas production manifest has duplicate source {id}: {path}"
+            ));
+        }
+    }
+
+    let targets = value
+        .get("targets")
+        .and_then(TomlValue::as_array)
+        .ok_or_else(|| format!("Aeneas production manifest has no targets: {path}"))?;
+    for target in targets {
+        let name = target
+            .get("name")
+            .and_then(TomlValue::as_str)
+            .unwrap_or("<unnamed>");
+        let source_id = target
+            .get("source")
+            .and_then(TomlValue::as_str)
+            .ok_or_else(|| format!("Aeneas production target has no source: {path}::{name}"))?;
+        let (_, symbols) = source_paths.get_mut(source_id).ok_or_else(|| {
+            format!("Aeneas production target has unknown source: {path}::{name}::{source_id}")
+        })?;
+        symbols.extend(required_toml_string_array(target, "functions", path)?);
+    }
+
+    let attributed = source_paths
+        .values()
+        .map(|(_, symbols)| symbols.len())
+        .sum::<usize>();
+    if attributed != extracted.len() {
+        return Err(format!(
+            "Aeneas production source attribution is incomplete: {path}"
+        ));
+    }
+    Ok(source_paths.into_values().collect())
 }
 
 fn contract_twin_review_links(
@@ -5026,7 +5099,7 @@ mod tests {
         let parsed = parse_mapping(include_str!("../../formal/MAPPING.md"));
 
         assert!(parsed.warnings.is_empty(), "{:?}", parsed.warnings);
-        assert_eq!(parsed.rows.len(), 70);
+        assert_eq!(parsed.rows.len(), 73);
     }
 
     #[test]
@@ -7334,5 +7407,67 @@ equivalence_theorems = [
             Err(error) => error,
         };
         assert!(error.contains("theorem inventory mismatch"));
+    }
+
+    #[test]
+    fn aeneas_production_symbols_are_attributed_to_their_sources() {
+        let fixture = r#"
+[[sources]]
+id = "economy"
+path = "crates/economy/chio-credit/src/formal_economy.rs"
+
+[[sources]]
+id = "kernel"
+path = "crates/kernel/chio-kernel-core/src/formal_aeneas.rs"
+
+[[targets]]
+name = "kernel_core"
+source = "kernel"
+status = "generated_equivalence"
+functions = ["nonce_admits"]
+equivalence_theorems = ["nonce_admits|Chio.Proofs.generated_nonce_admits_eq_mirror"]
+
+[[targets]]
+name = "economy_conversion"
+source = "economy"
+status = "generated_equivalence"
+functions = ["convert_ceil_scalar", "convert_floor_scalar"]
+equivalence_theorems = [
+  "convert_ceil_scalar|Chio.Proofs.generated_convert_ceil_scalar_eq_model",
+  "convert_floor_scalar|Chio.Proofs.generated_convert_floor_scalar_eq_model",
+]
+"#;
+        let value = match parse_toml("fixture", fixture) {
+            Ok(value) => value,
+            Err(error) => panic!("Aeneas source fixture parse failed: {error}"),
+        };
+        assert_eq!(
+            aeneas_extracted_symbols_by_source(&value, "formal/aeneas/production.toml"),
+            Ok(vec![
+                (
+                    "crates/economy/chio-credit/src/formal_economy.rs".to_string(),
+                    vec![
+                        "convert_ceil_scalar".to_string(),
+                        "convert_floor_scalar".to_string(),
+                    ],
+                ),
+                (
+                    "crates/kernel/chio-kernel-core/src/formal_aeneas.rs".to_string(),
+                    vec!["nonce_admits".to_string()],
+                ),
+            ])
+        );
+
+        let unknown_source = fixture.replacen("source = \"economy\"", "source = \"missing\"", 1);
+        let value = match parse_toml("fixture", &unknown_source) {
+            Ok(value) => value,
+            Err(error) => panic!("unknown-source fixture parse failed: {error}"),
+        };
+        let error =
+            match aeneas_extracted_symbols_by_source(&value, "formal/aeneas/production.toml") {
+                Ok(_) => panic!("unknown Aeneas source unexpectedly passed"),
+                Err(error) => error,
+            };
+        assert!(error.contains("unknown source"));
     }
 }

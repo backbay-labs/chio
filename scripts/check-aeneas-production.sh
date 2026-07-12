@@ -3,11 +3,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-source_file="crates/kernel/chio-kernel-core/src/formal_aeneas.rs"
 work_dir="target/formal/aeneas-production"
-llbc_dir="${work_dir}/llbc"
-lean_dir="${work_dir}/lean"
-source_stamp="${work_dir}/source.sha256"
 toolchain_report="${work_dir}/toolchain.json"
 
 case "$(uname -m)" in
@@ -26,11 +22,6 @@ charon_bin="${toolchain_bin}/charon"
 charon_driver_bin="${toolchain_bin}/charon-driver"
 install_receipt="${toolchain_root}/receipt.json"
 
-if [[ ! -f "${source_file}" ]]; then
-  echo "Aeneas production source missing: ${source_file}" >&2
-  exit 1
-fi
-
 python3 - <<'PY'
 import re
 import tomllib
@@ -45,15 +36,30 @@ negative_registry = Path(registry.get("negative_registry", ""))
 if not negative_registry.is_file() or negative_registry.is_symlink():
     raise SystemExit("Aeneas negative-test registry is missing or invalid")
 
+sources = registry.get("sources", [])
+source_ids = [source.get("id") for source in sources]
+if len(sources) < 2 or not all(source_ids) or len(source_ids) != len(set(source_ids)):
+    raise SystemExit("Aeneas production source inventory is invalid")
+required_source_fields = {
+    "path", "namespace", "work_dir", "generated_module", "snapshot_dir"
+}
+for source in sources:
+    missing = sorted(required_source_fields - source.keys())
+    if missing:
+        raise SystemExit(f"Aeneas source {source['id']} is missing fields: {missing}")
+    path = Path(source["path"])
+    if not path.is_file() or path.is_symlink():
+        raise SystemExit(f"Aeneas production source missing or invalid: {path}")
+
 targets = registry.get("targets", [])
 target_names = [target.get("name") for target in targets]
 if len(targets) < 2 or not all(target_names) or len(target_names) != len(set(target_names)):
     raise SystemExit("Aeneas production registry target inventory is invalid")
 
-registered_functions = []
-registered_types = []
 registered_theorems = []
 for target in targets:
+    if target.get("source") not in source_ids:
+        raise SystemExit(f"Aeneas target has unknown source: {target.get('name')}")
     if target.get("status") != "generated_equivalence":
         raise SystemExit(f"Aeneas target is not equivalence-checked: {target.get('name')}")
     functions = target.get("functions", [])
@@ -67,30 +73,42 @@ for target in targets:
         registered_theorems.append(theorem.rsplit(".", maxsplit=1)[-1])
     if sorted(theorem_symbols) != sorted(functions):
         raise SystemExit(f"Generated equivalence inventory mismatch for target {target['name']}")
-    registered_functions.extend(functions)
-    registered_types.extend(target.get("types", []))
 
-if len(registered_functions) != len(set(registered_functions)):
-    raise SystemExit("Aeneas production registry contains duplicate functions")
-if len(registered_types) != len(set(registered_types)):
-    raise SystemExit("Aeneas production registry contains duplicate types")
-
-source = Path(registry["source"]).read_text(encoding="utf-8")
-production_source = source.split("#[cfg(test)]", maxsplit=1)[0]
-source_functions = set(
-    re.findall(r"(?m)^(?:pub(?:\([^)]*\))?\s+)?fn\s+([A-Za-z0-9_]+)\s*\(", production_source)
-)
-source_types = set(
-    re.findall(r"(?m)^pub\s+struct\s+([A-Za-z0-9_]+)\b", production_source)
-)
-if set(registered_functions) != source_functions:
-    missing = sorted(source_functions - set(registered_functions))
-    extra = sorted(set(registered_functions) - source_functions)
-    raise SystemExit(f"Aeneas function inventory mismatch; missing={missing} extra={extra}")
-if set(registered_types) != source_types:
-    missing = sorted(source_types - set(registered_types))
-    extra = sorted(set(registered_types) - source_types)
-    raise SystemExit(f"Aeneas type inventory mismatch; missing={missing} extra={extra}")
+for source in sources:
+    source_targets = [target for target in targets if target["source"] == source["id"]]
+    registered_functions = [
+        symbol for target in source_targets for symbol in target.get("functions", [])
+    ]
+    registered_types = [
+        name for target in source_targets for name in target.get("types", [])
+    ]
+    if len(registered_functions) != len(set(registered_functions)):
+        raise SystemExit(f"Aeneas source contains duplicate functions: {source['id']}")
+    if len(registered_types) != len(set(registered_types)):
+        raise SystemExit(f"Aeneas source contains duplicate types: {source['id']}")
+    text = Path(source["path"]).read_text(encoding="utf-8")
+    production_source = text.split("#[cfg(test)]", maxsplit=1)[0]
+    source_functions = set(re.findall(
+        r"(?m)^(?:pub(?:\([^)]*\))?\s+)?fn\s+([A-Za-z0-9_]+)\s*\(",
+        production_source,
+    ))
+    source_types = set(re.findall(
+        r"(?m)^pub\s+struct\s+([A-Za-z0-9_]+)\b", production_source
+    ))
+    if set(registered_functions) != source_functions:
+        missing = sorted(source_functions - set(registered_functions))
+        extra = sorted(set(registered_functions) - source_functions)
+        raise SystemExit(
+            f"Aeneas function inventory mismatch for {source['id']}; "
+            f"missing={missing} extra={extra}"
+        )
+    if set(registered_types) != source_types:
+        missing = sorted(source_types - set(registered_types))
+        extra = sorted(set(registered_types) - source_types)
+        raise SystemExit(
+            f"Aeneas type inventory mismatch for {source['id']}; "
+            f"missing={missing} extra={extra}"
+        )
 
 proof = Path(registry["equivalence_module"]).read_text(encoding="utf-8")
 declared_proofs = set(
@@ -188,34 +206,53 @@ for key, value in expected_receipt.items():
 PY
 
 rm -rf "${work_dir}"
-mkdir -p "${llbc_dir}" "${lean_dir}"
-llbc_file="${llbc_dir}/formal_aeneas.llbc"
+mkdir -p "${work_dir}"
 
-echo "==> Charon extraction for production formal core"
-env \
-  -u CHIO_CHARON \
-  -u CHIO_CHARON_DRIVER \
-  -u CHARON_ARGS \
-  -u CHARON_TOOLCHAIN_IS_IN_PATH \
-  -u CHARON_USING_CARGO \
-  -u RUSTC_WRAPPER \
-  PATH="${PWD}/${toolchain_bin}:${PATH}" \
-  "${charon_bin}" rustc --preset=aeneas --dest-file "${llbc_file}" -- \
-    --crate-type lib "${source_file}"
+while IFS=$'\t' read -r source_id source_file namespace source_work_dir; do
+  llbc_dir="${source_work_dir}/llbc"
+  lean_dir="${source_work_dir}/lean"
+  source_stamp="${source_work_dir}/source.sha256"
+  source_stem="$(basename "${source_file}" .rs)"
+  llbc_file="${llbc_dir}/${source_stem}.llbc"
+  mkdir -p "${llbc_dir}" "${lean_dir}"
 
-if [[ ! -f "${llbc_file}" || -L "${llbc_file}" ]]; then
-  echo "Aeneas production check failed: Charon did not produce ${llbc_file}" >&2
-  exit 1
-fi
+  echo "==> Charon extraction for ${source_id}"
+  env \
+    -u CHIO_CHARON \
+    -u CHIO_CHARON_DRIVER \
+    -u CHARON_ARGS \
+    -u CHARON_TOOLCHAIN_IS_IN_PATH \
+    -u CHARON_USING_CARGO \
+    -u RUSTC_WRAPPER \
+    PATH="${PWD}/${toolchain_bin}:${PATH}" \
+    "${charon_bin}" rustc --preset=aeneas --dest-file "${llbc_file}" -- \
+      --crate-type lib "${source_file}"
 
-echo "==> Aeneas Lean extraction for production formal core"
-"${aeneas_bin}" -backend lean -split-files -namespace Chio.AeneasProduction \
-  -dest "${lean_dir}" "${llbc_file}"
+  if [[ ! -f "${llbc_file}" || -L "${llbc_file}" ]]; then
+    echo "Aeneas production check failed: Charon did not produce ${llbc_file}" >&2
+    exit 1
+  fi
 
-if [[ ! -f "${lean_dir}/Funs.lean" || ! -f "${lean_dir}/Types.lean" ]]; then
-  echo "Aeneas production check failed: expected Lean output files are missing" >&2
-  exit 1
-fi
+  echo "==> Aeneas Lean extraction for ${source_id}"
+  "${aeneas_bin}" -backend lean -split-files -namespace "${namespace}" \
+    -dest "${lean_dir}" "${llbc_file}"
+
+  if [[ ! -f "${lean_dir}/Funs.lean" || ! -f "${lean_dir}/Types.lean" ]]; then
+    echo "Aeneas production check failed: output missing for ${source_id}" >&2
+    exit 1
+  fi
+  sha256sum "${source_file}" | awk '{print $1}' >"${source_stamp}"
+done < <(python3 - <<'PY'
+import tomllib
+from pathlib import Path
+
+registry = tomllib.loads(Path("formal/aeneas/production.toml").read_text(encoding="utf-8"))
+for source in registry["sources"]:
+    print("\t".join((
+        source["id"], source["path"], source["namespace"], source["work_dir"]
+    )))
+PY
+)
 
 python3 - <<'PY'
 import re
@@ -236,67 +273,41 @@ target_names = [target.get("name") for target in targets]
 if not all(target_names) or len(target_names) != len(set(target_names)):
     raise SystemExit("Aeneas production registry target names must be unique")
 
-registered_functions = []
-registered_types = []
-for target in targets:
-    if target.get("status") != "generated_equivalence":
-        raise SystemExit(f"Aeneas target is not equivalence-checked: {target.get('name')}")
-    functions = target.get("functions", [])
-    types = target.get("types", [])
-    theorem_rows = target.get("equivalence_theorems", [])
-    theorem_symbols = []
-    for row in theorem_rows:
-        symbol, separator, theorem = row.partition("|")
-        if not separator or not symbol or not theorem:
-            raise SystemExit(f"Malformed generated equivalence theorem row: {row}")
-        theorem_symbols.append(symbol)
-    if sorted(theorem_symbols) != sorted(functions):
-        raise SystemExit(f"Generated equivalence inventory mismatch for target {target['name']}")
-    registered_functions.extend(functions)
-    registered_types.extend(types)
-
-if len(registered_functions) != len(set(registered_functions)):
-    raise SystemExit("Aeneas production registry contains duplicate functions")
-if len(registered_types) != len(set(registered_types)):
-    raise SystemExit("Aeneas production registry contains duplicate types")
-
-source = (repo / registry["source"]).read_text(encoding="utf-8")
-production_source = source.split("#[cfg(test)]", maxsplit=1)[0]
-source_functions = set(
-    re.findall(r"(?m)^(?:pub(?:\([^)]*\))?\s+)?fn\s+([A-Za-z0-9_]+)\s*\(", production_source)
-)
-source_types = set(
-    re.findall(r"(?m)^pub\s+struct\s+([A-Za-z0-9_]+)\b", production_source)
-)
-if set(registered_functions) != source_functions:
-    missing = sorted(source_functions - set(registered_functions))
-    extra = sorted(set(registered_functions) - source_functions)
-    raise SystemExit(f"Aeneas function inventory mismatch; missing={missing} extra={extra}")
-if set(registered_types) != source_types:
-    missing = sorted(source_types - set(registered_types))
-    extra = sorted(set(registered_types) - source_types)
-    raise SystemExit(f"Aeneas type inventory mismatch; missing={missing} extra={extra}")
-
-funs = (repo / "target/formal/aeneas-production/lean/Funs.lean").read_text(encoding="utf-8")
-types = (repo / "target/formal/aeneas-production/lean/Types.lean").read_text(encoding="utf-8")
-imports = re.findall(r"(?m)^import\s+([^\s]+)\s*$", funs)
-if imports != ["Aeneas", "FormalAeneas.Types"]:
-    raise SystemExit(f"Aeneas generated function imports are not closed: {imports}")
-missing_functions = [
-    symbol for symbol in registered_functions
-    if not re.search(rf"\bdef\s+{re.escape(symbol)}\b", funs)
-]
-missing_types = [
-    type_name for type_name in registered_types
-    if not re.search(rf"\bstructure\s+{re.escape(type_name)}\b", types)
-]
-if missing_functions:
-    raise SystemExit(f"Aeneas generated functions missing: {missing_functions}")
-if missing_types:
-    raise SystemExit(f"Aeneas generated types missing: {missing_types}")
+for source in registry.get("sources", []):
+    source_targets = [target for target in targets if target.get("source") == source["id"]]
+    registered_functions = [
+        symbol for target in source_targets for symbol in target.get("functions", [])
+    ]
+    registered_types = [
+        name for target in source_targets for name in target.get("types", [])
+    ]
+    generated_dir = repo / source["work_dir"] / "lean"
+    funs = (generated_dir / "Funs.lean").read_text(encoding="utf-8")
+    types = (generated_dir / "Types.lean").read_text(encoding="utf-8")
+    imports = re.findall(r"(?m)^import\s+([^\s]+)\s*$", funs)
+    expected_imports = ["Aeneas", f"{source['generated_module']}.Types"]
+    if imports != expected_imports:
+        raise SystemExit(
+            f"Aeneas generated imports mismatch for {source['id']}: "
+            f"expected={expected_imports} actual={imports}"
+        )
+    missing_functions = [
+        symbol for symbol in registered_functions
+        if not re.search(rf"\bdef\s+{re.escape(symbol)}\b", funs)
+    ]
+    missing_types = [
+        type_name for type_name in registered_types
+        if not re.search(rf"\bstructure\s+{re.escape(type_name)}\b", types)
+    ]
+    if missing_functions:
+        raise SystemExit(
+            f"Aeneas generated functions missing for {source['id']}: {missing_functions}"
+        )
+    if missing_types:
+        raise SystemExit(
+            f"Aeneas generated types missing for {source['id']}: {missing_types}"
+        )
 PY
-
-sha256sum "${source_file}" | awk '{print $1}' >"${source_stamp}"
 
 python3 - "${architecture}" "${toolchain_report}" <<'PY'
 import hashlib
