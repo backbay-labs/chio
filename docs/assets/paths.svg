@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" role="img" aria-label="Three ways in: migrate a coding agent from MCP, protect a web backend, or author a native Chio tool server">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 460" width="1200" height="460" role="img" aria-label="Seven ways in: migrate from MCP, add to an agent framework, protect a web backend, author a native server, deploy to production, write a custom guard, or run the agent economy">
   <defs>
     <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#130d0a"/>
@@ -11,57 +11,61 @@
     </radialGradient>
   </defs>
 
-  <rect width="1200" height="300" fill="url(#bg)"/>
+  <rect width="1200" height="460" fill="url(#bg)"/>
 
   <g stroke="#b08d5b" stroke-opacity="0.35" stroke-width="1">
     <path d="M38 44 H50 M44 38 V50"/><path d="M1150 44 H1162 M1156 38 V50"/>
-    <path d="M38 256 H50 M44 250 V262"/><path d="M1150 256 H1162 M1156 250 V262"/>
+    <path d="M38 416 H50 M44 410 V422"/><path d="M1150 416 H1162 M1156 410 V422"/>
   </g>
 
-  <text x="600" y="46" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" letter-spacing="4" fill="#d8cfc0" fill-opacity="0.55">THREE WAYS IN</text>
+  <text x="600" y="46" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" letter-spacing="4" fill="#d8cfc0" fill-opacity="0.55">SEVEN WAYS IN</text>
 
-  <!-- forking paths -->
-  <g fill="none" stroke="#b08d5b" stroke-opacity="0.5" stroke-width="1.5">
-    <path d="M188 155 C 380 155, 440 82, 636 82"/>
-    <path d="M188 155 H636"/>
-    <path d="M188 155 C 380 155, 440 228, 636 228"/>
+  <!-- fan paths -->
+  <g fill="none" stroke="#b08d5b" stroke-opacity="0.45" stroke-width="1.4">
+    <path d="M176 230 C 380 230, 470 68, 620 68"/>
+    <path d="M176 230 C 380 230, 470 122, 620 122"/>
+    <path d="M176 230 C 380 230, 470 176, 620 176"/>
+    <path d="M176 230 H620"/>
+    <path d="M176 230 C 380 230, 470 284, 620 284"/>
+    <path d="M176 230 C 380 230, 470 338, 620 338"/>
+    <path d="M176 230 C 380 230, 470 392, 620 392"/>
   </g>
-  <g fill="none" stroke="#b08d5b" stroke-opacity="0.7" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M630 78 L637 82 L630 86"/><path d="M630 151 L637 155 L630 159"/><path d="M630 224 L637 228 L630 232"/>
+  <g fill="none" stroke="#b08d5b" stroke-opacity="0.7" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M615 64 L622 68 L615 72"/><path d="M615 118 L622 122 L615 126"/><path d="M615 172 L622 176 L615 180"/><path d="M615 226 L622 230 L615 234"/><path d="M615 280 L622 284 L615 288"/><path d="M615 334 L622 338 L615 342"/><path d="M615 388 L622 392 L615 396"/>
   </g>
 
   <!-- start node -->
-  <circle cx="150" cy="155" r="50" fill="url(#glow)"/>
-  <circle cx="150" cy="155" r="36" fill="#16101c" fill-opacity="0.55" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1.2"/>
-  <g transform="translate(150,155) scale(1.5)" fill="none" stroke="#c3b6ff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
-    <circle cx="0" cy="0" r="9"/>
-    <path d="M0 -6 L3.5 0 L0 6 L-3.5 0 Z" fill="#c3b6ff" fill-opacity="0.35"/>
+  <circle cx="140" cy="230" r="50" fill="url(#glow)"/>
+  <circle cx="140" cy="230" r="36" fill="#16101c" fill-opacity="0.55" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1.2"/>
+  <g transform="translate(140,230) scale(1.5)" fill="none" stroke="#c3b6ff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="0" cy="0" r="9"/><path d="M0 -6 L3.5 0 L0 6 L-3.5 0 Z" fill="#c3b6ff" fill-opacity="0.35"/>
   </g>
-  <text x="150" y="228" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="2.5" fill="#b08d5b">START</text>
+  <text x="140" y="286" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="2.5" fill="#b08d5b">START</text>
 
   <!-- destination nodes -->
   <g>
-    <circle cx="662" cy="82" r="34" fill="url(#glow)"/><circle cx="662" cy="155" r="34" fill="url(#glow)"/><circle cx="662" cy="228" r="34" fill="url(#glow)"/>
+    <circle cx="640" cy="68" r="30" fill="url(#glow)"/><circle cx="640" cy="122" r="30" fill="url(#glow)"/><circle cx="640" cy="176" r="30" fill="url(#glow)"/><circle cx="640" cy="230" r="30" fill="url(#glow)"/><circle cx="640" cy="284" r="30" fill="url(#glow)"/><circle cx="640" cy="338" r="30" fill="url(#glow)"/><circle cx="640" cy="392" r="30" fill="url(#glow)"/>
   </g>
-  <g fill="#16101c" fill-opacity="0.55" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1.2">
-    <circle cx="662" cy="82" r="22"/><circle cx="662" cy="155" r="22"/><circle cx="662" cy="228" r="22"/>
+  <g fill="#16101c" fill-opacity="0.55" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1.1">
+    <circle cx="640" cy="68" r="19"/><circle cx="640" cy="122" r="19"/><circle cx="640" cy="176" r="19"/><circle cx="640" cy="230" r="19"/><circle cx="640" cy="284" r="19"/><circle cx="640" cy="338" r="19"/><circle cx="640" cy="392" r="19"/>
   </g>
   <g fill="none" stroke="#c3b6ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-    <!-- migrate: swap arrows -->
-    <g transform="translate(662,82)"><path d="M-8 -3 H5"/><path d="M2 -7 L6 -3 L2 1"/><path d="M8 3 H-5"/><path d="M-2 -1 L-6 3 L-2 7"/></g>
-    <!-- web backend: globe -->
-    <g transform="translate(662,155)"><circle cx="0" cy="0" r="9"/><path d="M-9 0 H9"/><path d="M0 -9 C-5 -4 -5 4 0 9 C5 4 5 -4 0 -9 Z"/></g>
-    <!-- native server: cylinder -->
-    <g transform="translate(662,228)"><ellipse cx="0" cy="-6" rx="8" ry="3"/><path d="M-8 -6 V6"/><path d="M8 -6 V6"/><path d="M-8 6 C-8 9 8 9 8 6"/><path d="M-8 0 C-8 3 8 3 8 0"/></g>
+    <g transform="translate(640,68)"><path d="M-8 -3 H5"/><path d="M2 -7 L6 -3 L2 1"/><path d="M8 3 H-5"/><path d="M-2 -1 L-6 3 L-2 7"/></g>
+    <g transform="translate(640,122)"><circle cx="-6" cy="-4" r="2"/><circle cx="6" cy="-4" r="2"/><circle cx="0" cy="5" r="2"/><path d="M-6 -4 H6 M-6 -4 L0 5 M6 -4 L0 5"/></g>
+    <g transform="translate(640,176)"><circle cx="0" cy="0" r="9"/><path d="M-9 0 H9"/><path d="M0 -9 C-5 -4 -5 4 0 9 C5 4 5 -4 0 -9 Z"/></g>
+    <g transform="translate(640,230)"><ellipse cx="0" cy="-6" rx="7" ry="2.8"/><path d="M-7 -6 V6"/><path d="M7 -6 V6"/><path d="M-7 6 C-7 8.6 7 8.6 7 6"/><path d="M-7 0 C-7 2.6 7 2.6 7 0"/></g>
+    <g transform="translate(640,284)"><rect x="-8" y="-6" width="16" height="6" rx="1.5"/><rect x="-8" y="2" width="16" height="6" rx="1.5"/><circle cx="-5" cy="-3" r="1" fill="#c3b6ff" stroke="none"/><circle cx="-5" cy="5" r="1" fill="#c3b6ff" stroke="none"/></g>
+    <g transform="translate(640,338)"><path d="M0 -9 L8 -4.5 L8 4.5 L0 9 L-8 4.5 L-8 -4.5 Z"/><circle cx="0" cy="0" r="1.8" fill="#c3b6ff" stroke="none"/></g>
+    <g transform="translate(640,392)"><circle cx="0" cy="0" r="8"/><path d="M0 -4.5 L4.5 0 L0 4.5 L-4.5 0 Z" stroke="#f2eadc"/></g>
   </g>
 
-  <!-- destination labels -->
-  <g font-family="Georgia, 'Times New Roman', serif" font-size="19" fill="#efe7db">
-    <text x="700" y="79">Migrate from MCP</text><text x="700" y="152">Protect a web backend</text><text x="700" y="225">Author a native server</text>
+  <!-- labels -->
+  <g font-family="Georgia, 'Times New Roman', serif" font-size="18" fill="#efe7db">
+    <text x="678" y="65">Migrate from MCP</text><text x="678" y="119">Add to your agent framework</text><text x="678" y="173">Protect a web backend</text><text x="678" y="227">Author a native server</text><text x="678" y="281">Deploy to production</text><text x="678" y="335">Write a custom guard</text><text x="678" y="389">Run the agent economy</text>
   </g>
-  <g font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" fill="#b3a99b">
-    <text x="700" y="98">wrap a coding agent's MCP tools</text><text x="700" y="171">a zero-code proxy for your API</text><text x="700" y="244">build a governed tool server</text>
+  <g font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#b3a99b">
+    <text x="678" y="83">wrap a coding agent's MCP tools</text><text x="678" y="137">LangChain, CrewAI, AutoGen, and more</text><text x="678" y="191">a zero-code proxy for your API</text><text x="678" y="245">build a governed tool server</text><text x="678" y="299">Kubernetes, Lambda, or an Envoy mesh</text><text x="678" y="353">policy logic as a WASM module</text><text x="678" y="407">metered, budgeted, settling commerce</text>
   </g>
 
-  <text x="600" y="280" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-size="13.5" fill="#d8cfc0" fill-opacity="0.7">New to Chio? The progressive tutorial walks the whole path.</text>
+  <text x="600" y="440" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-size="13.5" fill="#d8cfc0" fill-opacity="0.7">New to Chio? The progressive tutorial walks the whole path.</text>
 </svg>

@@ -499,16 +499,17 @@ targeting completion by Q1 2027; the windows below are indicative.
 <p align="center">
   <picture>
     <source media="(max-width: 500px)" srcset="docs/assets/paths-mobile.svg" />
-    <img src="docs/assets/paths.svg" alt="Three ways in: migrate a coding agent from MCP, protect a web backend, or author a native Chio tool server" width="900" />
+    <img src="docs/assets/paths.svg" alt="Seven ways in: migrate from MCP, add to an agent framework, protect a web backend, author a native server, deploy to production, write a custom guard, or run the agent economy" width="900" />
   </picture>
 </p>
 
-- **Migrating an MCP server or coding-agent flow:**
-  [docs/guides/MIGRATING-FROM-MCP.md](docs/guides/MIGRATING-FROM-MCP.md)
-- **Protecting a web backend:**
-  [docs/guides/WEB_BACKEND_QUICKSTART.md](docs/guides/WEB_BACKEND_QUICKSTART.md)
-- **Authoring a native Chio tool server:**
-  [docs/start-here/NATIVE_ADOPTION_GUIDE.md](docs/start-here/NATIVE_ADOPTION_GUIDE.md)
+- **Migrate a coding agent from MCP** - [docs/guides/MIGRATING-FROM-MCP.md](docs/guides/MIGRATING-FROM-MCP.md)
+- **Add Chio to your agent framework** (LangChain, LangGraph, CrewAI, AutoGen) - [sdks/python](sdks/python)
+- **Protect a web backend** - [docs/guides/WEB_BACKEND_QUICKSTART.md](docs/guides/WEB_BACKEND_QUICKSTART.md)
+- **Author a native Chio tool server** - [docs/start-here/NATIVE_ADOPTION_GUIDE.md](docs/start-here/NATIVE_ADOPTION_GUIDE.md)
+- **Deploy to production** (Kubernetes, Lambda, Envoy/Istio) - [sdks/k8s](sdks/k8s)
+- **Write a custom guard** (fuel-metered WASM, any language) - [sdks/guard](sdks/guard)
+- **Run the agent economy** (metering, budgets, settlement) - [examples/agent-commerce-network](examples/agent-commerce-network)
 
 For a guided local walkthrough, start with the
 [progressive tutorial](docs/start-here/PROGRESSIVE_TUTORIAL.md).
