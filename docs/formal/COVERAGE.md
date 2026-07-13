@@ -891,7 +891,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 
 - Generator version: `3`
 - Regenerate: `cargo xtask gen proof-coverage`
-- Input digest: `19c8b2be8b632ab8f0233322f866cf5c20be37fb02e896b922518a30d562fc2f`
+- Input digest: `1765af5ccdbb68f0db721a57b343a610c98ad347a1191d91227a98a310c64ba1`
 - Git commit: `@GIT_COMMIT@` (resolved in coverage.json and Proof Room packages)
 - Row identity: file rows use package-relative Rust paths; crate-only artifacts use `package::*`.
 
@@ -916,7 +916,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `crates/core/chio-core-types/Cargo.toml`: `a0e83083639abad81e44e57e5c12bc57de6c88ac173ce1af89ee3deee0e36402`
 - `crates/core/chio-core-types/src/_generated/chio_wire_v1.rs`: `fb741c322ed553457a21b9bc30bd5dab60ed42479cacf117847b0e3dab66a3a5`
 - `crates/core/chio-core-types/src/_generated/mod.rs`: `6a8f664ceb143338fff9e0dec10f70fc8c3962d8a0d1d33d7103b971446c19d1`
-- `crates/core/chio-core-types/src/canonical.rs`: `9b5f1786880080495e471e38004c87b6ad929edbc1864bc3c9ba6e25481553bb`
+- `crates/core/chio-core-types/src/canonical.rs`: `c71bd4f5ef7f3b760d5a9c6580bee9a5cbc51a3d39c182c2047291eb6e1dc4d1`
 - `crates/core/chio-core-types/src/capability/attenuation.rs`: `65355556de6428e23cb81c8885f8605bfa23c84a55d96e561404395ce2173933`
 - `crates/core/chio-core-types/src/capability/caveat.rs`: `f1417d4110fc9e371e5389139a3a5e8f0f8dee1f829415269035abba347d0591`
 - `crates/core/chio-core-types/src/capability/caveat_and_delegation_guard_tests.rs`: `01b5ef095685c9804f057495a248fd10ebf73e770795516d5e35601c75e869c4`
@@ -1017,7 +1017,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `crates/trust/chio-revocation-oracle/src/api.rs`: `b1bfcf2fa979f132693ef895f40512b53a5797b8ca2dbe609c3524eac58d0375`
 - `crates/trust/chio-revocation-oracle/src/freshness.rs`: `d699d5c59f1c5a660d9c06f294bb2ac1ee2c0fcd00cd9eebbe043df74ba733b8`
 - `docs/fuzzing/trust-boundary-mutants-baseline.toml`: `7331fb69499474ca22b14b6fb5a6f9a966eae2e2a26d3433d9030a4c985efee9`
-- `formal/MAPPING.md`: `adc6bb8cee5050e068a057c668b414967b024113ecb8e8a7de22fbc688852788`
+- `formal/MAPPING.md`: `88abb81dd0676432f9be2f8f98c7b5d44317af0b828cbc91b743b5e602767334`
 - `formal/aeneas/pilot.toml`: `86627b363717b47ced94caeb826185d400cf70fe357a55fe34d02ea70670956c`
 - `formal/aeneas/production.toml`: `5dc3adcf9083b2666e40ff90d3e7dea39fa8c4fd1ae6bb8907b8c8f109c4d543`
 - `formal/aeneas/verified_core.rs`: `44ef85fbe6c537e8c65a483a67c167f502ca1a108a25293414b27ab2a85046b8`
@@ -1071,7 +1071,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `formal/diff-tests/tests/anchored_root.rs`: `2a124cb1b9ff64a6be9fdb6ea2cd9b7a65b14c92af48c2a814f7909120979031`
 - `formal/diff-tests/tests/anchored_root_tamper.rs`: `0ca70da5f3b57c4c4f92871c4614c4de7987e9d8186ce9e7d55213341a57c7c5`
 - `formal/diff-tests/tests/browser_canonical_json_diff.rs`: `f7dc5b5cd3e0f74bd1e3e449c0e7c447e3c9b0bdcf0ea5f747c0e2eb332569b0`
-- `formal/diff-tests/tests/canonical_json_diff.rs`: `4eac6b485d23f4c736bf1d7243593e2275c33c7b153574d557cb4581f8ec95d7`
+- `formal/diff-tests/tests/canonical_json_diff.rs`: `4fb47525782ad05210de1abd271355df2697d619985a0be87dd492f2c28f4e7c`
 - `formal/diff-tests/tests/receipt_encoding_diff.rs`: `8d479e72a2a2ec7abdf03e827e0e9da0ac2c244062a9cd8f8b576c648c99a258`
 - `formal/diff-tests/tests/regression_formal_receipt_before_allow_c01406cfbbeb.rs`: `50ee14b6a785532e22e6cd9c4f8b41078556a4c75e18e7dfeea46597a1399deb`
 - `formal/diff-tests/tests/scope_diff.rs`: `c21aaa2cb891fd1fc19482ec6f8dc9c81930b5890af74f86c6fb5dd3104489ab`
@@ -1084,7 +1084,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `formal/rust-verification/formal-mutants.toml`: `5f15de2f3833b11db3d783d05ab6efcd2c49840ede010fe7ec54fc2846c48fc6`
 - `formal/rust-verification/kani-harnesses.toml`: `f82442bef24ae67283c3f171cff15e8aa6cc4d808c7893b9e349b6bf315b50ce`
 - `formal/rust-verification/kani-public-harnesses.toml`: `41f5b881fee73c0691ec3d200da8a6e5ccc3236c2a3368615e743acd365283a7`
-- `formal/theorem-inventory.json`: `d6952974372b74c4a92b3c4e2504286c779b3421356bdfc1ed3b2f17dc713adc`
+- `formal/theorem-inventory.json`: `2be624d704c4cd438f4a6a659d780caf07e65ad7c47437009d8be83c0dfea080`
 - `formal/tla/DelegationDepthBound.tla`: `69c28ca6b16ef3b2174235347d8bb2aab40fce4cbb79123e4512f363b9717be9`
 - `formal/tla/DistributedRevocation.tla`: `59110faa37eeeaac45b9b206594ae5ef39f94404323a377967012431489b8aa7`
 - `formal/tla/DistributedRevocationTemporal.tla`: `604bdcd34f505b11c6aa9819cc73193f4e455b4d77227d22d6e79e07b48cc2e1`

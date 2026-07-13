@@ -8,7 +8,7 @@
 //! Implementation follows RFC 8785 (JSON Canonicalization Scheme):
 //! - Object keys sorted by UTF-16 code unit comparison
 //! - Numbers: shortest representation matching ECMAScript `JSON.stringify()`
-//! - Strings: JSON escapes plus the pinned C0 and C1 control category
+//! - Strings: minimal JSON escaping for C0 controls, quotes, and reverse solidus
 //! - No whitespace between tokens
 
 use alloc::collections::BTreeMap;
@@ -500,11 +500,10 @@ fn trim_decimal(mut s: String) -> String {
 
 /// Escape a string per RFC 8785 / JSON rules.
 ///
-/// Quotes and reverse solidus use their mandatory JSON escapes. Rust's
-/// `char::is_control` pins the additional control category to U+0000..U+001F
-/// and U+007F..U+009F. The standard short forms are preferred when available;
-/// all remaining controls use lowercase `\uXXXX`. Other scalar values,
-/// including U+2028 and U+2029, pass through unescaped.
+/// Quotes and reverse solidus use their mandatory JSON escapes. C0 controls
+/// use the standard short forms when available and lowercase `\uXXXX`
+/// otherwise. All other scalar values, including U+007F, U+2028, and U+2029,
+/// pass through unescaped.
 fn escape_json_string(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     for c in s.chars() {
@@ -516,7 +515,7 @@ fn escape_json_string(s: &str) -> String {
             '\n' => result.push_str("\\n"),
             '\r' => result.push_str("\\r"),
             '\t' => result.push_str("\\t"),
-            c if c.is_control() => {
+            c if c <= '\u{001f}' => {
                 // U+0000..U+001F (excluding the six above) use \uXXXX.
                 result.push_str(&format!("\\u{:04x}", c as u32));
             }

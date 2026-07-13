@@ -193,13 +193,7 @@ fn oracle_escape(s: &str, out: &mut String) {
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
-            // Match the production canonicalizer's `is_control()` rule, which
-            // covers U+0000..U+001F and U+007F..U+009F. This is broader than
-            // RFC 8785's literal text (which only mandates U+0000..U+001F),
-            // but is the actual behavior of `chio_core::canonical` and is
-            // ECMAScript-JSON.stringify-compatible at all observable boundaries
-            // for the ASCII subset.
-            c if c.is_control() => {
+            c if c <= '\u{001f}' => {
                 out.push_str(&format!("\\u{:04x}", c as u32));
             }
             c => out.push(c),
@@ -473,16 +467,13 @@ proptest! {
                             "truncated \\uXXXX in {:?}",
                             canonical
                         );
-                        // The production canonicalizer uses Rust's
-                        // `char::is_control()`, which matches the Unicode "Cc"
-                        // category: U+0000..U+001F plus U+007F..U+009F. Confirm
-                        // the escaped code point is in that range.
+                        // RFC 8785 permits hexadecimal escaping only for C0
+                        // control characters that have no short form.
                         let hex = std::str::from_utf8(&bytes[i + 2..i + 6]).unwrap();
                         let cp = u32::from_str_radix(hex, 16).unwrap();
-                        let is_control_cp = cp < 0x20 || (0x7f..=0x9f).contains(&cp);
                         prop_assert!(
-                            is_control_cp,
-                            "\\u{:04x} should not be escaped (production escapes only U+0000..U+001F and U+007F..U+009F): {:?}",
+                            cp < 0x20,
+                            "\\u{:04x} should not be escaped (RFC 8785 escapes only U+0000..U+001F): {:?}",
                             cp,
                             canonical
                         );

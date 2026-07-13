@@ -36,11 +36,11 @@ The verified core previously carried one Lean axiom, `receipt_id_collision_resis
 - The public renderer emits actual `Fin 256` UTF-8 bytes. The internal
   code-point layer is proved scalar-valid, and UTF-8 encoding is proved
   injective before `canonical_inj` crosses that boundary.
-- The fixture generator transcribes 14 bounded integer and scalar corpus cases
+- The fixture generator transcribes 16 bounded integer and scalar corpus cases
   within elaboration bounds of 64 nodes and depth 8. It orders object entries
   by UTF-16 solely to construct the model's normalized object representation;
   expected bytes always come unchanged from the frozen corpus. Required
-  U+007F and supplementary-plane ordering vectors are identity-pinned so they
+  U+007F literal and supplementary-plane ordering vectors are identity-pinned so they
   cannot disappear behind the corpus floor. Oversized and floating vectors
   remain in the Rust differential lane.
 - A general parse-after-render theorem is deferred. The dedicated lexer and
@@ -61,7 +61,7 @@ The verified core previously carried one Lean axiom, `receipt_id_collision_resis
 - The former receipt axiom's in-file justification identified three missing pieces: a Lean model of the JCS serializer, a model of the hash, and a collision-resistance assumption tied to ASSUME-SHA256. This implementation supplies all three.
 - `formal/proof-manifest.toml` now allowlists only the hash-level axiom and ties it one-to-one to ASSUME-SHA256.
 - Signed payloads in Chio are canonical JSON (RFC 8785) per the repository conventions. ASSUME-CANONICAL-JSON is now narrowed to production agreement with the mechanized renderer plus behavior outside the modeled domain; serializer injectivity inside the model is proved.
-- The differential harness shows the property is subtle enough to deserve a proof: formal/diff-tests/tests/canonical_json_diff.rs checks 12 named invariants against an independent in-file RFC 8785 oracle, and its committed proptest regressions include a U+007F control-escaping catch and a UTF-16 surrogate key-ordering catch [v]. Both historical bugs are exactly injectivity-adjacent (escaping and ordering).
+- The differential harness shows the property is subtle enough to deserve a proof: formal/diff-tests/tests/canonical_json_diff.rs checks 12 named invariants against an independent in-file RFC 8785 oracle. The U+007F case pins literal output and the supplementary-plane case pins UTF-16 surrogate key ordering. Both boundaries are injectivity-adjacent.
 - `FORM-NO-SOFTWARE-AXIOMS` is now approved with explicit scope: every root-imported Lean axiom is a registered cryptographic idealization, while production refinement and out-of-domain serializer behavior remain audited assumptions.
 
 ## Pre-implementation evidence
@@ -79,7 +79,7 @@ The verified core previously carried one Lean axiom, `receipt_id_collision_resis
   `ReceiptBody` previously treated the identifier as opaque and the implication above as an axiom. The current receipt model instead derives the implication from the 20-field projection, canonical injectivity, and the symbolic hash assumption.
 - Production canonicalizer: `chio_core::canonical::{canonicalize, canonical_json_bytes, canonical_json_string}` in crates/core/chio-core-types/src/canonical.rs (named as the production implementation by the diff harness header, canonical_json_diff.rs:5-6, imports L33).
 - Differential evidence: `canonical_json_diff.rs` checks 12 named invariants (idempotence, UTF-16 key sorting, insignificant whitespace, integer form, string escaping, parse round trip, oracle byte agreement, UTF-8 validity, determinism, literals, empty collections, and non-finite rejection). Its proptest strategy is restricted to integer numbers, with floats covered by the frozen vector corpus. The committed proptest regression file remains part of that lane.
-- Production escape behavior, pinned by the diff test: strings escape the category U+0000..U+001F plus U+007F..U+009F and nothing else outside the JSON-mandated characters (canonical_json_diff.rs:478-486). This is slightly broader than the RFC's minimal floor; the model must mirror production, not the RFC's floor, because the fixture bridge compares bytes.
+- Production escape behavior, pinned by the diff test: strings escape U+0000..U+001F, quotes, and reverse solidus. U+007F, U+009F, and other Unicode scalar values remain literal as RFC 8785 requires.
 - ASSUME-SHA256 (audited_crypto, backs P4/P7) and ASSUME-CANONICAL-JSON (audited_serialization, backs P4/P7/P10) are registered at formal/assumptions.toml:20-21.
 
 ## Design
@@ -94,7 +94,7 @@ The verified core previously carried one Lean axiom, `receipt_id_collision_resis
 2. `formal/lean4/Chio/Chio/Json/Canonical.lean` - the RFC 8785 serializer for that domain:
    - `canonical : JValue -> ByteSeq`, where `ByteSeq` is `List (Fin 256)`, composed from `renderInt`, `escapeString`, `renderArr`, and `renderObj`.
    - Key ordering by UTF-16 code unit is expressed by `utf16Units`, `utf16Less`, and `SortedObject`. Receipt projections and generated fixtures construct objects in that order; the historical supplementary-plane regression is why scalar-value order is insufficient.
-   - Escaping mirrors production's pinned category (U+0000..U+001F plus U+007F..U+009F, plus quote and backslash and the RFC short forms), matching canonical_json_diff.rs:478-486 byte-for-byte.
+   - Escaping mirrors RFC 8785 and production byte-for-byte: U+0000..U+001F, quote, and reverse solidus are escaped, while all other Unicode scalar values remain literal.
 3. `formal/lean4/Chio/Chio/Proofs/CanonicalInjective.lean` - the theorem:
    - `theorem canonical_inj : canonical a = canonical b -> a = b`, using an injective UTF-8 boundary, deterministic token recovery, and a fuel-bounded parser whose render round trip is proved by induction.
    - Hardest sub-lemmas, named explicitly so progress is trackable:
@@ -163,7 +163,7 @@ Before and after, in one line each:
 
 1. Phase 1 - domain and serializer.
    - Added `Json/Value.lean` and `Json/Canonical.lean` and root-imported both modules.
-   - Added checked U+007F and supplementary-plane key-ordering fixtures.
+   - Added checked U+007F literal and supplementary-plane key-ordering fixtures.
 2. Phase 2 - injectivity proof.
    - Added `Proofs/CanonicalInjective.lean` with `escape_string_inj`, `render_int_inj`, `sorted_assoc_ext`, and `canonical_inj`.
 3. Phase 3 - axiom restructuring.
@@ -182,7 +182,7 @@ Before and after, in one line each:
 
 - [x] `canonical_inj` is sorry-free and root-imported; its inverse proof is by parser-fuel induction after deterministic lexical recovery.
 - [x] `escape_string_inj` and `render_int_inj` exist as named lemmas (not inlined), so FV-E1 spec-mutation can target them individually.
-- [x] The model escape category byte-matches production's pinned category (U+0000..U+001F plus U+007F..U+009F), demonstrated by kernel-checked U+007F and surrogate-ordering byte fixtures.
+- [x] The model escape category byte-matches RFC 8785 production behavior, demonstrated by kernel-checked U+007F literal and surrogate-ordering byte fixtures.
 - [x] `receipt_id_collision_resistant` is a theorem; the only explicit root-imported Lean axiom is `hash_collision_resistant`.
 - [x] proof-manifest `allowed_axioms` lists exactly the hash-level axiom, cross-referenced to ASSUME-SHA256.
 - [x] Frozen-corpus Lean fixtures elaborate and pass in the formal lane.

@@ -246,9 +246,9 @@ nightly).
   (reflexivity, transitivity, remove-grant, reduce-budget, wildcard,
   different-server).
 - `tests/canonical_json_diff.rs`: RFC 8785 dual-implementation byte gate with
-  12 named invariants. The committed proptest-regression seeds are receipts
-  of real historical catches (U+007F control escaping beyond the RFC letter;
-  UTF-16 surrogate key ordering).
+  12 named invariants. The U+007F regression pins literal JCS output across
+  production, cross-binding, and Lean fixtures; supplementary-plane cases pin
+  UTF-16 surrogate key ordering.
 - `tests/receipt_encoding_diff.rs`: cross-language receipt canonical bytes
   through a triple-blessed frozen corpus
   (`tests/bindings/vectors/receipt/v1.json`) that the Rust, Python, and

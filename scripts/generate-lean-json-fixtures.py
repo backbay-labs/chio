@@ -16,7 +16,9 @@ SOURCE = REPO / "tests/bindings/vectors/canonical/v1.json"
 OUTPUT = REPO / "formal/lean4/Chio/Chio/Json/Fixtures.lean"
 MODELED_CORPUS_FLOOR = 13
 REQUIRED_CASES = {
-    "u007f_escape": ("\x7f", '"\\u007f"'),
+    "u001f_escape": ("\x1f", '"\\u001f"'),
+    "u007f_literal": ("\x7f", '"\x7f"'),
+    "u009f_literal": ("\x9f", '"\x9f"'),
     "utf16_key_ordering": (
         {"\ue000": 1, "\U00010000": 2},
         '{"\U00010000":2,"\ue000":1}',
@@ -78,7 +80,7 @@ def scalar(code: int) -> str:
     }
     if code in named:
         return named[code]
-    if code <= 31 or 127 <= code <= 159:
+    if code <= 31:
         high, low = divmod(code, 16)
         return (
             f".control ({{ val := {high}, isLt := by decide }} : Fin 16) "

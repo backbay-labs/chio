@@ -31,10 +31,22 @@
       "input_json": "{\"text\":\"line\\n\\\"quoted\\\"\\\\path\"}"
     },
     {
-      "canonical_json": "\"\\u007f\"",
-      "description": "The production control-character category escapes U+007F using lowercase hexadecimal.",
-      "id": "u007f_escape",
+      "canonical_json": "\"\u007f\"",
+      "description": "RFC 8785 emits U+007F literally because it is outside the C0 control range.",
+      "id": "u007f_literal",
       "input_json": "\"\\u007f\""
+    },
+    {
+      "canonical_json": "\"\\u001f\"",
+      "description": "RFC 8785 escapes the upper C0 boundary using lowercase hexadecimal.",
+      "id": "u001f_escape",
+      "input_json": "\"\\u001f\""
+    },
+    {
+      "canonical_json": "\"\u009f\"",
+      "description": "RFC 8785 emits the upper C1 boundary literally.",
+      "id": "u009f_literal",
+      "input_json": "\"\\u009f\""
     },
     {
       "canonical_json": "{}",
