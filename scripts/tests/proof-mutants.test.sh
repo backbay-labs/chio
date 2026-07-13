@@ -672,11 +672,39 @@ commands = [
     for line in Path(sys.argv[1]).read_bytes().splitlines()
     if line
 ]
-if len(commands) != 3:
+expected_execution_order = [
+    b"kani_harnesses::time_window_classifier_matches_valid_predicate",
+    b"kani_harnesses::optional_caps_never_widen_parent_cap",
+    b"kani_harnesses::monetary_caps_never_widen_parent_cap",
+    b"kani_harnesses::dpop_required_missing_or_invalid_fails_closed",
+    b"kani_harnesses::dpop_replayed_nonce_never_admits",
+    b"kani_harnesses::dpop_freshness_rejects_future_beyond_skew",
+    b"kani_harnesses::budget_commit_never_increases_remaining_counters",
+    b"kani_harnesses::two_sequential_budget_commits_cannot_overspend",
+    b"kani_harnesses::guard_deny_or_error_dominates_pipeline",
+    b"kani_harnesses::revocation_snapshot_denies_presented_token_or_ancestor",
+    b"kani_harnesses::receipt_coupling_requires_every_field_match",
+    b"kani_harnesses::subset_helpers_preserve_parent_requirements",
+    b"kani_public_harnesses::public_normalized_scope_subset_rejects_widened_child",
+    b"kani_public_harnesses::public_normalized_scope_subset_rejects_value_widened_child",
+    b"kani_public_harnesses::public_normalized_scope_subset_rejects_identity_mismatch",
+    b"kani_public_harnesses::public_resolve_matching_grants_rejects_out_of_scope_request",
+    b"kani_public_harnesses::public_resolve_matching_grants_preserves_wildcard_matching",
+    b"kani_public_harnesses::verify_scope_intersection_associative",
+    b"kani_public_harnesses::verify_revocation_admission_projection",
+    b"kani_public_harnesses::verify_delegation_chain_step",
+    b"kani_public_harnesses::verify_reservation_ledger_conservation",
+    b"kani_public_harnesses::verify_budget_admission_projection",
+    b"kani_public_harnesses::verify_delegate_no_widen",
+    b"kani_public_harnesses::verify_oracle_inclusion_soundness",
+]
+if len(commands) != len(expected_execution_order) + 2:
     raise SystemExit(
-        f"expected priority, full, and sound inclusion Kani commands, found: {commands}"
+        "expected one command per priority harness plus full and sound inclusion "
+        f"commands, found: {commands}"
     )
-priority, full, sound_inclusion = commands
+priority_commands = commands[: len(expected_execution_order)]
+full, sound_inclusion = commands[-2:]
 priority_required = {
     b"kani",
     b"-p",
@@ -684,12 +712,21 @@ priority_required = {
     b"--lib",
     b"--exact",
     b"--fail-fast",
-    b"kani_harnesses::time_window_classifier_matches_valid_predicate",
-    b"kani_public_harnesses::verify_reservation_ledger_conservation",
-    b"kani_public_harnesses::verify_oracle_inclusion_soundness",
+    b"--no-unwinding-checks",
 }
-if not priority_required.issubset(priority):
-    raise SystemExit(f"priority Kani command omitted required arguments: {priority}")
+for command, expected_harness in zip(
+    priority_commands, expected_execution_order, strict=True
+):
+    selected = [
+        value
+        for index, value in enumerate(command)
+        if index > 0 and command[index - 1] == b"--harness"
+    ]
+    if not priority_required.issubset(command) or selected != [expected_harness]:
+        raise SystemExit(
+            "priority Kani command was not isolated in fail-fast order: "
+            f"{command}"
+        )
 full_required = {b"kani", b"-p", b"chio-kernel-core", b"--lib", b"--fail-fast"}
 if not full_required.issubset(full) or b"--harness" in full:
     raise SystemExit(f"full Kani command was narrowed: {full}")

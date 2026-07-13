@@ -45,12 +45,11 @@ priority_harnesses=(
   "kani_public_harnesses::verify_oracle_inclusion_soundness"
 )
 
-priority_args=()
+# Kani sorts a multi-harness selection by source location. Run each priority
+# harness separately so fail-fast follows the order above.
 for harness in "${priority_harnesses[@]}"; do
-  priority_args+=(--harness "${harness}")
+  cargo kani -p chio-kernel-core --lib --default-unwind 8 \
+    --no-unwinding-checks --exact --fail-fast --harness "${harness}"
 done
-
-cargo kani -p chio-kernel-core --lib --default-unwind 8 \
-  --no-unwinding-checks --exact --fail-fast "${priority_args[@]}"
 
 exec bash scripts/check-kani-core.sh
