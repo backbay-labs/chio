@@ -394,9 +394,9 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 
 **mutants**
 
-- `formal/mutation/registry.toml::spec-kernel-transition-cancel` (activation_target_percent=90, inventory_sha256=3a1db3a0c483f1a82d405e55e0a52095703ea9cda8a07c8ffed361b8950299de, measurement=pending, mutation_lane=spec-mutants, report=target/formal/spec-mutants-report.json)
-- `formal/mutation/registry.toml::spec-post-admission-drop` (activation_target_percent=90, inventory_sha256=3a1db3a0c483f1a82d405e55e0a52095703ea9cda8a07c8ffed361b8950299de, measurement=pending, mutation_lane=spec-mutants, report=target/formal/spec-mutants-report.json)
-- `formal/mutation/registry.toml::spec-receipt-before-allow` (activation_target_percent=90, inventory_sha256=3a1db3a0c483f1a82d405e55e0a52095703ea9cda8a07c8ffed361b8950299de, measurement=pending, mutation_lane=spec-mutants, report=target/formal/spec-mutants-report.json)
+- `formal/mutation/registry.toml::spec-kernel-transition-cancel` (activation_target_percent=90, inventory_sha256=9539238aff04fb1601a5330b5ea05942a759f548b28e2045902171a62f6ad06b, measurement=pending, mutation_lane=spec-mutants, report=target/formal/spec-mutants-report.json)
+- `formal/mutation/registry.toml::spec-post-admission-drop` (activation_target_percent=90, inventory_sha256=9539238aff04fb1601a5330b5ea05942a759f548b28e2045902171a62f6ad06b, measurement=pending, mutation_lane=spec-mutants, report=target/formal/spec-mutants-report.json)
+- `formal/mutation/registry.toml::spec-receipt-before-allow` (activation_target_percent=90, inventory_sha256=9539238aff04fb1601a5330b5ea05942a759f548b28e2045902171a62f6ad06b, measurement=pending, mutation_lane=spec-mutants, report=target/formal/spec-mutants-report.json)
 
 **loom**
 
@@ -607,10 +607,10 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 - `formal/diff-tests/tests/receipt_encoding_diff.rs` (`diff`): differential-test files have no machine-readable Rust surface registry
 - `formal/diff-tests/tests/regression_formal_receipt_before_allow_c01406cfbbeb.rs` (`diff`): differential-test files have no machine-readable Rust surface registry
 - `formal/diff-tests/tests/scope_diff.rs` (`diff`): differential-test files have no machine-readable Rust surface registry
-- `formal/mutation/registry.toml::spec-delegation-depth` (`mutants`) (activation_target_percent=90, inventory_sha256=3a1db3a0c483f1a82d405e55e0a52095703ea9cda8a07c8ffed361b8950299de, measurement=pending, mutation_lane=spec-mutants, report=target/formal/spec-mutants-report.json): evidence spans multiple Rust packages without a primary surface Related surfaces: `chio-core-types::capability/attenuation.rs`, `chio-kernel-core::revocation_view.rs`, `chio-revocation-oracle::api.rs`.
-- `formal/mutation/registry.toml::spec-monotone-log` (`mutants`) (activation_target_percent=90, inventory_sha256=3a1db3a0c483f1a82d405e55e0a52095703ea9cda8a07c8ffed361b8950299de, measurement=pending, mutation_lane=spec-mutants, report=target/formal/spec-mutants-report.json): evidence spans multiple Rust packages without a primary surface Related surfaces: `chio-kernel::kernel/responses/receipt_persistence.rs`, `chio-store-sqlite::receipt_store/evidence_retention.rs`.
-- `formal/mutation/registry.toml::spec-revocation-cut` (`mutants`) (activation_target_percent=90, inventory_sha256=3a1db3a0c483f1a82d405e55e0a52095703ea9cda8a07c8ffed361b8950299de, measurement=pending, mutation_lane=spec-mutants, report=target/formal/spec-mutants-report.json): evidence spans multiple Rust packages without a primary surface Related surfaces: `chio-kernel-core::revocation_view.rs`, `chio-kernel::kernel/validation.rs`.
-- `formal/mutation/registry.toml::spec-revocation-propagation` (`mutants`) (activation_target_percent=90, inventory_sha256=3a1db3a0c483f1a82d405e55e0a52095703ea9cda8a07c8ffed361b8950299de, measurement=pending, mutation_lane=spec-mutants, report=target/formal/spec-mutants-report.json): evidence spans multiple Rust packages without a primary surface Related surfaces: `chio-federation::revocation_gossip.rs`, `chio-kernel-core::revocation_view.rs`, `chio-kernel::kernel/validation.rs`, `chio-revocation-oracle::freshness.rs`.
+- `formal/mutation/registry.toml::spec-delegation-depth` (`mutants`) (activation_target_percent=90, inventory_sha256=9539238aff04fb1601a5330b5ea05942a759f548b28e2045902171a62f6ad06b, measurement=pending, mutation_lane=spec-mutants, report=target/formal/spec-mutants-report.json): evidence spans multiple Rust packages without a primary surface Related surfaces: `chio-core-types::capability/attenuation.rs`, `chio-kernel-core::revocation_view.rs`, `chio-revocation-oracle::api.rs`.
+- `formal/mutation/registry.toml::spec-monotone-log` (`mutants`) (activation_target_percent=90, inventory_sha256=9539238aff04fb1601a5330b5ea05942a759f548b28e2045902171a62f6ad06b, measurement=pending, mutation_lane=spec-mutants, report=target/formal/spec-mutants-report.json): evidence spans multiple Rust packages without a primary surface Related surfaces: `chio-kernel::kernel/responses/receipt_persistence.rs`, `chio-store-sqlite::receipt_store/evidence_retention.rs`.
+- `formal/mutation/registry.toml::spec-revocation-cut` (`mutants`) (activation_target_percent=90, inventory_sha256=9539238aff04fb1601a5330b5ea05942a759f548b28e2045902171a62f6ad06b, measurement=pending, mutation_lane=spec-mutants, report=target/formal/spec-mutants-report.json): evidence spans multiple Rust packages without a primary surface Related surfaces: `chio-kernel-core::revocation_view.rs`, `chio-kernel::kernel/validation.rs`.
+- `formal/mutation/registry.toml::spec-revocation-propagation` (`mutants`) (activation_target_percent=90, inventory_sha256=9539238aff04fb1601a5330b5ea05942a759f548b28e2045902171a62f6ad06b, measurement=pending, mutation_lane=spec-mutants, report=target/formal/spec-mutants-report.json): evidence spans multiple Rust packages without a primary surface Related surfaces: `chio-federation::revocation_gossip.rs`, `chio-kernel-core::revocation_view.rs`, `chio-kernel::kernel/validation.rs`, `chio-revocation-oracle::freshness.rs`.
 - `formal/rust-verification/creusot-contracts.toml::formal/rust-verification/creusot-core::budget_commit_contract` (`creusot`): refinement symbol has no workspace surface
 - `formal/rust-verification/creusot-contracts.toml::formal/rust-verification/creusot-core::budget_precheck_contract` (`creusot`): refinement symbol has no workspace surface
 - `formal/rust-verification/creusot-contracts.toml::formal/rust-verification/creusot-core::dpop_admits_contract` (`creusot`): refinement symbol has no workspace surface
@@ -891,7 +891,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 
 - Generator version: `3`
 - Regenerate: `cargo xtask gen proof-coverage`
-- Input digest: `106ce7c98b783de49b799ce272e185579fffe122d0afe6a9a71aea76c0870858`
+- Input digest: `f2e9c439319fda02336756f90f6235d2a8ac023f6e267b2f7b5018a32c465b1a`
 - Git commit: `@GIT_COMMIT@` (resolved in coverage.json and Proof Room packages)
 - Row identity: file rows use package-relative Rust paths; crate-only artifacts use `package::*`.
 
@@ -1078,7 +1078,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `formal/lean4/Chio/Chio/Capability/Delegation.lean`: `a6a44ca25cb3fec5385b6a2d6703d933236453d8d5b9b336061a42f675d2cfa6`
 - `formal/lean4/Chio/Chio/Proofs/CanonicalInjective.lean`: `a75b5101c8c2c7b62d90ea6909558aca59b1e0a8a5960237825f17e527e71d04`
 - `formal/lean4/Chio/Chio/Proofs/Receipt.lean`: `9c99eff785748b03d1086ed3c8c6e802ca1f0dd538332204b666af16f4987dd5`
-- `formal/mutation/registry.toml`: `0bb747ad45b19c6fd163c3a0ffab4ffc473df96c1f93b123d014915a39212844`
+- `formal/mutation/registry.toml`: `669226958af5df8fe45b9965075b4ce4f112800e9b9f7899a1941a23eb752228`
 - `formal/proof-manifest.toml`: `de2022322557cfb6999d341eeca351e3835d810ccf66a65a8de9610d3a95f3df`
 - `formal/rust-verification/creusot-contracts.toml`: `83000c98743013d3d6d468976a163edaf16d0d621070410d741f146bf61a28a5`
 - `formal/rust-verification/formal-mutants.toml`: `5f15de2f3833b11db3d783d05ab6efcd2c49840ede010fe7ec54fc2846c48fc6`
@@ -1098,7 +1098,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `fuzz/owners.toml`: `06e18ce8f287a40a393684e23ddfae5a3a545d1302edd264f52e240d8d14d3c2`
 - `fuzz/target-map.toml`: `033abb8a170417c045a85fc2284aa90f7b012a5baa742ddcef3775c61039355c`
 - `git-worktree://rust-files`: `9160af43610ecd061c53c01f8bc2416bd05572650c1ad9eebf38d7d7a0efd12c`
-- `releases.toml`: `49fa262b19250a643cb9b638f88f2a0fb13b47ee895328b721c203c819a4e512`
+- `releases.toml`: `063f3e61ca68b160e4f4f8f57c59649cfd248dcfbd86eed76199dbf0cf8a25fa`
 - `rust-toolchain.toml`: `8bc51ecab82415fddd8489604f2424e137d71856e7f65cbdcfaa48850d794b46`
 - `scripts/check-apalache-negative.sh`: `9441ad16cab3d4edf8c92d542920a60691217f09b65b9be70793b5fbcf24e4a5`
 - `scripts/check-kani-core.sh`: `fc43a2ca1b028159e6916d6fa78bc11817cdcad0c715c5b51ef9ebb408878e59`

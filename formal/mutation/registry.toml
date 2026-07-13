@@ -6,7 +6,7 @@ lane = "spec-mutants"
 source = "formal/apalache/KernelTransitionCancelSafe.tla"
 report = "target/formal/spec-mutants-report.json"
 activation_target_percent = 90.0
-inventory_sha256 = "3a1db3a0c483f1a82d405e55e0a52095703ea9cda8a07c8ffed361b8950299de"
+inventory_sha256 = "9539238aff04fb1601a5330b5ea05942a759f548b28e2045902171a62f6ad06b"
 rust_paths = [
   "crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs",
   "crates/kernel/chio-kernel/src/kernel/validation.rs",
@@ -18,7 +18,7 @@ lane = "spec-mutants"
 source = "formal/apalache/MonotoneLogApalache.tla"
 report = "target/formal/spec-mutants-report.json"
 activation_target_percent = 90.0
-inventory_sha256 = "3a1db3a0c483f1a82d405e55e0a52095703ea9cda8a07c8ffed361b8950299de"
+inventory_sha256 = "9539238aff04fb1601a5330b5ea05942a759f548b28e2045902171a62f6ad06b"
 rust_paths = [
   "crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs",
   "crates/platform/chio-store-sqlite/src/receipt_store/evidence_retention.rs",
@@ -30,7 +30,7 @@ lane = "spec-mutants"
 source = "formal/apalache/PostAdmissionDropGuard.tla"
 report = "target/formal/spec-mutants-report.json"
 activation_target_percent = 90.0
-inventory_sha256 = "3a1db3a0c483f1a82d405e55e0a52095703ea9cda8a07c8ffed361b8950299de"
+inventory_sha256 = "9539238aff04fb1601a5330b5ea05942a759f548b28e2045902171a62f6ad06b"
 rust_paths = [
   "crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs",
   "crates/kernel/chio-kernel/src/kernel/dispatch.rs",
@@ -43,7 +43,7 @@ lane = "spec-mutants"
 source = "formal/apalache/ReceiptBeforeAllow.tla"
 report = "target/formal/spec-mutants-report.json"
 activation_target_percent = 90.0
-inventory_sha256 = "3a1db3a0c483f1a82d405e55e0a52095703ea9cda8a07c8ffed361b8950299de"
+inventory_sha256 = "9539238aff04fb1601a5330b5ea05942a759f548b28e2045902171a62f6ad06b"
 rust_paths = [
   "crates/kernel/chio-kernel/src/kernel/responses/allow_responses.rs",
   "crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs",
@@ -55,7 +55,7 @@ lane = "spec-mutants"
 source = "formal/apalache/RevocationCutCompleteness.tla"
 report = "target/formal/spec-mutants-report.json"
 activation_target_percent = 90.0
-inventory_sha256 = "3a1db3a0c483f1a82d405e55e0a52095703ea9cda8a07c8ffed361b8950299de"
+inventory_sha256 = "9539238aff04fb1601a5330b5ea05942a759f548b28e2045902171a62f6ad06b"
 rust_paths = [
   "crates/kernel/chio-kernel/src/kernel/validation.rs",
   "crates/kernel/chio-kernel-core/src/revocation_view.rs",
@@ -67,7 +67,7 @@ lane = "spec-mutants"
 source = "formal/tla/DelegationDepthBound.tla"
 report = "target/formal/spec-mutants-report.json"
 activation_target_percent = 90.0
-inventory_sha256 = "3a1db3a0c483f1a82d405e55e0a52095703ea9cda8a07c8ffed361b8950299de"
+inventory_sha256 = "9539238aff04fb1601a5330b5ea05942a759f548b28e2045902171a62f6ad06b"
 rust_paths = [
   "crates/core/chio-core-types/src/capability/attenuation.rs",
   "crates/kernel/chio-kernel-core/src/revocation_view.rs",
@@ -80,7 +80,7 @@ lane = "spec-mutants"
 source = "formal/tla/RevocationPropagation.tla"
 report = "target/formal/spec-mutants-report.json"
 activation_target_percent = 90.0
-inventory_sha256 = "3a1db3a0c483f1a82d405e55e0a52095703ea9cda8a07c8ffed361b8950299de"
+inventory_sha256 = "9539238aff04fb1601a5330b5ea05942a759f548b28e2045902171a62f6ad06b"
 rust_paths = [
   "crates/kernel/chio-kernel/src/kernel/validation.rs",
   "crates/kernel/chio-kernel-core/src/revocation_view.rs",

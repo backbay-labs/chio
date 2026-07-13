@@ -1,6 +1,6 @@
 # FV-E1: Mutation testing for specifications and proof models
 
-Status: In progress (2026-07-11; exact-probe implementation and integrated full-cycle measurements pending)
+Status: In progress (2026-07-13; integrated full-cycle measurements pending)
 Theme: E - Verify the verification, and make lanes bite
 Effort: M
 Depends on: [FV-B2](FV-B2-regression-negative-tests.md)
@@ -332,7 +332,7 @@ python3 scripts/lean-mutants.py --sample-size 5
   16-probe report within budget, and a clean full 32-probe campaign has
   produced activation evidence.
 - [x] The pinned real cargo-mutants discovery command re-enumerates both Rust
-  model files on the integrated tree: 150 mutants across both files, with
+  model files on the integrated tree: 166 mutants across both files, with
   sharded and unsharded inventories identical.
 - [ ] The scheduled real `proof-mutants` job has completed a Kani-scored
   sample. The clean prepared-tree Kani baseline passed 35 of 35 harnesses;

@@ -127,6 +127,14 @@ jobs:
           if-no-files-found: warn
           retention-days: 21
 
+      - name: Record Loom lane posture
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
+          LANE_GATE_RATE_LIMIT_MODE: warn
+        run: bash scripts/lane-gate.sh loom-nightly
+
   dst-nightly:
     name: dst-nightly (10k real-kernel episodes)
     runs-on: ubuntu-latest
@@ -160,6 +168,14 @@ jobs:
           path: target/dst
           if-no-files-found: error
           retention-days: 21
+
+      - name: Record DST lane posture
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
+          LANE_GATE_RATE_LIMIT_MODE: warn
+        run: bash scripts/lane-gate.sh dst-nightly
 
   # The nightly RevocationEventuallySeen liveness check runs in the dedicated
   # fail-closed apalache-temporal.yml workflow at length=24. Keeping it in a

@@ -438,28 +438,28 @@ if [[ -n "${FAKE_APALACHE_CALL_LOG:-}" ]]; then
   printf '%s\n' "${spec}" >>"${FAKE_APALACHE_CALL_LOG}"
 fi
 
-is_broken=0
-if [[ "$(basename "${spec}")" == *Broken.tla ]]; then
-  is_broken=1
+is_negative=0
+if [[ "${spec}" == */registered-negative/* ]]; then
+  is_negative=1
 fi
 is_baseline=0
 if [[ "${spec}" == */positive-baselines/* ]]; then
   is_baseline=1
 fi
 
-if [[ "${is_broken}" -eq 0 && "${is_baseline}" -eq 1 && "${FAKE_BASELINE_OUTCOME:-noerror}" == "noerror" ]]; then
+if [[ "${is_negative}" -eq 0 && "${is_baseline}" -eq 1 && "${FAKE_BASELINE_OUTCOME:-noerror}" == "noerror" ]]; then
   printf '%s\n' "The outcome is: NoError"
   printf '%s\n' "Checker reports no error up to computation length ${length}"
   exit 0
 fi
 
-if [[ "${is_broken}" -eq 0 && "${is_baseline}" -eq 0 && "${FAKE_MUTANT_OUTCOME:-error}" == "noerror" ]]; then
+if [[ "${is_negative}" -eq 0 && "${is_baseline}" -eq 0 && "${FAKE_MUTANT_OUTCOME:-error}" == "noerror" ]]; then
   printf '%s\n' "The outcome is: NoError"
   printf '%s\n' "Checker reports no error up to computation length ${length}"
   exit 0
 fi
 
-if [[ "${is_broken}" -eq 0 && "${is_baseline}" -eq 0 && "${FAKE_MUTANT_OUTCOME:-error}" == "unviable" ]]; then
+if [[ "${is_negative}" -eq 0 && "${is_baseline}" -eq 0 && "${FAKE_MUTANT_OUTCOME:-error}" == "unviable" ]]; then
   printf '%s\n' "Typing error: replacement changed the expression type"
   exit 1
 fi
