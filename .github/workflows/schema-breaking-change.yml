@@ -22,6 +22,7 @@ name: schema-breaking-change
 on:
   pull_request:
     paths:
+      - '.github/workflows/schema-breaking-change.yml'
       - 'spec/schemas/**/*.json'
 
 permissions:

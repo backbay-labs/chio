@@ -3,6 +3,7 @@ name: Chio Pheromone Transit
 on:
   pull_request:
     paths:
+      - ".github/workflows/chio-pheromone-transit.yml"
       - "crates/trust/chio-pheromone/**"
       - "crates/trust/chio-federation/src/pheromone_gossip.rs"
       - "crates/trust/chio-federation/tests/pheromone_gossip.rs"
@@ -12,7 +13,6 @@ on:
       - "spec/schemas/registry.json"
       - "ci-gates/pheromone.toml"
       - "xtask/**"
-      - ".github/workflows/chio-pheromone-transit.yml"
   push:
     branches:
       - main
