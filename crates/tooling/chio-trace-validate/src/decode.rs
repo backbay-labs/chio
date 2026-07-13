@@ -3,7 +3,7 @@ use chio_core_types::crypto::PublicKey;
 
 use crate::{SignedObservation, TraceError};
 
-const MAX_TRACE_BYTES: usize = 64 * 1024 * 1024;
+pub(crate) const MAX_TRACE_BYTES: usize = 64 * 1024 * 1024;
 const MAX_TRACE_EVENTS: usize = 500;
 
 #[derive(Debug, Clone)]
@@ -50,6 +50,7 @@ pub fn decode_observations(
     let mut runtime_event_count = None;
     let mut delegation_depth_limit = None;
     let mut source_sequences = std::collections::BTreeSet::new();
+    let mut previous_source_sequence = 0;
     for (index, line) in input[..input.len() - 1]
         .split(|byte| *byte == b'\n')
         .enumerate()
@@ -83,6 +84,12 @@ pub fn decode_observations(
         observation.verify(trusted_observer_keys).map_err(|error| {
             TraceError::InvalidInput(format!("observation line {line_number}: {error}"))
         })?;
+        if observation.body.source_sequence <= previous_source_sequence {
+            return Err(TraceError::InvalidInput(format!(
+                "observation line {line_number} is not in increasing runtime source order"
+            )));
+        }
+        previous_source_sequence = observation.body.source_sequence;
         match (
             &trace_id,
             trace_length,
@@ -154,8 +161,9 @@ pub fn decode_observations(
     let runtime_count = runtime_event_count.ok_or_else(|| {
         TraceError::InvalidInput("observation log has no runtime event count".to_string())
     })?;
-    let expected_runtime_sequences = (1..=runtime_count).collect::<std::collections::BTreeSet<_>>();
-    if source_sequences != expected_runtime_sequences {
+    let accounted_runtime_sequences = u64::try_from(source_sequences.len())
+        .map_err(|_| TraceError::InvalidInput("runtime callback count exceeds u64".to_string()))?;
+    if accounted_runtime_sequences != runtime_count {
         return Err(TraceError::InvalidInput(
             "observation log does not account for every runtime callback exactly once".to_string(),
         ));

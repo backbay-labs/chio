@@ -142,14 +142,23 @@ Lean cross-references (informational; the script does not enforce these):
 The trace lane consumes callbacks emitted synchronously by the real kernel at
 successful revocation commit, completed revocation admission, and receipt
 append boundaries. `RuntimeTraceRecorder` joins admission and append events by
-the signed request ID, accounts for every callback exactly once, derives the
-trace ID from canonical captured events plus caller context, and signs only a
-complete stream with a caller-pinned observer key. The authority key inside an
-envelope must match every projected receipt's kernel key. The generated full
-state ITF is the sole state source for both deterministic Apalache `check`
-evaluation and bounded prefix reachability. `ASSUME-TRACE-OBSERVER` remains the explicit
-boundary for callbacks omitted, reordered, or rewritten before the recorder
-can observe them and for mutation-free recorder deployment.
+the signed request ID, accounts for every kernel-assigned source sequence
+exactly once, restores causal order despite concurrent callback delivery,
+derives the trace ID from canonical captured events plus caller context, and
+signs only a complete stream with a caller-pinned observer key. Admission
+events preserve the full checked lineage and the exact revoked token or
+delegation ancestor. The signed schema checks lineage uniqueness, depth, source
+membership, and visible source ordering. It rejects a relevant revocation
+strictly between admission and receipt append because the current model combines
+those boundaries into one action. For a nonzero observed epoch, the projection
+uses that source as the effective TLA capability while the signed receipt
+retains the presented child. The authority key inside an envelope must match
+every projected receipt's kernel key. The generated full-state ITF is the sole
+state source for both deterministic
+Apalache `check` evaluation and bounded prefix reachability.
+`ASSUME-TRACE-OBSERVER` remains the explicit boundary for callbacks omitted or
+rewritten before the recorder can observe them and for mutation-free recorder
+deployment; delivery order is no longer assumed.
 
 | Property | Source | Rust path constrained | Assumption discharge | One-line description |
 | --- | --- | --- | --- | --- |

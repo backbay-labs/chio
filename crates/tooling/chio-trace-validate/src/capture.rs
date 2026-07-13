@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
 use chio_core_types::canonical::canonical_json_bytes;
@@ -41,25 +41,41 @@ enum CapturedEvent {
         admission_sequence: u64,
         request_id: String,
         capability_id: String,
+        revocation_subject_ids: Vec<String>,
+        revocation_source_id: Option<String>,
         delegation_depth: u32,
         revocation_admitted: bool,
-        observed_revoke_source: Option<u64>,
         receipt: Box<ChioReceipt>,
     },
+}
+
+impl CapturedEvent {
+    fn source_sequence(&self) -> u64 {
+        match self {
+            Self::Revoke {
+                source_sequence, ..
+            }
+            | Self::Evaluate {
+                source_sequence, ..
+            } => *source_sequence,
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
 struct Admission {
     source_sequence: u64,
     capability_id: String,
+    revocation_subject_ids: Vec<String>,
+    revoked_capability_id: Option<String>,
     delegation_depth: u32,
     admitted: bool,
-    observed_revoke_source: Option<u64>,
 }
 
 #[derive(Debug, Default)]
 struct RecorderState {
-    source_sequence: u64,
+    source_sequences: BTreeSet<u64>,
+    max_source_sequence: u64,
     delegation_depth_limit: Option<u32>,
     events: Vec<CapturedEvent>,
     pending_admissions: BTreeMap<String, Admission>,
@@ -137,12 +153,22 @@ impl RuntimeTraceRecorder {
                 "runtime trace contains no completed model events".to_string(),
             ));
         }
+        let accounted_source_sequences =
+            u64::try_from(state.source_sequences.len()).map_err(|_| {
+                TraceError::InvalidInput("runtime callback count exceeds u64".to_string())
+            })?;
+        if accounted_source_sequences != state.max_source_sequence {
+            return Err(TraceError::InvalidInput(
+                "runtime trace does not account for every callback exactly once".to_string(),
+            ));
+        }
         let delegation_depth_limit = state.delegation_depth_limit.ok_or_else(|| {
             TraceError::InvalidInput(
                 "runtime trace contains no kernel delegation depth limit".to_string(),
             )
         })?;
 
+        state.events.sort_by_key(CapturedEvent::source_sequence);
         let trace_length = u64::try_from(state.events.len())
             .map_err(|_| TraceError::InvalidInput("trace length exceeds u64".to_string()))?;
         let event_bytes = canonical_json_bytes(&(
@@ -153,6 +179,7 @@ impl RuntimeTraceRecorder {
         let context_hash = chio_core_types::sha256_hex(self.context.as_bytes());
         let event_hash = chio_core_types::sha256_hex(&event_bytes);
         let trace_id = format!("runtime:{context_hash}:{event_hash}");
+        let revoke_sources = state.revoke_sources.clone();
         let revocation_epoch_by_source = state
             .events
             .iter()
@@ -206,12 +233,68 @@ impl RuntimeTraceRecorder {
                     source_sequence,
                     admission_sequence,
                     request_id,
+                    capability_id: _,
+                    revocation_subject_ids,
+                    revocation_source_id,
                     delegation_depth,
                     revocation_admitted,
-                    observed_revoke_source,
                     receipt,
                     ..
                 } => {
+                    if *revocation_admitted {
+                        if let Some((interval_source_id, _)) = revocation_subject_ids
+                            .iter()
+                            .filter_map(|subject_id| {
+                                revoke_sources
+                                    .get(subject_id)
+                                    .copied()
+                                    .map(|source| (subject_id, source))
+                            })
+                            .find(|(_, source)| {
+                                *admission_sequence < *source && *source < *source_sequence
+                            })
+                        {
+                            return Err(TraceError::InvalidInput(format!(
+                                "revocation of {interval_source_id} occurred between admission and receipt append"
+                            )));
+                        }
+                    }
+                    let revocation_source_id = if *revocation_admitted {
+                        revocation_subject_ids
+                            .iter()
+                            .filter_map(|subject_id| {
+                                revoke_sources
+                                    .get(subject_id)
+                                    .copied()
+                                    .map(|source| (subject_id, source))
+                            })
+                            .filter(|(_, source)| *source < *admission_sequence)
+                            .min_by_key(|(_, source)| *source)
+                            .map(|(subject_id, _)| subject_id.clone())
+                    } else {
+                        revocation_source_id.clone()
+                    };
+                    if !*revocation_admitted && revocation_source_id.is_none() {
+                        return Err(TraceError::InvalidInput(format!(
+                            "rejected admission {request_id} has no exact revocation source"
+                        )));
+                    }
+                    let observed_revoke_source = revocation_source_id
+                        .as_ref()
+                        .map(|capability_id| {
+                            let source = revoke_sources.get(capability_id).copied().ok_or_else(|| {
+                                TraceError::InvalidInput(format!(
+                                    "admission refers to missing revoke callback for {capability_id}"
+                                ))
+                            })?;
+                            if source >= *admission_sequence {
+                                return Err(TraceError::InvalidInput(format!(
+                                    "revocation source for admission {request_id} does not precede admission"
+                                )));
+                            }
+                            Ok(source)
+                        })
+                        .transpose()?;
                     let seen_epoch = observed_revoke_source
                         .map(|source| {
                             revocation_epoch_by_source
@@ -242,12 +325,31 @@ impl RuntimeTraceRecorder {
                     } else {
                         *delegation_depth
                     };
+                    let mut revocation_subject_ids = revocation_subject_ids.clone();
+                    if self.mutation == RuntimeTraceMutation::DepthAboveLimit {
+                        let required_subjects = usize::try_from(delegation_depth)
+                            .ok()
+                            .and_then(|depth| depth.checked_add(1))
+                            .ok_or_else(|| {
+                                TraceError::InvalidInput(
+                                    "calibrated revocation subject count overflow".to_string(),
+                                )
+                            })?;
+                        while revocation_subject_ids.len() < required_subjects {
+                            revocation_subject_ids.push(format!(
+                                "trace-depth-subject-{}",
+                                revocation_subject_ids.len()
+                            ));
+                        }
+                    }
                     (
                         *source_sequence,
                         ObservationEvent::Evaluate {
                             receipt: receipt.clone(),
                             receipt_time,
                             seen_epoch,
+                            revocation_subject_ids,
+                            revocation_source_id,
                             request_id: request_id.clone(),
                             admission_sequence: *admission_sequence,
                             delegation_depth,
@@ -262,7 +364,7 @@ impl RuntimeTraceRecorder {
                     trace_id: trace_id.clone(),
                     trace_length,
                     sequence,
-                    runtime_event_count: state.source_sequence,
+                    runtime_event_count: state.max_source_sequence,
                     source_sequence,
                     delegation_depth_limit,
                     authority_key: self.authority_key.clone(),
@@ -278,6 +380,22 @@ impl RuntimeTraceRecorder {
         if state.error.is_none() {
             state.error = Some(error.into());
         }
+    }
+
+    fn record_source_sequence(state: &mut RecorderState, source_sequence: u64) -> bool {
+        if source_sequence == 0 {
+            Self::record_error(state, "runtime callback source sequence must be positive");
+            return false;
+        }
+        if !state.source_sequences.insert(source_sequence) {
+            Self::record_error(
+                state,
+                format!("duplicate runtime callback source sequence {source_sequence}"),
+            );
+            return false;
+        }
+        state.max_source_sequence = state.max_source_sequence.max(source_sequence);
+        true
     }
 
     fn record_depth_limit(state: &mut RecorderState, limit: u32) {
@@ -304,20 +422,27 @@ impl RuntimeTraceObserver for RuntimeTraceRecorder {
         let Ok(mut state) = self.state.lock() else {
             return;
         };
-        state.source_sequence = match state.source_sequence.checked_add(1) {
-            Some(sequence) => sequence,
-            None => {
-                Self::record_error(&mut state, "runtime callback sequence overflow");
-                return;
-            }
-        };
-        let source_sequence = state.source_sequence;
         if state.finished {
             Self::record_error(&mut state, "runtime callback arrived after finalization");
             return;
         }
+        let source_sequence = match &event {
+            RuntimeTraceEvent::RevocationCommitted {
+                source_sequence, ..
+            }
+            | RuntimeTraceEvent::RevocationAdmission {
+                source_sequence, ..
+            }
+            | RuntimeTraceEvent::ReceiptAppended {
+                source_sequence, ..
+            } => *source_sequence,
+        };
+        if !Self::record_source_sequence(&mut state, source_sequence) {
+            return;
+        }
         match event {
             RuntimeTraceEvent::RevocationCommitted {
+                source_sequence: _,
                 capability_id,
                 newly_revoked,
                 delegation_depth_limit,
@@ -347,19 +472,61 @@ impl RuntimeTraceObserver for RuntimeTraceRecorder {
                 });
             }
             RuntimeTraceEvent::RevocationAdmission {
+                source_sequence: _,
                 request_id,
                 capability_id,
+                revocation_subject_ids,
+                revoked_capability_id,
                 delegation_depth,
                 delegation_depth_limit,
                 admitted,
             } => {
                 Self::record_depth_limit(&mut state, delegation_depth_limit);
-                let observed_revoke_source = state.revoke_sources.get(&capability_id).copied();
-                if !admitted && observed_revoke_source.is_none() {
+                let expected_subjects = usize::try_from(delegation_depth)
+                    .ok()
+                    .and_then(|depth| depth.checked_add(1));
+                if revocation_subject_ids.first() != Some(&capability_id)
+                    || expected_subjects != Some(revocation_subject_ids.len())
+                {
                     Self::record_error(
                         &mut state,
                         format!(
-                            "rejected admission {request_id} has no observed revoke callback for {capability_id}"
+                            "revocation subjects do not match admission lineage for {request_id}"
+                        ),
+                    );
+                    return;
+                }
+                let unique_subjects = revocation_subject_ids.iter().collect::<BTreeSet<_>>();
+                if unique_subjects.len() != revocation_subject_ids.len() {
+                    Self::record_error(
+                        &mut state,
+                        format!("revocation subjects repeat for admission {request_id}"),
+                    );
+                    return;
+                }
+                if revoked_capability_id
+                    .as_ref()
+                    .is_some_and(|source_id| !unique_subjects.contains(source_id))
+                {
+                    Self::record_error(
+                        &mut state,
+                        format!("revocation source is outside admission lineage for {request_id}"),
+                    );
+                    return;
+                }
+                if !admitted && revoked_capability_id.is_none() {
+                    Self::record_error(
+                        &mut state,
+                        format!(
+                            "rejected admission {request_id} has no exact revocation source for {capability_id}"
+                        ),
+                    );
+                }
+                if admitted && revoked_capability_id.is_some() {
+                    Self::record_error(
+                        &mut state,
+                        format!(
+                            "admitted revocation callback has a denial source for {request_id}"
                         ),
                     );
                 }
@@ -370,9 +537,10 @@ impl RuntimeTraceObserver for RuntimeTraceRecorder {
                         Admission {
                             source_sequence,
                             capability_id,
+                            revocation_subject_ids,
+                            revoked_capability_id,
                             delegation_depth,
                             admitted,
-                            observed_revoke_source,
                         },
                     )
                     .is_some()
@@ -383,7 +551,10 @@ impl RuntimeTraceObserver for RuntimeTraceRecorder {
                     );
                 }
             }
-            RuntimeTraceEvent::ReceiptAppended { receipt } => {
+            RuntimeTraceEvent::ReceiptAppended {
+                source_sequence: _,
+                receipt,
+            } => {
                 let Some(request_id) = receipt_request_id(&receipt) else {
                     Self::record_error(
                         &mut state,
@@ -413,9 +584,10 @@ impl RuntimeTraceObserver for RuntimeTraceRecorder {
                     admission_sequence: admission.source_sequence,
                     request_id: request_id.to_string(),
                     capability_id: admission.capability_id,
+                    revocation_subject_ids: admission.revocation_subject_ids,
+                    revocation_source_id: admission.revoked_capability_id,
                     delegation_depth: admission.delegation_depth,
                     revocation_admitted: admission.admitted,
-                    observed_revoke_source: admission.observed_revoke_source,
                     receipt,
                 });
             }

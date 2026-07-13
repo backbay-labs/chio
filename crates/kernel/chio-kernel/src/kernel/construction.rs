@@ -120,6 +120,31 @@ impl ChioKernel {
         f(self.revocation_store.as_ref())
     }
 
+    pub(crate) fn lock_runtime_trace_transition(
+        &self,
+    ) -> Result<Option<std::sync::MutexGuard<'_, ()>>, KernelError> {
+        if self.runtime_trace_observer.is_none() {
+            return Ok(None);
+        }
+        self.runtime_trace_transition_lock
+            .lock()
+            .map(Some)
+            .map_err(|_| {
+                KernelError::Internal("runtime trace transition lock poisoned".to_string())
+            })
+    }
+
+    pub(crate) fn allocate_runtime_trace_source_sequence(&self) -> Result<u64, KernelError> {
+        self.runtime_trace_sequence
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+                current.checked_add(1)
+            })
+            .map(|previous| previous + 1)
+            .map_err(|_| {
+                KernelError::Internal("runtime trace source sequence overflow".to_string())
+            })
+    }
+
     pub(crate) fn with_receipt_store<R>(
         &self,
         f: impl FnOnce(&dyn ReceiptStore) -> Result<R, KernelError>,
@@ -193,6 +218,8 @@ impl ChioKernel {
             price_oracle: None,
             runtime_admission_hook: None,
             runtime_trace_observer: None,
+            runtime_trace_transition_lock: Mutex::new(()),
+            runtime_trace_sequence: AtomicU64::new(0),
             attestation_trust_policy: None,
             capability_crypto_floor: KernelCryptoFloor::AllowClassical,
             checkpoint_batch_size,
@@ -1187,12 +1214,14 @@ impl ChioKernel {
 
     /// Install an observer for implementation-trace evidence.
     pub fn set_runtime_trace_observer(&mut self, observer: Arc<dyn RuntimeTraceObserver>) {
+        self.runtime_trace_sequence.store(0, Ordering::SeqCst);
         self.runtime_trace_observer = Some(observer);
     }
 
     /// Remove the implementation-trace observer.
     pub fn clear_runtime_trace_observer(&mut self) {
         self.runtime_trace_observer = None;
+        self.runtime_trace_sequence.store(0, Ordering::SeqCst);
     }
 
     /// Register a tool server connection.

@@ -11,8 +11,11 @@ The receipt trace lane observes real kernel execution at three boundaries:
 successful revocation commit, completed tool-call revocation admission, and
 receipt append. A synchronous `RuntimeTraceObserver` receives those events.
 `RuntimeTraceRecorder` joins admission and receipt callbacks by the signed
-request ID, accounts for every callback exactly once, and refuses to sign an
-incomplete or ambiguous stream.
+request ID, accounts for every kernel-assigned causal sequence exactly once,
+restores causal order across concurrent callback delivery, and refuses to sign
+an incomplete or ambiguous stream. Admission events preserve the exact revoked
+token or delegation ancestor rather than inferring it from the presented ID,
+and bind every presented or ancestral capability ID checked at admission.
 
 The validator accepts canonical NDJSON signed by a caller-pinned observer,
 reverifies every embedded receipt and action hash, and emits a full-state ITF
@@ -26,14 +29,19 @@ negative reports.
 
 `ASSUME-TRACE-OBSERVER` states that an installed synchronous observer receives
 every successful revocation commit, completed revocation admission, and
-receipt append exactly once and in callback order before finalization. It also
-requires mutation-free recording and callback fields that are not rewritten
-before recording. The kernel supplies its depth limit in the callbacks. The
-recorder detects inconsistent depth limits, missing admission-to-receipt joins,
-duplicate admissions, duplicate effective revocations, unaccounted callbacks,
-and callbacks after finalization. Events lost before the observer receives them remain an audited
-assumption. The assumption does not assert that an observed kernel decision is
-safe.
+receipt append exactly once before finalization. It also requires mutation-free
+recording and kernel-assigned source sequences, exact revocation sources, and
+other callback fields that are not rewritten before recording. Delivery order
+is not assumed: the recorder sorts a complete contiguous source sequence. The
+kernel supplies its depth limit in the callbacks. The recorder detects
+inconsistent depth limits, missing admission-to-receipt joins, duplicate
+admissions, duplicate effective revocations, unaccounted callbacks, unmatched
+or noncausal revocation sources, relevant revocations between admission and
+receipt append, and callbacks after finalization. The signed subject list must
+match the presented capability and delegation depth, contain unique IDs, and
+contain any nonzero revocation source. Events lost before the observer receives
+them remain an audited assumption. The assumption does not assert that an
+observed kernel decision is safe.
 
 Observation signatures depend on `ASSUME-ED25519`; trace IDs and artifact
 bindings depend on `ASSUME-SHA256`; canonical signed bytes depend on
@@ -47,8 +55,11 @@ capability, registers a real tool server, and executes this sequence through
 
 1. A delegated tool call is admitted, dispatched, and appended with an allow
    receipt.
-2. The capability is revoked through the configured revocation store.
-3. A second tool call is rejected and appended with a deny receipt.
+2. The capability's delegation ancestor is revoked through the configured
+   revocation store.
+3. The same child is presented again, rejected by the ancestor cut, and
+   appended with a deny receipt that retains the child ID while the observation
+   records the ancestor ID.
 
 The deterministic nightly observer key is checked against a separate in-tree
 pin. The trace ID hashes caller context, canonical captured events, the signed
@@ -68,6 +79,17 @@ explicit `Attenuate` states. Propagation produces an explicit hidden state when
 an observed epoch requires it. Visible metadata carries model sequence,
 runtime callback sequence, admission sequence, authority, capability, verdict,
 receipt time, and epoch.
+
+The current TLA abstraction combines revocation admission and receipt append in
+one `Evaluate` action. A checked subject revoked strictly between those runtime
+boundaries is therefore not projected as though the earlier admission had seen
+it; recorder finalization fails closed instead.
+
+For an evaluation with a nonzero observed epoch, the projection interns the
+exact revocation source as the effective model capability. The signed
+observation still contains the presented child in the receipt. This explicit
+ancestor-cut abstraction lets the single-subject TLA transition represent a
+real child denial without erasing either runtime identity.
 
 `TraceEvaluateRevocationPropagation.tla` evaluates the four production-model
 invariants through a deterministic pinned Apalache `check` replay, not
@@ -130,6 +152,9 @@ validation as `not_run` and contain no generated trace artifact hashes.
 
 - The runtime recorder is installed on the real revoke, admission, and receipt
   append paths and fails closed on incomplete streams.
+- Kernel source sequences tolerate concurrent callback reordering, and the
+  positive capture preserves an ancestor revocation alongside the presented
+  child receipt.
 - The full-state ITF is the sole state input to invariant evaluation and
   reachability.
 - All four invariant witness classes are nonzero.

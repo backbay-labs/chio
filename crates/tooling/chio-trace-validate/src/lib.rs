@@ -234,8 +234,16 @@ fn read_stable_trace_file(path: &Path) -> Result<Vec<u8>, TraceError> {
             path.display()
         )));
     }
+    let max_trace_bytes = u64::try_from(decode::MAX_TRACE_BYTES)
+        .map_err(|_| TraceError::InvalidInput("trace byte limit exceeds u64".to_string()))?;
+    let read_limit = max_trace_bytes
+        .checked_add(1)
+        .ok_or_else(|| TraceError::InvalidInput("trace read limit overflow".to_string()))?;
+    let oversized_metadata = before.len() > max_trace_bytes;
     let mut bytes = Vec::new();
-    file.read_to_end(&mut bytes)?;
+    Read::by_ref(&mut file)
+        .take(read_limit)
+        .read_to_end(&mut bytes)?;
     let after = file.metadata()?;
     let path_after = fs::symlink_metadata(path)?;
     if path_after.file_type().is_symlink()
@@ -249,6 +257,12 @@ fn read_stable_trace_file(path: &Path) -> Result<Vec<u8>, TraceError> {
         )));
     }
     reject_symlink_components(path)?;
+    if oversized_metadata || bytes.len() > decode::MAX_TRACE_BYTES {
+        return Err(TraceError::InvalidInput(format!(
+            "observation log exceeds {} bytes",
+            decode::MAX_TRACE_BYTES
+        )));
+    }
     Ok(bytes)
 }
 
@@ -270,4 +284,27 @@ fn same_file_identity(left: &fs::Metadata, right: &fs::Metadata) -> bool {
     left.len() == right.len()
         && left.modified().ok() == right.modified().ok()
         && left.created().ok() == right.created().ok()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stable_trace_read_is_bounded_by_the_decoder_limit() -> Result<(), TraceError> {
+        let directory = tempfile::tempdir()?;
+        let path = directory.path().join("oversized.ndjson");
+        let file = fs::File::create(&path)?;
+        file.set_len(
+            u64::try_from(decode::MAX_TRACE_BYTES).map_err(|_| {
+                TraceError::InvalidInput("trace byte limit exceeds u64".to_string())
+            })? + 1,
+        )?;
+
+        let error = read_stable_trace_file(&path)
+            .err()
+            .ok_or_else(|| TraceError::InvalidInput("oversized trace was accepted".to_string()))?;
+        assert!(error.to_string().contains("observation log exceeds"));
+        Ok(())
+    }
 }

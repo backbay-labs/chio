@@ -40,11 +40,11 @@ impl TraceFixture {
 }
 
 pub fn good_trace() -> Result<TraceFixture, TraceError> {
-    trace(false, false, "revocation-good-fixture")
+    trace(false, "cap-trace-parent", "revocation-good-fixture")
 }
 
 pub fn bad_trace() -> Result<TraceFixture, TraceError> {
-    trace(true, false, "allow-after-revoke-fixture")
+    trace(true, "cap-trace-child", "allow-after-revoke-fixture")
 }
 
 pub fn invalid_action_hash_trace() -> Result<TraceFixture, TraceError> {
@@ -70,6 +70,8 @@ pub fn invalid_action_hash_trace() -> Result<TraceFixture, TraceError> {
                 )?),
                 receipt_time: 1,
                 seen_epoch: 0,
+                revocation_subject_ids: vec!["cap-trace-1".to_string()],
+                revocation_source_id: None,
                 request_id: "trace-request-1".to_string(),
                 admission_sequence: 1,
                 delegation_depth: 0,
@@ -86,17 +88,12 @@ pub fn invalid_action_hash_trace() -> Result<TraceFixture, TraceError> {
 
 fn trace(
     allow_after_revoke: bool,
-    requires_propagation: bool,
+    revoked_capability_id: &str,
     trace_id: &str,
 ) -> Result<TraceFixture, TraceError> {
     let observer = Keypair::from_seed(&[41; 32]);
     let authority = Keypair::from_seed(&[43; 32]);
-    let revoking_authority = if requires_propagation {
-        Keypair::from_seed(&[47; 32])
-    } else {
-        Keypair::from_seed(&[43; 32])
-    };
-    let capability_id = "cap-trace-1";
+    let capability_id = "cap-trace-child";
     let mut observations = Vec::new();
     observations.push(SignedObservation::sign(
         ObservationBody {
@@ -118,6 +115,11 @@ fn trace(
                 )?),
                 receipt_time: 1,
                 seen_epoch: 0,
+                revocation_subject_ids: vec![
+                    capability_id.to_string(),
+                    "cap-trace-parent".to_string(),
+                ],
+                revocation_source_id: None,
                 request_id: "trace-request-1".to_string(),
                 admission_sequence: 1,
                 delegation_depth: 1,
@@ -135,9 +137,9 @@ fn trace(
             runtime_event_count: 5,
             source_sequence: 3,
             delegation_depth_limit: 4,
-            authority_key: revoking_authority.public_key(),
+            authority_key: authority.public_key(),
             event: ObservationEvent::Revoke {
-                capability_id: capability_id.to_string(),
+                capability_id: revoked_capability_id.to_string(),
                 epoch: 2,
             },
         },
@@ -170,6 +172,11 @@ fn trace(
                 )?),
                 receipt_time: 3,
                 seen_epoch: 2,
+                revocation_subject_ids: vec![
+                    capability_id.to_string(),
+                    "cap-trace-parent".to_string(),
+                ],
+                revocation_source_id: Some(revoked_capability_id.to_string()),
                 request_id: "trace-request-3".to_string(),
                 admission_sequence: 4,
                 delegation_depth: 1,
@@ -185,7 +192,7 @@ fn trace(
     })
 }
 
-fn receipt(
+pub fn receipt(
     authority: &Keypair,
     capability_id: &str,
     decision: Decision,

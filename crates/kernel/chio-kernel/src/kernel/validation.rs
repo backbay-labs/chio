@@ -49,15 +49,23 @@ impl ChioKernel {
     /// revocation store).
     pub fn revoke_capability(&self, capability_id: &CapabilityId) -> Result<(), KernelError> {
         info!(capability_id = %capability_id, "revoking capability");
-        self.with_revocation_store(|store| {
-            let newly_revoked = store.revoke(capability_id)?;
-            self.observe_runtime_trace(RuntimeTraceEvent::RevocationCommitted {
+        let trace_transition = self.lock_runtime_trace_transition()?;
+        let newly_revoked = self.with_revocation_store(|store| Ok(store.revoke(capability_id)?))?;
+        let trace_event = if trace_transition.is_some() {
+            Some(RuntimeTraceEvent::RevocationCommitted {
+                source_sequence: self.allocate_runtime_trace_source_sequence()?,
                 capability_id: capability_id.clone(),
                 newly_revoked,
                 delegation_depth_limit: self.config.max_delegation_depth,
-            });
-            Ok(())
-        })
+            })
+        } else {
+            None
+        };
+        drop(trace_transition);
+        if let Some(event) = trace_event {
+            self.observe_runtime_trace(event);
+        }
+        Ok(())
     }
 
     /// Read-only access to the receipt log.
@@ -517,21 +525,54 @@ impl ChioKernel {
         &self,
         request: &ToolCallRequest,
     ) -> Result<(), KernelError> {
+        let trace_transition = self.lock_runtime_trace_transition()?;
         let result = self.check_revocation(&request.capability);
-        self.observe_runtime_trace(RuntimeTraceEvent::RevocationAdmission {
-            request_id: request.request_id.clone(),
-            capability_id: request.capability.id.clone(),
-            delegation_depth: u32::try_from(request.capability.delegation_chain.len())
-                .unwrap_or(u32::MAX),
-            delegation_depth_limit: self.config.max_delegation_depth,
-            admitted: result.is_ok(),
-        });
+        let revoked_capability_id = match &result {
+            Err(KernelError::CapabilityRevoked(capability_id))
+            | Err(KernelError::DelegationChainRevoked(capability_id)) => {
+                Some(capability_id.clone())
+            }
+            _ => None,
+        };
+        let trace_event = if trace_transition.is_some() {
+            let revocation_subject_ids = std::iter::once(request.capability.id.clone())
+                .chain(
+                    request
+                        .capability
+                        .delegation_chain
+                        .iter()
+                        .map(|link| link.capability_id.clone()),
+                )
+                .collect();
+            Some(RuntimeTraceEvent::RevocationAdmission {
+                source_sequence: self.allocate_runtime_trace_source_sequence()?,
+                request_id: request.request_id.clone(),
+                capability_id: request.capability.id.clone(),
+                revocation_subject_ids,
+                revoked_capability_id,
+                delegation_depth: u32::try_from(request.capability.delegation_chain.len())
+                    .unwrap_or(u32::MAX),
+                delegation_depth_limit: self.config.max_delegation_depth,
+                admitted: result.is_ok(),
+            })
+        } else {
+            None
+        };
+        drop(trace_transition);
+        if let Some(event) = trace_event {
+            self.observe_runtime_trace(event);
+        }
         result
     }
 
     pub(crate) fn observe_runtime_trace(&self, event: RuntimeTraceEvent) {
         if let Some(observer) = &self.runtime_trace_observer {
-            observer.observe(event);
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                observer.observe(event);
+            }));
+            if result.is_err() {
+                warn!("runtime trace observer panicked");
+            }
         }
     }
 

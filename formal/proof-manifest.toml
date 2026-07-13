@@ -211,7 +211,7 @@ excluded_surfaces = [
   "Reservation-ledger refinement from the pure ledger_apply model to concrete BudgetStore mutations; runtime debug replay and stateful tests are evidence, not a proof of refinement",
   "Symlink resolution and OS filesystem root enforcement beyond Chio's normalized path-prefix fail-closed checks",
   "Cross-row receipt and budget crash recovery, ordering, and conservation until implementation trace validation and crash-reopen gates establish refinement",
-  "Runtime trace callbacks omitted, reordered, or rewritten before delivery to the installed synchronous observer and calibration-free recorder deployment, as recorded by ASSUME-TRACE-OBSERVER",
+  "Runtime trace callbacks omitted or rewritten before delivery to the installed synchronous observer and calibration-free recorder deployment, as recorded by ASSUME-TRACE-OBSERVER; concurrent delivery reordering is reconciled from kernel-assigned source sequences",
   "Treaty PredicateLang parsing, canonical hashing, signature verification, store lookup, and completeness outside its explicit AdmissionView decision domain",
   "float-valued JSON leaves in action, metadata, or other compound ChioReceiptIdInput fields are outside the mechanized canonical JSON domain; their production rendering remains covered by frozen vectors and ASSUME-CANONICAL-JSON",
   "refinement from the mechanized canonical semantic projection to crates/core/chio-core-types/src/canonical.rs beyond the checked integer-domain fixtures and differential tests",
@@ -570,9 +570,9 @@ model_kind = "tla"
 relationship = "abstraction_anchor"
 rust_source = "crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs"
 rust_symbols = ["ChioKernel::record_chio_receipt"]
-normalized_sha256 = "dd7e6194b7499fa286487f8c26c0b8dcceb1d22971cdf0694bedc71edd077ebb"
+normalized_sha256 = "3561734d54eae83c3a92fb1866deba36cb73c27c35074f29e8e653c698f2fe4e"
 symbol_sha256 = [
-  { symbol = "ChioKernel::record_chio_receipt", sha256 = "ef135604358cfad5bfaa440ae7af11f4e70311a63d36a3d5185f158c33a585b4" },
+  { symbol = "ChioKernel::record_chio_receipt", sha256 = "716743623212f8dd95e0d8d38e198280e9343277ff15850efae4dec09fd3dab4" },
 ]
 
 [[mirror]]
@@ -675,9 +675,9 @@ model_kind = "tla"
 relationship = "abstraction_anchor"
 rust_source = "crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs"
 rust_symbols = ["ChioKernel::record_chio_receipt"]
-normalized_sha256 = "dd7e6194b7499fa286487f8c26c0b8dcceb1d22971cdf0694bedc71edd077ebb"
+normalized_sha256 = "3561734d54eae83c3a92fb1866deba36cb73c27c35074f29e8e653c698f2fe4e"
 symbol_sha256 = [
-  { symbol = "ChioKernel::record_chio_receipt", sha256 = "ef135604358cfad5bfaa440ae7af11f4e70311a63d36a3d5185f158c33a585b4" },
+  { symbol = "ChioKernel::record_chio_receipt", sha256 = "716743623212f8dd95e0d8d38e198280e9343277ff15850efae4dec09fd3dab4" },
 ]
 
 [[mirror]]
@@ -758,10 +758,10 @@ model_kind = "tla"
 relationship = "abstraction_anchor"
 rust_source = "crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs"
 rust_symbols = ["ChioKernel::record_chio_receipt_with_federation", "ChioKernel::record_chio_receipt"]
-normalized_sha256 = "11fcfc845cdd8297b9212d81b7d6b815f974590fa879aa79786673a34213b544"
+normalized_sha256 = "faa3a0e86f4f8bbc3b651e48ab02cf3d7f75c24130cab75ea3742820f4fe0ee0"
 symbol_sha256 = [
   { symbol = "ChioKernel::record_chio_receipt_with_federation", sha256 = "a4eef10564905a49ae8bd9583ab7f1a88cb91a192ec010218cab84832945ed97" },
-  { symbol = "ChioKernel::record_chio_receipt", sha256 = "ef135604358cfad5bfaa440ae7af11f4e70311a63d36a3d5185f158c33a585b4" },
+  { symbol = "ChioKernel::record_chio_receipt", sha256 = "716743623212f8dd95e0d8d38e198280e9343277ff15850efae4dec09fd3dab4" },
 ]
 
 [[mirror]]

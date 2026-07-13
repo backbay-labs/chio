@@ -22,7 +22,7 @@ fn projection_is_deterministic_and_counts_non_vacuous_actions() -> Result<(), Tr
     );
     assert_eq!(first.events().len(), 3);
     assert_eq!(first.authority_count(), 1);
-    assert_eq!(first.capability_count(), 1);
+    assert_eq!(first.capability_count(), 2);
 
     let itf: serde_json::Value = serde_json::from_slice(first.itf_json())?;
     let var_types = itf

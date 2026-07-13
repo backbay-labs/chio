@@ -36,6 +36,28 @@ fn replay_manifest_corpus_exercises_real_runtime_trace_boundaries() {
             capture_runtime_revocation_trace(&context).expect("capture runtime trace");
         let decoded = chio_trace_validate::decode_observations(&trace, &[observer_key])
             .expect("decode captured trace");
+        let chio_trace_validate::ObservationEvent::Revoke {
+            capability_id: revoked_ancestor,
+            ..
+        } = &decoded.observations()[1].body.event
+        else {
+            panic!("second observation is not a revocation");
+        };
+        let chio_trace_validate::ObservationEvent::Evaluate {
+            receipt,
+            revocation_subject_ids,
+            revocation_source_id,
+            ..
+        } = &decoded.observations()[2].body.event
+        else {
+            panic!("third observation is not an evaluation");
+        };
+        assert_ne!(&receipt.capability_id, revoked_ancestor);
+        assert_eq!(
+            revocation_subject_ids,
+            &[receipt.capability_id.clone(), revoked_ancestor.clone()]
+        );
+        assert_eq!(revocation_source_id.as_ref(), Some(revoked_ancestor));
         let projection = chio_trace_validate::project_revocation_trace(&decoded)
             .expect("project captured trace");
         assert_eq!(projection.events().len(), 3);

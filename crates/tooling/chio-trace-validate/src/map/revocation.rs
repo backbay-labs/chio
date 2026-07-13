@@ -171,6 +171,7 @@ pub fn project_revocation_trace(
                 receipt,
                 receipt_time,
                 seen_epoch,
+                revocation_source_id,
                 admission_sequence,
                 delegation_depth,
                 ..
@@ -213,16 +214,26 @@ pub fn project_revocation_trace(
                         )))
                     }
                 };
-                if *seen_epoch > 0
-                    && !known_epochs
-                        .get(&receipt.capability_id)
+                let effective_capability_id = if *seen_epoch > 0 {
+                    let source_id = revocation_source_id.as_deref().ok_or_else(|| {
+                        TraceError::InvalidInput(format!(
+                            "evaluation event {} omits its revocation source",
+                            observation.body.sequence
+                        ))
+                    })?;
+                    if !known_epochs
+                        .get(source_id)
                         .is_some_and(|epochs| epochs.contains(seen_epoch))
-                {
-                    return Err(TraceError::InvalidInput(format!(
-                        "evaluation event {} cites unseen revocation epoch {}",
-                        observation.body.sequence, seen_epoch
-                    )));
-                }
+                    {
+                        return Err(TraceError::InvalidInput(format!(
+                            "evaluation event {} cites unseen revocation epoch {} for {}",
+                            observation.body.sequence, seen_epoch, source_id
+                        )));
+                    }
+                    source_id
+                } else {
+                    receipt.capability_id.as_str()
+                };
                 coverage.evaluate = coverage.evaluate.checked_add(1).ok_or_else(|| {
                     TraceError::InvalidInput("evaluate counter overflow".to_string())
                 })?;
@@ -259,7 +270,7 @@ pub fn project_revocation_trace(
                     TraceError::InvalidInput("authority receipt counter overflow".to_string())
                 })?;
                 (
-                    receipt.capability_id.as_str(),
+                    effective_capability_id,
                     ProjectedAction::Evaluate {
                         receipt_id: receipt.id.clone(),
                         verdict: verdict.to_string(),

@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::TraceError;
 
-pub const TRACE_OBSERVATION_SCHEMA: &str = "chio.trace-observation.v2";
+pub const TRACE_OBSERVATION_SCHEMA: &str = "chio.trace-observation.v3";
 const MAX_IDENTIFIER_BYTES: usize = 256;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,6 +32,8 @@ pub enum ObservationEvent {
         receipt: Box<ChioReceipt>,
         receipt_time: u64,
         seen_epoch: u64,
+        revocation_subject_ids: Vec<String>,
+        revocation_source_id: Option<String>,
         request_id: String,
         admission_sequence: u64,
         delegation_depth: u32,
@@ -103,6 +105,9 @@ impl ObservationBody {
             ObservationEvent::Evaluate {
                 receipt,
                 receipt_time,
+                seen_epoch,
+                revocation_subject_ids,
+                revocation_source_id,
                 request_id,
                 admission_sequence,
                 delegation_depth,
@@ -111,6 +116,46 @@ impl ObservationBody {
             } => {
                 validate_identifier(&receipt.capability_id, "receipt capability id")?;
                 validate_identifier(request_id, "request id")?;
+                let expected_subjects = usize::try_from(*delegation_depth)
+                    .ok()
+                    .and_then(|depth| depth.checked_add(1))
+                    .ok_or_else(|| {
+                        TraceError::InvalidInput(
+                            "evaluation revocation subject count overflow".to_string(),
+                        )
+                    })?;
+                if revocation_subject_ids.len() != expected_subjects
+                    || revocation_subject_ids.first() != Some(&receipt.capability_id)
+                {
+                    return Err(TraceError::InvalidInput(
+                        "evaluation revocation subjects do not match the presented capability and delegation depth"
+                            .to_string(),
+                    ));
+                }
+                let mut unique_subjects = std::collections::BTreeSet::new();
+                for capability_id in revocation_subject_ids {
+                    validate_identifier(capability_id, "revocation subject id")?;
+                    if !unique_subjects.insert(capability_id) {
+                        return Err(TraceError::InvalidInput(
+                            "evaluation revocation subjects must be unique".to_string(),
+                        ));
+                    }
+                }
+                if let Some(capability_id) = revocation_source_id {
+                    validate_identifier(capability_id, "revocation source id")?;
+                    if !unique_subjects.contains(capability_id) {
+                        return Err(TraceError::InvalidInput(
+                            "evaluation revocation source is outside the checked lineage"
+                                .to_string(),
+                        ));
+                    }
+                }
+                if (*seen_epoch > 0) != revocation_source_id.is_some() {
+                    return Err(TraceError::InvalidInput(
+                        "evaluation revocation source must be present exactly when its seen epoch is nonzero"
+                            .to_string(),
+                    ));
+                }
                 if *receipt_time == 0 {
                     return Err(TraceError::InvalidInput(
                         "evaluation receipt time must be positive".to_string(),
@@ -132,6 +177,12 @@ impl ObservationBody {
                 {
                     return Err(TraceError::InvalidInput(
                         "evaluation admission sequence must precede its receipt append".to_string(),
+                    ));
+                }
+                if !*revocation_admitted && revocation_source_id.is_none() {
+                    return Err(TraceError::InvalidInput(
+                        "a rejected revocation admission must identify its exact revocation source"
+                            .to_string(),
                     ));
                 }
                 if !*revocation_admitted

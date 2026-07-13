@@ -336,6 +336,7 @@ pub fn run_native_conformance_suite(
                 "native-revocation-visibility-bypass",
                 true,
                 false,
+                TraceRevocationTarget::PresentedCapability,
                 RuntimeTraceMutation::None,
             )?;
             if negative_key != trusted_key {
@@ -361,8 +362,13 @@ pub fn run_native_conformance_suite(
             ),
         ] {
             let output = output.ok_or(NativeSuiteError::IncompleteTraceOutput)?;
-            let (negative_trace, negative_key) =
-                capture_runtime_revocation_trace_with_store(context, false, false, mutation)?;
+            let (negative_trace, negative_key) = capture_runtime_revocation_trace_with_store(
+                context,
+                false,
+                false,
+                TraceRevocationTarget::DelegationAncestor,
+                mutation,
+            )?;
             if negative_key != trusted_key {
                 return Err(NativeSuiteError::TraceObserverKeyPinMismatch);
             }
@@ -767,16 +773,29 @@ fn capture_native_revocation_trace(
     capture_runtime_revocation_trace("native-revocation-conformance")
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum TraceRevocationTarget {
+    PresentedCapability,
+    DelegationAncestor,
+}
+
 pub fn capture_runtime_revocation_trace(
     context: &str,
 ) -> Result<(Vec<u8>, chio_core::crypto::PublicKey), NativeSuiteError> {
-    capture_runtime_revocation_trace_with_store(context, false, false, RuntimeTraceMutation::None)
+    capture_runtime_revocation_trace_with_store(
+        context,
+        false,
+        false,
+        TraceRevocationTarget::DelegationAncestor,
+        RuntimeTraceMutation::None,
+    )
 }
 
 fn capture_runtime_revocation_trace_with_store(
     context: &str,
     blind_revocation_store: bool,
     drop_admission_callbacks: bool,
+    revocation_target: TraceRevocationTarget,
     mutation: RuntimeTraceMutation,
 ) -> Result<(Vec<u8>, chio_core::crypto::PublicKey), NativeSuiteError> {
     let observer = Keypair::from_seed(&[167; 32]);
@@ -869,7 +888,7 @@ fn capture_runtime_revocation_trace_with_store(
     }
     kernel.register_tool_server(Box::new(NativeTraceEchoServer));
     kernel
-        .register_budget_parent(parent.id, 10_000)
+        .register_budget_parent(parent.id.clone(), 10_000)
         .map_err(|error| NativeSuiteError::Http(error.to_string()))?;
 
     let allow = kernel.evaluate_tool_call_blocking(&trace_request(
@@ -887,7 +906,11 @@ fn capture_runtime_revocation_trace_with_store(
                 .unwrap_or("kernel supplied no reason")
         )));
     }
-    kernel.revoke_capability(&capability.id)?;
+    let revoked_capability_id = match revocation_target {
+        TraceRevocationTarget::PresentedCapability => &capability.id,
+        TraceRevocationTarget::DelegationAncestor => &parent.id,
+    };
+    kernel.revoke_capability(revoked_capability_id)?;
     let deny = kernel.evaluate_tool_call_blocking(&trace_request(
         "runtime-trace-deny",
         &capability,
@@ -1716,6 +1739,28 @@ mod tests {
             .body
             .trace_id
             .starts_with("runtime:"));
+        let chio_trace_validate::ObservationEvent::Revoke {
+            capability_id: revoked_ancestor,
+            ..
+        } = &observations.observations()[1].body.event
+        else {
+            panic!("second observation is not a revocation");
+        };
+        let chio_trace_validate::ObservationEvent::Evaluate {
+            receipt,
+            revocation_subject_ids,
+            revocation_source_id,
+            ..
+        } = &observations.observations()[2].body.event
+        else {
+            panic!("third observation is not an evaluation");
+        };
+        assert_ne!(&receipt.capability_id, revoked_ancestor);
+        assert_eq!(
+            revocation_subject_ids,
+            &[receipt.capability_id.clone(), revoked_ancestor.clone()]
+        );
+        assert_eq!(revocation_source_id.as_ref(), Some(revoked_ancestor));
         let projection =
             chio_trace_validate::project_revocation_trace(&observations).expect("project trace");
 
@@ -1731,6 +1776,7 @@ mod tests {
             "native-dropped-admission-calibration",
             false,
             true,
+            TraceRevocationTarget::DelegationAncestor,
             RuntimeTraceMutation::None,
         )
         .expect_err("dropped admission callback must reject finalization");
@@ -1738,6 +1784,30 @@ mod tests {
             error.to_string().contains("no matching admission callback"),
             "unexpected recorder error: {error}"
         );
+    }
+
+    #[test]
+    fn blind_store_capture_retains_the_prior_direct_revocation() {
+        let (encoded, trusted_key) = capture_runtime_revocation_trace_with_store(
+            "native-blind-store-calibration-test",
+            true,
+            false,
+            TraceRevocationTarget::PresentedCapability,
+            RuntimeTraceMutation::None,
+        )
+        .expect("capture blind-store trace");
+        let decoded = chio_trace_validate::decode_observations(&encoded, &[trusted_key])
+            .expect("decode blind-store trace");
+        let projection = chio_trace_validate::project_revocation_trace(&decoded)
+            .expect("project blind-store trace");
+        assert!(projection.events().iter().any(|event| matches!(
+            &event.action,
+            chio_trace_validate::ProjectedAction::Evaluate {
+                verdict,
+                seen_epoch,
+                ..
+            } if verdict == "allow" && *seen_epoch > 0
+        )));
     }
 
     #[test]
@@ -1756,9 +1826,14 @@ mod tests {
                 RuntimeTraceMutation::FutureRevocationEpoch,
             ),
         ] {
-            let (encoded, trusted_key) =
-                capture_runtime_revocation_trace_with_store(context, false, false, mutation)
-                    .expect("capture calibrated runtime trace");
+            let (encoded, trusted_key) = capture_runtime_revocation_trace_with_store(
+                context,
+                false,
+                false,
+                TraceRevocationTarget::DelegationAncestor,
+                mutation,
+            )
+            .expect("capture calibrated runtime trace");
             let decoded = chio_trace_validate::decode_observations(&encoded, &[trusted_key])
                 .expect("decode calibrated runtime trace");
             let projection = chio_trace_validate::project_revocation_trace(&decoded)

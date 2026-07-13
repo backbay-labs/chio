@@ -187,12 +187,9 @@ impl ChioKernel {
     }
 
     pub(crate) fn record_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), KernelError> {
-        // Scope the receipt-store write lock so it is released before
-        // the settlement observer runs. Holding the mutex across
-        // `run_settlement_observer` would serialize all concurrent
-        // receipt persistence behind potentially I/O-bound hook
-        // latency; the observer needs only a fully-persisted receipt,
-        // so the guard is dropped first.
+        // Serialize traced persistence before the store lock, then release both before callbacks.
+        let trace_transition = self.lock_runtime_trace_transition()?;
+        let trace_event;
         {
             let _receipt_store_write = self.receipt_store_write_lock.lock().map_err(|_| {
                 KernelError::Internal("receipt store write lock poisoned".to_string())
@@ -206,9 +203,18 @@ impl ChioKernel {
                 }
             }
             self.append_chio_receipt_to_local_log(receipt.clone());
-            self.observe_runtime_trace(RuntimeTraceEvent::ReceiptAppended {
-                receipt: Box::new(receipt.clone()),
-            });
+            trace_event = if trace_transition.is_some() {
+                Some(RuntimeTraceEvent::ReceiptAppended {
+                    source_sequence: self.allocate_runtime_trace_source_sequence()?,
+                    receipt: Box::new(receipt.clone()),
+                })
+            } else {
+                None
+            };
+        }
+        drop(trace_transition);
+        if let Some(event) = trace_event {
+            self.observe_runtime_trace(event);
         }
         let _settlement_status = self.run_settlement_observer(receipt);
         Ok(())

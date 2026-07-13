@@ -5,17 +5,21 @@
 `chio-trace-validate` checks callback-complete kernel traces against
 `RevocationPropagation.tla`. The kernel emits synchronous events after a
 successful revocation commit, after revocation admission completes, and after
-a receipt is appended. `RuntimeTraceRecorder` joins admissions to receipts by
-the signed request ID and refuses to sign incomplete or ambiguous streams.
+a receipt is appended. Each transition receives a kernel-assigned causal
+sequence before internal locks are released. `RuntimeTraceRecorder` joins
+admissions to receipts by the signed request ID, restores causal order from
+those sequences, and refuses to sign incomplete or ambiguous streams.
 
 ## Trust Boundary
 
-Input is canonical NDJSON with one `chio.trace-observation.v2` envelope per
+Input is canonical NDJSON with one `chio.trace-observation.v3` envelope per
 line. Every body binds the trace identity, model sequence, runtime callback
 count, callback sequence, signed delegation-depth limit, authority key, and a
 typed event. Evaluate events additionally bind the admission sequence, request
 ID, logical receipt time, admitted depth, revocation result, full signed
-receipt, and observed epoch.
+receipt, observed epoch, the capability IDs checked at admission, and the exact
+capability associated with a nonzero epoch. That source either caused a denial
+or witnesses the calibrated allow-after-revoke case.
 
 The verifier requires an out-of-band observer public key. It verifies every
 envelope, receipt signature, and action hash; requires one exact trace identity
@@ -23,12 +27,21 @@ and length; and accounts for the union of revoke, admission, and append
 callback sequences as `1..runtimeEventCount`. A receipt's embedded key is not a
 trust root.
 
-`ASSUME-TRACE-OBSERVER` is the remaining observability boundary: callbacks lost
-or reordered before the installed observer receives them cannot be detected.
-The assumption also requires mutation-free recording and unmodified callback
-fields. The kernel supplies and the recorder cross-checks the signed depth
-limit. It does not assert that an observed decision is safe. The nightly
-observer is deterministic, test-only, and checked against
+The checked subject list starts with the presented receipt capability, contains
+one unique ID per delegation level, and must contain every nonzero revocation
+source. Visible observations must be in strictly increasing callback-sequence
+order. Because the current TLA abstraction combines admission and receipt
+append into one `Evaluate` action, the recorder fails closed if a checked
+subject is revoked strictly between those two runtime callbacks.
+
+`ASSUME-TRACE-OBSERVER` is the remaining observability boundary: every callback
+must reach the installed observer exactly once before finalization with its
+kernel-assigned source sequence and fields unchanged. Callback reordering is
+not assumed away; the recorder validates a complete contiguous sequence and
+sorts it before signing. The assumption also requires mutation-free recording.
+The kernel supplies and the recorder cross-checks the signed depth limit. It
+does not assert that an observed decision is safe. The nightly observer is
+deterministic, test-only, and checked against
 `fixtures/native-conformance-observer-key.txt`.
 
 ## Formal Input
@@ -39,6 +52,12 @@ produces explicit `Attenuate` states and an observed remote epoch produces an
 explicit propagation state. Both direct invariant evaluation and generated
 prefix reachability derive their state or visible action input only from this
 ITF.
+
+For an evaluation with a nonzero observed epoch, the model capability is the
+exact revoked source, which may be a delegation ancestor. The signed envelope
+retains both that source and the presented child in the embedded receipt. This
+is an explicit abstraction from ancestor-cut enforcement to the single-subject
+TLA state, not an assertion that the two capability IDs are equal.
 
 `TraceEvaluateRevocationPropagation.tla` is executed with the pinned Apalache
 `check` command, not `tracee`. The validator parses the ITF into a generated
