@@ -26,6 +26,7 @@ import Chio.Proofs.AttenuationWitness
 import Chio.Proofs.HandshakeNegotiation
 import Chio.Proofs.SiblingSumBudget
 import Chio.Proofs.ReservationLedger
+import Chio.Guards.WasmBoundary
 import Chio.Capability.Delegation
 import Chio.Treaty.Intersection
 import Chio.Treaty.PredicateLang

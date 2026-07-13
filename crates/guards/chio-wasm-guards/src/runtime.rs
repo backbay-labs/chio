@@ -27,6 +27,62 @@ mod tests {
     use chio_core::capability::scope::ChioScope;
     use chio_kernel::{Guard, GuardContext, ToolCallRequest, Verdict};
 
+    #[derive(Clone, Copy)]
+    enum BoundaryOutcome {
+        UnknownVerdict,
+        FuelExhausted,
+        MemoryTrap,
+        DenyWithoutReason,
+    }
+
+    struct BoundaryBackend {
+        outcome: BoundaryOutcome,
+        loaded: bool,
+    }
+
+    impl BoundaryBackend {
+        fn new(outcome: BoundaryOutcome) -> Self {
+            Self {
+                outcome,
+                loaded: false,
+            }
+        }
+    }
+
+    impl WasmGuardAbi for BoundaryBackend {
+        fn load_module(
+            &mut self,
+            _wasm_bytes: &[u8],
+            _fuel_limit: u64,
+        ) -> Result<(), WasmGuardError> {
+            self.loaded = true;
+            Ok(())
+        }
+
+        fn evaluate(&mut self, _request: &GuardRequest) -> Result<GuardVerdict, WasmGuardError> {
+            if !self.loaded {
+                return Err(WasmGuardError::BackendUnavailable);
+            }
+            match self.outcome {
+                BoundaryOutcome::UnknownVerdict => Err(WasmGuardError::Trap(
+                    "unexpected return value from evaluate: 7".to_string(),
+                )),
+                BoundaryOutcome::FuelExhausted => Err(WasmGuardError::FuelExhausted {
+                    consumed: 50_000,
+                    limit: 50_000,
+                }),
+                BoundaryOutcome::MemoryTrap => {
+                    Err(WasmGuardError::Trap("memory growth denied".to_string()))
+                }
+                BoundaryOutcome::DenyWithoutReason => Ok(GuardVerdict::Deny { reason: None }),
+            }
+        }
+
+        fn backend_name(&self) -> &str {
+            "boundary-test"
+        }
+    }
+
     fn make_test_capability() -> chio_core::capability::token::CapabilityToken {
         let keypair = chio_core::crypto::Keypair::generate();
         chio_core::capability::token::CapabilityToken::sign(
@@ -59,6 +115,30 @@ mod tests {
             model_metadata: None,
             federated_origin_kernel_id: None,
         }
+    }
+
+    fn boundary_verdict(outcome: BoundaryOutcome, advisory: bool) -> Verdict {
+        let mut backend = BoundaryBackend::new(outcome);
+        backend.load_module(b"boundary-test", 50_000).unwrap();
+        let guard = WasmGuard::new(
+            "boundary-test".to_string(),
+            Box::new(backend),
+            advisory,
+            None,
+        );
+        let request = make_test_request();
+        let scope = ChioScope::default();
+        let agent_id = "agent-1".to_string();
+        let server_id = "test_server".to_string();
+        let context = GuardContext {
+            request: &request,
+            scope: &scope,
+            agent_id: &agent_id,
+            server_id: &server_id,
+            session_filesystem_roots: None,
+            matched_grant_index: None,
+        };
+        guard.evaluate(&context).unwrap().verdict
     }
 
     #[test]
@@ -145,6 +225,51 @@ mod tests {
             result,
             Ok(decision) if decision.verdict == Verdict::Allow
         ));
+    }
+
+    #[test]
+    fn blocking_unknown_verdict_error_denies() {
+        // Grounds blocking_unknown_verdict_denies at the kernel guard mapping.
+        assert_eq!(
+            boundary_verdict(BoundaryOutcome::UnknownVerdict, false),
+            Verdict::Deny
+        );
+    }
+
+    #[test]
+    fn blocking_fuel_exhaustion_denies() {
+        // Grounds resource_exhaustion_fail_closed for fuel exhaustion.
+        assert_eq!(
+            boundary_verdict(BoundaryOutcome::FuelExhausted, false),
+            Verdict::Deny
+        );
+    }
+
+    #[test]
+    fn blocking_memory_trap_denies() {
+        // Grounds resource_exhaustion_fail_closed for memory exhaustion.
+        assert_eq!(
+            boundary_verdict(BoundaryOutcome::MemoryTrap, false),
+            Verdict::Deny
+        );
+    }
+
+    #[test]
+    fn blocking_malformed_deny_reason_retains_deny() {
+        // Grounds malformed_deny_reason_preserves_decision.
+        assert_eq!(
+            boundary_verdict(BoundaryOutcome::DenyWithoutReason, false),
+            Verdict::Deny
+        );
+    }
+
+    #[test]
+    fn advisory_error_allows() {
+        // Grounds advisory_mode_is_nonblocking_by_design.
+        assert_eq!(
+            boundary_verdict(BoundaryOutcome::FuelExhausted, true),
+            Verdict::Allow
+        );
     }
 
     #[test]

@@ -94,7 +94,8 @@ impl WasmHostState {
     /// Create a new host state with a custom memory limit.
     ///
     /// `trap_on_grow_failure(true)` causes `memory.grow` beyond the configured
-    /// cap to trap, preserving fail-closed behavior.
+    /// cap to trap. Blocking guards map that trap to deny; advisory guards are
+    /// explicitly non-blocking.
     pub fn with_memory_limit(config: HashMap<String, String>, max_memory: usize) -> Self {
         Self::with_memory_limit_and_bundle_store(
             config,

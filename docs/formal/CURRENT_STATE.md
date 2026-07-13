@@ -40,8 +40,8 @@ what may be claimed publicly.
 - Toolchain: `leanprover/lean4:v4.28.0`, lake, the vendored Aeneas support
   library, and an exact Mathlib dependency closure recorded in
   `lake-manifest.json`.
-- 34 root-imported modules (all imported by `Chio.lean`; "root-imported" is a
-  release-evidence precondition), 145 catalogued theorems, exactly one
+- 35 root-imported modules (all imported by `Chio.lean`; "root-imported" is a
+  release-evidence precondition), 149 catalogued theorems, exactly one
   axiom, zero `sorry` (enforced by `scripts/check-formal-proofs.sh`: lake
   build plus a sorry scan plus manifest cross-ref sanity).
 - Core models: `Core/Capability.lean`, `Core/Scope.lean`, `Core/Receipt.lean`
@@ -61,6 +61,11 @@ what may be claimed publicly.
   `Treaty/IntersectionSyntactic.lean`, `Treaty/IntersectionLegacy.lean`,
   `Treaty/BridgeEquivalence.lean`, `Treaty/BilateralAccept.lean`) supports the
   governance/paper surface.
+- `Guards/WasmBoundary.lean` models the core-module dispatch boundary and proves
+  typed-output confinement, no allow amplification, blocking resource-failure
+  closure, and advisory-mode nonblocking behavior. It relies on the scoped
+  `ASSUME-WASM-ENGINE` trust dependency and does not claim to verify wasmtime's
+  interpreter, compiler, JIT, sandbox, or full information flow.
 - The single axiom is the registered cryptographic idealization
   `Chio.Json.hash_collision_resistant`. The mechanized canonical renderer is
   injective on its modeled domain, and the receipt-id collision property is a
@@ -257,11 +262,12 @@ nightly).
 
 ## Adjacent estates
 
-- Fuzzing: 25 libFuzzer targets in `fuzz/` (standalone workspace) spanning
+- Fuzzing: 27 libFuzzer targets in `fuzz/` (standalone workspace) spanning
   canonical JSON, envelopes (MCP/A2A/ACP), attestation, DIDs, federation
   trust, receipts and Merkle checkpoints, policy parse/compile, SQL and tool
   action guards, and wasm boundaries (`wasm_guard_escape` with 8 escape-class
-  seeds). A structure-aware canonical-JSON mutator is wired into 6 targets.
+  seeds plus the structure-aware `wasm_guard_smith` target). A structure-aware
+  canonical-JSON mutator is wired into 6 targets.
   Three CI lanes (ClusterFuzzLite change-scoped on PRs; nightly single-target
   rotation; nightly native sweep) plus automated crash triage (tmin, sha
   dedupe, auto-filed issues with SLOs) and weekly corpus sync. OSS-Fuzz
@@ -289,7 +295,7 @@ differential-test joins, theorem status, and model-only Kani scope remain
 explicit there.
 
 - `formal/proof-manifest.toml` (schema `chio.proof-manifest.v1`) is the hub:
-  `root_modules` (34 Lean files), `gate_commands` (15 commands), 12
+  `root_modules` (35 Lean files), `gate_commands` (15 commands), 12
   `covered_rust_modules`, 41 `covered_rust_symbols`, 14 `shell_entrypoints`,
   the P1-P10 `property_matrix` with per-property evidence-lane tags,
   `rust_refinement_lanes`, `allowed_axioms` (exactly one),
@@ -299,7 +305,7 @@ explicit there.
   are labeled as transliterations or abstraction anchors; TLA+ entries are
   abstraction anchors. `cargo xtask check formal-mirrors` enforces those hashes
   in required PR CI.
-- `formal/theorem-inventory.json` (145 theorem entries plus a separate
+- `formal/theorem-inventory.json` (149 theorem entries plus a separate
   assumptions block): per-theorem id, Lean name,
   file, kind, `rootImported` flag, claim class, `mapsTo` property ids.
 - `formal/MAPPING.md`: the cross-reference table from required model safety
@@ -307,7 +313,7 @@ explicit there.
   delegation theorems to Rust call sites. `scripts/check-mapping.sh` discovers
   each enforced registry and source entry and fails CI unless every one has a
   literal row.
-- `formal/assumptions.toml`: 12 required audited assumptions. SQLite
+- `formal/assumptions.toml`: 13 required audited assumptions. SQLite
   atomicity is scoped to single-row commits; cross-row recovery remains outside
   the formal claim boundary until implementation trace validation and
   crash-reopen conservation establish refinement.

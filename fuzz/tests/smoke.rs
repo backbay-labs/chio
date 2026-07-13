@@ -37,6 +37,7 @@ const CORPUS_SMOKE_TARGETS: &[&str] = &[
     "receipt_log_replay",
     "underwriting_policy_input",
     "wasm_guard_escape",
+    "wasm_guard_smith",
     "wasm_preinstantiate_validate",
     "wit_host_call_boundary",
 ];
@@ -269,6 +270,12 @@ fn wasm_preinstantiate_validate_smoke() {
 fn wasm_guard_escape_smoke() {
     use chio_wasm_guards::fuzz::fuzz_wasm_guard_escape;
     assert_seed_floor("wasm_guard_escape", fuzz_wasm_guard_escape);
+}
+
+#[test]
+fn wasm_guard_smith_smoke() {
+    use chio_wasm_guards::fuzz::fuzz_wasm_guard_smith;
+    assert_seed_floor("wasm_guard_smith", fuzz_wasm_guard_smith);
 }
 
 #[test]

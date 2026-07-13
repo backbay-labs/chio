@@ -128,6 +128,7 @@ jobs:
           - acp_envelope_decode
           - wasm_preinstantiate_validate
           - wasm_guard_escape
+          - wasm_guard_smith
           - wit_host_call_boundary
           - chio_yaml_parse
           - openapi_ingest

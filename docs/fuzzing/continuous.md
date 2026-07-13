@@ -45,7 +45,7 @@ runs (200 min/month headroom for everything else). Enforcement:
   lower value) in the workflow env. Do not raise the cap above 1,800
   without re-opening the locked decision.
 
-Sizing intent (steady state, 25-target inventory):
+Sizing intent (steady state, 27-target inventory):
 
 | Lane              | Cadence             | Per-run cost         | 30-day cost (est.) |
 |-------------------|---------------------|----------------------|--------------------|
@@ -89,7 +89,7 @@ Notes:
 
 ## Target inventory
 
-The standalone fuzz workspace defines 25 binaries. `fuzz/Cargo.toml` is the
+The standalone fuzz workspace defines 27 binaries. `fuzz/Cargo.toml` is the
 binary inventory, `fuzz/target-map.toml` owns source and corpus routing, and
 `fuzz/owners.toml` maps every target to its regression-test owner. The smoke
 inventory tests require those names to match the scheduled matrix in
@@ -118,10 +118,10 @@ window and remains the documented permanent fallback after acceptance lands:
 - `.github/workflows/cflite_pr.yml` -- changed-target sampling per
   `fuzz/target-map.toml`. Default per-target wall budget is 60s (1-6 targets
   per PR after the glob match). Opt-in `fuzz: full` PR label promotes the
-  run to a full-corpus sweep across all 26 targets at 120s each
+  run to a full-corpus sweep across all 27 targets at 120s each
   (release-cut PRs and trust-boundary edits).
 - `.github/workflows/cflite_batch.yml` -- sampled nightly cron at
-  `17 2 * * *` UTC. Rotates one target per night across the 25-target
+  `17 2 * * *` UTC. Rotates one target per night across the 27-target
   inventory, 30 minutes per run. The `cflite_cron`
   workflow that the source-doc earlier described is intentionally absent;
   the weekly-soak Tier-A plan was dropped along with Tier A, and OSS-Fuzz
@@ -139,7 +139,7 @@ The CFLite builder image lives under `.clusterfuzzlite/`:
   with the rustls/openssl build deps plus `zip`. Mirrors the OSS-Fuzz
   scaffold under `fuzz/oss-fuzz/` so the in-tree CFLite image and the
   OSS-Fuzz image stay behaviourally identical.
-- `.clusterfuzzlite/build.sh` -- enumerates all 26 fuzz targets and
+- `.clusterfuzzlite/build.sh` -- enumerates all 27 fuzz targets and
   runs `cargo +nightly fuzz build <target> --release --sanitizer
   "$SANITIZER"` per target. The OSS-Fuzz copy at `fuzz/oss-fuzz/build.sh`
   is the source-of-truth; any new fuzz target lands in both files in the
@@ -192,7 +192,7 @@ files live under `fuzz/oss-fuzz/` and are mirrored into the upstream
   `gcr.io/oss-fuzz-base/base-builder-rust`, installs the rustls/openssl
   build deps plus `zip` for seed-corpus packing, and clones the repo at
   `/src/chio`.
-- `fuzz/oss-fuzz/build.sh` enumerates all 26 fuzz targets,
+- `fuzz/oss-fuzz/build.sh` enumerates all 27 fuzz targets,
   invokes `cargo +nightly fuzz build <target> --release --sanitizer
   "$SANITIZER"` for each, copies the resulting binary into `$OUT/`,
   and packs `fuzz/corpus/<target>/` into

@@ -32,7 +32,7 @@ Wasmtime backend boundary.
 
 Runtime splitting must not change guard verdict semantics, fuel accounting,
 manifest hash evidence, epoch assignment, signature verification, WIT world
-validation, import allowlisting, memory limits, or fail-closed behavior. Any
-backend load, trap, malformed action extraction, module-size violation, import
-violation, signature failure, or unsupported format continues to deny or reject
-before guest code can silently allow.
+validation, import allowlisting, memory limits, or blocking-guard fail-closed
+behavior. Any backend load, trap, malformed action extraction, module-size
+violation, import violation, signature failure, or unsupported format continues
+to deny or reject before guest code can silently allow.

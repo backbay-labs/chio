@@ -92,15 +92,16 @@ pub trait WasmGuardAbi: Send + Sync {
     /// Load a WASM module from raw bytes.
     ///
     /// The `fuel_limit` controls the maximum number of fuel units the guest
-    /// may consume before the runtime terminates it (fail-closed).
+    /// may consume before the runtime terminates it. The caller denies the
+    /// resulting error for blocking guards; advisory guards remain non-blocking.
     fn load_module(&mut self, wasm_bytes: &[u8], fuel_limit: u64) -> Result<(), WasmGuardError>;
 
     /// Invoke the loaded guard with the given request.
     ///
     /// Returns the guard's verdict. If the guest traps, runs out of fuel,
     /// or returns an unexpected value, the implementation must return
-    /// `Err(WasmGuardError)`, and the caller will treat the invocation as
-    /// denied (fail-closed).
+    /// `Err(WasmGuardError)`. The caller treats the invocation as denied for a
+    /// blocking guard and as allowed for an explicitly advisory guard.
     fn evaluate(&mut self, request: &GuardRequest) -> Result<GuardVerdict, WasmGuardError>;
 
     /// Return the name of the runtime backend (e.g. "wasmtime", "mock").

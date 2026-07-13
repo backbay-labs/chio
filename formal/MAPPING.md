@@ -129,6 +129,14 @@ Lean cross-references (informational; the script does not enforce these):
   `validate_bilateral_invocation`, and `ladder_mode_rank`. The hashes detect
   Rust drift; they do not prove the projection refines those Rust functions.
 
+- `Chio.Guards.WasmBoundary.guest_output_confinement`,
+  `Chio.Guards.WasmBoundary.no_allow_amplification`, and
+  `Chio.Guards.WasmBoundary.resource_exhaustion_fail_closed` model the typed
+  core-module verdict boundary. The advisory exception is stated by
+  `Chio.Guards.WasmBoundary.advisory_mode_is_nonblocking_by_design`.
+  `ASSUME-WASM-ENGINE` remains load-bearing for wasmtime semantics, and these
+  theorems do not establish full engine information-flow non-interference.
+
 ## Trace validation
 
 The trace lane consumes callbacks emitted synchronously by the real kernel at

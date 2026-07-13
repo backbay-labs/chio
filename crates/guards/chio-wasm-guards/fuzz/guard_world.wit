@@ -1,0 +1,42 @@
+package chio:guard@0.2.0;
+
+interface types {
+    variant verdict {
+        allow,
+        deny(string),
+    }
+    record guard-request {
+        tool-name: string,
+        server-id: string,
+        agent-id: string,
+        arguments: string,
+        scopes: list<string>,
+        action-type: option<string>,
+        extracted-path: option<string>,
+        extracted-target: option<string>,
+        filesystem-roots: list<string>,
+        matched-grant-index: option<u32>,
+    }
+}
+
+interface host {
+    log: func(level: u32, msg: string);
+    get-config: func(key: string) -> option<string>;
+    get-time-unix-secs: func() -> u64;
+    fetch-blob: func(handle: u32, offset: u64, len: u32) -> result<list<u8>, string>;
+}
+
+interface policy-context {
+    resource bundle-handle {
+        constructor(id: string);
+        read: func(offset: u64, len: u32) -> result<list<u8>, string>;
+        close: func();
+    }
+}
+
+world guard {
+    use types.{verdict, guard-request};
+    import host;
+    import policy-context;
+    export evaluate: func(request: guard-request) -> verdict;
+}

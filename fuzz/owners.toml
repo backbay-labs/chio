@@ -52,6 +52,10 @@ path  = "crates/guards/chio-wasm-guards"
 crate = "chio-wasm-guards"
 path  = "crates/guards/chio-wasm-guards"
 
+[targets.wasm_guard_smith]
+crate = "chio-wasm-guards"
+path  = "crates/guards/chio-wasm-guards"
+
 [targets.wit_host_call_boundary]
 crate = "chio-wasm-guards"
 path  = "crates/guards/chio-wasm-guards"

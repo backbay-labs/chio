@@ -18,8 +18,9 @@ use super::module::LoadedModule;
 /// A single WASM guard module loaded into the runtime.
 ///
 /// Wraps a swappable `LoadedModule` and adapts it to the kernel's `Guard`
-/// trait. On any error (fuel exhaustion, traps, serialization failures) the
-/// guard fails closed and returns `Verdict::Deny`.
+/// trait. On any error (fuel exhaustion, traps, serialization failures) a
+/// blocking guard returns `Verdict::Deny`. An explicitly advisory guard is
+/// non-blocking and returns `Verdict::Allow` after recording the error.
 ///
 /// Carries optional receipt metadata: `manifest_sha256` (set at construction
 /// from the guard manifest) plus the module epoch used by the most recent
@@ -397,13 +398,14 @@ impl Guard for WasmGuard {
                 }
             }
             Err(e) => {
-                // Fail closed: any error during WASM execution denies.
+                // Blocking guards deny execution errors. Advisory guards take
+                // the explicit non-blocking branch below.
                 span.record("verdict", VERDICT_ERROR);
                 warn!(
                     guard = %self.name,
                     epoch_id = loaded.epoch_id().get(),
                     error = %e,
-                    "WASM guard error, failing closed"
+                    "WASM guard execution error"
                 );
                 if self.advisory {
                     Ok(GuardDecision::allow())

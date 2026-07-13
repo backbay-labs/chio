@@ -608,6 +608,50 @@
       "notes": "The bounded guard pipeline can allow only if core authorization already passed."
     },
     {
+      "id": "proof.wasm_guest_output_confinement",
+      "leanName": "Chio.Guards.WasmBoundary.guest_output_confinement",
+      "file": "formal/lean4/Chio/Chio/Guards/WasmBoundary.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "For Chio's bounded core-module dispatch model, executions with the same typed guest output make the same pipeline decision. This is not a proof of wasmtime internals or full engine information-flow non-interference."
+    },
+    {
+      "id": "proof.wasm_no_allow_amplification",
+      "leanName": "Chio.Guards.WasmBoundary.no_allow_amplification",
+      "file": "formal/lean4/Chio/Chio/Guards/WasmBoundary.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "No typed wasm guest output can turn coreAuthorized=false into an allowed bounded pipeline result, including when the guard is advisory."
+    },
+    {
+      "id": "proof.wasm_resource_exhaustion_fail_closed",
+      "leanName": "Chio.Guards.WasmBoundary.resource_exhaustion_fail_closed",
+      "file": "formal/lean4/Chio/Chio/Guards/WasmBoundary.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Fuel exhaustion, memory exhaustion, and traps map to deny for blocking guards in the bounded dispatch model, subject to ASSUME-WASM-ENGINE."
+    },
+    {
+      "id": "proof.wasm_advisory_mode_nonblocking",
+      "leanName": "Chio.Guards.WasmBoundary.advisory_mode_is_nonblocking_by_design",
+      "file": "formal/lean4/Chio/Chio/Guards/WasmBoundary.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Advisory wasm guards are non-blocking by design: denies, malformed verdicts, traps, and resource exhaustion all contribute allow at this guard layer. Core authorization still dominates the final pipeline."
+    },
+    {
       "id": "proof.receiptFieldsCoupled_preserves_all_fields",
       "leanName": "Chio.Proofs.receiptFieldsCoupled_preserves_all_fields",
       "file": "formal/lean4/Chio/Chio/Proofs/Protocol.lean",

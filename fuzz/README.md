@@ -28,7 +28,7 @@ the workflow under `.github/workflows/cflite_pr.yml` and
 
 ## Targets
 
-There are 26 targets. Each one drives a trust-boundary decode or
+There are 27 targets. Each one drives a trust-boundary decode or
 fail-closed-verification surface with arbitrary bytes. The full mapping
 (owning crate, source path, trigger globs, seed corpus) lives in
 `target-map.toml`; the summaries below are grouped by surface.
@@ -84,6 +84,8 @@ fail-closed-verification surface with arbitrary bytes. The full mapping
 - `wit_host_call_boundary` - `GuardRequest` / `GuestDenyResponse` serde
   deserialization.
 - `wasm_guard_escape` - runtime-execution surface across the escape classes.
+- `wasm_guard_smith` - structure-aware modules and components through bounded
+  load and evaluation paths.
 - `sql_parser` (binary `fuzz_sql_parser`) - SQL parser and fail-closed SQL
   guard analysis across dialects.
 - `tool_action` (binary `fuzz_tool_action`) - tool-action classification and

@@ -38,6 +38,7 @@ root_modules = [
   "formal/lean4/Chio/Chio/Proofs/HandshakeNegotiation.lean",
   "formal/lean4/Chio/Chio/Proofs/SiblingSumBudget.lean",
   "formal/lean4/Chio/Chio/Proofs/ReservationLedger.lean",
+  "formal/lean4/Chio/Chio/Guards/WasmBoundary.lean",
   "formal/lean4/Chio/Chio/Capability/Delegation.lean",
   "formal/lean4/Chio/Chio/Treaty/Intersection.lean",
   "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
@@ -148,7 +149,7 @@ required_property_ids = ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "
 property_matrix = [
   "P1|capability attenuation|lean_root_imported,differential_test,rust_projection,aeneas_equivalence,public_kani|spec.capability_monotonicity,proof.scope_subset_of_grants_subset,proof.reduced_budget_is_subset,proof.added_constraint_is_subset,proof.generated_optional_u32_cap_is_subset_preserves_parent_cap,proof.generated_ledger_apply_eq_model",
   "P2|presented revocation coverage|lean_root_imported,audited_storage_assumption,audited_transport_assumption,sqlite_projection,aeneas_equivalence,distributed_apalache,rust_trace_projection|proof.revoke_marks_capability_revoked,proof.checkRevocation_revoked_token_errors,proof.evalToolCall_revoked_token_never_allows,proof.revocationSnapshot_revoked_token_denies,proof.revocationSnapshot_revoked_ancestor_denies,proof.generated_revocation_snapshot_denies_eq_model",
-  "P3|fail-closed evaluation|lean_root_imported,rust_core,audited_subprocess_assumption,public_kani,adapter_no_bypass,aeneas_equivalence|proof.evalToolCall_total,proof.evalToolCall_invalid_signature_denies,proof.evalToolCall_out_of_scope_denies,proof.admitSession_invalid_dpop_rejects,proof.governedApproval_required_without_token_fails,proof.dpop_required_missing_proof_rejects,proof.dpop_required_invalid_proof_rejects,proof.guardPipeline_deny_dominates,proof.guardPipeline_error_dominates,proof.delegation_max_depth_failure_denies,proof.generated_time_window_valid_eq_model,proof.generated_budget_commit_eq_model,proof.generated_guard_step_allows_eq_model,treaty.predicate.unsupported_denies,treaty.predicate.runtime_policy_exact,treaty.syntactic.decision_exact,treaty.bridge.refinement_on_iff",
+  "P3|fail-closed evaluation|lean_root_imported,rust_core,audited_subprocess_assumption,audited_wasm_engine_assumption,public_kani,adapter_no_bypass,aeneas_equivalence|proof.evalToolCall_total,proof.evalToolCall_invalid_signature_denies,proof.evalToolCall_out_of_scope_denies,proof.admitSession_invalid_dpop_rejects,proof.governedApproval_required_without_token_fails,proof.dpop_required_missing_proof_rejects,proof.dpop_required_invalid_proof_rejects,proof.guardPipeline_deny_dominates,proof.guardPipeline_error_dominates,proof.wasm_guest_output_confinement,proof.wasm_no_allow_amplification,proof.wasm_resource_exhaustion_fail_closed,proof.wasm_advisory_mode_nonblocking,proof.delegation_max_depth_failure_denies,proof.generated_time_window_valid_eq_model,proof.generated_budget_commit_eq_model,proof.generated_guard_step_allows_eq_model,treaty.predicate.unsupported_denies,treaty.predicate.runtime_policy_exact,treaty.syntactic.decision_exact,treaty.bridge.refinement_on_iff",
   "P4|receipt integrity|lean_root_imported,symbolic_crypto,audited_crypto_assumption,receipt_totality,aeneas_equivalence,public_kani,differential_test|proof.canonical_inj,proof.receipt_id_input_collision_resistant,proof.receipt_id_collision_resistant,proof.membership_proof_sound,proof.stepFold_eq_applyProof,proof.stepFold_membership_sound_if_geometry_agrees,proof.boundedWalkGeometry_decodes,proof.bounded_stepFold_sound,proof.generated_inclusion_step_eq_model,proof.receipt_sign_then_verify,proof.receipt_immutability,proof.receiptFieldsCoupled_preserves_all_fields,proof.generated_receipt_fields_coupled_eq_model",
   "P5|presented delegation-chain semantic validity|lean_root_imported,sqlite_projection|proof.delegation_chain_integrity,proof.delegation_step_allow_requires_attenuation,proof.delegation_step_allow_requires_subject_continuity,proof.delegation_step_allow_requires_expiry_monotonicity,proof.delegation_revoked_ancestor_denies,proof.delegation_max_depth_failure_denies",
   "P6|local parent-link soundness|lean_root_imported,audited_storage_assumption|proof.observed_parent_edge_sound",
@@ -214,6 +215,7 @@ excluded_surfaces = [
   "Treaty PredicateLang parsing, canonical hashing, signature verification, store lookup, and completeness outside its explicit AdmissionView decision domain",
   "float-valued JSON leaves in action, metadata, or other compound ChioReceiptIdInput fields are outside the mechanized canonical JSON domain; their production rendering remains covered by frozen vectors and ASSUME-CANONICAL-JSON",
   "refinement from the mechanized canonical semantic projection to crates/core/chio-core-types/src/canonical.rs beyond the checked integer-domain fixtures and differential tests",
+  "wasmtime interpreter, compiler, JIT, sandbox, and host-import information-flow behavior beyond Chio's typed verdict dispatch and the audited wasm-engine assumption",
 ]
 
 notes = [
@@ -235,6 +237,7 @@ notes = [
   "Distributed revocation evidence models signed-root gossip loss, duplication, reordering, skew, partition suspension, heal, and catch-up. StaleEvaluationDenied mirrors the production wall-clock freshness gate. RejectedRawEvaluationCountBound records that no raw evaluation-throughput bound is proved.",
   "The distributed production gate checks exact deterministic scalar trace projections for one pinned origin and one RevocationView. It is not full-state refinement, does not inject faults into the shipped transport, and does not establish multi-origin isolation in Rust.",
   "ASSUME-NETWORK-TRANSPORT and ASSUME-GOSSIP-FAIRNESS-PARTITION-BOUND remain required. Distributed evidence scopes their use but does not discharge either assumption.",
+  "The wasm boundary theorems model Chio's core-module verdict and error dispatch, including advisory mode. They do not verify wasmtime or the Component Model implementation and do not establish full engine information-flow non-interference.",
 ]
 
 # Discharged assumptions: prior audited assumptions that are no longer

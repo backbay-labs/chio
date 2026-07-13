@@ -50,6 +50,7 @@ and does not license claim wording.
 | `ASSUME-EXTERNAL-REGISTRIES` | approved_with_scope | Hosted registry and DID state is trusted only under its published fail-closed contract. | `audited_assumption` |
 | `ASSUME-SUBPROCESS-ISOLATION` | approved_with_scope | Tool effects after an allow verdict rely on OS process and sandbox boundaries. | `audited_assumption` |
 | `ASSUME-CHAIN-FINALITY` | approved_with_scope | Chain evidence is accepted only after the configured finality policy. | `audited_assumption` |
+| `ASSUME-WASM-ENGINE` | approved_with_scope | Wasm boundary proofs rely on wasmtime enforcing its documented verdict, trap, fuel, memory-limiter, and in-process sandbox semantics. | `audited_assumption` |
 
 The sole explicit root-imported Lean axiom is machine-readably enumerated as
 `Chio.Json.hash_collision_resistant` in `formal/theorem-inventory.json` and

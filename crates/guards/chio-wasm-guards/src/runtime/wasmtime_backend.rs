@@ -35,6 +35,21 @@ pub enum WasmFormat {
     Component,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DecodedGuestVerdict {
+    Allow,
+    Deny,
+    Unknown(i32),
+}
+
+fn decode_guest_verdict(code: i32) -> DecodedGuestVerdict {
+    match code {
+        crate::abi::VERDICT_ALLOW => DecodedGuestVerdict::Allow,
+        crate::abi::VERDICT_DENY => DecodedGuestVerdict::Deny,
+        other => DecodedGuestVerdict::Unknown(other),
+    }
+}
+
 /// Inspect the first bytes of a WASM binary to determine its format.
 ///
 /// Uses `wasmparser::Parser` for authoritative detection. Returns `Err` if
@@ -421,6 +436,7 @@ pub struct WasmtimeBackend {
     max_memory_bytes: usize,
     max_module_size: usize,
     last_fuel_consumed: Option<u64>,
+    last_memory_bytes: Option<usize>,
     module_hash: Option<String>,
     instance_pre_pool: InstancePrePool,
 }
@@ -440,6 +456,7 @@ impl WasmtimeBackend {
             max_memory_bytes: MAX_MEMORY_BYTES,
             max_module_size: DEFAULT_MAX_MODULE_SIZE,
             last_fuel_consumed: None,
+            last_memory_bytes: None,
             module_hash: None,
             instance_pre_pool: InstancePrePool::new(DEFAULT_TENANT_WARM_INSTANCE_CAPACITY),
         })
@@ -459,6 +476,7 @@ impl WasmtimeBackend {
             max_memory_bytes: MAX_MEMORY_BYTES,
             max_module_size: DEFAULT_MAX_MODULE_SIZE,
             last_fuel_consumed: None,
+            last_memory_bytes: None,
             module_hash: None,
             instance_pre_pool: InstancePrePool::new(DEFAULT_TENANT_WARM_INSTANCE_CAPACITY),
         }
@@ -475,6 +493,7 @@ impl WasmtimeBackend {
             max_memory_bytes: MAX_MEMORY_BYTES,
             max_module_size: DEFAULT_MAX_MODULE_SIZE,
             last_fuel_consumed: None,
+            last_memory_bytes: None,
             module_hash: None,
             instance_pre_pool: InstancePrePool::new(DEFAULT_TENANT_WARM_INSTANCE_CAPACITY),
         }
@@ -511,6 +530,13 @@ impl WasmtimeBackend {
     pub fn pool_registered_tenant_count(&self) -> usize {
         self.instance_pre_pool.registered_tenant_count()
     }
+
+    /// Return the guest linear-memory size observed after the last completed
+    /// `evaluate` call.
+    #[must_use]
+    pub fn last_memory_bytes(&self) -> Option<usize> {
+        self.last_memory_bytes
+    }
 }
 
 impl Default for WasmtimeBackend {
@@ -525,6 +551,7 @@ impl Default for WasmtimeBackend {
                 max_memory_bytes: MAX_MEMORY_BYTES,
                 max_module_size: DEFAULT_MAX_MODULE_SIZE,
                 last_fuel_consumed: None,
+                last_memory_bytes: None,
                 module_hash: None,
                 instance_pre_pool: InstancePrePool::new(DEFAULT_TENANT_WARM_INSTANCE_CAPACITY),
             },
@@ -565,6 +592,8 @@ impl WasmGuardAbi for WasmtimeBackend {
     }
 
     fn evaluate(&mut self, request: &GuardRequest) -> Result<GuardVerdict, WasmGuardError> {
+        self.last_fuel_consumed = None;
+        self.last_memory_bytes = None;
         let module = self
             .module
             .as_ref()
@@ -662,12 +691,12 @@ impl WasmGuardAbi for WasmtimeBackend {
                 .map_err(|e| {
                     // Check if this was a fuel exhaustion
                     let msg = e.to_string();
+                    self.last_memory_bytes = Some(memory.data_size(&store));
+                    let consumed = self
+                        .fuel_limit
+                        .saturating_sub(store.get_fuel().unwrap_or(0));
+                    self.last_fuel_consumed = Some(consumed);
                     if msg.contains("fuel") {
-                        let consumed = self
-                            .fuel_limit
-                            .saturating_sub(store.get_fuel().unwrap_or(0));
-                        // Record fuel even on exhaustion
-                        self.last_fuel_consumed = Some(consumed);
                         WasmGuardError::FuelExhausted {
                             consumed,
                             limit: self.fuel_limit,
@@ -682,9 +711,9 @@ impl WasmGuardAbi for WasmtimeBackend {
         let consumed = self.fuel_limit.saturating_sub(remaining);
         self.last_fuel_consumed = Some(consumed);
 
-        let verdict = match result {
-            crate::abi::VERDICT_ALLOW => Ok(GuardVerdict::Allow),
-            crate::abi::VERDICT_DENY => {
+        let verdict = match decode_guest_verdict(result) {
+            DecodedGuestVerdict::Allow => Ok(GuardVerdict::Allow),
+            DecodedGuestVerdict::Deny => {
                 // Probe for structured chio_deny_reason export
                 let deny_reason_fn = instance
                     .get_typed_func::<(i32, i32), i32>(&mut store, "chio_deny_reason")
@@ -699,13 +728,15 @@ impl WasmGuardAbi for WasmtimeBackend {
 
                 Ok(GuardVerdict::Deny { reason })
             }
-            _ => {
-                // Unexpected return value -- fail closed
+            DecodedGuestVerdict::Unknown(code) => {
+                // Reject any return outside the typed verdict channel.
                 Err(WasmGuardError::Trap(format!(
-                    "unexpected return value from evaluate: {result}"
+                    "unexpected return value from evaluate: {code}"
                 )))
             }
         };
+
+        self.last_memory_bytes = Some(memory.data_size(&store));
 
         // Drain the log buffer and emit via tracing for host-side visibility
         for (level, msg) in &store.data().logs {
@@ -742,8 +773,7 @@ impl WasmGuardAbi for WasmtimeBackend {
 /// and returns the number of bytes written (or a negative/zero value on
 /// error).
 ///
-/// All error paths return `None` (fail closed with no reason rather than
-/// crashing).
+/// All error paths return `None` without changing the decoded deny verdict.
 fn read_structured_deny_reason(
     reason_fn: &wasmtime::TypedFunc<(i32, i32), i32>,
     memory: &Memory,

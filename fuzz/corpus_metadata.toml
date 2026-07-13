@@ -1027,3 +1027,33 @@ target    = "underwriting_policy_input"
 path      = "fuzz/corpus/underwriting_policy_input/simulation-request.json"
 sha256    = "f368c970f16892fec08924eb397e6d38f1bd248aa552e370beb91fbc6592dc6d"
 source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "wasm_guard_smith"
+path      = "fuzz/corpus/wasm_guard_smith/component.seed"
+sha256    = "69cf4a8eee84d114f4b61f67a6ffed008de6edb13747d13cdfbc2132eee8132d"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "wasm_guard_smith"
+path      = "fuzz/corpus/wasm_guard_smith/component_deny.seed"
+sha256    = "c2bbe369e0ea82a25887cf54f18e9f8abe14ab54c5d03e07be33d65784d8a4dc"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "wasm_guard_smith"
+path      = "fuzz/corpus/wasm_guard_smith/core_allow.seed"
+sha256    = "81f154e36343fbeb05947370330ce3d2b1a752d8588be2f7d8c7aaa8070f03e8"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "wasm_guard_smith"
+path      = "fuzz/corpus/wasm_guard_smith/core_deny.seed"
+sha256    = "1bf83516133ab6681559ffc8e6aaa5d9a39fc3e1cf4c783f6214d02fbb6233d8"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "wasm_guard_smith"
+path      = "fuzz/corpus/wasm_guard_smith/core_unknown.seed"
+sha256    = "063830fb1a50a30705ee2b118bbbb08de363e8dc4a3a38762394b85eac9fbe41"
+source    = "hand_curated_coverage"
