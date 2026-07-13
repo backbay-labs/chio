@@ -54,6 +54,19 @@ jobs:
       - name: Install MSRV toolchain
         run: rustup toolchain install 1.93.0 --profile minimal
 
+      - name: Install Java runtime
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Apalache
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./tools/install-apalache.sh
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
       - name: Install Lean 4 toolchain
         shell: bash
         env:

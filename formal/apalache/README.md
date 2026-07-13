@@ -57,7 +57,10 @@ apalache-mc check --length=6 --config=formal/apalache/MCRevocationCutCompletenes
 apalache-mc check --length=6 --config=formal/apalache/MCReceiptBeforeAllow.cfg formal/apalache/ReceiptBeforeAllow.tla
 apalache-mc check --length=6 --config=formal/apalache/MCKernelTransitionCancelSafe.cfg formal/apalache/KernelTransitionCancelSafe.tla
 apalache-mc check --length=8 --config=formal/apalache/MCPostAdmissionDropGuard.cfg formal/apalache/PostAdmissionDropGuard.tla
+apalache-mc check --length=0 --config=formal/tla/MCDistributedRevocationDomains.cfg formal/tla/DistributedRevocation.tla
+apalache-mc check --length=6 --config=formal/tla/MCDistributedRevocation.cfg formal/tla/DistributedRevocation.tla
 ./scripts/check-apalache-negative.sh
+./scripts/check-distributed-revocation-refinement.sh
 ```
 
 The negative command is the falsifiability gate. It stages imported modules,
@@ -66,5 +69,7 @@ counterexample as success only when Apalache exits 12, reports an Error
 outcome for exactly the registered invariant, and writes a structurally valid
 ITF trace.
 
-The nightly workflow also runs the `RevocationEventuallySeen`
-liveness check via `--temporal=` against `formal/tla/RevocationPropagation.tla`.
+The scheduled temporal workflow runs `RevocationEventuallySeen` against the
+local model and `RevocationEventuallyObservedDistributed` against the
+distributed model. The second property is conditional on weak-fair connected
+catch-up opportunities and partition healing.

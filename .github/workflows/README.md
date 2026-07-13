@@ -58,6 +58,16 @@ The separate [`mutants.yml`](./mutants.yml) workflow also has a path-scoped PR
 lane for six trust-boundary crates. It remains advisory until the evidence
 ratchet in `releases.toml` activates blocking posture.
 
+[`apalache-safety.yml`](./apalache-safety.yml) checks the distributed
+revocation model at the PR bound, expands it on scheduled runs, reproduces the
+registered negative witnesses, and runs the production ITF projection gate.
+[`apalache-temporal.yml`](./apalache-temporal.yml) keeps both revocation
+liveness properties scheduled and non-required, with a bounded selected-pair
+refinement and an explicit fair-observation witness for the distributed
+property. That property is conditional on weak-fair connected catch-up
+opportunities and partition heal; its post-change flake rate is unmeasured, so
+the lane remains frozen.
+
 ## Evidence-gated lane postures
 
 `releases.toml` is the authoritative posture registry for pass/fail proof and

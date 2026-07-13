@@ -2,7 +2,7 @@
 # scripts/check-mapping.sh
 #
 # Cross-reference gate for formal/MAPPING.md. Asserts that every named
-# TLA+ safety/liveness invariant in formal/tla/RevocationPropagation.tla,
+# TLA+ safety/liveness invariant in the revocation propagation models,
 # every required leaf invariant in its model's aggregate SafetyInv,
 # every drop-guard invariant in formal/apalache/PostAdmissionDropGuard.tla,
 # every #[kani::proof] harness in
@@ -21,6 +21,8 @@ cd "${repo_root}"
 
 mapping="formal/MAPPING.md"
 tla="formal/tla/RevocationPropagation.tla"
+distributed_tla="formal/tla/DistributedRevocation.tla"
+distributed_temporal_tla="formal/tla/DistributedRevocationTemporal.tla"
 drop_guard_tla="formal/apalache/PostAdmissionDropGuard.tla"
 kani="crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs"
 loom_manifest=".loom/harnesses.toml"
@@ -40,7 +42,7 @@ required_model_invariants=(
 
 # --- Sanity: source files must exist ----------------------------------------
 missing_inputs=0
-for f in "${mapping}" "${tla}" "${drop_guard_tla}" "${kani}" "${loom_manifest}" "${loom_runner}" "${dst_manifest}" "${dst_runner}" "${required_model_files[@]}"; do
+for f in "${mapping}" "${tla}" "${distributed_tla}" "${drop_guard_tla}" "${kani}" "${loom_manifest}" "${loom_runner}" "${dst_manifest}" "${dst_runner}" "${required_model_files[@]}"; do
   if [[ ! -f "${f}" ]]; then
     echo "check-mapping: required input is missing: ${f}" >&2
     missing_inputs=1
@@ -139,6 +141,14 @@ named_tla_invariants=(
   "AttenuationPreserving"
   "RevocationEventuallySeen"
   "RevocationFreshness"
+  "DistributedDomainsOK"
+  "ClockSkewBound"
+  "SignerPinnedHighWater"
+  "NoAllowAfterRevokeDistributed"
+  "StaleEvaluationDenied"
+  "RejectedRawEvaluationCountBound"
+  "PartitionSuspendResume"
+  "RevocationEventuallyObservedDistributed"
 )
 
 defined_tla_invariants=()
@@ -146,7 +156,9 @@ for name in "${named_tla_invariants[@]}"; do
   # Match a top-level definition `<name> ==` (allowing whitespace before ==).
   # Does NOT match references inside other definitions because the regex is
   # anchored at the start of the line.
-  if grep -qE "^${name}[[:space:]]*==" "${tla}"; then
+  if grep -qE "^${name}[[:space:]]*==" "${tla}" || \
+     grep -qE "^${name}[[:space:]]*==" "${distributed_tla}" || \
+     grep -qE "^${name}[[:space:]]*==" "${distributed_temporal_tla}"; then
     defined_tla_invariants+=("${name}")
   fi
 done
@@ -272,7 +284,7 @@ echo "  Required model leaf invariants enforced (${#required_model_invariants[@]
 for index in "${!required_model_invariants[@]}"; do
   echo "    - ${required_model_invariants[${index}]} (${required_model_files[${index}]})"
 done
-echo "  TLA+ invariants enforced (${#defined_tla_invariants[@]} of ${#named_tla_invariants[@]} whitelisted defined in ${tla}):"
+echo "  TLA+ invariants enforced (${#defined_tla_invariants[@]} of ${#named_tla_invariants[@]} whitelisted across the revocation models):"
 for name in "${defined_tla_invariants[@]}"; do
   echo "    - ${name}"
 done

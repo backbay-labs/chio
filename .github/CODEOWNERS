@@ -71,6 +71,7 @@ crates/core/chio-core-types/src/capability/**     @backbay-labs/chio-maintainers
 crates/kernel/chio-kernel-core/src/**        @backbay-labs/chio-maintainers
 crates/core/chio-core-types/**                @backbay-labs/chio-maintainers
 crates/kernel/chio-kernel-core/**             @backbay-labs/chio-maintainers
+crates/trust/chio-federation/tests/distributed_revocation_refinement.rs @backbay-labs/chio-maintainers
 deny.toml                                    @backbay-labs/chio-maintainers
 .github/workflows/ci.yml                     @backbay-labs/chio-maintainers
 .github/workflows/formal-pr-smoke.yml        @backbay-labs/chio-maintainers
@@ -92,6 +93,7 @@ scripts/check-*.sh                           @backbay-labs/chio-maintainers
 scripts/install-aeneas-toolchain.py          @backbay-labs/chio-maintainers
 scripts/snapshot-aeneas-generated.sh         @backbay-labs/chio-maintainers
 scripts/vendor-aeneas-lean.sh                @backbay-labs/chio-maintainers
+scripts/validate-distributed-revocation-trace.py @backbay-labs/chio-maintainers
 scripts/check-fuzz-budget.sh                 @backbay-labs/chio-maintainers
 scripts/check-regression-tests.sh            @backbay-labs/chio-maintainers
 scripts/tests/check-regression-tests.test.sh @backbay-labs/chio-maintainers

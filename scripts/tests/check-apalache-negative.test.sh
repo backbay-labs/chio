@@ -6,8 +6,15 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 tmp_dir="$(env -u TMPDIR -u TMP -u TEMP mktemp -d)"
 scratch_rel="target/check-apalache-negative-selftest-$$"
 scratch_dir="${repo_root}/${scratch_rel}"
+if [[ "${CARGO_TARGET_DIR:-target}" = /* ]]; then
+  cargo_target_dir="${CARGO_TARGET_DIR}"
+else
+  cargo_target_dir="${repo_root}/${CARGO_TARGET_DIR:-target}"
+fi
+cargo_output_dir="${cargo_target_dir}/check-apalache-negative-output-selftest-$$"
 allowed_symlink="${repo_root}/target/check-apalache-negative-symlink-$$"
 sibling_symlink="${repo_root}/formal/apalache/SelfTestSibling$$.tla"
+tla_sibling_symlink="${repo_root}/formal/tla/SelfTestSibling$$.tla"
 negative_rel="formal/apalache/_negative_tests"
 fixture_spec_rel="${negative_rel}/SelfTestBroken.tla"
 fixture_cfg_rel="${negative_rel}/MCSelfTestBroken.cfg"
@@ -15,17 +22,19 @@ multi_spec_rel="${negative_rel}/SelfTestMultipleBroken.tla"
 multi_cfg_rel="${negative_rel}/MCSelfTestMultipleBroken.cfg"
 invalid_spec_rel="${negative_rel}/escape-name.tla"
 invalid_cfg_rel="${negative_rel}/MCescape-name.cfg"
+comment_anchor_rel="${negative_rel}/selftest-comment-anchor.rs"
 
 cleanup() {
-  rm -rf "${tmp_dir}" "${scratch_dir}"
-  rm -f "${allowed_symlink}" "${sibling_symlink}"
+  rm -rf "${tmp_dir}" "${scratch_dir}" "${cargo_output_dir}"
+  rm -f "${allowed_symlink}" "${sibling_symlink}" "${tla_sibling_symlink}"
   rm -f \
     "${repo_root}/${fixture_spec_rel}" \
     "${repo_root}/${fixture_cfg_rel}" \
     "${repo_root}/${multi_spec_rel}" \
     "${repo_root}/${multi_cfg_rel}" \
     "${repo_root}/${invalid_spec_rel}" \
-    "${repo_root}/${invalid_cfg_rel}"
+    "${repo_root}/${invalid_cfg_rel}" \
+    "${repo_root}/${comment_anchor_rel}"
 }
 trap cleanup EXIT
 mkdir -p "${scratch_dir}"
@@ -252,7 +261,12 @@ EOF
 
 pass_log="${tmp_dir}/pass.log"
 run_gate pass "${pass_log}"
-grep -Fq "check-apalache-negative: 10 counterexamples reproduced" "${pass_log}"
+grep -Fq "check-apalache-negative: 16 counterexamples reproduced" "${pass_log}"
+
+cargo_target_log="${tmp_dir}/cargo-target.log"
+run_gate pass "${cargo_target_log}" "${cargo_output_dir}"
+grep -Fq "check-apalache-negative: 16 counterexamples reproduced" \
+  "${cargo_target_log}"
 
 expect_gate_failure receipt-noerror \
   "reported NoError for ReceiptBeforeAllow" "restored-invariant"
@@ -306,8 +320,26 @@ for unsafe_output in "${repo_root}" "${repo_root}/scripts" \
     echo "expected unsafe output path ${unsafe_output} to fail" >&2
     exit 1
   fi
-  grep -Fq "output directory must be below target or the system temporary directory outside the repository" "${unsafe_log}"
+  grep -Fq "output directory must be below target, CARGO_TARGET_DIR, or the system temporary directory outside the repository" "${unsafe_log}"
 done
+
+root_alias_log="${tmp_dir}/cargo-root-alias.log"
+if CARGO_TARGET_DIR="/.." run_gate pass "${root_alias_log}" \
+  "/../check-apalache-negative-root-alias-$$"; then
+  echo "expected a CARGO_TARGET_DIR alias to the filesystem root to fail" >&2
+  exit 1
+fi
+grep -Fq "output directory must be below target, CARGO_TARGET_DIR, or the system temporary directory outside the repository" \
+  "${root_alias_log}"
+
+repo_alias_log="${tmp_dir}/cargo-repo-alias.log"
+if CARGO_TARGET_DIR="${repo_root}/target/.." run_gate pass \
+  "${repo_alias_log}" "${repo_root}/target/../check-apalache-negative-repo-alias-$$"; then
+  echo "expected a CARGO_TARGET_DIR alias to the repository to fail" >&2
+  exit 1
+fi
+grep -Fq "output directory must be below target, CARGO_TARGET_DIR, or the system temporary directory outside the repository" \
+  "${repo_alias_log}"
 
 ln -s "${repo_root}" "${tmp_dir}/symlink-escape"
 symlink_log="${tmp_dir}/symlink-escape.log"
@@ -315,7 +347,7 @@ if run_gate pass "${symlink_log}" "${tmp_dir}/symlink-escape"; then
   echo "expected an output symlink escaping the allowed roots to fail" >&2
   exit 1
 fi
-grep -Fq "output directory must be below target or the system temporary directory outside the repository" "${symlink_log}"
+grep -Fq "output directory must be below target, CARGO_TARGET_DIR, or the system temporary directory outside the repository" "${symlink_log}"
 test -f "${repo_root}/scripts/check-apalache-negative.sh"
 
 mkdir -p "${tmp_dir}/allowed-symlink-target"
@@ -326,7 +358,7 @@ if run_gate pass "${allowed_symlink_log}" "${allowed_symlink}"; then
   echo "expected an output symlink below target to fail" >&2
   exit 1
 fi
-grep -Fq "output directory must be below target or the system temporary directory outside the repository" "${allowed_symlink_log}"
+grep -Fq "output directory must be below target, CARGO_TARGET_DIR, or the system temporary directory outside the repository" "${allowed_symlink_log}"
 grep -Fq preserve "${tmp_dir}/allowed-symlink-target/sentinel"
 rm -f "${allowed_symlink}"
 
@@ -358,6 +390,18 @@ fi
 grep -Fq "Apalache sibling module contains a symlink component" \
   "${sibling_symlink_log}"
 rm -f "${sibling_symlink}"
+
+ln -s "${repo_root}/formal/tla/RevocationPropagation.tla" \
+  "${tla_sibling_symlink}"
+tla_sibling_symlink_log="${tmp_dir}/tla-sibling-symlink.log"
+if run_gate pass "${tla_sibling_symlink_log}" \
+  "${tmp_dir}/tla-sibling-symlink-output"; then
+  echo "expected a symlinked TLA sibling module to fail" >&2
+  exit 1
+fi
+grep -Fq "TLA sibling module contains a symlink component" \
+  "${tla_sibling_symlink_log}"
+rm -f "${tla_sibling_symlink}"
 
 traversing_registry="${scratch_dir}/traversing-registry.toml"
 write_registry "${traversing_registry}" "${fixture_cfg_rel}" \
@@ -422,11 +466,11 @@ fi
 grep -Fq "runtime_test n/a value must include one parenthesized reason" \
   "${bad_runtime_na_log}"
 
-printf '%s\n' "// fn comment_only_anchor() {}" >"${scratch_dir}/comment-only.rs"
+printf '%s\n' "// fn comment_only_anchor() {}" >"${repo_root}/${comment_anchor_rel}"
 comment_registry="${scratch_dir}/comment-anchor.toml"
 write_registry "${comment_registry}" "${fixture_cfg_rel}" \
   "n/a (self-test has no production fix)" \
-  "${scratch_rel}/comment-only.rs::comment_only_anchor"
+  "${comment_anchor_rel}::comment_only_anchor"
 comment_log="${tmp_dir}/comment-anchor.log"
 if run_gate pass "${comment_log}" "${tmp_dir}/comment-output" "${comment_registry}"; then
   echo "expected a comment-only Rust anchor to fail" >&2

@@ -1,6 +1,6 @@
 # Formal Verification: Current State
 
-- Status: Survey snapshot updated 2026-07-11
+- Status: Survey snapshot updated 2026-07-12
 - Audience: maintainers, formal-methods contributors, auditors
 - Companion docs: [GAP_ANALYSIS.md](GAP_ANALYSIS.md), [HYGIENE_PASS.md](HYGIENE_PASS.md), [ROADMAP.md](ROADMAP.md), plan specs under [plan/](plan/)
 
@@ -191,11 +191,25 @@ the typed, `pub(crate)` facade that performs those kernel projections.
     (`RevocationEventuallySeen`, checked nightly via `--temporal=`, with a
     documented Apalache PDR-017 workaround lifting an existential into the
     named action `PropagateAny`).
+  - `DistributedRevocation.tla`: bounded signer-pinned root gossip with lossy,
+    duplicating, reordering counting channels, independent skew-bounded clocks,
+    repeated partition safety, target-specific revocation, and conditional
+    post-heal liveness. PR behavioral bounds use two authorities and three
+    epochs; scheduled behavioral safety expands to three authorities and four
+    epochs. Exact function domains and relational shape are checked in the
+    concrete initial state. `DistributedRevocationTemporal.tla` separately
+    checks conditional eventual observation for one arbitrary ordered pair
+    with a primitive-temporal expansion of weak fairness. A bounded refinement
+    check maps one selected pair from the full temporal relation into that
+    scalar spec, and an executable witness reaches a fair observation state.
+    Neither check establishes unbounded refinement across all pairs. The
+    executable gate checks exact one-origin scalar production projections and
+    does not claim full-state or multi-origin Rust refinement.
   - `DelegationDepthBound.tla` (234 lines): depth-bounded delegation and
     revocation-as-cut observation (`DepthBoundedByRoot`,
     `AttenuatedAtEachStep`, `RevokedSubtreeNotObservable`).
 - Bounded kernel-state subset in `formal/apalache/` (Authorities 1..3, CapSet
-  1..6, EpochMax 4, length 6, 30-minute per-invariant CI timeout):
+  1..6, EpochMax 4, length 6, with enforced per-configuration CI timeouts):
   `MonotoneLogApalache`, `ReceiptBeforeAllow` (modeled ordering evidence,
   deliberately split into persist and publish actions so the invariant is not
   tautological; concrete cross-row crash recovery remains excluded),
@@ -207,10 +221,10 @@ the typed, `pub(crate)` facade that performs those kernel projections.
   commit-vs-cancel paths), and `PostAdmissionDropGuard`, whose
   `ReservationConservation` invariant checks a counted partition and shared
   child capacity at every bounded state.
-- Negative-test discipline: `formal/apalache/_negative_tests/` holds
-  deliberately-broken spec variants that must produce counterexamples, run
-  locally only, with a written rationale for staying out of CI (a green CI
-  run would require a counterexample, inverting the signal).
+- Negative-test discipline: `formal/apalache/_negative_tests/REGISTRY.toml`
+  registers deliberately broken variants and rejected-claim witnesses. The
+  separate `apalache-negative` job requires the pinned checker to reproduce
+  each exact invariant violation and a structurally valid ITF trace.
 - `CONTRACTOR-SIGNOFF.md` is explicitly an internal self-authored record, not
   an external review; hosted-run evidence is tracked as CI debt.
 
@@ -275,24 +289,25 @@ differential-test joins, theorem status, and model-only Kani scope remain
 explicit there.
 
 - `formal/proof-manifest.toml` (schema `chio.proof-manifest.v1`) is the hub:
-  `root_modules` (34 Lean files), `gate_commands` (14 commands), 11
-  `covered_rust_modules`, 36 `covered_rust_symbols`, 14 `shell_entrypoints`,
+  `root_modules` (34 Lean files), `gate_commands` (15 commands), 12
+  `covered_rust_modules`, 41 `covered_rust_symbols`, 14 `shell_entrypoints`,
   the P1-P10 `property_matrix` with per-property evidence-lane tags,
   `rust_refinement_lanes`, `allowed_axioms` (exactly one),
-  `excluded_surfaces`, and `discharged_assumptions`. Forty-three `[[mirror]]`
-  entries bind 108 parser-resolved Rust symbol references to seven Lean models
-  and six TLA+ models with ordered rollup and per-symbol hashes. Lean entries
+  `excluded_surfaces`, and `discharged_assumptions`. Forty-six `[[mirror]]`
+  entries bind 118 parser-resolved Rust symbol references to seven Lean models
+  and seven TLA+ models with ordered rollup and per-symbol hashes. Lean entries
   are labeled as transliterations or abstraction anchors; TLA+ entries are
   abstraction anchors. `cargo xtask check formal-mirrors` enforces those hashes
   in required PR CI.
 - `formal/theorem-inventory.json` (145 theorem entries plus a separate
   assumptions block): per-theorem id, Lean name,
   file, kind, `rootImported` flag, claim class, `mapsTo` property ids.
-- `formal/MAPPING.md`: the cross-reference table from TLA invariants, Kani
-  harnesses, and Lean delegation theorems to Rust call sites.
-  `scripts/check-mapping.sh` greps the TLA invariant names and every
-  `#[kani::proof]` fn and fails CI unless each has a literal row.
-- `formal/assumptions.toml`: 10 required audited assumptions. SQLite
+- `formal/MAPPING.md`: the cross-reference table from required model safety
+  leaves, TLA and drop-guard invariants, Kani, Loom, and DST harnesses, and Lean
+  delegation theorems to Rust call sites. `scripts/check-mapping.sh` discovers
+  each enforced registry and source entry and fails CI unless every one has a
+  literal row.
+- `formal/assumptions.toml`: 12 required audited assumptions. SQLite
   atomicity is scoped to single-row commits; cross-row recovery remains outside
   the formal claim boundary until implementation trace validation and
   crash-reopen conservation establish refinement.
@@ -301,7 +316,7 @@ explicit there.
   `FORM-NO-SOFTWARE-AXIOMS`, and P1-P10 approved with scope), and explicitly
   disallowed claims (`FORM-OVERALL`,
   `LEAN-4-VERIFIED`, `P2-END-TO-END`, `P3-END-TO-END`, `P4-END-TO-END`,
-  `P5-ACYCLICITY`).
+  `P5-ACYCLICITY`, `P2-DISTRIBUTED-END-TO-END`).
 - `docs/release/RISK_REGISTER.md` claim rules, including: do not say the
   Creusot/Kani production refinement is complete unless the strict lane has
   actually passed in CI.
@@ -319,7 +334,7 @@ explicit there.
 | Cadence | Formal content |
 | --- | --- |
 | Every PR (required) | diff-tests via workspace tests; `cargo xtask check crate-paths` (manifest path integrity); `cargo xtask check formal-mirrors` (Rust-to-model review tripwire); proptest invariant-naming gate; regression-test deletion gate; threat-model coverage gate; registry status ban (`implementation_backed`) |
-| PR, path-scoped | Apalache safety (6 spec/cfg pairs); Lean build plus sorry and manifest checks; 24 core and 15 non-core Kani PR harnesses; Rust verification metadata with no Creusot proofs; ClusterFuzzLite change-scoped fuzzing; cargo-mutants for touched trust-boundary crates |
+| PR, path-scoped | Apalache safety (9 spec/cfg pairs) plus registered negative witnesses and the distributed production projection; Lean build plus sorry and manifest checks; 24 core and 15 non-core Kani PR harnesses; Rust verification metadata with no Creusot proofs; ClusterFuzzLite change-scoped fuzzing; cargo-mutants for touched trust-boundary crates |
 | Nightly | Kani (all lanes), Lean/Aeneas/Creusot proof report (`formal-qualification`), Apalache temporal (liveness; known-unreliable), proptest 4096-case tier plus a 10000-case reservation-ledger sequence target, mutants full sweeps (advisory), mutants-fuzz co-coverage, dudect, fuzz rotation and native sweep |
 | Push to main / release | `release-qualification.yml` runs the full gate battery: `check-formal-proofs.sh`, both Aeneas checks, equivalence, Creusot and Kani strict lanes, adapter no-bypass, portable kernel, proof report |
 

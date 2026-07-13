@@ -10,6 +10,7 @@ required_assumption_ids = [
   "ASSUME-SQLITE-ATOMICITY",
   "ASSUME-TLS",
   "ASSUME-NETWORK-TRANSPORT",
+  "ASSUME-GOSSIP-FAIRNESS-PARTITION-BOUND",
   "ASSUME-EXTERNAL-REGISTRIES",
   "ASSUME-SUBPROCESS-ISOLATION",
   "ASSUME-CHAIN-FINALITY",
@@ -23,7 +24,8 @@ assumptions = [
   "ASSUME-OS-CLOCK|audited_platform|The injected clock is assumed to report operator-accepted Unix time within the deployment tolerance.|P2,P3,P8",
   "ASSUME-SQLITE-ATOMICITY|audited_storage|SQLite transactions are assumed to provide atomic committed updates for revocation, budget, receipt, and registry state per single-row write. Cross-row crash recovery, ordering, and conservation are not assumed or discharged and remain outside the current formal claim boundary.|P2,P4,P6,P7",
   "ASSUME-TLS|audited_transport|TLS endpoint authentication and channel confidentiality are assumed for configured remote control and hosted HTTP surfaces.|P8,P9",
-  "ASSUME-NETWORK-TRANSPORT|audited_transport|Network delivery is not assumed reliable, but authenticated messages received by Chio are assumed not to be silently rewritten below TLS or signature checks.|P8,P9",
+  "ASSUME-NETWORK-TRANSPORT|audited_transport|Network delivery is not assumed reliable, but authenticated messages received by Chio are assumed not to be silently rewritten below TLS or signature checks.|P2,P8,P9",
+  "ASSUME-GOSSIP-FAIRNESS-PARTITION-BOUND|audited_transport|For a configured bilateral revocation peer set, correct connected peers are assumed to have recurring push or catch-up opportunities governed by weak fairness, local clocks remain within the declared skew bound, and declared partitions heal within the operator-declared partition bound. Loss, duplication, reordering, and invalid frames are modeled rather than assumed away. No finite delivery-step or raw-evaluation bound is assumed.|P2",
   "ASSUME-EXTERNAL-REGISTRIES|audited_service|Hosted package, certification, DID, and registry services are assumed to return state they have durably accepted or else fail closed.|P9,P10",
   "ASSUME-SUBPROCESS-ISOLATION|audited_platform|Tool-server subprocess isolation and OS process boundaries are assumed for effects outside the pure kernel decision core.|P3,P6",
   "ASSUME-CHAIN-FINALITY|audited_external|External chain and oracle finality are assumed only after the configured confirmation/finality policy accepts the evidence.|P4,P7",
@@ -35,3 +37,6 @@ assumptions = [
 # Abstract invariants and manual mirror hashes are not sufficient by themselves.
 retired_assumption_ids = []
 retired_assumptions = []
+
+# The distributed model scopes authentication, weak fairness, skew, and
+# partition-heal obligations, but does not retire either transport assumption.

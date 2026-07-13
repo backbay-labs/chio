@@ -61,6 +61,7 @@ gate_commands = [
   "cargo test -p chio-formal-diff-tests",
   "./scripts/check-portable-kernel.sh",
   "./scripts/check-receipt-trace.sh",
+  "./scripts/check-distributed-revocation-refinement.sh",
   "./scripts/check-proof-report.sh",
 ]
 
@@ -76,6 +77,7 @@ covered_rust_modules = [
   "crates/core/chio-core-types/src/merkle_steps.rs",
   "crates/economy/chio-credit/src/formal_economy.rs",
   "crates/economy/chio-web3/src/settlement.rs",
+  "crates/trust/chio-federation/src/revocation_gossip.rs",
 ]
 
 covered_rust_symbols = [
@@ -117,6 +119,11 @@ covered_rust_symbols = [
   "chio_core_types::capability::delegate",
   "chio_core_types::delegation_receipt::DelegationReceipt::canonical_bytes",
   "chio_kernel_core::revocation_view::RevocationView::install_if_newer",
+  "chio_federation::revocation_gossip::RevocationRootGossip::validate_envelope",
+  "chio_federation::revocation_gossip::RevocationGossipPushQueue::enqueue_signed_root",
+  "chio_federation::revocation_gossip::RevocationGossipPushQueue::flush_batches_at",
+  "chio_federation::revocation_gossip::RevocationCatchupResponse::validate_response",
+  "chio_federation::revocation_gossip::respond_to_catchup",
 ]
 
 shell_entrypoints = [
@@ -140,7 +147,7 @@ required_property_ids = ["P1", "P2", "P3", "P4", "P5", "P6", "P7", "P8", "P9", "
 
 property_matrix = [
   "P1|capability attenuation|lean_root_imported,differential_test,rust_projection,aeneas_equivalence,public_kani|spec.capability_monotonicity,proof.scope_subset_of_grants_subset,proof.reduced_budget_is_subset,proof.added_constraint_is_subset,proof.generated_optional_u32_cap_is_subset_preserves_parent_cap,proof.generated_ledger_apply_eq_model",
-  "P2|presented revocation coverage|lean_root_imported,audited_storage_assumption,sqlite_projection,aeneas_equivalence|proof.revoke_marks_capability_revoked,proof.checkRevocation_revoked_token_errors,proof.evalToolCall_revoked_token_never_allows,proof.revocationSnapshot_revoked_token_denies,proof.revocationSnapshot_revoked_ancestor_denies,proof.generated_revocation_snapshot_denies_eq_model",
+  "P2|presented revocation coverage|lean_root_imported,audited_storage_assumption,audited_transport_assumption,sqlite_projection,aeneas_equivalence,distributed_apalache,rust_trace_projection|proof.revoke_marks_capability_revoked,proof.checkRevocation_revoked_token_errors,proof.evalToolCall_revoked_token_never_allows,proof.revocationSnapshot_revoked_token_denies,proof.revocationSnapshot_revoked_ancestor_denies,proof.generated_revocation_snapshot_denies_eq_model",
   "P3|fail-closed evaluation|lean_root_imported,rust_core,audited_subprocess_assumption,public_kani,adapter_no_bypass,aeneas_equivalence|proof.evalToolCall_total,proof.evalToolCall_invalid_signature_denies,proof.evalToolCall_out_of_scope_denies,proof.admitSession_invalid_dpop_rejects,proof.governedApproval_required_without_token_fails,proof.dpop_required_missing_proof_rejects,proof.dpop_required_invalid_proof_rejects,proof.guardPipeline_deny_dominates,proof.guardPipeline_error_dominates,proof.delegation_max_depth_failure_denies,proof.generated_time_window_valid_eq_model,proof.generated_budget_commit_eq_model,proof.generated_guard_step_allows_eq_model,treaty.predicate.unsupported_denies,treaty.predicate.runtime_policy_exact,treaty.syntactic.decision_exact,treaty.bridge.refinement_on_iff",
   "P4|receipt integrity|lean_root_imported,symbolic_crypto,audited_crypto_assumption,receipt_totality,aeneas_equivalence,public_kani,differential_test|proof.canonical_inj,proof.receipt_id_input_collision_resistant,proof.receipt_id_collision_resistant,proof.membership_proof_sound,proof.stepFold_eq_applyProof,proof.stepFold_membership_sound_if_geometry_agrees,proof.boundedWalkGeometry_decodes,proof.bounded_stepFold_sound,proof.generated_inclusion_step_eq_model,proof.receipt_sign_then_verify,proof.receipt_immutability,proof.receiptFieldsCoupled_preserves_all_fields,proof.generated_receipt_fields_coupled_eq_model",
   "P5|presented delegation-chain semantic validity|lean_root_imported,sqlite_projection|proof.delegation_chain_integrity,proof.delegation_step_allow_requires_attenuation,proof.delegation_step_allow_requires_subject_continuity,proof.delegation_step_allow_requires_expiry_monotonicity,proof.delegation_revoked_ancestor_denies,proof.delegation_max_depth_failure_denies",
@@ -225,6 +232,9 @@ notes = [
   "The treaty PredicateLang is a bounded post-validation abstraction over production-shaped federation inputs. Its Lean abstraction anchors are drift tripwires, not a Rust refinement proof.",
   "docs/formal/COVERAGE.md is the generated per-surface join of declared verification registries. It reports evidence identity and attribution without licensing claims beyond docs/reference/CLAIM_REGISTRY.md.",
   "Canonical JSON injectivity is proved over actual UTF-8 bytes for normalized signed-decimal integers, Unicode scalar strings, arrays, and ordered object entries. The symbolic receipt projection uses the 20 named ChioReceiptIdInput fields in checked UTF-16 order with production omission rules; production serde agreement for compound values and float-bearing cases remain audited assumptions.",
+  "Distributed revocation evidence models signed-root gossip loss, duplication, reordering, skew, partition suspension, heal, and catch-up. StaleEvaluationDenied mirrors the production wall-clock freshness gate. RejectedRawEvaluationCountBound records that no raw evaluation-throughput bound is proved.",
+  "The distributed production gate checks exact deterministic scalar trace projections for one pinned origin and one RevocationView. It is not full-state refinement, does not inject faults into the shipped transport, and does not establish multi-origin isolation in Rust.",
+  "ASSUME-NETWORK-TRANSPORT and ASSUME-GOSSIP-FAIRNESS-PARTITION-BOUND remain required. Distributed evidence scopes their use but does not discharge either assumption.",
 ]
 
 # Discharged assumptions: prior audited assumptions that are no longer
@@ -240,28 +250,12 @@ discharged_assumptions = []
 # `formal/assumptions.toml` `required_assumption_ids` rather than a
 # discharged one.
 #
-# The `RevocationFreshness` invariant in
-# `formal/tla/RevocationPropagation.tla` (~L344) constrains every
-# recorded local revocation epoch to be strictly less than the global
-# clock value, which discharges only the LOCAL freshness gate
-# (single-authority observed-epoch monotonicity vs the model clock).
-# It does NOT model multiple gossip peers, vector-clock-ordered
-# delivery, or any other cross-peer ordering primitive: the predicate
-# is `\A a \in ProcSet, c \in CapSet : rev_epoch[a][c] # 0 =>
-# rev_epoch[a][c] < clock`, where `clock` is a single shared variable
-# rather than a per-peer logical timestamp.
-#
-# Therefore the cross-peer ordering claim that
-# `ASSUME-NETWORK-TRANSPORT` covers ("authenticated messages received
-# by Chio are not silently rewritten below TLS or signature checks")
-# remains audited rather than discharged. The wire-level signature
-# pinning in `crates/trust/chio-federation/src/revocation_gossip.rs`
-# (signer_id pin, signature verification before
-# `RevocationView::install_if_newer`) is the operational mitigation;
-# the formal discharge is deferred until a distributed-time TLA model
-# ships.
-m04_p5_t5_assumptions_decision = "ASSUME-NETWORK-TRANSPORT-unchanged"
-m04_p5_t5_rationale_anchor = "formal/tla/RevocationPropagation.tla::RevocationFreshness"
+# `formal/tla/DistributedRevocation.tla` supplies the previously missing
+# distributed-time model. The broad transport assumption remains required
+# alongside the narrower named fairness and partition assumption. In
+# particular, weak fairness does not prove a finite evaluation-count bound.
+m04_p5_t5_assumptions_decision = "ASSUME-NETWORK-TRANSPORT-scoped-not-retired"
+m04_p5_t5_rationale_anchor = "formal/tla/DistributedRevocation.tla::StaleEvaluationDenied"
 
 # Ordered symbol-level hashes for manual Rust-to-model review seams.
 # The rollup uses length-prefixed normalized token streams in rust_symbols order.
@@ -482,6 +476,56 @@ symbol_sha256 = [
 # TLA records are abstraction anchors. Their hashes force model review when the
 # named implementation changes, but a matching hash does not establish a TLA
 # invariant in Rust.
+
+[[mirror]]
+model_file = "formal/tla/DistributedRevocation.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/trust/chio-federation/src/revocation_gossip.rs"
+rust_symbols = [
+  "RevocationGossipPushQueue::enqueue_signed_root",
+  "RevocationGossipPushQueue::flush_batches_at",
+  "RevocationCatchupResponse::validate_response",
+  "respond_to_catchup",
+]
+normalized_sha256 = "6a9bab60131a9cdff8f03742f2627b8e834934dcccf3d71ec04a3c17de390406"
+symbol_sha256 = [
+  { symbol = "RevocationGossipPushQueue::enqueue_signed_root", sha256 = "3b5d354a7c60d6b2eee3576c2d882ab455ae1177f1b4a0f4052c62334cfa887f" },
+  { symbol = "RevocationGossipPushQueue::flush_batches_at", sha256 = "8dfa54df18b483260753b717e0912dff99ddeba6c366108e9718c254542d850a" },
+  { symbol = "RevocationCatchupResponse::validate_response", sha256 = "b85b682bf06ef19d489f1d310dcc80381d6c3b66e95d6eb7add17b2fb1fd3864" },
+  { symbol = "respond_to_catchup", sha256 = "e26f9dfd98162c4112e33cd23f491db51fb503e14393114244b81c2af4aa1137" },
+]
+
+[[mirror]]
+model_file = "formal/tla/DistributedRevocation.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/trust/chio-revocation-oracle/src/freshness.rs"
+rust_symbols = ["FreshnessConfig", "verify_fresh_epoch_root"]
+normalized_sha256 = "0a792bb53472f53bbfc119d219a33a39d92c3775f9ce78cbb3c05debfbcd383b"
+symbol_sha256 = [
+  { symbol = "FreshnessConfig", sha256 = "af932ee351b7daf7c507c7e0ba89f072730bb85500d0d4bcb6d92f477fe67a41" },
+  { symbol = "verify_fresh_epoch_root", sha256 = "34f799d6f916983f21b68df853d2966cf83dc400f0db7381a85e883e4b236370" },
+]
+
+[[mirror]]
+model_file = "formal/tla/DistributedRevocation.tla"
+model_kind = "tla"
+relationship = "abstraction_anchor"
+rust_source = "crates/kernel/chio-kernel-core/src/revocation_view.rs"
+rust_symbols = [
+  "RevocationSnapshot",
+  "RevocationSnapshot::is_revoked",
+  "RevocationView::install_if_newer",
+  "RevocationView::is_revoked",
+]
+normalized_sha256 = "e67cb0fc42d2b669b102abf0be1ce082cb9ef73bde1838c5dd784141124e36a0"
+symbol_sha256 = [
+  { symbol = "RevocationSnapshot", sha256 = "7771d67422fe44ea94a14ae374ad8e01113040198af1bfb1d7c4a71fcac1c369" },
+  { symbol = "RevocationSnapshot::is_revoked", sha256 = "1465bbb698a40dbcc07cfc925577136e9d4d05e80eb5ed7780172795263ef0e6" },
+  { symbol = "RevocationView::install_if_newer", sha256 = "1a8f67659eae15575b13aadb5ac2999e64d35126b815b78d6deeff0e02c2dd3c" },
+  { symbol = "RevocationView::is_revoked", sha256 = "318a3cd03d7fd93e59e7a71bdd892184af8f6e164248d82c61072dbbd18b2bf0" },
+]
 
 [[mirror]]
 model_file = "formal/tla/RevocationPropagation.tla"

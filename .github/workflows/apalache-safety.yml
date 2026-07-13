@@ -15,6 +15,11 @@ on:
       - "scripts/tests/check-receipt-trace-bindings.test.sh"
       - "formal/MAPPING.md"
       - "formal/proof-manifest.toml"
+      - "formal/assumptions.toml"
+      - "docs/reference/CLAIM_REGISTRY.md"
+      - "crates/trust/chio-federation/src/revocation_gossip.rs"
+      - "crates/trust/chio-federation/tests/distributed_revocation_refinement.rs"
+      - "crates/trust/chio-revocation-oracle/src/**"
       - "crates/kernel/chio-kernel-core/src/evaluate.rs"
       - "crates/kernel/chio-kernel-core/src/revocation_view.rs"
       - "crates/kernel/chio-kernel/src/budget_store.rs"
@@ -22,6 +27,7 @@ on:
       - "crates/kernel/chio-kernel/src/kernel/construction.rs"
       - "crates/kernel/chio-kernel/src/receipt_store.rs"
       - "crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs"
+      - "crates/kernel/chio-kernel/src/kernel/delegation.rs"
       - "crates/kernel/chio-kernel/src/kernel/dispatch.rs"
       - "crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs"
       - "crates/kernel/chio-kernel/src/kernel/evaluation/nested_flow_evaluation.rs"
@@ -38,6 +44,8 @@ on:
       - "scripts/lib/apalache_evidence.py"
       - "scripts/file-mutation-survivors.py"
       - "scripts/spec-mutants.py"
+      - "scripts/check-distributed-revocation-refinement.sh"
+      - "scripts/validate-distributed-revocation-trace.py"
       - "scripts/tests/check-apalache-negative.test.sh"
       - "scripts/tests/file-mutation-survivors.test.sh"
       - "scripts/tests/spec-mutants.test.sh"
@@ -66,6 +74,18 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install --profile minimal
+          rustup show active-toolchain
+
+      - name: Install protobuf compiler
+        uses: ./.github/actions/apt-install
+        with:
+          packages: protobuf-compiler
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
 
       - name: Install Apalache
         shell: bash
@@ -109,8 +129,30 @@ jobs:
           formal/apalache/MCKernelTransitionCancelSafe.cfg|formal/apalache/KernelTransitionCancelSafe.tla|6|1800
           formal/apalache/MCPostAdmissionDropGuard.cfg|formal/apalache/PostAdmissionDropGuard.tla|8|10800
           formal/tla/MCRevocationPropagation.cfg|formal/tla/RevocationPropagation.tla|6|10800
+          formal/tla/MCDistributedRevocationDomains.cfg|formal/tla/DistributedRevocation.tla|0|600
+          formal/tla/MCDistributedRevocation.cfg|formal/tla/DistributedRevocation.tla|6|1800
           formal/tla/MCDelegationDepthBound.cfg|formal/tla/DelegationDepthBound.tla|6|1800
           EOF
+
+      - name: Distributed revocation nightly bound
+        if: github.event_name != 'pull_request'
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 3600 apalache-mc check \
+            --length=0 \
+            --config=formal/tla/MCDistributedRevocationDomainsNightly.cfg \
+            formal/tla/DistributedRevocation.tla
+          timeout 3600 apalache-mc check \
+            --length=6 \
+            --config=formal/tla/MCDistributedRevocationNightly.cfg \
+            formal/tla/DistributedRevocation.tla
+
+      - name: Production revocation trace projection
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/check-distributed-revocation-refinement.sh
 
       - name: Record safety lane posture
         if: always()
@@ -123,7 +165,7 @@ jobs:
   apalache-negative:
     name: apalache-negative
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
         with:

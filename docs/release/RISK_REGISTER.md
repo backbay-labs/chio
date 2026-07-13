@@ -22,6 +22,7 @@ This register tracks known risks for the v1-only pre-release candidate.
 | Portable trust does not synthesize cross-issuer reputation | intentional design choice, not a regression | document per-credential evaluation semantics and avoid broader claims |
 | A2A still lacks custom auth beyond the shipped matrix | known boundary for partner integrations | keep unsupported schemes explicit and fail closed during discovery/invocation |
 | Formal verification depends on audited external assumptions and strict Rust-linkage gates | controlled by the implementation-linked proof manifest, P1-P10 theorem inventory, assumption registry, Aeneas production extraction plus equivalence, public Kani harnesses, no-bypass checks, executable tests, and qualification artifacts | keep protocol, partner, website, and release claims tied to `formal/proof-manifest.toml`, `formal/assumptions.toml`, `formal/theorem-inventory.json`, `target/formal/proof-report.json`, `docs/reference/CLAIM_REGISTRY.md`, and strict verification gates |
+| Distributed revocation convergence depends on weak-fair connected opportunities, clock skew, and partition healing | the bounded model and one-origin production trace projection are implemented, but temporal reliability and multi-origin production refinement remain unestablished | keep `ASSUME-NETWORK-TRANSPORT` required; do not claim end-to-end distributed revocation verification or a finite evaluation-count bound |
 
 ## Formal Verification Claim Rules
 
@@ -46,3 +47,5 @@ rules:
   hashes before using release-facing formal claims
 - do say runtime and partner-facing claims outside that boundary are backed by
   Rust tests, conformance tests, smoke tests, and release qualification
+- do not describe distributed revocation convergence as assumption-free or
+  end-to-end verified while `ASSUME-NETWORK-TRANSPORT` is required

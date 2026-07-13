@@ -1,4 +1,6 @@
-# Signed Runtime Trace Validation
+# Runtime Trace Validation
+
+## Signed Revocation Trace
 
 `chio-trace-validate` checks callback-complete kernel traces against
 `RevocationPropagation.tla`. The kernel emits synchronous events after a
@@ -77,3 +79,32 @@ post-revocation deny. The allow-after-revoke fixture must fail event three on
 `NoAllowAfterRevoke`. The 50-manifest acceptance lane separately performs 50
 real kernel captures; it does not relabel replay-manifest contents as trace
 events.
+
+## Distributed Revocation Trace
+
+`scripts/check-distributed-revocation-refinement.sh` runs deterministic
+production schedules and writes four ITF projections under
+`$CARGO_TARGET_DIR/formal/distributed-revocation/traces` (or workspace
+`target` when `CARGO_TARGET_DIR` is unset):
+
+- loss, duplication, and out-of-order delivery
+- forged-root rejection against a pinned signer
+- partition, dropped push, heal, and contiguous catch-up
+- wall-clock denial after the installed root exceeds its freshness window
+
+`scripts/validate-distributed-revocation-trace.py` validates the exact ITF
+schema and every adjacent projected action, then generates one concrete TLA+
+behavior per trace. The pinned Apalache version checks every generated state
+and projected transition against `TraceCheckDistributedRevocation.tla`. A
+delivered or caught-up view carries the exact signed-root issuance timestamp;
+the validator and TLA projection bind that timestamp to the installed fixture
+epoch. The freshness schedule starts from the production root timestamp. A
+missing trace, extra trace, unknown action, malformed state, projection
+violation, deadlock, timeout, or tool-version mismatch fails closed.
+
+This is deterministic scalar schedule projection, not a full-state refinement
+proof and not evidence that every production execution refines the model. The
+partition field represents the test scheduler; the shipped transport is not
+fault-injected by this gate. The production path uses one pinned origin and one
+`RevocationView`, so multi-origin isolation remains model-only. The gate also
+does not claim a finite number of evaluations before observation.

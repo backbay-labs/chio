@@ -31,6 +31,8 @@ and does not license claim wording.
 | `claim_gate` | release-facing language is constrained by this registry and the proof manifest |
 | `differential_test` | executable spec or diff test is the release gate |
 | `runtime_qualification` | property is backed by Rust tests, conformance, or release-qualification lanes rather than Lean |
+| `distributed_apalache` | named distributed revocation properties hold only at the registered finite bounds and assumptions |
+| `rust_trace_projection` | deterministic production schedules emit exact scalar traces whose states and adjacent actions are checked; this is not full-state refinement |
 
 ## Approved Assumptions
 
@@ -44,6 +46,7 @@ and does not license claim wording.
 | `ASSUME-SQLITE-ATOMICITY` | approved_with_scope | Store-backed revocation, budget, receipt, and registry transitions rely on atomic SQLite commits. | `audited_assumption` |
 | `ASSUME-TLS` | approved_with_scope | Remote session and control-plane evidence relies on configured TLS endpoint authentication. | `audited_assumption` |
 | `ASSUME-NETWORK-TRANSPORT` | approved_with_scope | Chio proves fail-closed handling of received messages, not arbitrary network reliability. | `audited_assumption` |
+| `ASSUME-GOSSIP-FAIRNESS-PARTITION-BOUND` | approved_with_scope | Distributed revocation liveness requires weak-fair recurring connected delivery or catch-up opportunities, bounded clock skew, and operator-bounded partition healing; it does not promise a finite delivery-step or evaluation-count bound. | `audited_assumption`, `distributed_apalache`, `rust_trace_projection` |
 | `ASSUME-EXTERNAL-REGISTRIES` | approved_with_scope | Hosted registry and DID state is trusted only under its published fail-closed contract. | `audited_assumption` |
 | `ASSUME-SUBPROCESS-ISOLATION` | approved_with_scope | Tool effects after an allow verdict rely on OS process and sandbox boundaries. | `audited_assumption` |
 | `ASSUME-CHAIN-FINALITY` | approved_with_scope | Chain evidence is accepted only after the configured finality policy. | `audited_assumption` |
@@ -82,6 +85,7 @@ machine-readably enumerated in `formal/assumptions.toml`.
 | `P3-END-TO-END` | disallowed | "all kernel fail-closed behavior is formally verified end to end" | say P3 has bounded Lean coverage for the pure evaluator and shell/runtime behavior is separately qualified |
 | `P4-END-TO-END` | disallowed | "Ed25519 receipts and Merkle log semantics are formally verified end to end" | say the Rust inclusion-proof walk has bounded refinement evidence under ASSUME-SHA256, while concrete hashing and receipt signatures are separately runtime-qualified |
 | `P5-ACYCLICITY` | downgraded | "delegation graph acyclicity is proven" | say presented delegation-chain structure is proven in the bounded model |
+| `P2-DISTRIBUTED-END-TO-END` | disallowed | "distributed revocation propagation is formally verified end to end" or "every revoke is observed within a finite number of evaluations" | say the bounded model covers named channel and partition behavior, while one-origin scalar production schedules separately exercise signer rejection, queueing, view installation, freshness denial, and catch-up; raw evaluation throughput is unbounded and ASSUME-NETWORK-TRANSPORT remains required |
 
 ## Current Source Notes
 

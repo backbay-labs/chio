@@ -1,7 +1,7 @@
 name: apalache-temporal
 
-# Scheduled/manual workflow: runs the temporal liveness property
-# RevocationEventuallySeen against formal/tla/RevocationPropagation.tla.
+# Scheduled/manual workflow: runs both revocation liveness properties plus the
+# distributed model's bounded refinement and non-vacuity witness.
 #
 # This job is scheduled/manual only and is not a required PR gate. Safety
 # invariants for RevocationPropagation run in apalache-safety.yml at the PR
@@ -27,7 +27,7 @@ jobs:
   revocation-eventually-seen:
     name: formal-tla-liveness
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
@@ -60,6 +60,10 @@ jobs:
             --temporal=RevocationEventuallySeen \
             --config=formal/tla/MCRevocationPropagationTemporal.cfg \
             formal/tla/RevocationPropagation.tla
+
+      - name: Distributed revocation temporal check
+        shell: bash
+        run: ./scripts/check-distributed-revocation-temporal.sh
 
       - name: Record temporal lane posture
         if: always()

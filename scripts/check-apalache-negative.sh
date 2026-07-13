@@ -7,7 +7,8 @@ repo_root="$(cd "${script_dir}/.." && pwd)"
 cd "${repo_root}"
 
 registry="${CHIO_APALACHE_NEGATIVE_REGISTRY:-formal/apalache/_negative_tests/REGISTRY.toml}"
-output_root="${CHIO_APALACHE_NEGATIVE_OUTPUT_DIR:-target/apalache-negative}"
+cargo_target_dir="${CARGO_TARGET_DIR:-target}"
+output_root="${CHIO_APALACHE_NEGATIVE_OUTPUT_DIR:-${cargo_target_dir}/apalache-negative}"
 apalache_bin="${APALACHE_BIN:-apalache-mc}"
 
 if [[ -n "${TIMEOUT_BIN:-}" ]]; then
@@ -35,13 +36,18 @@ if [[ "${version_exit}" -ne 0 || "${apalache_version}" != "0.50.1" ]]; then
   exit 2
 fi
 
-output_root="$(python3 - "${output_root}" "${repo_root}" <<'PY'
+output_root="$(python3 - "${output_root}" "${repo_root}" "${cargo_target_dir}" <<'PY'
 from pathlib import Path
 import sys
 import tempfile
 
 raw = sys.argv[1]
 repo = Path(sys.argv[2]).resolve()
+cargo_target_requested = Path(sys.argv[3])
+if not cargo_target_requested.is_absolute():
+    cargo_target_requested = repo / cargo_target_requested
+lexical_cargo_target = cargo_target_requested.absolute()
+cargo_target = lexical_cargo_target.resolve()
 
 if not raw or any(character in raw for character in "\r\n\t"):
     raise SystemExit("check-apalache-negative: refusing unsafe output directory")
@@ -52,22 +58,23 @@ if not requested.is_absolute():
 lexical = requested.absolute()
 lexical_target = (repo / "target").absolute()
 requested_below_target = lexical_target in lexical.parents
-error = (
-    "check-apalache-negative: output directory must be below target or the system "
-    "temporary directory outside the repository"
+managed_cargo_target = (
+    cargo_target != repo
+    and cargo_target != Path(cargo_target.anchor)
 )
-if requested_below_target:
-    current = repo.absolute()
-    try:
-        relative = lexical.relative_to(current)
-    except ValueError:
+requested_below_cargo_target = (
+    managed_cargo_target and lexical_cargo_target in lexical.parents
+)
+error = (
+    "check-apalache-negative: output directory must be below target, "
+    "CARGO_TARGET_DIR, or the system temporary directory outside the repository"
+)
+
+current = Path(lexical.anchor)
+for part in lexical.parts[1:]:
+    current /= part
+    if current.is_symlink():
         raise SystemExit(error)
-    for part in relative.parts:
-        current /= part
-        if current.is_symlink():
-            raise SystemExit(error)
-elif lexical.is_symlink():
-    raise SystemExit(error)
 
 candidate = lexical.resolve()
 target_root = (repo / "target").resolve()
@@ -77,14 +84,19 @@ below_target = (
     and repo in candidate.parents
     and target_root in candidate.parents
 )
+below_cargo_target = (
+    requested_below_cargo_target
+    and cargo_target in candidate.parents
+)
 outside_repo = candidate != repo and repo not in candidate.parents and candidate not in repo.parents
 below_temporary = (
     not requested_below_target
+    and not requested_below_cargo_target
     and temporary_root in candidate.parents
     and outside_repo
 )
 
-if not (below_target or below_temporary):
+if not (below_target or below_cargo_target or below_temporary):
     raise SystemExit(error)
 
 print(candidate)
@@ -145,6 +157,8 @@ registry_path = regular_repo_file(registry_path, "negative registry")
 mapping_path = regular_repo_file(mapping_path, "formal mapping")
 for sibling in sorted((repo / "formal/apalache").glob("*.tla")):
     regular_repo_file(sibling, "Apalache sibling module")
+for sibling in sorted((repo / "formal/tla").glob("*.tla")):
+    regular_repo_file(sibling, "TLA sibling module")
 
 with registry_path.open("rb") as handle:
     registry = tomllib.load(handle)
@@ -190,7 +204,7 @@ for index, entry in enumerate(entries, start=1):
             raise SystemExit(f"negative entry {index} field {field} has the wrong type")
         if isinstance(value, str) and (not value or "\t" in value or "\n" in value):
             raise SystemExit(f"negative entry {index} field {field} must be one non-empty line")
-    if entry["classification"] != "spec-mutation":
+    if entry["classification"] not in {"spec-mutation", "claim-witness"}:
         raise SystemExit(f"negative entry {index} has unsupported classification")
     if entry["length"] < 1 or entry["timeout_secs"] < 1:
         raise SystemExit(f"negative entry {index} has a non-positive bound")
@@ -321,6 +335,7 @@ while IFS=$'\t' read -r spec cfg falsifies length timeout_secs; do
 
   mkdir -p "${input_dir}" "${out_dir}" "${run_dir}"
   cp formal/apalache/*.tla "${input_dir}/"
+  cp formal/tla/*.tla "${input_dir}/"
   cp "${spec}" "${input_dir}/$(basename "${spec}")"
   cp "${cfg}" "${input_dir}/$(basename "${cfg}")"
 

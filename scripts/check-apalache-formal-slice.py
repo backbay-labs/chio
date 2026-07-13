@@ -247,9 +247,15 @@ def check_negative_registry() -> None:
         "DropGuardReleaseOnIncompleteStreamBroken",
         "DropGuardNoRetainOnPostInvocationDenyBroken",
         "DropGuardReleaseOnPostDispatchAbortBroken",
+        "DistributedRevocationRevocationGateBroken",
+        "DistributedRevocationSignerPinBroken",
+        "DistributedRevocationSkewBroken",
+        "DistributedRevocationPartitionBroken",
+        "DistributedRevocationFreshnessBroken",
+        "DistributedRevocationEvaluationCountWitness",
     }
     actual = {Path(entry["spec"]).stem for entry in entries}
-    require(actual == expected, "negative registry must contain the exact ten calibrated models")
+    require(actual == expected, "negative registry must contain the exact calibrated models")
 
     mapping = read("formal/MAPPING.md")
     for entry in entries:
@@ -280,10 +286,48 @@ def check_negative_registry() -> None:
             f"{stem} config must select only its calibrated mutation",
         )
 
+    distributed_mutations = {
+        "DistributedRevocationRevocationGateBroken": "skip-revocation",
+        "DistributedRevocationSignerPinBroken": "accept-forged",
+        "DistributedRevocationSkewBroken": "unbounded-skew",
+        "DistributedRevocationPartitionBroken": "cross-partition-catchup",
+        "DistributedRevocationFreshnessBroken": "skip-freshness",
+    }
+    for stem, mutation in distributed_mutations.items():
+        module = read(f"formal/apalache/_negative_tests/{stem}.tla")
+        config = read(f"formal/apalache/_negative_tests/MC{stem}.cfg")
+        require(
+            "EXTENDS DistributedRevocation" in module,
+            f"{stem} must reuse the distributed production model semantics",
+        )
+        require(
+            f'Mutation = "{mutation}"' in config,
+            f"{stem} config must select only its calibrated mutation",
+        )
+    witness = read(
+        "formal/apalache/_negative_tests/DistributedRevocationEvaluationCountWitness.tla"
+    )
+    witness_config = read(
+        "formal/apalache/_negative_tests/MCDistributedRevocationEvaluationCountWitness.cfg"
+    )
+    require(
+        "EXTENDS DistributedRevocation" in witness,
+        "the rejected count-bound witness must reuse distributed semantics",
+    )
+    require(
+        'Mutation = "none"' in witness_config,
+        "the rejected count-bound witness must not depend on a broken mutation",
+    )
+
 
 def check_temporal_workflow() -> None:
     text = read(".github/workflows/apalache-temporal.yml")
     cfg = read("formal/tla/MCRevocationPropagationTemporal.cfg")
+    distributed_temporal = read("formal/tla/DistributedRevocationTemporal.tla")
+    temporal_gate = read("scripts/check-distributed-revocation-temporal.sh")
+    refinement = read("formal/tla/DistributedRevocationTemporalRefinement.tla")
+    refinement_cfg = read("formal/tla/MCDistributedRevocationTemporalRefinement.cfg")
+    witness = read("formal/tla/DistributedRevocationTemporalWitness.tla")
 
     require(
         "continue-on-error" not in text,
@@ -298,6 +342,50 @@ def check_temporal_workflow() -> None:
         "apalache-temporal must run the named RevocationEventuallySeen liveness property",
     )
     require(
+        "./scripts/check-distributed-revocation-temporal.sh" in text,
+        "apalache-temporal must run the strict distributed temporal gate",
+    )
+    for marker in (
+        'version="$(${apalache_bin} version 2>&1)"',
+        '[[ "${version}" != "0.50.1" ]]',
+        "--temporal=TemporalProjectionRefines",
+        "--length=5",
+        "--config=formal/tla/MCDistributedRevocationTemporalRefinement.cfg",
+        "--config=formal/tla/MCDistributedRevocationTemporalWitness.cfg",
+        "--temporal=RevocationEventuallyObservedDistributed",
+        "--config=formal/tla/MCDistributedRevocationTemporal.cfg",
+        "--no-deadlock",
+    ):
+        require(marker in temporal_gate, f"distributed temporal gate is missing {marker}")
+    require(
+        "RevocationEventuallyObservedDistributed" in distributed_temporal
+        and "ObserveWeakFair" in distributed_temporal
+        and "HealWeakFair" in distributed_temporal,
+        "distributed temporal projection must retain conditional weak fairness",
+    )
+    require(
+        "Scalar!Spec" in refinement
+        and "originEpoch <- originEpoch[SelectedOrigin]" in refinement
+        and "observedEpoch <- hwm[SelectedReceiver][SelectedOrigin]" in refinement
+        and "partitioned <- ~IsConnected(SelectedReceiver, SelectedOrigin)" in refinement
+        and "cutUsed <- <<SelectedReceiver, SelectedOrigin>> \\in cutUsed" in refinement,
+        "bounded temporal refinement must map the selected full-model pair exactly",
+    )
+    require(
+        "SPECIFICATION TemporalSpec" in refinement_cfg
+        and "SelectedOrigin = 1" in refinement_cfg
+        and "SelectedReceiver = 2" in refinement_cfg,
+        "bounded temporal refinement config must select a distinct checked pair",
+    )
+    require(
+        "AnyOriginEpochIssued" in witness
+        and "AllIssuedEpochsObserved" in witness
+        and "~ObserveEnabled" in witness
+        and "~HealEnabled" in witness
+        and "Stutter" in witness,
+        "temporal non-vacuity witness must reach observation and a fair stutter suffix",
+    )
+    require(
         "schedule:" in text and "workflow_dispatch:" in text,
         "apalache-temporal must remain a scheduled/manual nightly liveness lane",
     )
@@ -309,10 +397,13 @@ def check_temporal_workflow() -> None:
 
 def check_safety_workflow_paths() -> None:
     text = read(".github/workflows/apalache-safety.yml")
+    distributed_cfg = read("formal/tla/MCDistributedRevocation.cfg")
+    distributed_domains_cfg = read("formal/tla/MCDistributedRevocationDomains.cfg")
 
     required_paths = (
         "formal/MAPPING.md",
         "formal/proof-manifest.toml",
+        "crates/trust/chio-revocation-oracle/src/**",
         "crates/kernel/chio-kernel-core/src/evaluate.rs",
         "crates/kernel/chio-kernel-core/src/revocation_view.rs",
         "crates/kernel/chio-kernel/src/budget_store.rs",
@@ -336,6 +427,36 @@ def check_safety_workflow_paths() -> None:
         "formal/tla/MCRevocationPropagation.cfg|formal/tla/RevocationPropagation.tla|6|10800"
         in text,
         "apalache-safety must keep RevocationPropagation length and timeout coverage",
+    )
+    require(
+        "formal/tla/MCDistributedRevocationDomains.cfg|formal/tla/DistributedRevocation.tla|0|600"
+        in text,
+        "apalache-safety must check exact distributed domains at initialization",
+    )
+    require(
+        re.search(r"(?m)^\s*BehavioralSafetyInv\s*$", distributed_cfg) is not None,
+        "distributed PR config must select the behavioral safety aggregate",
+    )
+    require(
+        "SPECIFICATION Spec" in distributed_domains_cfg
+        and re.search(
+            r"(?m)^\s*DistributedDomainsOK\s*$", distributed_domains_cfg
+        )
+        is not None,
+        "distributed domain config must check exact initial domains",
+    )
+    require(
+        "formal/tla/MCDistributedRevocation.cfg|formal/tla/DistributedRevocation.tla"
+        in text,
+        "apalache-safety must check distributed revocation safety",
+    )
+    require(
+        re.search(
+            r"--length=6\s+\\\s*\n\s*--config=formal/tla/MCDistributedRevocationNightly\.cfg",
+            text,
+        )
+        is not None,
+        "scheduled distributed safety must expand constants at calibrated length 6",
     )
     require(
         "formal/tla/MCDelegationDepthBound.cfg|formal/tla/DelegationDepthBound.tla"
@@ -378,6 +499,45 @@ def check_negative_gate_boundary() -> None:
     )
 
 
+def check_distributed_trace_gate() -> None:
+    gate = read("scripts/check-distributed-revocation-refinement.sh")
+    validator = read("scripts/validate-distributed-revocation-trace.py")
+    projection = read("formal/tla/trace/TraceCheckDistributedRevocation.tla")
+    rust_trace = read(
+        "crates/trust/chio-federation/tests/distributed_revocation_refinement.rs"
+    )
+
+    for marker in (
+        'cargo_target_dir="${CARGO_TARGET_DIR:-${repo_root}/target}"',
+        'Trace*Itf.tla',
+        '--init=TraceInit',
+        '--next=TraceNext',
+        '--inv=TraceSafety',
+    ):
+        require(marker in gate, f"distributed trace gate is missing {marker}")
+    require(
+        "write_tla_projection" in validator and "ConcreteTrace" in validator,
+        "distributed trace validator must generate exact concrete TLA projections",
+    )
+    require(
+        "ProjectionStep ==" in projection
+        and "ProjectionSafety ==" in projection
+        and "RootIssuedAt" in projection,
+        "distributed trace TLA must check projected states and adjacent steps",
+    )
+    require(
+        "ROOT_ISSUED_AT_BASE" in rust_trace
+        and "state.view_issued_at = newest.signed_root.root.issued_at_unix_ms" in rust_trace
+        and "state.view_issued_at = latest_issued_at" in rust_trace,
+        "production traces must emit installed signed-root timestamps",
+    )
+    require(
+        "ROOT_ISSUED_AT_BASE + current[\"viewEpoch\"]" in validator
+        and "does not bind the view to its signed root timestamp" in validator,
+        "distributed trace validator must bind view epochs to emitted root timestamps",
+    )
+
+
 def main() -> int:
     checks = (
         check_receipt_before_allow,
@@ -387,6 +547,7 @@ def main() -> int:
         check_temporal_workflow,
         check_safety_workflow_paths,
         check_negative_gate_boundary,
+        check_distributed_trace_gate,
     )
     failures: list[str] = []
     for check in checks:

@@ -1,9 +1,9 @@
 # Apalache Negative Tests
 
-This directory holds **deliberately broken** variants of the Apalache
-specs. The point is to demonstrate that the corresponding production
-property is not tautologically satisfied: a real bug must produce a real
-counterexample.
+This directory holds deliberately broken variants and explicit rejected-claim
+witnesses. A `spec-mutation` demonstrates that a production property is not
+tautological. A `claim-witness` uses unmutated semantics to demonstrate why a
+stronger candidate is not in the positive safety set.
 
 The `apalache-negative` CI job enforces this directory through
 `scripts/check-apalache-negative.sh`. CI-green means every registered broken
@@ -31,18 +31,24 @@ the broken action contains the replacement, and the inventory includes the
 seed. Every deterministic sample and full campaign includes all registered
 seeds.
 
+A rejected candidate uses `classification = "claim-witness"`, an unmutated
+config, and a mapped property that is deliberately absent from the aggregate
+positive invariant. Its counterexample prevents later documentation from
+silently reviving the rejected claim.
+
 ## Running locally
 
 ```bash
 ./scripts/check-apalache-negative.sh
 ```
 
-Artifacts are written under `target/apalache-negative` by default. Set
+Artifacts are written under `$CARGO_TARGET_DIR/apalache-negative` by default
+(or workspace `target` when `CARGO_TARGET_DIR` is unset). Set
 `CHIO_APALACHE_NEGATIVE_OUTPUT_DIR` to a strict descendant of the repository
-`target` directory or the system temporary directory to retain them elsewhere.
-Roots, in-repository paths outside `target`, and symlink escapes are rejected
-before cleanup. Each entry keeps its command output and ITF trace in a separate
-directory.
+`target` directory, `CARGO_TARGET_DIR`, or the system temporary directory to
+retain them elsewhere. Roots, in-repository paths outside the configured
+targets, and symlink escapes are rejected before cleanup. Each entry keeps its
+command output and ITF trace in a separate directory.
 
 Promote a retained `.itf.json` trace into `formal/tla/counterexamples/` with
 `cargo xtask formal itf-to-regression` only after registering its production

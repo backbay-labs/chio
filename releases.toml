@@ -161,7 +161,7 @@ job = "apalache-subset"
 event = "schedule"
 posture = "advisory"
 required_streak = 7
-evidence_after_run_id = 29012047382
+evidence_after_run_id = 29147080117
 max_age_hours = 48
 
 [gates.apalache-negative]
@@ -170,7 +170,7 @@ job = "apalache-negative"
 event = "schedule"
 posture = "advisory"
 required_streak = 7
-evidence_after_run_id = 29086573702
+evidence_after_run_id = 29147080117
 max_age_hours = 48
 
 [gates.spec-mutants]
@@ -233,10 +233,10 @@ job = "formal-tla-liveness"
 event = "schedule"
 posture = "advisory"
 required_streak = 7
-evidence_after_run_id = 29012076489
+evidence_after_run_id = 29147109384
 max_age_hours = 48
 frozen = true
-frozen_reason = "The temporal property must be fixed and reliably green before promotion."
+frozen_reason = "Distributed revocation liveness was added on 2026-07-12; its post-change flake rate is unmeasured and both temporal properties must be reliably green before promotion."
 
 [gates.lean-build]
 workflow = "formal-pr-smoke.yml"
