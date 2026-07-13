@@ -263,7 +263,7 @@ Implemented behavior:
 - Freshness is load-bearing. Daily and scheduled corpus lanes use 48 hours; pull-request lanes use 168 hours. Required release-fleet checks fail on missing or stale evidence.
 - Every lane starts with a seven-success threshold. Apalache safety and
   negative-test promotion use scheduled evidence only. Pull-request histories
-  are scoped to `chio/autonomous-commerce-brainstorm`.
+  are scoped to `main`.
 - Proof mode is global because every proof gate shares one execution policy.
   Metadata-only reports require the coverage preflight to pass and every proof
   gate to be `not_run`; any other mix fails.

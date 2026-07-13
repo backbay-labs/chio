@@ -18,6 +18,36 @@ if "GH_FUZZ_BUDGET_CAP_MODE: fail" not in pr_text[pr_start:pr_end]:
     raise SystemExit("cflite_pr budget gate must set cap mode to fail")
 
 mutants_text = Path(sys.argv[2]).read_text(encoding="utf-8")
+mutants_path = Path(sys.argv[2]).resolve()
+repo_root = mutants_path.parents[2]
+selection_start = mutants_text.index("name: Select changed package")
+selection_end = mutants_text.index("name: Install Rust toolchain", selection_start)
+selection_block = mutants_text[selection_start:selection_end]
+crate_paths = {
+    "chio-kernel-core": "crates/kernel/chio-kernel-core",
+    "chio-policy": "crates/guards/chio-policy",
+    "chio-guards": "crates/guards/chio-guards",
+    "chio-credentials": "crates/trust/chio-credentials",
+    "chio-attest-verify": "crates/trust/chio-attest-verify",
+    "chio-anchor": "crates/economy/chio-anchor",
+}
+for package, crate_path in crate_paths.items():
+    mapping = f'{package}) crate_path="{crate_path}" ;;'
+    if mapping not in selection_block:
+        raise SystemExit(f"mutants-pr selection is missing grouped path for {package}")
+    if not (repo_root / crate_path / "mutants.toml").is_file():
+        raise SystemExit(f"mutants-pr config does not exist for {package}")
+if 'echo "crate_path=${crate_path}" >> "${GITHUB_OUTPUT}"' not in selection_block:
+    raise SystemExit("mutants-pr selection must export its resolved crate path")
+
+mutation_start = mutants_text.index("name: Run cargo-mutants --in-diff against PR base")
+mutation_end = mutants_text.index("name: Read survivor issue budget", mutation_start)
+mutation_block = mutants_text[mutation_start:mutation_end]
+if '--config "${{ steps.select.outputs.crate_path }}/mutants.toml"' not in mutation_block:
+    raise SystemExit("mutants-pr must load the selected grouped crate config")
+if '--config "crates/${{ matrix.package }}/mutants.toml"' in mutants_text:
+    raise SystemExit("mutants-pr still reconstructs a flat crate config path")
+
 mutants_start = mutants_text.index("name: Verify shared 30-day fuzz/mutants budget")
 mutants_end = mutants_text.index("name: Capture PR diff for --in-diff scoping", mutants_start)
 mutants_block = mutants_text[mutants_start:mutants_end]

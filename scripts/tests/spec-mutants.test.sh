@@ -6,10 +6,12 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 tmp_dir="$(mktemp -d)"
 run_root="${repo_root}/target/formal/spec-mutants-selftest-$$"
 report_path="${repo_root}/target/formal/spec-mutants-selftest-report-$$.json"
+dirty_marker_rel=".spec-mutants-selftest-dirty-$$"
+dirty_marker="${repo_root}/${dirty_marker_rel}"
 
 cleanup() {
   rm -rf "${tmp_dir}" "${run_root}"
-  rm -f "${report_path}"
+  rm -f "${report_path}" "${dirty_marker}"
 }
 trap cleanup EXIT
 
@@ -474,6 +476,13 @@ exit 12
 SH
 chmod +x "${fake_apalache}"
 
+printf '%s\n' "spec-mutants dirty-worktree self-test" >"${dirty_marker}"
+marker_status="$(git status --porcelain=v1 --untracked-files=normal -- "${dirty_marker_rel}")"
+if [[ "${marker_status}" != "?? ${dirty_marker_rel}" ]]; then
+  echo "dirty-worktree marker is not an explicit nonignored untracked file: ${marker_status}" >&2
+  exit 1
+fi
+
 set +e
 APALACHE_BIN="${fake_apalache}" \
 CHIO_SPEC_MUTANTS_OUTPUT_ROOT="${run_root}" \
@@ -495,6 +504,7 @@ CHIO_SPEC_MUTANTS_REPORT="${report_path}" \
 python3 - "${report_path}" <<'PY'
 import json
 from pathlib import Path
+import re
 import sys
 import tomllib
 
@@ -602,8 +612,11 @@ if "formal/MAPPING.md" not in input_paths or "formal/apalache/_negative_tests/RE
     raise SystemExit("report omitted negative-preflight inputs")
 if report["tools"]["apalache"] != "0.50.1":
     raise SystemExit("report omitted the exact Apalache version")
-if report["worktree"]["clean"] is not False or len(report["worktree"]["tracked_diff_sha256"]) != 64:
+if report["worktree"]["clean"] is not False:
     raise SystemExit("dirty self-test execution was not identified in the report")
+for field in ("status_sha256", "tracked_diff_sha256"):
+    if re.fullmatch(r"[0-9a-f]{64}", report["worktree"].get(field, "")) is None:
+        raise SystemExit(f"dirty self-test report has malformed {field} evidence")
 if report["sample_epoch"] != 0:
     raise SystemExit("default sample epoch changed")
 if len(report.get("measured_at", "")) != 20 or not report["measured_at"].endswith("Z"):

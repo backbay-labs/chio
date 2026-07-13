@@ -139,6 +139,7 @@ jobs:
               exit 1
               ;;
           esac
+          echo "crate_path=${crate_path}" >> "${GITHUB_OUTPUT}"
 
           changed="${RUNNER_TEMP}/mutants-pr-paths.txt"
           merge_base="$(git merge-base "${BASE_SHA}" "${HEAD_SHA}")"
@@ -225,7 +226,7 @@ jobs:
           # before any scoped mutants run.
           mutants_exit=0
           cargo mutants \
-            --config "crates/${{ matrix.package }}/mutants.toml" \
+            --config "${{ steps.select.outputs.crate_path }}/mutants.toml" \
             --package "${{ matrix.package }}" \
             --test-workspace false \
             --in-diff "${{ steps.diff.outputs.diff_file }}" \
