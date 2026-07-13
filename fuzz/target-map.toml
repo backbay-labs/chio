@@ -245,6 +245,23 @@ triggers = [
 seeds    = "fuzz/corpus/fuzz_policy_parse_compile"
 notes    = "HushSpec parser, validator, compiler, and YAML round-trip."
 
+[targets.policy_analyze]
+crate    = "chio-policy"
+path     = "fuzz/fuzz_targets/policy_analyze.rs"
+triggers = [
+    "crates/guards/chio-policy/src/analyze/**",
+    "crates/guards/chio-policy/src/evaluate/**",
+    "crates/guards/chio-policy/src/evaluate.rs",
+    "crates/guards/chio-policy/src/glob_pattern.rs",
+    "crates/guards/chio-policy/src/models/**",
+    "crates/guards/chio-policy/src/models.rs",
+    "fuzz/fuzz_targets/policy_analyze.rs",
+    "fuzz/corpus/policy_analyze/**",
+    "spec/schemas/policy/**",
+]
+seeds    = "fuzz/corpus/policy_analyze"
+notes    = "Bounded policy relations, analyzer totality, and evaluator-confirmed refinement witnesses."
+
 [targets.fuzz_sql_parser]
 crate    = "chio-data-guards"
 path     = "fuzz/fuzz_targets/sql_parser.rs"

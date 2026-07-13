@@ -74,6 +74,7 @@ machine-readably enumerated in `formal/assumptions.toml`.
 | `P8` | approved_with_scope | Chio has bounded Lean proofs that verified session continuity requires a valid session anchor and continuation artifact. | `lean_root_imported`, `audited_assumption` |
 | `P9` | approved_with_scope | Chio has bounded Lean proofs that verified call-chain consistency requires consistent subjects and parent capability references. | `lean_root_imported`, `audited_assumption` |
 | `P10` | approved_with_scope | Chio has bounded Lean proofs that report/export labels cannot upgrade asserted or observed evidence to verified evidence. | `lean_root_imported`, `claim_gate` |
+| `POLICY-ANALYZE` | approved_with_scope | Chio ships bounded static policy analysis for rule relations and supported policy-refinement checks, with production-evaluator confirmation for every reported widening witness. Changed semantics outside the bounded fragment produce an inconclusive verdict. | `differential_test`, `runtime_qualification` |
 
 ## Downgraded Or Disallowed Claims
 

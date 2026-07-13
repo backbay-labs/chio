@@ -52,7 +52,7 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 | `chio-manifest::*` | - | - | - | - | - | - | 1 | - | - | - |
 | `chio-mcp-edge::*` | - | - | - | - | - | - | 1 | - | - | - |
 | `chio-openapi-mcp-bridge::*` | - | - | - | - | - | - | 1 | - | - | - |
-| `chio-policy::*` | - | - | - | - | - | - | 1 | 2 | - | - |
+| `chio-policy::*` | - | - | - | - | - | - | 2 | 2 | - | - |
 | `chio-revocation-oracle::*` | - | - | - | - | - | - | 1 | - | - | - |
 | `chio-trace-validate::*` | - | - | - | - | 1 | - | - | - | - | - |
 | `chio-underwriting::*` | - | - | - | - | - | - | 1 | - | - | - |
@@ -482,6 +482,7 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 **fuzz**
 
 - `fuzz/target-map.toml::fuzz_policy_parse_compile`
+- `fuzz/target-map.toml::policy_analyze`
 
 **mutants**
 
@@ -568,6 +569,7 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 - `formal/mutation/registry.toml::spec-kernel-transition-cancel`: `chio-kernel::kernel/kernel_drop_guard.rs`, `chio-kernel::kernel/validation.rs`
 - `formal/mutation/registry.toml::spec-post-admission-drop`: `chio-kernel::kernel/dispatch.rs`, `chio-kernel::kernel/kernel_drop_guard.rs`, `chio-kernel::kernel/responses/finalization.rs`
 - `formal/mutation/registry.toml::spec-receipt-before-allow`: `chio-kernel::kernel/responses/allow_responses.rs`, `chio-kernel::kernel/responses/receipt_persistence.rs`
+- `fuzz/target-map.toml::policy_analyze`: `chio-policy::evaluate.rs`, `chio-policy::glob_pattern.rs`, `chio-policy::models.rs`
 
 ## Unattributed Artifacts
 
@@ -882,7 +884,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 
 - Generator version: `3`
 - Regenerate: `cargo xtask gen proof-coverage`
-- Input digest: `787440f639ba5d06c1da0be1279bdd4b021228231666c4cf46038fee51c74d04`
+- Input digest: `ee07ea64cf09e3b7f869413841de60e71c91ef2f44d7aa2470a2d9e3d18fafb8`
 - Git commit: `@GIT_COMMIT@` (resolved in coverage.json and Proof Room packages)
 - Row identity: file rows use package-relative Rust paths; crate-only artifacts use `package::*`.
 
@@ -1008,7 +1010,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `crates/trust/chio-revocation-oracle/src/api.rs`: `b1bfcf2fa979f132693ef895f40512b53a5797b8ca2dbe609c3524eac58d0375`
 - `crates/trust/chio-revocation-oracle/src/freshness.rs`: `d699d5c59f1c5a660d9c06f294bb2ac1ee2c0fcd00cd9eebbe043df74ba733b8`
 - `docs/fuzzing/trust-boundary-mutants-baseline.toml`: `7331fb69499474ca22b14b6fb5a6f9a966eae2e2a26d3433d9030a4c985efee9`
-- `formal/MAPPING.md`: `00c0b285f834d6de0d9f4a768dc75be682511e5e2d15d5ee0ff1b724a25ab75e`
+- `formal/MAPPING.md`: `200ac9be82fa956ea68f701ceedfb561723e8cabb965aaae827baa3b7780d6f7`
 - `formal/aeneas/pilot.toml`: `86627b363717b47ced94caeb826185d400cf70fe357a55fe34d02ea70670956c`
 - `formal/aeneas/production.toml`: `5dc3adcf9083b2666e40ff90d3e7dea39fa8c4fd1ae6bb8907b8c8f109c4d543`
 - `formal/aeneas/verified_core.rs`: `44ef85fbe6c537e8c65a483a67c167f502ca1a108a25293414b27ab2a85046b8`
@@ -1086,9 +1088,9 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `formal/tla/RevocationPropagation.tla`: `fe07c01f27ac7a76b657e3a1a56d4028545677c4458e34c9daecadbb64ead24d`
 - `formal/tla/trace/TraceCheckRevocationPropagation.tla`: `60b0a3b0a287605cbd9735c755a5af94a94f84398800d8767400967bf05a1749`
 - `formal/tla/trace/TraceEvaluateRevocationPropagation.tla`: `a7e923ace268ed8ca2575fed423c5a963776b2f34929fb547f3d3b61aed81589`
-- `fuzz/owners.toml`: `1358b162b1fc1a8b389aae7880e5a98035a63053b743fdaaba1a49bee3ae14c6`
-- `fuzz/target-map.toml`: `8d86f3799c637fa3740384c8d874416149a02400e95eb4107562462539c977f1`
-- `git-worktree://rust-files`: `88b3ec83ddf761d909ed602e6b4b07519d723d69700cb864a7fb12e9b585d7fc`
+- `fuzz/owners.toml`: `c122b37254e08cbeede91c7d41f444fd896707e38b32cef95bc8add38cf12ad4`
+- `fuzz/target-map.toml`: `4620bc9b65ba898ef05e42d2d01d4aeff17190c27b3fb25ee28aa1512010d1e5`
+- `git-worktree://rust-files`: `da5fedb841f9966d27f57f61f8f6fbbfec507695a6c12a21b283c0a675d8c0c8`
 - `releases.toml`: `49fa262b19250a643cb9b638f88f2a0fb13b47ee895328b721c203c819a4e512`
 - `rust-toolchain.toml`: `8bc51ecab82415fddd8489604f2424e137d71856e7f65cbdcfaa48850d794b46`
 - `scripts/check-apalache-negative.sh`: `9441ad16cab3d4edf8c92d542920a60691217f09b65b9be70793b5fbcf24e4a5`

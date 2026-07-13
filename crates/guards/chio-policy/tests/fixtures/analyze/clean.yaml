@@ -1,0 +1,18 @@
+hushspec: "0.1.0"
+name: analyzer-clean
+rules:
+  egress:
+    enabled: true
+    allow:
+      - api.example.com
+    block:
+      - metadata.internal
+    default: block
+  tool_access:
+    enabled: true
+    allow:
+      - repo.read
+      - repo.write
+    block:
+      - shell.exec
+    default: block

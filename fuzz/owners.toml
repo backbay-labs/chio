@@ -100,6 +100,10 @@ path  = "crates/economy/chio-underwriting"
 crate = "chio-policy"
 path  = "crates/guards/chio-policy"
 
+[targets.policy_analyze]
+crate = "chio-policy"
+path  = "crates/guards/chio-policy"
+
 [targets.fuzz_sql_parser]
 crate = "chio-data-guards"
 path  = "crates/guards/chio-data-guards"

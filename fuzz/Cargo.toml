@@ -218,6 +218,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "policy_analyze"
+path = "fuzz_targets/policy_analyze.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "fuzz_sql_parser"
 path = "fuzz_targets/sql_parser.rs"
 test = false

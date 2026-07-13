@@ -172,6 +172,7 @@ the per-file schemas live in their respective subtrees.
 | `chio-pheromone/v1/`    |   85  | Pheromone deposits, gossip and catchup envelopes, relay configuration, relay-alert and relay-assurance reports, and observation-cost telemetry. |
 | `chio-runtime/v1/`      |   36  | Admission profiles and reports, orchestration plans and run reports, evidence manifests, proof parity and regeneration reports, and trust-floor state. |
 | `chio-replay-report/`   |    1  | `chio-replay-report/v1.schema.json`: the stable JSON report shape emitted by `chio replay --json`. |
+| `policy/`               |    1  | `policy/analysis-report.schema.json`: the stable report shape emitted by `chio policy analyze --format json`. |
 
 ## Top-level schemas
 

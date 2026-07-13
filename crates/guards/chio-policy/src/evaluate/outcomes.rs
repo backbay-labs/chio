@@ -126,27 +126,7 @@ fn find_first_match_or_deny(
 }
 
 pub fn glob_matches(pattern: &str, target: &str) -> Result<bool, String> {
-    let mut regex = String::from("^");
-    let mut chars = pattern.chars().peekable();
-    while let Some(ch) = chars.next() {
-        match ch {
-            '*' => {
-                if matches!(chars.peek(), Some('*')) {
-                    chars.next();
-                    regex.push_str(".*");
-                } else {
-                    regex.push_str("[^/]*");
-                }
-            }
-            '?' => regex.push('.'),
-            '.' | '+' | '(' | ')' | '{' | '}' | '[' | ']' | '^' | '$' | '|' | '\\' => {
-                regex.push('\\');
-                regex.push(ch);
-            }
-            _ => regex.push(ch),
-        }
-    }
-    regex.push('$');
+    let regex = crate::glob_pattern::regex_source(pattern);
     compile_generated_policy_regex(&regex, "policy glob pattern")
         .map(|compiled| compiled.is_match(target))
 }

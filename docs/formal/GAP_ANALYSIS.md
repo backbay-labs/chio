@@ -229,7 +229,7 @@ Evidence:
 - The locked fuzz workspace smoke suite cross-checks binaries, the scheduled
   matrix, owner mappings, and the seed floor. It runs on fuzz-scoped pull
   requests and nightly.
-- `fuzz/owners.toml` covers all 25 targets, so seed promotion resolves every
+- `fuzz/owners.toml` covers all 26 targets, so seed promotion resolves every
   owning crate.
 - Pull-request fuzz and mutation budget checks explicitly fail at the cap;
   scheduled measurement lanes retain their explicit advisory setting.

@@ -28,7 +28,7 @@ the workflow under `.github/workflows/cflite_pr.yml` and
 
 ## Targets
 
-There are 25 targets. Each one drives a trust-boundary decode or
+There are 26 targets. Each one drives a trust-boundary decode or
 fail-closed-verification surface with arbitrary bytes. The full mapping
 (owning crate, source path, trigger globs, seed corpus) lives in
 `target-map.toml`; the summaries below are grouped by surface.
@@ -70,6 +70,8 @@ fail-closed-verification surface with arbitrary bytes. The full mapping
   inclusion, and non-inclusion proofs.
 - `policy_parse_compile` (binary `fuzz_policy_parse_compile`) - HushSpec
   parser, validator, compiler, and YAML round-trip.
+- `policy_analyze` - bounded policy relations and evaluator-confirmed
+  refinement witnesses.
 - `chio_yaml_parse` - `chio-config` YAML loader.
 - `eval_receipt_bundle` - eval-report bundle parser and fail-closed verifier.
 - `underwriting_policy_input` - underwriting policy, decision, marketplace,

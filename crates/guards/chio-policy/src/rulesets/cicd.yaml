@@ -23,7 +23,6 @@ rules:
     allow:
       # Package registries
       - "*.npmjs.org"
-      - "registry.npmjs.org"
       - "pypi.org"
       - "files.pythonhosted.org"
       - "crates.io"

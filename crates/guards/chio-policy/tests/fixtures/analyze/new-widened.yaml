@@ -1,0 +1,10 @@
+hushspec: "0.1.0"
+name: analyzer-new-widened
+rules:
+  tool_access:
+    enabled: true
+    allow:
+      - repo.read
+      - repo.write
+    block: []
+    default: block

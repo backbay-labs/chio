@@ -1,0 +1,9 @@
+hushspec: "0.1.0"
+name: analyzer-old
+rules:
+  tool_access:
+    enabled: true
+    allow:
+      - repo.read
+    block: []
+    default: block

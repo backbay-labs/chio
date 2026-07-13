@@ -29,8 +29,57 @@ pub(crate) use replay::*;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
 pub(crate) enum OutputFormat {
     #[default]
+    #[value(alias = "table")]
     Human,
     Json,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
+pub(crate) enum PolicyAnalysisFailOn {
+    Notice,
+    #[default]
+    Warning,
+    Error,
+}
+
+fn parse_policy_analysis_max_atoms(value: &str) -> Result<usize, String> {
+    let parsed = value
+        .parse::<usize>()
+        .map_err(|error| format!("invalid atom limit: {error}"))?;
+    if (1..=1_000_000).contains(&parsed) {
+        Ok(parsed)
+    } else {
+        Err("atom limit must be between 1 and 1000000".to_string())
+    }
+}
+
+#[derive(Subcommand)]
+pub(crate) enum PolicyCommands {
+    /// Analyze policy rules and compare admission refinement.
+    Analyze {
+        /// Effective policy to analyze.
+        policy: PathBuf,
+
+        /// Older policy that the analyzed policy must narrow.
+        #[arg(long)]
+        against: Option<PathBuf>,
+
+        /// Lowest finding severity that produces exit code 1.
+        #[arg(long, value_enum, default_value_t = PolicyAnalysisFailOn::Warning)]
+        fail_on: PolicyAnalysisFailOn,
+
+        /// Analysis report output format.
+        #[arg(long, value_enum)]
+        format: Option<OutputFormat>,
+
+        /// Maximum authored atoms accepted before analysis fails closed.
+        #[arg(
+            long,
+            default_value_t = 10_000,
+            value_parser = parse_policy_analysis_max_atoms
+        )]
+        max_atoms: usize,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
@@ -333,6 +382,12 @@ pub(crate) enum Commands {
     Init {
         /// Directory to create for the scaffolded project.
         path: PathBuf,
+    },
+
+    /// Analyze HushSpec policy rules and admission refinement.
+    Policy {
+        #[command(subcommand)]
+        command: PolicyCommands,
     },
 
     /// Protect an HTTP API with Chio using an OpenAPI spec-backed sidecar.

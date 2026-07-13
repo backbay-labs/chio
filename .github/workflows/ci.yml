@@ -169,6 +169,9 @@ jobs:
           RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
         run: cargo build --workspace
 
+      - name: Policy analysis self-check
+        run: ./scripts/check-policy-analysis.sh target/debug/chio
+
       - name: Build Proof Room dashboard
         uses: ./.github/actions/setup-node
         with:

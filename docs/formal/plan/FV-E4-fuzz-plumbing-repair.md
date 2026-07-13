@@ -167,7 +167,7 @@ Verification: `cd fuzz && cargo test --test smoke` green; the posture lists and 
 - [x] All 25 matrix targets have a corpus dir with >= 3 seeds OR a documented posture exception in `smoke.rs` (items 2, 7; `revocation_oracle_merkle`'s minimized set may be smaller if cmin produces fewer, with a comment).
 - [x] `bash scripts/check-corpus-metadata.sh` runs in the required check job and passes (item 4).
 - [x] `cd fuzz && cargo test` runs in CI on fuzz-touching PRs and nightly; the inventory tests plus the new owners test are among them (items 3, 5).
-- [x] `fuzz/owners.toml` covers all 25 targets; `promote_fuzz_seed.sh` resolves each (item 5).
+- [x] `fuzz/owners.toml` covers all 26 targets; `promote_fuzz_seed.sh` resolves each (item 5).
 - [x] Both PR budget steps set `GH_FUZZ_BUDGET_CAP_MODE: fail` explicitly; the four scheduled lanes keep their explicit `warn`; `scripts/tests/fuzz-budget-hard-halt.test.sh` requires the explicit fail settings and runs in the required check job (item 6).
 - [x] The three formerly orphaned seed sets (2 + 13 + 6 files) are loaded by their targets in a `-runs=0` replay (item 1 verification).
 - [x] G6 in `docs/formal/GAP_ANALYSIS.md` updated to point here with status.

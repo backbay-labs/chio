@@ -430,6 +430,24 @@ sha256    = "6d5729b428f9b9de637b07ecc3cb8899b9fe5e85efe3530de5d5e722bb009d4f"
 source    = "hand_curated_coverage"
 
 [[seed]]
+target    = "policy_analyze"
+path      = "fuzz/corpus/policy_analyze/contradiction.pair"
+sha256    = "b965adbea5b1a8ec24b0d7323368c928b57d8b6ecd3fae48ca37a7ecc9702347"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "policy_analyze"
+path      = "fuzz/corpus/policy_analyze/narrowing.pair"
+sha256    = "fb8663e5eaeb2dce6c676003e84f971a2a904cfe93ecf70e8e946f3e6ffe86d7"
+source    = "hand_curated_coverage"
+
+[[seed]]
+target    = "policy_analyze"
+path      = "fuzz/corpus/policy_analyze/widening.pair"
+sha256    = "52c91d12ed4dc7d677ae717b79ba5a112822465502c5c7322cba478f0a3def49"
+source    = "hand_curated_coverage"
+
+[[seed]]
 target    = "fuzz_sql_parser"
 path      = "fuzz/corpus/fuzz_sql_parser/bracket-identifiers-mssql.sql"
 sha256    = "dd35b5ed27d7270a60af9ab6af47ba73fed81a77fcf04d6d4d1f7a96997d3772"

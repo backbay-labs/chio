@@ -43,6 +43,7 @@ TARGETS=(
     federation_trust_establishment
     underwriting_policy_input
     fuzz_policy_parse_compile
+    policy_analyze
     fuzz_sql_parser
     fuzz_merkle_checkpoint
     revocation_oracle_merkle

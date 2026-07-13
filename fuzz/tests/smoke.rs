@@ -47,6 +47,7 @@ const NO_IN_PROCESS_SMOKE_TARGETS: &[&str] = &[
     "capability_receipt",
     "fuzz_merkle_checkpoint",
     "fuzz_policy_parse_compile",
+    "policy_analyze",
     "fuzz_sql_parser",
     "fuzz_tool_action",
     "manifest_roundtrip",

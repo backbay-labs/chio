@@ -233,6 +233,16 @@ Their scope is single-process and single-store, not distributed refinement.
 | `dst_wide_sweep` | `crates/kernel/chio-kernel/tests/dst_drop_injection.rs` | `crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs`, `crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs`, `crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs` | 10,000 seeded single-process runtime episodes | Runs the same closed episode grammar and three oracles over the nightly wide corpus. |
 | `dst_replay_seed` | `crates/kernel/chio-kernel/tests/dst_drop_injection.rs` | `crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs`, `crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs` | Exact seed and derived plan replay | Reconstructs one episode from `CHIO_DST_SEED` and prints the seed and full fault plan for one-command reproduction. |
 
+## Executable policy refinement cross-reference
+
+`formal/lean4/Chio/Chio/Treaty/PredicateLang.lean` defines the syntactic
+predicate and bounded refinement vocabulary used by the treaty model. The
+customer-facing executable counterpart is
+`crates/guards/chio-policy/src/analyze/refine.rs`, with rule lowering in
+`crates/guards/chio-policy/src/analyze/ir.rs` and exact glob relations in
+`crates/guards/chio-policy/src/analyze/glob.rs`. These Rust checks are runtime
+qualification evidence and are not included in the Lean proof boundary.
+
 ## Kani public harnesses (kani_public_harnesses.rs)
 
 Source file: `crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs`. The

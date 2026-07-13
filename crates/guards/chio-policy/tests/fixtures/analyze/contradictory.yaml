@@ -1,0 +1,11 @@
+hushspec: "0.1.0"
+name: analyzer-contradictory
+rules:
+  tool_access:
+    enabled: true
+    allow:
+      - admin.*
+      - admin.read
+    block:
+      - admin.read
+    default: block

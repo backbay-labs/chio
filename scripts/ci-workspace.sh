@@ -40,6 +40,7 @@ bash scripts/tests/provider-fixture-claims.test.sh
 # exercised by `cargo test`.
 cargo clippy --workspace --lib --bins --examples -- -D warnings
 cargo build --workspace
+./scripts/check-policy-analysis.sh target/debug/chio
 # `chio-wasm-guards` pulls in large wasmtime-backed integration binaries when
 # features unify across the workspace, which has been tripping the Linux CI
 # linker. Keep the default lane on the full workspace minus that package and

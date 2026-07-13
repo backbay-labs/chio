@@ -80,7 +80,7 @@ unattributed rather than inferring coverage from names.
   - formal/MAPPING.md: grep-enforced property-to-Rust rows (scripts/check-mapping.sh).
   - formal/assumptions.toml: audited and retired assumptions.
   - .kani/harnesses.toml (schema `chio.kani.multi-crate.v1`, per-harness crate/lane/unwind) and formal/rust-verification/{kani-harnesses,kani-public-harnesses,creusot-contracts}.toml; formal/aeneas/{pilot,production}.toml named by `rust_refinement_lanes`.
-  - fuzz/target-map.toml (25 targets with `crate`, `triggers`, `seeds`) and fuzz/owners.toml.
+  - fuzz/target-map.toml (26 targets with `crate`, `triggers`, `seeds`) and fuzz/owners.toml.
   - .cargo/mutants.toml plus audits/mutation/per-crate-configs/*.toml (`examine_globs`, e.g. chio-kernel-core.toml:27) and docs/fuzzing/trust-boundary-mutants-baseline.toml (2026-04-29 baseline, kill rate 30.7% [v]).
 - Nobody could previously see the joins. For example, the generated
   `chio-kernel-core::receipts.rs` row carries one Creusot artifact and five Kani

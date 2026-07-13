@@ -11,6 +11,9 @@
   resolution.
 - `evaluate/*` owns the reference allow, warn, and deny evaluator, including
   condition filtering, posture transitions, and origin profile selection.
+- `analyze/*` owns the bounded analysis IR, exact glob relations, static
+  findings, and evaluator-confirmed policy refinement witnesses. Unsupported
+  rule semantics remain explicit coverage notices.
 - `compiler.rs` owns translation from HushSpec intent into Chio guard
   pipelines, post-invocation hooks, and default `ChioScope` fragments.
 - `receipt.rs` owns audited evaluation receipts. The crate does not own guard
@@ -35,6 +38,9 @@ identity parsing and binding; policy matching follows that canonical path shape.
 
 - Invalid HushSpec documents must reject before guard or scope materialization.
 - Public parser, validator, compiler, and evaluator APIs are stable.
+- Analysis must fail closed on invalid policies and exhausted atom, pattern,
+  matcher-comparison, finding, automaton-state, or automaton-transition limits.
+  A changed opaque field cannot yield a successful refinement verdict.
 - Workload identity path prefixes match either the exact workload path or a
   child segment boundary, never a sibling string prefix.
 - The root prefix `/` matches all canonical workload paths.
