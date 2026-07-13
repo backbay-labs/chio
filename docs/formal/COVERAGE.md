@@ -891,7 +891,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 
 - Generator version: `3`
 - Regenerate: `cargo xtask gen proof-coverage`
-- Input digest: `f2e9c439319fda02336756f90f6235d2a8ac023f6e267b2f7b5018a32c465b1a`
+- Input digest: `d56b026c30323acc39781d919fe1ff9852e2bc17d5c559ec59c4b26991845108`
 - Git commit: `@GIT_COMMIT@` (resolved in coverage.json and Proof Room packages)
 - Row identity: file rows use package-relative Rust paths; crate-only artifacts use `package::*`.
 
@@ -1098,13 +1098,13 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `fuzz/owners.toml`: `06e18ce8f287a40a393684e23ddfae5a3a545d1302edd264f52e240d8d14d3c2`
 - `fuzz/target-map.toml`: `033abb8a170417c045a85fc2284aa90f7b012a5baa742ddcef3775c61039355c`
 - `git-worktree://rust-files`: `9160af43610ecd061c53c01f8bc2416bd05572650c1ad9eebf38d7d7a0efd12c`
-- `releases.toml`: `063f3e61ca68b160e4f4f8f57c59649cfd248dcfbd86eed76199dbf0cf8a25fa`
+- `releases.toml`: `cb2269ace8ff4cdbbf7e7a4c77731d5217fbddfeb517df8a86465b1fd6ead344`
 - `rust-toolchain.toml`: `8bc51ecab82415fddd8489604f2424e137d71856e7f65cbdcfaa48850d794b46`
 - `scripts/check-apalache-negative.sh`: `9441ad16cab3d4edf8c92d542920a60691217f09b65b9be70793b5fbcf24e4a5`
 - `scripts/check-kani-core.sh`: `fc43a2ca1b028159e6916d6fa78bc11817cdcad0c715c5b51ef9ebb408878e59`
 - `scripts/kani-mutant-killer.sh`: `bb538f60851fcc8d9ddd0bd0bbbdf993fb075d0c55ff1430b742ea3dfdba8456`
 - `scripts/lib/apalache_evidence.py`: `db0fceb5fa2a51ad111f81412dcebf169b04e6d9d1fab1f7a96cf5aa7ab4423d`
-- `scripts/proof-mutants.py`: `a7af252a696483533dfdf695fc45d9a3de6b10b0c3341f82e5bbb02fa43d6411`
+- `scripts/proof-mutants.py`: `df5ecba4dfd35ccf4e5e5b702fc013b266c46eba914b0c0e377109270c9907ba`
 - `scripts/proof-mutants.sh`: `b6a8709ff3d15e8e58521ed60efda0e344733a81b1902dc314928cdedec479a7`
 - `scripts/spec-mutants.py`: `7da21cca4bac3c1ac5f6946251509b3dfcaf7e043ed2b99ee86b491fcb1d9891`
 - `tools/install-apalache.sh`: `3f50745f56521685d30d18669bddb64a4bff060b40c121b30cdbf61fe26f4cc5`

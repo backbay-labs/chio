@@ -496,9 +496,10 @@ if [[ "${dirty_exit}" -ne 2 ]]; then
 fi
 grep -Fq "requires a clean worktree" "${tmp_dir}/dirty-rejected.log"
 
-APALACHE_BIN="${fake_apalache}" \
-CHIO_SPEC_MUTANTS_OUTPUT_ROOT="${run_root}" \
-CHIO_SPEC_MUTANTS_REPORT="${report_path}" \
+env -u CHIO_MUTATION_SAMPLE_EPOCH \
+  APALACHE_BIN="${fake_apalache}" \
+  CHIO_SPEC_MUTANTS_OUTPUT_ROOT="${run_root}" \
+  CHIO_SPEC_MUTANTS_REPORT="${report_path}" \
   python3 scripts/spec-mutants.py --sample-from-head --allow-dirty
 
 python3 - "${report_path}" <<'PY'

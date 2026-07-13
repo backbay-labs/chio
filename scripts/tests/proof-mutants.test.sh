@@ -152,6 +152,11 @@ assert module_spec.loader is not None
 sys.modules[module_spec.name] = module
 module_spec.loader.exec_module(module)
 
+default_options = module.parse_arguments([])
+override_options = module.parse_arguments(["--timeout-secs", "17"])
+if (default_options.timeout_secs, override_options.timeout_secs) != (5400, 17):
+    raise SystemExit("proof mutation timeout defaults or overrides changed")
+
 ci_names = ("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_RUN_NUMBER")
 for name in ci_names:
     os.environ.pop(name, None)

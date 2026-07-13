@@ -182,8 +182,11 @@ control, and Kani commands. The report states
 fallback for native cargo-mutants scoring.
 
 The runner records the actual cargo-mutants, Kani, rustc, and Python versions.
-Its default per-run cap is 1,800 seconds because the measured 35-harness clean
-baseline exceeds the original 600-second estimate on the local arm64 host.
+Its default per-run cap is 5,400 seconds because the compound clean baseline
+and each surviving mutant run the priority harnesses followed by the complete
+core lane. The pinned arm64 toolchain can exceed 1,800 seconds while repeating
+the sound inclusion oracle, so the outer cap preserves the unchanged oracle
+with measured headroom.
 On the integrated tree, cargo-mutants 25.3.1 discovers 166 focused Rust
 mutants. The non-divisible inventory uses the general rotating schedule rather
 than the former ten-epoch aligned schedule. Every sample includes both model
