@@ -77,6 +77,10 @@ TOOL_FAILURE_PATTERNS = (
     re.compile(r"Kani core check requires cargo-kani", re.I),
     re.compile(r"kani-mutant-killer: expected Kani", re.I),
 )
+KANI_CARGO_COMPILE_WRAPPER = re.compile(
+    r"(?m)^error: Failed to execute cargo \(exit status: 101\)\."
+    r" Found [1-9][0-9]* compilation errors?\.[ \t]*$"
+)
 ERROR_LINE = re.compile(r"(?m)^(?:error|fatal):", re.I)
 ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 KANI_FAILED_BLOCK = re.compile(
@@ -828,7 +832,8 @@ def classify_kani(exit_code: int | None, log_path: Path) -> str:
         return "survived"
     text = ANSI_ESCAPE.sub("", log_path.read_text(encoding="utf-8", errors="replace"))
     compile_failure = any(pattern.search(text) for pattern in COMPILE_FAILURE_PATTERNS)
-    tool_failure = any(pattern.search(text) for pattern in TOOL_FAILURE_PATTERNS)
+    tool_evidence = KANI_CARGO_COMPILE_WRAPPER.sub("", text, count=1)
+    tool_failure = any(pattern.search(tool_evidence) for pattern in TOOL_FAILURE_PATTERNS)
     terminal_failure = KANI_MANUAL_FAILURE.search(text)
     failed_blocks = list(KANI_FAILED_BLOCK.finditer(text))
     failure_marker = any(pattern.search(text) for pattern in KANI_FAILURE_MARKERS)

@@ -434,6 +434,38 @@ for malformed in (
 log.write_text("error[E0308]: mismatched types\n", encoding="utf-8")
 if module.classify_kani(101, log) != "unviable":
     raise SystemExit("compile failure was not classified as unviable")
+wrapped_compile_failure = (
+    "error[E0277]: trait bound not satisfied\n"
+    "error: could not compile `chio-kernel-core` (lib) due to 1 previous error\n"
+    "error: Failed to execute cargo (exit status: 101). Found 1 compilation errors.\n"
+)
+log.write_text(wrapped_compile_failure, encoding="utf-8")
+if module.classify_kani(1, log) != "unviable":
+    raise SystemExit("Kani-wrapped compile failure was not classified as unviable")
+for mixed_compile_tool in (
+    wrapped_compile_failure + "thread 'rustc' panicked at compiler.rs:1\n",
+    wrapped_compile_failure + "error: failed to load Kani metadata\n",
+    wrapped_compile_failure
+    + "error: Failed to execute cargo (exit status: 101). Found 1 compilation errors.\n",
+    wrapped_compile_failure.replace("exit status: 101", "exit status: 1"),
+):
+    log.write_text(mixed_compile_tool, encoding="utf-8")
+    try:
+        module.classify_kani(1, log)
+    except module.ProofMutationError:
+        pass
+    else:
+        raise SystemExit("compile failure masked independent tool-failure evidence")
+log.write_text(
+    "error: Failed to execute cargo (exit status: 101). Found 1 compilation errors.\n",
+    encoding="utf-8",
+)
+try:
+    module.classify_kani(1, log)
+except module.ProofMutationError:
+    pass
+else:
+    raise SystemExit("cargo wrapper without compile diagnostics was classified")
 for mixed in (
     "error[E0308]: mismatched types\n" + failure_footer,
     "error: failed to run Kani compiler\n" + failure_footer,
