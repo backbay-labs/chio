@@ -316,6 +316,7 @@ def classify_completed_run(
     expected_length: int,
     exit_code: int,
     run_root: Path,
+    allow_executions_too_short: bool = True,
 ) -> tuple[str, Path | None]:
     """Classify a completed check using the negative lane's exact contract."""
 
@@ -325,6 +326,10 @@ def classify_completed_run(
         raise EvidenceError("expected computation length must be positive")
     outcome = parse_outcome(log_path, expected_invariant)
     if exit_code == 0 and outcome in {"NoError", "ExecutionsTooShort"}:
+        if outcome == "ExecutionsTooShort" and not allow_executions_too_short:
+            raise EvidenceError(
+                "ExecutionsTooShort cannot establish a clean positive baseline"
+            )
         lines = log_path.read_text(encoding="utf-8").splitlines()
         no_error_lengths = [
             int(match.group(1))

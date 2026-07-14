@@ -1272,6 +1272,7 @@ def positive_baseline_preflight(
                 expected_length=spec.length,
                 exit_code=exit_code,
                 run_root=run_dir,
+                allow_executions_too_short=False,
             )
         except EvidenceError as error:
             raise MutationError(

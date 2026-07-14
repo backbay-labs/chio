@@ -278,6 +278,8 @@ for required in (
     "spec/PROTOCOL.md",
     "scripts/generate-proof-report.sh",
     "scripts/check-proof-report.sh",
+    "scripts/lean-assumption-audit.lean",
+    "scripts/tests/lean-assumption-audit.test.sh",
 ):
     if tracked.get(required) != hashlib.sha256(Path(required).read_bytes()).hexdigest():
         raise SystemExit(f"proof report lacks the current hash for {required}")

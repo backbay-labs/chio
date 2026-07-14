@@ -444,6 +444,8 @@ tracked_paths = {
     "formal/assumptions.toml",
     "docs/formal/COVERAGE.md",
     "scripts/check-formal-proofs.sh",
+    "scripts/lean-assumption-audit.lean",
+    "scripts/tests/lean-assumption-audit.test.sh",
     "scripts/check-aeneas-production.sh",
     "scripts/check-aeneas-equivalence.sh",
     "scripts/check-rust-verification-gates.sh",

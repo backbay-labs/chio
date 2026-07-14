@@ -104,6 +104,7 @@ scripts/proof-mutants.py                     @backbay-labs/chio-maintainers
 scripts/proof-mutants.sh                     @backbay-labs/chio-maintainers
 scripts/kani-mutant-killer.sh                @backbay-labs/chio-maintainers
 scripts/lean-mutants.py                      @backbay-labs/chio-maintainers
+scripts/lean-assumption-audit.lean           @backbay-labs/chio-maintainers
 scripts/file-mutation-survivors.py           @backbay-labs/chio-maintainers
 scripts/lib/apalache_evidence.py             @backbay-labs/chio-maintainers
 tools/install-apalache.sh                     @backbay-labs/chio-maintainers

@@ -1492,6 +1492,16 @@ if "Mode: \\`" not in nightly:
 if "target/formal/coverage.json" not in nightly or "if-no-files-found: error" not in nightly:
     raise SystemExit("nightly does not retain proof report and coverage fail-closed")
 
+formal_smoke = workflow_cache[Path(".github/workflows/formal-pr-smoke.yml")][0]
+for required in (
+    '- "scripts/lean-assumption-audit.lean"',
+    '- "scripts/tests/lean-assumption-audit.test.sh"',
+    "lean-assumption-audit\\.lean",
+    "scripts/tests/lean-assumption-audit\\.test\\.sh",
+):
+    if required not in formal_smoke:
+        raise SystemExit(f"formal PR smoke path filter lacks {required}")
+
 qualification = Path("scripts/qualify-release.sh").read_text(encoding="utf-8")
 if "./scripts/lane-gate.sh --fleet" not in qualification:
     raise SystemExit("release qualification does not enforce the lane fleet")
@@ -1544,6 +1554,7 @@ for protected in (
     "scripts/proof-mutants.sh",
     "scripts/kani-mutant-killer.sh",
     "scripts/lean-mutants.py",
+    "scripts/lean-assumption-audit.lean",
     "scripts/file-mutation-survivors.py",
     "scripts/lib/apalache_evidence.py",
     "tools/install-apalache.sh",

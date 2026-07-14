@@ -191,6 +191,20 @@ with tempfile.TemporaryDirectory() as temporary:
     )
     if verdict != "survived" or trace is not None:
         raise SystemExit("short no-error execution was not classified as survived")
+    try:
+        module.classify_completed_run(
+            log_path=short_log,
+            expected_invariant="SafetyInv",
+            expected_length=4,
+            exit_code=0,
+            run_root=short_run,
+            allow_executions_too_short=False,
+        )
+    except module.EvidenceError as error:
+        if "clean positive baseline" not in str(error):
+            raise
+    else:
+        raise SystemExit("short execution established a clean positive baseline")
 
 root = Path.cwd().resolve()
 settings = module.load_settings(root, module.DEFAULT_ALLOWLIST)
@@ -449,8 +463,12 @@ if [[ "${spec}" == */positive-baselines/* ]]; then
   is_baseline=1
 fi
 
-if [[ "${is_negative}" -eq 0 && "${is_baseline}" -eq 1 && "${FAKE_BASELINE_OUTCOME:-noerror}" == "noerror" ]]; then
-  printf '%s\n' "The outcome is: NoError"
+if [[ "${is_negative}" -eq 0 && "${is_baseline}" -eq 1 && "${FAKE_BASELINE_OUTCOME:-noerror}" != "error" ]]; then
+  if [[ "${FAKE_BASELINE_OUTCOME:-noerror}" == "short" ]]; then
+    printf '%s\n' "The outcome is: ExecutionsTooShort"
+  else
+    printf '%s\n' "The outcome is: NoError"
+  fi
   printf '%s\n' "Checker reports no error up to computation length ${length}"
   exit 0
 fi
@@ -648,6 +666,31 @@ if [[ -e "${report_path}" ]]; then
 fi
 if grep -Fq "/generated/" "${baseline_call_log}"; then
   echo "generated mutation scoring started after a failing positive baseline" >&2
+  exit 1
+fi
+
+rm -rf "${run_root}"
+rm -f "${report_path}" "${baseline_call_log}"
+set +e
+FAKE_BASELINE_OUTCOME=short \
+FAKE_APALACHE_CALL_LOG="${baseline_call_log}" \
+APALACHE_BIN="${fake_apalache}" \
+CHIO_SPEC_MUTANTS_OUTPUT_ROOT="${run_root}" \
+CHIO_SPEC_MUTANTS_REPORT="${report_path}" \
+  python3 scripts/spec-mutants.py --sample-from-head --allow-dirty >"${tmp_dir}/baseline-short.log" 2>&1
+baseline_short_exit=$?
+set -e
+if [[ "${baseline_short_exit}" -ne 2 ]]; then
+  echo "expected a short positive baseline to exit 2, found ${baseline_short_exit}" >&2
+  exit 1
+fi
+grep -Fq "ExecutionsTooShort cannot establish a clean positive baseline" "${tmp_dir}/baseline-short.log"
+if [[ -e "${report_path}" ]]; then
+  echo "short positive baseline produced promotable evidence" >&2
+  exit 1
+fi
+if grep -Fq "/generated/" "${baseline_call_log}"; then
+  echo "generated mutation scoring started after a short positive baseline" >&2
   exit 1
 fi
 

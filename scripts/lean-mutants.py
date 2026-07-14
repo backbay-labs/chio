@@ -50,8 +50,20 @@ BOOLEAN = re.compile(r"\b(true|false)\b")
 CONNECTIVE = re.compile(r"&&|\|\|")
 COMPARISON = re.compile(r"(?<![-:<>=!])([<>=]|≤|≥|≠)(?![=>])")
 LEAN_DIAGNOSTIC = re.compile(
-    r"(?m)^(?:error: .*\.lean:[0-9]+:[0-9]+:|"
-    r".*\.lean:[0-9]+:[0-9]+: (?:error|unsolved goals):)"
+    r"^(?:error:\s+(?P<prefixed>.+?\.lean):[0-9]+:[0-9]+:.*|"
+    r"(?P<plain>.+?\.lean):[0-9]+:[0-9]+: (?:error|unsolved goals):.*)$"
+)
+LEAN_IMPORT_MODULE = re.compile(
+    r"(?:[^\W\d]|_)[\w']*(?:\.(?:[^\W\d]|_)[\w']*)*", re.UNICODE
+)
+ANSI_ESCAPE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+EXPECTED_LAKE_ERROR = re.compile(r"^error: (?:Lean exited with code 1|build failed)$")
+TOOL_FAILURE_PATTERNS = (
+    re.compile(r"(?im)^(?:fatal:|panic:|thread .* panicked|uncaught exception)"),
+    re.compile(
+        r"(?i)\b(?:segmentation fault|out of memory|no space left on device|"
+        r"permission denied|network is unreachable|connection refused|timed out)\b"
+    ),
 )
 
 
@@ -281,6 +293,57 @@ def mask_comments(lines: list[str]) -> list[str]:
     if depth != 0:
         raise LeanMutationError("Lean source has an unterminated block comment")
     return masked
+
+
+def skip_lean_header_space(text: str, index: int) -> int:
+    while index < len(text):
+        if text[index].isspace():
+            index += 1
+            continue
+        if text.startswith("--", index):
+            end = text.find("\n", index + 2)
+            index = len(text) if end == -1 else end
+            continue
+        if not text.startswith("/-", index):
+            return index
+        depth = 1
+        index += 2
+        while index < len(text) and depth:
+            if text.startswith("/-", index):
+                depth += 1
+                index += 2
+            elif text.startswith("-/", index):
+                depth -= 1
+                index += 2
+            else:
+                index += 1
+        if depth:
+            raise LeanMutationError("Lean module header has an unterminated block comment")
+    return index
+
+
+def lean_header_keyword(text: str, index: int, keyword: str) -> bool:
+    end = index + len(keyword)
+    return text.startswith(keyword, index) and (
+        end == len(text)
+        or not (text[end].isalnum() or text[end] in "_'!?")
+    )
+
+
+def lean_header_imports(lines: list[str]) -> set[str]:
+    text = "".join(lines)
+    index = skip_lean_header_space(text, 0)
+    if lean_header_keyword(text, index, "prelude"):
+        index = skip_lean_header_space(text, index + len("prelude"))
+    imports: set[str] = set()
+    while lean_header_keyword(text, index, "import"):
+        index = skip_lean_header_space(text, index + len("import"))
+        module = LEAN_IMPORT_MODULE.match(text, index)
+        if module is None:
+            raise LeanMutationError("Lean module header has an incomplete import command")
+        imports.add(module.group(0))
+        index = skip_lean_header_space(text, module.end())
+    return imports
 
 
 def declarations(lines: list[str]) -> dict[str, DeclarationSpan]:
@@ -592,17 +655,119 @@ def run_process(
     return exit_code, time.monotonic() - start
 
 
-def classify_lake(exit_code: int | None, log_path: Path) -> str:
+def lean_module_name(path: Path) -> str:
+    if path.suffix != ".lean":
+        raise LeanMutationError(f"Lean module path must end in .lean: {path}")
+    return ".".join(path.with_suffix("").parts)
+
+
+def attributable_lean_sources(lean_root: Path, mutation_path: Path) -> set[Path]:
+    try:
+        target = mutation_path.relative_to(LEAN_PROJECT)
+    except ValueError:
+        target = mutation_path
+    require_regular_repo_file(lean_root, target, "mutated Lean source")
+
+    modules: dict[str, Path] = {}
+    imports: dict[str, set[str]] = {}
+    for source in sorted(lean_root.rglob("*.lean")):
+        relative = source.relative_to(lean_root)
+        if ".lake" in relative.parts or source.is_symlink() or not source.is_file():
+            continue
+        module = lean_module_name(relative)
+        if module in modules:
+            raise LeanMutationError(f"Lean project repeats module {module}")
+        modules[module] = relative
+        source_lines = source.read_text(encoding="utf-8").splitlines(keepends=True)
+        imports[module] = lean_header_imports(source_lines)
+
+    target_module = lean_module_name(target)
+    if modules.get(target_module) != target:
+        raise LeanMutationError(f"mutated Lean module is absent from the project: {target}")
+    reverse_imports: dict[str, set[str]] = {module: set() for module in modules}
+    for module, dependencies in imports.items():
+        for dependency in dependencies:
+            if dependency in reverse_imports:
+                reverse_imports[dependency].add(module)
+
+    attributable = {target_module}
+    pending = [target_module]
+    while pending:
+        dependency = pending.pop()
+        for importer in reverse_imports[dependency]:
+            if importer not in attributable:
+                attributable.add(importer)
+                pending.append(importer)
+    return {modules[module] for module in attributable}
+
+
+def diagnostic_project_path(lean_root: Path, raw_path: str) -> Path | None:
+    candidate = Path(raw_path)
+    if candidate.is_absolute():
+        try:
+            relative = candidate.relative_to(lean_root.resolve())
+        except ValueError:
+            return None
+    else:
+        relative = candidate
+    if relative.is_absolute() or ".." in relative.parts or not relative.parts:
+        return None
+    try:
+        require_regular_repo_file(lean_root, relative, "Lean diagnostic source")
+    except LeanMutationError:
+        return None
+    return relative
+
+
+def classify_lake(
+    exit_code: int | None,
+    log_path: Path,
+    *,
+    lean_root: Path,
+    mutation_path: Path,
+) -> str:
     if exit_code is None:
         return "timeout"
+    text = ANSI_ESCAPE.sub("", log_path.read_text(encoding="utf-8", errors="replace"))
+    diagnostics: list[str] = []
+    independent_failure = any(pattern.search(text) for pattern in TOOL_FAILURE_PATTERNS)
+    for line in text.splitlines():
+        diagnostic = LEAN_DIAGNOSTIC.fullmatch(line)
+        if diagnostic is not None:
+            diagnostics.append(
+                diagnostic.group("prefixed") or diagnostic.group("plain")
+            )
+        elif line.startswith("error:") and EXPECTED_LAKE_ERROR.fullmatch(line) is None:
+            independent_failure = True
+
     if exit_code == 0:
+        if diagnostics or independent_failure:
+            raise LeanMutationError(
+                "unviable Lean run: successful Lake exit contains failure evidence"
+            )
         return "survived"
-    text = log_path.read_text(encoding="utf-8", errors="replace")
-    if LEAN_DIAGNOSTIC.search(text) is not None:
-        return "killed"
-    raise LeanMutationError(
-        f"Lake exit {exit_code} has no Lean source diagnostic and cannot count as a kill"
-    )
+    if exit_code != 1:
+        raise LeanMutationError(
+            f"unviable Lean run: unexpected Lake source-failure exit {exit_code}"
+        )
+    if independent_failure:
+        raise LeanMutationError(
+            "unviable Lean run: log contains independent tool-failure evidence"
+        )
+    if not diagnostics:
+        raise LeanMutationError(
+            "unviable Lean run: Lake failure has no Lean source diagnostic"
+        )
+
+    attributable = attributable_lean_sources(lean_root, mutation_path)
+    diagnostic_paths = [
+        diagnostic_project_path(lean_root, path) for path in diagnostics
+    ]
+    if any(path is None or path not in attributable for path in diagnostic_paths):
+        raise LeanMutationError(
+            "unviable Lean run: source diagnostics are not attributable to the mutation"
+        )
+    return "killed"
 
 
 def select_mutants(
@@ -738,7 +903,12 @@ def execute(
             exit_code, wall_secs = run_process(
                 [lake, "build"], lean_root, log_path, timeout_secs
             )
-            verdict = classify_lake(exit_code, log_path)
+            verdict = classify_lake(
+                exit_code,
+                log_path,
+                lean_root=lean_root,
+                mutation_path=mutant.path,
+            )
             result = mutant.public()
             result.update(
                 {

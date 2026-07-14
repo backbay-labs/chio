@@ -438,26 +438,147 @@ shutil.rmtree(source_external)
 shutil.rmtree(source_guard)
 shutil.rmtree(final_link_root)
 
-diagnostic = repo / "target/formal/lean-mutants-diagnostic-selftest.log"
-diagnostic.write_text("Chio/Core/Fixture.lean:2:3: error: type mismatch\n", encoding="utf-8")
-try:
-    if module.classify_lake(1, diagnostic) != "killed":
-        raise SystemExit("Lean source diagnostic was not classified as killed")
-    diagnostic.write_text(
-        "error: Chio/Core/Fixture.lean:2:3: Tactic `rfl` failed\n",
-        encoding="utf-8",
+diagnostic_root = repo / "target/formal/lean-mutants-diagnostic-selftest"
+lean_root = diagnostic_root / "project"
+mutation_path = module.LEAN_PROJECT / "Chio/Core/Fixture.lean"
+sources = {
+    Path("Chio/Core/Fixture.lean"): "def fixture : Bool := true\n",
+    Path("Chio/Proofs/Fixture.lean"): (
+        "/- direct importer header -/\n"
+        "prelude\n\n"
+        "import Chio.Core.Fixture\n\n"
+        "theorem fixture_ok : fixture = true := by rfl\n"
+    ),
+    Path("Chio/Proofs/Top.lean"): (
+        "import Chio.Proofs.Fixture\n\n"
+        "theorem top_ok : fixture = true := by rfl\n"
+    ),
+    Path("Chio/Proofs/Multiline.lean"): (
+        "import\n"
+        "  Chio.Core.Fixture\n\n"
+        "theorem multiline_ok : fixture = true := by rfl\n"
+    ),
+    Path("Chio/Proofs/MultilineTop.lean"): (
+        "import /- split import comment\n"
+        "  with import Chio.Core.Decoy -/\n"
+        "  Chio.Proofs.Multiline\n\n"
+        "theorem multiline_top_ok : fixture = true := by rfl\n"
+    ),
+    Path("Chio/CommentDecoy.lean"): (
+        "/-\n"
+        "import Chio.Core.Fixture\n"
+        "-/\n"
+        "def commentDecoy : Bool := true\n"
+    ),
+    Path("Chio/StringDecoy.lean"): (
+        "def stringDecoy : String := \"first line\n"
+        "import Chio.Core.Fixture\n"
+        "last line\"\n"
+    ),
+    Path("Chio/RawStringDecoy.lean"): (
+        "def rawStringDecoy : String := r##\"first \" internal quote\n"
+        "import Chio.Core.Fixture\n"
+        "last line\"##\n"
+    ),
+    Path("Chio/InterpolatedStringDecoy.lean"): (
+        "def interpolatedStringDecoy : String := s!\"first {1}\n"
+        "import Chio.Core.Fixture\n"
+        "last line\"\n"
+    ),
+    Path("Chio/Unrelated.lean"): "def unrelated : Bool := true\n",
+}
+for relative, contents in sources.items():
+    source_path = lean_root / relative
+    source_path.parent.mkdir(parents=True, exist_ok=True)
+    source_path.write_text(contents, encoding="utf-8")
+diagnostic = diagnostic_root / "lake.log"
+
+
+def classify(contents: str, exit_code: int | None = 1) -> str:
+    diagnostic.write_text(contents, encoding="utf-8")
+    return module.classify_lake(
+        exit_code,
+        diagnostic,
+        lean_root=lean_root,
+        mutation_path=mutation_path,
     )
-    if module.classify_lake(1, diagnostic) != "killed":
-        raise SystemExit("Lake-prefixed Lean source diagnostic was not classified as killed")
-    diagnostic.write_text("error: external command failed\n", encoding="utf-8")
+
+
+def require_unviable(contents: str, exit_code: int | None = 1) -> None:
     try:
-        module.classify_lake(1, diagnostic)
-    except module.LeanMutationError:
-        pass
+        classify(contents, exit_code)
+    except module.LeanMutationError as error:
+        if "unviable Lean run" not in str(error):
+            raise
     else:
-        raise SystemExit("Lean infrastructure failure was classified as killed")
+        raise SystemExit("unviable Lean evidence produced a scored verdict")
+
+
+try:
+    attributable = module.attributable_lean_sources(lean_root, mutation_path)
+    if attributable != {
+        Path("Chio/Core/Fixture.lean"),
+        Path("Chio/Proofs/Fixture.lean"),
+        Path("Chio/Proofs/Top.lean"),
+        Path("Chio/Proofs/Multiline.lean"),
+        Path("Chio/Proofs/MultilineTop.lean"),
+    }:
+        raise SystemExit(f"Lean import attribution closure is wrong: {attributable}")
+    if classify("Chio/Core/Fixture.lean:2:3: error: type mismatch\n") != "killed":
+        raise SystemExit("direct Lean source diagnostic was not classified as killed")
+    if classify(
+        "error: Chio/Proofs/Fixture.lean:3:1: Tactic `rfl` failed\n"
+        "error: Lean exited with code 1\n"
+        "Some required targets logged failures:\n"
+        "- Chio.Proofs.Fixture\n"
+        "error: build failed\n"
+    ) != "killed":
+        raise SystemExit("imported-module diagnostic was not classified as killed")
+    absolute_importer = lean_root / "Chio/Proofs/Top.lean"
+    if classify(
+        f"error: {absolute_importer}:3:1: Tactic `rfl` failed\n"
+    ) != "killed":
+        raise SystemExit("absolute transitive-importer diagnostic was not a kill")
+    if classify(
+        "error: Chio/Proofs/MultilineTop.lean:5:1: Tactic `rfl` failed\n"
+    ) != "killed":
+        raise SystemExit("multiline transitive-importer diagnostic was not a kill")
+    require_unviable("error: Chio/Unrelated.lean:1:1: type mismatch\n")
+    require_unviable(
+        "error: Chio/CommentDecoy.lean:4:1: type mismatch\n"
+    )
+    require_unviable(
+        "error: Chio/StringDecoy.lean:1:1: type mismatch\n"
+    )
+    require_unviable(
+        "error: Chio/RawStringDecoy.lean:1:1: type mismatch\n"
+    )
+    require_unviable(
+        "error: Chio/InterpolatedStringDecoy.lean:1:1: type mismatch\n"
+    )
+    require_unviable(
+        "error: Chio/Core/Fixture.lean:2:3: type mismatch\n"
+        "error: Chio/Unrelated.lean:1:1: type mismatch\n"
+    )
+    require_unviable(
+        "error: Chio/Core/Fixture.lean:2:3: type mismatch\n"
+        "error: external command failed\n"
+    )
+    require_unviable(
+        "error: Chio/Core/Fixture.lean:2:3: type mismatch\n"
+        "permission denied while writing the build cache\n"
+    )
+    require_unviable("error: build failed\n")
+    require_unviable(
+        "error: Chio/Core/Fixture.lean:2:3: type mismatch\n", 137
+    )
+    if classify("", 0) != "survived":
+        raise SystemExit("clean successful Lake run did not survive")
+    require_unviable("error: external command failed\n", 0)
+    if classify("", None) != "timeout":
+        raise SystemExit("timed out Lake run was not classified as timeout")
 finally:
-    diagnostic.unlink(missing_ok=True)
+    shutil.rmtree(diagnostic_root)
 PY
 
 echo "PASS: Lean model mutation enumeration stays inside allowlisted definitions"

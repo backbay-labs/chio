@@ -10,6 +10,8 @@ python3 scripts/check-rust-public-surface.py
 bash scripts/tests/check-rust-public-surface.test.sh
 python3 scripts/check-architecture-docs.py
 ./scripts/check-formal-proofs.sh
+bash scripts/tests/lean-mutants.test.sh
+bash scripts/tests/spec-mutants.test.sh
 ./scripts/check-aeneas-pilot.sh
 ./scripts/check-aeneas-production.sh
 ./scripts/check-aeneas-equivalence.sh

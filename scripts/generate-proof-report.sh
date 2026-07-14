@@ -427,6 +427,8 @@ tracked_paths = [
     assumptions_path,
     repo / "docs/formal/COVERAGE.md",
     repo / "scripts/check-formal-proofs.sh",
+    repo / "scripts/lean-assumption-audit.lean",
+    repo / "scripts/tests/lean-assumption-audit.test.sh",
     repo / "scripts/check-aeneas-production.sh",
     repo / "scripts/check-aeneas-equivalence.sh",
     repo / "scripts/check-rust-verification-gates.sh",
