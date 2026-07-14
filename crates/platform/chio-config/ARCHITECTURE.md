@@ -1,54 +1,85 @@
-# chio-config Architecture
+# chio-config architecture
 
-## Boundary
+## Overview
 
-`chio-config` owns ingestion of operator `chio.yaml` configuration before the
-runtime, adapters, guard loaders, and control-plane code wire themselves from
-that data. It does not instantiate kernels, start adapters, resolve guard
-modules, or open storage connections. Its responsibility is to turn config text
-or files into a typed `ChioConfig` only after interpolation, schema
-deserialization, defaults, and validation have all succeeded.
+`chio-config` owns the path from operator-authored `chio.yaml` text to a
+validated, typed `ChioConfig`, plus the one bridge (`ChioConfig::to_kernel_config`)
+that lowers a validated config into the runtime's `chio_kernel::KernelConfig`.
+Its only I/O is reading the config file (`load_from_file`) and reading
+environment variables during interpolation; it does not construct a kernel,
+start adapters, resolve guard modules, or open storage connections. Every stage
+of the load sequence is fail-closed: unknown fields, unresolved interpolation
+variables, YAML-scalar-breaking values, and invalid field combinations are all
+rejected before a caller receives a config.
 
-## Module Boundaries
+## Module map
 
-- `schema` owns the typed `chio.yaml` shape and serde defaults.
-- `interpolation` owns `${VAR}` and `${VAR:-default}` expansion before YAML
-  deserialization.
-- `validation` owns cross-field checks after typed deserialization, including
-  adapter IDs, edge references, auth blocks, kernel fields, and logging values.
-- `loader` owns the canonical ingest sequence from file/string to validated
-  `ChioConfig`.
-- `fuzz` is feature-gated and drives arbitrary bytes through the same loader
-  path without adding production dependencies.
+| Path | Responsibility |
+|------|----------------|
+| `src/lib.rs` | Public module declarations, top-level re-exports (`load_from_file`, `load_from_str`, schema types), and `ConfigError`. |
+| `src/schema.rs` | Typed `chio.yaml` shape (`ChioConfig` and its sections), serde defaults, and the `chio_kernel` bridge (`ChioConfig::to_kernel_config`, `KernelConfig::signing_keypair`, `KernelDeadlinesFileConfig::to_hot_path_deadline_config`). |
+| `src/interpolation.rs` | `${VAR}` / `${VAR:-default}` expansion over raw YAML text, in two policies: unrestricted (`interpolate`) and YAML-scalar-safe (`interpolate_for_loader`). |
+| `src/loader.rs` | The canonical ingest sequence -- interpolate, reject stray tabs, deserialize, validate -- behind `load_from_file` / `load_from_str`. |
+| `src/validation.rs` | Post-deserialization cross-field checks: adapter/edge uniqueness and references, auth block completeness, kernel deadline floors, logging enum values. |
+| `src/fuzz.rs` | Feature-gated (`fuzz`) libFuzzer entry point that drives arbitrary bytes through `loader::load_from_str`. |
 
-## Trust Invariants
+## Load sequence
 
-- Existing public API entry points must remain compatible:
-  `load_from_file`, `load_from_str`, `interpolation::interpolate`, schema
-  structs, and `validation::validate`.
-- Unknown config fields must continue to fail at parse time through
-  `deny_unknown_fields`.
-- Missing interpolation variables without defaults must continue to fail closed
-  before parsing.
-- Loader interpolation must not let environment variables or defaults inject
-  new YAML structure, truncate scalar values through comments, or break quoted
-  strings.
-- Raw `interpolation::interpolate` remains compatibility-oriented; only
-  `loader::load_from_str` applies YAML-scalar-safe interpolation.
-- Validation must keep returning all detected semantic errors in one pass.
-- Bearer and API-key auth headers must be present, non-empty, and unpadded.
-- The `fuzz` feature must remain optional and must not affect production
-  dependencies.
+1. `load_from_file` reads the file into a string (or a caller starts directly
+   at `load_from_str`).
+2. `interpolation::interpolate_for_loader` expands `${VAR}` / `${VAR:-default}`
+   against the process environment. It rejects any resolved value, from either
+   the environment or a `:-default`, that could change YAML scalar structure:
+   surrounding whitespace, control characters, or `"`, `'`, `#`. It scans the
+   whole document before failing: every unset variable is named together in
+   one error; if none are missing, every YAML-unsafe resolved value is named
+   together instead.
+3. `loader::reject_yaml_tabs` scans the interpolated text and rejects literal
+   tab characters outside quoted scalars, comments, and `|`/`>` block scalars.
+4. `serde_yml::from_str` deserializes into `ChioConfig`. Every struct in
+   `schema.rs` uses `deny_unknown_fields`.
+5. `validation::validate` runs the cross-field checks and collects every
+   failure into one `ConfigError::Validation`.
+6. A caller that needs a runtime kernel calls `ChioConfig::to_kernel_config`,
+   which resolves `kernel.signing_key` into a keypair and lowers the validated
+   config into `chio_kernel::KernelConfig`.
 
-The loader separates general string interpolation from trusted config
-ingestion and moves the YAML-scalar safety invariant to the earliest point in
-the load lifecycle:
-raw config -> loader-safe interpolation -> YAML deserialization -> validation.
+## Invariants and failure modes
 
-## Verification Focus
+- Every struct in `schema.rs` denies unknown fields: an unrecognized config key
+  is a parse error, not a silently ignored value.
+- Interpolation on the loader path is stricter than the general-purpose
+  `interpolate` function: `interpolate_for_loader` rejects values that could
+  inject YAML structure, open an unterminated quote, or turn part of a value
+  into a comment. Only `loader::load_from_str` uses the strict policy.
+- `validate` never stops at the first problem; it collects every failing check
+  into a single `ConfigError::Validation(Vec<String>)`.
+- `kernel.deadlines.receipt_append_budget_ms`, if set, must be >= 250ms;
+  `receipt_writer_poll_ms` and `receipt_writer_stall_ms`, if set, must be
+  non-zero. These floors mirror the runtime kernel's own minimum append budget
+  so a config cannot describe an unbounded wedged-writer stall.
+- `bearer` and `api_key` auth entries must carry a non-empty, unpadded
+  `header`; `cookie`, `mtls`, and `none` do not require one.
+- `ChioConfig::to_kernel_config` fills every kernel field the file schema does
+  not yet expose with the kernel's own fail-closed defaults: no external
+  capability authorities (`ca_public_keys` empty), nested sampling and
+  elicitation disabled, `require_web3_evidence` false, and both
+  `allow_ephemeral_receipt_log` and `allow_ephemeral_revocation_store` false,
+  so a config-built kernel refuses non-durable receipt and revocation storage.
+- Regression tests pin that the underlying `serde_yml` (`libyml`) parser caps
+  alias-expansion repetition and recursion depth on its own, so a crafted
+  `chio.yaml` cannot exhaust memory or overflow the stack before
+  `deny_unknown_fields` runs.
+- The `fuzz` feature (`dep:arbitrary`) adds no dependency to a default build;
+  `fuzz/owners.toml` maps its `chio_yaml_parse` target to this crate's
+  `loader::load_from_str` boundary.
 
-Tests should cover unknown-field rejection, missing interpolation variables,
-unsafe interpolation defaults, YAML boundary injection attempts, duplicate
-adapter and edge ids, missing adapter references, auth block completeness,
-blank or padded bearer/API-key headers, logging validation, and optional fuzz
-entrypoints staying outside the default dependency graph.
+## Dependencies
+
+`chio-core` supplies `crypto::Keypair`, used by `KernelConfig::signing_keypair`
+to turn `signing_key` into an Ed25519 keypair. `chio-kernel` supplies the
+runtime `KernelConfig`, `HotPathDeadlineConfig`, `RetentionConfig`, and
+`MemoryBudgetConfig` types that `to_kernel_config` lowers into. `serde` /
+`serde_yml` deserialize the YAML; `thiserror` derives `ConfigError`; `regex`
+implements the `${VAR}` interpolation pattern. `arbitrary` is pulled in only by
+the optional `fuzz` feature.

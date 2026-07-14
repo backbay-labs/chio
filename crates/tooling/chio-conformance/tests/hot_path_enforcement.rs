@@ -637,6 +637,17 @@ fn hosted_path_rejects_attenuated_when_peer_disables_chain_binding() {
     )));
     kernel.register_tool_server(Box::new(EchoToolServer));
 
+    // The federated hosted path fails closed without durable receipt
+    // persistence (ensure_federated_receipt_persistence_ready), so install a
+    // receipt store before the chain-binding check can run.
+    let receipt_dir = tempfile::tempdir().expect("receipt temp dir");
+    kernel
+        .set_receipt_store(Box::new(
+            chio_store_sqlite::SqliteReceiptStore::open(receipt_dir.path().join("receipts.db"))
+                .expect("open receipt store"),
+        ))
+        .expect("install receipt store");
+
     let mut request = hosted_request("req-hosted-chain-binding-disabled", &token);
     request.federated_origin_kernel_id = Some(origin_kernel_id.to_string());
 

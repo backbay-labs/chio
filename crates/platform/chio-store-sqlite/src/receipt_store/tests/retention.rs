@@ -12,7 +12,12 @@ fn unique_db_path(prefix: &str) -> std::path::PathBuf {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_nanos())
         .unwrap_or(0);
-    std::env::temp_dir().join(format!(
+    // Canonicalize the temp dir so test paths match the symlink-resolved form
+    // production records via absolute_archive_path (on macOS temp_dir sits under
+    // the /var -> /private/var symlink, so a raw path fails the repair archive
+    // identity check that compares against the canonicalized ledger path).
+    let base = std::fs::canonicalize(std::env::temp_dir()).unwrap_or_else(|_| std::env::temp_dir());
+    base.join(format!(
         "chio-{prefix}-{}-{nonce}.sqlite3",
         std::process::id()
     ))

@@ -105,9 +105,7 @@ impl RetentionMaintenanceHandle {
                         );
                     }
                     Err(_panic) => {
-                        store.record_retention_rotation_outcome(Some(
-                            "receipt rotation panicked",
-                        ));
+                        store.record_retention_rotation_outcome(Some("receipt rotation panicked"));
                         tracing::warn!(
                             target: "chio::retention",
                             "receipt rotation panicked; will retry next interval"
@@ -898,12 +896,7 @@ mod tests {
     fn background_retention_failure_surfaces_in_health() {
         let store = std::sync::Arc::new(FailingRetentionStore::default());
         // A store with no rotation attempt yet reports healthy.
-        assert!(
-            store
-                .receipt_store_health()
-                .expect("health report")
-                .healthy
-        );
+        assert!(store.receipt_store_health().expect("health report").healthy);
 
         let config = RetentionConfig {
             check_interval_secs: 1,

@@ -2501,14 +2501,10 @@ dependencies = [
  "chio-kernel",
  "chio-manifest",
  "chio-mcp-edge",
- "chio-metrics-spec",
  "chio-test-support",
- "futures",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
- "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -2523,14 +2519,10 @@ dependencies = [
  "chio-kernel",
  "chio-manifest",
  "chio-mcp-edge",
- "chio-metrics-spec",
  "chio-test-support",
- "futures",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
- "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -2601,7 +2593,6 @@ dependencies = [
  "chio-kernel",
  "chio-metrics-spec",
  "chio-test-support",
- "chio-web3",
  "chio-web3-bindings",
  "hex",
  "opentimestamps",
@@ -3874,7 +3865,6 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -3892,7 +3882,6 @@ dependencies = [
  "chio-kernel",
  "chio-mcp-adapter",
  "chio-metrics-spec",
- "chio-siem",
  "chio-store-sqlite",
  "p256 0.13.2",
  "p384",

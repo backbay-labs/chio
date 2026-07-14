@@ -110,8 +110,7 @@ pub(crate) use error::XtaskError;
 pub(crate) use scenarios::validate_scenarios;
 #[cfg(test)]
 pub(crate) use scenarios::{
-    build_schema_index, collect_scenario_files, resolve_schema_path, SchemaIndex,
-    SCHEMA_URI_PREFIX,
+    build_schema_index, collect_scenario_files, resolve_schema_path, SchemaIndex, SCHEMA_URI_PREFIX,
 };
 #[cfg(test)]
 pub(crate) use support::TempDir;

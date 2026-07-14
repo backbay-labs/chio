@@ -1,50 +1,70 @@
-# chio-openapi Architecture Note
+# chio-openapi architecture
 
-## Boundaries
+## Overview
 
-- `src/parser.rs` owns OpenAPI 3.x JSON/YAML ingestion, required-field checks,
-  local `$ref` resolution, and the intermediate `OpenApiSpec` model.
-- `src/generator.rs` owns conversion from `OpenApiSpec` into
-  `chio_core_types::ToolDefinition`, including parameter merging, input schema
-  construction, output schema selection, and tool annotations.
-- `src/extensions.rs` owns `x-chio-*` operation extension parsing.
-- `src/policy.rs` owns default method-based policy decisions and extension
-  overrides.
-- `src/lib.rs` exposes the stable public API and the `tools_from_spec`
-  convenience path.
+chio-openapi is a pure parsing and transformation library: no I/O, no async
+runtime, `#![forbid(unsafe_code)]`. It is the ingest trust boundary for
+operator-authored OpenAPI documents - `OpenApiSpec::parse` validates
+structure and fails closed on missing fields, unresolved or non-local `$ref`,
+and malformed parameters before any `ToolDefinition` is generated. The crate
+stops at `ToolDefinition` values; assembling a signed `ToolManifest`, hosting
+tools over MCP, and dispatching HTTP calls are out of scope and live in
+`chio-openapi-mcp-bridge`.
 
-## Parameter Ingest Boundary
+## Module map
 
-The parser is the ingest trust boundary for operator-supplied OpenAPI specs;
-downstream bridge code assumes parsed parameters are intentional. The normative
-OpenAPI integration spec requires each parameter to include `name` and `in`, so
-`parse_single_parameter` rejects parameters whose `in` field is absent, empty, or
-not a string rather than publishing an invalid contract as a valid tool input and
-routing bridged calls with a broader input surface than the author declared. An
-explicitly unknown string `in` value remains compatible and maps to query,
-matching the integration spec text; the rejected case is absence or non-string
-shape, not an unknown string.
+| Path | Responsibility |
+|------|----------------|
+| `src/lib.rs` | Public API surface: `OpenApiError`, the `Result` alias, and the `tools_from_spec` convenience function (parse + generate in one call). |
+| `src/parser.rs` | OpenAPI 3.x JSON/YAML ingestion into `OpenApiSpec`: format auto-detection, required-field checks, local `$ref` resolution, parameter/request-body/response extraction. |
+| `src/generator.rs` | `ManifestGenerator`: converts an `OpenApiSpec` into `Vec<ToolDefinition>`, merging parameters and building input/output JSON schemas and annotations. |
+| `src/extensions.rs` | `ChioExtensions`: parses `x-chio-*` operation fields (`sensitivity`, `side_effects`, `approval_required`, `budget_limit`, `publish`) from the raw operation JSON. |
+| `src/policy.rs` | `DefaultPolicy`: session-allow / deny-by-default decision per HTTP method, overridable by `ChioExtensions`. |
 
-## Security And API Constraints
+## Spec-to-tool pipeline
 
-- Preserve the public structs and function signatures.
-- Preserve JSON/YAML auto-detection and local-only `$ref` resolution.
-- Preserve deterministic path ordering and method ordering.
-- Preserve generator behavior for valid specs, including canonical tool input
-  schemas and method-derived annotations.
-- Fail closed at the malformed-spec boundary before generating tools or bridge
-  route bindings.
+1. `OpenApiSpec::parse` (or `from_value`) ingests JSON or YAML, requires a
+   `3.x` `openapi` version plus `info` and `paths`, and resolves `$ref`
+   pointers that start with `#/` against the document itself. A missing
+   field, unresolved ref, or malformed parameter (`name`/`in` absent, empty,
+   or non-string; `in` outside `path`/`query`/`header`/`cookie`) fails the
+   parse.
+2. Paths are sorted lexicographically and each path's operations are visited
+   in a fixed method order (`get`, `post`, `put`, `patch`, `delete`, `head`,
+   `options`), so generation is deterministic regardless of source key order.
+3. `ManifestGenerator::generate_tools` merges path-level and operation-level
+   parameters (operation-level wins on a name+location collision) and skips
+   an operation when `ChioExtensions::should_publish` is false and
+   `respect_publish_flag` is set.
+4. For each remaining operation, `build_tool_definition` builds an input
+   schema from path/query parameters (header and cookie parameters are
+   excluded) and the request body, an output schema from the first `200`,
+   then `201`, then any other 2xx response, and annotations from the HTTP
+   method and extensions.
+5. The result is a `Vec<ToolDefinition>`. No manifest assembly, signing, or
+   transport happens in this crate.
 
-## Affected Dependents
+## Invariants and failure modes
 
-- `crates/protocol/chio-openapi-mcp-bridge` calls `OpenApiSpec::parse` before building
-  route bindings and manifests, inheriting parameter validation without code changes.
-- `spec/OPENAPI-INTEGRATION.md` is the normative contract for this crate and
-  requires parameter `in` to be present.
+- Parsing fails closed: an unrecognized parameter `in` value is rejected as
+  `OpenApiError::InvalidSpec`, not silently coerced to a default location.
+- `resolve_ref` only follows pointers beginning with `#/`; external refs
+  (URLs, other files) are rejected as `UnresolvedRef`.
+- Path parameters default to required when the document omits `required`;
+  other locations default to not required.
+- `sensitivity` and `budget_limit` are parsed onto `ChioExtensions` and are
+  publicly readable, but `ManifestGenerator` does not consume them; only
+  `publish`, `side_effects`, and `approval_required` affect the generated
+  `ToolDefinition`.
+- `GeneratorConfig.server_id` is stored but not read by `generate_tools`; it
+  has no effect on this crate's output.
+- `ToolDefinition.pricing` is always `None`; this crate does not compute
+  pricing from `budget_limit` or elsewhere.
 
-## Verification Focus
+## Dependencies
 
-Tests should cover JSON and YAML parsing parity, local `$ref` resolution,
-required parameter fields, malformed `in` rejection, deterministic tool
-ordering, stable generated input schemas, `x-chio-*` extension parsing, and
-bridge compatibility through `chio-openapi-mcp-bridge` for valid specs.
+`chio-core-types` supplies `ToolDefinition` and `ToolAnnotations`, the types
+this crate produces. `chio-http-core` supplies `HttpMethod`, parsed from the
+OpenAPI method string and consulted by `DefaultPolicy`. `serde`/`serde_json`
+back the JSON model; `serde_yaml` backs YAML parsing; `thiserror` derives
+`OpenApiError`. No dependency aliasing.

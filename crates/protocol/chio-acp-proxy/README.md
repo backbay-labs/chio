@@ -1,52 +1,73 @@
 # chio-acp-proxy
 
 Security proxy for the Agent Client Protocol (ACP). Sits between an editor or
-IDE client and an ACP coding agent, enforcing Chio capability-based access
-control on every JSON-RPC message.
+IDE client and a third-party ACP coding agent subprocess, intercepting
+JSON-RPC messages to enforce Chio capability-based access control on the
+agent's filesystem and terminal requests. Unsigned audit entries are
+generated for every observed tool call and, when a signer is installed,
+promoted to signed Chio receipts.
 
-## What it does
+This crate governs an external ACP agent from the outside. It does not expose
+Chio's own tools over ACP; that direction is `chio-acp-edge`.
 
-`chio-acp-proxy` spawns an ACP agent as a subprocess with stdio transport and
-forwards JSON-RPC messages bidirectionally between the client and the agent. It
-intercepts the following message classes before forwarding:
+## Responsibilities
 
-- `session/request_permission` -- validates capability tokens.
-- `fs/read_text_file` and `fs/write_text_file` -- enforces path-scoped
-  capabilities and detects path traversal.
-- `terminal/create` -- runs command guards.
-- `session/update` (notifications) -- observes `tool_call` events and generates
-  unsigned audit entries that a downstream component with key material can
-  promote to signed Chio receipts.
+- Spawn an ACP agent as a subprocess over stdio and forward JSON-RPC messages
+  bidirectionally between it and the client (`AcpTransport`, `AcpProxy`).
+- Gate agent-initiated `fs/read_text_file`, `fs/write_text_file`, and
+  `terminal/create` requests through an optional `CapabilityChecker` and the
+  built-in `FsGuard` / `TerminalGuard` allowlists; a denial from either blocks
+  the request.
+- Gate `terminal/kill` and `terminal/release` on a `CapabilityChecker` alone
+  and deny them outright when none is installed, since no built-in guard
+  covers process lifecycle.
+- Bind capability context captured before a `toolCallId` exists (fs and
+  terminal-create requests) to the `toolCallId` that arrives later on
+  `session/update`, through a per-session FIFO that only binds on an
+  unambiguous match.
+- Turn observed `tool_call` / `tool_call_update` events into unsigned
+  `AcpToolCallAuditEntry` records, promoted to signed `ChioReceipt`s through
+  the `ReceiptSigner` trait (`KernelReceiptSigner`).
+- Map `session/request_permission` ACP permission kinds to Chio capability
+  decisions for audit logging; the editor's own UI makes the actual decision.
+- Generate and verify session compliance certificates over a receipt log:
+  signatures, chain continuity, scope, budget, guard evidence.
+- Convert signed receipts into OTel-shaped spans through the
+  `ReceiptSpanExporter` trait.
 
-The optional `otel` feature (enabled via `chio-kernel/otel`) wires OpenTelemetry
-spans into the intercept path.
+## Public API
 
-Public types: `AcpProxy`, `AcpProxyConfig`, `AcpProxyError`.
+- `AcpProxy` - top-level orchestrator; `start` (built-in guards only) or
+  `start_with_kernel` (kernel-backed signer and checker).
+- `AcpProxyConfig` - builder for agent command, allowlists, public key, server id.
+- `MessageInterceptor`, `Direction`, `InterceptResult` - the interception core.
+- `FsGuard`, `TerminalGuard` - built-in fail-closed guards.
+- `ReceiptSigner`, `CapabilityChecker` - kernel integration traits, implemented
+  by `KernelReceiptSigner` and `KernelCapabilityChecker`.
+- `ReceiptLogger`, `AcpToolCallAuditEntry`, `AcpEnforcementMode` - unsigned
+  audit trail.
+- `generate_compliance_certificate`, `verify_compliance_certificate`,
+  `ComplianceConfig` - post-hoc session compliance evidence.
+- `receipt_to_span`, `ReceiptSpanExporter`, `TelemetryConfig` - OTel span
+  export.
+- `AcpProxyError` - `Protocol`, `AccessDenied`, `PathTraversal`, `Transport`.
 
-## Position in the system
+## Feature flags
 
-```
-Editor / IDE (ACP client)
-        |  (JSON-RPC, stdio)
-  [chio-acp-proxy]  -- capability enforcement, path-guard, receipt audit
-        |  (stdio)
-  ACP coding agent subprocess
-```
+| Flag | Effect |
+|------|--------|
+| `otel` | Enables `chio-kernel/otel` and the `otel` module: re-exports `chio_kernel::otel`'s GenAI span builder and adds `acp_tool_call_span` for ACP tool calls. |
 
-`chio-acp-proxy` depends on `chio-kernel` (guard evaluation) and
-`chio-cross-protocol` (shared bridge contracts and capability envelope schemas).
+## Testing
 
-## Building
+`cargo test -p chio-acp-proxy`
 
-```bash
-cargo build -p chio-acp-proxy
-cargo build -p chio-acp-proxy --features otel
-cargo test -p chio-acp-proxy
-```
+## See also
 
-## House rules
-
-- No em dashes (U+2014) anywhere in code, comments, or documentation.
-- Workspace clippy lints `unwrap_used = "deny"` and `expect_used = "deny"` apply.
-- Fail-closed: path traversal and missing capability tokens deny the message
-  before it reaches the agent subprocess.
+- `chio-acp-edge` - the inverse direction: exposes Chio's own tools as ACP
+  capabilities instead of governing an external agent.
+- `chio-kernel` - supplies the guard pipeline, receipt store, and (behind
+  `otel`) the span builder consumed by the kernel-backed signer and checker.
+- `chio-cross-protocol` - supplies the capability bridge and orchestrator
+  `KernelCapabilityChecker` routes ACP operations through.
+- `chio-cli` - wires this proxy into the Chio CLI.

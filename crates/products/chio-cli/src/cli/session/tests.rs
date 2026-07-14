@@ -136,6 +136,7 @@ capabilities:
 "#;
         let policy = policy::parse_policy(yaml).unwrap();
         let revocation_db_path = unique_db_path("chio-cli-revocations");
+        let receipt_db_path = unique_db_path("chio-cli-revocation-receipts");
         let kp = Keypair::generate();
 
         let agent_kp = Keypair::generate();
@@ -151,7 +152,12 @@ capabilities:
             cap
         };
 
+        // Dispatch fails closed without a receipt store, so pair one with the
+        // persistent revocation store here. build_kernel_with_receipt_store is
+        // not used: it installs an ephemeral in-memory revocation store that
+        // would defeat this restart test.
         let mut restarted = build_kernel(load_test_policy_runtime(&policy), &kp);
+        configure_receipt_store(&mut restarted, Some(&receipt_db_path), None, None).unwrap();
         configure_revocation_store(&mut restarted, Some(&revocation_db_path), None, None).unwrap();
         restarted.register_tool_server(Box::new(StubToolServer {
             id: "*".to_string(),

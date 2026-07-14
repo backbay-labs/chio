@@ -1,42 +1,69 @@
 # chio-a2a-edge
 
-Edge crate that exposes Chio-governed tools as A2A (Agent-to-Agent) skills.
+Edge crate that exposes Chio-governed tools as A2A (Agent-to-Agent) skills to
+external clients. It builds an A2A Agent Card and dispatches `message/send`,
+`message/stream`, `task/get`, and `task/cancel` through the Chio kernel, which
+evaluates each call and signs a receipt into the response metadata. This is
+the inbound counterpart to `chio-a2a-adapter`, which consumes a remote A2A
+agent instead of hosting one; the split mirrors `chio-mcp-adapter` (wraps an
+upstream MCP server) and `chio-mcp-edge` (the MCP hosting runtime).
 
-## What it does
+## Responsibilities
 
-`chio-a2a-edge` is the outward A2A server surface: it serves Chio tools to
-external A2A clients rather than consuming a remote A2A server (that direction
-is `chio-a2a-adapter`). Responsibilities:
+- Turn a set of Chio `ToolManifest`s into an A2A Agent Card: resolve each
+  tool's target protocol, evaluate `BridgeFidelity`, assign collision-safe
+  skill ids, and publish only skills whose fidelity resolves to
+  publish-by-default.
+- Route blocking `message/send` and the deferred `message/stream` /
+  `task/get` / `task/cancel` lifecycle through `chio-kernel` via
+  `chio-cross-protocol`'s `CrossProtocolOrchestrator`, mapping kernel
+  verdicts to A2A `TaskResponse`s.
+- Bound and prune the deferred task table by capacity and TTL, and restrict
+  polling or cancelling a task to its owning `agent_id`.
+- Parse and validate the inbound JSON-RPC envelope, method params, and
+  identifier fields before any skill resolution or kernel dispatch runs.
+- Provide an explicit, feature-gated non-authoritative passthrough
+  (`ChioA2aEdgeCompatibility`) that bypasses the kernel for bounded
+  migration and tests.
+- Record per-outcome receipt-write counters and render them as Prometheus
+  text (`metrics` module).
 
-- Publish an A2A Agent Card at `/.well-known/agent-card.json`.
-- Accept `message/send` requests and route them through the Chio kernel.
-- Expose a truthful blocking `message/send` surface and a deferred
-  receipt-bearing `message/stream` / `task/get` / `task/cancel` lifecycle.
-- Evaluate `BridgeFidelity` per tool to signal translation quality.
+## Public API
 
-Kernel-backed entrypoints produce signed Chio receipts. Passthrough
-compatibility helpers are available for bounded migration and tests but are not
-the authoritative trust path.
+- `ChioA2aEdge::new(config: A2aEdgeConfig, manifests: Vec<ToolManifest>)` -
+  construct the edge; validates the Agent Card config and every manifest.
+- `ChioA2aEdge::{agent_card, agent_card_json, skill_ids, skill,
+  bridge_fidelity}` - Agent Card and skill-catalog introspection.
+- `ChioA2aEdge::{handle_send_message, handle_stream_message, handle_jsonrpc}` -
+  kernel-mediated blocking send, deferred stream start, and raw JSON-RPC
+  dispatch (returns an `A2aJsonRpcResponse`).
+- `ChioA2aEdge::compatibility()` -> `ChioA2aEdgeCompatibility` - opt-in
+  passthrough surface (`cfg(test)` or `feature = "compatibility-surface"`).
+- `A2aEdgeConfig`, `A2aEdgeError`, `A2aKernelExecutionContext` - Agent Card
+  config, error type, and per-call kernel execution context.
+- Wire types: `AgentCard`, `A2aSkillEntry`, `SendMessageRequest`,
+  `A2aMessage`, `A2aPart`, `TaskResponse`, `TaskStatus`,
+  `A2aJsonRpcResponse`.
+- `metrics::{render_a2a_edge_metrics_prometheus, receipt_write_total,
+  receipt_write_outcome_for_verdict, CHIO_RECEIPT_WRITE_TOTAL,
+  RECEIPT_WRITE_OUTCOME_*}` - receipt-write metrics.
+- `otel::a2a_tool_call_span` (`feature = "otel"`) - GenAI tool-call span
+  helper.
 
-The crate exports Prometheus-compatible receipt-write counters via its `metrics`
-module (`render_a2a_edge_metrics_prometheus`, `CHIO_RECEIPT_WRITE_TOTAL`).
+## Feature flags
 
-## Position in the system
+| Flag | Effect |
+|------|--------|
+| `compatibility-surface` | Compiles `ChioA2aEdge::compatibility()` and the passthrough handlers outside test builds. |
+| `otel` | Enables the `otel` module and its GenAI span helpers (`chio-kernel/otel`, `chio-mcp-edge/otel`). |
 
-```
-A2A client (external agent)
-        |
-  [chio-a2a-edge]  -- Chio kernel dispatch, receipt signing
-        |
-  chio-kernel
-```
+## Testing
 
-Depends on `chio-cross-protocol` for shared bridge contracts and
-`BridgeFidelity`.
+`cargo test -p chio-a2a-edge`
 
-## Building
+## See also
 
-```bash
-cargo build -p chio-a2a-edge
-cargo test -p chio-a2a-edge
-```
+- `chio-a2a-adapter` - the reverse direction: mediates calls to a remote A2A agent instead of hosting Chio tools as one.
+- `chio-cross-protocol` - supplies the `CapabilityBridge` trait, orchestrator, target-protocol registry, and fidelity/lifecycle contracts this crate implements against.
+- `chio-kernel` - mediates every authoritative skill invocation and signs receipts.
+- `chio-mcp-edge` - registered as a cross-protocol target executor; also the MCP hosting runtime that pairs with `chio-mcp-adapter` the way this crate pairs with `chio-a2a-adapter`.

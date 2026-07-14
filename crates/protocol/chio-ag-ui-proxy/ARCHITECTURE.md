@@ -1,50 +1,104 @@
-# chio-ag-ui-proxy Architecture Notes
+# chio-ag-ui-proxy architecture
 
-## Module Boundaries
+## Overview
 
-`event.rs` owns the AG-UI event wire model: event identity, type,
-classification, target component, opaque payload, and the event identity
-boundary gate. `proxy.rs` owns policy evaluation, capability verification,
-budget admission, event classification, transport accounting, and receipt
-construction. `receipt.rs` owns canonical payload hashing plus AG-UI receipt
-signing and verification. `transport.rs` owns connection metadata and forwarded
-or blocked counters. `lib.rs` exposes the public facade without hiding those
-modules.
+The proxy is an edge component called directly by an embedding runtime, not
+through the Chio kernel's tool-server contract: `AgUiProxy::evaluate` is a
+synchronous, in-process call over a caller-supplied `AgUiEvent` and
+`Transport`, with no async runtime and no SSE or WebSocket implementation of
+its own; `Transport` only tracks per-connection identity and forwarded/blocked
+counts. It performs full capability verification through
+`verify_capability_full`, the same entry point chio-kernel-core reserves for
+production kernels, and signs its own receipts with a keypair supplied at
+construction. Capability grants authorize AG-UI actions through Chio's
+ordinary scope-grant model, mapping each event classification to a tool name
+on a synthetic `ag-ui` server id rather than a bespoke AG-UI grant schema.
+Receipts are observational only: `AgUiReceiptVerification::authorized` is
+always `false`, and blocked events are receipted, not silently dropped.
 
-## Event Identity Boundary
+## Module map
 
-`AgUiProxy::evaluate` consumes caller-supplied event identifiers in receipt ids,
-payload-scope arguments, audit metadata, and transport decisions. It invokes
-`AgUiEvent::validate_boundary` before classification, capability checks,
-transport counters, or receipt signing. `event_id` and `agent_id` must be
-non-empty; `session_id`, `target.component_type`, and `target.component_id` must
-be non-empty when present. All identity fields must be unpadded and free of
-control characters. Malformed identity data fails closed with
-`AgUiProxyError::InvalidEvent` before a receipt whose correlation fields are
-unusable can be signed and before transport counters move.
+| Path | Responsibility |
+|------|----------------|
+| `src/lib.rs` | Public facade; re-exports the event, proxy, receipt, and transport modules' key types. |
+| `src/event.rs` | `AgUiEvent`, `EventType`, `EventClassification`, `TargetComponent`, and `validate_boundary` (event identity checks). |
+| `src/proxy.rs` | Declares the `proxy` submodules, re-exports their public types, and owns `AG_UI_SERVER_ID`. Its `#[cfg(test)]` block is a large integration suite covering capability trust, delegation, sibling-budget, and payload-spoofing scenarios. |
+| `src/proxy/core.rs` | `AgUiProxy`: `evaluate`, capability decision, budget admission, receipt construction. |
+| `src/proxy/config.rs` | `AgUiProxyConfig`, `ParentBudgetSnapshot`, `AdmittedChildBudget`, and their defaults. |
+| `src/proxy/decision.rs` | `ProxyDecision`, `AgUiProxyError`. |
+| `src/proxy/classify.rs` | `derive_server_classification`: maps `EventType` (and, for `Lifecycle`, the payload's action) to `EventClassification`. |
+| `src/proxy/helpers.rs` | Scope-argument construction, grant-to-event binding (`grant_binds_event`), capability error message mapping. |
+| `src/proxy/budget.rs` | Builds and seeds an `InMemoryBudgetRegistry` from `ParentBudgetSnapshot`s. |
+| `src/proxy/clock.rs` | `SystemClock`, a `chio_kernel_core::Clock` backed by `SystemTime`. |
+| `src/receipt.rs` | `AgUiReceipt`, `AgUiReceiptBody`: signing, embedded-signature verification, `verify_with_trusted_kernel_keys`, payload hashing. |
+| `src/transport.rs` | `Transport`, `TransportKind`: connection identity and forwarded/blocked counters. No network code. |
 
-## Capability Verification
+## Event evaluation
 
-`AgUiProxy::evaluate` derives a server-side classification, then delegates to
-`decide`. Restricted classifications route through `verify_capability_full`:
-issuer trust, scope matching, chain-binding checks, and sibling-sum budget
-admission. Every capability-present event, restricted or not, also routes
-through that full verification and scope-matching path, so a self-signed,
-expired, revoked, untrusted, or out-of-scope token produces a blocked AG-UI
-receipt instead of forwarding. Tokenless display forwarding is allowed only when
-`allow_display_without_capability` is enabled.
+1. `AgUiProxy::evaluate` calls `event.validate_boundary()` first: `event_id`,
+   `agent_id`, and any present `session_id`/`target.component_type`/
+   `target.component_id` must be non-empty, unpadded, and free of control
+   characters. Failure returns `AgUiProxyError::InvalidEvent` before
+   classification, capability checks, transport counters, or receipt signing
+   run.
+2. `derive_server_classification` recomputes `EventClassification` from
+   `event_type` (for `Lifecycle`, from the payload's `action`/`lifecycle`/
+   `event` field). A mismatch against the caller-supplied classification, or
+   an unclassifiable `EventType::Custom`, blocks immediately.
+3. `decide` routes capability-bearing events to
+   `decide_capability_bound_event`; capability-less events forward only if
+   `allow_display_without_capability` is set and the classification is not in
+   `restricted_classifications`.
+4. `decide_capability_bound_event` rejects IDs in `revoked_capability_ids`,
+   runs `verify_capability_full` with a `NoopBudgetRegistry` (budget
+   admission is deferred), then matches scope grants with
+   `resolve_capability_grants` and `grant_binds_event`. A matching, binding
+   grant proceeds to `admit_capability_budget` against the proxy's persistent
+   registry; a budget rejection blocks even a scope-valid capability.
+5. `build_receipt` always runs, forward or block: it hashes the payload
+   (`AgUiReceipt::hash_payload`, canonical JSON plus SHA-256), builds an
+   `AgUiReceiptBody` (`id: "agui-{event_id}"`), and signs it with the proxy's
+   keypair.
+6. `transport.record_forwarded()` or `record_blocked()` updates the counters
+   and a `tracing` event is logged.
 
-## Security and API Constraints
+## Invariants and failure modes
 
-AG-UI receipts are observational and must never imply Chio authorization.
-Restricted events continue to require trusted capability issuers, valid chain
-binding, scope containment, and sibling-sum budget admission. Public type names
-and module exports stay source-compatible. Canonical payload hashing and
-signature verification stay byte-stable.
+- Restricted classifications (`Mutate`, `Navigate`, `Create`, `Destroy`,
+  `Submit` by default) always require a capability; `Display` requires one
+  only when `allow_display_without_capability` is unset.
+- `grant_binds_event` checks a matched grant's `Constraint::Custom` entries
+  for `event_id`, `session_id`, `target_component_type`, and
+  `target_component_id` against the event's own fields, not its payload, so a
+  scope grant cannot be satisfied by spoofing those values inside the opaque
+  JSON payload.
+- Sibling-sum budget admission runs only after verification and scope
+  matching succeed, against the proxy's persistent `InMemoryBudgetRegistry`;
+  a denied event never consumes sibling budget.
+- `AgUiProxy::new` falls back to an empty budget registry and logs a warning
+  on an invalid `parent_budget_snapshots` config instead of failing
+  construction; `try_new` rejects the same config immediately. Either way,
+  delegated events still fail closed at the sibling-sum check.
+- The crypto floor passed to `verify_capability_full` is hardcoded to
+  `CapabilityCryptoFloor::AllowClassical` and is not exposed through
+  `AgUiProxyConfig`, so a classical Ed25519 signature alone satisfies
+  verification.
+- `AgUiReceiptVerification::authorized` is always `false`; receipts record
+  `receipt_kind: "trace_observation"` and `boundary_class: "detect_only"` and
+  never themselves grant Chio authorization, allowed or not.
 
-## Affected Dependents
+## Dependencies
 
-No transitive crate edits are expected. `chio-ag-ui-proxy` is consumed as a
-public facade by tests and potential product code through `AgUiProxy`,
-`AgUiEvent`, `TargetComponent`, `ProxyDecision`, `AgUiReceipt`, `Transport`,
-and `TransportKind`.
+Internal: `chio-core` (workspace dependency, not aliased) supplies capability,
+crypto, and error types (`capability::{token, scope, attenuation,
+crypto_floor, features}`, `crypto::{Keypair, PublicKey, Signature,
+canonical_json_bytes, sha256_hex}`, `Error`). `chio-kernel-core` (path
+dependency, `default-features = false`) supplies `verify_capability_full`,
+`resolve_capability_grants`, `ScopeMatchError`, `CapabilityError`, `Clock`,
+and the budget-registry family (`BudgetRegistry`, `InMemoryBudgetRegistry`,
+`NoopBudgetRegistry`, `BudgetSplitError`, `MAX_BUDGET_SHARE_BPS`). Disabling
+default features drops `chio-kernel-core`'s `revocation-view` feature, so this
+crate carries no live revocation-oracle view; `AgUiProxyConfig`'s
+`revoked_capability_ids` is how an embedder feeds revocation in instead.
+External: `serde`/`serde_json` for wire types, `thiserror` for
+`AgUiProxyError`, `tracing` for forward/block logging. No async runtime.

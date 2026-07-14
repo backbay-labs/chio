@@ -1,67 +1,130 @@
-# chio-a2a-adapter Architecture Note
+# chio-a2a-adapter architecture
 
-## Module Boundaries
+## Overview
 
-- `lib.rs` is the crate facade. It includes config, protocol, invocation, mapping, discovery, auth, transport, task-registry, and optional fuzz modules into one crate module and exposes the public A2A adapter types.
-- `config.rs` owns builder-style adapter configuration: agent-card URL, auth material, TLS material, egress contract, partner policy, and durable task-registry path. It validates configured request-auth material at discovery time before any outbound A2A request can be assembled.
-- `protocol.rs` owns the local serde model for A2A Agent Cards, JSON-RPC envelopes, messages, tasks, push-notification configuration, and selected protocol bindings. It preserves Agent Card `defaultInputModes` and per-skill `inputModes` as provider-supplied strings.
-- `mapping.rs` is the only place that interprets input-mode strings into the internal `A2aSkillInputSurface` used by both manifest projection and send-path admission. It projects only Chio-projectable Agent Card skills into the signed `ToolManifest`. Required partner skills must correspond to skills the adapter can expose as Chio tools after input-mode projection.
-- `invoke.rs` owns the runtime adapter: discovery, auth resolution, request construction, SendMessage, task follow-up operations, streaming calls, and `ToolServerConnection` integration. It resolves runtime `invoke` and `invoke_stream` targets against the signed manifest tool set, so non-projectable raw Agent Card skills cannot be invoked. It does not re-parse Agent Card mode strings.
-- `auth.rs` owns HTTP dispatch, redirect validation, OAuth/OpenID token exchange, TLS construction, response-size enforcement, and typed `HttpEgressContract` checks.
-- `transport.rs` owns SSE parsing, redirect header stripping helpers, auth URL composition, and response body accounting.
-- `task_registry.rs` owns durable A2A task correlation for follow-up operations after restart.
-- `fuzz.rs` reaches the SSE parser through the `fuzz` feature, so the parser is the shared byte-to-envelope trust boundary for streaming A2A calls.
+`chio-a2a-adapter` bridges one external A2A (Agent-to-Agent) server into Chio
+as a governed tool server. It is an untrusted edge component: it speaks A2A
+JSON-RPC or HTTP+JSON to a remote, potentially adversarial agent on one side,
+and the Chio `ToolServerConnection` contract to the kernel on the other, so
+the kernel mediates and issues signed receipts for every wrapped call. The
+crate consumes an external agent; the opposite direction, serving Chio tools
+out as A2A skills, is `chio-a2a-edge`. Task-lifecycle correlation (`GetTask`,
+`SubscribeToTask`, `CancelTask`, push-notification config) is treated as a
+security boundary: a durable, file-backed registry binds each observed task
+id to the tool, server, interface, binding, tenant, and partner that first
+saw it, and denies any later follow-up that disagrees.
 
-## Task Registry Boundary
+## Module map
 
-The task registry is a security boundary, not a cache. Once a task id is recorded, later `GetTask`, `SubscribeToTask`, `CancelTask`, and push-notification operations can use it as follow-up authority.
+All files below except `loaded_weights.rs` are `include!`d from `lib.rs` into
+the crate-root scope rather than declared as `mod`, so their public items
+resolve as `chio_a2a_adapter::*` directly (for example
+`chio_a2a_adapter::A2aAdapterConfig`, not a per-file path). `fuzz.rs` is the
+one included file that declares its own nested `pub mod fuzz`.
 
-- Task observations are extracted from accepted `task`, `statusUpdate`, and `artifactUpdate` payloads. Malformed observations fail closed and leave the registry unchanged.
-- Observed task ids are preserved exactly, including whitespace, after validation has proved them non-empty. Lookups use the exact observed id so distinct provider task authorities are never collapsed by local canonicalization.
-- A recorded task binding includes tool, server id, interface URL, binding, tenant, and partner. `A2aTaskRegistry::validate_follow_up` denies follow-up operations whose partner, or any other binding field, differs from the recorded task authority.
-- Recording errors are classified at the registry boundary. Only an actual task rebind conflict is non-fatal for the current accepted response: it leaves future follow-up authority denied by the unchanged binding. Validation, parsing, unsupported-version, lock, and storage errors return an adapter error so the current tool call fails closed rather than hiding an untrusted durable-authority state. Both blocking and streaming invoke paths share this classification.
-- A validated observation batch continues persisting non-conflicting records after a rebind conflict, then returns the conflict classification for caller warning behavior. Conflicting records are never overwritten or mutated.
-- Registry diagnostics and warnings carry no request credentials.
+| Path | Responsibility |
+|------|----------------|
+| `src/lib.rs` | Crate root: shared constants, `pub mod loaded_weights`, and `include!`s of the files below into the crate-root scope. |
+| `src/config.rs` | `A2aAdapterConfig` builder: agent-card URL and manifest public key, request auth (bearer/basic/header/query/cookie), OAuth client credentials and scopes, TLS root CAs and mutual-TLS identity, timeout, server id/version, partner policy, task-registry path, egress contract. Validates auth material before discovery. |
+| `src/partner_policy.rs` | `A2aPartnerPolicy` builder: required tenant, required skills, required security-scheme names, allowed interface origins. |
+| `src/protocol.rs` | Local serde model for A2A Agent Cards, skills, interfaces, JSON-RPC envelopes, and `SendMessage`/`GetTask`/`CancelTask`/push-notification-config requests and responses. |
+| `src/invoke.rs` | `A2aAdapter`: `discover`, per-skill request-auth resolution (security-scheme negotiation, OAuth/OpenID token acquisition and caching), `SendMessage`/`GetTask`/`CancelTask`/push-notification-config dispatch over JSON-RPC or HTTP+JSON, streaming dispatch, task-registry binding checks, and the `ToolServerConnection` impl. |
+| `src/mapping.rs` | Tool-input parsing and mutual-exclusion rules (`A2aToolInvocation`); input-mode-to-`A2aSkillInputSurface` classification; `AdapterError`; `ToolManifest`/`ToolDefinition` projection from Agent Card skills; interface selection and partner-policy admission. |
+| `src/discovery.rs` | Security-scheme and security-requirement parsing from the Agent Card; request-auth header/query/cookie lookup, dedup, and upsert; skill-routing metadata merge; `SendMessage`, task, and stream-event response validation; agent-card and task/push-notification-config URL construction. |
+| `src/auth.rs` | HTTP dispatch: agent construction, TLS config (root CAs, mutual TLS, PEM parsing), egress-contract enforcement and manual redirect-chain validation, OAuth2 client-credentials token requests, and the `fetch_json`/`post_json`/`post_sse_json`/`post_form_json`/`get_sse`/`delete_empty` request helpers. |
+| `src/transport.rs` | SSE stream parsing and framing limits (per-line, per-event, total-response, chunk-count); request header/cookie/query application and redirect-origin checks; egress-contract response-size enforcement; `ureq` error-to-`AdapterError` mapping. |
+| `src/task_registry.rs` | `A2aTaskRegistry`: durable JSON file-backed task-binding store, `validate_follow_up` binding checks, and classified record/rebind-conflict handling. |
+| `src/loaded_weights.rs` | `LoadedWeights` impl for `A2aAdapter` reporting model bytes unavailable. A true Rust submodule (`pub mod loaded_weights`), not `include!`d. |
+| `src/fuzz.rs` | `fuzz::fuzz_a2a_envelope_decode`, the libFuzzer entry point exercising the SSE parser and JSON-RPC/HTTP+JSON envelope decode paths. Compiled only under the `fuzz` feature. |
+| `src/tests.rs` (+ `src/tests/`) | `#[cfg(test)] mod tests`, including 7 files: support fixtures, protocol, discovery/registry, invoke/manifest, streaming lifecycle, auth, and end-to-end kernel-receipt tests. |
 
-## Input Mode Admission
+## Discovery and dispatch lifecycle
 
-- `A2aSkillInputSurface::from_modes` strips MIME parameters (for example `application/json; charset=utf-8`) before alias classification. It recognizes only known aliases and MIME essences; arbitrary media types are not widened into JSON or text.
-- Admission fails closed when no projectable input mode remains after normalization.
-- Generated A2A part media types stay canonical: outbound text is `text/plain`, outbound structured data is `application/json`.
+1. `A2aAdapterConfig` builds the agent-card URL, manifest public key, request
+   auth, TLS material, timeout, an optional `A2aPartnerPolicy`, an optional
+   task-registry file, and the `HttpEgressContract`.
+2. `A2aAdapter::discover` validates the configured auth material and fetches
+   the Agent Card (defaults to `/.well-known/agent-card.json` when the
+   configured URL has no explicit `.json` path), rejecting a card with zero
+   skills. `select_supported_interface` then scans interfaces for the first
+   whose protocol version starts with `1.` and whose binding is `JSONRPC` or
+   `HTTP+JSON` (non-matches are skipped); that interface's URL must be
+   https, or http on localhost, or discovery fails outright, and only a
+   partner-policy origin mismatch skips ahead to the next candidate.
+3. Discovery projects every Chio-projectable skill into a `ToolDefinition`
+   named after the skill id and validates the assembled `ToolManifest`.
+   Because A2A's `SendMessage` is skill-agnostic, routing back to a specific
+   skill flows through injected `metadata.chio.targetSkillId` /
+   `targetSkillName` on the outbound request rather than a distinct RPC
+   method.
+4. The kernel drives the adapter through `ToolServerConnection::invoke` /
+   `invoke_stream`. Each call parses the JSON tool input into an
+   `A2aToolInvocation` (`SendMessage` or one of six mutually exclusive
+   follow-up operations), resolves per-skill request auth against the Agent
+   Card's declared security schemes, and dispatches over the selected
+   binding.
+5. Task-bearing follow-ups are checked against the task registry before
+   dispatch; task-bearing responses (`task`, `statusUpdate`,
+   `artifactUpdate`) are recorded into the registry after dispatch.
+   Streaming calls parse the upstream SSE body chunk by chunk and record
+   every task-bearing chunk through the same registry path as blocking
+   calls.
 
-## SSE Stream Parsing
+## Invariants and failure modes
 
-`parse_sse_stream_with_limit` enforces per-line, per-event, total-response, and chunk-count ceilings before any `ToolCallChunk` enters the kernel stream path. It reads each line through `read_sse_line`, a bounded line reader that consumes at most the admitted bytes per line and charges every consumed byte to the total response budget before an oversized-line error can return. Oversized newline-delimited and delimiterless lines are rejected before buffering beyond the line ceiling; the total response-byte ceiling is authoritative and is enforced even when a line is also oversized. The parser preserves SSE semantics for blank-line event delimiters, comment lines, multiline `data:` payloads, terminal-state completion, incomplete streams, UTF-8 validation, and binding-specific JSON-RPC unwrapping. Stream chunks still pass full A2A stream-response validation before registry persistence is considered. All outbound HTTP dispatch remains gated by `HttpEgressContract`; framing limits apply only after the contract admits the response.
+- Configured auth material (headers, query params, cookies, OAuth
+  credentials, bearer/basic tokens) is validated at config-build or discover
+  time: empty, padded, control-character-bearing, or (for cookies)
+  `;`-bearing values are rejected before any request is built.
+- Discovery fails closed on zero advertised skills (`NoSkillsAdvertised`) and
+  on skills with no Chio-projectable input mode
+  (`NoProjectableSkillsAdvertised`). `A2aSkillInputSurface::from_modes` strips
+  MIME parameters before matching only `text`/`text/plain` and
+  `json`/`application/json` essences; every other media type is
+  non-projectable.
+- Every outbound HTTP dispatch requires an `HttpEgressContract`; a missing
+  contract fails closed before a request is sent. Redirects are followed
+  manually (`redirects(0)` on the `ureq` agent) so every hop is validated
+  against the contract; cross-origin redirects strip `Authorization`,
+  `Cookie`, and `Proxy-Authorization`, and are rejected outright for
+  body-bearing (non-GET) requests.
+- `SendMessage` responses must contain exactly one of `task` or `message`;
+  stream events must contain exactly one of `task`, `message`,
+  `statusUpdate`, or `artifactUpdate`; task and status-update payloads must
+  carry non-empty `id`/`taskId` and `status.state`.
+- The task registry is a trust boundary, not a cache: `validate_follow_up`
+  denies an operation whose recorded tool, server id, interface URL,
+  protocol binding, tenant, or partner differs from the current adapter, and
+  a rebind conflict on write is reported without widening the existing
+  binding.
+- SSE parsing enforces per-line (16 KiB), per-event (256 KiB), total-response
+  (1 MiB, further capped by the egress contract), and per-stream chunk-count
+  (1024) ceilings before a chunk reaches the kernel.
+- Generated tool input schemas are closed (`additionalProperties: false`) at
+  the top level and inside every follow-up operation object; the
+  corresponding Rust input structs use `#[serde(deny_unknown_fields)]`, so
+  unknown fields fail parsing before a remote request is assembled.
+- Every projected tool is marked `has_side_effects: true` with
+  `LatencyHint::Moderate` (the A2A Agent Card schema carries no per-skill
+  safety or latency hints to preserve), and `invoke`'s `NestedFlowBridge`
+  parameter is accepted but unused: this crate does not bridge nested Chio
+  flows through the wrapped call.
 
-## Auth Material
+## Dependencies
 
-- Request-auth material (header names and values, query parameter names, cookie names and values) is validated at discovery time before the first outbound A2A request. Cookie separators are rejected because cookie values are manually serialized into one `Cookie` header. Arbitrary query values are not rejected; URL encoding owns value escaping.
-- Configured bearer tokens and OAuth/OpenID-issued access tokens are validated before discovery, invocation, token-cache write, or outbound `Authorization: Bearer` send. They reject empty, padded, control-character-bearing, and internal-whitespace bytes. Credential bytes are never silently trimmed or rewritten.
-- Static query-parameter API keys and static bearer material are validated at the config boundary before discovery or invocation dispatch.
-- No raw tokens, API keys, cookies, OAuth secrets, or mTLS private keys appear in durable task-registry data, error output, or diagnostics.
+Internal: `chio-kernel` supplies `ToolServerConnection`, `NestedFlowBridge`,
+`KernelError`, and the streaming result/chunk types the adapter implements
+against. `chio-manifest` supplies `ToolManifest`, `ToolDefinition`,
+`LatencyHint`, and `validate_manifest`. `chio-egress-contract` supplies
+`HttpEgressContract`, enforced on every outbound call. The `chio-core`
+dependency is aliased to `chio-core-types` (`sha256_hex` for deriving server
+ids, `LoadedWeights`/`LoadedWeightsUnavailable`, and `crypto::Keypair` in
+tests).
 
-## Push Notification Callback Authority
-
-`CreateTaskPushNotificationConfig` requests register a callback URL, optional callback token, and optional authentication descriptor as future delivery authority for both JSON-RPC and HTTP+JSON bindings.
-
-- `validate_notification_target_url` allows HTTPS remote callbacks and localhost HTTP test callbacks, and rejects non-HTTPS remote targets, URL userinfo, and fragments before any management request is dispatched.
-- Callback tokens and authentication credentials are optional, but provided empty, padded, or control-character-bearing token and credential values are malformed callback authority and fail closed. Authentication schemes must be non-empty HTTP tokens.
-- Callback tokens and authentication credentials are never logged or persisted.
-
-## Runtime Tool Input
-
-The signed manifest advertises a closed object input schema with `additionalProperties: false` at the top level and inside follow-up operation objects. The adapter-local tool-input structs use closed-shape serde admission, so unknown top-level, follow-up, or push-notification nested keys fail closed before a remote A2A request is assembled rather than being silently discarded. Supported snake-case fields and their camelCase aliases remain accepted, and the mutually exclusive operation-mode checks are preserved.
-
-## Security And API Constraints
-
-- Public API compatibility is preserved: `A2aAdapterConfig` and `A2aAdapter` signatures and the generated manifest schema shape are stable. Mode parsing, registry internals, and parser helpers stay internal to the crate.
-- Every outbound HTTP dispatch requires `HttpEgressContract` unless a test explicitly supplies a permissive test contract.
-- Follow-up task operations stay bound to the original tool, server id, interface URL, binding, tenant, and partner.
-- Unknown tool names return `ToolNotRegistered`.
-- No generated code is in scope.
-
-## Affected Dependents
-
-- `chio-kernel` consumes this crate as a `ToolServerConnection`; adapter failures surface as `KernelError::ToolServerError`. Valid A2A streaming calls receive stream output rather than a late local persistence error; malformed direct adapter inputs surface as `ToolServerError`.
-- `chio-a2a-edge` and cross-protocol docs rely on the A2A bridge preserving task lifecycle and receipt semantics; the public schema is unchanged.
-- Integration tests under `crates/protocol/chio-a2a-adapter/tests` exercise discovery and invocation over loopback fake A2A servers using the public API.
+External: `ureq` (with its `rustls` backend) is the blocking HTTP client;
+`rustls-pemfile` and `webpki-roots` parse PEM material and seed TLS root
+stores for mutual TLS; `base64` encodes HTTP Basic and OAuth
+client-credential headers; `url` parses and rewrites request URLs;
+`async-trait` provides the `ToolServerConnection` trait's async methods;
+`thiserror` derives `AdapterError`. Dev-only: `tokio` (async tests), `rcgen`
+(test TLS certificates).

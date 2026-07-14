@@ -1,76 +1,82 @@
 # chio-mcp-remote
 
-Remote hosted MCP runtime surface for Chio.
+Runs the Chio-governed MCP server that remote clients reach over HTTP: MCP
+Streamable HTTP session lifecycle, OAuth 2.0 bearer and DPoP authentication,
+enterprise identity federation, and per-session `chio-kernel` dispatch that
+produces signed receipts. It is one of Chio's public entry points
+(`public_entrypoint = true`), exposed as a single `serve_http` call.
 
-## What it does
+It does not speak MCP wire protocol itself or manage an upstream process
+directly: it builds sessions on `chio-mcp-adapter`'s `AdaptedMcpServer` and
+reaches the `chio-mcp-edge` session engine only through the adapter's
+re-exported `edge::*` module. Where `chio-mcp-adapter` wraps one MCP server
+for in-process or stdio use, this crate puts that adapted server behind an
+authenticated HTTP/SSE edge with its own session ledger, OAuth surface, and
+admin API.
 
-`chio-mcp-remote` runs the Chio-governed MCP server that remote clients reach
-over HTTP. It handles:
+## Responsibilities
 
-- MCP session lifecycle (session creation, message dispatch, teardown) via
-  an Axum HTTP service with SSE delivery.
-- OAuth 2.0 and DPoP token flows: authorization code exchange, token endpoint,
-  token introspection, and resource-indicator binding. Supported JWT signature
-  algorithms include RS256/RS384/RS512, PS256/PS384, ES256/ES384, and Ed25519.
-- Enterprise federation: pluggable identity providers (OIDC, SAML-like, custom)
-  resolved through `EnterpriseProviderRegistry`.
-- Per-client rate limiting (600 requests per 60-second window, 4096 tracked
-  keys) enforced before session work begins.
-- Admin routes (`/admin/health`, `/admin/authority`, `/admin/rotate`) for
-  operator keypair management.
-- Receipt-bearing kernel dispatch: every tool invocation passes through
-  `chio-kernel` and produces a signed `ChioReceipt`.
+- Run the Axum HTTP surface for the MCP Streamable HTTP transport
+  (`POST`/`GET`/`DELETE /mcp`): SSE delivery, `Last-Event-ID` replay from a
+  bounded retained-notification window, and per-IP rate limiting (600
+  requests per 60-second window, 4096 tracked keys, 8 MiB POST body cap).
+- Authenticate every request under one of three bearer modes (static token,
+  JWT, or token introspection), verifying EdDSA/RS256-512/PS256-512/ES256-384
+  signatures plus DPoP proof-of-possession, mTLS thumbprint, and runtime
+  attestation sender constraints.
+- Optionally run a self-issued OAuth 2.0 authorization server
+  (`LocalAuthorizationServer`) with PKCE authorization-code and
+  token-exchange grants, for deployments without an external identity
+  provider.
+- Federate enterprise identity: OIDC/JWKS discovery, issuer matching against
+  an `EnterpriseProviderRegistry`, and deterministic per-principal Chio agent
+  keypairs.
+- Spawn a dedicated `chio-kernel` per session (or fan out one upstream
+  subprocess across sessions in `shared_hosted_owner` mode), wired to the
+  receipt, revocation, budget, and capability-authority stores, so every tool
+  call yields a signed `ChioReceipt`.
+- Persist resumable sessions and terminal tombstones to SQLite with an
+  integrity-tagged restore path, so a restart can resume in-flight sessions
+  without re-authenticating.
+- Serve `/admin/*` operator routes (health, authority rotation, receipts,
+  revocations, budgets, session trust/drain/shutdown, Prometheus metrics)
+  behind a constant-time bearer check.
+- Publish OAuth protected-resource and authorization-server discovery
+  metadata carrying Chio's governed-authorization profile.
 
-The public surface re-exports `CliError` and `JwtProviderProfile` from
-`chio-control-plane` and exposes the HTTP service entrypoint via
-`serve_http(RemoteServeHttpConfig)`.
+## Public API
 
-## Position in the system
+- `serve_http(config: RemoteServeHttpConfig) -> Result<(), CliError>` -
+  blocking entrypoint; starts a Tokio runtime and serves until shutdown.
+- `RemoteServeHttpConfig` - deployment configuration: listen address,
+  auth-mode selection (static bearer, JWT, introspection, local authorization
+  server), OAuth and DPoP settings, egress contract, SQLite store paths,
+  policy path, server identity, hosted-isolation mode, and the wrapped
+  upstream command.
+- `CliError`, `JwtProviderProfile` - re-exported from `chio-control-plane`.
+- `enforce_oidc_egress_contract(url: &Url, egress_contract: &HttpEgressContract)
+  -> Result<(), CliError>` - runs the production OIDC-discovery egress gate
+  outside a full server, for negative-conformance testing.
 
-```
-Remote MCP client (browser / CLI / agent)
-        |  (HTTP + SSE, OAuth 2.0 + DPoP)
-  [chio-mcp-remote]
-        |
-  chio-kernel  ->  signed ChioReceipts
-```
+## Testing
 
-`chio-mcp-remote` depends on `chio-mcp-adapter` (MCP protocol types and
-transport), `chio-kernel` (policy enforcement and receipts),
-`chio-control-plane` (authority keypair management, policy loading, budget and
-revocation stores), and `chio-egress-contract` (outbound HTTP safety).
+`cargo test -p chio-mcp-remote`
 
-## Crate layout
+`chio-conformance`'s `ssrf_oidc_jwks_loopback` integration test calls
+`enforce_oidc_egress_contract` directly, asserting loopback and link-local
+OIDC discovery URLs are denied before any connection is attempted.
 
-```
-crates/protocol/chio-mcp-remote/
-  Cargo.toml
-  src/
-    lib.rs              re-exports; includes remote MCP runtime files
-    remote_mcp/
-      admin.rs          admin REST routes (health, authority, rotate)
-      http_service.rs   Axum service entry, rate limiter, SSE delivery
-      oauth.rs          OAuth token endpoint, DPoP proof validation, JWT verify
-      session_core.rs   session lifecycle, kernel dispatch, receipt signing
-      session_identity.rs
-                        OIDC/JWKS discovery and federated identity helpers
-      session_resume.rs resumable-session fingerprint and integrity helpers
-      session_shared_upstream.rs
-                        shared hosted upstream notification ownership
-      session_forms.rs  admin query structs and OAuth request forms
-      tests.rs          integration tests
-```
+## See also
 
-## Building
-
-```bash
-cargo build -p chio-mcp-remote
-cargo test -p chio-mcp-remote
-```
-
-## House rules
-
-- No em dashes (U+2014) anywhere in code, comments, or documentation.
-- Workspace clippy lints `unwrap_used = "deny"` and `expect_used = "deny"` apply.
-- Fail-closed: sessions without a valid OAuth bearer or DPoP proof are rejected
-  before the MCP session is created.
+- `chio-mcp-adapter` - wraps and governs the upstream MCP server this crate
+  hosts; supplies `AdaptedMcpServer` and the re-exported `chio-mcp-edge`
+  contracts under `edge::*`.
+- `chio-mcp-edge` - the MCP protocol/session engine underneath
+  `chio-mcp-adapter`; this crate has no direct dependency on it.
+- `chio-hosted-mcp` - compatibility shim that re-exports `serve_http` and
+  `RemoteServeHttpConfig` verbatim.
+- `chio-cli` - exposes this crate's entrypoint as `chio mcp serve-http`.
+- `chio-kernel` - policy evaluation, guard pipeline, and receipt signing; one
+  instance runs per session.
+- `chio-control-plane` - authority keypair management, policy loading, and
+  store configuration.

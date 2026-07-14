@@ -64,24 +64,45 @@ The overall qualification gate fails unless at least one target-backed iOS or
 Android lane runs and passes. The host FFI test is required coverage, but it
 does not by itself qualify the mobile target surface.
 
-## Seven-entry mobile surface
+## Eleven-entry mobile surface
 
-The UDL exports seven functions. The first four are the portable kernel
-surface: `evaluate`, `sign_receipt`, `verify_capability`, and
-`verify_passport`. The remaining three are mobile-attestation entries:
+The UDL exports eleven functions. Six are the portable kernel surface:
 
-- `attest_app_attest(key_id, challenge_hex)`: produce an App Attest evidence
-  envelope bound to a server challenge. Until the platform verifier
-  lands, this validates inputs and returns
-  `ChioMobileError.AttestationUnavailable`.
-- `attest_play_integrity(nonce_hex)`: produce a Play Integrity evidence
-  envelope bound to an issuer nonce. Until the platform verifier
-  lands, this validates inputs and returns
-  `ChioMobileError.AttestationUnavailable`.
-- `verify_mobile_receipt(receipt_json, evidence_json)`: verify a mobile
-  receipt against device-attestation evidence before it is handed to the
-  hosted oracle. Until the receipt-chain verifier lands, this
-  validates JSON inputs and returns `ChioMobileError.AttestationUnavailable`.
+- `evaluate(request_json)`: evaluate a tool-call request against a
+  capability token.
+- `sign_receipt(body_json, canonical_content_hex, signing_seed_hex)`: the
+  public WYSIWYS receipt signer. Recomputes `content_hash` from the
+  canonical content preimage inside the trust boundary and refuses to
+  sign on a render/sign mismatch.
+- `sign_receipt_relaying_trusted_body(body_json, signing_seed_hex)`:
+  relay-sign a receipt body an upstream trusted producer already
+  minted. Trusts the caller-supplied `content_hash` and does not
+  recompute it; content-bearing callers must use `sign_receipt` instead.
+- `verify_capability(token_json, authority_pub_hex)`: verify a capability
+  token against a single trusted authority key.
+- `verify_capability_with_context(request_json)`: verify a capability
+  token with the full portable JSON context (trust roots, parent-budget
+  snapshots) so delegated tokens can be checked.
+- `verify_passport(envelope_json, issuer_pub_hex, now_secs)`: verify a
+  portable passport envelope offline.
+
+The remaining five are mobile-attestation entries:
+
+- `attest_app_attest(key_id, challenge_hex)`: produce the App Attest
+  challenge envelope the native DeviceCheck attestation object must bind
+  to.
+- `verify_app_attest_evidence(key_id, challenge_hex, app_id, attestation_cbor_hex, previous_counter)`:
+  verify an Apple App Attest attestation object against the pinned Apple
+  root, the issued challenge, the app id, and counter monotonicity.
+- `attest_play_integrity(nonce_hex)`: produce the Play Integrity nonce
+  envelope the platform JWS must bind to.
+- `verify_play_integrity_evidence(token, expected_nonce, expected_package_name, expected_audience, jwks_json)`:
+  verify a Play Integrity JWS against the pinned Google JWKS and the
+  expected nonce, package name, and audience claims.
+- `verify_mobile_receipt(receipt_json, evidence_json)`: shape-check a
+  mobile receipt against App Attest or Play Integrity evidence before it
+  is handed to the hosted oracle. Returns an explicit non-authoritative
+  status; it does not authorize a capability or prove device integrity.
 
 ## Generating the Swift bindings
 
@@ -114,11 +135,15 @@ static libraries (`libchio_kernel_mobile.a`) from step 1.
    and Embedded Content** section.
 3. Import the module in Swift: `import chio_kernel_mobile`.
 4. Call the entry points directly -- `try evaluate(requestJson:)`,
-   `try signReceipt(bodyJson:signingSeedHex:)`,
+   `try signReceipt(bodyJson:canonicalContentHex:signingSeedHex:)`,
+   `try signReceiptRelayingTrustedBody(bodyJson:signingSeedHex:)`,
    `try verifyCapability(tokenJson:authorityPubHex:)`,
+   `try verifyCapabilityWithContext(requestJson:)`, and
    `try verifyPassport(envelopeJson:issuerPubHex:nowSecs:)`. The mobile-attestation entries add
    `try attestAppAttest(keyId:challengeHex:)`,
-   `try attestPlayIntegrity(nonceHex:)`, and
+   `try verifyAppAttestEvidence(keyId:challengeHex:appId:attestationCborHex:previousCounter:)`,
+   `try attestPlayIntegrity(nonceHex:)`,
+   `try verifyPlayIntegrityEvidence(token:expectedNonce:expectedPackageName:expectedAudience:jwksJson:)`, and
    `try verifyMobileReceipt(receiptJson:evidenceJson:)`.
 
 ## Generating the Kotlin bindings
@@ -152,11 +177,15 @@ into `src/main/jniLibs/<abi>/` alongside the module's resources.
 2. Confirm the JNI libs are packaged under `src/main/jniLibs`.
 3. Import the module in Kotlin: `import uniffi.chio_kernel_mobile.*`.
 4. Call the entry points directly -- `evaluate(requestJson)`,
-   `signReceipt(bodyJson, signingSeedHex)`,
+   `signReceipt(bodyJson, canonicalContentHex, signingSeedHex)`,
+   `signReceiptRelayingTrustedBody(bodyJson, signingSeedHex)`,
    `verifyCapability(tokenJson, authorityPubHex)`,
+   `verifyCapabilityWithContext(requestJson)`, and
    `verifyPassport(envelopeJson, issuerPubHex, nowSecs)`. The mobile-attestation entries add
    `attestAppAttest(keyId, challengeHex)`,
-   `attestPlayIntegrity(nonceHex)`, and
+   `verifyAppAttestEvidence(keyId, challengeHex, appId, attestationCborHex, previousCounter)`,
+   `attestPlayIntegrity(nonceHex)`,
+   `verifyPlayIntegrityEvidence(token, expectedNonce, expectedPackageName, expectedAudience, jwksJson)`, and
    `verifyMobileReceipt(receiptJson, evidenceJson)`.
 
 ## Offline receipt sync pattern

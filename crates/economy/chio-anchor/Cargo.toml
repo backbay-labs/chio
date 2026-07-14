@@ -20,7 +20,6 @@ web3 = [
     "dep:chio-core",
     "dep:chio-egress-contract",
     "dep:chio-kernel",
-    "dep:chio-web3",
     "dep:chio-web3-bindings",
     "dep:base64",
     "dep:hex",
@@ -54,7 +53,6 @@ chio-core = { workspace = true, optional = true }
 chio-egress-contract = { workspace = true, features = ["reqwest-egress"], optional = true }
 chio-kernel = { workspace = true, optional = true }
 chio-metrics-spec = { workspace = true }
-chio-web3 = { workspace = true, optional = true }
 chio-web3-bindings = { path = "../chio-web3-bindings", default-features = false, features = ["web3"], optional = true }
 alloy-primitives = { version = "1.5.7", default-features = false, features = ["std"], optional = true }
 alloy-sol-types = { version = "1.5.7", default-features = false, features = ["std"], optional = true }

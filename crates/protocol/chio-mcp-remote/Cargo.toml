@@ -41,8 +41,5 @@ p384 = { version = "0.13", features = ["ecdsa"] }
 sha2 = { workspace = true }
 subtle = "2.6"
 
-[dev-dependencies]
-chio-siem = { workspace = true }
-
 [lints]
 workspace = true

@@ -213,8 +213,9 @@ pub struct AggregateSpend {
     #[serde(default)]
     pub spend_units: u64,
 
-    /// Currency code associated with `spend_units`. Must match the
-    /// checked node's currency for spend limits to apply.
+    /// Currency code associated with `spend_units`. A positive spend
+    /// whose currency does not match the checked node's spend-cap
+    /// currency fails closed: the cap denies it rather than skipping.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub currency: Option<String>,
 
@@ -611,26 +612,41 @@ impl BudgetTree {
             let limits = &node.limits;
 
             if let Some(cap) = limits.max_spend_units {
+                // A capped node always carries a currency (enforced at
+                // insert). The cap is denominated in that currency and this
+                // layer does not convert: cross-currency conversion is the
+                // caller's responsibility and must run before evaluation.
                 let currency_matches = match (&limits.currency, &draft.currency) {
                     (Some(a), Some(b)) => a == b,
-                    // If the node has no currency or the draft has no
-                    // currency, the spend cap only activates on matched
-                    // currency; mismatched currency means we skip.
                     _ => false,
                 };
-                if currency_matches && projected.spend_units > cap {
-                    let cap_str =
-                        format!("{} {}", cap, limits.currency.clone().unwrap_or_default());
-                    let reach_str = format!(
-                        "{} {}",
-                        projected.spend_units,
-                        projected.currency.clone().unwrap_or_default()
-                    );
+                if currency_matches {
+                    if projected.spend_units > cap {
+                        let candidate = BudgetDenyReason::DimensionExceeded {
+                            node: node_id.clone(),
+                            dimension: "spend".to_string(),
+                            cap: format!("{} {}", cap, limits.currency.clone().unwrap_or_default()),
+                            would_reach: format!(
+                                "{} {}",
+                                projected.spend_units,
+                                projected.currency.clone().unwrap_or_default()
+                            ),
+                        };
+                        offender = Some((idx, candidate));
+                    }
+                } else if draft.spend_units > 0 {
+                    // Fail closed: a positive spend in a different or
+                    // unstated currency cannot be proven within the cap, so
+                    // it is denied rather than silently skipped.
                     let candidate = BudgetDenyReason::DimensionExceeded {
                         node: node_id.clone(),
                         dimension: "spend".to_string(),
-                        cap: cap_str,
-                        would_reach: reach_str,
+                        cap: format!("{} {}", cap, limits.currency.clone().unwrap_or_default()),
+                        would_reach: format!(
+                            "{} {}",
+                            draft.spend_units,
+                            draft.currency.clone().unwrap_or_default()
+                        ),
                     };
                     offender = Some((idx, candidate));
                 }

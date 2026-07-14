@@ -16,7 +16,6 @@ public_entrypoint = true
 name = "chio_mcp_edge"
 
 [dependencies]
-async-trait = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../../core/chio-core-types" }
 chio-cross-protocol = { workspace = true }
 chio-edge-metrics = { workspace = true }
@@ -27,11 +26,13 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
-tracing = { workspace = true }
 # `arbitrary` is gated behind the `fuzz` feature so production builds stay
 # free of fuzz instrumentation. Pulled in by `fuzz/fuzz_targets/mcp_envelope_decode.rs`
 # via `chio-mcp-edge = { features = ["fuzz"] }`.
 arbitrary = { version = "1", features = ["derive"], optional = true }
+
+[dev-dependencies]
+async-trait = { workspace = true }
 
 [features]
 otel = ["chio-kernel/otel"]

@@ -1,95 +1,112 @@
 # chio-api-protect
 
-Zero-code reverse proxy that protects HTTP APIs with Chio signed receipts.
+Zero-code reverse proxy that fronts an existing HTTP API and requires every
+mediated request to clear the Chio kernel guard pipeline before it reaches
+the upstream. It derives a route table and default policy from an OpenAPI
+spec, evaluates and forwards requests, and signs an `HttpReceipt` for every
+outcome, allowed or denied. It is the library behind `chio api protect` and
+`chio start` in `chio-cli`.
 
-## What it does
+## Responsibilities
 
-`chio-api-protect` reads an OpenAPI spec (from a file, a URL, or inline
-content), generates a default Chio policy, and proxies all requests to the
-upstream API. Every request produces a signed `HttpReceipt`. Side-effect routes
-(`POST`/`PUT`/`PATCH`/`DELETE`) require a capability token before the request
-is forwarded; safe routes (`GET`/`HEAD`/`OPTIONS`) pass with audit receipts. A
-built-in SQLite store persists receipts across restarts when a `receipt_db` path
-is provided. A sidecar control endpoint lets operators query pending approvals
-and inject decisions at runtime without modifying the upstream service.
+- Acquire an OpenAPI spec (`discover_spec` probes well-known upstream paths;
+  `load_spec_from_file` reads a local path) and build a route table with a
+  `chio_openapi::PolicyDecision` per method/path pair.
+- Match each inbound request against the route table and evaluate it through
+  `chio_http_core::HttpAuthority` (`RequestEvaluator`), extracting caller
+  identity from `Authorization`/`X-API-Key` headers and any presented
+  capability from `X-Chio-Capability` or `?chio_capability=`.
+- Run the reverse proxy (`ProtectProxy`, Axum-based): forward allowed
+  requests to the upstream under a locked-down `HttpEgressContract`, finalize
+  the decision receipt with the real response status, and return a signed
+  deny receipt fail-closed otherwise.
+- Persist receipts and capability revocations to SQLite when `receipt_db` is
+  set; refuse to start without a durable store unless
+  `allow_ephemeral_receipts` is explicitly set.
+- Expose sidecar control routes (`/v1/*`, `/chio/*`) for capability minting,
+  release, validation, receipt submission/verification, human-approval
+  workflows, and Prometheus metrics, gated to loopback callers or a
+  constant-time bearer-token match.
 
-The crate is the backing library for `chio api protect`. It exposes
-`ProtectConfig`, `ProtectProxy` (the running reverse proxy), `RequestEvaluator`
-(route-matching and capability enforcement), and `ProtectError`. Spec discovery
-(`discover_spec`, `load_spec_from_file`) handles OpenAPI auto-detection and
-loading.
+## Public API
 
-## Position in the system
+- `ProtectConfig` - upstream URL, spec source, listen address, receipt DB
+  path, ephemeral opt-in, sidecar control token, signer seed, trusted
+  capability issuers, upstream request timeout.
+- `ProtectProxy` - `new(config)`, `run()` / `run_with_observer(|addr| ..)`,
+  `routes_from_spec(spec_content)` (route-table construction for tests).
+- `RequestEvaluator` - `new_ephemeral(routes, keypair, policy_hash)` and
+  variants adding a trusted-issuer list and/or a caller-supplied
+  `ApprovalStore`; `new_with_durable_stores(...)` for production use (fails
+  closed unless `allow_ephemeral` opts into losing state on restart);
+  `evaluate`, `evaluate_with_execution_nonce`, `evaluate_chio_request`,
+  `finalize_receipt`, `receipt_backend()`, `revocation_backend()`. Pre-rename
+  `new*` constructors remain as deprecated shims.
+- `RouteEntry { pattern, method, operation_id, policy }`.
+- `EvaluationResult { verdict, receipt, evidence, execution_nonce }`.
+- `ProtectError` - spec load/parse, config, upstream, evaluation, pending
+  approval, receipt sign/store, IO, and HTTP client errors.
+- `discover_spec(upstream)`, `load_spec_from_file(path)`.
+- `DEFAULT_UPSTREAM_REQUEST_TIMEOUT` (20 seconds).
 
-```
-Inbound HTTP client
-        |
-  [chio-api-protect]  -- evaluates capability tokens, signs receipts
-        |
-  Upstream HTTP API
-```
+## Usage
 
-`chio-api-protect` depends on `chio-http-core` (HTTP authority and receipt
-types), `chio-kernel` (approval store), and `chio-openapi` (spec parsing and
-policy defaults). It sits in front of any existing HTTP API and adds Chio
-receipt-signing with no changes to the upstream service.
+```rust
+use chio_api_protect::{ProtectConfig, ProtectProxy, DEFAULT_UPSTREAM_REQUEST_TIMEOUT};
 
-## Crate layout
+let config = ProtectConfig {
+    upstream: "https://api.example.com".to_string(),
+    spec_content: None,
+    spec_path: Some("openapi.json".to_string()),
+    listen_addr: "127.0.0.1:9090".to_string(),
+    receipt_db: Some("receipts.db".to_string()),
+    allow_ephemeral_receipts: false,
+    sidecar_control_token: None,
+    signer_seed_hex: None,
+    trusted_capability_issuers: Vec::new(),
+    upstream_request_timeout: DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
+};
 
-```
-crates/products/chio-api-protect/
-  Cargo.toml          workspace deps, reqwest-egress feature via chio-http-core
-  src/
-    lib.rs            public re-exports: ProtectConfig, ProtectProxy, EvaluationResult, RouteEntry
-    error.rs          ProtectError
-    evaluator.rs      RequestEvaluator -- route matching, capability enforcement, receipt signing
-    proxy.rs          ProtectProxy -- Axum server, request routing, sidecar control routes
-    spec_discovery.rs OpenAPI spec auto-discovery and loading helpers
-```
-
-## Building
-
-```bash
-cargo build -p chio-api-protect
-cargo test -p chio-api-protect
+ProtectProxy::new(config).run().await?;
 ```
 
 ## Sidecar routes that are not production authorization paths
 
-The proxy embeds SDK control routes (`/v1/*`, `/chio/*`) beside the upstream
-reverse proxy. Only some of them perform kernel-mediated HTTP authorization
-(the same evaluation path as mutating upstream requests). The following routes
-must not be used as sole allow/deny gates for tool execution in production:
+The proxy mounts SDK helper routes beside the upstream reverse proxy. Only
+`POST /chio/evaluate` and the upstream proxy path itself run kernel-mediated
+authorization; do not use the following as an allow/deny gate:
 
-- **`POST /v1/evaluate/advisory`** - tool-call advisory route for SDK
-  helpers. Signs an `AdvisoryEvaluation` receipt after local revocation and
-  parameter-hash checks only. Responses include `chio-trust-level: advisory`,
-  `authorization: false`, `authorizationBasis: "advisory_only"`, and a
-  receipt whose `trust_level` is `advisory`. This is not kernel-mediated
-  authorization.
-- **`POST /v1/evaluate`** - reserved compatibility path. It returns HTTP 410 and
-  does not sign a receipt.
-- **`POST /v1/capabilities/attenuate`** - returns HTTP 403 with
-  `error: "chio_attenuation_requires_subject_signer"` and
-  `authorization: false` in the JSON body. Capability delegation requires the
-  parent subject's private key, which the sidecar does not hold.
-- **`POST /v1/capabilities/validate`** - verifies the capability token
-  signature, expiry, and local revocation set only; it does not evaluate policy
-  or scope against a concrete tool call.
-- **`POST /v1/capabilities`** and **`POST /v1/capabilities/mint`** - mint
-  sidecar-signed capability tokens for development and SDK ergonomics; minting
-  here is not a substitute for your capability authority in production.
-- **`POST /v1/receipts`** - accepts operator-submitted receipts for logging;
-  submission does not imply the kernel mediated the original action.
+- `POST /v1/evaluate/advisory` - signs a `TrustLevel::Advisory` receipt after
+  a local revocation and parameter-hash check only. Response sets
+  `chio-trust-level: advisory` and `authorization: false`.
+- `POST /v1/evaluate` - retired; returns `410 Gone`.
+- `POST /v1/capabilities/attenuate` - always `403`; the sidecar never holds
+  the parent subject's signing key.
+- `POST /v1/capabilities/validate` - checks signature, trusted issuer,
+  revocation (including the delegation chain), and expiry only; it does not
+  evaluate policy or scope against a concrete call.
+- `POST /v1/capabilities` / `POST /v1/capabilities/mint` - mint
+  sidecar-signed tokens for development and SDK ergonomics.
+- `POST /v1/receipts` - accepts operator-submitted receipts for logging;
+  acceptance does not imply the kernel mediated the original action.
 
-Authoritative mediated evaluation for HTTP-shaped requests remains
-**`POST /chio/evaluate`** (and the upstream proxy path that runs the same
-evaluator before forwarding). Kernel-driven tool-call evaluation through the
-sidecar is not wired in this crate yet.
+## Testing
 
-## House rules
+`cargo test -p chio-api-protect`
 
-- No em dashes (U+2014) anywhere in code, comments, or documentation.
-- Workspace clippy lints `unwrap_used = "deny"` and `expect_used = "deny"` apply.
-- Fail-closed: missing or invalid capability tokens deny the request and produce
-  a deny receipt before any bytes reach the upstream.
+`crates/tooling/chio-conformance` also drives this crate's real proxy
+dispatch path (`ssrf_external_guard_api_protect_dispatch.rs`), a
+negative-conformance test for the upstream egress contract.
+
+## See also
+
+- `chio-http-core` - `HttpAuthority`, the evaluation engine this crate calls
+  for every request, plus the shared sidecar types (`ChioHttpRequest`,
+  `HttpReceipt`, `ApprovalAdmin`).
+- `chio-kernel` - guard pipeline and the `ApprovalStore`/`ReceiptStore`/
+  `RevocationStore` traits `HttpAuthority` runs against.
+- `chio-openapi` - spec parsing, Chio policy extensions, and default policy
+  derivation.
+- `chio-store-sqlite` - durable backing for the kernel's receipt, revocation,
+  and approval stores.
+- `chio-cli` - invokes this crate for `chio api protect` and `chio start`.

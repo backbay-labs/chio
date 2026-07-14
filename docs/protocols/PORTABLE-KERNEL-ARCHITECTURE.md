@@ -229,8 +229,9 @@ implement them.
 ### 4.1 Trait Boundaries
 
 ```rust
-/// Entropy source for receipt IDs and DPoP nonces.
-pub trait EntropySource {
+/// Entropy source for receipt IDs and DPoP nonces. Named `Rng` in the
+/// shipped `chio-kernel-core` crate.
+pub trait Rng {
     fn fill_bytes(&self, dest: &mut [u8]);
 }
 
@@ -252,37 +253,36 @@ pub trait PriceProvider {
 }
 ```
 
-### 4.2 Browser Adapter (`chio-kernel-wasm`)
+### 4.2 Browser Adapter (`chio-kernel-browser`)
 
-Bindings via `wasm-bindgen`. Published as an npm package.
+Bindings via `wasm-bindgen`, built with `wasm-pack build --target web`.
 
 | Concern | Implementation |
 |---|---|
-| Entropy | `crypto.getRandomValues()` via `getrandom` `js` feature |
-| Clock | `Date.now()` / `performance.now()` via `js_sys` |
-| Receipt persistence | IndexedDB via `idb` crate or `wasm-bindgen` JS interop |
-| Transport | Not applicable -- browser host calls `evaluate()` directly |
-| Guard loading | WASM guards loaded as nested modules or compiled JS functions |
+| Entropy | `WebCryptoRng` wraps `window.crypto.getRandomValues()` directly via `web_sys` |
+| Clock | `BrowserClock` wraps `js_sys::Date::now()` |
+| Receipt persistence | Not implemented in the crate -- entry points are stateless JSON-in / JSON-out; the caller queues and persists signed receipts application-side |
+| Transport | Not applicable -- browser host calls the exported functions directly |
+| Guard loading | Not implemented -- `evaluate()` runs the portable kernel with an empty guard pipeline, so a capability-only allow is downgraded to `pending_approval` |
 
 ```rust
-// Sketch: wasm-bindgen surface
+// Actual shape: free functions annotated with #[wasm_bindgen], not a
+// class -- see crates/kernel/chio-kernel-browser/src/wasm.rs.
 #[wasm_bindgen]
-pub struct BrowserKernel {
-    core: KernelCore<WebEntropy, WebClock>,
-}
+pub fn evaluate(request_json: &str) -> Result<JsValue, JsValue> { ... }
 
 #[wasm_bindgen]
-impl BrowserKernel {
-    #[wasm_bindgen(constructor)]
-    pub fn new(config_json: &str) -> Result<BrowserKernel, JsValue> { ... }
+pub fn sign_receipt(body_json: &str, signing_seed_hex: &str) -> Result<JsValue, JsValue> { ... }
 
-    pub fn evaluate(&mut self, request_json: &str) -> Result<String, JsValue> { ... }
-
-    pub fn verify_capability(&self, token_json: &str) -> Result<String, JsValue> { ... }
-
-    pub fn sign_receipt(&mut self, verdict_json: &str) -> Result<String, JsValue> { ... }
-}
+#[wasm_bindgen]
+pub fn verify_capability(token_json: &str, authority_pub_hex: &str) -> Result<JsValue, JsValue> { ... }
 ```
+
+The crate exposes seven `#[wasm_bindgen]` functions in total (`evaluate`,
+`sign_receipt`, `sign_receipt_relaying_trusted_body`, `verify_capability`,
+`verify_capability_with_context`, `verify_receipt`, and
+`mint_signing_seed_hex`); see `crates/kernel/chio-kernel-browser/README.md`
+for the full reference and JSON wire types.
 
 ### 4.3 Edge Worker Adapter (`chio-kernel-edge`)
 
@@ -307,21 +307,19 @@ Bindings via UniFFI (preferred) or raw C FFI.
 
 | Concern | Implementation |
 |---|---|
-| Entropy | OS entropy (`SecRandomCopyBytes` on iOS, `/dev/urandom` on Android) |
-| Clock | `SystemTime::now()` (available on mobile std targets) |
-| Receipt persistence | SQLite (available natively on both platforms) |
+| Entropy | OS entropy (`SecRandomCopyBytes` on iOS, `/dev/urandom` on Android) via the `getrandom` crate, wrapped by `MobileRng` |
+| Clock | `SystemTime::now()` (available on mobile std targets), wrapped by `MobileClock` |
+| Receipt persistence | Not implemented in the crate -- entry points are stateless JSON-in / JSON-out; the caller queues and persists signed receipts application-side |
 | Transport | In-process function calls from Swift/Kotlin |
-| Guard loading | Compiled into the static/shared library |
+| Guard loading | Not implemented -- `evaluate()` runs the portable kernel with an empty guard slice; capability signature, time-bound, and scope checks are still fully enforced |
 
 ```swift
-// Sketch: Swift via UniFFI
-let config = KernelCoreConfig(
-    keypairHex: "...",
-    caPublicKeys: ["..."],
-    policyHash: "..."
-)
-let kernel = try KernelCore(config: config)
-let verdict = try kernel.evaluate(requestJson: toolCallJson)
+// Actual shape: free functions via UniFFI, not a class -- see
+// crates/kernel/chio-kernel-mobile/bindings/swift/ChioKernel.md.
+import chio_kernel_mobile
+
+let requestJson = // ... built by your Chio SDK
+let responseJson = try evaluate(requestJson: requestJson)
 ```
 
 Repo-local qualification commands for the mobile adapter:
@@ -361,64 +359,59 @@ source and clock.
 
 ### 5.1 Core Operations
 
+The portable core exposes free functions, not a stateful struct: every
+call takes its `Clock` / `Rng` / guard slice as explicit arguments and
+returns a result, with no hidden state carried between calls.
+
 ```rust
-impl<E: EntropySource, C: Clock> KernelCore<E, C> {
-    /// Validate a capability token and evaluate guards against a tool call.
-    ///
-    /// This is the primary entry point. It performs, in order:
-    /// 1. Capability signature verification
-    /// 2. Time-bound validation (via injected Clock)
-    /// 3. Revocation check (in-memory set)
-    /// 4. Scope matching (server + tool + resource)
-    /// 5. Delegation chain validation
-    /// 6. Subject binding (DPoP if required)
-    /// 7. Budget check and hold (in-memory map)
-    /// 8. Guard pipeline evaluation (all registered guards, fail-closed)
-    ///
-    /// Returns Verdict::Allow or Verdict::Deny. Never panics.
-    pub fn evaluate(
-        &mut self,
-        request: &ToolCallRequest,
-        dpop_proof: Option<&DpopProof>,
-    ) -> Result<Verdict, KernelError>;
+/// Validate a capability token and evaluate guards against a tool call.
+///
+/// Performs, in order: capability signature verification, time-bound
+/// validation (via the injected Clock), subject binding, scope matching,
+/// and the guard pipeline (fail-closed on any guard error). Never
+/// panics. `PendingApproval` is never produced here -- only the full
+/// `chio-kernel` shell adds the human-in-the-loop approval path.
+pub fn evaluate(input: EvaluateInput<'_>) -> EvaluationVerdict;
 
-    /// Sign a receipt attesting to a kernel decision.
-    ///
-    /// Produces an Ed25519-signed ChioReceipt over the canonical JSON of the
-    /// receipt body. Appends to the in-memory receipt buffer and advances the
-    /// Merkle checkpoint if the batch threshold is reached.
-    pub fn sign_receipt(
-        &mut self,
-        verdict: Verdict,
-        request: &ToolCallRequest,
-        metadata: Option<serde_json::Value>,
-    ) -> Result<ChioReceipt, KernelError>;
+/// Sign a receipt body (PUBLIC WYSIWYS signer; fail-closed).
+///
+/// Recomputes `content_hash` from the caller-supplied canonical content
+/// preimage inside the trust boundary and refuses to sign on a
+/// render/sign mismatch. `sign_receipt_relaying_trusted_body` is the
+/// explicit relay seam for transport adapters that cannot hold the
+/// content preimage.
+pub fn sign_receipt(
+    body: ChioReceiptBody,
+    backend: &dyn SigningBackend,
+    canonical_content: &[u8],
+) -> Result<ChioReceipt, ReceiptSigningError>;
 
-    /// Verify a capability token's signature and structure.
-    ///
-    /// Does NOT check time bounds or revocation -- use evaluate() for full
-    /// validation. This is useful for offline token inspection.
-    pub fn verify_capability(
-        &self,
-        token: &CapabilityToken,
-    ) -> Result<ChioScope, KernelError>;
+/// Verify a capability token's signature, issuer trust, and time bounds.
+///
+/// This is the offline verification entry point: no revocation lookup,
+/// no budget accounting, no guard pipeline.
+pub fn verify_capability(
+    token: &CapabilityToken,
+    trusted_issuers: &[PublicKey],
+    clock: &dyn Clock,
+) -> Result<VerifiedCapability, CapabilityError>;
 
-    /// Add a capability ID to the in-memory revocation set.
-    pub fn revoke(&mut self, capability_id: &str);
-
-    /// Drain the in-memory receipt buffer.
-    ///
-    /// Platform adapters call this periodically to persist receipts to
-    /// IndexedDB, KV, SQLite, or other durable storage.
-    pub fn drain_receipts(&mut self) -> Vec<ChioReceipt>;
-
-    /// Register a guard in the evaluation pipeline.
-    pub fn add_guard(&mut self, guard: Box<dyn Guard>);
-
-    /// Return the current Merkle checkpoint root hash, if any.
-    pub fn checkpoint_root(&self) -> Option<&str>;
-}
+/// Verify a portable passport envelope offline.
+pub fn verify_passport(
+    envelope_bytes: &[u8],
+    authority_keys: &[PublicKey],
+    clock: &dyn Clock,
+) -> Result<VerifiedPassport, VerifyError>;
 ```
+
+Each of these has floor/context variants (`evaluate_with_full_floor`,
+`verify_capability_full`, and similar) that additionally enforce a crypto
+floor, chain-binding trust roots, and sibling-sum budget accounting for
+delegated tokens. There is no in-memory receipt buffer, revocation set, or
+Merkle checkpoint inside `chio-kernel-core`: receipts, budgets, and
+revocation state are the caller's responsibility, held either by the
+platform adapter (browser/mobile) or by the full `chio-kernel` shell's
+persistent stores.
 
 ### 5.2 Design Constraints
 
@@ -426,10 +419,12 @@ impl<E: EntropySource, C: Clock> KernelCore<E, C> {
   `chio-kernel` orchestrator) owns the async runtime if one exists.
 - **No `SystemTime::now()`.** Time comes from the injected `Clock` trait.
   This makes the core deterministic and testable with a mock clock.
-- **No `OsRng` directly.** Entropy comes from the injected `EntropySource`
+- **No `OsRng` directly.** Entropy comes from the injected `Rng`
   trait. This allows browser, WASI, and bare-metal entropy sources.
-- **No filesystem or network.** Receipts accumulate in a `Vec` ring buffer.
-  The caller drains and persists them.
+- **No filesystem or network.** `sign_receipt` returns one signed receipt
+  per call; there is no in-memory ring buffer or drain step inside
+  `chio-kernel-core` itself. The caller (platform adapter or the full
+  `chio-kernel` shell) owns persistence.
 - **Fail-closed.** Any error during guard evaluation, capability verification,
   or budget enforcement results in `Verdict::Deny`. This invariant is
   enforced in `chio-kernel-core` and cannot be overridden by platform adapters.
@@ -505,20 +500,22 @@ Create adapter crates for each target environment:
 
 ```
 crates/
-  chio-kernel-wasm/        # wasm-bindgen bindings for browser
+  chio-kernel-browser/     # wasm-bindgen bindings for browser
   chio-kernel-edge/        # Cloudflare Workers / Deno Deploy adapter
   chio-kernel-mobile/      # UniFFI bindings for iOS/Android
 ```
 
-Each adapter crate depends on `chio-kernel-core` and implements the trait
-boundaries (`EntropySource`, `Clock`, `ReceiptSink`).
+Each adapter crate depends on `chio-kernel-core` and implements the
+`Rng` and `Clock` trait boundaries with a platform-specific adapter
+(`WebCryptoRng`/`BrowserClock` for the browser, `MobileRng`/`MobileClock`
+for mobile).
 
 Estimated scope: 1-2 weeks per adapter.
 
 ### Phase 4: CI and Size Gates
 
 Add cross-compilation targets to CI. Enforce binary size limits per target.
-Publish `chio-kernel-wasm` to npm. Publish `chio-kernel-mobile` UniFFI bindings
+Publish `chio-kernel-browser` to npm. Publish `chio-kernel-mobile` UniFFI bindings
 to CocoaPods/Maven. The repo-local qualification entry points are now
 `./scripts/check-portable-kernel.sh`, `./scripts/qualify-portable-browser.sh`,
 and `./scripts/qualify-mobile-kernel.sh`.
@@ -536,11 +533,11 @@ chio-kernel-core (validation, guards, DPoP, receipts -- portable)
     |       |
     |       +-- chio-mcp-edge, chio-a2a-edge, chio-acp-edge, chio-cli ...
     |
-    +-- chio-kernel-wasm (browser: wasm-bindgen + IndexedDB)
+    +-- chio-kernel-browser (browser: wasm-bindgen, stateless JSON-in/JSON-out)
     |
     +-- chio-kernel-edge (workers: WASI + KV)
     |
-    +-- chio-kernel-mobile (iOS/Android: UniFFI + native SQLite)
+    +-- chio-kernel-mobile (iOS/Android: UniFFI, stateless JSON-in/JSON-out)
 ```
 
 ---
@@ -565,7 +562,7 @@ every target:
 
 Browser and edge targets use `crypto.getRandomValues()` which is
 cryptographically secure. WASI targets use the host's entropy source. The
-`EntropySource` trait does not enforce quality -- deployments on constrained
+`Rng` trait does not enforce quality -- deployments on constrained
 hardware (Cortex-M) must ensure the injected source meets cryptographic
 requirements.
 

@@ -58,7 +58,9 @@ pub enum SigningState {
     UnsignedSignerStubbed { algorithm: String },
 }
 
-/// The pinned-frontier artifact written by `chio lineage pin`.
+/// The pinned-frontier artifact produced by [`pin_frontier`] or
+/// [`pin_frontier_signed`]. `chio lineage roots` reads artifacts of this
+/// shape from a directory; it does not produce them.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AnchoredFrontier {
     pub schema_version: String,

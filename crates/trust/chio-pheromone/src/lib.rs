@@ -1,4 +1,4 @@
-//! Local Chio pheromone substrate and transit evidence types.
+//! Local Chio pheromone substrate and observation-cost evidence types.
 
 #![forbid(unsafe_code)]
 

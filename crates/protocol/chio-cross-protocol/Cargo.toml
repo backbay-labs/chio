@@ -12,7 +12,6 @@ publish = false
 name = "chio_cross_protocol"
 
 [dependencies]
-async-trait = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../../core/chio-core-types" }
 chio-kernel = { workspace = true }
 chio-manifest = { workspace = true }
@@ -21,6 +20,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
+
+[dev-dependencies]
+async-trait = { workspace = true }
 
 [lints]
 workspace = true
