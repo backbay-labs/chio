@@ -126,23 +126,52 @@ curl -fsSL https://www.chio.computer/install.sh | sh
 
 <sub>Or from source: <code>git clone https://github.com/backbay-labs/chio.git && cd chio && cargo build --release -p chio-cli</code></sub>
 
-### 2. Put Claude Code under policy
+### 2. Put Claude or Hermes under policy
 
-Claude Code reaches its file, shell, and git tools over MCP. Wrap that server with Chio so
+Coding agents reach their file, shell, and git tools over MCP. Wrap that server with Chio so
 every call is checked by the kernel and sealed into a signed receipt. The bundled `code-agent`
 preset is a safe starting policy: reads are allowed, writes to `.env`, `.git/`, and `.ssh/` are
 denied, and so is `git push --force`.
 
+**Claude Code** registers the wrapped server in one line:
+
 ```sh
 claude mcp add fs -- \
-  chio --receipt-db ./chio.db mcp serve --preset code-agent -- \
+  chio --receipt-db ./chio.db mcp serve --preset code-agent --server-id fs -- \
   npx -y @modelcontextprotocol/server-filesystem .
 ```
 
-You use Claude Code exactly as before; every tool call it routes through that server is now
-checked against policy and sealed into a receipt. To govern an entire session, including Claude
-Code's native tools, use the [Claude Code plugin](https://github.com/backbay-labs/chio-claude-code-plugin)
-and its `/chio:bond` command.
+**Hermes** wraps the same server through its config. Add this under `mcp_servers` in
+`~/.hermes/config.yaml`, then run `hermes mcp test chio` to confirm the edge is live:
+
+```yaml
+mcp_servers:
+  chio:
+    command:
+      - chio
+      - --receipt-db
+      - ./chio.db
+      - mcp
+      - serve
+      - --preset
+      - code-agent
+      - --server-id
+      - fs
+      - --
+      - npx
+      - "-y"
+      - "@modelcontextprotocol/server-filesystem"
+      - "."
+    transport: stdio
+```
+
+The `--server-id fs` must stay `fs`: the `code-agent` preset only grants capabilities to the
+`fs`, `shell`, and `git` server ids, so any other id fail-closes every call.
+
+Either way, you use the agent exactly as before; every tool call it routes through that server
+is now checked against policy and sealed into a receipt. To govern an entire session, including
+the agent's native tools, use the [Claude Code plugin](https://github.com/backbay-labs/chio-claude-code-plugin)
+(`/chio:bond`) or the native [`chio-hermes` plugin](docs/integrations/HERMES.md).
 
 ### 3. Read the receipts
 
