@@ -169,9 +169,41 @@ The `--server-id fs` must stay `fs`: the `code-agent` preset only grants capabil
 `fs`, `shell`, and `git` server ids, so any other id fail-closes every call.
 
 Either way, you use the agent exactly as before; every tool call it routes through that server
-is now checked against policy and sealed into a receipt. To govern an entire session, including
-the agent's native tools, use the [Claude Code plugin](https://github.com/backbay-labs/chio-claude-code-plugin)
-(`/chio:bond`) or the native [`chio-hermes` plugin](docs/integrations/HERMES.md).
+is now checked against policy and sealed into a receipt.
+
+To govern an entire session, including the agent's native tools, install the host plugin.
+
+**Claude Code** ([chio-claude-code-plugin](https://github.com/backbay-labs/chio-claude-code-plugin)) installs from the marketplace, then bond a session with `/chio:bond <policy>`:
+
+```sh
+claude plugin marketplace add backbay-labs/chio-claude-code-plugin
+claude plugin install chio@chio
+```
+
+**Hermes** ([chio-hermes](docs/integrations/HERMES.md)) installs from PyPI:
+
+```sh
+pip install chio-hermes
+```
+
+Enable the plugin and select its toolset in `~/.hermes/config.yaml` (the `toolsets` entry is
+required, otherwise the `chio_*` tools never surface):
+
+```yaml
+plugins:
+  enabled:
+    - chio
+toolsets:
+  - chio
+```
+
+`hermes setup` does not prompt for entry-point plugins, so set the sidecar URL and capability id
+yourself, or write them to `~/.hermes/.env`. Mint the capability with `hermes chio issue`:
+
+```sh
+export CHIO_SIDECAR_URL=http://127.0.0.1:9090
+export CHIO_CAPABILITY_ID=<id from `hermes chio issue --json`>
+```
 
 ### 3. Read the receipts
 

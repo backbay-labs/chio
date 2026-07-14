@@ -6,6 +6,7 @@ build-backend = "hatchling.build"
 name = "chio-adapter-base"
 version = "0.2.0"
 description = "Shared security and receipt primitives for Chio Python adapters (chio-hermes, chio-langchain, chio-llamaindex, chio-crewai, chio-airflow, chio-iac, ...)"
+readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
 authors = [

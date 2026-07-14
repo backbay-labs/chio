@@ -6,6 +6,7 @@ build-backend = "hatchling.build"
 name = "chio-hermes"
 version = "0.1.1"
 description = "Hermes Agent plugin for the Chio protocol - capability-scoped file/shell/git tools, signed receipts, policy enforcement via pre_tool_call hook"
+readme = "README.md"
 license = "Apache-2.0"
 requires-python = ">=3.11"
 authors = [
