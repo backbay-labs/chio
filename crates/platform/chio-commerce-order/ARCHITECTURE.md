@@ -7,7 +7,7 @@ calls, no runtime state. It sits downstream of a commerce order's artifacts
 (order context, event log, payment lifecycle, mandate allowance ledger,
 provider trust evidence, settlement packet, kernel authority receipts) and
 answers one question: are these artifacts internally consistent with each
-other and with the order context. Per `DESIGN.md`, it does not move funds,
+other and with the order context. It does not move funds,
 price markets, select providers, or issue risk decisions; those concerns
 belong to `chio-market`, `chio-credit`, and `chio-settle`. This crate only
 replays and cross-checks evidence those systems already produced.

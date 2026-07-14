@@ -9,7 +9,7 @@ every digest, signature, and cross-reference, and emits a passport report
 summarizing what verified.
 
 The crate is pure verification: no I/O, no network calls, no runtime state,
-and no market, payment, or risk decisions of its own (see `DESIGN.md`).
+and no market, payment, or risk decisions of its own.
 `chio-cli`, `chio-proof-room`, and `chio-control-plane` assemble the bundle
 from stored artifacts and call into this crate to judge it.
 

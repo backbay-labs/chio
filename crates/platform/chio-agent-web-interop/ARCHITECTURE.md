@@ -6,7 +6,7 @@ The crate is a pure, offline verifier at the boundary between Chio-native
 authority and evidence from protocols Chio does not control. It performs no
 I/O: every input arrives as bytes inside an `AgentWebInteropBundle`, and every
 output is a `Result` of `AgentWebInteropReport` or the shared
-`TransactionPassportError`. Its central invariant, stated in `DESIGN.md`, is
+`TransactionPassportError`. Its central invariant is
 that external proof never becomes Chio authority by itself: every supported
 protocol must disclaim its own signature or status as authoritative, and the
 only artifact that can grant authority is a signed `ChioReceipt`, independently
