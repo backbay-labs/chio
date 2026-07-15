@@ -44,3 +44,33 @@ fn rss_from_ps() -> Option<u64> {
     let kibibytes: u64 = String::from_utf8(output.stdout).ok()?.trim().parse().ok()?;
     kibibytes.checked_mul(1024)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::current_rss_bytes;
+
+    #[test]
+    fn rss_current_rss_bytes_reports_positive_on_supported_platforms() {
+        let sampled = current_rss_bytes();
+
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
+        match sampled {
+            Some(bytes) => assert!(
+                bytes > 0,
+                "resident set on {} must be positive, got {bytes}",
+                std::env::consts::OS
+            ),
+            None => panic!(
+                "current_rss_bytes must report Some on {}",
+                std::env::consts::OS
+            ),
+        }
+
+        #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+        {
+            // Unsupported platforms must return without panicking; the value may
+            // legitimately be None.
+            let _ = sampled;
+        }
+    }
+}

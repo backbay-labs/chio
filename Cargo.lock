@@ -3780,6 +3780,7 @@ dependencies = [
  "chio-kernel",
  "chio-store-sqlite",
  "chio-test-support",
+ "serde",
  "serde_json",
  "tempfile",
  "thiserror 1.0.69",
