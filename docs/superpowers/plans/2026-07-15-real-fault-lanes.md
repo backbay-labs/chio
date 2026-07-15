@@ -359,7 +359,7 @@ RUSTFLAGS="--cfg loom" LOOM_MAX_PREEMPTIONS=3 cargo test --release -p chio-wasm-
 
 - [ ] **D1.1** Docs edits above.
 - [ ] **D1.2** Full gate: `cargo build --workspace && cargo test --workspace && cargo clippy --workspace -- -D warnings && cargo fmt --all -- --check`. Also `make loom` (or the three loom commands) once more, and the B/C named tests with `CHIO_CHAOS_ITERATIONS=10`.
-- [ ] **D1.3** `rg -n "—" $(git diff --name-only main...HEAD)` returns nothing (no em dashes in anything we touched).
+- [ ] **D1.3** `rg -n "\u2014" $(git diff --name-only main...HEAD)` returns nothing (no em dashes in anything we touched).
 - [ ] **D1.4** Commit: `docs(reliability): record implemented fault-lane delta against the load-soak-chaos plan`
 
 ## Self-review checklist (run after writing, before dispatch)
