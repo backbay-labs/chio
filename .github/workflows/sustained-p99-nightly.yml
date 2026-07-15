@@ -22,13 +22,18 @@ jobs:
   sustained-p99:
     name: sustained p99
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
       - uses: ./.github/actions/setup-rust
         with:
           toolchain: stable
+
+      - name: Build sustained gate binary
+        env:
+          CARGO_BUILD_JOBS: "4"
+        run: cargo build -p chio-loadgen --release --bin sustained
 
       - name: Run sustained kernel p99 lane
         run: cargo run -p chio-loadgen --release --bin sustained
