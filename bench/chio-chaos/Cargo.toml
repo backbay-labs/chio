@@ -1,0 +1,27 @@
+[package]
+name = "chio-chaos"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+chio-loadgen = { path = "../chio-loadgen" }
+chio-store-sqlite = { workspace = true }
+chio-kernel = { workspace = true }
+chio-core-types = { workspace = true }
+thiserror = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+chio-test-support = { workspace = true }
+tempfile = { workspace = true }
+
+[lints]
+workspace = true

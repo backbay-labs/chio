@@ -2828,6 +2828,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-chaos"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "chio-kernel",
+ "chio-loadgen",
+ "chio-store-sqlite",
+ "chio-test-support",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "chio-cli"
 version = "0.1.0"
 dependencies = [
