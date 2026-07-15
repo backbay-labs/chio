@@ -210,17 +210,7 @@ fn assert_round_invariants(db_path: &Path, ack_path: &Path, round: u64) {
         ),
     };
 
-    let health = store
-        .receipt_store_health()
-        .test_expect("sample receipt store health");
-    if !health.healthy {
-        panic!(
-            "{}",
-            ChaosError::InvariantViolated(format!(
-                "round {round}: store reports unhealthy after recovery: {health:?}"
-            ))
-        );
-    }
+    wait_until_healthy(&store, round);
 
     if let Err(error) = check_durable_acks(&store, ack_path) {
         panic!("round {round}: {error}");
@@ -234,4 +224,40 @@ fn assert_round_invariants(db_path: &Path, ack_path: &Path, round: u64) {
     store
         .flush_receipt_writes()
         .test_expect("flush recovery probe receipt");
+}
+
+/// Bound on how long recovery may take to seed a verified head before the store
+/// is considered bricked.
+const RECOVERY_HEALTH_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Poll interval while waiting for the async verified-head seed to clear.
+const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(5);
+
+/// Wait for the reopened store to report a verified, unpoisoned head.
+///
+/// The commit writer seeds its verified head on its actor thread and starts
+/// serving-closed (head-poisoned) until that seed completes, so a store sampled
+/// the instant after reopen can still report unhealthy. Recovery's invariant is
+/// that the store becomes healthy within a bounded window, not that it is
+/// healthy on the first sample. A store still unhealthy at the deadline is a
+/// real recovery brick and fails closed.
+fn wait_until_healthy(store: &SqliteReceiptStore, round: u64) {
+    let deadline = Instant::now() + RECOVERY_HEALTH_TIMEOUT;
+    loop {
+        let health = store
+            .receipt_store_health()
+            .test_expect("sample receipt store health");
+        if health.healthy {
+            return;
+        }
+        if Instant::now() >= deadline {
+            panic!(
+                "{}",
+                ChaosError::InvariantViolated(format!(
+                    "round {round}: store still unhealthy {RECOVERY_HEALTH_TIMEOUT:?} after recovery: {health:?}"
+                ))
+            );
+        }
+        std::thread::sleep(HEALTH_POLL_INTERVAL);
+    }
 }

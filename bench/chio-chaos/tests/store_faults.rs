@@ -30,6 +30,37 @@ fn invariant<E: std::fmt::Display>(context: &str) -> impl Fn(E) -> ChaosError + 
     move |error| ChaosError::InvariantViolated(format!("{context}: {error}"))
 }
 
+/// Bound on how long a store may take to seed a verified head before it is
+/// considered bricked.
+const RECOVERY_HEALTH_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Poll interval while waiting for the async verified-head seed to clear.
+const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(5);
+
+/// Wait for a store to report a verified, unpoisoned head.
+///
+/// The commit writer seeds its verified head on its actor thread and starts
+/// serving-closed (head-poisoned) until that seed completes, so a store sampled
+/// the instant after a reopen (or a reseed under retention) can still report
+/// unhealthy. The invariant is that health becomes true within a bounded window,
+/// not that it is true on the first sample. A store still unhealthy at the
+/// deadline fails closed.
+fn wait_until_healthy(store: &SqliteReceiptStore, context: &str) -> Result<(), ChaosError> {
+    let deadline = Instant::now() + RECOVERY_HEALTH_TIMEOUT;
+    loop {
+        let health = store.receipt_store_health().map_err(invariant(context))?;
+        if health.healthy {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(ChaosError::InvariantViolated(format!(
+                "{context}: store still unhealthy {RECOVERY_HEALTH_TIMEOUT:?} after recovery: {health:?}"
+            )));
+        }
+        std::thread::sleep(HEALTH_POLL_INTERVAL);
+    }
+}
+
 /// A store growth cap expressed as construction options.
 fn capped(max_page_count: u32) -> SqlitePoolConfig {
     SqlitePoolConfig {
@@ -175,14 +206,10 @@ fn chaos_enospc_denies_typed_and_recovers() -> Result<(), ChaosError> {
     {
         let store = SqliteReceiptStore::open_with_pool_config(&db, capped(cap.saturating_mul(8)))
             .map_err(boot("reopen recovered store"))?;
-        let health = store
-            .receipt_store_health()
-            .map_err(invariant("sample health after recovery"))?;
-        if !health.healthy {
-            return Err(ChaosError::InvariantViolated(format!(
-                "store did not read healthy after reopen with a larger page cap: {health:?}"
-            )));
-        }
+        wait_until_healthy(
+            &store,
+            "recovery health after reopen with a larger page cap",
+        )?;
         check_durable_acks(&store, &ack)?;
         let receipt = chaos_receipt("enospc-recovered", 3_000_000)?;
         store
@@ -353,14 +380,7 @@ fn chaos_retention_under_load_keeps_verified_head() -> Result<(), ChaosError> {
     }
 
     // Invariants: health OK, committed floor monotone, fresh append works.
-    let health = store
-        .receipt_store_health()
-        .map_err(invariant("sample health after retention load"))?;
-    if !health.healthy {
-        return Err(ChaosError::InvariantViolated(format!(
-            "store unhealthy after retention under load: {health:?}"
-        )));
-    }
+    wait_until_healthy(&store, "store health after retention under load")?;
     let seq_after = store
         .latest_committed_entry_seq()
         .map_err(invariant("read committed floor after retention"))?;
