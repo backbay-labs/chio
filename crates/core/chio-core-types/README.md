@@ -126,8 +126,7 @@ assert!(token.verify_signature()?);
 | `std` (default) | Enables `std`-backed `thiserror::Error` derives and the `std` feature on every dependency. |
 | `fips` | Enables `P256Backend` / `P384Backend` (NIST P-256/P-384 ECDSA via `aws-lc-rs`, FIPS 140-3 validated). Implies `std`. |
 | `pq` | Enables the `pq` module, `MlDsa65Backend`, and `HybridBackend` (classical plus ML-DSA-65 hybrid signing) via `fips204`. |
-| `delegation` | No-op. The recursive-delegation wire primitive is always compiled in; kept for downstream manifests that enable it by name. |
-| `delegation_v2` | Alias of `delegation`. |
+| `delegation` | No-op. The recursive-delegation wire primitive is always compiled in; kept for downstream manifests that enable it by name. The Cargo feature `delegation_v2` is retained as a backward-compat alias of this flag. |
 
 ## Testing
 

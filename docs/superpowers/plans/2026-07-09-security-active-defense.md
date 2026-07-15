@@ -263,7 +263,7 @@ The root `Cargo.toml` registers all five crates and workspace dependencies. Add 
 
 - Modify `crates/protocol/chio-openapi/src/generator.rs`
 - Modify `crates/protocol/chio-openapi-mcp-bridge/src/lib.rs`
-- Modify MCP, A2A, ACP, OpenAI, Anthropic, cross-protocol, and provider adapter projections that consume or construct `ToolDefinition`
+- Modify MCP, A2A, ACP-Client, OpenAI, Anthropic, cross-protocol, and provider adapter projections that consume or construct `ToolDefinition`
 - Add `BridgeSecurityMetadata` to the existing internal bridge model that all applicable adapters can retain
 
 **Work**
@@ -276,7 +276,7 @@ The root `Cargo.toml` registers all five crates and workspace dependencies. Add 
 **Exact tests**
 
 - OpenAPI extension to normative manifest to OpenAPI extension is lossless.
-- MCP, A2A, ACP, OpenAI, and Anthropic internal round trips preserve identical canonical flow bytes.
+- MCP, A2A, ACP-Client, OpenAI, and Anthropic internal round trips preserve identical canonical flow bytes.
 - Removing the sidecar from a constrained tool returns an explicit adapter error.
 - Cross-protocol routing does not change clearance or purposes.
 

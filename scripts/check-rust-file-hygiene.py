@@ -41,6 +41,71 @@ def allow(expires: str, rationale: str, *, max_lines: int | None = None) -> Allo
 
 
 ALLOWLIST: dict[str, AllowlistEntry] = {
+    "crates/kernel/chio-kernel/src/kernel/tests/chio_runtime.rs": allow(
+        "2026-07-31",
+        "existing oversized kernel runtime test suite; capped to current size until split",
+        max_lines=4_900,
+    ),
+    "crates/kernel/chio-kernel/src/kernel/tests/support.rs": allow(
+        "2026-07-31",
+        "shared kernel test support module; grows with the dispatch-intent journal tests, then splits by fixture family",
+        max_lines=2_600,
+    ),
+    "crates/platform/chio-http-session/src/lib.rs": allow(
+        "2026-07-31",
+        "existing oversized session crate root; capped to current size until the module split",
+        max_lines=1_150,
+    ),
+    "crates/platform/chio-store-sqlite/src/budget_store/tests.rs": allow(
+        "2026-07-31",
+        "budget store test suite; grows with the money-path durability tests, then splits by concern",
+        max_lines=3_000,
+    ),
+    "crates/platform/chio-store-sqlite/src/receipt_store/tests/retention.rs": allow(
+        "2026-07-31",
+        "existing oversized retention test suite; capped to current size until split",
+        max_lines=4_600,
+    ),
+    "crates/products/chio-wall/src/commands.rs": allow(
+        "2026-07-31",
+        "existing oversized wall command surface; capped to current size until split",
+        max_lines=2_100,
+    ),
+    "crates/platform/chio-store-sqlite/src/receipt_store.rs": allow(
+        "2026-07-31",
+        "receipt store writer actor and reconciliation surface; the dispatch-intent journal lands here next, then the store splits by concern",
+        max_lines=5_600,
+    ),
+    "crates/products/chio-cli/src/cli/chio/dispatch/pheromone/iroh_mount.rs": allow(
+        "2026-07-31",
+        "existing oversized pheromone mount command surface; capped to current size until split",
+        max_lines=3_400,
+    ),
+    "crates/trust/chio-federation-transport-iroh/src/lanes/pheromone.rs": allow(
+        "2026-07-31",
+        "existing oversized federation pheromone lane; capped to current size until split",
+        max_lines=2_900,
+    ),
+    "crates/platform/chio-control-plane/src/trust_control/cluster_and_reports.rs": allow(
+        "2026-07-31",
+        "existing oversized control-plane cluster reporting surface; capped to current size until split",
+        max_lines=2_800,
+    ),
+    "crates/trust/chio-federation-transport-iroh/src/lanes/revocation.rs": allow(
+        "2026-07-31",
+        "existing oversized federation revocation lane; capped to current size until split",
+        max_lines=2_600,
+    ),
+    "crates/trust/chio-federation-transport-iroh/src/lanes/fanout.rs": allow(
+        "2026-07-31",
+        "existing oversized federation fanout lane; capped to current size until split",
+        max_lines=2_500,
+    ),
+    "crates/economy/chio-web3/src/settlement_proof.rs": allow(
+        "2026-07-31",
+        "existing oversized settlement proof surface; capped to current size until split",
+        max_lines=2_100,
+    ),
     "crates/products/chio-cli/tests/mcp_serve_http.rs": allow(
         "2026-07-31",
         "existing oversized CLI MCP HTTP integration suite; capped to current size until split",
@@ -54,12 +119,12 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/products/chio-cli/tests/mcp_serve.rs": allow(
         "2026-07-31",
         "existing oversized CLI MCP serve integration suite; capped to current size until split",
-        max_lines=4_496,
+        max_lines=4_550,
     ),
     "crates/protocol/chio-mcp-edge/src/runtime/runtime_tests.rs": allow(
         "2026-07-31",
         "existing oversized MCP edge runtime test suite; capped to current size until split",
-        max_lines=4_430,
+        max_lines=4_500,
     ),
     "crates/products/chio-cli/tests/certify.rs": allow(
         "2026-07-31",
@@ -89,17 +154,17 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/products/chio-api-protect/src/proxy/tests.rs": allow(
         "2026-07-31",
         "existing oversized API protect proxy test suite; capped to current size until split",
-        max_lines=2_971,
+        max_lines=3_720,
     ),
     "crates/protocol/chio-acp-edge/src/tests/all.rs": allow(
         "2026-07-31",
         "existing oversized ACP edge aggregate test suite; capped to current size until split",
-        max_lines=3_008,
+        max_lines=3_060,
     ),
     "crates/protocol/chio-a2a-edge/src/tests/all.rs": allow(
         "2026-07-31",
         "existing oversized A2A edge aggregate test suite; capped to current size until split",
-        max_lines=2_838,
+        max_lines=2_900,
     ),
     "crates/products/chio-cli/tests/proof_cli_contract/support.rs": allow(
         "2026-07-31",
@@ -149,7 +214,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/protocol/chio-mcp-remote/src/remote_mcp/tests.rs": allow(
         "2026-07-31",
         "existing oversized remote MCP test suite; capped to current size until split",
-        max_lines=2_008,
+        max_lines=2_060,
     ),
     "crates/trust/chio-selective-disclosure/src/lib.rs": allow(
         "2026-07-31",

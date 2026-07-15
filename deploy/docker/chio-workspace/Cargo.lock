@@ -775,9 +775,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.102"
+version = "1.0.103"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
+checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
 
 [[package]]
 name = "ar_archive_writer"
@@ -2284,14 +2284,10 @@ dependencies = [
  "chio-kernel",
  "chio-manifest",
  "chio-mcp-edge",
- "chio-metrics-spec",
  "chio-test-support",
- "futures",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
- "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -2306,14 +2302,10 @@ dependencies = [
  "chio-kernel",
  "chio-manifest",
  "chio-mcp-edge",
- "chio-metrics-spec",
  "chio-test-support",
- "futures",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
- "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -2372,7 +2364,6 @@ dependencies = [
  "chio-kernel",
  "chio-metrics-spec",
  "chio-test-support",
- "chio-web3",
  "chio-web3-bindings",
  "hex",
  "opentimestamps",
@@ -2408,7 +2399,9 @@ dependencies = [
  "axum",
  "chio-core-types",
  "chio-http-core",
+ "chio-http-serve",
  "chio-kernel",
+ "chio-metrics-spec",
  "chio-openapi",
  "chio-store-sqlite",
  "chio-test-support",
@@ -2420,6 +2413,7 @@ dependencies = [
  "serde_json",
  "sha2 0.10.9",
  "subtle",
+ "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "tower",
@@ -2607,11 +2601,14 @@ dependencies = [
  "chio-guard-registry",
  "chio-guards",
  "chio-hosted-mcp",
+ "chio-http-serve",
  "chio-kernel",
  "chio-lineage",
  "chio-listing",
+ "chio-log-redact",
  "chio-mcp-adapter",
  "chio-mcp-remote",
+ "chio-metrics-spec",
  "chio-open-market",
  "chio-pheromone",
  "chio-pheromone-relay",
@@ -2709,6 +2706,8 @@ name = "chio-config"
 version = "0.1.0"
 dependencies = [
  "arbitrary",
+ "chio-core",
+ "chio-kernel",
  "regex",
  "serde",
  "serde_yml",
@@ -2800,9 +2799,11 @@ dependencies = [
  "chio-errors",
  "chio-external-guards",
  "chio-guards",
+ "chio-http-serve",
  "chio-kernel",
  "chio-link",
  "chio-mcp-adapter",
+ "chio-metrics-spec",
  "chio-policy",
  "chio-reputation",
  "chio-risk-comptroller",
@@ -2817,6 +2818,7 @@ dependencies = [
  "hex",
  "p384",
  "percent-encoding",
+ "proptest",
  "rcgen 0.13.2",
  "reqwest 0.13.2",
  "rsa",
@@ -2829,6 +2831,7 @@ dependencies = [
  "subtle",
  "thiserror 1.0.69",
  "tokio",
+ "tower",
  "tower-http",
  "tracing",
  "ureq 2.12.1",
@@ -3106,6 +3109,8 @@ dependencies = [
 name = "chio-federation-transport-iroh"
 version = "0.1.0"
 dependencies = [
+ "arc-swap",
+ "async-trait",
  "blake3",
  "bytes",
  "chio-core-types",
@@ -3113,11 +3118,14 @@ dependencies = [
  "chio-metrics-spec",
  "chio-pheromone",
  "chio-pheromone-relay",
+ "chio-pheromone-runtime",
  "chio-revocation-oracle",
  "iroh",
  "iroh-blobs",
  "iroh-gossip",
+ "loom",
  "n0-future",
+ "proptest",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -3234,6 +3242,7 @@ dependencies = [
  "chio-egress-contract",
  "chio-kernel",
  "chio-metrics-spec",
+ "chio-store-sqlite",
  "chio-test-support",
  "chrono",
  "hex",
@@ -3241,9 +3250,22 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "chio-http-serve"
+version = "0.1.0"
+dependencies = [
+ "axum",
+ "thiserror 1.0.69",
+ "tokio",
+ "tower",
+ "tower-http",
+ "tracing",
 ]
 
 [[package]]
@@ -3279,6 +3301,7 @@ dependencies = [
  "chio-metrics-spec",
  "chio-settle",
  "chio-store-sqlite",
+ "chio-supervisor",
  "chio-test-support",
  "chio-tool-call-fabric",
  "chio-underwriting",
@@ -3441,7 +3464,6 @@ dependencies = [
  "serde_json",
  "thiserror 1.0.69",
  "tokio",
- "tracing",
 ]
 
 [[package]]
@@ -3455,9 +3477,10 @@ dependencies = [
  "chio-control-plane",
  "chio-core-types",
  "chio-egress-contract",
+ "chio-http-serve",
  "chio-kernel",
  "chio-mcp-adapter",
- "chio-siem",
+ "chio-metrics-spec",
  "chio-store-sqlite",
  "p256 0.13.2",
  "p384",
@@ -3599,6 +3622,7 @@ dependencies = [
  "axum",
  "chio-core-types",
  "chio-federation",
+ "chio-http-serve",
  "chio-pheromone",
  "chio-pheromone-runtime",
  "reqwest 0.13.2",
@@ -3606,6 +3630,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2 0.10.9",
+ "subtle",
  "tempfile",
  "thiserror 1.0.69",
  "tokio",
@@ -3660,6 +3685,7 @@ dependencies = [
  "chio-disclosure-lineage",
  "chio-egress-contract",
  "chio-enterprise-export",
+ "chio-http-serve",
  "chio-risk-comptroller",
  "chio-runtime-proof-parity",
  "chio-selective-disclosure",
@@ -3890,10 +3916,12 @@ dependencies = [
  "chio-kernel",
  "chio-log-redact",
  "chio-test-support",
+ "proptest",
  "reqwest 0.13.2",
  "rusqlite",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 1.0.69",
  "tokio",
  "tracing",
@@ -3924,8 +3952,11 @@ dependencies = [
  "chio-credit",
  "chio-kernel",
  "chio-settle",
+ "chio-supervisor",
  "chio-test-support",
  "criterion",
+ "loom",
+ "proptest",
  "r2d2",
  "r2d2_sqlite",
  "rusqlite",
@@ -3936,6 +3967,17 @@ dependencies = [
  "tracing",
  "uuid",
  "zeroize",
+]
+
+[[package]]
+name = "chio-supervisor"
+version = "0.1.0"
+dependencies = [
+ "loom",
+ "proptest",
+ "serde",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]
@@ -4076,6 +4118,7 @@ dependencies = [
 name = "chio-web3"
 version = "0.1.0"
 dependencies = [
+ "alloy-primitives",
  "chio-core-types",
  "chio-credit",
  "serde",
@@ -5837,7 +5880,7 @@ dependencies = [
  "diatomic-waker",
  "futures-core",
  "pin-project-lite",
- "spin 0.10.0",
+ "spin 0.10.1",
 ]
 
 [[package]]
@@ -6265,7 +6308,7 @@ dependencies = [
  "hash32",
  "rustc_version 0.4.1",
  "serde",
- "spin 0.9.8",
+ "spin 0.9.9",
  "stable_deref_trait",
 ]
 
@@ -7534,7 +7577,7 @@ version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
 dependencies = [
- "spin 0.9.8",
+ "spin 0.9.9",
 ]
 
 [[package]]
@@ -11338,18 +11381,18 @@ dependencies = [
 
 [[package]]
 name = "spin"
-version = "0.9.8"
+version = "0.9.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6980e8d7511241f8acf4aebddbb1ff938df5eebe98691418c4468d0b72a96a67"
+checksum = "3763264f6b73151db08c50ff20d7d8a0b8796e021cdea7ceedad07b80155fa0e"
 dependencies = [
  "lock_api",
 ]
 
 [[package]]
 name = "spin"
-version = "0.10.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d5fe4ccb98d9c292d56fec89a5e07da7fc4cf0dc11e156b41793132775d3e591"
+checksum = "023a211cb3138dbc438680b32560ad89f699977624c9f8dbb95a47d5b4c07dd3"
 
 [[package]]
 name = "spki"

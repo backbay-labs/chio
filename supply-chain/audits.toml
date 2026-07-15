@@ -1045,6 +1045,18 @@ criteria = "safe-to-deploy"
 version = "0.10.9"
 notes = "cargo-vet drift closure. Reviewed for current workspace use and required cargo-vet criterion; deeper supplier evidence remains tracked separately."
 
+[[audits.spin]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+delta = "0.9.8 -> 0.9.9"
+notes = "Local cargo-vet review of the full published-source diff after upstream yanked 0.9.8. Single fix for the disclosed double-drop unsoundness in Once::force_into_inner (self is wrapped in ManuallyDrop before the inner value is read out) plus regression tests; remaining changes are cargo publish manifest normalization and a dev-only lockfile refresh. No new dependencies, no build script, no new unsafe surface."
+
+[[audits.spin]]
+who = "Chio supply-chain reviewer"
+criteria = "safe-to-deploy"
+delta = "0.10.0 -> 0.10.1"
+notes = "Local cargo-vet review of the full published-source diff after upstream yanked 0.10.0. Same double-drop fix as the 0.9.9 release (ManuallyDrop in Once::force_into_inner) plus a regression test; remaining changes are cargo publish manifest normalization and a dev-only lockfile refresh. No new dependencies, no build script, no new unsafe surface."
+
 [[audits.subtle]]
 who = "Chio supply-chain reviewer"
 criteria = "safe-to-deploy"

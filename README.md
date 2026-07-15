@@ -180,11 +180,8 @@ claude plugin marketplace add backbay-labs/chio-claude-code-plugin
 claude plugin install chio@chio
 ```
 
-**Hermes** ([chio-hermes](docs/integrations/HERMES.md)) installs from PyPI:
-
-```sh
-pip install chio-hermes
-```
+**Hermes** ([chio-hermes](docs/integrations/HERMES.md)) is not yet published to PyPI;
+until it ships, follow the source install in the integration guide.
 
 Enable the plugin and select its toolset in `~/.hermes/config.yaml` (the `toolsets` entry is
 required, otherwise the `chio_*` tools never surface):
@@ -322,7 +319,7 @@ The workspace ships 100+ crates across 11 groups.
 | `core` | Shared types (capabilities, receipts, canonical JSON, signing), errors, adversarial suite |
 | `kernel` | Capability validation, guard pipeline, receipt signing, runtime and platform variants |
 | `guards` | Native, data-layer, WASM, and external guards, plus HushSpec policy and the guard registry |
-| `protocol` | The 27 protocol and provider edges (MCP, A2A, ACP, AG-UI, OpenAPI, provider dialects, Tower, Envoy) |
+| `protocol` | The 27 protocol and provider edges (MCP, A2A, ACP-Client, AG-UI, OpenAPI, provider dialects, Tower, Envoy) |
 | `economy` | Metering, budgets, pricing, markets, credit, settlement, anchoring, web3 bindings |
 | `trust` | `did:chio`, credentials and passports, federation, governance, reputation, attestation, TEE, model cards |
 | `observability` | SIEM export, lineage, log redaction, metrics, OTel receipt export |
@@ -340,13 +337,13 @@ reverse proxy that protects HTTP APIs with Chio receipts), and the libraries `ch
 
 One kernel. Every major agent-interop protocol, eight provider tool-call dialects, eight
 language SDKs, and 60+ framework, runtime, and infrastructure integrations. Chio wraps
-existing ecosystems instead of replacing them: MCP, A2A, ACP, AG-UI, OpenAPI, and provider
+existing ecosystems instead of replacing them: MCP, A2A, ACP-Client, AG-UI, OpenAPI, and provider
 tool formats become governed Chio tool servers, while the kernel keeps dispatch and receipt
 authority for the surfaces it mediates.
 
 | Layer | Surfaces |
 | --- | --- |
-| **Protocols** | MCP &middot; A2A &middot; ACP &middot; AG-UI &middot; OpenAPI&rarr;MCP &middot; Envoy/Istio `ext_authz` &middot; Tower |
+| **Protocols** | MCP &middot; A2A &middot; ACP-Client &middot; AG-UI &middot; OpenAPI&rarr;MCP &middot; Envoy/Istio `ext_authz` &middot; Tower |
 | **Provider dialects** | Anthropic &middot; Bedrock &middot; OpenAI\* &middot; Gemini &middot; Groq &middot; Cohere &middot; Mistral &middot; Ollama |
 | **Agent frameworks** | Hermes &middot; LangChain &middot; LangGraph &middot; LlamaIndex &middot; CrewAI &middot; AutoGen &middot; Vercel AI SDK |
 | **Language SDKs** | TypeScript &middot; Python &middot; Go &middot; Rust &middot; C++ &middot; JVM/Kotlin &middot; Swift &middot; .NET |
@@ -370,8 +367,8 @@ authority for the surfaces it mediates.
 | Hosted / Remote MCP | `chio-hosted-mcp`, `chio-mcp-remote` | Hosted and remote MCP runtime surfaces | Shipping |
 | A2A adapter | `chio-a2a-adapter` | A2A to Chio: agent-card discovery + `SendMessage` mediation | Shipping |
 | A2A edge | `chio-a2a-edge` | Exposes Chio tools as blocking A2A skills | Shipping |
-| ACP edge | `chio-acp-edge` | Exposes Chio tools as ACP capabilities with bridge-fidelity assessment | Shipping |
-| ACP proxy | `chio-acp-proxy` | Enforces Chio access control on ACP agent sessions | Shipping |
+| ACP-Client edge | `chio-acp-edge` | Exposes Chio tools as ACP-Client capabilities with bridge-fidelity assessment | Shipping |
+| ACP-Client proxy | `chio-acp-proxy` | Enforces Chio access control on ACP-Client agent sessions | Shipping |
 | AG-UI proxy | `chio-ag-ui-proxy` | Capability-validated interception of agent-to-UI event streams | Shipping |
 | OpenAPI | `chio-openapi` | OpenAPI 3.x spec parser to Chio tool manifest | Shipping |
 | OpenAPI to MCP | `chio-openapi-mcp-bridge` | Exposes Chio-governed HTTP APIs as MCP tool surfaces | Shipping |

@@ -623,7 +623,7 @@ Commit: `feat(spec): define aggregate budgets and threshold approvals`
 
 **Files:**
 
-- Modify kernel request construction in MCP, A2A, ACP, OpenAI, and Tower crates under `crates/protocol/`
+- Modify kernel request construction in MCP, A2A, ACP-Client, OpenAI, and Tower crates under `crates/protocol/`
 - Modify browser, mobile, C++ FFI, Python, TypeScript, and Go SDK request models
 - Modify cross-protocol fidelity reporting where a protocol cannot carry the extension
 
@@ -639,7 +639,7 @@ Commit: `feat(spec): define aggregate budgets and threshold approvals`
 - [ ] Preserve combined capture metadata and authorizing-capability digests without inventing an adapter-local revocation check.
 - [ ] Report truthful bridge fidelity for unsupported external protocol surfaces.
 - [ ] Apply negotiated feature checks before adapter dispatch.
-- [ ] Add end-to-end tests for native, MCP, A2A, and ACP paths; add explicit rejection tests for any unsupported adapter.
+- [ ] Add end-to-end tests for native, MCP, A2A, and ACP-Client paths; add explicit rejection tests for any unsupported adapter.
 
 Commit: `feat(protocol): carry aggregate budgets and approval sets`
 

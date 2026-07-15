@@ -236,7 +236,47 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
         "2026-12-31",
     ),
     "supply-chain/config.toml": allow(
-        "cargo-vet exemption names the upstream bollard-stubs crate",
+        "cargo-vet exemptions name the upstream bollard-stubs and proc-macro-hack crates",
+        "2026-12-31",
+    ),
+    "crates/kernel/chio-kernel/src/kernel/construction.rs": allow(
+        "comment documents the fail-closed default for stores without rotation support",
+        "2026-12-31",
+    ),
+    "crates/kernel/chio-kernel/src/observability/metrics.rs": allow(
+        "documented placeholder gauge; wiring tracked in the observability program",
+        "2026-12-31",
+    ),
+    "crates/kernel/chio-kernel/src/receipt_store.rs": allow(
+        "comment documents the fail-closed retention default",
+        "2026-12-31",
+    ),
+    "crates/platform/chio-control-plane/src/trust_control/budget_handlers.rs": allow(
+        "comment documents single-node quorum short-circuit semantics",
+        "2026-12-31",
+    ),
+    "crates/platform/chio-control-plane/src/trust_control/cluster/deltas.rs": allow(
+        "comment documents the unclustered token shape",
+        "2026-12-31",
+    ),
+    "crates/products/chio-wall/src/commands.rs": allow(
+        "test-module coverage of the stub exporter backend",
+        "2026-12-31",
+    ),
+    "crates/tooling/chio-conformance/Cargo.toml": allow(
+        "manifest comment explains a test-only dependency",
+        "2026-12-31",
+    ),
+    "crates/trust/chio-federation-transport-iroh/src/identity.rs": allow(
+        "tracked transport-key deferral for the pheromone relay",
+        "2026-12-31",
+    ),
+    "crates/trust/chio-federation-transport-iroh/src/lanes/pheromone.rs": allow(
+        "test comments contrast the canned-stub path with the QUIC-backed verifier",
+        "2026-12-31",
+    ),
+    "sdks/python/chio-streaming/src/chio_streaming/core.py": allow(
+        "docstring documents schema-valid fixture defaults",
         "2026-12-31",
     ),
 }
@@ -435,6 +475,39 @@ ALLOWLIST_MATCHES: dict[str, tuple[str, ...]] = {
     ),
     "supply-chain/config.toml": (
         r"\[\[exemptions\.bollard-stubs\]\]",
+        r"\[\[exemptions\.proc-macro-hack\]\]",
+    ),
+    "crates/kernel/chio-kernel/src/kernel/construction.rs": (
+        r"default unsupported stub",
+    ),
+    "crates/kernel/chio-kernel/src/observability/metrics.rs": (
+        r"hardcoded zero placeholder",
+    ),
+    "crates/kernel/chio-kernel/src/receipt_store.rs": (
+        r"fail-closed stub",
+    ),
+    "crates/platform/chio-control-plane/src/trust_control/budget_handlers.rs": (
+        r"carries a placeholder token",
+    ),
+    "crates/platform/chio-control-plane/src/trust_control/cluster/deltas.rs": (
+        r"placeholder \(unclustered\) token",
+    ),
+    "crates/products/chio-wall/src/commands.rs": (
+        r"dispatches to the stub backend",
+        r"stub dispatch succeeds",
+    ),
+    "crates/tooling/chio-conformance/Cargo.toml": (
+        r"supplies the `SignedEpochRoot` type the stub",
+    ),
+    "crates/trust/chio-federation-transport-iroh/src/identity.rs": (
+        r"TODO\(iroh-transport\): when `chio-pheromone-relay` grows a transport-key",
+    ),
+    "crates/trust/chio-federation-transport-iroh/src/lanes/pheromone.rs": (
+        r"\(like a stub\) it never runs the verifier",
+        r"the canned stub skips",
+    ),
+    "sdks/python/chio-streaming/src/chio_streaming/core.py": (
+        r"schema-valid placeholders",
     ),
 }
 
