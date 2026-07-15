@@ -11,9 +11,12 @@
 
 use std::path::Path;
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
-use chio_chaos::{chaos_receipt, check_durable_acks, ChaosError, ChaosRng};
+use chio_chaos::{
+    ack_line, chaos_iterations, chaos_receipt, chaos_seed, check_durable_acks, wait_until_healthy,
+    ChaosError, ChaosRng,
+};
 use chio_store_sqlite::SqliteReceiptStore;
 use chio_test_support::prelude::*;
 
@@ -29,39 +32,6 @@ const DEFAULT_ITERATIONS: u64 = 5;
 /// seeded kill delay lands. Raising this is the fix if `InjectionNoOp` fires.
 const MAX_RECEIPTS: u64 = 1_000_000;
 
-fn seed() -> u64 {
-    match std::env::var("CHIO_CHAOS_SEED") {
-        Ok(raw) => parse_seed(&raw),
-        Err(_) => DEFAULT_SEED,
-    }
-}
-
-fn parse_seed(raw: &str) -> u64 {
-    let trimmed = raw.trim();
-    let parsed = if let Some(hex) = trimmed
-        .strip_prefix("0x")
-        .or_else(|| trimmed.strip_prefix("0X"))
-    {
-        u64::from_str_radix(hex, 16)
-    } else {
-        trimmed.parse::<u64>()
-    };
-    parsed.test_expect("CHIO_CHAOS_SEED must be a u64 (decimal or 0x-hex)")
-}
-
-fn iterations() -> u64 {
-    match std::env::var("CHIO_CHAOS_ITERATIONS") {
-        Ok(raw) => {
-            let parsed: u64 = raw
-                .trim()
-                .parse()
-                .test_expect("CHIO_CHAOS_ITERATIONS must be a u64");
-            parsed.max(1)
-        }
-        Err(_) => DEFAULT_ITERATIONS,
-    }
-}
-
 /// SIGKILL the append/flush/ack victim mid-run, round after round against one
 /// reused store, and prove that no acknowledged receipt is ever lost after
 /// crash recovery.
@@ -69,9 +39,11 @@ fn iterations() -> u64 {
 /// Plan-named alias: `chaos_receipt_log_unavailable_preserves_merkle_head`.
 #[test]
 fn chaos_kill_mid_append_preserves_durable_acks() {
-    let seed = seed();
+    let seed =
+        chaos_seed(DEFAULT_SEED).test_expect("CHIO_CHAOS_SEED must be a u64 (decimal or 0x-hex)");
     eprintln!("chaos seed: {seed}");
-    let rounds = iterations();
+    let rounds =
+        chaos_iterations(DEFAULT_ITERATIONS).test_expect("CHIO_CHAOS_ITERATIONS must be a u64");
     let mut rng = ChaosRng::new(seed);
 
     let dir = tempfile::tempdir().test_unwrap();
@@ -150,7 +122,9 @@ fn assert_round_invariants(db_path: &Path, ack_path: &Path, round: u64) {
     // 2. Health reports a verified, unpoisoned head (bounded: the writer seeds
     //    its head asynchronously, so a store sampled the instant after reopen can
     //    still be head-poisoned).
-    wait_until_healthy(&store, round);
+    if let Err(error) = wait_until_healthy(&store, &format!("round {round}")) {
+        panic!("{error}");
+    }
 
     // 3. No acknowledged receipt was lost.
     if let Err(error) = check_durable_acks(&store, ack_path) {
@@ -166,42 +140,6 @@ fn assert_round_invariants(db_path: &Path, ack_path: &Path, round: u64) {
     store
         .flush_receipt_writes()
         .test_expect("flush recovery probe receipt");
-}
-
-/// Bound on how long recovery may take to seed a verified head before the store
-/// is considered bricked.
-const RECOVERY_HEALTH_TIMEOUT: Duration = Duration::from_secs(10);
-
-/// Poll interval while waiting for the async verified-head seed to clear.
-const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(5);
-
-/// Wait for the reopened store to report a verified, unpoisoned head.
-///
-/// The commit writer seeds its verified head on its actor thread and starts
-/// serving-closed (head-poisoned) until that seed completes, so a store sampled
-/// the instant after reopen can still report unhealthy. Recovery's invariant is
-/// that the store becomes healthy within a bounded window, not that it is
-/// healthy on the first sample. A store still unhealthy at the deadline is a
-/// real recovery brick and fails closed.
-fn wait_until_healthy(store: &SqliteReceiptStore, round: u64) {
-    let deadline = Instant::now() + RECOVERY_HEALTH_TIMEOUT;
-    loop {
-        let health = store
-            .receipt_store_health()
-            .test_expect("sample receipt store health");
-        if health.healthy {
-            return;
-        }
-        if Instant::now() >= deadline {
-            panic!(
-                "{}",
-                ChaosError::InvariantViolated(format!(
-                    "round {round}: store still unhealthy {RECOVERY_HEALTH_TIMEOUT:?} after recovery: {health:?}"
-                ))
-            );
-        }
-        std::thread::sleep(HEALTH_POLL_INTERVAL);
-    }
 }
 
 /// The durable-ack checker must catch a fabricated acknowledgement for a receipt
@@ -223,7 +161,7 @@ fn ack_checker_detects_fabricated_loss() {
             .append_chio_receipt_returning_seq(&receipt)
             .test_unwrap();
         store.flush_receipt_writes().test_unwrap();
-        honest.push_str(&format!("ack {seq}\n"));
+        honest.push_str(&ack_line(seq));
     }
     std::fs::write(&ack_path, &honest).test_unwrap();
 
@@ -233,7 +171,7 @@ fn ack_checker_detects_fabricated_loss() {
     // Fabricate an ack for a receipt beyond the committed floor and confirm the
     // checker reports the loss.
     let committed = store.latest_committed_entry_seq().test_unwrap();
-    let fabricated = format!("{honest}ack {}\n", committed + 10);
+    let fabricated = format!("{honest}{}", ack_line(committed + 10));
     let fabricated_path = dir.path().join("acks-fabricated.log");
     std::fs::write(&fabricated_path, fabricated).test_unwrap();
 

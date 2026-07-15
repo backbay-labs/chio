@@ -17,6 +17,7 @@
 #![forbid(unsafe_code)]
 
 use std::path::Path;
+use std::time::{Duration, Instant};
 
 use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::body::{ChioReceipt, ChioReceiptBody};
@@ -197,6 +198,80 @@ fn parse_ack_seq(line: &str) -> Result<u64, ChaosError> {
     line.strip_prefix("ack ")
         .and_then(|rest| rest.trim().parse::<u64>().ok())
         .ok_or_else(|| ChaosError::InvariantViolated(format!("malformed ack line: {line:?}")))
+}
+
+/// Bound on how long a store may take to seed a verified head before it is
+/// considered bricked.
+const RECOVERY_HEALTH_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Poll interval while waiting for the async verified-head seed to clear.
+const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(5);
+
+/// Wait for a store to report a verified, unpoisoned head.
+///
+/// The commit writer seeds its verified head on its actor thread and starts
+/// serving-closed (head-poisoned) until that seed completes, so a store sampled
+/// the instant after a reopen (or a reseed under retention) can still report
+/// unhealthy. The invariant is that health becomes true within a bounded window,
+/// not that it is true on the first sample. A store still unhealthy at the
+/// deadline fails closed with a typed [`ChaosError::InvariantViolated`] carrying
+/// `context`.
+pub fn wait_until_healthy(store: &SqliteReceiptStore, context: &str) -> Result<(), ChaosError> {
+    let deadline = Instant::now() + RECOVERY_HEALTH_TIMEOUT;
+    loop {
+        let health = store
+            .receipt_store_health()
+            .map_err(|error| ChaosError::InvariantViolated(format!("{context}: {error}")))?;
+        if health.healthy {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(ChaosError::InvariantViolated(format!(
+                "{context}: store still unhealthy {RECOVERY_HEALTH_TIMEOUT:?} after recovery: {health:?}"
+            )));
+        }
+        std::thread::sleep(HEALTH_POLL_INTERVAL);
+    }
+}
+
+/// Parse a `CHIO_CHAOS_SEED` value: decimal, or hex when prefixed with `0x`/`0X`.
+fn parse_chaos_seed(raw: &str) -> Result<u64, ChaosError> {
+    let trimmed = raw.trim();
+    let parsed = if let Some(hex) = trimmed
+        .strip_prefix("0x")
+        .or_else(|| trimmed.strip_prefix("0X"))
+    {
+        u64::from_str_radix(hex, 16)
+    } else {
+        trimmed.parse::<u64>()
+    };
+    parsed.map_err(|_| {
+        ChaosError::Boot("CHIO_CHAOS_SEED must be a u64 (decimal or 0x-hex)".to_string())
+    })
+}
+
+/// Read the chaos RNG seed from `CHIO_CHAOS_SEED` (decimal or `0x`-prefixed
+/// hex), or `default` if the variable is unset.
+pub fn chaos_seed(default: u64) -> Result<u64, ChaosError> {
+    match std::env::var("CHIO_CHAOS_SEED") {
+        Ok(raw) => parse_chaos_seed(&raw),
+        Err(_) => Ok(default),
+    }
+}
+
+/// Read the chaos round count from `CHIO_CHAOS_ITERATIONS` (floored at 1), or
+/// `default` if the variable is unset.
+pub fn chaos_iterations(default: u64) -> Result<u64, ChaosError> {
+    match std::env::var("CHIO_CHAOS_ITERATIONS") {
+        Ok(raw) => {
+            let parsed: u64 = raw
+                .trim()
+                .parse()
+                .map_err(|_| ChaosError::Boot("CHIO_CHAOS_ITERATIONS must be a u64".to_string()))?;
+            Ok(parsed.max(1))
+        }
+        Err(_) => Ok(default),
+    }
 }
 
 #[cfg(test)]

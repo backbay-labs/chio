@@ -16,7 +16,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use chio_chaos::{ack_line, chaos_receipt, check_durable_acks, ChaosError};
+use chio_chaos::{ack_line, chaos_receipt, check_durable_acks, wait_until_healthy, ChaosError};
 use chio_kernel::ReceiptStoreError;
 use chio_store_sqlite::{SqlitePoolConfig, SqliteReceiptStore};
 
@@ -28,37 +28,6 @@ fn boot<E: std::fmt::Display>(context: &str) -> impl Fn(E) -> ChaosError + '_ {
 /// Map any `Display` error into an invariant violation with context.
 fn invariant<E: std::fmt::Display>(context: &str) -> impl Fn(E) -> ChaosError + '_ {
     move |error| ChaosError::InvariantViolated(format!("{context}: {error}"))
-}
-
-/// Bound on how long a store may take to seed a verified head before it is
-/// considered bricked.
-const RECOVERY_HEALTH_TIMEOUT: Duration = Duration::from_secs(10);
-
-/// Poll interval while waiting for the async verified-head seed to clear.
-const HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(5);
-
-/// Wait for a store to report a verified, unpoisoned head.
-///
-/// The commit writer seeds its verified head on its actor thread and starts
-/// serving-closed (head-poisoned) until that seed completes, so a store sampled
-/// the instant after a reopen (or a reseed under retention) can still report
-/// unhealthy. The invariant is that health becomes true within a bounded window,
-/// not that it is true on the first sample. A store still unhealthy at the
-/// deadline fails closed.
-fn wait_until_healthy(store: &SqliteReceiptStore, context: &str) -> Result<(), ChaosError> {
-    let deadline = Instant::now() + RECOVERY_HEALTH_TIMEOUT;
-    loop {
-        let health = store.receipt_store_health().map_err(invariant(context))?;
-        if health.healthy {
-            return Ok(());
-        }
-        if Instant::now() >= deadline {
-            return Err(ChaosError::InvariantViolated(format!(
-                "{context}: store still unhealthy {RECOVERY_HEALTH_TIMEOUT:?} after recovery: {health:?}"
-            )));
-        }
-        std::thread::sleep(HEALTH_POLL_INTERVAL);
-    }
 }
 
 /// A store growth cap expressed as construction options.
