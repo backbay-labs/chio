@@ -2836,6 +2836,7 @@ dependencies = [
  "chio-loadgen",
  "chio-store-sqlite",
  "chio-test-support",
+ "rusqlite",
  "serde",
  "serde_json",
  "tempfile",

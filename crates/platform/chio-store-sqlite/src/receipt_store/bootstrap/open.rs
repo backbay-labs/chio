@@ -82,7 +82,10 @@ const DISPATCH_INTENT_JOURNAL_DDL: &str = r#"
         ON chio_dispatch_intents(state);
 "#;
 
-fn configure_sqlite_connection(connection: &mut Connection) -> Result<(), ReceiptStoreError> {
+fn configure_sqlite_connection(
+    connection: &mut Connection,
+    max_page_count: Option<u32>,
+) -> Result<(), ReceiptStoreError> {
     connection.execute_batch(
         r#"
         PRAGMA journal_mode = WAL;
@@ -93,6 +96,13 @@ fn configure_sqlite_connection(connection: &mut Connection) -> Result<(), Receip
         "#,
     )?;
     assert_sqlite_durability_pragmas(connection)?;
+    // Operational growth bound (see `SqlitePoolConfig::max_page_count`): cap the
+    // database page count so a runaway or hostile writer cannot exhaust the
+    // volume. A write past the cap fails closed with SQLITE_FULL. `None` leaves
+    // SQLite's built-in page ceiling untouched.
+    if let Some(max_page_count) = max_page_count {
+        connection.pragma_update(None, "max_page_count", max_page_count)?;
+    }
     Ok(())
 }
 
@@ -223,7 +233,7 @@ impl SqliteReceiptStore {
                 RECEIPT_STORE_LEGACY_ANCHOR_TABLES,
             )
             .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
-            configure_sqlite_connection(&mut connection)?;
+            configure_sqlite_connection(&mut connection, options.pool.max_page_count)?;
             if on_disk_version < RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION {
                 // Additive migration up to the supported revision (currently
                 // only the dispatch-intent journal table), then stamp it:
@@ -247,12 +257,14 @@ impl SqliteReceiptStore {
                 options.pool.reader_pool_max_size,
                 "reader",
                 connection_flags,
+                options.pool.max_page_count,
             )?;
             let writer_pool = build_receipt_pool(
                 path,
                 options.pool.writer_pool_max_size,
                 "writer",
                 connection_flags,
+                options.pool.max_page_count,
             )?;
 
             let instance_token = fresh_instance_token();
@@ -284,7 +296,7 @@ impl SqliteReceiptStore {
             RECEIPT_STORE_LEGACY_ANCHOR_TABLES,
         )
         .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
-        configure_sqlite_connection(&mut connection)?;
+        configure_sqlite_connection(&mut connection, options.pool.max_page_count)?;
         connection.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS chio_tool_receipts (
@@ -1240,12 +1252,14 @@ impl SqliteReceiptStore {
             options.pool.reader_pool_max_size,
             "reader",
             connection_flags,
+            options.pool.max_page_count,
         )?;
         let writer_pool = build_receipt_pool(
             path,
             options.pool.writer_pool_max_size,
             "writer",
             connection_flags,
+            options.pool.max_page_count,
         )?;
 
         let instance_token = fresh_instance_token();
@@ -1273,6 +1287,7 @@ impl SqliteReceiptStore {
             crate::SqlitePoolConfig {
                 reader_pool_max_size,
                 writer_pool_max_size,
+                max_page_count: None,
             },
         )
     }
@@ -1343,6 +1358,7 @@ fn build_receipt_pool(
     max_size: u32,
     pool_name: &str,
     flags: Option<rusqlite::OpenFlags>,
+    max_page_count: Option<u32>,
 ) -> Result<Pool<SqliteConnectionManager>, ReceiptStoreError> {
     if max_size == 0 {
         return Err(ReceiptStoreError::Pool(format!(
@@ -1353,8 +1369,8 @@ fn build_receipt_pool(
     if let Some(flags) = flags {
         manager = manager.with_flags(flags);
     }
-    let manager = manager.with_init(|connection| {
-        configure_sqlite_connection(connection).map_err(|error| match error {
+    let manager = manager.with_init(move |connection| {
+        configure_sqlite_connection(connection, max_page_count).map_err(|error| match error {
             ReceiptStoreError::Sqlite(error) => error,
             other => rusqlite::Error::InvalidParameterName(other.to_string()),
         })
