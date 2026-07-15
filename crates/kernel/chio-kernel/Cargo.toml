@@ -22,7 +22,6 @@ name = "chio_kernel"
 # the box.
 default = ["delegation"]
 dhat-heap = []
-sustained-p99-nightly = []
 otel = ["dep:opentelemetry-semantic-conventions"]
 tokio-console-smoke = ["tokio/tracing"]
 # Hybrid signing path: pulls the pq cargo feature on chio-core-types so
@@ -147,10 +146,6 @@ required-features = ["dhat-heap"]
 [[bench]]
 name = "dispatch_deny"
 harness = false
-
-[[bench]]
-name = "sustained_p99_30min"
-required-features = ["sustained-p99-nightly"]
 
 # Property-based replay-invariance suite (signing-is-a-function,
 # replay-root-is-idempotent, shuffle-preserves-bytes). Cargo would auto-

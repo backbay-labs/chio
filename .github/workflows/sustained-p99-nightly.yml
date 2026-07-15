@@ -31,7 +31,7 @@ jobs:
           toolchain: stable
 
       - name: Run sustained kernel p99 lane
-        run: cargo bench -p chio-kernel --features sustained-p99-nightly --bench sustained_p99_30min -- --test --nocapture
+        run: cargo run -p chio-loadgen --release --bin sustained
 
       - name: Run store write throughput bench smoke
         run: cargo bench -p chio-store-sqlite --bench store_receipt_write_throughput -- --test
