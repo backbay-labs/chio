@@ -38,7 +38,13 @@ pq = ["chio-core-types/pq", "chio-core/pq"]
 # data plane.
 delegation = ["chio-core-types/delegation"]
 
-[dependencies]
+# Under `--cfg loom` the crate compiles to an empty lib (see src/lib.rs): the
+# loom interleaving models in tests/loom_concurrency.rs are self-contained and
+# link no kernel type, and the real dependency graph pulls hyper-util, which
+# cannot build under `--cfg loom` because tokio gates `tokio::net` out. Gating
+# the runtime deps behind `cfg(not(loom))` keeps normal builds byte-identical
+# while letting the loom lane compile.
+[target.'cfg(not(loom))'.dependencies]
 chio-appraisal = { workspace = true }
 chio-bounded = { workspace = true }
 chio-core = { workspace = true }
@@ -80,15 +86,20 @@ base64 = { workspace = true }
 # Linux-only: read the real page size via sysconf(_SC_PAGESIZE) for the RSS
 # soft-ceiling sampler. Already present in the workspace lockfile transitively,
 # so this adds no new supply-chain surface.
-[target.'cfg(target_os = "linux")'.dependencies]
+[target.'cfg(all(target_os = "linux", not(loom)))'.dependencies]
 libc = "0.2"
 
+# `loom` is the only dev-dependency that must survive `--cfg loom`; the rest
+# pull the hyper-util-bearing graph and are unused by the loom models, so they
+# are gated to normal builds. See the runtime-deps note above.
 [dev-dependencies]
+loom = { workspace = true }
+
+[target.'cfg(not(loom))'.dev-dependencies]
 chio-store-sqlite = { workspace = true }
 chio-test-support = { workspace = true }
 criterion = { workspace = true }
 dhat = { workspace = true }
-loom = { workspace = true }
 # proptest = "1.10" (via workspace.dependencies). Used by:
 # - tests/property_budget_store.rs
 # - tests/replay_proptest.rs (replay-invariance suite)

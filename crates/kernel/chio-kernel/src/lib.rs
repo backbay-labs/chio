@@ -20,6 +20,12 @@
 //! PID, address, or signing key.
 
 #![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
+// Under `--cfg loom` this crate carries no items: the interleaving models in
+// tests/loom_concurrency.rs link no kernel type, and the real dependency graph
+// (Cargo.toml gates it behind `cfg(not(loom))`) cannot build under loom because
+// tokio drops `tokio::net` and hyper-util then fails to compile. Normal builds
+// are byte-identical.
+#![cfg(not(loom))]
 
 pub mod approval;
 pub mod approval_channels;
