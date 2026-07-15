@@ -14,6 +14,57 @@ writer connection (a group-commit actor for the receipt store, a mutex-guarded
 connection for the smaller stores) serializes every mutation, while an
 8-connection reader pool serves concurrent queries against the same file.
 
+## Diagram
+
+```mermaid
+flowchart TD
+    Kernel["Chio kernel"]
+
+    subgraph traits["Storage traits (chio-kernel / chio-credit / chio-settle)"]
+        TReceipt["ReceiptStore (trait)"]
+        TBudget["BudgetStore (trait)"]
+        TState["ApprovalStore RevocationStore ExecutionNonceStore CapabilityAuthority MemoryProvenanceStore (traits)"]
+        TExt["IouEnvelopeStore DeadLetterStore (external traits)"]
+    end
+
+    subgraph impls["SQLite implementations"]
+        IReceipt["SqliteReceiptStore"]
+        IBudget["SqliteBudgetStore"]
+        IState["Sqlite state stores"]
+        IExt["SqliteIouEnvelopeStore SqliteDeadLetterStore"]
+    end
+
+    subgraph storage["Connection layer"]
+        Writer["Group-commit writer actor (single thread)"]
+        Mutex["Mutex-guarded writer connection"]
+        Readers["r2d2 reader pool (8 connections)"]
+        Schema["check_schema_version and migrations"]
+        Db[("SQLite file")]
+    end
+
+    Kernel -->|read and write| TReceipt
+    Kernel --> TBudget
+    Kernel --> TState
+    Kernel --> TExt
+
+    TReceipt -.impl.-> IReceipt
+    TBudget -.impl.-> IBudget
+    TState -.impl.-> IState
+    TExt -.impl.-> IExt
+
+    IReceipt -->|append| Writer
+    IReceipt -->|query| Readers
+    IBudget -->|charge txn| Mutex
+    IState -->|write| Mutex
+    IState -->|read| Readers
+    IExt -->|persist| Mutex
+
+    Writer -->|group commit txn| Db
+    Mutex -->|immediate txn| Db
+    Readers -->|SELECT| Db
+    Schema -->|verified open| Db
+```
+
 ## Module map
 
 | Path | Responsibility |

@@ -15,6 +15,54 @@ when a cursor store is configured, the read cursor can advance only to the
 slowest exporter's acknowledged high-water mark, so a failing exporter forces
 redelivery instead of silently losing receipts.
 
+## Diagram
+
+```mermaid
+flowchart LR
+    subgraph src["Source (read only)"]
+        RDB["Kernel receipt DB"]
+    end
+    subgraph ingest["Ingest and normalize"]
+        POLL["Cursor pull poll loop"]
+        SE["SiemEvent normalize and reverify"]
+        DL["Dead letters (siem_dead_letters)"]
+    end
+    subgraph dispatch["Manager dispatch"]
+        FANOUT["Fan out retry and backoff"]
+        CUR["Cursor store (acked_seq)"]
+        DLQ["In memory dead letter queue"]
+    end
+    subgraph sinks["SOC export sinks"]
+        SPLUNK["Splunk HEC NDJSON"]
+        ELASTIC["Elasticsearch bulk NDJSON"]
+        DATADOG["Datadog Log Intake v2"]
+        SUMO["Sumo Logic HTTP Source"]
+        WEBHOOK["Webhook JSON POST"]
+        OCSFX["OCSF exporter (class 3002)"]
+        CEFX["CEF v0 text"]
+    end
+    subgraph alerting["Alerting overlay"]
+        ALERT["Alerting exporter severity gate"]
+        PAGE["PagerDuty and OpsGenie"]
+    end
+    RDB -->|"raw_json rows"| POLL
+    POLL -->|"parse ok"| SE
+    POLL -->|"malformed"| DL
+    SE -->|"batch"| FANOUT
+    FANOUT --> SPLUNK
+    FANOUT --> ELASTIC
+    FANOUT --> DATADOG
+    FANOUT --> SUMO
+    FANOUT --> WEBHOOK
+    FANOUT --> OCSFX
+    FANOUT --> CEFX
+    FANOUT -->|"severity gate"| ALERT
+    ALERT --> PAGE
+    FANOUT -->|"acked seq"| CUR
+    FANOUT -->|"export err"| DLQ
+    CUR -->|"min ack resume"| POLL
+```
+
 ## Module map
 
 | Path | Responsibility |

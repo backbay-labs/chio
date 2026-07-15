@@ -16,6 +16,59 @@ engine or a specific tool-hosting model. Portable verifier primitives
 down in `chio-kernel-core`; this crate is the hosted enforcement layer built
 on top of them.
 
+## Diagram
+
+```mermaid
+flowchart TD
+    subgraph agentzone["Untrusted agent"]
+        agent["Agent process (no kernel PID, address, or key)"]
+    end
+
+    agent -->|"tool call"| transport["Transport (length-prefixed canonical JSON)"]
+
+    subgraph tcb["chio-kernel trusted computing base"]
+        estop["Emergency stop and RSS shed"]
+        capval["Capability validation (signature, time, revocation, lineage)"]
+        grant["Grant matching, DPoP, governed admission"]
+        guards["Guard pipeline and runtime admission hook"]
+        budget["Budget admission and execution-nonce mint"]
+        dispatch["Tool dispatch (per-server budget, bounded stream)"]
+        postinv["Post-invocation pipeline (allow, block, redact, escalate)"]
+        signing["Receipt signing (WYSIWYS), persist, settle"]
+    end
+
+    transport --> estop
+    estop -->|"tripped"| signing
+    estop -->|"clear"| capval
+    capval -->|"deny"| signing
+    capval -->|"allow"| grant
+    grant -->|"deny"| signing
+    grant -->|"allow"| guards
+    guards -->|"deny or error"| signing
+    guards -->|"allow"| budget
+    budget -->|"deny"| signing
+    budget -->|"hold"| dispatch
+    dispatch --> postinv
+    postinv --> signing
+    signing -->|"signed receipt"| transport
+
+    subgraph traits["Consumer-supplied traits"]
+        authority["CapabilityAuthority and RevocationStore"]
+        budgetstore["BudgetStore and PaymentAdapter"]
+        toolconn["ToolServerConnection"]
+        receiptstore["ReceiptStore"]
+    end
+
+    capval -.-> authority
+    budget -.-> budgetstore
+    dispatch -.-> toolconn
+    signing -.-> receiptstore
+
+    capval -.->|"verifier primitives"| core["chio-kernel-core"]
+
+    toolconn --> toolserver["Sandboxed tool servers"]
+```
+
 ## Module map
 
 ### Kernel core (`src/kernel/`)

@@ -12,6 +12,64 @@ performed by the crates it calls into (`chio-kernel`, `chio-control-plane`, and
 follows the same shape: a clap type defines the surface, a dispatch function
 routes it, and either a same-crate module or an external crate implements it.
 
+## Diagram
+
+```mermaid
+flowchart TD
+    entry["chio.rs to main.rs entry"]
+    dispatch["Cli parse, redacted tracing, Commands match"]
+
+    entry --> dispatch
+
+    subgraph edgegrp["Session and edge"]
+        sess["run / check / start"]
+        edge["mcp serve / api protect"]
+    end
+
+    subgraph trustgrp["Trust, receipts, settlement"]
+        trust["trust / receipt / evidence / reputation / settle"]
+    end
+
+    subgraph proofgrp["Proof and identity"]
+        proof["proof / commerce / passport / did / cert"]
+    end
+
+    subgraph chiogrp["chio namespaced trees"]
+        chions["federation / attest / runtime / pheromone"]
+    end
+
+    subgraph lifegrp["Guard and tooling"]
+        tools["guard / bind / conformance / arena / lineage / replay / doctor / init"]
+    end
+
+    dispatch --> sess
+    dispatch --> edge
+    dispatch --> trust
+    dispatch --> proof
+    dispatch --> chions
+    dispatch --> tools
+
+    subgraph plumbing["Shared runtime plumbing"]
+        backend["backend select: local SQLite or control-url"]
+        policy["load_policy"]
+        kernel["build_kernel"]
+        stores["configure receipt and revocation stores"]
+    end
+
+    sess --> policy
+    edge --> policy
+    trust --> backend
+    proof --> backend
+    chions --> backend
+    tools --> backend
+    policy --> kernel
+    kernel --> stores
+
+    crates["chio-kernel / chio-control-plane / chio-store-sqlite"]
+    stores --> crates
+    backend --> crates
+```
+
 ## Module map
 
 | Path | Responsibility |

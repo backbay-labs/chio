@@ -14,6 +14,59 @@ egress-contract primitives with an Axum server, SQLite-backed
 receipt/revocation persistence, and sidecar control routes for capability
 lifecycle and human-approval operations.
 
+## Diagram
+
+```mermaid
+flowchart TD
+    client["HTTP client and SDK"]
+    auth["Bearer or loopback gate"]
+
+    subgraph sgRoutes["Axum sidecar routes"]
+        proxy["ANY catch all proxy_handler"]
+        evaluate["POST /chio/evaluate"]
+        mint["POST /v1/capabilities/mint"]
+        validate["POST /v1/capabilities/validate"]
+        verifyrec["POST /v1/receipts/verify"]
+        approvals["/approvals human review"]
+    end
+
+    subgraph sgCore["Embedded trust core"]
+        evaluator["RequestEvaluator route table"]
+        authority["HttpAuthority embeds ChioKernel guard"]
+        signer["Ed25519 signer"]
+    end
+
+    subgraph sgStores["SQLite backed stores"]
+        receipts["Receipt store"]
+        revocation["Revocation store"]
+        approvalstore["Approval store"]
+    end
+
+    upstream["Upstream API"]
+
+    client -->|"data plane"| proxy
+    client -->|"unauthenticated"| evaluate
+    client -->|"unauthenticated"| verifyrec
+    client -->|"bearer or loopback"| auth
+    auth --> mint
+    auth --> validate
+    auth --> approvals
+
+    proxy -->|"revocation preflight"| revocation
+    proxy -->|"evaluate"| evaluator
+    evaluate -->|"evaluate"| evaluator
+    evaluator --> authority
+    authority -->|"sign receipt"| signer
+    authority -->|"allow forward"| upstream
+    proxy -->|"persist"| receipts
+    evaluate -->|"persist"| receipts
+
+    mint --> signer
+    validate --> revocation
+    verifyrec --> signer
+    approvals --> approvalstore
+```
+
 ## Module map
 
 | Path | Responsibility |

@@ -16,6 +16,66 @@ risk/finance) behind one crate boundary, so that `chio-cli` and the other
 product binaries have a single dependency for "run or talk to a Chio trust
 plane."
 
+## Diagram
+
+```mermaid
+flowchart TD
+    cli["Chio CLI binaries"]
+
+    subgraph compose["Local composition (lib.rs)"]
+        policy["load_policy to LoadedPolicy"]
+        build["build_kernel"]
+        configure["configure_* stores and authority"]
+        wrap["wrap_capability_authority"]
+    end
+
+    subgraph runtime["Hosted runtime"]
+        kernel["ChioKernel"]
+        guards["Guard and post-invocation pipelines"]
+        authority["Capability authority"]
+    end
+
+    subgraph stores["Store adapters"]
+        sqlite["SQLite local stores"]
+        remote["Remote HTTP store adapters"]
+    end
+
+    subgraph service["trust_control service (axum)"]
+        serve["serve_async and build_router"]
+        auth["report_validation auth and SSRF guard"]
+        handlers["Authority budget receipt passport risk handlers"]
+    end
+
+    subgraph cluster["Cluster replication"]
+        consensus["Consensus leader pick"]
+        sync["Pull based delta sync"]
+    end
+
+    client["TrustControlClient over ureq"]
+
+    cli -->|load policy| policy
+    policy -->|guard profile| build
+    build -->|install guards| kernel
+    kernel --> guards
+    build -->|attach stores| configure
+    configure -->|tier gating| wrap
+    wrap --> authority
+    kernel -->|grants| authority
+    configure -->|local| sqlite
+    configure -->|control-url| remote
+    authority -->|persist| sqlite
+    cli -->|remote ops| client
+    client -->|HTTP| serve
+    remote -->|HTTP| serve
+    serve -->|per request| auth
+    auth -->|fail closed| handlers
+    handlers --> kernel
+    handlers --> sqlite
+    serve -->|leader sync| consensus
+    consensus --> sync
+    sync -->|apply deltas| handlers
+```
+
 ## Module map
 
 | Path | Responsibility |

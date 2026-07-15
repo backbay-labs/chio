@@ -17,6 +17,54 @@ or bond impair/release), preparing the second call re-derives the same
 commitment from the caller-supplied `Prepared*` value and rejects any
 mismatch, so a tampered intermediate value cannot reach the chain.
 
+## Diagram
+
+```mermaid
+flowchart TD
+    subgraph kernel_sg["Kernel handoff"]
+        kernel["Kernel signed receipt"]
+        hook["SettlementHook observe"]
+        retry["Retry and dead letter"]
+    end
+    subgraph gate_sg["Config and transport gate"]
+        config["SettlementChainConfig validate"]
+        egress["HttpEgressContract pinned RPC"]
+    end
+    subgraph dispatch_sg["EVM escrow dispatch"]
+        prepare["prepare_web3_escrow_dispatch"]
+        ready["ensure_instruction_ready"]
+        prepared["PreparedEvmCall"]
+        submit["submit_call and confirm"]
+        finalize["finalize escrow identity"]
+    end
+    subgraph rails_sg["Alternate settlement rails"]
+        solana["Solana Ed25519"]
+        ccip["CCIP cross chain"]
+        payments["x402 EIP-3009 Circle 4337"]
+    end
+    subgraph evidence_sg["Evidence"]
+        finality["inspect_finality"]
+        artifact["Web3 settlement receipt"]
+    end
+    kernel -->|observe| hook
+    hook -->|Retryable| retry
+    hook -->|Accepted| prepare
+    config -->|validate| prepare
+    config -->|pinned dns| egress
+    prepare --> ready
+    ready --> prepared
+    prepared --> submit
+    submit -->|json rpc| egress
+    submit --> finalize
+    finalize --> finality
+    solana -->|json rpc| egress
+    solana --> finality
+    ccip -->|json rpc| egress
+    ccip --> finality
+    payments --> artifact
+    finality --> artifact
+```
+
 ## Module map
 
 | Path | Responsibility |

@@ -15,6 +15,52 @@ attacker-controlled, and malformed or unauthorized input fails closed to a
 JSON-RPC error (or an `isError: true` tool result, for authorization) before
 it reaches kernel state.
 
+## Diagram
+
+```mermaid
+flowchart TD
+    Client["MCP client (JSON-RPC 2.0)"]
+    Manifests["Validated tool manifests"]
+
+    subgraph edge["ChioMcpEdge (untrusted boundary)"]
+        Gate["Params gate and Ready check"]
+        Dispatch["handle_request dispatch"]
+        ListH["tools/list handler"]
+        Disco["McpExposedTool listings"]
+        CallH["tools/call preparation"]
+        Nested["NestedFlowClient mediation"]
+    end
+
+    subgraph kernel["ChioKernel (governed)"]
+        Auth["Authorization and guard evaluation"]
+        Receipt["Receipt signing"]
+        Metric["chio_receipt_write_total"]
+    end
+
+    subgraph upstream["Wrapped upstream"]
+        Transport["McpTransport"]
+        Server["Upstream MCP server"]
+    end
+
+    Client -->|request| Gate
+    Gate -->|Ready| Dispatch
+    Dispatch -->|tools/list| ListH
+    Manifests -->|validate_manifest| Disco
+    ListH --> Disco
+    Disco -->|tool listing| Client
+    Dispatch -->|tools/call| CallH
+    CallH -->|evaluate_tool_call| Auth
+    Auth -->|dispatch call| Server
+    Server -->|tool result| Auth
+    Auth -->|sign| Receipt
+    Receipt -->|record| Metric
+    Auth -->|MCP result| Client
+    Auth -->|sampling/roots/elicitation| Nested
+    Nested -->|forward| Client
+    Server -->|list_changed| Transport
+    Transport -->|forward| Client
+```
+
 ## Module map
 
 | Path | Responsibility |

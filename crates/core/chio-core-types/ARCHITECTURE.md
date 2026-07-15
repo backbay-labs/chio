@@ -24,6 +24,57 @@ signed, and re-derived on verification, so the crate never trusts a
 caller-supplied hash or signature in isolation from the fields it claims to
 cover.
 
+## Diagram
+
+```mermaid
+flowchart TD
+    subgraph cap["Capability family"]
+        token["CapabilityToken (Body)"]
+        scope["ChioScope and grants"]
+        atten["Attenuation (DelegationLink)"]
+        capfloor["CapabilityCryptoFloor"]
+    end
+    subgraph rcpt["Receipt family"]
+        receipt["ChioReceipt (Body)"]
+        handle["ReceiptSigningHandle (WYSIWYS)"]
+        semantic["ReceiptSemanticFields"]
+        lineage["Receipt lineage and export"]
+    end
+    subgraph sess["Session and delegation"]
+        anchor["SessionAnchor"]
+        delrcpt["DelegationReceipt"]
+    end
+    subgraph reg["Schema admission"]
+        registry["Signed artifact registry"]
+    end
+    subgraph found["Foundation primitives"]
+        canonical["Canonical JSON (RFC 8785)"]
+        crypto["Crypto (Keypair, SigningBackend)"]
+        hashing["Hashing (Hash, sha256)"]
+        merkle["Merkle inclusion proofs"]
+    end
+
+    token -->|"carries"| scope
+    token -->|"enforces"| capfloor
+    atten -->|"attenuates"| token
+    atten -->|"narrows"| scope
+    atten -->|"emits"| delrcpt
+    receipt -->|"gated by"| handle
+    receipt -->|"validates"| semantic
+    receipt -->|"exports via"| lineage
+    handle -->|"recomputes hash"| hashing
+    lineage -->|"inclusion"| merkle
+
+    token -->|"canonicalize"| canonical
+    receipt -->|"canonicalize"| canonical
+    anchor -->|"canonicalize"| canonical
+    atten -->|"canonicalize"| canonical
+    canonical -->|"sign bytes"| crypto
+
+    registry -->|"admits"| anchor
+    registry -->|"admits"| lineage
+```
+
 ## Module map
 
 | Path | Responsibility |

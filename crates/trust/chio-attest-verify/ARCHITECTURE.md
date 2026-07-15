@@ -12,6 +12,52 @@ explicit argument, and every verification path is fail-closed by contract
 (documented on `AttestVerifier` and `QuoteVerifier`). `#![forbid(unsafe_code)]`
 and a crate-wide `unwrap`/`expect` ban hold at the crate root.
 
+## Diagram
+
+```mermaid
+flowchart TD
+  subgraph inputs["Attestation evidence"]
+    blob["Detached blob or bytes"]
+    bundle["Sigstore bundle JSON"]
+    quote["Raw TEE quote"]
+  end
+  subgraph sigstore["Sigstore keyless (AttestVerifier)"]
+    sig["SigstoreVerifier"]
+    chain["Fulcio chain via webpki"]
+    ident["OIDC issuer, SAN, signature"]
+  end
+  subgraph tee["TEE backends (tee-quotes)"]
+    tdx["Intel TDX DCAP"]
+    snp["AMD SEV-SNP VCEK or VLEK"]
+    nitro["AWS Nitro NSM"]
+    checks["Chain to root, TCB, report_data"]
+  end
+  subgraph policy["Tenant policy"]
+    loader["TenantPolicyLoader and resolver"]
+  end
+  subgraph verdict["Verdict (fail-closed)"]
+    okatt["VerifiedAttestation"]
+    okquote["VerifiedQuote"]
+    err["AttestError"]
+  end
+  blob --> sig
+  bundle --> sig
+  sig --> chain
+  chain --> ident
+  ident -->|pass| okatt
+  ident -->|reject| err
+  quote --> tdx
+  quote --> snp
+  quote --> nitro
+  tdx --> checks
+  snp --> checks
+  nitro --> checks
+  checks -->|pass| okquote
+  checks -->|reject| err
+  loader -->|verify sigs| sig
+  loader -->|pins identity| ident
+```
+
 ## Module map
 
 | Path | Responsibility |

@@ -4,6 +4,56 @@
 
 `chio-runtime-core` sits inside the kernel's trust boundary, not at its edge. `ChioRuntimeAdmissionHook` implements `chio_kernel::RuntimeAdmissionHook`, so `chio-kernel` calls into this crate synchronously during tool-call dispatch, after capability, budget, and guard checks pass but before the call actually dispatches, and the hook's decision gates whether it proceeds. The crate has no transport and no async runtime: the kernel supplies the request, the wall clock (`now_unix_ms` on every call), and, through a `RuntimeAdmissionStore`, storage. Every artifact (admission bundle, treaty scope, buyer attestation packet, orchestration report, ...) is a `serde`-derived struct carrying its own `schema` string, and every admission or verification function returns a structured report (`accepted: bool`, `failure_code: Option<String>`, `checks: Vec<String>`) instead of throwing, so a rejection is itself an auditable, receipt-embeddable artifact.
 
+## Diagram
+
+```mermaid
+flowchart TD
+  subgraph kernel_sg["chio-kernel (trust boundary)"]
+    kernel["Tool-call dispatch"]
+  end
+
+  subgraph hook_sg["chio-runtime-core admission hook"]
+    hook["ChioRuntimeAdmissionHook.evaluate"]
+    binding["RuntimeRequestBinding"]
+    swarm["Swarm authority resolve and verify"]
+    treaty["Treaty scope and cross-boundary admission"]
+    core["evaluate_runtime_admission"]
+    pheromone["Pheromone policy decision"]
+    lease["Destructive lease reserve"]
+    decision{"accepted"}
+  end
+
+  subgraph store_sg["RuntimeAdmissionStore (consumer trait)"]
+    store["memory / json / sqlite backends"]
+  end
+
+  subgraph ext_sg["External crates and caller inputs"]
+    keys["Trusted verifier and swarm witness keys"]
+    swarmdep["chio-swarm-authority"]
+    fed["chio-federation bilateral DSSE"]
+  end
+
+  kernel -->|"after capability, budget, guard"| hook
+  hook -->|"build binding"| binding
+  binding -->|"chioSwarm ref"| swarm
+  binding -->|"chioTreaty ref"| treaty
+  binding --> core
+  swarm --> core
+  treaty --> core
+  swarmdep --> swarm
+  fed --> treaty
+  keys -->|"verify trust input"| core
+  core -->|"profile, bundle, trust floor"| store
+  core -->|"policy and peer weights"| pheromone
+  core -->|"destructive bundle"| lease
+  lease --> store
+  core --> decision
+  decision -->|"yes"| allow["allow plus chio_runtime receipt"]
+  decision -->|"no"| deny["deny plus release reserved"]
+  allow -->|"consume continuations"| store
+  deny -->|"release reservations"| store
+```
+
 ## Module map
 
 | Path | Responsibility |

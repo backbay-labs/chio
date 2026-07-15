@@ -23,6 +23,49 @@ Kernel-level artifact issuance and network transport are out of scope:
 This crate owns only the shapes, the validators, and the signing and
 verification math.
 
+## Diagram
+
+```mermaid
+flowchart TD
+    subgraph sgRemote["Remote domain (Org B)"]
+        rhs["Sign HandshakeChallenge"]
+        rart["Contract artifacts"]
+        rcs["Bilateral co-sign ChioReceipt"]
+        renv["DSSE envelope"]
+        rrev["Revocation roots and pheromone deposits"]
+    end
+
+    subgraph sgBoundary["Operator boundary"]
+        pin["PeerHandshakeEnvelope"]
+        gossip["Gossip push queues"]
+    end
+
+    subgraph sgLocal["Local domain (Org A)"]
+        lhs["KernelTrustExchange verify and pin"]
+        lval["Contract validators"]
+        lstore["Revocation oracle and lease registry"]
+        lver["Bilateral verifier"]
+        ltreaty["Treaty ladder intersection"]
+        ladm["CrossBoundaryAdmissionReport"]
+        limport["FederationImportControl"]
+    end
+
+    rhs -->|"signed challenge"| pin
+    pin -->|"verify and pin"| lhs
+    rcs -->|"co-sign"| renv
+    renv -->|"out of band"| lver
+    rart -->|"exchange"| lval
+    rrev -->|"enqueue"| gossip
+    gossip -->|"batch flush"| lstore
+    lhs -->|"peer pins"| lver
+    lhs -->|"ladder ref"| ltreaty
+    lstore -->|"lookups"| lver
+    lver -->|"resolve digests"| ladm
+    ltreaty -->|"intersection"| ladm
+    lval -->|"local activation"| limport
+    ladm -->|"admit"| limport
+```
+
 ## Module map
 
 | Path | Responsibility |

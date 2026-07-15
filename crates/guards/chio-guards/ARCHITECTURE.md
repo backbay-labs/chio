@@ -22,6 +22,50 @@ minority (rate-limiting, session-journal, CUA side-channel, and embedding
 guards) key directly off `tool_name` / `arguments` or session-journal state
 instead of the shared classifier.
 
+## Diagram
+
+```mermaid
+flowchart TD
+    kernel["chio-kernel builds GuardContext"]
+    classify["extract_action_checked classifier"]
+    malformed["MalformedAction"]
+
+    subgraph input["Input guards (pre-invocation)"]
+        pipeline["GuardPipeline fail-closed in registration order"]
+        classifyguards["Path Shell Egress MCP Secret Patch guards"]
+        journalguards["SessionJournal guards DataFlow BehavioralSequence Velocity"]
+        advisory["AdvisoryPipeline with PromotionPolicy"]
+    end
+
+    verdict{"Verdict Allow Deny PendingApproval"}
+    exec["Tool executes"]
+
+    subgraph output["Output guards (post-invocation)"]
+        postpipe["PostInvocationPipeline"]
+        sanitizer["SanitizerHook over OutputSanitizer"]
+    end
+
+    deliver["Response to agent"]
+
+    kernel --> classify
+    classify -->|"malformed"| malformed
+    malformed -->|"deny"| verdict
+    classify -->|"ToolAction"| pipeline
+    pipeline --> classifyguards
+    pipeline --> journalguards
+    pipeline --> advisory
+    classifyguards -->|"first deny or error"| verdict
+    journalguards -->|"limit exceeded deny"| verdict
+    advisory -->|"promoted deny"| verdict
+    pipeline -->|"all allow"| verdict
+    verdict -->|"deny or pending"| kernel
+    verdict -->|"allow"| exec
+    exec --> postpipe
+    postpipe --> sanitizer
+    sanitizer -->|"allow or redact"| deliver
+    sanitizer -->|"block"| kernel
+```
+
 ## Module map
 
 | Path | Responsibility |

@@ -13,6 +13,52 @@ capability scope is materialized. The crate touches the filesystem only in
 `threat_intel.pattern_db` JSON asset); parsing, validation, merge, and
 evaluation are pure in-memory transformations.
 
+## Diagram
+
+```mermaid
+flowchart TD
+    subgraph sgIn["Policy sources"]
+        yaml["HushSpec YAML document"]
+        ext["extends targets: filesystem or chio builtin rulesets"]
+    end
+    subgraph sgLoad["Load pipeline"]
+        parse["HushSpec parse: hardened YAML"]
+        resolve["resolve and merge extends chain"]
+        validate["validate: schema and semantic"]
+    end
+    subgraph sgCompile["Compile to guard config"]
+        compile["compile_policy re-validates"]
+        guards["GuardPipeline and PostInvocationPipeline"]
+        scope["default ChioScope from tool_access"]
+    end
+    subgraph sgEval["Evaluate a tool call"]
+        action["EvaluationAction tool call"]
+        panic["panic mode short circuit"]
+        posture["origin profile and posture allowlist"]
+        dispatch["per action rule block evaluator"]
+        decision["Decision allow warn deny"]
+    end
+    subgraph sgWrap["Optional wrappers"]
+        receipt["evaluate_audited DecisionReceipt"]
+        detect["evaluate_with_detection scoring"]
+    end
+
+    yaml --> parse
+    ext -->|extends| resolve
+    parse --> resolve
+    resolve --> validate
+    validate -->|valid| compile
+    resolve -->|assumes valid| action
+    compile --> guards
+    compile --> scope
+    action --> panic
+    panic --> posture
+    posture --> dispatch
+    dispatch --> decision
+    decision --> receipt
+    decision --> detect
+```
+
 ## Module map
 
 | Path | Responsibility |
