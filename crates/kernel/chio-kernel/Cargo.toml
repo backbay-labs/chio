@@ -38,16 +38,33 @@ pq = ["chio-core-types/pq", "chio-core/pq"]
 # data plane.
 delegation = ["chio-core-types/delegation"]
 
-# Under `--cfg loom` the crate compiles to an empty lib (see src/lib.rs): the
-# loom interleaving models in tests/loom_concurrency.rs are self-contained and
-# link no kernel type, and the real dependency graph pulls hyper-util, which
-# cannot build under `--cfg loom` because tokio gates `tokio::net` out. Gating
-# the runtime deps behind `cfg(not(loom))` keeps normal builds byte-identical
-# while letting the loom lane compile.
+# These three are the only dependencies the `session` module needs and the only
+# ones that build under `--cfg loom`: none reaches hyper-util, reqwest, or
+# tokio, so tokio dropping `tokio::net` never touches them (chio-core is a pure
+# types/crypto graph; serde and thiserror are proc-macro/serialization crates).
+# They stay unconditional so the loom lane can compile the real `Session`
+# terminal-admission state machine while normal builds are byte-identical.
+[dependencies]
+chio-core = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+# Under `--cfg loom` the `session` module's own RwLock and atomics are loom
+# primitives, so the interleaving model explores real schedules on the session
+# `inner` lock (the serialization point behind terminal-state admission). loom
+# is not linked in normal builds.
+[target.'cfg(loom)'.dependencies]
+loom = { workspace = true }
+
+# Under `--cfg loom` only the `session` module compiles (see src/lib.rs); every
+# runtime-bearing module is gated to `cfg(not(loom))` because the wider
+# dependency graph pulls hyper-util, which cannot build under `--cfg loom`
+# because tokio gates `tokio::net` out. Gating the runtime deps behind
+# `cfg(not(loom))` keeps normal builds byte-identical while letting the loom
+# lane compile.
 [target.'cfg(not(loom))'.dependencies]
 chio-appraisal = { workspace = true }
 chio-bounded = { workspace = true }
-chio-core = { workspace = true }
 chio-supervisor = { workspace = true }
 chio-core-types = { workspace = true }
 # The workspace declares chio-custody-hw with `default-features = false` so
@@ -70,9 +87,7 @@ async-trait = { workspace = true }
 dashmap = { workspace = true }
 futures = "0.3"
 regex = "1"
-serde = { workspace = true }
 serde_json = { workspace = true }
-thiserror = { workspace = true }
 tokio = { workspace = true }
 tracing = { workspace = true }
 opentelemetry-semantic-conventions = { workspace = true, optional = true }
@@ -94,6 +109,13 @@ libc = "0.2"
 # are gated to normal builds. See the runtime-deps note above.
 [dev-dependencies]
 loom = { workspace = true }
+
+# Under loom the interleaving model constructs the real `Session` from
+# chio-core session types (SessionId, OperationContext, ...). chio-core is
+# already an unconditional dependency; naming it in the integration test crate
+# needs an explicit loom-only dev-dependency entry.
+[target.'cfg(loom)'.dev-dependencies]
+chio-core = { workspace = true }
 
 [target.'cfg(not(loom))'.dev-dependencies]
 chio-store-sqlite = { workspace = true }

@@ -1,18 +1,33 @@
+#[cfg(loom)]
+use loom::sync::atomic::{AtomicU64, Ordering};
 use std::collections::{HashMap, HashSet, VecDeque};
+#[cfg(not(loom))]
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use chio_core::crypto::{canonical_json_bytes, sha256_hex};
 use chio_core::session::{
-    CompletionResult, CreateElicitationOperation, NormalizedRoot, OperationContext, OperationKind,
-    OperationTerminalState, ProgressToken, PromptDefinition, PromptResult, RequestId,
-    RequestOwnershipSnapshot, ResourceContent, ResourceDefinition, ResourceTemplateDefinition,
-    RootDefinition, SessionAnchorReference, SessionAuthContext, SessionId,
+    CreateElicitationOperation, NormalizedRoot, OperationContext, OperationKind,
+    OperationTerminalState, ProgressToken, RequestId, RequestOwnershipSnapshot, RootDefinition,
+    SessionAnchorReference, SessionAuthContext, SessionId,
+};
+// Consumed only by SessionOperationResponse and queue_tool_server_event, both of
+// which are gated out under loom.
+#[cfg(not(loom))]
+use chio_core::session::{
+    CompletionResult, PromptDefinition, PromptResult, ResourceContent, ResourceDefinition,
+    ResourceTemplateDefinition,
 };
 use chio_core::{capability::token::CapabilityToken, AgentId};
+#[cfg(loom)]
+use loom::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
+#[cfg(not(loom))]
 use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
+#[cfg(not(loom))]
 use crate::{ToolCallResponse, ToolServerEvent};
+// Consumed only by SessionOperationResponse, gated out under loom.
+#[cfg(not(loom))]
 use chio_core::receipt::body::ChioReceipt;
 
 fn read_lock<T>(lock: &RwLock<T>) -> RwLockReadGuard<'_, T> {
@@ -866,6 +881,7 @@ impl Session {
         self.write_late_events().drain(..).collect()
     }
 
+    #[cfg(not(loom))]
     pub fn queue_tool_server_event(&self, event: ToolServerEvent) {
         match event {
             ToolServerEvent::ElicitationCompleted { elicitation_id } => {
@@ -1347,6 +1363,7 @@ fn auth_context_hash(auth_context: &SessionAuthContext) -> String {
 }
 
 /// Session-aware kernel response, decoupled from the current wire protocol.
+#[cfg(not(loom))]
 #[derive(Debug)]
 pub enum SessionOperationResponse {
     ToolCall(ToolCallResponse),

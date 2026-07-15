@@ -20,53 +20,91 @@
 //! PID, address, or signing key.
 
 #![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
-// Under `--cfg loom` this crate carries no items: the interleaving models in
-// tests/loom_concurrency.rs link no kernel type, and the real dependency graph
-// (Cargo.toml gates it behind `cfg(not(loom))`) cannot build under loom because
-// tokio drops `tokio::net` and hyper-util then fails to compile. Normal builds
-// are byte-identical.
-#![cfg(not(loom))]
+// Under `--cfg loom` only the `session` module below is compiled; every other
+// item is gated to `cfg(not(loom))`. The interleaving model in
+// tests/loom_concurrency.rs drives the real `Session` terminal-admission state
+// machine; its only heavy dependency (chio-core) reaches neither hyper-util nor
+// tokio and so builds under loom. Every runtime-bearing module stays gated out
+// because the wider dependency graph pulls hyper-util, which cannot compile
+// when tokio drops `tokio::net`. Normal builds compile every item unchanged.
 
+#[cfg(not(loom))]
 pub mod approval;
+#[cfg(not(loom))]
 pub mod approval_channels;
+#[cfg(not(loom))]
 pub mod authority;
+#[cfg(not(loom))]
 pub mod boot;
+#[cfg(not(loom))]
 pub mod budget_store;
+#[cfg(not(loom))]
 pub mod capability_lineage;
+#[cfg(not(loom))]
 pub mod checkpoint;
+#[cfg(not(loom))]
 pub mod compliance_certificate;
+#[cfg(not(loom))]
 pub mod compliance_score;
+#[cfg(not(loom))]
 pub mod cost_attribution;
+#[cfg(not(loom))]
 pub mod custody;
+#[cfg(not(loom))]
 pub mod dpop;
+#[cfg(not(loom))]
 pub mod evidence_export;
+#[cfg(not(loom))]
 pub mod execution_nonce;
+#[cfg(not(loom))]
 pub mod federation_artifact_store;
+#[cfg(not(loom))]
 pub mod memory_provenance;
+#[cfg(not(loom))]
 pub mod observability;
+#[cfg(not(loom))]
 pub mod operator_report;
+#[cfg(not(loom))]
 pub mod otel;
+#[cfg(not(loom))]
 pub mod payment;
+#[cfg(not(loom))]
 pub mod post_invocation;
+#[cfg(not(loom))]
 #[allow(deprecated)]
 pub mod provider_verdict;
+#[cfg(not(loom))]
 pub mod receipt_analytics;
+#[cfg(not(loom))]
 pub mod receipt_query;
+#[cfg(not(loom))]
 pub mod receipt_store;
+#[cfg(not(loom))]
 mod receipt_support;
+#[cfg(not(loom))]
 mod request_matching;
+#[cfg(not(loom))]
 pub mod revocation_runtime;
+#[cfg(not(loom))]
 pub mod revocation_store;
+#[cfg(not(loom))]
 pub mod runtime;
 pub mod session;
+#[cfg(not(loom))]
 pub mod transport;
+#[cfg(not(loom))]
 pub mod weights_binding;
 
+#[cfg(not(loom))]
 pub(crate) use std::collections::HashMap;
+#[cfg(not(loom))]
 pub(crate) use std::future::Future;
+#[cfg(not(loom))]
 pub(crate) use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+#[cfg(not(loom))]
 pub(crate) use chio_core::canonical::canonical_json_bytes;
+#[cfg(not(loom))]
 pub(crate) use chio_core::capability::{
     governance::{GovernedApprovalDecision, GovernedApprovalToken, GovernedAutonomyTier},
     runtime_attestation::RuntimeAssuranceTier,
@@ -74,7 +112,9 @@ pub(crate) use chio_core::capability::{
     token::CapabilityToken,
     trust_policy::AttestationTrustPolicy,
 };
+#[cfg(not(loom))]
 pub(crate) use chio_core::crypto::{sha256_hex, Keypair};
+#[cfg(not(loom))]
 pub(crate) use chio_core::receipt::{
     body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
     economics::FinancialReceiptMetadata, economics::SettlementStatus,
@@ -84,6 +124,7 @@ pub(crate) use chio_core::receipt::{
     lineage::ChildRequestReceipt, lineage::ChildRequestReceiptBody,
     metadata::ReceiptAttributionMetadata,
 };
+#[cfg(not(loom))]
 pub(crate) use chio_core::session::{
     CompleteOperation, CompletionReference, CompletionResult, CreateElicitationOperation,
     CreateElicitationResult, CreateMessageOperation, CreateMessageResult, GetPromptOperation,
@@ -92,10 +133,14 @@ pub(crate) use chio_core::session::{
     ResourceDefinition, ResourceTemplateDefinition, ResourceUriClassification, RootDefinition,
     SessionAuthContext, SessionId, SessionOperation, ToolCallOperation,
 };
+#[cfg(not(loom))]
 pub(crate) use chio_link::convert::convert_supported_units;
+#[cfg(not(loom))]
 pub(crate) use chio_link::{PriceOracle, PriceOracleError};
+#[cfg(not(loom))]
 pub(crate) use tracing::{debug, info, warn};
 
+#[cfg(not(loom))]
 pub(crate) use receipt_support::*;
 // Hybrid receipt signing path. The kernel boot wiring constructs a
 // `Box<dyn SigningBackend>` from `KernelCryptoFloor` plus an optional
@@ -103,17 +148,20 @@ pub(crate) use receipt_support::*;
 // envelope issuance) sign through the resulting backend so the receipt body
 // remains byte-identical across classical and hybrid paths under
 // `crypto_floor=allow_classical`.
+#[cfg(not(loom))]
 pub use receipt_support::{
     kernel_signing_backend, scope_fixed_runtime_for_current_thread,
     sign_receipt_body_hybrid_canonical, sign_receipt_body_with_backend, FixedRuntimeScope,
     KernelCryptoFloor, KernelSigningBackendError, SignedHybridReceipt,
 };
+#[cfg(not(loom))]
 pub(crate) use request_matching::{
     begin_child_request_in_sessions, begin_session_request_in_sessions, check_subject_binding,
     check_time_bounds, complete_session_request_with_terminal_state_in_sessions,
     nested_child_request_id, resolve_required_matching_grants, session_from_map,
     validate_elicitation_request_in_sessions, validate_sampling_request_in_sessions,
 };
+#[cfg(not(loom))]
 pub use request_matching::{
     capability_matches_prompt_request, capability_matches_request,
     capability_matches_request_with_model_metadata, capability_matches_resource_pattern,
@@ -121,6 +169,7 @@ pub use request_matching::{
     capability_request_requires_dpop, capability_request_requires_dpop_with_model_metadata,
 };
 
+#[cfg(not(loom))]
 pub use approval::{
     compute_parameter_hash, resume_with_decision, ApprovalChannel, ApprovalContext,
     ApprovalDecision, ApprovalFilter, ApprovalGuard, ApprovalOutcome, ApprovalRequest,
@@ -128,21 +177,27 @@ pub use approval::{
     ChannelError, ChannelHandle, HitlVerdict, InMemoryApprovalStore, InMemoryBatchApprovalStore,
     ResolvedApproval, MAX_APPROVAL_TTL_SECS,
 };
+#[cfg(not(loom))]
 pub use approval_channels::{RecordingChannel, WebhookChannel, WebhookPayload};
+#[cfg(not(loom))]
 pub use authority::{
     AuthoritySnapshot, AuthorityStatus, AuthorityStoreError, AuthorityTrustedKeySnapshot,
     CapabilityAuthority, LocalCapabilityAuthority,
 };
+#[cfg(not(loom))]
 pub use budget_store::{BudgetStore, BudgetStoreError, BudgetUsageRecord, InMemoryBudgetStore};
+#[cfg(not(loom))]
 pub use capability_lineage::{
     CapabilityLineageError, CapabilitySnapshot, StoredCapabilitySnapshot,
 };
+#[cfg(not(loom))]
 pub use checkpoint::{
     build_checkpoint, build_checkpoint_with_previous, build_inclusion_proof,
     checkpoint_body_sha256, is_supported_checkpoint_schema, verify_checkpoint_continuity,
     verify_checkpoint_signature, CheckpointError, KernelCheckpoint, KernelCheckpointBody,
     ReceiptInclusionProof, CHECKPOINT_SCHEMA,
 };
+#[cfg(not(loom))]
 pub use chio_core::credit::{
     ensure_capital_execution_custodian_authority, ensure_capital_execution_owner_authority,
     validate_capital_execution_envelope, CapitalAllocationDecisionArtifact,
@@ -199,7 +254,9 @@ pub use chio_core::credit::{
     MAX_CREDIT_LOSS_LIFECYCLE_LIST_LIMIT, MAX_CREDIT_PROVIDER_LOSS_LIMIT,
     MAX_EXPOSURE_LEDGER_DECISION_LIMIT, MAX_EXPOSURE_LEDGER_RECEIPT_LIMIT,
 };
+#[cfg(not(loom))]
 pub use chio_core::governance::evaluation::evaluate_generic_governance_case;
+#[cfg(not(loom))]
 pub use chio_core::governance::generic::{
     build_generic_governance_case_artifact, build_generic_governance_charter_artifact,
     GenericGovernanceAuthorityScope, GenericGovernanceCaseArtifact,
@@ -211,6 +268,7 @@ pub use chio_core::governance::generic::{
     SignedGenericGovernanceCase, SignedGenericGovernanceCharter,
     GENERIC_GOVERNANCE_CASE_ARTIFACT_SCHEMA, GENERIC_GOVERNANCE_CHARTER_ARTIFACT_SCHEMA,
 };
+#[cfg(not(loom))]
 pub use chio_core::listing::{
     aggregate_generic_listing_reports, build_generic_trust_activation_artifact,
     ensure_generic_listing_namespace_consistency, evaluate_generic_trust_activation,
@@ -233,6 +291,7 @@ pub use chio_core::listing::{
     GENERIC_NAMESPACE_ARTIFACT_SCHEMA, GENERIC_TRUST_ACTIVATION_ARTIFACT_SCHEMA,
     MAX_GENERIC_LISTING_LIMIT,
 };
+#[cfg(not(loom))]
 pub use chio_core::market::{
     LiabilityAutoBindDecisionArtifact, LiabilityAutoBindDisposition, LiabilityAutoBindFinding,
     LiabilityAutoBindReasonCode, LiabilityBoundCoverageArtifact,
@@ -275,25 +334,30 @@ pub use chio_core::market::{
     MAX_LIABILITY_CLAIM_WORKFLOW_LIMIT, MAX_LIABILITY_MARKET_WORKFLOW_LIMIT,
     MAX_LIABILITY_PROVIDER_LIST_LIMIT,
 };
+#[cfg(not(loom))]
 pub use chio_core::open_market::evaluation::{
     evaluate_open_market_penalty, evaluate_open_market_penalty_with_trusted_signers,
     OpenMarketPenaltyEvaluation, OpenMarketPenaltyEvaluationRequest,
 };
+#[cfg(not(loom))]
 pub use chio_core::open_market::evidence::{
     OpenMarketEvidenceKind, OpenMarketEvidenceReference, OpenMarketFinding, OpenMarketFindingCode,
 };
+#[cfg(not(loom))]
 pub use chio_core::open_market::fee_schedule::{
     build_open_market_fee_schedule_artifact, OpenMarketBondClass, OpenMarketBondRequirement,
     OpenMarketCollateralReferenceKind, OpenMarketEconomicsScope, OpenMarketFeeScheduleArtifact,
     OpenMarketFeeScheduleIssueRequest, SignedOpenMarketFeeSchedule,
     OPEN_MARKET_FEE_SCHEDULE_ARTIFACT_SCHEMA,
 };
+#[cfg(not(loom))]
 pub use chio_core::open_market::penalty::{
     build_open_market_penalty_artifact, build_open_market_penalty_artifact_with_trusted_signers,
     OpenMarketAbuseClass, OpenMarketPenaltyAction, OpenMarketPenaltyArtifact,
     OpenMarketPenaltyEffectiveState, OpenMarketPenaltyIssueRequest, OpenMarketPenaltyState,
     SignedOpenMarketPenalty, OPEN_MARKET_PENALTY_ARTIFACT_SCHEMA,
 };
+#[cfg(not(loom))]
 pub use chio_core::underwriting::{
     build_underwriting_decision_artifact, evaluate_underwriting_policy_input,
     SignedUnderwritingDecision, SignedUnderwritingPolicyInput, UnderwritingAppealCreateRequest,
@@ -317,27 +381,33 @@ pub use chio_core::underwriting::{
     UNDERWRITING_POLICY_INPUT_SCHEMA, UNDERWRITING_RISK_TAXONOMY_VERSION,
     UNDERWRITING_SIMULATION_REPORT_SCHEMA,
 };
+#[cfg(not(loom))]
 pub use compliance_score::{
     compliance_factor_breakdown, compliance_score, ComplianceFactor, ComplianceFactorBreakdown,
     ComplianceScore, ComplianceScoreConfig, ComplianceScoreInputs, COMPLIANCE_SCORE_MAX,
     DEFAULT_ATTESTATION_STALENESS_SECS, WEIGHT_ATTESTATION_FRESHNESS, WEIGHT_DENY_RATE,
     WEIGHT_POLICY_COVERAGE, WEIGHT_REVOCATION, WEIGHT_VELOCITY_ANOMALY,
 };
+#[cfg(not(loom))]
 pub use cost_attribution::{
     CostAttributionChainHop, CostAttributionQuery, CostAttributionReceiptRow,
     CostAttributionReport, CostAttributionSummary, LeafCostAttributionRow, RootCostAttributionRow,
     MAX_COST_ATTRIBUTION_LIMIT,
 };
+#[cfg(not(loom))]
 pub use custody::PasskeyCapabilityVerifier;
+#[cfg(not(loom))]
 pub use dpop::{
     is_supported_dpop_schema, verify_dpop_proof, DpopConfig, DpopNonceStore, DpopProof,
     DpopProofBody, DPOP_SCHEMA,
 };
+#[cfg(not(loom))]
 pub use evidence_export::{
     EvidenceChildReceiptRecord, EvidenceChildReceiptScope, EvidenceExportBundle,
     EvidenceExportError, EvidenceExportQuery, EvidenceRetentionMetadata, EvidenceToolReceiptRecord,
     EvidenceUncheckpointedReceipt,
 };
+#[cfg(not(loom))]
 pub use execution_nonce::{
     is_supported_execution_nonce_schema, mint_execution_nonce, verify_execution_nonce,
     ExecutionNonce, ExecutionNonceConfig, ExecutionNonceError, ExecutionNonceStore,
@@ -345,6 +415,7 @@ pub use execution_nonce::{
     DEFAULT_EXECUTION_NONCE_STORE_CAPACITY, DEFAULT_EXECUTION_NONCE_TTL_SECS,
     EXECUTION_NONCE_SCHEMA,
 };
+#[cfg(not(loom))]
 pub use memory_provenance::{
     classify_memory_action, next_entry_id as next_memory_provenance_entry_id,
     recompute_entry_hash as recompute_memory_provenance_entry_hash, InMemoryMemoryProvenanceStore,
@@ -352,13 +423,16 @@ pub use memory_provenance::{
     MemoryProvenanceStore, ProvenanceVerification, UnverifiedReason,
     MEMORY_PROVENANCE_ENTRY_SCHEMA, MEMORY_PROVENANCE_GENESIS_PREV_HASH,
 };
+#[cfg(not(loom))]
 pub use observability::metrics::{
     guard_metrics_endpoint, record_receipt_health_gauges, render_guard_metrics_prometheus,
     GuardMetricFamily, MetricsEndpointResponse, PrometheusMetricKind, GUARD_METRICS_PATH,
     GUARD_METRIC_FAMILIES, METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL, METRIC_CHIO_OTEL_SINK_DROP_TOTAL,
     PROMETHEUS_TEXT_CONTENT_TYPE,
 };
+#[cfg(not(loom))]
 pub use operator_report::{behavioral_anomaly_score, BehavioralAnomalyScore, EmaBaselineState};
+#[cfg(not(loom))]
 pub use operator_report::{
     AuthorizationContextReport, AuthorizationContextRow, AuthorizationContextSenderConstraint,
     AuthorizationContextSummary, BehavioralFeedDecisionSummary,
@@ -397,27 +471,33 @@ pub use operator_report::{
     MAX_AUTHORIZATION_CONTEXT_LIMIT, MAX_BEHAVIORAL_FEED_RECEIPT_LIMIT, MAX_METERED_BILLING_LIMIT,
     MAX_OPERATOR_BUDGET_LIMIT, MAX_SETTLEMENT_BACKLOG_LIMIT, MAX_SHARED_EVIDENCE_LIMIT,
 };
+#[cfg(not(loom))]
 pub use payment::{
     AcpPaymentAdapter, CommercePaymentContext, GovernedPaymentContext, PaymentAdapter,
     PaymentAuthorization, PaymentAuthorizeRequest, PaymentError, PaymentResult,
     RailSettlementStatus, ReceiptSettlement, X402PaymentAdapter,
 };
+#[cfg(not(loom))]
 pub use post_invocation::{
     PipelineOutcome, PostInvocationContext, PostInvocationHook, PostInvocationPipeline,
     PostInvocationVerdict,
 };
+#[cfg(not(loom))]
 pub use provider_verdict::{
     build_tool_call_request, canonical_invocation_bytes, verdict_result_from_response,
     ProviderVerdictError, FABRIC_SHIM_PROVIDER_LANES,
 };
+#[cfg(not(loom))]
 pub use receipt_analytics::{
     AgentAnalyticsRow, AnalyticsTimeBucket, ReceiptAnalyticsMetrics, ReceiptAnalyticsQuery,
     ReceiptAnalyticsResponse, TimeAnalyticsRow, ToolAnalyticsRow, MAX_ANALYTICS_GROUP_LIMIT,
 };
+#[cfg(not(loom))]
 pub use receipt_query::{
     EffectiveReceiptReadScope, ReceiptQuery, ReceiptQueryResult, ReceiptReadBoundary,
     ReceiptReadContext, ReceiptReadContextSource, MAX_QUERY_LIMIT,
 };
+#[cfg(not(loom))]
 pub use receipt_store::{
     AuthorizationReceiptConsumption, DispatchIntentJournalMode, DispatchIntentKey,
     DispatchIntentReconcileReport, DispatchIntentReconciler, DispatchIntentRecord,
@@ -427,26 +507,34 @@ pub use receipt_store::{
     ReceiptWalCheckpointReport, ReceiptWriterCounters, ReceiptWriterLiveness, RetentionConfig,
     SideEffectClass, StoredChildReceipt, StoredToolReceipt,
 };
+#[cfg(not(loom))]
 pub use revocation_runtime::{InMemoryRevocationStore, RevocationStore};
+#[cfg(not(loom))]
 pub use revocation_store::{RevocationRecord, RevocationStoreError};
+#[cfg(not(loom))]
 pub use runtime::{
     NestedFlowBridge, NestedFlowClient, ToolCallChunk, ToolCallOutput, ToolCallRequest,
     ToolCallResponse, ToolCallStream, ToolInvocationCost, ToolServerConnection, ToolServerEvent,
     ToolServerOutput, ToolServerStreamResult, Verdict,
 };
+#[cfg(not(loom))]
 pub use session::{
     InflightRegistry, InflightRequest, LateSessionEvent, PeerCapabilities, Session, SessionError,
     SessionOperationResponse, SessionPersistError, SessionState, SubscriptionRegistry,
     TerminalRegistry,
 };
+#[cfg(not(loom))]
 pub use weights_binding::{evaluate_weights_binding, WeightsBindingError, WeightsBindingRequest};
 
+#[cfg(not(loom))]
 /// A string-typed agent identifier.
 #[path = "kernel/mod.rs"]
 mod kernel;
 
+#[cfg(not(loom))]
 pub(crate) use kernel::{current_unix_timestamp, MatchingGrant, ReceiptContent};
 
+#[cfg(not(loom))]
 pub use kernel::{
     AgentId, CapabilityId, ChildReceiptLog, ChioKernel, DefaultDispatchIntentReconciler, Guard,
     GuardContext, GuardDecision, HotPathDeadlineConfig, HotPathStage, HybridSigningConfig,
@@ -459,8 +547,10 @@ pub use kernel::{
     EMERGENCY_STOP_DENY_REASON, MIN_RECEIPT_APPEND_BUDGET_MS,
 };
 
+#[cfg(not(loom))]
 pub use kernel::evaluator::ToolEvaluator;
 
+#[cfg(not(loom))]
 /// Settlement observer surface. Re-exported so integration tests and
 /// embedders can drive a SettlementHook against finalized receipts
 /// without reaching into crate-private module paths.
@@ -471,12 +561,14 @@ pub mod settlement_observer {
     };
 }
 
+#[cfg(not(loom))]
 /// Default bounded capacity for the kernel's mpsc-backed signing-task channel.
 /// Re-exported so integration tests can assert against the configured value
 /// without reaching into crate-private module paths.
 pub const SIGNING_CHANNEL_DEFAULT_CAPACITY: usize =
     kernel::signing_task::DEFAULT_SIGNING_CHANNEL_CAPACITY;
 
+#[cfg(not(loom))]
 /// Prometheus counter name emitted when the bounded receipt-signing channel
 /// blocks under backpressure.
 pub use kernel::signing_task::METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL;
