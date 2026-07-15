@@ -3772,6 +3772,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-loadgen"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chio-core",
+ "chio-kernel",
+ "chio-store-sqlite",
+ "chio-test-support",
+ "serde_json",
+ "tempfile",
+ "thiserror 1.0.69",
+ "tokio",
+]
+
+[[package]]
 name = "chio-log-redact"
 version = "0.1.0"
 dependencies = [
