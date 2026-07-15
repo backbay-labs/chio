@@ -6,8 +6,9 @@ use chio_core::capability::scope::{ChioScope, Operation, ToolGrant};
 use chio_core::capability::token::CapabilityToken;
 use chio_core::crypto::Keypair;
 use chio_kernel::{
-    ChioKernel, KernelConfig, KernelError, NestedFlowBridge, ToolCallRequest, ToolServerConnection,
-    Verdict, DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
+    ChioKernel, Guard, HotPathDeadlineConfig, KernelConfig, KernelError, NestedFlowBridge,
+    ToolCallRequest, ToolServerConnection, Verdict, DEFAULT_MAX_STREAM_DURATION_SECS,
+    DEFAULT_MAX_STREAM_TOTAL_BYTES,
 };
 use chio_store_sqlite::SqliteReceiptStore;
 use tokio::runtime::{Builder, Runtime};
@@ -20,6 +21,17 @@ const LOADGEN_TOOL_NAME: &str = "loadgen_dispatch";
 /// Seconds added on top of the run duration when minting the driving
 /// capability, so it cannot expire during a full-length run.
 const CAPABILITY_TTL_HEADROOM_SECONDS: u64 = 300;
+
+/// Raw outcome of a single dispatch through the real kernel. Chaos scenarios
+/// assert on this directly: `verdict` is the kernel's decision, `reason` carries
+/// the denial reason (populated on a deny), and `elapsed` is the measured
+/// end-to-end latency.
+#[derive(Debug, Clone)]
+pub struct DispatchOutcome {
+    pub verdict: Verdict,
+    pub reason: Option<String>,
+    pub elapsed: Duration,
+}
 
 /// A booted real stack: a live kernel, an optional durable receipt store, the
 /// driving capability, and the stub tool server's shared latency control.
@@ -35,15 +47,29 @@ pub struct StackHarness {
 impl StackHarness {
     /// Gating entry point: rejects [`StoreBacking::Memory`] (fail-closed).
     pub fn boot(config: &LoadgenConfig) -> Result<Self, LoadgenError> {
-        Self::boot_inner(config, false)
+        Self::boot_inner(config, false, HotPathDeadlineConfig::default())
     }
 
     /// Local smoke entry point: permits [`StoreBacking::Memory`].
     pub fn boot_smoke(config: &LoadgenConfig) -> Result<Self, LoadgenError> {
-        Self::boot_inner(config, true)
+        Self::boot_inner(config, true, HotPathDeadlineConfig::default())
     }
 
-    fn boot_inner(config: &LoadgenConfig, allow_memory: bool) -> Result<Self, LoadgenError> {
+    /// Gating boot with explicit hot-path deadline overrides. Used by chaos
+    /// scenarios that drive the guard-pipeline or dispatch budget; otherwise
+    /// identical to [`StackHarness::boot`] (a durable store is still required).
+    pub fn boot_with_deadlines(
+        config: &LoadgenConfig,
+        deadlines: HotPathDeadlineConfig,
+    ) -> Result<Self, LoadgenError> {
+        Self::boot_inner(config, false, deadlines)
+    }
+
+    fn boot_inner(
+        config: &LoadgenConfig,
+        allow_memory: bool,
+        deadlines: HotPathDeadlineConfig,
+    ) -> Result<Self, LoadgenError> {
         let runtime = Builder::new_current_thread()
             .enable_all()
             .build()
@@ -51,7 +77,7 @@ impl StackHarness {
                 LoadgenError::KernelBoot(format!("tokio runtime build failed: {error}"))
             })?;
 
-        let mut kernel = ChioKernel::new(kernel_config(Keypair::generate()));
+        let mut kernel = ChioKernel::new(kernel_config(Keypair::generate(), deadlines));
 
         let tool_latency_ms = Arc::new(AtomicU64::new(duration_as_millis(config.tool_latency)));
         kernel.register_tool_server(Box::new(StubToolServer {
@@ -118,6 +144,31 @@ impl StackHarness {
         }
     }
 
+    /// Register a guard on the booted kernel before any dispatch. Used by chaos
+    /// scenarios that inject a blocking guard to exercise the guard-pipeline
+    /// deadline.
+    pub fn add_guard(&mut self, guard: Box<dyn Guard>) {
+        self.kernel.add_guard(guard);
+    }
+
+    /// One dispatch through the real kernel returning the raw verdict, reason,
+    /// and measured latency, for chaos scenarios that assert on a fail-closed
+    /// deny/timeout rather than an allow. A kernel error is surfaced as a typed
+    /// dispatch failure, not a hang.
+    pub fn dispatch_once_verdict(&self) -> Result<DispatchOutcome, LoadgenError> {
+        let request = self.build_request();
+        let started = Instant::now();
+        let response = self
+            .runtime
+            .block_on(self.kernel.evaluate_tool_call(&request))
+            .map_err(|error| LoadgenError::Dispatch(error.to_string()))?;
+        Ok(DispatchOutcome {
+            verdict: response.verdict,
+            reason: response.reason,
+            elapsed: started.elapsed(),
+        })
+    }
+
     /// Direct access to the durable store for chaos scenarios. `None` under a
     /// [`StoreBacking::Memory`] boot.
     pub fn store(&self) -> Option<&SqliteReceiptStore> {
@@ -163,7 +214,7 @@ impl StackHarness {
     }
 }
 
-fn kernel_config(keypair: Keypair) -> KernelConfig {
+fn kernel_config(keypair: Keypair, deadlines: HotPathDeadlineConfig) -> KernelConfig {
     KernelConfig {
         keypair,
         ca_public_keys: vec![],
@@ -183,7 +234,7 @@ fn kernel_config(keypair: Keypair) -> KernelConfig {
         checkpoint_batch_size: 0,
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
-        deadlines: chio_kernel::HotPathDeadlineConfig::default(),
+        deadlines,
     }
 }
 

@@ -20,7 +20,7 @@ pub mod rss;
 mod stack;
 mod sustained;
 
-pub use stack::StackHarness;
+pub use stack::{DispatchOutcome, StackHarness};
 pub use sustained::{enforce_budget, run_sustained, LoadReport};
 
 /// Parameters for a load-generation run.

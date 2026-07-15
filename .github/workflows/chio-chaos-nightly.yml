@@ -1,0 +1,39 @@
+name: chio-chaos-nightly
+
+on:
+  schedule:
+    - cron: "43 4 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chio-chaos-nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_BUILD_JOBS: "1"
+  CARGO_INCREMENTAL: "0"
+  CHIO_CHAOS_ITERATIONS: "40"
+
+jobs:
+  chio-chaos:
+    name: chio chaos
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - uses: ./.github/actions/setup-rust
+        with:
+          toolchain: stable
+
+      - name: Build chaos victim binary
+        env:
+          CARGO_BUILD_JOBS: "4"
+        run: cargo build -p chio-chaos --release --bin chaos_victim
+
+      - name: Run chaos scenarios
+        run: cargo test -p chio-chaos --release -- --nocapture
