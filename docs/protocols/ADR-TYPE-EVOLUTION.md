@@ -233,10 +233,19 @@ that does not match the implemented loader in `chio-config/src/schema.rs`
 UNIFIED-CONFIGURATION doc is aspirational, not current. The code in
 `chio-config` is the source of truth for what works today.
 
-**HITL approval replay (resolved)**: The kernel now has a single-use
-consumption store (`approval_replay_store` on `ChioKernel`) using the
-same LRU+TTL pattern as DPoP. Additionally, a lifetime cap
-(`MAX_APPROVAL_TTL_SECS = 3600`) rejects tokens with lifetimes exceeding
-the store's TTL, ensuring tokens expire before cache eviction can occur.
-See `chio-kernel/src/kernel/mod.rs`, steps 7-8 of
-`validate_governed_approval_token()`.
+**HITL approval replay (resolved)**: The dispatch boundary now reserves the
+single-use `(subject_id, request_id, intent_hash)` key through
+`GovernedApprovalReplayStore` before any external payment or tool side effect.
+The reservation is committed after authorization or immediately before
+dispatch, and it is rolled back only while the kernel can prove dispatch and
+external authorization did not occur. A failed or unconfirmed commit leaves
+the marker replay-blocking and is reported as an unknown retention outcome.
+
+The kernel has no implicit approval replay store. Embedding hosts must install
+one explicitly. `InMemoryGovernedApprovalReplayStore` is process-scoped and
+bounded without evicting live markers. Hosts that need replay protection across
+restart must install `SqliteGovernedApprovalReplayStore` or another durable
+implementation. The signed token lifetime cap remains an independent bound on
+valid approval tokens. See
+`chio-kernel/src/governed_approval_replay.rs` and
+`chio-kernel/src/kernel/credential_reservation.rs`.

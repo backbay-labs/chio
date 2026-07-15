@@ -21,7 +21,7 @@ use serde_json::Value;
 use crate::capability_verify::CapabilityError;
 use crate::clock::FixedClock;
 use crate::evaluate::EvaluateInput;
-use crate::formal_aeneas::{ledger_apply, ReservationLedger};
+use crate::formal_aeneas::{ledger_apply, ledger_is_terminal, ReservationLedger};
 use crate::formal_core::{
     budget_charge_admits, budget_increment_admits, monetary_cap_is_subset_by_parts,
     optional_u32_cap_is_subset, required_true_is_preserved, revocation_lookup_denies,
@@ -1138,6 +1138,19 @@ fn reservation_ledger_total(state: ReservationLedger) -> u64 {
         .and_then(|total| total.checked_add(state.released))
         .and_then(|total| total.checked_add(state.retained))
         .unwrap_or_else(|| unreachable!("reachable reservation ledger total fits in u64"))
+}
+
+#[kani::proof]
+pub fn verify_reservation_ledger_terminal_classification() {
+    let state = ReservationLedger {
+        reserved: u64::from(kani::any::<u8>()),
+        committed: u64::from(kani::any::<u8>()),
+        released: u64::from(kani::any::<u8>()),
+        retained: u64::from(kani::any::<u8>()),
+    };
+    let expected =
+        state.reserved == 0 && (state.committed != 0 || state.released != 0 || state.retained != 0);
+    assert_eq!(ledger_is_terminal(state), expected);
 }
 
 #[kani::proof]

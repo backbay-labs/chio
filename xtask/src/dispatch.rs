@@ -1,6 +1,7 @@
 //! Translation layer between the parsed clap command tree and the existing
 //! handler functions.
 
+use crate::adapter_no_bypass;
 use crate::cli::{
     self, CheckCommand, CodegenArgs, ErrorsCompat, FormalCommand, GenCommand, Lang, QualifyCommand,
     SnippetsCompat, VerifyCommand,
@@ -31,6 +32,7 @@ pub(crate) fn dispatch(command: cli::Command) -> Result<(), XtaskError> {
         },
         // -- check group --
         cli::Command::Check { command } => match command {
+            CheckCommand::AdapterNoBypass => adapter_no_bypass::run(),
             CheckCommand::CratePaths => crate_paths::run(Vec::new()),
             CheckCommand::FormalMirrors { bless } => formal_mirrors::run(bless),
             CheckCommand::Fixtures {

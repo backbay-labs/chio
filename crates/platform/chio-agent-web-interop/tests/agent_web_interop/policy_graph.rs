@@ -1,5 +1,6 @@
 use super::support::*;
 use chio_agent_web_interop::AgentWebInteropBundle;
+use chio_test_support::prelude::*;
 use serde_json::{json, Value};
 
 pub(crate) fn finish_agent_web_bundle(mut builder: AgentWebBundleBuilder) -> AgentWebInteropBundle {
@@ -113,14 +114,26 @@ pub(crate) fn finish_agent_web_bundle(mut builder: AgentWebBundleBuilder) -> Age
         "verifier-policy.json",
         verifier_policy.clone(),
     );
+    builder.passport.claim_set_sha256 = claim_set_sha256.clone();
+    builder.passport.verifier_policy_sha256 = verifier_policy_sha256.clone();
+    let passport_scope_sha256 =
+        chio_agent_web_interop::agent_web_passport_scope_sha256(&builder.passport)
+            .test_expect("Agent Web passport scope hashes");
+    bind_agent_web_envelope_manifest_digests(&mut builder.artifacts, &mut builder.graph_nodes);
+    sign_agent_web_envelopes(
+        &mut builder.artifacts,
+        &mut builder.graph_nodes,
+        &passport_scope_sha256,
+    );
     sign_agent_web_receipts(
         case,
         &mut builder.artifacts,
         &mut builder.graph_nodes,
         &verifier_policy_sha256,
+        &builder.passport.id,
+        &builder.passport.issuer,
+        &passport_scope_sha256,
     );
-    bind_agent_web_envelope_manifest_digests(&mut builder.artifacts, &mut builder.graph_nodes);
-    sign_agent_web_envelopes(&mut builder.artifacts, &mut builder.graph_nodes);
 
     let mut graph_edges = vec![
         json!({
@@ -866,8 +879,6 @@ pub(crate) fn finish_agent_web_bundle(mut builder: AgentWebBundleBuilder) -> Age
     }));
 
     builder.passport.evidence_graph_sha256 = chio_core_types::sha256_hex(&evidence_graph);
-    builder.passport.claim_set_sha256 = claim_set_sha256;
-    builder.passport.verifier_policy_sha256 = verifier_policy_sha256;
     sign_transaction_passport(&mut builder.passport);
 
     AgentWebInteropBundle {

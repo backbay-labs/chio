@@ -185,8 +185,8 @@ activation_target = 90
 scored_artifact_prefix = "spec-mutants-report-"
 scored_artifact_schema = "chio.spec-mutants-report.v1"
 scored_sample_size = 16
-scored_inventory_size = 32
-scored_inventory_sha256 = "9539238aff04fb1601a5330b5ea05942a759f548b28e2045902171a62f6ad06b"
+scored_inventory_size = 33
+scored_inventory_sha256 = "da4cbb247ecb3bb76056ba0453674ad39e8e3ba787f9543bb9a063d2b2532cb8"
 scored_tools = ["apalache=0.50.1"]
 scored_sources = [
   "KernelTransitionCancelSafe=formal/apalache/KernelTransitionCancelSafe.tla",
@@ -215,7 +215,7 @@ scored_artifact_prefix = "proof-mutants-report-"
 scored_artifact_schema = "chio.proof-mutants-report.v1"
 scored_sample_size = 15
 scored_inventory_size = 166
-scored_inventory_sha256 = "211e7169745334d8070dbc0d84c783e61ba30023acb69490eda10520ecf5e16f"
+scored_inventory_sha256 = "b21e6ef43ec0def5eaaec41e3d963d16708da61d3be5d1c7a6535fbd40e81d45"
 scored_files = [
   "crates/kernel/chio-kernel-core/src/formal_core.rs",
   "crates/kernel/chio-kernel-core/src/formal_aeneas.rs",

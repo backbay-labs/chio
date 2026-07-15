@@ -66,6 +66,144 @@ fn all_calls_produce_verified_receipts() {
 }
 
 #[test]
+fn malformed_external_receipt_provenance_denies_before_dispatch() {
+    let mut kernel = make_kernel(make_config());
+    let invocations = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(SideEffectServer::new(
+        "srv-a",
+        vec!["read_file"],
+        std::sync::Arc::clone(&invocations),
+    )));
+
+    let agent_kp = make_keypair();
+    let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
+    let cap = make_capability(&kernel, &agent_kp, scope, 300);
+    let request = make_request("req-invalid-receipt-provenance", &cap, "read_file", "srv-a");
+    let response = kernel
+        .evaluate_tool_call_blocking_with_metadata(
+            &request,
+            Some(serde_json::json!({
+                "provenance": {
+                    "otel": {
+                        "trace_id": "not-a-trace-id",
+                        "span_id": "0123456789abcdef"
+                    }
+                },
+                "route_selection": { "protocol": "mcp" }
+            })),
+        )
+        .unwrap();
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert_eq!(
+        response.reason.as_deref(),
+        Some("receipt provenance metadata rejected")
+    );
+    assert_eq!(invocations.load(Ordering::SeqCst), 0);
+    assert!(response.receipt.verify_signature().unwrap());
+    let metadata = response.receipt.metadata.as_ref().unwrap();
+    assert!(metadata.get("provenance").is_none());
+    assert_eq!(metadata["route_selection"]["protocol"], "mcp");
+    assert_eq!(kernel.receipt_log().len(), 1);
+}
+
+#[test]
+fn allowed_call_strips_caller_claims_from_receipt_consumer_namespaces() {
+    let mut kernel = make_kernel(make_config());
+    kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
+
+    let agent_kp = make_keypair();
+    let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
+    let cap = make_capability(&kernel, &agent_kp, scope, 300);
+    let request = make_request("req-allow-consumer-metadata", &cap, "read_file", "srv-a");
+
+    let response = kernel
+        .evaluate_tool_call_blocking_with_metadata(
+            &request,
+            Some(serde_json::json!({
+                "actor_subject": "caller-controlled",
+                "agent_web_receipt_ref": "caller-controlled",
+                "checkpoint_id": "caller-controlled",
+                "mercury": { "approvalState": "APPROVED" },
+                "redaction_status": "clean",
+                "route_selection": { "protocol": "mcp" }
+            })),
+        )
+        .unwrap();
+
+    assert_eq!(response.verdict, Verdict::Allow);
+    assert!(response.receipt.verify_signature().unwrap());
+    let metadata = response.receipt.metadata.as_ref().unwrap();
+    assert!(metadata.get("actor_subject").is_none());
+    assert!(metadata.get("agent_web_receipt_ref").is_none());
+    assert!(metadata.get("checkpoint_id").is_none());
+    assert!(metadata.get("mercury").is_none());
+    assert!(metadata.get("redaction_status").is_none());
+    assert_eq!(metadata["route_selection"]["protocol"], "mcp");
+}
+
+#[test]
+fn planned_deny_strips_caller_claims_from_kernel_owned_namespaces() {
+    let kernel = make_kernel(make_config());
+    let agent_kp = make_keypair();
+    let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
+    let cap = make_capability(&kernel, &agent_kp, scope, 300);
+    let request = make_request("req-planned-deny-metadata", &cap, "read_file", "srv-a");
+
+    let response = kernel
+        .sign_planned_deny_response(
+            &request,
+            "plan denied",
+            Some(serde_json::json!({
+                "actor_subject": "caller-controlled",
+                "agent_web_receipt_ref": "caller-controlled",
+                "checkpoint_id": "caller-controlled",
+                "chio_runtime": { "post_dispatch_outcome_unknown": true },
+                "execution_nonce": { "stage": "preflight", "tool_dispatched": false },
+                "financial": { "cost_charged": 0 },
+                "attribution": { "subject_key": "caller-controlled" },
+                "lineageReferences": {
+                    "sessionAnchorId": "caller-controlled",
+                    "sessionAnchorHash": "caller-controlled"
+                },
+                "mercury": { "approvalState": "APPROVED" },
+                "receipt_context": {
+                    "request_id": "caller-controlled",
+                    "session_id": "caller-controlled"
+                },
+                "acp": { "sessionId": "caller-controlled" },
+                "redaction_status": "clean",
+                "route_selection": { "protocol": "mcp" }
+            })),
+        )
+        .unwrap();
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert!(response.receipt.verify_signature().unwrap());
+    let metadata = response.receipt.metadata.as_ref().unwrap();
+    assert!(metadata.get("chio_runtime").is_none());
+    assert!(metadata.get("actor_subject").is_none());
+    assert!(metadata.get("agent_web_receipt_ref").is_none());
+    assert!(metadata.get("checkpoint_id").is_none());
+    assert!(metadata.get("execution_nonce").is_none());
+    assert!(metadata.get("financial").is_none());
+    assert!(metadata.get("lineageReferences").is_none());
+    assert!(metadata.get("mercury").is_none());
+    assert!(metadata.get("acp").is_none());
+    assert!(metadata.get("redaction_status").is_none());
+    assert_eq!(
+        metadata["attribution"]["subject_key"],
+        agent_kp.public_key().to_hex()
+    );
+    assert_eq!(
+        metadata["receipt_context"]["request_id"],
+        "req-planned-deny-metadata"
+    );
+    assert!(metadata["receipt_context"].get("session_id").is_none());
+    assert_eq!(metadata["route_selection"]["protocol"], "mcp");
+}
+
+#[test]
 fn receipt_log_basics() {
     let log = ReceiptLog::new();
     assert!(log.is_empty());

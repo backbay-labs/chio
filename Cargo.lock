@@ -2580,6 +2580,7 @@ dependencies = [
  "chio-core-types",
  "chio-test-support",
  "chio-transaction-passport",
+ "hex",
  "hmac 0.12.1",
  "jsonschema",
  "serde",
@@ -4381,7 +4382,9 @@ dependencies = [
 name = "chio-store-sqlite"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "chacha20poly1305",
+ "chio-agent-web-interop",
  "chio-core-types",
  "chio-credit",
  "chio-kernel",

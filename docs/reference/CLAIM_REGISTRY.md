@@ -38,7 +38,6 @@ and does not license claim wording.
 
 | Assumption ID | Status | Allowed wording | Evidence |
 | --- | --- | --- | --- |
-| `ASSUME-SIG-CHECK` | approved_with_scope | The bounded Lean revocation or evaluation model represents trusted capability-signature admission as issuer-key membership, not concrete signature verification. | `lean_root_imported` |
 | `ASSUME-ED25519` | approved_with_scope | Concrete signature soundness depends on the audited Ed25519 implementation contract. | `audited_assumption` |
 | `ASSUME-SHA256` | approved_with_scope | Concrete receipt/checkpoint collision resistance depends on the audited SHA-256 contract. | `audited_assumption` |
 | `ASSUME-CANONICAL-JSON` | approved_with_scope | Signed payload stability depends on byte-for-byte production agreement with the mechanized UTF-8 projection; float rendering and float-bearing compound receipt fields remain outside the modeled domain. | `audited_assumption` |
@@ -50,6 +49,7 @@ and does not license claim wording.
 | `ASSUME-EXTERNAL-REGISTRIES` | approved_with_scope | Hosted registry and DID state is trusted only under its published fail-closed contract. | `audited_assumption` |
 | `ASSUME-SUBPROCESS-ISOLATION` | approved_with_scope | Tool effects after an allow verdict rely on OS process and sandbox boundaries. | `audited_assumption` |
 | `ASSUME-CHAIN-FINALITY` | approved_with_scope | Chain evidence is accepted only after the configured finality policy. | `audited_assumption` |
+| `ASSUME-TRACE-OBSERVER` | approved_with_scope | Runtime trace claims depend on synchronous exactly-once callback delivery, unmodified kernel-assigned fields, and mutation-free recorder operation; detectable omissions, duplicates, or inconsistent joins fail closed. | `audited_assumption`, `rust_trace_projection` |
 | `ASSUME-WASM-ENGINE` | approved_with_scope | Wasm boundary proofs rely on wasmtime enforcing its documented verdict, trap, fuel, memory-limiter, and in-process sandbox semantics. | `audited_assumption` |
 
 The sole explicit root-imported Lean axiom is machine-readably enumerated as

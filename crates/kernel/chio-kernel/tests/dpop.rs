@@ -353,38 +353,40 @@ fn dpop_nonce_replay_within_ttl_rejected() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 6: Nonce reuse after TTL expiry is accepted
+// Test 6: Future-issued proof follows its signed freshness horizon
 // ---------------------------------------------------------------------------
 
 #[test]
-fn dpop_nonce_replay_after_ttl_accepted() {
+fn dpop_future_issued_nonce_uses_signed_horizon_not_store_ttl() {
     let agent_kp = Keypair::generate();
     let cap = make_capability(&agent_kp);
 
-    let config = default_config();
-    // TTL = 0 means nonces expire immediately.
+    let config = DpopConfig {
+        proof_ttl_secs: 2,
+        max_clock_skew_secs: 10,
+        nonce_store_capacity: 8,
+    };
+    // The store's fallback TTL is deliberately shorter than the accepted
+    // proof. Signed proof verification must ignore this local pairing.
     let store = DpopNonceStore::new(config.nonce_store_capacity, Duration::from_secs(0));
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    let reused_nonce = "nonce-after-ttl-001";
-
-    // First use.
-    let body1 = DpopProofBody {
+    let body = DpopProofBody {
         schema: DPOP_SCHEMA.to_string(),
         capability_id: cap.id.clone(),
         tool_server: "srv-a".to_string(),
         tool_name: "read_file".to_string(),
         action_hash: sha256_hex(b"{}"),
-        nonce: reused_nonce.to_string(),
-        issued_at: now,
+        nonce: "nonce-future-issued-001".to_string(),
+        issued_at: now + 5,
         agent_key: agent_kp.public_key(),
     };
-    let proof1 = DpopProof::sign(body1, &agent_kp).expect("sign proof 1");
+    let proof = DpopProof::sign(body, &agent_kp).expect("sign proof");
     let result1 = verify_dpop_proof(
-        &proof1,
+        &proof,
         &cap,
         "srv-a",
         "read_file",
@@ -394,20 +396,8 @@ fn dpop_nonce_replay_after_ttl_accepted() {
     );
     assert!(result1.is_ok(), "first use should succeed: {result1:?}");
 
-    // Second use with TTL=0: the nonce expired instantly, so it should be accepted.
-    let body2 = DpopProofBody {
-        schema: DPOP_SCHEMA.to_string(),
-        capability_id: cap.id.clone(),
-        tool_server: "srv-a".to_string(),
-        tool_name: "read_file".to_string(),
-        action_hash: sha256_hex(b"{}"),
-        nonce: reused_nonce.to_string(),
-        issued_at: now,
-        agent_key: agent_kp.public_key(),
-    };
-    let proof2 = DpopProof::sign(body2, &agent_kp).expect("sign proof 2");
     let result2 = verify_dpop_proof(
-        &proof2,
+        &proof,
         &cap,
         "srv-a",
         "read_file",
@@ -416,8 +406,8 @@ fn dpop_nonce_replay_after_ttl_accepted() {
         &config,
     );
     assert!(
-        result2.is_ok(),
-        "nonce reuse after TTL=0 expiry should succeed: {result2:?}"
+        result2.is_err(),
+        "future-issued proof must remain replay-blocked through its signed horizon"
     );
 }
 

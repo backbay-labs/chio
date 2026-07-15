@@ -140,10 +140,14 @@ PY
 
 python3 - "${tmp_dir}" <<'PY'
 import importlib.util
+import io
 import os
 from pathlib import Path
 import subprocess
 import sys
+import threading
+import time
+from contextlib import redirect_stdout
 
 script = Path("scripts/proof-mutants.py").resolve()
 module_spec = importlib.util.spec_from_file_location("proof_mutants", script)
@@ -156,6 +160,9 @@ default_options = module.parse_arguments([])
 override_options = module.parse_arguments(["--timeout-secs", "17"])
 if (default_options.timeout_secs, override_options.timeout_secs) != (5400, 17):
     raise SystemExit("proof mutation timeout defaults or overrides changed")
+parallel_options = module.parse_arguments(["--jobs", "3"])
+if default_options.jobs != 1 or parallel_options.jobs != 3:
+    raise SystemExit("proof mutation worker defaults or overrides changed")
 
 ci_names = ("GITHUB_RUN_ID", "GITHUB_RUN_ATTEMPT", "GITHUB_RUN_NUMBER")
 for name in ci_names:
@@ -628,6 +635,43 @@ if (
 ):
     raise SystemExit("proof runner did not kill and reap its process group on interrupt")
 
+
+class LateRegisteredProcess:
+    pid = 434343
+
+    def __init__(self):
+        self.waits = 0
+
+    def wait(self, timeout=None):
+        self.waits += 1
+        return -9
+
+
+late_registered = LateRegisteredProcess()
+late_kills = []
+registry = module.ProcessRegistry()
+registered = LateRegisteredProcess()
+registered.pid = 434342
+registry.add(registered)
+module.os.killpg = lambda pid, sig: late_kills.append((pid, sig))
+registry.kill_all()
+registry.kill_all()
+if late_kills != [(registered.pid, module.signal.SIGKILL)] or registered.waits != 1:
+    raise SystemExit("proof registry cancelled a registered process more than once")
+late_kills.clear()
+registry.kill_all()
+try:
+    try:
+        registry.add(late_registered)
+    except module.ProofMutationError:
+        pass
+    else:
+        raise SystemExit("proof registry accepted a process after cancellation")
+finally:
+    module.os.killpg = original_killpg
+if late_kills != [(late_registered.pid, module.signal.SIGKILL)] or late_registered.waits != 1:
+    raise SystemExit("proof registry did not kill and reap a late process after cancellation")
+
 fixtures = [
     module.DiscoveredMutant(
         f"{index:020x}",
@@ -642,6 +686,97 @@ fixtures = [
     )
     for index in range(20)
 ]
+original_execute_mutant = module.execute_mutant
+worker_lock = threading.Lock()
+worker_barrier = threading.Barrier(2)
+active_workers = set()
+observed_workers = set()
+started = 0
+
+
+def fake_execute_mutant(scratch, mutant, _output, _timeout, _registry):
+    global started
+    with worker_lock:
+        if scratch in active_workers:
+            raise RuntimeError("one scratch worktree was used concurrently")
+        active_workers.add(scratch)
+        observed_workers.add(scratch)
+        synchronize = started < 2
+        started += 1
+    try:
+        if synchronize:
+            worker_barrier.wait(timeout=5)
+        time.sleep(0.001 * (int(mutant.id[-1], 16) % 3))
+        return {**mutant.public(include_diff=False), "verdict": "killed", "wall_secs": 0.001}
+    finally:
+        with worker_lock:
+            active_workers.remove(scratch)
+
+
+module.execute_mutant = fake_execute_mutant
+try:
+    with redirect_stdout(io.StringIO()):
+        parallel_results = module.execute_selected_mutants(
+            [root / "worker-a", root / "worker-b"],
+            fixtures,
+            root / "parallel-output",
+            1,
+        )
+finally:
+    module.execute_mutant = original_execute_mutant
+if [result["id"] for result in parallel_results] != [mutant.id for mutant in fixtures]:
+    raise SystemExit("parallel proof results lost deterministic inventory order")
+if len(observed_workers) != 2 or active_workers:
+    raise SystemExit("parallel proof workers were not isolated or did not finish cleanly")
+
+original_executor = module.ThreadPoolExecutor
+
+
+class SubmitFailureExecutor:
+    def __init__(self, **_kwargs):
+        self.submissions = 0
+        self.shutdowns = []
+
+    def submit(self, _function, _scratch):
+        self.submissions += 1
+        if self.submissions == 2:
+            raise RuntimeError("synthetic submit failure")
+        return module.Future()
+
+    def shutdown(self, **kwargs):
+        self.shutdowns.append(kwargs)
+
+
+submit_failure_executor = None
+
+
+def fake_executor(**kwargs):
+    global submit_failure_executor
+    submit_failure_executor = SubmitFailureExecutor(**kwargs)
+    return submit_failure_executor
+
+
+module.ThreadPoolExecutor = fake_executor
+try:
+    try:
+        module.execute_selected_mutants(
+            [root / "submit-a", root / "submit-b"],
+            fixtures,
+            root / "submit-output",
+            1,
+        )
+    except RuntimeError as error:
+        if str(error) != "synthetic submit failure":
+            raise
+    else:
+        raise SystemExit("parallel proof runner swallowed a worker submission failure")
+finally:
+    module.ThreadPoolExecutor = original_executor
+if submit_failure_executor is None or submit_failure_executor.shutdowns != [
+    {"wait": True, "cancel_futures": True}
+]:
+    raise SystemExit("parallel proof runner did not shut down after partial worker submission")
+
 first, first_seed = module.select_mutants(fixtures, "a" * 40, 5, False, 1)
 second, second_seed = module.select_mutants(fixtures, "a" * 40, 5, False, 2)
 if first_seed != second_seed or [item.id for item in first] == [item.id for item in second]:
@@ -705,6 +840,9 @@ commands = [
     if line
 ]
 expected_execution_order = [
+    b"kani_harnesses::scalar_helpers_match_reference_predicates",
+    b"kani_harnesses::reservation_ledger_matches_one_step_oracle",
+    b"kani_public_harnesses::verify_inclusion_step_equivalence",
     b"kani_harnesses::time_window_classifier_matches_valid_predicate",
     b"kani_harnesses::optional_caps_never_widen_parent_cap",
     b"kani_harnesses::monetary_caps_never_widen_parent_cap",
@@ -725,6 +863,7 @@ expected_execution_order = [
     b"kani_public_harnesses::verify_scope_intersection_associative",
     b"kani_public_harnesses::verify_revocation_admission_projection",
     b"kani_public_harnesses::verify_delegation_chain_step",
+    b"kani_public_harnesses::verify_reservation_ledger_terminal_classification",
     b"kani_public_harnesses::verify_reservation_ledger_conservation",
     b"kani_public_harnesses::verify_budget_admission_projection",
     b"kani_public_harnesses::verify_delegate_no_widen",

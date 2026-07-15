@@ -5,7 +5,7 @@
 
 use chio_log_redact::redacted;
 
-use self::responses::FinalizeToolOutputCostContext;
+use self::responses::{FinalizeToolOutputCostContext, ReceiptResponseContext};
 use super::*;
 
 mod async_evaluation_core;

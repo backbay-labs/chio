@@ -91,6 +91,7 @@ use clap::{CommandFactory, Parser};
 
 use cli::Cli;
 
+mod adapter_no_bypass;
 mod cli;
 mod codegen;
 mod crate_paths;

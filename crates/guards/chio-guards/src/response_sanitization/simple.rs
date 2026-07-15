@@ -246,6 +246,14 @@ impl Guard for ResponseSanitizationGuard {
             Ok(GuardDecision::deny(Vec::new()))
         }
     }
+
+    fn requires_dispatch_revalidation(&self) -> bool {
+        true
+    }
+
+    fn revalidate_before_dispatch(&self, ctx: &GuardContext) -> Result<(), KernelError> {
+        crate::revalidate_non_consuming_guard(self, ctx)
+    }
 }
 
 /// Build a `SensitivePattern` from components. Returns None if the regex is invalid.

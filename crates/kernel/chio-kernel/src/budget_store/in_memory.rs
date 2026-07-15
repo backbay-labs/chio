@@ -8,11 +8,12 @@ use chio_kernel_core::{
 
 use super::{
     budget_commit_metadata, checked_committed_cost_units, AuthorizedBudgetHold,
-    BudgetAuthorizeHoldDecision, BudgetAuthorizeHoldRequest, BudgetCaptureHoldDecision,
-    BudgetCaptureHoldRequest, BudgetEventAuthority, BudgetHoldMutationDecision, BudgetMutationKind,
-    BudgetMutationRecord, BudgetReconcileHoldDecision, BudgetReconcileHoldRequest,
-    BudgetReleaseHoldDecision, BudgetReleaseHoldRequest, BudgetReverseHoldDecision,
-    BudgetReverseHoldRequest, BudgetStore, BudgetStoreError, BudgetUsageRecord, DeniedBudgetHold,
+    BudgetAuthorizeHoldDecision, BudgetAuthorizeHoldRequest, BudgetAuthorizeMutationOutcome,
+    BudgetCaptureHoldDecision, BudgetCaptureHoldRequest, BudgetEventAuthority,
+    BudgetHoldMutationDecision, BudgetMutationKind, BudgetMutationRecord,
+    BudgetReconcileHoldDecision, BudgetReconcileHoldRequest, BudgetReleaseHoldDecision,
+    BudgetReleaseHoldRequest, BudgetReverseHoldDecision, BudgetReverseHoldRequest, BudgetStore,
+    BudgetStoreError, BudgetUsageRecord, DeniedBudgetHold,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1016,6 +1017,38 @@ impl BudgetStore for InMemoryBudgetStore {
         )
     }
 
+    #[allow(clippy::too_many_arguments)]
+    fn try_charge_cost_with_ids_and_authority_outcome(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        max_invocations: Option<u32>,
+        cost_units: u64,
+        max_cost_per_invocation: Option<u64>,
+        max_total_cost_units: Option<u64>,
+        hold_id: Option<&str>,
+        event_id: Option<&str>,
+        authority: Option<&BudgetEventAuthority>,
+    ) -> Result<BudgetAuthorizeMutationOutcome, BudgetStoreError> {
+        let mut inner = self.lock_inner()?;
+        let replayed_event = event_id.is_some_and(|id| inner.explicit_events.contains_key(id));
+        let allowed = inner.try_charge_cost_with_ids_and_authority(
+            capability_id,
+            grant_index,
+            max_invocations,
+            cost_units,
+            max_cost_per_invocation,
+            max_total_cost_units,
+            hold_id,
+            event_id,
+            authority,
+        )?;
+        Ok(BudgetAuthorizeMutationOutcome {
+            allowed,
+            replayed_event,
+        })
+    }
+
     fn reverse_charge_cost(
         &self,
         capability_id: &str,
@@ -1198,6 +1231,10 @@ impl BudgetStore for InMemoryBudgetStore {
         request: BudgetAuthorizeHoldRequest,
     ) -> Result<BudgetAuthorizeHoldDecision, BudgetStoreError> {
         let mut inner = self.lock_inner()?;
+        let replayed_event = request
+            .event_id
+            .as_deref()
+            .is_some_and(|id| inner.explicit_events.contains_key(id));
         let allowed = inner.try_charge_cost_with_ids_and_authority(
             &request.capability_id,
             request.grant_index,
@@ -1216,7 +1253,7 @@ impl BudgetStore for InMemoryBudgetStore {
             .transpose()?
             .unwrap_or(0);
         let invocation_count_after = usage.as_ref().map_or(0, |usage| usage.invocation_count);
-        let metadata = budget_commit_metadata(
+        let mut metadata = budget_commit_metadata(
             self,
             request.authority,
             allowed
@@ -1224,6 +1261,7 @@ impl BudgetStore for InMemoryBudgetStore {
                 .flatten(),
             request.event_id,
         );
+        metadata.replayed_event = replayed_event;
 
         if allowed {
             Ok(BudgetAuthorizeHoldDecision::Authorized(

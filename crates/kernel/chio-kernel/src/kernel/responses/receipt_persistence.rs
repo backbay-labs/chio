@@ -19,21 +19,12 @@ impl ChioKernel {
         &self,
         params: ReceiptParams<'_>,
     ) -> Result<ChioReceipt, KernelError> {
-        // Multi-tenant receipt isolation: resolve tenant_id for this receipt.
-        // Precedence:
-        //   1. An explicit override on `ReceiptParams` (currently unused).
-        //   2. The request-keyed tenant context set by the evaluate path.
-        //   3. The active scoped tenant context set by the evaluate path
-        //      from `session.auth_context().enterprise_identity.tenant_id`.
-        //
-        // Tenant_id is never taken from a caller-provided field on the
-        // request: allowing caller choice would defeat the isolation the
-        // store-level WHERE clause enforces.
+        // An explicit override takes precedence over the authenticated tenant
+        // carried by this evaluation's receipt context.
         let tenant_id = params
             .tenant_id
             .clone()
-            .or_else(|| self.receipt_tenant_id_for_request(params.request_id))
-            .or_else(current_scoped_receipt_tenant_id);
+            .or_else(|| params.evaluation_context.tenant_id.clone());
 
         let request_metadata = params.request_id.map(|request_id| {
             serde_json::json!({
@@ -133,26 +124,50 @@ impl ChioKernel {
         &self,
         request: &crate::runtime::ToolCallRequest,
         receipt: &ChioReceipt,
+        evaluation_context: &EvaluationReceiptContext,
     ) -> Result<(), KernelError> {
         // Persistence uses the admission-time peer-key snapshot installed
         // by the evaluate path. Re-resolving freshness here is unsafe: the
         // tool has already executed, so a peer that expires mid-dispatch
         // must not skip dual-sign evidence for the side effect admitted
         // under the fresh snapshot.
-        let request_admission = self.receipt_federation_admission_for_request(
-            &request.request_id,
-            request.federated_origin_kernel_id.as_deref(),
-        );
-        let thread_admission = current_scoped_receipt_federation_admission();
-        let thread_admission = thread_admission.as_ref().filter(|admission| {
-            admission.remote_kernel_id.as_deref() == request.federated_origin_kernel_id.as_deref()
-        });
-        let scoped_admission = request_admission.as_ref().or(thread_admission);
-        self.record_chio_receipt(receipt)?;
+        self.record_terminal_chio_receipt(request, receipt, evaluation_context)?;
+        let admitted_peer = if let Some(origin_kernel_id) =
+            request.federated_origin_kernel_id.as_deref()
+        {
+            let admission = evaluation_context
+                .federation_admission
+                .as_ref()
+                .ok_or_else(|| {
+                    KernelError::Internal(format!(
+                        "federation admission snapshot missing for origin kernel {origin_kernel_id}"
+                    ))
+                })?;
+            if admission.remote_kernel_id.as_deref() != Some(origin_kernel_id) {
+                return Err(KernelError::Internal(format!(
+                    "federation admission snapshot does not match origin kernel {origin_kernel_id}"
+                )));
+            }
+            let peer = admission.peer.as_ref().ok_or_else(|| {
+                KernelError::Internal(format!(
+                    "federation admission peer snapshot missing for origin kernel {origin_kernel_id}"
+                ))
+            })?;
+            if peer.kernel_id != origin_kernel_id {
+                return Err(KernelError::Internal(format!(
+                    "federation admission peer snapshot identifies {} instead of {origin_kernel_id}",
+                    peer.kernel_id
+                )));
+            }
+            Some(peer)
+        } else {
+            None
+        };
         self.apply_federation_cosign(
             request,
             receipt,
-            scoped_admission.and_then(|admission| admission.peer.as_ref()),
+            admitted_peer,
+            evaluation_context.verified_treaty_material.as_ref(),
         )?;
         Ok(())
     }
@@ -162,48 +177,101 @@ impl ChioKernel {
         request: &crate::runtime::ToolCallRequest,
         receipt: &ChioReceipt,
         mode: ReceiptRecordMode,
+        evaluation_context: &EvaluationReceiptContext,
     ) -> Result<(), KernelError> {
         match mode {
             ReceiptRecordMode::WithFederation => {
-                self.record_chio_receipt_with_federation(request, receipt)
+                self.record_chio_receipt_with_federation(request, receipt, evaluation_context)
             }
-            ReceiptRecordMode::LocalOnly => {
-                self.record_chio_receipt_for_admitted_request_local_only(request, receipt)
-            }
+            ReceiptRecordMode::LocalOnly => self
+                .record_chio_receipt_for_admitted_request_local_only(
+                    request,
+                    receipt,
+                    evaluation_context,
+                ),
         }
     }
 
     fn record_chio_receipt_for_admitted_request_local_only(
         &self,
-        _request: &crate::runtime::ToolCallRequest,
+        request: &crate::runtime::ToolCallRequest,
         receipt: &ChioReceipt,
+        evaluation_context: &EvaluationReceiptContext,
     ) -> Result<(), KernelError> {
         // Persist the v1 deny receipt locally and
         // deliberately stop before the federation co-signature hook. The
         // runtime-admission deny path does not co-sign because the deny
         // decision is locally authoritative and may have been triggered
         // before any federation peer was contacted.
-        self.record_chio_receipt(receipt)
+        self.record_terminal_chio_receipt(request, receipt, evaluation_context)
     }
 
     pub(crate) fn record_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), KernelError> {
-        // Serialize traced persistence before the store lock, then release both before callbacks.
+        self.record_chio_receipt_inner(receipt, None, None)
+    }
+
+    fn record_terminal_chio_receipt(
+        &self,
+        request: &crate::runtime::ToolCallRequest,
+        receipt: &ChioReceipt,
+        evaluation_context: &EvaluationReceiptContext,
+    ) -> Result<(), KernelError> {
+        self.record_chio_receipt_inner(receipt, Some(request), Some(evaluation_context))
+    }
+
+    fn record_chio_receipt_inner(
+        &self,
+        receipt: &ChioReceipt,
+        request: Option<&crate::runtime::ToolCallRequest>,
+        evaluation_context: Option<&EvaluationReceiptContext>,
+    ) -> Result<(), KernelError> {
+        // Serialize revocation and persistence before the store lock, then
+        // release both locks before callbacks.
         let trace_transition = self.lock_runtime_trace_transition()?;
+        if receipt.is_allowed() {
+            if let Some(request) = request {
+                self.check_revocation(&request.capability)?;
+            } else if evaluation_context.is_some() {
+                return Err(KernelError::Internal(
+                    "terminal allow receipt persistence requires its admitted request".to_string(),
+                ));
+            }
+        }
         let trace_event;
         {
             let _receipt_store_write = self.receipt_store_write_lock.lock().map_err(|_| {
                 KernelError::Internal("receipt store write lock poisoned".to_string())
             })?;
-            if let Some(seq) = self
-                .with_receipt_store(|store| Ok(store.append_chio_receipt_returning_seq(receipt)?))?
-                .flatten()
-            {
+            if evaluation_context.is_some_and(|context| !context.begin_terminal_receipt_append()) {
+                return Err(KernelError::Internal(
+                    "terminal receipt persistence was already attempted for this evaluation"
+                        .to_string(),
+                ));
+            }
+            let stored_seq = self
+                .with_receipt_store(|store| Ok(store.append_chio_receipt_returning_seq(receipt)?));
+            let stored_seq = match stored_seq {
+                Ok(stored_seq) => stored_seq,
+                Err(error) => {
+                    warn!(
+                        receipt_id = %receipt.id,
+                        reason = %redacted!(&error),
+                        audit_fault = "terminal_receipt_append_outcome_unknown",
+                        "terminal receipt append returned an error after persistence began"
+                    );
+                    return Err(error);
+                }
+            };
+            self.append_chio_receipt_to_local_log(receipt.clone());
+            if let Some(evaluation_context) = evaluation_context {
+                evaluation_context.mark_terminal_receipt_committed();
+            }
+            if let Some(seq) = stored_seq.flatten() {
                 if self.should_checkpoint_after_seq(seq) {
                     self.maybe_trigger_checkpoint_locked(seq)?;
                 }
             }
-            self.append_chio_receipt_to_local_log(receipt.clone());
-            trace_event = if trace_transition.is_some() {
+            trace_event = if self.runtime_trace_observer.is_some() {
                 Some(RuntimeTraceEvent::ReceiptAppended {
                     source_sequence: self.allocate_runtime_trace_source_sequence()?,
                     receipt: Box::new(receipt.clone()),

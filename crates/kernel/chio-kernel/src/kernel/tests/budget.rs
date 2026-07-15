@@ -286,6 +286,15 @@ fn monetary_guard_denial_releases_budget_and_records_attempted_cost() {
     assert_eq!(denied_financial["budget_remaining"].as_u64(), Some(100));
     assert_eq!(denied_financial["settlement_status"], "not_applicable");
 
+    let replay_response = kernel
+        .evaluate_tool_call_blocking(&request("req-deny"))
+        .unwrap();
+    assert_eq!(replay_response.verdict, Verdict::Deny);
+    assert!(replay_response
+        .reason
+        .as_deref()
+        .is_some_and(|reason| reason.contains("budget authorize event replay")));
+
     let allowed_response = kernel
         .evaluate_tool_call_blocking(&request("req-allow"))
         .unwrap();
@@ -328,22 +337,22 @@ fn monetary_payment_authorization_denial_releases_budget_and_skips_tool_invocati
         .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
         .unwrap();
 
-    let response = kernel
-        .evaluate_tool_call_blocking(&ToolCallRequest {
-            request_id: "req-payment-deny".to_string(),
-            capability: cap.clone(),
-            tool_name: "compute".to_string(),
-            server_id: "cost-srv".to_string(),
-            agent_id: agent_kp.public_key().to_hex(),
-            arguments: serde_json::json!({}),
-            dpop_proof: None,
-            execution_nonce: None,
-            governed_intent: None,
-            approval_token: None,
-            model_metadata: None,
-            federated_origin_kernel_id: None,
-        })
-        .unwrap();
+    let mut request = ToolCallRequest {
+        request_id: "req-payment-deny".to_string(),
+        capability: cap.clone(),
+        tool_name: "compute".to_string(),
+        server_id: "cost-srv".to_string(),
+        agent_id: agent_kp.public_key().to_hex(),
+        arguments: serde_json::json!({}),
+        dpop_proof: None,
+        execution_nonce: None,
+        governed_intent: None,
+        approval_token: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    };
+    attach_fresh_payment_execution_nonce(&mut kernel, &cap, &mut request);
+    let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
 
     assert_eq!(response.verdict, Verdict::Deny);
     assert_eq!(
@@ -359,12 +368,7 @@ fn monetary_payment_authorization_denial_releases_budget_and_skips_tool_invocati
         .expect("deny receipt should carry financial metadata");
     assert_eq!(financial["attempted_cost"].as_u64(), Some(100));
     assert_eq!(financial["budget_remaining"].as_u64(), Some(1000));
-    let usage = kernel
-
-        .budget_store
-        .get_usage(&cap.id, 0)
-        .unwrap()
-        .unwrap();
+    let usage = kernel.budget_store.get_usage(&cap.id, 0).unwrap().unwrap();
     assert_eq!(usage.invocation_count, 0);
     assert_eq!(usage.committed_cost_units().unwrap(), 0);
 }
@@ -381,22 +385,22 @@ fn monetary_prepaid_adapter_sets_payment_reference_on_allow_receipt() {
         .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
         .unwrap();
 
-    let response = kernel
-        .evaluate_tool_call_blocking(&ToolCallRequest {
-            request_id: "req-prepaid".to_string(),
-            capability: cap.clone(),
-            tool_name: "compute".to_string(),
-            server_id: "cost-srv".to_string(),
-            agent_id: agent_kp.public_key().to_hex(),
-            arguments: serde_json::json!({}),
-            dpop_proof: None,
-            execution_nonce: None,
-            governed_intent: None,
-            approval_token: None,
-            model_metadata: None,
-            federated_origin_kernel_id: None,
-        })
-        .unwrap();
+    let mut request = ToolCallRequest {
+        request_id: "req-prepaid".to_string(),
+        capability: cap.clone(),
+        tool_name: "compute".to_string(),
+        server_id: "cost-srv".to_string(),
+        agent_id: agent_kp.public_key().to_hex(),
+        arguments: serde_json::json!({}),
+        dpop_proof: None,
+        execution_nonce: None,
+        governed_intent: None,
+        approval_token: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    };
+    attach_fresh_payment_execution_nonce(&mut kernel, &cap, &mut request);
+    let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
 
     assert_eq!(response.verdict, Verdict::Allow);
     let financial = response
@@ -409,12 +413,7 @@ fn monetary_prepaid_adapter_sets_payment_reference_on_allow_receipt() {
     assert_eq!(financial["settlement_status"], "settled");
     assert_eq!(financial["cost_charged"].as_u64(), Some(100));
     assert_eq!(financial["budget_remaining"].as_u64(), Some(900));
-    let usage = kernel
-
-        .budget_store
-        .get_usage(&cap.id, 0)
-        .unwrap()
-        .unwrap();
+    let usage = kernel.budget_store.get_usage(&cap.id, 0).unwrap().unwrap();
     assert_eq!(usage.committed_cost_units().unwrap(), 100);
 }
 
@@ -467,12 +466,7 @@ fn monetary_allow_receipt_contains_financial_metadata() {
         .expect("should have 'attribution' key");
     assert_eq!(attribution["grant_index"].as_u64(), Some(0));
 
-    let usage = kernel
-
-        .budget_store
-        .get_usage(&cap.id, 0)
-        .unwrap()
-        .unwrap();
+    let usage = kernel.budget_store.get_usage(&cap.id, 0).unwrap().unwrap();
     assert_eq!(usage.invocation_count, 1);
     assert_eq!(usage.committed_cost_units().unwrap(), 75);
 }
@@ -512,7 +506,6 @@ fn monetary_allow_records_budget_hold_and_append_only_events() {
     let authorize_event_id = format!("{hold_id}:authorize");
     let reconcile_event_id = format!("{hold_id}:reconcile");
     let events = kernel
-
         .budget_store
         .list_mutation_events(10, Some(&cap.id), Some(0))
         .unwrap();
@@ -527,6 +520,103 @@ fn monetary_allow_records_budget_hold_and_append_only_events() {
     assert_eq!(events[1].realized_spend_units, 75);
     assert_eq!(events[1].total_cost_exposed_after, 0);
     assert_eq!(events[1].total_cost_realized_spend_after, 75);
+}
+
+#[test]
+fn replayed_successful_budget_authorize_is_denied_before_a_second_tool_side_effect(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mut kernel = make_kernel(make_monetary_config());
+    kernel.register_tool_server(Box::new(CountingMonetaryServer {
+        id: "budget-replay-server".to_string(),
+        invocations: std::sync::Arc::clone(&invocations),
+    }));
+
+    let agent = Keypair::generate();
+    let capability = make_capability(
+        &kernel,
+        &agent,
+        make_scope(vec![make_monetary_grant(
+            "budget-replay-server",
+            "compute",
+            100,
+            1_000,
+            "USD",
+        )]),
+        300,
+    );
+    let request = make_request(
+        "budget-authorize-replay",
+        &capability,
+        "compute",
+        "budget-replay-server",
+    );
+
+    let first = kernel.evaluate_tool_call_blocking(&request)?;
+    assert_eq!(first.verdict, Verdict::Allow);
+    assert_eq!(invocations.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+    let replay = kernel.evaluate_tool_call_blocking(&request)?;
+    assert_eq!(replay.verdict, Verdict::Deny);
+    assert!(replay
+        .reason
+        .as_deref()
+        .is_some_and(|reason| reason.contains("budget authorize event replay")));
+    assert_eq!(invocations.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert!(replay.receipt.verify_signature()?);
+    Ok(())
+}
+
+#[test]
+fn replayed_denied_budget_authorize_cannot_fall_through_to_an_unlimited_grant(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mut kernel = make_kernel(make_monetary_config());
+    kernel.register_tool_server(Box::new(CountingMonetaryServer {
+        id: "budget-denied-replay-server".to_string(),
+        invocations: std::sync::Arc::clone(&invocations),
+    }));
+
+    let agent = Keypair::generate();
+    let fallback_grant = ToolGrant {
+        server_id: "budget-denied-replay-server".to_string(),
+        tool_name: "compute".to_string(),
+        operations: vec![Operation::Invoke],
+        constraints: vec![],
+        max_invocations: None,
+        max_cost_per_invocation: None,
+        max_total_cost: None,
+        dpop_required: None,
+    };
+    let capability = make_capability(
+        &kernel,
+        &agent,
+        make_scope(vec![
+            make_monetary_grant("budget-denied-replay-server", "compute", 100, 0, "USD"),
+            fallback_grant,
+        ]),
+        300,
+    );
+    let request = make_request(
+        "budget-denied-authorize-replay",
+        &capability,
+        "compute",
+        "budget-denied-replay-server",
+    );
+
+    let first = kernel.evaluate_tool_call_blocking(&request)?;
+    assert_eq!(first.verdict, Verdict::Allow);
+    assert_eq!(invocations.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+    let replay = kernel.evaluate_tool_call_blocking(&request)?;
+    assert_eq!(replay.verdict, Verdict::Deny);
+    assert!(replay
+        .reason
+        .as_deref()
+        .is_some_and(|reason| reason.contains("budget authorize event replay")));
+    assert_eq!(invocations.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert!(replay.receipt.verify_signature()?);
+    Ok(())
 }
 
 #[test]
@@ -551,7 +641,8 @@ fn sibling_sum_denial_reverses_pre_execution_monetary_charge() {
         })
         .unwrap();
     assert_eq!(
-        allow_response.verdict, Verdict::Allow,
+        allow_response.verdict,
+        Verdict::Allow,
         "unexpected deny reason: {:?}",
         allow_response.reason
     );
@@ -622,7 +713,8 @@ fn sibling_sum_denial_reverses_pre_execution_invocation_increment() {
         })
         .unwrap();
     assert_eq!(
-        allow_response.verdict, Verdict::Allow,
+        allow_response.verdict,
+        Verdict::Allow,
         "unexpected deny reason: {:?}",
         allow_response.reason
     );
@@ -648,7 +740,10 @@ fn sibling_sum_denial_reverses_pre_execution_invocation_increment() {
         reason.contains("sibling-sum") || reason.contains("sibling sum")
     }));
 
-    let usage = kernel.budget_store.get_usage(&fixture.child_b.id, 0).unwrap();
+    let usage = kernel
+        .budget_store
+        .get_usage(&fixture.child_b.id, 0)
+        .unwrap();
     assert_eq!(usage.as_ref().map_or(0, |usage| usage.invocation_count), 0);
     assert_eq!(
         usage
@@ -667,7 +762,9 @@ fn sibling_sum_denial_reverses_pre_execution_invocation_increment() {
 fn nested_hosted_sibling_sum_denial_reverses_pre_execution_monetary_charge() {
     let fixture = make_sibling_sum_monetary_fixture("nested-sibling-sum-rollback");
     let kernel = fixture.kernel;
-    let session_id = kernel.open_session("nested-parent-agent".to_string(), Vec::new()).unwrap();
+    let session_id = kernel
+        .open_session("nested-parent-agent".to_string(), Vec::new())
+        .unwrap();
     kernel.activate_session(&session_id).unwrap();
     let parent_context = make_operation_context(
         &session_id,
@@ -715,7 +812,8 @@ fn nested_hosted_sibling_sum_denial_reverses_pre_execution_monetary_charge() {
         )
         .unwrap();
     assert_eq!(
-        allow_response.verdict, Verdict::Allow,
+        allow_response.verdict,
+        Verdict::Allow,
         "unexpected deny reason: {:?}",
         allow_response.reason
     );
@@ -775,22 +873,22 @@ fn payment_authorization_denial_releases_delegated_sibling_budget() {
     let mut kernel = fixture.kernel;
     kernel.set_payment_adapter(Box::new(DecliningPaymentAdapter));
 
-    let denied_response = kernel
-        .evaluate_tool_call_blocking(&ToolCallRequest {
-            request_id: "req-delegated-payment-deny-a".to_string(),
-            capability: fixture.child_a.clone(),
-            tool_name: "compute".to_string(),
-            server_id: "cost-srv".to_string(),
-            agent_id: fixture.child_a_kp.public_key().to_hex(),
-            arguments: serde_json::json!({}),
-            dpop_proof: None,
-            execution_nonce: None,
-            governed_intent: None,
-            approval_token: None,
-            model_metadata: None,
-            federated_origin_kernel_id: None,
-        })
-        .unwrap();
+    let mut denied_request = ToolCallRequest {
+        request_id: "req-delegated-payment-deny-a".to_string(),
+        capability: fixture.child_a.clone(),
+        tool_name: "compute".to_string(),
+        server_id: "cost-srv".to_string(),
+        agent_id: fixture.child_a_kp.public_key().to_hex(),
+        arguments: serde_json::json!({}),
+        dpop_proof: None,
+        execution_nonce: None,
+        governed_intent: None,
+        approval_token: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    };
+    attach_fresh_payment_execution_nonce(&mut kernel, &fixture.child_a, &mut denied_request);
+    let denied_response = kernel.evaluate_tool_call_blocking(&denied_request).unwrap();
     assert_eq!(denied_response.verdict, Verdict::Deny);
     assert!(denied_response
         .reason
@@ -798,21 +896,23 @@ fn payment_authorization_denial_releases_delegated_sibling_budget() {
         .is_some_and(|reason| reason.contains("payment authorization failed")));
 
     kernel.set_payment_adapter(Box::new(StubPaymentAdapter));
+    let mut allowed_request = ToolCallRequest {
+        request_id: "req-delegated-payment-deny-b".to_string(),
+        capability: fixture.child_b.clone(),
+        tool_name: "compute".to_string(),
+        server_id: "cost-srv".to_string(),
+        agent_id: fixture.child_b_kp.public_key().to_hex(),
+        arguments: serde_json::json!({}),
+        dpop_proof: None,
+        execution_nonce: None,
+        governed_intent: None,
+        approval_token: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    };
+    attach_fresh_payment_execution_nonce(&mut kernel, &fixture.child_b, &mut allowed_request);
     let allowed_sibling = kernel
-        .evaluate_tool_call_blocking(&ToolCallRequest {
-            request_id: "req-delegated-payment-deny-b".to_string(),
-            capability: fixture.child_b.clone(),
-            tool_name: "compute".to_string(),
-            server_id: "cost-srv".to_string(),
-            agent_id: fixture.child_b_kp.public_key().to_hex(),
-            arguments: serde_json::json!({}),
-            dpop_proof: None,
-            execution_nonce: None,
-            governed_intent: None,
-            approval_token: None,
-            model_metadata: None,
-            federated_origin_kernel_id: None,
-        })
+        .evaluate_tool_call_blocking(&allowed_request)
         .unwrap();
     assert_eq!(
         allowed_sibling.verdict,
@@ -829,7 +929,9 @@ fn nested_payment_authorization_denial_releases_delegated_sibling_budget() {
     let fixture = make_sibling_sum_monetary_fixture("nested-delegated-payment-deny-budget");
     let mut kernel = fixture.kernel;
     kernel.set_payment_adapter(Box::new(DecliningPaymentAdapter));
-    let session_id = kernel.open_session("nested-parent-agent".to_string(), Vec::new()).unwrap();
+    let session_id = kernel
+        .open_session("nested-parent-agent".to_string(), Vec::new())
+        .unwrap();
     kernel.activate_session(&session_id).unwrap();
     let parent_context = make_operation_context(
         &session_id,
@@ -855,23 +957,25 @@ fn nested_payment_authorization_denial_releases_delegated_sibling_budget() {
         resources_list_changed_count: 0,
     };
 
+    let mut denied_request = ToolCallRequest {
+        request_id: "req-nested-payment-deny-a".to_string(),
+        capability: fixture.child_a.clone(),
+        tool_name: "compute".to_string(),
+        server_id: "cost-srv".to_string(),
+        agent_id: fixture.child_a_kp.public_key().to_hex(),
+        arguments: serde_json::json!({}),
+        dpop_proof: None,
+        execution_nonce: None,
+        governed_intent: None,
+        approval_token: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    };
+    attach_fresh_payment_execution_nonce(&mut kernel, &fixture.child_a, &mut denied_request);
     let denied_response = kernel
         .evaluate_tool_call_with_nested_flow_client(
             &parent_context,
-            &ToolCallRequest {
-                request_id: "req-nested-payment-deny-a".to_string(),
-                capability: fixture.child_a.clone(),
-                tool_name: "compute".to_string(),
-                server_id: "cost-srv".to_string(),
-                agent_id: fixture.child_a_kp.public_key().to_hex(),
-                arguments: serde_json::json!({}),
-                dpop_proof: None,
-                execution_nonce: None,
-                governed_intent: None,
-                approval_token: None,
-                model_metadata: None,
-                federated_origin_kernel_id: None,
-            },
+            &denied_request,
             &mut client,
             None,
         )
@@ -883,23 +987,25 @@ fn nested_payment_authorization_denial_releases_delegated_sibling_budget() {
         .is_some_and(|reason| reason.contains("payment authorization failed")));
 
     kernel.set_payment_adapter(Box::new(StubPaymentAdapter));
+    let mut allowed_request = ToolCallRequest {
+        request_id: "req-nested-payment-deny-b".to_string(),
+        capability: fixture.child_b.clone(),
+        tool_name: "compute".to_string(),
+        server_id: "cost-srv".to_string(),
+        agent_id: fixture.child_b_kp.public_key().to_hex(),
+        arguments: serde_json::json!({}),
+        dpop_proof: None,
+        execution_nonce: None,
+        governed_intent: None,
+        approval_token: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    };
+    attach_fresh_payment_execution_nonce(&mut kernel, &fixture.child_b, &mut allowed_request);
     let allowed_sibling = kernel
         .evaluate_tool_call_with_nested_flow_client(
             &parent_context,
-            &ToolCallRequest {
-                request_id: "req-nested-payment-deny-b".to_string(),
-                capability: fixture.child_b.clone(),
-                tool_name: "compute".to_string(),
-                server_id: "cost-srv".to_string(),
-                agent_id: fixture.child_b_kp.public_key().to_hex(),
-                arguments: serde_json::json!({}),
-                dpop_proof: None,
-                execution_nonce: None,
-                governed_intent: None,
-                approval_token: None,
-                model_metadata: None,
-                federated_origin_kernel_id: None,
-            },
+            &allowed_request,
             &mut client,
             None,
         )
@@ -944,8 +1050,7 @@ fn hosted_named_remote_without_fresh_peer_fails_before_dispatch() {
     assert_eq!(response.verdict, Verdict::Deny);
     let reason = response.reason.unwrap_or_default();
     assert!(
-        reason.contains("receipt negotiation downgrade")
-            || reason.contains("not pinned fresh"),
+        reason.contains("receipt negotiation downgrade") || reason.contains("not pinned fresh"),
         "unexpected deny reason: {reason}"
     );
 
@@ -966,13 +1071,8 @@ fn portable_subject_denial_does_not_consume_sibling_budget() {
         agent_id: fixture.child_b_kp.public_key().to_hex(),
         arguments: serde_json::json!({}),
     };
-    let denied = kernel.evaluate_portable_verdict(
-        &fixture.child_a,
-        &wrong_subject,
-        &guards,
-        &clock,
-        None,
-    );
+    let denied =
+        kernel.evaluate_portable_verdict(&fixture.child_a, &wrong_subject, &guards, &clock, None);
     assert_eq!(denied.verdict, chio_kernel_core::Verdict::Deny);
 
     let valid_sibling = chio_kernel_core::PortableToolCallRequest {
@@ -982,13 +1082,8 @@ fn portable_subject_denial_does_not_consume_sibling_budget() {
         agent_id: fixture.child_b_kp.public_key().to_hex(),
         arguments: serde_json::json!({}),
     };
-    let allowed = kernel.evaluate_portable_verdict(
-        &fixture.child_b,
-        &valid_sibling,
-        &guards,
-        &clock,
-        None,
-    );
+    let allowed =
+        kernel.evaluate_portable_verdict(&fixture.child_b, &valid_sibling, &guards, &clock, None);
     assert_eq!(allowed.verdict, chio_kernel_core::Verdict::Allow);
 
     let _ = std::fs::remove_file(fixture.path);
@@ -1079,7 +1174,7 @@ fn monetary_server_not_reporting_cost_charges_max_cost_per_invocation() {
 }
 
 #[test]
-fn monetary_tool_server_error_releases_precharged_budget() {
+fn monetary_tool_server_error_retains_precharged_budget() {
     let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(FailingMonetaryServer {
@@ -1109,14 +1204,22 @@ fn monetary_tool_server_error_releases_precharged_budget() {
         .unwrap();
 
     assert_eq!(response.verdict, Verdict::Deny);
-    let usage = kernel
-
-        .budget_store
-        .get_usage(&cap.id, 0)
-        .unwrap()
-        .unwrap();
-    assert_eq!(usage.invocation_count, 0);
-    assert_eq!(usage.committed_cost_units().unwrap(), 0);
+    let usage = kernel.budget_store.get_usage(&cap.id, 0).unwrap().unwrap();
+    assert_eq!(usage.invocation_count, 1);
+    assert_eq!(usage.total_cost_exposed, 100);
+    assert_eq!(usage.total_cost_realized_spend, 0);
+    assert_eq!(usage.committed_cost_units().unwrap(), 100);
+    let metadata = response
+        .receipt
+        .metadata
+        .as_ref()
+        .expect("post-dispatch receipt should have metadata");
+    let runtime = &metadata["chio_runtime"];
+    assert_eq!(runtime["post_dispatch_outcome_unknown"], true);
+    assert_eq!(runtime["retained_budget_exposure_units"], 100);
+    assert!(runtime["retained_budget_hold_id"]
+        .as_str()
+        .is_some_and(|hold_id| !hold_id.is_empty()));
 }
 
 #[test]

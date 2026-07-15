@@ -28,7 +28,13 @@ _INVARIANT_VIOLATION = re.compile(
 _INVARIANT = re.compile(
     rf"\s*>\s*Set an invariant to\s+([A-Za-z_][A-Za-z0-9_]*){_SUFFIX}"
 )
+_TEMPORAL_PROPERTY = re.compile(
+    rf"\s*>\s*Set a temporal property to\s+([A-Za-z_][A-Za-z0-9_]*){_SUFFIX}"
+)
 _TRACE_NAME = re.compile(r"violation[0-9]+\.itf\.json")
+_ANY_VIOLATION_TRACE = re.compile(
+    r"(?:MC)?violation(?:[0-9]+)?(?:\.itf)?\.(?:json|tla|out)"
+)
 _TYPE_TOKEN = re.compile(r"\s*(->|<<|>>|[(){}:,]|[A-Za-z_][A-Za-z0-9_]*)")
 _INTEGER = re.compile(r"-?(?:0|[1-9][0-9]*)")
 
@@ -361,17 +367,107 @@ def classify_completed_run(
     )
 
 
+def validate_positive_run(
+    *,
+    log_path: Path,
+    run_root: Path,
+    mode: str,
+    expected_property: str,
+    expected_length: int,
+    exit_code: int,
+) -> None:
+    """Validate complete, non-vacuous evidence from a positive check."""
+
+    if exit_code != 0:
+        raise EvidenceError(f"positive Apalache check exited {exit_code}, expected 0")
+    if expected_length < 0:
+        raise EvidenceError("expected computation length must be non-negative")
+    if IDENTIFIER.fullmatch(expected_property) is None:
+        raise EvidenceError(f"invalid expected property name: {expected_property}")
+    if mode not in {"invariant", "temporal"}:
+        raise EvidenceError(f"unsupported positive-check mode: {mode}")
+    if not run_root.is_dir():
+        raise EvidenceError(f"positive evidence root is not a directory: {run_root}")
+
+    lines = log_path.read_text(encoding="utf-8").splitlines()
+    outcomes = [
+        match.group(1)
+        for line in lines
+        if (match := _OUTCOME.fullmatch(line))
+    ]
+    if outcomes != ["NoError"]:
+        raise EvidenceError(
+            f"expected exactly one NoError outcome, found {outcomes}"
+        )
+
+    configured_pattern = _INVARIANT if mode == "invariant" else _TEMPORAL_PROPERTY
+    configured = [
+        match.group(1)
+        for line in lines
+        if (match := configured_pattern.fullmatch(line))
+    ]
+    if configured != [expected_property]:
+        raise EvidenceError(
+            f"expected exactly {mode} {expected_property}, found {configured}"
+        )
+    if mode == "invariant" and any(
+        _TEMPORAL_PROPERTY.fullmatch(line) for line in lines
+    ):
+        raise EvidenceError("invariant check unexpectedly configured a temporal property")
+
+    no_error_lengths = [
+        int(match.group(1))
+        for line in lines
+        if (match := _NO_ERROR.fullmatch(line))
+    ]
+    if no_error_lengths != [expected_length]:
+        raise EvidenceError(
+            "NoError outcome lacks the exact requested computation length: "
+            f"expected {expected_length}, found {no_error_lengths}"
+        )
+    if any(_ERROR_REPORT.fullmatch(line) for line in lines) or any(
+        _INVARIANT_VIOLATION.fullmatch(line) for line in lines
+    ):
+        raise EvidenceError("NoError outcome contains violation evidence")
+
+    traces = sorted(
+        path
+        for path in run_root.resolve().rglob("violation*")
+        if _ANY_VIOLATION_TRACE.fullmatch(path.name)
+    )
+    if traces:
+        raise EvidenceError(
+            f"NoError outcome emitted {len(traces)} violation trace(s)"
+        )
+
+
 def main(arguments: list[str]) -> int:
     """Expose the shared checks to shell runners without duplicating regexes."""
 
     if not arguments:
         raise EvidenceError(
             "usage: apalache_evidence.py outcome <log> <invariant> | "
+            "positive <log> <run-root> <mode> <property> <length> <exit> | "
             "trace <run-root> | validate-trace <trace>"
         )
     command, *values = arguments
     if command == "outcome" and len(values) == 2:
         print(parse_outcome(Path(values[0]), values[1]))
+        return 0
+    if command == "positive" and len(values) == 6:
+        try:
+            expected_length = int(values[4])
+            exit_code = int(values[5])
+        except ValueError as error:
+            raise EvidenceError("positive length and exit must be integers") from error
+        validate_positive_run(
+            log_path=Path(values[0]),
+            run_root=Path(values[1]),
+            mode=values[2],
+            expected_property=values[3],
+            expected_length=expected_length,
+            exit_code=exit_code,
+        )
         return 0
     if command == "trace" and len(values) == 1:
         print(discover_trace(Path(values[0])))
@@ -381,6 +477,7 @@ def main(arguments: list[str]) -> int:
         return 0
     raise EvidenceError(
         "usage: apalache_evidence.py outcome <log> <invariant> | "
+        "positive <log> <run-root> <mode> <property> <length> <exit> | "
         "trace <run-root> | validate-trace <trace>"
     )
 

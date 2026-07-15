@@ -75,7 +75,7 @@ runtime_test = "n/a (structural receipt-order check)"
 classification = "spec-mutation"
 length = 4
 timeout_secs = 300
-notes = "PublishAllow omits the prior allow-receipt requirement."
+notes = "PublishAllow omits the matching call-receipt requirement."
 
 [[negative]]
 spec = "formal/apalache/_negative_tests/RevocationCutCompletenessBroken.tla"
@@ -170,8 +170,8 @@ spec = "formal/apalache/_negative_tests/DropGuardReleaseOnPostDispatchAbortBroke
 cfg = "formal/apalache/_negative_tests/MCDropGuardReleaseOnPostDispatchAbortBroken.cfg"
 falsifies = "RetainedIffAborted"
 production_commit = "c201afbd0c97591ce186aadbcfbe6da3ad8ae1db"
-runtime_test = "crates/kernel/chio-kernel/src/kernel/tests/chio_runtime.rs::drop_post_dispatch_retains_and_marks_reservations"
+runtime_test = "crates/kernel/chio-kernel/src/kernel/tests/budget.rs::monetary_tool_server_error_retains_precharged_budget"
 classification = "spec-mutation"
 length = 4
 timeout_secs = 300
-notes = "Post-dispatch drop releases a lease while side effects remain ambiguous."
+notes = "An outcome-unknown post-dispatch path releases admission and monetary state while side effects remain ambiguous."

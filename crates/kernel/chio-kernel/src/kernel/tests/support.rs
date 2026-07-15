@@ -1,3 +1,4 @@
+use super::responses::ReceiptResponseContext;
 use super::*;
 use std::io::{Read, Write};
 use std::net::TcpListener;
@@ -7,7 +8,24 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Mutex, MutexGuard};
 use std::thread;
 
-use chio_core::capability::{attenuation::{AttenuationProof, DelegationLink, DelegationLinkBody, compute_attenuation_witness, scope_hash}, governance::{CallChainContinuationAudience, CallChainContinuationToken, CallChainContinuationTokenBody, GOVERNED_CALL_CHAIN_CONTINUATION_CONTEXT_KEY, GOVERNED_CALL_CHAIN_UPSTREAM_PROOF_CONTEXT_KEY, GovernedApprovalDecision, GovernedApprovalToken, GovernedApprovalTokenBody, GovernedAutonomyContext, GovernedAutonomyTier, GovernedCallChainContext, GovernedTransactionIntent, GovernedUpstreamCallChainProof, GovernedUpstreamCallChainProofBody}, scope::{ChioScope, Constraint, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ToolGrant}, token::{CapabilityToken, CapabilityTokenAttenuationBody, CapabilityTokenBody}};
+use chio_core::capability::{
+    attenuation::{
+        compute_attenuation_witness, scope_hash, AttenuationProof, DelegationLink,
+        DelegationLinkBody,
+    },
+    governance::{
+        CallChainContinuationAudience, CallChainContinuationToken, CallChainContinuationTokenBody,
+        GovernedApprovalDecision, GovernedApprovalToken, GovernedApprovalTokenBody,
+        GovernedAutonomyContext, GovernedAutonomyTier, GovernedCallChainContext,
+        GovernedTransactionIntent, GovernedUpstreamCallChainProof,
+        GovernedUpstreamCallChainProofBody, GOVERNED_CALL_CHAIN_CONTINUATION_CONTEXT_KEY,
+        GOVERNED_CALL_CHAIN_UPSTREAM_PROOF_CONTEXT_KEY,
+    },
+    scope::{
+        ChioScope, Constraint, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ToolGrant,
+    },
+    token::{CapabilityToken, CapabilityTokenAttenuationBody, CapabilityTokenBody},
+};
 use chio_core::credit::{
     CreditBondArtifact, CreditBondDisposition, CreditBondLifecycleState, CreditBondPrerequisites,
     CreditBondReport, CreditBondSupportBoundary, CreditScorecardBand, CreditScorecardConfidence,
@@ -16,7 +34,8 @@ use chio_core::credit::{
 };
 use chio_core::crypto::{Keypair, PublicKey};
 use chio_core::receipt::{
-    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, metadata::GuardEvidence, decision::ToolCallAction,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    metadata::GuardEvidence,
 };
 use chio_core::session::{
     CompleteOperation, CompletionArgument, CompletionReference, CreateMessageOperation,
@@ -283,10 +302,7 @@ impl ReceiptStore for SqliteReceiptStore {
         Ok((rows > 0).then(|| connection.last_insert_rowid().max(0) as u64))
     }
 
-    fn append_child_receipt(
-        &self,
-        receipt: &ChildRequestReceipt,
-    ) -> Result<(), ReceiptStoreError> {
+    fn append_child_receipt(&self, receipt: &ChildRequestReceipt) -> Result<(), ReceiptStoreError> {
         let raw_json = serde_json::to_string(receipt)?;
         self.connection()?.execute(
             r#"
@@ -421,15 +437,17 @@ impl ReceiptStore for SqliteReceiptStore {
             .into_iter()
             .map(|(_, bytes)| bytes)
             .collect::<Vec<_>>();
-        let checkpoint_seq = previous_checkpoint
-            .as_ref()
-            .map_or(Ok(1), |checkpoint| {
-                checkpoint.body.checkpoint_seq.checked_add(1).ok_or_else(|| {
+        let checkpoint_seq = previous_checkpoint.as_ref().map_or(Ok(1), |checkpoint| {
+            checkpoint
+                .body
+                .checkpoint_seq
+                .checked_add(1)
+                .ok_or_else(|| {
                     ReceiptStoreError::Conflict(
                         "checkpoint_seq overflow while creating receipt checkpoint".to_string(),
                     )
                 })
-            })?;
+        })?;
         let checkpoint = build_checkpoint_with_previous(
             checkpoint_seq,
             batch_start_seq,
@@ -438,7 +456,9 @@ impl ReceiptStore for SqliteReceiptStore {
             keypair,
             previous_checkpoint.as_ref(),
         )
-        .map_err(|error| ReceiptStoreError::Conflict(format!("checkpoint build failed: {error}")))?;
+        .map_err(|error| {
+            ReceiptStoreError::Conflict(format!("checkpoint build failed: {error}"))
+        })?;
         self.store_checkpoint(&checkpoint)?;
         Ok(ReceiptCheckpointCreateReport {
             created: true,
@@ -731,7 +751,11 @@ fn make_config() -> KernelConfig {
 }
 
 fn make_kernel(config: KernelConfig) -> ChioKernel {
-    ChioKernel::new(config)
+    let mut kernel = ChioKernel::new(config);
+    kernel.set_governed_approval_replay_store(Box::new(
+        InMemoryGovernedApprovalReplayStore::default(),
+    ));
+    kernel
 }
 
 fn make_signed_receipt(kp: &Keypair, id: &str) -> ChioReceipt {
@@ -771,8 +795,10 @@ fn unique_receipt_db_path(prefix: &str) -> std::path::PathBuf {
         .expect("system time before unix epoch")
         .as_nanos();
     let counter = UNIQUE_RECEIPT_DB_COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir()
-        .join(format!("{prefix}-{}-{nonce}-{counter}.sqlite3", std::process::id()))
+    std::env::temp_dir().join(format!(
+        "{prefix}-{}-{nonce}-{counter}.sqlite3",
+        std::process::id()
+    ))
 }
 
 fn make_elicited_content() -> CreateElicitationResult {
@@ -1051,7 +1077,10 @@ fn make_chain_bound_capability(
 }
 
 fn set_capability_trust_root_for_scope(kernel: &ChioKernel, scope: &ChioScope) {
-    kernel.set_capability_trust_root(kernel.config.keypair.public_key(), scope_hash(scope).unwrap());
+    kernel.set_capability_trust_root(
+        kernel.config.keypair.public_key(),
+        scope_hash(scope).unwrap(),
+    );
 }
 
 struct V2DelegatedChildInput<'a> {
@@ -1206,6 +1235,7 @@ impl PaymentAdapter for StubPaymentAdapter {
         Ok(PaymentAuthorization {
             authorization_id: "auth_stub".to_string(),
             settled: false,
+            settlement_transaction_id: None,
             metadata: serde_json::json!({ "adapter": "stub" }),
         })
     }
@@ -1300,6 +1330,7 @@ impl PaymentAdapter for PrepaidSettledPaymentAdapter {
         Ok(PaymentAuthorization {
             authorization_id: "x402_txn_paid".to_string(),
             settled: true,
+            settlement_transaction_id: Some("x402_txn_paid".to_string()),
             metadata: serde_json::json!({ "adapter": "x402" }),
         })
     }

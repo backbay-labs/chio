@@ -20,33 +20,49 @@ on:
       - "crates/trust/chio-federation/src/revocation_gossip.rs"
       - "crates/trust/chio-federation/tests/distributed_revocation_refinement.rs"
       - "crates/trust/chio-revocation-oracle/src/**"
+      - "crates/core/chio-core-types/src/capability/attenuation.rs"
+      - "crates/core/chio-core-types/src/capability/scope.rs"
       - "crates/kernel/chio-kernel-core/src/evaluate.rs"
+      - "crates/kernel/chio-kernel-core/src/normalized.rs"
       - "crates/kernel/chio-kernel-core/src/revocation_view.rs"
       - "crates/kernel/chio-kernel/src/budget_store.rs"
       - "crates/kernel/chio-kernel/src/runtime_trace.rs"
       - "crates/kernel/chio-kernel/src/kernel/construction.rs"
+      - "crates/kernel/chio-kernel/src/kernel/credential_reservation.rs"
+      - "crates/kernel/chio-kernel/src/kernel/mod.rs"
       - "crates/kernel/chio-kernel/src/receipt_store.rs"
       - "crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs"
+      - "crates/kernel/chio-kernel/src/kernel/kernel_scopes.rs"
       - "crates/kernel/chio-kernel/src/kernel/delegation.rs"
       - "crates/kernel/chio-kernel/src/kernel/dispatch.rs"
       - "crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs"
       - "crates/kernel/chio-kernel/src/kernel/evaluation/nested_flow_evaluation.rs"
+      - "crates/kernel/chio-kernel/src/kernel/responses/allow_responses.rs"
       - "crates/kernel/chio-kernel/src/kernel/responses/finalization.rs"
       - "crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs"
       - "crates/kernel/chio-kernel/src/kernel/validation.rs"
       - "crates/kernel/chio-kernel/src/kernel/tests/chio_runtime.rs"
+      - "crates/kernel/chio-runtime-core/src/admission.rs"
+      - "crates/kernel/chio-runtime-core/src/admission_hook.rs"
+      - "crates/kernel/chio-runtime-core/src/admission_hook/**"
+      - "crates/platform/chio-store-sqlite/src/receipt_store.rs"
+      - "crates/platform/chio-store-sqlite/src/receipt_store/evidence_retention.rs"
       - "crates/tooling/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs"
       - "crates/tooling/chio-conformance/src/native_suite.rs"
       - "crates/tooling/chio-conformance/src/bin/chio_native_conformance_runner.rs"
       - "crates/tooling/chio-conformance/tests/runtime_trace_corpus.rs"
       - "scripts/check-apalache-formal-slice.py"
       - "scripts/check-apalache-negative.sh"
+      - "scripts/check-apalache-positive.sh"
+      - "scripts/check-distributed-revocation-temporal.sh"
       - "scripts/lib/apalache_evidence.py"
       - "scripts/file-mutation-survivors.py"
       - "scripts/spec-mutants.py"
       - "scripts/check-distributed-revocation-refinement.sh"
       - "scripts/validate-distributed-revocation-trace.py"
       - "scripts/tests/check-apalache-negative.test.sh"
+      - "scripts/tests/check-apalache-positive.test.sh"
+      - "scripts/tests/apalache-workflow.test.sh"
       - "scripts/tests/file-mutation-survivors.test.sh"
       - "scripts/tests/spec-mutants.test.sh"
       - "tools/install-apalache.sh"
@@ -62,10 +78,131 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  apalache-subset:
-    name: apalache-subset
+  apalache_contracts:
+    name: apalache-contracts
     runs-on: ubuntu-24.04
-    timeout-minutes: 180
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Formal slice contract checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/check-apalache-formal-slice.py
+
+      - name: Receipt trace binding contract checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/tests/check-receipt-trace-bindings.test.sh
+
+      - name: Positive evidence runner checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/tests/check-apalache-positive.test.sh
+
+      - name: Workflow aggregation checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/tests/apalache-workflow.test.sh
+
+  apalache_safety_shards:
+    name: apalache-safety-${{ matrix.name }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: monotone-log
+            config: formal/apalache/MCMonotoneLogApalache.cfg
+            spec: formal/apalache/MonotoneLogApalache.tla
+            length: 6
+            timeout_seconds: 1800
+            invariant: SafetyInv
+          - name: revocation-cut
+            config: formal/apalache/MCRevocationCutCompleteness.cfg
+            spec: formal/apalache/RevocationCutCompleteness.tla
+            length: 6
+            timeout_seconds: 1800
+            invariant: SafetyInv
+          - name: receipt-before-allow
+            config: formal/apalache/MCReceiptBeforeAllow.cfg
+            spec: formal/apalache/ReceiptBeforeAllow.tla
+            length: 6
+            timeout_seconds: 1800
+            invariant: SafetyInv
+          - name: transition-cancel
+            config: formal/apalache/MCKernelTransitionCancelSafe.cfg
+            spec: formal/apalache/KernelTransitionCancelSafe.tla
+            length: 6
+            timeout_seconds: 1800
+            invariant: SafetyInv
+          - name: post-admission
+            config: formal/apalache/MCPostAdmissionDropGuard.cfg
+            spec: formal/apalache/PostAdmissionDropGuard.tla
+            length: 8
+            timeout_seconds: 10800
+            invariant: SafetyInv
+          - name: revocation-propagation
+            config: formal/tla/MCRevocationPropagation.cfg
+            spec: formal/tla/RevocationPropagation.tla
+            length: 6
+            timeout_seconds: 10800
+            invariant: SafetyInv
+          - name: distributed-domains
+            config: formal/tla/MCDistributedRevocationDomains.cfg
+            spec: formal/tla/DistributedRevocation.tla
+            length: 0
+            timeout_seconds: 600
+            invariant: DistributedDomainsOK
+          - name: distributed-behavior
+            config: formal/tla/MCDistributedRevocation.cfg
+            spec: formal/tla/DistributedRevocation.tla
+            length: 6
+            timeout_seconds: 1800
+            invariant: BehavioralSafetyInv
+          - name: delegation-depth
+            config: formal/tla/MCDelegationDepthBound.cfg
+            spec: formal/tla/DelegationDepthBound.tla
+            length: 6
+            timeout_seconds: 1800
+            invariant: SafetyInv
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Java runtime
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Apalache
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./tools/install-apalache.sh
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Apalache safety checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./scripts/check-apalache-positive.sh \
+            --invariant "${{ matrix.invariant }}" \
+            --length "${{ matrix.length }}" \
+            --timeout-seconds "${{ matrix.timeout_seconds }}" \
+            --config "${{ matrix.config }}" \
+            "${{ matrix.spec }}"
+
+  apalache_scheduled_bounds_and_refinement:
+    name: apalache-scheduled-bounds-and-refinement
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
@@ -94,58 +231,21 @@ jobs:
           ./tools/install-apalache.sh
           echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
 
-      - name: Confirm Apalache
+      - name: Distributed revocation nightly bounds
         shell: bash
         run: |
           set -euo pipefail
-          command -v apalache-mc
-          apalache-mc version || true
-
-      - name: Formal slice contract checks
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 scripts/check-apalache-formal-slice.py
-
-      - name: Receipt trace binding contract checks
-        shell: bash
-        run: |
-          set -euo pipefail
-          ./scripts/tests/check-receipt-trace-bindings.test.sh
-
-      - name: Apalache safety checks
-        shell: bash
-        run: |
-          set -euo pipefail
-          while IFS="|" read -r cfg spec length timeout_secs; do
-            timeout "${timeout_secs}" apalache-mc check \
-              --length="${length}" \
-              --config="${cfg}" \
-              "${spec}"
-          done <<'EOF'
-          formal/apalache/MCMonotoneLogApalache.cfg|formal/apalache/MonotoneLogApalache.tla|6|1800
-          formal/apalache/MCRevocationCutCompleteness.cfg|formal/apalache/RevocationCutCompleteness.tla|6|1800
-          formal/apalache/MCReceiptBeforeAllow.cfg|formal/apalache/ReceiptBeforeAllow.tla|6|1800
-          formal/apalache/MCKernelTransitionCancelSafe.cfg|formal/apalache/KernelTransitionCancelSafe.tla|6|1800
-          formal/apalache/MCPostAdmissionDropGuard.cfg|formal/apalache/PostAdmissionDropGuard.tla|8|10800
-          formal/tla/MCRevocationPropagation.cfg|formal/tla/RevocationPropagation.tla|6|10800
-          formal/tla/MCDistributedRevocationDomains.cfg|formal/tla/DistributedRevocation.tla|0|600
-          formal/tla/MCDistributedRevocation.cfg|formal/tla/DistributedRevocation.tla|6|1800
-          formal/tla/MCDelegationDepthBound.cfg|formal/tla/DelegationDepthBound.tla|6|1800
-          EOF
-
-      - name: Distributed revocation nightly bound
-        if: github.event_name != 'pull_request'
-        shell: bash
-        run: |
-          set -euo pipefail
-          timeout 3600 apalache-mc check \
-            --length=0 \
-            --config=formal/tla/MCDistributedRevocationDomainsNightly.cfg \
+          ./scripts/check-apalache-positive.sh \
+            --invariant DistributedDomainsOK \
+            --length 0 \
+            --timeout-seconds 3600 \
+            --config formal/tla/MCDistributedRevocationDomainsNightly.cfg \
             formal/tla/DistributedRevocation.tla
-          timeout 3600 apalache-mc check \
-            --length=6 \
-            --config=formal/tla/MCDistributedRevocationNightly.cfg \
+          ./scripts/check-apalache-positive.sh \
+            --invariant BehavioralSafetyInv \
+            --length 6 \
+            --timeout-seconds 3600 \
+            --config formal/tla/MCDistributedRevocationNightly.cfg \
             formal/tla/DistributedRevocation.tla
 
       - name: Production revocation trace projection
@@ -154,13 +254,50 @@ jobs:
           set -euo pipefail
           ./scripts/check-distributed-revocation-refinement.sh
 
+  apalache_verdict:
+    name: apalache-subset
+    if: ${{ always() }}
+    needs:
+      - apalache_contracts
+      - apalache_safety_shards
+      - apalache_scheduled_bounds_and_refinement
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Validate safety results
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          CONTRACT_RESULT: ${{ needs.apalache_contracts.result }}
+          SHARD_RESULT: ${{ needs.apalache_safety_shards.result }}
+          SCHEDULED_RESULT: ${{ needs.apalache_scheduled_bounds_and_refinement.result }}
+        run: |
+          set -euo pipefail
+          if [[ "${CONTRACT_RESULT}" != "success" || "${SHARD_RESULT}" != "success" ]]; then
+            echo "Apalache safety contracts or shards did not succeed" >&2
+            exit 1
+          fi
+          if [[ "${EVENT_NAME}" == "pull_request" ]]; then
+            if [[ "${SCHEDULED_RESULT}" != "skipped" ]]; then
+              echo "scheduled Apalache work must be skipped on pull requests" >&2
+              exit 1
+            fi
+          elif [[ "${SCHEDULED_RESULT}" != "success" ]]; then
+            echo "scheduled Apalache work did not succeed" >&2
+            exit 1
+          fi
+
       - name: Record safety lane posture
         if: always()
         env:
           GH_TOKEN: ${{ github.token }}
           LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
           LANE_GATE_RATE_LIMIT_MODE: warn
-        run: bash scripts/lane-gate.sh apalache-safety
+        run: |
+          set -euo pipefail
+          bash scripts/lane-gate.sh apalache-safety
+          exit "${LANE_EXIT}"
 
   apalache-negative:
     name: apalache-negative

@@ -175,6 +175,15 @@ lane = "pr"
 
 [[harness]]
 crate = "chio-kernel-core"
+harness = "verify_reservation_ledger_terminal_classification"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+primary_rust_symbol = "chio_kernel_core::formal_aeneas::ledger_is_terminal"
+notes = "The pure reservation-ledger helper classifies a state as terminal exactly when no reserved amount remains and at least one terminal disposition is non-zero."
+
+[[harness]]
+crate = "chio-kernel-core"
 harness = "verify_reservation_ledger_conservation"
 default_unwind = 8
 timeout_secs = 1800
@@ -312,10 +321,10 @@ notes = "Truth table over chio_anchor::emergency_controls_allows. `features = [k
 crate = "chio-anchor"
 harness = "public_ensure_anchor_operation_allowed_fail_closed"
 default_unwind = 4
-timeout_secs = 3600
-lane = "nightly"
+timeout_secs = 1800
+lane = "pr"
 features = ["kani"]
-notes = "NIGHTLY-ONLY: Fail-closed semantics of chio_anchor::ensure_anchor_operation_allowed. The production fail-closed arm constructs an AnchorError::InvalidInput payload via format!(), whose UTF-8 char-counting paths inflate cbmc's SSA into the millions of steps even at unwind=4 (~140s symex + minutes of SAT in local runs). PR-tier wall-clock budgets are too tight; this harness runs in the nightly lane at a 3600s budget. The fail-closed property is also pinned at PR-tier by the runtime negative tests under crates/economy/chio-anchor/tests/ and by the truth-table harness `public_anchor_emergency_controls_allows_truth_table` which exercises the same `controls.allows()` predicate without the format-string path. Future hardening follow-up: extract a `pub(crate) fn classify_operation_admission(...)` helper used by both the runtime fail-closed branch and a tighter Kani harness, replacing the format!-based error construction with a small enum-only variant tag - this would let the tightened harness run in the PR lane. See the model-scope notes for the option decision."
+notes = "PR-tier fail-closed semantics of chio_anchor::ensure_anchor_operation_allowed over all five emergency modes and three operation kinds. The production denial arm selects one of three bounded static diagnostic strings before returning AnchorError::InvalidInput; this preserves the public Result/error behavior and stable operation-specific diagnostic prefixes without traversing dynamic formatting internals. The original format!-based implementation exhausted a 3600s nightly solver budget during propositional reduction; the bounded implementation verifies the same real public function within the standard 1800s non-core PR ceiling. The nightly workflow runs both pr and nightly manifest lanes, so this harness remains in the nightly union. Runtime negative tests and `public_anchor_emergency_controls_allows_truth_table` provide complementary PR-tier coverage."
 
 [[harness]]
 crate = "chio-anchor"

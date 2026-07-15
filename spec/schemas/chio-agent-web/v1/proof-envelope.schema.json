@@ -8,6 +8,7 @@
     "schema",
     "envelope_id",
     "transaction_passport_ref",
+    "agent_web_passport_scope_sha256",
     "source_protocol",
     "source_protocol_version",
     "external_subject",
@@ -28,6 +29,7 @@
     "schema": { "const": "chio.agent-web-proof-envelope.v1" },
     "envelope_id": { "type": "string", "minLength": 1 },
     "transaction_passport_ref": { "type": "string", "minLength": 1 },
+    "agent_web_passport_scope_sha256": { "$ref": "#/$defs/sha256" },
     "source_protocol": {
       "enum": [
         "standard-webhooks",
@@ -78,7 +80,8 @@
     "receipt_refs": {
       "type": "array",
       "items": { "type": "string", "minLength": 1 },
-      "minItems": 1
+      "minItems": 1,
+      "uniqueItems": true
     },
     "disclosure_capsule_refs": {
       "type": "array",

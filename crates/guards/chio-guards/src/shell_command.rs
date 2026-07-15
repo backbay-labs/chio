@@ -225,6 +225,14 @@ impl chio_kernel::Guard for ShellCommandGuard {
             Ok(GuardDecision::allow())
         }
     }
+
+    fn requires_dispatch_revalidation(&self) -> bool {
+        true
+    }
+
+    fn revalidate_before_dispatch(&self, ctx: &GuardContext) -> Result<(), KernelError> {
+        crate::revalidate_non_consuming_guard(self, ctx)
+    }
 }
 
 const MAX_SHELL_COMMAND_NESTING: usize = 4;

@@ -22,7 +22,7 @@ solver, and 30 minute per-invariant timeout in CI.
 - `Invocations = 1..2`
 - `ChildMax = 1`
 - four ledger resources: monetary hold, invocation slot, admission lease,
-  and child budget
+  and child budget; payment authorization remains outside the ledger
 - positive bound `--length=8`
 
 The second invocation covers arbitrary ordering of two independently keyed
@@ -42,12 +42,12 @@ and timeout fields.
 | --- | --- | --- | --- |
 | `MonotoneLogApalache` | `MonotoneLogApalache.tla` | `MCMonotoneLogApalache.cfg` | Port of `formal/tla/RevocationPropagation.tla` `MonotoneLog` with explicit Apalache type annotations. |
 | `RevocationCutCompleteness` | `RevocationCutCompleteness.tla` | `MCRevocationCutCompleteness.cfg` | Lifts Lean `revocation_is_cut` into a bounded state-machine invariant over transitive delegation cuts. |
-| `ReceiptBeforeAllow` | `ReceiptBeforeAllow.tla` | `MCReceiptBeforeAllow.cfg` | A capability may appear in an authority's allowed set only after an allow receipt for that authority and capability exists in the log. Receipt persistence and allow publication are separate actions. This is modeled ordering evidence, not a discharge of concrete cross-row crash recovery. |
+| `ReceiptBeforeAllow` | `ReceiptBeforeAllow.tla` | `MCReceiptBeforeAllow.cfg` | A call may appear in an authority's allowed set only after a receipt with the same call identity and capability exists in the log. Call identities cannot be reused or published twice. Receipt persistence and allow publication are separate actions. This is modeled ordering evidence, not a discharge of concrete cross-row crash recovery. |
 | `KernelTransitionCancelSafe` | `KernelTransitionCancelSafe.tla` | `MCKernelTransitionCancelSafe.cfg` | Models an interrupted kernel transition and proves rollback leaves budget and receipt state unchanged. |
 | `ReservationConservation` | `PostAdmissionDropGuard.tla` | `MCPostAdmissionDropGuard.cfg` | Every admitted resource preserves the counted partition, reaches a terminal disposition, and shares the global `ChildMax` capacity without active-child oversubscription. |
-| `TerminalReceiptExactlyOne` | `PostAdmissionDropGuard.tla` | `MCPostAdmissionDropGuard.cfg` | Receipt-bearing terminals append one parent record; clean pre-dispatch unwind appends none. |
-| `ChildReceiptsFlushed` | `PostAdmissionDropGuard.tla` | `MCPostAdmissionDropGuard.cfg` | Buffered child records are flushed before the parent terminal record. |
-| `RetainedIffAborted` | `PostAdmissionDropGuard.tla` | `MCPostAdmissionDropGuard.cfg` | Admission leases are retained exactly on ambiguous aborts or a failed lease unwind. |
+| `TerminalReceiptExactlyOne` | `PostAdmissionDropGuard.tla` | `MCPostAdmissionDropGuard.cfg` | A committed parent append has exactly one record, an outcome-unknown append has at most one and cannot be retried, and clean pre-dispatch unwind appends none. |
+| `ChildReceiptsFlushed` | `PostAdmissionDropGuard.tla` | `MCPostAdmissionDropGuard.cfg` | Under successful append availability, buffered child records are flushed before the parent terminal record. Outcome-unknown child presence and failed-suffix handling remain outside the model. |
+| `RetainedIffAborted` | `PostAdmissionDropGuard.tla` | `MCPostAdmissionDropGuard.cfg` | Admission leases remain retained after every non-allow post-dispatch terminal. Monetary holds are committed after a returned output is reconciled, but remain retained after server errors and dropped futures. Raw URL errors map to incomplete terminals and use the same retention transition with and without nested bridge activity. A failed pre-dispatch cleanup retains only the affected resources. |
 
 ## Local smoke commands
 

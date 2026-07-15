@@ -110,7 +110,7 @@ jobs:
           set_output lean "${workflow}|^(formal/lean4/|formal/(proof-manifest\.toml|theorem-inventory\.json|assumptions\.toml)$|docs/reference/CLAIM_REGISTRY\.md$|scripts/(check-formal-proofs\.sh|lean-assumption-audit\.lean|generate-lean-json-fixtures\.py)$|scripts/tests/lean-assumption-audit\.test\.sh$|tests/bindings/vectors/canonical/v1\.json$)"
           set_output kani_core "${rust_common}|^(\.kani/harnesses\.toml$|formal/rust-verification/kani-public-harnesses\.toml$|scripts/check-kani-public-core\.sh$|crates/(kernel/chio-kernel-core|core/chio-core-types|trust/chio-revocation-oracle)/(src/|Cargo\.toml$))"
           set_output kani_manifest "${rust_common}|^(\.kani/harnesses\.toml$|scripts/run-kani-manifest\.sh$|crates/(economy/chio-anchor|economy/chio-credit|economy/chio-web3|trust/chio-attest-verify|trust/chio-weights)/(src/|Cargo\.toml$))"
-          set_output metadata "${workflow}|^(formal/rust-verification/|scripts/check-rust-verification-gates\.sh$)"
+          set_output metadata "${workflow}|^(\.kani/harnesses\.toml$|formal/rust-verification/|scripts/check-rust-verification-gates\.sh$)"
           set_output fuzz_smoke "${workflow}|^(\.github/workflows/fuzz\.yml$|fuzz/)"
 
   fuzz-corpus-smoke-pr:
@@ -225,7 +225,7 @@ jobs:
     needs: scope
     if: needs.scope.outputs.kani_core == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 

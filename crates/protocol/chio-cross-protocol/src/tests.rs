@@ -406,6 +406,30 @@ fn target_protocol_rejects_non_string_extension_value() {
 }
 
 #[test]
+fn source_receipt_context_is_preserved_as_non_authoritative_metadata() {
+    let metadata = metadata_with_source_receipt_context(
+        json!({"route_selection": {"decision": "allow"}}),
+        &json!({
+            "receipt_context": {
+                "request_id": "source-request",
+                "session_id": "source-session"
+            }
+        }),
+    )
+    .expect("source receipt context should project");
+
+    assert!(metadata.get("receipt_context").is_none());
+    assert_eq!(
+        metadata.pointer("/source_receipt_context/request_id"),
+        Some(&json!("source-request"))
+    );
+    assert_eq!(
+        metadata.pointer("/source_receipt_context/session_id"),
+        Some(&json!("source-session"))
+    );
+}
+
+#[test]
 fn orchestrator_rejects_empty_origin_request_id_before_signed_lineage() {
     let (issuer, kernel) = test_kernel();
     let subject = Keypair::generate();

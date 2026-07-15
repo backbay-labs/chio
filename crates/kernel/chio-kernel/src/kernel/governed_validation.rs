@@ -189,7 +189,7 @@ impl ChioKernel {
         Ok(())
     }
 
-    fn validate_governed_approval_token(
+    fn validate_governed_approval_token_non_consuming(
         &self,
         request: &ToolCallRequest,
         cap: &CapabilityToken,
@@ -232,9 +232,9 @@ impl ChioKernel {
                 ))
             })?;
 
-        // Step 7: Cap approval token lifetime. Tokens with expires_at more
-        // than MAX_APPROVAL_TTL_SECS beyond issued_at are rejected to prevent
-        // long-lived tokens from outliving the replay store's eviction window.
+        // Step 7: Cap approval token lifetime so approval authority remains
+        // intentionally short-lived. Replay entries independently follow each
+        // accepted token's signed expiry.
         const MAX_APPROVAL_TTL_SECS: u64 = 3600; // 1 hour max
         let token_lifetime = approval_token
             .expires_at
@@ -245,15 +245,25 @@ impl ChioKernel {
             )));
         }
 
-        // Step 8: Single-use replay check. An approval token must not be
-        // consumed more than once. The replay store TTL is set to
-        // MAX_APPROVAL_TTL_SECS, which is >= any valid token's lifetime
-        // (enforced by step 7). This guarantees a token can never be replayed
-        // after cache eviction because the token itself will have expired
-        // before eviction occurs.
-        if let Some(ref replay_store) = self.approval_replay_store {
+        Ok(())
+    }
+
+    #[cfg(test)]
+    fn consume_governed_approval_token(
+        &self,
+        approval_token: &GovernedApprovalToken,
+        intent_hash: &str,
+    ) -> Result<(), KernelError> {
+        if let Some(replay_store) = self.approval_replay_store.as_deref() {
+            let reservation_id = format!("test-consume-{}", approval_token.id);
             let is_fresh = replay_store
-                .check_and_insert(&approval_token.request_id, intent_hash)
+                .reserve_for_dispatch(
+                    &approval_token.subject.to_hex(),
+                    &approval_token.request_id,
+                    intent_hash,
+                    approval_token.expires_at,
+                    &reservation_id,
+                )
                 .map_err(|_| {
                     KernelError::GovernedTransactionDenied(
                         "approval replay store unavailable; denying as fail-closed".to_string(),
@@ -262,6 +272,25 @@ impl ChioKernel {
             if !is_fresh {
                 return Err(KernelError::GovernedTransactionDenied(
                     "approval token has already been consumed (replay detected)".to_string(),
+                ));
+            }
+            let committed = replay_store
+                .commit_dispatch_reservation(
+                    &approval_token.subject.to_hex(),
+                    &approval_token.request_id,
+                    intent_hash,
+                    &reservation_id,
+                )
+                .map_err(|_| {
+                    KernelError::GovernedTransactionDenied(
+                        "approval replay store commit unavailable; marker retained fail-closed"
+                            .to_string(),
+                    )
+                })?;
+            if !committed {
+                return Err(KernelError::GovernedTransactionDenied(
+                    "approval replay reservation ownership lost during commit; denying fail-closed"
+                        .to_string(),
                 ));
             }
         } else {
@@ -1056,7 +1085,13 @@ impl ChioKernel {
             .unwrap_or(false);
 
         if let Some(approval_token) = request.approval_token.as_ref() {
-            self.validate_governed_approval_token(request, cap, &intent_hash, approval_token, now)?;
+            self.validate_governed_approval_token_non_consuming(
+                request,
+                cap,
+                &intent_hash,
+                approval_token,
+                now,
+            )?;
         } else if approval_required {
             return Err(KernelError::GovernedTransactionDenied(format!(
                 "approval token required for governed transaction intent {}",
@@ -1068,6 +1103,145 @@ impl ChioKernel {
             call_chain_proof: validated_upstream_call_chain_proof,
             verified_runtime_attestation,
         }))
+    }
+
+    pub(crate) fn revalidate_governed_transaction_after_runtime_readiness(
+        &self,
+        request: &ToolCallRequest,
+        cap: &CapabilityToken,
+        grant: &ToolGrant,
+        charge_result: Option<&BudgetChargeResult>,
+        parent_context: Option<&OperationContext>,
+        now: u64,
+    ) -> Result<(), KernelError> {
+        let (
+            intent_required,
+            approval_threshold_units,
+            required_seller,
+            minimum_runtime_assurance,
+            minimum_autonomy_tier,
+        ) = Self::governed_requirements(grant);
+        let governed_request_present =
+            request.governed_intent.is_some() || request.approval_token.is_some();
+        if !intent_required
+            && approval_threshold_units.is_none()
+            && required_seller.is_none()
+            && minimum_runtime_assurance.is_none()
+            && minimum_autonomy_tier.is_none()
+            && !governed_request_present
+        {
+            return Ok(());
+        }
+
+        let intent = request.governed_intent.as_ref().ok_or_else(|| {
+            KernelError::GovernedTransactionDenied(
+                "governed transaction intent required by grant or request".to_string(),
+            )
+        })?;
+        if intent.server_id != request.server_id || intent.tool_name != request.tool_name {
+            return Err(KernelError::GovernedTransactionDenied(
+                "governed transaction intent target does not match the tool call".to_string(),
+            ));
+        }
+
+        let verified_runtime_attestation =
+            self.verify_governed_request_runtime_attestation(request, now)?;
+        let _ =
+            self.validate_governed_call_chain_context(request, cap, intent, parent_context, now)?;
+        if let Some(required_tier) = minimum_runtime_assurance {
+            Self::validate_runtime_assurance(
+                verified_runtime_attestation.as_ref(),
+                required_tier,
+                "grant",
+            )?;
+        }
+        self.validate_governed_autonomy(
+            request,
+            cap,
+            intent,
+            minimum_autonomy_tier,
+            verified_runtime_attestation.as_ref(),
+            now,
+        )?;
+        Self::validate_metered_billing_context(intent, charge_result, now)?;
+
+        let requested_units = charge_result
+            .map(|charge| charge.cost_charged)
+            .or_else(|| intent.max_amount.as_ref().map(|amount| amount.units))
+            .unwrap_or(0);
+        let approval_required = approval_threshold_units
+            .map(|threshold_units| requested_units >= threshold_units)
+            .unwrap_or(false);
+        if let Some(approval_token) = request.approval_token.as_ref() {
+            let intent_hash = intent.binding_hash().map_err(|error| {
+                KernelError::GovernedTransactionDenied(format!(
+                    "failed to hash governed transaction intent: {error}"
+                ))
+            })?;
+            self.validate_governed_approval_token_non_consuming(
+                request,
+                cap,
+                &intent_hash,
+                approval_token,
+                now,
+            )?;
+        } else if approval_required {
+            return Err(KernelError::GovernedTransactionDenied(format!(
+                "approval token required for governed transaction intent {}",
+                intent.id
+            )));
+        }
+        Ok(())
+    }
+
+    #[cfg(test)]
+    pub(crate) fn consume_governed_approval_for_dispatch(
+        &self,
+        request: &ToolCallRequest,
+    ) -> Result<(), KernelError> {
+        let Some(approval_token) = request.approval_token.as_ref() else {
+            return Ok(());
+        };
+        let intent = request.governed_intent.as_ref().ok_or_else(|| {
+            KernelError::GovernedTransactionDenied(
+                "approval token requires a governed transaction intent".to_string(),
+            )
+        })?;
+        let intent_hash = intent.binding_hash().map_err(|error| {
+            KernelError::GovernedTransactionDenied(format!(
+                "failed to hash governed transaction intent: {error}"
+            ))
+        })?;
+        self.consume_governed_approval_token(approval_token, &intent_hash)
+    }
+
+    pub(crate) fn validate_governed_approval_for_dispatch_non_consuming(
+        &self,
+        request: &ToolCallRequest,
+        cap: &CapabilityToken,
+        now: u64,
+    ) -> Result<Option<String>, KernelError> {
+        let Some(approval_token) = request.approval_token.as_ref() else {
+            return Ok(None);
+        };
+        let intent = request.governed_intent.as_ref().ok_or_else(|| {
+            KernelError::GovernedTransactionDenied(
+                "approval token requires a governed transaction intent".to_string(),
+            )
+        })?;
+        let intent_hash = intent.binding_hash().map_err(|error| {
+            KernelError::GovernedTransactionDenied(format!(
+                "failed to hash governed transaction intent: {error}"
+            ))
+        })?;
+        self.validate_governed_approval_token_non_consuming(
+            request,
+            cap,
+            &intent_hash,
+            approval_token,
+            now,
+        )?;
+        Ok(Some(intent_hash))
     }
 
     pub(crate) fn governed_call_chain_receipt_evidence(

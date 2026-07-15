@@ -272,6 +272,10 @@ pub struct ToolInvocationCost {
 /// The kernel holds one `ToolServerConnection` per registered server. In
 /// production this is an mTLS connection over UDS or TCP. For testing,
 /// an in-process implementation can be used.
+///
+/// Once the kernel polls an invocation future, every returned error is treated
+/// as outcome-unknown. Implementations must not rely on an error variant to
+/// make credentials, admission reservations, or monetary exposure reusable.
 #[async_trait::async_trait]
 pub trait ToolServerConnection: Send + Sync {
     /// The server's unique identifier.

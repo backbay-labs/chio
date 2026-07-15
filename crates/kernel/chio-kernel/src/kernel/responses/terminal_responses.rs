@@ -4,6 +4,7 @@ impl ChioKernel {
     pub(crate) fn build_cancelled_response_with_metadata(
         &self,
         request: &ToolCallRequest,
+        evaluation_context: &EvaluationReceiptContext,
         reason: &str,
         timestamp: u64,
         matched_grant_index: Option<usize>,
@@ -15,14 +16,16 @@ impl ChioKernel {
         let action = ToolCallAction::from_parameters(request.arguments.clone()).map_err(|e| {
             KernelError::ReceiptSigningFailed(format!("failed to hash parameters: {e}"))
         })?;
-        let request_metadata = request_receipt_metadata(
+        let request_metadata = request_receipt_metadata_with_context(
             request,
             self.attestation_trust_policy.as_ref(),
             timestamp,
             extra_metadata.as_ref(),
+            evaluation_context,
         )?;
 
         let receipt = self.build_and_sign_receipt(ReceiptParams {
+            evaluation_context,
             request_id: Some(&request.request_id),
             capability_id: &cap.id,
             tool_name: &request.tool_name,
@@ -45,7 +48,7 @@ impl ChioKernel {
             tenant_id: None,
         })?;
 
-        self.record_chio_receipt_with_federation(request, &receipt)?;
+        self.record_chio_receipt_with_federation(request, &receipt, evaluation_context)?;
 
         Ok(ToolCallResponse {
             request_id: request.request_id.clone(),
@@ -62,27 +65,33 @@ impl ChioKernel {
 
     pub(crate) fn build_incomplete_response_with_output_and_metadata(
         &self,
-        request: &ToolCallRequest,
+        context: ReceiptResponseContext<'_>,
         output: Option<ToolCallOutput>,
         reason: &str,
-        timestamp: u64,
-        matched_grant_index: Option<usize>,
-        extra_metadata: Option<serde_json::Value>,
     ) -> Result<ToolCallResponse, KernelError> {
+        let ReceiptResponseContext {
+            request,
+            evaluation_context,
+            timestamp,
+            matched_grant_index,
+            extra_metadata,
+        } = context;
         let cap = &request.capability;
         let receipt_content = receipt_content_for_output(output.as_ref(), None)?;
 
         let action = ToolCallAction::from_parameters(request.arguments.clone()).map_err(|e| {
             KernelError::ReceiptSigningFailed(format!("failed to hash parameters: {e}"))
         })?;
-        let request_metadata = request_receipt_metadata(
+        let request_metadata = request_receipt_metadata_with_context(
             request,
             self.attestation_trust_policy.as_ref(),
             timestamp,
             extra_metadata.as_ref(),
+            evaluation_context,
         )?;
 
         let receipt = self.build_and_sign_receipt(ReceiptParams {
+            evaluation_context,
             request_id: Some(&request.request_id),
             capability_id: &cap.id,
             tool_name: &request.tool_name,
@@ -105,7 +114,7 @@ impl ChioKernel {
             tenant_id: None,
         })?;
 
-        self.record_chio_receipt_with_federation(request, &receipt)?;
+        self.record_chio_receipt_with_federation(request, &receipt, evaluation_context)?;
 
         Ok(ToolCallResponse {
             request_id: request.request_id.clone(),

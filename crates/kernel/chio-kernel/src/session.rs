@@ -126,15 +126,19 @@ impl InflightRequest {
 #[derive(Debug)]
 pub struct InflightRegistry {
     requests: RwLock<HashMap<RequestId, InflightRequest>>,
+    dispatching: RwLock<HashSet<RequestId>>,
     active_count: AtomicU64,
 }
 
 impl Clone for InflightRegistry {
     fn clone(&self) -> Self {
-        let requests = self.read_requests().clone();
+        let requests_guard = self.read_requests();
+        let requests = requests_guard.clone();
+        let dispatching = read_lock(&self.dispatching).clone();
         Self {
             active_count: AtomicU64::new(requests.len() as u64),
             requests: RwLock::new(requests),
+            dispatching: RwLock::new(dispatching),
         }
     }
 }
@@ -143,6 +147,7 @@ impl Default for InflightRegistry {
     fn default() -> Self {
         Self {
             requests: RwLock::new(HashMap::new()),
+            dispatching: RwLock::new(HashSet::new()),
             active_count: AtomicU64::new(0),
         }
     }
@@ -227,6 +232,7 @@ impl InflightRegistry {
                 .ok_or_else(|| SessionError::RequestNotInflight {
                     request_id: request_id.clone(),
                 })?;
+        write_lock(&self.dispatching).remove(request_id);
         if self
             .active_count
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |current| {
@@ -255,7 +261,32 @@ impl InflightRegistry {
             });
         }
 
+        if read_lock(&self.dispatching).contains(request_id) {
+            return Err(SessionError::RequestNotCancellable {
+                request_id: request_id.clone(),
+            });
+        }
+
         request.cancellation_requested = true;
+        Ok(())
+    }
+
+    pub(crate) fn try_mark_dispatch_started(
+        &self,
+        request_id: &RequestId,
+        current_session_anchor_id: &str,
+    ) -> Result<(), DispatchStartFailure> {
+        let mut requests = self.write_requests();
+        let request = requests
+            .get_mut(request_id)
+            .ok_or(DispatchStartFailure::RequestNotInflight)?;
+        if request.cancellation_requested {
+            return Err(DispatchStartFailure::CancellationRequested);
+        }
+        if request.session_anchor_id != current_session_anchor_id {
+            return Err(DispatchStartFailure::SessionAnchorChanged);
+        }
+        write_lock(&self.dispatching).insert(request_id.clone());
         Ok(())
     }
 
@@ -272,9 +303,18 @@ impl InflightRegistry {
     }
 
     pub fn clear(&self) {
-        self.write_requests().clear();
+        let mut requests = self.write_requests();
+        requests.clear();
+        write_lock(&self.dispatching).clear();
         self.active_count.store(0, Ordering::Release);
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DispatchStartFailure {
+    RequestNotInflight,
+    CancellationRequested,
+    SessionAnchorChanged,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -1271,6 +1311,16 @@ impl Session {
 
     pub fn request_cancellation(&self, request_id: &RequestId) -> Result<(), SessionError> {
         self.inflight.mark_cancellation_requested(request_id)
+    }
+
+    pub(crate) fn try_mark_request_dispatch_started(
+        &self,
+        request_id: &RequestId,
+    ) -> Result<(), DispatchStartFailure> {
+        self.auth_state.with_current(|auth_state| {
+            self.inflight
+                .try_mark_dispatch_started(request_id, auth_state.session_anchor.id())
+        })
     }
 
     pub fn validate_parent_request_lineage(

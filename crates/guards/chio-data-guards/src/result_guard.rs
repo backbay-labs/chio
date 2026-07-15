@@ -339,6 +339,14 @@ impl chio_kernel::Guard for QueryResultGuard {
         // it never denies.
         Ok(GuardDecision::allow())
     }
+
+    fn requires_dispatch_revalidation(&self) -> bool {
+        true
+    }
+
+    fn revalidate_before_dispatch(&self, _ctx: &GuardContext) -> Result<(), KernelError> {
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------

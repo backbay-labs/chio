@@ -34,6 +34,8 @@ for slug in "" -monotone -attenuation -freshness; do
 done
 managed_paths=(
   formal/proof-manifest.toml
+  crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs
+  crates/protocol/chio-mcp-edge/src/runtime/tool_calls.rs
   docs/reference/CLAIM_REGISTRY.md
   docs/formal/COVERAGE.md
   target/formal/coverage.json
@@ -102,7 +104,6 @@ if not coverage_doc.exists():
     )
 PY
 
-real_cargo="$(command -v cargo)"
 real_git="$(command -v git)"
 mkdir -p "${tmp_dir}/bin"
 cat >"${tmp_dir}/bin/cargo" <<'SH'
@@ -135,6 +136,10 @@ PY
   exit 0
 fi
 case "$*" in
+  "--version")
+    echo "cargo fixture version"
+    exit 0
+    ;;
   "kani --version")
     echo "cargo-kani fixture"
     exit 0
@@ -144,7 +149,8 @@ case "$*" in
     exit 0
     ;;
 esac
-exec "${REAL_CARGO}" "$@"
+echo "unexpected Cargo invocation in proof-report fixture: $*" >&2
+exit 97
 SH
 chmod +x "${tmp_dir}/bin/cargo"
 cat >"${tmp_dir}/bin/git" <<'SH'
@@ -168,7 +174,6 @@ echo "$(basename "$0") fixture version"
 SH
   chmod +x "${tmp_dir}/bin/${tool}"
 done
-export REAL_CARGO="${real_cargo}"
 export REAL_GIT="${real_git}"
 export MOCK_CARGO_LOG="${tmp_dir}/cargo.log"
 export PATH="${tmp_dir}/bin:${PATH}"
@@ -249,6 +254,28 @@ CHIO_PROOF_REPORT_PATH="${report}" bash scripts/check-proof-report.sh \
   >"${tmp_dir}/metadata.out" 2>&1
 grep -Fq 'only coverage preflight was executed' "${tmp_dir}/metadata.out"
 
+adapter_source="crates/protocol/chio-mcp-edge/src/runtime/tool_calls.rs"
+printf '\n// proof-report adapter source mutation fixture\n' >>"${adapter_source}"
+if CHIO_PROOF_REPORT_PATH="${report}" bash scripts/check-proof-report.sh \
+  >"${tmp_dir}/adapter-source-mutation.out" 2>&1; then
+  echo "proof-report checker accepted a changed adapter gate source" >&2
+  exit 1
+fi
+grep -Fq "tracked hashes hash does not match disk: ${adapter_source}" \
+  "${tmp_dir}/adapter-source-mutation.out"
+cp -a "${tmp_dir}/backup/${adapter_source}" "${adapter_source}"
+
+kani_source="crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs"
+printf '\n// proof-report Kani source mutation fixture\n' >>"${kani_source}"
+if CHIO_PROOF_REPORT_PATH="${report}" bash scripts/check-proof-report.sh \
+  >"${tmp_dir}/kani-source-mutation.out" 2>&1; then
+  echo "proof-report checker accepted a changed Kani proof source" >&2
+  exit 1
+fi
+grep -Fq "tracked hashes hash does not match disk: ${kani_source}" \
+  "${tmp_dir}/kani-source-mutation.out"
+cp -a "${tmp_dir}/backup/${kani_source}" "${kani_source}"
+
 python3 - "${report}" <<'PY'
 import hashlib
 import json
@@ -271,6 +298,17 @@ if any(
     raise SystemExit("metadata-only generator executed a proof gate")
 tracked = report.get("artifactHashes", {}).get("tracked", {})
 for required in (
+    ".kani/harnesses.toml",
+    "Cargo.toml",
+    "rust-toolchain.toml",
+    "formal/adapter-source-inventory.toml",
+    "formal/rust-verification/creusot-contracts.toml",
+    "formal/rust-verification/kani-harnesses.toml",
+    "formal/rust-verification/kani-public-harnesses.toml",
+    "formal/rust-verification/creusot-core/Cargo.lock",
+    "formal/rust-verification/creusot-core/Cargo.toml",
+    "formal/rust-verification/creusot-core/src/lib.rs",
+    "formal/rust-verification/creusot-core/why3find.json",
     "docs/formal/COVERAGE.md",
     "docs/reference/CLAIM_REGISTRY.md",
     "docs/release/RISK_REGISTER.md",
@@ -278,8 +316,23 @@ for required in (
     "spec/PROTOCOL.md",
     "scripts/generate-proof-report.sh",
     "scripts/check-proof-report.sh",
+    "scripts/check-creusot-body-sync.sh",
+    "scripts/check-creusot-smoke.sh",
+    "scripts/check-kani-smoke.sh",
+    "scripts/run-kani-manifest.sh",
     "scripts/lean-assumption-audit.lean",
     "scripts/tests/lean-assumption-audit.test.sh",
+    "xtask/src/adapter_no_bypass.rs",
+    "xtask/src/cli.rs",
+    "xtask/src/dispatch.rs",
+    "xtask/src/error.rs",
+    "xtask/src/main.rs",
+    "xtask/src/support.rs",
+    "crates/kernel/chio-kernel-core/Cargo.toml",
+    "crates/kernel/chio-kernel-core/src/kani_harnesses.rs",
+    "crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs",
+    "crates/trust/chio-attest-verify/build.rs",
+    "crates/protocol/chio-mcp-edge/src/runtime/tool_calls.rs",
 ):
     if tracked.get(required) != hashlib.sha256(Path(required).read_bytes()).hexdigest():
         raise SystemExit(f"proof report lacks the current hash for {required}")
@@ -608,6 +661,30 @@ write(
         output=["M formal/proof-manifest.toml"]
     ),
 )
+write("extra-top-level", lambda report: report.update(forbiddenMetadata="must reject"))
+write("extra-ci", lambda report: report["ci"].update(forbiddenMetadata="must reject"))
+write(
+    "extra-gate-result",
+    lambda report: report["gateResults"][0].update(forbiddenMetadata="must reject"),
+)
+write(
+    "extra-claim-gate",
+    lambda report: report["claimGate"].update(forbiddenMetadata="must reject"),
+)
+write(
+    "extra-artifact-hashes",
+    lambda report: report["artifactHashes"].update(forbiddenMetadata="must reject"),
+)
+write(
+    "extra-proof-coverage",
+    lambda report: report["proofCoverage"].update(forbiddenMetadata="must reject"),
+)
+write(
+    "extra-command-record",
+    lambda report: report["toolVersions"]["aeneas"].update(
+        forbiddenMetadata="must reject"
+    ),
+)
 PY
 
 expect_failure() {
@@ -630,6 +707,13 @@ expect_failure forged-tool 'strict tool probe output is stale or forged'
 expect_failure stale-commit 'report commit does not match HEAD'
 expect_failure missing-aeneas 'generated hashes path set mismatch'
 expect_failure evidence-boundary 'evidenceBoundary does not describe the checker trust boundary'
+expect_failure extra-top-level 'top-level key set mismatch'
+expect_failure extra-ci 'ci key set mismatch'
+expect_failure extra-gate-result 'gateResults[0] key set mismatch'
+expect_failure extra-claim-gate 'claimGate key set mismatch'
+expect_failure extra-artifact-hashes 'artifactHashes key set mismatch'
+expect_failure extra-proof-coverage 'proofCoverage key set mismatch'
+expect_failure extra-command-record 'toolVersions.aeneas key set mismatch'
 
 if MOCK_GIT_DIRTY=' M formal/proof-manifest.toml' \
   CHIO_PROOF_REPORT_PATH="${tmp_dir}/dirty-worktree.json" \

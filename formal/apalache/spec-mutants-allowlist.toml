@@ -27,7 +27,7 @@ path = "formal/apalache/PostAdmissionDropGuard.tla"
 cfg = "formal/apalache/MCPostAdmissionDropGuard.cfg"
 invariant = "SafetyInv"
 length = 8
-actions = ["Admit", "StartDispatch", "StreamChunk", "CompleteOk", "IncompleteStream", "DropPreDispatch", "DropPostDispatch"]
+actions = ["Admit", "StartDispatch", "StreamChunk", "CompleteOk", "IncompleteStream", "ServerErrorPostDispatch", "DropPreDispatch", "DropPostDispatch"]
 
 [[spec]]
 name = "ReceiptBeforeAllow"
@@ -162,6 +162,16 @@ classification = "guard-weakening"
 rationale = "Incomplete-stream cleanup requires a started dispatch."
 
 [[probe]]
+name = "server-error-commits-hold"
+spec = "PostAdmissionDropGuard"
+action = "ServerErrorPostDispatch"
+operator = "replace_expression"
+match = "ResolvePostDispatch(@)"
+replacement = "ResolveReturnedOutput(@, error_kind)"
+classification = "post-state-corruption"
+rationale = "An outcome-unknown server error must retain its monetary hold."
+
+[[probe]]
 name = "pre-dispatch-drop-from-wrong-phase"
 spec = "PostAdmissionDropGuard"
 action = "DropPreDispatch"
@@ -206,20 +216,20 @@ name = "allow-receipt-without-budget"
 spec = "ReceiptBeforeAllow"
 action = "PersistAllowReceipt"
 operator = "delete_conjunct"
-match = "/\\ c \\in budget_checked[a]"
+match = "/\\ CallDecision(r, c) \\in budget_checked[a]"
 replacement = ""
 classification = "guard-weakening"
-rationale = "An allow receipt must be backed by a completed budget check."
+rationale = "An allow receipt must be backed by the matching call budget check."
 
 [[probe]]
 name = "publish-unrelated-capabilities"
 spec = "ReceiptBeforeAllow"
 action = "PublishAllow"
 operator = "replace_expression"
-match = "@ \\cup {c}"
-replacement = "@ \\cup CapSet"
+match = "@ \\cup {CallDecision(r, c)}"
+replacement = "@ \\cup CallDecisions"
 classification = "post-state-corruption"
-rationale = "Publishing one allow must not authorize unrelated capabilities."
+rationale = "Publishing one allow must not authorize unrelated calls or capabilities."
 
 [[probe]]
 name = "delegate-without-closure-update"
@@ -366,7 +376,7 @@ name = "receipt-before-allow-guard"
 spec = "ReceiptBeforeAllow"
 action = "PublishAllow"
 operator = "delete_conjunct"
-match = "/\\ HasAllowReceipt(a, c)"
+match = "/\\ HasAllowReceipt(a, c, r)"
 replacement = ""
 negative_spec = "formal/apalache/_negative_tests/ReceiptBeforeAllowBroken.tla"
 negative_action = "PublishAllowBroken"

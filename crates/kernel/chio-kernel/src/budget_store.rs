@@ -146,6 +146,9 @@ pub struct BudgetCommitMetadata {
     pub metering_profile: BudgetMeteringProfile,
     pub budget_commit_index: Option<u64>,
     pub event_id: Option<String>,
+    /// True when the atomic authorize operation returned a previously recorded
+    /// event instead of admitting a new hold.
+    pub replayed_event: bool,
 }
 
 impl BudgetCommitMetadata {
@@ -169,6 +172,7 @@ fn budget_commit_metadata<T: BudgetStore + ?Sized>(
         metering_profile: store.budget_metering_profile(),
         budget_commit_index,
         event_id,
+        replayed_event: false,
     }
 }
 
@@ -183,6 +187,12 @@ pub struct BudgetAuthorizeHoldRequest {
     pub hold_id: Option<String>,
     pub event_id: Option<String>,
     pub authority: Option<BudgetEventAuthority>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BudgetAuthorizeMutationOutcome {
+    pub allowed: bool,
+    pub replayed_event: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -282,11 +292,11 @@ pub type BudgetCaptureHoldDecision = BudgetHoldMutationDecision;
 /// release, and outstanding terms to real store mutations. The journal has no
 /// retain event, so those checks do not establish retained monetary holds.
 /// Runtime lease retention is checked separately against receipt metadata by
-/// the debug audit and `kernel/tests/drop_guard_proptest.rs`. The pure
-/// transition in `chio-kernel-core/src/formal_aeneas.rs` and
-/// `formal/apalache/PostAdmissionDropGuard.tla` check the full abstract
-/// partition independently. The pure transition is not called by the
-/// production store.
+/// the debug audit and drop-guard property test. The pure scalar transition
+/// and bounded lifecycle state model check the full abstract partition
+/// independently. Those verification surfaces are not called by the
+/// production store and do not establish concrete journal effects on their own.
+/// This interface remains the authoritative store boundary.
 pub trait BudgetStore: Send + Sync {
     fn try_increment(
         &self,
@@ -371,6 +381,36 @@ pub trait BudgetStore: Send + Sync {
             hold_id,
             event_id,
         )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn try_charge_cost_with_ids_and_authority_outcome(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        max_invocations: Option<u32>,
+        cost_units: u64,
+        max_cost_per_invocation: Option<u64>,
+        max_total_cost_units: Option<u64>,
+        hold_id: Option<&str>,
+        event_id: Option<&str>,
+        authority: Option<&BudgetEventAuthority>,
+    ) -> Result<BudgetAuthorizeMutationOutcome, BudgetStoreError> {
+        self.try_charge_cost_with_ids_and_authority(
+            capability_id,
+            grant_index,
+            max_invocations,
+            cost_units,
+            max_cost_per_invocation,
+            max_total_cost_units,
+            hold_id,
+            event_id,
+            authority,
+        )
+        .map(|allowed| BudgetAuthorizeMutationOutcome {
+            allowed,
+            replayed_event: false,
+        })
     }
 
     /// Reverse a previously applied provisional exposure for a pre-execution denial path.
@@ -538,7 +578,7 @@ pub trait BudgetStore: Send + Sync {
         &self,
         request: BudgetAuthorizeHoldRequest,
     ) -> Result<BudgetAuthorizeHoldDecision, BudgetStoreError> {
-        let allowed = self.try_charge_cost_with_ids_and_authority(
+        let outcome = self.try_charge_cost_with_ids_and_authority_outcome(
             &request.capability_id,
             request.grant_index,
             request.max_invocations,
@@ -556,16 +596,18 @@ pub trait BudgetStore: Send + Sync {
             .transpose()?
             .unwrap_or(0);
         let invocation_count_after = usage.as_ref().map_or(0, |usage| usage.invocation_count);
-        let metadata = budget_commit_metadata(
+        let mut metadata = budget_commit_metadata(
             self,
             request.authority,
-            allowed
+            outcome
+                .allowed
                 .then(|| usage.as_ref().map(|usage| usage.seq))
                 .flatten(),
             request.event_id,
         );
+        metadata.replayed_event = outcome.replayed_event;
 
-        if allowed {
+        if outcome.allowed {
             Ok(BudgetAuthorizeHoldDecision::Authorized(
                 AuthorizedBudgetHold {
                     hold_id: request.hold_id,
@@ -747,6 +789,25 @@ mod tests {
             authorized.metadata.budget_term().as_deref(),
             Some("kernel:test-authority:0")
         );
+        assert!(!authorized.metadata.replayed_event);
+
+        let replay = store
+            .authorize_budget_hold(BudgetAuthorizeHoldRequest {
+                capability_id: "cap-budget-1".to_string(),
+                grant_index: 0,
+                max_invocations: Some(4),
+                requested_exposure_units: 100,
+                max_cost_per_invocation: Some(100),
+                max_total_cost_units: Some(1_000),
+                hold_id: Some("hold-budget-1".to_string()),
+                event_id: Some("hold-budget-1:authorize".to_string()),
+                authority: Some(authority.clone()),
+            })
+            .unwrap();
+        let BudgetAuthorizeHoldDecision::Authorized(replayed) = replay else {
+            panic!("idempotent budget hold replay should preserve its original decision");
+        };
+        assert!(replayed.metadata.replayed_event);
 
         let reconcile = store
             .reconcile_budget_hold(BudgetReconcileHoldRequest {

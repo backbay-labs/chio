@@ -408,11 +408,12 @@ jobs:
           RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
         run: |
           set -euo pipefail
+          unset CHIO_RUST_VERIFICATION_METADATA_ONLY
           ./scripts/generate-proof-report.sh
-          ./scripts/check-proof-report.sh
+          ./scripts/check-proof-report.sh --require-strict
           mode="$(python3 -c 'import json; from pathlib import Path; print(json.loads(Path("target/formal/proof-report.json").read_text(encoding="utf-8"))["mode"])')"
-          if [[ "${mode}" != "strict" && "${mode}" != "metadata_only" ]]; then
-            echo "Unknown proof-report mode: ${mode}" >&2
+          if [[ "${mode}" != "strict" ]]; then
+            echo "Formal qualification requires a strict proof report, got: ${mode}" >&2
             exit 1
           fi
           echo "mode=${mode}" >> "${GITHUB_OUTPUT}"

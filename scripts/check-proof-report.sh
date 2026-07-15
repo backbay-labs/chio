@@ -166,6 +166,29 @@ TRACE_WITNESSES = [
     "attenuatedAdmission",
     "nonzeroRevocationEpoch",
 ]
+ADAPTER_SOURCE_INVENTORY = "formal/adapter-source-inventory.toml"
+RUST_VERIFICATION_STATIC_INPUTS = {
+    ".cargo/config.toml",
+    ".kani/harnesses.toml",
+    "Cargo.lock",
+    "Cargo.toml",
+    "rust-toolchain.toml",
+    "formal/rust-verification/creusot-contracts.toml",
+    "formal/rust-verification/kani-harnesses.toml",
+    "formal/rust-verification/kani-public-harnesses.toml",
+    "formal/rust-verification/creusot-core/Cargo.lock",
+    "formal/rust-verification/creusot-core/Cargo.toml",
+    "formal/rust-verification/creusot-core/src/lib.rs",
+    "formal/rust-verification/creusot-core/why3find.json",
+    "scripts/check-rust-verification-gates.sh",
+    "scripts/check-creusot-body-sync.sh",
+    "scripts/check-creusot-smoke.sh",
+    "scripts/check-kani-smoke.sh",
+    "scripts/check-creusot-core.sh",
+    "scripts/check-kani-core.sh",
+    "scripts/check-kani-public-core.sh",
+    "scripts/run-kani-manifest.sh",
+}
 TOOL_COMMANDS = {
     "lean": "lean --version",
     "lake": "lake --version",
@@ -183,10 +206,203 @@ def fail(message: str) -> None:
     raise SystemExit(f"proof-report: {message}")
 
 
+def discover_adapter_gate_sources(repo: Path) -> list[str]:
+    inventory_path = repo / ADAPTER_SOURCE_INVENTORY
+    if inventory_path.is_symlink() or not inventory_path.is_file():
+        fail(f"adapter source inventory is missing or symlinked: {ADAPTER_SOURCE_INVENTORY}")
+    try:
+        inventory = tomllib.loads(inventory_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        fail(f"cannot read adapter source inventory: {exc}")
+    expected_keys = {
+        "schema",
+        "crate_name_markers",
+        "explicit_roots",
+        "contract_sources",
+    }
+    if set(inventory) != expected_keys:
+        fail(
+            "adapter source inventory keys do not match the closed schema: "
+            f"expected={sorted(expected_keys)} actual={sorted(inventory)}"
+        )
+    if inventory.get("schema") != "chio.adapter-source-inventory.v1":
+        fail(f"unknown adapter source inventory schema: {inventory.get('schema')}")
+
+    def checked_strings(label: str, *, paths: bool) -> list[str]:
+        values = inventory.get(label)
+        if not isinstance(values, list) or not values or not all(
+            isinstance(value, str) and value and value.strip() == value for value in values
+        ):
+            fail(f"adapter source inventory {label} must be a nonempty string list")
+        if len(values) != len(set(values)):
+            fail(f"adapter source inventory {label} contains duplicates")
+        for value in values:
+            if paths:
+                candidate = Path(value)
+                if (
+                    candidate.is_absolute()
+                    or not candidate.parts
+                    or candidate.parts[0] != "crates"
+                    or any(part in {".", ".."} for part in candidate.parts)
+                ):
+                    fail(f"adapter source inventory {label} contains an unsafe path: {value}")
+            elif re.fullmatch(r"[a-z-]+", value) is None:
+                fail(f"adapter source inventory {label} contains an invalid marker: {value}")
+        return values
+
+    markers = checked_strings("crate_name_markers", paths=False)
+    explicit_roots = checked_strings("explicit_roots", paths=True)
+    contract_sources = checked_strings("contract_sources", paths=True)
+    roots: list[Path] = []
+    crates_root = repo / "crates"
+    try:
+        groups = sorted(crates_root.iterdir())
+    except OSError as exc:
+        fail(f"cannot read adapter crate root: {exc}")
+    for group in groups:
+        if group.is_symlink() or not group.is_dir():
+            continue
+        try:
+            candidates = sorted(group.iterdir())
+        except OSError as exc:
+            fail(f"cannot read adapter crate group {group.relative_to(repo)}: {exc}")
+        for candidate in candidates:
+            if candidate.is_symlink() or not candidate.is_dir():
+                continue
+            if any(marker in candidate.name for marker in markers):
+                roots.append(candidate / "src")
+    roots.extend(repo / relative for relative in explicit_roots)
+
+    sources: set[str] = set()
+
+    def collect(path: Path) -> None:
+        if path.is_symlink() or not path.is_dir():
+            fail(f"adapter source root is not a regular directory: {path.relative_to(repo)}")
+        try:
+            entries = sorted(path.iterdir())
+        except OSError as exc:
+            fail(f"cannot read adapter source directory {path.relative_to(repo)}: {exc}")
+        for entry in entries:
+            relative = entry.relative_to(repo)
+            if entry.is_symlink():
+                fail(f"adapter source tree contains a symlink: {relative}")
+            if entry.is_dir():
+                collect(entry)
+            elif entry.is_file() and entry.suffix == ".rs":
+                if "tests" in relative.parts or relative.name == "tests.rs" or relative.name.endswith(
+                    "_tests.rs"
+                ):
+                    continue
+                sources.add(relative.as_posix())
+
+    for root in roots:
+        collect(root)
+    for relative in contract_sources:
+        path = repo / relative
+        if path.is_symlink() or not path.is_file():
+            fail(f"adapter contract source is missing or symlinked: {relative}")
+        sources.add(relative)
+    if not sources:
+        fail("adapter source discovery produced no Rust files")
+    return sorted(sources)
+
+
+def discover_kani_target_sources(repo: Path) -> list[str]:
+    manifest_path = repo / ".kani/harnesses.toml"
+    if manifest_path.is_symlink() or not manifest_path.is_file():
+        fail("Kani multi-crate manifest is missing or symlinked")
+    try:
+        manifest = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        fail(f"cannot read Kani multi-crate manifest: {exc}")
+    entries = manifest.get("harness")
+    if not isinstance(entries, list) or not entries:
+        fail("Kani multi-crate manifest must contain a nonempty harness array")
+    crate_names: set[str] = set()
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, dict) or not isinstance(entry.get("crate"), str):
+            fail(f"Kani multi-crate harness[{index}] lacks a crate name")
+        crate_names.add(entry["crate"])
+
+    workspace_path = repo / "Cargo.toml"
+    try:
+        workspace = tomllib.loads(workspace_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+        fail(f"cannot read workspace manifest for Kani source discovery: {exc}")
+    members = workspace.get("workspace", {}).get("members")
+    if not isinstance(members, list) or not all(isinstance(member, str) for member in members):
+        fail("workspace members must be a string list for Kani source discovery")
+
+    crate_roots: dict[str, Path] = {}
+    for member in members:
+        relative = Path(member)
+        if relative.is_absolute() or any(part in {".", ".."} for part in relative.parts):
+            fail(f"workspace contains an unsafe member path: {member}")
+        crate_root = repo / relative
+        cargo_path = crate_root / "Cargo.toml"
+        if crate_root.is_symlink() or cargo_path.is_symlink() or not cargo_path.is_file():
+            fail(f"workspace member manifest is missing or symlinked: {member}/Cargo.toml")
+        try:
+            package = tomllib.loads(cargo_path.read_text(encoding="utf-8")).get("package", {})
+        except (OSError, UnicodeDecodeError, tomllib.TOMLDecodeError) as exc:
+            fail(f"cannot read workspace member manifest {member}/Cargo.toml: {exc}")
+        name = package.get("name")
+        if name not in crate_names:
+            continue
+        if name in crate_roots:
+            fail(f"duplicate workspace package for registered Kani crate: {name}")
+        crate_roots[name] = crate_root
+
+    missing = sorted(crate_names - set(crate_roots))
+    if missing:
+        fail(f"registered Kani crates are not workspace packages: {missing}")
+
+    sources: set[str] = set()
+
+    def collect_rust(path: Path) -> None:
+        if path.is_symlink() or not path.is_dir():
+            fail(f"Kani source root is missing or symlinked: {path.relative_to(repo)}")
+        try:
+            children = sorted(path.iterdir())
+        except OSError as exc:
+            fail(f"cannot read Kani source directory {path.relative_to(repo)}: {exc}")
+        for child in children:
+            relative = child.relative_to(repo)
+            if child.is_symlink():
+                fail(f"Kani source tree contains a symlink: {relative}")
+            if child.is_dir():
+                collect_rust(child)
+            elif child.is_file() and child.suffix == ".rs":
+                sources.add(relative.as_posix())
+
+    for crate_root in crate_roots.values():
+        sources.add((crate_root / "Cargo.toml").relative_to(repo).as_posix())
+        collect_rust(crate_root / "src")
+        build_script = crate_root / "build.rs"
+        if build_script.is_symlink():
+            fail(f"Kani build script is symlinked: {build_script.relative_to(repo)}")
+        if build_script.is_file():
+            sources.add(build_script.relative_to(repo).as_posix())
+    return sorted(sources)
+
+
 def require_object(value: Any, label: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         fail(f"{label} must be an object")
     return value
+
+
+def require_exact_object(
+    value: Any, expected_keys: set[str], label: str
+) -> dict[str, Any]:
+    obj = require_object(value, label)
+    if set(obj) != expected_keys:
+        fail(
+            f"{label} key set mismatch: "
+            f"missing={sorted(expected_keys - set(obj))} "
+            f"extra={sorted(set(obj) - expected_keys)}"
+        )
+    return obj
 
 
 def sha256_file(path: Path) -> str:
@@ -238,7 +454,7 @@ def find_source_line(path: Path, lean_name: str) -> int:
 def validate_command_record(
     record: Any, command: str, label: str, *, require_success: bool
 ) -> dict[str, Any]:
-    value = require_object(record, label)
+    value = require_exact_object(record, {"command", "exitCode", "output"}, label)
     if value.get("command") != command:
         fail(f"{label} command mismatch")
     exit_code = value.get("exitCode")
@@ -290,8 +506,9 @@ required_top = {
     "traceValidation",
 }
 missing = sorted(required_top - set(report))
-if missing:
-    fail(f"missing top-level keys: {missing}")
+extra = sorted(set(report) - required_top)
+if missing or extra:
+    fail(f"top-level key set mismatch: missing={missing} extra={extra}")
 if report["schema"] != "chio.proof-report.v1":
     fail(f"unknown schema: {report['schema']}")
 if report["evidenceBoundary"] != EVIDENCE_BOUNDARY:
@@ -380,7 +597,11 @@ if not isinstance(gate_results, list) or not gate_results:
     fail("gateResults must be a non-empty list")
 actual_commands = []
 for index, result in enumerate(gate_results):
-    result = require_object(result, f"gateResults[{index}]")
+    result = require_exact_object(
+        result,
+        {"command", "status", "exitCode", "outputTail"},
+        f"gateResults[{index}]",
+    )
     command = result.get("command")
     if not isinstance(command, str):
         fail(f"gateResults[{index}] command must be a string")
@@ -397,6 +618,8 @@ for index, result in enumerate(gate_results):
         fail(f"not_run gate has an exitCode: {command}")
     if status not in {"passed", "failed", "not_run"}:
         fail(f"gate has invalid status: {command} status={status}")
+    if not isinstance(result["outputTail"], str):
+        fail(f"gate outputTail must be a string: {command}")
 if actual_commands != expected_commands or len(actual_commands) != len(set(actual_commands)):
     fail("gateResults do not match the exact unique manifest command order")
 if mode == "strict":
@@ -413,7 +636,11 @@ else:
             )
     print("WARNING: proof report is metadata-only; only coverage preflight was executed")
 
-claim_gate = require_object(report.get("claimGate"), "claimGate")
+claim_gate = require_exact_object(
+    report.get("claimGate"),
+    {"claimRegistry", "inputs", "requiredTerms", "status"},
+    "claimGate",
+)
 if claim_gate.get("status") != "passed":
     fail("claim gate did not pass")
 if claim_gate.get("claimRegistry") != manifest.get("claim_registry"):
@@ -451,21 +678,38 @@ tracked_paths = {
     "scripts/check-rust-verification-gates.sh",
     "scripts/check-kani-core.sh",
     "scripts/check-kani-public-core.sh",
+    "scripts/run-kani-manifest.sh",
+    ".kani/harnesses.toml",
     "scripts/check-creusot-core.sh",
     "scripts/check-adapter-no-bypass.sh",
+    ADAPTER_SOURCE_INVENTORY,
+    "xtask/src/adapter_no_bypass.rs",
+    "xtask/src/cli.rs",
+    "xtask/src/dispatch.rs",
+    "xtask/src/error.rs",
+    "xtask/src/main.rs",
+    "xtask/src/support.rs",
+    "xtask/Cargo.toml",
+    ".cargo/config.toml",
+    "Cargo.lock",
     "scripts/generate-proof-report.sh",
     "scripts/check-proof-report.sh",
     str(manifest.get("claim_registry")),
 }
 tracked_paths.update(TRACE_TRACKED_ARTIFACTS)
+tracked_paths.update(RUST_VERIFICATION_STATIC_INPUTS)
 tracked_paths.update(manifest.get("claim_gate_inputs", []))
 tracked_paths.update(manifest.get("root_modules", []))
 tracked_paths.update(manifest.get("covered_rust_modules", []))
+tracked_paths.update(discover_adapter_gate_sources(repo))
+tracked_paths.update(discover_kani_target_sources(repo))
 for command in expected_commands:
     words = shlex.split(command)
     if words and words[0].startswith("./"):
         tracked_paths.add(words[0].removeprefix("./"))
-artifact_hashes = require_object(report.get("artifactHashes"), "artifactHashes")
+artifact_hashes = require_exact_object(
+    report.get("artifactHashes"), {"tracked", "generated"}, "artifactHashes"
+)
 check_hash_map(artifact_hashes.get("tracked"), tracked_paths, "tracked hashes", repo)
 generated_paths = {"target/formal/coverage.json"}
 if mode == "strict":
@@ -509,7 +753,9 @@ if mode == "strict":
         if not re.fullmatch(r"[0-9a-f]{64}", actual.get("logSha256", "")):
             fail("Aeneas negative-test report contains an invalid log hash")
 
-proof_coverage = require_object(report.get("proofCoverage"), "proofCoverage")
+proof_coverage = require_exact_object(
+    report.get("proofCoverage"), {"path", "sha256"}, "proofCoverage"
+)
 if proof_coverage.get("path") != "target/formal/coverage.json":
     fail("proofCoverage path is not canonical")
 if proof_coverage.get("sha256") != generated_hashes["target/formal/coverage.json"]:
@@ -700,6 +946,15 @@ if mode == "strict" and (dirty_record["output"] or actual_dirty):
 if commit_record["output"] != [head]:
     fail("report commit does not match HEAD")
 ci = require_object(report.get("ci"), "ci")
+expected_ci_keys = {"githubRunId", "githubSha", "githubRefName"}
+if set(ci) != expected_ci_keys:
+    fail(
+        "ci key set mismatch: "
+        f"missing={sorted(expected_ci_keys - set(ci))} "
+        f"extra={sorted(set(ci) - expected_ci_keys)}"
+    )
+if any(value is not None and not isinstance(value, str) for value in ci.values()):
+    fail("ci values must be strings or null")
 recorded_sha = ci.get("githubSha")
 if recorded_sha is not None and recorded_sha != head:
     fail("report GITHUB_SHA does not match HEAD")

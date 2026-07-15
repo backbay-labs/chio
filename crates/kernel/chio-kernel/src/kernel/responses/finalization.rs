@@ -5,6 +5,9 @@ pub(crate) struct FinalizeToolOutputCostContext<'a> {
     pub(crate) reported_cost: Option<ToolInvocationCost>,
     pub(crate) payment_authorization: Option<PaymentAuthorization>,
     pub(crate) cap: &'a CapabilityToken,
+    pub(crate) runtime_admission_metadata: Option<serde_json::Value>,
+    pub(crate) budget_reconcile_decision:
+        &'a std::sync::OnceLock<crate::budget_store::BudgetReconcileHoldDecision>,
 }
 
 struct PostInvocationHandling {
@@ -17,13 +20,21 @@ struct PostInvocationHandling {
 impl ChioKernel {
     pub(crate) fn finalize_tool_output_with_metadata(
         &self,
-        request: &ToolCallRequest,
+        context: ReceiptResponseContext<'_>,
         output: ToolServerOutput,
         elapsed: Duration,
-        timestamp: u64,
-        matched_grant_index: usize,
-        extra_metadata: Option<serde_json::Value>,
+        runtime_admission_metadata: Option<serde_json::Value>,
     ) -> Result<ToolCallResponse, KernelError> {
+        let ReceiptResponseContext {
+            request,
+            evaluation_context,
+            timestamp,
+            matched_grant_index,
+            extra_metadata,
+        } = context;
+        let matched_grant_index = matched_grant_index.ok_or_else(|| {
+            KernelError::Internal("tool output finalization requires a matched grant".to_string())
+        })?;
         let output = self.apply_stream_limits(output, elapsed)?;
         let post_invocation = self.apply_post_invocation_pipeline(
             request,
@@ -36,6 +47,7 @@ impl ChioKernel {
         if let Some(reason) = post_invocation.blocked_reason.as_deref() {
             return self.build_deny_response_with_metadata(
                 request,
+                evaluation_context,
                 reason,
                 timestamp,
                 Some(matched_grant_index),
@@ -45,43 +57,51 @@ impl ChioKernel {
                 // is retained, not released. Mark it so the burned lease is
                 // recoverable from the receipt, matching the incomplete-stream
                 // and RequestIncomplete arms.
-                self.mark_runtime_admission_reservations_retained_fail_closed(
+                self.merge_retained_runtime_admission_metadata(
                     post_invocation.extra_metadata,
+                    runtime_admission_metadata,
                 ),
             );
         }
 
         match post_invocation.output {
             ToolServerOutput::Value(value) => self.build_allow_response_with_metadata(
-                request,
+                ReceiptResponseContext {
+                    request,
+                    evaluation_context,
+                    timestamp,
+                    matched_grant_index: Some(matched_grant_index),
+                    extra_metadata: post_invocation.extra_metadata,
+                },
                 ToolCallOutput::Value(value),
-                timestamp,
-                Some(matched_grant_index),
-                post_invocation.extra_metadata,
+                runtime_admission_metadata,
             ),
             ToolServerOutput::Stream(ToolServerStreamResult::Complete(stream)) => self
                 .build_allow_response_with_metadata(
-                    request,
+                    ReceiptResponseContext {
+                        request,
+                        evaluation_context,
+                        timestamp,
+                        matched_grant_index: Some(matched_grant_index),
+                        extra_metadata: post_invocation.extra_metadata,
+                    },
                     ToolCallOutput::Stream(stream),
-                    timestamp,
-                    Some(matched_grant_index),
-                    post_invocation.extra_metadata,
+                    runtime_admission_metadata,
                 ),
             ToolServerOutput::Stream(ToolServerStreamResult::Incomplete { stream, reason }) => self
                 .build_incomplete_response_with_output_and_metadata(
-                    request,
+                    ReceiptResponseContext {
+                        request,
+                        evaluation_context,
+                        timestamp,
+                        matched_grant_index: Some(matched_grant_index),
+                        extra_metadata: self.merge_retained_runtime_admission_metadata(
+                            post_invocation.extra_metadata,
+                            runtime_admission_metadata,
+                        ),
+                    },
                     Some(ToolCallOutput::Stream(stream)),
                     &reason,
-                    timestamp,
-                    Some(matched_grant_index),
-                    // The tool ran (a side effect may have committed) but the
-                    // stream ended incomplete, so any runtime-admission lease
-                    // consumed at admission is retained, not released. Mark it
-                    // so the burned lease is recoverable from the receipt,
-                    // matching the RequestIncomplete error arm.
-                    self.mark_runtime_admission_reservations_retained_fail_closed(
-                        post_invocation.extra_metadata,
-                    ),
                 ),
         }
     }

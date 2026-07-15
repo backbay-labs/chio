@@ -1,111 +1,85 @@
+use chio_appraisal::VerifiedRuntimeAttestationRecord;
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::sync::Arc;
 
-use dashmap::DashMap;
+use crate::receipt_support::GovernedCallChainReceiptEvidence;
+use crate::{SessionAuthContext, VerifiedFederationTreatyMaterial};
 
-use crate::SessionAuthContext;
+const TERMINAL_RECEIPT_NOT_ATTEMPTED: u8 = 0;
+const TERMINAL_RECEIPT_APPEND_ATTEMPTED: u8 = 1;
+const TERMINAL_RECEIPT_COMMITTED: u8 = 2;
 
-thread_local! {
-    static RECEIPT_TENANT_ID_SCOPE: std::cell::RefCell<Option<String>> =
-        const { std::cell::RefCell::new(None) };
-    static RECEIPT_FEDERATION_ADMISSION_SCOPE:
-        std::cell::RefCell<Option<ReceiptFederationAdmission>> =
-        const { std::cell::RefCell::new(None) };
+#[derive(Clone, Default)]
+pub(crate) struct EvaluationReceiptContext {
+    pub(crate) tenant_id: Option<String>,
+    pub(crate) federation_admission: Option<ReceiptFederationAdmission>,
+    pub(crate) governed_call_chain: Option<GovernedCallChainReceiptEvidence>,
+    pub(crate) runtime_attestation: Option<VerifiedRuntimeAttestationRecord>,
+    pub(crate) verified_treaty_material: Option<VerifiedFederationTreatyMaterial>,
+    pub(crate) terminal_receipt_persistence_state: Arc<AtomicU8>,
 }
 
-/// Guard returned by [`scope_receipt_tenant_id`]. Restores the previously
-/// active tenant scope when dropped.
-pub(crate) struct ScopedReceiptTenantId {
-    previous: Option<String>,
-}
-
-impl Drop for ScopedReceiptTenantId {
-    fn drop(&mut self) {
-        let previous = self.previous.take();
-        RECEIPT_TENANT_ID_SCOPE.with(|slot| {
-            *slot.borrow_mut() = previous;
-        });
-    }
-}
-
-/// Install `tenant_id` as the active scope for this thread until the
-/// returned guard is dropped. Passing `None` explicitly clears the scope
-/// (so a child evaluate that lacks a session cannot inherit a parent's
-/// tenant tag by accident).
-pub(crate) fn scope_receipt_tenant_id(tenant_id: Option<String>) -> ScopedReceiptTenantId {
-    let previous = RECEIPT_TENANT_ID_SCOPE.with(|slot| slot.replace(tenant_id));
-    ScopedReceiptTenantId { previous }
-}
-
-/// Read the tenant_id currently in scope on this thread.
-pub(crate) fn current_scoped_receipt_tenant_id() -> Option<String> {
-    RECEIPT_TENANT_ID_SCOPE.with(|slot| slot.borrow().clone())
-}
-
-pub(crate) struct ScopedKernelReceiptTenantId {
-    pub(super) request_id: String,
-    pub(super) tenant_ids: Arc<DashMap<String, String>>,
-    pub(super) previous: Option<String>,
-}
-
-impl Drop for ScopedKernelReceiptTenantId {
-    fn drop(&mut self) {
-        if let Some(previous) = self.previous.take() {
-            self.tenant_ids.insert(self.request_id.clone(), previous);
-        } else {
-            self.tenant_ids.remove(&self.request_id);
+impl EvaluationReceiptContext {
+    pub(crate) fn new(tenant_id: Option<String>) -> Self {
+        Self {
+            tenant_id,
+            ..Self::default()
         }
     }
+
+    pub(crate) fn set_federation_admission(&mut self, admission: ReceiptFederationAdmission) {
+        self.federation_admission = Some(admission);
+    }
+
+    pub(crate) fn set_governed_evidence(
+        &mut self,
+        call_chain: Option<GovernedCallChainReceiptEvidence>,
+        runtime_attestation: Option<VerifiedRuntimeAttestationRecord>,
+    ) {
+        self.governed_call_chain = call_chain;
+        self.runtime_attestation = runtime_attestation;
+    }
+
+    pub(crate) fn set_verified_treaty_material(
+        &mut self,
+        material: VerifiedFederationTreatyMaterial,
+    ) {
+        self.verified_treaty_material = Some(material);
+    }
+
+    pub(crate) fn begin_terminal_receipt_append(&self) -> bool {
+        self.terminal_receipt_persistence_state
+            .compare_exchange(
+                TERMINAL_RECEIPT_NOT_ATTEMPTED,
+                TERMINAL_RECEIPT_APPEND_ATTEMPTED,
+                Ordering::AcqRel,
+                Ordering::Acquire,
+            )
+            .is_ok()
+    }
+
+    pub(crate) fn mark_terminal_receipt_committed(&self) {
+        self.terminal_receipt_persistence_state
+            .store(TERMINAL_RECEIPT_COMMITTED, Ordering::Release);
+    }
+
+    pub(crate) fn terminal_receipt_append_started(&self) -> bool {
+        self.terminal_receipt_persistence_state
+            .load(Ordering::Acquire)
+            != TERMINAL_RECEIPT_NOT_ATTEMPTED
+    }
+
+    pub(crate) fn terminal_receipt_committed(&self) -> bool {
+        self.terminal_receipt_persistence_state
+            .load(Ordering::Acquire)
+            == TERMINAL_RECEIPT_COMMITTED
+    }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ReceiptFederationAdmission {
     pub remote_kernel_id: Option<String>,
     pub peer: Option<chio_federation::trust_establishment::FederationPeer>,
-}
-
-/// Guard returned by [`scope_receipt_federation_admission`]. Restores the
-/// previously active admission snapshot when dropped.
-pub(crate) struct ScopedReceiptFederationAdmission {
-    previous: Option<ReceiptFederationAdmission>,
-}
-
-impl Drop for ScopedReceiptFederationAdmission {
-    fn drop(&mut self) {
-        let previous = self.previous.take();
-        RECEIPT_FEDERATION_ADMISSION_SCOPE.with(|slot| {
-            *slot.borrow_mut() = previous;
-        });
-    }
-}
-
-/// Install the receipt-version and peer-key decision made at admission time.
-/// Persistence and federation cosigning must use this snapshot rather than
-/// re-resolving freshness after the tool has already produced side effects.
-pub(crate) fn scope_receipt_federation_admission(
-    admission: Option<ReceiptFederationAdmission>,
-) -> ScopedReceiptFederationAdmission {
-    let previous = RECEIPT_FEDERATION_ADMISSION_SCOPE.with(|slot| slot.replace(admission));
-    ScopedReceiptFederationAdmission { previous }
-}
-
-pub(crate) fn current_scoped_receipt_federation_admission() -> Option<ReceiptFederationAdmission> {
-    RECEIPT_FEDERATION_ADMISSION_SCOPE.with(|slot| slot.borrow().clone())
-}
-
-pub(crate) struct ScopedKernelReceiptFederationAdmission {
-    pub(super) request_id: String,
-    pub(super) admissions: Arc<DashMap<String, ReceiptFederationAdmission>>,
-    pub(super) previous: Option<ReceiptFederationAdmission>,
-}
-
-impl Drop for ScopedKernelReceiptFederationAdmission {
-    fn drop(&mut self) {
-        if let Some(previous) = self.previous.take() {
-            self.admissions.insert(self.request_id.clone(), previous);
-        } else {
-            self.admissions.remove(&self.request_id);
-        }
-    }
 }
 
 /// Extract tenant_id from a session's authenticated auth context.

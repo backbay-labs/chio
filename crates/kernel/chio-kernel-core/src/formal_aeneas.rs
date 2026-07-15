@@ -31,7 +31,7 @@ pub struct ReservationLedger {
             && (state.committed@ != 0 || state.released@ != 0 || state.retained@ != 0)
     ))
 )]
-fn ledger_is_terminal(state: ReservationLedger) -> bool {
+pub(crate) fn ledger_is_terminal(state: ReservationLedger) -> bool {
     state.reserved == 0 && (state.committed != 0 || state.released != 0 || state.retained != 0)
 }
 
@@ -45,10 +45,10 @@ fn ledger_is_terminal(state: ReservationLedger) -> bool {
 /// 3. Child splits: admitted sibling shares never exceed the parent share, and
 ///    every child independently obeys clauses 1 and 2.
 ///
-/// Equivalent checks are maintained in
-/// `formal/apalache/PostAdmissionDropGuard.tla`,
-/// `chio-kernel/src/kernel/ledger_audit.rs`, and
-/// `chio-kernel/tests/property_reservation_ledger.rs`.
+/// The bounded lifecycle model, scalar transition, journal replay, and
+/// stateful store sequence tests independently enforce this partition.
+/// Agreement across those surfaces is required because none observes every
+/// production side effect.
 ///
 /// Operations are 0 = reserve, 1 = commit, 2 = release, and 3 = retain.
 /// Unknown operations, over-disposition, reserve-after-terminal, and arithmetic

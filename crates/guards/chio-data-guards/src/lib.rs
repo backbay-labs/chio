@@ -54,3 +54,15 @@ pub use warehouse_cost_guard::{
     DryRunEstimate, WarehouseCostDenyReason, WarehouseCostFieldPaths, WarehouseCostGuard,
     WarehouseCostGuardConfig,
 };
+
+fn revalidate_non_consuming_guard(
+    guard: &(impl chio_kernel::Guard + ?Sized),
+    ctx: &chio_kernel::GuardContext<'_>,
+) -> Result<(), chio_kernel::KernelError> {
+    match guard.evaluate(ctx)?.verdict {
+        chio_kernel::Verdict::Allow => Ok(()),
+        chio_kernel::Verdict::Deny | chio_kernel::Verdict::PendingApproval => Err(
+            chio_kernel::KernelError::GuardDenied("guard dispatch revalidation denied".to_string()),
+        ),
+    }
+}

@@ -1382,7 +1382,7 @@ calls `POST /approvals/ar-d4e5/respond` with a signed approval token.
 | Capability revoked during wait | Deny on resume (re-validation) |
 | Grant expired during wait | Deny on resume |
 | Timeout with no response | Deny (default) |
-| Kernel restart during wait | Pending requests survive in approval store |
+| Kernel restart during wait | Pending requests survive only when the approval and replay stores are durable |
 
 ### Replay Protection (Implemented)
 
@@ -1394,18 +1394,25 @@ mechanisms working together:
 2. **Time window** -- `issued_at` to `expires_at`. Cannot use after expiry.
 3. **Lifetime cap** -- the kernel rejects approval tokens with a lifetime
    exceeding `MAX_APPROVAL_TTL_SECS` (1 hour). This prevents long-lived
-   tokens from outliving the replay store.
-4. **Single-use consumption store** -- an LRU replay store
-   (`approval_replay_store` on `ChioKernel`) records consumed
-   `(request_id, intent_hash)` pairs. A token presented a second time is
-   rejected with "replay detected". The store's TTL equals
-   `MAX_APPROVAL_TTL_SECS`, which is always >= any valid token's lifetime
-   (enforced by the lifetime cap). This guarantees a token expires before
-   it can be evicted from the store, closing the cache-eviction replay
-   window.
+   tokens from extending the required replay-retention horizon without bound.
+4. **Single-use reservation store** -- `GovernedApprovalReplayStore` reserves
+   `(subject_id, request_id, intent_hash)` before any external payment or tool
+   side effect. The marker is committed after authorization or immediately
+   before dispatch. It is rolled back only while the kernel can prove neither
+   side effect occurred. A false or failed commit leaves the marker blocking
+   replay and produces signed unknown-retention evidence.
 
-Implementation: `crates/kernel/chio-kernel/src/kernel/mod.rs`, steps 7-8 of
-`validate_governed_approval_token()`.
+There is no implicit kernel store. Hosts must install a replay store before
+governed dispatch is accepted. `InMemoryGovernedApprovalReplayStore` is
+process-scoped and never evicts a live marker to make room. Production hosts
+that must remain replay-safe across restart use
+`SqliteGovernedApprovalReplayStore` or another durable implementation. Store
+capacity is global to the installed instance, so multi-tenant deployments must
+isolate tenants or enforce upstream admission limits.
+
+Implementation:
+`crates/kernel/chio-kernel/src/governed_approval_replay.rs` and
+`crates/kernel/chio-kernel/src/kernel/credential_reservation.rs`.
 
 ### Separation of Concerns
 

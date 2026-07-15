@@ -325,6 +325,14 @@ impl chio_kernel::Guard for SqlQueryGuard {
             }
         }
     }
+
+    fn requires_dispatch_revalidation(&self) -> bool {
+        true
+    }
+
+    fn revalidate_before_dispatch(&self, ctx: &GuardContext) -> Result<(), KernelError> {
+        crate::revalidate_non_consuming_guard(self, ctx)
+    }
 }
 
 #[cfg(test)]

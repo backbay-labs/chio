@@ -506,9 +506,10 @@ impl RuntimeAdmissionHook for FaultingAdmissionHook {
         }))))
     }
 
-    fn poll_ready_before_dispatch(
+    fn poll_ready_before_dispatch_with_token(
         &self,
         _request: &ToolCallRequest,
+        _token: chio_kernel::RuntimeAdmissionReadinessToken,
         cx: &mut Context<'_>,
     ) -> Poll<()> {
         let poll = self.readiness_polls.fetch_add(1, Ordering::SeqCst);
@@ -529,6 +530,13 @@ impl RuntimeAdmissionHook for FaultingAdmissionHook {
         } else {
             Ok(())
         }
+    }
+
+    fn revalidate_before_dispatch(
+        &self,
+        _context: &chio_kernel::RuntimeAdmissionRevalidationContext<'_>,
+    ) -> Result<(), KernelError> {
+        Ok(())
     }
 }
 
@@ -772,7 +780,7 @@ fn oracle_drop_disposition(
             let expected_step = if plan.class == EpisodeClass::PreDispatchAdmissionReleaseFault {
                 "runtime_admission_release"
             } else {
-                "monetary_unwind"
+                "budget_reversal"
             };
             let has_expected_step = receipt
                 .metadata

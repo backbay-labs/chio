@@ -187,6 +187,14 @@ impl Guard for VelocityGuard {
 
         Ok(GuardDecision::allow())
     }
+
+    fn requires_dispatch_revalidation(&self) -> bool {
+        true
+    }
+
+    fn revalidate_before_dispatch(&self, _ctx: &GuardContext) -> Result<(), KernelError> {
+        Ok(())
+    }
 }
 
 fn planned_spend_units(ctx: &GuardContext) -> Result<u64, KernelError> {
@@ -386,6 +394,39 @@ mod tests {
         let ctx = guard_ctx(&request, &scope, &agent, &server, None);
         let result = guard.evaluate(&ctx).expect("should not error");
         assert_eq!(result, Verdict::Deny, "6th request should be denied");
+    }
+
+    #[test]
+    fn dispatch_revalidation_does_not_consume_another_invocation_token() {
+        let guard = VelocityGuard::new(VelocityConfig {
+            max_invocations_per_window: Some(2),
+            max_spend_per_window: None,
+            window_secs: 60,
+            burst_factor: 1.0,
+        });
+        let kp = Keypair::generate();
+        let cap = signed_cap(&kp, "cap-revalidation");
+        let scope = ChioScope::default();
+        let agent = kp.public_key().to_hex();
+        let server = "srv".to_string();
+        let request = make_request(&cap, &agent, &server);
+        let ctx = guard_ctx(&request, &scope, &agent, &server, None);
+
+        assert_eq!(
+            guard.evaluate(&ctx).expect("first evaluation"),
+            Verdict::Allow
+        );
+        guard
+            .revalidate_before_dispatch(&ctx)
+            .expect("revalidation must not consume a token");
+        assert_eq!(
+            guard.evaluate(&ctx).expect("second evaluation"),
+            Verdict::Allow
+        );
+        assert_eq!(
+            guard.evaluate(&ctx).expect("third evaluation"),
+            Verdict::Deny
+        );
     }
 
     #[test]

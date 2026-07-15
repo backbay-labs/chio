@@ -23,6 +23,7 @@ lineage = []
 
 [dependencies]
 chacha20poly1305 = { workspace = true }
+chio-agent-web-interop = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../../core/chio-core-types" }
 chio-credit = { workspace = true }
 chio-kernel = { workspace = true }
@@ -39,6 +40,7 @@ uuid = { workspace = true, features = ["v7"] }
 zeroize = { workspace = true, features = ["derive"] }
 
 [dev-dependencies]
+async-trait = { workspace = true }
 chio-test-support = { workspace = true }
 criterion = { workspace = true }
 tempfile = { workspace = true }

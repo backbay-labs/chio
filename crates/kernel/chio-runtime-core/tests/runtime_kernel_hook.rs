@@ -5,13 +5,17 @@ use chio_core_types::capability::{
 };
 use chio_core_types::crypto::Keypair;
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
-use chio_kernel::{RuntimeAdmissionContext, RuntimeAdmissionHook, ToolCallRequest};
+use chio_kernel::{
+    RuntimeAdmissionContext, RuntimeAdmissionHook, RuntimeAdmissionRevalidationContext,
+    ToolCallRequest,
+};
 use chio_runtime_core::{
     runtime_admission_bundle_sha256, runtime_peer_weights_sha256, tool_args_sha256,
     ChioRuntimeAdmissionHook, InMemoryRuntimeAdmissionStore, RuntimeAdmissionBundle,
-    RuntimeAdmissionProfile, RuntimePeerWeight, RuntimePeerWeights, RuntimePheromoneAdvisory,
-    RuntimePheromonePolicy, RuntimePheromonePolicyRule, RuntimeRequestBinding,
-    RuntimeTrustedVerifierKey, RuntimeVerifierTrustBundleV4, SignedRuntimePheromoneQueryReport,
+    RuntimeAdmissionProfile, RuntimeAdmissionStore, RuntimePeerWeight, RuntimePeerWeights,
+    RuntimePheromoneAdvisory, RuntimePheromonePolicy, RuntimePheromonePolicyRule,
+    RuntimeRequestBinding, RuntimeTrustFloorEntry, RuntimeTrustedVerifierKey,
+    RuntimeVerifierTrustBundleV4, SignedRuntimePheromoneQueryReport,
     SqliteRuntimeOrchestrationStore, CHIO_RUNTIME_ADMISSION_BUNDLE_SCHEMA,
     CHIO_RUNTIME_ADMISSION_PROFILE_SCHEMA, CHIO_RUNTIME_PEER_WEIGHTS_SCHEMA,
     CHIO_RUNTIME_PHEROMONE_POLICY_SCHEMA, CHIO_RUNTIME_VERIFIER_TRUST_BUNDLE_SCHEMA,
@@ -292,6 +296,153 @@ fn kernel_hook_accepts_governed_context_reference_and_returns_receipt_metadata(
         .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
     assert_eq!(metadata["chio_runtime"]["admission_id"], "adm-live-1");
     assert_eq!(metadata["chio_runtime"]["accepted"], true);
+    hook.revalidate_before_dispatch(&RuntimeAdmissionRevalidationContext {
+        request: &request,
+        admission_metadata: Some(&metadata),
+        now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
+        matched_grant_index: Some(0),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+    })?;
+    hook.release_reserved(&metadata)?;
+    Ok(())
+}
+
+#[test]
+fn kernel_hook_immediate_dispatch_revalidation_rejects_advanced_trust_floor(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let store = InMemoryRuntimeAdmissionStore::new();
+    let args = serde_json::json!({"record": "vendor-ledger-7", "value": "closed"});
+    let mut admission_bundle = bundle();
+    admission_bundle.binding.tool_args_sha256 = tool_args_sha256(&args)?;
+    admission_bundle.binding.origin_kernel_id = None;
+    let bundle_hash = runtime_admission_bundle_sha256(&admission_bundle)?;
+    store.insert_bundle(admission_bundle)?;
+
+    let cap = capability("cap-live-1")?;
+    let mut request = ToolCallRequest {
+        request_id: "req-live-destructive".to_string(),
+        capability: cap.clone(),
+        tool_name: "close_account".to_string(),
+        server_id: "vendor-ledger".to_string(),
+        agent_id: cap.subject.to_hex(),
+        arguments: args,
+        dpop_proof: None,
+        execution_nonce: None,
+        governed_intent: None,
+        approval_token: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    };
+    request.governed_intent = Some(GovernedTransactionIntent {
+        id: "intent-live-1".to_string(),
+        server_id: "vendor-ledger".to_string(),
+        tool_name: "close_account".to_string(),
+        purpose: "close governed vendor account".to_string(),
+        max_amount: None,
+        commerce: None,
+        metered_billing: None,
+        runtime_attestation: None,
+        call_chain: None,
+        autonomy: None,
+        context: Some(serde_json::json!({
+            "chioAdmission": {
+                "admissionId": "adm-live-1",
+                "bundleSha256": bundle_hash
+            }
+        })),
+    });
+
+    let hook = allowing_policy_hook(store.clone())?;
+    assert!(hook.requires_dispatch_revalidation());
+    let decision = hook.evaluate(&RuntimeAdmissionContext {
+        request: &request,
+        extra_metadata: None,
+        now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
+        matched_grant_index: Some(0),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+    })?;
+    assert!(decision.allowed);
+    let metadata = decision
+        .metadata
+        .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+
+    let current_floor = store
+        .runtime_trust_floor("did:chio:buyer-verifier", "verifier-key-1")?
+        .ok_or_else(|| io::Error::other("runtime trust floor missing after admission"))?;
+    let advanced_floor = RuntimeTrustFloorEntry {
+        verifier_id: current_floor.verifier_id.clone(),
+        key_id: current_floor.key_id.clone(),
+        highest_version: current_floor.highest_version + 1,
+        latest_bundle_sha256: "e".repeat(64),
+        latest_revocation_checkpoint_sha256: "f".repeat(64),
+    };
+    store.validate_and_record_runtime_trust_floor(
+        advanced_floor,
+        Some(&current_floor.latest_bundle_sha256),
+    )?;
+
+    let error = match hook.revalidate_before_dispatch(&RuntimeAdmissionRevalidationContext {
+        request: &request,
+        admission_metadata: Some(&metadata),
+        now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
+        matched_grant_index: Some(0),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+    }) {
+        Ok(()) => {
+            return Err(io::Error::other(
+                "dispatch revalidation accepted an older runtime trust floor",
+            )
+            .into());
+        }
+        Err(error) => error,
+    };
+    assert!(error.to_string().contains("runtime_trust_rollback"));
+    hook.release_reserved(&metadata)?;
+    Ok(())
+}
+
+#[test]
+fn kernel_hook_revalidates_non_runtime_request_without_admission_metadata(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let store = InMemoryRuntimeAdmissionStore::new();
+    let cap = capability("cap-legacy-revalidation")?;
+    let request = ToolCallRequest {
+        request_id: "req-legacy-revalidation".to_string(),
+        capability: cap.clone(),
+        tool_name: "close_account".to_string(),
+        server_id: "vendor-ledger".to_string(),
+        agent_id: cap.subject.to_hex(),
+        arguments: serde_json::json!({"record": "vendor-ledger-7"}),
+        dpop_proof: None,
+        execution_nonce: None,
+        governed_intent: None,
+        approval_token: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    };
+    let hook = ChioRuntimeAdmissionHook::new(profile(), store);
+    let decision = hook.evaluate(&RuntimeAdmissionContext {
+        request: &request,
+        extra_metadata: None,
+        now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
+        matched_grant_index: Some(0),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+    })?;
+    assert!(decision.allowed);
+    assert!(decision.metadata.is_none());
+
+    hook.revalidate_before_dispatch(&RuntimeAdmissionRevalidationContext {
+        request: &request,
+        admission_metadata: None,
+        now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
+        matched_grant_index: Some(0),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+    })?;
     Ok(())
 }
 

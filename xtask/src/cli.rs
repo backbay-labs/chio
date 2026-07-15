@@ -164,6 +164,9 @@ pub enum GenCommand {
 
 #[derive(Subcommand, Debug)]
 pub enum CheckCommand {
+    /// Validate adapter mediation and production side-effect boundaries.
+    #[command(name = "adapter-no-bypass")]
+    AdapterNoBypass,
     /// Assert every `crates/chio-*` path literal in config resolves on disk.
     #[command(name = "crate-paths")]
     CratePaths,

@@ -108,6 +108,8 @@ jobs:
           bash ./scripts/check-agent-web-proof-envelope-schema.sh
           bash ./scripts/tests/check-agent-web-proof-envelope-schema.test.sh
           bash ./scripts/check-mapping.sh
+          bash ./scripts/tests/check-rust-verification-gates.test.sh
+          bash ./scripts/tests/formal-workflow-wiring.test.sh
           cargo metadata --manifest-path fuzz/Cargo.toml --locked --no-deps --format-version 1 >/dev/null
           bash ./scripts/check-corpus-metadata.sh
           bash ./scripts/tests/fuzz-budget-hard-halt.test.sh

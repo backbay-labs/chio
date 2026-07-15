@@ -4,18 +4,20 @@ use std::fs;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chio_core::capability::{scope::{ChioScope, Constraint, Operation, ToolGrant}, token::{CapabilityToken, CapabilityTokenBody}};
+use chio_core::capability::{
+    scope::{ChioScope, Constraint, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
+};
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{
-    lineage::ChildRequestReceipt, body::ChioReceipt, body::ChioReceiptBody, decision::Decision, metadata::GuardEvidence, decision::ToolCallAction,
+    body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    lineage::ChildRequestReceipt, metadata::GuardEvidence,
 };
-use chio_kernel::receipt_store::{
-    ReceiptCheckpointCreateReport, ReceiptStore, ReceiptStoreError,
-};
+use chio_kernel::receipt_store::{ReceiptCheckpointCreateReport, ReceiptStore, ReceiptStoreError};
 use chio_kernel::{
     mint_execution_nonce, ChioKernel, ExecutionNonceConfig, InMemoryExecutionNonceStore,
-    KernelConfig, NonceBinding, DEFAULT_CHECKPOINT_BATCH_SIZE,
-    DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
+    KernelConfig, NonceBinding, DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,
+    DEFAULT_MAX_STREAM_TOTAL_BYTES,
 };
 use serde_json::json;
 
@@ -196,15 +198,24 @@ fn make_authorization_receipt_with_semantics(
     let authorization_parameter_hash = test_authorization_parameter_hash();
     let action = ToolCallAction::from_parameters(json!({
         "tool": tool_name,
+        "session_id": session_id,
+        "tool_call_id": tool_call_id,
+        "authorization_correlation_id": test_authorization_correlation_id(
+            session_id,
+            tool_call_id,
+        ),
+        "operation": test_authorization_operation(tool_name),
+        "resource": test_authorization_resource(tool_call_id),
         "authorization_parameter_hash": authorization_parameter_hash,
         "operation_payload": operation_payload,
     }))
-        .expect("hash receipt parameters");
-    let decision = if semantics.receipt_kind == chio_core::receipt::kinds::ReceiptKind::MediatedDecision {
-        Some(decision)
-    } else {
-        None
-    };
+    .expect("hash receipt parameters");
+    let decision =
+        if semantics.receipt_kind == chio_core::receipt::kinds::ReceiptKind::MediatedDecision {
+            Some(decision)
+        } else {
+            None
+        };
     ChioReceipt::sign(
         ChioReceiptBody {
             id: "ignored-auth-id".to_string(),
@@ -226,16 +237,6 @@ fn make_authorization_receipt_with_semantics(
             metadata: Some(json!({
                 "receipt_context": {
                     "request_id": request_id,
-                    "session_id": session_id,
-                    "tool_call_id": tool_call_id,
-                    "authorization_correlation_id": test_authorization_correlation_id(
-                        session_id,
-                        tool_call_id,
-                    ),
-                    "tool_call_id": tool_call_id,
-                    "operation": test_authorization_operation(tool_name),
-                    "resource": test_authorization_resource(tool_call_id),
-                    "authorization_parameter_hash": test_authorization_parameter_hash(),
                 }
             })),
             trust_level,
@@ -246,6 +247,23 @@ fn make_authorization_receipt_with_semantics(
         signer,
     )
     .expect("authorization receipt should sign")
+}
+
+fn rewrite_authorization_action_parameters(
+    receipt: &ChioReceipt,
+    signer: &Keypair,
+    rewrite: impl FnOnce(&mut serde_json::Map<String, serde_json::Value>),
+) -> ChioReceipt {
+    let mut body = receipt.body();
+    let parameters = body
+        .action
+        .parameters
+        .as_object_mut()
+        .expect("authorization action parameters should be an object");
+    rewrite(parameters);
+    body.action = ToolCallAction::from_parameters(body.action.parameters.clone())
+        .expect("rewritten authorization parameters should hash");
+    ChioReceipt::sign(body, signer).expect("rewritten authorization receipt should sign")
 }
 
 fn make_authorization_receipt_with_tenant(
@@ -365,10 +383,8 @@ fn test_authorization_operation_payload() -> serde_json::Value {
 }
 
 fn test_authorization_parameter_hash() -> String {
-    let bytes = chio_core::canonical::canonical_json_bytes(
-        &test_authorization_operation_payload(),
-    )
-    .expect("test authorization payload should canonicalize");
+    let bytes = chio_core::canonical::canonical_json_bytes(&test_authorization_operation_payload())
+        .expect("test authorization payload should canonicalize");
     chio_core::sha256_hex(&bytes)
 }
 
@@ -484,8 +500,7 @@ impl ReceiptStore for MockReceiptStore {
         }
         if !self.supports_checkpoints {
             return Err(ReceiptStoreError::Conflict(
-                "receipt checkpoint creation is not supported by this receipt store"
-                    .to_string(),
+                "receipt checkpoint creation is not supported by this receipt store".to_string(),
             ));
         }
         let mut state = self.state.lock().expect("mock store lock should hold");
@@ -510,9 +525,8 @@ impl ReceiptStore for MockReceiptStore {
                 latest_checkpointed_entry_seq: latest_committed_entry_seq,
             });
         }
-        let batch_end_seq = latest_committed_entry_seq.min(
-            next_start.saturating_add(max_batch.saturating_sub(1)),
-        );
+        let batch_end_seq =
+            latest_committed_entry_seq.min(next_start.saturating_add(max_batch.saturating_sub(1)));
         let report = ReceiptCheckpointCreateReport {
             created: true,
             checkpoint_seq: Some(state.checkpoints.len() as u64 + 1),

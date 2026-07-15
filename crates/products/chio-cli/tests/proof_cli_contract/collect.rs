@@ -296,6 +296,96 @@ fn proof_collect_agent_web_envelope_outputs_verifiable_external_envelope_bundle(
 }
 
 #[test]
+fn proof_collect_agent_web_envelope_requires_durable_replay_store() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let artifact_dir =
+        workspace_root().join("fixtures/proof-room/agent-web/valid-webhook-cloudevents");
+    let out_path = tempdir.path().join("collected-agent-web-envelope");
+    let output = chio_command()
+        .env_remove("CHIO_AGENT_WEB_REPLAY_STORE_PATH")
+        .arg("proof")
+        .arg("collect")
+        .arg("--kind")
+        .arg("agent-web-envelope")
+        .arg("--artifact-dir")
+        .arg(artifact_dir)
+        .arg("--out")
+        .arg(out_path)
+        .arg("--json")
+        .output()
+        .test_expect("proof collect runs");
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8(output.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains(
+        "CHIO_AGENT_WEB_REPLAY_STORE_PATH is required when Standard Webhooks replay protection is enabled"
+    ));
+}
+
+#[test]
+fn proof_collect_consumes_replay_while_proof_verify_remains_idempotent() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let artifact_dir =
+        workspace_root().join("fixtures/proof-room/agent-web/valid-webhook-cloudevents");
+    let out_path = tempdir.path().join("collected-agent-web-envelope");
+    let second_out_path = tempdir.path().join("second-collected-agent-web-envelope");
+    let replay_store_path = tempdir.path().join("agent-web-replay.sqlite");
+    let collect = chio_command()
+        .env("CHIO_AGENT_WEB_REPLAY_STORE_PATH", &replay_store_path)
+        .arg("proof")
+        .arg("collect")
+        .arg("--kind")
+        .arg("agent-web-envelope")
+        .arg("--artifact-dir")
+        .arg(&artifact_dir)
+        .arg("--out")
+        .arg(&out_path)
+        .arg("--json")
+        .output()
+        .test_expect("proof collect runs");
+    assert_success(&collect);
+
+    let verify = chio_command()
+        .env("CHIO_AGENT_WEB_REPLAY_STORE_PATH", &replay_store_path)
+        .arg("proof")
+        .arg("verify")
+        .arg(&out_path)
+        .arg("--require")
+        .arg("external-envelope")
+        .output()
+        .test_expect("proof verify runs");
+    assert_success(&verify);
+
+    let repeated_verify = chio_command()
+        .env("CHIO_AGENT_WEB_REPLAY_STORE_PATH", &replay_store_path)
+        .arg("proof")
+        .arg("verify")
+        .arg(&out_path)
+        .arg("--require")
+        .arg("external-envelope")
+        .output()
+        .test_expect("repeated proof verify runs");
+    assert_success(&repeated_verify);
+
+    let second_collect = chio_command()
+        .env("CHIO_AGENT_WEB_REPLAY_STORE_PATH", replay_store_path)
+        .arg("proof")
+        .arg("collect")
+        .arg("--kind")
+        .arg("agent-web-envelope")
+        .arg("--artifact-dir")
+        .arg(artifact_dir)
+        .arg("--out")
+        .arg(second_out_path)
+        .arg("--json")
+        .output()
+        .test_expect("second proof collect runs");
+    assert!(!second_collect.status.success());
+    let stderr = String::from_utf8(second_collect.stderr).test_expect("stderr is utf8");
+    assert!(stderr.contains("replayed Standard Webhooks id"));
+}
+
+#[test]
 fn proof_collect_disclosure_agent_web_envelope_outputs_verifiable_combined_bundle() {
     let (tempdir, artifact_dir) = build_disclosure_agent_web_bundle();
     let out_path = tempdir

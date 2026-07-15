@@ -495,6 +495,27 @@ if shadowing_abbrevs:
 
 if not claim_registry_path.exists():
     raise SystemExit("claim registry missing: docs/reference/CLAIM_REGISTRY.md")
+claim_registry_text = claim_registry_path.read_text(encoding="utf-8")
+try:
+    approved_assumptions_section = claim_registry_text.split(
+        "## Approved Assumptions", 1
+    )[1].split("\n## ", 1)[0]
+except IndexError as error:
+    raise SystemExit("claim registry Approved Assumptions section missing") from error
+approved_assumption_rows = re.findall(
+    r"^\| `([^`]+)` \| approved(?:_with_scope)? \|",
+    approved_assumptions_section,
+    flags=re.MULTILINE,
+)
+approved_claim_assumption_ids = set(approved_assumption_rows)
+if len(approved_assumption_rows) != len(approved_claim_assumption_ids):
+    raise SystemExit("claim registry contains duplicate approved assumption rows")
+if approved_claim_assumption_ids != required_assumption_ids:
+    missing = sorted(required_assumption_ids - approved_claim_assumption_ids)
+    extra = sorted(approved_claim_assumption_ids - required_assumption_ids)
+    raise SystemExit(
+        f"claim registry assumption mismatch; missing={missing} extra={extra}"
+    )
 PY
 
 echo "formal proof check passed"

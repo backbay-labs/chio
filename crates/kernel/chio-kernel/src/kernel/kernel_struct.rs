@@ -118,6 +118,7 @@ pub(crate) fn receipt_crypto_floor(
 
 pub const DEFAULT_MAX_STREAM_DURATION_SECS: u64 = 300;
 pub const DEFAULT_MAX_STREAM_TOTAL_BYTES: u64 = 256 * 1024 * 1024;
+pub const DEFAULT_RUNTIME_ADMISSION_READINESS_TIMEOUT_MS: u64 = 30_000;
 pub const DEFAULT_CHECKPOINT_BATCH_SIZE: u64 = 100;
 pub const DEFAULT_RETENTION_DAYS: u64 = 90;
 pub const DEFAULT_MAX_SIZE_BYTES: u64 = 10_737_418_240;
@@ -148,6 +149,7 @@ pub struct ChioKernel {
     pub(super) payment_adapter: Option<Box<dyn PaymentAdapter>>,
     pub(super) price_oracle: Option<Box<dyn PriceOracle>>,
     pub(super) runtime_admission_hook: Option<Arc<dyn RuntimeAdmissionHook>>,
+    pub(super) runtime_admission_readiness_timeout: Duration,
     pub(super) runtime_trace_observer: Option<Arc<dyn RuntimeTraceObserver>>,
     pub(super) runtime_trace_transition_lock: Mutex<()>,
     pub(super) runtime_trace_sequence: AtomicU64,
@@ -171,10 +173,10 @@ pub struct ChioKernel {
     /// any tool server that delegates verification to the kernel. Boxed
     /// trait object so SQLite-backed stores can be plugged in.
     pub(super) execution_nonce_store: Option<Box<dyn crate::execution_nonce::ExecutionNonceStore>>,
-    /// Replay store for governed approval tokens. Prevents a signed approval
-    /// from being consumed more than once. Uses the same LRU + TTL pattern as
-    /// DPoP nonce verification. Key: (request_id, governed_intent_hash).
-    pub(super) approval_replay_store: Option<dpop::DpopNonceStore>,
+    /// Replay store for governed approval tokens. Key:
+    /// `(request_id, governed_intent_hash)`.
+    pub(super) approval_replay_store:
+        Option<Box<dyn crate::governed_approval_replay::GovernedApprovalReplayStore>>,
     /// Emergency kill switch. When `true`, every evaluate entry point returns
     /// `Verdict::Deny` without performing capability validation or guard
     /// evaluation. Flipped by `emergency_stop` / `emergency_resume`.
@@ -232,15 +234,6 @@ pub struct ChioKernel {
     /// by loading Org A private key material in the tool-host kernel.
     pub(super) federation_dsse_envelopes:
         DashMap<String, chio_federation::bilateral_dsse::DsseEnvelope>,
-    /// Request-keyed tenant scope for receipts. Async evaluate futures
-    /// can resume on a different worker after dispatch, so the scope is
-    /// stored in this map rather than a thread-local.
-    pub(super) receipt_tenant_ids: Arc<DashMap<String, String>>,
-    /// Request-keyed copy of the receipt-version admission snapshot.
-    /// Async evaluate futures may resume on a different Tokio worker
-    /// after dispatch. This map keeps the admitted version and peer state
-    /// available until the evaluation future finishes.
-    pub(super) receipt_federation_admissions: Arc<DashMap<String, ReceiptFederationAdmission>>,
     /// Operator-declared kernel identifier used as the
     /// `org_b_kernel_id` in bilateral co-signing. Defaults to the hex
     /// encoding of the kernel's signing public key, but operators can

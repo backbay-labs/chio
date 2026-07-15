@@ -15,8 +15,147 @@
 
 use crate::execution_nonce::{
     mint_execution_nonce, verify_execution_nonce, ExecutionNonceConfig, ExecutionNonceError,
-    InMemoryExecutionNonceStore, NonceBinding,
+    ExecutionNonceStore, InMemoryExecutionNonceStore, NonceBinding,
 };
+
+struct BlockingExecutionNonceStore {
+    inner: InMemoryExecutionNonceStore,
+    entered: std::sync::Arc<tokio::sync::Notify>,
+    released: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    mutable_state: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
+}
+
+struct DelayedReturnExecutionNonceStore {
+    inner: InMemoryExecutionNonceStore,
+    entered: std::sync::Arc<tokio::sync::Notify>,
+    released: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    rollback_calls: std::sync::Arc<AtomicU64>,
+}
+
+struct ExecutionNonceReleaseGuard {
+    released: std::sync::Arc<std::sync::atomic::AtomicBool>,
+}
+
+impl ExecutionNonceReleaseGuard {
+    fn release(&self) {
+        self.released.store(true, Ordering::Release);
+    }
+}
+
+impl Drop for ExecutionNonceReleaseGuard {
+    fn drop(&mut self) {
+        self.release();
+    }
+}
+
+impl ExecutionNonceStore for BlockingExecutionNonceStore {
+    fn reserve(&self, nonce_id: &str) -> Result<bool, KernelError> {
+        self.reserve_until(nonce_id, i64::MAX)
+    }
+
+    fn reserve_until(&self, nonce_id: &str, nonce_expires_at: i64) -> Result<bool, KernelError> {
+        self.entered.notify_one();
+        while !self.released.load(Ordering::Acquire) {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        self.inner.reserve_until(nonce_id, nonce_expires_at)
+    }
+
+    fn supports_dispatch_reservations(&self) -> bool {
+        true
+    }
+
+    fn reserve_for_dispatch(
+        &self,
+        nonce_id: &str,
+        nonce_expires_at: i64,
+        reservation_id: &str,
+    ) -> Result<bool, KernelError> {
+        self.entered.notify_one();
+        while !self.released.load(Ordering::Acquire) {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        if let Some(mutable_state) = &self.mutable_state {
+            mutable_state.store(true, Ordering::Release);
+        }
+        self.inner
+            .reserve_for_dispatch(nonce_id, nonce_expires_at, reservation_id)
+    }
+
+    fn rollback_dispatch_reservation(
+        &self,
+        nonce_id: &str,
+        reservation_id: &str,
+    ) -> Result<bool, KernelError> {
+        self.inner
+            .rollback_dispatch_reservation(nonce_id, reservation_id)
+    }
+}
+
+impl ExecutionNonceStore for DelayedReturnExecutionNonceStore {
+    fn reserve(&self, nonce_id: &str) -> Result<bool, KernelError> {
+        self.inner.reserve(nonce_id)
+    }
+
+    fn reserve_until(&self, nonce_id: &str, nonce_expires_at: i64) -> Result<bool, KernelError> {
+        self.inner.reserve_until(nonce_id, nonce_expires_at)
+    }
+
+    fn supports_dispatch_reservations(&self) -> bool {
+        true
+    }
+
+    fn reserve_for_dispatch(
+        &self,
+        nonce_id: &str,
+        nonce_expires_at: i64,
+        reservation_id: &str,
+    ) -> Result<bool, KernelError> {
+        let reservation =
+            self.inner
+                .reserve_for_dispatch(nonce_id, nonce_expires_at, reservation_id);
+        self.entered.notify_one();
+        while !self.released.load(Ordering::Acquire) {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        reservation
+    }
+
+    fn rollback_dispatch_reservation(
+        &self,
+        nonce_id: &str,
+        reservation_id: &str,
+    ) -> Result<bool, KernelError> {
+        self.rollback_calls.fetch_add(1, Ordering::SeqCst);
+        self.inner
+            .rollback_dispatch_reservation(nonce_id, reservation_id)
+    }
+}
+
+struct ReservationMutationGuard {
+    mutable_state: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    revalidations: std::sync::Arc<AtomicU64>,
+}
+
+impl Guard for ReservationMutationGuard {
+    fn name(&self) -> &str {
+        "reservation-mutation-guard"
+    }
+
+    fn evaluate(&self, _ctx: &GuardContext<'_>) -> Result<GuardDecision, KernelError> {
+        Ok(GuardDecision::allow())
+    }
+
+    fn revalidate_before_dispatch(&self, _ctx: &GuardContext<'_>) -> Result<(), KernelError> {
+        self.revalidations.fetch_add(1, Ordering::SeqCst);
+        if self.mutable_state.load(Ordering::Acquire) {
+            return Err(KernelError::GuardDenied(
+                "credential reservation invalidated mutable guard state".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
 
 fn kernel_with_nonce() -> (ChioKernel, Keypair, ChioScope, ExecutionNonceConfig) {
     let mut kernel = make_kernel(make_config());
@@ -34,11 +173,10 @@ fn kernel_with_nonce() -> (ChioKernel, Keypair, ChioScope, ExecutionNonceConfig)
 }
 
 fn binding_for_request(cap: &CapabilityToken, request: &ToolCallRequest) -> NonceBinding {
-    let parameter_hash = chio_core::receipt::decision::ToolCallAction::from_parameters(
-        request.arguments.clone(),
-    )
-    .unwrap()
-    .parameter_hash;
+    let parameter_hash =
+        chio_core::receipt::decision::ToolCallAction::from_parameters(request.arguments.clone())
+            .unwrap()
+            .parameter_hash;
     NonceBinding {
         subject_id: cap.subject.to_hex(),
         capability_id: cap.id.clone(),
@@ -55,8 +193,13 @@ fn mint_nonce_for_request(
     cfg: &ExecutionNonceConfig,
 ) -> crate::execution_nonce::SignedExecutionNonce {
     let now = i64::try_from(current_unix_timestamp()).unwrap_or(i64::MAX);
-    mint_execution_nonce(&kernel.config.keypair, binding_for_request(cap, request), cfg, now)
-        .unwrap()
+    mint_execution_nonce(
+        &kernel.config.keypair,
+        binding_for_request(cap, request),
+        cfg,
+        now,
+    )
+    .unwrap()
 }
 
 #[test]
@@ -259,12 +402,7 @@ fn strict_nonce_mode_denies_missing_nonce_before_server_lookup() {
     );
 
     let cap = make_capability(&kernel, &agent_kp, scope, 300);
-    let mut request = make_request(
-        "req-nonce-before-lookup",
-        &cap,
-        "read_file",
-        "missing-srv",
-    );
+    let mut request = make_request("req-nonce-before-lookup", &cap, "read_file", "missing-srv");
     request.server_id = "missing-srv".to_string();
 
     let err = block_on_async_tool_dispatch(kernel.dispatch_tool_call_with_cost(&request, false))
@@ -290,8 +428,7 @@ fn strict_nonce_mode_dispatches_once_with_presented_nonce() {
     request.execution_nonce = Some(mint_nonce_for_request(&kernel, &cap, &request, &cfg));
 
     let (output, cost) =
-        block_on_async_tool_dispatch(kernel.dispatch_tool_call_with_cost(&request, false))
-            .unwrap();
+        block_on_async_tool_dispatch(kernel.dispatch_tool_call_with_cost(&request, false)).unwrap();
     assert!(cost.is_none());
     let ToolServerOutput::Value(value) = output else {
         panic!("expected value output");
@@ -335,14 +472,236 @@ fn strict_nonce_mode_nested_flow_operation_forwards_presented_nonce(
     };
     let mut client = NoopNestedFlowClient;
 
-    let response =
-        kernel.evaluate_tool_call_operation_with_nested_flow_client(&context, &operation, &mut client)?;
+    let response = kernel.evaluate_tool_call_operation_with_nested_flow_client(
+        &context,
+        &operation,
+        &mut client,
+    )?;
 
     assert_eq!(response.verdict, Verdict::Allow);
     assert!(
         response.output.is_some(),
         "valid nonce on nested-flow operation must reach dispatch"
     );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn execution_nonce_reservation_rolls_back_when_session_dispatch_claim_fails(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut kernel = make_kernel(make_config());
+    let invocations = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(SideEffectServer::new(
+        "srv-a",
+        vec!["read_file"],
+        std::sync::Arc::clone(&invocations),
+    )));
+    let config = ExecutionNonceConfig {
+        nonce_ttl_secs: 30,
+        nonce_store_capacity: 1024,
+        require_nonce: true,
+    };
+    let entered = std::sync::Arc::new(tokio::sync::Notify::new());
+    let released = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let release_guard = ExecutionNonceReleaseGuard {
+        released: std::sync::Arc::clone(&released),
+    };
+    kernel.set_execution_nonce_store(
+        config.clone(),
+        Box::new(BlockingExecutionNonceStore {
+            inner: InMemoryExecutionNonceStore::from_config(&config),
+            entered: std::sync::Arc::clone(&entered),
+            released: std::sync::Arc::clone(&released),
+            mutable_state: None,
+        }),
+    );
+
+    let agent_kp = make_keypair();
+    let capability = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant("srv-a", "read_file")]),
+        300,
+    );
+    let request_id = "req-nonce-dispatch-claim";
+    let request = make_request(request_id, &capability, "read_file", "srv-a");
+    let binding = binding_for_request(&capability, &request);
+    let nonce = mint_nonce_for_request(&kernel, &capability, &request, &config);
+    let session_id =
+        kernel.open_session(agent_kp.public_key().to_hex(), vec![capability.clone()])?;
+    kernel.activate_session(&session_id)?;
+    let context = make_operation_context(&session_id, request_id, &agent_kp.public_key().to_hex());
+    let operation = ToolCallOperation {
+        capability,
+        server_id: "srv-a".to_string(),
+        tool_name: "read_file".to_string(),
+        arguments: request.arguments,
+        governed_intent: None,
+        execution_nonce: Some(serde_json::to_value(&nonce)?),
+        model_metadata: None,
+        extra_metadata: None,
+    };
+    let kernel = std::sync::Arc::new(kernel);
+    let evaluation_kernel = std::sync::Arc::clone(&kernel);
+    let evaluation = tokio::spawn(async move {
+        let mut client = NoopNestedFlowClient;
+        evaluation_kernel
+            .evaluate_tool_call_operation_with_nested_flow_client_async(
+                &context,
+                &operation,
+                &mut client,
+            )
+            .await
+    });
+
+    tokio::time::timeout(Duration::from_secs(5), entered.notified()).await?;
+    let cancellation =
+        kernel.request_session_cancellation(&session_id, &RequestId::from(request_id));
+    release_guard.release();
+
+    let response = tokio::time::timeout(Duration::from_secs(5), evaluation).await???;
+    assert!(cancellation.is_ok());
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert_eq!(invocations.load(Ordering::SeqCst), 0);
+    kernel.verify_presented_execution_nonce(&nonce, &binding)?;
+    assert!(kernel
+        .session(&session_id)
+        .is_some_and(|session| session.inflight().is_empty()));
+    assert!(matches!(
+        kernel.request_session_cancellation(&session_id, &RequestId::from(request_id)),
+        Err(KernelError::Session(
+            SessionError::RequestNotInflight { .. }
+        ))
+    ));
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn execution_nonce_expiring_during_reservation_is_denied_before_dispatch(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut kernel = make_kernel(make_config());
+    let invocations = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(SideEffectServer::new(
+        "srv-a",
+        vec!["read_file"],
+        std::sync::Arc::clone(&invocations),
+    )));
+    let config = ExecutionNonceConfig {
+        nonce_ttl_secs: 1,
+        nonce_store_capacity: 1024,
+        require_nonce: true,
+    };
+    let entered = std::sync::Arc::new(tokio::sync::Notify::new());
+    let released = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let release_guard = ExecutionNonceReleaseGuard {
+        released: std::sync::Arc::clone(&released),
+    };
+    let rollback_calls = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_execution_nonce_store(
+        config.clone(),
+        Box::new(DelayedReturnExecutionNonceStore {
+            inner: InMemoryExecutionNonceStore::from_config(&config),
+            entered: std::sync::Arc::clone(&entered),
+            released,
+            rollback_calls: std::sync::Arc::clone(&rollback_calls),
+        }),
+    );
+
+    let agent_kp = make_keypair();
+    let capability = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant("srv-a", "read_file")]),
+        300,
+    );
+    let mut request = make_request(
+        "req-nonce-expires-during-reservation",
+        &capability,
+        "read_file",
+        "srv-a",
+    );
+    let nonce = mint_nonce_for_request(&kernel, &capability, &request, &config);
+    let expires_at = nonce.expires_at();
+    request.execution_nonce = Some(nonce);
+    let kernel = std::sync::Arc::new(kernel);
+    let evaluation_kernel = std::sync::Arc::clone(&kernel);
+    let evaluation =
+        tokio::spawn(async move { evaluation_kernel.evaluate_tool_call(&request).await });
+
+    tokio::time::timeout(Duration::from_secs(5), entered.notified()).await?;
+    while i64::try_from(current_unix_timestamp()).unwrap_or(i64::MAX) < expires_at {
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+    release_guard.release();
+
+    let response = tokio::time::timeout(Duration::from_secs(5), evaluation).await???;
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert!(response
+        .reason
+        .as_deref()
+        .is_some_and(|reason| reason.contains("execution nonce expired")));
+    assert_eq!(invocations.load(Ordering::SeqCst), 0);
+    assert_eq!(rollback_calls.load(Ordering::SeqCst), 1);
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn execution_nonce_reservation_mutation_is_revalidated_before_dispatch(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut kernel = make_kernel(make_config());
+    let invocations = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(SideEffectServer::new(
+        "srv-a",
+        vec!["read_file"],
+        std::sync::Arc::clone(&invocations),
+    )));
+    let config = ExecutionNonceConfig {
+        nonce_ttl_secs: 30,
+        nonce_store_capacity: 1024,
+        require_nonce: true,
+    };
+    let mutable_state = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let revalidations = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_execution_nonce_store(
+        config.clone(),
+        Box::new(BlockingExecutionNonceStore {
+            inner: InMemoryExecutionNonceStore::from_config(&config),
+            entered: std::sync::Arc::new(tokio::sync::Notify::new()),
+            released: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
+            mutable_state: Some(std::sync::Arc::clone(&mutable_state)),
+        }),
+    );
+    kernel.add_guard(Box::new(ReservationMutationGuard {
+        mutable_state,
+        revalidations: std::sync::Arc::clone(&revalidations),
+    }));
+
+    let agent_kp = make_keypair();
+    let capability = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant("srv-a", "read_file")]),
+        300,
+    );
+    let mut request = make_request(
+        "req-nonce-reservation-mutation",
+        &capability,
+        "read_file",
+        "srv-a",
+    );
+    let binding = binding_for_request(&capability, &request);
+    let nonce = mint_nonce_for_request(&kernel, &capability, &request, &config);
+    request.execution_nonce = Some(nonce.clone());
+
+    let response = kernel.evaluate_tool_call(&request).await?;
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert!(response.reason.as_deref().is_some_and(
+        |reason| reason.contains("credential reservation invalidated mutable guard state")
+    ));
+    assert_eq!(revalidations.load(Ordering::SeqCst), 1);
+    assert_eq!(invocations.load(Ordering::SeqCst), 0);
+    kernel.verify_presented_execution_nonce(&nonce, &binding)?;
     Ok(())
 }
 

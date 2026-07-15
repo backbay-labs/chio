@@ -24,6 +24,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod agent_web_replay_store;
 pub mod approval_store;
 pub mod authority;
 pub mod batch_approval_store;
@@ -33,6 +34,7 @@ pub mod dead_letters;
 pub mod encrypted_blob;
 pub mod evidence_export;
 pub mod execution_nonce_store;
+pub mod governed_approval_replay_store;
 pub mod iou_store;
 #[cfg(feature = "lineage")]
 pub mod lineage_cte;
@@ -72,6 +74,7 @@ impl Default for SqlitePoolConfig {
     }
 }
 
+pub use agent_web_replay_store::{SqliteAgentWebReplayStore, SqliteAgentWebReplayStoreError};
 pub use approval_store::SqliteApprovalStore;
 pub use authority::SqliteCapabilityAuthority;
 pub use batch_approval_store::SqliteBatchApprovalStore;
@@ -81,6 +84,9 @@ pub use encrypted_blob::{
     EncryptedBlob, SqliteEncryptedBlobStore, TenantId, TenantKey,
 };
 pub use execution_nonce_store::{SqliteExecutionNonceStore, SqliteExecutionNonceStoreError};
+pub use governed_approval_replay_store::{
+    SqliteGovernedApprovalReplayStore, SqliteGovernedApprovalReplayStoreError,
+};
 pub use iou_store::{SqliteIouEnvelopeStore, IOU_ENVELOPE_MIGRATION};
 pub use memory_provenance_store::{SqliteMemoryProvenanceStore, SqliteMemoryProvenanceStoreError};
 pub use receipt_store::SqliteReceiptStore;

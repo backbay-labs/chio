@@ -3,24 +3,68 @@
 (* Bounded lifecycle model for an armed post-admission drop guard.          *)
 (*                                                                          *)
 (* Action                 Rust implementation                               *)
-(* Admit                  kernel_drop_guard.rs:86-109                       *)
-(* StartDispatch          kernel_drop_guard.rs:130-132                      *)
-(* StreamChunk            kernel_drop_guard.rs:115-117                      *)
-(* CompleteOk             kernel_drop_guard.rs:122-136;                     *)
-(*                        responses/finalization.rs:54-69                   *)
-(* DenyPostInvocation     responses/finalization.rs:36-51                   *)
-(* IncompleteStream       responses/finalization.rs:70-85                   *)
-(* DropPreDispatch        kernel_drop_guard.rs:180-308,385-392              *)
-(* DropPostDispatch       kernel_drop_guard.rs:379-438                      *)
+(* Admit                  evaluate_tool_call_async_core;                    *)
+(*                        evaluate_tool_call_with_nested_flow_client_core; *)
+(*                        reserve_dispatch_credentials;                    *)
+(*                        evaluate_runtime_admission_tracked;               *)
+(*                        PostAdmissionDropGuard::new                       *)
+(* StartDispatch          PostAdmissionDropGuard::mark_dispatch_started    *)
+(* StreamChunk            PostAdmissionDropGuard::child_receipts_mut;      *)
+(*                        SessionNestedFlowBridge                          *)
+(* CompleteOk             PostAdmissionDropGuard::flush_child_receipts;    *)
+(*                        finalize_tool_output_with_metadata;               *)
+(*                        EvaluationReceiptContext::                       *)
+(*                          begin_terminal_receipt_append;                  *)
+(*                        record_chio_receipt_inner;                        *)
+(*                        mark_terminal_receipt_committed;                  *)
+(*                        PostAdmissionDropGuard::finish_terminal;          *)
+(*                        terminal_receipt_committed                        *)
+(* DenyPostInvocation     finalize_tool_output_with_metadata                *)
+(* IncompleteStream       finalize_tool_output_with_metadata                *)
+(* ServerErrorPostDispatch retain_post_dispatch_state;                     *)
+(*                        build_deny_response_with_metadata;                *)
+(*                        build_incomplete_response_with_output_and_metadata; *)
+(*                        build_cancelled_response_with_metadata            *)
+(* DropPreDispatch        ChioKernel::cleanup_pre_dispatch_state;           *)
+(*                        PostAdmissionDropGuard::handle_pre_dispatch_drop; *)
+(*                        record_pre_dispatch_cleanup_fault_receipt;        *)
+(*                        ChioRuntimeAdmissionHook::release_reservations;   *)
+(*                        ChioRuntimeAdmissionHook::release_reserved;       *)
+(*                        PostAdmissionDropGuard::handle_drop               *)
+(* DropPostDispatch       PostAdmissionDropGuard::handle_drop;              *)
+(*                        terminal_receipt_append_started;                  *)
+(*                        flush_buffered_child_receipts_from_drop;          *)
+(*                        retain_post_dispatch_state                        *)
 (*                                                                          *)
 (* The model separates receipt persistence from resource disposition.       *)
 (* Admission profiles are budget mutation (none, hold, or slot) x runtime  *)
 (* lease x child budget. Hold and slot are mutually exclusive in Rust.      *)
 (* Child receipts are appended before the parent terminal receipt. A        *)
-(* pre-dispatch cleanup failure retains only the failed resources and       *)
-(* emits one fault receipt. A post-dispatch monetary unwind may fail; that   *)
-(* outcome leaves the hold retained while all other terminal resources      *)
-(* still reach an explicit disposition.                                    *)
+(* successful child-store append is assumed by the state transitions. Rust  *)
+(* retries only the not-attempted suffix. An outcome-unknown child append is *)
+(* removed from the retry buffer and embedded in cancellation metadata. The *)
+(* persistence-failure branches are outside ChildReceiptsFlushed.            *)
+(*                                                                          *)
+(* Parent append acknowledgement is modeled independently from durable      *)
+(* presence: not-attempted, outcome-unknown, or committed. An unknown        *)
+(* acknowledgement may mean zero or one durable parent receipt. Once an      *)
+(* attempt starts, terminal Drop handling does not append a second receipt.  *)
+(* TerminalReceiptExactlyOne therefore gives exactly one receipt under a     *)
+(* committed acknowledgement and at most one under an unknown outcome.       *)
+(* Pre-dispatch cleanup failure retains only the failed resources and       *)
+(* emits one fault receipt. A returned output reaches finalization after     *)
+(* budget reconciliation, so its hold is committed. A server error or       *)
+(* dropped future retains the hold because tool effects cannot be excluded.  *)
+(* Payment-adapter authorization is outside this four-resource ledger.       *)
+(* Production retains it only for those outcome-unknown paths.               *)
+(* The aggregate lease conservatively projects destructive, treaty, and     *)
+(* swarm reservation identifiers. A release error or panic is projected as  *)
+(* retained or possibly stuck, and the concrete callback is not retried.     *)
+(* Exact per-identifier ownership after mutate-then-error is outside this    *)
+(* abstraction.                                                             *)
+(* Every Err returned after polling any invoke path is outcome-unknown.     *)
+(* URL elicitation follows this rule regardless of nested bridge activity.  *)
+(* Only a kernel error before polling invoke is pre-dispatch and reversible. *)
 (* Cleanup failures range over the 12 valid resource profiles, filtered     *)
 (* to subsets of the resources admitted for that invocation. This static    *)
 (* domain keeps every independent outcome visible to Apalache 0.50.1.       *)
@@ -96,6 +140,9 @@ Phases == {
 }
 TerminalKinds == {"none", "allow", "deny", "incomplete", "cancel", "fault", "unwound"}
 ParentReceiptKinds == {"allow", "deny", "incomplete", "cancel", "fault"}
+ParentAppendStates == {"not-attempted", "outcome-unknown", "committed"}
+ServerErrorKinds == {"deny", "incomplete", "cancel", "url"}
+RecordedServerErrorKinds == ServerErrorKinds \cup {"none"}
 Mutations == {
     "none",
     "discard-child-buffer",
@@ -104,7 +151,7 @@ Mutations == {
     "omit-fault-receipt",
     "release-incomplete-lease",
     "skip-deny-retention",
-    "release-post-dispatch-lease",
+    "release-post-dispatch-state",
     "skip-child-capacity-guard"
 }
 
@@ -130,10 +177,20 @@ VARIABLES
     child_logged,
     \* @type: Int -> Int;
     parent_receipts,
+    \* @type: Int -> Int;
+    parent_append_attempts,
+    \* @type: Int -> Str;
+    parent_append_state,
     \* @type: Int -> Str;
     parent_kind_logged,
     \* @type: Int -> Bool;
     children_before_parent,
+    \* @type: Int -> Bool;
+    post_dispatch_outcome_unknown,
+    \* @type: Int -> Str;
+    server_error_kind,
+    \* @type: Int -> Bool;
+    nested_bridge_active_at_error,
     \* @type: Int -> Str;
     terminal_kind
 
@@ -146,8 +203,13 @@ vars == <<
     child_total,
     child_logged,
     parent_receipts,
+    parent_append_attempts,
+    parent_append_state,
     parent_kind_logged,
     children_before_parent,
+    post_dispatch_outcome_unknown,
+    server_error_kind,
+    nested_bridge_active_at_error,
     terminal_kind
 >>
 
@@ -156,11 +218,18 @@ CleanupFailureSets(i) ==
     THEN CleanupFailureProfiles
     ELSE {{}}
 
-MonetaryUnwindOutcomes(i) ==
-    IF /\ i = 1
-       /\ ledger[i]["hold"] = "reserved"
-    THEN BOOLEAN
-    ELSE {FALSE}
+ParentAppendOutcomes(i) ==
+    IF i = 1
+    THEN {"outcome-unknown", "committed"}
+    ELSE {"committed"}
+
+ParentPersistenceOutcomes(append_outcome) ==
+    IF append_outcome = "committed"
+    THEN {TRUE}
+    ELSE BOOLEAN
+
+ServerErrorReceiptKind(error_kind) ==
+    IF error_kind = "url" THEN "incomplete" ELSE error_kind
 
 IsTerminal(i) == phase[i] \in {
     "terminal_ok",
@@ -210,7 +279,7 @@ ResolveAll(current, disposition) ==
         THEN disposition
         ELSE current[resource]]
 
-ResolveAbort(current, kind) ==
+ResolveReturnedOutput(current, kind) ==
     [resource \in Resources |->
         IF current[resource] # "reserved"
         THEN current[resource]
@@ -239,20 +308,15 @@ ResolvePreDispatch(current, failed) ==
         THEN "reserved"
         ELSE "released"]
 
-ResolvePostDispatch(current, monetary_unwind_failed) ==
+ResolvePostDispatch(current) ==
     [resource \in Resources |->
         IF current[resource] # "reserved"
         THEN current[resource]
-        ELSE IF resource = "lease"
+        ELSE IF resource \in {"lease", "hold"}
         THEN
-            IF Mutation = "release-post-dispatch-lease"
+            IF Mutation = "release-post-dispatch-state"
             THEN "released"
             ELSE "retained"
-        ELSE IF resource = "hold"
-        THEN
-            IF monetary_unwind_failed
-            THEN "retained"
-            ELSE "released"
         ELSE "committed"]
 
 DomainsOK ==
@@ -267,8 +331,13 @@ DomainsOK ==
         /\ child_logged[i] \in 0..ChildMax
         /\ child_logged[i] <= child_total[i]
         /\ parent_receipts[i] \in 0..1
+        /\ parent_append_attempts[i] \in 0..1
+        /\ parent_append_state[i] \in ParentAppendStates
         /\ parent_kind_logged[i] \in TerminalKinds
         /\ children_before_parent[i] \in BOOLEAN
+        /\ post_dispatch_outcome_unknown[i] \in BOOLEAN
+        /\ server_error_kind[i] \in RecordedServerErrorKinds
+        /\ nested_bridge_active_at_error[i] \in BOOLEAN
         /\ terminal_kind[i] \in TerminalKinds
 
 Init ==
@@ -280,8 +349,13 @@ Init ==
     /\ child_total = [i \in Invocations |-> 0]
     /\ child_logged = [i \in Invocations |-> 0]
     /\ parent_receipts = [i \in Invocations |-> 0]
+    /\ parent_append_attempts = [i \in Invocations |-> 0]
+    /\ parent_append_state = [i \in Invocations |-> "not-attempted"]
     /\ parent_kind_logged = [i \in Invocations |-> "none"]
     /\ children_before_parent = [i \in Invocations |-> TRUE]
+    /\ post_dispatch_outcome_unknown = [i \in Invocations |-> FALSE]
+    /\ server_error_kind = [i \in Invocations |-> "none"]
+    /\ nested_bridge_active_at_error = [i \in Invocations |-> FALSE]
     /\ terminal_kind = [i \in Invocations |-> "none"]
 
 Admit(i) ==
@@ -301,8 +375,15 @@ Admit(i) ==
         /\ child_total' = [child_total EXCEPT ![i] = 0]
         /\ child_logged' = [child_logged EXCEPT ![i] = 0]
         /\ parent_receipts' = [parent_receipts EXCEPT ![i] = 0]
+        /\ parent_append_attempts' = [parent_append_attempts EXCEPT ![i] = 0]
+        /\ parent_append_state' = [parent_append_state EXCEPT ![i] = "not-attempted"]
         /\ parent_kind_logged' = [parent_kind_logged EXCEPT ![i] = "none"]
         /\ children_before_parent' = [children_before_parent EXCEPT ![i] = TRUE]
+        /\ post_dispatch_outcome_unknown' =
+            [post_dispatch_outcome_unknown EXCEPT ![i] = FALSE]
+        /\ server_error_kind' = [server_error_kind EXCEPT ![i] = "none"]
+        /\ nested_bridge_active_at_error' =
+            [nested_bridge_active_at_error EXCEPT ![i] = FALSE]
         /\ terminal_kind' = [terminal_kind EXCEPT ![i] = "none"]
 
 StartDispatch(i) ==
@@ -310,8 +391,10 @@ StartDispatch(i) ==
     /\ phase' = [phase EXCEPT ![i] = "dispatch_started"]
     /\ UNCHANGED << ledger, admitted_resources, unwind_failed, child_buf,
                      child_total, child_logged, parent_receipts,
+                     parent_append_attempts, parent_append_state,
                      parent_kind_logged, children_before_parent,
-                     terminal_kind >>
+                     post_dispatch_outcome_unknown, server_error_kind,
+                     nested_bridge_active_at_error, terminal_kind >>
 
 StreamChunk(i) ==
     /\ phase[i] \in {"dispatch_started", "streaming"}
@@ -320,50 +403,123 @@ StreamChunk(i) ==
     /\ child_buf' = [child_buf EXCEPT ![i] = @ + 1]
     /\ child_total' = [child_total EXCEPT ![i] = @ + 1]
     /\ UNCHANGED << ledger, admitted_resources, unwind_failed, child_logged,
-                     parent_receipts, parent_kind_logged,
-                     children_before_parent, terminal_kind >>
+                     parent_receipts, parent_append_attempts,
+                     parent_append_state, parent_kind_logged,
+                     children_before_parent, post_dispatch_outcome_unknown,
+                     server_error_kind, nested_bridge_active_at_error,
+                     terminal_kind >>
 
 CompleteOk(i) ==
     /\ i = 1
     /\ phase[i] \in {"dispatch_started", "streaming"}
-    /\ phase' = [phase EXCEPT ![i] = "terminal_ok"]
-    /\ ledger' = [ledger EXCEPT ![i] = ResolveAll(@, "committed")]
-    /\ child_buf' = [child_buf EXCEPT ![i] = 0]
-    /\ child_logged' = [child_logged EXCEPT ![i] = @ + child_buf[i]]
-    /\ parent_receipts' = [parent_receipts EXCEPT ![i] = @ + 1]
-    /\ parent_kind_logged' = [parent_kind_logged EXCEPT ![i] = "allow"]
-    /\ children_before_parent' = [children_before_parent EXCEPT ![i] =
-        child_logged[i] + child_buf[i] = child_total[i]]
-    /\ terminal_kind' = [terminal_kind EXCEPT ![i] = "allow"]
-    /\ UNCHANGED << admitted_resources, unwind_failed, child_total >>
+    /\ parent_append_state[i] = "not-attempted"
+    /\ \E append_outcome \in ParentAppendOutcomes(i) :
+        /\ \E append_persisted \in ParentPersistenceOutcomes(append_outcome) :
+            /\ phase' = [phase EXCEPT ![i] = "terminal_ok"]
+            /\ ledger' = [ledger EXCEPT ![i] = ResolveAll(@, "committed")]
+            /\ child_buf' = [child_buf EXCEPT ![i] = 0]
+            /\ child_logged' = [child_logged EXCEPT ![i] = @ + child_buf[i]]
+            /\ parent_append_attempts' = [parent_append_attempts EXCEPT ![i] = @ + 1]
+            /\ parent_append_state' = [parent_append_state EXCEPT ![i] = append_outcome]
+            /\ parent_receipts' = [parent_receipts EXCEPT ![i] =
+                @ + IF append_persisted THEN 1 ELSE 0]
+            /\ parent_kind_logged' = [parent_kind_logged EXCEPT ![i] =
+                IF append_persisted THEN "allow" ELSE "none"]
+            /\ children_before_parent' = [children_before_parent EXCEPT ![i] =
+                child_logged[i] + child_buf[i] = child_total[i]]
+            /\ terminal_kind' = [terminal_kind EXCEPT ![i] = "allow"]
+            /\ UNCHANGED << admitted_resources, unwind_failed, child_total,
+                             post_dispatch_outcome_unknown, server_error_kind,
+                             nested_bridge_active_at_error >>
 
 DenyPostInvocation(i) ==
     /\ i = 1
     /\ phase[i] \in {"dispatch_started", "streaming"}
-    /\ phase' = [phase EXCEPT ![i] = "terminal_denied"]
-    /\ ledger' = [ledger EXCEPT ![i] = ResolveAbort(@, "deny")]
-    /\ child_buf' = [child_buf EXCEPT ![i] = 0]
-    /\ child_logged' = [child_logged EXCEPT ![i] = @ + child_buf[i]]
-    /\ parent_receipts' = [parent_receipts EXCEPT ![i] = @ + 1]
-    /\ parent_kind_logged' = [parent_kind_logged EXCEPT ![i] = "deny"]
-    /\ children_before_parent' = [children_before_parent EXCEPT ![i] =
-        child_logged[i] + child_buf[i] = child_total[i]]
-    /\ terminal_kind' = [terminal_kind EXCEPT ![i] = "deny"]
-    /\ UNCHANGED << admitted_resources, unwind_failed, child_total >>
+    /\ parent_append_state[i] = "not-attempted"
+    /\ \E append_outcome \in ParentAppendOutcomes(i) :
+        /\ \E append_persisted \in ParentPersistenceOutcomes(append_outcome) :
+            /\ phase' = [phase EXCEPT ![i] = "terminal_denied"]
+            /\ ledger' = [ledger EXCEPT ![i] =
+                ResolveReturnedOutput(@, "deny")]
+            /\ child_buf' = [child_buf EXCEPT ![i] = 0]
+            /\ child_logged' = [child_logged EXCEPT ![i] = @ + child_buf[i]]
+            /\ parent_append_attempts' = [parent_append_attempts EXCEPT ![i] = @ + 1]
+            /\ parent_append_state' = [parent_append_state EXCEPT ![i] = append_outcome]
+            /\ parent_receipts' = [parent_receipts EXCEPT ![i] =
+                @ + IF append_persisted THEN 1 ELSE 0]
+            /\ parent_kind_logged' = [parent_kind_logged EXCEPT ![i] =
+                IF append_persisted THEN "deny" ELSE "none"]
+            /\ children_before_parent' = [children_before_parent EXCEPT ![i] =
+                child_logged[i] + child_buf[i] = child_total[i]]
+            /\ terminal_kind' = [terminal_kind EXCEPT ![i] = "deny"]
+            /\ UNCHANGED << admitted_resources, unwind_failed, child_total,
+                             post_dispatch_outcome_unknown, server_error_kind,
+                             nested_bridge_active_at_error >>
 
 IncompleteStream(i) ==
     /\ i = 1
     /\ phase[i] \in {"dispatch_started", "streaming"}
-    /\ phase' = [phase EXCEPT ![i] = "terminal_denied"]
-    /\ ledger' = [ledger EXCEPT ![i] = ResolveAbort(@, "incomplete")]
-    /\ child_buf' = [child_buf EXCEPT ![i] = 0]
-    /\ child_logged' = [child_logged EXCEPT ![i] = @ + child_buf[i]]
-    /\ parent_receipts' = [parent_receipts EXCEPT ![i] = @ + 1]
-    /\ parent_kind_logged' = [parent_kind_logged EXCEPT ![i] = "incomplete"]
-    /\ children_before_parent' = [children_before_parent EXCEPT ![i] =
-        child_logged[i] + child_buf[i] = child_total[i]]
-    /\ terminal_kind' = [terminal_kind EXCEPT ![i] = "incomplete"]
-    /\ UNCHANGED << admitted_resources, unwind_failed, child_total >>
+    /\ parent_append_state[i] = "not-attempted"
+    /\ \E append_outcome \in ParentAppendOutcomes(i) :
+        /\ \E append_persisted \in ParentPersistenceOutcomes(append_outcome) :
+            /\ phase' = [phase EXCEPT ![i] = "terminal_denied"]
+            /\ ledger' = [ledger EXCEPT ![i] =
+                ResolveReturnedOutput(@, "incomplete")]
+            /\ child_buf' = [child_buf EXCEPT ![i] = 0]
+            /\ child_logged' = [child_logged EXCEPT ![i] = @ + child_buf[i]]
+            /\ parent_append_attempts' = [parent_append_attempts EXCEPT ![i] = @ + 1]
+            /\ parent_append_state' = [parent_append_state EXCEPT ![i] = append_outcome]
+            /\ parent_receipts' = [parent_receipts EXCEPT ![i] =
+                @ + IF append_persisted THEN 1 ELSE 0]
+            /\ parent_kind_logged' = [parent_kind_logged EXCEPT ![i] =
+                IF append_persisted THEN "incomplete" ELSE "none"]
+            /\ children_before_parent' = [children_before_parent EXCEPT ![i] =
+                child_logged[i] + child_buf[i] = child_total[i]]
+            /\ terminal_kind' = [terminal_kind EXCEPT ![i] = "incomplete"]
+            /\ UNCHANGED << admitted_resources, unwind_failed, child_total,
+                             post_dispatch_outcome_unknown, server_error_kind,
+                             nested_bridge_active_at_error >>
+
+ServerErrorPostDispatch(i) ==
+    /\ i = 1
+    /\ phase[i] \in {"dispatch_started", "streaming"}
+    /\ parent_append_state[i] = "not-attempted"
+    /\ \E error_kind \in ServerErrorKinds :
+        /\ \E nested_bridge_active \in BOOLEAN :
+            /\ \E append_outcome \in ParentAppendOutcomes(i) :
+                /\ \E append_persisted \in ParentPersistenceOutcomes(append_outcome) :
+                    LET receipt_kind == ServerErrorReceiptKind(error_kind)
+                    IN
+                    /\ phase' = [phase EXCEPT ![i] =
+                        IF receipt_kind = "cancel"
+                        THEN "terminal_fault"
+                        ELSE "terminal_denied"]
+                    /\ ledger' = [ledger EXCEPT ![i] = ResolvePostDispatch(@)]
+                    /\ child_buf' = [child_buf EXCEPT ![i] = 0]
+                    /\ child_logged' =
+                        [child_logged EXCEPT ![i] = @ + child_buf[i]]
+                    /\ parent_append_attempts' =
+                        [parent_append_attempts EXCEPT ![i] = @ + 1]
+                    /\ parent_append_state' =
+                        [parent_append_state EXCEPT ![i] = append_outcome]
+                    /\ parent_receipts' = [parent_receipts EXCEPT ![i] =
+                        @ + IF append_persisted THEN 1 ELSE 0]
+                    /\ parent_kind_logged' = [parent_kind_logged EXCEPT ![i] =
+                        IF append_persisted THEN receipt_kind ELSE "none"]
+                    /\ children_before_parent' =
+                        [children_before_parent EXCEPT ![i] =
+                            child_logged[i] + child_buf[i] = child_total[i]]
+                    /\ post_dispatch_outcome_unknown' =
+                        [post_dispatch_outcome_unknown EXCEPT ![i] = TRUE]
+                    /\ server_error_kind' =
+                        [server_error_kind EXCEPT ![i] = error_kind]
+                    /\ nested_bridge_active_at_error' =
+                        [nested_bridge_active_at_error EXCEPT
+                            ![i] = nested_bridge_active]
+                    /\ terminal_kind' =
+                        [terminal_kind EXCEPT ![i] = receipt_kind]
+                    /\ UNCHANGED << admitted_resources, unwind_failed,
+                                     child_total >>
 
 DropPreDispatch(i) ==
     /\ i = 1
@@ -376,37 +532,57 @@ DropPreDispatch(i) ==
            THEN
                 /\ phase' = [phase EXCEPT ![i] = "terminal_unwound"]
                 /\ terminal_kind' = [terminal_kind EXCEPT ![i] = "unwound"]
-                /\ UNCHANGED << parent_receipts, parent_kind_logged >>
+                /\ UNCHANGED << parent_receipts, parent_append_attempts,
+                                 parent_append_state, parent_kind_logged >>
            ELSE
                 /\ phase' = [phase EXCEPT ![i] = "terminal_fault"]
                 /\ terminal_kind' = [terminal_kind EXCEPT ![i] = "fault"]
                 /\ IF Mutation = "omit-fault-receipt"
-                   THEN UNCHANGED << parent_receipts, parent_kind_logged >>
+                   THEN UNCHANGED << parent_receipts, parent_append_attempts,
+                                    parent_append_state, parent_kind_logged >>
                    ELSE
-                        /\ parent_receipts' = [parent_receipts EXCEPT ![i] = @ + 1]
-                        /\ parent_kind_logged' = [parent_kind_logged EXCEPT ![i] = "fault"]
+                        /\ parent_append_state[i] = "not-attempted"
+                        /\ \E append_outcome \in ParentAppendOutcomes(i) :
+                            /\ \E append_persisted \in ParentPersistenceOutcomes(append_outcome) :
+                                /\ parent_append_attempts' = [parent_append_attempts EXCEPT ![i] = @ + 1]
+                                /\ parent_append_state' = [parent_append_state EXCEPT ![i] = append_outcome]
+                                /\ parent_receipts' = [parent_receipts EXCEPT ![i] =
+                                    @ + IF append_persisted THEN 1 ELSE 0]
+                                /\ parent_kind_logged' = [parent_kind_logged EXCEPT ![i] =
+                                    IF append_persisted THEN "fault" ELSE "none"]
         /\ UNCHANGED << admitted_resources, child_buf, child_total,
-                         child_logged, children_before_parent >>
+                         child_logged, children_before_parent,
+                         post_dispatch_outcome_unknown, server_error_kind,
+                         nested_bridge_active_at_error >>
 
 DropPostDispatch(i) ==
     /\ phase[i] \in {"dispatch_started", "streaming"}
-    /\ \E monetary_unwind_failed \in MonetaryUnwindOutcomes(i) :
-        LET flushed_count ==
-                IF Mutation = "discard-child-buffer"
-                THEN child_logged[i]
-                ELSE child_logged[i] + child_buf[i]
-        IN
-        /\ phase' = [phase EXCEPT ![i] = "terminal_fault"]
-        /\ ledger' = [ledger EXCEPT ![i] =
-            ResolvePostDispatch(@, monetary_unwind_failed)]
-        /\ child_buf' = [child_buf EXCEPT ![i] = 0]
-        /\ child_logged' = [child_logged EXCEPT ![i] = flushed_count]
-        /\ parent_receipts' = [parent_receipts EXCEPT ![i] = @ + 1]
-        /\ parent_kind_logged' = [parent_kind_logged EXCEPT ![i] = "cancel"]
-        /\ children_before_parent' = [children_before_parent EXCEPT ![i] =
-            flushed_count = child_total[i]]
-        /\ terminal_kind' = [terminal_kind EXCEPT ![i] = "cancel"]
-        /\ UNCHANGED << admitted_resources, unwind_failed, child_total >>
+    /\ parent_append_state[i] = "not-attempted"
+    /\ \E append_outcome \in ParentAppendOutcomes(i) :
+        /\ \E append_persisted \in ParentPersistenceOutcomes(append_outcome) :
+            LET flushed_count ==
+                    IF Mutation = "discard-child-buffer"
+                    THEN child_logged[i]
+                    ELSE child_logged[i] + child_buf[i]
+            IN
+            /\ phase' = [phase EXCEPT ![i] = "terminal_fault"]
+            /\ ledger' = [ledger EXCEPT ![i] = ResolvePostDispatch(@)]
+            /\ child_buf' = [child_buf EXCEPT ![i] = 0]
+            /\ child_logged' = [child_logged EXCEPT ![i] = flushed_count]
+            /\ parent_append_attempts' = [parent_append_attempts EXCEPT ![i] = @ + 1]
+            /\ parent_append_state' = [parent_append_state EXCEPT ![i] = append_outcome]
+            /\ parent_receipts' = [parent_receipts EXCEPT ![i] =
+                @ + IF append_persisted THEN 1 ELSE 0]
+            /\ parent_kind_logged' = [parent_kind_logged EXCEPT ![i] =
+                IF append_persisted THEN "cancel" ELSE "none"]
+            /\ children_before_parent' = [children_before_parent EXCEPT ![i] =
+                flushed_count = child_total[i]]
+            /\ post_dispatch_outcome_unknown' =
+                [post_dispatch_outcome_unknown EXCEPT ![i] = TRUE]
+            /\ terminal_kind' = [terminal_kind EXCEPT ![i] = "cancel"]
+            /\ UNCHANGED << admitted_resources, unwind_failed, child_total,
+                             server_error_kind,
+                             nested_bridge_active_at_error >>
 
 Next ==
     \/ \E i \in Invocations : Admit(i)
@@ -415,6 +591,7 @@ Next ==
     \/ \E i \in Invocations : CompleteOk(i)
     \/ \E i \in Invocations : DenyPostInvocation(i)
     \/ \E i \in Invocations : IncompleteStream(i)
+    \/ \E i \in Invocations : ServerErrorPostDispatch(i)
     \/ \E i \in Invocations : DropPreDispatch(i)
     \/ \E i \in Invocations : DropPostDispatch(i)
 
@@ -431,15 +608,25 @@ ReservationConservation ==
 
 TerminalReceiptExactlyOne ==
     \A i \in Invocations :
-        /\ terminal_kind[i] = "none" =>
+        /\ parent_append_state[i] = "not-attempted" =>
+            /\ parent_append_attempts[i] = 0
             /\ parent_receipts[i] = 0
             /\ parent_kind_logged[i] = "none"
-        /\ terminal_kind[i] = "unwound" =>
-            /\ parent_receipts[i] = 0
-            /\ parent_kind_logged[i] = "none"
-        /\ terminal_kind[i] \in ParentReceiptKinds =>
+        /\ parent_append_state[i] = "committed" =>
+            /\ parent_append_attempts[i] = 1
             /\ parent_receipts[i] = 1
             /\ parent_kind_logged[i] = terminal_kind[i]
+            /\ terminal_kind[i] \in ParentReceiptKinds
+        /\ parent_append_state[i] = "outcome-unknown" =>
+            /\ parent_append_attempts[i] = 1
+            /\ parent_receipts[i] \in 0..1
+            /\ parent_kind_logged[i] =
+                IF parent_receipts[i] = 1 THEN terminal_kind[i] ELSE "none"
+            /\ terminal_kind[i] \in ParentReceiptKinds
+        /\ terminal_kind[i] \in {"none", "unwound"} =>
+            parent_append_state[i] = "not-attempted"
+        /\ terminal_kind[i] \in ParentReceiptKinds =>
+            parent_append_state[i] \in {"outcome-unknown", "committed"}
 
 ChildReceiptsFlushed ==
     \A i \in Invocations :
@@ -450,10 +637,18 @@ ChildReceiptsFlushed ==
 
 RetainedIffAborted ==
     \A i \in Invocations :
-        (ledger[i]["lease"] = "retained") <=>
-            ( /\ "lease" \in admitted_resources[i]
-              /\ \/ terminal_kind[i] \in {"deny", "incomplete", "cancel"}
-                 \/ "lease" \in unwind_failed[i] )
+        /\ ( (ledger[i]["lease"] = "retained") <=>
+             ( /\ "lease" \in admitted_resources[i]
+               /\ \/ terminal_kind[i] \in {"deny", "incomplete", "cancel"}
+                  \/ "lease" \in unwind_failed[i] ) )
+        /\ ( (ledger[i]["hold"] = "retained") <=>
+             ( /\ "hold" \in admitted_resources[i]
+               /\ \/ post_dispatch_outcome_unknown[i]
+                  \/ "hold" \in unwind_failed[i] ) )
+        /\ (server_error_kind[i] = "url") =>
+            /\ post_dispatch_outcome_unknown[i]
+            /\ terminal_kind[i] = "incomplete"
+            /\ phase[i] = "terminal_denied"
 
 SafetyInv ==
     /\ DomainsOK

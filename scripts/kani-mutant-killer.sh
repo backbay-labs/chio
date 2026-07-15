@@ -19,6 +19,9 @@ if [[ ! "${version}" =~ (^|[^0-9.])${version_pattern}([^0-9.]|$) ]]; then
 fi
 
 priority_harnesses=(
+  "kani_harnesses::scalar_helpers_match_reference_predicates"
+  "kani_harnesses::reservation_ledger_matches_one_step_oracle"
+  "kani_public_harnesses::verify_inclusion_step_equivalence"
   "kani_harnesses::time_window_classifier_matches_valid_predicate"
   "kani_harnesses::optional_caps_never_widen_parent_cap"
   "kani_harnesses::monetary_caps_never_widen_parent_cap"
@@ -39,6 +42,7 @@ priority_harnesses=(
   "kani_public_harnesses::verify_scope_intersection_associative"
   "kani_public_harnesses::verify_revocation_admission_projection"
   "kani_public_harnesses::verify_delegation_chain_step"
+  "kani_public_harnesses::verify_reservation_ledger_terminal_classification"
   "kani_public_harnesses::verify_reservation_ledger_conservation"
   "kani_public_harnesses::verify_budget_admission_projection"
   "kani_public_harnesses::verify_delegate_no_widen"

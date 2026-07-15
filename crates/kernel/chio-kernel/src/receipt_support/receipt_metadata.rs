@@ -1,7 +1,9 @@
+#[cfg(test)]
 use super::receipt_scopes::{
     current_governed_call_chain_receipt_evidence, current_governed_runtime_attestation_record,
 };
 use crate::evidence_export::EvidenceLineageReferences;
+use crate::kernel::EvaluationReceiptContext;
 use crate::operator_report::GovernedTransactionDiagnostics;
 use crate::*;
 use chio_appraisal::{verify_runtime_attestation_record, VerifiedRuntimeAttestationRecord};
@@ -10,13 +12,10 @@ use chio_core::capability::governance::{
     GovernedProvenanceEvidenceClass,
 };
 
-fn governed_call_chain_provenance(
+fn governed_call_chain_provenance_from_evidence(
     context: GovernedCallChainContext,
+    evidence: &GovernedCallChainReceiptEvidence,
 ) -> GovernedCallChainProvenance {
-    let Some(evidence) = current_governed_call_chain_receipt_evidence() else {
-        return GovernedCallChainProvenance::asserted(context);
-    };
-
     let upstream_proof = evidence.upstream_proof.clone();
     let mut evidence_sources = Vec::new();
 
@@ -54,14 +53,24 @@ fn governed_call_chain_provenance(
     if let Some(upstream_proof) = upstream_proof {
         provenance = provenance.with_upstream_proof(upstream_proof);
     }
-    if let Some(continuation_token_id) = evidence.continuation_token_id {
-        provenance = provenance.with_continuation_token_id(continuation_token_id);
+    if let Some(continuation_token_id) = evidence.continuation_token_id.as_ref() {
+        provenance = provenance.with_continuation_token_id(continuation_token_id.clone());
     }
-    if let Some(session_anchor_id) = evidence.session_anchor_id {
-        provenance = provenance.with_session_anchor_id(session_anchor_id);
+    if let Some(session_anchor_id) = evidence.session_anchor_id.as_ref() {
+        provenance = provenance.with_session_anchor_id(session_anchor_id.clone());
     }
 
     provenance
+}
+
+fn governed_call_chain_provenance_with_authoritative_evidence(
+    context: GovernedCallChainContext,
+    evidence: Option<&GovernedCallChainReceiptEvidence>,
+) -> GovernedCallChainProvenance {
+    let Some(evidence) = evidence else {
+        return GovernedCallChainProvenance::asserted(context);
+    };
+    governed_call_chain_provenance_from_evidence(context, evidence)
 }
 
 fn governed_transaction_diagnostics(
@@ -90,8 +99,8 @@ pub(crate) fn merge_metadata_objects(
     match (base, extra) {
         (None, extra) => extra,
         (Some(base), None) => Some(base),
-        (Some(mut base), Some(extra)) => {
-            if let (Some(base_obj), Some(extra_obj)) = (base.as_object_mut(), extra.as_object()) {
+        (Some(mut base), Some(extra)) => match (base.as_object_mut(), extra.as_object()) {
+            (Some(base_obj), Some(extra_obj)) => {
                 for (key, value) in extra_obj {
                     match (base_obj.get_mut(key), value.as_object()) {
                         (Some(serde_json::Value::Object(base_nested)), Some(extra_nested)) => {
@@ -104,10 +113,126 @@ pub(crate) fn merge_metadata_objects(
                         }
                     }
                 }
+                Some(base)
             }
-            Some(base)
+            // Structured receipt evidence dominates an unstructured value on
+            // either side. This prevents caller-shaped scalar or array
+            // metadata from suppressing trusted admission, budget, or
+            // attribution objects while retaining normal extra precedence
+            // when both values are unstructured.
+            (Some(_), None) => Some(base),
+            (None, Some(_)) | (None, None) => Some(extra),
+        },
+    }
+}
+
+pub(crate) fn sanitize_external_receipt_metadata(
+    metadata: Option<serde_json::Value>,
+) -> Option<serde_json::Value> {
+    const KERNEL_OWNED_KEYS: &[&str] = &[
+        "acp",
+        "actor_subject",
+        "agent_web_receipt_ref",
+        "attribution",
+        "budget_authority",
+        "checkpoint_id",
+        "chio_runtime",
+        "execution_nonce",
+        "financial",
+        "governed_transaction",
+        "governed_transaction_diagnostics",
+        "lineageReferences",
+        "memory_provenance",
+        "mercury",
+        "model_metadata",
+        "post_invocation",
+        "receipt_context",
+        "redaction_status",
+        "runtime_admission",
+        "stream",
+    ];
+
+    let mut metadata = metadata?;
+    let Some(object) = metadata.as_object_mut() else {
+        return Some(metadata);
+    };
+    for key in KERNEL_OWNED_KEYS {
+        object.remove(*key);
+    }
+    (!object.is_empty()).then_some(metadata)
+}
+
+pub(crate) fn strip_external_receipt_provenance(
+    metadata: Option<serde_json::Value>,
+) -> Option<serde_json::Value> {
+    let mut metadata = metadata?;
+    let Some(object) = metadata.as_object_mut() else {
+        return Some(metadata);
+    };
+    object.remove("provenance");
+    (!object.is_empty()).then_some(metadata)
+}
+
+pub(crate) fn normalize_external_receipt_metadata(
+    metadata: Option<serde_json::Value>,
+) -> Result<Option<serde_json::Value>, KernelError> {
+    let normalized_provenance = receipt_provenance_metadata(metadata.as_ref())?;
+    Ok(merge_metadata_objects(
+        strip_external_receipt_provenance(metadata),
+        normalized_provenance,
+    ))
+}
+
+pub(crate) fn project_runtime_admission_receipt_metadata(
+    metadata: Option<&serde_json::Value>,
+) -> Result<Option<serde_json::Value>, KernelError> {
+    let Some(metadata) = metadata else {
+        return Ok(None);
+    };
+    let Some(object) = metadata.as_object() else {
+        return Err(KernelError::Internal(
+            "runtime admission metadata must be a JSON object".to_string(),
+        ));
+    };
+    let mut projected = serde_json::Map::new();
+    for key in ["chio_runtime", "runtime_admission"] {
+        let Some(value) = object.get(key) else {
+            continue;
+        };
+        let Some(namespace) = value.as_object() else {
+            return Err(KernelError::Internal(format!(
+                "runtime admission metadata namespace {key} must be a JSON object"
+            )));
+        };
+        let mut namespace = namespace.clone();
+        namespace.remove("federation_treaty_dsse");
+        if !namespace.is_empty() {
+            projected.insert(key.to_string(), serde_json::Value::Object(namespace));
         }
     }
+    Ok((!projected.is_empty()).then_some(serde_json::Value::Object(projected)))
+}
+
+pub(crate) fn validate_runtime_admission_receipt_metadata(
+    metadata: Option<&serde_json::Value>,
+) -> Result<Option<serde_json::Value>, KernelError> {
+    let Some(metadata) = metadata else {
+        return Ok(None);
+    };
+    let Some(object) = metadata.as_object() else {
+        return Err(KernelError::Internal(
+            "runtime admission metadata must be a JSON object".to_string(),
+        ));
+    };
+    if object
+        .keys()
+        .any(|key| !matches!(key.as_str(), "chio_runtime" | "runtime_admission"))
+    {
+        return Err(KernelError::Internal(
+            "runtime admission metadata contains an unsupported top-level namespace".to_string(),
+        ));
+    }
+    project_runtime_admission_receipt_metadata(Some(metadata))
 }
 
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize)]
@@ -452,10 +577,11 @@ fn inject_governed_economic_authorization_metadata(
     Ok(Some(metadata))
 }
 
-pub(crate) fn governed_request_metadata(
+pub(crate) fn governed_request_metadata_with_context(
     request: &ToolCallRequest,
     attestation_trust_policy: Option<&AttestationTrustPolicy>,
     now: u64,
+    evaluation_context: &EvaluationReceiptContext,
 ) -> Result<Option<serde_json::Value>, KernelError> {
     let Some(intent) = request.governed_intent.as_ref() else {
         return Ok(None);
@@ -487,9 +613,8 @@ pub(crate) fn governed_request_metadata(
                 max_billed_units: metered.max_billed_units,
                 usage_evidence: None,
             });
-    let runtime_assurance = if let Some(verified_runtime_attestation) =
-        current_governed_runtime_attestation_record()
-    {
+    let scoped_runtime_attestation = evaluation_context.runtime_attestation.clone();
+    let runtime_assurance = if let Some(verified_runtime_attestation) = scoped_runtime_attestation {
         if intent
             .runtime_attestation
             .as_ref()
@@ -514,10 +639,10 @@ pub(crate) fn governed_request_metadata(
             tier: autonomy.tier,
             delegation_bond_id: autonomy.delegation_bond_id.clone(),
         });
-    let call_chain = intent
-        .call_chain
-        .clone()
-        .map(governed_call_chain_provenance);
+    let call_chain_evidence = evaluation_context.governed_call_chain.as_ref();
+    let call_chain = intent.call_chain.clone().map(|call_chain| {
+        governed_call_chain_provenance_with_authoritative_evidence(call_chain, call_chain_evidence)
+    });
     let governed_transaction_diagnostics = governed_transaction_diagnostics(call_chain.as_ref());
     let metadata = GovernedTransactionReceiptMetadata {
         intent_id: intent.id.clone(),
@@ -561,13 +686,34 @@ pub(crate) fn governed_request_metadata(
     Ok(Some(serde_json::Value::Object(metadata_object)))
 }
 
-pub(crate) fn request_receipt_metadata(
+#[cfg(test)]
+pub(crate) fn governed_request_metadata(
+    request: &ToolCallRequest,
+    attestation_trust_policy: Option<&AttestationTrustPolicy>,
+    now: u64,
+) -> Result<Option<serde_json::Value>, KernelError> {
+    let evaluation_context = legacy_test_evaluation_receipt_context();
+    governed_request_metadata_with_context(
+        request,
+        attestation_trust_policy,
+        now,
+        &evaluation_context,
+    )
+}
+
+pub(crate) fn request_receipt_metadata_with_context(
     request: &ToolCallRequest,
     attestation_trust_policy: Option<&AttestationTrustPolicy>,
     now: u64,
     extra_metadata: Option<&serde_json::Value>,
+    evaluation_context: &EvaluationReceiptContext,
 ) -> Result<Option<serde_json::Value>, KernelError> {
-    let governed_metadata = governed_request_metadata(request, attestation_trust_policy, now)?;
+    let governed_metadata = governed_request_metadata_with_context(
+        request,
+        attestation_trust_policy,
+        now,
+        evaluation_context,
+    )?;
     let financial = extra_metadata
         .and_then(serde_json::Value::as_object)
         .and_then(|extra_metadata| extra_metadata.get("financial"))
@@ -590,6 +736,32 @@ pub(crate) fn request_receipt_metadata(
         ),
         provenance_metadata,
     ))
+}
+
+#[cfg(test)]
+pub(crate) fn request_receipt_metadata(
+    request: &ToolCallRequest,
+    attestation_trust_policy: Option<&AttestationTrustPolicy>,
+    now: u64,
+    extra_metadata: Option<&serde_json::Value>,
+) -> Result<Option<serde_json::Value>, KernelError> {
+    let evaluation_context = legacy_test_evaluation_receipt_context();
+    request_receipt_metadata_with_context(
+        request,
+        attestation_trust_policy,
+        now,
+        extra_metadata,
+        &evaluation_context,
+    )
+}
+
+#[cfg(test)]
+fn legacy_test_evaluation_receipt_context() -> EvaluationReceiptContext {
+    EvaluationReceiptContext {
+        governed_call_chain: current_governed_call_chain_receipt_evidence(),
+        runtime_attestation: current_governed_runtime_attestation_record(),
+        ..EvaluationReceiptContext::default()
+    }
 }
 
 pub(crate) fn receipt_attribution_metadata(

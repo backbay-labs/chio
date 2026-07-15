@@ -35,6 +35,7 @@ pub mod custody;
 pub mod dpop;
 pub mod evidence_export;
 pub mod execution_nonce;
+pub mod governed_approval_replay;
 pub mod memory_provenance;
 pub mod observability;
 pub mod operator_report;
@@ -47,6 +48,7 @@ pub mod receipt_analytics;
 pub mod receipt_query;
 pub mod receipt_store;
 mod receipt_support;
+mod replay_retention;
 mod request_matching;
 pub mod revocation_runtime;
 pub mod revocation_store;
@@ -339,6 +341,10 @@ pub use execution_nonce::{
     DEFAULT_EXECUTION_NONCE_STORE_CAPACITY, DEFAULT_EXECUTION_NONCE_TTL_SECS,
     EXECUTION_NONCE_SCHEMA,
 };
+pub use governed_approval_replay::{
+    GovernedApprovalReplayStore, InMemoryGovernedApprovalReplayStore,
+    DEFAULT_GOVERNED_APPROVAL_REPLAY_CAPACITY,
+};
 pub use memory_provenance::{
     classify_memory_action, next_entry_id as next_memory_provenance_entry_id,
     recompute_entry_hash as recompute_memory_provenance_entry_hash, InMemoryMemoryProvenanceStore,
@@ -393,7 +399,8 @@ pub use operator_report::{
 };
 pub use payment::{
     AcpPaymentAdapter, CommercePaymentContext, GovernedPaymentContext, PaymentAdapter,
-    PaymentAuthorization, PaymentAuthorizeRequest, PaymentError, PaymentResult,
+    PaymentAuthorization, PaymentAuthorizeRequest, PaymentCredentialDisposition, PaymentError,
+    PaymentResult, PreDispatchPaymentUnwindEvidence, PreDispatchPaymentUnwindStatus,
     RailSettlementStatus, ReceiptSettlement, X402PaymentAdapter,
 };
 pub use post_invocation::{
@@ -441,11 +448,14 @@ mod kernel;
 pub(crate) use kernel::{current_unix_timestamp, MatchingGrant, ReceiptContent};
 
 pub use kernel::{
-    AgentId, CapabilityId, ChildReceiptLog, ChioKernel, Guard, GuardContext, GuardDecision,
-    HybridSigningConfig, KernelConfig, KernelError, PromptProvider, ReceiptLog, ResourceProvider,
-    RuntimeAdmissionContext, RuntimeAdmissionDecision, RuntimeAdmissionHook, ServerId,
-    StructuredErrorReport, DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_SIZE_BYTES,
-    DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES, DEFAULT_RETENTION_DAYS,
+    AgentId, CapabilityId, ChildReceiptLog, ChioKernel, FederationTreatyAdmissionBinding,
+    FederationTreatyVerification, Guard, GuardContext, GuardDecision, HybridSigningConfig,
+    KernelConfig, KernelError, PromptProvider, ReceiptLog, ResourceProvider,
+    RuntimeAdmissionContext, RuntimeAdmissionDecision, RuntimeAdmissionHook,
+    RuntimeAdmissionReadinessToken, RuntimeAdmissionRevalidationContext, ServerId,
+    StructuredErrorReport, VerifiedFederationTreatyMaterial, DEFAULT_CHECKPOINT_BATCH_SIZE,
+    DEFAULT_MAX_SIZE_BYTES, DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
+    DEFAULT_RETENTION_DAYS, DEFAULT_RUNTIME_ADMISSION_READINESS_TIMEOUT_MS,
     EMERGENCY_STOP_DENY_REASON,
 };
 

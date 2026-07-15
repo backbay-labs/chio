@@ -60,12 +60,7 @@ fn governed_monetary_denial_without_required_runtime_assurance_releases_budget()
         .and_then(|metadata| metadata.get("financial"))
         .expect("deny receipt should carry financial metadata");
     assert_eq!(financial["budget_remaining"].as_u64(), Some(1000));
-    let usage = kernel
-
-        .budget_store
-        .get_usage(&cap.id, 0)
-        .unwrap()
-        .unwrap();
+    let usage = kernel.budget_store.get_usage(&cap.id, 0).unwrap().unwrap();
     assert_eq!(usage.committed_cost_units().unwrap(), 0);
 }
 
@@ -206,30 +201,33 @@ fn governed_request_denies_conflicting_workload_identity_binding() {
         100,
         "USD",
     );
-    intent.runtime_attestation = Some(chio_core::capability::runtime_attestation::RuntimeAttestationEvidence {
-        schema: "chio.runtime-attestation.enterprise-verifier.json.v1".to_string(),
-        verifier: "https://attest.chio.example".to_string(),
-        tier: RuntimeAssuranceTier::Attested,
-        issued_at: current_unix_timestamp().saturating_sub(1),
-        expires_at: current_unix_timestamp() + 300,
-        evidence_sha256: "digest-invalid-workload".to_string(),
-        runtime_identity: Some("spiffe://chio/runtime/test".to_string()),
-        workload_identity: Some(chio_core::capability::workload_identity::WorkloadIdentity {
-            scheme: chio_core::capability::workload_identity::WorkloadIdentityScheme::Spiffe,
-            credential_kind: chio_core::capability::workload_identity::WorkloadCredentialKind::X509Svid,
-            uri: "spiffe://other/runtime/test".to_string(),
-            trust_domain: "other".to_string(),
-            path: "/runtime/test".to_string(),
-        }),
-        claims: Some(serde_json::json!({
-            "enterpriseVerifier": {
-                "attestationType": "enterprise_confidential_vm",
-                "hardwareModel": "AMD_SEV_SNP",
-                "secureBoot": "enabled",
-                "digest": "sha384:digest-invalid-workload"
-            }
-        })),
-    });
+    intent.runtime_attestation = Some(
+        chio_core::capability::runtime_attestation::RuntimeAttestationEvidence {
+            schema: "chio.runtime-attestation.enterprise-verifier.json.v1".to_string(),
+            verifier: "https://attest.chio.example".to_string(),
+            tier: RuntimeAssuranceTier::Attested,
+            issued_at: current_unix_timestamp().saturating_sub(1),
+            expires_at: current_unix_timestamp() + 300,
+            evidence_sha256: "digest-invalid-workload".to_string(),
+            runtime_identity: Some("spiffe://chio/runtime/test".to_string()),
+            workload_identity: Some(chio_core::capability::workload_identity::WorkloadIdentity {
+                scheme: chio_core::capability::workload_identity::WorkloadIdentityScheme::Spiffe,
+                credential_kind:
+                    chio_core::capability::workload_identity::WorkloadCredentialKind::X509Svid,
+                uri: "spiffe://other/runtime/test".to_string(),
+                trust_domain: "other".to_string(),
+                path: "/runtime/test".to_string(),
+            }),
+            claims: Some(serde_json::json!({
+                "enterpriseVerifier": {
+                    "attestationType": "enterprise_confidential_vm",
+                    "hardwareModel": "AMD_SEV_SNP",
+                    "secureBoot": "enabled",
+                    "digest": "sha384:digest-invalid-workload"
+                }
+            })),
+        },
+    );
     let approval_token = make_governed_approval_token(
         &kernel.config.keypair,
         &agent_kp.public_key(),
@@ -881,12 +879,7 @@ fn governed_monetary_denial_without_approval_releases_budget_and_records_intent(
     assert_eq!(financial["budget_remaining"].as_u64(), Some(1000));
     assert_eq!(financial["settlement_status"], "not_applicable");
 
-    let usage = kernel
-
-        .budget_store
-        .get_usage(&cap.id, 0)
-        .unwrap()
-        .unwrap();
+    let usage = kernel.budget_store.get_usage(&cap.id, 0).unwrap().unwrap();
     assert_eq!(usage.invocation_count, 0);
     assert_eq!(usage.committed_cost_units().unwrap(), 0);
 }
@@ -984,6 +977,7 @@ fn governed_x402_prepaid_flow_records_governed_authorization_and_receipt_metadat
         200,
         serde_json::json!({
             "authorizationId": "x402_txn_governed",
+            "transactionId": "x402_txn_governed",
             "settled": true,
             "metadata": {
                 "network": "base",
@@ -1185,12 +1179,7 @@ fn governed_x402_authorization_failure_denies_before_tool_execution() {
         .expect("deny receipt should carry governed transaction metadata");
     assert_eq!(governed["intent_id"], intent.id);
 
-    let usage = kernel
-
-        .budget_store
-        .get_usage(&cap.id, 0)
-        .unwrap()
-        .unwrap();
+    let usage = kernel.budget_store.get_usage(&cap.id, 0).unwrap().unwrap();
     assert_eq!(usage.invocation_count, 0);
     assert_eq!(usage.committed_cost_units().unwrap(), 0);
 
@@ -1198,7 +1187,7 @@ fn governed_x402_authorization_failure_denies_before_tool_execution() {
 }
 
 #[test]
-fn governed_acp_hold_flow_records_commerce_scope_and_payment_metadata() {
+fn governed_acp_hold_flow_keeps_settlement_pending_without_capture_acknowledgement() {
     let (url, request_rx, handle) = spawn_payment_test_server(
         200,
         serde_json::json!({
@@ -1296,7 +1285,7 @@ fn governed_acp_hold_flow_records_commerce_scope_and_payment_metadata() {
         .get("financial")
         .expect("allow receipt should carry financial metadata");
     assert_eq!(financial["payment_reference"], "acp_hold_governed");
-    assert_eq!(financial["settlement_status"], "settled");
+    assert_eq!(financial["settlement_status"], "pending");
     assert_eq!(
         financial["cost_breakdown"]["payment"]["authorization_id"],
         "acp_hold_governed"
@@ -1417,12 +1406,7 @@ fn governed_acp_seller_mismatch_denies_before_payment_or_tool_execution() {
     assert_eq!(governed["intent_id"], intent.id);
     assert_eq!(governed["commerce"]["seller"], "wrong-merchant.example");
 
-    let usage = kernel
-
-        .budget_store
-        .get_usage(&cap.id, 0)
-        .unwrap()
-        .unwrap();
+    let usage = kernel.budget_store.get_usage(&cap.id, 0).unwrap().unwrap();
     assert_eq!(usage.invocation_count, 0);
     assert_eq!(usage.committed_cost_units().unwrap(), 0);
 }

@@ -5,12 +5,14 @@
 from __future__ import annotations
 
 import argparse
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
 import json
 import os
 from pathlib import Path
+import queue
 import random
 import re
 import shutil
@@ -19,6 +21,7 @@ import stat
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from typing import Any, Iterable
 
@@ -39,6 +42,8 @@ DEFAULT_TIMEOUT_SECS = 5400
 DISCOVERY_TIMEOUT_SECS = 600
 DEFAULT_ACTIVATION_TARGET = 90.0
 MIN_VIABILITY_PERCENT = 80.0
+DEFAULT_JOBS = 1
+MAX_JOBS = 8
 DEFAULT_OUTPUT = Path("target/formal/proof-mutants")
 MUTATION_MARKER = "/* ~ changed by cargo-mutants ~ */"
 FIXED_PROOF_INPUTS = (
@@ -801,8 +806,48 @@ def kill_process_group(process: subprocess.Popen[bytes]) -> None:
     process.wait()
 
 
+class ProcessRegistry:
+    """Tracks worker process groups so one failure can stop the whole campaign."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._processes: set[subprocess.Popen[bytes]] = set()
+        self._cancelled = False
+
+    def add(self, process: subprocess.Popen[bytes]) -> None:
+        with self._lock:
+            if not self._cancelled:
+                self._processes.add(process)
+                return
+        kill_process_group(process)
+        raise ProofMutationError("proof mutation execution was cancelled")
+
+    def remove(self, process: subprocess.Popen[bytes]) -> None:
+        with self._lock:
+            self._processes.discard(process)
+
+    def claim_for_termination(self, process: subprocess.Popen[bytes]) -> bool:
+        with self._lock:
+            if process not in self._processes:
+                return False
+            self._processes.remove(process)
+            return True
+
+    def kill_all(self) -> None:
+        with self._lock:
+            self._cancelled = True
+            processes = tuple(self._processes)
+            self._processes.clear()
+        for process in processes:
+            kill_process_group(process)
+
+
 def run_process(
-    command: list[str], cwd: Path, log_path: Path, timeout_secs: int
+    command: list[str],
+    cwd: Path,
+    log_path: Path,
+    timeout_secs: int,
+    registry: ProcessRegistry | None = None,
 ) -> tuple[int | None, float]:
     start = time.monotonic()
     log_path.parent.mkdir(parents=True, exist_ok=True)
@@ -814,14 +859,25 @@ def run_process(
             stderr=subprocess.STDOUT,
             start_new_session=True,
         )
+        if registry is not None:
+            registry.add(process)
         try:
             exit_code = process.wait(timeout=timeout_secs)
         except subprocess.TimeoutExpired:
-            kill_process_group(process)
+            if registry is None or registry.claim_for_termination(process):
+                kill_process_group(process)
+            else:
+                process.wait()
             exit_code = None
         except BaseException:
-            kill_process_group(process)
+            if registry is None or registry.claim_for_termination(process):
+                kill_process_group(process)
+            else:
+                process.wait()
             raise
+        finally:
+            if registry is not None:
+                registry.remove(process)
     return exit_code, time.monotonic() - start
 
 
@@ -1017,6 +1073,122 @@ def safe_output(root: Path, raw: str | None) -> Path:
     return candidate
 
 
+def require_restored_scratch(root: Path, mutant_id: str) -> None:
+    status = subprocess.run(
+        ["git", "status", "--porcelain", "--untracked-files=normal"],
+        cwd=root,
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    if status.returncode != 0 or status.stdout:
+        raise ProofMutationError(f"scratch worktree did not restore after {mutant_id}")
+
+
+def execute_mutant(
+    scratch: Path,
+    mutant: DiscoveredMutant,
+    output: Path,
+    timeout_secs: int,
+    registry: ProcessRegistry,
+) -> dict[str, Any]:
+    source_path = mutable_source_path(scratch, mutant.file)
+    original = source_path.read_text(encoding="utf-8")
+    mutated = replace_span(original, mutant.span, mutant.replacement)
+    write_mutable_source(scratch, mutant.file, mutated)
+    try:
+        log_path = output / "runs" / mutant.id / "kani.log"
+        command = ["bash", "scripts/kani-mutant-killer.sh"]
+        exit_code, wall_secs = run_process(
+            command,
+            scratch,
+            log_path,
+            timeout_secs,
+            registry,
+        )
+        verdict = classify_kani(exit_code, log_path)
+        result = mutant.public(include_diff=False)
+        result.update(
+            {
+                "verdict": verdict,
+                "kani_exit": exit_code,
+                "wall_secs": round(wall_secs, 3),
+                "source_sha256": sha256_bytes(original.encode()),
+                "mutated_sha256": sha256_bytes(mutated.encode()),
+                "log_sha256": sha256_file(log_path),
+            }
+        )
+        return result
+    finally:
+        write_mutable_source(scratch, mutant.file, original)
+        require_restored_scratch(scratch, mutant.id)
+
+
+def execute_selected_mutants(
+    scratches: list[Path],
+    selected: list[DiscoveredMutant],
+    output: Path,
+    timeout_secs: int,
+) -> list[dict[str, Any]]:
+    pending: queue.Queue[tuple[int, DiscoveredMutant]] = queue.Queue()
+    for index, mutant in enumerate(selected):
+        pending.put((index, mutant))
+
+    stop = threading.Event()
+    registry = ProcessRegistry()
+    print_lock = threading.Lock()
+
+    def worker(scratch: Path) -> list[tuple[int, dict[str, Any]]]:
+        completed: list[tuple[int, dict[str, Any]]] = []
+        while not stop.is_set():
+            try:
+                index, mutant = pending.get_nowait()
+            except queue.Empty:
+                break
+            try:
+                result = execute_mutant(
+                    scratch,
+                    mutant,
+                    output,
+                    timeout_secs,
+                    registry,
+                )
+                completed.append((index, result))
+                with print_lock:
+                    print(f"{mutant.id}: {result['verdict']} ({result['wall_secs']}s)")
+            except BaseException:
+                stop.set()
+                registry.kill_all()
+                raise
+            finally:
+                pending.task_done()
+        return completed
+
+    executor = ThreadPoolExecutor(max_workers=len(scratches), thread_name_prefix="proof-mutant")
+    futures: list[Future[list[tuple[int, dict[str, Any]]]]] = []
+    indexed: list[tuple[int, dict[str, Any]]] = []
+    try:
+        for scratch in scratches:
+            futures.append(executor.submit(worker, scratch))
+        for future in as_completed(futures):
+            indexed.extend(future.result())
+    except BaseException:
+        stop.set()
+        registry.kill_all()
+        for future in futures:
+            future.cancel()
+        executor.shutdown(wait=True, cancel_futures=True)
+        raise
+    else:
+        executor.shutdown(wait=True)
+
+    indexed.sort(key=lambda entry: entry[0])
+    if [index for index, _ in indexed] != list(range(len(selected))):
+        raise ProofMutationError("parallel proof mutation execution omitted a selected mutant")
+    return [result for _, result in indexed]
+
+
 def execute(
     root: Path,
     mutants: list[DiscoveredMutant],
@@ -1028,6 +1200,7 @@ def execute(
     timeout_secs: int,
     activation_target: float,
     sample_epoch: int,
+    jobs: int,
     snapshot: ExecutionSnapshot,
 ) -> int:
     commit = snapshot.commit
@@ -1038,27 +1211,35 @@ def execute(
         shutil.rmtree(output)
     output.mkdir(parents=True)
     scratch_parent = Path(tempfile.mkdtemp(prefix="chio-proof-mutants-"))
-    scratch = scratch_parent / "worktree"
-    worktree_added = False
-    results: list[dict[str, Any]] = []
+    worker_count = min(jobs, len(selected))
+    scratches = [scratch_parent / f"worktree-{index}" for index in range(worker_count)]
+    worktrees_added: list[Path] = []
     commands = list(discovery_commands)
     try:
-        add = subprocess.run(
-            ["git", "worktree", "add", "--detach", str(scratch), commit],
-            cwd=root,
-            check=False,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-        )
-        if add.returncode != 0:
-            raise ProofMutationError(f"cannot create scratch worktree: {add.stderr.strip()}")
-        worktree_added = True
-        validate_mutable_sources(scratch)
+        for scratch in scratches:
+            add = subprocess.run(
+                ["git", "worktree", "add", "--detach", str(scratch), commit],
+                cwd=root,
+                check=False,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            if add.returncode != 0:
+                raise ProofMutationError(
+                    f"cannot create scratch worktree: {add.stderr.strip()}"
+                )
+            worktrees_added.append(scratch)
+            validate_mutable_sources(scratch)
+            if input_evidence(scratch, proof_input_paths(scratch)) != snapshot.inputs:
+                raise ProofMutationError(
+                    "detached proof execution inputs differ from the starting snapshot"
+                )
+
         baseline_log = output / "baseline.log"
         baseline_command = ["bash", "scripts/kani-mutant-killer.sh"]
         baseline_exit, baseline_wall = run_process(
-            baseline_command, scratch, baseline_log, timeout_secs
+            baseline_command, scratches[0], baseline_log, timeout_secs
         )
         commands.append(
             {
@@ -1072,42 +1253,16 @@ def execute(
         if baseline_exit != 0:
             raise ProofMutationError("clean Kani baseline failed or timed out")
 
-        for mutant in selected:
-            source_path = mutable_source_path(scratch, mutant.file)
-            original = source_path.read_text(encoding="utf-8")
-            mutated = replace_span(original, mutant.span, mutant.replacement)
-            write_mutable_source(scratch, mutant.file, mutated)
-            log_path = output / "runs" / mutant.id / "kani.log"
-            command = ["bash", "scripts/kani-mutant-killer.sh"]
-            exit_code, wall_secs = run_process(command, scratch, log_path, timeout_secs)
-            verdict = classify_kani(exit_code, log_path)
-            result = mutant.public(include_diff=False)
-            result.update(
-                {
-                    "verdict": verdict,
-                    "kani_exit": exit_code,
-                    "wall_secs": round(wall_secs, 3),
-                    "source_sha256": sha256_bytes(original.encode()),
-                    "mutated_sha256": sha256_bytes(mutated.encode()),
-                    "log_sha256": sha256_file(log_path),
-                }
-            )
-            results.append(result)
-            commands.append({"mutant_id": mutant.id, "argv": command})
-            print(f"{mutant.id}: {verdict} ({result['wall_secs']}s)")
-            write_mutable_source(scratch, mutant.file, original)
-            status = subprocess.run(
-                ["git", "status", "--porcelain", "--untracked-files=normal"],
-                cwd=scratch,
-                check=False,
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-            )
-            if status.returncode != 0 or status.stdout:
-                raise ProofMutationError(f"scratch worktree did not restore after {mutant.id}")
+        results = execute_selected_mutants(
+            scratches,
+            selected,
+            output,
+            timeout_secs,
+        )
+        command = ["bash", "scripts/kani-mutant-killer.sh"]
+        commands.extend({"mutant_id": mutant.id, "argv": command} for mutant in selected)
     finally:
-        if worktree_added:
+        for scratch in reversed(worktrees_added):
             subprocess.run(
                 ["git", "worktree", "remove", "--force", str(scratch)],
                 cwd=root,
@@ -1145,6 +1300,7 @@ def execute(
         "bounds": {
             "per_mutant_timeout_secs": timeout_secs,
             "discovery_timeout_secs": DISCOVERY_TIMEOUT_SECS,
+            "workers": worker_count,
             "shards": list(SHARDS),
             "files": [path.as_posix() for path in FILES],
         },
@@ -1172,6 +1328,12 @@ def parse_arguments(arguments: list[str]) -> argparse.Namespace:
     parser.add_argument("--full", action="store_true", help="run the full mutation set")
     parser.add_argument("--sample-size", type=int, default=DEFAULT_SAMPLE_SIZE)
     parser.add_argument("--timeout-secs", type=int, default=DEFAULT_TIMEOUT_SECS)
+    parser.add_argument(
+        "--jobs",
+        type=int,
+        default=os.environ.get("CHIO_PROOF_MUTANTS_JOBS", str(DEFAULT_JOBS)),
+        help=f"isolated Kani workers (1-{MAX_JOBS})",
+    )
     parser.add_argument("--activation-target", type=float, default=DEFAULT_ACTIVATION_TARGET)
     parser.add_argument(
         "--sample-epoch",
@@ -1193,6 +1355,8 @@ def main(arguments: list[str]) -> int:
         raise ProofMutationError("sample size must be positive")
     if options.timeout_secs < 1:
         raise ProofMutationError("timeout must be positive")
+    if not 1 <= options.jobs <= MAX_JOBS:
+        raise ProofMutationError(f"jobs must be between 1 and {MAX_JOBS}")
     if not 0.0 <= options.activation_target <= 100.0:
         raise ProofMutationError("activation target must be between 0 and 100")
     if options.sample_epoch < 0:
@@ -1217,6 +1381,7 @@ def main(arguments: list[str]) -> int:
         timeout_secs=options.timeout_secs,
         activation_target=options.activation_target,
         sample_epoch=options.sample_epoch,
+        jobs=options.jobs,
         snapshot=snapshot,
     )
 

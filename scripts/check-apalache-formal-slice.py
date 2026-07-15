@@ -30,6 +30,33 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
+def workflow_job(source: str, name: str, next_name: str | None) -> str:
+    start_marker = f"\n  {name}:\n"
+    start = source.index(start_marker) + 1
+    if next_name is None:
+        return source[start:]
+    end = source.index(f"\n  {next_name}:\n", start)
+    return source[start:end]
+
+
+def workflow_pull_request_paths(source: str) -> tuple[str, ...]:
+    match = re.search(
+        r'(?m)^    paths:\n((?:      - "[^"]+"\n)+)',
+        source,
+    )
+    require(match is not None, "workflow pull_request.paths block was not found")
+    return tuple(re.findall(r'(?m)^      - "([^"]+)"$', match.group(1)))
+
+
+def workflow_path_covers(source_path: str, workflow_paths: tuple[str, ...]) -> bool:
+    for pattern in workflow_paths:
+        if pattern == source_path:
+            return True
+        if pattern.endswith("/**") and source_path.startswith(f"{pattern[:-3]}/"):
+            return True
+    return False
+
+
 def check_receipt_before_allow() -> None:
     text = read("formal/apalache/ReceiptBeforeAllow.tla")
     persist = body(text, "PersistAllowReceipt")
@@ -54,16 +81,25 @@ def check_receipt_before_allow() -> None:
         "PublishAllow must publish without writing the receipt log",
     )
     require(
-        "HasAllowReceipt(a, c)" in publish,
-        "PublishAllow must require a prior allow receipt",
+        "HasAllowReceipt(a, c, r)" in publish,
+        "PublishAllow must require the matching call receipt",
     )
     require(
         "allow_recorded" not in invariant and "HasAllowReceipt" in invariant,
         "ReceiptBeforeAllow invariant must cite receipt_log evidence",
     )
     require(
-        "PersistAllowReceipt(a, c)" in next_body and "PublishAllow(a, c)" in next_body,
+        "PersistAllowReceipt(a, c, r)" in next_body
+        and "PublishAllow(a, c, r)" in next_body,
         "Next must expose receipt persistence and allow publication as separate actions",
+    )
+    require(
+        "CallDecision(r, c) \\notin allowed[a]" in publish,
+        "PublishAllow must publish each call at most once",
+    )
+    require(
+        "decision.call" in invariant and "decision.cap" in invariant,
+        "ReceiptBeforeAllow must bind receipt evidence to the published call",
     )
 
 
@@ -114,13 +150,22 @@ def check_post_admission_drop_guard() -> None:
     child_splits_bounded = body(text, "ChildSplitsBounded")
     pre_drop = body(text, "DropPreDispatch")
     post_drop = body(text, "DropPostDispatch")
+    server_error = body(text, "ServerErrorPostDispatch")
+    resolve_returned = body(text, "ResolveReturnedOutput")
     resolve_post_drop = body(text, "ResolvePostDispatch")
+    parent_append_outcomes = body(text, "ParentAppendOutcomes")
+    parent_persistence_outcomes = body(text, "ParentPersistenceOutcomes")
+    server_error_kinds = body(text, "ServerErrorKinds")
+    server_error_receipt_kind = body(text, "ServerErrorReceiptKind")
+    terminal_receipt = body(text, "TerminalReceiptExactlyOne")
     retained = body(text, "RetainedIffAborted")
     safety = body(text, "SafetyInv")
 
     require(
-        "DropPreDispatch(i)" in next_body and "DropPostDispatch(i)" in next_body,
-        "Next must expose both pre-dispatch and post-dispatch drop actions",
+        "DropPreDispatch(i)" in next_body
+        and "ServerErrorPostDispatch(i)" in next_body
+        and "DropPostDispatch(i)" in next_body,
+        "Next must expose pre-dispatch, server-error, and drop actions",
     )
     require(
         "resources \\in AdmissionProfilesFor(i)" in admit
@@ -151,8 +196,18 @@ def check_post_admission_drop_guard() -> None:
     require(
         "i = 1" in pre_drop
         and 'phase[i] = "admitted"' in pre_drop
+        and 'phase[i] \\in {"dispatch_started", "streaming"}' in server_error
         and 'phase[i] \\in {"dispatch_started", "streaming"}' in post_drop,
-        "drop actions must cover every armed non-terminal phase",
+        "terminal actions must cover every armed non-terminal phase",
+    )
+    require(
+        'ParentAppendStates == {"not-attempted", "outcome-unknown", "committed"}'
+        in text
+        and 'THEN {"outcome-unknown", "committed"}' in parent_append_outcomes
+        and 'ELSE {"committed"}' in parent_append_outcomes
+        and 'append_outcome = "committed"' in parent_persistence_outcomes
+        and "ELSE BOOLEAN" in parent_persistence_outcomes,
+        "parent append must distinguish not-attempted, outcome-unknown, and committed",
     )
     require(
         'ledger[i]["child"] \\notin {"none", "released"}' in active_child_shares
@@ -167,38 +222,127 @@ def check_post_admission_drop_guard() -> None:
         and 'Mutation = "skip-child-capacity-guard"' in admit,
         "child admission must enforce shared capacity with one calibrated mutation",
     )
-    for local_action in ("CompleteOk", "DenyPostInvocation", "IncompleteStream"):
+    for local_action in (
+        "CompleteOk",
+        "DenyPostInvocation",
+        "IncompleteStream",
+        "ServerErrorPostDispatch",
+    ):
+        local_body = body(text, local_action)
         require(
-            "i = 1" in body(text, local_action),
+            "i = 1" in local_body,
             f"{local_action} must stay on the local-branch invocation",
+        )
+        require(
+            'parent_append_state[i] = "not-attempted"' in local_body
+            and "append_outcome \\in ParentAppendOutcomes(i)" in local_body
+            and "append_persisted \\in ParentPersistenceOutcomes(append_outcome)"
+            in local_body
+            and "parent_append_attempts'" in local_body
+            and "parent_append_state'" in local_body
+            and "parent_receipts'" in local_body
+            and local_body.index("child_logged'") < local_body.index("parent_receipts'"),
+            f"{local_action} must append once after flushing children and model ambiguity",
         )
     require(
         "failed \\in CleanupFailureSets(i)" in pre_drop
         and "CleanupFailureProfiles" in body(text, "CleanupFailureSets")
         and "failed \\subseteq admitted_resources[i]" in pre_drop
-        and 'parent_kind_logged EXCEPT ![i] = "fault"' in pre_drop
-        and "parent_receipts EXCEPT ![i] = @ + 1" in pre_drop,
-        "pre-dispatch cleanup must model independent failures and a fault receipt",
+        and "parent_kind_logged'" in pre_drop
+        and 'IF append_persisted THEN "fault" ELSE "none"' in pre_drop
+        and 'parent_append_state[i] = "not-attempted"' in pre_drop
+        and "parent_append_attempts'" in pre_drop
+        and "parent_receipts'" in pre_drop,
+        "pre-dispatch cleanup must model independent failures and one ambiguity-aware fault append",
     )
     require(
         "flushed_count" in post_drop
+        and 'parent_append_state[i] = "not-attempted"' in post_drop
+        and "append_outcome \\in ParentAppendOutcomes(i)" in post_drop
+        and "append_persisted \\in ParentPersistenceOutcomes(append_outcome)"
+        in post_drop
         and "child_logged'" in post_drop
+        and "parent_append_attempts'" in post_drop
+        and "parent_append_state'" in post_drop
         and "parent_receipts'" in post_drop
         and "children_before_parent'" in post_drop
         and post_drop.index("child_logged'") < post_drop.index("parent_receipts'"),
-        "post-dispatch drop must account for child receipts before the parent cancellation",
+        "post-dispatch drop must flush children before one ambiguity-aware parent append",
     )
     require(
-        "monetary_unwind_failed" in post_drop
-        and "MonetaryUnwindOutcomes(i)" in post_drop
-        and "monetary_unwind_failed" in resolve_post_drop
-        and 'THEN "retained"' in resolve_post_drop,
-        "post-dispatch monetary unwind failure must leave the hold retained",
+        'parent_append_state[i] = "not-attempted" =>' in terminal_receipt
+        and 'parent_append_state[i] = "committed" =>' in terminal_receipt
+        and 'parent_append_state[i] = "outcome-unknown" =>' in terminal_receipt
+        and "parent_append_attempts[i] = 0" in terminal_receipt
+        and "parent_append_attempts[i] = 1" in terminal_receipt
+        and "parent_receipts[i] = 1" in terminal_receipt
+        and "parent_receipts[i] \\in 0..1" in terminal_receipt,
+        "TerminalReceiptExactlyOne must scope exactly-one to committed availability and bound ambiguity",
     )
     require(
-        "<=>" in retained
-        and 'terminal_kind[i] \\in {"deny", "incomplete", "cancel"}' in retained,
-        "RetainedIffAborted must remain a biconditional over abort terminals",
+        "monetary_unwind_failed" not in text
+        and "MonetaryUnwindOutcomes" not in text
+        and 'resource = "lease"' in resolve_returned
+        and 'resource \\in {"lease", "hold"}' not in resolve_returned
+        and 'ELSE "committed"' in resolve_returned
+        and 'resource \\in {"lease", "hold"}' in resolve_post_drop
+        and 'Mutation = "release-post-dispatch-state"' in resolve_post_drop
+        and 'ELSE "retained"' in resolve_post_drop
+        and 'ResolveReturnedOutput(@, "deny")' in body(text, "DenyPostInvocation")
+        and 'ResolveReturnedOutput(@, "incomplete")'
+        in body(text, "IncompleteStream")
+        and server_error.count("ResolvePostDispatch(@)") == 1
+        and "ResolvePostDispatch(@)" in post_drop,
+        "known outputs must commit holds while unknown outcomes retain them",
+    )
+    for returned_action in ("DenyPostInvocation", "IncompleteStream"):
+        returned_body = body(text, returned_action)
+        require(
+            "post_dispatch_outcome_unknown," in returned_body
+            and "post_dispatch_outcome_unknown'" not in returned_body,
+            f"{returned_action} must remain a known returned-output path",
+        )
+    require(
+        'ServerErrorKinds == {"deny", "incomplete", "cancel", "url"}'
+        in server_error_kinds
+        and 'error_kind = "url"' in server_error_receipt_kind
+        and 'THEN "incomplete"' in server_error_receipt_kind
+        and "error_kind \\in ServerErrorKinds" in server_error
+        and "nested_bridge_active \\in BOOLEAN" in server_error
+        and "ServerErrorReceiptKind(error_kind)" in server_error
+        and 'IF append_persisted THEN receipt_kind ELSE "none"' in server_error
+        and "post_dispatch_outcome_unknown'" in server_error
+        and "server_error_kind'" in server_error
+        and "nested_bridge_active_at_error'" in server_error
+        and "post_dispatch_outcome_unknown'" in post_drop
+        and "![i] = TRUE" in server_error
+        and "![i] = TRUE" in post_drop
+        and "ResolvePostDispatch(@)" in server_error
+        and "ResolvePreDispatch" not in server_error
+        and "IF nested_bridge_active" not in server_error,
+        "every URL and non-URL server error must use the same unknown resolver",
+    )
+    require(
+        "A returned output reaches finalization after" in text
+        and "budget reconciliation, so its hold is committed." in text
+        and "Every Err returned after polling any invoke path is outcome-unknown."
+        in text
+        and "URL elicitation follows this rule regardless of nested bridge activity."
+        in text
+        and "Only a kernel error before polling invoke is pre-dispatch and reversible."
+        in text,
+        "the model must classify all server-returned errors as outcome-unknown",
+    )
+    require(
+        retained.count("<=>") == 2
+        and 'ledger[i]["lease"] = "retained"' in retained
+        and 'ledger[i]["hold"] = "retained"' in retained
+        and 'terminal_kind[i] \\in {"deny", "incomplete", "cancel"}' in retained
+        and "post_dispatch_outcome_unknown[i]" in retained
+        and 'server_error_kind[i] = "url"' in retained
+        and 'terminal_kind[i] = "incomplete"' in retained
+        and 'phase[i] = "terminal_denied"' in retained,
+        "RetainedIffAborted must distinguish known output from unknown outcome",
     )
     invariant_names = (
         "ReservationConservation",
@@ -217,11 +361,27 @@ def check_post_admission_drop_guard() -> None:
         "positive drop-guard config must keep the documented bounds and disable mutations",
     )
     for anchor in (
-        "kernel_drop_guard.rs:86-109",
-        "kernel_drop_guard.rs:180-308,385-392",
-        "kernel_drop_guard.rs:379-438",
-        "responses/finalization.rs:36-51",
-        "responses/finalization.rs:70-85",
+        "evaluate_tool_call_async_core",
+        "PostAdmissionDropGuard::new",
+        "PostAdmissionDropGuard::child_receipts_mut",
+        "PostAdmissionDropGuard::flush_child_receipts",
+        "PostAdmissionDropGuard::mark_dispatch_started",
+        "PostAdmissionDropGuard::finish_terminal",
+        "begin_terminal_receipt_append",
+        "record_chio_receipt_inner",
+        "mark_terminal_receipt_committed",
+        "terminal_receipt_append_started",
+        "terminal_receipt_committed",
+        "finalize_tool_output_with_metadata",
+        "ChioKernel::cleanup_pre_dispatch_state",
+        "PostAdmissionDropGuard::handle_pre_dispatch_drop",
+        "record_pre_dispatch_cleanup_fault_receipt",
+        "PostAdmissionDropGuard::handle_drop",
+        "flush_buffered_child_receipts_from_drop",
+        "retain_post_dispatch_state",
+        "evaluate_runtime_admission_tracked",
+        "ChioRuntimeAdmissionHook::release_reservations",
+        "ChioRuntimeAdmissionHook::release_reserved",
     ):
         require(anchor in text, f"drop-guard ground-truth header is missing {anchor}")
 
@@ -272,7 +432,7 @@ def check_negative_registry() -> None:
         "DropGuardNoFaultReceiptBroken": "omit-fault-receipt",
         "DropGuardReleaseOnIncompleteStreamBroken": "release-incomplete-lease",
         "DropGuardNoRetainOnPostInvocationDenyBroken": "skip-deny-retention",
-        "DropGuardReleaseOnPostDispatchAbortBroken": "release-post-dispatch-lease",
+        "DropGuardReleaseOnPostDispatchAbortBroken": "release-post-dispatch-state",
     }
     for stem, mutation in mutation_by_stem.items():
         module = read(f"formal/apalache/_negative_tests/{stem}.tla")
@@ -322,12 +482,48 @@ def check_negative_registry() -> None:
 
 def check_temporal_workflow() -> None:
     text = read(".github/workflows/apalache-temporal.yml")
+    positive_gate = read("scripts/check-apalache-positive.sh")
     cfg = read("formal/tla/MCRevocationPropagationTemporal.cfg")
     distributed_temporal = read("formal/tla/DistributedRevocationTemporal.tla")
     temporal_gate = read("scripts/check-distributed-revocation-temporal.sh")
     refinement = read("formal/tla/DistributedRevocationTemporalRefinement.tla")
     refinement_cfg = read("formal/tla/MCDistributedRevocationTemporalRefinement.cfg")
     witness = read("formal/tla/DistributedRevocationTemporalWitness.tla")
+    legacy_job = workflow_job(
+        text,
+        "revocation_eventually_seen",
+        "distributed_revocation_temporal",
+    )
+    verdict_job = workflow_job(text, "temporal_verdict", None)
+
+    outer_timeout = re.search(r"(?m)^    timeout-minutes: ([0-9]+)$", legacy_job)
+    inner_timeout = re.search(r"--timeout-seconds ([0-9]+)", legacy_job)
+    require(
+        outer_timeout is not None and inner_timeout is not None,
+        "legacy temporal job must declare both outer and inner timeouts",
+    )
+    require(
+        int(inner_timeout.group(1)) == 3600,
+        "legacy temporal evidence must retain its 3600-second model-check budget",
+    )
+    require(
+        int(outer_timeout.group(1)) * 60 == int(inner_timeout.group(1)) + 900,
+        "legacy temporal job must reserve exactly 900 seconds for setup and teardown",
+    )
+    require(
+        "if: ${{ always() }}" in verdict_job,
+        "temporal verdict must run even when an upstream temporal job fails",
+    )
+    for dependency in ("revocation_eventually_seen", "distributed_revocation_temporal"):
+        require(
+            f"      - {dependency}" in verdict_job,
+            f"temporal verdict must depend on {dependency}",
+        )
+    require(
+        '[[ "${LEGACY_RESULT}" != "success" || "${DISTRIBUTED_RESULT}" != "success" ]]'
+        in verdict_job,
+        "temporal verdict must fail unless both temporal jobs succeed",
+    )
 
     require(
         "continue-on-error" not in text,
@@ -338,7 +534,7 @@ def check_temporal_workflow() -> None:
         "apalache-temporal must not describe the liveness lane as advisory",
     )
     require(
-        "RevocationEventuallySeen" in text and "--temporal=RevocationEventuallySeen" in text,
+        "RevocationEventuallySeen" in text and "--temporal RevocationEventuallySeen" in text,
         "apalache-temporal must run the named RevocationEventuallySeen liveness property",
     )
     require(
@@ -346,17 +542,22 @@ def check_temporal_workflow() -> None:
         "apalache-temporal must run the strict distributed temporal gate",
     )
     for marker in (
-        'version="$(${apalache_bin} version 2>&1)"',
-        '[[ "${version}" != "0.50.1" ]]',
-        "--temporal=TemporalProjectionRefines",
-        "--length=5",
-        "--config=formal/tla/MCDistributedRevocationTemporalRefinement.cfg",
-        "--config=formal/tla/MCDistributedRevocationTemporalWitness.cfg",
-        "--temporal=RevocationEventuallyObservedDistributed",
-        "--config=formal/tla/MCDistributedRevocationTemporal.cfg",
+        "--temporal TemporalProjectionRefines",
+        "--length 5",
+        "--config formal/tla/MCDistributedRevocationTemporalRefinement.cfg",
+        "--config formal/tla/MCDistributedRevocationTemporalWitness.cfg",
+        "--temporal RevocationEventuallyObservedDistributed",
+        "--config formal/tla/MCDistributedRevocationTemporal.cfg",
         "--no-deadlock",
     ):
         require(marker in temporal_gate, f"distributed temporal gate is missing {marker}")
+    for marker in (
+        '[[ "${version}" != "0.50.1" ]]',
+        "scripts/lib/apalache_evidence.py positive",
+        '--out-dir="${out_dir}"',
+        '--run-dir="${run_dir}"',
+    ):
+        require(marker in positive_gate, f"positive Apalache gate is missing {marker}")
     require(
         "RevocationEventuallyObservedDistributed" in distributed_temporal
         and "ObserveWeakFair" in distributed_temporal
@@ -409,13 +610,19 @@ def check_safety_workflow_paths() -> None:
         "crates/kernel/chio-kernel/src/budget_store.rs",
         "crates/kernel/chio-kernel/src/receipt_store.rs",
         "crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs",
+        "crates/kernel/chio-kernel/src/kernel/kernel_scopes.rs",
         "crates/kernel/chio-kernel/src/kernel/dispatch.rs",
         "crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs",
         "crates/kernel/chio-kernel/src/kernel/evaluation/nested_flow_evaluation.rs",
         "crates/kernel/chio-kernel/src/kernel/responses/finalization.rs",
+        "crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs",
         "crates/kernel/chio-kernel/src/kernel/validation.rs",
         "crates/kernel/chio-kernel/src/kernel/tests/chio_runtime.rs",
+        "crates/kernel/chio-runtime-core/src/admission.rs",
+        "crates/kernel/chio-runtime-core/src/admission_hook.rs",
+        "crates/kernel/chio-runtime-core/src/admission_hook/**",
         "scripts/check-apalache-formal-slice.py",
+        "scripts/check-apalache-positive.sh",
         ".github/workflows/apalache-temporal.yml",
     )
     for path in required_paths:
@@ -423,14 +630,56 @@ def check_safety_workflow_paths() -> None:
             f'- "{path}"' in text,
             f"apalache-safety paths must include {path}",
         )
+
+    with (REPO / "formal/proof-manifest.toml").open("rb") as handle:
+        manifest = tomllib.load(handle)
+    mirror_sources = {
+        mirror["rust_source"]
+        for mirror in manifest.get("mirror", [])
+        if mirror.get("model_file", "").startswith(("formal/apalache/", "formal/tla/"))
+    }
+    workflow_paths = workflow_pull_request_paths(text)
+    uncovered_sources = sorted(
+        source
+        for source in mirror_sources
+        if not workflow_path_covers(source, workflow_paths)
+    )
     require(
-        "formal/tla/MCRevocationPropagation.cfg|formal/tla/RevocationPropagation.tla|6|10800"
-        in text,
+        not uncovered_sources,
+        "apalache-safety paths omit registered TLA/Apalache mirror sources: "
+        + ", ".join(uncovered_sources),
+    )
+
+    def has_matrix_row(
+        config: str, spec: str, length: int, timeout_seconds: int, invariant: str
+    ) -> bool:
+        pattern = (
+            rf"config: {re.escape(config)}\s+"
+            rf"spec: {re.escape(spec)}\s+"
+            rf"length: {length}\s+"
+            rf"timeout_seconds: {timeout_seconds}\s+"
+            rf"invariant: {re.escape(invariant)}"
+        )
+        return re.search(pattern, text) is not None
+
+    require(
+        has_matrix_row(
+            "formal/tla/MCRevocationPropagation.cfg",
+            "formal/tla/RevocationPropagation.tla",
+            6,
+            10800,
+            "SafetyInv",
+        ),
         "apalache-safety must keep RevocationPropagation length and timeout coverage",
     )
     require(
-        "formal/tla/MCDistributedRevocationDomains.cfg|formal/tla/DistributedRevocation.tla|0|600"
-        in text,
+        has_matrix_row(
+            "formal/tla/MCDistributedRevocationDomains.cfg",
+            "formal/tla/DistributedRevocation.tla",
+            0,
+            600,
+            "DistributedDomainsOK",
+        ),
         "apalache-safety must check exact distributed domains at initialization",
     )
     require(
@@ -446,31 +695,49 @@ def check_safety_workflow_paths() -> None:
         "distributed domain config must check exact initial domains",
     )
     require(
-        "formal/tla/MCDistributedRevocation.cfg|formal/tla/DistributedRevocation.tla"
-        in text,
+        has_matrix_row(
+            "formal/tla/MCDistributedRevocation.cfg",
+            "formal/tla/DistributedRevocation.tla",
+            6,
+            1800,
+            "BehavioralSafetyInv",
+        ),
         "apalache-safety must check distributed revocation safety",
     )
     require(
         re.search(
-            r"--length=6\s+\\\s*\n\s*--config=formal/tla/MCDistributedRevocationNightly\.cfg",
+            r"--length 6\s+\\\s*\n\s*--timeout-seconds 3600\s+\\\s*\n\s*"
+            r"--config formal/tla/MCDistributedRevocationNightly\.cfg",
             text,
         )
         is not None,
         "scheduled distributed safety must expand constants at calibrated length 6",
     )
     require(
-        "formal/tla/MCDelegationDepthBound.cfg|formal/tla/DelegationDepthBound.tla"
-        in text,
+        has_matrix_row(
+            "formal/tla/MCDelegationDepthBound.cfg",
+            "formal/tla/DelegationDepthBound.tla",
+            6,
+            1800,
+            "SafetyInv",
+        ),
         "apalache-safety must keep DelegationDepthBound safety coverage",
     )
     require(
-        "formal/apalache/MCPostAdmissionDropGuard.cfg|formal/apalache/PostAdmissionDropGuard.tla|8|10800"
-        in text,
+        has_matrix_row(
+            "formal/apalache/MCPostAdmissionDropGuard.cfg",
+            "formal/apalache/PostAdmissionDropGuard.tla",
+            8,
+            10800,
+            "SafetyInv",
+        ),
         "apalache-safety must run the drop-guard model at length 8",
     )
     require(
-        'while IFS="|" read -r cfg spec length timeout_secs' in text
-        and 'timeout "${timeout_secs}" apalache-mc check' in text,
+        "./scripts/check-apalache-positive.sh" in text
+        and '--invariant "${{ matrix.invariant }}"' in text
+        and '--length "${{ matrix.length }}"' in text
+        and '--timeout-seconds "${{ matrix.timeout_seconds }}"' in text,
         "each positive Apalache row must carry an enforced length and timeout",
     )
     require(

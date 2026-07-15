@@ -69,6 +69,9 @@ pub enum KernelError {
     #[error("invocation budget exhausted for capability {0}")]
     BudgetExhausted(CapabilityId),
 
+    #[error("budget authorize event replay detected for capability {0}")]
+    BudgetAuthorizeReplay(CapabilityId),
+
     #[error("request agent {actual} does not match capability subject {expected}")]
     SubjectMismatch { expected: String, actual: String },
 
@@ -179,6 +182,9 @@ pub enum KernelError {
     #[error("DPoP proof verification failed: {0}")]
     DpopVerificationFailed(String),
 
+    #[error("runtime admission readiness timed out after {timeout_ms}ms")]
+    RuntimeAdmissionReadinessTimeout { timeout_ms: u64 },
+
     /// A human-in-the-loop approval token failed to satisfy
     /// the pending approval contract (bad binding, bad signature,
     /// expired, or replayed).
@@ -284,6 +290,11 @@ impl KernelError {
                 "CHIO-KERNEL-BUDGET-EXHAUSTED",
                 serde_json::json!({ "capability_id": capability_id }),
                 "Increase the capability budget, wait for the budget window to reset, or lower the cost of the requested operation.",
+            ),
+            Self::BudgetAuthorizeReplay(capability_id) => self.report_with_context(
+                "CHIO-KERNEL-BUDGET-AUTHORIZE-REPLAY",
+                serde_json::json!({ "capability_id": capability_id }),
+                "Submit a fresh request identity so the budget authorize event is unique.",
             ),
             Self::SubjectMismatch { expected, actual } => self.report_with_context(
                 "CHIO-KERNEL-SUBJECT-MISMATCH",
@@ -460,6 +471,11 @@ impl KernelError {
                 "CHIO-KERNEL-DPOP-VERIFICATION-FAILED",
                 serde_json::json!({ "reason": reason }),
                 "Attach a valid DPoP proof bound to the current capability, request, server, and tool before retrying.",
+            ),
+            Self::RuntimeAdmissionReadinessTimeout { timeout_ms } => self.report_with_context(
+                "CHIO-KERNEL-RUNTIME-ADMISSION-READINESS-TIMEOUT",
+                serde_json::json!({ "timeout_ms": timeout_ms }),
+                "Restore the runtime admission dependency or increase the bounded readiness timeout before retrying.",
             ),
             Self::ApprovalRejected(reason) => self.report_with_context(
                 "CHIO-KERNEL-APPROVAL-REJECTED",

@@ -15,6 +15,7 @@ use chio_core_types::session::{
     EnterpriseFederationMethod, EnterpriseIdentityContext, OAuthBearerFederatedClaims,
     OAuthBearerSessionAuthInput,
 };
+use chio_core_types::capability::scope::ModelMetadata;
 use std::collections::BTreeMap;
 
 fn oauth_auth_with_enterprise_tenant(tenant: &str) -> SessionAuthContext {
@@ -92,14 +93,14 @@ fn session_tenant_id_is_stamped_on_tool_call_receipt() {
 }
 
 #[test]
-fn request_keyed_tenant_scope_survives_missing_thread_local_scope() {
+fn explicit_receipt_context_carries_tenant() {
     let kernel = make_kernel(make_config());
-    let _request_scope =
-        kernel.scope_receipt_tenant_id_for_request("req-tenant-map", Some("tenant-map".to_string()));
-    let _thread_scope = scope_receipt_tenant_id(None);
+    let evaluation_context =
+        EvaluationReceiptContext::new(Some("tenant-explicit".to_string()));
 
     let receipt = kernel
         .build_and_sign_receipt(ReceiptParams {
+            evaluation_context: &evaluation_context,
             request_id: Some("req-tenant-map"),
             capability_id: "cap-tenant-map",
             tool_name: "read_file",
@@ -118,7 +119,7 @@ fn request_keyed_tenant_scope_survives_missing_thread_local_scope() {
         })
         .unwrap();
 
-    assert_eq!(receipt.tenant_id.as_deref(), Some("tenant-map"));
+    assert_eq!(receipt.tenant_id.as_deref(), Some("tenant-explicit"));
     assert!(receipt.verify_signature().unwrap());
 }
 
@@ -238,6 +239,140 @@ fn tenant_id_falls_back_to_oauth_federated_claims() {
     assert_eq!(response.receipt.tenant_id.as_deref(), Some("tenant-fed"));
 }
 
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn same_request_id_in_pending_sessions_keeps_receipt_contexts_isolated() {
+    let mut kernel = make_kernel(make_config());
+    let invocations = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(SideEffectServer::new(
+        "srv-tenant-isolation",
+        vec!["read_file"],
+        std::sync::Arc::clone(&invocations),
+    )));
+    let hook = std::sync::Arc::new(ControllableReadinessAdmissionHook::new());
+    kernel.set_runtime_admission_hook(hook.clone());
+
+    let agent_kp = make_keypair();
+    let capability = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant("srv-tenant-isolation", "read_file")]),
+        300,
+    );
+    let session_a = kernel
+        .open_session(agent_kp.public_key().to_hex(), vec![capability.clone()])
+        .unwrap();
+    let session_b = kernel
+        .open_session(agent_kp.public_key().to_hex(), vec![capability.clone()])
+        .unwrap();
+    kernel
+        .set_session_auth_context(
+            &session_a,
+            oauth_auth_with_enterprise_tenant("tenant-A"),
+        )
+        .unwrap();
+    kernel
+        .set_session_auth_context(
+            &session_b,
+            oauth_auth_with_enterprise_tenant("tenant-B"),
+        )
+        .unwrap();
+    kernel.activate_session(&session_a).unwrap();
+    kernel.activate_session(&session_b).unwrap();
+
+    let request_id = "req-shared-across-sessions";
+    let context_a = make_operation_context(
+        &session_a,
+        request_id,
+        &agent_kp.public_key().to_hex(),
+    );
+    let context_b = make_operation_context(
+        &session_b,
+        request_id,
+        &agent_kp.public_key().to_hex(),
+    );
+    let operation_a = ToolCallOperation {
+        capability: capability.clone(),
+        server_id: "srv-tenant-isolation".to_string(),
+        tool_name: "read_file".to_string(),
+        arguments: serde_json::json!({"path": "/tenant-a/data"}),
+        governed_intent: None,
+        execution_nonce: None,
+        model_metadata: Some(ModelMetadata {
+            model_id: "model-tenant-a".to_string(),
+            safety_tier: Some(ModelSafetyTier::High),
+            provider: Some("provider-a".to_string()),
+            provenance_class:
+                chio_core::capability::governance::ProvenanceEvidenceClass::Asserted,
+        }),
+        extra_metadata: None,
+    };
+    let operation_b = ToolCallOperation {
+        capability,
+        server_id: "srv-tenant-isolation".to_string(),
+        tool_name: "read_file".to_string(),
+        arguments: serde_json::json!({"path": "/tenant-b/data"}),
+        governed_intent: None,
+        execution_nonce: None,
+        model_metadata: Some(ModelMetadata {
+            model_id: "model-tenant-b".to_string(),
+            safety_tier: Some(ModelSafetyTier::Low),
+            provider: Some("provider-b".to_string()),
+            provenance_class:
+                chio_core::capability::governance::ProvenanceEvidenceClass::Asserted,
+        }),
+        extra_metadata: None,
+    };
+    let mut client_a = NoopNestedFlowClient;
+    let mut client_b = NoopNestedFlowClient;
+
+    let evaluate_a = kernel.evaluate_tool_call_operation_with_nested_flow_client_async(
+        &context_a,
+        &operation_a,
+        &mut client_a,
+    );
+    let evaluate_b = kernel.evaluate_tool_call_operation_with_nested_flow_client_async(
+        &context_b,
+        &operation_b,
+        &mut client_b,
+    );
+    let release_readiness = async {
+        let probes = tokio::time::timeout(Duration::from_secs(2), async {
+            loop {
+                let probes = hook.readiness_registration_probes();
+                if probes.len() == 2 {
+                    break probes;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("both session evaluations must remain registered while pending");
+        hook.allow_dispatch();
+        probes
+    };
+    let (response_a, response_b, probes) =
+        tokio::join!(evaluate_a, evaluate_b, release_readiness);
+    let response_a = response_a.unwrap();
+    let response_b = response_b.unwrap();
+
+    assert_eq!(response_a.verdict, Verdict::Allow);
+    assert_eq!(response_b.verdict, Verdict::Allow);
+    assert_eq!(response_a.receipt.tenant_id.as_deref(), Some("tenant-A"));
+    assert_eq!(response_b.receipt.tenant_id.as_deref(), Some("tenant-B"));
+    assert_eq!(
+        response_a.receipt.metadata.as_ref().unwrap()["model_metadata"]["model_id"],
+        "model-tenant-a"
+    );
+    assert_eq!(
+        response_b.receipt.metadata.as_ref().unwrap()["model_metadata"]["model_id"],
+        "model-tenant-b"
+    );
+    assert_eq!(invocations.load(Ordering::SeqCst), 2);
+    assert_eq!(hook.calls.load(Ordering::SeqCst), 2);
+    assert_eq!(hook.readiness_unregistrations.load(Ordering::SeqCst), 2);
+    assert!(probes.into_iter().all(|probe| probe.upgrade().is_none()));
+}
+
 // --- WYSIWYS on the PRODUCTION signing path ---------------------
 //
 // These tests exercise the live `ChioKernel::build_and_sign_receipt` path --
@@ -249,6 +384,7 @@ fn tenant_id_falls_back_to_oauth_federated_claims() {
 #[test]
 fn production_build_and_sign_refuses_render_a_sign_b() {
     let kernel = make_kernel(make_config());
+    let evaluation_context = EvaluationReceiptContext::default();
 
     // The producer renders/evaluates content A but submits a body claiming the
     // hash of a *different* content B. canonical_content is the bytes the
@@ -257,6 +393,7 @@ fn production_build_and_sign_refuses_render_a_sign_b() {
     let forged_hash_b = chio_core::crypto::sha256_hex(b"content-B-secretly-signed");
 
     let result = kernel.build_and_sign_receipt(ReceiptParams {
+        evaluation_context: &evaluation_context,
         request_id: None,
         capability_id: "cap-wysiwys",
         tool_name: "read_file",
@@ -288,6 +425,7 @@ fn production_build_and_sign_refuses_render_a_sign_b() {
 #[test]
 fn production_build_and_sign_accepts_matching_content_hash() {
     let kernel = make_kernel(make_config());
+    let evaluation_context = EvaluationReceiptContext::default();
 
     // Honest producer: content_hash is sha256_hex of the exact canonical
     // content the kernel signs over.
@@ -296,6 +434,7 @@ fn production_build_and_sign_accepts_matching_content_hash() {
 
     let receipt = kernel
         .build_and_sign_receipt(ReceiptParams {
+            evaluation_context: &evaluation_context,
             request_id: None,
             capability_id: "cap-wysiwys-ok",
             tool_name: "read_file",

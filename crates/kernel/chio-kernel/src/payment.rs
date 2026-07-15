@@ -3,6 +3,8 @@ use std::time::Duration;
 use chio_core::{capability::scope::MonetaryAmount, receipt::economics::SettlementStatus};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
+const MAX_PAYMENT_RAIL_IDENTIFIER_BYTES: usize = 512;
+
 /// Result of a payment authorization or settlement hold.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PaymentAuthorization {
@@ -10,6 +12,11 @@ pub struct PaymentAuthorization {
     pub authorization_id: String,
     /// Whether the rail already considers the funds fully settled.
     pub settled: bool,
+    /// Rail transaction identifier for an already-settled authorization.
+    ///
+    /// This is required when `settled` is true and is the only identifier that
+    /// may be passed to a later refund operation.
+    pub settlement_transaction_id: Option<String>,
     /// Rail-specific metadata such as idempotency keys, quote IDs, or expiry.
     pub metadata: serde_json::Value,
 }
@@ -36,6 +43,32 @@ pub enum RailSettlementStatus {
     Failed,
     Released,
     Refunded,
+}
+
+/// Exact terminal rail action used to unwind a pre-dispatch authorization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PreDispatchPaymentUnwindStatus {
+    Released,
+    Refunded,
+}
+
+/// Single-use credential disposition after payment authorization.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PaymentCredentialDisposition {
+    NonePresent,
+    RetainedAfterAuthorization,
+    RetentionOutcomeUnknown,
+}
+
+/// Typed evidence embedded in a signed terminal receipt after a clean unwind.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PreDispatchPaymentUnwindEvidence {
+    pub authorization_id: String,
+    pub transaction_id: String,
+    pub settlement_status: PreDispatchPaymentUnwindStatus,
+    pub credential_disposition: PaymentCredentialDisposition,
 }
 
 impl RailSettlementStatus {
@@ -123,7 +156,11 @@ impl ReceiptSettlement {
     #[must_use]
     pub fn from_authorization(authorization: &PaymentAuthorization) -> Self {
         Self {
-            payment_reference: Some(authorization.authorization_id.clone()),
+            payment_reference: if authorization.settled {
+                authorization.settlement_transaction_id.clone()
+            } else {
+                Some(authorization.authorization_id.clone())
+            },
             settlement_status: if authorization.settled {
                 SettlementStatus::Settled
             } else {
@@ -195,12 +232,80 @@ pub enum PaymentError {
     RailError(String),
 }
 
-/// Thin prepaid HTTP payment bridge for x402-style per-request settlement.
+impl PaymentError {
+    #[must_use]
+    pub(crate) const fn outcome_unknown(&self) -> bool {
+        matches!(self, Self::Unavailable(_) | Self::RailError(_))
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct PaymentAuthorizationFailure {
+    reason: String,
+    outcome_unknown: bool,
+}
+
+impl PaymentAuthorizationFailure {
+    pub(crate) fn before_rail(reason: impl Into<String>) -> Self {
+        Self {
+            reason: reason.into(),
+            outcome_unknown: false,
+        }
+    }
+
+    pub(crate) fn from_adapter_error(error: PaymentError) -> Self {
+        let outcome_unknown = error.outcome_unknown();
+        Self {
+            reason: error.to_string(),
+            outcome_unknown,
+        }
+    }
+
+    pub(crate) fn adapter_panicked() -> Self {
+        Self {
+            reason: "payment adapter panicked during authorization".to_string(),
+            outcome_unknown: true,
+        }
+    }
+
+    pub(crate) fn invalid_authorization_id(reason: impl Into<String>) -> Self {
+        Self {
+            reason: reason.into(),
+            outcome_unknown: true,
+        }
+    }
+
+    pub(crate) fn outcome_unknown_reason(&self) -> Option<&str> {
+        self.outcome_unknown.then_some(self.reason.as_str())
+    }
+}
+
+impl std::fmt::Display for PaymentAuthorizationFailure {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.reason)
+    }
+}
+
+pub(crate) fn validate_payment_rail_identifier(kind: &str, identifier: &str) -> Result<(), String> {
+    if identifier.trim().is_empty() {
+        return Err(format!("payment rail {kind} must not be empty"));
+    }
+    if identifier.trim() != identifier {
+        return Err(format!("payment rail {kind} must not be padded"));
+    }
+    if identifier.len() > MAX_PAYMENT_RAIL_IDENTIFIER_BYTES {
+        return Err(format!(
+            "payment rail {kind} exceeds {MAX_PAYMENT_RAIL_IDENTIFIER_BYTES} bytes"
+        ));
+    }
+    Ok(())
+}
+
+/// Thin HTTP authorization bridge for x402-style per-request settlement.
 ///
-/// The adapter intentionally stays narrow: it only performs one remote
-/// authorization request and treats later capture/release/refund actions as
-/// prepaid bookkeeping. This keeps the bridge small while still giving the
-/// kernel a real external authorization hop before execution.
+/// This adapter only acknowledges the remote authorization step. Capture,
+/// release, and refund remain unsupported until an actual rail endpoint can
+/// acknowledge those operations.
 #[derive(Debug, Clone)]
 pub struct X402PaymentAdapter {
     base_url: String,
@@ -211,10 +316,9 @@ pub struct X402PaymentAdapter {
 
 /// Thin shared-payment-token payment bridge for ACP-style commerce approvals.
 ///
-/// This adapter performs one remote authorization call before execution and
-/// then lets the kernel reconcile the local hold as capture/release/refund
-/// bookkeeping after tool execution. This keeps ACP-specific logic adapter
-/// scoped while still exercising a real external authorization hop.
+/// This adapter only acknowledges the remote authorization step. Capture,
+/// release, and refund remain unsupported until an actual rail endpoint can
+/// acknowledge those operations.
 #[derive(Debug, Clone)]
 pub struct AcpPaymentAdapter {
     base_url: String,
@@ -298,6 +402,7 @@ impl PaymentAdapter for X402PaymentAdapter {
         Ok(PaymentAuthorization {
             authorization_id: response.authorization_id,
             settled: response.settled,
+            settlement_transaction_id: response.transaction_id,
             metadata: merge_json_values(
                 Some(response.metadata),
                 Some(serde_json::json!({
@@ -311,59 +416,36 @@ impl PaymentAdapter for X402PaymentAdapter {
 
     fn capture(
         &self,
-        authorization_id: &str,
+        _authorization_id: &str,
         _amount_units: u64,
         _currency: &str,
-        reference: &str,
+        _reference: &str,
     ) -> Result<PaymentResult, PaymentError> {
-        Ok(PaymentResult {
-            transaction_id: authorization_id.to_string(),
-            settlement_status: RailSettlementStatus::Settled,
-            metadata: serde_json::json!({
-                "adapter": "x402",
-                "mode": "prepaid",
-                "action": "capture",
-                "reference": reference
-            }),
-        })
+        Err(PaymentError::RailError(
+            "x402 capture is unsupported without a rail acknowledgement endpoint".to_string(),
+        ))
     }
 
     fn release(
         &self,
-        authorization_id: &str,
-        reference: &str,
+        _authorization_id: &str,
+        _reference: &str,
     ) -> Result<PaymentResult, PaymentError> {
-        Ok(PaymentResult {
-            transaction_id: authorization_id.to_string(),
-            settlement_status: RailSettlementStatus::Released,
-            metadata: serde_json::json!({
-                "adapter": "x402",
-                "mode": "prepaid",
-                "action": "release",
-                "reference": reference
-            }),
-        })
+        Err(PaymentError::RailError(
+            "x402 release is unsupported without a rail acknowledgement endpoint".to_string(),
+        ))
     }
 
     fn refund(
         &self,
-        transaction_id: &str,
-        amount_units: u64,
-        currency: &str,
-        reference: &str,
+        _transaction_id: &str,
+        _amount_units: u64,
+        _currency: &str,
+        _reference: &str,
     ) -> Result<PaymentResult, PaymentError> {
-        Ok(PaymentResult {
-            transaction_id: transaction_id.to_string(),
-            settlement_status: RailSettlementStatus::Refunded,
-            metadata: serde_json::json!({
-                "adapter": "x402",
-                "mode": "prepaid",
-                "action": "refund",
-                "amount_units": amount_units,
-                "currency": currency,
-                "reference": reference
-            }),
-        })
+        Err(PaymentError::RailError(
+            "x402 refund is unsupported without a rail acknowledgement endpoint".to_string(),
+        ))
     }
 }
 
@@ -382,6 +464,7 @@ impl PaymentAdapter for AcpPaymentAdapter {
         Ok(PaymentAuthorization {
             authorization_id: response.authorization_id,
             settled: response.settled,
+            settlement_transaction_id: response.transaction_id,
             metadata: merge_json_values(
                 Some(response.metadata),
                 Some(serde_json::json!({
@@ -400,73 +483,46 @@ impl PaymentAdapter for AcpPaymentAdapter {
 
     fn capture(
         &self,
-        authorization_id: &str,
-        amount_units: u64,
-        currency: &str,
-        reference: &str,
+        _authorization_id: &str,
+        _amount_units: u64,
+        _currency: &str,
+        _reference: &str,
     ) -> Result<PaymentResult, PaymentError> {
-        Ok(PaymentResult {
-            transaction_id: authorization_id.to_string(),
-            settlement_status: RailSettlementStatus::Settled,
-            metadata: serde_json::json!({
-                "adapter": "acp",
-                "mode": "shared_payment_token_hold",
-                "action": "capture",
-                "amount_units": amount_units,
-                "currency": currency,
-                "reference": reference
-            }),
-        })
+        Err(PaymentError::RailError(
+            "ACP capture is unsupported without a rail acknowledgement endpoint".to_string(),
+        ))
     }
 
     fn release(
         &self,
-        authorization_id: &str,
-        reference: &str,
+        _authorization_id: &str,
+        _reference: &str,
     ) -> Result<PaymentResult, PaymentError> {
-        Ok(PaymentResult {
-            transaction_id: authorization_id.to_string(),
-            settlement_status: RailSettlementStatus::Released,
-            metadata: serde_json::json!({
-                "adapter": "acp",
-                "mode": "shared_payment_token_hold",
-                "action": "release",
-                "reference": reference
-            }),
-        })
+        Err(PaymentError::RailError(
+            "ACP release is unsupported without a rail acknowledgement endpoint".to_string(),
+        ))
     }
 
     fn refund(
         &self,
-        transaction_id: &str,
-        amount_units: u64,
-        currency: &str,
-        reference: &str,
+        _transaction_id: &str,
+        _amount_units: u64,
+        _currency: &str,
+        _reference: &str,
     ) -> Result<PaymentResult, PaymentError> {
-        Ok(PaymentResult {
-            transaction_id: transaction_id.to_string(),
-            settlement_status: RailSettlementStatus::Refunded,
-            metadata: serde_json::json!({
-                "adapter": "acp",
-                "mode": "shared_payment_token_hold",
-                "action": "refund",
-                "amount_units": amount_units,
-                "currency": currency,
-                "reference": reference
-            }),
-        })
+        Err(PaymentError::RailError(
+            "ACP refund is unsupported without a rail acknowledgement endpoint".to_string(),
+        ))
     }
 }
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct X402AuthorizeResponse {
-    #[serde(
-        alias = "authorization_id",
-        alias = "transaction_id",
-        alias = "transactionId"
-    )]
+    #[serde(alias = "authorization_id")]
     authorization_id: String,
+    #[serde(default, alias = "transaction_id")]
+    transaction_id: Option<String>,
     #[serde(default = "default_true")]
     settled: bool,
     #[serde(default)]
@@ -483,6 +539,8 @@ struct AcpAuthorizeResponse {
         alias = "authorizationId"
     )]
     authorization_id: String,
+    #[serde(default, alias = "transaction_id")]
+    transaction_id: Option<String>,
     #[serde(default)]
     settled: bool,
     #[serde(default)]
@@ -543,12 +601,13 @@ fn default_true() -> bool {
 fn map_http_payment_error(error: ureq::Error) -> PaymentError {
     match error {
         ureq::Error::Status(402, _response) => PaymentError::InsufficientFunds,
-        ureq::Error::Status(status, response) if (400..500).contains(&status) => {
+        ureq::Error::Status(400 | 401 | 403 | 404 | 405 | 422, response) => {
             PaymentError::Declined(response_error_message(response))
         }
-        ureq::Error::Status(_, response) => {
-            PaymentError::Unavailable(response_error_message(response))
-        }
+        ureq::Error::Status(status, response) => PaymentError::Unavailable(format!(
+            "HTTP {status}: {}",
+            response_error_message(response)
+        )),
         ureq::Error::Transport(error) => PaymentError::Unavailable(error.to_string()),
     }
 }
@@ -634,11 +693,13 @@ mod tests {
         let pending = PaymentAuthorization {
             authorization_id: "auth_123".to_string(),
             settled: false,
+            settlement_transaction_id: None,
             metadata: serde_json::json!({ "provider": "stripe" }),
         };
         let settled = PaymentAuthorization {
             authorization_id: "auth_456".to_string(),
             settled: true,
+            settlement_transaction_id: Some("txn_456".to_string()),
             metadata: serde_json::json!({ "provider": "x402" }),
         };
 
@@ -652,7 +713,7 @@ mod tests {
         assert_eq!(pending_receipt.settlement_status, SettlementStatus::Pending);
         assert_eq!(
             settled_receipt.payment_reference.as_deref(),
-            Some("auth_456")
+            Some("txn_456")
         );
         assert_eq!(settled_receipt.settlement_status, SettlementStatus::Settled);
     }
@@ -677,6 +738,7 @@ mod tests {
             200,
             serde_json::json!({
                 "authorizationId": "x402_txn_123",
+                "transactionId": "x402_txn_123",
                 "settled": true,
                 "metadata": {
                     "network": "base"
@@ -707,6 +769,10 @@ mod tests {
 
         assert_eq!(authorization.authorization_id, "x402_txn_123");
         assert!(authorization.settled);
+        assert_eq!(
+            authorization.settlement_transaction_id.as_deref(),
+            Some("x402_txn_123")
+        );
         assert_eq!(authorization.metadata["adapter"], "x402");
         assert_eq!(authorization.metadata["network"], "base");
 
@@ -741,11 +807,39 @@ mod tests {
     }
 
     #[test]
+    fn x402_adapter_treats_ambiguous_http_conflicts_as_outcome_unknown() {
+        for status in [408, 409] {
+            let (url, _request_rx, handle) = spawn_once_json_server(
+                status,
+                serde_json::json!({ "error": "authorization outcome unknown" }),
+            );
+            let adapter = X402PaymentAdapter::new(url).with_timeout(Duration::from_secs(2));
+
+            let error = adapter
+                .authorize(&PaymentAuthorizeRequest {
+                    amount_units: 125,
+                    currency: "USD".to_string(),
+                    payer: "agent-1".to_string(),
+                    payee: "tool-server".to_string(),
+                    reference: format!("req-http-{status}"),
+                    governed: None,
+                    commerce: None,
+                })
+                .expect_err("ambiguous HTTP response must fail closed");
+
+            assert!(matches!(error, PaymentError::Unavailable(_)));
+            assert!(error.outcome_unknown());
+            handle.join().expect("server thread should exit cleanly");
+        }
+    }
+
+    #[test]
     fn x402_adapter_uses_custom_path_bearer_token_and_governed_payload() {
         let (url, request_rx, handle) = spawn_once_json_server(
             200,
             serde_json::json!({
                 "authorizationId": "x402_txn_custom",
+                "transactionId": "x402_txn_custom",
                 "settled": true,
                 "metadata": {
                     "network": "base-sepolia"
@@ -850,6 +944,25 @@ mod tests {
         assert_eq!(authorization.metadata["provider"], "stripe");
 
         handle.join().expect("server thread should exit cleanly");
+    }
+
+    #[test]
+    fn built_in_adapters_reject_unacknowledged_settlement_operations() {
+        let x402 = X402PaymentAdapter::new("http://127.0.0.1:1");
+        let acp = AcpPaymentAdapter::new("http://127.0.0.1:1");
+
+        for result in [
+            x402.capture("auth", 1, "USD", "request"),
+            x402.release("auth", "request"),
+            x402.refund("auth", 1, "USD", "request"),
+            acp.capture("auth", 1, "USD", "request"),
+            acp.release("auth", "request"),
+            acp.refund("auth", 1, "USD", "request"),
+        ] {
+            let error = result.expect_err("local bookkeeping must not acknowledge a rail action");
+            assert!(matches!(error, PaymentError::RailError(_)));
+            assert!(error.to_string().contains("rail acknowledgement endpoint"));
+        }
     }
 
     fn spawn_once_json_server(

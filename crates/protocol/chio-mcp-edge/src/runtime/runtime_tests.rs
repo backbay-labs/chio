@@ -32,7 +32,7 @@ fn metrics_test_guard() -> std::sync::MutexGuard<'static, ()> {
 
 struct EchoServer;
 struct StreamingEchoServer;
-struct UrlRequiredServer;
+struct PostDispatchUrlErrorServer;
 struct CancelledServer;
 struct RouteSelectionAdmissionHook;
 #[derive(Default)]
@@ -133,7 +133,7 @@ impl ToolServerConnection for StreamingEchoServer {
 }
 
 #[async_trait::async_trait]
-impl ToolServerConnection for UrlRequiredServer {
+impl ToolServerConnection for PostDispatchUrlErrorServer {
     fn server_id(&self) -> &str {
         "url-srv"
     }
@@ -1217,9 +1217,9 @@ fn tools_call_jsonrpc_path_records_receipt_write_deny() {
 }
 
 #[test]
-fn tools_call_jsonrpc_path_skips_receipt_write_error_for_url_elicitation() {
+fn tools_call_jsonrpc_path_records_signed_incomplete_for_post_dispatch_url_error() {
     let _metrics_guard = metrics_test_guard();
-    let mut edge = make_url_required_edge();
+    let mut edge = make_post_dispatch_url_error_edge();
     let _ = edge.handle_jsonrpc(json!({
         "jsonrpc": "2.0",
         "id": 1,
@@ -1238,6 +1238,7 @@ fn tools_call_jsonrpc_path_skips_receipt_write_error_for_url_elicitation() {
         "params": {}
     }));
     let before_error = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR);
+    let before_deny = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_DENY);
 
     let response = edge
         .handle_jsonrpc(json!({
@@ -1251,11 +1252,31 @@ fn tools_call_jsonrpc_path_skips_receipt_write_error_for_url_elicitation() {
         }))
         .unwrap();
 
-    assert_eq!(response["error"]["code"], JSONRPC_URL_ELICITATION_REQUIRED);
+    assert!(response.get("error").is_none());
+    assert_eq!(response["result"]["isError"], true);
+    let expected_reason = "URL elicitation requested after tool-server dispatch began: URL elicitation is required for this operation";
+    assert_eq!(response["result"]["content"][0]["text"], expected_reason);
+    let receipt_log = edge.kernel.receipt_log();
+    let receipt = receipt_log.receipts().last().expect("tool call receipt");
+    assert!(matches!(
+        receipt.decision.as_ref(),
+        Some(chio_core::receipt::decision::Decision::Incomplete { reason })
+            if reason == expected_reason
+    ));
+    assert!(receipt.verify_signature().unwrap());
+    let metadata = receipt.metadata.as_ref().expect("receipt metadata");
+    assert_eq!(
+        metadata["chio_runtime"]["post_dispatch_outcome_unknown"],
+        true
+    );
+    assert!(
+        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_DENY) > before_deny,
+        "post-dispatch URL elicitation must advance signed deny receipt metrics"
+    );
     assert_eq!(
         crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR),
         before_error,
-        "URL elicitation must not feed receipt write infrastructure errors"
+        "post-dispatch URL elicitation must not feed receipt write infrastructure errors"
     );
 }
 
@@ -1366,28 +1387,33 @@ fn execute_bridge_mcp_tool_call_blocking_skips_receipt_write_error_for_request_c
 }
 
 #[test]
-fn execute_bridge_mcp_tool_call_blocking_skips_receipt_write_error_for_url_elicitation() {
+fn execute_bridge_mcp_tool_call_blocking_returns_signed_incomplete_for_post_dispatch_url_error() {
     let _metrics_guard = metrics_test_guard();
     let (kernel, request) = make_kernel_error_bridge_fixture(
-        Box::new(UrlRequiredServer),
+        Box::new(PostDispatchUrlErrorServer),
         "url-srv",
         "authorize",
         "mcp-url-required-blocking",
     );
     let before_error = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR);
+    let before_deny = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_DENY);
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
         .enable_all()
         .build()
         .unwrap();
 
-    let error =
-        runtime.block_on(async { execute_bridge_mcp_tool_call(&kernel, request).unwrap_err() });
+    let bridge =
+        runtime.block_on(async { execute_bridge_mcp_tool_call(&kernel, request).unwrap() });
 
-    assert!(matches!(
-        error,
-        AdapterError::KernelRuntime(message) if message.contains("URL elicitation")
-    ));
+    assert_post_dispatch_url_elicitation_incomplete(&bridge);
+    let receipt_log = kernel.receipt_log();
+    let logged_receipt = receipt_log.receipts().last().expect("tool call receipt");
+    assert_eq!(logged_receipt.id, bridge.response.receipt.id);
+    assert!(
+        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_DENY) > before_deny,
+        "direct MCP URL elicitation must advance signed deny receipt metrics"
+    );
     assert_eq!(
         crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR),
         before_error,
@@ -1427,33 +1453,68 @@ fn execute_bridge_mcp_tool_call_async_skips_receipt_write_error_for_request_canc
 }
 
 #[test]
-fn execute_bridge_mcp_tool_call_async_skips_receipt_write_error_for_url_elicitation() {
+fn execute_bridge_mcp_tool_call_async_returns_signed_incomplete_for_post_dispatch_url_error() {
     let _metrics_guard = metrics_test_guard();
     let (kernel, request) = make_kernel_error_bridge_fixture(
-        Box::new(UrlRequiredServer),
+        Box::new(PostDispatchUrlErrorServer),
         "url-srv",
         "authorize",
         "mcp-url-required-async",
     );
     let before_error = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR);
+    let before_deny = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_DENY);
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
         .unwrap();
 
-    let error = runtime
+    let bridge = runtime
         .block_on(execute_bridge_mcp_tool_call_async(&kernel, request))
-        .unwrap_err();
+        .unwrap();
 
-    assert!(matches!(
-        error,
-        AdapterError::KernelRuntime(message) if message.contains("URL elicitation")
-    ));
+    assert_post_dispatch_url_elicitation_incomplete(&bridge);
+    let receipt_log = kernel.receipt_log();
+    let logged_receipt = receipt_log.receipts().last().expect("tool call receipt");
+    assert_eq!(logged_receipt.id, bridge.response.receipt.id);
+    assert!(
+        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_DENY) > before_deny,
+        "async MCP URL elicitation must advance signed deny receipt metrics"
+    );
     assert_eq!(
         crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR),
         before_error,
         "async MCP URL elicitation must not feed receipt write infrastructure errors"
     );
+}
+
+fn assert_post_dispatch_url_elicitation_incomplete(bridge: &BridgeMcpToolCall) {
+    let expected_reason = "URL elicitation requested after tool-server dispatch began: URL elicitation is required for this operation";
+    assert_eq!(bridge.response.verdict, Verdict::Deny);
+    assert!(bridge.response.output.is_none());
+    assert!(matches!(
+        &bridge.response.terminal_state,
+        OperationTerminalState::Incomplete { reason }
+            if reason == expected_reason
+    ));
+    assert!(matches!(
+        bridge.response.receipt.decision.as_ref(),
+        Some(chio_core::receipt::decision::Decision::Incomplete { reason })
+            if reason == expected_reason
+    ));
+    assert!(bridge.response.receipt.verify_signature().unwrap());
+    let metadata = bridge
+        .response
+        .receipt
+        .metadata
+        .as_ref()
+        .expect("receipt metadata");
+    assert_eq!(
+        metadata["chio_runtime"]["post_dispatch_outcome_unknown"],
+        true
+    );
+    assert_eq!(bridge.mcp_result["isError"], true);
+    assert_eq!(bridge.mcp_result["content"][0]["text"], expected_reason);
+    assert!(bridge.notifications.is_empty());
 }
 
 #[tokio::test]
@@ -1569,7 +1630,7 @@ fn make_streaming_edge(page_size: usize) -> ChioMcpEdge {
     .unwrap()
 }
 
-fn make_url_required_edge() -> ChioMcpEdge {
+fn make_post_dispatch_url_error_edge() -> ChioMcpEdge {
     let keypair = Keypair::generate();
     let config = KernelConfig {
         keypair: keypair.clone(),
@@ -1587,7 +1648,7 @@ fn make_url_required_edge() -> ChioMcpEdge {
         retention_config: None,
     };
     let mut kernel = ChioKernel::new(config);
-    kernel.register_tool_server(Box::new(UrlRequiredServer));
+    kernel.register_tool_server(Box::new(PostDispatchUrlErrorServer));
     let agent = Keypair::generate();
     let capabilities = vec![kernel
         .issue_capability(
@@ -2113,8 +2174,8 @@ fn wrapped_elicitation_completion_notifications_only_emit_for_known_ids() {
 }
 
 #[test]
-fn direct_tool_server_url_required_errors_are_brokered_as_jsonrpc_errors() {
-    let mut edge = make_url_required_edge();
+fn direct_tool_server_post_dispatch_url_error_is_not_brokered_or_registered() {
+    let mut edge = make_post_dispatch_url_error_edge();
     let _ = edge.handle_jsonrpc(json!({
         "jsonrpc": "2.0",
         "id": 1,
@@ -2145,21 +2206,26 @@ fn direct_tool_server_url_required_errors_are_brokered_as_jsonrpc_errors() {
         }))
         .unwrap();
 
-    assert_eq!(response["error"]["code"], JSONRPC_URL_ELICITATION_REQUIRED);
-    assert_eq!(response["error"]["data"]["elicitations"][0]["mode"], "url");
-    assert_eq!(
-        response["error"]["data"]["elicitations"][0]["elicitationId"],
-        "elicit-auth"
-    );
+    assert!(response.get("error").is_none());
+    assert_eq!(response["result"]["isError"], true);
+    let expected_reason = "URL elicitation requested after tool-server dispatch began: URL elicitation is required for this operation";
+    assert_eq!(response["result"]["content"][0]["text"], expected_reason);
 
-    edge.notify_elicitation_completed("elicit-auth");
-    let notifications = edge.take_pending_notifications();
-    assert_eq!(notifications.len(), 1);
+    let receipt_log = edge.kernel.receipt_log();
+    let receipt = receipt_log.receipts().last().expect("tool call receipt");
+    assert!(matches!(
+        receipt.decision.as_ref(),
+        Some(chio_core::receipt::decision::Decision::Incomplete { reason })
+            if reason == expected_reason
+    ));
+    assert!(receipt.verify_signature().unwrap());
+    let metadata = receipt.metadata.as_ref().expect("receipt metadata");
     assert_eq!(
-        notifications[0]["method"],
-        "notifications/elicitation/complete"
+        metadata["chio_runtime"]["post_dispatch_outcome_unknown"],
+        true
     );
-    assert_eq!(notifications[0]["params"]["elicitationId"], "elicit-auth");
+    edge.notify_elicitation_completed("elicit-auth");
+    assert!(edge.take_pending_notifications().is_empty());
 }
 
 #[test]

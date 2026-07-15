@@ -4,6 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 for config in \
+  .kani/harnesses.toml \
   formal/rust-verification/creusot-contracts.toml \
   formal/rust-verification/kani-harnesses.toml \
   formal/rust-verification/kani-public-harnesses.toml
@@ -15,6 +16,7 @@ do
 done
 
 python3 - <<'PY'
+import re
 import sys
 from pathlib import Path
 
@@ -40,6 +42,63 @@ for rel, schema in expected.items():
         raise SystemExit(f"schema mismatch in {rel}")
     if not data.get("covered_symbols") and not data.get("harness_groups"):
         raise SystemExit(f"missing coverage declaration in {rel}")
+
+multi_rel = ".kani/harnesses.toml"
+multi = tomllib.loads(Path(multi_rel).read_text(encoding="utf-8"))
+if set(multi) != {"schema", "harness"}:
+    raise SystemExit(
+        f"{multi_rel} must contain only schema and harness tables"
+    )
+if multi.get("schema") != "chio.kani.multi-crate.v1":
+    raise SystemExit(f"schema mismatch in {multi_rel}")
+entries = multi.get("harness")
+if not isinstance(entries, list) or not entries:
+    raise SystemExit(f"{multi_rel} must contain a non-empty harness array")
+required_keys = {"crate", "harness", "default_unwind", "timeout_secs", "lane"}
+allowed_keys = required_keys | {
+    "unwinding_checks",
+    "features",
+    "primary_rust_symbol",
+    "notes",
+}
+seen_pairs = set()
+for index, entry in enumerate(entries):
+    label = f"{multi_rel} harness[{index}]"
+    if not isinstance(entry, dict):
+        raise SystemExit(f"{label} must be a table")
+    missing = sorted(required_keys - set(entry))
+    unknown = sorted(set(entry) - allowed_keys)
+    if missing or unknown:
+        raise SystemExit(f"{label} keys invalid: missing={missing} unknown={unknown}")
+    crate = entry["crate"]
+    harness = entry["harness"]
+    if not isinstance(crate, str) or not re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", crate):
+        raise SystemExit(f"{label}.crate must be a normalized Cargo package name")
+    if not isinstance(harness, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", harness):
+        raise SystemExit(f"{label}.harness must be a Rust identifier")
+    pair = (crate, harness)
+    if pair in seen_pairs:
+        raise SystemExit(f"{label} duplicates {crate}::{harness}")
+    seen_pairs.add(pair)
+    for field in ("default_unwind", "timeout_secs"):
+        value = entry[field]
+        if type(value) is not int or value < 1:
+            raise SystemExit(f"{label}.{field} must be a positive integer")
+    if entry["lane"] not in {"pr", "nightly"}:
+        raise SystemExit(f"{label}.lane must be pr or nightly")
+    if type(entry.get("unwinding_checks", False)) is not bool:
+        raise SystemExit(f"{label}.unwinding_checks must be a boolean")
+    features = entry.get("features", [])
+    if not isinstance(features, list) or not all(
+        isinstance(feature, str) and feature for feature in features
+    ) or len(features) != len(set(features)):
+        raise SystemExit(f"{label}.features must be a unique string list")
+    primary = entry.get("primary_rust_symbol")
+    if primary is not None and (not isinstance(primary, str) or not primary):
+        raise SystemExit(f"{label}.primary_rust_symbol must be a non-empty string")
+    notes = entry.get("notes")
+    if notes is not None and not isinstance(notes, str):
+        raise SystemExit(f"{label}.notes must be a string")
 
 creusot_rel = "formal/rust-verification/creusot-contracts.toml"
 creusot_prefix = "formal/rust-verification/creusot-core::"
@@ -96,5 +155,6 @@ fi
 ./scripts/check-creusot-core.sh
 ./scripts/check-kani-core.sh
 ./scripts/check-kani-public-core.sh
+./scripts/run-kani-manifest.sh --lane pr --exclude-crate chio-kernel-core
 
-echo "Strict Rust verification tools and core checks passed"
+echo "Strict Rust verification tools and registered Kani checks passed"

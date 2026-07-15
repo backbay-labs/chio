@@ -1,6 +1,83 @@
 use super::support::*;
+use std::sync::{Arc, Mutex};
+
+use chio_agent_web_interop::{
+    verify_agent_web_interop_with_trust_and_consume_replays,
+    verify_agent_web_interop_with_trust_and_consume_replays_if_report_matches, AgentWebReplayEntry,
+    AgentWebReplayScope, AgentWebReplayStore, AgentWebReplayStoreError, AgentWebVerifierTrust,
+    InMemoryAgentWebReplayStore,
+};
+use chio_core_types::{Keypair, PublicKey};
 use chio_test_support::prelude::*;
+use hmac::{Hmac, Mac};
 use serde_json::json;
+use sha2::Sha256;
+
+type HmacSha256 = Hmac<Sha256>;
+
+#[derive(Debug, Default)]
+struct CapturingReplayStore {
+    entries: Mutex<Vec<AgentWebReplayEntry>>,
+}
+
+impl AgentWebReplayStore for CapturingReplayStore {
+    fn check_and_insert(
+        &self,
+        _now_unix_seconds: u64,
+        entries: &[AgentWebReplayEntry],
+    ) -> Result<(), AgentWebReplayStoreError> {
+        let mut captured = self.entries.lock().map_err(|_| {
+            AgentWebReplayStoreError::Unavailable("capture store lock poisoned".to_string())
+        })?;
+        captured.extend_from_slice(entries);
+        Ok(())
+    }
+}
+
+fn agent_web_trust_with_role_keys(
+    passport_keys: Vec<PublicKey>,
+    kernel_keys: Vec<PublicKey>,
+    sidecar_keys: Vec<PublicKey>,
+    replay_store: Option<Arc<dyn AgentWebReplayStore>>,
+    now_unix_seconds: u64,
+) -> AgentWebVerifierTrust {
+    let mut trust = AgentWebVerifierTrust::new()
+        .with_trusted_passport_signer_keys(passport_keys)
+        .with_standard_webhooks_secret_for(
+            STANDARD_WEBHOOKS_WEBHOOK_ID,
+            STANDARD_WEBHOOKS_VERIFIER_SECRET.to_vec(),
+        )
+        .with_standard_webhooks_replay_window(now_unix_seconds, STANDARD_WEBHOOKS_MAX_AGE_SECONDS)
+        .with_trusted_receipt_kernel_keys(kernel_keys)
+        .with_trusted_envelope_sidecar_keys(sidecar_keys);
+    if let Some(store) = replay_store {
+        trust = trust.with_standard_webhooks_replay_store(store);
+    }
+    trust
+}
+
+fn default_role_keys() -> (PublicKey, PublicKey, PublicKey) {
+    (
+        transaction_passport_keypair().public_key(),
+        agent_web_fixture_kernel_keypair().public_key(),
+        agent_web_fixture_sidecar_keypair().public_key(),
+    )
+}
+
+fn replay_entry(webhook_id: &str, expires_at_unix_seconds: u64) -> AgentWebReplayEntry {
+    replay_entry_in_scope(1, webhook_id, expires_at_unix_seconds)
+}
+
+fn replay_entry_in_scope(
+    scope_seed: u8,
+    webhook_id: &str,
+    expires_at_unix_seconds: u64,
+) -> AgentWebReplayEntry {
+    let replay_scope = AgentWebReplayScope::parse(format!("{scope_seed:064x}"))
+        .test_expect("fixture replay scope parses");
+    AgentWebReplayEntry::new(replay_scope, webhook_id, expires_at_unix_seconds)
+        .test_expect("fixture replay entry validates")
+}
 
 #[test]
 fn published_agent_web_schemas_accept_supported_projection_fixtures() {
@@ -120,6 +197,106 @@ fn agent_web_interop_rejects_tampered_transaction_passport_signature() {
 }
 
 #[test]
+fn agent_web_interop_rejects_valid_passport_signature_from_untrusted_signer() {
+    let bundle = agent_web_bundle(AgentWebCase::Valid);
+    let (_, kernel_key, sidecar_key) = default_role_keys();
+    let trust = agent_web_trust_with_role_keys(
+        vec![Keypair::from_seed(&[19; 32]).public_key()],
+        vec![kernel_key],
+        vec![sidecar_key],
+        Some(Arc::new(InMemoryAgentWebReplayStore::new())),
+        STANDARD_WEBHOOKS_VERIFIER_NOW,
+    );
+
+    let error = chio_agent_web_interop::verify_agent_web_interop_with_trust(&bundle, &trust)
+        .test_expect_err("a cryptographically valid passport still requires a trusted signer");
+
+    assert!(error
+        .to_string()
+        .contains("transaction passport signer is not trusted"));
+}
+
+#[test]
+fn agent_web_interop_rejects_valid_envelope_signature_from_untrusted_sidecar() {
+    let bundle = agent_web_bundle(AgentWebCase::Valid);
+    let (passport_key, kernel_key, _) = default_role_keys();
+    let trust = agent_web_trust_with_role_keys(
+        vec![passport_key],
+        vec![kernel_key],
+        vec![Keypair::from_seed(&[19; 32]).public_key()],
+        Some(Arc::new(InMemoryAgentWebReplayStore::new())),
+        STANDARD_WEBHOOKS_VERIFIER_NOW,
+    );
+
+    let error = chio_agent_web_interop::verify_agent_web_interop_with_trust(&bundle, &trust)
+        .test_expect_err("a cryptographically valid envelope still requires a trusted sidecar");
+
+    assert!(error
+        .to_string()
+        .contains("Agent Web envelope signer untrusted"));
+}
+
+#[test]
+fn agent_web_interop_rejects_passport_and_kernel_role_overlap() {
+    let bundle = agent_web_bundle(AgentWebCase::Valid);
+    let (passport_key, _, sidecar_key) = default_role_keys();
+    let trust = agent_web_trust_with_role_keys(
+        vec![passport_key.clone()],
+        vec![passport_key],
+        vec![sidecar_key],
+        Some(Arc::new(InMemoryAgentWebReplayStore::new())),
+        STANDARD_WEBHOOKS_VERIFIER_NOW,
+    );
+
+    let error = chio_agent_web_interop::verify_agent_web_interop_with_trust(&bundle, &trust)
+        .test_expect_err("passport and kernel signer authority must be separated");
+
+    assert!(error
+        .to_string()
+        .contains("Agent Web passport and kernel signer roles overlap"));
+}
+
+#[test]
+fn agent_web_interop_rejects_passport_and_sidecar_role_overlap() {
+    let bundle = agent_web_bundle(AgentWebCase::Valid);
+    let (passport_key, kernel_key, _) = default_role_keys();
+    let trust = agent_web_trust_with_role_keys(
+        vec![passport_key.clone()],
+        vec![kernel_key],
+        vec![passport_key],
+        Some(Arc::new(InMemoryAgentWebReplayStore::new())),
+        STANDARD_WEBHOOKS_VERIFIER_NOW,
+    );
+
+    let error = chio_agent_web_interop::verify_agent_web_interop_with_trust(&bundle, &trust)
+        .test_expect_err("passport and sidecar signer authority must be separated");
+
+    assert!(error
+        .to_string()
+        .contains("Agent Web passport and sidecar signer roles overlap"));
+}
+
+#[test]
+fn agent_web_interop_rejects_kernel_and_sidecar_role_overlap() {
+    let bundle = agent_web_bundle(AgentWebCase::Valid);
+    let (passport_key, kernel_key, _) = default_role_keys();
+    let trust = agent_web_trust_with_role_keys(
+        vec![passport_key],
+        vec![kernel_key.clone()],
+        vec![kernel_key],
+        Some(Arc::new(InMemoryAgentWebReplayStore::new())),
+        STANDARD_WEBHOOKS_VERIFIER_NOW,
+    );
+
+    let error = chio_agent_web_interop::verify_agent_web_interop_with_trust(&bundle, &trust)
+        .test_expect_err("kernel and sidecar signer authority must be separated");
+
+    assert!(error
+        .to_string()
+        .contains("Agent Web kernel and sidecar signer roles overlap"));
+}
+
+#[test]
 fn agent_web_interop_rejects_standard_webhooks_without_configured_secret() {
     let bundle = agent_web_bundle(AgentWebCase::Valid);
     let trust = chio_agent_web_interop::AgentWebVerifierTrust::new()
@@ -189,6 +366,151 @@ fn agent_web_interop_rejects_non_content_addressed_envelope_id() {
     assert!(error
         .to_string()
         .contains("Agent Web envelope id is not content-addressed"));
+}
+
+#[test]
+fn agent_web_interop_rejects_passport_issuance_transplant() {
+    let mut bundle = agent_web_bundle(AgentWebCase::Valid);
+    bundle.passport.issued_at = "2026-06-10T00:00:01Z".to_string();
+    sign_transaction_passport(&mut bundle.passport);
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("sidecar envelopes must bind the passport issuance fields");
+
+    assert!(error
+        .to_string()
+        .contains("Agent Web envelope passport scope mismatch"));
+}
+
+#[test]
+fn agent_web_interop_rejects_claim_set_transplant() {
+    let mut bundle = agent_web_bundle(AgentWebCase::Valid);
+    replace_agent_web_json_artifact(&mut bundle, "claim-set.json", |claim_set| {
+        claim_set["issued_at"] = json!("2026-06-10T00:00:01Z");
+    });
+    bundle.passport.claim_set_sha256 = chio_core_types::sha256_hex(
+        bundle
+            .artifacts
+            .get("claim-set.json")
+            .test_expect("Agent Web claim set exists"),
+    );
+    sign_transaction_passport(&mut bundle.passport);
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("sidecar envelopes must bind the passport claim-set digest");
+
+    assert!(error
+        .to_string()
+        .contains("Agent Web envelope passport scope mismatch"));
+}
+
+#[test]
+fn agent_web_interop_rejects_receipt_from_previous_passport_scope() {
+    let mut bundle = agent_web_bundle(AgentWebCase::Valid);
+    bundle.passport.issued_at = "2026-06-10T00:00:01Z".to_string();
+    sign_transaction_passport(&mut bundle.passport);
+    let updated_scope = chio_agent_web_interop::agent_web_passport_scope_sha256(&bundle.passport)
+        .test_expect("updated passport scope hashes");
+    replace_agent_web_envelope_artifact(
+        &mut bundle,
+        "standard-webhooks-envelope.json",
+        |envelope| {
+            envelope["agent_web_passport_scope_sha256"] = json!(updated_scope);
+        },
+    );
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("kernel receipts must bind the same passport scope as the envelope");
+
+    assert!(error
+        .to_string()
+        .contains("Agent Web receipt action passport scope mismatch"));
+}
+
+#[test]
+fn agent_web_interop_rejects_duplicate_projection_id() {
+    let mut bundle = agent_web_bundle(AgentWebCase::Valid);
+    let mut duplicate_manifest: serde_json::Value = serde_json::from_slice(
+        bundle
+            .artifacts
+            .get("standard-webhooks-manifest.json")
+            .test_expect("standard webhooks manifest exists"),
+    )
+    .test_expect("standard webhooks manifest parses");
+    duplicate_manifest["copy_limitations"] =
+        json!(["A second artifact cannot reuse an existing projection identifier."]);
+    append_agent_web_json_artifact(
+        &mut bundle,
+        "duplicate-standard-webhooks-manifest.json",
+        "external-projection-manifest",
+        "chio.agent-web.external-projection-manifest.v1",
+        duplicate_manifest,
+    );
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("projection identifiers must resolve to exactly one manifest");
+
+    assert!(error
+        .to_string()
+        .contains("duplicate Agent Web projection id: projection-standard-webhooks-valid"));
+}
+
+#[test]
+fn agent_web_interop_rejects_ambiguous_same_role_receipt_alias() {
+    let mut bundle = agent_web_bundle(AgentWebCase::Valid);
+    append_agent_web_json_artifact(
+        &mut bundle,
+        "alternate/receipt-agent-web-webhook-allow.json",
+        "receipt",
+        "chio.receipt.v1",
+        json!({
+            "schema": "chio.receipt.v1",
+            "id": "alternate-receipt-agent-web-webhook-allow"
+        }),
+    );
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("same-role graph aliases must resolve unambiguously");
+
+    assert!(error
+        .to_string()
+        .contains("ambiguous evidence graph alias for role Receipt"));
+}
+
+#[test]
+fn agent_web_interop_rejects_duplicate_envelope_id() {
+    let mut bundle = agent_web_bundle(AgentWebCase::Valid);
+    let mut duplicate_envelope: serde_json::Value = serde_json::from_slice(
+        bundle
+            .artifacts
+            .get("standard-webhooks-envelope.json")
+            .test_expect("standard webhooks envelope exists"),
+    )
+    .test_expect("standard webhooks envelope parses");
+    let second_sidecar = Keypair::from_seed(&[19; 32]);
+    sign_agent_web_envelope_with_key(&mut duplicate_envelope, &second_sidecar);
+    append_agent_web_json_artifact(
+        &mut bundle,
+        "duplicate-standard-webhooks-envelope.json",
+        "agent-web-proof-envelope",
+        "chio.agent-web-proof-envelope.v1",
+        duplicate_envelope,
+    );
+    let (passport_key, kernel_key, sidecar_key) = default_role_keys();
+    let trust = agent_web_trust_with_role_keys(
+        vec![passport_key],
+        vec![kernel_key],
+        vec![sidecar_key, second_sidecar.public_key()],
+        Some(Arc::new(InMemoryAgentWebReplayStore::new())),
+        STANDARD_WEBHOOKS_VERIFIER_NOW,
+    );
+
+    let error = chio_agent_web_interop::verify_agent_web_interop_with_trust(&bundle, &trust)
+        .test_expect_err("envelope identifiers must resolve to exactly one signed artifact");
+
+    assert!(error
+        .to_string()
+        .contains("duplicate Agent Web envelope id"));
 }
 
 #[test]
@@ -271,6 +593,126 @@ fn agent_web_interop_rejects_bound_receipt_for_different_policy() {
     assert!(error
         .to_string()
         .contains("Agent Web receipt policy digest mismatch"));
+}
+
+#[test]
+fn agent_web_interop_rejects_bound_receipt_from_different_tool_server() {
+    let bundle = agent_web_bundle(AgentWebCase::BoundReceiptProducerServerMismatch);
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("Agent Web receipt must come from the established tool server");
+
+    assert!(error
+        .to_string()
+        .contains("Agent Web receipt producer mismatch"));
+}
+
+#[test]
+fn agent_web_interop_rejects_bound_receipt_from_different_tool() {
+    let bundle = agent_web_bundle(AgentWebCase::BoundReceiptProducerToolMismatch);
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("Agent Web receipt must come from the established projection tool");
+
+    assert!(error
+        .to_string()
+        .contains("Agent Web receipt producer mismatch"));
+}
+
+#[test]
+fn agent_web_interop_rejects_action_receipt_ref_mismatch() {
+    let bundle = agent_web_bundle(AgentWebCase::BoundReceiptActionRefMismatch);
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("Agent Web receipt action must bind the envelope receipt ref");
+
+    assert!(error
+        .to_string()
+        .contains("Agent Web receipt action ref mismatch"));
+}
+
+#[test]
+fn agent_web_interop_rejects_action_content_digest_mismatch() {
+    let bundle = agent_web_bundle(AgentWebCase::BoundReceiptActionContentHashMismatch);
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("Agent Web receipt action must bind the external subject digest");
+
+    assert!(error
+        .to_string()
+        .contains("Agent Web receipt action content digest mismatch"));
+}
+
+#[test]
+fn agent_web_interop_rejects_action_for_different_passport() {
+    let bundle = agent_web_bundle(AgentWebCase::BoundReceiptActionPassportIdMismatch);
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("Agent Web receipt action must bind the transaction passport id");
+
+    assert!(error
+        .to_string()
+        .contains("Agent Web receipt action passport id mismatch"));
+}
+
+#[test]
+fn agent_web_interop_rejects_action_for_different_passport_issuer() {
+    let bundle = agent_web_bundle(AgentWebCase::BoundReceiptActionPassportIssuerMismatch);
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("Agent Web receipt action must bind the transaction passport issuer");
+
+    assert!(error
+        .to_string()
+        .contains("Agent Web receipt action passport issuer mismatch"));
+}
+
+#[test]
+fn agent_web_interop_rejects_action_for_different_envelope() {
+    let bundle = agent_web_bundle(AgentWebCase::BoundReceiptActionEnvelopeIdMismatch);
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("Agent Web receipt action must bind the proof envelope id");
+
+    assert!(error
+        .to_string()
+        .contains("Agent Web receipt action envelope id mismatch"));
+}
+
+#[test]
+fn agent_web_interop_rejects_action_for_different_projection_manifest() {
+    let bundle = agent_web_bundle(AgentWebCase::BoundReceiptActionProjectionManifestMismatch);
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("Agent Web receipt action must bind the projection manifest digest");
+
+    assert!(error
+        .to_string()
+        .contains("Agent Web receipt action projection manifest digest mismatch"));
+}
+
+#[test]
+fn agent_web_interop_rejects_action_for_different_source_protocol() {
+    let bundle = agent_web_bundle(AgentWebCase::BoundReceiptActionSourceProtocolMismatch);
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("Agent Web receipt action must bind the source protocol");
+
+    assert!(error
+        .to_string()
+        .contains("Agent Web receipt action source protocol mismatch"));
+}
+
+#[test]
+fn agent_web_interop_rejects_action_for_different_source_protocol_version() {
+    let bundle = agent_web_bundle(AgentWebCase::BoundReceiptActionSourceProtocolVersionMismatch);
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("Agent Web receipt action must bind the source protocol version");
+
+    assert!(error
+        .to_string()
+        .contains("Agent Web receipt action source protocol version mismatch"));
 }
 
 #[test]
@@ -453,13 +895,404 @@ fn agent_web_interop_rejects_stale_webhook_timestamp() {
 }
 
 #[test]
+fn in_memory_replay_store_closes_forward_prune_clock_rollback_window() {
+    let store = InMemoryAgentWebReplayStore::new();
+    store
+        .check_and_insert(10, &[replay_entry("used", 20)])
+        .test_expect("initial replay marker reserves");
+    store
+        .check_and_insert(21, &[replay_entry("forward", 30)])
+        .test_expect("forward observation prunes the expired marker");
+
+    let error = store
+        .check_and_insert(20, &[replay_entry("used", 40)])
+        .test_expect_err("clock rollback rejects reuse of the pruned id");
+    assert!(matches!(
+        error,
+        AgentWebReplayStoreError::Unavailable(message)
+            if message.contains("clock rollback detected")
+    ));
+
+    store
+        .check_and_insert(21, &[replay_entry("used", 40)])
+        .test_expect("a clock caught up to the high-water may reserve the reclaimed id");
+}
+
+#[test]
+fn in_memory_replay_store_advances_clock_on_replay_and_preserves_batch_atomicity() {
+    let store = InMemoryAgentWebReplayStore::new();
+    store
+        .check_and_insert(10, &[replay_entry("conflict", 100)])
+        .test_expect("conflict marker seeds");
+
+    let error = store
+        .check_and_insert(
+            50,
+            &[replay_entry("fresh", 100), replay_entry("conflict", 100)],
+        )
+        .test_expect_err("later replay conflict rejects the batch");
+    assert_eq!(
+        error,
+        AgentWebReplayStoreError::Replayed("conflict".to_string())
+    );
+    let rollback_error = store
+        .check_and_insert(49, &[])
+        .test_expect_err("even an empty operation fails closed during rollback");
+    assert!(matches!(
+        rollback_error,
+        AgentWebReplayStoreError::Unavailable(message)
+            if message.contains("clock rollback detected")
+    ));
+    store
+        .check_and_insert(50, &[replay_entry("fresh", 100)])
+        .test_expect("failed batch did not partially reserve its fresh id");
+}
+
+#[test]
+fn in_memory_replay_store_rejects_expired_input_and_preserves_exact_boundary() {
+    let store = InMemoryAgentWebReplayStore::new();
+    let error = store
+        .check_and_insert(10, &[replay_entry("fresh", 20), replay_entry("expired", 9)])
+        .test_expect_err("an already expired marker rejects the whole batch");
+    assert!(matches!(
+        error,
+        AgentWebReplayStoreError::Unavailable(message)
+            if message.contains("replay expiry")
+    ));
+    store
+        .check_and_insert(10, &[replay_entry("fresh", 20)])
+        .test_expect("invalid batch did not reserve its valid prefix");
+    store
+        .check_and_insert(10, &[replay_entry("boundary", 10)])
+        .test_expect("expiry equality is accepted");
+    let error = store
+        .check_and_insert(10, &[replay_entry("boundary", 20)])
+        .test_expect_err("expiry equality remains reserved through the current second");
+    assert_eq!(
+        error,
+        AgentWebReplayStoreError::Replayed("boundary".to_string())
+    );
+    store
+        .check_and_insert(11, &[replay_entry("boundary", 20)])
+        .test_expect("the marker becomes reclaimable after its exact expiry boundary");
+}
+
+#[test]
+fn replay_scope_and_webhook_id_inputs_are_strictly_validated() {
+    for invalid_scope in [
+        "a".repeat(63),
+        "A".repeat(64),
+        "g".repeat(64),
+        "a".repeat(65),
+    ] {
+        let error = AgentWebReplayScope::parse(invalid_scope)
+            .test_expect_err("invalid replay scope rejects");
+        assert!(matches!(
+            error,
+            AgentWebReplayStoreError::Unavailable(message)
+                if message.contains("64 lowercase hexadecimal")
+        ));
+    }
+
+    let replay_scope =
+        AgentWebReplayScope::parse("a".repeat(64)).test_expect("valid replay scope parses");
+    for invalid_id in [String::new(), "contains space".to_string(), "x".repeat(513)] {
+        let error = AgentWebReplayEntry::new(replay_scope.clone(), invalid_id, 20)
+            .test_expect_err("invalid webhook id rejects");
+        assert!(matches!(error, AgentWebReplayStoreError::Unavailable(_)));
+    }
+}
+
+#[test]
+fn in_memory_replay_store_scopes_ids_to_authenticated_sender_and_endpoint() {
+    let store = InMemoryAgentWebReplayStore::new_with_capacity(4, 2)
+        .test_expect("positive capacities construct");
+    store
+        .check_and_insert(10, &[replay_entry_in_scope(1, "shared", 20)])
+        .test_expect("first scope reserves id");
+    store
+        .check_and_insert(10, &[replay_entry_in_scope(2, "shared", 20)])
+        .test_expect("second authenticated scope may reuse id");
+
+    let error = store
+        .check_and_insert(10, &[replay_entry_in_scope(1, "shared", 20)])
+        .test_expect_err("same scope still rejects replay");
+    assert_eq!(
+        error,
+        AgentWebReplayStoreError::Replayed("shared".to_string())
+    );
+}
+
+#[test]
+fn in_memory_replay_capacity_is_atomic_and_never_evicts_live_markers() {
+    let store = InMemoryAgentWebReplayStore::new_with_capacity(2, 1)
+        .test_expect("positive capacities construct");
+    store
+        .check_and_insert(10, &[replay_entry_in_scope(1, "one", 20)])
+        .test_expect("first marker reserves");
+    let per_scope_error = store
+        .check_and_insert(10, &[replay_entry_in_scope(1, "two", 20)])
+        .test_expect_err("per-scope capacity rejects");
+    assert!(matches!(
+        per_scope_error,
+        AgentWebReplayStoreError::Unavailable(message)
+            if message.contains("per-scope live-entry capacity")
+    ));
+    let replay_error = store
+        .check_and_insert(10, &[replay_entry_in_scope(1, "one", 20)])
+        .test_expect_err("capacity denial did not evict existing marker");
+    assert_eq!(
+        replay_error,
+        AgentWebReplayStoreError::Replayed("one".to_string())
+    );
+    store
+        .check_and_insert(10, &[replay_entry_in_scope(2, "two", 20)])
+        .test_expect("second scope fills global capacity");
+    let global_error = store
+        .check_and_insert(10, &[replay_entry_in_scope(3, "three", 20)])
+        .test_expect_err("global capacity rejects");
+    assert!(matches!(
+        global_error,
+        AgentWebReplayStoreError::Unavailable(message)
+            if message.contains("global live-entry capacity")
+    ));
+
+    store
+        .check_and_insert(21, &[replay_entry_in_scope(3, "three", 30)])
+        .test_expect("expired markers free capacity");
+
+    let atomic_store = InMemoryAgentWebReplayStore::new_with_capacity(1, 1)
+        .test_expect("positive capacities construct");
+    atomic_store
+        .check_and_insert(
+            10,
+            &[
+                replay_entry_in_scope(1, "batch-one", 20),
+                replay_entry_in_scope(2, "batch-two", 20),
+            ],
+        )
+        .test_expect_err("oversized batch rejects atomically");
+    atomic_store
+        .check_and_insert(10, &[replay_entry_in_scope(1, "batch-one", 20)])
+        .test_expect("failed oversized batch reserved no prefix");
+}
+
+#[test]
+fn in_memory_replay_capacity_rejects_zero_or_inverted_limits() {
+    for (global_capacity, per_scope_capacity) in [(0, 1), (1, 0), (1, 2)] {
+        let error =
+            InMemoryAgentWebReplayStore::new_with_capacity(global_capacity, per_scope_capacity)
+                .test_expect_err("invalid capacities reject");
+        assert!(matches!(error, AgentWebReplayStoreError::Unavailable(_)));
+    }
+}
+
+#[test]
 fn agent_web_interop_rejects_replayed_webhook_id() {
     let bundle = agent_web_bundle(AgentWebCase::Valid);
     let trust =
         agent_web_fixture_trust().with_seen_standard_webhooks_id(STANDARD_WEBHOOKS_WEBHOOK_ID);
 
-    let error = chio_agent_web_interop::verify_agent_web_interop_with_trust(&bundle, &trust)
+    let error = verify_agent_web_interop_with_trust_and_consume_replays(&bundle, &trust)
         .test_expect_err("Standard Webhooks ids must be unique inside the replay window");
+
+    assert!(error.to_string().contains("replayed Standard Webhooks id"));
+}
+
+#[test]
+fn agent_web_interop_rejects_webhook_when_durable_replay_store_is_missing() {
+    let bundle = agent_web_bundle(AgentWebCase::Valid);
+    let (passport_key, kernel_key, sidecar_key) = default_role_keys();
+    let trust = agent_web_trust_with_role_keys(
+        vec![passport_key],
+        vec![kernel_key],
+        vec![sidecar_key],
+        None,
+        STANDARD_WEBHOOKS_VERIFIER_NOW,
+    );
+
+    let error = verify_agent_web_interop_with_trust_and_consume_replays(&bundle, &trust)
+        .test_expect_err("webhook verification must fail closed without a replay store");
+
+    assert!(error
+        .to_string()
+        .contains("missing durable Standard Webhooks replay store"));
+}
+
+#[test]
+fn agent_web_interop_read_only_verification_is_idempotent_without_replay_store() {
+    let bundle = agent_web_bundle(AgentWebCase::Valid);
+    let (passport_key, kernel_key, sidecar_key) = default_role_keys();
+    let trust = agent_web_trust_with_role_keys(
+        vec![passport_key],
+        vec![kernel_key],
+        vec![sidecar_key],
+        None,
+        STANDARD_WEBHOOKS_VERIFIER_NOW,
+    );
+
+    chio_agent_web_interop::verify_agent_web_interop_with_trust(&bundle, &trust)
+        .test_expect("first read-only verification succeeds without a replay store");
+    chio_agent_web_interop::verify_agent_web_interop_with_trust(&bundle, &trust)
+        .test_expect("repeated read-only verification remains idempotent");
+}
+
+#[test]
+fn agent_web_interop_persists_webhook_replay_after_successful_verification() {
+    let bundle = agent_web_bundle(AgentWebCase::Valid);
+    let (passport_key, kernel_key, sidecar_key) = default_role_keys();
+    let replay_store: Arc<dyn AgentWebReplayStore> = Arc::new(InMemoryAgentWebReplayStore::new());
+    let trust = agent_web_trust_with_role_keys(
+        vec![passport_key],
+        vec![kernel_key],
+        vec![sidecar_key],
+        Some(replay_store),
+        STANDARD_WEBHOOKS_VERIFIER_NOW,
+    );
+
+    verify_agent_web_interop_with_trust_and_consume_replays(&bundle, &trust)
+        .test_expect("first webhook delivery verifies and reserves its id");
+    chio_agent_web_interop::verify_agent_web_interop_with_trust(&bundle, &trust)
+        .test_expect("offline verification succeeds after admission");
+    chio_agent_web_interop::verify_agent_web_interop_with_trust(&bundle, &trust)
+        .test_expect("repeated offline verification remains idempotent");
+    let error = verify_agent_web_interop_with_trust_and_consume_replays(&bundle, &trust)
+        .test_expect_err("second verification must observe the stored replay marker");
+
+    assert!(error.to_string().contains("replayed Standard Webhooks id"));
+}
+
+#[test]
+fn consuming_verifier_derives_opaque_scope_only_for_authenticated_delivery() {
+    let bundle = agent_web_bundle(AgentWebCase::Valid);
+    let (passport_key, kernel_key, sidecar_key) = default_role_keys();
+    let capture = Arc::new(CapturingReplayStore::default());
+    let replay_store: Arc<dyn AgentWebReplayStore> = capture.clone();
+    let trust = agent_web_trust_with_role_keys(
+        vec![passport_key],
+        vec![kernel_key],
+        vec![sidecar_key],
+        Some(replay_store),
+        STANDARD_WEBHOOKS_VERIFIER_NOW,
+    );
+
+    verify_agent_web_interop_with_trust_and_consume_replays(&bundle, &trust)
+        .test_expect("authenticated delivery reaches replay store");
+    let captured = capture
+        .entries
+        .lock()
+        .test_expect("capture store lock remains available");
+    assert_eq!(captured.len(), 1);
+    let mut scope_mac = HmacSha256::new_from_slice(STANDARD_WEBHOOKS_VERIFIER_SECRET)
+        .test_expect("fixture verifier secret initializes HMAC");
+    scope_mac.update(b"chio.agent-web.replay-scope.v1\0");
+    scope_mac.update(STANDARD_WEBHOOKS_ENDPOINT_URL_DIGEST.as_bytes());
+    let expected_scope = hex::encode(scope_mac.finalize().into_bytes());
+    assert_eq!(captured[0].replay_scope().as_str(), expected_scope);
+    drop(captured);
+
+    let forged_bundle = agent_web_bundle(AgentWebCase::ForgedWebhookSignature);
+    let error = verify_agent_web_interop_with_trust_and_consume_replays(&forged_bundle, &trust)
+        .test_expect_err("forged delivery rejects before replay insertion");
+    assert!(error
+        .to_string()
+        .contains("invalid Standard Webhooks signature"));
+    assert_eq!(
+        capture
+            .entries
+            .lock()
+            .test_expect("capture store lock remains available")
+            .len(),
+        1,
+        "failed HMAC verification must not derive or insert another replay scope"
+    );
+}
+
+#[test]
+fn agent_web_interop_report_mismatch_does_not_consume_replay_id() {
+    let bundle = agent_web_bundle(AgentWebCase::Valid);
+    let (passport_key, kernel_key, sidecar_key) = default_role_keys();
+    let replay_store: Arc<dyn AgentWebReplayStore> = Arc::new(InMemoryAgentWebReplayStore::new());
+    let trust = agent_web_trust_with_role_keys(
+        vec![passport_key],
+        vec![kernel_key],
+        vec![sidecar_key],
+        Some(replay_store),
+        STANDARD_WEBHOOKS_VERIFIER_NOW,
+    );
+    let expected = chio_agent_web_interop::verify_agent_web_interop_with_trust(&bundle, &trust)
+        .test_expect("read-only verification succeeds");
+    let mut mismatched = expected.clone();
+    mismatched.id.push_str("-changed-snapshot");
+
+    let error = verify_agent_web_interop_with_trust_and_consume_replays_if_report_matches(
+        &bundle,
+        &trust,
+        &mismatched,
+    )
+    .test_expect_err("mismatched read-only report must reject before replay reservation");
+    assert!(error
+        .to_string()
+        .contains("consuming Agent Web report does not match its read-only verification"));
+
+    verify_agent_web_interop_with_trust_and_consume_replays_if_report_matches(
+        &bundle, &trust, &expected,
+    )
+    .test_expect("matching retry succeeds because mismatch did not reserve replay id");
+}
+
+#[test]
+fn agent_web_interop_does_not_consume_replay_id_before_whole_bundle_succeeds() {
+    let valid_bundle = agent_web_bundle(AgentWebCase::Valid);
+    let mut invalid_bundle = valid_bundle.clone();
+    replace_agent_web_json_artifact(
+        &mut invalid_bundle,
+        "cloudevents-envelope.json",
+        |envelope| {
+            envelope["signature"] = json!("sig-ed25519:invalid");
+        },
+    );
+    let (passport_key, kernel_key, sidecar_key) = default_role_keys();
+    let replay_store: Arc<dyn AgentWebReplayStore> = Arc::new(InMemoryAgentWebReplayStore::new());
+    let trust = agent_web_trust_with_role_keys(
+        vec![passport_key],
+        vec![kernel_key],
+        vec![sidecar_key],
+        Some(replay_store),
+        STANDARD_WEBHOOKS_VERIFIER_NOW,
+    );
+
+    let error = verify_agent_web_interop_with_trust_and_consume_replays(&invalid_bundle, &trust)
+        .test_expect_err("a later invalid envelope rejects the whole bundle");
+    assert!(error
+        .to_string()
+        .contains("Agent Web envelope signature invalid"));
+    verify_agent_web_interop_with_trust_and_consume_replays(&valid_bundle, &trust).test_expect(
+        "corrected retry succeeds because the failed bundle did not consume replay id",
+    );
+}
+
+#[test]
+fn agent_web_interop_keeps_replay_marker_at_max_age_boundary() {
+    let bundle = agent_web_bundle(AgentWebCase::Valid);
+    let (passport_key, kernel_key, sidecar_key) = default_role_keys();
+    let timestamp = STANDARD_WEBHOOKS_TIMESTAMP
+        .parse::<u64>()
+        .test_expect("fixture webhook timestamp is an integer");
+    let boundary_now = timestamp + STANDARD_WEBHOOKS_MAX_AGE_SECONDS;
+    let replay_store: Arc<dyn AgentWebReplayStore> = Arc::new(InMemoryAgentWebReplayStore::new());
+    let trust = agent_web_trust_with_role_keys(
+        vec![passport_key],
+        vec![kernel_key],
+        vec![sidecar_key],
+        Some(replay_store),
+        boundary_now,
+    );
+
+    verify_agent_web_interop_with_trust_and_consume_replays(&bundle, &trust)
+        .test_expect("a webhook exactly max_age seconds old is accepted");
+    let error = verify_agent_web_interop_with_trust_and_consume_replays(&bundle, &trust)
+        .test_expect_err("the replay marker remains active when expires_at equals now");
 
     assert!(error.to_string().contains("replayed Standard Webhooks id"));
 }
@@ -609,6 +1442,17 @@ fn agent_web_interop_accepts_openapi_30_projection() {
         envelope["source_protocol_version"] = json!("3.0.3");
         envelope["projection_manifest_sha256"] = json!(manifest_digest);
     });
+    let subject_digest = bundle
+        .artifacts
+        .get("external/openapi-operation.json")
+        .map(|subject| chio_core_types::sha256_hex(subject))
+        .test_expect("OpenAPI subject exists");
+    replace_agent_web_receipt_for_subject(
+        &mut bundle,
+        "receipts/receipt-agent-web-openapi-operation-allow.json",
+        "receipt-agent-web-openapi-operation-allow",
+        &subject_digest,
+    );
 
     let report =
         verify_agent_web_interop(&bundle).test_expect("OpenAPI 3.0 projection should verify");

@@ -307,6 +307,7 @@ impl BudgetStore for RemoteBudgetStore {
             response.budget_commit.as_ref(),
             request.authority.as_ref(),
             request.event_id.clone(),
+            response.replayed_event,
         );
         if response.allowed {
             Ok(BudgetAuthorizeHoldDecision::Authorized(
@@ -366,6 +367,7 @@ impl BudgetStore for RemoteBudgetStore {
                 response.budget_commit.as_ref(),
                 request.authority.as_ref(),
                 request.event_id,
+                false,
             ),
         })
     }
@@ -407,6 +409,7 @@ impl BudgetStore for RemoteBudgetStore {
                 response.budget_commit.as_ref(),
                 request.authority.as_ref(),
                 request.event_id,
+                false,
             ),
         })
     }
@@ -449,6 +452,7 @@ impl BudgetStore for RemoteBudgetStore {
                 response.budget_commit.as_ref(),
                 request.authority.as_ref(),
                 request.event_id,
+                false,
             ),
         })
     }
@@ -613,6 +617,7 @@ impl RemoteBudgetStore {
         commit: Option<&BudgetWriteCommitView>,
         fallback_authority: Option<&BudgetEventAuthority>,
         event_id: Option<String>,
+        replayed_event: bool,
     ) -> BudgetCommitMetadata {
         BudgetCommitMetadata {
             authority: remote_budget_event_authority(authority, commit)
@@ -622,6 +627,7 @@ impl RemoteBudgetStore {
             metering_profile: self.budget_metering_profile(),
             budget_commit_index: response_budget_commit_index(authority, commit),
             event_id,
+            replayed_event,
         }
     }
 }

@@ -6,7 +6,7 @@
 
 use chio_log_redact::redacted;
 
-use self::responses::FinalizeToolOutputCostContext;
+use self::responses::{FinalizeToolOutputCostContext, ReceiptResponseContext};
 use super::*;
 use crate::budget_store::{
     BudgetAuthorizeHoldDecision, BudgetAuthorizeHoldRequest, BudgetEventAuthority,
@@ -51,7 +51,7 @@ impl ChioKernel {
         info!(capability_id = %capability_id, "revoking capability");
         let trace_transition = self.lock_runtime_trace_transition()?;
         let newly_revoked = self.with_revocation_store(|store| Ok(store.revoke(capability_id)?))?;
-        let trace_event = if trace_transition.is_some() {
+        let trace_event = if self.runtime_trace_observer.is_some() {
             Some(RuntimeTraceEvent::RevocationCommitted {
                 source_sequence: self.allocate_runtime_trace_source_sequence()?,
                 capability_id: capability_id.clone(),
@@ -534,7 +534,7 @@ impl ChioKernel {
             }
             _ => None,
         };
-        let trace_event = if trace_transition.is_some() {
+        let trace_event = if self.runtime_trace_observer.is_some() {
             let revocation_subject_ids = std::iter::once(request.capability.id.clone())
                 .chain(
                     request
@@ -873,7 +873,7 @@ impl ChioKernel {
     /// Returns the matched grant index and the exact pre-execution budget mutation.
     pub(crate) fn check_and_increment_budget(
         &self,
-        request_id: &str,
+        request: &ToolCallRequest,
         cap: &CapabilityToken,
         matching_grants: &[MatchingGrant<'_>],
     ) -> Result<(usize, PreExecutionBudgetMutation), KernelError> {
@@ -900,8 +900,17 @@ impl ChioKernel {
                 let max_total = grant.max_total_cost.as_ref().map(|m| m.units);
                 let max_per = grant.max_cost_per_invocation.as_ref().map(|m| m.units);
                 let budget_total = max_total.unwrap_or(u64::MAX);
-                let budget_hold_id =
-                    format!("budget-hold:{}:{}:{}", request_id, cap.id, matching.index);
+                let budget_hold_id = if self.execution_nonce_preflight_required(request) {
+                    format!(
+                        "budget-nonce-preflight-hold:{}:{}:{}",
+                        request.request_id, cap.id, matching.index
+                    )
+                } else {
+                    format!(
+                        "budget-hold:{}:{}:{}",
+                        request.request_id, cap.id, matching.index
+                    )
+                };
                 let authorize_event_id = format!("{budget_hold_id}:authorize");
                 let authority = self.local_budget_event_authority();
 
@@ -920,6 +929,9 @@ impl ChioKernel {
                 })?;
                 match decision {
                     BudgetAuthorizeHoldDecision::Authorized(authorized) => {
+                        if authorized.metadata.replayed_event {
+                            return Err(KernelError::BudgetAuthorizeReplay(cap.id.clone()));
+                        }
                         let charge = BudgetChargeResult {
                             grant_index: matching.index,
                             cost_charged: cost_units,
@@ -933,7 +945,10 @@ impl ChioKernel {
                         };
                         return Ok((matching.index, PreExecutionBudgetMutation::Charge(charge)));
                     }
-                    BudgetAuthorizeHoldDecision::Denied(_) => {
+                    BudgetAuthorizeHoldDecision::Denied(denied) => {
+                        if denied.metadata.replayed_event {
+                            return Err(KernelError::BudgetAuthorizeReplay(cap.id.clone()));
+                        }
                         saw_exhausted_budget = true;
                     }
                 }
@@ -1045,6 +1060,7 @@ impl ChioKernel {
     pub(crate) fn finalize_budgeted_tool_output_with_cost_and_metadata(
         &self,
         request: &ToolCallRequest,
+        evaluation_context: &EvaluationReceiptContext,
         output: ToolServerOutput,
         elapsed: Duration,
         timestamp: u64,
@@ -1057,15 +1073,21 @@ impl ChioKernel {
             reported_cost,
             payment_authorization,
             cap,
+            runtime_admission_metadata,
+            budget_reconcile_decision,
         } = cost_context;
         let Some(charge) = charge_result else {
             return self.finalize_tool_output_with_metadata(
-                request,
+                ReceiptResponseContext {
+                    request,
+                    evaluation_context,
+                    timestamp,
+                    matched_grant_index: Some(matched_grant_index),
+                    extra_metadata,
+                },
                 output,
                 elapsed,
-                timestamp,
-                matched_grant_index,
-                extra_metadata,
+                runtime_admission_metadata,
             );
         };
 
@@ -1122,8 +1144,7 @@ impl ChioKernel {
         let payment_already_settled = payment_authorization
             .as_ref()
             .is_some_and(|authorization| authorization.settled);
-        let cost_overrun =
-            !cross_currency_failed && actual_cost > charge.cost_charged && charge.cost_charged > 0;
+        let cost_overrun = !cross_currency_failed && actual_cost > charge.cost_charged;
 
         if cost_overrun {
             warn!(
@@ -1134,25 +1155,28 @@ impl ChioKernel {
             );
         }
 
-        let realized_budget_units =
-            if cross_currency_failed || payment_already_settled || cost_overrun {
-                charge.cost_charged
+        let mut payment_operation = None;
+        let mut payment_result = None;
+        let mut payment_failure_code = None;
+        let mut observed_payment_status = None;
+        if let Some(authorization) = payment_authorization
+            .as_ref()
+            .filter(|authorization| !authorization.settled)
+            .filter(|_| !cross_currency_failed && !cost_overrun)
+        {
+            let adapter = self.payment_adapter.as_ref().ok_or_else(|| {
+                KernelError::Internal(
+                    "payment authorization present without configured adapter".to_string(),
+                )
+            })?;
+            let operation = if actual_cost == 0 {
+                "release"
             } else {
-                actual_cost.min(charge.cost_charged)
+                "capture"
             };
-        let reconcile = self.reconcile_budget_charge(&cap.id, &charge, realized_budget_units)?;
-        let running_committed_cost_units = reconcile.committed_cost_units_after;
-
-        let payment_result = if let Some(authorization) = payment_authorization.as_ref() {
-            if authorization.settled || cross_currency_failed || cost_overrun {
-                None
-            } else {
-                let adapter = self.payment_adapter.as_ref().ok_or_else(|| {
-                    KernelError::Internal(
-                        "payment authorization present without configured adapter".to_string(),
-                    )
-                })?;
-                Some(if actual_cost == 0 {
+            payment_operation = Some(operation);
+            let attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                if actual_cost == 0 {
                     adapter.release(&authorization.authorization_id, &request.request_id)
                 } else {
                     adapter.capture(
@@ -1161,46 +1185,119 @@ impl ChioKernel {
                         &charge.currency,
                         &request.request_id,
                     )
-                })
+                }
+            }));
+            match attempt {
+                Err(_) => {
+                    payment_failure_code = Some("adapter_panic");
+                    warn!(
+                        request_id = %request.request_id,
+                        operation,
+                        "post-execution payment adapter panicked; retaining full authorization exposure"
+                    );
+                }
+                Ok(Err(error)) => {
+                    payment_failure_code = Some(if error.outcome_unknown() {
+                        "rail_outcome_unknown"
+                    } else {
+                        "rail_rejected"
+                    });
+                    warn!(
+                        request_id = %request.request_id,
+                        operation,
+                        reason = %redacted!(&error),
+                        "post-execution payment operation was not acknowledged; retaining full authorization exposure"
+                    );
+                }
+                Ok(Ok(result)) => {
+                    observed_payment_status = Some(result.settlement_status);
+                    let identifier_valid = crate::payment::validate_payment_rail_identifier(
+                        "settlement transaction identifier",
+                        &result.transaction_id,
+                    );
+                    let status_valid = match operation {
+                        "capture" => matches!(
+                            result.settlement_status,
+                            RailSettlementStatus::Captured | RailSettlementStatus::Settled
+                        ),
+                        "release" => result.settlement_status == RailSettlementStatus::Released,
+                        _ => false,
+                    };
+                    if let Err(error) = identifier_valid {
+                        payment_failure_code = Some("invalid_transaction_identifier");
+                        warn!(
+                            request_id = %request.request_id,
+                            operation,
+                            reason = %redacted!(&error),
+                            "post-execution payment acknowledgement had an invalid identifier; retaining full authorization exposure"
+                        );
+                    } else if !status_valid {
+                        payment_failure_code = Some("unexpected_settlement_status");
+                        warn!(
+                            request_id = %request.request_id,
+                            operation,
+                            observed_status = ?result.settlement_status,
+                            "post-execution payment acknowledgement had an unexpected status; retaining full authorization exposure"
+                        );
+                    } else {
+                        payment_result = Some(result);
+                    }
+                }
             }
+        }
+
+        let payment_acknowledged = payment_result.is_some();
+        let may_close_budget_hold = payment_authorization.is_none()
+            || payment_already_settled
+            || cross_currency_failed
+            || cost_overrun
+            || payment_acknowledged;
+        let reconcile = if may_close_budget_hold {
+            let realized_budget_units =
+                if cross_currency_failed || payment_already_settled || cost_overrun {
+                    charge.cost_charged
+                } else {
+                    actual_cost.min(charge.cost_charged)
+                };
+            let reconcile =
+                self.reconcile_budget_charge(&cap.id, &charge, realized_budget_units)?;
+            if budget_reconcile_decision.set(reconcile.clone()).is_err() {
+                return Err(KernelError::Internal(
+                    "budget reconciliation disposition was already recorded".to_string(),
+                ));
+            }
+            Some(reconcile)
         } else {
             None
         };
+        let running_committed_cost_units = reconcile
+            .as_ref()
+            .map_or(charge.new_committed_cost_units, |decision| {
+                decision.committed_cost_units_after
+            });
 
         let settlement = if cross_currency_failed || cost_overrun {
+            let payment_reference = payment_authorization.as_ref().and_then(|authorization| {
+                ReceiptSettlement::from_authorization(authorization).payment_reference
+            });
             ReceiptSettlement {
-                payment_reference: payment_authorization
-                    .as_ref()
-                    .map(|authorization| authorization.authorization_id.clone()),
+                payment_reference,
                 settlement_status: SettlementStatus::Failed,
             }
         } else if let Some(authorization) = payment_authorization.as_ref() {
             if authorization.settled {
                 ReceiptSettlement::from_authorization(authorization)
-            } else if let Some(payment_result) = payment_result.as_ref() {
-                match payment_result {
-                    Ok(result) => ReceiptSettlement::from_payment_result(result),
-                    Err(error) => {
-                        warn!(
-                            request_id = %request.request_id,
-                            reason = %redacted!(&error),
-                            "post-execution payment settlement failed"
-                        );
-                        ReceiptSettlement {
-                            payment_reference: Some(authorization.authorization_id.clone()),
-                            settlement_status: SettlementStatus::Failed,
-                        }
-                    }
-                }
+            } else if let Some(result) = payment_result.as_ref() {
+                ReceiptSettlement::from_payment_result(result)
             } else {
                 warn!(
                     request_id = %request.request_id,
                     authorization_id = %authorization.authorization_id,
-                    "unsettled authorization completed without a payment result"
+                    "unsettled authorization completed without a valid payment acknowledgement"
                 );
                 ReceiptSettlement {
                     payment_reference: Some(authorization.authorization_id.clone()),
-                    settlement_status: SettlementStatus::Failed,
+                    settlement_status: SettlementStatus::Pending,
                 }
             }
         } else {
@@ -1218,13 +1315,30 @@ impl ChioKernel {
         let delegation_depth = cap.delegation_chain.len() as u32;
         let root_budget_holder = cap.issuer.to_hex();
         let (payment_reference, settlement_status) = settlement.into_receipt_parts();
+        let settlement_attempt = payment_operation.map(|operation| {
+            serde_json::json!({
+                "operation": operation,
+                "outcome": if payment_result.is_some() {
+                    "acknowledged"
+                } else {
+                    "unacknowledged"
+                },
+                "failure_code": payment_failure_code,
+                "observed_status": observed_payment_status,
+                "transaction_id": payment_result
+                    .as_ref()
+                    .map(|result| result.transaction_id.as_str())
+            })
+        });
         let payment_breakdown = payment_authorization.as_ref().map(|authorization| {
             serde_json::json!({
                 "payment": {
                     "authorization_id": authorization.authorization_id,
+                    "settlement_transaction_id": authorization.settlement_transaction_id,
                     "adapter_metadata": authorization.metadata,
                     "preauthorized_units": charge.cost_charged,
-                    "recorded_units": recorded_cost
+                    "recorded_units": recorded_cost,
+                    "settlement_attempt": settlement_attempt
                 }
             })
         });
@@ -1261,10 +1375,19 @@ impl ChioKernel {
             }
         };
 
-        let budget_metadata =
-            self.budget_execution_receipt_metadata(&charge, Some(("reconciled", &reconcile)));
-        let merged_extra_metadata =
-            self.merge_budget_receipt_metadata(extra_metadata, budget_metadata);
+        let merged_extra_metadata = if let Some(reconcile) = reconcile.as_ref() {
+            let budget_metadata =
+                self.budget_execution_receipt_metadata(&charge, Some(("reconciled", reconcile)));
+            self.merge_budget_receipt_metadata(extra_metadata, budget_metadata)
+        } else {
+            self.retain_post_dispatch_state(
+                extra_metadata,
+                None,
+                Some(&charge),
+                None,
+                payment_authorization.as_ref(),
+            )
+        };
         let financial_json = Some(serde_json::json!({ "financial": financial_meta }));
         let merged_extra_metadata = merge_metadata_objects(financial_json, merged_extra_metadata);
 
@@ -1272,27 +1395,30 @@ impl ChioKernel {
             ToolServerOutput::Value(_)
             | ToolServerOutput::Stream(ToolServerStreamResult::Complete(_)) => self
                 .build_allow_response_with_metadata(
-                    request,
+                    ReceiptResponseContext {
+                        request,
+                        evaluation_context,
+                        timestamp,
+                        matched_grant_index: Some(charge.grant_index),
+                        extra_metadata: merged_extra_metadata.clone(),
+                    },
                     tool_call_output,
-                    timestamp,
-                    Some(charge.grant_index),
-                    merged_extra_metadata.clone(),
+                    runtime_admission_metadata,
                 ),
             ToolServerOutput::Stream(ToolServerStreamResult::Incomplete { reason, .. }) => self
                 .build_incomplete_response_with_output_and_metadata(
-                    request,
+                    ReceiptResponseContext {
+                        request,
+                        evaluation_context,
+                        timestamp,
+                        matched_grant_index: Some(charge.grant_index),
+                        extra_metadata: self.merge_retained_runtime_admission_metadata(
+                            merged_extra_metadata,
+                            runtime_admission_metadata,
+                        ),
+                    },
                     Some(tool_call_output),
                     &reason,
-                    timestamp,
-                    Some(charge.grant_index),
-                    // The tool ran (a side effect may have committed) but the
-                    // stream ended incomplete, so any runtime-admission lease
-                    // consumed at admission is retained, not released. Mark it
-                    // so the burned lease is recoverable from the receipt,
-                    // matching the RequestIncomplete error arm.
-                    self.mark_runtime_admission_reservations_retained_fail_closed(
-                        merged_extra_metadata,
-                    ),
                 ),
         }
     }
@@ -1378,13 +1504,19 @@ impl ChioKernel {
         &self,
         request: &ToolCallRequest,
         charge_result: Option<&BudgetChargeResult>,
-    ) -> Result<Option<PaymentAuthorization>, PaymentError> {
+        payment_authorization_credential_reserved: bool,
+    ) -> Result<Option<PaymentAuthorization>, crate::payment::PaymentAuthorizationFailure> {
         let Some(charge) = charge_result else {
             return Ok(None);
         };
         let Some(adapter) = self.payment_adapter.as_ref() else {
             return Ok(None);
         };
+        if !payment_authorization_credential_reserved {
+            return Err(crate::payment::PaymentAuthorizationFailure::before_rail(
+                "external payment authorization requires a freshly reserved execution nonce or governed approval",
+            ));
+        }
 
         let governed = request
             .governed_intent
@@ -1404,7 +1536,7 @@ impl ChioKernel {
                             .map(|token| token.id.clone()),
                     })
                     .map_err(|error| {
-                        PaymentError::RailError(format!(
+                        crate::payment::PaymentAuthorizationFailure::before_rail(format!(
                             "failed to hash governed intent for payment authorization: {error}"
                         ))
                     })
@@ -1421,16 +1553,49 @@ impl ChioKernel {
                 })
         });
 
-        adapter
-            .authorize(&PaymentAuthorizeRequest {
-                amount_units: charge.cost_charged,
-                currency: charge.currency.clone(),
-                payer: request.agent_id.clone(),
-                payee: request.server_id.clone(),
-                reference: request.request_id.clone(),
-                governed,
-                commerce,
-            })
-            .map(Some)
+        let authorize_request = PaymentAuthorizeRequest {
+            amount_units: charge.cost_charged,
+            currency: charge.currency.clone(),
+            payer: request.agent_id.clone(),
+            payee: request.server_id.clone(),
+            reference: request.request_id.clone(),
+            governed,
+            commerce,
+        };
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            adapter.authorize(&authorize_request)
+        })) {
+            Ok(Ok(authorization)) => {
+                crate::payment::validate_payment_rail_identifier(
+                    "authorization identifier",
+                    &authorization.authorization_id,
+                )
+                .map_err(crate::payment::PaymentAuthorizationFailure::invalid_authorization_id)?;
+                match authorization.settlement_transaction_id.as_deref() {
+                    Some(transaction_id) => {
+                        crate::payment::validate_payment_rail_identifier(
+                            "settlement transaction identifier",
+                            transaction_id,
+                        )
+                        .map_err(
+                            crate::payment::PaymentAuthorizationFailure::invalid_authorization_id,
+                        )?;
+                    }
+                    None if authorization.settled => {
+                        return Err(
+                            crate::payment::PaymentAuthorizationFailure::invalid_authorization_id(
+                                "settled payment authorization is missing its transaction identifier",
+                            ),
+                        );
+                    }
+                    None => {}
+                }
+                Ok(Some(authorization))
+            }
+            Ok(Err(error)) => {
+                Err(crate::payment::PaymentAuthorizationFailure::from_adapter_error(error))
+            }
+            Err(_) => Err(crate::payment::PaymentAuthorizationFailure::adapter_panicked()),
+        }
     }
 }

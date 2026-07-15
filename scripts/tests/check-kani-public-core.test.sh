@@ -4,8 +4,8 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 
 mapfile -t pr_harnesses < <(scripts/check-kani-public-core.sh --lane pr --list)
-if [[ "${#pr_harnesses[@]}" -ne 24 ]]; then
-  echo "expected 24 public core PR harnesses, found ${#pr_harnesses[@]}" >&2
+if [[ "${#pr_harnesses[@]}" -ne 25 ]]; then
+  echo "expected 25 public core PR harnesses, found ${#pr_harnesses[@]}" >&2
   exit 1
 fi
 
@@ -106,6 +106,33 @@ TOML
 if KANI_PUBLIC_HARNESSES_MANIFEST="${tmp_dir}/unknown-unwinding-check.toml" \
   scripts/check-kani-public-core.sh --lane pr --list >/dev/null 2>&1; then
   echo "unknown unwinding-check harness unexpectedly succeeded" >&2
+  exit 1
+fi
+
+cp formal/rust-verification/kani-public-harnesses.toml \
+  "${tmp_dir}/unknown-lane.toml"
+cat >>"${tmp_dir}/unknown-lane.toml" <<'TOML'
+
+[lanes.pr_typo]
+description = "must not be silently ignored"
+harnesses = []
+TOML
+if KANI_PUBLIC_HARNESSES_MANIFEST="${tmp_dir}/unknown-lane.toml" \
+  scripts/check-kani-public-core.sh --lane all --list >/dev/null 2>&1; then
+  echo "unknown manifest lane unexpectedly succeeded" >&2
+  exit 1
+fi
+
+cp crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs \
+  "${tmp_dir}/unregistered-proof.rs"
+cat >>"${tmp_dir}/unregistered-proof.rs" <<'RS'
+
+#[kani::proof]
+pub fn unregistered_public_harness_fixture() {}
+RS
+if KANI_PUBLIC_HARNESSES_SOURCE="${tmp_dir}/unregistered-proof.rs" \
+  scripts/check-kani-public-core.sh --lane all --list >/dev/null 2>&1; then
+  echo "unregistered public proof unexpectedly succeeded" >&2
   exit 1
 fi
 

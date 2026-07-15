@@ -17,6 +17,7 @@ bash scripts/tests/spec-mutants.test.sh
 ./scripts/check-aeneas-equivalence.sh
 ./scripts/check-rust-verification-gates.sh
 bash scripts/tests/check-creusot-contract-sync.test.sh
+bash scripts/tests/check-rust-verification-gates.test.sh
 bash scripts/tests/check-receipt-trace-bindings.test.sh
 ./scripts/check-adapter-no-bypass.sh
 ./scripts/check-portable-kernel.sh
@@ -24,6 +25,7 @@ bash scripts/tests/check-receipt-trace-bindings.test.sh
 ./scripts/check-proof-report.sh --require-strict
 bash scripts/tests/check-proof-report.test.sh
 bash scripts/tests/lane-gate.test.sh
+bash scripts/tests/formal-workflow-wiring.test.sh
 cargo fmt --all -- --check
 python3 scripts/check-rust-file-hygiene.py
 bash scripts/tests/check-rust-file-hygiene.test.sh

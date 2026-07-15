@@ -24,7 +24,7 @@ pub struct ErrorCodeSpec {
 
 pub const REGISTRY_SCHEMA: &str = "chio.error-urn-registry.v1";
 pub const REGISTRY_VERSION: &str = "0.1.0";
-pub const REGISTRY_UPDATED_AT: &str = "2026-06-19";
+pub const REGISTRY_UPDATED_AT: &str = "2026-07-14";
 
 pub const TRANSACTION_PASSPORT_SCHEMA_UNSUPPORTED: ErrorCodeSpec = ErrorCodeSpec {
     urn: "urn:chio:error:transaction:passport-schema-unsupported",
@@ -591,6 +591,19 @@ pub const KERNEL_INTERNAL_ERROR: ErrorCodeSpec = ErrorCodeSpec {
     consumed_by: &["chio-kernel", "chio-cli"],
 };
 
+pub const KERNEL_RUNTIME_ADMISSION_READINESS_TIMEOUT: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:kernel:runtime-admission-readiness-timeout",
+    domain: Domain::Kernel,
+    severity: Severity::Error,
+    summary: "Runtime admission readiness did not resolve before the dispatch deadline.",
+    help: "Restore the runtime admission dependency or increase the bounded readiness timeout before retrying.",
+    string_code: "CHIO-KERNEL-RUNTIME-ADMISSION-READINESS-TIMEOUT",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-kernel"],
+};
+
 pub const KERNEL_SESSION_NOT_INITIALIZED: ErrorCodeSpec = ErrorCodeSpec {
     urn: "urn:chio:error:kernel:session-not-initialized",
     domain: Domain::Kernel,
@@ -654,6 +667,19 @@ pub const KERNEL_BUDGET_EXHAUSTED: ErrorCodeSpec = ErrorCodeSpec {
     since: "0.1.0",
     stability: "stable",
     consumed_by: &["chio-kernel", "chio-metering", "chio-cli"],
+};
+
+pub const KERNEL_BUDGET_AUTHORIZE_REPLAY: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:kernel:budget-authorize-replay",
+    domain: Domain::Kernel,
+    severity: Severity::Error,
+    summary: "Kernel rejected a replayed budget authorization event.",
+    help: "Retry only with a fresh request identity that produces a unique budget authorization event.",
+    string_code: "CHIO-KERNEL-BUDGET-AUTHORIZE-REPLAY",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "stable",
+    consumed_by: &["chio-kernel", "chio-metering", "chio-control-plane"],
 };
 
 pub const TRANSPORT_PROTOCOL_VERSION_UNSUPPORTED: ErrorCodeSpec = ErrorCodeSpec {
@@ -1429,11 +1455,13 @@ pub static ERROR_CODES: &[ErrorCodeSpec] = &[
     MANIFEST_TOOL_NOT_REGISTERED,
     MANIFEST_RESOURCE_ROOT_DENIED,
     KERNEL_INTERNAL_ERROR,
+    KERNEL_RUNTIME_ADMISSION_READINESS_TIMEOUT,
     KERNEL_SESSION_NOT_INITIALIZED,
     KERNEL_SESSION_ALREADY_EXISTS,
     KERNEL_REQUEST_INCOMPLETE,
     KERNEL_REQUEST_CANCELLED,
     KERNEL_BUDGET_EXHAUSTED,
+    KERNEL_BUDGET_AUTHORIZE_REPLAY,
     TRANSPORT_PROTOCOL_VERSION_UNSUPPORTED,
     TRANSPORT_INVALID_REQUEST_SHAPE,
     TRANSPORT_AUTH_MISSING_OR_INVALID,

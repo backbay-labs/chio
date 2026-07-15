@@ -57,7 +57,14 @@ State, per authority `a` in `AUTHS` and origin authority `o`:
   provenance and local revocation/freshness evidence recorded by installs and
   allow decisions.
 
-Signer pinning and forgery: frames carry their origin, and forgery is rejected under ASSUME-SIG-CHECK / ASSUME-ED25519. `InjectForged` accepts adversarial input at any modeled epoch and `RejectForged` consumes it without changing a high-water mark or authenticity bit. The calibrated signer mutation installs that frame and falsifies `SignerPinnedHighWater`, including when its epoch does not exceed the genuine origin epoch.
+Signer pinning and forgery: frames carry their origin. The concrete
+`scripts/check-distributed-revocation-refinement.sh` gate exercises
+`forged_root_is_rejected_by_pinned_signer`, while `formal/assumptions.toml`
+ASSUME-ED25519 remains the cryptographic primitive boundary. `InjectForged`
+accepts adversarial input at any modeled epoch and `RejectForged` consumes it
+without changing a high-water mark or authenticity bit. The calibrated signer
+mutation installs that frame and falsifies `SignerPinnedHighWater`, including
+when its epoch does not exceed the genuine origin epoch.
 
 ### Rust-to-action map
 

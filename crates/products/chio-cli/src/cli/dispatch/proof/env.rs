@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, time::Duration};
+use std::{collections::BTreeSet, sync::Arc, time::Duration};
 
 use super::CliError;
 use chio_egress_contract::HttpEgressContract;
@@ -8,6 +8,7 @@ const AGENT_WEB_STANDARD_WEBHOOKS_NOW_UNIX_SECONDS_ENV: &str =
     "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_NOW_UNIX_SECONDS";
 const AGENT_WEB_STANDARD_WEBHOOKS_MAX_AGE_SECONDS_ENV: &str =
     "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_MAX_AGE_SECONDS";
+const AGENT_WEB_REPLAY_STORE_PATH_ENV: &str = "CHIO_AGENT_WEB_REPLAY_STORE_PATH";
 const AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV: &str = "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS";
 const AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS_ENV: &str =
     "CHIO_AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS";
@@ -50,7 +51,14 @@ const PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV: &str =
 const PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS_ENV: &str =
     "CHIO_PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS";
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum AgentWebReplayMode {
+    ReadOnly,
+    Consume,
+}
+
 pub(super) fn agent_web_verifier_trust_from_env(
+    replay_mode: AgentWebReplayMode,
 ) -> Result<chio_control_plane::agent_web::AgentWebVerifierTrust, CliError> {
     let mut trust = match std::env::var(AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV) {
         Ok(secret) => chio_control_plane::agent_web::AgentWebVerifierTrust::new()
@@ -68,6 +76,18 @@ pub(super) fn agent_web_verifier_trust_from_env(
         standard_webhooks_replay_window_from_env()?
     {
         trust = trust.with_standard_webhooks_replay_window(now_unix_seconds, max_age_seconds);
+        if replay_mode == AgentWebReplayMode::Consume {
+            let replay_store_path = required_non_empty_env(AGENT_WEB_REPLAY_STORE_PATH_ENV)?;
+            let replay_store =
+                chio_store_sqlite::SqliteAgentWebReplayStore::open(replay_store_path).map_err(
+                    |error| {
+                        CliError::cli_other_error(format!(
+                            "{AGENT_WEB_REPLAY_STORE_PATH_ENV} could not be opened: {error}"
+                        ))
+                    },
+                )?;
+            trust = trust.with_standard_webhooks_replay_store(Arc::new(replay_store));
+        }
     }
     match std::env::var(AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV) {
         Ok(keys) => {
@@ -98,6 +118,21 @@ pub(super) fn agent_web_verifier_trust_from_env(
         }
     }
     Ok(trust)
+}
+
+fn required_non_empty_env(env_name: &str) -> Result<String, CliError> {
+    match std::env::var(env_name) {
+        Ok(value) if !value.trim().is_empty() => Ok(value),
+        Ok(_) => Err(CliError::cli_other_error(format!(
+            "{env_name} must be a non-empty path"
+        ))),
+        Err(std::env::VarError::NotPresent) => Err(CliError::cli_other_error(format!(
+            "{env_name} is required when Standard Webhooks replay protection is enabled"
+        ))),
+        Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
+            "{env_name} must be valid UTF-8"
+        ))),
+    }
 }
 
 fn standard_webhooks_replay_window_from_env() -> Result<Option<(u64, u64)>, CliError> {

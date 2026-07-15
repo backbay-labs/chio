@@ -16,6 +16,14 @@ mod terminal_responses;
 
 pub(crate) use finalization::FinalizeToolOutputCostContext;
 
+pub(crate) struct ReceiptResponseContext<'a> {
+    pub(crate) request: &'a ToolCallRequest,
+    pub(crate) evaluation_context: &'a EvaluationReceiptContext,
+    pub(crate) timestamp: u64,
+    pub(crate) matched_grant_index: Option<usize>,
+    pub(crate) extra_metadata: Option<serde_json::Value>,
+}
+
 #[derive(Clone, Copy)]
 enum ReceiptRecordMode {
     WithFederation,

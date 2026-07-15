@@ -13,8 +13,10 @@ The kernel's single largest recent bug generator is the drop/cancel/unwind surfa
 
 ## Decisions (2026-07-10)
 
-- Post-dispatch monetary unwind failure is modeled nondeterministically and
-  leaves the hold retained. This keeps the retained branch non-vacuous.
+- Every tool-server error observed after `invoke_stream` or `invoke` is polled
+  is outcome-unknown. The model retains monetary exposure, runtime admission,
+  credentials, and child budget; the receipt identifies retained state for
+  operator reconciliation. There is no post-dispatch unwind branch.
 - `RetainedIffAborted` covers ledger disposition only. Receipt metadata
   fidelity remains outside this state model.
 - Admission uses budget mutation (none, monetary hold, or invocation slot) x
@@ -67,13 +69,14 @@ All file:line references below were verified by reading the files this session. 
 | `StartDispatch` | `mark_dispatch_started` (`kernel_drop_guard.rs:130-132`), called at `evaluation/async_evaluation_core.rs:545` and `evaluation/nested_flow_evaluation.rs:505`. |
 | `StreamChunk` | Dispatch in flight; the nested-flow bridge pushes already-signed child receipts into the guard-owned buffer via `child_receipts_mut` (`kernel_drop_guard.rs:115-117`). |
 | `CompleteOk` | Normal exit: `take_child_receipts` drains the buffer (`kernel_drop_guard.rs:122-124`), `disarm` (`kernel_drop_guard.rs:134-136`), allow receipt built in `responses/finalization.rs:54-69`. |
-| `DenyPostInvocation` | Post-invocation output guard blocks after dispatch: deny receipt with retained-reservation marking (`responses/finalization.rs:36-51`, marking call at lines 48-50). Fixed by `58abf33d2`. |
-| `IncompleteStream` | `ToolServerStreamResult::Incomplete` finalization: incomplete receipt with retained marking, both the non-budgeted arm (`responses/finalization.rs:70-85`, marking at 82-84) and the budgeted arm (`validation.rs:1175`). Fixed by `84e98b9d0`. |
+| `DenyPostInvocation` | Post-invocation output guard blocks after dispatch: deny receipt with retained-reservation marking (`responses/finalization.rs`). Fixed by `58abf33d2`. |
+| `IncompleteStream` | Successfully returned structured incomplete output follows normal monetary reconciliation, then emits an incomplete receipt with the required runtime-reservation disposition (`responses/finalization.rs`, `validation.rs`). Fixed by `84e98b9d0`. |
+| `ServerErrorPostDispatch` | Any error returned after polling `invoke_stream` or `invoke` is outcome-unknown. `retain_post_dispatch_state` preserves budget and payment exposure and combines receipt metadata with a separate trusted `runtime_admission_metadata` value. URL elicitation is a signed `Incomplete` outcome, never a retryable release path. |
 | `DropPreDispatch` | `Drop` with `armed && !dispatch_started` (`kernel_drop_guard.rs:385-392`) runs `handle_pre_dispatch_drop` (`kernel_drop_guard.rs:180-308`): monetary unwind, invocation-only budget reversal, runtime-admission release, child-budget release, and one signed fault receipt iff any step failed. Clean unwind is receipt-free. |
-| `DropPostDispatch` | `Drop` with `armed && dispatch_started` (`kernel_drop_guard.rs:379-438`): flush buffered child receipts first (395-401), run best-effort monetary unwind (403-407), mark reservations retained fail-closed (409-419), and append one cancellation receipt (424-437). |
+| `DropPostDispatch` | `Drop` with `armed && dispatch_started`: flush buffered child receipts first, retain all authorization and monetary state through `retain_post_dispatch_state`, and append one cancellation receipt carrying the retained identifiers. |
 | `UnwindStep` (failable) | Each pre-dispatch cleanup step is attempted independently and failures are collected in `handle_pre_dispatch_drop` (`kernel_drop_guard.rs:180-308`); the model gives each step a nondeterministic fail outcome. |
 
-Ledger-touching primitives the model abstracts: `unwind_aborted_monetary_invocation` (`dispatch.rs:125-160`), `release_runtime_admission_reservations` (`dispatch.rs:393-404`), `mark_runtime_admission_reservations_retained_fail_closed` (`dispatch.rs:415-455`), `release_admitted_capability_budget` (`validation.rs:349`), `reverse_pre_execution_budget_mutation` (`validation.rs:887`).
+Ledger-touching primitives the model abstracts: pre-dispatch cleanup through `cleanup_pre_dispatch_state`; post-dispatch retention through `retain_post_dispatch_state`; runtime release and retained marking through the trusted `runtime_admission_metadata` channel; and capability-budget reversal/release in `validation.rs`. Receipt metadata supplied by a tool server is never used as trusted input to runtime-admission release or retention.
 
 ## Design
 
@@ -88,7 +91,7 @@ State (per invocation `i \in Invocations`):
 - `child_buf[i]` in `0..ChildMax`: buffered signed child receipts (only grows while `streaming`).
 - `child_logged`, `parent_receipts`, and `parent_kind_logged`: exact per-invocation receipt cardinality and parent-kind counters. `children_before_parent` is the explicit ordering witness set by the same transition that flushes the child count before incrementing the parent count.
 
-Actions: `Admit(i)`, `StartDispatch(i)`, `StreamChunk(i)` (may increment `child_buf`), `CompleteOk(i)`, `DenyPostInvocation(i)`, `IncompleteStream(i)`, `DropPreDispatch(i)` (with a nondeterministic set of failed unwind steps; failed steps leave their resource `retained` and force a fault receipt), and `DropPostDispatch(i)` (accounts for buffered children before the parent cancellation and retains the lease). The temporal wrapper supplies stuttering. Drop actions are enabled from every armed non-terminal phase: `DropPreDispatch` from `admitted`, `DropPostDispatch` from `dispatch_started` and `streaming`. Two invocations interleave freely, so the checker covers arbitrary ordering of two independently keyed lifecycles. Because the ledger and receipt counters are per-invocation, this model does not claim a shared-store race result.
+Actions: `Admit(i)`, `StartDispatch(i)`, `StreamChunk(i)` (may increment `child_buf`), `CompleteOk(i)`, `DenyPostInvocation(i)`, `IncompleteStream(i)`, `ServerErrorPostDispatch(i)`, `DropPreDispatch(i)` (with a nondeterministic set of failed cleanup steps; failed steps leave their resource `retained` and force a fault receipt), and `DropPostDispatch(i)` (accounts for buffered children before the parent cancellation and retains every outcome-unknown resource). The server-error action includes URL elicitation, cancellation, incomplete, and generic errors after dispatch. The temporal wrapper supplies stuttering. Drop actions are enabled from every armed non-terminal phase: `DropPreDispatch` from `admitted`, `DropPostDispatch` from `dispatch_started` and `streaming`. Two invocations interleave freely, so the checker covers arbitrary ordering of two independently keyed lifecycles. Because the ledger and receipt counters are per-invocation, this model does not claim a shared-store race result.
 
 Shape of the two load-bearing actions:
 
@@ -190,7 +193,7 @@ Recommendation: KEEP it, demoted to the narrow snapshot property, and re-point i
 
 ## Resolved questions
 
-- Should `DropPostDispatch`'s best-effort monetary unwind be allowed to fail in the model (the Rust path logs and continues, `kernel_drop_guard.rs:142-168`)? Decision: yes, as a nondeterministic outcome leaving `hold = retained`, which makes ReservationConservation's `retained` arm non-vacuous on the post-dispatch path too.
+- Should a tool-server error ever trigger post-dispatch monetary unwind? Decision: no. Once either invoke method is polled, the kernel cannot prove that no side effect occurred. The model therefore retains the hold on every returned-error and dropped-future path; only kernel-owned pre-dispatch failures reverse or release state.
 - Does `RetainedIffAborted` need the marked-in-receipt half (metadata marker present iff retained), or is that better left to the runtime disposition test that already checks it (`drop_guard_proptest.rs:133-150`)? Decision: model the ledger state only; receipt-metadata fidelity is [FV-C1](FV-C1-receipt-trace-validation.md) territory.
 - Whether the internal verification record gains a new file per spec or a new section. Decision: add a dated section to `formal/apalache/CONTRACTOR-SIGNOFF.md`, which is already explicitly labeled as an internal, self-authored record.
 

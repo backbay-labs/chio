@@ -8,6 +8,8 @@ trap 'rm -rf "${TMP_DIR}"' EXIT
 
 fixture_root="${TMP_DIR}/fixture"
 mkdir -p \
+  "${fixture_root}/.dst" \
+  "${fixture_root}/.loom" \
   "${fixture_root}/scripts" \
   "${fixture_root}/formal/tla" \
   "${fixture_root}/formal/apalache" \
@@ -20,6 +22,18 @@ printf '%s\n' \
   "| \`RevocationStateCoupled\` | \`formal/tla/RevocationPropagation.tla\` |" \
   "| \`AllowReceiptsBudgetChecked\` | \`formal/apalache/ReceiptBeforeAllow.tla\` |" \
   "| \`DirectParentInClosure\` | \`formal/apalache/RevocationCutCompleteness.tla\` |" \
+  '' \
+  '## Loom interleaving harnesses' \
+  '' \
+  '| Property | Source |' \
+  '|----------|--------|' \
+  '| `loom_fixture` | fixture |' \
+  '' \
+  '## Deterministic simulation harnesses' \
+  '' \
+  '| Property | Source |' \
+  '|----------|--------|' \
+  '| `dst_fixture` | fixture |' \
   > "${fixture_root}/formal/MAPPING.md"
 
 printf '%s\n' \
@@ -30,6 +44,16 @@ printf '%s\n' \
   '    /\ RevocationStateCoupled' \
   '=======================================' \
   > "${fixture_root}/formal/tla/RevocationPropagation.tla"
+
+printf '%s\n' \
+  '---- MODULE DistributedRevocation ----' \
+  '=======================================' \
+  > "${fixture_root}/formal/tla/DistributedRevocation.tla"
+
+printf '%s\n' \
+  '---- MODULE DistributedRevocationTemporal ----' \
+  '===============================================' \
+  > "${fixture_root}/formal/tla/DistributedRevocationTemporal.tla"
 
 printf '%s\n' \
   '---- MODULE ReceiptBeforeAllow ----' \
@@ -55,6 +79,16 @@ printf '%s\n' \
   > "${fixture_root}/formal/apalache/PostAdmissionDropGuard.tla"
 printf '%s\n' '// No Kani harnesses in this fixture.' \
   > "${fixture_root}/crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs"
+printf '%s\n' '# fixture manifest' > "${fixture_root}/.loom/harnesses.toml"
+printf '%s\n' '# fixture manifest' > "${fixture_root}/.dst/harnesses.toml"
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'printf '\''%s\n'\'' '\''fixture::loom_fixture'\''' \
+  > "${fixture_root}/scripts/run-loom-manifest.sh"
+printf '%s\n' \
+  '#!/usr/bin/env bash' \
+  'printf '\''%s\n'\'' '\''fixture::dst_fixture'\''' \
+  > "${fixture_root}/scripts/run-dst.sh"
 
 run_gate() {
   local root="$1"

@@ -681,6 +681,57 @@ fn proof_verify_accepts_agent_web_interop_fixture() {
 }
 
 #[test]
+fn proof_verify_accepts_agent_web_fixture_without_replay_store_path() {
+    let output = chio_with_agent_web_fixture_secret()
+        .env_remove("CHIO_AGENT_WEB_REPLAY_STORE_PATH")
+        .arg("proof")
+        .arg("verify")
+        .arg(agent_web_fixture_path("valid-webhook-cloudevents"))
+        .output()
+        .test_expect("chio command runs");
+
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8(output.stdout).test_expect("stdout is utf8");
+    assert!(stdout.contains("\"verdict\":\"verified\""));
+}
+
+#[test]
+fn proof_verify_is_repeatable_without_creating_a_replay_store() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let replay_store_path = tempdir.path().join("unused-read-only-replay.sqlite");
+    let first = chio_with_agent_web_fixture_secret()
+        .env("CHIO_AGENT_WEB_REPLAY_STORE_PATH", &replay_store_path)
+        .arg("proof")
+        .arg("verify")
+        .arg(agent_web_fixture_path("valid-webhook-cloudevents"))
+        .output()
+        .test_expect("first chio command runs");
+    assert!(
+        first.status.success(),
+        "{}",
+        String::from_utf8_lossy(&first.stderr)
+    );
+
+    let second = chio_with_agent_web_fixture_secret()
+        .env("CHIO_AGENT_WEB_REPLAY_STORE_PATH", &replay_store_path)
+        .arg("proof")
+        .arg("verify")
+        .arg(agent_web_fixture_path("valid-webhook-cloudevents"))
+        .output()
+        .test_expect("second chio command runs");
+    assert!(
+        second.status.success(),
+        "{}",
+        String::from_utf8_lossy(&second.stderr)
+    );
+    assert!(!replay_store_path.exists());
+}
+
+#[test]
 fn proof_verify_rejects_agent_web_mcp_manifest_that_omits_authority_limitation() {
     let tempdir = tempfile::tempdir().test_expect("tempdir");
     let source = workspace_root().join("fixtures/proof-room/agent-web/valid-webhook-cloudevents");

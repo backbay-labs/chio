@@ -415,4 +415,17 @@ impl Guard for WasmGuard {
             }
         }
     }
+
+    fn requires_dispatch_revalidation(&self) -> bool {
+        true
+    }
+
+    fn revalidate_before_dispatch(&self, ctx: &GuardContext) -> Result<(), KernelError> {
+        match self.evaluate(ctx)?.verdict {
+            chio_kernel::Verdict::Allow => Ok(()),
+            chio_kernel::Verdict::Deny | chio_kernel::Verdict::PendingApproval => Err(
+                KernelError::GuardDenied("WASM guard dispatch revalidation denied".to_string()),
+            ),
+        }
+    }
 }

@@ -7,29 +7,33 @@ use dashmap::DashMap;
 use crate::budget_store::BudgetCommitMetadata;
 use crate::*;
 
+mod credential_reservation;
 mod error;
 mod kernel_drop_guard;
 mod kernel_scopes;
 mod kernel_struct;
 #[cfg(debug_assertions)]
 mod ledger_audit;
+mod verified_treaty;
 
 pub use error::{KernelError, StructuredErrorReport};
 pub use kernel_struct::{
     ChioKernel, HybridSigningConfig, KernelConfig, DEFAULT_CHECKPOINT_BATCH_SIZE,
     DEFAULT_MAX_SIZE_BYTES, DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
-    DEFAULT_RETENTION_DAYS,
+    DEFAULT_RETENTION_DAYS, DEFAULT_RUNTIME_ADMISSION_READINESS_TIMEOUT_MS,
+};
+pub use verified_treaty::{
+    FederationTreatyAdmissionBinding, FederationTreatyVerification,
+    VerifiedFederationTreatyMaterial,
 };
 
+pub(crate) use dispatch::{dispatch_admission_error_reason, RuntimeReadinessRevalidation};
 pub(crate) use kernel_drop_guard::{
-    dispatch_error_precedes_tool_side_effect, reserved_runtime_admission_ids,
-    PostAdmissionDropGuard, PostAdmissionReceiptContext,
+    PostAdmissionDropGuard, PostAdmissionReceiptContext, PreDispatchCleanup,
+    PreDispatchCleanupOutcome,
 };
 pub(crate) use kernel_scopes::{
-    current_scoped_receipt_federation_admission, current_scoped_receipt_tenant_id,
-    extract_tenant_id_from_auth_context, scope_receipt_federation_admission,
-    scope_receipt_tenant_id, ReceiptFederationAdmission, ScopedKernelReceiptFederationAdmission,
-    ScopedKernelReceiptTenantId,
+    extract_tenant_id_from_auth_context, EvaluationReceiptContext, ReceiptFederationAdmission,
 };
 pub(crate) use kernel_struct::{capability_crypto_floor, receipt_crypto_floor};
 
@@ -58,21 +62,65 @@ pub struct RuntimeAdmissionContext<'a> {
     pub local_kernel_id: String,
 }
 
+/// Non-consuming context for the final runtime-admission check immediately
+/// before payment authorization, nonce consumption, and tool dispatch.
+pub struct RuntimeAdmissionRevalidationContext<'a> {
+    pub request: &'a ToolCallRequest,
+    pub admission_metadata: Option<&'a serde_json::Value>,
+    pub now_unix_secs: u64,
+    pub now_unix_ms: u64,
+    pub matched_grant_index: Option<usize>,
+    pub local_kernel_id: String,
+}
+
+/// Opaque identifier for one in-flight runtime-admission readiness poll.
+/// Concurrent evaluations receive distinct tokens even when request IDs are
+/// equal, so unregistering one wait cannot remove another wait's state.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RuntimeAdmissionReadinessToken(u64);
+
+impl RuntimeAdmissionReadinessToken {
+    #[must_use]
+    pub fn as_u64(self) -> u64 {
+        self.0
+    }
+}
+
 /// Decision returned by a runtime admission hook.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RuntimeAdmissionDecision {
     pub allowed: bool,
     pub reason: Option<String>,
     pub metadata: Option<serde_json::Value>,
+    pub(crate) verified_treaty_material: Option<VerifiedFederationTreatyMaterial>,
 }
 
 impl RuntimeAdmissionDecision {
+    #[must_use]
+    pub fn has_verified_treaty_material(&self) -> bool {
+        self.verified_treaty_material.is_some()
+    }
+
     #[must_use]
     pub fn allow(metadata: Option<serde_json::Value>) -> Self {
         Self {
             allowed: true,
             reason: None,
             metadata,
+            verified_treaty_material: None,
+        }
+    }
+
+    #[must_use]
+    pub fn allow_with_verified_treaty_material(
+        metadata: Option<serde_json::Value>,
+        verified_treaty_material: VerifiedFederationTreatyMaterial,
+    ) -> Self {
+        Self {
+            allowed: true,
+            reason: None,
+            metadata,
+            verified_treaty_material: Some(verified_treaty_material),
         }
     }
 
@@ -82,6 +130,7 @@ impl RuntimeAdmissionDecision {
             allowed: false,
             reason: Some(reason.into()),
             metadata,
+            verified_treaty_material: None,
         }
     }
 }
@@ -110,25 +159,56 @@ pub trait RuntimeAdmissionHook: Send + Sync {
         std::task::Poll::Ready(())
     }
 
+    /// Token-aware readiness poll. Hooks retaining per-wait state should
+    /// override this method; the default preserves the original readiness API.
+    fn poll_ready_before_dispatch_with_token(
+        &self,
+        request: &ToolCallRequest,
+        _token: RuntimeAdmissionReadinessToken,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<()> {
+        self.poll_ready_before_dispatch(request, cx)
+    }
+
+    /// Return true when mutable admission state must be checked even if the
+    /// readiness poll completes immediately. The default preserves compatibility
+    /// for hooks that only implement the original admission callback.
+    fn requires_dispatch_revalidation(&self) -> bool {
+        false
+    }
+
+    /// Revalidate mutable admission state without acquiring another
+    /// reservation. The kernel invokes this when
+    /// [`Self::requires_dispatch_revalidation`] returns true, after readiness
+    /// has returned `Pending` at least once, and after payment authorization or
+    /// any single-use dispatch credential reservation. Hooks used by those
+    /// paths must implement a non-consuming check; the default denies.
+    fn revalidate_before_dispatch(
+        &self,
+        _context: &RuntimeAdmissionRevalidationContext<'_>,
+    ) -> Result<(), KernelError> {
+        Err(KernelError::Internal(
+            "runtime admission hook does not support readiness revalidation".to_string(),
+        ))
+    }
+
+    /// Remove request-scoped readiness state, including any retained waker.
+    /// This callback must be idempotent and must not release the admission
+    /// reservation. The kernel invokes it on readiness success, timeout, and
+    /// cancellation of the evaluation future.
+    fn unregister_ready_before_dispatch(
+        &self,
+        _request: &ToolCallRequest,
+        _token: RuntimeAdmissionReadinessToken,
+    ) {
+    }
+
+    /// Release reservations from an allowed decision when the kernel exits
+    /// before dispatch. A denied decision owns the final disposition of any
+    /// reservations it acquired and is never released again by the kernel.
     fn release_reserved(&self, _metadata: &serde_json::Value) -> Result<(), KernelError> {
         Ok(())
     }
-}
-
-#[derive(Debug, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-struct KernelFederationTreatyDsseMetadata {
-    capability_lease_ref: chio_federation::bilateral_dsse::CapabilityLeaseRef,
-    policy_evaluation_summary: chio_federation::bilateral_dsse::PolicyEvaluationSummary,
-    #[serde(default)]
-    governance_receipt_ref: Option<chio_federation::bilateral_dsse::GovernanceReceiptRef>,
-    #[serde(default)]
-    consistency_anchor: Option<String>,
-    #[serde(default)]
-    consistency_model: Option<String>,
-    #[serde(default)]
-    cross_org_visibility: Option<String>,
-    treaty_binding_ref: chio_federation::bilateral_dsse::TreatyBindingRef,
 }
 
 #[derive(Debug)]
@@ -361,6 +441,33 @@ pub trait Guard: Send + Sync {
     /// Returns an allow or deny decision with optional evidence, or `Err` on
     /// internal failure (which the kernel treats as deny).
     fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError>;
+
+    /// Return true when mutable guard state must be checked immediately before
+    /// dispatch even if runtime readiness never suspended. The default preserves
+    /// compatibility for guards without a non-consuming revalidation path.
+    fn requires_dispatch_revalidation(&self) -> bool {
+        false
+    }
+
+    /// Run the opt-in immediate dispatch check. Composite guards should
+    /// override this method and apply it recursively to their children.
+    fn revalidate_required_before_dispatch(&self, ctx: &GuardContext) -> Result<(), KernelError> {
+        if self.requires_dispatch_revalidation() {
+            self.revalidate_before_dispatch(ctx)
+        } else {
+            Ok(())
+        }
+    }
+
+    /// Revalidate mutable guard state without consuming a second quota,
+    /// approval, or rate-limit token. The kernel invokes this after readiness
+    /// has suspended or when [`Self::requires_dispatch_revalidation`] returns
+    /// true. Guards used by either path must override this method.
+    fn revalidate_before_dispatch(&self, _ctx: &GuardContext) -> Result<(), KernelError> {
+        Err(KernelError::GuardDenied(
+            "guard does not support readiness revalidation".to_string(),
+        ))
+    }
 }
 
 /// Context passed to guards during evaluation.
@@ -507,6 +614,7 @@ pub(crate) struct MatchingGrant<'a> {
 /// Result of a monetary budget charge attempt.
 ///
 /// Carries the accounting info needed to populate FinancialReceiptMetadata.
+#[derive(Clone)]
 pub(crate) struct BudgetChargeResult {
     grant_index: usize,
     cost_charged: u64,
@@ -519,12 +627,6 @@ pub(crate) struct BudgetChargeResult {
 }
 
 impl BudgetChargeResult {
-    /// The rail/store hold id for the monetary budget charge, so a cleanup
-    /// fault can name the stuck budget hold that needs manual recovery.
-    pub(crate) fn budget_hold_id(&self) -> &str {
-        &self.budget_hold_id
-    }
-
     fn reverse_event_id(&self) -> String {
         format!("{}:reverse", self.budget_hold_id)
     }
@@ -551,13 +653,6 @@ impl PreExecutionBudgetMutation {
     }
 
     fn charge_result(&self) -> Option<&BudgetChargeResult> {
-        match self {
-            Self::Charge(charge) => Some(charge),
-            Self::None | Self::Invocation { .. } => None,
-        }
-    }
-
-    fn into_charge_result(self) -> Option<BudgetChargeResult> {
         match self {
             Self::Charge(charge) => Some(charge),
             Self::None | Self::Invocation { .. } => None,
@@ -623,7 +718,6 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
             None,
             false,
         )?;
-
         let result = (|| {
             let session = session_from_map(self.sessions, &child_context.session_id)?;
             session.validate_context(&child_context)?;
@@ -668,7 +762,6 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
             None,
             true,
         )?;
-
         let result = (|| {
             validate_sampling_request_in_sessions(
                 self.sessions,
@@ -709,7 +802,6 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
             None,
             true,
         )?;
-
         let result = (|| {
             validate_elicitation_request_in_sessions(
                 self.sessions,
@@ -992,6 +1084,7 @@ fn tool_grant_covers_target(grant: &ToolGrant, server_id: &str, tool_name: &str)
 
 /// Parameters for building a receipt.
 pub(crate) struct ReceiptParams<'a> {
+    evaluation_context: &'a EvaluationReceiptContext,
     request_id: Option<&'a str>,
     capability_id: &'a str,
     tool_name: &'a str,
@@ -1010,11 +1103,9 @@ pub(crate) struct ReceiptParams<'a> {
     /// `Mediated` (the safest baseline) when integration adapters do not
     /// override it.
     trust_level: chio_core::receipt::kinds::TrustLevel,
-    /// Multi-tenant receipt isolation: explicit tenant tag for
-    /// this receipt. `None` in virtually every call site -- the evaluate
-    /// path plumbs the resolved tenant through
-    /// [`scope_receipt_tenant_id`] so `build_and_sign_receipt` can pick it
-    /// up without adding a parameter to every builder signature.
+    /// Multi-tenant receipt isolation: explicit tenant tag for this receipt.
+    /// The evaluation context carries the authenticated session tenant through
+    /// every response builder without process-global or thread-local state.
     ///
     /// MUST be derived from session / auth context, not caller-provided
     /// request fields (see `STRUCTURAL-SECURITY-FIXES.md` section 6).

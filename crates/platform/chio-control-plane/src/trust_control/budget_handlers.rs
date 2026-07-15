@@ -130,7 +130,7 @@ pub(crate) async fn handle_try_charge_cost(
         Ok(store) => store,
         Err(response) => return response,
     };
-    let allowed = match store.try_charge_cost_with_ids_and_authority(
+    let outcome = match store.try_charge_cost_with_ids_and_authority_outcome(
         &payload.capability_id,
         payload.grant_index,
         payload.max_invocations,
@@ -141,12 +141,14 @@ pub(crate) async fn handle_try_charge_cost(
         payload.event_id.as_deref(),
         authority.as_ref(),
     ) {
-        Ok(allowed) => allowed,
+        Ok(outcome) => outcome,
         Err(error) => {
             return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
         }
     };
-    if allowed {
+    let allowed = outcome.allowed;
+    let replayed_event = outcome.replayed_event;
+    if allowed && !replayed_event {
         let committed_response = match store.get_usage(&payload.capability_id, payload.grant_index)
         {
             Ok(Some(usage)) => Some((
@@ -154,6 +156,7 @@ pub(crate) async fn handle_try_charge_cost(
                     capability_id: payload.capability_id.clone(),
                     grant_index: payload.grant_index,
                     allowed,
+                    replayed_event,
                     invocation_count: Some(usage.invocation_count),
                     total_cost_exposed: Some(usage.total_cost_exposed),
                     total_cost_realized_spend: Some(usage.total_cost_realized_spend),
@@ -214,6 +217,7 @@ pub(crate) async fn handle_try_charge_cost(
                     capability_id: payload.capability_id.clone(),
                     grant_index: payload.grant_index,
                     allowed,
+                    replayed_event,
                     invocation_count: usage.as_ref().map(|usage| usage.invocation_count),
                     total_cost_exposed: usage.as_ref().map(|usage| usage.total_cost_exposed),
                     total_cost_realized_spend: usage

@@ -497,6 +497,43 @@ fn budget_store_try_charge_cost_with_ids_is_idempotent_sqlite() {
 }
 
 #[test]
+fn budget_store_atomic_authorize_outcome_marks_exact_sqlite_replay() {
+    let path = unique_db_path("chio-charge-cost-replay-outcome");
+    let store = SqliteBudgetStore::open(&path).unwrap();
+    let authority = authority("kernel:test-authority", "single-node", 7);
+
+    let authorize = || {
+        store
+            .try_charge_cost_with_ids_and_authority_outcome(
+                "cap-replay-outcome",
+                0,
+                Some(10),
+                100,
+                Some(200),
+                Some(1_000),
+                Some("hold-replay-outcome"),
+                Some("hold-replay-outcome:authorize"),
+                Some(&authority),
+            )
+            .unwrap()
+    };
+
+    let first = authorize();
+    assert!(first.allowed);
+    assert!(!first.replayed_event);
+
+    let replay = authorize();
+    assert!(replay.allowed);
+    assert!(replay.replayed_event);
+
+    let usage = store.get_usage("cap-replay-outcome", 0).unwrap().unwrap();
+    assert_eq!(usage.invocation_count, 1);
+    assert_usage_totals(&usage, 100, 0);
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn budget_store_settle_with_ids_is_idempotent_and_append_only_sqlite() {
     let path = unique_db_path("chio-settle-charge-idempotent");
     let store = SqliteBudgetStore::open(&path).unwrap();

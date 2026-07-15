@@ -43,6 +43,7 @@ if [[ ! -f "$MANIFEST" ]]; then
 fi
 
 HARNESSES=$(python3 - "$MANIFEST" "$LANE_FILTER" "$LIST_ONLY" <<'PY'
+import os
 import re
 import sys
 from pathlib import Path
@@ -74,9 +75,29 @@ if data.get("crate") != "chio-kernel-core":
 if data.get("script") != "scripts/check-kani-public-core.sh":
     raise SystemExit("check-kani-public-core.sh: manifest script path does not match")
 
+expected_top_level = {
+    "schema",
+    "crate",
+    "script",
+    "unwinding_checks",
+    "harness_groups",
+    "covered_symbols",
+    "lanes",
+}
+if set(data) != expected_top_level:
+    raise SystemExit(
+        "check-kani-public-core.sh: manifest top-level keys must be exactly "
+        f"{sorted(expected_top_level)}"
+    )
+
 lanes = data.get("lanes")
 if not isinstance(lanes, dict):
     raise SystemExit("check-kani-public-core.sh: manifest has no lanes table")
+expected_lanes = {"pr", "nightly_only"}
+if set(lanes) != expected_lanes:
+    raise SystemExit(
+        "check-kani-public-core.sh: manifest lanes must be exactly pr and nightly_only"
+    )
 
 unwinding_checks = data.get("unwinding_checks", [])
 if not isinstance(unwinding_checks, list) or not all(
@@ -88,13 +109,22 @@ if not isinstance(unwinding_checks, list) or not all(
 if len(set(unwinding_checks)) != len(unwinding_checks):
     raise SystemExit("check-kani-public-core.sh: duplicate unwinding_checks entry")
 
-selected_lanes = ("pr", "nightly_only") if lane_filter == "all" else (lane_filter,)
-harnesses = []
+all_harnesses = []
+lane_harnesses_by_name = {}
 seen = set()
-for lane_name in selected_lanes:
-    lane = lanes.get(lane_name)
+for lane_name in ("pr", "nightly_only"):
+    lane = lanes[lane_name]
     if not isinstance(lane, dict):
-        raise SystemExit(f"check-kani-public-core.sh: missing lanes.{lane_name}")
+        raise SystemExit(f"check-kani-public-core.sh: lanes.{lane_name} must be a table")
+    if set(lane) != {"description", "harnesses"}:
+        raise SystemExit(
+            f"check-kani-public-core.sh: lanes.{lane_name} must contain only "
+            "description and harnesses"
+        )
+    if not isinstance(lane.get("description"), str) or not lane["description"]:
+        raise SystemExit(
+            f"check-kani-public-core.sh: lanes.{lane_name}.description must be non-empty"
+        )
     lane_harnesses = lane.get("harnesses")
     if not isinstance(lane_harnesses, list) or not all(
         isinstance(name, str) and name for name in lane_harnesses
@@ -108,12 +138,25 @@ for lane_name in selected_lanes:
         if name in seen:
             raise SystemExit(f"check-kani-public-core.sh: duplicate harness {name}")
         seen.add(name)
-        harnesses.append(name)
+        all_harnesses.append(name)
+    lane_harnesses_by_name[lane_name] = lane_harnesses
+
+selected_lanes = ("pr", "nightly_only") if lane_filter == "all" else (lane_filter,)
+harnesses = [
+    name
+    for lane_name in selected_lanes
+    for name in lane_harnesses_by_name[lane_name]
+]
 
 if not harnesses and not list_only:
     raise SystemExit(f"check-kani-public-core.sh: lane {lane_filter} is empty")
 
-source_path = Path("crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs")
+source_path = Path(
+    os.environ.get(
+        "KANI_PUBLIC_HARNESSES_SOURCE",
+        "crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs",
+    )
+)
 try:
     source = source_path.read_text(encoding="utf-8")
 except OSError as error:
@@ -121,21 +164,24 @@ except OSError as error:
         f"check-kani-public-core.sh: cannot read {source_path}: {error}"
     ) from error
 
-missing = [
-    name
-    for name in harnesses
-    if re.search(rf"\bfn\s+{re.escape(name)}\s*\(", source) is None
-]
-if missing:
-    raise SystemExit(f"check-kani-public-core.sh: missing harness functions: {missing}")
+proof_functions = re.findall(
+    r"(?m)^\s*#\s*\[\s*kani::proof\s*\]\s*"
+    r"(?:#\s*\[[^\n]+\]\s*)*"
+    r"(?:pub(?:\([^)]*\))?\s+)?fn\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(",
+    source,
+)
+if len(proof_functions) != len(set(proof_functions)):
+    raise SystemExit("check-kani-public-core.sh: duplicate #[kani::proof] function")
+known_harnesses = set(all_harnesses)
+source_harnesses = set(proof_functions)
+missing_from_source = sorted(known_harnesses - source_harnesses)
+unregistered = sorted(source_harnesses - known_harnesses)
+if missing_from_source or unregistered:
+    raise SystemExit(
+        "check-kani-public-core.sh: source and registry harness sets differ: "
+        f"missing_from_source={missing_from_source} unregistered={unregistered}"
+    )
 
-known_harnesses = {
-    name
-    for lane in lanes.values()
-    if isinstance(lane, dict)
-    for name in lane.get("harnesses", [])
-    if isinstance(name, str)
-}
 unknown_checks = sorted(set(unwinding_checks) - known_harnesses)
 if unknown_checks:
     raise SystemExit(

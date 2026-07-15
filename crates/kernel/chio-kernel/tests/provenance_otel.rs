@@ -171,7 +171,7 @@ fn receipt_rejects_all_zero_otel_ids() -> Result<(), Box<dyn Error>> {
     let (kernel, capability) = kernel_and_capability()?;
     let request = make_request("req-provenance-zero-otel", &capability);
 
-    let error = match kernel.evaluate_tool_call_blocking_with_metadata(
+    let response = kernel.evaluate_tool_call_blocking_with_metadata(
         &request,
         Some(serde_json::json!({
             "provenance": {
@@ -181,20 +181,20 @@ fn receipt_rejects_all_zero_otel_ids() -> Result<(), Box<dyn Error>> {
                 }
             }
         })),
-    ) {
-        Ok(_) => {
-            return Err(
-                std::io::Error::other("zero trace id unexpectedly produced a response").into(),
-            );
-        }
-        Err(error) => error,
-    };
+    )?;
 
-    assert!(
-        error.to_string().contains("trace_id"),
-        "unexpected error: {error}"
-    );
-    assert_eq!(kernel.receipt_log().len(), 0);
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert!(response
+        .reason
+        .as_deref()
+        .is_some_and(|reason| reason.contains("provenance metadata rejected")));
+    assert!(response.receipt.verify_signature()?);
+    assert!(response
+        .receipt
+        .metadata
+        .as_ref()
+        .is_none_or(|metadata| metadata.get("provenance").is_none()));
+    assert_eq!(kernel.receipt_log().len(), 1);
 
     Ok(())
 }
@@ -204,7 +204,7 @@ fn receipt_rejects_null_supply_chain() -> Result<(), Box<dyn Error>> {
     let (kernel, capability) = kernel_and_capability()?;
     let request = make_request("req-provenance-null-supply-chain", &capability);
 
-    let error = match kernel.evaluate_tool_call_blocking_with_metadata(
+    let response = kernel.evaluate_tool_call_blocking_with_metadata(
         &request,
         Some(serde_json::json!({
             "provenance": {
@@ -215,21 +215,20 @@ fn receipt_rejects_null_supply_chain() -> Result<(), Box<dyn Error>> {
                 "supply_chain": null
             }
         })),
-    ) {
-        Ok(_) => {
-            return Err(std::io::Error::other(
-                "null supply_chain unexpectedly produced a response",
-            )
-            .into());
-        }
-        Err(error) => error,
-    };
+    )?;
 
-    assert!(
-        error.to_string().contains("supply_chain"),
-        "unexpected error: {error}"
-    );
-    assert_eq!(kernel.receipt_log().len(), 0);
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert!(response
+        .reason
+        .as_deref()
+        .is_some_and(|reason| reason.contains("provenance metadata rejected")));
+    assert!(response.receipt.verify_signature()?);
+    assert!(response
+        .receipt
+        .metadata
+        .as_ref()
+        .is_none_or(|metadata| metadata.get("provenance").is_none()));
+    assert_eq!(kernel.receipt_log().len(), 1);
 
     Ok(())
 }
@@ -239,7 +238,7 @@ fn receipt_rejects_non_w3c_otel_trace_id() -> Result<(), Box<dyn Error>> {
     let (kernel, capability) = kernel_and_capability()?;
     let request = make_request("req-provenance-invalid-otel", &capability);
 
-    let error = match kernel.evaluate_tool_call_blocking_with_metadata(
+    let response = kernel.evaluate_tool_call_blocking_with_metadata(
         &request,
         Some(serde_json::json!({
             "provenance": {
@@ -249,21 +248,20 @@ fn receipt_rejects_non_w3c_otel_trace_id() -> Result<(), Box<dyn Error>> {
                 }
             }
         })),
-    ) {
-        Ok(_) => {
-            return Err(std::io::Error::other(
-                "invalid receipt provenance unexpectedly produced a response",
-            )
-            .into());
-        }
-        Err(error) => error,
-    };
+    )?;
 
-    assert!(
-        error.to_string().contains("trace_id"),
-        "unexpected error: {error}"
-    );
-    assert_eq!(kernel.receipt_log().len(), 0);
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert!(response
+        .reason
+        .as_deref()
+        .is_some_and(|reason| reason.contains("provenance metadata rejected")));
+    assert!(response.receipt.verify_signature()?);
+    assert!(response
+        .receipt
+        .metadata
+        .as_ref()
+        .is_none_or(|metadata| metadata.get("provenance").is_none()));
+    assert_eq!(kernel.receipt_log().len(), 1);
 
     Ok(())
 }

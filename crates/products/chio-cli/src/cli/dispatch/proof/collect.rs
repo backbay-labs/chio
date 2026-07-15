@@ -91,7 +91,24 @@ pub(super) fn seal_collected_proof_bundle(
     kind: ProofCollectKind,
     bundle: &Path,
 ) -> Result<serde_json::Value, CliError> {
-    seal_collected_proof_bundle_with_fixture_id(kind, bundle, None)
+    seal_collected_proof_bundle_with_fixture_id(
+        kind,
+        bundle,
+        None,
+        SealVerificationMode::ConsumeReplays,
+    )
+}
+
+pub(super) fn seal_generated_fixture_bundle(
+    kind: ProofCollectKind,
+    bundle: &Path,
+) -> Result<serde_json::Value, CliError> {
+    seal_collected_proof_bundle_with_fixture_id(
+        kind,
+        bundle,
+        None,
+        SealVerificationMode::IsolatedFixture,
+    )
 }
 
 pub(super) fn seal_collected_public_fixture_bundle(
@@ -99,16 +116,40 @@ pub(super) fn seal_collected_public_fixture_bundle(
     bundle: &Path,
     fixture_id: &str,
 ) -> Result<serde_json::Value, CliError> {
-    seal_collected_proof_bundle_with_fixture_id(kind, bundle, Some(fixture_id))
+    seal_collected_proof_bundle_with_fixture_id(
+        kind,
+        bundle,
+        Some(fixture_id),
+        SealVerificationMode::IsolatedFixture,
+    )
+}
+
+#[derive(Clone, Copy)]
+enum SealVerificationMode {
+    ConsumeReplays,
+    IsolatedFixture,
 }
 
 fn seal_collected_proof_bundle_with_fixture_id(
     kind: ProofCollectKind,
     bundle: &Path,
     public_fixture_id: Option<&str>,
+    verification_mode: SealVerificationMode,
 ) -> Result<serde_json::Value, CliError> {
     let passport_path = bundle.join("transaction-passport.json");
-    let report = verify_transaction_passport_file(&passport_path)?;
+    let report = match verification_mode {
+        SealVerificationMode::ConsumeReplays => {
+            let read_only_report = verify_transaction_passport_file(&passport_path)?;
+            enforce_collect_kind_requirements(kind, &read_only_report)?;
+            super::verify_transaction_passport_file_and_consume_agent_web_replays(
+                &passport_path,
+                &read_only_report,
+            )?
+        }
+        SealVerificationMode::IsolatedFixture => {
+            fixture::verify_fixture_transaction_passport_file(&passport_path)?
+        }
+    };
     enforce_collect_kind_requirements(kind, &report)?;
     let report = collected_verifier_report(bundle, report)?;
     let verifier_report_path = bundle.join("verifier/report.json");
@@ -508,7 +549,7 @@ fn write_catalog_negative_cases(
         let expected_failure = fixture::proof_fixture_negative_expected_failure(&descriptor)?;
         let observed_failure =
             fixture::with_proof_fixture_negative_verifier_context(&descriptor, || {
-                match verify_transaction_passport_file(&passport_path) {
+                match fixture::verify_fixture_transaction_passport_file(&passport_path) {
                     Ok(_) => Err(CliError::cli_other_error(format!(
                         "catalog negative proof fixture unexpectedly verified: {}",
                         descriptor.id

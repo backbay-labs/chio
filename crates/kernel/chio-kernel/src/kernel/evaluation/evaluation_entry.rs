@@ -80,8 +80,13 @@ impl ChioKernel {
         reason: &str,
         extra_metadata: Option<serde_json::Value>,
     ) -> Result<ToolCallResponse, KernelError> {
+        let evaluation_context = EvaluationReceiptContext::default();
+        let sanitized_metadata = sanitize_external_receipt_metadata(extra_metadata);
+        let extra_metadata = normalize_external_receipt_metadata(sanitized_metadata.clone())
+            .unwrap_or_else(|_| strip_external_receipt_provenance(sanitized_metadata));
         self.build_deny_response_with_metadata(
             request,
+            &evaluation_context,
             reason,
             current_unix_timestamp(),
             None,

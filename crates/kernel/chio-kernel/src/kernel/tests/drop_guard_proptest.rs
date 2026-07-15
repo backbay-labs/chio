@@ -3,8 +3,8 @@
 // present, absent}, a directly constructed PostAdmissionDropGuard must
 // obey the fail-closed disposition table:
 //   - post-dispatch drop: exactly one Cancelled terminal receipt;
-//     reservations retained (never released); the retained marker present
-//     iff a chio_runtime admission block was present;
+//     reservations and monetary exposure retained (never released); the
+//     reservation marker present iff a chio_runtime admission block was present;
 //   - pre-dispatch drop: no receipt; reservations released iff a
 //     chio_runtime admission block was present.
 
@@ -50,7 +50,8 @@ impl RuntimeAdmissionHook for CountingReleaseRuntimeAdmissionHook {
 fn assert_drop_guard_budget_conservation(
     kernel: &ChioKernel,
     capability_id: &str,
-    expect_monetary_terminal: bool,
+    monetary: bool,
+    dispatch_started: bool,
 ) -> Result<(), TestCaseError> {
     let (events, usage) = kernel
         .with_budget_store(|store| {
@@ -128,14 +129,8 @@ fn assert_drop_guard_budget_conservation(
             }
         }
         prop_assert_eq!(admitted, outstanding + committed + released);
-        prop_assert_eq!(
-            u128::from(event.total_cost_exposed_after),
-            outstanding
-        );
-        prop_assert_eq!(
-            u128::from(event.total_cost_realized_spend_after),
-            committed
-        );
+        prop_assert_eq!(u128::from(event.total_cost_exposed_after), outstanding);
+        prop_assert_eq!(u128::from(event.total_cost_realized_spend_after), committed);
         prop_assert_eq!(u64::from(event.invocation_count_after), invocations);
     }
 
@@ -143,20 +138,26 @@ fn assert_drop_guard_budget_conservation(
         Some(usage) => {
             prop_assert_eq!(u64::from(usage.invocation_count), invocations);
             prop_assert_eq!(u128::from(usage.total_cost_exposed), outstanding);
-            prop_assert_eq!(
-                u128::from(usage.total_cost_realized_spend),
-                committed
-            );
+            prop_assert_eq!(u128::from(usage.total_cost_realized_spend), committed);
         }
         None => prop_assert_eq!((invocations, outstanding, committed), (0, 0, 0)),
     }
-    if expect_monetary_terminal {
+    if monetary {
         prop_assert_eq!(drop_hold_authorizations, 1);
-        prop_assert_eq!(drop_hold_reversals, 1);
         prop_assert_eq!(drop_hold_other_terminal_mutations, 0);
-        prop_assert_eq!(outstanding, 0, "dropped monetary hold remained open");
-        prop_assert_eq!(committed, 0, "dropped monetary hold was charged");
-        prop_assert_eq!(released, admitted);
+        if dispatch_started {
+            prop_assert_eq!(drop_hold_reversals, 0);
+            prop_assert_eq!(outstanding, admitted);
+            prop_assert_eq!(committed, 0);
+            prop_assert_eq!(released, 0);
+            prop_assert_eq!(invocations, 1);
+        } else {
+            prop_assert_eq!(drop_hold_reversals, 1);
+            prop_assert_eq!(outstanding, 0);
+            prop_assert_eq!(committed, 0);
+            prop_assert_eq!(released, admitted);
+            prop_assert_eq!(invocations, 0);
+        }
     } else {
         prop_assert_eq!(drop_hold_authorizations, 0);
         prop_assert_eq!(drop_hold_reversals, 0);
@@ -201,10 +202,7 @@ fn drop_guard_disposition_table() -> Result<(), TestCaseError> {
         let cap = make_capability(
             &kernel,
             &agent_kp,
-            make_scope(vec![make_grant(
-                "srv-chio-runtime",
-                "destructive_update",
-            )]),
+            make_scope(vec![make_grant("srv-chio-runtime", "destructive_update")]),
             300,
         );
         let request = make_request_with_arguments(
@@ -216,15 +214,12 @@ fn drop_guard_disposition_table() -> Result<(), TestCaseError> {
         );
         let admission = kernel.run_runtime_admission_hook(&request, None, 0, 0, Some(0));
         prop_assert!(admission.allowed);
-        prop_assert_eq!(
-            admissions.load(Ordering::SeqCst),
-            u64::from(lease_present)
-        );
-        let extra_metadata = admission.metadata;
+        prop_assert_eq!(admissions.load(Ordering::SeqCst), u64::from(lease_present));
+        let runtime_admission_metadata = admission.metadata;
+        let extra_metadata = runtime_admission_metadata.clone();
         if monetary {
-            // A monetary drop reverses a real hold; authorize one so the
-            // pre-dispatch unwind is clean. A failed reversal records a fault
-            // receipt because cleanup did not complete.
+            // Authorize a real hold so pre-dispatch cleanup can reverse it and
+            // post-dispatch cleanup can retain it as outcome-unknown exposure.
             authorize_fabricated_drop_hold(&kernel, &cap.id)
                 .map_err(|error| TestCaseError::fail(error.to_string()))?;
         }
@@ -241,7 +236,9 @@ fn drop_guard_disposition_table() -> Result<(), TestCaseError> {
             &budget_mutation,
             None,
             PostAdmissionReceiptContext {
+                evaluation_context: EvaluationReceiptContext::default(),
                 extra_metadata,
+                runtime_admission_metadata,
                 pre_invocation_guard_evidence: Vec::new(),
             },
             // Root cap (no delegation parent): the child-budget release is a
@@ -273,6 +270,32 @@ fn drop_guard_disposition_table() -> Result<(), TestCaseError> {
                 .and_then(|metadata| metadata.get("chio_runtime"))
                 .and_then(|runtime| runtime.get("reservations_retained_fail_closed"))
                 .and_then(serde_json::Value::as_bool);
+            prop_assert_eq!(
+                receipt
+                    .and_then(|receipt| receipt.metadata.as_ref())
+                    .and_then(|metadata| metadata.get("chio_runtime"))
+                    .and_then(|runtime| runtime.get("post_dispatch_outcome_unknown"))
+                    .and_then(serde_json::Value::as_bool),
+                Some(true)
+            );
+            if monetary {
+                prop_assert_eq!(
+                    receipt
+                        .and_then(|receipt| receipt.metadata.as_ref())
+                        .and_then(|metadata| metadata.get("chio_runtime"))
+                        .and_then(|runtime| runtime.get("retained_budget_hold_id"))
+                        .and_then(serde_json::Value::as_str),
+                    Some(DROP_GUARD_HOLD_ID)
+                );
+                prop_assert_eq!(
+                    receipt
+                        .and_then(|receipt| receipt.metadata.as_ref())
+                        .and_then(|metadata| metadata.get("chio_runtime"))
+                        .and_then(|runtime| runtime.get("retained_budget_exposure_units"))
+                        .and_then(serde_json::Value::as_u64),
+                    Some(5)
+                );
+            }
             if lease_present {
                 prop_assert_eq!(
                     marker,
@@ -307,7 +330,7 @@ fn drop_guard_disposition_table() -> Result<(), TestCaseError> {
                 "pre-dispatch drop must release exactly when admission metadata exists"
             );
         }
-        assert_drop_guard_budget_conservation(&kernel, &cap.id, monetary)?;
+        assert_drop_guard_budget_conservation(&kernel, &cap.id, monetary, dispatch_started)?;
     }
 
     Ok(())

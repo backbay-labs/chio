@@ -41,7 +41,8 @@ fn mercury_receipt_with_ts(
     timestamp: u64,
     keypair: &Keypair,
 ) -> ChioReceipt {
-    let metadata = sample_mercury_receipt_metadata()
+    let mercury_metadata = sample_mercury_receipt_metadata();
+    let metadata = mercury_metadata
         .into_receipt_metadata_value()
         .expect("mercury metadata value");
     ChioReceipt::sign(
@@ -51,8 +52,14 @@ fn mercury_receipt_with_ts(
             capability_id: capability_id.to_string(),
             tool_server: "mercury".to_string(),
             tool_name: "release_control".to_string(),
-            action: ToolCallAction::from_parameters(serde_json::json!({"cmd":"release candidate"}))
-                .expect("action"),
+            action: ToolCallAction::from_parameters(serde_json::json!({
+                "workflowId": mercury_metadata.business_ids.workflow_id,
+                "eventId": mercury_metadata.chronology.event_id,
+                "decisionType": mercury_metadata.decision_context.decision_type.as_str(),
+                "stage": mercury_metadata.chronology.stage,
+                "toolName": "release_control",
+            }))
+            .expect("action"),
             decision: Some(Decision::Allow),
             receipt_kind: Default::default(),
             boundary_class: Default::default(),
@@ -207,6 +214,7 @@ fn mercury_proof_and_inquiry_packages_export_and_verify() {
         serde_json::from_slice(&proof_verify.stdout).expect("proof report json");
     assert_eq!(proof_report["packageKind"], "proof");
     assert_eq!(proof_report["workflowId"], "workflow-release-control");
+    assert_eq!(proof_report["verifierEquivalent"], false);
 
     let inquiry_export = Command::new(env!("CARGO_BIN_EXE_mercury"))
         .current_dir(workspace_root())
@@ -220,6 +228,7 @@ fn mercury_proof_and_inquiry_packages_export_and_verify() {
         .arg("compliance")
         .arg("--redaction-profile")
         .arg("internal-default")
+        .arg("--verifier-equivalent")
         .output()
         .expect("run mercury inquiry export");
     assert!(
@@ -227,6 +236,11 @@ fn mercury_proof_and_inquiry_packages_export_and_verify() {
         "stdout={}\nstderr={}",
         String::from_utf8_lossy(&inquiry_export.stdout),
         String::from_utf8_lossy(&inquiry_export.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&inquiry_export.stdout).contains("verifier_equivalent: false"),
+        "stdout={}",
+        String::from_utf8_lossy(&inquiry_export.stdout)
     );
 
     let inquiry_verify = Command::new(env!("CARGO_BIN_EXE_mercury"))

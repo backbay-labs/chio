@@ -1,6 +1,6 @@
 schema: "chio.error-urn-registry.v1"
 version: "0.1.0"
-updated_at: "2026-06-19"
+updated_at: "2026-07-14"
 domains:
   - id: capability
     class: core
@@ -583,6 +583,16 @@ codes:
     consumed_by:
       - chio-kernel
       - chio-cli
+  - urn: "urn:chio:error:kernel:runtime-admission-readiness-timeout"
+    domain: kernel
+    severity: error
+    summary: "Runtime admission readiness did not resolve before the dispatch deadline."
+    help: "Restore the runtime admission dependency or increase the bounded readiness timeout before retrying."
+    string_code: "CHIO-KERNEL-RUNTIME-ADMISSION-READINESS-TIMEOUT"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-kernel
   - urn: "urn:chio:error:kernel:session-not-initialized"
     domain: kernel
     severity: error
@@ -641,6 +651,18 @@ codes:
       - chio-kernel
       - chio-metering
       - chio-cli
+  - urn: "urn:chio:error:kernel:budget-authorize-replay"
+    domain: kernel
+    severity: error
+    summary: "Kernel rejected a replayed budget authorization event."
+    help: "Retry only with a fresh request identity that produces a unique budget authorization event."
+    string_code: "CHIO-KERNEL-BUDGET-AUTHORIZE-REPLAY"
+    since: "0.1.0"
+    stability: stable
+    consumed_by:
+      - chio-kernel
+      - chio-metering
+      - chio-control-plane
   - urn: "urn:chio:error:transport:protocol-version-unsupported"
     domain: transport
     severity: error

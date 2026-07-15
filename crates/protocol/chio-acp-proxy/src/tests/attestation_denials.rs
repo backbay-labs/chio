@@ -18,12 +18,8 @@ fn interceptor_required_attestation_blocks_when_signer_is_missing_or_fails() {
         }
     });
 
-    let missing = MessageInterceptor::with_kernel(
-        config.clone(),
-        None,
-        None,
-        AcpAttestationMode::Required,
-    );
+    let missing =
+        MessageInterceptor::with_kernel(config.clone(), None, None, AcpAttestationMode::Required);
     match missing
         .intercept(Direction::AgentToClient, &update)
         .expect("missing signer should return a JSON-RPC block")
@@ -62,10 +58,8 @@ fn interceptor_required_attestation_blocks_when_signer_is_missing_or_fails() {
 #[test]
 fn kernel_capability_checker_denies_missing_and_malformed_tokens() {
     let issuer = Keypair::generate();
-    let checker = KernelCapabilityChecker::new(
-        ChioKernel::new(test_kernel_config(&issuer)),
-        "proxy-server",
-    );
+    let checker =
+        KernelCapabilityChecker::new(ChioKernel::new(test_kernel_config(&issuer)), "proxy-server");
     let request = AcpCapabilityRequest {
         session_id: "session-1".to_string(),
         tool_call_id: None,
@@ -103,10 +97,15 @@ fn kernel_capability_checker_enforces_time_bounds_and_scope() {
     let issuer = Keypair::generate();
     let subject = Keypair::generate();
     let now = now_secs();
-    let checker = KernelCapabilityChecker::new(
-        ChioKernel::new(test_kernel_config(&issuer)),
-        "proxy-server",
-    );
+    let shared = Arc::new(Mutex::new(MockStoreState::default()));
+    let mut kernel = ChioKernel::new(test_kernel_config(&issuer));
+    kernel
+        .set_receipt_store(Box::new(MockReceiptStore {
+            state: Arc::clone(&shared),
+            supports_checkpoints: false,
+        }))
+        .expect("test receipt store should install");
+    let checker = KernelCapabilityChecker::new(kernel, "proxy-server");
 
     let valid = make_capability_token(
         &issuer,
@@ -138,7 +137,83 @@ fn kernel_capability_checker_enforces_time_bounds_and_scope() {
         .expect("check should succeed");
     assert!(verdict.allowed);
     assert_eq!(verdict.capability_id.as_deref(), Some(valid.id.as_str()));
-    assert!(verdict.receipt_id.is_some());
+    let receipt_id = verdict
+        .receipt_id
+        .as_deref()
+        .expect("allow should carry an authorization receipt id");
+    let receipt_request_id = verdict
+        .receipt_request_id
+        .as_deref()
+        .expect("allow should carry a kernel request id");
+    let authorization_receipt = shared
+        .lock()
+        .expect("receipt store state should lock")
+        .appended_receipts
+        .iter()
+        .find(|receipt| receipt.id == receipt_id)
+        .cloned()
+        .expect("authorization receipt should be persisted");
+    assert_eq!(
+        authorization_receipt
+            .action
+            .parameters
+            .get("session_id")
+            .and_then(serde_json::Value::as_str),
+        Some("session-1")
+    );
+    assert_eq!(
+        authorization_receipt
+            .action
+            .parameters
+            .get("tool_call_id")
+            .and_then(serde_json::Value::as_str),
+        Some("call-kernel-checker")
+    );
+    assert_eq!(
+        authorization_receipt
+            .action
+            .parameters
+            .get("authorization_correlation_id")
+            .and_then(serde_json::Value::as_str),
+        Some("auth-correlation-session-1")
+    );
+    assert_eq!(
+        authorization_receipt
+            .action
+            .parameters
+            .get("operation")
+            .and_then(serde_json::Value::as_str),
+        Some("fs_read")
+    );
+    assert_eq!(
+        authorization_receipt
+            .action
+            .parameters
+            .get("resource")
+            .and_then(serde_json::Value::as_str),
+        Some("/workspace/src/lib.rs")
+    );
+    assert_eq!(
+        authorization_receipt
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.pointer("/receipt_context/request_id"))
+            .and_then(serde_json::Value::as_str),
+        Some(receipt_request_id)
+    );
+    assert!(authorization_receipt
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.pointer("/receipt_context/session_id"))
+        .is_none());
+    assert_eq!(
+        authorization_receipt
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.pointer("/source_receipt_context/session_id"))
+            .and_then(serde_json::Value::as_str),
+        Some("session-1")
+    );
 
     let out_of_scope = AcpCapabilityRequest {
         resource: "/tmp/escape.txt".to_string(),
@@ -166,9 +241,7 @@ fn kernel_capability_checker_enforces_time_bounds_and_scope() {
         now + 3600,
     );
     let future_request = AcpCapabilityRequest {
-        token: Some(
-            serde_json::to_string(&future_token).expect("future token should serialize"),
-        ),
+        token: Some(serde_json::to_string(&future_token).expect("future token should serialize")),
         ..request.clone()
     };
     let verdict = checker
@@ -188,9 +261,7 @@ fn kernel_capability_checker_enforces_time_bounds_and_scope() {
         now.saturating_sub(1),
     );
     let expired_request = AcpCapabilityRequest {
-        token: Some(
-            serde_json::to_string(&expired_token).expect("expired token should serialize"),
-        ),
+        token: Some(serde_json::to_string(&expired_token).expect("expired token should serialize")),
         ..request
     };
     let verdict = checker
@@ -206,10 +277,8 @@ fn kernel_capability_checker_supports_wildcard_terminal_grants() {
     let issuer = Keypair::generate();
     let subject = Keypair::generate();
     let now = now_secs();
-    let checker = KernelCapabilityChecker::new(
-        ChioKernel::new(test_kernel_config(&issuer)),
-        "proxy-server",
-    );
+    let checker =
+        KernelCapabilityChecker::new(ChioKernel::new(test_kernel_config(&issuer)), "proxy-server");
     let token = make_capability_token(
         &issuer,
         &subject,
@@ -279,6 +348,11 @@ fn kernel_capability_checker_requires_and_forwards_execution_nonce_in_strict_mod
     });
     let arguments = json!({
         "path": "/workspace/src/lib.rs",
+        "session_id": "session-strict",
+        "tool_call_id": "call-strict-checker",
+        "authorization_correlation_id": "auth-correlation-strict",
+        "operation": "fs_read",
+        "resource": "/workspace/src/lib.rs",
         "authorization_parameter_hash": "test-authorization-parameter-hash",
         "operation_payload": operation_payload
     });
@@ -429,10 +503,8 @@ fn kernel_capability_checker_rejects_untrusted_and_tampered_tokens() {
     let issuer = Keypair::generate();
     let subject = Keypair::generate();
     let now = now_secs();
-    let trusted_checker = KernelCapabilityChecker::new(
-        ChioKernel::new(test_kernel_config(&issuer)),
-        "proxy-server",
-    );
+    let trusted_checker =
+        KernelCapabilityChecker::new(ChioKernel::new(test_kernel_config(&issuer)), "proxy-server");
 
     let token = make_capability_token(
         &issuer,

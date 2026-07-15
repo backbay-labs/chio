@@ -67,6 +67,33 @@ impl BudgetStore for SqliteBudgetStore {
         event_id: Option<&str>,
         authority: Option<&BudgetEventAuthority>,
     ) -> Result<bool, BudgetStoreError> {
+        self.try_charge_cost_with_ids_and_authority_outcome(
+            capability_id,
+            grant_index,
+            max_invocations,
+            cost_units,
+            max_cost_per_invocation,
+            max_total_cost_units,
+            hold_id,
+            event_id,
+            authority,
+        )
+        .map(|outcome| outcome.allowed)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn try_charge_cost_with_ids_and_authority_outcome(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        max_invocations: Option<u32>,
+        cost_units: u64,
+        max_cost_per_invocation: Option<u64>,
+        max_total_cost_units: Option<u64>,
+        hold_id: Option<&str>,
+        event_id: Option<&str>,
+        authority: Option<&BudgetEventAuthority>,
+    ) -> Result<BudgetAuthorizeMutationOutcome, BudgetStoreError> {
         let mut connection = self.connection()?;
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
 
@@ -85,7 +112,10 @@ impl BudgetStore for SqliteBudgetStore {
             max_total_cost_units,
         )? {
             transaction.rollback()?;
-            return Ok(existing_allowed.unwrap_or(false));
+            return Ok(BudgetAuthorizeMutationOutcome {
+                allowed: existing_allowed.unwrap_or(false),
+                replayed_event: true,
+            });
         }
 
         let row: Option<(u32, u64, u64)> = transaction
@@ -184,7 +214,10 @@ impl BudgetStore for SqliteBudgetStore {
                             total_cost_realized_spend_after,
                         )?;
                         transaction.commit()?;
-                        return Ok(true);
+                        return Ok(BudgetAuthorizeMutationOutcome {
+                            allowed: true,
+                            replayed_event: false,
+                        });
                     }
                 }
             }
@@ -296,7 +329,10 @@ impl BudgetStore for SqliteBudgetStore {
                                     total_cost_realized_spend_after,
                                 )?;
                                 transaction.commit()?;
-                                return Ok(true);
+                                return Ok(BudgetAuthorizeMutationOutcome {
+                                    allowed: true,
+                                    replayed_event: false,
+                                });
                             }
                         }
                     }
@@ -365,7 +401,10 @@ impl BudgetStore for SqliteBudgetStore {
                                 total_cost_realized_spend_after,
                             )?;
                             transaction.commit()?;
-                            return Ok(true);
+                            return Ok(BudgetAuthorizeMutationOutcome {
+                                allowed: true,
+                                replayed_event: false,
+                            });
                         }
                     }
                     transaction.rollback()?;
@@ -453,7 +492,10 @@ impl BudgetStore for SqliteBudgetStore {
             total_cost_realized_spend_after,
         )?;
         transaction.commit()?;
-        Ok(allowed)
+        Ok(BudgetAuthorizeMutationOutcome {
+            allowed,
+            replayed_event: false,
+        })
     }
 
     fn reverse_charge_cost(

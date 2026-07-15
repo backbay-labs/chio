@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::collections::VecDeque;
 
+#[cfg(test)]
 use chio_appraisal::VerifiedRuntimeAttestationRecord;
 use chio_core::capability::governance::GovernedUpstreamCallChainProof;
 use chio_core::receipt::metadata::GuardEvidence;
@@ -17,8 +18,10 @@ pub(crate) struct GovernedCallChainReceiptEvidence {
 }
 
 thread_local! {
+    #[cfg(test)]
     static GOVERNED_CALL_CHAIN_RECEIPT_EVIDENCE: RefCell<Option<GovernedCallChainReceiptEvidence>> =
         const { RefCell::new(None) };
+    #[cfg(test)]
     static GOVERNED_RUNTIME_ATTESTATION_RECORD: RefCell<Option<VerifiedRuntimeAttestationRecord>> =
         const { RefCell::new(None) };
     static PRE_INVOCATION_GUARD_EVIDENCE: RefCell<Vec<GuardEvidence>> =
@@ -74,10 +77,12 @@ pub(crate) fn fixed_runtime_unix_secs_for_current_thread() -> Option<u64> {
     FIXED_RUNTIME_UNIX_SECS.with(|slot| *slot.borrow())
 }
 
+#[cfg(test)]
 pub(crate) struct ScopedGovernedCallChainReceiptEvidence {
     previous: Option<GovernedCallChainReceiptEvidence>,
 }
 
+#[cfg(test)]
 impl Drop for ScopedGovernedCallChainReceiptEvidence {
     fn drop(&mut self) {
         let previous = self.previous.take();
@@ -87,6 +92,7 @@ impl Drop for ScopedGovernedCallChainReceiptEvidence {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn scope_governed_call_chain_receipt_evidence(
     evidence: Option<GovernedCallChainReceiptEvidence>,
 ) -> ScopedGovernedCallChainReceiptEvidence {
@@ -94,15 +100,18 @@ pub(crate) fn scope_governed_call_chain_receipt_evidence(
     ScopedGovernedCallChainReceiptEvidence { previous }
 }
 
+#[cfg(test)]
 pub(super) fn current_governed_call_chain_receipt_evidence(
 ) -> Option<GovernedCallChainReceiptEvidence> {
     GOVERNED_CALL_CHAIN_RECEIPT_EVIDENCE.with(|slot| slot.borrow().clone())
 }
 
+#[cfg(test)]
 pub(crate) struct ScopedGovernedRuntimeAttestationRecord {
     previous: Option<VerifiedRuntimeAttestationRecord>,
 }
 
+#[cfg(test)]
 impl Drop for ScopedGovernedRuntimeAttestationRecord {
     fn drop(&mut self) {
         let previous = self.previous.take();
@@ -112,6 +121,7 @@ impl Drop for ScopedGovernedRuntimeAttestationRecord {
     }
 }
 
+#[cfg(test)]
 pub(crate) fn scope_governed_runtime_attestation_receipt_record(
     record: Option<VerifiedRuntimeAttestationRecord>,
 ) -> ScopedGovernedRuntimeAttestationRecord {
@@ -119,6 +129,7 @@ pub(crate) fn scope_governed_runtime_attestation_receipt_record(
     ScopedGovernedRuntimeAttestationRecord { previous }
 }
 
+#[cfg(test)]
 pub(super) fn current_governed_runtime_attestation_record(
 ) -> Option<VerifiedRuntimeAttestationRecord> {
     GOVERNED_RUNTIME_ATTESTATION_RECORD.with(|slot| slot.borrow().clone())

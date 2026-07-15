@@ -333,6 +333,14 @@ impl Guard for CodeExecutionGuard {
 
         Ok(GuardDecision::allow())
     }
+
+    fn requires_dispatch_revalidation(&self) -> bool {
+        true
+    }
+
+    fn revalidate_before_dispatch(&self, ctx: &GuardContext) -> Result<(), KernelError> {
+        crate::revalidate_non_consuming_guard(self, ctx)
+    }
 }
 
 /// Build a regex that matches `import <module>`, `from <module> import`,

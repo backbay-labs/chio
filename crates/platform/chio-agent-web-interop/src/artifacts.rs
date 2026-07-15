@@ -5,7 +5,7 @@ use chio_transaction_passport::{TransactionPassport, TransactionPassportError};
 
 use super::{
     evidence::{validate_bundle_relative_path, validate_sha256_hex},
-    protocols, AgentWebVerifierTrust,
+    protocols, AgentWebReplayEntry, AgentWebVerifierTrust,
 };
 
 mod a2a;
@@ -36,6 +36,7 @@ pub(super) struct AgentWebProofEnvelope {
     schema: String,
     pub(super) envelope_id: String,
     transaction_passport_ref: String,
+    agent_web_passport_scope_sha256: String,
     pub(super) source_protocol: String,
     pub(super) source_protocol_version: String,
     external_subject: String,
@@ -80,6 +81,7 @@ pub(super) struct ClaimMapping {
 
 pub(super) fn validate_envelope(
     passport: &TransactionPassport,
+    passport_scope_sha256: &str,
     envelope: &AgentWebProofEnvelope,
     trust: &AgentWebVerifierTrust,
 ) -> Result<(), TransactionPassportError> {
@@ -89,6 +91,10 @@ pub(super) fn validate_envelope(
         (
             "transaction_passport_ref",
             &envelope.transaction_passport_ref,
+        ),
+        (
+            "agent_web_passport_scope_sha256",
+            &envelope.agent_web_passport_scope_sha256,
         ),
         ("source_protocol", &envelope.source_protocol),
         ("source_protocol_version", &envelope.source_protocol_version),
@@ -106,6 +112,11 @@ pub(super) fn validate_envelope(
     }
     if envelope.transaction_passport_ref != passport.id {
         return Err(claim_failed("Agent Web envelope passport mismatch"));
+    }
+    validate_sha256_hex(&envelope.agent_web_passport_scope_sha256)
+        .map_err(|_| claim_failed("invalid Agent Web passport scope digest"))?;
+    if envelope.agent_web_passport_scope_sha256 != passport_scope_sha256 {
+        return Err(claim_failed("Agent Web envelope passport scope mismatch"));
     }
     validate_content_addressed_envelope_id(envelope)?;
     verify_envelope_signature(envelope, trust)?;
@@ -129,8 +140,14 @@ pub(super) fn validate_envelope(
     for claim in &envelope.chio_claim_refs {
         require_non_empty(claim, "chio_claim_refs")?;
     }
+    let mut unique_receipt_refs = std::collections::BTreeSet::new();
     for receipt_ref in &envelope.receipt_refs {
         require_non_empty(receipt_ref, "receipt_refs")?;
+        if !unique_receipt_refs.insert(receipt_ref) {
+            return Err(claim_failed(format!(
+                "duplicate Agent Web receipt ref: {receipt_ref}"
+            )));
+        }
     }
     if !envelope.disclosure_capsule_refs.is_empty() {
         return Err(claim_failed(
@@ -157,6 +174,7 @@ struct AgentWebProofEnvelopeSignaturePayload<'a> {
     schema: &'a str,
     envelope_id: &'a str,
     transaction_passport_ref: &'a str,
+    agent_web_passport_scope_sha256: &'a str,
     source_protocol: &'a str,
     source_protocol_version: &'a str,
     external_subject: &'a str,
@@ -177,6 +195,7 @@ struct AgentWebProofEnvelopeSignaturePayload<'a> {
 struct AgentWebProofEnvelopeIdInput<'a> {
     schema: &'a str,
     transaction_passport_ref: &'a str,
+    agent_web_passport_scope_sha256: &'a str,
     source_protocol: &'a str,
     source_protocol_version: &'a str,
     external_subject: &'a str,
@@ -212,6 +231,7 @@ fn content_addressed_envelope_id(
     let payload = AgentWebProofEnvelopeIdInput {
         schema: &envelope.schema,
         transaction_passport_ref: &envelope.transaction_passport_ref,
+        agent_web_passport_scope_sha256: &envelope.agent_web_passport_scope_sha256,
         source_protocol: &envelope.source_protocol,
         source_protocol_version: &envelope.source_protocol_version,
         external_subject: &envelope.external_subject,
@@ -260,6 +280,7 @@ fn verify_envelope_signature(
         schema: &envelope.schema,
         envelope_id: &envelope.envelope_id,
         transaction_passport_ref: &envelope.transaction_passport_ref,
+        agent_web_passport_scope_sha256: &envelope.agent_web_passport_scope_sha256,
         source_protocol: &envelope.source_protocol,
         source_protocol_version: &envelope.source_protocol_version,
         external_subject: &envelope.external_subject,
@@ -376,7 +397,7 @@ pub(super) fn validate_external_subject(
     manifest: &ProjectionManifest,
     bytes: &[u8],
     trust: &AgentWebVerifierTrust,
-) -> Result<(), TransactionPassportError> {
+) -> Result<Option<AgentWebReplayEntry>, TransactionPassportError> {
     let actual_digest = chio_core_types::sha256_hex(bytes);
     if actual_digest != envelope.external_subject_digest {
         return Err(claim_failed("external subject digest mismatch"));
@@ -405,46 +426,60 @@ pub(super) fn validate_external_subject(
         )
         .map_err(|_| claim_failed("missing external signature"))?;
     }
-    match manifest.source_protocol.as_str() {
+    let replay_entry = match manifest.source_protocol.as_str() {
         "standard-webhooks" => standard_webhooks::validate_subject(
             &value,
             &envelope.external_subject_signature_ref,
             trust,
-        ),
-        "cloudevents" => cloudevents::validate_subject(&value, manifest),
-        "graphql-http" => graphql_http::validate_subject(&value, manifest),
-        "mcp" => mcp::validate_subject(&value, envelope, manifest),
-        "a2a" => a2a::validate_subject(&value, envelope, manifest),
-        "acp-client" => acp_client::validate_subject(&value, envelope, manifest),
-        "acp-commerce" => acp_commerce::validate_subject(&value, envelope),
-        "ag-ui" => ag_ui::validate_subject(&value, envelope, manifest),
-        "browser-automation" => browser_automation::validate_subject(&value, envelope, manifest),
-        "rpa" => rpa::validate_subject(&value, envelope, manifest),
-        "gmail-api" => email::validate_subject(&value, envelope, manifest),
-        "google-calendar-api" => calendar::validate_subject(&value, envelope, manifest),
-        "slack" => slack::validate_subject(&value, envelope, manifest),
-        "oauth2" => oauth2::validate_subject(&value, envelope, manifest),
-        "openid-connect" => openid_connect::validate_subject(&value, envelope, manifest),
-        "scim" => scim::validate_subject(&value, envelope, manifest),
-        "spiffe" => spiffe::validate_subject(&value, envelope, manifest),
-        "kubernetes-admission" => validate_kubernetes_admission_subject(&value, envelope, manifest),
-        "oci" => validate_oci_ref_subject(&value, envelope, manifest),
-        "vc" => validate_vc_subject(&value, envelope, manifest),
-        "sd-jwt-vc" => validate_sd_jwt_vc_presentation_subject(&value, envelope, manifest),
-        "bbs" => validate_bbs_receipt_disclosure_subject(&value, envelope, manifest),
-        "sigstore" => validate_sigstore_bundle_subject(&value, envelope, manifest),
-        "in-toto" => validate_in_toto_statement_subject(&value, envelope, manifest),
-        "dsse" => validate_dsse_envelope_subject(&value, envelope, manifest),
-        "slsa-provenance" => validate_slsa_provenance_subject(&value, envelope, manifest),
-        "openapi" => openapi::validate_subject(&value, envelope, manifest),
-        "asyncapi" => asyncapi::validate_subject(&value, envelope, manifest),
-        "ap2" => ap2::validate_subject(&value, envelope, manifest),
-        "x402" => x402::validate_subject(&value, envelope, manifest),
+        )
+        .map(Some),
+        "cloudevents" => cloudevents::validate_subject(&value, manifest).map(|()| None),
+        "graphql-http" => graphql_http::validate_subject(&value, manifest).map(|()| None),
+        "mcp" => mcp::validate_subject(&value, envelope, manifest).map(|()| None),
+        "a2a" => a2a::validate_subject(&value, envelope, manifest).map(|()| None),
+        "acp-client" => acp_client::validate_subject(&value, envelope, manifest).map(|()| None),
+        "acp-commerce" => acp_commerce::validate_subject(&value, envelope).map(|()| None),
+        "ag-ui" => ag_ui::validate_subject(&value, envelope, manifest).map(|()| None),
+        "browser-automation" => {
+            browser_automation::validate_subject(&value, envelope, manifest).map(|()| None)
+        }
+        "rpa" => rpa::validate_subject(&value, envelope, manifest).map(|()| None),
+        "gmail-api" => email::validate_subject(&value, envelope, manifest).map(|()| None),
+        "google-calendar-api" => {
+            calendar::validate_subject(&value, envelope, manifest).map(|()| None)
+        }
+        "slack" => slack::validate_subject(&value, envelope, manifest).map(|()| None),
+        "oauth2" => oauth2::validate_subject(&value, envelope, manifest).map(|()| None),
+        "openid-connect" => {
+            openid_connect::validate_subject(&value, envelope, manifest).map(|()| None)
+        }
+        "scim" => scim::validate_subject(&value, envelope, manifest).map(|()| None),
+        "spiffe" => spiffe::validate_subject(&value, envelope, manifest).map(|()| None),
+        "kubernetes-admission" => {
+            validate_kubernetes_admission_subject(&value, envelope, manifest).map(|()| None)
+        }
+        "oci" => validate_oci_ref_subject(&value, envelope, manifest).map(|()| None),
+        "vc" => validate_vc_subject(&value, envelope, manifest).map(|()| None),
+        "sd-jwt-vc" => {
+            validate_sd_jwt_vc_presentation_subject(&value, envelope, manifest).map(|()| None)
+        }
+        "bbs" => validate_bbs_receipt_disclosure_subject(&value, envelope, manifest).map(|()| None),
+        "sigstore" => validate_sigstore_bundle_subject(&value, envelope, manifest).map(|()| None),
+        "in-toto" => validate_in_toto_statement_subject(&value, envelope, manifest).map(|()| None),
+        "dsse" => validate_dsse_envelope_subject(&value, envelope, manifest).map(|()| None),
+        "slsa-provenance" => {
+            validate_slsa_provenance_subject(&value, envelope, manifest).map(|()| None)
+        }
+        "openapi" => openapi::validate_subject(&value, envelope, manifest).map(|()| None),
+        "asyncapi" => asyncapi::validate_subject(&value, envelope, manifest).map(|()| None),
+        "ap2" => ap2::validate_subject(&value, envelope, manifest).map(|()| None),
+        "x402" => x402::validate_subject(&value, envelope, manifest).map(|()| None),
         _ => Err(claim_failed(format!(
             "unsupported Agent Web source protocol: {}",
             manifest.source_protocol
         ))),
-    }
+    }?;
+    Ok(replay_entry)
 }
 
 fn validate_external_subject_kind(

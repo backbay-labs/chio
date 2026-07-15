@@ -16,10 +16,10 @@ use super::ChioKernel;
 /// 3. Child splits: admitted sibling shares never exceed the parent share, and
 ///    every child independently obeys clauses 1 and 2.
 ///
-/// Equivalent checks are maintained in
-/// `formal/apalache/PostAdmissionDropGuard.tla`,
-/// `chio-kernel-core/src/formal_aeneas.rs`, and
-/// `chio-kernel/tests/property_reservation_ledger.rs`.
+/// The bounded lifecycle model, scalar transition, journal replay, and
+/// stateful store sequence tests independently enforce this partition.
+/// Agreement across those surfaces is required because none observes every
+/// production side effect.
 ///
 /// `JournalState` has no retained column because `BudgetMutationKind` has no
 /// retain mutation. This replay covers monetary reserve, commit, release, and

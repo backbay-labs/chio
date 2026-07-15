@@ -3,13 +3,33 @@ use super::*;
 impl ChioKernel {
     pub(crate) fn build_allow_response_with_metadata(
         &self,
-        request: &ToolCallRequest,
+        context: ReceiptResponseContext<'_>,
         output: ToolCallOutput,
-        timestamp: u64,
-        matched_grant_index: Option<usize>,
-        extra_metadata: Option<serde_json::Value>,
+        runtime_admission_metadata: Option<serde_json::Value>,
     ) -> Result<ToolCallResponse, KernelError> {
+        let ReceiptResponseContext {
+            request,
+            evaluation_context,
+            timestamp,
+            matched_grant_index,
+            extra_metadata,
+        } = context;
         let cap = &request.capability;
+        if let Err(error) = self.check_revocation(cap) {
+            let reason =
+                format!("capability authorization changed before allow finalization: {error}");
+            return self.build_deny_response_with_metadata(
+                request,
+                evaluation_context,
+                &reason,
+                timestamp,
+                matched_grant_index,
+                self.merge_retained_runtime_admission_metadata(
+                    extra_metadata,
+                    runtime_admission_metadata,
+                ),
+            );
+        }
         let expected_chunks = match &output {
             ToolCallOutput::Stream(stream) => Some(stream.chunk_count()),
             ToolCallOutput::Value(_) => None,
@@ -31,11 +51,12 @@ impl ChioKernel {
             }
             _ => None,
         };
-        let request_metadata = request_receipt_metadata(
+        let request_metadata = request_receipt_metadata_with_context(
             request,
             self.attestation_trust_policy.as_ref(),
             timestamp,
             extra_metadata.as_ref(),
+            evaluation_context,
         )?;
 
         // Merge extra_metadata (e.g. "financial") into receipt_content.metadata.
@@ -55,6 +76,7 @@ impl ChioKernel {
         })?;
 
         let receipt = self.build_and_sign_receipt(ReceiptParams {
+            evaluation_context,
             request_id: Some(&request.request_id),
             capability_id: &cap.id,
             tool_name: &request.tool_name,
@@ -69,7 +91,7 @@ impl ChioKernel {
             tenant_id: None,
         })?;
 
-        self.record_chio_receipt_with_federation(request, &receipt)?;
+        self.record_chio_receipt_with_federation(request, &receipt, evaluation_context)?;
 
         info!(
             request_id = %request.request_id,
@@ -113,17 +135,19 @@ impl ChioKernel {
     pub(crate) fn build_execution_nonce_preflight_allow_response_with_metadata(
         &self,
         request: &ToolCallRequest,
+        evaluation_context: &EvaluationReceiptContext,
         timestamp: u64,
         matched_grant_index: Option<usize>,
         extra_metadata: Option<serde_json::Value>,
     ) -> Result<ToolCallResponse, KernelError> {
         let cap = &request.capability;
         let receipt_content = receipt_content_for_output(None, None)?;
-        let request_metadata = request_receipt_metadata(
+        let request_metadata = request_receipt_metadata_with_context(
             request,
             self.attestation_trust_policy.as_ref(),
             timestamp,
             extra_metadata.as_ref(),
+            evaluation_context,
         )?;
         let metadata = merge_metadata_objects(
             merge_metadata_objects(
@@ -138,6 +162,7 @@ impl ChioKernel {
         })?;
 
         let receipt = self.build_and_sign_receipt(ReceiptParams {
+            evaluation_context,
             request_id: Some(&request.request_id),
             capability_id: &cap.id,
             tool_name: &request.tool_name,
@@ -154,7 +179,7 @@ impl ChioKernel {
             tenant_id: None,
         })?;
 
-        self.record_chio_receipt_with_federation(request, &receipt)?;
+        self.record_chio_receipt_with_federation(request, &receipt, evaluation_context)?;
         let execution_nonce = self.mint_execution_nonce_for_allow(request, cap, &receipt)?;
 
         Ok(ToolCallResponse {

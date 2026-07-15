@@ -370,6 +370,7 @@ pub(crate) struct TryChargeCostResponse {
     pub(crate) capability_id: String,
     pub(crate) grant_index: usize,
     pub(crate) allowed: bool,
+    pub(crate) replayed_event: bool,
     pub(crate) invocation_count: Option<u32>,
     pub(crate) total_cost_exposed: Option<u64>,
     pub(crate) total_cost_realized_spend: Option<u64>,
@@ -504,6 +505,7 @@ struct TryChargeCostResponseWire<'a> {
     capability_id: &'a str,
     grant_index: usize,
     allowed: bool,
+    replayed_event: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     invocation_count: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -522,6 +524,8 @@ struct TryChargeCostResponseWireInput {
     capability_id: String,
     grant_index: usize,
     allowed: bool,
+    #[serde(default)]
+    replayed_event: bool,
     #[serde(default)]
     invocation_count: Option<u32>,
     #[serde(default)]
@@ -543,6 +547,7 @@ impl Serialize for TryChargeCostResponse {
             capability_id: &self.capability_id,
             grant_index: self.grant_index,
             allowed: self.allowed,
+            replayed_event: self.replayed_event,
             invocation_count: self.invocation_count,
             total_exposure_charged: self.total_cost_exposed,
             total_realized_spend: self.total_cost_realized_spend,
@@ -563,6 +568,7 @@ impl<'de> Deserialize<'de> for TryChargeCostResponse {
             capability_id: wire.capability_id,
             grant_index: wire.grant_index,
             allowed: wire.allowed,
+            replayed_event: wire.replayed_event,
             invocation_count: wire.invocation_count,
             total_cost_exposed: wire.total_exposure_charged,
             total_cost_realized_spend: wire.total_realized_spend,

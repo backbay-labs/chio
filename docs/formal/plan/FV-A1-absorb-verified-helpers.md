@@ -34,7 +34,10 @@ runtime decision shapes.
   twin of the scalar admission predicate.
 - The DPoP verifier is atomic at the requirement-fold boundary, so successful
   verification projects to both proof validity and nonce freshness there.
-  Replay admission is independently delegated inside `DpopNonceStore`.
+  Replay admission is independently delegated inside `DpopNonceStore`. Direct
+  verification uses `check_and_insert_through`; kernel dispatch uses the
+  owner-qualified `reserve_for_dispatch_through` path so a proven
+  pre-dispatch failure can roll the reservation back.
 - Both guard loops use the type-owned `GuardStep::from` conversion, project
   every result through `guard_step_admits`, require that approval for
   continuation, and independently compare the observed step before allowing.
@@ -88,18 +91,37 @@ At proposal time, `formal_core` was a `pub(crate)` typed facade (`crates/kernel/
 
 **`dpop_freshness_valid` (formal_core.rs:154)**
 
-- Twin: `crates/kernel/chio-kernel/src/dpop.rs::verify_dpop_proof_stateless`, freshness block at lines 272-303.
-- Semantic delta: the runtime performs three checks where the model has two. The third (issued_at not older than `now - (ttl + skew)`, lines 295-301) is mathematically implied by the second and is defense in depth. Line 297 also contains an unchecked `proof_ttl_secs + max_clock_skew_secs` addition that the absorption should convert to saturating arithmetic.
+- Twin: `crates/kernel/chio-kernel/src/dpop.rs::verify_dpop_proof_stateless`,
+  in its freshness block.
+- Semantic delta: the runtime performs three checks where the model has two.
+  The third (`issued_at` not older than `now - (ttl + skew)`) is mathematically
+  implied by the second and remains defense in depth. The combined TTL and
+  skew arithmetic is saturating.
 
 **`dpop_admits` (formal_core.rs:160)**
 
-- Twin: the requirement fold in `crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs:180-182` and `nested_flow_evaluation.rs:150-152` (`.any(|m| m.grant.dpop_required == Some(true))`, then `verify_dpop_for_request`), landing in `crates/kernel/chio-kernel/src/kernel/dispatch.rs::verify_dpop_for_request` (line 180).
-- Semantic delta: the runtime expresses `!required || (present && valid && fresh)` as early-return control flow spread across two files; no single expression computes the model's predicate.
+- Twin: the requirement folds in
+  `crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs`
+  and `nested_flow_evaluation.rs`. Each calls
+  `verify_dpop_for_permission_preview`, projects the result through
+  `dpop_verification_admits`, and leaves single-use mutation to
+  `ChioKernel::reserve_dispatch_credentials` at the dispatch boundary.
+- Semantic delta: the runtime projects required, present, and statelessly valid
+  into `dpop_verification_admits`. Nonce freshness is enforced separately by
+  the owner-qualified dispatch reservation so earlier budget or guard failures
+  do not consume the proof permanently.
 
 **`nonce_admits` (formal_core.rs:171)**
 
-- Twin: `crates/kernel/chio-kernel/src/dpop.rs::DpopNonceStore::check_and_insert` (lines 190-210).
-- Semantic delta: the runtime couples the admit decision to the LRU insert and to TTL expiry of stale entries; `already_live` is implicit in the peek-plus-elapsed branch at lines 199-203.
+- Twin: `crates/kernel/chio-kernel/src/dpop.rs::DpopNonceStore::check_and_insert_entry_at`,
+  reached by `check_and_insert_through` for direct verification and by
+  `reserve_for_dispatch_through` from
+  `ChioKernel::reserve_dispatch_credentials` for kernel dispatch.
+- Semantic delta: the runtime couples `nonce_admits(already_live)` to atomic
+  marker insertion. Signed markers remain live through the inclusive
+  `issued_at + proof_ttl_secs` horizon, expired markers are reclaimed, and
+  full live capacity denies fail-closed. Dispatch reservations additionally
+  carry an owner so only a proven pre-dispatch unwind can remove them.
 
 **`guard_pipeline_allows` (formal_core.rs:186)**
 
@@ -162,7 +184,15 @@ Recommendation: curated re-exports. The facade contains model-only conveniences 
 ### Decision-shape notes per family
 
 - Budget: express all three runtime checks as instances of the model's axis predicate. `remaining_invocations = max_invocations.saturating_sub(invocation_count)` with `invocation_cost = 1`; `remaining_units = max_total_cost_units.saturating_sub(current_total)` with `unit_cost = cost_units`; the per-invocation cap is `budget_precheck` on a third axis (`remaining = max_cost_per_invocation`, `cost = cost_units`). Absent caps project to the accept branch before the helper is consulted (the model has no Option layer; the projection unit tests pin this). The ledger side effects (event log append, seq, holds) stay runtime-owned and run only when the helper accepts.
-- DPoP: `verify_dpop_proof_stateless`'s two load-bearing freshness comparisons become one call through `dpop_freshness_admits` to `dpop_freshness_valid`. The redundant third check stays with saturating `ttl + skew` arithmetic. Each requirement fold still performs verification only when required, then calls `dpop_verification_admits(required, present, verification.is_ok())`; the atomic verifier result projects to both modeled validity and nonce-freshness axes.
+- DPoP: `verify_dpop_proof_stateless`'s two load-bearing freshness comparisons
+  become one call through `dpop_freshness_admits` to `dpop_freshness_valid`.
+  The redundant third check stays with saturating `ttl + skew` arithmetic.
+  Each requirement fold still performs stateless verification only when
+  required, then calls
+  `dpop_verification_admits(required, present, verification.is_ok())`. Nonce
+  admission occurs at the dispatch boundary through the signed-horizon
+  reservation path, so the atomic verifier result and the single-use marker
+  remain separate fail-closed decisions.
 - Guards: absorb at step granularity, not pipeline granularity. The runtime loops keep evidence accumulation and early exit. Every result projects to `GuardStep`, `guard_step_admits` computes the verified step decision, and `guard_projection_allows_continuation` requires both projected approval and an observed `Allow` before continuation. `PendingApproval` and `Err(_)` project to `GuardStep::Error`, while the original runtime match retains exact reason and evidence attribution.
 - Revocation: preserve lookup short-circuiting and error attribution by routing each observed branch through `revocation_lookup_denies`: `PresentedToken` projects to `revocation_snapshot_denies(token_revoked, false)`, and `Ancestor` projects to `revocation_snapshot_denies(false, link_revoked)`. Every deny decision now passes through the proven predicate; no extra store or snapshot IO is introduced.
 - Receipts: `build_and_sign_receipt` gains an explicit fail-closed coupling gate between body assembly and `sign_receipt_with_handle` (call at `receipt_persistence.rs:81`): compute the five booleans by comparing the assembled body against the decision inputs in `ReceiptParams` and refuse to sign when `receipt_fields_coupled` is false. Today the comparisons are true by construction; the gate exists to make that an enforced invariant instead of an accident of the current code.
@@ -178,8 +208,14 @@ Each phase is one PR, independently landable, in this order (cheapest coupling f
    - Add `crates/kernel/chio-kernel/tests/budget_decision_equivalence.rs` (pre-refactor equivalence proptest, kept as regression) and projection unit tests beside the impls.
    - Add a Kani binding harness in `crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs` if the projection can be expressed core-side; otherwise document why not (see Open questions).
 2. Phase 2: `dpop_admits`/`dpop_freshness_valid`/`nonce_admits` into the DPoP admission path.
-   - Modify `crates/kernel/chio-kernel/src/dpop.rs` (`verify_dpop_proof_stateless` freshness block; `DpopNonceStore::check_and_insert` returns `nonce_admits(already_live)`).
-   - Modify `crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs` and `nested_flow_evaluation.rs` (requirement fold routes through `dpop_verification_admits`).
+   - Modify `crates/kernel/chio-kernel/src/dpop.rs` (`verify_dpop_proof_stateless`
+     freshness block; `DpopNonceStore::check_and_insert_entry_at` returns
+     `nonce_admits(already_live)`; signed callers use
+     `check_and_insert_through` or `reserve_for_dispatch_through`).
+   - Modify `crates/kernel/chio-kernel/src/kernel/evaluation/async_evaluation_core.rs`,
+     `nested_flow_evaluation.rs`, and `credential_reservation.rs` (the
+     requirement fold routes through `dpop_verification_admits`, then the
+     dispatch boundary reserves the signed nonce horizon).
    - Add equivalence proptests in `crates/kernel/chio-kernel/tests/dpop_admission_equivalence.rs`, including the ttl/skew saturation edge cases.
 3. Phase 3: `guard_pipeline_allows` into the guard verdict fold.
    - Modify `crates/kernel/chio-kernel-core/src/evaluate.rs` (guard loop, lines 387-407 region) and `crates/kernel/chio-kernel/src/kernel/dispatch.rs::run_guards`.
@@ -210,7 +246,7 @@ Every phase also carries its manifest/registry updates (below) and a `graphify u
 - [x] No behavior change: full workspace test suite, replay proptests, and guard pipeline tests green with no expectation edits other than new tests.
 - [x] `formal/proof-manifest.toml` `covered_rust_symbols` matches reality after each phase (no listed-but-uncalled formal_core symbols remain at the end).
 - [x] `docs/reference/CLAIM_REGISTRY.md` `FORM-IMPLEMENTATION-LINKED` scope text reviewed and, if strengthened, re-approved.
-- [x] The `dpop.rs:297` unchecked `ttl + skew` addition is saturating by the end of phase 2.
+- [x] The DPoP `ttl + skew` addition is saturating by the end of phase 2.
 
 ## Risks and mitigations
 
@@ -240,7 +276,11 @@ Every phase also carries its manifest/registry updates (below) and a `graphify u
 
 Per phase, in the same PR as the code change:
 
-- `formal/proof-manifest.toml`: the original missing helpers and the exact shared production projections are now in `covered_rust_symbols`; absorbed runtime boundaries are named in `shell_entrypoints`. The projection entries do not claim storage or ledger verification.
+- `formal/proof-manifest.toml`: the original missing helpers and the exact
+  shared production projections are now in `covered_rust_symbols`; absorbed
+  runtime boundaries, including both signed-horizon DPoP entrypoints, are
+  named in `shell_entrypoints`. The projection entries do not claim storage or
+  ledger verification.
 - `formal/MAPPING.md`: new rows for every added Kani harness (enforced by `scripts/check-mapping.sh`); update the "Rust path constrained" column of existing rows that currently point at pre-absorption paths (for example the Apalache `RevocationCutCompleteness` and `KernelTransitionCancelSafe` rows).
 - `docs/reference/CLAIM_REGISTRY.md`: `FORM-IMPLEMENTATION-LINKED` (line 57) may strengthen from "subject to strict Rust verification gates" toward naming the absorbed decision points; any wording change goes through the claim-gate inputs check (`proof-manifest.toml` `claim_gate_inputs`).
 - `formal/rust-verification/kani-public-harnesses.toml` (or `kani-harnesses.toml`, per the open question): register new harnesses.

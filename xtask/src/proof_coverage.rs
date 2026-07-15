@@ -5099,7 +5099,7 @@ mod tests {
         let parsed = parse_mapping(include_str!("../../formal/MAPPING.md"));
 
         assert!(parsed.warnings.is_empty(), "{:?}", parsed.warnings);
-        assert_eq!(parsed.rows.len(), 81);
+        assert_eq!(parsed.rows.len(), 82);
     }
 
     #[test]

@@ -20,10 +20,10 @@ const GRANT_INDEX: usize = 0;
 /// 3. Child splits: admitted sibling shares never exceed the parent share, and
 ///    every child independently obeys clauses 1 and 2.
 ///
-/// Equivalent checks are maintained in
-/// `formal/apalache/PostAdmissionDropGuard.tla`,
-/// `chio-kernel-core/src/formal_aeneas.rs`, and
-/// `chio-kernel/src/kernel/ledger_audit.rs`.
+/// The bounded lifecycle model, scalar transition, journal replay, and
+/// stateful store sequence tests independently enforce this partition.
+/// Agreement across those surfaces is required because none observes every
+/// production side effect.
 ///
 /// This randomized lane exercises real `InMemoryBudgetStore` mutations, not
 /// kernel lifecycle or drop paths. The production runtime-admission hook,

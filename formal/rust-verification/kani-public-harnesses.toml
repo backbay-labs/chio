@@ -7,7 +7,8 @@ unwinding_checks = ["verify_oracle_inclusion_soundness"]
 # `harness_groups` is the flat-array catalog (one entry per logical edge or
 # algebraic property the harnesses exercise). Entries cover scope intersection
 # associativity, revocation idempotence, single-step delegation attenuation,
-# receipt sign/verify roundtrip, and the budget-checked-add overflow guard.
+# receipt sign/verify roundtrip, the budget-checked-add overflow guard, and the
+# reservation-ledger terminal classifier.
 harness_groups = [
   "public verify_capability fail-closed edges",
   "public NormalizedScope subset edges",
@@ -22,6 +23,7 @@ harness_groups = [
   "verify receipt sign/verify roundtrip algebra",
   "verify budget checked-add no partial commit on overflow",
   "verify budget admission projection",
+  "verify reservation ledger terminal classification",
   "verify reservation ledger conservation and terminal absorption",
   "verify recursive delegation no widening",
   "verify delegation receipt canonical-bytes determinism",
@@ -45,6 +47,7 @@ covered_symbols = [
   "chio_kernel_core::formal_core::budget_charge_admits",
   "chio_kernel_core::formal_core::budget_increment_admits",
   "chio_kernel_core::formal_core::budget_precheck",
+  "chio_kernel_core::formal_aeneas::ledger_is_terminal",
   "chio_kernel_core::formal_aeneas::ledger_apply",
   "chio_core_types::crypto::PublicKey::verify_canonical",
   "chio_core_types::capability::delegate",
@@ -88,6 +91,7 @@ harnesses = [
   "verify_receipt_roundtrip",
   "verify_budget_checked_add_no_overflow",
   "verify_budget_admission_projection",
+  "verify_reservation_ledger_terminal_classification",
   "verify_reservation_ledger_conservation",
   "verify_delegate_no_widen",
   "verify_delegation_receipt_canonical",

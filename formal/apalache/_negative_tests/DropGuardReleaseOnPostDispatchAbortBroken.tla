@@ -1,7 +1,8 @@
 ------------ MODULE DropGuardReleaseOnPostDispatchAbortBroken -------------
 (***************************************************************************)
-(* A post-dispatch drop releases a lease even though side effects cannot be *)
-(* excluded. RetainedIffAborted must reject it.                             *)
+(* An outcome-unknown post-dispatch path releases admission and monetary   *)
+(* state even though side effects cannot be excluded. The retention        *)
+(* invariant must reject it.                                               *)
 (***************************************************************************)
 
 EXTENDS PostAdmissionDropGuard

@@ -2,13 +2,17 @@
 (***************************************************************************)
 (* Abstract persist-before-publish ordering evidence. Concrete cross-row    *)
 (* crash recovery remains outside the current formal claim boundary.       *)
-(* A capability may appear in an authority's allowed set only after an      *)
-(* allow receipt for that authority and capability exists in the log.       *)
+(* A call may appear in an authority's allowed set only after the matching  *)
+(* call receipt for that authority and capability exists in the log.        *)
 (* Receipt persistence and allow publication are modeled as separate        *)
 (* actions so the invariant is not satisfied by a fixture-only atomic       *)
 (* update that records both facts in one transition.                        *)
 (* PublishAllow corresponds to returning an allow response after receipt    *)
 (* persistence completes.                                                   *)
+(* The execution-nonce preflight response persists an incomplete decision,  *)
+(* has no tool output, and remains in an incomplete terminal state. Its     *)
+(* transport-level allow verdict only carries the nonce for a retry, so it  *)
+(* is excluded from PublishAllow and cannot authorize tool execution.       *)
 (*                                                                          *)
 (* Code mapping (full cross-reference in formal/MAPPING.md):               *)
 (*   - crates/kernel/chio-kernel/src/kernel/responses/                     *)
@@ -24,8 +28,8 @@
 (* Proof obligation:                                                        *)
 (*  - Spec Init implies SafetyInv.                                          *)
 (*  - Every disjunct of Next preserves SafetyInv. The cross-action          *)
-(*    obligation is on PublishAllow: the HasAllowReceipt(a, c) guard must   *)
-(*    appear in the action body, otherwise an Allow may be published       *)
+(*    obligation is on PublishAllow: the HasAllowReceipt(a, c, r) guard     *)
+(*    must appear in the action body, otherwise an Allow may be published   *)
 (*    without a prior allow receipt and the invariant is unsound.           *)
 (*  - The Allow-step is split into PersistAllowReceipt followed by          *)
 (*    PublishAllow. A single atomic Allow action would make                 *)
@@ -40,25 +44,36 @@
 
 EXTENDS Naturals, Sequences, FiniteSets, Common
 
+CONSTANT
+    \* @type: Set(Int);
+    CallSet
+
+ASSUME CallSet = 1..2
+
 VARIABLES
-    \* @type: Int -> Seq({ cap: Int, verdict: Str, t: Int, seen_epoch: Int });
+    \* @type: Int -> Seq({ call: Int, cap: Int, verdict: Str, t: Int, seen_epoch: Int });
     receipt_log,
-    \* @type: Int -> Set(Int);
+    \* @type: Int -> Set({ call: Int, cap: Int });
     allowed,
-    \* @type: Int -> Set(Int);
+    \* @type: Int -> Set({ call: Int, cap: Int });
     budget_checked,
     \* @type: Int;
     clock
 
 vars == << receipt_log, allowed, budget_checked, clock >>
 
+CallDecision(r, c) == [call |-> r, cap |-> c]
+
+CallDecisions ==
+    { CallDecision(r, c) : r \in CallSet, c \in CapSet }
+
 DomainsOK ==
     /\ DOMAIN receipt_log = Authorities
     /\ DOMAIN allowed = Authorities
     /\ DOMAIN budget_checked = Authorities
     /\ \A a \in Authorities :
-        /\ allowed[a] \subseteq CapSet
-        /\ budget_checked[a] \subseteq CapSet
+        /\ allowed[a] \subseteq CallDecisions
+        /\ budget_checked[a] \subseteq CallDecisions
     /\ clock \in Ticks
 
 Init ==
@@ -67,43 +82,61 @@ Init ==
     /\ budget_checked = [a \in Authorities |-> {}]
     /\ clock = 1
 
-CheckBudget(a, c) ==
-    /\ a \in Authorities
-    /\ c \in CapSet
-    /\ budget_checked' = [budget_checked EXCEPT ![a] = @ \cup {c}]
-    /\ UNCHANGED << receipt_log, allowed, clock >>
-
-HasAllowReceipt(a, c) ==
+HasReceiptForCall(a, r) ==
     \E i \in 1..EpochMax :
         /\ i <= Len(receipt_log[a])
+        /\ receipt_log[a][i].call = r
+
+CheckBudget(a, c, r) ==
+    /\ a \in Authorities
+    /\ c \in CapSet
+    /\ r \in CallSet
+    /\ ~HasReceiptForCall(a, r)
+    /\ \A decision \in budget_checked[a] \cup allowed[a] :
+        decision.call /= r
+    /\ budget_checked' = [budget_checked EXCEPT ![a] =
+          @ \cup {CallDecision(r, c)}]
+    /\ UNCHANGED << receipt_log, allowed, clock >>
+
+HasAllowReceipt(a, c, r) ==
+    \E i \in 1..EpochMax :
+        /\ i <= Len(receipt_log[a])
+        /\ receipt_log[a][i].call = r
         /\ receipt_log[a][i].cap = c
         /\ receipt_log[a][i].verdict = "allow"
 
-PersistAllowReceipt(a, c) ==
+PersistAllowReceipt(a, c, r) ==
     /\ a \in Authorities
-    /\ c \in budget_checked[a]
+    /\ CallDecision(r, c) \in budget_checked[a]
+    /\ ~HasReceiptForCall(a, r)
     /\ clock < EpochMax
     /\ receipt_log' = [receipt_log EXCEPT ![a] =
-          Append(@, [cap |-> c,
+          Append(@, [call |-> r,
+                     cap |-> c,
                      verdict |-> "allow",
                      t |-> clock,
                      seen_epoch |-> 0])]
     /\ clock' = clock + 1
     /\ UNCHANGED << allowed, budget_checked >>
 
-PublishAllow(a, c) ==
+PublishAllow(a, c, r) ==
     /\ a \in Authorities
-    /\ c \in budget_checked[a]
-    /\ HasAllowReceipt(a, c)
-    /\ allowed' = [allowed EXCEPT ![a] = @ \cup {c}]
+    /\ CallDecision(r, c) \in budget_checked[a]
+    /\ CallDecision(r, c) \notin allowed[a]
+    /\ HasAllowReceipt(a, c, r)
+    /\ allowed' = [allowed EXCEPT ![a] =
+          @ \cup {CallDecision(r, c)}]
     /\ UNCHANGED << receipt_log, budget_checked, clock >>
 
-Deny(a, c) ==
+Deny(a, c, r) ==
     /\ a \in Authorities
     /\ c \in CapSet
+    /\ r \in CallSet
+    /\ ~HasReceiptForCall(a, r)
     /\ clock < EpochMax
     /\ receipt_log' = [receipt_log EXCEPT ![a] =
-          Append(@, [cap |-> c,
+          Append(@, [call |-> r,
+                     cap |-> c,
                      verdict |-> "deny",
                      t |-> clock,
                      seen_epoch |-> 0])]
@@ -114,10 +147,10 @@ Stutter ==
     UNCHANGED vars
 
 Next ==
-    \/ \E a \in Authorities, c \in CapSet : CheckBudget(a, c)
-    \/ \E a \in Authorities, c \in CapSet : PersistAllowReceipt(a, c)
-    \/ \E a \in Authorities, c \in CapSet : PublishAllow(a, c)
-    \/ \E a \in Authorities, c \in CapSet : Deny(a, c)
+    \/ \E a \in Authorities, c \in CapSet, r \in CallSet : CheckBudget(a, c, r)
+    \/ \E a \in Authorities, c \in CapSet, r \in CallSet : PersistAllowReceipt(a, c, r)
+    \/ \E a \in Authorities, c \in CapSet, r \in CallSet : PublishAllow(a, c, r)
+    \/ \E a \in Authorities, c \in CapSet, r \in CallSet : Deny(a, c, r)
     \/ Stutter
 
 Spec ==
@@ -126,14 +159,17 @@ Spec ==
 
 ReceiptBeforeAllow ==
     \A a \in Authorities :
-        \A c \in CapSet :
-            c \in allowed[a] => HasAllowReceipt(a, c)
+        \A decision \in allowed[a] :
+            HasAllowReceipt(a, decision.cap, decision.call)
 
 AllowReceiptsBudgetChecked ==
     \A a \in Authorities :
         \A i \in 1..Len(receipt_log[a]) :
             receipt_log[a][i].verdict = "allow" =>
-                receipt_log[a][i].cap \in budget_checked[a]
+                CallDecision(
+                    receipt_log[a][i].call,
+                    receipt_log[a][i].cap
+                ) \in budget_checked[a]
 
 SafetyInv ==
     /\ DomainsOK
