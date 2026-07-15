@@ -364,6 +364,117 @@ impl ReceiptStore for SqliteReceiptStore {
         SqliteReceiptStore::append_chio_receipt_consuming_authorization(self, receipt, consumption)
     }
 
+    fn record_dispatch_intent(
+        &self,
+        intent: &chio_kernel::receipt_store::DispatchIntentRecord,
+    ) -> Result<(), ReceiptStoreError> {
+        SqliteReceiptStore::record_dispatch_intent(self, intent)
+    }
+
+    fn record_dispatch_intent_with_timeout(
+        &self,
+        intent: &chio_kernel::receipt_store::DispatchIntentRecord,
+        budget: std::time::Duration,
+    ) -> Result<(), ReceiptStoreError> {
+        SqliteReceiptStore::record_dispatch_intent_with_timeout(self, intent, budget)
+    }
+
+    fn attach_dispatch_intent_rail_ref(
+        &self,
+        request_id: &str,
+        tenant_id: Option<&str>,
+        rail_authorization_id: &str,
+    ) -> Result<(), ReceiptStoreError> {
+        SqliteReceiptStore::attach_dispatch_intent_rail_ref(
+            self,
+            request_id,
+            tenant_id,
+            rail_authorization_id,
+        )
+    }
+
+    fn attach_dispatch_intent_rail_ref_with_timeout(
+        &self,
+        request_id: &str,
+        tenant_id: Option<&str>,
+        rail_authorization_id: &str,
+        budget: std::time::Duration,
+    ) -> Result<(), ReceiptStoreError> {
+        SqliteReceiptStore::attach_dispatch_intent_rail_ref_with_timeout(
+            self,
+            request_id,
+            tenant_id,
+            rail_authorization_id,
+            budget,
+        )
+    }
+
+    fn clear_dispatch_intent(
+        &self,
+        key: &chio_kernel::receipt_store::DispatchIntentKey,
+    ) -> Result<(), ReceiptStoreError> {
+        SqliteReceiptStore::clear_dispatch_intent(self, key)
+    }
+
+    fn clear_dispatch_intent_with_timeout(
+        &self,
+        key: &chio_kernel::receipt_store::DispatchIntentKey,
+        budget: std::time::Duration,
+    ) -> Result<(), ReceiptStoreError> {
+        SqliteReceiptStore::clear_dispatch_intent_with_timeout(self, key, budget)
+    }
+
+    fn append_chio_receipt_consuming_intent(
+        &self,
+        receipt: &ChioReceipt,
+        intent: &chio_kernel::receipt_store::DispatchIntentKey,
+    ) -> Result<Option<u64>, ReceiptStoreError> {
+        SqliteReceiptStore::append_chio_receipt_consuming_intent(self, receipt, intent)
+    }
+
+    fn append_chio_receipt_consuming_intent_with_timeout(
+        &self,
+        receipt: &ChioReceipt,
+        intent: &chio_kernel::receipt_store::DispatchIntentKey,
+        budget: std::time::Duration,
+    ) -> Result<Option<u64>, ReceiptStoreError> {
+        SqliteReceiptStore::append_chio_receipt_consuming_intent_with_timeout(
+            self, receipt, intent, budget,
+        )
+    }
+
+    fn reconcile_dispatch_intents(
+        &self,
+        reconciler: &dyn chio_kernel::receipt_store::DispatchIntentReconciler,
+    ) -> Result<chio_kernel::receipt_store::DispatchIntentReconcileReport, ReceiptStoreError> {
+        SqliteReceiptStore::reconcile_dispatch_intents(self, reconciler)
+    }
+
+    fn supports_dispatch_intent_recovery(&self) -> bool {
+        SqliteReceiptStore::supports_dispatch_intent_recovery(self)
+    }
+
+    fn supports_durable_dispatch_intent_journal(&self) -> bool {
+        SqliteReceiptStore::supports_durable_dispatch_intent_journal(self)
+    }
+
+    fn open_dispatch_intent_count(&self) -> Result<u64, ReceiptStoreError> {
+        SqliteReceiptStore::open_dispatch_intent_count(self)
+    }
+
+    fn dead_letter_dispatch_intent_count(&self) -> Result<u64, ReceiptStoreError> {
+        SqliteReceiptStore::dead_letter_dispatch_intent_count(self)
+    }
+
+    fn resolve_dead_letter_dispatch_intent(
+        &self,
+        request_id: &str,
+        tenant_id: Option<&str>,
+        note: &str,
+    ) -> Result<(), ReceiptStoreError> {
+        SqliteReceiptStore::resolve_dead_letter_dispatch_intent(self, request_id, tenant_id, note)
+    }
+
     fn receipts_canonical_bytes_range(
         &self,
         start_seq: u64,

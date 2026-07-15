@@ -10,17 +10,24 @@ impl ChioKernel {
         // Precedence:
         //   1. An explicit override on `ReceiptParams` (currently unused).
         //   2. The request-keyed tenant context set by the evaluate path.
+        //      A present entry is authoritative even when it resolves to
+        //      no tenant: falling through to the thread-local scope from a
+        //      known-tenantless request would adopt whatever tenant a
+        //      concurrent sibling task's scope guard left on the resuming
+        //      worker thread.
         //   3. The active scoped tenant context set by the evaluate path
-        //      from `session.auth_context().enterprise_identity.tenant_id`.
+        //      from `session.auth_context().enterprise_identity.tenant_id`,
+        //      for receipts built outside any request-scoped evaluation.
         //
         // Tenant_id is never taken from a caller-provided field on the
         // request: allowing caller choice would defeat the isolation the
         // store-level WHERE clause enforces.
-        let tenant_id = params
-            .tenant_id
-            .clone()
-            .or_else(|| self.receipt_tenant_id_for_request(params.request_id))
-            .or_else(current_scoped_receipt_tenant_id);
+        let tenant_id = match params.tenant_id.clone() {
+            Some(tenant_id) => Some(tenant_id),
+            None => self
+                .receipt_tenant_id_for_request(params.request_id)
+                .unwrap_or_else(current_scoped_receipt_tenant_id),
+        };
 
         let request_metadata = params.request_id.map(|request_id| {
             serde_json::json!({
@@ -123,7 +130,7 @@ impl ChioKernel {
             admission.remote_kernel_id.as_deref() == request.federated_origin_kernel_id.as_deref()
         });
         let scoped_admission = request_admission.as_ref().or(thread_admission);
-        self.record_chio_receipt(receipt)?;
+        self.record_chio_receipt_consuming_optional_intent(receipt, Some(&request.request_id))?;
         self.apply_federation_cosign(
             request,
             receipt,
@@ -150,7 +157,7 @@ impl ChioKernel {
 
     fn record_chio_receipt_for_admitted_request_local_only(
         &self,
-        _request: &crate::runtime::ToolCallRequest,
+        request: &crate::runtime::ToolCallRequest,
         receipt: &ChioReceipt,
     ) -> Result<(), KernelError> {
         // Persist the v1 deny receipt locally and
@@ -158,10 +165,25 @@ impl ChioKernel {
         // runtime-admission deny path does not co-sign because the deny
         // decision is locally authoritative and may have been triggered
         // before any federation peer was contacted.
-        self.record_chio_receipt(receipt)
+        self.record_chio_receipt_consuming_optional_intent(receipt, Some(&request.request_id))
     }
 
     pub(crate) fn record_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), KernelError> {
+        self.record_chio_receipt_consuming_optional_intent(receipt, None)
+    }
+
+    /// Persist a terminal receipt and, when the request journaled a dispatch
+    /// intent, consume that intent in the SAME transaction as the receipt
+    /// insert. Request-id-less callers pass `None` and get the plain append.
+    /// The request-aware sinks pass the request id, so allow, post-dispatch
+    /// deny, cancelled, and incomplete receipts all consume the intent and an
+    /// effecting call that ends in any terminal receipt leaves no false
+    /// orphan behind.
+    pub(crate) fn record_chio_receipt_consuming_optional_intent(
+        &self,
+        receipt: &ChioReceipt,
+        request_id: Option<&str>,
+    ) -> Result<(), KernelError> {
         // Scope the receipt-store write lock so it is released before the
         // settlement observer runs. Holding the mutex across
         // `run_settlement_observer` would serialize all concurrent receipt
@@ -173,17 +195,81 @@ impl ChioKernel {
             let _receipt_store_write = self.receipt_store_write_lock.lock().map_err(|_| {
                 KernelError::Internal("receipt store write lock poisoned".to_string())
             })?;
+            // Resolve the request's intent handle only under the write lock.
+            // A request can persist more than one receipt concurrently (a
+            // cleanup-fault receipt racing the terminal outcome), and the
+            // first to commit consumes the durable row and drops the handle
+            // below. A lookup before the lock would hand both callers the
+            // handle and send the loser into the consuming append against
+            // the already-deleted row; under the lock the loser observes the
+            // removal and appends plainly.
+            let intent = self.dispatch_intent_for_request(request_id);
             // Bound the commit round trip so a wedged writer cannot pin the
             // kernel-wide receipt write lock (and thus every subsequent tool
             // call) indefinitely. On timeout this fails closed with
             // ReceiptPersistence(Timeout); no allow response is signed until the
             // append succeeds.
-            self.with_receipt_store(|store| {
-                Ok(store.append_chio_receipt_with_timeout(
-                    receipt,
-                    self.config.deadlines.receipt_append_budget(),
-                )?)
-            })?;
+            let budget = self.config.deadlines.receipt_append_budget();
+            match intent {
+                Some(intent) => {
+                    // The key binds the consume to the exact attested call:
+                    // request id from the pre-dispatch handle, parameter hash
+                    // and tenant from the receipt itself. Any disagreement
+                    // aborts the transaction with the receipt unpersisted.
+                    let key = crate::receipt_store::DispatchIntentKey {
+                        request_id: intent.request_id,
+                        parameter_hash: receipt.action.parameter_hash.clone(),
+                        tenant_id: receipt.tenant_id.clone(),
+                    };
+                    let append = self.with_receipt_store(|store| {
+                        Ok(store.append_chio_receipt_consuming_intent_with_timeout(
+                            receipt, &key, budget,
+                        ))
+                    })?;
+                    if let Some(append) = append {
+                        match append {
+                            Ok(_) => {
+                                // The consuming append deleted the durable
+                                // row; drop the request-scoped handle under
+                                // the same write lock so any later receipt
+                                // for this request appends plainly instead of
+                                // retrying the consume against the missing
+                                // row.
+                                self.mark_dispatch_intent_consumed(&key.request_id);
+                            }
+                            Err(error) => {
+                                // A timeout is an UNCERTAIN consume: the job
+                                // is still queued on the single writer and
+                                // may commit after this wait expired, so a
+                                // retained handle could send a later receipt
+                                // for the request back through the consume
+                                // and reject it against a row the late commit
+                                // already deleted. Drop the handle so later
+                                // receipts append plainly; if the queued job
+                                // never lands, the still-open row surfaces at
+                                // the next boot instead of costing an audit
+                                // record now. A definitive refusal (the row
+                                // is provably still present) keeps the handle
+                                // so the next receipt can consume it. This
+                                // receipt's own error propagates unchanged
+                                // either way.
+                                if matches!(
+                                    error,
+                                    crate::receipt_store::ReceiptStoreError::Timeout { .. }
+                                ) {
+                                    self.mark_dispatch_intent_consumed(&key.request_id);
+                                }
+                                return Err(error.into());
+                            }
+                        }
+                    }
+                }
+                None => {
+                    self.with_receipt_store(|store| {
+                        Ok(store.append_chio_receipt_with_timeout(receipt, budget)?)
+                    })?;
+                }
+            }
             self.append_chio_receipt_to_local_log(receipt.clone());
         }
         let _settlement_status = self.run_settlement_observer(receipt);

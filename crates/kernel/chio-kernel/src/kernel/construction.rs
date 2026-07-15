@@ -73,20 +73,20 @@ impl ChioKernel {
         .flatten()
     }
 
+    /// Install the RESOLVED tenant for `request_id`, including a known-none
+    /// entry for a tenantless request. The entry must exist either way:
+    /// readers that miss the map fall back to the thread-local scope, and on
+    /// a worker resuming this request while a sibling task's scope guard is
+    /// alive that fallback would leak the sibling's tenant into this
+    /// request's receipts and journaled dispatch intent.
     pub(crate) fn scope_receipt_tenant_id_for_request(
         &self,
         request_id: &str,
         tenant_id: Option<String>,
     ) -> ScopedKernelReceiptTenantId {
-        let previous = match tenant_id {
-            Some(tenant_id) => self
-                .receipt_tenant_ids
-                .insert(request_id.to_string(), tenant_id),
-            None => self
-                .receipt_tenant_ids
-                .remove(request_id)
-                .map(|(_, previous)| previous),
-        };
+        let previous = self
+            .receipt_tenant_ids
+            .insert(request_id.to_string(), tenant_id);
         ScopedKernelReceiptTenantId {
             request_id: request_id.to_string(),
             tenant_ids: Arc::clone(&self.receipt_tenant_ids),
@@ -94,7 +94,58 @@ impl ChioKernel {
         }
     }
 
-    pub(crate) fn receipt_tenant_id_for_request(&self, request_id: Option<&str>) -> Option<String> {
+    pub(crate) fn scope_dispatch_intent_for_request(
+        &self,
+        request_id: &str,
+        handle: Option<crate::receipt_store::DispatchIntentHandle>,
+    ) -> ScopedKernelDispatchIntent {
+        let previous = match handle {
+            Some(handle) => self.dispatch_intents.insert(request_id.to_string(), handle),
+            None => self
+                .dispatch_intents
+                .remove(request_id)
+                .map(|(_, previous)| previous),
+        };
+        ScopedKernelDispatchIntent {
+            request_id: request_id.to_string(),
+            intents: Arc::clone(&self.dispatch_intents),
+            previous,
+        }
+    }
+
+    pub(crate) fn dispatch_intent_for_request(
+        &self,
+        request_id: Option<&str>,
+    ) -> Option<crate::receipt_store::DispatchIntentHandle> {
+        request_id.and_then(|request_id| {
+            self.dispatch_intents
+                .get(request_id)
+                .map(|entry| entry.value().clone())
+        })
+    }
+
+    /// Unregister the request-scoped intent handle once a receipt has
+    /// consumed the durable row, or once a timed-out consuming append has
+    /// made the consume uncertain (the queued job may still commit and
+    /// delete the row). A request can legitimately record more than one
+    /// receipt (cleanup fault receipts alongside the terminal outcome); a
+    /// handle retained past the consume would send every later receipt back
+    /// through the consuming append, which rejects against the missing row
+    /// and loses that audit record. With the handle gone, later receipts for
+    /// the request append plainly, and a row an uncertain consume left open
+    /// surfaces at the next boot.
+    pub(crate) fn mark_dispatch_intent_consumed(&self, request_id: &str) {
+        self.dispatch_intents.remove(request_id);
+    }
+
+    /// The tenant resolved for `request_id` by its evaluation scope. The
+    /// outer `Option` is presence of the request-scoped entry; the inner one
+    /// is the resolved tenant itself, so a known tenantless request returns
+    /// `Some(None)` and callers do not fall back to the thread-local scope.
+    pub(crate) fn receipt_tenant_id_for_request(
+        &self,
+        request_id: Option<&str>,
+    ) -> Option<Option<String>> {
         request_id.and_then(|request_id| {
             self.receipt_tenant_ids
                 .get(request_id)
@@ -252,6 +303,7 @@ impl ChioKernel {
             receipt_store: None,
             receipt_store_write_lock: Mutex::new(()),
             retention_maintenance: None,
+            dispatch_intent_recovery: None,
             payment_adapter: None,
             price_oracle: None,
             runtime_admission_hook: None,
@@ -299,6 +351,7 @@ impl ChioKernel {
             federation_dsse_envelopes_gauge,
             federation_artifact_store: None,
             receipt_tenant_ids: Arc::new(DashMap::new()),
+            dispatch_intents: Arc::new(DashMap::new()),
             receipt_federation_admissions: Arc::new(DashMap::new()),
             federation_local_kernel_id: ArcSwap::from_pointee(Option::<String>::None),
             signing_task,
@@ -651,6 +704,35 @@ impl ChioKernel {
         &mut self,
         receipt_store: Arc<dyn ReceiptStore>,
     ) -> Result<(), KernelError> {
+        // Before anything else, resolve every dispatch intent that survived
+        // a restart: each one marks a call whose effect may have run with no
+        // receipt. Reconciliation runs strictly BEFORE the store is attached
+        // or any background worker starts, so no new dispatch can journal an
+        // intent that interleaves with the boot pass, and a reconcile
+        // failure refuses the attach outright (fail-closed) instead of
+        // leaving a store serving with unresolved open intents. The default
+        // posture dead-letters orphans into durable, health-flipping
+        // incidents (a side effect is never blindly replayed); a store
+        // without the journal reports an empty pass, and a store shared
+        // with a live sibling writer defers that sibling's in-flight
+        // intents to their owner rather than claiming them as orphans.
+        let report =
+            receipt_store.reconcile_dispatch_intents(&crate::DefaultDispatchIntentReconciler)?;
+        if report.dead_lettered > 0 || report.monetary_reconciled > 0 {
+            tracing::warn!(
+                open = report.open,
+                dead_lettered = report.dead_lettered,
+                monetary_reconciled = report.monetary_reconciled,
+                "dispatch intents survived a restart; incidents recorded for operator review"
+            );
+        }
+        if report.deferred_to_live_writer > 0 {
+            tracing::warn!(
+                deferred = report.deferred_to_live_writer,
+                "receipt store is shared with a live sibling writer; leaving its open dispatch \
+                 intents for their owner (a later exclusive attach reconciles any true orphans)"
+            );
+        }
         match receipt_store.load_latest_checkpoint() {
             Ok(Some(checkpoint)) => {
                 self.checkpoint_seq_counter
@@ -754,6 +836,23 @@ impl ChioKernel {
                     config,
                 ));
         }
+        // The attach-time reconcile pass above defers rows owned by live
+        // sibling writers, and a sibling that crashes AFTER this attach
+        // leaves rows no attach will ever revisit while this kernel stays
+        // up. For stores that coordinate sibling writers, re-run
+        // reconciliation on a fixed cadence: each pass claims only rows
+        // whose owner is provably gone (never a live writer's, never this
+        // instance's own), so a crashed sibling's orphans surface as
+        // incidents even while other writers stay up. Assigned
+        // unconditionally so replacing the store always retires the
+        // previous store's worker.
+        self.dispatch_intent_recovery =
+            receipt_store.supports_dispatch_intent_recovery().then(|| {
+                crate::receipt_store::DispatchIntentRecoveryHandle::spawn(
+                    Arc::clone(&receipt_store),
+                    crate::receipt_store::DISPATCH_INTENT_RECOVERY_INTERVAL,
+                )
+            });
         self.receipt_store = Some(receipt_store);
         Ok(())
     }

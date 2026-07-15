@@ -593,6 +593,49 @@ impl ChioKernel {
             });
         }
 
+        // For a side-effecting or monetary call, durably journal a dispatch
+        // intent BEFORE the earliest possible effect (the prepaid authorize
+        // below, or tool dispatch), so a crash in the effect-to-receipt window
+        // leaves a durable trace to reconcile at the next boot. On failure,
+        // reverse every pre-execution hold through the same pre-dispatch
+        // unwind the admission and authorize arms use, then deny before any
+        // effect. Read-only calls return None here and pay nothing.
+        let has_monetary = budget_mutation.charge_result().is_some();
+        let dispatch_intent =
+            match self.record_dispatch_intent_if_side_effecting(request, has_monetary, now_unix_ms)
+            {
+                Ok(handle) => handle,
+                Err(error) => {
+                    let msg = error.to_string();
+                    warn!(
+                        request_id = %request.request_id,
+                        reason = %redacted!(&msg),
+                        "dispatch intent write failed; denying before dispatch"
+                    );
+                    return self.with_pre_invocation_guard_evidence(
+                        &pre_invocation_guard_evidence,
+                        || {
+                            self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                                request,
+                                reason: &msg,
+                                timestamp: now,
+                                matched_grant_index,
+                                cap,
+                                budget_mutation: &budget_mutation,
+                                payment_authorization: None,
+                                runtime_admission_metadata: extra_metadata.clone(),
+                                budget_lease_acquired,
+                            })
+                        },
+                    );
+                }
+            };
+        // Register the handle for the whole evaluation so whichever terminal
+        // receipt commits first consumes the intent; the guard clears the
+        // registration when this future finishes (or is dropped).
+        let _dispatch_intent_scope =
+            self.scope_dispatch_intent_for_request(&request.request_id, dispatch_intent);
+
         let payment_authorization = match self
             .authorize_payment_if_needed(request, budget_mutation.charge_result())
         {
@@ -619,6 +662,31 @@ impl ChioKernel {
             }
         };
 
+        // Money path: bind the rail's authorization id to the open intent so a
+        // monetary orphan names the exact reference an operator reconciles
+        // against. Best-effort and bounded: the open intent already proves a
+        // monetary attempt through its rail column, so a failed or timed-out
+        // attach is logged and never fails the call.
+        if let Some(authorization) = payment_authorization.as_ref() {
+            if let Some(handle) = self.dispatch_intent_for_request(Some(&request.request_id)) {
+                let budget = self.config.deadlines.receipt_append_budget();
+                if let Err(error) = self.with_receipt_store(|store| {
+                    Ok(store.attach_dispatch_intent_rail_ref_with_timeout(
+                        &handle.request_id,
+                        handle.tenant_id.as_deref(),
+                        &authorization.authorization_id,
+                        budget,
+                    )?)
+                }) {
+                    warn!(
+                        request_id = %request.request_id,
+                        reason = %redacted!(&error.to_string()),
+                        "dispatch intent rail-ref attach failed"
+                    );
+                }
+            }
+        }
+
         if let Err(error) = self.require_presented_execution_nonce(request, cap) {
             let msg = error.to_string();
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "execution nonce denied");
@@ -638,7 +706,6 @@ impl ChioKernel {
         }
 
         let tool_started_at = Instant::now();
-        let has_monetary = budget_mutation.charge_result().is_some();
         let mut post_admission_drop_guard = PostAdmissionDropGuard::new(
             self,
             request,
@@ -759,6 +826,11 @@ impl ChioKernel {
                         &pre_invocation_guard_evidence,
                     );
                 }
+                // No tool effect ran and this arm records no terminal
+                // receipt, so the journaled dispatch intent must be cleared
+                // here: leaving it open would dead-letter a false orphan at
+                // the next boot for a call that never executed.
+                self.clear_dispatch_intent_for_non_dispatch_exit(request);
                 warn!(
                     request_id = %request.request_id,
                     reason = %redacted!(&error),

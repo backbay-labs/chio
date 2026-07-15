@@ -88,6 +88,7 @@ fn metrics_kernel_with_web3_evidence(
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
+        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
         allow_ephemeral_receipt_log: true,
         allow_ephemeral_revocation_store: true,
     };

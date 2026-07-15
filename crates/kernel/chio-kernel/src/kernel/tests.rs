@@ -18,6 +18,7 @@ include!("tests/approval_flow.rs");
 include!("tests/execution_nonce.rs");
 include!("tests/compliance_score.rs");
 include!("tests/multi_tenant_receipt.rs");
+include!("tests/dispatch_intent_wiring.rs");
 include!("tests/memory_provenance.rs");
 include!("tests/federation_cosign.rs");
 include!("tests/revocation_durability.rs");

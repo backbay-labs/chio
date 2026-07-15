@@ -409,6 +409,33 @@ fn manifest_multiple_tools_preserves_order() {
 }
 
 #[test]
+fn adapted_server_reports_read_only_from_manifest_hints() {
+    let transport = MockTransport::simple(
+        vec![
+            McpToolInfo {
+                name: "read_file".into(),
+                title: None,
+                description: Some("Read a file".into()),
+                input_schema: serde_json::json!({"type": "object"}),
+                output_schema: None,
+                annotations: Some(serde_json::json!({"readOnlyHint": true})),
+                execution: None,
+            },
+            text_tool_info("write_file"),
+        ],
+        MockCallBehavior::Success(success_result("ok")),
+    );
+    let server =
+        AdaptedMcpServer::new(McpAdapter::new(default_config(), Box::new(transport))).test_unwrap();
+
+    // The readOnlyHint-annotated tool is exempt from side-effect handling;
+    // an unannotated tool and an unknown name stay side-effecting.
+    assert!(server.tool_is_read_only("read_file"));
+    assert!(!server.tool_is_read_only("write_file"));
+    assert!(!server.tool_is_read_only("missing_tool"));
+}
+
+#[test]
 fn manifest_infers_side_effects_from_annotations() {
     let tool_readonly = McpToolInfo {
         name: "safe".into(),

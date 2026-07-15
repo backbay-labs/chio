@@ -57,6 +57,7 @@ fn make_edge() -> ChioMcpEdge {
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
+        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     };
     let mut kernel = ChioKernel::new(config);
     kernel.register_tool_server(Box::new(EchoServer));

@@ -434,6 +434,7 @@ mod tests {
             retention_config: None,
             memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
             deadlines: chio_kernel::HotPathDeadlineConfig::default(),
+            dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
         }
     }
 

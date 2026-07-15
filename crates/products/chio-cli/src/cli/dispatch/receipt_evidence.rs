@@ -52,6 +52,21 @@ pub(crate) fn dispatch_receipt(
                 control_url: control_url.as_deref(),
                 control_token: control_token.as_deref(),
             }),
+            ReceiptCommands::ResolveDeadLetter {
+                request_id,
+                tenant,
+                note,
+            } => cmd_receipt_resolve_dead_letter(
+                &request_id,
+                tenant.as_deref(),
+                &note,
+                QueryBackend {
+                    json_output,
+                    receipt_db_path: receipt_db.as_deref(),
+                    control_url: control_url.as_deref(),
+                    control_token: control_token.as_deref(),
+                },
+            ),
             ReceiptCommands::Audit { repair } => cmd_receipt_audit(
                 repair,
                 QueryBackend {

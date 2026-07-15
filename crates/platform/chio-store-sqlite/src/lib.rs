@@ -146,6 +146,69 @@ pub(crate) fn sqlite_parent_dir_to_create(path: &Path) -> Option<PathBuf> {
     non_empty_parent(&sqlite_uri_filesystem_path(text))
 }
 
+/// The sidecar path a receipt store locks to mark itself a live writer on
+/// `path`, or `None` for an in-memory database (which has no on-disk file for
+/// sibling instances to coordinate on). Derived from the resolved filesystem
+/// path so a `file:` URI and its plain-path spelling coordinate on the same
+/// lock.
+pub(crate) fn sqlite_writer_lock_path(path: &Path) -> Option<PathBuf> {
+    sqlite_sidecar_lock_path(path, ".writer-lock")
+}
+
+/// The sidecar path serializing dispatch-intent reconcile passes across
+/// sibling instances of the database at `path`. Separate from the writer
+/// mark on purpose: taking this mutex must never disturb any instance's
+/// lifetime mark, because the mark's continuous presence is what proves the
+/// instance live to its siblings.
+pub(crate) fn sqlite_reconcile_lock_path(path: &Path) -> Option<PathBuf> {
+    sqlite_sidecar_lock_path(path, ".reconcile-lock")
+}
+
+/// The sidecar path an instance holds locked to mark the owner token
+/// `owner_token` live on the database at `path`, or `None` for an in-memory
+/// database. One file per open: the owner locks it before it can journal a
+/// row and the OS releases the lock when the process exits, cleanly or not,
+/// so reconciliation reads an acquirable lock as "this owner is gone"
+/// without consulting a clock. Callers must shape-check foreign tokens with
+/// [`is_owner_token_shaped`] before deriving a path from them.
+pub(crate) fn sqlite_owner_mark_path(path: &Path, owner_token: &str) -> Option<PathBuf> {
+    sqlite_sidecar_lock_path(path, &format!(".owner-{owner_token}-lock"))
+}
+
+/// True when `token` has the exact shape of an owner token this crate
+/// generates (a hyphenated UUID). Journal rows are data: an arbitrary
+/// `owner_token` string must never reach a filename, where it could escape
+/// the database's directory or collide with another sidecar. A row whose
+/// token fails the check simply has no mark to probe and stays claimable
+/// only under whole-file exclusivity.
+pub(crate) fn is_owner_token_shaped(token: &str) -> bool {
+    token.len() == 36
+        && token.bytes().enumerate().all(|(index, byte)| match index {
+            8 | 13 | 18 | 23 => byte == b'-',
+            _ => byte.is_ascii_hexdigit(),
+        })
+}
+
+fn sqlite_sidecar_lock_path(path: &Path, extension: &str) -> Option<PathBuf> {
+    let Some(text) = path.to_str() else {
+        // A non-UTF8 path cannot be a `file:` URI, so use it verbatim.
+        return Some(append_lock_extension(path.to_path_buf(), extension));
+    };
+    if is_in_memory_sqlite_path(text) {
+        return None;
+    }
+    Some(append_lock_extension(
+        sqlite_uri_filesystem_path(text),
+        extension,
+    ))
+}
+
+fn append_lock_extension(path: PathBuf, extension: &str) -> PathBuf {
+    let mut path = path.into_os_string();
+    path.push(extension);
+    PathBuf::from(path)
+}
+
 /// The parent of `path`, unless it is empty (a bare filename with no directory
 /// component), in which case there is nothing to create.
 fn non_empty_parent(path: &Path) -> Option<PathBuf> {
@@ -231,6 +294,27 @@ mod tests {
             sqlite_parent_dir_to_create(Path::new("file:receipts.db?mode=memory")),
             None
         );
+    }
+
+    #[test]
+    fn owner_token_shape_admits_only_hyphenated_uuids() {
+        use super::is_owner_token_shaped;
+        assert!(is_owner_token_shaped(
+            "0198c0de-9a71-7bd2-8c8f-3a2b1c4d5e6f"
+        ));
+        for token in [
+            "",
+            "0198c0de-9a71-7bd2-8c8f-3a2b1c4d5e6",
+            "0198c0de-9a71-7bd2-8c8f-3a2b1c4d5e6f0",
+            "0198c0de/9a71-7bd2-8c8f-3a2b1c4d5e6f",
+            "../escape-attempt-9a71-7bd2-8c8f-3a2b",
+            "0198c0de.9a71.7bd2.8c8f.3a2b1c4d5e6f",
+        ] {
+            assert!(
+                !is_owner_token_shaped(token),
+                "{token:?} must not shape as an owner token"
+            );
+        }
     }
 
     #[test]

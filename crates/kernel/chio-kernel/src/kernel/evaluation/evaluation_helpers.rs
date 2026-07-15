@@ -175,7 +175,30 @@ impl ChioKernel {
         }
     }
 
+    /// Unwind all pre-dispatch state and record the signed deny receipt for
+    /// an evaluation whose tool provably did not run. Every caller owns
+    /// either a pre-dispatch denial or a dispatch error that precedes any
+    /// tool side effect, so on an error exit here (a failed cleanup step or
+    /// a failed deny-receipt append) the evaluation returns without a
+    /// terminal receipt and the journaled dispatch intent must not survive:
+    /// an open row for a call that never executed would dead-letter at the
+    /// next boot as a false orphan. The clear is bounded, open-state
+    /// guarded, and a no-op both for denials reached before the intent write
+    /// (no handle registered) and for a deny receipt that already consumed
+    /// the intent (the consume unregisters the handle).
     pub(super) fn build_pre_dispatch_cleanup_deny_response(
+        &self,
+        denial: PreDispatchCleanupDeny<'_>,
+    ) -> Result<ToolCallResponse, KernelError> {
+        let request = denial.request;
+        let result = self.pre_dispatch_cleanup_deny_response(denial);
+        if result.is_err() {
+            self.clear_dispatch_intent_for_non_dispatch_exit(request);
+        }
+        result
+    }
+
+    fn pre_dispatch_cleanup_deny_response(
         &self,
         denial: PreDispatchCleanupDeny<'_>,
     ) -> Result<ToolCallResponse, KernelError> {

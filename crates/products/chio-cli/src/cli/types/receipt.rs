@@ -44,6 +44,30 @@ pub(crate) enum ReceiptCommands {
     },
     /// Report receipt-store write health and durability status.
     Health,
+    /// Resolve a dead-letter dispatch-intent incident: the sanctioned
+    /// operator remediation once you have confirmed the outcome (e.g.
+    /// against the rail or the upstream tool server) for an effect the
+    /// journal could not attest with a receipt. Transitions the row to a
+    /// terminal resolved state that stops counting against `receipt
+    /// health`, while the row and this note remain on disk for audit.
+    /// Fails closed if the request id is not found or is not currently a
+    /// dead letter (still open, already reconciled, or already resolved).
+    ResolveDeadLetter {
+        /// The dispatch intent's request id, as named in `receipt health`
+        /// or the dead-letter incident.
+        #[arg(long)]
+        request_id: String,
+        /// Tenant scope of the intent, for a multi-tenant deployment. Must
+        /// match the intent's original tenant exactly; absent means the
+        /// intent carries no tenant.
+        #[arg(long)]
+        tenant: Option<String>,
+        /// Operator note explaining how the incident was confirmed
+        /// resolved. Appended to the existing incident detail, never
+        /// overwriting it.
+        #[arg(long)]
+        note: String,
+    },
     /// Flush pending receipt writes to durable storage, bounded by a timeout.
     Flush {
         /// Maximum time to wait for the flush to complete, in milliseconds.

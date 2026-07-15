@@ -337,6 +337,14 @@ pub trait ToolServerConnection: Send + Sync {
     /// List the tool names available on this server.
     fn tool_names(&self) -> Vec<String>;
 
+    /// Whether the named tool is annotated read-only (no external side
+    /// effect). Default `false` fails safe: an unannotated or unknown tool is
+    /// treated as side-effecting and gets a durable dispatch intent before it
+    /// runs. Connections that know their tool annotations override this.
+    fn tool_is_read_only(&self, _tool_name: &str) -> bool {
+        false
+    }
+
     /// Invoke a tool on this server. The kernel has already validated the
     /// capability and run guards before calling this.
     async fn invoke(

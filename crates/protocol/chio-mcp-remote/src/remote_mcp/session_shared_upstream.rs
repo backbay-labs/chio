@@ -22,6 +22,13 @@ impl ToolServerConnection for SharedUpstreamToolServer {
         self.tool_names.clone()
     }
 
+    /// Delegate to the wrapped upstream so its manifest-derived read-only
+    /// annotations (from the MCP `readOnlyHint`) survive the shared-upstream
+    /// wrapping instead of falling back to the side-effecting default.
+    fn tool_is_read_only(&self, tool_name: &str) -> bool {
+        self.upstream.tool_is_read_only(tool_name)
+    }
+
     async fn invoke(
         &self,
         tool_name: &str,

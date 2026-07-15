@@ -4,6 +4,10 @@ mod background_checkpoints;
 mod bootstrap;
 #[path = "tests/checkpoint.rs"]
 mod checkpoint;
+#[path = "tests/dispatch_intent.rs"]
+mod dispatch_intent;
+#[path = "tests/dispatch_intent_property.rs"]
+mod dispatch_intent_property;
 #[path = "tests/errors.rs"]
 mod errors;
 #[path = "tests/head_property.rs"]

@@ -251,6 +251,7 @@ fn make_monetary_config() -> KernelConfig {
         retention_config: None,
         memory_budget: crate::MemoryBudgetConfig::defaults(),
         deadlines: crate::HotPathDeadlineConfig::default(),
+        dispatch_intent_journal: crate::DispatchIntentJournalMode::Off,
     }
 }
 
@@ -1224,6 +1225,7 @@ fn make_dpop_kernel_and_cap(
         retention_config: None,
         memory_budget: crate::MemoryBudgetConfig::defaults(),
         deadlines: crate::HotPathDeadlineConfig::default(),
+        dispatch_intent_journal: crate::DispatchIntentJournalMode::Off,
     };
     let mut kernel = make_kernel(config);
     kernel.register_tool_server(Box::new(EchoServer::new(server, vec![tool])));

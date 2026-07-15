@@ -130,6 +130,109 @@ impl Drop for RetentionMaintenanceHandle {
     }
 }
 
+/// Cadence of the background dispatch-intent recovery worker. Each pass is
+/// one indexed read when nothing foreign is open, so the interval trades
+/// only how long a crashed sibling's orphans stay invisible.
+pub(crate) const DISPATCH_INTENT_RECOVERY_INTERVAL: std::time::Duration =
+    std::time::Duration::from_secs(30);
+
+/// Owns the dispatch-intent recovery worker thread; signals stop and joins
+/// on drop. Spawned by [`crate::kernel::ChioKernel::try_set_receipt_store_handle`]
+/// for stores that support sibling-writer recovery.
+///
+/// The attach-time reconcile pass correctly defers rows owned by live
+/// sibling writers, but a sibling that crashes AFTER this kernel attaches
+/// leaves open, outcome-unknown rows that no later attach may ever revisit
+/// (the survivor can stay up indefinitely). This worker re-runs
+/// reconciliation on a fixed cadence: each pass claims only rows whose
+/// owner is provably gone and never touches this instance's own in-flight
+/// intents, so a live writer is never harmed while a crashed writer's
+/// orphans surface as durable incidents even while other writers stay up.
+///
+/// The worker thread NEVER PANICS: each pass is wrapped in `catch_unwind`
+/// so a panic inside the store's reconcile path is caught, logged, and
+/// retried on the next interval rather than silently and permanently
+/// stopping recovery.
+pub struct DispatchIntentRecoveryHandle {
+    stop: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    join: Option<std::thread::JoinHandle<()>>,
+}
+
+impl DispatchIntentRecoveryHandle {
+    /// Spawn the recovery worker. `store` is a dedicated `Arc` clone held by
+    /// the worker thread for its lifetime, independent of the kernel's own
+    /// `receipt_store` handle.
+    pub(crate) fn spawn(
+        store: std::sync::Arc<dyn ReceiptStore>,
+        interval: std::time::Duration,
+    ) -> Self {
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let worker_stop = std::sync::Arc::clone(&stop);
+        let join = std::thread::spawn(move || {
+            while !worker_stop.load(std::sync::atomic::Ordering::SeqCst) {
+                // Sleep in short slices so shutdown is responsive.
+                let mut waited = std::time::Duration::ZERO;
+                let slice = std::time::Duration::from_millis(200);
+                while waited < interval && !worker_stop.load(std::sync::atomic::Ordering::SeqCst) {
+                    std::thread::sleep(slice);
+                    waited += slice;
+                }
+                if worker_stop.load(std::sync::atomic::Ordering::SeqCst) {
+                    break;
+                }
+                let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    store.reconcile_dispatch_intents(&crate::DefaultDispatchIntentReconciler)
+                }));
+                match outcome {
+                    Ok(Ok(report)) => {
+                        if report.dead_lettered > 0
+                            || report.monetary_reconciled > 0
+                            || report.replayed > 0
+                        {
+                            // Mirror the attach-time log so a mid-serve
+                            // recovery is as visible as a boot one.
+                            tracing::warn!(
+                                target: "chio::dispatch_intent",
+                                dead_lettered = report.dead_lettered,
+                                monetary_reconciled = report.monetary_reconciled,
+                                replayed = report.replayed,
+                                "recovered dispatch intents orphaned by a crashed sibling \
+                                 writer; incidents recorded for operator review"
+                            );
+                        }
+                    }
+                    Ok(Err(error)) => {
+                        tracing::warn!(
+                            target: "chio::dispatch_intent",
+                            error = %redacted!(&error),
+                            "dispatch intent recovery pass failed; will retry next interval"
+                        );
+                    }
+                    Err(_panic) => {
+                        tracing::warn!(
+                            target: "chio::dispatch_intent",
+                            "dispatch intent recovery pass panicked; will retry next interval"
+                        );
+                    }
+                }
+            }
+        });
+        Self {
+            stop,
+            join: Some(join),
+        }
+    }
+}
+
+impl Drop for DispatchIntentRecoveryHandle {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::SeqCst);
+        if let Some(join) = self.join.take() {
+            let _ = join.join();
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ReceiptWriterCounters {
@@ -252,6 +355,16 @@ pub struct ReceiptStoreHealthReport {
     /// writer fault, even once the writer recovers.
     #[serde(default)]
     pub writer_restart_total: u64,
+    /// Dispatch intents still open in the journal: calls in flight, or orphans
+    /// awaiting boot reconciliation. Persistent rows, so visible to any reader
+    /// of the database, not only the serving kernel.
+    #[serde(default)]
+    pub open_dispatch_intents: u64,
+    /// Orphaned dispatch intents reconciled into outcome-unknown incidents. A
+    /// nonzero count means an effect may have occurred with no receipt;
+    /// `healthy` is `false` while any remain unresolved.
+    #[serde(default)]
+    pub dead_letter_dispatch_intents: u64,
 }
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -284,6 +397,120 @@ pub struct AuthorizationReceiptConsumption {
     pub tenant_id: Option<String>,
     pub parameter_hash: String,
     pub consumed_at_unix_ms: u64,
+}
+
+/// Side-effect classification that gates the durable dispatch-intent write.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SideEffectClass {
+    /// Pure/read-only: no durable intent is written; time to first response
+    /// is unchanged.
+    ReadOnly,
+    /// Externally visible effect (file write, message send, non-monetary tool).
+    SideEffecting,
+    /// Moves funds on a payment rail; carries a rail reference.
+    Monetary,
+}
+
+/// Which call classes must write a durable dispatch intent before dispatch.
+/// The compiled default covers every effecting class and exempts read-only;
+/// `KernelConfig` construction sites choose the deployment posture.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DispatchIntentJournalMode {
+    /// No intent writes: an effect that crashes before its receipt commits
+    /// leaves no durable trace. Operator opt-out only.
+    Off,
+    /// Write intents for the SideEffecting and Monetary classes.
+    #[default]
+    SideEffecting,
+    /// Write intents for every mediated call, including read-only.
+    All,
+}
+
+/// A durable operational record proving a side-effecting or monetary call was
+/// about to dispatch. Never signed, never entered into the receipt log, and
+/// never advances the checkpoint sequence.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DispatchIntentRecord {
+    pub request_id: String,
+    pub capability_id: String,
+    pub tool_server: String,
+    pub tool_name: String,
+    pub parameter_hash: String,
+    pub side_effect_class: SideEffectClass,
+    pub monetary: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rail: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rail_authorization_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tenant_id: Option<String>,
+    pub created_at_unix_ms: u64,
+}
+
+/// Key used to consume an intent in the same transaction as the receipt
+/// append.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DispatchIntentKey {
+    pub request_id: String,
+    /// Must equal the receipt's `action.parameter_hash`; a mismatch fails
+    /// closed so a consumed intent always matches the exact call the receipt
+    /// attests.
+    pub parameter_hash: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tenant_id: Option<String>,
+}
+
+/// Threaded from the pre-dispatch intent write to the terminal receipt sink
+/// so the receipt-append transaction consumes the matching intent. Receipts
+/// carry no request id, so the binding must travel with the evaluation.
+#[derive(Debug, Clone)]
+pub struct DispatchIntentHandle {
+    pub request_id: String,
+    pub parameter_hash: String,
+    pub tenant_id: Option<String>,
+}
+
+/// Outcome of reconciling one orphaned intent surviving a restart.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DispatchIntentResolution {
+    /// Effect could not be confirmed; record an outcome-unknown incident.
+    DeadLetter { detail: String },
+    /// Reconciler proved the effect never occurred and it is safe to retry.
+    SafeToReplay,
+    /// Rail query confirmed a monetary outcome; the incident carries the
+    /// reference.
+    MonetaryReconciled { rail_reference: String },
+}
+
+/// Decides how to resolve an orphaned dispatch intent at boot. The default
+/// kernel reconciler dead-letters every orphan (a side effect is never
+/// blindly replayed); a rail-querying reconciler can prove a monetary
+/// outcome instead.
+pub trait DispatchIntentReconciler: Send + Sync {
+    fn resolve(
+        &self,
+        intent: &DispatchIntentRecord,
+    ) -> Result<DispatchIntentResolution, ReceiptStoreError>;
+}
+
+/// Summary of one boot reconciliation pass over surviving intents.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DispatchIntentReconcileReport {
+    pub open: u64,
+    pub dead_lettered: u64,
+    pub replayed: u64,
+    pub monetary_reconciled: u64,
+    /// Open intents left unclaimed because a live sibling writer instance
+    /// shares the store: they mark that writer's in-flight calls, not
+    /// restart orphans, and only their owner (or a later attach that holds
+    /// the store exclusively) may resolve them.
+    #[serde(default)]
+    pub deferred_to_live_writer: u64,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -453,6 +680,167 @@ pub trait ReceiptStore: Send + Sync {
         Err(ReceiptStoreError::Conflict(
             "durable authorization receipt consumption is not supported by this receipt store"
                 .to_string(),
+        ))
+    }
+    /// Durably write a dispatch intent before a side-effecting or monetary
+    /// call dispatches. Fails closed on any store that does not support the
+    /// journal: the caller denies before the effect rather than dispatching
+    /// without a durable trace.
+    fn record_dispatch_intent(
+        &self,
+        _intent: &DispatchIntentRecord,
+    ) -> Result<(), ReceiptStoreError> {
+        Err(ReceiptStoreError::Conflict(
+            "durable dispatch-intent journal is not supported by this receipt store".to_string(),
+        ))
+    }
+    /// Bounded variant of `record_dispatch_intent`, failing closed with
+    /// `ReceiptStoreError::Timeout` if the writer round trip exceeds `budget`.
+    /// The default ignores the budget (the unbounded default already fails
+    /// closed); a store with an async commit writer overrides this so a
+    /// writer that stalls after the pre-dispatch liveness check cannot hang
+    /// the evaluation inside the intent write.
+    fn record_dispatch_intent_with_timeout(
+        &self,
+        intent: &DispatchIntentRecord,
+        _budget: std::time::Duration,
+    ) -> Result<(), ReceiptStoreError> {
+        self.record_dispatch_intent(intent)
+    }
+    /// Append a receipt and, in the SAME transaction, consume the matching
+    /// dispatch intent. A `parameter_hash` mismatch or missing intent aborts
+    /// the whole transaction: neither the receipt nor the delete commits.
+    fn append_chio_receipt_consuming_intent(
+        &self,
+        _receipt: &ChioReceipt,
+        _intent: &DispatchIntentKey,
+    ) -> Result<Option<u64>, ReceiptStoreError> {
+        Err(ReceiptStoreError::Conflict(
+            "durable dispatch-intent consumption is not supported by this receipt store"
+                .to_string(),
+        ))
+    }
+    /// Bounded variant of `append_chio_receipt_consuming_intent`, failing
+    /// closed with `ReceiptStoreError::Timeout` if the commit round trip
+    /// exceeds `budget`, so a wedged writer cannot pin the kernel-wide
+    /// receipt write lock through the consuming append.
+    fn append_chio_receipt_consuming_intent_with_timeout(
+        &self,
+        receipt: &ChioReceipt,
+        intent: &DispatchIntentKey,
+        _budget: std::time::Duration,
+    ) -> Result<Option<u64>, ReceiptStoreError> {
+        self.append_chio_receipt_consuming_intent(receipt, intent)
+    }
+    /// Best-effort attach of a rail authorization id to an open monetary
+    /// intent, so a monetary orphan names the exact reference an operator
+    /// reconciles against. Keyed on the intent's (tenant, request id)
+    /// identity: request ids are only unique within a tenant, so the tenant
+    /// travels with the attach to keep it off another tenant's row.
+    fn attach_dispatch_intent_rail_ref(
+        &self,
+        _request_id: &str,
+        _tenant_id: Option<&str>,
+        _rail_authorization_id: &str,
+    ) -> Result<(), ReceiptStoreError> {
+        Err(ReceiptStoreError::Conflict(
+            "dispatch-intent rail reference attach is not supported by this receipt store"
+                .to_string(),
+        ))
+    }
+    /// Bounded variant of `attach_dispatch_intent_rail_ref`, failing closed
+    /// with `ReceiptStoreError::Timeout` past `budget` so the best-effort
+    /// post-authorize attach can never hang an evaluation on a wedged writer.
+    fn attach_dispatch_intent_rail_ref_with_timeout(
+        &self,
+        request_id: &str,
+        tenant_id: Option<&str>,
+        rail_authorization_id: &str,
+        _budget: std::time::Duration,
+    ) -> Result<(), ReceiptStoreError> {
+        self.attach_dispatch_intent_rail_ref(request_id, tenant_id, rail_authorization_id)
+    }
+    /// Delete the open intent matching `key` for an evaluation that exits
+    /// WITHOUT dispatching the tool and without a terminal receipt (a URL
+    /// elicitation returned to the caller): no effect ran, so the intent
+    /// must not survive to dead-letter as a false orphan at the next boot.
+    /// The key match mirrors the consuming append, so a mismatched or
+    /// already-consumed intent is reported rather than silently ignored.
+    fn clear_dispatch_intent(&self, _key: &DispatchIntentKey) -> Result<(), ReceiptStoreError> {
+        Err(ReceiptStoreError::Conflict(
+            "dispatch-intent clearing is not supported by this receipt store".to_string(),
+        ))
+    }
+    /// Bounded variant of `clear_dispatch_intent`, failing closed with
+    /// `ReceiptStoreError::Timeout` past `budget` so the non-dispatch exit
+    /// can never hang an evaluation on a wedged writer.
+    fn clear_dispatch_intent_with_timeout(
+        &self,
+        key: &DispatchIntentKey,
+        _budget: std::time::Duration,
+    ) -> Result<(), ReceiptStoreError> {
+        self.clear_dispatch_intent(key)
+    }
+    /// Reconcile every open intent whose writer is gone. Called once at
+    /// store attach and, for stores reporting
+    /// [`Self::supports_dispatch_intent_recovery`], again on a background
+    /// cadence while serving; an implementation must therefore never claim
+    /// a live writer's rows, including the calling instance's own in-flight
+    /// intents. Default: a no-op empty report, because a store without the
+    /// journal has no orphans.
+    fn reconcile_dispatch_intents(
+        &self,
+        _reconciler: &dyn DispatchIntentReconciler,
+    ) -> Result<DispatchIntentReconcileReport, ReceiptStoreError> {
+        Ok(DispatchIntentReconcileReport::default())
+    }
+    /// True when `reconcile_dispatch_intents` is safe and worthwhile to
+    /// re-run while the store serves (a store whose file can be shared with
+    /// sibling writer instances that may crash at any time). The kernel
+    /// spawns the background dispatch-intent recovery worker only for such
+    /// stores. Default false: a store without sibling writers has nothing
+    /// to recover after its attach-time pass.
+    fn supports_dispatch_intent_recovery(&self) -> bool {
+        false
+    }
+    /// True when a journaled dispatch intent survives a process crash. The
+    /// journal exists to leave a durable marker for an effect whose
+    /// terminal receipt never committed, so the kernel refuses to journal
+    /// into a store that would lose the row with the process (an in-memory
+    /// database): such a write "succeeds" and still vanishes exactly when
+    /// reconciliation needs it. Default false, so a store must positively
+    /// claim crash durability before side-effecting dispatch trusts it.
+    fn supports_durable_dispatch_intent_journal(&self) -> bool {
+        false
+    }
+    /// Count of open (in-flight or orphaned-but-unreconciled) dispatch
+    /// intents. Default 0 for stores without the journal.
+    fn open_dispatch_intent_count(&self) -> Result<u64, ReceiptStoreError> {
+        Ok(0)
+    }
+    /// Count of dead-letter (orphaned, outcome-unknown) dispatch intents.
+    /// Default 0 for stores without the journal.
+    fn dead_letter_dispatch_intent_count(&self) -> Result<u64, ReceiptStoreError> {
+        Ok(0)
+    }
+    /// Resolve a specific dead-letter dispatch intent: the sanctioned
+    /// operator remediation for the incident a nonzero
+    /// `dead_letter_dispatch_intents` count flags in health. Transitions the
+    /// row to a terminal `resolved` state that stops counting against
+    /// health, appending the operator's note to the existing resolution
+    /// detail rather than overwriting it, so the row stays auditable end to
+    /// end. Refuses (fail-closed) when no intent matches `request_id` and
+    /// `tenant_id`, or when it exists but is not currently in `dead_letter`
+    /// state, so an operator cannot silently resolve the wrong incident or
+    /// resolve one twice.
+    fn resolve_dead_letter_dispatch_intent(
+        &self,
+        _request_id: &str,
+        _tenant_id: Option<&str>,
+        _note: &str,
+    ) -> Result<(), ReceiptStoreError> {
+        Err(ReceiptStoreError::Conflict(
+            "dead-letter resolution is not supported by this receipt store".to_string(),
         ))
     }
     fn append_child_receipt(&self, receipt: &ChildRequestReceipt) -> Result<(), ReceiptStoreError>;

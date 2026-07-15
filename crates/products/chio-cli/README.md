@@ -58,7 +58,7 @@ Full flag reference: `chio <command> [<subcommand>...] --help`.
 | `api` | `protect` | Protect an HTTP API behind an OpenAPI spec-backed sidecar. |
 | `mcp` | `wrap`, `serve`, `serve-http` | Wrap or host an MCP-compatible edge behind the kernel. |
 | `trust` | 26 groups: `serve`, `provider`, `federation-policy`, `revoke`, `facility`, `bond`, `loss`, `liability-provider`, `liability-market`, `underwriting-input`, `underwriting-decision`, `underwriting-appeal`, `capital-book`, `capital-instruction`, `capital-allocation`, `credit-scorecard`, `credit-backtest`, `provider-risk-package`, `appraisal`, `behavioral-feed`, `exposure-ledger`, `evidence-share`, `authorization-context`, `federated-issue`, `federated-delegation-policy-create`, `status` | Manage local and remote trust-plane state. |
-| `receipt` | `list`, `health`, `flush`, `audit`, `retention`, `checkpoint`, `explain` | Query, audit, and repair the receipt store. |
+| `receipt` | `list`, `health`, `resolve-dead-letter`, `flush`, `audit`, `retention`, `checkpoint`, `explain` | Query, audit, and repair the receipt store. |
 | `evidence` | `export`, `verify`, `import`, `federation-policy` | Export and verify offline evidence packages. |
 | `certify` | `check`, `verify`, `registry` (11 more) | Certify conformance evidence and publish results. |
 | `did` | `resolve` | Resolve `did:chio` identifiers into DID Documents. |

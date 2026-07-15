@@ -2,7 +2,13 @@ use super::*;
 
 /// Receipt-store schema revision. Bump on every schema-affecting change so an
 /// older binary refuses to open a database it cannot fully interpret.
-const RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION: i32 = 0;
+///
+/// Revision history:
+/// - 0: initial stamped schema.
+/// - 1: adds the `chio_dispatch_intents` journal table. An older binary must
+///   refuse a database that may carry open intent rows, because it would
+///   serve without reconciling them or surfacing them in health.
+const RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION: i32 = 1;
 
 /// Stable key under which this store records its schema revision in the shared
 /// keyed metadata table. Distinct from the co-located approval store's key so the
@@ -32,6 +38,49 @@ const RECEIPT_STORE_LEGACY_ANCHOR_TABLES: &[&str] =
 /// foreign file, so each must also carry a receipt payload column before it is
 /// accepted. The Chio-specific `chio_tool_receipts` anchor needs no such check.
 const RECEIPT_STORE_GENERIC_LEGACY_ANCHOR_TABLES: &[&str] = &["http_receipts", "tool_receipts"];
+
+/// Non-audit operational journal: one durable row per in-flight
+/// side-effecting or monetary dispatch, written before the effect and
+/// consumed in the same transaction as the receipt append. Never signed,
+/// never entered into chio_tool_receipts, and never counted by checkpoints
+/// or retention. Shared by the create path and the `open_existing` additive
+/// migration from schema revision 0, so both produce identical DDL.
+///
+/// `owner_token` names the store instance that journaled the row (one fresh
+/// token per open, never reused across restarts). Reconciliation skips rows
+/// carrying the reconciling instance's own token, which is what makes the
+/// pass safe to re-run while serving: liveness comes from the sidecar
+/// writer mark, identity from the token, and neither involves a clock (a
+/// paused-but-live writer keeps both).
+///
+/// A row's identity is (tenant, request id): request ids are caller-supplied
+/// and only unique within a tenant, so tenant-scoped uniqueness keeps one
+/// tenant's open or dead-letter intent from blocking an unrelated tenant's
+/// request that reuses the id. The unique index folds a NULL tenant to ''
+/// (a nullable column in a plain UNIQUE constraint would admit duplicate
+/// NULLs), so tenantless rows still conflict with each other.
+const DISPATCH_INTENT_JOURNAL_DDL: &str = r#"
+    CREATE TABLE IF NOT EXISTS chio_dispatch_intents (
+        request_id            TEXT NOT NULL,
+        capability_id         TEXT NOT NULL,
+        tool_server           TEXT NOT NULL,
+        tool_name             TEXT NOT NULL,
+        parameter_hash        TEXT NOT NULL,
+        side_effect_class     TEXT NOT NULL,
+        monetary              INTEGER NOT NULL,
+        rail                  TEXT,
+        rail_authorization_id TEXT,
+        tenant_id             TEXT,
+        created_at_unix_ms    INTEGER NOT NULL,
+        state                 TEXT NOT NULL DEFAULT 'open',
+        resolution_detail     TEXT,
+        owner_token           TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_chio_dispatch_intents_tenant_request
+        ON chio_dispatch_intents(COALESCE(tenant_id, ''), request_id);
+    CREATE INDEX IF NOT EXISTS idx_chio_dispatch_intents_state
+        ON chio_dispatch_intents(state);
+"#;
 
 fn configure_sqlite_connection(connection: &mut Connection) -> Result<(), ReceiptStoreError> {
     connection.execute_batch(
@@ -167,7 +216,7 @@ impl SqliteReceiptStore {
             // Validate provenance before configuring pragmas: a foreign or
             // future database must be refused before any write touches its
             // header, so a mistargeted path is never mutated into WAL mode.
-            crate::check_schema_version(
+            let on_disk_version = crate::check_schema_version(
                 &connection,
                 RECEIPT_STORE_SCHEMA_KEY,
                 RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION,
@@ -175,6 +224,21 @@ impl SqliteReceiptStore {
             )
             .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
             configure_sqlite_connection(&mut connection)?;
+            if on_disk_version < RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION {
+                // Additive migration up to the supported revision (currently
+                // only the dispatch-intent journal table), then stamp it:
+                // once this binary may write intent rows into the file, an
+                // older binary must refuse to open it rather than serve
+                // without reconciling those rows or surfacing them in
+                // health.
+                connection.execute_batch(DISPATCH_INTENT_JOURNAL_DDL)?;
+                crate::stamp_schema_version(
+                    &connection,
+                    RECEIPT_STORE_SCHEMA_KEY,
+                    RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION,
+                )
+                .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
+            }
             super::support::ensure_transparency_projection_guards(&connection)?;
             drop(connection);
 
@@ -191,6 +255,8 @@ impl SqliteReceiptStore {
                 connection_flags,
             )?;
 
+            let instance_token = fresh_instance_token();
+            let writer_lifetime_lock = acquire_writer_lifetime_lock(path, &instance_token)?;
             return Ok(Self {
                 receipt_commit_actor: ReceiptCommitActor::start(
                     writer_pool,
@@ -199,6 +265,8 @@ impl SqliteReceiptStore {
                 pool: reader_pool,
                 strict_tenant_isolation: std::sync::atomic::AtomicBool::new(true),
                 incremental_verification: options.incremental_verification,
+                writer_lifetime_lock,
+                instance_token,
             });
         }
 
@@ -1132,6 +1200,7 @@ impl SqliteReceiptStore {
 
             "#,
         )?;
+        connection.execute_batch(DISPATCH_INTENT_JOURNAL_DDL)?;
         connection.execute_batch(crate::IOU_ENVELOPE_MIGRATION)?;
         ensure_tool_receipt_attribution_columns(&connection)?;
         super::support::ensure_receipt_lineage_statement_columns(&connection)?;
@@ -1179,6 +1248,8 @@ impl SqliteReceiptStore {
             connection_flags,
         )?;
 
+        let instance_token = fresh_instance_token();
+        let writer_lifetime_lock = acquire_writer_lifetime_lock(path, &instance_token)?;
         Ok(Self {
             receipt_commit_actor: ReceiptCommitActor::start(
                 writer_pool,
@@ -1187,6 +1258,8 @@ impl SqliteReceiptStore {
             pool: reader_pool,
             strict_tenant_isolation: std::sync::atomic::AtomicBool::new(true),
             incremental_verification: options.incremental_verification,
+            writer_lifetime_lock,
+            instance_token,
         })
     }
 
@@ -1203,6 +1276,66 @@ impl SqliteReceiptStore {
             },
         )
     }
+}
+
+/// Identity of one store instance for the rows it journals, distinct across
+/// every open of every process (a fresh UUID, never persisted or reused).
+/// Reconciliation treats a row carrying a different token as another
+/// instance's work, so nothing about the token needs to survive a restart:
+/// a restarted instance's previous rows are foreign to it by construction,
+/// exactly as a crashed sibling's are.
+fn fresh_instance_token() -> String {
+    uuid::Uuid::now_v7().to_string()
+}
+
+/// Mark this instance as a live writer on the database file: a shared
+/// advisory lock on a sidecar file, plus an exclusive lock on a per-owner
+/// mark named by `instance_token`, both held for the store's lifetime and
+/// released by the OS when the process exits, cleanly or not.
+/// Dispatch-intent reconciliation reads liveness from these marks before
+/// claiming open intents as orphans: a foreign row's owner is probed
+/// through its own per-owner mark, and a row naming no probeable owner is
+/// claimed only after converting the shared mark to exclusive, proving no
+/// sibling writer instance at all. Probes and conversions happen only
+/// under the sibling-serializing probe mutex at `probe_path` (see
+/// `WriterLifetimeLock`). Taking the shared mark blocks only while a
+/// sibling holds the exclusive conversion for the duration of its bounded
+/// reconcile pass. In-memory databases have no on-disk file to coordinate
+/// on and take no locks.
+fn acquire_writer_lifetime_lock(
+    path: &Path,
+    instance_token: &str,
+) -> Result<Option<WriterLifetimeLock>, ReceiptStoreError> {
+    let (Some(lock_path), Some(probe_path), Some(owner_mark_path)) = (
+        crate::sqlite_writer_lock_path(path),
+        crate::sqlite_reconcile_lock_path(path),
+        crate::sqlite_owner_mark_path(path, instance_token),
+    ) else {
+        return Ok(None);
+    };
+    let mark = open_sidecar_lock_file(&lock_path)?;
+    mark.lock_shared()?;
+    // The owner mark is held before the store can journal a single row, so
+    // a reconcile probe that acquires it is proof this owner journals
+    // nothing further. A fresh UUID cannot be contended; refuse rather
+    // than share.
+    let owner_lock = open_sidecar_lock_file(&owner_mark_path)?;
+    match owner_lock.try_lock() {
+        Ok(()) => {}
+        Err(std::fs::TryLockError::WouldBlock) => {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "owner liveness mark for a fresh store open is already held: {}",
+                owner_mark_path.display()
+            )));
+        }
+        Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
+    }
+    Ok(Some(WriterLifetimeLock {
+        mark,
+        probe_path,
+        database_path: path.to_path_buf(),
+        _owner_mark: OwnerLivenessMark::new(owner_lock, owner_mark_path),
+    }))
 }
 
 fn build_receipt_pool(

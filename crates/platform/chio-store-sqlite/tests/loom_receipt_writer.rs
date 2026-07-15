@@ -128,6 +128,42 @@ mod model {
     }
 
     #[test]
+    fn inflight_accounting_never_leaks_across_intent_consume_flush() {
+        loom::model(|| {
+            let channel = Arc::new(Channel {
+                queue: Mutex::new(VecDeque::new()),
+                inflight: AtomicU64::new(0),
+            });
+            // The dispatch-intent journal adds two producer shapes to the one
+            // channel: a metadata-only intent insert (Write-shaped) and the
+            // consuming receipt append (Append-shaped). The accounting is
+            // command-agnostic, so no interleaving with a concurrent drain
+            // may leak or double-count inflight.
+            let intent_writer = {
+                let channel = Arc::clone(&channel);
+                thread::spawn(move || channel.try_send(10)) // Write-shaped intent insert
+            };
+            let consuming_appender = {
+                let channel = Arc::clone(&channel);
+                thread::spawn(move || channel.try_send(11)) // Append-shaped consume
+            };
+            let drainer = {
+                let channel = Arc::clone(&channel);
+                thread::spawn(move || channel.drain())
+            };
+            let _ = intent_writer.join();
+            let _ = consuming_appender.join();
+            let _ = drainer.join();
+            channel.drain();
+            assert_eq!(
+                channel.inflight.load(Ordering::SeqCst),
+                0,
+                "inflight must be zero after every accepted intent and consume drains"
+            );
+        });
+    }
+
+    #[test]
     fn append_and_rotate_preserve_inflight_accounting() {
         loom::model(|| {
             let channel = Arc::new(Channel {

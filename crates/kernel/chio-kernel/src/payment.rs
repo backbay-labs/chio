@@ -148,6 +148,13 @@ impl ReceiptSettlement {
 
 /// Trait for executing payments against an external rail.
 pub trait PaymentAdapter: Send + Sync {
+    /// Stable identifier of the rail this adapter drives, recorded on
+    /// monetary dispatch intents so an operator can reconcile a monetary
+    /// orphan against the correct rail without guessing.
+    fn rail_id(&self) -> &str {
+        "payment"
+    }
+
     /// Authorize or prepay up to `amount_units` before the tool executes.
     fn authorize(
         &self,
@@ -284,6 +291,10 @@ impl AcpPaymentAdapter {
 }
 
 impl PaymentAdapter for X402PaymentAdapter {
+    fn rail_id(&self) -> &str {
+        "x402"
+    }
+
     fn authorize(
         &self,
         request: &PaymentAuthorizeRequest,
@@ -368,6 +379,10 @@ impl PaymentAdapter for X402PaymentAdapter {
 }
 
 impl PaymentAdapter for AcpPaymentAdapter {
+    fn rail_id(&self) -> &str {
+        "acp"
+    }
+
     fn authorize(
         &self,
         request: &PaymentAuthorizeRequest,

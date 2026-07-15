@@ -193,6 +193,13 @@ pub enum KernelError {
     #[error("receipt persistence failed: {0}")]
     ReceiptPersistence(#[from] ReceiptStoreError),
 
+    /// A pre-dispatch dispatch-intent write failed, so the call was denied
+    /// BEFORE any effect. Distinct from `ReceiptPersistence` (which already
+    /// owns the `#[from] ReceiptStoreError` conversion) so a pre-effect deny
+    /// is distinguishable from a post-effect persistence failure.
+    #[error("dispatch intent persistence failed: {0}")]
+    DispatchIntentPersistence(String),
+
     #[error("revocation store error: {0}")]
     RevocationStore(#[from] RevocationStoreError),
 
@@ -486,6 +493,11 @@ impl KernelError {
                 "CHIO-KERNEL-RECEIPT-PERSISTENCE",
                 serde_json::json!({ "source": error.to_string() }),
                 "Check the configured receipt store connectivity, permissions, and schema health before retrying.",
+            ),
+            Self::DispatchIntentPersistence(reason) => self.report_with_context(
+                "CHIO-KERNEL-DISPATCH-INTENT-PERSISTENCE",
+                serde_json::json!({ "reason": reason }),
+                "The pre-dispatch intent write failed and the call was denied before any effect; check receipt store writer health, then retry.",
             ),
             Self::RevocationStore(error) => self.report_with_context(
                 "CHIO-KERNEL-REVOCATION-STORE",

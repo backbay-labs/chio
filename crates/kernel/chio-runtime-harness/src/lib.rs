@@ -141,6 +141,7 @@ fn run_runtime_loopback_scenario_with_static_baseline(
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::{
         run_runtime_loopback_scenario, runtime_admission_report_sha256_for_workflow,

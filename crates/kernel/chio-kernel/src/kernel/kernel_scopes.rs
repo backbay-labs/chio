@@ -41,10 +41,16 @@ pub(crate) fn current_scoped_receipt_tenant_id() -> Option<String> {
     RECEIPT_TENANT_ID_SCOPE.with(|slot| slot.borrow().clone())
 }
 
+/// Request-keyed tenant registration, dropped when the evaluation future
+/// finishes. The map stores the RESOLVED tenant for the request, including a
+/// known-none entry for tenantless requests: an entry that merely disappeared
+/// would fall back to the thread-local scope, and on a worker that resumes
+/// this evaluation while a sibling task's scope guard is still alive that
+/// fallback would leak the sibling's tenant into this request's receipts.
 pub(crate) struct ScopedKernelReceiptTenantId {
     pub(super) request_id: String,
-    pub(super) tenant_ids: Arc<DashMap<String, String>>,
-    pub(super) previous: Option<String>,
+    pub(super) tenant_ids: Arc<DashMap<String, Option<String>>>,
+    pub(super) previous: Option<Option<String>>,
 }
 
 impl Drop for ScopedKernelReceiptTenantId {
@@ -53,6 +59,25 @@ impl Drop for ScopedKernelReceiptTenantId {
             self.tenant_ids.insert(self.request_id.clone(), previous);
         } else {
             self.tenant_ids.remove(&self.request_id);
+        }
+    }
+}
+
+/// Request-keyed dispatch-intent registration, dropped when the evaluation
+/// future finishes. Restores any previously registered handle (nested
+/// evaluations under one request id keep their outer binding).
+pub(crate) struct ScopedKernelDispatchIntent {
+    pub(super) request_id: String,
+    pub(super) intents: Arc<DashMap<String, crate::receipt_store::DispatchIntentHandle>>,
+    pub(super) previous: Option<crate::receipt_store::DispatchIntentHandle>,
+}
+
+impl Drop for ScopedKernelDispatchIntent {
+    fn drop(&mut self) {
+        if let Some(previous) = self.previous.take() {
+            self.intents.insert(self.request_id.clone(), previous);
+        } else {
+            self.intents.remove(&self.request_id);
         }
     }
 }

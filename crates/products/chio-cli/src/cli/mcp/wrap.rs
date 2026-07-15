@@ -317,6 +317,7 @@ impl KernelMediatedMcpTransport {
             retention_config: None,
             memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
             deadlines: chio_kernel::HotPathDeadlineConfig::default(),
+            dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
         });
         let nonce_config = chio_kernel::ExecutionNonceConfig {
             nonce_ttl_secs: chio_kernel::DEFAULT_EXECUTION_NONCE_TTL_SECS,

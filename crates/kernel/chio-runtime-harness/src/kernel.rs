@@ -334,6 +334,7 @@ pub(crate) fn execute_runtime_loopback_step(
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
+        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
         allow_ephemeral_receipt_log: false,
         allow_ephemeral_revocation_store: false,
     });

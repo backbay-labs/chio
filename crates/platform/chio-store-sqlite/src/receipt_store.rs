@@ -111,6 +111,165 @@ pub struct SqliteReceiptStore {
     pub(crate) strict_tenant_isolation: std::sync::atomic::AtomicBool,
     /// Staged-rollout flag: read-only after open.
     pub(crate) incremental_verification: bool,
+    /// Sidecar advisory locks coordinating sibling writer instances on the
+    /// database file. `None` only for an in-memory database, which has no
+    /// on-disk file for siblings to coordinate on.
+    writer_lifetime_lock: Option<WriterLifetimeLock>,
+    /// Fresh per-open identity stamped on every dispatch intent this
+    /// instance journals. Reconciliation skips rows carrying this token, so
+    /// the pass can run while serving without ever claiming this instance's
+    /// own in-flight work; rows from any other open (a sibling, or this
+    /// process before a restart) are foreign and claimable once their owner
+    /// is provably gone.
+    pub(crate) instance_token: String,
+}
+
+/// Sidecar locks marking this instance as a live writer on a shared database
+/// file and coordinating dispatch-intent reconciliation with its siblings.
+pub(crate) struct WriterLifetimeLock {
+    /// Shared advisory lock held for the store's lifetime, released by the
+    /// OS when the process exits (cleanly or not): its continuous presence
+    /// is what proves this instance live to its siblings. Reconciliation
+    /// converts it to exclusive only to claim rows that name no probeable
+    /// owner, proving no sibling is live at all, and only ever under the
+    /// probe mutex, because flock conversions are not atomic and drop the
+    /// mark for an instant while they resolve.
+    pub(crate) mark: std::fs::File,
+    /// Path of the sidecar mutex serializing sibling reconcile passes.
+    /// Opened and locked per pass; closing the descriptor releases it, so
+    /// an aborted pass can never leave the mutex held.
+    pub(crate) probe_path: std::path::PathBuf,
+    /// Database path the sidecar lock files derive from, kept to derive the
+    /// owner-mark paths of foreign tokens found in the journal.
+    pub(crate) database_path: std::path::PathBuf,
+    /// This instance's own per-owner liveness mark, held (never read) so
+    /// sibling reconcile passes defer exactly this instance's rows while
+    /// it lives.
+    pub(crate) _owner_mark: OwnerLivenessMark,
+}
+
+/// Per-owner liveness mark: an exclusive advisory lock on a sidecar file
+/// derived from one instance's owner token, held from before its first row
+/// is journaled until the store closes, and released by the OS if the
+/// process dies first. Reconciliation judges a foreign row's owner live by
+/// try-locking THAT owner's file (never its own, and never converting a
+/// lock it holds), so a crashed owner's rows surface even while other
+/// siblings stay live. Liveness is the held lock, never the file's
+/// existence: the file itself is only hygiene.
+pub(crate) struct OwnerLivenessMark {
+    /// Held for the advisory lock alone; never read or written.
+    _lock: std::fs::File,
+    /// Path of the mark, kept to remove the file on a clean close.
+    path: std::path::PathBuf,
+}
+
+impl OwnerLivenessMark {
+    pub(crate) fn new(lock: std::fs::File, path: std::path::PathBuf) -> Self {
+        Self { _lock: lock, path }
+    }
+}
+
+impl Drop for OwnerLivenessMark {
+    fn drop(&mut self) {
+        // A clean close removes the file so store opens do not accumulate
+        // one sidecar file each. A crash skips this and the reconcile pass
+        // that claims the crashed owner's rows removes it instead; a
+        // leftover is inert either way, because probes take liveness from
+        // the lock, which dies with this descriptor. Tokens are never
+        // reused, so no prober can confuse a successor file with this
+        // owner.
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+/// Open a sidecar advisory-lock file, creating it if absent. Never
+/// truncates: the file carries no contents, only its locks.
+pub(crate) fn open_sidecar_lock_file(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)
+}
+
+/// One foreign owner's liveness as read by a reconcile pass.
+enum OwnerLiveness {
+    /// The owner's mark was acquired, so the owner is gone and its rows are
+    /// claimable. Holds the acquired lock (and the mark's path) until the
+    /// claim lands and the stale file is removed.
+    Gone {
+        mark: std::fs::File,
+        path: std::path::PathBuf,
+    },
+    /// The owner holds its mark: it is live and its rows defer to it.
+    Live,
+}
+
+/// Probe whether the foreign owner named by `token` still lives, by trying
+/// its per-owner mark non-blockingly. Runs only under the probe mutex, so
+/// no two passes ever race one owner's mark or its cleanup, and only on
+/// foreign tokens, so no pass ever touches a lock it itself holds.
+///
+/// The mark is opened with create: a live owner has held its lock since
+/// before it journaled its first row, so an acquirable lock means the owner
+/// is gone whether its file survived a crash or was already cleaned up.
+/// This trusts the sidecar directory exactly as every other advisory lock
+/// here does; deleting lock files out from under a live database breaks
+/// their coordination as a whole, not just this probe.
+fn probe_foreign_owner_liveness(
+    database_path: &std::path::Path,
+    token: &str,
+) -> Result<OwnerLiveness, ReceiptStoreError> {
+    let Some(path) = crate::sqlite_owner_mark_path(database_path, token) else {
+        // Unreachable for a database that coordinates on sidecar files at
+        // all; refuse the claim rather than guess.
+        return Ok(OwnerLiveness::Live);
+    };
+    let mark = open_sidecar_lock_file(&path)?;
+    match mark.try_lock() {
+        Ok(()) => Ok(OwnerLiveness::Gone { mark, path }),
+        Err(std::fs::TryLockError::WouldBlock) => Ok(OwnerLiveness::Live),
+        Err(std::fs::TryLockError::Error(error)) => Err(error.into()),
+    }
+}
+
+/// Scope guard for the exclusive section of a reconcile pass: restores the
+/// shared writer lifetime mark when dropped, so the downgrade happens on
+/// every exit path, including a reconciler panic unwinding through the
+/// pass. The mark descriptor outlives the pass (it lives on the store), so
+/// a mark left exclusive would block every sibling open and defer every
+/// sibling reconcile for the rest of this process's life. The normal path
+/// consumes the guard through `downgrade` so a failed downgrade surfaces
+/// as an error; the drop path downgrades best-effort because it only runs
+/// while an unwind or an early error return is already in flight.
+struct MarkDowngradeGuard<'lock> {
+    /// The exclusively converted mark, or `None` while the pass has not
+    /// converted it (or once it is downgraded).
+    mark: Option<&'lock std::fs::File>,
+}
+
+impl MarkDowngradeGuard<'_> {
+    /// Restore the shared mark now, surfacing the error the drop path
+    /// would have to swallow. A no-op when the mark was never converted.
+    fn downgrade(mut self) -> std::io::Result<()> {
+        match self.mark.take() {
+            Some(mark) => mark.lock_shared(),
+            None => Ok(()),
+        }
+    }
+}
+
+impl Drop for MarkDowngradeGuard<'_> {
+    fn drop(&mut self) {
+        if let Some(mark) = self.mark.take() {
+            // Cannot block: re-sharing waits only on a sibling's exclusive
+            // conversion, and conversions happen only under the probe
+            // mutex, which this pass still holds (the probe descriptor is
+            // declared before this guard, so it is dropped after it).
+            let _ = mark.lock_shared();
+        }
+    }
 }
 
 type FederatedShareSubjectCorpus = (
@@ -123,6 +282,19 @@ pub(crate) type SqliteStoreConnection = PooledConnection<SqliteConnectionManager
 const RECEIPT_GROUP_COMMIT_MAX_BATCH: usize = 64;
 const RECEIPT_GROUP_COMMIT_FLUSH_DELAY: Duration = Duration::from_micros(500);
 const RECEIPT_COMMIT_ACTOR_CHANNEL_CAPACITY: usize = RECEIPT_GROUP_COMMIT_MAX_BATCH * 16;
+
+/// Bound on the dispatch-intent reconciliation resolution write: applying
+/// dead-letter, monetary-reconciled, and replay-release outcomes to the rows
+/// this pass claimed. This runs off the request path (boot attach, or the
+/// background recovery worker's cadence), so it can afford the same order of
+/// magnitude as the hot-path receipt append budget without a request ever
+/// observing it; the bound exists so a wedged-but-alive writer cannot hang
+/// the pass indefinitely while it holds the sidecar reconcile probe mutex
+/// (and, when the batch includes unattributed rows, the writer-lifetime mark
+/// converted to exclusive), which would otherwise block sibling `open()`s and
+/// make `DispatchIntentRecoveryHandle::drop` (which joins the worker thread)
+/// hang kernel shutdown with it.
+const DISPATCH_INTENT_RECONCILE_RESOLUTION_BUDGET: Duration = Duration::from_secs(5);
 
 struct ReceiptCommitActor {
     sender: mpsc::SyncSender<ReceiptCommitCommand>,
@@ -677,6 +849,64 @@ impl WriterHandle {
         T: Send + 'static,
     {
         self.run_write_kind_with_timeout(job, false, timeout)
+    }
+
+    /// Bounded metadata write whose queued job must NOT take effect once the
+    /// caller has timed out. On expiry the shared `abandoned` marker is set
+    /// BEFORE reporting the timeout; a cooperating job (see
+    /// `dispatch_intent_insert_job_unless_abandoned`) rechecks the marker
+    /// inside its transaction and refuses to commit once marked. A job that
+    /// finished in the instant between the deadline expiring and the marker
+    /// landing already answered, so that answer is returned instead of a
+    /// timeout for a write that committed.
+    pub(crate) fn run_write_abandoning_on_timeout<T, F>(
+        &self,
+        job: F,
+        timeout: Duration,
+        abandoned: Arc<std::sync::atomic::AtomicBool>,
+    ) -> Result<T, ReceiptStoreError>
+    where
+        F: FnOnce(&mut SqliteStoreConnection) -> Result<T, ReceiptStoreError> + Send + 'static,
+        T: Send + 'static,
+    {
+        let result = self.enqueue_write_job(job, false)?;
+        match result.recv_timeout(timeout) {
+            Ok(outcome) => outcome,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                abandoned.store(true, Ordering::SeqCst);
+                if let Ok(outcome) = result.try_recv() {
+                    return outcome;
+                }
+                self.health.failed_total.fetch_add(1, Ordering::SeqCst);
+                if let Ok(mut last_error) = self.health.last_error.lock() {
+                    *last_error = Some("sqlite receipt commit write timed out".to_string());
+                }
+                Err(receipt_actor_write_timeout_error(timeout))
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                atomic_saturating_sub(&self.health.inflight, 1);
+                self.health.failed_total.fetch_add(1, Ordering::SeqCst);
+                if let Ok(mut last_error) = self.health.last_error.lock() {
+                    *last_error = Some("sqlite receipt commit actor is unavailable".to_string());
+                }
+                Err(receipt_actor_unavailable_error())
+            }
+        }
+    }
+
+    /// Enqueue one metadata write job without waiting for its outcome. For
+    /// compensating work whose result the caller cannot act on anyway: the
+    /// job still runs in FIFO order on the single writer with full health
+    /// accounting, but the caller spends no wall-clock on its response. The
+    /// only error surfaced is a refused enqueue (saturated or dead writer).
+    pub(crate) fn run_write_detached<F>(&self, job: F) -> Result<(), ReceiptStoreError>
+    where
+        F: FnOnce(&mut SqliteStoreConnection) -> Result<(), ReceiptStoreError> + Send + 'static,
+    {
+        // Dropping the receiver detaches the response; the writer actor
+        // tolerates a gone caller and still reconciles committed/failed for
+        // the job when it drains.
+        self.enqueue_write_job(job, false).map(drop)
     }
 
     fn run_write_kind_with_timeout<T, F>(
@@ -3040,6 +3270,488 @@ impl SqliteReceiptStore {
         })
     }
 
+    /// Durably write a dispatch intent as a metadata-only single-writer job.
+    /// The response is sent only after `tx.commit()` returns, so the caller
+    /// observes a durable (WAL-fsynced) commit before it proceeds to dispatch.
+    pub fn record_dispatch_intent(
+        &self,
+        intent: &chio_kernel::receipt_store::DispatchIntentRecord,
+    ) -> Result<(), ReceiptStoreError> {
+        self.writer_handle().run_write(dispatch_intent_insert_job(
+            intent,
+            self.instance_token.clone(),
+        ))
+    }
+
+    /// Bounded variant of [`Self::record_dispatch_intent`]: identical up to
+    /// the response wait, which is capped at `budget` so a writer that wedges
+    /// after the pre-dispatch liveness check fails this caller closed instead
+    /// of hanging the evaluation inside the intent write. A timed-out write
+    /// is also ABANDONED: the caller denies before dispatch on timeout, so
+    /// the job still queued on a slow-but-alive writer must not land a stale
+    /// row that would dead-letter at the next boot as a false orphan for a
+    /// call that never executed. Because the marker cannot stop an insert
+    /// that has already passed its final check and is inside its commit when
+    /// the deadline expires, the timeout path also enqueues a sweep behind
+    /// the insert, keyed to this attempt's own commit, so a commit that
+    /// outruns the marker leaves no row behind while a pre-existing intent
+    /// for the same request is never touched.
+    pub fn record_dispatch_intent_with_timeout(
+        &self,
+        intent: &chio_kernel::receipt_store::DispatchIntentRecord,
+        budget: Duration,
+    ) -> Result<(), ReceiptStoreError> {
+        let abandoned = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let landed = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let job = dispatch_intent_insert_job_unless_abandoned(
+            intent,
+            self.instance_token.clone(),
+            Arc::clone(&abandoned),
+            Arc::clone(&landed),
+        );
+        let result = self
+            .writer_handle()
+            .run_write_abandoning_on_timeout(job, budget, abandoned);
+        if matches!(result, Err(ReceiptStoreError::Timeout { .. })) {
+            // The caller is about to deny before dispatch, yet an insert that
+            // was inside its commit when the marker landed may still have
+            // committed. Enqueue a sweep on the same single-writer queue:
+            // FIFO order runs it strictly after the insert job, so it deletes
+            // the row when the straddling commit recorded itself in the
+            // `landed` slot and reports NotFound when the insert refused.
+            // The slot keys the sweep to THIS attempt: a timed-out retry or
+            // concurrent duplicate whose insert collided with a request's
+            // pre-existing open intent must not delete that earlier
+            // invocation's crash marker out from under its in-flight call.
+            // The sweep is enqueued detached: the denial this caller is
+            // about to return does not depend on the sweep's outcome, and a
+            // bounded wait here would stack a second budget on top of the
+            // one the insert already consumed, doubling the pre-dispatch
+            // wall-clock cap on the same stalled writer. The queued sweep
+            // still drains with the writer, so a slow-but-alive writer
+            // cannot leave a row that would dead-letter as a false orphan
+            // for a call that never dispatched. NotFound is the common
+            // outcome (the insert refused via the marker); a refused
+            // enqueue leaves the row for boot reconciliation, which at
+            // worst surfaces an extra operator-visible dead letter rather
+            // than losing a real orphan.
+            let key = chio_kernel::receipt_store::DispatchIntentKey {
+                request_id: intent.request_id.clone(),
+                parameter_hash: intent.parameter_hash.clone(),
+                tenant_id: intent.tenant_id.clone(),
+            };
+            let _ = self
+                .writer_handle()
+                .run_write_detached(dispatch_intent_sweep_landed_job(&key, landed));
+        }
+        result
+    }
+
+    /// Append a receipt and, in the SAME immediate transaction, consume the
+    /// matching dispatch intent: a crash before commit leaves the intent open
+    /// and the receipt absent, and a successful commit removes the intent and
+    /// persists the receipt, so exactly one of the two states survives.
+    pub fn append_chio_receipt_consuming_intent(
+        &self,
+        receipt: &ChioReceipt,
+        key: &chio_kernel::receipt_store::DispatchIntentKey,
+    ) -> Result<Option<u64>, ReceiptStoreError> {
+        self.writer_handle()
+            .run_write_receipt(self.dispatch_intent_consuming_append_job(receipt, key)?)
+    }
+
+    /// Bounded variant of [`Self::append_chio_receipt_consuming_intent`]: the
+    /// response wait is capped at `budget` so a wedged writer cannot pin the
+    /// kernel-wide receipt write lock through the consuming append.
+    pub fn append_chio_receipt_consuming_intent_with_timeout(
+        &self,
+        receipt: &ChioReceipt,
+        key: &chio_kernel::receipt_store::DispatchIntentKey,
+        budget: Duration,
+    ) -> Result<Option<u64>, ReceiptStoreError> {
+        self.writer_handle().run_write_receipt_with_timeout(
+            self.dispatch_intent_consuming_append_job(receipt, key)?,
+            budget,
+        )
+    }
+
+    /// Validate the receipt/key binding and build the writer job that deletes
+    /// the intent and inserts the receipt inside one immediate transaction.
+    fn dispatch_intent_consuming_append_job(
+        &self,
+        receipt: &ChioReceipt,
+        key: &chio_kernel::receipt_store::DispatchIntentKey,
+    ) -> Result<
+        impl FnOnce(&mut SqliteStoreConnection) -> Result<Option<u64>, ReceiptStoreError>
+            + Send
+            + 'static,
+        ReceiptStoreError,
+    > {
+        ensure_chio_receipt_verified(receipt)?;
+        if receipt.action.parameter_hash != key.parameter_hash {
+            return Err(ReceiptStoreError::Conflict(
+                "dispatch intent key parameter_hash does not match appended receipt".to_string(),
+            ));
+        }
+        if receipt.tenant_id.as_deref() != key.tenant_id.as_deref() {
+            return Err(ReceiptStoreError::Conflict(
+                "dispatch intent key tenant id does not match appended receipt".to_string(),
+            ));
+        }
+        sqlite_i64(receipt.timestamp, "receipt timestamp")?;
+        let raw_json = canonical_json_bytes(receipt)
+            .map_err(|error| ReceiptStoreError::Canonical(error.to_string()))?;
+        let raw_json = std::str::from_utf8(raw_json.as_slice())
+            .map_err(|error| {
+                ReceiptStoreError::Canonical(format!(
+                    "canonical receipt bytes are not UTF-8: {error}"
+                ))
+            })?
+            .to_string();
+        let receipt = receipt.clone();
+        let key = key.clone();
+        Ok(move |connection: &mut SqliteStoreConnection| {
+            ensure_checkpoint_transparency_guards(connection)?;
+            let tx =
+                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            finalize_dispatch_intent_tx(&tx, &key)?;
+            let seq = append_chio_receipt_tx(&tx, &receipt, &raw_json)?;
+            ensure_receipt_lineage_statement_for_receipt_id_tx(&tx, &receipt.id)?;
+            tx.commit()?;
+            Ok(Some(seq))
+        })
+    }
+
+    /// Attach a rail authorization id to the open monetary intent for
+    /// `(tenant_id, request_id)`. Best-effort from the caller's perspective
+    /// (`NotFound` when the intent was already consumed or never written),
+    /// but the update itself commits durably on the single writer.
+    pub fn attach_dispatch_intent_rail_ref(
+        &self,
+        request_id: &str,
+        tenant_id: Option<&str>,
+        rail_authorization_id: &str,
+    ) -> Result<(), ReceiptStoreError> {
+        self.writer_handle().run_write(dispatch_intent_rail_ref_job(
+            request_id,
+            tenant_id,
+            rail_authorization_id,
+        ))
+    }
+
+    /// Bounded variant of [`Self::attach_dispatch_intent_rail_ref`], so the
+    /// best-effort post-authorize attach fails closed within budget instead
+    /// of hanging its caller on a wedged writer.
+    pub fn attach_dispatch_intent_rail_ref_with_timeout(
+        &self,
+        request_id: &str,
+        tenant_id: Option<&str>,
+        rail_authorization_id: &str,
+        budget: Duration,
+    ) -> Result<(), ReceiptStoreError> {
+        self.writer_handle().run_write_with_timeout(
+            dispatch_intent_rail_ref_job(request_id, tenant_id, rail_authorization_id),
+            budget,
+        )
+    }
+
+    /// Delete the open intent for a call that returned to its caller without
+    /// dispatching (no effect, no terminal receipt): the row must not
+    /// survive to dead-letter as a false orphan at the next boot.
+    pub fn clear_dispatch_intent(
+        &self,
+        key: &chio_kernel::receipt_store::DispatchIntentKey,
+    ) -> Result<(), ReceiptStoreError> {
+        self.writer_handle()
+            .run_write(dispatch_intent_clear_job(key))
+    }
+
+    /// Bounded variant of [`Self::clear_dispatch_intent`]: the response wait
+    /// is capped at `budget` so the non-dispatch exit cannot hang its caller
+    /// on a wedged writer.
+    pub fn clear_dispatch_intent_with_timeout(
+        &self,
+        key: &chio_kernel::receipt_store::DispatchIntentKey,
+        budget: Duration,
+    ) -> Result<(), ReceiptStoreError> {
+        self.writer_handle()
+            .run_write_with_timeout(dispatch_intent_clear_job(key), budget)
+    }
+
+    /// List the open dispatch intents, oldest first: the operator view of
+    /// work that is either in flight or awaiting boot reconciliation.
+    pub fn open_dispatch_intents(
+        &self,
+    ) -> Result<Vec<chio_kernel::receipt_store::DispatchIntentRecord>, ReceiptStoreError> {
+        let connection = self.connection()?;
+        select_open_dispatch_intents(&connection)
+    }
+
+    /// True when [`Self::reconcile_dispatch_intents`] is worth re-running
+    /// while the store serves: an on-disk database can gain and lose
+    /// sibling writer instances at any time, so a crashed sibling's orphans
+    /// only surface if some survivor re-reconciles. An in-memory database
+    /// can have no siblings; its attach-time pass is complete.
+    pub fn supports_dispatch_intent_recovery(&self) -> bool {
+        self.writer_lifetime_lock.is_some()
+    }
+
+    /// True when a journaled dispatch intent survives a process crash: the
+    /// database is file-backed, so a committed row (WAL, synchronous FULL)
+    /// outlives the process. An in-memory database loses the journal with
+    /// the process and can never honor the crash-marker guarantee the
+    /// journal exists to provide.
+    pub fn supports_durable_dispatch_intent_journal(&self) -> bool {
+        self.writer_lifetime_lock.is_some()
+    }
+
+    /// Resolve every open intent journaled by another store instance (a
+    /// crashed prior incarnation, or a sibling on a shared database file).
+    /// Reads run on the reader pool and the reconciler runs on the calling
+    /// thread (so a rail-querying reconciler never blocks the single
+    /// writer); the resulting annotations are applied in one writer
+    /// transaction.
+    ///
+    /// Safe to run at any time, not only at attach: rows carrying this
+    /// instance's own owner token are its live in-flight work and are never
+    /// candidates, so a serving store can re-run the pass to pick up a
+    /// sibling that crashed after this instance attached.
+    ///
+    /// Claiming an open row asserts its writer is gone, but the database
+    /// file may be shared with live sibling instances whose in-flight calls
+    /// own some of these rows. Liveness is therefore judged per owner,
+    /// serialized under a sidecar probe mutex: every instance holds its own
+    /// owner mark for its open's lifetime, and a foreign row is claimed
+    /// only when a non-blocking probe acquires ITS owner's mark, proving
+    /// that owner gone. A crashed writer's orphans thus surface even while
+    /// other siblings stay live, and a live writer's rows always defer to
+    /// it (reported, never silent). A row naming no probeable owner
+    /// (journaled before owner tokens existed) is claimed only after
+    /// converting this instance's shared lifetime mark to exclusive,
+    /// proving no sibling at all, so a single-instance restart still
+    /// reconciles everything foreign.
+    pub fn reconcile_dispatch_intents(
+        &self,
+        reconciler: &dyn chio_kernel::receipt_store::DispatchIntentReconciler,
+    ) -> Result<chio_kernel::receipt_store::DispatchIntentReconcileReport, ReceiptStoreError> {
+        use chio_kernel::receipt_store::{DispatchIntentReconcileReport, DispatchIntentResolution};
+        // First read without any sidecar traffic: the recovery worker calls
+        // this on a cadence, and an idle store should answer with one
+        // indexed query. The authoritative candidate set is re-read under
+        // the probe mutex below.
+        let foreign_open = {
+            let connection = self.connection()?;
+            select_open_dispatch_intents_excluding_owner(&connection, &self.instance_token)?
+        };
+        let mut report = DispatchIntentReconcileReport {
+            open: foreign_open.len() as u64,
+            ..DispatchIntentReconcileReport::default()
+        };
+        if foreign_open.is_empty() {
+            return Ok(report);
+        }
+        // Declaration order is load-bearing: on an unwind the downgrade
+        // guard and the held owner marks (declared later) drop first, while
+        // the probe mutex is still held, and the probe releases after them.
+        let mut reconcile_probe: Option<std::fs::File> = None;
+        let mut exclusive_mark = MarkDowngradeGuard { mark: None };
+        // Marks of owners proven gone, held (with their paths) until their
+        // rows are claimed and the stale files removed.
+        let mut claimed_owner_marks: Vec<(std::fs::File, std::path::PathBuf)> = Vec::new();
+        let claimable = match &self.writer_lifetime_lock {
+            // An in-memory database cannot be shared with sibling
+            // instances, so every foreign row (a prior open within this
+            // process) is an orphan.
+            None => foreign_open
+                .into_iter()
+                .map(|row| row.record)
+                .collect::<Vec<_>>(),
+            Some(lock) => {
+                // Serialize sibling reconcile passes on a separate sidecar
+                // mutex BEFORE touching any mark. flock conversions are not
+                // atomic: upgrading drops this instance's shared mark for
+                // an instant while the exclusive attempt resolves, so two
+                // instances converting concurrently could each observe the
+                // other markless, win exclusivity in turn, and dead-letter
+                // each other's LIVE in-flight intents. With the probe mutex
+                // held, every sibling's marks are continuously present
+                // (siblings only convert or clean up under this same
+                // mutex). A refused probe means a live sibling is
+                // mid-reconcile: defer to it without disturbing this
+                // instance's own marks.
+                let probe = open_sidecar_lock_file(&lock.probe_path)?;
+                match probe.try_lock() {
+                    Ok(()) => reconcile_probe = Some(probe),
+                    Err(std::fs::TryLockError::WouldBlock) => {
+                        report.deferred_to_live_writer = report.open;
+                        return Ok(report);
+                    }
+                    // An errored probe must neither claim possibly live
+                    // rows nor silently skip: fail closed, refusing the
+                    // pass.
+                    Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
+                }
+                // Re-read the candidates now that no sibling pass can be
+                // mid-claim: the first read may have seen rows a since-
+                // finished pass already resolved, and resolving works from
+                // a set no serialized pass can be mutating.
+                let foreign_open = {
+                    let connection = self.connection()?;
+                    select_open_dispatch_intents_excluding_owner(&connection, &self.instance_token)?
+                };
+                report.open = foreign_open.len() as u64;
+                if foreign_open.is_empty() {
+                    return Ok(report);
+                }
+                // Judge liveness per owner: a row whose token can name a
+                // mark file probes THAT owner's mark, so a crashed owner's
+                // rows surface even while other siblings stay live, and no
+                // pass ever converts a lock it holds itself. Rows naming no
+                // probeable owner (journaled before owner tokens existed,
+                // or carrying a token this code never generated) fall back
+                // to whole-file exclusivity.
+                let mut per_owner = std::collections::BTreeMap::<String, Vec<_>>::new();
+                let mut unattributed = Vec::new();
+                for row in foreign_open {
+                    match row
+                        .owner_token
+                        .filter(|token| crate::is_owner_token_shaped(token))
+                    {
+                        Some(token) => per_owner.entry(token).or_default().push(row.record),
+                        None => unattributed.push(row.record),
+                    }
+                }
+                let mut rows = Vec::new();
+                let mut deferred = 0u64;
+                for (token, group) in per_owner {
+                    match probe_foreign_owner_liveness(&lock.database_path, &token)? {
+                        OwnerLiveness::Gone { mark, path } => {
+                            claimed_owner_marks.push((mark, path));
+                            rows.extend(group);
+                        }
+                        OwnerLiveness::Live => deferred += group.len() as u64,
+                    }
+                }
+                if !unattributed.is_empty() {
+                    match lock.mark.try_lock() {
+                        Ok(()) => {
+                            exclusive_mark.mark = Some(&lock.mark);
+                            rows.extend(unattributed);
+                        }
+                        Err(std::fs::TryLockError::WouldBlock) => {
+                            // The refused conversion may have dropped the
+                            // shared mark; restore it before deferring so
+                            // this instance stays visible as a live writer.
+                            // Only the probe holder converts, so no sibling
+                            // can misread this instance as gone during the
+                            // gap.
+                            lock.mark.lock_shared()?;
+                            deferred += unattributed.len() as u64;
+                        }
+                        // An errored exclusivity check must neither claim
+                        // possibly live rows nor silently skip: fail
+                        // closed, refusing the pass.
+                        Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
+                    }
+                }
+                report.deferred_to_live_writer = deferred;
+                if rows.is_empty() {
+                    // Every candidate deferred: the downgrade guard is
+                    // unarmed (the conversion only happens when it yields
+                    // rows) and the probe releases on return.
+                    return Ok(report);
+                }
+                rows
+            }
+        };
+        let claim = (|| {
+            let mut dead_letters: Vec<(String, Option<String>, String)> = Vec::new();
+            let mut reconciled: Vec<(String, Option<String>, String)> = Vec::new();
+            let mut replayable: Vec<(String, Option<String>)> = Vec::new();
+            for intent in &claimable {
+                match reconciler.resolve(intent)? {
+                    DispatchIntentResolution::DeadLetter { detail } => {
+                        report.dead_lettered += 1;
+                        dead_letters.push((
+                            intent.request_id.clone(),
+                            intent.tenant_id.clone(),
+                            detail,
+                        ));
+                    }
+                    DispatchIntentResolution::MonetaryReconciled { rail_reference } => {
+                        // A rail-proven outcome gets its own terminal state:
+                        // it is resolved work, not an outcome-unknown
+                        // incident, so it must not dead-letter (which flips
+                        // health until an operator intervenes).
+                        report.monetary_reconciled += 1;
+                        reconciled.push((
+                            intent.request_id.clone(),
+                            intent.tenant_id.clone(),
+                            format!("monetary reconciled; rail_reference={rail_reference}"),
+                        ));
+                    }
+                    DispatchIntentResolution::SafeToReplay => {
+                        // The reconciler proved the effect never ran, so the
+                        // resolution is to run the request again. The replay
+                        // journals its own intent under the same (tenant,
+                        // request id) identity, so the row must be released
+                        // outright: any survivor would refuse the replay's
+                        // pre-dispatch insert and fail the request before
+                        // the tool runs.
+                        report.replayed += 1;
+                        replayable.push((intent.request_id.clone(), intent.tenant_id.clone()));
+                    }
+                }
+            }
+            // Every resolution write is keyed on the claimed row's (tenant,
+            // request id) identity so a live tenant's intent sharing the
+            // request id is never resolved alongside the orphan. Bounded and
+            // abandon-checked (see `dispatch_intent_resolution_batch_job`):
+            // a wedged-but-alive writer must not hang this pass indefinitely
+            // while it holds the reconcile probe mutex (and, when the batch
+            // claimed unattributed rows, the exclusive writer-lifetime mark).
+            // A timeout here releases cleanly through the same cleanup below
+            // and leaves every claimed row untouched for the next recovery
+            // pass to re-claim.
+            let abandoned = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let job = dispatch_intent_resolution_batch_job(
+                dead_letters,
+                reconciled,
+                replayable,
+                Arc::clone(&abandoned),
+            );
+            self.writer_handle().run_write_abandoning_on_timeout(
+                job,
+                DISPATCH_INTENT_RECONCILE_RESOLUTION_BUDGET,
+                abandoned,
+            )
+        })();
+        // Return to the shared mark even when the claim failed: holding the
+        // exclusive lock past this pass would block sibling opens for the
+        // store's whole lifetime. The claim error outranks a downgrade error
+        // (both refuse the pass); a reconciler panic unwinding through the
+        // claim downgrades through the guard's drop instead.
+        let downgrade = exclusive_mark.downgrade().map_err(ReceiptStoreError::from);
+        if claim.is_ok() {
+            // The claimed owners' rows are terminal, so their mark files
+            // are stale: remove them while still holding both their locks
+            // and the probe mutex, so no concurrent pass can be probing
+            // them. Best-effort, because a leftover file is inert (liveness
+            // is the lock, and a dead owner's lock stays acquirable). A
+            // failed claim keeps the files for the retrying pass instead.
+            for (_mark, path) in &claimed_owner_marks {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+        drop(claimed_owner_marks);
+        // Release the probe mutex only after the mark is shared again, so no
+        // sibling's probe can ever overlap this pass's conversion gaps.
+        drop(reconcile_probe);
+        claim?;
+        downgrade?;
+        Ok(report)
+    }
+
     pub fn flush_receipt_writes(&self) -> Result<ReceiptFlushReport, ReceiptStoreError> {
         self.receipt_commit_actor.flush()?;
         let wal_checkpoint = Some(self.wal_checkpoint_passive()?);
@@ -3233,13 +3945,25 @@ impl SqliteReceiptStore {
         // Healthy and no batch recorded a `last_error` yet every append is already
         // rejected. A persistently failing background retention rotation also
         // forces unhealthy so a silently unenforced retention policy is not masked.
+        let (open_dispatch_intents, dead_letter_dispatch_intents) = {
+            let connection = self.connection()?;
+            (
+                open_dispatch_intent_count_query(&connection)?,
+                dead_letter_dispatch_intent_count_query(&connection)?,
+            )
+        };
+        // A dead-letter intent means an effect may have occurred with no
+        // receipt: the store must read loudly unhealthy until an operator
+        // resolves the incident. Open intents alone are in-flight work, not
+        // incidents, and do not affect health.
         let healthy = receipt_store_healthy(
             status.healthy,
             writer_counters.last_error.as_deref(),
             writer_liveness,
         ) && !self.receipt_commit_actor.writer_serving_closed()
             && matches!(writer_level, HealthLevel::Healthy)
-            && retention_error.is_none();
+            && retention_error.is_none()
+            && dead_letter_dispatch_intents == 0;
         let (uncheckpointed_start_seq, uncheckpointed_end_seq) = uncheckpointed_range(
             status.latest_checkpointed_entry_seq,
             status.latest_committed_entry_seq,
@@ -3259,6 +3983,43 @@ impl SqliteReceiptStore {
             retention_error,
             writer_level,
             writer_restart_total,
+            open_dispatch_intents,
+            dead_letter_dispatch_intents,
+        })
+    }
+
+    /// Count of open (in-flight or unreconciled) dispatch intents.
+    pub fn open_dispatch_intent_count(&self) -> Result<u64, ReceiptStoreError> {
+        let connection = self.connection()?;
+        open_dispatch_intent_count_query(&connection)
+    }
+
+    /// Count of dead-letter (orphaned, outcome-unknown) dispatch intents.
+    pub fn dead_letter_dispatch_intent_count(&self) -> Result<u64, ReceiptStoreError> {
+        let connection = self.connection()?;
+        dead_letter_dispatch_intent_count_query(&connection)
+    }
+
+    /// Resolve a specific dead-letter dispatch intent: the sanctioned
+    /// operator remediation for the incident a nonzero
+    /// `dead_letter_dispatch_intents` count flags in health. See
+    /// [`resolve_dead_letter_dispatch_intent_tx`] for the fail-closed
+    /// state check and the auditable append-only note.
+    pub fn resolve_dead_letter_dispatch_intent(
+        &self,
+        request_id: &str,
+        tenant_id: Option<&str>,
+        note: &str,
+    ) -> Result<(), ReceiptStoreError> {
+        let request_id = request_id.to_string();
+        let tenant_id = tenant_id.map(str::to_string);
+        let note = note.to_string();
+        self.writer_handle().run_write(move |connection| {
+            let tx =
+                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            resolve_dead_letter_dispatch_intent_tx(&tx, &request_id, tenant_id.as_deref(), &note)?;
+            tx.commit()?;
+            Ok(())
         })
     }
 
@@ -3322,6 +4083,11 @@ impl SqliteReceiptStore {
         // emits a large-backlog gauge (checkpointed defaults to 0 -> the
         // uncheckpointed range spans the whole committed log) with the
         // checkpoint_error attached.
+        //
+        // Dead-letter intents are durable rows, so this read-only observer
+        // sees them and folds them into health exactly like the owning store.
+        let open_dispatch_intents = open_dispatch_intent_count_query(&connection)?;
+        let dead_letter_dispatch_intents = dead_letter_dispatch_intent_count_query(&connection)?;
         match verify_checkpoint_chain_integrity(&connection) {
             Ok(latest) => {
                 let latest_checkpoint_seq = latest
@@ -3333,7 +4099,8 @@ impl SqliteReceiptStore {
                 let (uncheckpointed_start_seq, uncheckpointed_end_seq) =
                     uncheckpointed_range(latest_checkpointed_entry_seq, latest_committed_entry_seq);
                 Ok(ReceiptStoreHealthReport {
-                    healthy: latest_committed_entry_seq >= latest_checkpointed_entry_seq,
+                    healthy: latest_committed_entry_seq >= latest_checkpointed_entry_seq
+                        && dead_letter_dispatch_intents == 0,
                     writer: ReceiptWriterCounters::default(),
                     // A read-only observer cannot see the owning writer's
                     // in-memory liveness, so it is reported as unknown.
@@ -3355,6 +4122,8 @@ impl SqliteReceiptStore {
                     // A read-only observer cannot see the owning writer's supervisor.
                     writer_level: HealthLevel::default(),
                     writer_restart_total: 0,
+                    open_dispatch_intents,
+                    dead_letter_dispatch_intents,
                 })
             }
             Err(error) => {
@@ -3377,6 +4146,8 @@ impl SqliteReceiptStore {
                     retention_error: None,
                     writer_level: HealthLevel::default(),
                     writer_restart_total: 0,
+                    open_dispatch_intents,
+                    dead_letter_dispatch_intents,
                 })
             }
         }

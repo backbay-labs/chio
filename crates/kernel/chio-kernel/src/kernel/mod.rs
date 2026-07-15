@@ -7,12 +7,14 @@ use dashmap::DashMap;
 use crate::budget_store::BudgetCommitMetadata;
 use crate::*;
 
+mod dispatch_intent;
 mod error;
 mod kernel_drop_guard;
 mod kernel_scopes;
 mod kernel_struct;
 
 pub use construction::KernelBuildError;
+pub use dispatch_intent::DefaultDispatchIntentReconciler;
 pub use error::{HotPathStage, KernelError, OverloadResource, StructuredErrorReport};
 pub use kernel_struct::{
     ChioKernel, HotPathDeadlineConfig, HybridSigningConfig, KernelConfig, MemoryBudgetConfig,
@@ -29,8 +31,8 @@ pub(crate) use kernel_drop_guard::{
 pub(crate) use kernel_scopes::{
     current_scoped_receipt_federation_admission, current_scoped_receipt_tenant_id,
     extract_tenant_id_from_auth_context, scope_receipt_federation_admission,
-    scope_receipt_tenant_id, ReceiptFederationAdmission, ScopedKernelReceiptFederationAdmission,
-    ScopedKernelReceiptTenantId,
+    scope_receipt_tenant_id, ReceiptFederationAdmission, ScopedKernelDispatchIntent,
+    ScopedKernelReceiptFederationAdmission, ScopedKernelReceiptTenantId,
 };
 pub(crate) use kernel_struct::{capability_crypto_floor, receipt_crypto_floor};
 

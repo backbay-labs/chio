@@ -306,6 +306,12 @@ pub struct KernelConfig {
     /// Wall-clock budgets for the mediation hot path. Construction input only,
     /// not a wire payload, so this changes no signed or transmitted bytes.
     pub deadlines: HotPathDeadlineConfig,
+
+    /// Which call classes must durably journal a dispatch intent before any
+    /// effect. Existing deployments construct this Off until an operator opts
+    /// in; the enum's own default (SideEffecting) is the fail-safe posture
+    /// for anyone deriving a value rather than spelling one.
+    pub dispatch_intent_journal: crate::receipt_store::DispatchIntentJournalMode,
 }
 
 impl KernelConfig {
@@ -562,6 +568,15 @@ pub struct ChioKernel {
     /// joined when this field is dropped (kernel drop). `None` when
     /// retention is unconfigured or before a store is attached.
     pub(super) retention_maintenance: Option<crate::receipt_store::RetentionMaintenanceHandle>,
+    /// Dispatch-intent recovery worker, spawned at store attach for stores
+    /// that coordinate sibling writer instances. Re-runs intent
+    /// reconciliation on a fixed cadence so a sibling that crashes while
+    /// this kernel stays up has its orphaned intents claimed and surfaced
+    /// (the attach-time pass correctly defers a live sibling's rows, and no
+    /// later attach may ever come). Joined when this field is dropped
+    /// (kernel drop). `None` for stores without sibling writers or before a
+    /// store is attached.
+    pub(super) dispatch_intent_recovery: Option<crate::receipt_store::DispatchIntentRecoveryHandle>,
     pub(super) payment_adapter: Option<Box<dyn PaymentAdapter>>,
     pub(super) price_oracle: Option<Box<dyn PriceOracle>>,
     pub(super) runtime_admission_hook: Option<Arc<dyn RuntimeAdmissionHook>>,
@@ -664,8 +679,16 @@ pub struct ChioKernel {
         Option<std::sync::Arc<dyn crate::federation_artifact_store::FederationArtifactStore>>,
     /// Request-keyed tenant scope for receipts. Async evaluate futures
     /// can resume on a different worker after dispatch, so the scope is
-    /// stored in this map rather than a thread-local.
-    pub(super) receipt_tenant_ids: Arc<DashMap<String, String>>,
+    /// stored in this map rather than a thread-local. The value is the
+    /// RESOLVED tenant, including `None` for a tenantless request: the entry
+    /// itself proves the request's tenant is known, so no reader falls back
+    /// to a thread-local that may carry a concurrent sibling task's tenant.
+    pub(super) receipt_tenant_ids: Arc<DashMap<String, Option<String>>>,
+    /// Request-keyed dispatch-intent handles. Receipts carry no request id
+    /// and the evaluate future can migrate workers at the dispatch await, so
+    /// the pre-dispatch intent binding travels in this map (exactly like the
+    /// tenant scope above) for the terminal receipt sink to consume.
+    pub(super) dispatch_intents: Arc<DashMap<String, crate::receipt_store::DispatchIntentHandle>>,
     /// Request-keyed copy of the receipt-version admission snapshot.
     /// Async evaluate futures may resume on a different Tokio worker
     /// after dispatch. This map keeps the admitted version and peer state

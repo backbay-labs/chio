@@ -38,6 +38,7 @@ fn test_kernel_config() -> KernelConfig {
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
+        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     }
 }
 
@@ -323,6 +324,26 @@ fn bridge_mcp_tools_list_entries() {
     for tool in &mcp_tools {
         assert!(tool.description.is_some());
     }
+}
+
+#[test]
+fn bridge_tool_servers_report_read_only_from_operation_annotations() {
+    use chio_kernel::ToolServerConnection;
+
+    // Safe GET operations read as read-only; mutating operations and
+    // unknown names stay side-effecting.
+    let bridge = OpenApiMcpBridge::from_spec(PETSTORE_SPEC, petstore_config()).unwrap();
+    let server = bridge.as_tool_server();
+    assert!(server.tool_is_read_only("listPets"));
+    assert!(server.tool_is_read_only("getPet"));
+    assert!(!server.tool_is_read_only("createPet"));
+    assert!(!server.tool_is_read_only("deletePet"));
+    assert!(!server.tool_is_read_only("unknownTool"));
+
+    // The owned registration wrapper reports the same annotations.
+    let owned = OwnedBridgeToolServer::from_bridge(bridge);
+    assert!(owned.tool_is_read_only("listPets"));
+    assert!(!owned.tool_is_read_only("createPet"));
 }
 
 #[test]

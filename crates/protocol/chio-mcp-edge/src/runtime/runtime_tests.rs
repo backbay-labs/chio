@@ -461,6 +461,7 @@ fn make_kernel() -> (ChioKernel, Keypair) {
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
+        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     };
     let mut kernel = ChioKernel::new(config);
     kernel.register_tool_server(Box::new(EchoServer));
@@ -489,6 +490,7 @@ fn make_web3_required_kernel() -> (ChioKernel, Keypair) {
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
+        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     };
     let mut kernel = ChioKernel::new(config);
     kernel.register_tool_server(Box::new(EchoServer));
@@ -519,6 +521,7 @@ fn make_kernel_error_bridge_fixture(
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
+        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     };
     let mut kernel = ChioKernel::new(config);
     kernel.register_tool_server(server);
@@ -1601,6 +1604,7 @@ fn make_url_required_edge() -> ChioMcpEdge {
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
+        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     };
     let mut kernel = ChioKernel::new(config);
     kernel.register_tool_server(Box::new(UrlRequiredServer));
@@ -1673,6 +1677,7 @@ fn make_event_edge(server: Arc<AsyncEventServer>) -> ChioMcpEdge {
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
+        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     };
     let mut kernel = ChioKernel::new(config);
     kernel.register_tool_server(Box::new(AsyncEventServerConnection(server)));

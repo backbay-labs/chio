@@ -211,6 +211,7 @@ mod tests {
             retention_config: None,
             memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
             deadlines: chio_kernel::HotPathDeadlineConfig::default(),
+            dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
         }));
         let err = handle_compliance_score(&kernel, &source, &body, 0).unwrap_err();
         assert_eq!(err.status(), 400);
@@ -247,6 +248,7 @@ mod tests {
             retention_config: None,
             memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
             deadlines: chio_kernel::HotPathDeadlineConfig::default(),
+            dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
         }));
         let resp = handle_compliance_score(&kernel, &source, &body, 0).unwrap();
         assert!(resp.score.score > 900);

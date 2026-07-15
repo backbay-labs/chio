@@ -87,6 +87,7 @@ fn make_kernel(receipt_store_path: &std::path::Path) -> ChioKernel {
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
+        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     };
     let mut kernel = ChioKernel::new(config);
     let store = SqliteReceiptStore::open(receipt_store_path).unwrap();

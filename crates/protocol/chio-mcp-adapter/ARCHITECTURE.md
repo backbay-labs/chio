@@ -46,6 +46,18 @@ deadlock on cached reads.
 - Manifest projection preserves MCP annotation semantics: missing or malformed
   safety hints imply side effects, and `destructiveHint=true` overrides
   `readOnlyHint=true`.
+- Trust posture: `readOnlyHint` is the upstream server's own self-reported claim,
+  captured into the manifest once at adapt time and never re-verified per call.
+  The MCP spec treats tool annotations as untrusted hints, so a lying or
+  compromised upstream server can mark a side-effecting tool `readOnlyHint: true`
+  and exempt it from the RFC-0003 dispatch-intent journal's crash-window audit
+  net; the conservative parsing above bounds the exposure (a malformed hint or a
+  concurrent `destructiveHint: true` still journals), but it cannot detect an
+  upstream server lying cleanly about a genuinely side-effecting tool. Policy
+  evaluation, guards, and receipt issuance are unaffected either way; only the
+  pre-dispatch durable intent write is skipped for the exempted call.
+  `DispatchIntentJournalMode::All` is the operator override for deployments that
+  do not trust their upstream servers' self-reported hints.
 - Result normalization inserts `isError: false` only when an MCP-shaped success
   omits it, matching `chio-mcp-edge`'s `value_to_tool_result`. Explicit upstream
   `isError` values and content bytes are preserved.
