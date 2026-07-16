@@ -61,7 +61,17 @@ pub fn run_sustained(
         return Err(LoadgenError::ZeroArrivalRate);
     }
 
-    let interval_ns = dispatch_interval_ns(config.arrival_rate_hz);
+    // Fail closed above the nanosecond pacer resolution: a rate over 1e9 Hz spaces
+    // dispatches less than one nanosecond apart, which the rational tick offset
+    // floors to a zero interval, collapsing every tick onto run_start and driving
+    // the same uncapped max-rate loop a zero rate would. An uncapped run is spelled
+    // as a large-but-representable rate, never one past the clock's resolution.
+    if config.arrival_rate_hz > MAX_ARRIVAL_RATE_HZ {
+        return Err(LoadgenError::ArrivalRateTooHigh {
+            arrival_rate_hz: config.arrival_rate_hz,
+        });
+    }
+
     let durable = harness.store().is_some();
 
     // Fail closed before allocating: a duration too large to place on the
@@ -88,7 +98,8 @@ pub fn run_sustained(
 
     let mut tick: u64 = 0;
     while Instant::now() < run_end {
-        let target = run_start + Duration::from_nanos(interval_ns.saturating_mul(tick));
+        let target =
+            run_start + Duration::from_nanos(pacer_offset_ns(tick, config.arrival_rate_hz));
         let now = Instant::now();
         if target > now {
             thread::sleep(target - now);
@@ -214,14 +225,28 @@ fn expected_dispatch_count(config: &LoadgenConfig) -> usize {
         .min(MAX_PREALLOCATED_LATENCIES)
 }
 
-/// Inter-dispatch interval in nanoseconds. Callers reject a zero arrival rate
-/// before reaching here; the zero guard is defense-in-depth so the division can
-/// never trap.
-fn dispatch_interval_ns(arrival_rate_hz: u32) -> u64 {
+/// Highest arrival rate the nanosecond pacer can resolve: one dispatch per
+/// nanosecond. A rate above this floors the per-tick interval to zero, so
+/// [`run_sustained`] denies it rather than running an uncapped max-rate loop.
+const MAX_ARRIVAL_RATE_HZ: u32 = 1_000_000_000;
+
+/// Absolute nanosecond offset from run start for `tick`, in the rational
+/// multiply-before-divide form so tick N lands at exactly N/rate seconds. A
+/// truncated per-tick interval (1e9 / rate) accumulates rounding that runs the
+/// schedule slightly fast and can fit an extra dispatch into the window (1s at
+/// 3hz would target 0, 333333333, 666666666, 999999999 = four calls); the
+/// rational offset instead targets 0, 333333333, 666666667, 1000000000, and the
+/// run_end recheck breaks at the 1e9 target for exactly three. The intermediate
+/// product is u128 so it cannot overflow; the cast back to u64 saturates because
+/// a tick offset past u64 nanoseconds is beyond any real run (the run_end recheck
+/// breaks first). Callers reject a zero arrival rate before reaching here; the
+/// zero guard is defense-in-depth so the division can never trap.
+fn pacer_offset_ns(tick: u64, arrival_rate_hz: u32) -> u64 {
     if arrival_rate_hz == 0 {
         return 0;
     }
-    1_000_000_000 / u64::from(arrival_rate_hz)
+    let offset = u128::from(tick) * 1_000_000_000u128 / u128::from(arrival_rate_hz);
+    u64::try_from(offset).unwrap_or(u64::MAX)
 }
 
 /// Absolute run deadline for the pacer, failing closed when the configured
@@ -318,15 +343,24 @@ mod tests {
     }
 
     #[test]
-    fn dispatch_interval_ns_computes_the_pacer_interval() {
-        // Deterministic pacer correctness: dispatches are spaced by
-        // 1e9 / rate nanoseconds. The integration test cannot assert achieved
-        // throughput under a loaded runner, so the interval math is pinned here.
-        assert_eq!(dispatch_interval_ns(200), 5_000_000);
-        assert_eq!(dispatch_interval_ns(1_000), 1_000_000);
-        assert_eq!(dispatch_interval_ns(1), 1_000_000_000);
-        // A zero rate has no interval; run_sustained rejects it before pacing.
-        assert_eq!(dispatch_interval_ns(0), 0);
+    fn pacer_offset_ns_is_rational_and_drift_free() {
+        // Deterministic pacer correctness: the integration test cannot assert
+        // achieved throughput under a loaded runner, so the tick-offset math is
+        // pinned here. A rate that does not divide 1e9 evenly must not accumulate
+        // rounding: the rational offset lands tick N at exactly N/rate seconds, so
+        // tick 3 at 3hz is 1e9ns to the nanosecond, not 999999999 (which a
+        // truncated per-tick interval would reach, fitting a spurious fourth
+        // dispatch into a 1s run).
+        assert_eq!(pacer_offset_ns(0, 3), 0);
+        assert_eq!(pacer_offset_ns(1, 3), 333_333_333);
+        assert_eq!(pacer_offset_ns(2, 3), 666_666_666);
+        assert_eq!(pacer_offset_ns(3, 3), 1_000_000_000);
+        // A rate that divides 1e9 evenly is exact at every tick and unaffected.
+        assert_eq!(pacer_offset_ns(200, 200), 1_000_000_000);
+        assert_eq!(pacer_offset_ns(1, 200), 5_000_000);
+        assert_eq!(pacer_offset_ns(1_000, 1_000), 1_000_000_000);
+        // Defense-in-depth: a zero rate has no offset; run_sustained rejects it.
+        assert_eq!(pacer_offset_ns(5, 0), 0);
     }
 
     #[test]

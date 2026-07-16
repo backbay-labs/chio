@@ -104,6 +104,19 @@ fn configure_sqlite_connection(
     // leaves SQLite's built-in page ceiling untouched.
     if let Some(max_page_count) = max_page_count {
         connection.pragma_update(None, "max_page_count", max_page_count)?;
+        // Verify the cap took effect. SQLite silently ignores a max_page_count of 0
+        // (leaving the default multi-gigabyte ceiling) and raises the effective
+        // limit to the current database size when the requested cap sits below it,
+        // so a caller could otherwise believe a fail-closed growth ceiling is
+        // installed while the file is effectively uncapped or already over the
+        // ceiling. Read the effective limit back and deny when it is not exactly
+        // the requested cap.
+        let effective: i64 = connection.query_row("PRAGMA max_page_count", [], |row| row.get(0))?;
+        if effective != i64::from(max_page_count) {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "sqlite max_page_count requested {max_page_count} but effective limit is {effective}"
+            )));
+        }
     }
     Ok(())
 }

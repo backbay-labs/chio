@@ -65,6 +65,29 @@ fn run_sustained_rejects_zero_arrival_rate() {
 }
 
 #[test]
+fn run_sustained_rejects_over_resolution_rate() {
+    // A rate past the nanosecond pacer resolution floors the per-tick interval to
+    // zero, collapsing every tick onto run_start and dispatching uncapped. The
+    // runner must deny it with a typed error, exactly as it rejects a zero rate,
+    // rather than run an unbounded max-rate loop.
+    let config = LoadgenConfig {
+        arrival_rate_hz: 2_000_000_000,
+        duration: Duration::from_millis(50),
+        tool_latency: Duration::ZERO,
+        store: StoreBacking::Memory,
+        p99_budget: Duration::from_millis(50),
+        rss_growth_budget_bytes: 256 * 1024 * 1024,
+    };
+
+    let harness = StackHarness::boot_smoke(&config).test_unwrap();
+    let error = run_sustained(&harness, &config).test_unwrap_err();
+    assert!(
+        matches!(error, LoadgenError::ArrivalRateTooHigh { arrival_rate_hz } if arrival_rate_hz == 2_000_000_000),
+        "a rate above the nanosecond pacer resolution must deny with ArrivalRateTooHigh rather than run uncapped, got {error:?}"
+    );
+}
+
+#[test]
 fn run_sustained_rejects_unrepresentable_duration() {
     let config = LoadgenConfig {
         arrival_rate_hz: 100,

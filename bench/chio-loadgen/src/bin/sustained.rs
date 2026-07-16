@@ -29,6 +29,11 @@ const DEFAULT_RATE_HZ: u32 = 200;
 const DEFAULT_P99_BUDGET_MS: u64 = 50;
 const DEFAULT_RSS_BUDGET_MB: u64 = 64;
 
+/// Highest arrival rate the nanosecond pacer can resolve (one dispatch per
+/// nanosecond). A rate above this floors the per-tick interval to zero, so the
+/// runner would dispatch uncapped; reject it at parse time.
+const MAX_RATE_HZ: u32 = 1_000_000_000;
+
 const BYTES_PER_MEBIBYTE: u64 = 1024 * 1024;
 
 /// Per-invoke fixture tool-server latency. Held nonzero so the measured dispatch
@@ -80,6 +85,15 @@ fn gated_run(workdir: &Path) -> Result<(), String> {
             "CHIO_LOADGEN_RATE_HZ must be nonzero; an uncapped rate is a large value, not 0"
                 .to_string(),
         );
+    }
+
+    // Reject a rate past the nanosecond pacer resolution here too, so the operator
+    // gets a clean message rather than a mid-run typed denial. Above 1e9 Hz the
+    // pacer cannot space dispatches below one nanosecond and would run uncapped.
+    if config.arrival_rate_hz > MAX_RATE_HZ {
+        return Err(format!(
+            "CHIO_LOADGEN_RATE_HZ must not exceed {MAX_RATE_HZ}; dispatches cannot be spaced below one nanosecond"
+        ));
     }
 
     // Reject a duration the monotonic clock cannot schedule before booting, so the

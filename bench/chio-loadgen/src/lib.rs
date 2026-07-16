@@ -60,6 +60,10 @@ pub enum LoadgenError {
     Dispatch(String),
     #[error("arrival_rate_hz is zero; an uncapped rate is spelled as a large value, not 0")]
     ZeroArrivalRate,
+    #[error(
+        "arrival_rate_hz {arrival_rate_hz} exceeds the nanosecond pacer resolution of 1_000_000_000 Hz; dispatches cannot be spaced below one nanosecond"
+    )]
+    ArrivalRateTooHigh { arrival_rate_hz: u32 },
     #[error("sustained run dispatched no calls")]
     EmptyRun,
     #[error(
