@@ -30,6 +30,13 @@ and assess ERC-4337/paymaster compatibility. Those surfaces remain
 interoperability adapters over canonical Chio approval, receipt, and settlement
 truth; they do not become a second ledger.
 
+The current formal boundary is equally explicit. Checked scalar ceiling and
+floor conversion helpers are production-called and bound through Aeneas, Lean,
+and Kani. Collection-level multi-currency netting, recomputation, isolation,
+and idempotence are not claimed on this branch because the required netting
+surface has not merged. No economy-conservation property is registered from
+the scalar groundwork alone.
+
 ---
 
 ## 2. Current Architecture (What Exists)

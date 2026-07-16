@@ -1,14 +1,50 @@
 # Formal Verification: Current State
 
-- Status: Survey snapshot updated 2026-07-12
+- Status: Execution snapshot updated 2026-07-16
 - Audience: maintainers, formal-methods contributors, auditors
 - Companion docs: [GAP_ANALYSIS.md](GAP_ANALYSIS.md), [HYGIENE_PASS.md](HYGIENE_PASS.md), [ROADMAP.md](ROADMAP.md), plan specs under [plan/](plan/)
 
-This document records what the Chio formal verification estate actually is
-today: six evidence lanes, the governance layer that binds them to release
-claims, and the adjacent fuzzing and mutation estates. It is descriptive, not
-aspirational; known weaknesses are catalogued separately in
+This document records the executed formal verification estate: six evidence
+lanes, governance that binds them to release claims, and the adjacent
+concurrency, fuzzing, and mutation programs. It is descriptive, not
+aspirational; remaining boundaries are catalogued separately in
 [GAP_ANALYSIS.md](GAP_ANALYSIS.md).
+
+## 2026-07-16 evidence snapshot
+
+- Production extraction covers 20 functions across four semantic targets and
+  two Rust sources. Eighteen functions are in the kernel-only extraction
+  scope; the two inclusion functions bind the relying-party verifier path.
+- Kani registers 14 internal model harnesses, 25 core public harnesses, and 16
+  non-core public harnesses. All 41 public harnesses are in the pull-request
+  tier.
+- Apalache passed nine positive safety models, sixteen registered negative
+  models, receipt-trace validation, the distributed refinement model, and the
+  three bounded temporal obligations. The measured temporal runs were
+  811.737 seconds at length 5, 1.991 seconds at length 3, and 429.525 seconds
+  at length 24. The legacy unbounded eventuality run reached its 3,602-second
+  timeout without an invariant or tool error and is not counted as a proof.
+- Mirror validation covers 57 registered mirrors over 171 bindings, including
+  seven Lean module hashes and seven TLA+ module hashes. The proof manifest
+  contains 35 root imports, 14 gates, 12 model modules, 43 Rust symbols, and 15
+  shell-bound checks.
+- Lean contains 149 catalogued declarations, one cryptographic axiom, thirteen
+  registered assumptions, and no placeholders.
+- Concurrency evidence includes all ten Loom models under three preemptions
+  (229.86 seconds) and 10,000 deterministic schedules (63.24 seconds).
+- The specification campaign enumerated 33 mutants, killed 32, timed out one,
+  and left no survivor or unviable result, for 96.97 percent activation. The
+  retained Lean campaign enumerated 45 mutants, killed 33, and left 12
+  survivors with no timeout, for 73.333 percent activation. The retained Rust
+  proof campaign enumerated 166 mutants, killed 160, left one survivor,
+  classified five as unviable, and had no timeout, for 99.379 percent
+  activation and 96.988 percent viability. Issues #999 through #1010 track
+  the Lean survivors, and issue #1019 tracks the Rust survivor.
+- Fifteen formal gates are registered: ten scheduled and five pull-request
+  gates. Six path-scoped gates remain frozen pending qualifying hosted runs.
+- All roadmap items are implemented except collection-level economy
+  conservation, which remains blocked on the absent netting surface. No P11
+  claim is made.
 
 ## Architecture in one picture
 
@@ -18,7 +54,7 @@ model-checked:
 
 ```
                        crates/kernel/chio-kernel-core/src/formal_aeneas.rs
-                       (18 public extraction-safe functions; production code)
+                       (20 registered extraction-safe functions; production code)
                                           |
           +----------------+--------------+---------------+------------------+
           |                |              |               |                  |
@@ -181,8 +217,8 @@ the typed, `pub(crate)` facade that performs those kernel projections.
   - Where a harness is model-only (for example the anchor witness-policy
     harness), the module docs state the honesty boundary and name the runtime
     tests covering the gap.
-- Cadence: `formal-pr-smoke.yml` runs the 24 public kernel-core `lanes.pr`
-  harnesses and the 15 non-core manifest PR harnesses on scoped pull-request
+- Cadence: `formal-pr-smoke.yml` runs the 25 public kernel-core `lanes.pr`
+  harnesses and the 16 non-core manifest PR harnesses on scoped pull-request
   changes. `kani-public-nightly` in `nightly.yml` runs the union of core PR and
   nightly-only lanes plus every non-core PR and nightly manifest entry.
 
@@ -278,7 +314,9 @@ nightly).
   is at 0 observed consecutive green nights against an 80% activation target.
   A nightly co-coverage lane replays the fuzz corpus against surviving mutants
   (`mutants-fuzz-cocoverage.yml`). The formal modules themselves are excluded
-  from mutation with the rationale "covered by the proof lane".
+  from unit-test mutation because the measured proof-mutation lane scores the
+  two production models with Kani, while the Kani harness files are oracle
+  controls and remain outside the mutated system boundary.
 - Concurrency: the checked registry names 10 Loom harnesses, and deterministic
   simulation registers five drop-injection scenarios with replayable seeds.
   Pull-request and nightly lanes enforce the registered scope; the hosted
@@ -340,7 +378,7 @@ explicit there.
 | Cadence | Formal content |
 | --- | --- |
 | Every PR (required) | diff-tests via workspace tests; `cargo xtask check crate-paths` (manifest path integrity); `cargo xtask check formal-mirrors` (Rust-to-model review tripwire); proptest invariant-naming gate; regression-test deletion gate; threat-model coverage gate; registry status ban (`implementation_backed`) |
-| PR, path-scoped | Apalache safety (9 spec/cfg pairs) plus registered negative witnesses and the distributed production projection; Lean build plus sorry and manifest checks; 24 core and 15 non-core Kani PR harnesses; Rust verification metadata with no Creusot proofs; ClusterFuzzLite change-scoped fuzzing; cargo-mutants for touched trust-boundary crates |
+| PR, path-scoped | Apalache safety (9 spec/cfg pairs) plus registered negative witnesses and the distributed production projection; Lean build plus sorry and manifest checks; 25 core and 16 non-core Kani PR harnesses; Rust verification metadata with no Creusot proofs; ClusterFuzzLite change-scoped fuzzing; cargo-mutants for touched trust-boundary crates |
 | Nightly | Kani (all lanes), Lean/Aeneas/Creusot proof report (`formal-qualification`), Apalache temporal (liveness; known-unreliable), proptest 4096-case tier plus a 10000-case reservation-ledger sequence target, mutants full sweeps (advisory), mutants-fuzz co-coverage, dudect, fuzz rotation and native sweep |
 | Push to main / release | `release-qualification.yml` runs the full gate battery: `check-formal-proofs.sh`, both Aeneas checks, equivalence, Creusot and Kani strict lanes, adapter no-bypass, portable kernel, proof report |
 

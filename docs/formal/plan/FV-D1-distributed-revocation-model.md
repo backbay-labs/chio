@@ -1,6 +1,6 @@
 # FV-D1: Distributed-time revocation propagation model
 
-Status: In progress (2026-07-12; local evidence complete, hosted temporal streak pending)
+Status: Implemented (2026-07-15; local evidence complete, hosted temporal streak pending)
 Theme: D - Widen the verified frontier
 Effort: L
 Depends on: none
@@ -201,6 +201,17 @@ decision.
 - `RevocationPropagation.tla` remains as the minimal local-gate model.
 
 ## Decisions
+
+- The local temporal lane is complete: the full-to-scalar projection passed at
+  length 5 in 811.737 seconds, the explicit fair witness passed at length 3 in
+  1.991 seconds, and arbitrary-pair eventual observation passed at length 24
+  in 429.525 seconds.
+- The legacy unbounded eventuality check reached its 3,602-second timeout
+  without an invariant or tool error. It remains non-evidence and is not used
+  to promote the hosted lane.
+- `ASSUME-NETWORK-TRANSPORT` remains registered. Local model completion does
+  not authenticate production transport delivery or justify assumption
+  retirement.
 
 - Handwritten TLA+ is the artifact of record. The Quint pilot was rejected
   because the pinned Apalache checker already accepts the required model and

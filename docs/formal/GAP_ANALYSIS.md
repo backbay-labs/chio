@@ -1,13 +1,28 @@
 # Formal Verification: Gap Analysis
 
-- Status: Assessed 2026-07-09 (survey at commit `dbb4639e1`)
+- Status: Reassessed 2026-07-15 after roadmap execution
 - Companion docs: [CURRENT_STATE.md](CURRENT_STATE.md),
   [HYGIENE_PASS.md](HYGIENE_PASS.md), [ROADMAP.md](ROADMAP.md), plan specs
   under [plan/](plan/)
 
-Six load-bearing gaps (G1-G6), each with evidence, consequence, and the plan
-docs that address it. A full staleness inventory follows; the mechanical
-fixes are specified item-by-item in [HYGIENE_PASS.md](HYGIENE_PASS.md).
+The original six load-bearing gaps are retained below as execution history.
+The implementation closes their code and local-evidence portions. Three
+boundaries remain deliberately open:
+
+- G3 retains hosted concurrency and distributed-systems qualification. Local
+  Loom and deterministic-simulation gates pass, but hosted streaks are not
+  inferred.
+- G4 retains semantic scope exclusions documented by each refinement bridge.
+  Mirror hashes and generated equivalence prevent drift; they do not prove
+  parsers, cryptographic implementations, storage engines, transports, or
+  behavior outside each explicitly modeled domain.
+- G5 retains mutation survivors and timeout evidence as visible limitations.
+  A timeout counts as not killed, and no survivor is reclassified as success.
+
+The collection-level economy proof is separately blocked on the absent netting
+surface. Scalar conservation groundwork does not license P11. A full
+staleness inventory follows; the mechanical fixes are specified item-by-item
+in [HYGIENE_PASS.md](HYGIENE_PASS.md).
 
 ## G1: Pull requests lacked proof feedback (resolved 2026-07-09)
 
@@ -15,7 +30,7 @@ Closure:
 
 - `.github/workflows/formal-pr-smoke.yml` now classifies affected paths and
   runs Lean compilation, sorry scanning, proof-registry cross-references, all
-  24 public kernel-core PR Kani harnesses, the 12 non-core PR Kani harnesses,
+  25 public kernel-core PR Kani harnesses, the 16 non-core PR Kani harnesses,
   and explicitly metadata-only Rust verification checks.
 - `.github/workflows/mutants.yml` now triggers on changes to six
   trust-boundary crates and skips untouched matrix packages before tool setup.
@@ -153,8 +168,8 @@ Evidence (details and exact fixes in [HYGIENE_PASS.md](HYGIENE_PASS.md)):
   in CI", while a third theorem proved under the same conditions is marked
   `proved`.
 - The original `proof-manifest.toml` synchronized mirrors by symbol name only.
-  This is now mechanically closed for the six core Lean models and six TLA+
-  models: 41 mirror entries hash 96 parser-resolved Rust symbol references,
+  This is now mechanically closed for seven Lean models and seven TLA+
+  models: 57 mirror entries hash 171 parser-resolved Rust symbol references,
   with per-symbol diagnostics in required PR CI. The repaired TLA+ records are
   labeled abstraction anchors so their hashes require review without claiming
   that the Rust code establishes a modeled property.

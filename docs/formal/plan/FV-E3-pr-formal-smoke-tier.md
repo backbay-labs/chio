@@ -15,18 +15,20 @@ Related docs: [../GAP_ANALYSIS.md](../GAP_ANALYSIS.md),
 `.github/workflows/formal-pr-smoke.yml` provides path-scoped pull-request
 feedback for Lean, Kani, and Rust verification metadata. A lightweight scope
 job classifies the changed files before a proof toolchain is installed. The
-workflow has four verification jobs:
+workflow has five verification jobs:
 
 1. `lean-build (lake + sorry scan + manifest cross-ref)` runs
    `scripts/check-formal-proofs.sh` with cached elan and Lake state.
-2. `kani-public-pr (lanes.pr sweep)` runs the 24 public kernel-core harnesses
+2. `kani-public-pr (lanes.pr sweep)` runs the 25 public kernel-core harnesses
    declared in `formal/rust-verification/kani-public-harnesses.toml`.
-3. `kani-manifest-pr (non-core lanes.pr sweep)` runs the 12 PR harnesses for
+3. `kani-manifest-pr (non-core lanes.pr sweep)` runs the 16 PR harnesses for
    chio-attest-verify, chio-anchor, and chio-weights from
    `.kani/harnesses.toml`.
 4. `rust-verification-metadata (schema only, no proofs)` runs
    `scripts/check-rust-verification-gates.sh` with
    `CHIO_RUST_VERIFICATION_METADATA_ONLY=1`.
+5. `fuzz-corpus-smoke-pr` validates the locked corpus, metadata, and target
+   ownership contracts for affected paths.
 
 The mutation workflow now has a path-scoped `pull_request` trigger for six
 trust-boundary crates. Each matrix entry checks the PR diff before installing
@@ -51,7 +53,7 @@ qualification.
   Its default is `--lane pr`, `--lane all` supplies the nightly union, and
   `--list` supports proof-free integrity checks.
 - Keep non-core Kani coverage in a separate job. This preserves a precise
-  24-harness public-core check while retaining the 12 non-core PR harnesses.
+  25-harness public-core check while retaining the 16 non-core PR harnesses.
 - Keep strict Creusot off the PR path. The PR job is named and logged as
   metadata-only so it cannot be mistaken for proof execution.
 - Revive the existing mutation PR machinery rather than delete it. Package
@@ -113,7 +115,7 @@ measured evidence before changing coverage.
 
 - [x] The public-core runner lists exactly the 24 registered PR harnesses
   without invoking Kani.
-- [x] The non-core manifest runner lists exactly 12 registered PR harnesses
+- [x] The non-core manifest runner lists exactly 16 registered PR harnesses
   when chio-kernel-core is excluded.
 - [x] The Rust metadata job name and log explicitly state that no proofs run.
 - [x] Unrelated documentation paths do not trigger the formal workflow.
@@ -125,7 +127,7 @@ measured evidence before changing coverage.
 - [x] Kani and elan pins match between PR and nightly workflows.
 - [ ] Observe a hosted Lean PR failure for a broken proof or introduced
   `sorry`, then record the run.
-- [ ] Observe a hosted core Kani PR run executing all 24 harnesses.
+- [ ] Observe a hosted core Kani PR run executing all 25 harnesses.
 - [ ] Measure three warm hosted Kani runs and keep the public-core job at or
   below 10 minutes, or propose named lane changes with evidence.
 - [ ] Observe mutation comment, advisory result, and under-one-minute no-op

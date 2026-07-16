@@ -60,14 +60,14 @@ and rejects contradictory declared results. This source-scoped interpretation
 does not change the registry or report schema.
 
 The specification allowlist uses schema
-`chio.spec-mutants-allowlist.v2`. It contains 30 exact curated type-valid
+`chio.spec-mutants-allowlist.v2`. It contains 31 exact curated type-valid
 probes plus two mandatory registered historical seeds across seven sources.
 Edits are restricted to classified `guard-weakening` and
 `post-state-corruption` matches in named reachable actions. Deterministic
 samples always include both seeds and at least one probe per source. A TLA+
 parser or type error is a fail-closed execution error, not an excluded
 `unviable` result, and a timeout counts as not killed. Promotion requires the
-clean full 32-probe campaign, zero unviable results, and at least 90 percent
+clean full 33-probe campaign, zero unviable results, and at least 90 percent
 activation globally and separately for every source aggregate.
 
 The following count values illustrate a target whose own source has four

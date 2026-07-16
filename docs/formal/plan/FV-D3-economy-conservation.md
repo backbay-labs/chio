@@ -1,6 +1,6 @@
 # FV-D3: Conservation laws for the M2 economy surface
 
-Status: Blocked (2026-07-12; collection surface unmerged)
+Status: Blocked (2026-07-15; scalar groundwork implemented, collection surface unmerged)
 Theme: D - Widen the verified frontier
 Effort: M
 Depends on: [FV-A1](FV-A1-absorb-verified-helpers.md) (absorbed-helper pattern, receipt-coupling phase), chio-anchor multi-crate Kani precedent
@@ -150,6 +150,14 @@ Netting outcomes that are published (the netted view is a signed report surface)
 - Saturating floors could hide a real bug if a "non-negative by construction" claim is wrong. Mitigation: dedicated Kani assertion that the saturating subtractions' operands satisfy `minuend >= subtrahend` under parity rates (where exactness holds), so the floor is provably dead code in the exact case.
 
 ## Decisions
+
+- The checked scalar conversion helpers, Aeneas equivalence, Lean envelope
+  theorems, and Kani projections are implemented against the surfaces present
+  on this branch.
+- Collection-level netting, recomputation, isolation, and idempotence remain
+  blocked because the required M2 netting surface is absent. The unchecked
+  acceptance items stay open.
+- No P11 property or public claim is created from scalar groundwork alone.
 
 - The segregated-baseline law remains a corollary of L1 and max monotonicity. The Lean model will prove the corollary and a collection Kani harness will assert it after the M2 surface lands.
 - Recompute remains a determinism law here. Lifecycle-ledger replay requires the trace vocabulary and is deferred to a separate implementation after the trace-validation surface is stable.

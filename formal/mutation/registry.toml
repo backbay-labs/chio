@@ -12,6 +12,18 @@ rust_paths = [
   "crates/kernel/chio-kernel/src/kernel/validation.rs",
 ]
 
+[target.latest_full_cycle]
+commit = "d292f14df1c493873199f4f9d969ade00472ff28"
+measured_at = "2026-07-15T21:36:34Z"
+evidence = "formal/mutation/evidence/spec-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json"
+report_sha256 = "d7b7a63401bfb071af87743ec07191e380c29ee1e306cca1fe35859a8194e623"
+enumerated = 3
+killed = 3
+survived = 0
+unviable = 0
+timeout = 0
+activation_ratio_percent = 100.0
+
 [[target]]
 name = "spec-monotone-log"
 lane = "spec-mutants"
@@ -23,6 +35,18 @@ rust_paths = [
   "crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs",
   "crates/platform/chio-store-sqlite/src/receipt_store/evidence_retention.rs",
 ]
+
+[target.latest_full_cycle]
+commit = "d292f14df1c493873199f4f9d969ade00472ff28"
+measured_at = "2026-07-15T21:36:34Z"
+evidence = "formal/mutation/evidence/spec-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json"
+report_sha256 = "d7b7a63401bfb071af87743ec07191e380c29ee1e306cca1fe35859a8194e623"
+enumerated = 2
+killed = 2
+survived = 0
+unviable = 0
+timeout = 0
+activation_ratio_percent = 100.0
 
 [[target]]
 name = "spec-post-admission-drop"
@@ -37,6 +61,18 @@ rust_paths = [
   "crates/kernel/chio-kernel/src/kernel/responses/finalization.rs",
 ]
 
+[target.latest_full_cycle]
+commit = "d292f14df1c493873199f4f9d969ade00472ff28"
+measured_at = "2026-07-15T21:36:34Z"
+evidence = "formal/mutation/evidence/spec-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json"
+report_sha256 = "d7b7a63401bfb071af87743ec07191e380c29ee1e306cca1fe35859a8194e623"
+enumerated = 10
+killed = 9
+survived = 0
+unviable = 0
+timeout = 1
+activation_ratio_percent = 90.0
+
 [[target]]
 name = "spec-receipt-before-allow"
 lane = "spec-mutants"
@@ -48,6 +84,18 @@ rust_paths = [
   "crates/kernel/chio-kernel/src/kernel/responses/allow_responses.rs",
   "crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs",
 ]
+
+[target.latest_full_cycle]
+commit = "d292f14df1c493873199f4f9d969ade00472ff28"
+measured_at = "2026-07-15T21:36:34Z"
+evidence = "formal/mutation/evidence/spec-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json"
+report_sha256 = "d7b7a63401bfb071af87743ec07191e380c29ee1e306cca1fe35859a8194e623"
+enumerated = 3
+killed = 3
+survived = 0
+unviable = 0
+timeout = 0
+activation_ratio_percent = 100.0
 
 [[target]]
 name = "spec-revocation-cut"
@@ -61,6 +109,18 @@ rust_paths = [
   "crates/kernel/chio-kernel-core/src/revocation_view.rs",
 ]
 
+[target.latest_full_cycle]
+commit = "d292f14df1c493873199f4f9d969ade00472ff28"
+measured_at = "2026-07-15T21:36:34Z"
+evidence = "formal/mutation/evidence/spec-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json"
+report_sha256 = "d7b7a63401bfb071af87743ec07191e380c29ee1e306cca1fe35859a8194e623"
+enumerated = 3
+killed = 3
+survived = 0
+unviable = 0
+timeout = 0
+activation_ratio_percent = 100.0
+
 [[target]]
 name = "spec-delegation-depth"
 lane = "spec-mutants"
@@ -73,6 +133,18 @@ rust_paths = [
   "crates/kernel/chio-kernel-core/src/revocation_view.rs",
   "crates/trust/chio-revocation-oracle/src/api.rs",
 ]
+
+[target.latest_full_cycle]
+commit = "d292f14df1c493873199f4f9d969ade00472ff28"
+measured_at = "2026-07-15T21:36:34Z"
+evidence = "formal/mutation/evidence/spec-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json"
+report_sha256 = "d7b7a63401bfb071af87743ec07191e380c29ee1e306cca1fe35859a8194e623"
+enumerated = 5
+killed = 5
+survived = 0
+unviable = 0
+timeout = 0
+activation_ratio_percent = 100.0
 
 [[target]]
 name = "spec-revocation-propagation"
@@ -88,6 +160,18 @@ rust_paths = [
   "crates/trust/chio-revocation-oracle/src/freshness.rs",
 ]
 
+[target.latest_full_cycle]
+commit = "d292f14df1c493873199f4f9d969ade00472ff28"
+measured_at = "2026-07-15T21:36:34Z"
+evidence = "formal/mutation/evidence/spec-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json"
+report_sha256 = "d7b7a63401bfb071af87743ec07191e380c29ee1e306cca1fe35859a8194e623"
+enumerated = 7
+killed = 7
+survived = 0
+unviable = 0
+timeout = 0
+activation_ratio_percent = 100.0
+
 [[target]]
 name = "proof-formal-core"
 lane = "proof-mutants"
@@ -97,6 +181,18 @@ activation_target_percent = 90.0
 inventory_sha256 = "b21e6ef43ec0def5eaaec41e3d963d16708da61d3be5d1c7a6535fbd40e81d45"
 rust_paths = ["crates/kernel/chio-kernel-core/src/formal_core.rs"]
 
+[target.latest_full_cycle]
+commit = "d292f14df1c493873199f4f9d969ade00472ff28"
+measured_at = "2026-07-16T04:23:44Z"
+evidence = "formal/mutation/evidence/proof-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json"
+report_sha256 = "c9322d3e34f3b6390e479df2e0757834ada17e53f1ab60b026673c47d0661a8e"
+enumerated = 54
+killed = 50
+survived = 1
+unviable = 3
+timeout = 0
+activation_ratio_percent = 98.039
+
 [[target]]
 name = "proof-formal-aeneas"
 lane = "proof-mutants"
@@ -105,3 +201,15 @@ report = "target/formal/proof-mutants/outcomes.json"
 activation_target_percent = 90.0
 inventory_sha256 = "b21e6ef43ec0def5eaaec41e3d963d16708da61d3be5d1c7a6535fbd40e81d45"
 rust_paths = ["crates/kernel/chio-kernel-core/src/formal_aeneas.rs"]
+
+[target.latest_full_cycle]
+commit = "d292f14df1c493873199f4f9d969ade00472ff28"
+measured_at = "2026-07-16T04:23:44Z"
+evidence = "formal/mutation/evidence/proof-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json"
+report_sha256 = "c9322d3e34f3b6390e479df2e0757834ada17e53f1ab60b026673c47d0661a8e"
+enumerated = 112
+killed = 110
+survived = 0
+unviable = 2
+timeout = 0
+activation_ratio_percent = 100.0

@@ -10,7 +10,7 @@ Related docs: [../GAP_ANALYSIS.md](../GAP_ANALYSIS.md) (G1 and G5 posture), [FV-
 ## Summary
 
 The mutation lane retains its reviewed evidence ratchet in
-`scripts/mutants-gate.sh`. Pass/fail proof and corpus lanes use eleven
+`scripts/mutants-gate.sh`. Pass/fail proof and corpus lanes use fifteen
 `[gates.<lane>]` entries in `releases.toml`, exact job-level GitHub Actions
 history, reset boundaries, freshness limits, and release-fleet enforcement.
 Proof reports record `mode = strict | metadata_only`. Release qualification
@@ -23,9 +23,9 @@ Repository observations:
 
 - The mutants ratchet pattern exists and works as designed: `scripts/mutants-gate.sh:144-153` exits advisory while `cycle_end_tag` is empty or the streak is short; `releases.toml:177-209` holds the schema (`target_catch_ratio_percent = 80`, `required_consecutive_nightly_successes = 2`, `observed_consecutive_nightly_successes = 0`, `cycle_end_tag = ""`), with a CODEOWNERS-gated lifecycle documented in its header (lines 39-79).
 - But the streak field is a manually maintained repo-state counter (`observed_consecutive_nightly_successes`, updated by CODEOWNERS-reviewed PR per `releases.toml:43-49,64-79`). That is appropriate for the mutants lane, where "success" means a judged kill-rate score; it does not scale to pass/fail lanes, where the workflow conclusion IS the evidence and a hand-copied counter can only go stale.
-- The registry covers five scheduled formal jobs, four pull-request formal
-  jobs, and the pull-request and nightly locked-corpus smoke jobs. All eleven
-  are advisory. The five path-scoped pull-request entries are also frozen.
+- The registry covers ten scheduled jobs and five pull-request jobs. All
+  fifteen are advisory. Six path-scoped or reliability-constrained entries
+  are frozen.
 - `CHIO_RUST_VERIFICATION_METADATA_ONLY=1` still supports toolchain-outage
   diagnostics. It produces a `metadata_only` report with one passed coverage
   preflight and `not_run` proof gates. Release qualification rejects that mode.
@@ -195,9 +195,9 @@ Implemented behavior:
 3. [x] Phase 3 - job-level lane gate, mocked API tests, reset and freshness policies, and advisory registry entries.
 4. [x] Phase 4 - terminal call sites for all covered jobs plus release-fleet enforcement.
 5. [x] Phase 5 - promotion, ruleset, reset, nightly-only, and demotion runbook.
-6. [x] Phase 6 - all four formal PR jobs, five scheduled formal jobs, and both
-   locked-corpus smoke jobs registered. Future score-based or simulation lanes
-   add their own tables when their workflows land.
+6. [x] Phase 6 - all five pull-request jobs and ten scheduled jobs are
+   registered. Future score-based or simulation lanes add their own tables
+   when their workflows land.
 
 ## CI and gating changes
 
@@ -235,7 +235,7 @@ Implemented behavior:
   print run IDs, attempts, and dates. Mocked dispatch exclusion and reset
   boundaries pass.
 - [x] Required posture on a frozen lane fails at load time.
-- [x] `releases.toml` carries eleven advisory `[gates.*]` tables with exact
+- [x] `releases.toml` carries fifteen advisory `[gates.*]` tables with exact
   workflow and job identities. Evidence scripts, the manifest, Apalache files,
   affected workflows, and the registry have CODEOWNERS protection.
 - [x] Path-scoped PR entries remain frozen until a run-always aggregator and
@@ -275,9 +275,9 @@ Implemented behavior:
 
 ## Manifest and registry updates
 
-- `releases.toml`: eleven advisory `[gates.*]` tables cover five scheduled
-  formal lanes, four formal pull-request lanes, and two locked-corpus smoke
-  lanes. The five pull-request entries are frozen.
+- `releases.toml`: fifteen advisory `[gates.*]` tables cover ten scheduled and
+  five pull-request lanes. Six entries are frozen until their documented
+  hosted preconditions are met.
 - `target/formal/proof-report.json` schema: new required top-level `mode` and
   `evidenceBoundary` fields; consumers are `check-proof-report.sh` (updated
   here) and the formal-evidence bundle.

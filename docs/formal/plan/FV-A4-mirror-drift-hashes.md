@@ -17,8 +17,8 @@ manual Lean transliteration or a TLA+ abstraction anchor changes without a
 deliberate manifest bless. The required PR job runs the gate beside the
 existing crate-path check and needs no Lean, Charon, Kani, or Why3 toolchain.
 
-The proof manifest contains 41 `[[mirror]]` entries covering 96 Rust symbol
-references across six core Lean models and six TLA+ models. Every entry
+The proof manifest contains 57 `[[mirror]]` entries covering 171 Rust symbol
+references across seven Lean models and seven TLA+ models. Every entry
 records an ordered rollup and a digest for each symbol. The per-symbol digests
 let a failure name the exact changed item; the rollup binds symbol order and
 the complete entry.
@@ -149,7 +149,7 @@ The TLA+ inventory adds 24 entries and 44 symbol references:
 | KernelTransitionCancelSafe | post-admission drop guard and pre-execution budget reversal |
 | PostAdmissionDropGuard | post-admission drop guard, runtime reservation disposition, and response finalization |
 
-The six Lean headers and six TLA+ Code mapping blocks name the registered
+The seven Lean headers and seven TLA+ Code mapping blocks name the registered
 paths and point authors to the manifest entries. Source-specific symbol lists
 remain authoritative; adding a new model or expanding an abstraction requires
 a new or updated entry.
@@ -190,8 +190,8 @@ formal-mirrors: MIRROR DRIFT in crates/kernel/chio-kernel-core/src/formal_core.r
    formatting-preserving blesses with `toml_edit`.
 2. The xtask CLI and dispatcher expose `check formal-mirrors [--bless]` with a
    dedicated fail-closed error category.
-3. `formal/proof-manifest.toml` contains 41 entries and 96 symbol
-   digests. The six Lean mirror headers and six TLA+ Code mapping blocks use
+3. `formal/proof-manifest.toml` contains 57 entries and 171 symbol
+   digests. The seven Lean mirror headers and seven TLA+ Code mapping blocks use
    corrected repository paths.
 4. The required CI job runs the checker next to `check crate-paths`.
 5. `formal/OWNERS.md` assigns bless review, and `formal/MAPPING.md` directs new
@@ -258,7 +258,7 @@ formal-mirrors: MIRROR DRIFT in crates/kernel/chio-kernel-core/src/formal_core.r
 
 ## Manifest And Registry Updates
 
-- `formal/proof-manifest.toml`: 41 `[[mirror]]` entries, an enforcement note,
+- `formal/proof-manifest.toml`: 57 `[[mirror]]` entries, an enforcement note,
   relationship labels, and the checker in `gate_commands`.
 - `formal/OWNERS.md`: mirror hash and bless-review responsibility.
 - `formal/MAPPING.md`: cross-reference to the mirror registry and checker.

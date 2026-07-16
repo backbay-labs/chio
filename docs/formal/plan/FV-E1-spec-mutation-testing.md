@@ -1,6 +1,6 @@
 # FV-E1: Mutation testing for specifications and proof models
 
-Status: In progress (2026-07-13; integrated full-cycle measurements pending)
+Status: Implemented (2026-07-16; local full-cycle evidence complete, hosted runs pending)
 Theme: E - Verify the verification, and make lanes bite
 Effort: M
 Depends on: [FV-B2](FV-B2-regression-negative-tests.md)
@@ -36,6 +36,20 @@ probes. A parser or type failure there is a fail-closed execution error, not an
 excluded verdict. Timeouts remain in the denominator and therefore reduce the
 activation ratio.
 
+## Measured local evidence
+
+- The full specification campaign enumerated 33 mutants across seven sources,
+  killed 32, timed out one, and produced no survivor or unviable result. Global
+  activation was 96.97 percent, and every source met its 90 percent target.
+- The retained Lean pilot enumerated 45 mutants, killed 33, and left 12
+  survivors with no timeout, for 73.333 percent activation. This pilot remains
+  visible but does not participate in the scored release ratchet.
+- The full Rust campaign enumerated 166 mutants across both registered model
+  files, killed 160, left one survivor, classified five as unviable, and had
+  no timeout. Global activation was 99.379 percent and viability was 96.988
+  percent. The survivor that widens the budget admission predicate is tracked
+  by issue #1019.
+
 ## Rule zero
 
 Only the system under verification is mutable.
@@ -59,7 +73,7 @@ Every allowlist and parser has a synthetic fail-closed self-test.
 
 ### Inventory
 
-`scripts/spec-mutants.py --list` deterministically enumerates 30 exact curated
+`scripts/spec-mutants.py --list` deterministically enumerates 31 exact curated
 probes and two mandatory registered historical seeds over the seven positive
 safety models currently run by `apalache-safety.yml`, including
 `PostAdmissionDropGuard`. The allowlist schema is
@@ -75,7 +89,7 @@ It does not synthesize broad lexical mutations or edit model scaffolding,
 typing predicates, invariants, `Init`, or `Next`. The production model-check
 bound is 6 for six sources and 8 for `PostAdmissionDropGuard`.
 
-The 32-entry inventory is sorted by source, action, position, operator, and
+The 33-entry inventory is sorted by source, action, position, operator, and
 replacement. Each identifier is a stable SHA-256 projection of that identity.
 A scheduled sample of 16 is deterministic and stratified: both historical
 seeds and at least one probe from each of the seven sources are mandatory, and
@@ -140,7 +154,7 @@ times, log and trace hashes, registered negative results, per-mutant verdicts,
 positive baseline results, and timeout-aware global and per-source aggregates.
 Activation requires at
 least 90 percent globally and separately for every sampled source. A sample
-can provide an early sensitivity signal, but only a clean full 32-probe
+can provide an early sensitivity signal, but only a clean full 33-probe
 campaign is eligible as activation evidence.
 
 ## Rust proof-model mutation
@@ -252,7 +266,7 @@ the canonical full-inventory digest, normalized pinned tool versions, the
 complete lane input set and hashes from both the current checkout and the
 report's ancestor commit, per-mutant verdicts, aggregate counts, per-target
 source attribution, and timeout-aware activation ratio. For
-the specification lane, it also requires all 32 registered probes, zero
+the specification lane, it also requires all 33 registered probes, zero
 unviable results, and activation of at least 90 percent both globally and for
 each of the seven source aggregates.
 
@@ -278,6 +292,27 @@ Specification mutants must have zero unviable results. Proof mutants must meet
 the 80 percent viability floor both globally and for each model file. Both
 lanes use the existing registry schema.
 
+## Decisions
+
+- Timeouts remain in the score denominator and are never relabeled as killed.
+- Specification mutation admits only exact type-valid curated probes and the
+  two registered historical seeds. Parser or type failures fail the campaign.
+- Rust compilation failures are recorded as unviable, with an 80 percent
+  viability floor globally and for each source.
+- Lean remains a sensitivity pilot until its survivor disposition and
+  activation posture justify a separate ratchet.
+
+## Manifest and registry updates
+
+- `formal/mutation/registry.toml` records source-scoped retained observations
+  for seven specification targets and two Rust proof-model targets.
+- `formal/mutation/evidence/` retains the exact full-cycle specification and
+  Rust reports bound to the implementation commit. Lean pilot output remains a
+  runtime artifact and is not promoted as scored evidence.
+- `formal/proof-manifest.toml`, `formal/MAPPING.md`, and generated
+  `docs/formal/COVERAGE.md` consume the mutation registry without converting a
+  sensitivity score into a correctness claim.
+
 ## Prepared-tree evidence
 
 The exact-probe TLA+ campaign requires an integrated clean full-cycle report;
@@ -297,6 +332,13 @@ full-cycle observations.
 Rust discovery was repeated after FV-A1 and the authenticated generated-code
 equivalence work changed the mutated model surface; the current integrated
 inventory is recorded above.
+
+The retained integrated full cycle is bound to implementation commit
+`d292f14df1c493873199f4f9d969ade00472ff28`. It enumerated 54 mutants in
+`formal_core.rs` and 112 in `formal_aeneas.rs`, killed 50 and 110 respectively,
+left one survivor in `formal_core.rs`, classified three and two as unviable,
+and recorded no timeout. Both source-scoped activation ratios exceeded the 90
+percent target and both viability ratios exceeded the 80 percent floor.
 
 [FV-E5](FV-E5-lane-ratchets.md) registers the scheduled `spec-mutants` and
 `proof-mutants` gates with `activation_target = 90`, and the generic lane
@@ -326,30 +368,30 @@ python3 scripts/lean-mutants.py --sample-size 5
 
 - [x] `scripts/spec-mutants.py --list` is deterministic and byte-identical at
   the same source revision.
-- [ ] The clean full 32-probe Apalache campaign records both historical seeds
+- [x] The clean full 33-probe Apalache campaign records both historical seeds
   as killed, zero unviable results, and at least 90 percent activation globally
   and for every source.
 - [x] Rule zero is enforced by allowlist, reachability, property-closure, and
   synthetic tests.
 - [ ] The scheduled real `spec-mutants` job has produced a stratified
-  16-probe report within budget, and a clean full 32-probe campaign has
-  produced activation evidence.
+  16-probe report within budget, and a clean full 33-probe campaign has
+  produced activation evidence. Local full-cycle evidence is retained; the
+  hosted scheduled sample remains pending.
 - [x] The pinned real cargo-mutants discovery command re-enumerates both Rust
   model files on the integrated tree: 166 mutants across both files, with
   sharded and unsharded inventories identical.
 - [ ] The scheduled real `proof-mutants` job has completed a Kani-scored
-  sample. The clean prepared-tree Kani baseline passed 35 of 35 harnesses;
-  isolated mutant scoring and the scheduled report remain pending.
-- [ ] A real full-cycle Rust kill ratio is recorded and every survivor has an
-  issue. The automatic issue workflow is implemented; the expensive run is
-  pending.
-- [ ] The unit-test mutation exclusion rationales name the measured
-  co-coverage lane. This edit is intentionally deferred until the first full
-  real cycle exists.
-- [ ] One real Lean pilot sample is recorded and every survivor has a
-  disposition issue. Enumeration, workflow, report, and issue automation are
-  complete; the real build sample is pending.
+  sample. Local full-cycle Kani scoring is retained; the hosted scheduled
+  sample remains pending.
+- [x] A real full-cycle Rust kill ratio is recorded and every survivor has an
+  issue. The retained report records 160 killed, one survivor, five unviable,
+  and no timeout; issue #1019 tracks the survivor.
+- [x] The unit-test mutation exclusion rationales name the measured
+  co-coverage lane and distinguish proof models from oracle harnesses.
+- [x] One real Lean pilot is recorded and every survivor has a disposition
+  issue. The 45-mutant pilot killed 33 and left 12 survivors with no timeout;
+  issues #999 through #1010 track those survivors.
 
-The status becomes Completed only after the real runs above populate the
-registry observations and the exclusion rationales can truthfully say the
-formal models are measured.
+The implementation is complete with retained local full-cycle evidence.
+Scheduled hosted samples remain advisory and must populate their own workflow
+artifacts before they can contribute hosted history.

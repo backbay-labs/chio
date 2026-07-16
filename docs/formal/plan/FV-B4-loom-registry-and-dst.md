@@ -24,6 +24,10 @@ FV-B4 now has two closed verification lanes:
 The only incomplete acceptance item is the external seven-night hosted success
 streak. No hosted run is claimed by this change.
 
+Local completion evidence on 2026-07-15 ran all ten Loom models with three
+preemptions in 229.86 seconds and all 10,000 deterministic schedules in 63.24
+seconds.
+
 ## Decisions
 
 - Loom remains a bounded abstract-model lane. Every registry entry carries

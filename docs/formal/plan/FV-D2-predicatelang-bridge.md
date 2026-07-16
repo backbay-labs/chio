@@ -133,3 +133,15 @@ when mutation sampling rotates.
 - No inverse conversion from arbitrary closures to syntax. Bidirectionality is
   semantic equivalence on the image of `toClosure`, not representation
   isomorphism for arbitrary functions.
+
+## Manifest and registry updates
+
+- `formal/proof-manifest.toml` registers the syntactic PredicateLang modules,
+  bridge theorems, runtime admission symbols, and mirror relationships.
+- `formal/theorem-inventory.json` records the domain-scoped soundness and
+  completeness results without widening them into parser or wire-format
+  claims.
+- `formal/MAPPING.md` binds the explicit finite admission domain and the
+  fail-closed unsupported-syntax behavior to the runtime projection.
+- `formal/assumptions.toml` gains no new trust dependency; the bridge scope is
+  an explicit exclusion rather than an assumption.

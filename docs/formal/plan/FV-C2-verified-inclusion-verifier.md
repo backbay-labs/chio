@@ -151,7 +151,7 @@ theorem bounded_stepFold_sound
 - Overclaiming: this verifies the walk, not the hash and not signature checking. Claim wording must keep P4-END-TO-END disallowed (docs/reference/CLAIM_REGISTRY.md:77); allowed wording is scoped to "the inclusion-proof walk executed by relying parties refines the proved model, with hashes under ASSUME-SHA256".
 - `usize` vs `u64`: the step function takes u64; production uses usize. Casts are checked and fail closed on overflow (only reachable on 128-bit-fantasy platforms, but clippy discipline requires it).
 
-## Resolved decisions
+## Decisions
 
 - TypeScript keeps its independent implementation. The Rust-TypeScript anchored-root and tamper differentials are the binding until a separately reviewed wasm distribution design exists.
 - Lean proves fold equivalence and soundness inheritance over the free hash algebra. Wrong-leaf and malformed-path rejection stays in the concrete Kani and differential lanes because transporting free-constructor completeness to bytes requires ASSUME-SHA256.

@@ -1,14 +1,41 @@
 # Formal Verification: Roadmap
 
-- Status: Proposed (2026-07-09)
+- Status: Executed (2026-07-16; local gates complete)
 - Companion docs: [CURRENT_STATE.md](CURRENT_STATE.md),
   [GAP_ANALYSIS.md](GAP_ANALYSIS.md), [HYGIENE_PASS.md](HYGIENE_PASS.md),
   plan specs under [plan/](plan/)
 
-Sequencing for the 23 plan specs (FV-A1 through FV-E5) plus the hygiene pass.
+This roadmap records the execution order for the 23 plan specs plus the
+hygiene pass. All fifteen hygiene items and 22 plan specs are implemented.
+The economy collection proof remains blocked because its required netting
+surface is not present on this branch; scalar conservation helpers and Kani
+groundwork are implemented without claiming the absent collection behavior.
+
+Local toolchain-backed evidence is complete. Hosted history is a separate
+advisory signal: ten scheduled gates and five pull-request gates are
+registered, with six path-scoped gates frozen until qualifying workflow runs
+exist. No hosted success streak is inferred from local execution.
+Implementation was fixed at commit
+`d292f14df1c493873199f4f9d969ade00472ff28` on 2026-07-15; its retained
+full-cycle mutation reports completed on 2026-07-15 and 2026-07-16.
+
 Effort scale: S is days, M is one to two weeks, L is a month or more of
-focused work. Waves are orderings by leverage and dependency, not sprint
-commitments; items within a wave are independent unless noted.
+focused work. The waves below preserve the implemented dependency order and
+the rationale used during execution.
+
+## Execution outcome
+
+- Implemented: hygiene H1-H15 and 22 of 23 plan specs.
+- Blocked: FV-D3 collection conservation beyond the scalar groundwork because
+  the M2 netting surface is absent. Property P11 is not registered or claimed.
+- Local evidence: all required Rust workspace, Lean, Aeneas, Creusot, Kani,
+  Apalache, differential, concurrency, and mutation gates completed against
+  the implementation commit.
+- Hosted evidence: workflow definitions and ratchets are implemented, while
+  promotion streaks remain open and advisory.
+- Assumption posture: distributed revocation is modeled and locally checked,
+  but no transport assumption is retired until hosted execution and the
+  modeled transport boundary justify that change.
 
 ## The whole portfolio at a glance
 

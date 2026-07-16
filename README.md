@@ -194,6 +194,26 @@ Report vulnerabilities privately per [SECURITY.md](SECURITY.md). The normative
 threat model lives in [spec/SECURITY.md](spec/SECURITY.md) and the coverage map in
 [docs/security/threat-coverage.md](docs/security/threat-coverage.md).
 
+## Formal verification
+
+The formal verification roadmap was executed through its local acceptance
+gates on 2026-07-15 against implementation commit
+`d292f14df1c493873199f4f9d969ade00472ff28`. Retained full-cycle mutation
+evidence for that commit completed on 2026-07-16. The repository now binds
+production Rust decisions to Lean, authenticated Aeneas extraction, Creusot
+contracts, Kani harnesses, TLA+/Apalache models, differential tests,
+concurrency exploration, and mutation evidence. The generated
+[proof coverage matrix](docs/formal/COVERAGE.md) is the authoritative map from
+properties to models, production symbols, assumptions, and gates.
+
+All hygiene items and 22 of the 23 planned work items are implemented. The
+remaining economy collection proof is blocked on the unmerged netting surface;
+its scalar conservation predicates and Kani groundwork are present, but no
+collection-level claim is made. Hosted CI streaks remain advisory evidence and
+are not represented as local proof results. See the
+[current-state snapshot](docs/formal/CURRENT_STATE.md) and the
+[executed roadmap](docs/formal/ROADMAP.md) for exact scope and limitations.
+
 ## Examples
 
 - Example index: [examples/README.md](examples/README.md)

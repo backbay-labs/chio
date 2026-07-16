@@ -26,10 +26,10 @@ exclude_globs = [
     # by their dedicated lanes rather than kernel mutation scoring.
     "crates/kernel/chio-kernel-core/src/clock.rs", # rationale: deterministic clock shim, no logic to mutation-score
     "crates/kernel/chio-kernel-core/src/rng.rs", # rationale: RNG shim, no decision logic to mutation-score
-    "crates/kernel/chio-kernel-core/src/formal_aeneas.rs", # rationale: formal-method harness, covered by the proof lane
-    "crates/kernel/chio-kernel-core/src/formal_core.rs", # rationale: formal-method harness, covered by the proof lane
-    "crates/kernel/chio-kernel-core/src/kani_harnesses.rs", # rationale: kani proof harness, covered by the proof lane
-    "crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs", # rationale: kani proof harness, covered by the proof lane
+    "crates/kernel/chio-kernel-core/src/formal_aeneas.rs", # rationale: scored by the retained Kani proof-mutation full cycle
+    "crates/kernel/chio-kernel-core/src/formal_core.rs", # rationale: scored by the retained Kani proof-mutation full cycle
+    "crates/kernel/chio-kernel-core/src/kani_harnesses.rs", # rationale: Kani oracle control, excluded from the mutated system
+    "crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs", # rationale: Kani oracle control, excluded from the mutated system
     "crates/kernel/chio-kernel-core/src/fuzz.rs", # rationale: fuzz target, covered by the fuzz lane
     "**/tests.rs", # rationale: test surface, covered by the test lane
     "**/test_*.rs", # rationale: test surface, covered by the test lane

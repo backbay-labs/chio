@@ -1,8 +1,13 @@
 # Formal Verification: Hygiene Pass
 
-- Status: Implemented (2026-07-09)
+- Status: Implemented and reverified (2026-07-15)
 - Companion docs: [GAP_ANALYSIS.md](GAP_ANALYSIS.md) (why these matter),
   [ROADMAP.md](ROADMAP.md) (sequencing: this is Wave 0)
+
+All fifteen items below are complete. Their targeted checks, the generated
+coverage check, and the full workspace build, test, clippy, and formatting
+quartet passed before the implementation commit. The pull-request formal tier
+now makes the lane comments and required-check posture truthful.
 
 Fifteen mechanical fixes: thirteen found by the 2026-07-09 survey (H1-H13)
 and two more found while grounding the plan specs (H14-H15). Each item lists

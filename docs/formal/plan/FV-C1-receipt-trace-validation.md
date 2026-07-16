@@ -167,6 +167,27 @@ validation as `not_run` and contain no generated trace artifact hashes.
 - `chio trust trace-verify` runs the same offline validation path and fails
   closed when Apalache or any trust input is unavailable.
 
+## Decisions
+
+- The checked model expression, not report text, is authoritative for each
+  invariant verdict. The validator records the resolved expression and rejects
+  any mismatch.
+- Runtime and model clocks retain their actual wall-clock units. No synthetic
+  evaluation-rate bound is introduced to make the trace easier to prove.
+- Exactly 50 replay manifests are retained as the bounded runtime sample. Each
+  independently executes the real capture path and binds its manifest digest
+  into the trace context.
+
+## Manifest and registry updates
+
+- `formal/proof-manifest.toml` registers the trace observer, recorder,
+  projection, checker, positive and calibrated negative artifacts, and strict
+  report gate.
+- `formal/MAPPING.md` records the callback-completeness, signature, hash, and
+  canonical-JSON assumptions at the runtime-to-model boundary.
+- `formal/assumptions.toml` scopes `ASSUME-TRACE-OBSERVER` without treating the
+  observer as proof that the observed kernel decision is safe.
+
 ## Claim Boundary
 
 The approved claim covers callback-complete signed traces projected to
