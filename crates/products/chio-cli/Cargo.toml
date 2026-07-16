@@ -73,6 +73,7 @@ chio-reputation = { workspace = true }
 chio-runtime = { workspace = true }
 chio-swarm-authority = { workspace = true }
 chio-selective-disclosure = { workspace = true, features = ["bbs"] }
+chio-settle = { workspace = true }
 chio-store-sqlite = { workspace = true }
 chio-tee-frame = { workspace = true }
 chio-tool-call-fabric = { workspace = true }
@@ -116,7 +117,6 @@ uuid = { workspace = true, features = ["v4"] }
 [dev-dependencies]
 chio-credit = { workspace = true }
 chio-open-market = { workspace = true }
-chio-settle = { workspace = true }
 chio-test-support = { workspace = true }
 insta = { version = "1.42", features = ["json", "redactions"] }
 jsonschema = { workspace = true }

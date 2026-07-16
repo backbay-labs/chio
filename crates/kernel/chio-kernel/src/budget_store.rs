@@ -1,3 +1,5 @@
+use chio_log_redact::redacted;
+
 #[derive(Debug, thiserror::Error)]
 pub enum BudgetStoreError {
     #[error("sqlite error: {0}")]
@@ -37,6 +39,7 @@ pub enum BudgetMutationKind {
     ReverseExposure,
     ReleaseExposure,
     ReconcileSpend,
+    ExpireHold,
 }
 
 impl BudgetMutationKind {
@@ -47,6 +50,7 @@ impl BudgetMutationKind {
             Self::ReverseExposure => "reverse_exposure",
             Self::ReleaseExposure => "release_exposure",
             Self::ReconcileSpend => "reconcile_spend",
+            Self::ExpireHold => "expire_hold",
         }
     }
 
@@ -57,6 +61,7 @@ impl BudgetMutationKind {
             "reverse_exposure" => Some(Self::ReverseExposure),
             "release_exposure" => Some(Self::ReleaseExposure),
             "reconcile_spend" => Some(Self::ReconcileSpend),
+            "expire_hold" => Some(Self::ExpireHold),
             _ => None,
         }
     }
@@ -156,7 +161,10 @@ impl BudgetCommitMetadata {
     }
 }
 
-fn budget_commit_metadata<T: BudgetStore + ?Sized>(
+/// Assemble the commit metadata a hold decision carries, stamped with the
+/// store's guarantee and metering profiles. Public so store implementations
+/// that override the defaulted hold methods can produce identical metadata.
+pub fn budget_commit_metadata<T: BudgetStore + ?Sized>(
     store: &T,
     authority: Option<BudgetEventAuthority>,
     budget_commit_index: Option<u64>,
@@ -183,6 +191,22 @@ pub struct BudgetAuthorizeHoldRequest {
     pub hold_id: Option<String>,
     pub event_id: Option<String>,
     pub authority: Option<BudgetEventAuthority>,
+    /// Optional payment-journal row committed in the SAME transaction as
+    /// the hold write, so the money path's recoverable record is durable
+    /// before the rail is touched. `None` for non-monetary calls and for
+    /// stores without the journal.
+    pub payment_journal: Option<crate::payment::PaymentJournalRecord>,
+}
+
+/// Read model of an open budget hold, for the orphaned-hold sweeper and the
+/// operator CLI.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OpenHoldSummary {
+    pub hold_id: String,
+    pub capability_id: String,
+    pub grant_index: u32,
+    pub remaining_exposure_units: u64,
+    pub created_at_unix_ms: u64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -504,6 +528,113 @@ pub trait BudgetStore: Send + Sync {
         BudgetMeteringProfile::MaxCostPreauthorizeThenReconcileActual
     }
 
+    /// Open holds created at or before `older_than_unix_ms`, oldest first.
+    /// Default: empty (stores without hold rows have nothing to sweep).
+    fn list_open_holds_older_than(
+        &self,
+        _older_than_unix_ms: u64,
+        _limit: usize,
+    ) -> Result<Vec<OpenHoldSummary>, BudgetStoreError> {
+        Ok(Vec::new())
+    }
+
+    /// Release the remaining exposure of an open hold, mark it expired, and
+    /// append an expire event. Idempotent: a non-open hold returns
+    /// `Ok(false)`. Default: unsupported.
+    fn expire_open_hold(&self, _hold_id: &str) -> Result<bool, BudgetStoreError> {
+        Err(BudgetStoreError::Invariant(
+            "open-hold sweep is not supported by this budget store".to_string(),
+        ))
+    }
+
+    /// Count of holds currently open, for the open-holds gauge. Default: 0.
+    fn open_hold_count(&self) -> Result<u64, BudgetStoreError> {
+        Ok(0)
+    }
+
+    /// Insert a fresh payment-journal row in `HoldPlaced`. Fails closed on
+    /// a reused request id. Default: unsupported.
+    fn record_payment_journal(
+        &self,
+        _entry: &crate::payment::PaymentJournalRecord,
+    ) -> Result<(), BudgetStoreError> {
+        Err(BudgetStoreError::Invariant(
+            "payment journal is not supported by this budget store".to_string(),
+        ))
+    }
+
+    /// Compare-and-set state advance. `expected` must match the current row
+    /// state or the call fails closed. When advancing to `Settling` the
+    /// caller MUST pass `settle` so the store stamps the committed action
+    /// and amount atomically with the state change; `settle` is invalid on
+    /// every other transition. Default: unsupported.
+    fn advance_payment_journal(
+        &self,
+        _request_id: &str,
+        _expected: crate::payment::PaymentJournalState,
+        _next: crate::payment::PaymentJournalState,
+        _authorization_id: Option<&str>,
+        _transaction_id: Option<&str>,
+        _settle: Option<crate::payment::PaymentSettleIntent>,
+    ) -> Result<(), BudgetStoreError> {
+        Err(BudgetStoreError::Invariant(
+            "payment journal is not supported by this budget store".to_string(),
+        ))
+    }
+
+    /// Move the row to `Closed`. Idempotent: an already-closed or absent
+    /// row returns `Ok(false)`. Default: unsupported.
+    fn close_payment_journal(&self, _request_id: &str) -> Result<bool, BudgetStoreError> {
+        Err(BudgetStoreError::Invariant(
+            "payment journal is not supported by this budget store".to_string(),
+        ))
+    }
+
+    /// Rows in a non-terminal state created at or before
+    /// `older_than_unix_ms`, oldest first, for boot reconciliation.
+    /// Default: empty (stores without the journal have no orphans).
+    fn list_incomplete_payment_journal(
+        &self,
+        _older_than_unix_ms: u64,
+    ) -> Result<Vec<crate::payment::PaymentJournalRecord>, BudgetStoreError> {
+        Ok(Vec::new())
+    }
+
+    /// Look up one incomplete payment-journal row by request id. Scoped
+    /// identically to [`Self::list_incomplete_payment_journal`]: a closed,
+    /// reconcile-failed, or absent row returns `Ok(None)`, never a stale
+    /// terminal record. Default: a linear scan over
+    /// `list_incomplete_payment_journal`, correct for any store but O(n) in
+    /// the number of open rows; a store expecting many concurrent monetary
+    /// orphans should override this with a keyed lookup.
+    fn get_payment_journal(
+        &self,
+        request_id: &str,
+    ) -> Result<Option<crate::payment::PaymentJournalRecord>, BudgetStoreError> {
+        Ok(self
+            .list_incomplete_payment_journal(u64::MAX)?
+            .into_iter()
+            .find(|row| row.request_id == request_id))
+    }
+
+    /// Rail recorded on `request_id`'s payment-journal row, if (and only if)
+    /// that row is currently `ReconcileFailed`: a durable operator incident
+    /// the money-path pass already gave up on. Distinct from
+    /// [`Self::get_payment_journal`], which never surfaces a reconcile-
+    /// failed row (see its doc) -- the monetary dispatch-intent reconciler
+    /// uses this targeted lookup so such a row is promoted into a
+    /// dead-letter instead of being reported as a clean resolution, keeping
+    /// the incident visible to RFC-0003's health-flipping dead-letter
+    /// surface. Default: `Ok(None)`, for stores without the journal or
+    /// without this targeted lookup (they report no incidents, matching
+    /// `list_incomplete_payment_journal`'s empty default).
+    fn payment_journal_reconcile_failed_rail(
+        &self,
+        _request_id: &str,
+    ) -> Result<Option<String>, BudgetStoreError> {
+        Ok(None)
+    }
+
     fn authorize_budget_hold(
         &self,
         request: BudgetAuthorizeHoldRequest,
@@ -519,6 +650,45 @@ pub trait BudgetStore: Send + Sync {
             request.event_id.as_deref(),
             request.authority.as_ref(),
         )?;
+        // The recoverable money record exists only for a granted hold: a
+        // budget-denied request never touches the rail, so journaling it
+        // would leave an incomplete HoldPlaced row for reconciliation to
+        // raise as a false monetary incident. Stores that cannot co-commit
+        // the two writes persist the journal immediately after the grant; a
+        // store that cannot persist it revokes the hold it just granted and
+        // fails closed, so the money path never runs without its crash
+        // record. A crash between the grant and the journal write leaves an
+        // orphaned hold the sweeper expires, returning both its exposure
+        // and its invocation slot.
+        if allowed {
+            if let Some(journal) = request.payment_journal.as_ref() {
+                if let Err(error) = self.record_payment_journal(journal) {
+                    let rollback_event_id = request
+                        .event_id
+                        .as_deref()
+                        .map(|event_id| format!("{event_id}:journal-rollback"));
+                    if let Err(rollback_error) = self.reverse_charge_cost_with_ids_and_authority(
+                        &request.capability_id,
+                        request.grant_index,
+                        request.requested_exposure_units,
+                        request.hold_id.as_deref(),
+                        rollback_event_id.as_deref(),
+                        request.authority.as_ref(),
+                    ) {
+                        // The hold leaks until the sweeper expires it;
+                        // capacity is fail-closed under-spend meanwhile.
+                        tracing::warn!(
+                            capability_id = %request.capability_id,
+                            grant_index = request.grant_index,
+                            reason = %redacted!(&rollback_error.to_string()),
+                            "budget hold rollback failed after a journal write failure; the \
+                             hold sweeper will expire the orphaned hold"
+                        );
+                    }
+                    return Err(error);
+                }
+            }
+        }
         let usage = self.get_usage(&request.capability_id, request.grant_index)?;
         let committed_cost_units_after = usage
             .as_ref()
@@ -702,6 +872,7 @@ mod tests {
                 hold_id: Some("hold-budget-1".to_string()),
                 event_id: Some("hold-budget-1:authorize".to_string()),
                 authority: Some(authority.clone()),
+                payment_journal: None,
             })
             .unwrap();
         let BudgetAuthorizeHoldDecision::Authorized(authorized) = decision else {
@@ -774,6 +945,7 @@ mod tests {
                 hold_id: Some("hold-budget-deny".to_string()),
                 event_id: Some("hold-budget-deny:authorize".to_string()),
                 authority: Some(authority.clone()),
+                payment_journal: None,
             })
             .unwrap();
         let BudgetAuthorizeHoldDecision::Denied(denied) = decision else {
@@ -799,5 +971,188 @@ mod tests {
         assert_eq!(events[0].allowed, Some(false));
         assert_eq!(events[0].authority.as_ref(), Some(&authority));
         assert!(store.get_usage("cap-budget-deny", 0).unwrap().is_none());
+    }
+
+    /// Minimal store exercising the DEFAULT `authorize_budget_hold` (unlike
+    /// `InMemoryBudgetStore`, which overrides it): the grant answer and the
+    /// journal write are scripted so the default impl's ordering between
+    /// them is observable.
+    struct JournalOrderProbeStore {
+        allow: bool,
+        journal_write_fails: bool,
+        journal: std::sync::Mutex<Vec<crate::payment::PaymentJournalRecord>>,
+        reverses: std::sync::Mutex<u32>,
+    }
+
+    impl JournalOrderProbeStore {
+        fn new(allow: bool, journal_write_fails: bool) -> Self {
+            Self {
+                allow,
+                journal_write_fails,
+                journal: std::sync::Mutex::new(Vec::new()),
+                reverses: std::sync::Mutex::new(0),
+            }
+        }
+
+        fn journal_rows(&self) -> usize {
+            self.journal.lock().unwrap().len()
+        }
+
+        fn reverse_count(&self) -> u32 {
+            *self.reverses.lock().unwrap()
+        }
+    }
+
+    impl BudgetStore for JournalOrderProbeStore {
+        fn try_increment(
+            &self,
+            _capability_id: &str,
+            _grant_index: usize,
+            _max_invocations: Option<u32>,
+        ) -> Result<bool, BudgetStoreError> {
+            Ok(self.allow)
+        }
+
+        fn try_charge_cost(
+            &self,
+            _capability_id: &str,
+            _grant_index: usize,
+            _max_invocations: Option<u32>,
+            _cost_units: u64,
+            _max_cost_per_invocation: Option<u64>,
+            _max_total_cost_units: Option<u64>,
+        ) -> Result<bool, BudgetStoreError> {
+            Ok(self.allow)
+        }
+
+        fn reverse_charge_cost(
+            &self,
+            _capability_id: &str,
+            _grant_index: usize,
+            _cost_units: u64,
+        ) -> Result<(), BudgetStoreError> {
+            *self.reverses.lock().unwrap() += 1;
+            Ok(())
+        }
+
+        fn reduce_charge_cost(
+            &self,
+            _capability_id: &str,
+            _grant_index: usize,
+            _cost_units: u64,
+        ) -> Result<(), BudgetStoreError> {
+            Ok(())
+        }
+
+        fn settle_charge_cost(
+            &self,
+            _capability_id: &str,
+            _grant_index: usize,
+            _exposed_cost_units: u64,
+            _realized_cost_units: u64,
+        ) -> Result<(), BudgetStoreError> {
+            Ok(())
+        }
+
+        fn list_usages(
+            &self,
+            _limit: usize,
+            _capability_id: Option<&str>,
+        ) -> Result<Vec<BudgetUsageRecord>, BudgetStoreError> {
+            Ok(Vec::new())
+        }
+
+        fn get_usage(
+            &self,
+            _capability_id: &str,
+            _grant_index: usize,
+        ) -> Result<Option<BudgetUsageRecord>, BudgetStoreError> {
+            Ok(None)
+        }
+
+        fn record_payment_journal(
+            &self,
+            entry: &crate::payment::PaymentJournalRecord,
+        ) -> Result<(), BudgetStoreError> {
+            if self.journal_write_fails {
+                return Err(BudgetStoreError::Invariant(
+                    "journal write scripted to fail".to_string(),
+                ));
+            }
+            self.journal.lock().unwrap().push(entry.clone());
+            Ok(())
+        }
+    }
+
+    fn probe_hold_request() -> BudgetAuthorizeHoldRequest {
+        BudgetAuthorizeHoldRequest {
+            capability_id: "cap-journal-order".to_string(),
+            grant_index: 0,
+            max_invocations: Some(1),
+            requested_exposure_units: 100,
+            max_cost_per_invocation: Some(100),
+            max_total_cost_units: Some(1_000),
+            hold_id: Some("hold-journal-order".to_string()),
+            event_id: Some("hold-journal-order:authorize".to_string()),
+            authority: None,
+            payment_journal: Some(crate::payment::PaymentJournalRecord {
+                request_id: "req-journal-order".to_string(),
+                capability_id: "cap-journal-order".to_string(),
+                grant_index: 0,
+                hold_id: Some("hold-journal-order".to_string()),
+                rail: "x402".to_string(),
+                authorization_id: None,
+                transaction_id: None,
+                amount_units: 100,
+                settle_action: None,
+                settle_amount_units: None,
+                currency: "USD".to_string(),
+                state: crate::payment::PaymentJournalState::HoldPlaced,
+                created_at_unix_ms: 1,
+                tenant_id: None,
+            }),
+        }
+    }
+
+    #[test]
+    fn default_authorize_hold_journals_nothing_on_a_budget_deny() {
+        let store = JournalOrderProbeStore::new(false, false);
+        let decision = store.authorize_budget_hold(probe_hold_request()).unwrap();
+        assert!(
+            matches!(decision, BudgetAuthorizeHoldDecision::Denied(_)),
+            "the scripted store denies the hold"
+        );
+        assert_eq!(
+            store.journal_rows(),
+            0,
+            "a budget-denied request must leave no journal row: no rail call will follow"
+        );
+    }
+
+    #[test]
+    fn default_authorize_hold_journals_only_a_granted_hold() {
+        let store = JournalOrderProbeStore::new(true, false);
+        let decision = store.authorize_budget_hold(probe_hold_request()).unwrap();
+        assert!(matches!(
+            decision,
+            BudgetAuthorizeHoldDecision::Authorized(_)
+        ));
+        assert_eq!(store.journal_rows(), 1);
+        assert_eq!(store.reverse_count(), 0);
+    }
+
+    #[test]
+    fn default_authorize_hold_revokes_the_grant_when_the_journal_write_fails() {
+        let store = JournalOrderProbeStore::new(true, true);
+        let error = store
+            .authorize_budget_hold(probe_hold_request())
+            .expect_err("a granted hold whose journal cannot persist must fail closed");
+        assert!(error.to_string().contains("journal write scripted to fail"));
+        assert_eq!(store.journal_rows(), 0);
+        assert_eq!(
+            store.reverse_count(),
+            1,
+            "the grant must be rolled back so no hold runs without its crash record"
+        );
     }
 }

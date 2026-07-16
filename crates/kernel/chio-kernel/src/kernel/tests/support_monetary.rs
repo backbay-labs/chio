@@ -1108,7 +1108,7 @@ async fn dropping_async_evaluate_after_monetary_admission_unwinds_budget_payment
     let started = std::sync::Arc::new(tokio::sync::Notify::new());
     let payment = TrackingPaymentAdapter::new();
     let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(payment.clone()));
+    kernel.set_payment_adapter(Box::new(payment.clone())).expect("install payment adapter");
     kernel.register_tool_server(Box::new(PendingMonetaryServer {
         id: "cost-srv".to_string(),
         started: std::sync::Arc::clone(&started),

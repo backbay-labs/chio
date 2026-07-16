@@ -272,7 +272,17 @@ impl ChioKernel {
             }
             self.append_chio_receipt_to_local_log(receipt.clone());
         }
-        let _settlement_status = self.run_settlement_observer(receipt);
+        // The terminal receipt is durable: the money path's journal row (if
+        // any) has served its purpose and closes. A crash before this close
+        // leaves a row boot reconciliation closes against this receipt. The
+        // close is state-aware: a row still in Settling belongs to a failed
+        // or unconfirmed rail call and survives for boot reconciliation to
+        // replay (see close_payment_journal_best_effort).
+        if let Some(request_id) = request_id {
+            self.close_payment_journal_best_effort(request_id);
+        }
+        let settlement_status = self.run_settlement_observer(receipt);
+        self.route_settlement_observer_status(receipt, &settlement_status);
         Ok(())
     }
 

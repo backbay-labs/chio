@@ -7,6 +7,7 @@ pub(crate) fn dispatch_settle(
     command: SettleCommands,
     json_output: bool,
     receipt_db: Option<PathBuf>,
+    settlement_driver: &str,
 ) -> Result<(), CliError> {
     match command {
             SettleCommands::Status { store, json } => {
@@ -18,6 +19,39 @@ pub(crate) fn dispatch_settle(
                     },
                     None => Err(CliError::Other(
                         "settle status: no store path supplied; pass --store or set --receipt-db"
+                            .to_string(),
+                    )),
+                }
+            }
+            SettleCommands::Drive { store, batch, json } => {
+                // The driver defaults to none so nothing changes until an
+                // operator opts in explicitly.
+                match settlement_driver {
+                    "ops" => {}
+                    "none" => {
+                        return Err(CliError::Other(
+                            "settle drive: the settlement driver is disabled; pass \
+                             --settlement-driver ops to run the reference driver"
+                                .to_string(),
+                        ))
+                    }
+                    other => {
+                        return Err(CliError::Other(format!(
+                            "settle drive: unknown settlement driver `{other}` \
+                             (expected `none` or `ops`)"
+                        )))
+                    }
+                }
+                let resolved = store.or_else(|| receipt_db.clone());
+                match resolved {
+                    Some(path) => {
+                        match settle::cmd_settle_drive(&path, batch, json || json_output) {
+                            Ok(_) => Ok(()),
+                            Err(err) => Err(CliError::Other(format!("settle drive: {err}"))),
+                        }
+                    }
+                    None => Err(CliError::Other(
+                        "settle drive: no store path supplied; pass --store or set --receipt-db"
                             .to_string(),
                     )),
                 }

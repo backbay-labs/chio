@@ -2655,3 +2655,459 @@ fn mutation_event_witness_returns_stored_origin_authority() -> Result<(), Box<dy
     let _ = fs::remove_file(&path);
     Ok(())
 }
+
+#[test]
+fn payment_journal_insert_advance_close_and_conflict() {
+    use chio_kernel::budget_store::BudgetStore;
+    use chio_kernel::payment::{
+        PaymentJournalRecord, PaymentJournalState, PaymentSettleAction, PaymentSettleIntent,
+    };
+
+    let path = unique_db_path("payment-journal");
+    let store = SqliteBudgetStore::open(&path).expect("open budget store");
+
+    let record = PaymentJournalRecord {
+        request_id: "req-J".to_string(),
+        capability_id: "cap".to_string(),
+        grant_index: 0,
+        hold_id: Some("hold-1".to_string()),
+        rail: "x402".to_string(),
+        authorization_id: None,
+        transaction_id: None,
+        amount_units: 100,
+        settle_action: None,
+        settle_amount_units: None,
+        currency: "USD".to_string(),
+        state: PaymentJournalState::HoldPlaced,
+        created_at_unix_ms: 1_000,
+        tenant_id: Some("tenant-J".to_string()),
+    };
+    store.record_payment_journal(&record).expect("insert");
+
+    // Reused request_id fails closed, even for an identical record.
+    assert!(
+        store.record_payment_journal(&record).is_err(),
+        "reused request_id must conflict"
+    );
+
+    // HoldPlaced -> Authorized attaches the authorization id.
+    store
+        .advance_payment_journal(
+            "req-J",
+            PaymentJournalState::HoldPlaced,
+            PaymentJournalState::Authorized,
+            Some("auth-9"),
+            None,
+            None,
+        )
+        .expect("advance to Authorized");
+
+    // A wrong expected state fails closed.
+    assert!(
+        store
+            .advance_payment_journal(
+                "req-J",
+                PaymentJournalState::HoldPlaced,
+                PaymentJournalState::Settling,
+                None,
+                None,
+                Some(PaymentSettleIntent {
+                    action: PaymentSettleAction::Capture,
+                    amount_units: Some(80),
+                }),
+            )
+            .is_err(),
+        "wrong expected state must fail closed"
+    );
+
+    // A Settling advance without a settle intent fails closed.
+    assert!(
+        store
+            .advance_payment_journal(
+                "req-J",
+                PaymentJournalState::Authorized,
+                PaymentJournalState::Settling,
+                None,
+                None,
+                None,
+            )
+            .is_err(),
+        "Settling advance must carry the committed settle intent"
+    );
+
+    // Authorized -> Settling stamps settle_action and settle_amount_units.
+    store
+        .advance_payment_journal(
+            "req-J",
+            PaymentJournalState::Authorized,
+            PaymentJournalState::Settling,
+            None,
+            None,
+            Some(PaymentSettleIntent {
+                action: PaymentSettleAction::Capture,
+                amount_units: Some(80),
+            }),
+        )
+        .expect("advance to Settling with settle intent");
+
+    // Settling -> Settled attaches the transaction id.
+    store
+        .advance_payment_journal(
+            "req-J",
+            PaymentJournalState::Settling,
+            PaymentJournalState::Settled,
+            None,
+            Some("txn-7"),
+            None,
+        )
+        .expect("advance to Settled");
+
+    let incomplete = store
+        .list_incomplete_payment_journal(u64::MAX)
+        .expect("list");
+    let row = incomplete
+        .iter()
+        .find(|row| row.request_id == "req-J")
+        .expect("row present");
+    assert_eq!(row.authorization_id.as_deref(), Some("auth-9"));
+    assert_eq!(row.transaction_id.as_deref(), Some("txn-7"));
+    assert_eq!(row.settle_action, Some(PaymentSettleAction::Capture));
+    assert_eq!(row.settle_amount_units, Some(80));
+    assert_eq!(row.state, PaymentJournalState::Settled);
+    assert_eq!(row.tenant_id.as_deref(), Some("tenant-J"));
+
+    // Close is idempotent.
+    assert!(store.close_payment_journal("req-J").expect("close"));
+    assert!(!store
+        .close_payment_journal("req-J")
+        .expect("close again returns false"));
+    assert!(store
+        .list_incomplete_payment_journal(u64::MAX)
+        .expect("list after close")
+        .iter()
+        .all(|row| row.request_id != "req-J"));
+
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn get_payment_journal_is_scoped_identically_to_the_incomplete_listing() {
+    use chio_kernel::budget_store::BudgetStore;
+    use chio_kernel::payment::{PaymentJournalRecord, PaymentJournalState};
+
+    let path = unique_db_path("payment-journal-keyed-lookup");
+    let store = SqliteBudgetStore::open(&path).expect("open budget store");
+
+    // Absent request id: no row, no error.
+    assert!(store
+        .get_payment_journal("req-missing")
+        .expect("lookup an absent row")
+        .is_none());
+
+    let record = PaymentJournalRecord {
+        request_id: "req-K".to_string(),
+        capability_id: "cap".to_string(),
+        grant_index: 0,
+        hold_id: Some("hold-1".to_string()),
+        rail: "x402".to_string(),
+        authorization_id: Some("auth-K".to_string()),
+        transaction_id: None,
+        amount_units: 100,
+        settle_action: None,
+        settle_amount_units: None,
+        currency: "USD".to_string(),
+        state: PaymentJournalState::HoldPlaced,
+        tenant_id: Some("tenant-K".to_string()),
+        created_at_unix_ms: 1_000,
+    };
+    store.record_payment_journal(&record).expect("insert");
+
+    // A one-row keyed lookup finds exactly the record just inserted.
+    let found = store
+        .get_payment_journal("req-K")
+        .expect("lookup a present row")
+        .expect("row present");
+    assert_eq!(found, record);
+
+    // Closed: the keyed lookup returns None, matching
+    // list_incomplete_payment_journal's scope so a monetary reconciler
+    // never mistakes a terminal row for an open one.
+    assert!(store.close_payment_journal("req-K").expect("close"));
+    assert!(store
+        .get_payment_journal("req-K")
+        .expect("lookup a closed row")
+        .is_none());
+
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn payment_journal_reconcile_failed_rail_finds_only_reconcile_failed_rows() {
+    use chio_kernel::budget_store::BudgetStore;
+    use chio_kernel::payment::{PaymentJournalRecord, PaymentJournalState};
+
+    let path = unique_db_path("payment-journal-reconcile-failed-rail");
+    let store = SqliteBudgetStore::open(&path).expect("open budget store");
+
+    // Absent request id: no row, no error, and no incident.
+    assert!(store
+        .payment_journal_reconcile_failed_rail("req-missing")
+        .expect("lookup an absent row")
+        .is_none());
+
+    let record = PaymentJournalRecord {
+        request_id: "req-L".to_string(),
+        capability_id: "cap".to_string(),
+        grant_index: 0,
+        hold_id: Some("hold-1".to_string()),
+        rail: "x402".to_string(),
+        authorization_id: Some("auth-L".to_string()),
+        transaction_id: None,
+        amount_units: 100,
+        settle_action: None,
+        settle_amount_units: None,
+        currency: "USD".to_string(),
+        state: PaymentJournalState::HoldPlaced,
+        created_at_unix_ms: 1_000,
+        tenant_id: None,
+    };
+    store.record_payment_journal(&record).expect("insert");
+
+    // An open (non-incident) row is invisible to this targeted lookup,
+    // matching get_payment_journal's scope: only a ReconcileFailed row is
+    // an incident.
+    assert!(store
+        .payment_journal_reconcile_failed_rail("req-L")
+        .expect("lookup an open row")
+        .is_none());
+
+    store
+        .advance_payment_journal(
+            "req-L",
+            PaymentJournalState::HoldPlaced,
+            PaymentJournalState::ReconcileFailed,
+            None,
+            None,
+            None,
+        )
+        .expect("advance to ReconcileFailed");
+
+    // Now the row is a durable incident: the targeted lookup surfaces its
+    // rail so a caller can dead-letter the intent with a useful detail.
+    assert_eq!(
+        store
+            .payment_journal_reconcile_failed_rail("req-L")
+            .expect("lookup a reconcile-failed row"),
+        Some("x402".to_string())
+    );
+
+    // get_payment_journal never surfaces this row: it is a closed
+    // incident, not an incomplete one.
+    assert!(store
+        .get_payment_journal("req-L")
+        .expect("lookup a reconcile-failed row via get_payment_journal")
+        .is_none());
+
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn authorize_budget_hold_writes_journal_atomically() {
+    use chio_kernel::budget_store::{BudgetAuthorizeHoldRequest, BudgetStore};
+    use chio_kernel::payment::{PaymentJournalRecord, PaymentJournalState};
+
+    let path = unique_db_path("hold-journal-atomic");
+    let store = SqliteBudgetStore::open(&path).expect("open");
+    let journal = PaymentJournalRecord {
+        request_id: "req-H".to_string(),
+        capability_id: "cap".to_string(),
+        grant_index: 0,
+        hold_id: Some("hold-req-H".to_string()),
+        rail: "x402".to_string(),
+        authorization_id: None,
+        transaction_id: None,
+        amount_units: 50,
+        settle_action: None,
+        settle_amount_units: None,
+        currency: "USD".to_string(),
+        state: PaymentJournalState::HoldPlaced,
+        created_at_unix_ms: 2_000,
+        tenant_id: None,
+    };
+    store
+        .authorize_budget_hold(BudgetAuthorizeHoldRequest {
+            capability_id: "cap".to_string(),
+            grant_index: 0,
+            max_invocations: Some(10),
+            requested_exposure_units: 50,
+            max_cost_per_invocation: Some(50),
+            max_total_cost_units: Some(500),
+            hold_id: Some("hold-req-H".to_string()),
+            event_id: Some("hold-req-H:authorize".to_string()),
+            authority: None,
+            payment_journal: Some(journal),
+        })
+        .expect("authorize hold with journal");
+    // The HoldPlaced row is durable after the same transaction that wrote
+    // the hold.
+    let rows = store
+        .list_incomplete_payment_journal(u64::MAX)
+        .expect("list");
+    assert!(rows
+        .iter()
+        .any(|row| row.request_id == "req-H" && row.state == PaymentJournalState::HoldPlaced));
+
+    // A denied hold writes no journal row.
+    let denied_journal = PaymentJournalRecord {
+        request_id: "req-D".to_string(),
+        hold_id: Some("hold-req-D".to_string()),
+        amount_units: 10_000,
+        ..rows[0].clone()
+    };
+    let decision = store
+        .authorize_budget_hold(BudgetAuthorizeHoldRequest {
+            capability_id: "cap".to_string(),
+            grant_index: 0,
+            max_invocations: Some(10),
+            requested_exposure_units: 10_000,
+            max_cost_per_invocation: Some(50),
+            max_total_cost_units: Some(500),
+            hold_id: Some("hold-req-D".to_string()),
+            event_id: Some("hold-req-D:authorize".to_string()),
+            authority: None,
+            payment_journal: Some(denied_journal),
+        })
+        .expect("denied authorize still returns a decision");
+    assert!(matches!(
+        decision,
+        chio_kernel::budget_store::BudgetAuthorizeHoldDecision::Denied(_)
+    ));
+    assert!(store
+        .list_incomplete_payment_journal(u64::MAX)
+        .expect("list after deny")
+        .iter()
+        .all(|row| row.request_id != "req-D"));
+
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn expire_open_hold_releases_exposure_without_recording_spend() {
+    use chio_kernel::budget_store::{BudgetAuthorizeHoldRequest, BudgetMutationKind, BudgetStore};
+
+    let path = unique_db_path("hold-sweep");
+    let store = SqliteBudgetStore::open(&path).expect("open");
+    store
+        .authorize_budget_hold(BudgetAuthorizeHoldRequest {
+            capability_id: "cap".to_string(),
+            grant_index: 0,
+            max_invocations: Some(10),
+            requested_exposure_units: 70,
+            max_cost_per_invocation: Some(70),
+            max_total_cost_units: Some(500),
+            hold_id: Some("hold-sweep-1".to_string()),
+            event_id: Some("hold-sweep-1:authorize".to_string()),
+            authority: None,
+            payment_journal: None,
+        })
+        .expect("authorize hold");
+
+    let exposed_before = store
+        .get_usage("cap", 0)
+        .expect("usage")
+        .expect("record")
+        .total_cost_exposed;
+    assert_eq!(exposed_before, 70);
+    assert_eq!(store.open_hold_count().expect("count"), 1);
+
+    // Everything older than a huge horizon is eligible.
+    let open = store
+        .list_open_holds_older_than(u64::MAX, 100)
+        .expect("list open");
+    assert_eq!(open.len(), 1);
+    assert_eq!(open[0].hold_id, "hold-sweep-1");
+    assert_eq!(open[0].capability_id, "cap");
+    assert_eq!(open[0].remaining_exposure_units, 70);
+
+    // A hold younger than a zero-ms cutoff is not eligible.
+    assert!(store
+        .list_open_holds_older_than(0, 100)
+        .expect("list young")
+        .is_empty());
+
+    assert!(store.expire_open_hold("hold-sweep-1").expect("expire"));
+    // Idempotent: a second expire on a non-open hold changes nothing.
+    assert!(!store
+        .expire_open_hold("hold-sweep-1")
+        .expect("expire again"));
+
+    let usage = store.get_usage("cap", 0).expect("usage").expect("record");
+    // The exposure dropped by exactly the released remainder; no realized
+    // spend was recorded, and the hold's invocation debit was returned.
+    assert_eq!(usage.total_cost_exposed, 0);
+    assert_eq!(usage.total_cost_realized_spend, 0);
+    assert_eq!(usage.invocation_count, 0);
+
+    // The mutation log carries the expire event.
+    let events = store
+        .list_mutation_events(10, Some("cap"), Some(0))
+        .expect("events");
+    assert!(events
+        .iter()
+        .any(|event| event.kind == BudgetMutationKind::ExpireHold));
+    assert_eq!(store.open_hold_count().expect("count after"), 0);
+
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn expire_open_hold_returns_the_invocation_slot() {
+    use chio_kernel::budget_store::{
+        BudgetAuthorizeHoldDecision, BudgetAuthorizeHoldRequest, BudgetStore,
+    };
+
+    let path = unique_db_path("hold-sweep-invocation");
+    let store = SqliteBudgetStore::open(&path).expect("open");
+    let authorize = |hold: &str| BudgetAuthorizeHoldRequest {
+        capability_id: "cap".to_string(),
+        grant_index: 0,
+        max_invocations: Some(1),
+        requested_exposure_units: 70,
+        max_cost_per_invocation: Some(70),
+        max_total_cost_units: Some(500),
+        hold_id: Some(hold.to_string()),
+        event_id: Some(format!("{hold}:authorize")),
+        authority: None,
+        payment_journal: None,
+    };
+
+    // The single invocation slot is consumed by the first hold.
+    assert!(matches!(
+        store
+            .authorize_budget_hold(authorize("hold-inv-1"))
+            .expect("authorize"),
+        BudgetAuthorizeHoldDecision::Authorized(_)
+    ));
+    let usage = store.get_usage("cap", 0).expect("usage").expect("record");
+    assert_eq!(usage.invocation_count, 1);
+
+    // Expiring the orphaned hold returns the slot: the call never
+    // completed, so it must not permanently consume max_invocations.
+    assert!(store.expire_open_hold("hold-inv-1").expect("expire"));
+    let usage = store.get_usage("cap", 0).expect("usage").expect("record");
+    assert_eq!(
+        usage.invocation_count, 0,
+        "expiry must reverse the invocation debit exactly like the normal reverse path"
+    );
+    assert_eq!(usage.total_cost_exposed, 0);
+
+    // A retry after the sweep fits the same one-invocation grant again.
+    assert!(matches!(
+        store
+            .authorize_budget_hold(authorize("hold-inv-2"))
+            .expect("authorize retry"),
+        BudgetAuthorizeHoldDecision::Authorized(_)
+    ));
+
+    let _ = std::fs::remove_file(&path);
+}

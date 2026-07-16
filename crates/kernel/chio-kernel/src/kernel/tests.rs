@@ -9,6 +9,7 @@ include!("tests/hot_path_deadlines.rs");
 include!("tests/receipts.rs");
 include!("tests/session.rs");
 include!("tests/budget.rs");
+include!("tests/settlement_routing.rs");
 include!("tests/budget_governed_call_chain.rs");
 include!("tests/budget_governed_assurance.rs");
 include!("tests/emergency.rs");

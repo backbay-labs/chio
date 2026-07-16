@@ -6,7 +6,9 @@
 //! is invoked once a receipt has been
 //! signed and durably stored; failure-to-settle never blocks dispatch
 //! (the kernel observer slot consumes the [`SettlementHookError`] and
-//! routes it to the retry/dead-letter machinery).
+//! routes it to the retry/dead-letter machinery when a settlement
+//! retry store is installed; otherwise the outcome is logged and
+//! counted, never dropped).
 //!
 //! Settlement ordering is deterministic: implementers MUST process
 //! observations sorted first by [`SettlementObservation::finalized_at`]

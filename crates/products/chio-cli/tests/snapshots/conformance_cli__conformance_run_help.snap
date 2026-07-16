@@ -1,6 +1,5 @@
 ---
-source: crates/chio-cli/tests/conformance_cli.rs
-assertion_line: 64
+source: crates/products/chio-cli/tests/conformance_cli.rs
 expression: help_text
 ---
 Execute conformance scenarios against a peer language adapter
@@ -30,6 +29,8 @@ Options:
           Optional SQLite database path for shared capability-authority state
       --budget-db <BUDGET_DB>
           Optional SQLite database path for durable shared capability budget state
+      --settlement-driver <SETTLEMENT_DRIVER>
+          Settlement driver: `none` (default; the settle drive is inert) or `ops` (run the reference settlement hook when driving due attempts) [default: none]
       --session-db <SESSION_DB>
           Optional SQLite database path for durable remote MCP session tombstones
       --control-url <CONTROL_URL>
