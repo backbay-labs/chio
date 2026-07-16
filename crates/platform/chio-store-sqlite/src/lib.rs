@@ -66,11 +66,13 @@ pub struct SqlitePoolConfig {
     pub reader_pool_max_size: u32,
     pub writer_pool_max_size: u32,
     /// Optional `PRAGMA max_page_count` ceiling applied to every pooled
-    /// connection. An operational bound on how large the receipt database may
-    /// grow: a write that would push the database past the cap fails closed with
-    /// a full-database error rather than exhausting the volume. `None` (the
-    /// default) leaves SQLite's built-in page ceiling in place, so a store opened
-    /// without this knob behaves exactly as before.
+    /// connection. An operational bound on the logical page count of the MAIN
+    /// database file: a write that would push the main file past the cap fails
+    /// closed with a full-database error. This bounds the main file only, not the
+    /// `-wal` sidecar, so it is not a whole-volume guard: under checkpoint
+    /// starvation the WAL can still grow unbounded. `None` (the default) leaves
+    /// SQLite's built-in page ceiling in place, so a store opened without this
+    /// knob behaves exactly as before.
     pub max_page_count: Option<u32>,
 }
 

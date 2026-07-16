@@ -63,6 +63,6 @@ binary (`cargo run -p chio-loadgen --release --bin sustained`) with a longer
 - `rss_start_bytes` / `rss_end_bytes` are `None` on platforms without a
   resident-set sampler. They are never fabricated, and an absent sampler cannot
   prove an RSS-growth budget violation.
-- This is the F49 sustained-lane cutover. The healthcare replay mode (F50) and
-  the TTFRH measurement mode (F51) named in the load-soak-chaos plan are not
-  implemented here.
+- This is the sustained-lane cutover. A healthcare replay mode and a dedicated
+  time-to-first-receipt-hardened measurement mode named in the load-soak-chaos
+  plan are not implemented here.

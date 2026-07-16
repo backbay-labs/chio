@@ -1,6 +1,6 @@
 //! Real SIGTERM-drain chaos test for the SQLite receipt store.
 //!
-//! This reuses the B1 crash victim (`chaos_victim`), which appends a receipt,
+//! This reuses the crash victim (`chaos_victim`), which appends a receipt,
 //! flushes the store as a durability barrier, and only then records an
 //! `ack <seq>` line for the receipt the store just promised was durable.
 //! Instead of SIGKILL, the parent sends SIGTERM (`kill -TERM`) mid-loop, round
@@ -70,8 +70,6 @@ fn wait_for_exit_within(child: &mut std::process::Child, timeout: Duration) -> O
 /// Send SIGTERM to the append/flush/ack victim mid-run, round after round
 /// against one reused store, and prove that no acknowledged receipt is ever lost
 /// after the victim terminates.
-///
-/// Plan-named alias: `chaos_sigterm_drain_loses_no_durable_acks`.
 #[test]
 fn chaos_sigterm_drain_loses_no_durable_acks() {
     let seed =
@@ -112,6 +110,17 @@ fn chaos_sigterm_drain_loses_no_durable_acks() {
             eprintln!(
                 "round {round}: victim exited before SIGTERM (status {status:?}) after {delay_ms}ms"
             );
+            // With MAX_RECEIPTS a clean drain before the signal is impossible, so a
+            // benign race can only be a success exit. A non-zero exit is a victim
+            // crash and must fail the round.
+            if !status.success() {
+                panic!(
+                    "{}",
+                    ChaosError::Victim(format!(
+                        "round {round}: victim exited with failure status {status:?} before SIGTERM; a pre-signal victim crash is a harness bug, not a race"
+                    ))
+                );
+            }
             verified_acks_total += assert_round_invariants(&db_path, &ack_path, round);
             continue;
         }
@@ -147,6 +156,18 @@ fn chaos_sigterm_drain_loses_no_durable_acks() {
             eprintln!(
                 "round {round}: victim exited (status {status:?}) rather than by SIGTERM after {delay_ms}ms"
             );
+            // The victim raced to a natural exit instead of being terminated by
+            // SIGTERM. With MAX_RECEIPTS it cannot have drained cleanly, so a
+            // non-zero exit (a crash, or termination by some other signal) is a
+            // victim failure and must fail the round.
+            if !status.success() {
+                panic!(
+                    "{}",
+                    ChaosError::Victim(format!(
+                        "round {round}: victim exited with failure status {status:?} rather than by SIGTERM; a victim crash is a harness bug, not a race"
+                    ))
+                );
+            }
         }
 
         verified_acks_total += assert_round_invariants(&db_path, &ack_path, round);

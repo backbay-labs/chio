@@ -13,6 +13,7 @@
 
 #![forbid(unsafe_code)]
 
+use std::env::VarError;
 use std::time::Duration;
 
 use chio_chaos::ChaosError;
@@ -51,7 +52,12 @@ fn iterations() -> u64 {
                 .test_expect("CHIO_CHAOS_ITERATIONS must be a u64");
             parsed.max(1)
         }
-        Err(_) => DEFAULT_ITERATIONS,
+        Err(VarError::NotPresent) => DEFAULT_ITERATIONS,
+        // Fail closed rather than silently reverting to the default: a set but
+        // non-unicode knob is a corrupted input, not an unset one.
+        Err(VarError::NotUnicode(_)) => {
+            panic!("CHIO_CHAOS_ITERATIONS is set but not valid unicode")
+        }
     }
 }
 

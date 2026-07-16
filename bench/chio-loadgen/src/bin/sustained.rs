@@ -73,6 +73,15 @@ fn gated_run(workdir: &Path) -> Result<(), String> {
             .saturating_mul(BYTES_PER_MEBIBYTE),
     };
 
+    // Fail closed before booting the stack: a zero rate would drive an uncapped
+    // max-rate loop, not an idle one. An uncapped run is spelled as a large rate.
+    if config.arrival_rate_hz == 0 {
+        return Err(
+            "CHIO_LOADGEN_RATE_HZ must be nonzero; an uncapped rate is a large value, not 0"
+                .to_string(),
+        );
+    }
+
     let harness = StackHarness::boot(&config).map_err(|error| error.to_string())?;
     let report = run_sustained(&harness, &config).map_err(|error| error.to_string())?;
 

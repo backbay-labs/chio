@@ -58,8 +58,14 @@ pub enum LoadgenError {
     KernelBoot(String),
     #[error("dispatch failed mid-run: {0}")]
     Dispatch(String),
+    #[error("arrival_rate_hz is zero; an uncapped rate is spelled as a large value, not 0")]
+    ZeroArrivalRate,
     #[error("sustained run dispatched no calls")]
     EmptyRun,
+    #[error(
+        "resident-set size was never measured, so the growth budget cannot be proven satisfied"
+    )]
+    RssUnmeasured,
     #[error("p99 {observed_nanos}ns exceeded budget {budget_nanos}ns")]
     P99Exceeded {
         observed_nanos: u128,

@@ -69,8 +69,7 @@ raised `CHIO_CHAOS_ITERATIONS`.
 - This branch injects the faults for real in-tree. It does NOT yet regenerate or
   sign the `chaos-run` / `attack-simulation` fixtures the transaction-passport
   verifier consumes; those signed fixtures remain hand-committed. Closing that
-  evidence-pipeline half of F53 (runner-key signing, freshness gate) is a
-  follow-up.
+  evidence-pipeline half (runner-key signing, freshness gate) is a follow-up.
 - SIGKILL proves process-crash recovery, not power-loss durability. The OS page
   cache survives SIGKILL, so this does not exercise a torn write from lost
   hardware buffers.

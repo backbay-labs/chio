@@ -47,9 +47,17 @@ fn page_count(db: &Path) -> Result<i64, ChaosError> {
         .map_err(boot("read page_count"))
 }
 
-/// Assert an error is the typed SQLITE_FULL surface: `ReceiptStoreError::Sqlite`
-/// whose sqlite error code is `DiskFull`. Asserts on the variant and code, not a
-/// string match.
+/// Assert an error is the typed SQLITE_FULL surface. Two shapes are accepted:
+///
+/// - The direct append-path rejection: `ReceiptStoreError::Sqlite` whose live
+///   `sqlite_error_code()` is `DiskFull`. This is a variant-and-code assertion,
+///   not a string match.
+/// - The flush-path rejection: the commit-writer actor snapshots the original
+///   error into a `ToSqlConversionFailure` that preserves the message text but
+///   drops the code, so `sqlite_error_code()` is `None`. For that shape only,
+///   fall back to matching the preserved disk-full message. Without this, an
+///   over-cap write that first lands on the flush path (rather than the direct
+///   append) would false-red even though the store denied fail-closed correctly.
 fn expect_disk_full(error: &ReceiptStoreError, context: &str) -> Result<(), ChaosError> {
     match error {
         ReceiptStoreError::Sqlite(sqlite_error)
@@ -57,10 +65,23 @@ fn expect_disk_full(error: &ReceiptStoreError, context: &str) -> Result<(), Chao
         {
             Ok(())
         }
+        ReceiptStoreError::Sqlite(sqlite_error)
+            if sqlite_error.sqlite_error_code().is_none()
+                && is_disk_full_message(&sqlite_error.to_string()) =>
+        {
+            Ok(())
+        }
         other => Err(ChaosError::InvariantViolated(format!(
             "{context}: expected a typed SQLITE_FULL (ReceiptStoreError::Sqlite / DiskFull), got {other:?}"
         ))),
     }
+}
+
+/// Whether a preserved error message carries SQLite's disk-full signal. Used only
+/// for the flush-path snapshot shape whose numeric error code was dropped; the
+/// canonical SQLITE_FULL text is "database or disk is full".
+fn is_disk_full_message(text: &str) -> bool {
+    text.to_ascii_lowercase().contains("disk is full")
 }
 
 /// Append a receipt, flush as the durability barrier, and only then record its
@@ -233,9 +254,16 @@ fn chaos_wedged_writer_yields_typed_busy_deny() -> Result<(), ChaosError> {
     });
     let result = match receiver.recv_timeout(watchdog) {
         Ok(result) => result,
+        // A watchdog timeout here is a genuine hang, not a missing injection: the
+        // wedge provably landed (a competing BEGIN IMMEDIATE holds the lock), so
+        // the store's contended append should have returned a typed busy deny
+        // within busy_timeout. Still blocked past the watchdog means the
+        // never-hang invariant was violated, so surface InvariantViolated rather
+        // than InjectionNoOp (which would misdirect triage at harness tuning).
         Err(_) => {
-            return Err(ChaosError::InjectionNoOp(
-                "store append neither returned nor was bounded by busy_timeout while the writer was wedged",
+            return Err(ChaosError::InvariantViolated(
+                "writer still blocked after 30s: busy_timeout no longer bounds the wait"
+                    .to_string(),
             ))
         }
     };
@@ -323,21 +351,30 @@ fn chaos_retention_under_load_keeps_verified_head() -> Result<(), ChaosError> {
 
     // Run retention_repair repeatedly mid-load. A healthy store has no orphaned
     // claim-log row, so each call is a serialized maintenance command that
-    // interleaves with the append stream through the single writer actor.
-    let archive_path = archive
-        .to_str()
-        .ok_or_else(|| ChaosError::Boot("archive path is not valid UTF-8".to_string()))?;
-    for _ in 0..16 {
-        store
-            .retention_repair(archive_path)
-            .map_err(invariant("retention_repair under load"))?;
-        std::thread::sleep(Duration::from_millis(2));
-    }
+    // interleaves with the append stream through the single writer actor. The
+    // fallible section runs inside a closure whose result is captured but not
+    // propagated until after the worker is stopped and joined, so no early return
+    // (bad archive path, a retention_repair error) leaks the infinite append loop
+    // into the rest of this binary's timing-sensitive scenarios.
+    let retention_result = (|| -> Result<(), ChaosError> {
+        let archive_path = archive
+            .to_str()
+            .ok_or_else(|| ChaosError::Boot("archive path is not valid UTF-8".to_string()))?;
+        for _ in 0..16 {
+            store
+                .retention_repair(archive_path)
+                .map_err(invariant("retention_repair under load"))?;
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        Ok(())
+    })();
 
     stop.store(true, Ordering::Relaxed);
-    worker
+    let worker_result = worker
         .join()
-        .map_err(|_| ChaosError::Victim("retention load thread panicked".to_string()))??;
+        .map_err(|_| ChaosError::Victim("retention load thread panicked".to_string()))?;
+    retention_result?;
+    worker_result?;
 
     // InjectionNoOp: the load thread must actually have appended across the
     // retention calls, or the race was never exercised.
@@ -364,4 +401,16 @@ fn chaos_retention_under_load_keeps_verified_head() -> Result<(), ChaosError> {
         .map_err(invariant("append after retention load"))?;
 
     Ok(())
+}
+
+/// The flush-path disk-full matcher must accept SQLite's canonical full text
+/// (case-insensitively) and reject unrelated errors, so the ENOSPC fallback in
+/// [`expect_disk_full`] neither false-reds a real disk-full nor false-greens an
+/// unrelated one.
+#[test]
+fn is_disk_full_message_matches_only_the_full_signal() {
+    assert!(is_disk_full_message("database or disk is full"));
+    assert!(is_disk_full_message("DATABASE OR DISK IS FULL"));
+    assert!(!is_disk_full_message("no such table: receipts"));
+    assert!(!is_disk_full_message("successful commit"));
 }

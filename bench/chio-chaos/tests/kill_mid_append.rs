@@ -35,8 +35,6 @@ const MAX_RECEIPTS: u64 = 1_000_000;
 /// SIGKILL the append/flush/ack victim mid-run, round after round against one
 /// reused store, and prove that no acknowledged receipt is ever lost after
 /// crash recovery.
-///
-/// Plan-named alias: `chaos_receipt_log_unavailable_preserves_merkle_head`.
 #[test]
 fn chaos_kill_mid_append_preserves_durable_acks() {
     let seed =
@@ -78,6 +76,17 @@ fn chaos_kill_mid_append_preserves_durable_acks() {
                 eprintln!(
                     "round {round}: victim exited before kill (status {status:?}) after {delay_ms}ms"
                 );
+                // With MAX_RECEIPTS a clean drain before the kill is impossible, so
+                // a benign race can only be a success exit. A non-zero exit is a
+                // victim crash, not a race, and must fail the round.
+                if !status.success() {
+                    panic!(
+                        "{}",
+                        ChaosError::Victim(format!(
+                            "round {round}: victim exited with failure status {status:?} before the kill; a pre-kill victim crash is a harness bug, not a race"
+                        ))
+                    );
+                }
             }
             None => {
                 child.kill().test_expect("SIGKILL victim");

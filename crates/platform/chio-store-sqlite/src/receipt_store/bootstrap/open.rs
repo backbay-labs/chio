@@ -97,9 +97,11 @@ fn configure_sqlite_connection(
     )?;
     assert_sqlite_durability_pragmas(connection)?;
     // Operational growth bound (see `SqlitePoolConfig::max_page_count`): cap the
-    // database page count so a runaway or hostile writer cannot exhaust the
-    // volume. A write past the cap fails closed with SQLITE_FULL. `None` leaves
-    // SQLite's built-in page ceiling untouched.
+    // logical page count of the MAIN database file. A write that would push the
+    // main file past the cap fails closed with SQLITE_FULL. This bounds the main
+    // file only, not the `-wal` sidecar, so it is not a whole-volume exhaustion
+    // guard: under checkpoint starvation the WAL can still grow unbounded. `None`
+    // leaves SQLite's built-in page ceiling untouched.
     if let Some(max_page_count) = max_page_count {
         connection.pragma_update(None, "max_page_count", max_page_count)?;
     }

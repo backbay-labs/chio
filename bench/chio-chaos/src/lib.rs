@@ -16,6 +16,7 @@
 
 #![forbid(unsafe_code)]
 
+use std::env::VarError;
 use std::path::Path;
 use std::time::{Duration, Instant};
 
@@ -280,16 +281,22 @@ fn parse_chaos_seed(raw: &str) -> Result<u64, ChaosError> {
 }
 
 /// Read the chaos RNG seed from `CHIO_CHAOS_SEED` (decimal or `0x`-prefixed
-/// hex), or `default` if the variable is unset.
+/// hex), or `default` if the variable is unset. A set-but-non-unicode value
+/// fails closed rather than silently reverting to `default`, so a corrupted knob
+/// cannot quietly re-run the fixed schedule.
 pub fn chaos_seed(default: u64) -> Result<u64, ChaosError> {
     match std::env::var("CHIO_CHAOS_SEED") {
         Ok(raw) => parse_chaos_seed(&raw),
-        Err(_) => Ok(default),
+        Err(VarError::NotPresent) => Ok(default),
+        Err(VarError::NotUnicode(_)) => Err(ChaosError::Boot(
+            "CHIO_CHAOS_SEED is set but not valid unicode".to_string(),
+        )),
     }
 }
 
 /// Read the chaos round count from `CHIO_CHAOS_ITERATIONS` (floored at 1), or
-/// `default` if the variable is unset.
+/// `default` if the variable is unset. A set-but-non-unicode value fails closed
+/// rather than silently reverting to `default`.
 pub fn chaos_iterations(default: u64) -> Result<u64, ChaosError> {
     match std::env::var("CHIO_CHAOS_ITERATIONS") {
         Ok(raw) => {
@@ -299,7 +306,10 @@ pub fn chaos_iterations(default: u64) -> Result<u64, ChaosError> {
                 .map_err(|_| ChaosError::Boot("CHIO_CHAOS_ITERATIONS must be a u64".to_string()))?;
             Ok(parsed.max(1))
         }
-        Err(_) => Ok(default),
+        Err(VarError::NotPresent) => Ok(default),
+        Err(VarError::NotUnicode(_)) => Err(ChaosError::Boot(
+            "CHIO_CHAOS_ITERATIONS is set but not valid unicode".to_string(),
+        )),
     }
 }
 

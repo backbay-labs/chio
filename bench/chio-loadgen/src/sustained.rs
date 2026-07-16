@@ -23,13 +23,16 @@ const RSS_SAMPLE_INTERVAL: Duration = Duration::from_secs(5);
 /// `rss_start_bytes`/`rss_end_bytes` are carried as `None` on platforms without
 /// a resident-set sampler and are never fabricated; `rss_end_bytes` is the
 /// high-water mark (the end sample or any in-run sample, whichever is largest)
-/// so it is the value the growth budget is measured against. `within_budget` is
+/// so it is the value the growth budget is measured against. `ttfrh_ms` follows
+/// the same honest-null convention: it is `None` (serialized as JSON null) when
+/// no durable receipt was ever hardened, so a run that hardened nothing is
+/// distinguishable from a genuine 0ms time-to-first-receipt. `within_budget` is
 /// the same verdict [`enforce_budget`] recomputes from these fields.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct LoadReport {
     pub calls_attempted: u64,
     pub calls_ok: u64,
-    pub ttfrh_ms: u128,
+    pub ttfrh_ms: Option<u128>,
     pub p50_ms: u128,
     pub p99_ms: u128,
     pub p99_nanos: u128,
@@ -51,8 +54,22 @@ pub fn run_sustained(
     harness: &StackHarness,
     config: &LoadgenConfig,
 ) -> Result<LoadReport, LoadgenError> {
+    // Fail closed on a zero arrival rate: interval 0 would pace nothing and drive
+    // an unbounded max-rate loop, which is not what "idle" means. An uncapped run
+    // is spelled as a large rate, never 0.
+    if config.arrival_rate_hz == 0 {
+        return Err(LoadgenError::ZeroArrivalRate);
+    }
+
     let interval_ns = dispatch_interval_ns(config.arrival_rate_hz);
     let durable = harness.store().is_some();
+
+    // Pre-size the latency buffer before the RSS baseline is sampled: the backing
+    // allocation (and any push-driven doubling spikes during the run) is then
+    // charged to the process before rss_start, not against the measured RSS
+    // growth budget. Capacity tracks the pacer's dispatch count (rate x duration),
+    // capped so a pathological config cannot request an unbounded allocation.
+    let mut latencies_ns: Vec<u64> = Vec::with_capacity(expected_dispatch_count(config));
 
     let rss_start = rss::current_rss_bytes();
     let mut rss_high_water = rss_start;
@@ -61,7 +78,6 @@ pub fn run_sustained(
     let run_end = run_start + config.duration;
     let mut next_rss_sample = run_start + RSS_SAMPLE_INTERVAL;
 
-    let mut latencies_ns: Vec<u64> = Vec::new();
     let mut calls_attempted: u64 = 0;
     let mut calls_ok: u64 = 0;
     let mut ttfrh: Option<Duration> = None;
@@ -104,18 +120,10 @@ pub fn run_sustained(
     let p99_ms = Duration::from_nanos(p99_ns).as_millis();
     let p99_nanos = u128::from(p99_ns);
 
-    let growth_bytes = rss_growth_bytes(rss_start, rss_end);
-    // A run that dispatched nothing proves nothing, so it fails closed here just
-    // as [`enforce_budget`] rejects it; the pass/fail comparison is on the
-    // untruncated nanosecond p99, never the millisecond display value.
-    let within_budget = calls_attempted > 0
-        && p99_nanos <= config.p99_budget.as_nanos()
-        && growth_bytes <= config.rss_growth_budget_bytes;
-
-    Ok(LoadReport {
+    let mut report = LoadReport {
         calls_attempted,
         calls_ok,
-        ttfrh_ms: ttfrh.map_or(0, |elapsed| elapsed.as_millis()),
+        ttfrh_ms: ttfrh.map(|elapsed| elapsed.as_millis()),
         p50_ms,
         p99_ms,
         p99_nanos,
@@ -126,18 +134,27 @@ pub fn run_sustained(
         // is carried as `None` rather than reporting a queue depth the run did
         // not produce.
         exporter_queue_high_water: None,
-        within_budget,
-    })
+        within_budget: false,
+    };
+    // Keep `within_budget == enforce_budget(..).is_ok()` by construction: the same
+    // fail-closed gate decides both, so an unmeasured RSS sample or an empty run
+    // reads as out-of-budget here exactly as it denies there.
+    report.within_budget = enforce_budget(&report, config).is_ok();
+    Ok(report)
 }
 
 /// Fail-closed budget gate. Denies with [`LoadgenError::EmptyRun`] when the run
 /// dispatched nothing (a gate must not pass without exercising the stack), then
 /// with [`LoadgenError::P99Exceeded`] when the measured p99 is over budget, then
-/// with [`LoadgenError::RssGrowthExceeded`] when resident-set growth is over
-/// budget; otherwise allows.
+/// with [`LoadgenError::RssUnmeasured`] when either resident-set sample is
+/// absent, then with [`LoadgenError::RssGrowthExceeded`] when resident-set growth
+/// is over budget; otherwise allows.
 ///
 /// The p99 comparison is on the untruncated `p99_nanos`, not the millisecond
 /// display value, so a p99 fractionally over budget cannot pass by truncation.
+/// An unmeasured resident set denies rather than folding to zero growth: a broken
+/// or unsupported sampler reads as a broken lane, not a silent pass. (The Linux
+/// and macOS samplers return `Some`, so the real gate path is unaffected.)
 pub fn enforce_budget(report: &LoadReport, config: &LoadgenConfig) -> Result<(), LoadgenError> {
     if report.calls_attempted == 0 {
         return Err(LoadgenError::EmptyRun);
@@ -151,7 +168,10 @@ pub fn enforce_budget(report: &LoadReport, config: &LoadgenConfig) -> Result<(),
         });
     }
 
-    let growth_bytes = rss_growth_bytes(report.rss_start_bytes, report.rss_end_bytes);
+    let (Some(start), Some(end)) = (report.rss_start_bytes, report.rss_end_bytes) else {
+        return Err(LoadgenError::RssUnmeasured);
+    };
+    let growth_bytes = end.saturating_sub(start);
     if growth_bytes > config.rss_growth_budget_bytes {
         return Err(LoadgenError::RssGrowthExceeded {
             grew_bytes: growth_bytes,
@@ -162,23 +182,34 @@ pub fn enforce_budget(report: &LoadReport, config: &LoadgenConfig) -> Result<(),
     Ok(())
 }
 
-/// Inter-dispatch interval in nanoseconds. A zero arrival rate dispatches with
-/// no pacing delay.
+/// Upper bound on the pre-sized latency buffer so a pathological rate x duration
+/// cannot request an unbounded allocation. Eight million u64 samples is 64 MiB,
+/// which covers hours of realistic rates while capping the worst case.
+const MAX_PREALLOCATED_LATENCIES: usize = 8_000_000;
+
+/// Expected dispatch count for the run, used only to pre-size the latency buffer.
+/// Derived from the pacer's target rate over the run duration (rate x duration),
+/// computed on nanoseconds so fractional-second durations are not truncated away,
+/// then capped at [`MAX_PREALLOCATED_LATENCIES`].
+fn expected_dispatch_count(config: &LoadgenConfig) -> usize {
+    let expected = config
+        .duration
+        .as_nanos()
+        .saturating_mul(u128::from(config.arrival_rate_hz))
+        / 1_000_000_000;
+    usize::try_from(expected)
+        .unwrap_or(usize::MAX)
+        .min(MAX_PREALLOCATED_LATENCIES)
+}
+
+/// Inter-dispatch interval in nanoseconds. Callers reject a zero arrival rate
+/// before reaching here; the zero guard is defense-in-depth so the division can
+/// never trap.
 fn dispatch_interval_ns(arrival_rate_hz: u32) -> u64 {
     if arrival_rate_hz == 0 {
         return 0;
     }
     1_000_000_000 / u64::from(arrival_rate_hz)
-}
-
-/// Growth from a start sample to an end sample, saturating at zero. Unmeasured
-/// samples (either side `None`) yield zero: an absent sampler cannot prove a
-/// budget violation.
-fn rss_growth_bytes(start: Option<u64>, end: Option<u64>) -> u64 {
-    match (start, end) {
-        (Some(start), Some(end)) => end.saturating_sub(start),
-        _ => 0,
-    }
 }
 
 /// Raise `high_water` to `sample` when `sample` is larger (or was previously
@@ -230,18 +261,19 @@ mod tests {
     }
 
     /// Hand-built report with a chosen attempt count and untruncated p99. RSS is
-    /// left unmeasured so the growth check is a no-op and the p99/empty-run paths
-    /// are isolated.
+    /// measured-equal (start == end) so the growth check is a no-op zero and the
+    /// fail-closed unmeasured-RSS gate is satisfied, isolating the p99/empty-run
+    /// paths.
     fn make_report(calls_attempted: u64, p99_nanos: u128) -> LoadReport {
         LoadReport {
             calls_attempted,
             calls_ok: calls_attempted,
-            ttfrh_ms: 0,
+            ttfrh_ms: None,
             p50_ms: 0,
             p99_ms: p99_nanos / 1_000_000,
             p99_nanos,
-            rss_start_bytes: None,
-            rss_end_bytes: None,
+            rss_start_bytes: Some(1_024),
+            rss_end_bytes: Some(1_024),
             exporter_queue_high_water: None,
             within_budget: false,
         }
@@ -280,6 +312,36 @@ mod tests {
         assert!(
             enforce_budget(&at, &config).is_ok(),
             "a p99 exactly at budget must pass"
+        );
+    }
+
+    #[test]
+    fn enforce_budget_rejects_unmeasured_rss() {
+        let config = config_with_p99_budget(Duration::from_millis(50));
+
+        // A within-budget p99 but an absent RSS sample must deny: a broken or
+        // unsupported sampler cannot prove the growth budget was met, so it fails
+        // closed rather than folding a None sample to zero growth.
+        let mut report = make_report(100, 10_000_000);
+        report.rss_start_bytes = None;
+        report.rss_end_bytes = None;
+        assert!(
+            matches!(
+                enforce_budget(&report, &config),
+                Err(LoadgenError::RssUnmeasured)
+            ),
+            "an unmeasured resident set must deny with RssUnmeasured"
+        );
+
+        // A half-measured sample (start present, end absent) is equally unprovable.
+        let mut half = make_report(100, 10_000_000);
+        half.rss_end_bytes = None;
+        assert!(
+            matches!(
+                enforce_budget(&half, &config),
+                Err(LoadgenError::RssUnmeasured)
+            ),
+            "a half-measured resident set must deny with RssUnmeasured"
         );
     }
 }

@@ -40,7 +40,7 @@ pub struct StackHarness {
     runtime: Runtime,
     store: Option<Arc<SqliteReceiptStore>>,
     capability: CapabilityToken,
-    tool_latency_ms: Arc<AtomicU64>,
+    tool_latency_nanos: Arc<AtomicU64>,
     request_counter: AtomicU64,
 }
 
@@ -79,9 +79,9 @@ impl StackHarness {
 
         let mut kernel = ChioKernel::new(kernel_config(Keypair::generate(), deadlines));
 
-        let tool_latency_ms = Arc::new(AtomicU64::new(duration_as_millis(config.tool_latency)));
+        let tool_latency_nanos = Arc::new(AtomicU64::new(duration_as_nanos(config.tool_latency)));
         kernel.register_tool_server(Box::new(FixtureToolServer {
-            latency_ms: Arc::clone(&tool_latency_ms),
+            latency_nanos: Arc::clone(&tool_latency_nanos),
         }));
 
         let store = match &config.store {
@@ -117,7 +117,7 @@ impl StackHarness {
             runtime,
             store,
             capability,
-            tool_latency_ms,
+            tool_latency_nanos,
             request_counter: AtomicU64::new(0),
         })
     }
@@ -190,9 +190,12 @@ impl StackHarness {
     }
 
     /// Override the fixture tool server's per-invoke latency for the next
-    /// dispatches; used by per-scenario fault injection.
+    /// dispatches; used by per-scenario fault injection. The knob is milliseconds
+    /// (chaos scenarios drive whole-millisecond stalls) but is stored internally
+    /// as nanoseconds so the fixture server honors sub-millisecond baselines.
     pub fn set_tool_latency_ms(&self, milliseconds: u64) {
-        self.tool_latency_ms.store(milliseconds, Ordering::Relaxed);
+        self.tool_latency_nanos
+            .store(milliseconds.saturating_mul(1_000_000), Ordering::Relaxed);
     }
 
     fn build_request(&self) -> ToolCallRequest {
@@ -255,15 +258,17 @@ fn loadgen_scope() -> ChioScope {
     }
 }
 
-fn duration_as_millis(duration: Duration) -> u64 {
-    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
+fn duration_as_nanos(duration: Duration) -> u64 {
+    u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX)
 }
 
 /// A tool server whose only behavior is to sleep for a runtime-configurable
 /// latency before returning a fixed allow payload, so a dispatch measures the
-/// real kernel path plus a controllable tool cost.
+/// real kernel path plus a controllable tool cost. The latency is held in
+/// nanoseconds so a sub-millisecond configured cost is exercised rather than
+/// truncated to a zero-latency invoke.
 struct FixtureToolServer {
-    latency_ms: Arc<AtomicU64>,
+    latency_nanos: Arc<AtomicU64>,
 }
 
 #[async_trait::async_trait]
@@ -282,9 +287,9 @@ impl ToolServerConnection for FixtureToolServer {
         arguments: serde_json::Value,
         _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
     ) -> Result<serde_json::Value, KernelError> {
-        let latency_ms = self.latency_ms.load(Ordering::Relaxed);
-        if latency_ms > 0 {
-            tokio::time::sleep(Duration::from_millis(latency_ms)).await;
+        let latency_nanos = self.latency_nanos.load(Ordering::Relaxed);
+        if latency_nanos > 0 {
+            tokio::time::sleep(Duration::from_nanos(latency_nanos)).await;
         }
         Ok(serde_json::json!({
             "tool": tool_name,

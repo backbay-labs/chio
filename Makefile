@@ -255,7 +255,7 @@ kani:
 kani-smoke:
 	./scripts/check-kani-smoke.sh
 
-# Loom interleaving models (F52). Each of the three TCB models runs under
+# Loom interleaving models. Each of the three TCB models runs under
 # `--cfg loom` with the model checker bounded to 3 preemptions. Slow and
 # memory-heavy: one crate per invocation, never package-wide.
 loom:
