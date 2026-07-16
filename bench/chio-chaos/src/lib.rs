@@ -138,24 +138,35 @@ pub fn chaos_receipt(unique: &str, timestamp: u64) -> Result<ChioReceipt, ChaosE
     .map_err(|error| ChaosError::Boot(format!("sign chaos receipt: {error}")))
 }
 
-/// Verify that every acknowledged receipt survived crash recovery.
+/// Verify that every acknowledged receipt survived crash recovery, returning the
+/// number of acked receipts that verified.
 ///
 /// For each `ack <seq>` line in `ack_path`: the acknowledged `entry_seq` must be
 /// at or below the store's recovered committed floor AND the entry must read
-/// back. A missing ack file is treated as "no promises made yet" and passes. A
-/// malformed ack line, a promise beyond the committed floor, or a committed but
-/// unreadable entry is a fail-closed [`ChaosError::InvariantViolated`].
+/// back. A missing or empty ack file is treated as "no promises made yet" and
+/// verifies zero (per-round tolerant: a single crash round may kill the victim
+/// before it durably acked anything). A malformed ack line, a promise beyond the
+/// committed floor, or a committed but unreadable entry is a fail-closed
+/// [`ChaosError::InvariantViolated`].
+///
+/// The returned count lets a multi-round crash lane prove the run as a whole
+/// observed at least one surviving durable ack (see [`require_verified_acks`]),
+/// so a run that killed the victim before any ack in every round cannot pass
+/// vacuously.
 ///
 /// This is a plain function so the checker-integrity test can attack it
 /// directly with a fabricated ack.
-pub fn check_durable_acks(store: &SqliteReceiptStore, ack_path: &Path) -> Result<(), ChaosError> {
+pub fn check_durable_acks(
+    store: &SqliteReceiptStore,
+    ack_path: &Path,
+) -> Result<usize, ChaosError> {
     let committed = store
         .latest_committed_entry_seq()
         .map_err(|error| ChaosError::InvariantViolated(format!("read committed floor: {error}")))?;
 
     let contents = match std::fs::read_to_string(ack_path) {
         Ok(contents) => contents,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(0),
         Err(error) => {
             return Err(ChaosError::InvariantViolated(format!(
                 "read ack file {}: {error}",
@@ -164,6 +175,7 @@ pub fn check_durable_acks(store: &SqliteReceiptStore, ack_path: &Path) -> Result
         }
     };
 
+    let mut verified = 0usize;
     for line in contents.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() {
@@ -187,6 +199,23 @@ pub fn check_durable_acks(store: &SqliteReceiptStore, ack_path: &Path) -> Result
                 "acknowledged receipt entry_seq {seq} is committed but unreadable after recovery"
             )));
         }
+        verified += 1;
+    }
+    Ok(verified)
+}
+
+/// Run-level non-vacuity guard for the crash lanes: a full run that verified zero
+/// durable acks across every round proved nothing about durability (the signal
+/// only showed a kill landed, never that an acknowledged receipt survived), so it
+/// fails closed with [`ChaosError::InjectionNoOp`] rather than passing vacuously.
+///
+/// Per-round tolerance is preserved because the caller accumulates the
+/// [`check_durable_acks`] counts across all rounds and only asserts on the total.
+pub fn require_verified_acks(total: usize) -> Result<(), ChaosError> {
+    if total == 0 {
+        return Err(ChaosError::InjectionNoOp(
+            "crash lane verified zero durable acks across all rounds",
+        ));
     }
     Ok(())
 }
@@ -337,5 +366,31 @@ mod tests {
         assert!(parse_ack_seq("ack").is_err());
         assert!(parse_ack_seq("nack 42").is_err());
         assert!(parse_ack_seq("ack twelve").is_err());
+    }
+
+    #[test]
+    fn check_durable_acks_counts_zero_for_absent_file() {
+        let dir = tempfile::tempdir().test_unwrap();
+        let db_path = dir.path().join("receipts.sqlite");
+        let store = SqliteReceiptStore::open(&db_path).test_unwrap();
+        let absent = dir.path().join("does-not-exist.log");
+        let verified =
+            check_durable_acks(&store, &absent).test_expect("absent ack file must verify zero");
+        assert_eq!(
+            verified, 0,
+            "an absent ack file made no durability promises"
+        );
+    }
+
+    #[test]
+    fn require_verified_acks_rejects_zero_total() {
+        assert!(
+            matches!(require_verified_acks(0), Err(ChaosError::InjectionNoOp(_))),
+            "a run that verified zero durable acks must fail closed"
+        );
+        assert!(
+            require_verified_acks(1).is_ok(),
+            "one surviving durable ack clears the non-vacuity guard"
+        );
     }
 }

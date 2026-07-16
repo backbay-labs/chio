@@ -15,7 +15,7 @@ use tokio::runtime::{Builder, Runtime};
 
 use crate::{LoadgenConfig, LoadgenError, StoreBacking};
 
-const LOADGEN_SERVER_ID: &str = "chio-loadgen-stub";
+const LOADGEN_SERVER_ID: &str = "chio-loadgen-fixture";
 const LOADGEN_TOOL_NAME: &str = "loadgen_dispatch";
 
 /// Seconds added on top of the run duration when minting the driving
@@ -34,7 +34,7 @@ pub struct DispatchOutcome {
 }
 
 /// A booted real stack: a live kernel, an optional durable receipt store, the
-/// driving capability, and the stub tool server's shared latency control.
+/// driving capability, and the fixture tool server's shared latency control.
 pub struct StackHarness {
     kernel: ChioKernel,
     runtime: Runtime,
@@ -80,7 +80,7 @@ impl StackHarness {
         let mut kernel = ChioKernel::new(kernel_config(Keypair::generate(), deadlines));
 
         let tool_latency_ms = Arc::new(AtomicU64::new(duration_as_millis(config.tool_latency)));
-        kernel.register_tool_server(Box::new(StubToolServer {
+        kernel.register_tool_server(Box::new(FixtureToolServer {
             latency_ms: Arc::clone(&tool_latency_ms),
         }));
 
@@ -189,7 +189,7 @@ impl StackHarness {
         }
     }
 
-    /// Override the stub tool server's per-invoke latency for the next
+    /// Override the fixture tool server's per-invoke latency for the next
     /// dispatches; used by per-scenario fault injection.
     pub fn set_tool_latency_ms(&self, milliseconds: u64) {
         self.tool_latency_ms.store(milliseconds, Ordering::Relaxed);
@@ -262,12 +262,12 @@ fn duration_as_millis(duration: Duration) -> u64 {
 /// A tool server whose only behavior is to sleep for a runtime-configurable
 /// latency before returning a fixed allow payload, so a dispatch measures the
 /// real kernel path plus a controllable tool cost.
-struct StubToolServer {
+struct FixtureToolServer {
     latency_ms: Arc<AtomicU64>,
 }
 
 #[async_trait::async_trait]
-impl ToolServerConnection for StubToolServer {
+impl ToolServerConnection for FixtureToolServer {
     fn server_id(&self) -> &str {
         LOADGEN_SERVER_ID
     }

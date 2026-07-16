@@ -16,12 +16,15 @@ const RSS_SAMPLE_INTERVAL: Duration = Duration::from_secs(5);
 /// Measured outcome of one sustained run.
 ///
 /// Percentiles are computed over the end-to-end latency of the dispatches that
-/// returned an allow verdict. `rss_start_bytes`/`rss_end_bytes` are carried as
-/// `None` on platforms without a resident-set sampler and are never fabricated;
-/// `rss_end_bytes` is the high-water mark (the end sample or any in-run sample,
-/// whichever is largest) so it is the value the growth budget is measured
-/// against. `within_budget` is the same verdict [`enforce_budget`] recomputes
-/// from these fields.
+/// returned an allow verdict. `p99_nanos` is the untruncated nanosecond p99 the
+/// budget comparison uses; `p99_ms` is the same value truncated to milliseconds
+/// for human-readable display only and must never drive a pass/fail decision (a
+/// true p99 of 50.9ms truncates to 50 and would spuriously pass a 50ms budget).
+/// `rss_start_bytes`/`rss_end_bytes` are carried as `None` on platforms without
+/// a resident-set sampler and are never fabricated; `rss_end_bytes` is the
+/// high-water mark (the end sample or any in-run sample, whichever is largest)
+/// so it is the value the growth budget is measured against. `within_budget` is
+/// the same verdict [`enforce_budget`] recomputes from these fields.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct LoadReport {
     pub calls_attempted: u64,
@@ -29,6 +32,7 @@ pub struct LoadReport {
     pub ttfrh_ms: u128,
     pub p50_ms: u128,
     pub p99_ms: u128,
+    pub p99_nanos: u128,
     pub rss_start_bytes: Option<u64>,
     pub rss_end_bytes: Option<u64>,
     pub exporter_queue_high_water: Option<u64>,
@@ -94,12 +98,19 @@ pub fn run_sustained(
     let rss_end = rss_high_water;
 
     latencies_ns.sort_unstable();
-    let p50_ms = percentile_ms(&latencies_ns, 50);
-    let p99_ms = percentile_ms(&latencies_ns, 99);
+    let p50_ns = percentile_ns(&latencies_ns, 50);
+    let p99_ns = percentile_ns(&latencies_ns, 99);
+    let p50_ms = Duration::from_nanos(p50_ns).as_millis();
+    let p99_ms = Duration::from_nanos(p99_ns).as_millis();
+    let p99_nanos = u128::from(p99_ns);
 
-    let p99_budget_ms = config.p99_budget.as_millis();
     let growth_bytes = rss_growth_bytes(rss_start, rss_end);
-    let within_budget = p99_ms <= p99_budget_ms && growth_bytes <= config.rss_growth_budget_bytes;
+    // A run that dispatched nothing proves nothing, so it fails closed here just
+    // as [`enforce_budget`] rejects it; the pass/fail comparison is on the
+    // untruncated nanosecond p99, never the millisecond display value.
+    let within_budget = calls_attempted > 0
+        && p99_nanos <= config.p99_budget.as_nanos()
+        && growth_bytes <= config.rss_growth_budget_bytes;
 
     Ok(LoadReport {
         calls_attempted,
@@ -107,6 +118,7 @@ pub fn run_sustained(
         ttfrh_ms: ttfrh.map_or(0, |elapsed| elapsed.as_millis()),
         p50_ms,
         p99_ms,
+        p99_nanos,
         rss_start_bytes: rss_start,
         rss_end_bytes: rss_end,
         // The load generator's dispatch path does not traverse the OTLP ingress
@@ -118,15 +130,24 @@ pub fn run_sustained(
     })
 }
 
-/// Fail-closed budget gate. Denies with [`LoadgenError::P99Exceeded`] when the
-/// measured p99 is over budget, then with [`LoadgenError::RssGrowthExceeded`]
-/// when resident-set growth is over budget; otherwise allows.
+/// Fail-closed budget gate. Denies with [`LoadgenError::EmptyRun`] when the run
+/// dispatched nothing (a gate must not pass without exercising the stack), then
+/// with [`LoadgenError::P99Exceeded`] when the measured p99 is over budget, then
+/// with [`LoadgenError::RssGrowthExceeded`] when resident-set growth is over
+/// budget; otherwise allows.
+///
+/// The p99 comparison is on the untruncated `p99_nanos`, not the millisecond
+/// display value, so a p99 fractionally over budget cannot pass by truncation.
 pub fn enforce_budget(report: &LoadReport, config: &LoadgenConfig) -> Result<(), LoadgenError> {
-    let budget_ms = config.p99_budget.as_millis();
-    if report.p99_ms > budget_ms {
+    if report.calls_attempted == 0 {
+        return Err(LoadgenError::EmptyRun);
+    }
+
+    let budget_nanos = config.p99_budget.as_nanos();
+    if report.p99_nanos > budget_nanos {
         return Err(LoadgenError::P99Exceeded {
-            observed_ms: report.p99_ms,
-            budget_ms,
+            observed_nanos: report.p99_nanos,
+            budget_nanos,
         });
     }
 
@@ -171,9 +192,10 @@ fn fold_high_water(high_water: &mut Option<u64>, sample: Option<u64>) {
     }
 }
 
-/// Nearest-rank percentile of a pre-sorted nanosecond slice, in milliseconds.
-/// An empty slice reports zero.
-fn percentile_ms(sorted_ns: &[u64], percentile: u64) -> u128 {
+/// Nearest-rank percentile of a pre-sorted nanosecond slice, in nanoseconds. The
+/// raw nanosecond value is kept so the budget comparison does not truncate. An
+/// empty slice reports zero.
+fn percentile_ns(sorted_ns: &[u64], percentile: u64) -> u64 {
     if sorted_ns.is_empty() {
         return 0;
     }
@@ -183,5 +205,81 @@ fn percentile_ms(sorted_ns: &[u64], percentile: u64) -> u128 {
         .div_ceil(100)
         .max(1);
     let index = (rank - 1).min(len - 1);
-    Duration::from_nanos(sorted_ns[index]).as_millis()
+    sorted_ns[index]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::StoreBacking;
+    use std::path::PathBuf;
+
+    /// Build a config whose only load-bearing field for [`enforce_budget`] is the
+    /// p99 budget; the store path is never opened by the gate.
+    fn config_with_p99_budget(budget: Duration) -> LoadgenConfig {
+        LoadgenConfig {
+            arrival_rate_hz: 100,
+            duration: Duration::from_secs(1),
+            tool_latency: Duration::from_millis(2),
+            store: StoreBacking::Sqlite {
+                path: PathBuf::from("unused-by-enforce-budget.sqlite"),
+            },
+            p99_budget: budget,
+            rss_growth_budget_bytes: u64::MAX,
+        }
+    }
+
+    /// Hand-built report with a chosen attempt count and untruncated p99. RSS is
+    /// left unmeasured so the growth check is a no-op and the p99/empty-run paths
+    /// are isolated.
+    fn make_report(calls_attempted: u64, p99_nanos: u128) -> LoadReport {
+        LoadReport {
+            calls_attempted,
+            calls_ok: calls_attempted,
+            ttfrh_ms: 0,
+            p50_ms: 0,
+            p99_ms: p99_nanos / 1_000_000,
+            p99_nanos,
+            rss_start_bytes: None,
+            rss_end_bytes: None,
+            exporter_queue_high_water: None,
+            within_budget: false,
+        }
+    }
+
+    #[test]
+    fn enforce_budget_rejects_empty_run() {
+        let config = config_with_p99_budget(Duration::from_millis(50));
+        let report = make_report(0, 0);
+        assert!(
+            matches!(
+                enforce_budget(&report, &config),
+                Err(LoadgenError::EmptyRun)
+            ),
+            "a run that dispatched no calls must deny with EmptyRun"
+        );
+    }
+
+    #[test]
+    fn enforce_budget_compares_untruncated_p99() {
+        let config = config_with_p99_budget(Duration::from_millis(50));
+
+        // 50.9ms truncates to 50ms but is over the 50ms budget on the nanos.
+        let over = make_report(100, 50_900_000);
+        assert_eq!(over.p99_ms, 50, "the display value truncates to the budget");
+        assert!(
+            matches!(
+                enforce_budget(&over, &config),
+                Err(LoadgenError::P99Exceeded { .. })
+            ),
+            "a p99 fractionally over budget must deny on the untruncated nanos"
+        );
+
+        // Exactly at budget passes.
+        let at = make_report(100, 50_000_000);
+        assert!(
+            enforce_budget(&at, &config).is_ok(),
+            "a p99 exactly at budget must pass"
+        );
+    }
 }

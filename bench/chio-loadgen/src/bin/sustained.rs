@@ -31,11 +31,11 @@ const DEFAULT_RSS_BUDGET_MB: u64 = 64;
 
 const BYTES_PER_MEBIBYTE: u64 = 1024 * 1024;
 
-/// Per-invoke stub tool-server latency. Held nonzero so the measured dispatch
-/// path has a floor above sub-millisecond truncation: a zero-latency stub could
-/// report `p99_ms == 0`, which would let a `CHIO_LOADGEN_P99_BUDGET_MS=0` gate
-/// pass despite a real dispatch cost. It also models a minimal downstream tool
-/// cost, and stays well under the arrival interval at the default rate.
+/// Per-invoke fixture tool-server latency. Held nonzero so the measured dispatch
+/// path has a floor above sub-millisecond truncation: a zero-latency fixture
+/// could report a p99 of zero, which would let a `CHIO_LOADGEN_P99_BUDGET_MS=0`
+/// gate pass despite a real dispatch cost. It also models a minimal downstream
+/// tool cost, and stays well under the arrival interval at the default rate.
 const TOOL_LATENCY: Duration = Duration::from_millis(2);
 
 fn main() -> ExitCode {
