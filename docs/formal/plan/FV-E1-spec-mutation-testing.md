@@ -41,6 +41,10 @@ activation ratio.
 - The full specification campaign enumerated 33 mutants across seven sources,
   killed 32, timed out one, and produced no survivor or unviable result. Global
   activation was 96.97 percent, and every source met its 90 percent target.
+  The retained v1 report is bound to commit
+  `7b24142e8523fe08e501063dbf3d4f6cea3397be`, completed at
+  `2026-07-16T11:08:14Z`, and has SHA-256
+  `82878e03aaafa1ceeb1f791386cffd57f9f88453b24113bd51e43b67996a66c2`.
 - The retained Lean pilot enumerated 45 mutants, killed 33, and left 12
   survivors with no timeout, for 73.333 percent activation. This pilot remains
   visible but does not participate in the scored release ratchet.
