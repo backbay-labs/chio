@@ -713,7 +713,7 @@ Extended on 2026-03-26: `chio-kernel` now also ships `AcpPaymentAdapter`, a
 seller-scoped shared-payment-token reference bridge. Governed intents can now
 carry typed commerce approval context (`seller`, `shared_payment_token_id`),
 grants can require an exact seller scope, and receipts preserve the commerce
-approval evidence alongside the financial payment block. The built-in ACP
+approval evidence alongside the financial payment block. The built-in ACP-Commerce
 adapter is authorize-only for the same reason: capture, release, and refund
 require an explicit rail acknowledgement endpoint.
 

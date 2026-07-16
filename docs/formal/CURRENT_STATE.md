@@ -299,7 +299,7 @@ nightly).
 ## Adjacent estates
 
 - Fuzzing: 27 libFuzzer targets in `fuzz/` (standalone workspace) spanning
-  canonical JSON, envelopes (MCP/A2A/ACP), attestation, DIDs, federation
+  canonical JSON, envelopes (MCP/A2A/ACP-Client), attestation, DIDs, federation
   trust, receipts and Merkle checkpoints, policy parse/compile, SQL and tool
   action guards, and wasm boundaries (`wasm_guard_escape` with 8 escape-class
   seeds plus the structure-aware `wasm_guard_smith` target). A structure-aware

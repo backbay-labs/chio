@@ -773,17 +773,21 @@ mod tests {
         let atomic_path = tempdir.path().join("atomic.sqlite");
         let atomic_store = SqliteAgentWebReplayStore::open_with_capacity(&atomic_path, 1, 1)
             .test_expect("atomic replay store opens");
+        let atomic_now = unix_now();
         atomic_store
             .check_and_insert(
-                now,
+                atomic_now,
                 &[
-                    replay_entry_in_scope(1, "batch-one", now + 20),
-                    replay_entry_in_scope(2, "batch-two", now + 20),
+                    replay_entry_in_scope(1, "batch-one", atomic_now + 20),
+                    replay_entry_in_scope(2, "batch-two", atomic_now + 20),
                 ],
             )
             .test_expect_err("oversized batch rejects atomically");
         atomic_store
-            .check_and_insert(now, &[replay_entry_in_scope(1, "batch-one", now + 20)])
+            .check_and_insert(
+                atomic_now,
+                &[replay_entry_in_scope(1, "batch-one", atomic_now + 20)],
+            )
             .test_expect("failed oversized batch reserved no prefix");
     }
 
@@ -964,15 +968,15 @@ mod tests {
     fn reopening_with_lower_capacity_rejects_without_evicting_live_rows() {
         let tempdir = tempfile::tempdir().test_expect("tempdir creates");
         let path = tempdir.path().join("replay.sqlite");
-        let now = unix_now();
         let store = SqliteAgentWebReplayStore::open_with_capacity(&path, 2, 2)
             .test_expect("replay store opens");
+        let now = unix_now();
         store
             .check_and_insert(
                 now,
                 &[
-                    replay_entry_in_scope(1, "one", now + 100),
-                    replay_entry_in_scope(1, "two", now + 100),
+                    replay_entry_in_scope(1, "one", now + 3_600),
+                    replay_entry_in_scope(1, "two", now + 3_600),
                 ],
             )
             .test_expect("live markers reserve");
@@ -990,8 +994,9 @@ mod tests {
 
         let reopened = SqliteAgentWebReplayStore::open_with_capacity(&path, 2, 2)
             .test_expect("original capacity reopens");
+        let replay_now = unix_now();
         let replay_error = reopened
-            .check_and_insert(now, &[replay_entry_in_scope(1, "one", now + 100)])
+            .check_and_insert(replay_now, &[replay_entry_in_scope(1, "one", now + 3_600)])
             .test_expect_err("failed lower-capacity open did not evict live rows");
         assert_eq!(
             replay_error,
