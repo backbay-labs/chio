@@ -31,6 +31,10 @@ job_end = workflow.index("\n  kani-manifest-pr:", job_start)
 job = workflow[job_start:job_end]
 if "timeout-minutes: 120" not in job:
     raise SystemExit("public Kani PR job does not retain its 120-minute budget")
+if workflow.count("if ! cargo kani --version >/dev/null 2>&1; then") != 2:
+    raise SystemExit("formal PR Kani jobs do not repair incomplete tool caches")
+if workflow.count("cargo kani setup") != 2:
+    raise SystemExit("formal PR Kani jobs do not ensure the verifier is installed")
 
 ci = Path(".github/workflows/ci.yml").read_text(encoding="utf-8")
 for command in (

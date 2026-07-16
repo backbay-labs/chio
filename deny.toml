@@ -68,6 +68,10 @@ ignore = [
     # crate versions. Clears when the iroh/plist chain updates quick-xml upstream.
     "RUSTSEC-2026-0194",
     "RUSTSEC-2026-0195",
+    # last-checked = 2026-07-16; atomic-polyfill is unmaintained (RUSTSEC-2023-0089). Postcard 1.1.3
+    # still requires heapless 0.7, whose cas feature depends on atomic-polyfill. No compatible postcard release
+    # permits heapless 0.8 or portable-atomic yet. Clear this exception when the postcard/heapless chain updates.
+    "RUSTSEC-2023-0089",
 ]
 
 # cargo-deny 0.16 enforces an explicit allow-list only: unlisted licenses are
@@ -223,6 +227,21 @@ allow = ["BlueOak-1.0.0"]
 name = "sized-chunks"
 allow = ["MPL-2.0"]
 
+[[licenses.exceptions]]
+# last-checked = 2026-07-16. These Unlicense crates implement the browser
+# WebSocket transport pulled by iroh-relay. Keep the approval local to the
+# three transitive crates instead of widening the workspace allow-list.
+name = "async_io_stream"
+allow = ["Unlicense"]
+
+[[licenses.exceptions]]
+name = "pharos"
+allow = ["Unlicense"]
+
+[[licenses.exceptions]]
+name = "ws_stream_wasm"
+allow = ["Unlicense"]
+
 # Duplicate-version policy.
 #
 # `multiple-versions = "deny"` is the gate: any NEW duplicated crate name fails
@@ -315,62 +334,19 @@ name = "bitflags"
 version = "1"
 
 [[bans.skip]]
-# last-checked = 2026-05-02. Alloy 1.8.x and older alloy-core
-# transitives keep two alloy-primitives majors until the web3 stack unifies.
-name = "alloy-primitives"
-
-[[bans.skip]]
-name = "alloy-sol-macro"
-
-[[bans.skip]]
-name = "alloy-sol-macro-expander"
-
-[[bans.skip]]
-name = "alloy-sol-macro-input"
-
-[[bans.skip]]
-name = "alloy-sol-types"
-
-[[bans.skip]]
-# last-checked = 2026-05-02. ASN.1 parser splits come from
-# sigstore, webauthn, and DCAP quote parsing stacks.
-name = "asn1-rs"
-
-[[bans.skip]]
-name = "asn1-rs-derive"
-
-[[bans.skip]]
-name = "asn1-rs-impl"
-
-[[bans.skip]]
 name = "dashmap"
-
-[[bans.skip]]
-name = "der-parser"
 
 [[bans.skip]]
 name = "half"
 
 [[bans.skip]]
-name = "oid-registry"
-
-[[bans.skip]]
 name = "redox_users"
-
-[[bans.skip]]
-name = "syn-solidity"
-
-[[bans.skip]]
-name = "synstructure"
 
 [[bans.skip]]
 name = "wit-bindgen"
 
 [[bans.skip]]
 name = "wit-parser"
-
-[[bans.skip]]
-name = "x509-parser"
 
 [[bans.skip]]
 name = "ahash"
@@ -550,6 +526,69 @@ name = "toml"
 name = "toml_datetime"
 
 [[bans.skip]]
+# last-checked = 2026-07-16. Apple platform bindings still split across
+# security-framework 2.x and 3.x consumers.
+name = "core-foundation"
+
+[[bans.skip]]
+# last-checked = 2026-07-16. The credential and Iroh stacks are migrating
+# between the stable and release-candidate RustCrypto signature families.
+name = "curve25519-dalek"
+
+[[bans.skip]]
+name = "ed25519"
+
+[[bans.skip]]
+name = "ed25519-dalek"
+
+[[bans.skip]]
+name = "fiat-crypto"
+
+[[bans.skip]]
+# last-checked = 2026-07-16. Iroh and the existing cache users require
+# different lru majors until their upstream dependency ranges converge.
+name = "lru"
+
+[[bans.skip]]
+# last-checked = 2026-07-16. RustCrypto 0.10 and 0.11 release families
+# currently require different PEM and PKCS dependency generations.
+name = "pem-rfc7468"
+
+[[bans.skip]]
+# last-checked = 2026-07-16. Legacy sigstore code generation retains the
+# proc-macro-error 0.4 family while other macros use 1.x.
+name = "proc-macro-error"
+
+[[bans.skip]]
+name = "proc-macro-error-attr"
+
+[[bans.skip]]
+# last-checked = 2026-07-16. Iroh and direct TLS consumers have not yet
+# converged on one rustls-platform-verifier release.
+name = "rustls-platform-verifier"
+
+[[bans.skip]]
+# last-checked = 2026-07-16. futures-buffered requires spin 0.10 while
+# lazy_static's no-std feature remains on spin 0.9.
+name = "spin"
+
+[[bans.skip]]
+# last-checked = 2026-07-16. Cargo tooling and runtime dependencies still
+# span adjacent strum and toml_edit release families.
+name = "strum"
+
+[[bans.skip]]
+name = "strum_macros"
+
+[[bans.skip]]
+name = "toml_edit"
+
+[[bans.skip]]
+# last-checked = 2026-07-16. Browser transport dependencies require adjacent
+# wasm-streams releases until the Iroh WebAssembly graph converges.
+name = "wasm-streams"
+
+[[bans.skip]]
 name = "tower"
 
 [[bans.skip]]
@@ -578,9 +617,6 @@ name = "windows_aarch64_msvc"
 
 [[bans.skip]]
 name = "windows_i686_gnu"
-
-[[bans.skip]]
-name = "windows_i686_gnullvm"
 
 [[bans.skip]]
 name = "windows_i686_msvc"

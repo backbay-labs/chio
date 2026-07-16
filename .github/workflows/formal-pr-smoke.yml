@@ -254,12 +254,13 @@ jobs:
           key: ${{ runner.os }}-kani-${{ env.CHIO_KANI_VERSION }}
 
       - name: Install Kani
-        if: steps.kani-cache.outputs.cache-hit != 'true'
         env:
           CARGO_TARGET_DIR: ${{ runner.temp }}/chio-kani-tool-target
         run: |
           set -euo pipefail
-          cargo install kani-verifier --locked --version "${CHIO_KANI_VERSION}"
+          if ! cargo kani --version >/dev/null 2>&1; then
+            cargo install kani-verifier --locked --version "${CHIO_KANI_VERSION}"
+          fi
           cargo kani setup
 
       - name: Verify Kani version
@@ -314,12 +315,13 @@ jobs:
           key: ${{ runner.os }}-kani-${{ env.CHIO_KANI_VERSION }}
 
       - name: Install Kani
-        if: steps.kani-cache.outputs.cache-hit != 'true'
         env:
           CARGO_TARGET_DIR: ${{ runner.temp }}/chio-kani-tool-target
         run: |
           set -euo pipefail
-          cargo install kani-verifier --locked --version "${CHIO_KANI_VERSION}"
+          if ! cargo kani --version >/dev/null 2>&1; then
+            cargo install kani-verifier --locked --version "${CHIO_KANI_VERSION}"
+          fi
           cargo kani setup
 
       - name: Verify Kani version

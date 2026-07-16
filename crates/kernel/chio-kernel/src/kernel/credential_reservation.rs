@@ -1,4 +1,5 @@
 use super::*;
+use chio_log_redact::redacted;
 
 fn run_credential_store_operation<T>(
     reservation_id: &str,
@@ -199,7 +200,7 @@ impl Drop for DispatchCredentialReservation<'_> {
         }
         if let Err(error) = self.rollback_entries() {
             tracing::warn!(
-                reason = %chio_log_redact::redacted!(&error),
+                reason = %redacted!(&error),
                 "dispatch credential rollback failed while dropping an evaluation"
             );
         }

@@ -109,7 +109,7 @@ impl ChioKernel {
             ) {
                 warn!(
                     request_id = %cleanup.request.request_id,
-                    reason = %reason,
+                    reason = %redacted!(&reason),
                     "runtime admission reservation release failed during pre-dispatch cleanup"
                 );
                 let hold_ids = reserved_runtime_admission_ids(release_metadata.as_ref());
@@ -576,7 +576,7 @@ impl<'a> PostAdmissionDropGuard<'a> {
             .unwrap_or_else(|| "child receipt append outcome is unknown".to_string());
         warn!(
             request_id = %self.request.request_id,
-            reason = %reason,
+            reason = %redacted!(&reason),
             unpersisted_child_receipts = self.child_receipts.len(),
             append_outcome_unknown_child_receipts = self
                 .child_receipts_with_unknown_append_outcome

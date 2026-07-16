@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use chio_log_redact::redacted;
 use tracing::debug;
 
 use crate::budget_store::{BudgetGuaranteeLevel, BudgetMutationKind};
@@ -244,7 +245,7 @@ impl ChioKernel {
                 debug!(
                     capability_id,
                     grant_index,
-                    reason = %error,
+                    reason = %redacted!(&error),
                     "reservation audit skipped because the journal is unavailable"
                 );
                 return;
@@ -321,7 +322,7 @@ impl ChioKernel {
                 debug!(
                     capability_id,
                     grant_index,
-                    reason = %error,
+                    reason = %redacted!(&error),
                     "reservation audit skipped because the usage row is unavailable"
                 );
                 return;
