@@ -198,8 +198,9 @@ threat model lives in [spec/SECURITY.md](spec/SECURITY.md) and the coverage map 
 
 The formal verification roadmap was executed through its local acceptance
 gates on 2026-07-15 against implementation commit
-`d292f14df1c493873199f4f9d969ade00472ff28`. Retained full-cycle mutation
-evidence for that commit completed on 2026-07-16. The repository now binds
+`d292f14df1c493873199f4f9d969ade00472ff28`. Retained full-cycle proof-mutation
+evidence was refreshed on 2026-07-16 against prerequisite commit
+`a871396bffd010500f680c035e7b52c1867f38e2`. The repository now binds
 production Rust decisions to Lean, authenticated Aeneas extraction, Creusot
 contracts, Kani harnesses, TLA+/Apalache models, differential tests,
 concurrency exploration, and mutation evidence. The generated

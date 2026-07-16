@@ -182,10 +182,10 @@ inventory_sha256 = "b21e6ef43ec0def5eaaec41e3d963d16708da61d3be5d1c7a6535fbd40e8
 rust_paths = ["crates/kernel/chio-kernel-core/src/formal_core.rs"]
 
 [target.latest_full_cycle]
-commit = "d292f14df1c493873199f4f9d969ade00472ff28"
-measured_at = "2026-07-16T04:23:44Z"
-evidence = "formal/mutation/evidence/proof-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json"
-report_sha256 = "c9322d3e34f3b6390e479df2e0757834ada17e53f1ab60b026673c47d0661a8e"
+commit = "a871396bffd010500f680c035e7b52c1867f38e2"
+measured_at = "2026-07-16T18:59:33Z"
+evidence = "formal/mutation/evidence/proof-mutants-a871396bffd010500f680c035e7b52c1867f38e2.json"
+report_sha256 = "d51114555cd3c2d3294c1b808d2e061a8611f2ce7f6067b735d725b00f59271c"
 enumerated = 54
 killed = 50
 survived = 1
@@ -203,10 +203,10 @@ inventory_sha256 = "b21e6ef43ec0def5eaaec41e3d963d16708da61d3be5d1c7a6535fbd40e8
 rust_paths = ["crates/kernel/chio-kernel-core/src/formal_aeneas.rs"]
 
 [target.latest_full_cycle]
-commit = "d292f14df1c493873199f4f9d969ade00472ff28"
-measured_at = "2026-07-16T04:23:44Z"
-evidence = "formal/mutation/evidence/proof-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json"
-report_sha256 = "c9322d3e34f3b6390e479df2e0757834ada17e53f1ab60b026673c47d0661a8e"
+commit = "a871396bffd010500f680c035e7b52c1867f38e2"
+measured_at = "2026-07-16T18:59:33Z"
+evidence = "formal/mutation/evidence/proof-mutants-a871396bffd010500f680c035e7b52c1867f38e2.json"
+report_sha256 = "d51114555cd3c2d3294c1b808d2e061a8611f2ce7f6067b735d725b00f59271c"
 enumerated = 112
 killed = 110
 survived = 0

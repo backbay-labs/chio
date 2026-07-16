@@ -17,8 +17,9 @@ registered, with six path-scoped gates frozen until qualifying workflow runs
 exist. No hosted success streak is inferred from local execution.
 Implementation was fixed at commit
 `d292f14df1c493873199f4f9d969ade00472ff28` on 2026-07-15. The retained
-proof-model report is bound to that commit, while the v1 schema migration and
-refreshed specification report are bound to
+proof-model report was refreshed against prerequisite commit
+`a871396bffd010500f680c035e7b52c1867f38e2` on 2026-07-16, while the v1 schema
+migration and refreshed specification report are bound to
 `7b24142e8523fe08e501063dbf3d4f6cea3397be` on 2026-07-16.
 
 Effort scale: S is days, M is one to two weeks, L is a month or more of

@@ -337,12 +337,15 @@ Rust discovery was repeated after FV-A1 and the authenticated generated-code
 equivalence work changed the mutated model surface; the current integrated
 inventory is recorded above.
 
-The retained integrated full cycle is bound to implementation commit
-`d292f14df1c493873199f4f9d969ade00472ff28`. It enumerated 54 mutants in
-`formal_core.rs` and 112 in `formal_aeneas.rs`, killed 50 and 110 respectively,
-left one survivor in `formal_core.rs`, classified three and two as unviable,
-and recorded no timeout. Both source-scoped activation ratios exceeded the 90
-percent target and both viability ratios exceeded the 80 percent floor.
+The retained integrated full cycle is bound to prerequisite commit
+`a871396bffd010500f680c035e7b52c1867f38e2`, measured at
+`2026-07-16T18:59:33Z`, with SHA-256
+`d51114555cd3c2d3294c1b808d2e061a8611f2ce7f6067b735d725b00f59271c`. It
+enumerated 54 mutants in `formal_core.rs` and 112 in `formal_aeneas.rs`, killed
+50 and 110 respectively, left one survivor in `formal_core.rs`, classified
+three and two as unviable, and recorded no timeout. Both source-scoped
+activation ratios exceeded the 90 percent target and both viability ratios
+exceeded the 80 percent floor.
 
 [FV-E5](FV-E5-lane-ratchets.md) registers the scheduled `spec-mutants` and
 `proof-mutants` gates with `activation_target = 90`, and the generic lane

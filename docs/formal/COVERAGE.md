@@ -302,7 +302,7 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 
 **mutants**
 
-- `formal/mutation/registry.toml::proof-formal-aeneas` (activation_ratio_percent=100, activation_target_percent=90, commit=d292f14df1c493873199f4f9d969ade00472ff28, evidence=formal/mutation/evidence/proof-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json, inventory_sha256=b21e6ef43ec0def5eaaec41e3d963d16708da61d3be5d1c7a6535fbd40e81d45, measured_at=2026-07-16T04:23:44Z, measurement=full-cycle, mutation_lane=proof-mutants, report=target/formal/proof-mutants/outcomes.json, source_aggregate=crates/kernel/chio-kernel-core/src/formal_aeneas.rs)
+- `formal/mutation/registry.toml::proof-formal-aeneas` (activation_ratio_percent=100, activation_target_percent=90, commit=a871396bffd010500f680c035e7b52c1867f38e2, evidence=formal/mutation/evidence/proof-mutants-a871396bffd010500f680c035e7b52c1867f38e2.json, inventory_sha256=b21e6ef43ec0def5eaaec41e3d963d16708da61d3be5d1c7a6535fbd40e81d45, measured_at=2026-07-16T18:59:33Z, measurement=full-cycle, mutation_lane=proof-mutants, report=target/formal/proof-mutants/outcomes.json, source_aggregate=crates/kernel/chio-kernel-core/src/formal_aeneas.rs)
 
 ### `chio-kernel-core::formal_core.rs`
 
@@ -320,7 +320,7 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 
 **mutants**
 
-- `formal/mutation/registry.toml::proof-formal-core` (activation_ratio_percent=98.039, activation_target_percent=90, commit=d292f14df1c493873199f4f9d969ade00472ff28, evidence=formal/mutation/evidence/proof-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json, inventory_sha256=b21e6ef43ec0def5eaaec41e3d963d16708da61d3be5d1c7a6535fbd40e81d45, measured_at=2026-07-16T04:23:44Z, measurement=full-cycle, mutation_lane=proof-mutants, report=target/formal/proof-mutants/outcomes.json, source_aggregate=crates/kernel/chio-kernel-core/src/formal_core.rs)
+- `formal/mutation/registry.toml::proof-formal-core` (activation_ratio_percent=98.039, activation_target_percent=90, commit=a871396bffd010500f680c035e7b52c1867f38e2, evidence=formal/mutation/evidence/proof-mutants-a871396bffd010500f680c035e7b52c1867f38e2.json, inventory_sha256=b21e6ef43ec0def5eaaec41e3d963d16708da61d3be5d1c7a6535fbd40e81d45, measured_at=2026-07-16T18:59:33Z, measurement=full-cycle, mutation_lane=proof-mutants, report=target/formal/proof-mutants/outcomes.json, source_aggregate=crates/kernel/chio-kernel-core/src/formal_core.rs)
 
 ### `chio-kernel-core::kani_public_harnesses.rs`
 
@@ -893,7 +893,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 
 - Generator version: `3`
 - Regenerate: `cargo xtask gen proof-coverage`
-- Input digest: `46a2fc6cbe642e1a3bf59ab16ba19757d3c38a652dd893ed89b4c1734a1d0b4b`
+- Input digest: `423715ceacacf9a83647289d0603990ec609cb6ca364d16ffe25a3a6cef97ad2`
 - Git commit: `@GIT_COMMIT@` (resolved in coverage.json and Proof Room packages)
 - Row identity: file rows use package-relative Rust paths; crate-only artifacts use `package::*`.
 
@@ -904,7 +904,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `.dst/harnesses.toml`: `483b738539a5a474295ea7d568b6b4362afd8b1d4f66001e24899f72039ba4df`
 - `.kani/harnesses.toml`: `1991d9c16e9233c219bb01983df03a66612ba90688846369695eb9a43548f5f0`
 - `.loom/harnesses.toml`: `5fccf3f6760229ce3004d587cc0e1da137cb59c34fa3fd1483d3ac05b0753cd3`
-- `Cargo.lock`: `e3db9e93b6d39b2d005177c17477453f5caa4b0765cef9845f65f1024a215193`
+- `Cargo.lock`: `8572da905d29ce7fecfef6ec9a1ed81877c882020ae83278a312ee1c6e2c131c`
 - `Cargo.toml`: `86226dee45c61ac0c5ff7a0ce38c22daa72ecf92cd23fb30c11a3f941ae8a5f8`
 - `audits/evidence/mutants/chio-weights/2026-05-08.json`: `452aaf5734039a489967a629ec3c6b1b9d1351e06ec1f8e76c136ae389477ca7`
 - `audits/mutation/per-crate-configs/chio-anchor.toml`: `9d5a1f0e850ddadc3e621dd67282bb36460e13d3cb6e1af06a3fc03597af8ec3`
@@ -1001,8 +1001,8 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `crates/kernel/chio-kernel-core/src/scope.rs`: `9fd9f24eea98448bb7b1889cae90d97a5c40ff0c38e1567d9b24b631a55d4768`
 - `crates/kernel/chio-kernel/src/kernel/delegation.rs`: `198816972f2c2c687720c6dc70aadc211c1c49286ff996447dc8001f248b6b7f`
 - `crates/kernel/chio-kernel/src/kernel/dispatch.rs`: `29016f384cdc99df5601c06e2c40c3c26aecd9179f86f99419ab053177d0368d`
-- `crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs`: `4afab94c0dfa557ac2490be6d0d10c9bb9147f9eead0327e094dafaf1163adb6`
-- `crates/kernel/chio-kernel/src/kernel/ledger_audit.rs`: `88613b5312b77e61f7413466e49720a9935a373c6231d6baa25055dcdb872b24`
+- `crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs`: `01e9336d0ed363f53da298fd5d87066823ea112ac397dde8589c1e5058794386`
+- `crates/kernel/chio-kernel/src/kernel/ledger_audit.rs`: `14b76fd912c7e5e511e2572125efbfb9c97a591a12850712800e72972cff3d06`
 - `crates/kernel/chio-kernel/src/kernel/responses/allow_responses.rs`: `3df8766141089715fcddc1aac01967bca15b6239875fadddf0669ea6ebf7efc1`
 - `crates/kernel/chio-kernel/src/kernel/responses/finalization.rs`: `161789ac6bc2649367c9d84a16df423b5ac0e95940d9651048ed47bdf237bb51`
 - `crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs`: `d2c3b3776657e1d1314866f5ffc99e0732a53687c23a66bd44d2c4085efb71c0`
@@ -1081,9 +1081,9 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `formal/lean4/Chio/Chio/Capability/Delegation.lean`: `a6a44ca25cb3fec5385b6a2d6703d933236453d8d5b9b336061a42f675d2cfa6`
 - `formal/lean4/Chio/Chio/Proofs/CanonicalInjective.lean`: `a75b5101c8c2c7b62d90ea6909558aca59b1e0a8a5960237825f17e527e71d04`
 - `formal/lean4/Chio/Chio/Proofs/Receipt.lean`: `9c99eff785748b03d1086ed3c8c6e802ca1f0dd538332204b666af16f4987dd5`
-- `formal/mutation/evidence/proof-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json`: `c9322d3e34f3b6390e479df2e0757834ada17e53f1ab60b026673c47d0661a8e`
+- `formal/mutation/evidence/proof-mutants-a871396bffd010500f680c035e7b52c1867f38e2.json`: `d51114555cd3c2d3294c1b808d2e061a8611f2ce7f6067b735d725b00f59271c`
 - `formal/mutation/evidence/spec-mutants-7b24142e8523fe08e501063dbf3d4f6cea3397be.json`: `82878e03aaafa1ceeb1f791386cffd57f9f88453b24113bd51e43b67996a66c2`
-- `formal/mutation/registry.toml`: `449cfa4db1c2d3965e2d2d57716f39b794ca8c061506f26405b3f9a6a76b33c2`
+- `formal/mutation/registry.toml`: `4fa14b4acf2b612b79d407eb306a36879a0bbbee35a6be9c044689af5bb72c14`
 - `formal/proof-manifest.toml`: `b596f70395a3d6f88f7aa9868b3987056515564f4302fb60927cb63fcf2f42d0`
 - `formal/rust-verification/creusot-contracts.toml`: `83000c98743013d3d6d468976a163edaf16d0d621070410d741f146bf61a28a5`
 - `formal/rust-verification/formal-mutants.toml`: `5f15de2f3833b11db3d783d05ab6efcd2c49840ede010fe7ec54fc2846c48fc6`

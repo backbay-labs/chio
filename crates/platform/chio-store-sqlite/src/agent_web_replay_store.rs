@@ -928,10 +928,11 @@ mod tests {
         drop(connection);
 
         let store = SqliteAgentWebReplayStore::open(&path).test_expect("legacy store migrates");
+        let check_time = unix_now();
         for scope_seed in [1, 2] {
             let error = store
                 .check_and_insert(
-                    now,
+                    check_time,
                     &[replay_entry_in_scope(
                         scope_seed,
                         "legacy-shared",
