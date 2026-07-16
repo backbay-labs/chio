@@ -318,6 +318,18 @@ mod tests {
     }
 
     #[test]
+    fn dispatch_interval_ns_computes_the_pacer_interval() {
+        // Deterministic pacer correctness: dispatches are spaced by
+        // 1e9 / rate nanoseconds. The integration test cannot assert achieved
+        // throughput under a loaded runner, so the interval math is pinned here.
+        assert_eq!(dispatch_interval_ns(200), 5_000_000);
+        assert_eq!(dispatch_interval_ns(1_000), 1_000_000);
+        assert_eq!(dispatch_interval_ns(1), 1_000_000_000);
+        // A zero rate has no interval; run_sustained rejects it before pacing.
+        assert_eq!(dispatch_interval_ns(0), 0);
+    }
+
+    #[test]
     fn enforce_budget_rejects_empty_run() {
         let config = config_with_p99_budget(Duration::from_millis(50));
         let report = make_report(0, 0);
