@@ -56,6 +56,25 @@ fn run_sustained_rejects_zero_arrival_rate() {
 }
 
 #[test]
+fn run_sustained_rejects_unrepresentable_duration() {
+    let config = LoadgenConfig {
+        arrival_rate_hz: 100,
+        duration: Duration::from_secs(u64::MAX),
+        tool_latency: Duration::ZERO,
+        store: StoreBacking::Memory,
+        p99_budget: Duration::from_millis(50),
+        rss_growth_budget_bytes: 256 * 1024 * 1024,
+    };
+
+    let harness = StackHarness::boot_smoke(&config).test_unwrap();
+    let error = run_sustained(&harness, &config).test_unwrap_err();
+    assert!(
+        matches!(error, LoadgenError::DurationTooLong),
+        "a duration near u64::MAX seconds must deny with DurationTooLong, not panic, got {error:?}"
+    );
+}
+
+#[test]
 fn sustained_smoke_reports_measured_percentiles() {
     let dir = tempfile::tempdir().test_unwrap();
     let db_path = dir.path().join("receipts.sqlite");

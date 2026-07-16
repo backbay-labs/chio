@@ -64,6 +64,12 @@ pub fn run_sustained(
     let interval_ns = dispatch_interval_ns(config.arrival_rate_hz);
     let durable = harness.store().is_some();
 
+    // Fail closed before allocating: a duration too large to place on the
+    // monotonic clock denies now, rather than after committing the latency buffer
+    // or aborting on an `Instant + Duration` overflow once the run is underway.
+    let run_start = Instant::now();
+    let run_end = schedule_run_end(run_start, config.duration)?;
+
     // Pre-size the latency buffer before the RSS baseline is sampled: the backing
     // allocation (and any push-driven doubling spikes during the run) is then
     // charged to the process before rss_start, not against the measured RSS
@@ -74,8 +80,6 @@ pub fn run_sustained(
     let rss_start = rss::current_rss_bytes();
     let mut rss_high_water = rss_start;
 
-    let run_start = Instant::now();
-    let run_end = run_start + config.duration;
     let mut next_rss_sample = run_start + RSS_SAMPLE_INTERVAL;
 
     let mut calls_attempted: u64 = 0;
@@ -88,6 +92,14 @@ pub fn run_sustained(
         let now = Instant::now();
         if target > now {
             thread::sleep(target - now);
+        }
+
+        // Recheck the deadline after pacing to the tick instant: the top-of-loop
+        // check can pass just before this final sleep, and dispatching a tick that
+        // lands on or past run_end would overstate the window by one call (a 1s run
+        // at 1hz would otherwise dispatch at t=0 and again at t=1s = 2 calls).
+        if Instant::now() >= run_end {
+            break;
         }
 
         while Instant::now() >= next_rss_sample {
@@ -212,6 +224,16 @@ fn dispatch_interval_ns(arrival_rate_hz: u32) -> u64 {
     1_000_000_000 / u64::from(arrival_rate_hz)
 }
 
+/// Absolute run deadline for the pacer, failing closed when the configured
+/// duration cannot be represented on the monotonic clock. `Instant + Duration`
+/// panics on overflow, so an extreme duration must deny with a typed error before
+/// the run starts rather than abort the process.
+fn schedule_run_end(run_start: Instant, duration: Duration) -> Result<Instant, LoadgenError> {
+    run_start
+        .checked_add(duration)
+        .ok_or(LoadgenError::DurationTooLong)
+}
+
 /// Raise `high_water` to `sample` when `sample` is larger (or was previously
 /// unmeasured). A `None` sample leaves the high-water mark untouched.
 fn fold_high_water(high_water: &mut Option<u64>, sample: Option<u64>) {
@@ -277,6 +299,22 @@ mod tests {
             exporter_queue_high_water: None,
             within_budget: false,
         }
+    }
+
+    #[test]
+    fn schedule_run_end_rejects_unrepresentable_duration() {
+        let start = Instant::now();
+        assert!(
+            matches!(
+                schedule_run_end(start, Duration::from_secs(u64::MAX)),
+                Err(LoadgenError::DurationTooLong)
+            ),
+            "a duration near u64::MAX seconds must deny with DurationTooLong, not panic"
+        );
+        assert!(
+            schedule_run_end(start, Duration::from_secs(1)).is_ok(),
+            "a representable duration must schedule a run deadline"
+        );
     }
 
     #[test]

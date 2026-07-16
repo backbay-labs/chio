@@ -9,6 +9,7 @@
 //! located through `CARGO_BIN_EXE_chaos_victim`; the test never shells out to
 //! cargo.
 
+use std::os::unix::process::ExitStatusExt;
 use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::Duration;
@@ -31,6 +32,10 @@ const DEFAULT_ITERATIONS: u64 = 5;
 /// Victim loop bound, sized so the victim cannot drain it before the longest
 /// seeded kill delay lands. Raising this is the fix if `InjectionNoOp` fires.
 const MAX_RECEIPTS: u64 = 1_000_000;
+
+/// SIGKILL signal number on Unix. `child.kill()` sends this; the reaped status
+/// must carry it for a round to count as a genuine kill-while-alive.
+const SIGKILL: i32 = 9;
 
 /// SIGKILL the append/flush/ack victim mid-run, round after round against one
 /// reused store, and prove that no acknowledged receipt is ever lost after
@@ -90,10 +95,33 @@ fn chaos_kill_mid_append_preserves_durable_acks() {
             }
             None => {
                 child.kill().test_expect("SIGKILL victim");
-                kills_while_alive += 1;
+                let status = child.wait().test_expect("reap victim");
+                // kill() reports success even against a victim that exited on its
+                // own in the window after try_wait returned None but before the
+                // signal landed, so the reaped status is the real evidence. Only a
+                // process the signal actually terminated is a genuine
+                // kill-while-alive; a self-exit that raced the signal is the same
+                // benign race as the try_wait Some arm. With MAX_RECEIPTS a clean
+                // drain is impossible, so a non-signal exit is either a success
+                // (benign race) or a victim crash that must fail the round.
+                if status.signal() == Some(SIGKILL) {
+                    kills_while_alive += 1;
+                } else {
+                    raced_exit += 1;
+                    eprintln!(
+                        "round {round}: victim self-exited (status {status:?}) racing the kill after {delay_ms}ms"
+                    );
+                    if !status.success() {
+                        panic!(
+                            "{}",
+                            ChaosError::Victim(format!(
+                                "round {round}: victim exited with failure status {status:?} racing the kill; a victim crash is a harness bug, not a race"
+                            ))
+                        );
+                    }
+                }
             }
         }
-        let _ = child.wait().test_expect("reap victim");
 
         verified_acks_total += assert_round_invariants(&db_path, &ack_path, round);
     }

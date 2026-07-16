@@ -73,4 +73,6 @@ pub enum LoadgenError {
     },
     #[error("RSS grew {grew_bytes} bytes over budget {budget_bytes}")]
     RssGrowthExceeded { grew_bytes: u64, budget_bytes: u64 },
+    #[error("run duration is too large to schedule on the monotonic clock")]
+    DurationTooLong,
 }

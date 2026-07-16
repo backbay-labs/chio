@@ -20,7 +20,7 @@ use std::fmt::Display;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::str::FromStr;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use chio_loadgen::{enforce_budget, run_sustained, LoadgenConfig, StackHarness, StoreBacking};
 
@@ -78,6 +78,15 @@ fn gated_run(workdir: &Path) -> Result<(), String> {
     if config.arrival_rate_hz == 0 {
         return Err(
             "CHIO_LOADGEN_RATE_HZ must be nonzero; an uncapped rate is a large value, not 0"
+                .to_string(),
+        );
+    }
+
+    // Reject a duration the monotonic clock cannot schedule before booting, so the
+    // operator gets a clean message here instead of a mid-run typed denial.
+    if Instant::now().checked_add(config.duration).is_none() {
+        return Err(
+            "CHIO_SUSTAINED_P99_SECONDS is too large to schedule on the monotonic clock"
                 .to_string(),
         );
     }

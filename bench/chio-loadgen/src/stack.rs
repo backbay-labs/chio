@@ -92,6 +92,17 @@ impl StackHarness {
                 None
             }
             StoreBacking::Sqlite { path } => {
+                // A durable gate must not advertise persistence that an in-memory
+                // SQLite path silently voids at exit. Reject `:memory:` and
+                // `file:...?mode=memory` before opening; the smoke path may still
+                // use one. A non-UTF8 path cannot be an in-memory URI, so it opens.
+                if !allow_memory
+                    && path
+                        .to_str()
+                        .is_some_and(chio_store_sqlite::is_in_memory_sqlite_path)
+                {
+                    return Err(LoadgenError::MemoryStoreRejectedInGate);
+                }
                 let opened = SqliteReceiptStore::open(path)
                     .map_err(|error| LoadgenError::StoreOpen(error.to_string()))?;
                 let handle = Arc::new(opened);
@@ -99,6 +110,14 @@ impl StackHarness {
                 kernel
                     .set_receipt_store_handle(kernel_handle)
                     .map_err(|error| LoadgenError::KernelBoot(error.to_string()))?;
+                // Block until the async verified-head seed clears. A freshly opened
+                // store serves closed (head-poisoned) until the commit writer seeds
+                // the verified head on its actor thread, and the kernel's
+                // pre-dispatch gate denies while the writer serves closed, so the
+                // first dispatch would otherwise race the seed and fail closed
+                // instead of measuring the allow path. Only the durable path has a
+                // writer to seed.
+                wait_for_writer_health(&handle)?;
                 Some(handle)
             }
         };
@@ -260,6 +279,38 @@ fn loadgen_scope() -> ChioScope {
 
 fn duration_as_nanos(duration: Duration) -> u64 {
     u64::try_from(duration.as_nanos()).unwrap_or(u64::MAX)
+}
+
+/// Bound on how long a freshly opened durable store may take to seed its verified
+/// head before boot fails closed. The commit writer seeds asynchronously and
+/// serves closed until then; a store still unserved at this deadline is a boot
+/// failure, not a first-dispatch flake to be exported into a measured run.
+const WRITER_HEALTH_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Poll interval while waiting for the async verified-head seed to clear.
+const WRITER_HEALTH_POLL_INTERVAL: Duration = Duration::from_millis(5);
+
+/// Poll a freshly opened durable store until its writer is serving and its health
+/// report reads healthy, or fail closed at [`WRITER_HEALTH_TIMEOUT`]. This mirrors
+/// the bounded wait the chaos scenarios use after a reopen, so the first sustained
+/// dispatch measures the allow path instead of racing the async head seed.
+fn wait_for_writer_health(store: &SqliteReceiptStore) -> Result<(), LoadgenError> {
+    let deadline = Instant::now() + WRITER_HEALTH_TIMEOUT;
+    loop {
+        let serving = !store.writer_serving_closed();
+        let healthy = store
+            .receipt_store_health()
+            .is_ok_and(|report| report.healthy);
+        if serving && healthy {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(LoadgenError::KernelBoot(
+                "receipt store writer did not become healthy before the boot deadline".to_string(),
+            ));
+        }
+        std::thread::sleep(WRITER_HEALTH_POLL_INTERVAL);
+    }
 }
 
 /// A tool server whose only behavior is to sleep for a runtime-configurable

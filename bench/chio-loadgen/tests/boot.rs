@@ -5,6 +5,7 @@
 //! a typed error, and a durable boot persists a real receipt through the live
 //! kernel dispatch path.
 
+use std::path::PathBuf;
 use std::time::Duration;
 
 use chio_loadgen::{LoadgenConfig, LoadgenError, StackHarness, StoreBacking};
@@ -30,6 +31,22 @@ fn boot_rejects_memory_store_in_gate_mode() {
     assert!(
         matches!(error, LoadgenError::MemoryStoreRejectedInGate),
         "gating boot must refuse a non-durable store, got {error:?}"
+    );
+}
+
+#[test]
+fn boot_rejects_in_memory_sqlite_path_in_gate_mode() {
+    // A durable gate must refuse a transient in-memory SQLite path so it cannot
+    // advertise persistence that vanishes at exit.
+    let config = base_config(StoreBacking::Sqlite {
+        path: PathBuf::from(":memory:"),
+    });
+
+    let error = StackHarness::boot(&config).test_unwrap_err();
+
+    assert!(
+        matches!(error, LoadgenError::MemoryStoreRejectedInGate),
+        "a gating boot must refuse an in-memory SQLite path, got {error:?}"
     );
 }
 
