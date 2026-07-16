@@ -455,7 +455,7 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 trace_report = {
-    "schema": "chio.trace-validation.v2",
+    "schema": "chio.trace-validation.v1",
     "status": "passed",
     "spec": "formal/tla/RevocationPropagation.tla",
     "traceId": "proof-report-fixture",
@@ -488,7 +488,7 @@ negative_reports = {
 }
 for invariant, raw_path in negative_reports.items():
     report = {
-        "schema": "chio.trace-validation.v2",
+        "schema": "chio.trace-validation.v1",
         "status": "failed",
         "divergence": {
             "failedConjunct": invariant,

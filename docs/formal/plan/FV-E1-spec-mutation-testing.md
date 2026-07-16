@@ -77,7 +77,7 @@ Every allowlist and parser has a synthetic fail-closed self-test.
 probes and two mandatory registered historical seeds over the seven positive
 safety models currently run by `apalache-safety.yml`, including
 `PostAdmissionDropGuard`. The allowlist schema is
-`chio.spec-mutants-allowlist.v2`. Every probe names one source, reachable
+`chio.spec-mutants-allowlist.v1`. Every probe names one source, reachable
 action, exact match, exact replacement, classification, and rationale. The two
 admitted classifications are:
 

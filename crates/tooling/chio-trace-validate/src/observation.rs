@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::TraceError;
 
-pub const TRACE_OBSERVATION_SCHEMA: &str = "chio.trace-observation.v3";
+pub const TRACE_OBSERVATION_SCHEMA: &str = "chio.trace-observation.v1";
 const MAX_IDENTIFIER_BYTES: usize = 256;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

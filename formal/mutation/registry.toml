@@ -12,18 +12,6 @@ rust_paths = [
   "crates/kernel/chio-kernel/src/kernel/validation.rs",
 ]
 
-[target.latest_full_cycle]
-commit = "d292f14df1c493873199f4f9d969ade00472ff28"
-measured_at = "2026-07-15T21:36:34Z"
-evidence = "formal/mutation/evidence/spec-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json"
-report_sha256 = "d7b7a63401bfb071af87743ec07191e380c29ee1e306cca1fe35859a8194e623"
-enumerated = 3
-killed = 3
-survived = 0
-unviable = 0
-timeout = 0
-activation_ratio_percent = 100.0
-
 [[target]]
 name = "spec-monotone-log"
 lane = "spec-mutants"
@@ -35,18 +23,6 @@ rust_paths = [
   "crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs",
   "crates/platform/chio-store-sqlite/src/receipt_store/evidence_retention.rs",
 ]
-
-[target.latest_full_cycle]
-commit = "d292f14df1c493873199f4f9d969ade00472ff28"
-measured_at = "2026-07-15T21:36:34Z"
-evidence = "formal/mutation/evidence/spec-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json"
-report_sha256 = "d7b7a63401bfb071af87743ec07191e380c29ee1e306cca1fe35859a8194e623"
-enumerated = 2
-killed = 2
-survived = 0
-unviable = 0
-timeout = 0
-activation_ratio_percent = 100.0
 
 [[target]]
 name = "spec-post-admission-drop"
@@ -61,18 +37,6 @@ rust_paths = [
   "crates/kernel/chio-kernel/src/kernel/responses/finalization.rs",
 ]
 
-[target.latest_full_cycle]
-commit = "d292f14df1c493873199f4f9d969ade00472ff28"
-measured_at = "2026-07-15T21:36:34Z"
-evidence = "formal/mutation/evidence/spec-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json"
-report_sha256 = "d7b7a63401bfb071af87743ec07191e380c29ee1e306cca1fe35859a8194e623"
-enumerated = 10
-killed = 9
-survived = 0
-unviable = 0
-timeout = 1
-activation_ratio_percent = 90.0
-
 [[target]]
 name = "spec-receipt-before-allow"
 lane = "spec-mutants"
@@ -85,18 +49,6 @@ rust_paths = [
   "crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs",
 ]
 
-[target.latest_full_cycle]
-commit = "d292f14df1c493873199f4f9d969ade00472ff28"
-measured_at = "2026-07-15T21:36:34Z"
-evidence = "formal/mutation/evidence/spec-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json"
-report_sha256 = "d7b7a63401bfb071af87743ec07191e380c29ee1e306cca1fe35859a8194e623"
-enumerated = 3
-killed = 3
-survived = 0
-unviable = 0
-timeout = 0
-activation_ratio_percent = 100.0
-
 [[target]]
 name = "spec-revocation-cut"
 lane = "spec-mutants"
@@ -108,18 +60,6 @@ rust_paths = [
   "crates/kernel/chio-kernel/src/kernel/validation.rs",
   "crates/kernel/chio-kernel-core/src/revocation_view.rs",
 ]
-
-[target.latest_full_cycle]
-commit = "d292f14df1c493873199f4f9d969ade00472ff28"
-measured_at = "2026-07-15T21:36:34Z"
-evidence = "formal/mutation/evidence/spec-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json"
-report_sha256 = "d7b7a63401bfb071af87743ec07191e380c29ee1e306cca1fe35859a8194e623"
-enumerated = 3
-killed = 3
-survived = 0
-unviable = 0
-timeout = 0
-activation_ratio_percent = 100.0
 
 [[target]]
 name = "spec-delegation-depth"
@@ -134,18 +74,6 @@ rust_paths = [
   "crates/trust/chio-revocation-oracle/src/api.rs",
 ]
 
-[target.latest_full_cycle]
-commit = "d292f14df1c493873199f4f9d969ade00472ff28"
-measured_at = "2026-07-15T21:36:34Z"
-evidence = "formal/mutation/evidence/spec-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json"
-report_sha256 = "d7b7a63401bfb071af87743ec07191e380c29ee1e306cca1fe35859a8194e623"
-enumerated = 5
-killed = 5
-survived = 0
-unviable = 0
-timeout = 0
-activation_ratio_percent = 100.0
-
 [[target]]
 name = "spec-revocation-propagation"
 lane = "spec-mutants"
@@ -159,18 +87,6 @@ rust_paths = [
   "crates/trust/chio-federation/src/revocation_gossip.rs",
   "crates/trust/chio-revocation-oracle/src/freshness.rs",
 ]
-
-[target.latest_full_cycle]
-commit = "d292f14df1c493873199f4f9d969ade00472ff28"
-measured_at = "2026-07-15T21:36:34Z"
-evidence = "formal/mutation/evidence/spec-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json"
-report_sha256 = "d7b7a63401bfb071af87743ec07191e380c29ee1e306cca1fe35859a8194e623"
-enumerated = 7
-killed = 7
-survived = 0
-unviable = 0
-timeout = 0
-activation_ratio_percent = 100.0
 
 [[target]]
 name = "proof-formal-core"

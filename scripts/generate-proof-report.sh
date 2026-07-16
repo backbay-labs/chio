@@ -692,7 +692,7 @@ if run_gates:
     trace_bindings_path = repo / "target/formal/receipt-trace/bindings.json"
     trace_report = json.loads(trace_report_path.read_text(encoding="utf-8"))
     trace_bindings = json.loads(trace_bindings_path.read_text(encoding="utf-8"))
-    if trace_report.get("schema") != "chio.trace-validation.v2":
+    if trace_report.get("schema") != "chio.trace-validation.v1":
         fail("trace validation report schema is invalid")
     if trace_report.get("status") != "passed" or trace_report.get("invariants") != TRACE_INVARIANTS:
         fail("trace validation report is not a passing exact-invariant result")

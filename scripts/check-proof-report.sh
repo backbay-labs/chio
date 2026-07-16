@@ -787,7 +787,7 @@ else:
     trace_bindings = require_object(
         json.loads(trace_bindings_path.read_text(encoding="utf-8")), "trace bindings"
     )
-    if trace_report.get("schema") != "chio.trace-validation.v2" or trace_report.get("status") != "passed":
+    if trace_report.get("schema") != "chio.trace-validation.v1" or trace_report.get("status") != "passed":
         fail("strict trace report is not a passing v2 report")
     if trace_report.get("invariants") != TRACE_INVARIANTS:
         fail("strict trace report invariant set is not exact")
@@ -882,7 +882,7 @@ else:
             f"negative trace Apalache evaluation {invariant}",
         )
         if (
-            negative.get("schema") != "chio.trace-validation.v2"
+            negative.get("schema") != "chio.trace-validation.v1"
             or negative.get("status") != "failed"
             or divergence.get("failedConjunct") != invariant
             or evaluation.get(invariant) is not False

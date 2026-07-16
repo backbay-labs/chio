@@ -839,7 +839,7 @@ def committed_files_in_directory(
 def expected_spec_input_paths(commit: str) -> set[str]:
     allowlist_path = "formal/apalache/spec-mutants-allowlist.toml"
     allowlist = committed_toml(commit, allowlist_path, "specification mutation allowlist")
-    if allowlist.get("schema") != "chio.spec-mutants-allowlist.v2":
+    if allowlist.get("schema") != "chio.spec-mutants-allowlist.v1":
         raise ScoredInputError("lane-gate: committed specification allowlist schema is invalid")
     negative_path = normalized_input_path(
         allowlist.get("negative_registry"), "specification negative registry"
@@ -902,7 +902,7 @@ def expected_spec_input_paths(commit: str) -> set[str]:
 def expected_spec_baselines(commit: str) -> dict[str, dict[str, Any]]:
     allowlist_path = "formal/apalache/spec-mutants-allowlist.toml"
     allowlist = committed_toml(commit, allowlist_path, "specification mutation allowlist")
-    if allowlist.get("schema") != "chio.spec-mutants-allowlist.v2":
+    if allowlist.get("schema") != "chio.spec-mutants-allowlist.v1":
         raise ScoredInputError("lane-gate: committed specification allowlist schema is invalid")
     raw_specs = allowlist.get("spec")
     if not isinstance(raw_specs, list) or not raw_specs:
@@ -1084,7 +1084,7 @@ def specification_preflight_registries() -> tuple[dict[str, str], dict[str, dict
         "formal/apalache/spec-mutants-allowlist.toml",
         "specification mutation allowlist",
     )
-    if allowlist.get("schema") != "chio.spec-mutants-allowlist.v2":
+    if allowlist.get("schema") != "chio.spec-mutants-allowlist.v1":
         raise GateError("lane-gate: specification mutation allowlist schema is invalid")
     negative_path = allowlist.get("negative_registry")
     if not isinstance(negative_path, str):

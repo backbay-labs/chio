@@ -60,7 +60,7 @@ and rejects contradictory declared results. This source-scoped interpretation
 does not change the registry or report schema.
 
 The specification allowlist uses schema
-`chio.spec-mutants-allowlist.v2`. It contains 31 exact curated type-valid
+`chio.spec-mutants-allowlist.v1`. It contains 31 exact curated type-valid
 probes plus two mandatory registered historical seeds across seven sources.
 Edits are restricted to classified `guard-weakening` and
 `post-state-corruption` matches in named reachable actions. Deterministic

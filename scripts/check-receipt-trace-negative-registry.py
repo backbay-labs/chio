@@ -89,7 +89,7 @@ def main() -> None:
     for expected, path in reports.items():
         report = json.loads(path.read_text(encoding="utf-8"))
         divergence = report.get("divergence", {})
-        if report.get("schema") != "chio.trace-validation.v2":
+        if report.get("schema") != "chio.trace-validation.v1":
             raise SystemExit(f"receipt-trace-negative: {expected} report schema is invalid")
         if report.get("status") != "failed":
             raise SystemExit(f"receipt-trace-negative: {expected} mutation was not rejected")

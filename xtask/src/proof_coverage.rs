@@ -2204,7 +2204,7 @@ fn expected_refinement_schema(
         }
         ("aeneas", "pilot", "formal/aeneas/pilot.toml") => Ok("chio.aeneas-pilot.v1"),
         ("aeneas", "production", "formal/aeneas/production.toml") => {
-            Ok("chio.aeneas-production.v2")
+            Ok("chio.aeneas-production.v1")
         }
         _ => Err(format!(
             "unsupported refinement registry declaration: {lane}|{posture}|{path}"
@@ -2784,7 +2784,7 @@ fn spec_mutation_input_registry(root: &Path) -> Result<SpecMutationInputRegistry
     const ALLOWLIST: &str = "formal/apalache/spec-mutants-allowlist.toml";
     let (_, allowlist_raw) = regular_mutation_input_text(root, ALLOWLIST)?;
     let allowlist: SpecMutationInputRegistry = parse_toml(ALLOWLIST, &allowlist_raw)?;
-    if allowlist.schema != "chio.spec-mutants-allowlist.v2" || allowlist.spec.is_empty() {
+    if allowlist.schema != "chio.spec-mutants-allowlist.v1" || allowlist.spec.is_empty() {
         return Err(
             "spec mutation allowlist has an unsupported schema or no specifications".to_string(),
         );
@@ -6333,7 +6333,7 @@ mod tests {
         for (path, contents) in [
             (
                 "formal/apalache/spec-mutants-allowlist.toml",
-                "schema = \"chio.spec-mutants-allowlist.v2\"\nnegative_registry = \"formal/apalache/_negative_tests/REGISTRY.toml\"\n\n[[spec]]\nname = \"Fixture\"\npath = \"formal/apalache/Fixture.tla\"\ncfg = \"formal/apalache/MCFixture.cfg\"\ninvariant = \"SafetyInv\"\nlength = 4\n\n[[seed]]\nname = \"fixture-seed\"\nnegative_spec = \"formal/apalache/_negative_tests/FixtureBroken.tla\"\n",
+                "schema = \"chio.spec-mutants-allowlist.v1\"\nnegative_registry = \"formal/apalache/_negative_tests/REGISTRY.toml\"\n\n[[spec]]\nname = \"Fixture\"\npath = \"formal/apalache/Fixture.tla\"\ncfg = \"formal/apalache/MCFixture.cfg\"\ninvariant = \"SafetyInv\"\nlength = 4\n\n[[seed]]\nname = \"fixture-seed\"\nnegative_spec = \"formal/apalache/_negative_tests/FixtureBroken.tla\"\n",
             ),
             (
                 "formal/apalache/_negative_tests/REGISTRY.toml",
@@ -6876,7 +6876,7 @@ mod tests {
         let fixtures = [
             (
                 "formal/apalache/spec-mutants-allowlist.toml",
-                "schema = \"chio.spec-mutants-allowlist.v2\"\nnegative_registry = \"formal/apalache/_negative_tests/REGISTRY.toml\"\n\n[[spec]]\nname = \"Fixture\"\npath = \"formal/apalache/Fixture.tla\"\ncfg = \"formal/apalache/MCFixture.cfg\"\ninvariant = \"SafetyInv\"\nlength = 4\n\n[[seed]]\nname = \"fixture-seed\"\nnegative_spec = \"formal/apalache/_negative_tests/FixtureBroken.tla\"\n",
+                "schema = \"chio.spec-mutants-allowlist.v1\"\nnegative_registry = \"formal/apalache/_negative_tests/REGISTRY.toml\"\n\n[[spec]]\nname = \"Fixture\"\npath = \"formal/apalache/Fixture.tla\"\ncfg = \"formal/apalache/MCFixture.cfg\"\ninvariant = \"SafetyInv\"\nlength = 4\n\n[[seed]]\nname = \"fixture-seed\"\nnegative_spec = \"formal/apalache/_negative_tests/FixtureBroken.tla\"\n",
             ),
             (
                 "formal/apalache/_negative_tests/REGISTRY.toml",
@@ -6966,7 +6966,7 @@ mod tests {
         let fixtures = [
             (
                 "formal/apalache/spec-mutants-allowlist.toml",
-                "schema = \"chio.spec-mutants-allowlist.v2\"\nnegative_registry = \"formal/apalache/_negative_tests/REGISTRY.toml\"\n\n[[spec]]\nname = \"Strong\"\npath = \"formal/apalache/Strong.tla\"\ncfg = \"formal/apalache/MCStrong.cfg\"\ninvariant = \"SafetyInv\"\nlength = 4\n\n[[spec]]\nname = \"Weak\"\npath = \"formal/apalache/Weak.tla\"\ncfg = \"formal/apalache/MCWeak.cfg\"\ninvariant = \"SafetyInv\"\nlength = 4\n",
+                "schema = \"chio.spec-mutants-allowlist.v1\"\nnegative_registry = \"formal/apalache/_negative_tests/REGISTRY.toml\"\n\n[[spec]]\nname = \"Strong\"\npath = \"formal/apalache/Strong.tla\"\ncfg = \"formal/apalache/MCStrong.cfg\"\ninvariant = \"SafetyInv\"\nlength = 4\n\n[[spec]]\nname = \"Weak\"\npath = \"formal/apalache/Weak.tla\"\ncfg = \"formal/apalache/MCWeak.cfg\"\ninvariant = \"SafetyInv\"\nlength = 4\n",
             ),
             (
                 "formal/apalache/_negative_tests/REGISTRY.toml",
@@ -7346,7 +7346,7 @@ mod tests {
     fn aeneas_production_targets_require_generated_equivalence() {
         assert_eq!(
             expected_refinement_schema("aeneas", "production", "formal/aeneas/production.toml"),
-            Ok("chio.aeneas-production.v2")
+            Ok("chio.aeneas-production.v1")
         );
 
         let fixture = r#"

@@ -58,7 +58,7 @@ def digest(path: Path) -> str:
 report.write_text(
     json.dumps(
         {
-            "schema": "chio.trace-validation.v2",
+            "schema": "chio.trace-validation.v1",
             "status": "passed",
             "traceId": "trace-selftest",
             "traceLength": 3,

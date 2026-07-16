@@ -164,7 +164,7 @@ report = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 expected = sys.argv[2]
 divergence = report.get("divergence", {})
 evaluation = divergence.get("apalacheEvaluation", {})
-if report.get("schema") != "chio.trace-validation.v2" or report.get("status") != "failed":
+if report.get("schema") != "chio.trace-validation.v1" or report.get("status") != "failed":
     raise SystemExit(f"check-receipt-trace: runtime {expected} mutation has no failed v2 report")
 if divergence.get("failedConjunct") != expected or evaluation.get(expected) is not False:
     raise SystemExit(f"check-receipt-trace: runtime mutation did not falsify {expected} in Apalache")
@@ -258,7 +258,7 @@ runtime_bad = json.loads(
 )
 
 for label, value in (("conformance", report), ("known-good", good)):
-    if value.get("schema") != "chio.trace-validation.v2":
+    if value.get("schema") != "chio.trace-validation.v1":
         raise SystemExit(f"check-receipt-trace: {label} report schema is invalid")
     if value.get("status") != "passed":
         raise SystemExit(f"check-receipt-trace: {label} trace did not pass")

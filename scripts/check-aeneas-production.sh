@@ -28,7 +28,7 @@ import tomllib
 from pathlib import Path
 
 registry = tomllib.loads(Path("formal/aeneas/production.toml").read_text(encoding="utf-8"))
-if registry.get("schema") != "chio.aeneas-production.v2":
+if registry.get("schema") != "chio.aeneas-production.v1":
     raise SystemExit("Aeneas production registry schema mismatch")
 if "external_models" in registry:
     raise SystemExit("Aeneas production registry must not declare handwritten externals")
@@ -148,7 +148,7 @@ aeneas, charon, charon_driver, receipt_path = map(Path, arguments)
 registry_path = Path("formal/aeneas/production.toml")
 registry_bytes = registry_path.read_bytes()
 registry = tomllib.loads(registry_bytes.decode("utf-8"))
-if registry.get("schema") != "chio.aeneas-production.v2":
+if registry.get("schema") != "chio.aeneas-production.v1":
     raise SystemExit("Aeneas production registry schema mismatch")
 
 rows = registry.get("toolchains", [])
@@ -261,7 +261,7 @@ from pathlib import Path
 
 repo = Path(".")
 registry = tomllib.loads((repo / "formal/aeneas/production.toml").read_text(encoding="utf-8"))
-if registry.get("schema") != "chio.aeneas-production.v2":
+if registry.get("schema") != "chio.aeneas-production.v1":
     raise SystemExit("Aeneas production registry schema mismatch")
 if "external_models" in registry:
     raise SystemExit("Aeneas production registry must not declare handwritten externals")
@@ -337,7 +337,7 @@ charon_version = subprocess.run(
 Path(report_path).write_text(
     json.dumps(
         {
-            "schema": "chio.aeneas-toolchain.v2",
+            "schema": "chio.aeneas-toolchain.v1",
             "architecture": architecture,
             "releaseTag": registry["vendor_release_tag"],
             "archiveAsset": toolchain["archive_asset"],

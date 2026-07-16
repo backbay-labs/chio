@@ -37,7 +37,7 @@ from apalache_evidence import (  # noqa: E402
 
 
 SCHEMA = "chio.spec-mutants-report.v1"
-ALLOWLIST_SCHEMA = "chio.spec-mutants-allowlist.v2"
+ALLOWLIST_SCHEMA = "chio.spec-mutants-allowlist.v1"
 DEFAULT_ALLOWLIST = Path("formal/apalache/spec-mutants-allowlist.toml")
 DEFAULT_REPORT = Path("target/formal/spec-mutants-report.json")
 DEFAULT_RUN_ROOT = Path("target/formal/spec-mutants")

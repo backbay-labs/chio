@@ -19,7 +19,7 @@ directly to their semantic models. All 20 functions across four targets have
 
 ## Implementation outcome
 
-- `formal/aeneas/production.toml` is schema v2 and carries exact x86_64 and aarch64 archive, binary, and repaired-runtime hashes. `scripts/install-aeneas-toolchain.py` installs into a fixed architecture path, verifies the official archive and binaries, applies the deterministic aarch64 interpreter repair, and writes a registry-bound receipt.
+- `formal/aeneas/production.toml` is schema v1 and carries exact x86_64 and aarch64 archive, binary, and repaired-runtime hashes. `scripts/install-aeneas-toolchain.py` installs into a fixed architecture path, verifies the official archive and binaries, applies the deterministic aarch64 interpreter repair, and writes a registry-bound receipt.
 - `formal/lean4/vendor/aeneas/` contains the explicit transitive import closure for both `Aeneas` and `AeneasMeta`. Its vendor manifest pins the release, source archive, content digest, and Mathlib revision; the root Lake manifest records the real dependency closure.
 - `formal/lean4/Chio/FormalAeneas/Funs.lean` and `Types.lean` are identity-normalized snapshots at the emitted module path. The production gate regenerates them with the authenticated toolchain and fails on any byte drift.
 - The generated-equivalence proofs cover all 20 production functions. The

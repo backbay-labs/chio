@@ -12,7 +12,7 @@ those sequences, and refuses to sign incomplete or ambiguous streams.
 
 ## Trust Boundary
 
-Input is canonical NDJSON with one `chio.trace-observation.v3` envelope per
+Input is canonical NDJSON with one `chio.trace-observation.v1` envelope per
 line. Every body binds the trace identity, model sequence, runtime callback
 count, callback sequence, signed delegation-depth limit, authority key, and a
 typed event. Evaluate events additionally bind the admission sequence, request

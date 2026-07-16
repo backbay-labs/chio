@@ -1,4 +1,4 @@
-schema = "chio.aeneas-production.v2"
+schema = "chio.aeneas-production.v1"
 status = "generated_equivalence"
 owner = "formal-verification"
 source = "crates/kernel/chio-kernel-core/src/formal_aeneas.rs"

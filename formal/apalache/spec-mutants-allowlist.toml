@@ -1,4 +1,4 @@
-schema = "chio.spec-mutants-allowlist.v2"
+schema = "chio.spec-mutants-allowlist.v1"
 negative_registry = "formal/apalache/_negative_tests/REGISTRY.toml"
 sample_size = 16
 timeout_secs = 300

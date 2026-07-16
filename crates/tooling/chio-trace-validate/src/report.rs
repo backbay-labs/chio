@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::apalache::{ItfInvariantEvaluation, ItfInvariantFailure};
 use crate::{ActionCoverage, InvariantWitnessCoverage, RevocationProjection, TraceError};
 
-pub const TRACE_VALIDATION_REPORT_SCHEMA: &str = "chio.trace-validation.v2";
+pub const TRACE_VALIDATION_REPORT_SCHEMA: &str = "chio.trace-validation.v1";
 pub const REVOCATION_INVARIANTS: [&str; 4] = [
     "NoAllowAfterRevoke",
     "MonotoneLog",

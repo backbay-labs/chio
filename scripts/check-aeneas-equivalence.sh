@@ -55,7 +55,7 @@ from pathlib import Path
 repo = Path(".")
 registry_path = repo / "formal/aeneas/production.toml"
 registry = tomllib.loads(registry_path.read_text(encoding="utf-8"))
-if registry.get("schema") != "chio.aeneas-production.v2":
+if registry.get("schema") != "chio.aeneas-production.v1":
     raise SystemExit("Aeneas equivalence registry schema mismatch")
 if "external_models" in registry:
     raise SystemExit("Aeneas equivalence must not depend on handwritten externals")
@@ -213,7 +213,7 @@ expected_runtime_hashes = {
     "charon-driver": toolchain["charon_driver_runtime_sha256"],
 }
 expected_report_fields = {
-    "schema": "chio.aeneas-toolchain.v2",
+    "schema": "chio.aeneas-toolchain.v1",
     "architecture": architecture,
     "releaseTag": vendor_tag,
     "archiveAsset": toolchain["archive_asset"],
@@ -270,7 +270,7 @@ artifact_file.parent.mkdir(parents=True, exist_ok=True)
 artifact_file.write_text(
     json.dumps(
         {
-            "schema": "chio.aeneas-equivalence-artifacts.v3",
+            "schema": "chio.aeneas-equivalence-artifacts.v1",
             "source": registry["source"],
             "sources": [
                 {

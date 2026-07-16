@@ -242,7 +242,7 @@ def main() -> None:
     if not isinstance(report_value, dict):
         raise SystemExit("receipt trace binding: validation report is not an object")
     report = report_value
-    if report.get("schema") != "chio.trace-validation.v2":
+    if report.get("schema") != "chio.trace-validation.v1":
         raise SystemExit("receipt trace binding: validation report schema is invalid")
     if report.get("status") != "passed":
         raise SystemExit("receipt trace binding: validation report did not pass")

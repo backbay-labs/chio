@@ -141,7 +141,7 @@ def main() -> None:
 
     registry_bytes = REGISTRY_PATH.read_bytes()
     registry = tomllib.loads(registry_bytes.decode("utf-8"))
-    if registry.get("schema") != "chio.aeneas-production.v2":
+    if registry.get("schema") != "chio.aeneas-production.v1":
         raise SystemExit("Aeneas production registry schema mismatch")
 
     architecture = host_architecture()
