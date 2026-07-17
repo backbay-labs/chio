@@ -7,7 +7,9 @@ use std::time::{Instant, SystemTime};
 use lru::LruCache;
 use tracing::error;
 
-use crate::replay_retention::{advance_replay_clock, ReplayRetention};
+use crate::replay_retention::{
+    advance_replay_clock, PendingReplayClockRebaseline, ReplayRetention,
+};
 use crate::KernelError;
 
 /// Default number of live governed approvals retained by the in-memory store.
@@ -66,6 +68,7 @@ struct ApprovalReplayState {
     cache: LruCache<(String, String, String), ApprovalReplayEntry>,
     wall_clock_high_water: SystemTime,
     monotonic_high_water: Instant,
+    pending_clock_rebaseline: Option<PendingReplayClockRebaseline>,
 }
 
 struct ApprovalReplayEntry {
@@ -88,6 +91,7 @@ impl InMemoryGovernedApprovalReplayStore {
                 cache: LruCache::new(capacity),
                 wall_clock_high_water: SystemTime::now(),
                 monotonic_high_water: Instant::now(),
+                pending_clock_rebaseline: None,
             }),
         }
     }
@@ -122,15 +126,19 @@ impl InMemoryGovernedApprovalReplayStore {
 
         let mut wall_clock_high_water = state.wall_clock_high_water;
         let mut monotonic_high_water = state.monotonic_high_water;
-        let high_water = advance_replay_clock(
+        let mut pending_clock_rebaseline = state.pending_clock_rebaseline;
+        let clock_result = advance_replay_clock(
             "governed_approval",
             &mut wall_clock_high_water,
             &mut monotonic_high_water,
+            &mut pending_clock_rebaseline,
             now_wall,
             now_monotonic,
-        )?;
+        );
         state.wall_clock_high_water = wall_clock_high_water;
         state.monotonic_high_water = monotonic_high_water;
+        state.pending_clock_rebaseline = pending_clock_rebaseline;
+        let high_water = clock_result?;
 
         if state
             .cache

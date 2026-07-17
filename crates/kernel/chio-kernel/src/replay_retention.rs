@@ -3,34 +3,78 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use crate::{KernelError, ReplayClockDirection};
 
 /// Maximum unexplained difference between wall-clock and monotonic progress.
-/// Larger jumps require operator intervention because accepting them could
-/// prematurely prune live replay markers or latch the store after rollback.
+/// Larger jumps fail closed on first observation. A later stable sample can
+/// confirm a suspend gap and rebaseline the clock without pruning live replay
+/// markers; inconsistent jumps and rollbacks remain denied.
 pub(crate) const MAX_REPLAY_CLOCK_SKEW: Duration = Duration::from_secs(300);
+
+const MIN_REBASELINE_CONFIRMATION: Duration = Duration::from_secs(1);
+const MAX_REBASELINE_DRIFT: Duration = Duration::from_secs(1);
+
+#[derive(Clone, Copy)]
+pub(crate) struct PendingReplayClockRebaseline {
+    observed_wall: SystemTime,
+    observed_monotonic: Instant,
+    unexplained_gap: Duration,
+}
+
+enum RebaselineConfirmation {
+    Confirmed,
+    Waiting,
+    Inconsistent,
+}
 
 pub(crate) fn advance_replay_clock(
     store: &'static str,
     wall_clock_high_water: &mut SystemTime,
     monotonic_high_water: &mut Instant,
+    pending_rebaseline: &mut Option<PendingReplayClockRebaseline>,
     now_wall: SystemTime,
     now_monotonic: Instant,
 ) -> Result<SystemTime, KernelError> {
     let monotonic_progress = now_monotonic.saturating_duration_since(*monotonic_high_water);
     let tolerated_forward = monotonic_progress.saturating_add(MAX_REPLAY_CLOCK_SKEW);
-    if now_wall
-        .duration_since(*wall_clock_high_water)
-        .is_ok_and(|advance| advance > tolerated_forward)
-    {
-        return Err(clock_anomaly(
-            store,
-            ReplayClockDirection::ForwardJump,
-            now_wall,
-            *wall_clock_high_water,
-        ));
+    if let Ok(wall_progress) = now_wall.duration_since(*wall_clock_high_water) {
+        if wall_progress > tolerated_forward {
+            let unexplained_gap = wall_progress.saturating_sub(monotonic_progress);
+            if let Some(pending) = *pending_rebaseline {
+                match rebaseline_confirmation(pending, now_wall, now_monotonic, unexplained_gap) {
+                    RebaselineConfirmation::Confirmed => {
+                        *wall_clock_high_water = now_wall;
+                        *monotonic_high_water = now_monotonic;
+                        *pending_rebaseline = None;
+                        return Ok(now_wall);
+                    }
+                    RebaselineConfirmation::Waiting => {
+                        return Err(clock_anomaly(
+                            store,
+                            ReplayClockDirection::ForwardJump,
+                            now_wall,
+                            *wall_clock_high_water,
+                        ));
+                    }
+                    RebaselineConfirmation::Inconsistent => {}
+                }
+            }
+
+            *pending_rebaseline = Some(PendingReplayClockRebaseline {
+                observed_wall: now_wall,
+                observed_monotonic: now_monotonic,
+                unexplained_gap,
+            });
+            return Err(clock_anomaly(
+                store,
+                ReplayClockDirection::ForwardJump,
+                now_wall,
+                *wall_clock_high_water,
+            ));
+        }
     }
     if wall_clock_high_water
         .duration_since(now_wall)
         .is_ok_and(|rollback| rollback > MAX_REPLAY_CLOCK_SKEW)
     {
+        *pending_rebaseline = None;
         return Err(clock_anomaly(
             store,
             ReplayClockDirection::Rollback,
@@ -39,6 +83,8 @@ pub(crate) fn advance_replay_clock(
         ));
     }
 
+    *pending_rebaseline = None;
+
     if now_wall > *wall_clock_high_water {
         *wall_clock_high_water = now_wall;
     }
@@ -46,6 +92,35 @@ pub(crate) fn advance_replay_clock(
         *monotonic_high_water = now_monotonic;
     }
     Ok(*wall_clock_high_water)
+}
+
+fn rebaseline_confirmation(
+    pending: PendingReplayClockRebaseline,
+    now_wall: SystemTime,
+    now_monotonic: Instant,
+    unexplained_gap: Duration,
+) -> RebaselineConfirmation {
+    let monotonic_progress = now_monotonic.saturating_duration_since(pending.observed_monotonic);
+    let Ok(wall_progress) = now_wall.duration_since(pending.observed_wall) else {
+        return RebaselineConfirmation::Inconsistent;
+    };
+    if !durations_within(wall_progress, monotonic_progress, MAX_REBASELINE_DRIFT)
+        || !durations_within(
+            unexplained_gap,
+            pending.unexplained_gap,
+            MAX_REBASELINE_DRIFT,
+        )
+    {
+        return RebaselineConfirmation::Inconsistent;
+    }
+    if monotonic_progress < MIN_REBASELINE_CONFIRMATION {
+        return RebaselineConfirmation::Waiting;
+    }
+    RebaselineConfirmation::Confirmed
+}
+
+fn durations_within(left: Duration, right: Duration, tolerance: Duration) -> bool {
+    left.saturating_sub(right) <= tolerance && right.saturating_sub(left) <= tolerance
 }
 
 fn clock_anomaly(
@@ -213,5 +288,99 @@ mod tests {
     fn inclusive_horizon_overflow_is_retained_indefinitely() {
         let retention = ReplayRetention::signed_through_unix_secs(u64::MAX);
         assert!(!retention.is_expired_at(SystemTime::now(), Instant::now()));
+    }
+
+    #[test]
+    fn stable_suspend_gap_is_rebaselined_after_one_failed_sample() {
+        let start_wall = UNIX_EPOCH.checked_add(Duration::from_secs(10_000)).unwrap();
+        let start_monotonic = Instant::now();
+        let mut wall_high_water = start_wall;
+        let mut monotonic_high_water = start_monotonic;
+        let mut pending = None;
+
+        let suspended_wall = start_wall.checked_add(Duration::from_secs(3_600)).unwrap();
+        let first = advance_replay_clock(
+            "test",
+            &mut wall_high_water,
+            &mut monotonic_high_water,
+            &mut pending,
+            suspended_wall,
+            start_monotonic.checked_add(Duration::from_secs(1)).unwrap(),
+        );
+        assert!(matches!(
+            first,
+            Err(KernelError::ReplayClockAnomaly {
+                direction: ReplayClockDirection::ForwardJump,
+                ..
+            })
+        ));
+
+        let early = advance_replay_clock(
+            "test",
+            &mut wall_high_water,
+            &mut monotonic_high_water,
+            &mut pending,
+            suspended_wall
+                .checked_add(Duration::from_millis(100))
+                .unwrap(),
+            start_monotonic
+                .checked_add(Duration::from_millis(1_100))
+                .unwrap(),
+        );
+        assert!(matches!(
+            early,
+            Err(KernelError::ReplayClockAnomaly {
+                direction: ReplayClockDirection::ForwardJump,
+                ..
+            })
+        ));
+
+        let confirmed_wall = suspended_wall.checked_add(Duration::from_secs(2)).unwrap();
+        assert_eq!(
+            advance_replay_clock(
+                "test",
+                &mut wall_high_water,
+                &mut monotonic_high_water,
+                &mut pending,
+                confirmed_wall,
+                start_monotonic.checked_add(Duration::from_secs(3)).unwrap(),
+            )
+            .unwrap(),
+            confirmed_wall
+        );
+        assert!(pending.is_none());
+    }
+
+    #[test]
+    fn changing_forward_jump_never_rebaselines() {
+        let start_wall = UNIX_EPOCH.checked_add(Duration::from_secs(10_000)).unwrap();
+        let start_monotonic = Instant::now();
+        let mut wall_high_water = start_wall;
+        let mut monotonic_high_water = start_monotonic;
+        let mut pending = None;
+
+        for (wall_advance, monotonic_advance) in [(1_000, 1), (1_500, 3), (2_000, 5)] {
+            let result = advance_replay_clock(
+                "test",
+                &mut wall_high_water,
+                &mut monotonic_high_water,
+                &mut pending,
+                start_wall
+                    .checked_add(Duration::from_secs(wall_advance))
+                    .unwrap(),
+                start_monotonic
+                    .checked_add(Duration::from_secs(monotonic_advance))
+                    .unwrap(),
+            );
+            assert!(matches!(
+                result,
+                Err(KernelError::ReplayClockAnomaly {
+                    direction: ReplayClockDirection::ForwardJump,
+                    ..
+                })
+            ));
+            assert_eq!(wall_high_water, start_wall);
+            assert_eq!(monotonic_high_water, start_monotonic);
+        }
     }
 }

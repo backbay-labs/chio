@@ -1526,21 +1526,20 @@ impl ChioKernel {
                 return post_admission_drop_guard.finish_terminal(result);
             }
             Err(KernelError::HotPathDeadlineExceeded { stage, budget_ms }) => {
+                let _retention_disposition = credential_reservation.commit();
                 let reason = format!("hot-path deadline exceeded at {stage}: budget {budget_ms}ms");
-                let unwind = self.unwind_aborted_monetary_invocation(
-                    request,
-                    cap,
+                let retained = self.retain_post_dispatch_state(
+                    receipt_metadata.clone(),
+                    runtime_admission_metadata.clone(),
                     budget_mutation.charge_result(),
+                    None,
                     payment_authorization.as_ref(),
-                )?;
+                );
                 warn!(
                     request_id = %request.request_id,
                     reason = %redacted!(&reason),
                     "tool call deadline expired"
                 );
-                // A timed-out dispatch may already have applied its side effect,
-                // so the runtime-admission reservation is retained and marked
-                // auditable rather than released.
                 let result =
                     self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
                         self.build_cancelled_response_with_metadata(
@@ -1549,19 +1548,7 @@ impl ChioKernel {
                             &reason,
                             now,
                             Some(matched_grant_index),
-                            self.mark_runtime_admission_reservations_retained_fail_closed(
-                                match (budget_mutation.charge_result(), unwind.as_ref()) {
-                                    (Some(charge), Some(reverse)) => self
-                                        .merge_budget_receipt_metadata(
-                                            runtime_admission_metadata.clone(),
-                                            self.budget_execution_receipt_metadata(
-                                                charge,
-                                                Some(("reversed", reverse)),
-                                            ),
-                                        ),
-                                    _ => runtime_admission_metadata.clone(),
-                                },
-                            ),
+                            retained,
                         )
                     });
                 return post_admission_drop_guard.finish_terminal(result);

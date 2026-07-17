@@ -6,6 +6,7 @@ enum PaymentAmbiguityMode {
     AuthorizeDeclined,
     AuthorizeEmptyId,
     AuthorizePaddedId,
+    SettledWithoutTransactionId,
     ReleaseError,
     ReleasePending,
     ReleaseEmptyTransactionId,
@@ -61,7 +62,8 @@ impl PaymentAdapter for PaymentAmbiguityAdapter {
             | PaymentAmbiguityMode::RefundFailed
             | PaymentAmbiguityMode::RefundPaddedTransactionId
             | PaymentAmbiguityMode::AuthorizeEmptyId
-            | PaymentAmbiguityMode::AuthorizePaddedId => {
+            | PaymentAmbiguityMode::AuthorizePaddedId
+            | PaymentAmbiguityMode::SettledWithoutTransactionId => {
                 self.counters
                     .authorization_returned
                     .store(true, std::sync::atomic::Ordering::SeqCst);
@@ -79,6 +81,7 @@ impl PaymentAdapter for PaymentAmbiguityAdapter {
                             | PaymentAmbiguityMode::RefundPanic
                             | PaymentAmbiguityMode::RefundFailed
                             | PaymentAmbiguityMode::RefundPaddedTransactionId
+                            | PaymentAmbiguityMode::SettledWithoutTransactionId
                     ),
                     settlement_transaction_id: matches!(
                         self.mode,
@@ -557,7 +560,7 @@ async fn evaluate_nested_payment_ambiguity_request(
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn dpop_only_payment_requests_never_reach_the_external_rail(
+async fn non_strict_dpop_only_payment_requests_reach_the_external_rail(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let counters = PaymentAmbiguityCounters::default();
     let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
@@ -567,7 +570,7 @@ async fn dpop_only_payment_requests_never_reach_the_external_rail(
         invocations: std::sync::Arc::clone(&invocations),
     }));
     kernel.set_payment_adapter(Box::new(PaymentAmbiguityAdapter {
-        mode: PaymentAmbiguityMode::AuthorizeRailError,
+        mode: PaymentAmbiguityMode::AuthorizeDeclined,
         counters: counters.clone(),
     }))?;
     kernel.set_dpop_store(
@@ -601,16 +604,17 @@ async fn dpop_only_payment_requests_never_reach_the_external_rail(
 
         let response = kernel.evaluate_tool_call(&request).await?;
         assert_eq!(response.verdict, Verdict::Deny);
-        assert!(response.reason.as_deref().is_some_and(|reason| reason.contains(
-            "external payment authorization requires a freshly reserved execution nonce or governed approval"
-        )));
+        assert!(response
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("payment authorization failed")));
     }
 
     assert_eq!(
         counters
             .authorizations
             .load(std::sync::atomic::Ordering::SeqCst),
-        0
+        2
     );
     assert_eq!(invocations.load(std::sync::atomic::Ordering::SeqCst), 0);
     let usage = kernel
@@ -619,6 +623,99 @@ async fn dpop_only_payment_requests_never_reach_the_external_rail(
         .ok_or_else(|| std::io::Error::other("DPoP-only budget usage missing"))?;
     assert_eq!(usage.committed_cost_units()?, 0);
     Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn strict_nonce_mode_still_preflights_before_the_external_rail(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let counters = PaymentAmbiguityCounters::default();
+    let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mut kernel = make_kernel(make_monetary_config());
+    let nonce_config = ExecutionNonceConfig {
+        nonce_ttl_secs: 300,
+        nonce_store_capacity: 1024,
+        require_nonce: true,
+    };
+    kernel.set_execution_nonce_store(
+        nonce_config.clone(),
+        Box::new(InMemoryExecutionNonceStore::from_config(&nonce_config)),
+    );
+    kernel.register_tool_server(Box::new(CountingMonetaryServer {
+        id: "strict-payment-server".to_string(),
+        invocations: std::sync::Arc::clone(&invocations),
+    }));
+    kernel.set_payment_adapter(Box::new(PaymentAmbiguityAdapter {
+        mode: PaymentAmbiguityMode::AuthorizeDeclined,
+        counters: counters.clone(),
+    }))?;
+
+    let agent = make_keypair();
+    let capability = make_capability(
+        &kernel,
+        &agent,
+        make_scope(vec![make_monetary_grant(
+            "strict-payment-server",
+            "compute",
+            100,
+            500,
+            "USD",
+        )]),
+        300,
+    );
+    let request = make_request(
+        "strict-payment-missing-nonce",
+        &capability,
+        "compute",
+        "strict-payment-server",
+    );
+
+    let response = kernel.evaluate_tool_call(&request).await?;
+    assert_eq!(response.verdict, Verdict::Allow);
+    assert!(response.output.is_none());
+    assert!(matches!(
+        response.terminal_state,
+        OperationTerminalState::Incomplete { .. }
+    ));
+    assert!(response.execution_nonce.is_some());
+    assert_eq!(
+        counters
+            .authorizations
+            .load(std::sync::atomic::Ordering::SeqCst),
+        0
+    );
+    assert_eq!(invocations.load(std::sync::atomic::Ordering::SeqCst), 0);
+    Ok(())
+}
+
+#[test]
+fn settled_legacy_authorization_uses_authorization_id_as_transaction_reference() {
+    let fixture = make_payment_ambiguity_fixture(
+        "settled-legacy-authorization",
+        PaymentAmbiguityMode::SettledWithoutTransactionId,
+    );
+
+    let response = fixture
+        .kernel
+        .evaluate_tool_call_blocking(&fixture.request)
+        .expect("legacy settled authorization must remain usable");
+    assert_eq!(response.verdict, Verdict::Allow);
+    assert_eq!(
+        fixture
+            .invocations
+            .load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
+    let financial = &response
+        .receipt
+        .metadata
+        .as_ref()
+        .expect("financial metadata must be present")["financial"];
+    assert_eq!(financial["settlement_status"], "settled");
+    assert_eq!(financial["payment_reference"], "payment-ambiguity-auth");
+    assert_eq!(
+        financial["cost_breakdown"]["payment"]["settlement_transaction_id"],
+        "payment-ambiguity-auth"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

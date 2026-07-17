@@ -415,7 +415,7 @@ impl SqliteExecutionNonceStore {
                 expected,
             ));
         }
-        if observed < wall_clock_high_water {
+        if observed < wall_clock_high_water.saturating_sub(MAX_EXECUTION_NONCE_CLOCK_SKEW_I64) {
             return Err(SqliteExecutionNonceStoreError::clock_anomaly(
                 ReplayClockDirection::Rollback,
                 observed,
@@ -555,7 +555,11 @@ impl SqliteExecutionNonceStore {
             |row| row.get::<_, i64>(0),
         )?;
         self.validate_observed_clock(now, wall_clock_high_water)?;
-        let updated_high_water = now;
+        // `now` is sampled before this serialized transaction begins. A
+        // concurrent request may therefore have committed a slightly newer
+        // second while this request waited for the writer lock. Keep the
+        // durable clock monotonic and accept that bounded stale observation.
+        let updated_high_water = wall_clock_high_water.max(now);
         if updated_high_water != wall_clock_high_water {
             tx.execute(
                 "UPDATE chio_execution_nonce_clock SET wall_clock_high_water = ?1 WHERE singleton = 1",
@@ -893,6 +897,30 @@ mod tests {
     }
 
     #[test]
+    fn bounded_stale_observation_keeps_high_water_monotonic() {
+        let store = SqliteExecutionNonceStore::open_in_memory().unwrap();
+        let base = now_secs();
+        assert!(store
+            .try_reserve("newer", base.saturating_add(1), base.saturating_add(100))
+            .unwrap());
+        assert!(store
+            .try_reserve("lagged", base, base.saturating_add(100))
+            .unwrap());
+
+        let high_water = store
+            .pool
+            .get()
+            .unwrap()
+            .query_row(
+                "SELECT wall_clock_high_water FROM chio_execution_nonce_clock WHERE singleton = 1",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .unwrap();
+        assert_eq!(high_water, base.saturating_add(1));
+    }
+
+    #[test]
     fn dispatch_reservation_rolls_back_only_for_its_owner() {
         let store = SqliteExecutionNonceStore::open_in_memory().unwrap();
         let now = now_secs();
@@ -1023,7 +1051,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_database_caps_high_water_seed_from_existing_consumption() {
+    fn legacy_database_caps_high_water_seed_and_retains_existing_marker() {
         let path = unique_db_path("chio-exec-nonce-legacy-high-water");
         let now = now_secs();
         {
@@ -1064,19 +1092,11 @@ mod tests {
             "legacy seed {high_water} must stay within the tolerated clock skew"
         );
         drop(conn);
-        let error = store
+        assert!(!store
             .try_reserve("legacy-used", now_secs(), now.saturating_add(2_000))
-            .unwrap_err();
-        assert!(matches!(
-            error,
-            SqliteExecutionNonceStoreError::ClockAnomaly {
-                direction: ReplayClockDirection::Rollback,
-                ..
-            }
-        ));
+            .unwrap());
         drop(store);
 
-        SqliteExecutionNonceStore::recover_clock_high_water(&path, high_water, now_secs()).unwrap();
         let reopened = SqliteExecutionNonceStore::open(&path).unwrap();
         assert!(!reopened
             .try_reserve("legacy-used", now_secs(), now.saturating_add(2_000))

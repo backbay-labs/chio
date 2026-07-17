@@ -50,6 +50,24 @@ struct ImmediateMutationGuard {
 
 struct LegacyDefaultGuard;
 
+struct LegacyRuntimeAdmissionHook {
+    evaluations: std::sync::Arc<AtomicU64>,
+}
+
+impl RuntimeAdmissionHook for LegacyRuntimeAdmissionHook {
+    fn name(&self) -> &str {
+        "legacy-runtime-admission"
+    }
+
+    fn evaluate(
+        &self,
+        _context: &RuntimeAdmissionContext<'_>,
+    ) -> Result<RuntimeAdmissionDecision, KernelError> {
+        self.evaluations.fetch_add(1, Ordering::SeqCst);
+        Ok(RuntimeAdmissionDecision::allow(None))
+    }
+}
+
 impl Guard for LegacyDefaultGuard {
     fn name(&self) -> &str {
         "legacy-default-guard"
@@ -207,6 +225,61 @@ async fn nested_immediate_dispatch_revalidation_checks_mutated_runtime_trust_sta
         .is_some_and(|reason| reason.contains("runtime trust state changed before dispatch")));
     assert_eq!(hook_revalidations.load(Ordering::SeqCst), 1);
     assert_eq!(invocations.load(Ordering::SeqCst), 0);
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn forced_credential_revalidation_preserves_legacy_runtime_admission_verdict(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut kernel = make_kernel(make_config());
+    let invocations = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(SideEffectServer::new(
+        "legacy-admission-server",
+        vec!["mutate"],
+        std::sync::Arc::clone(&invocations),
+    )));
+    let evaluations = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(LegacyRuntimeAdmissionHook {
+        evaluations: std::sync::Arc::clone(&evaluations),
+    }));
+    let nonce_config = ExecutionNonceConfig {
+        nonce_ttl_secs: 300,
+        nonce_store_capacity: 1024,
+        require_nonce: true,
+    };
+    kernel.set_execution_nonce_store(
+        nonce_config.clone(),
+        Box::new(InMemoryExecutionNonceStore::from_config(&nonce_config)),
+    );
+
+    let agent = make_keypair();
+    let capability = make_capability(
+        &kernel,
+        &agent,
+        make_scope(vec![make_grant("legacy-admission-server", "mutate")]),
+        300,
+    );
+    let mut request = make_request(
+        "legacy-admission-forced-revalidation",
+        &capability,
+        "mutate",
+        "legacy-admission-server",
+    );
+    let nonce_binding = binding_for_request(&capability, &request);
+    let nonce = mint_nonce_for_request(&kernel, &capability, &request, &nonce_config);
+    request.execution_nonce = Some(nonce.clone());
+
+    let response = kernel.evaluate_tool_call(&request).await?;
+
+    assert_eq!(response.verdict, Verdict::Allow);
+    assert_eq!(evaluations.load(Ordering::SeqCst), 1);
+    assert_eq!(invocations.load(Ordering::SeqCst), 1);
+    assert!(
+        kernel
+            .verify_presented_execution_nonce(&nonce, &nonce_binding)
+            .is_err(),
+        "the forced pass must preserve the allow verdict and commit the nonce"
+    );
     Ok(())
 }
 

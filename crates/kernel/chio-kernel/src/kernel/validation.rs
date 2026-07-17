@@ -1243,6 +1243,7 @@ impl ChioKernel {
         let mut payment_result = None;
         let mut payment_failure_code = None;
         let mut observed_payment_status = None;
+        let mut payment_definitively_failed = false;
         if let Some(authorization) = payment_authorization
             .as_ref()
             .filter(|authorization| !authorization.settled)
@@ -1303,6 +1304,7 @@ impl ChioKernel {
                     );
                 }
                 Ok(Err(error)) => {
+                    payment_definitively_failed = !error.outcome_unknown();
                     payment_failure_code = Some(match &error {
                         PaymentError::NotConfigured(_) => "operation_not_configured",
                         _ if error.outcome_unknown() => "rail_outcome_unknown",
@@ -1317,6 +1319,8 @@ impl ChioKernel {
                 }
                 Ok(Ok(result)) => {
                     observed_payment_status = Some(result.settlement_status);
+                    let rail_reported_failure =
+                        result.settlement_status == RailSettlementStatus::Failed;
                     let identifier_valid = crate::payment::validate_payment_rail_identifier(
                         "settlement transaction identifier",
                         &result.transaction_id,
@@ -1330,6 +1334,7 @@ impl ChioKernel {
                         _ => false,
                     };
                     if let Err(error) = identifier_valid {
+                        payment_definitively_failed = rail_reported_failure;
                         payment_failure_code = Some("invalid_transaction_identifier");
                         warn!(
                             request_id = %request.request_id,
@@ -1338,7 +1343,12 @@ impl ChioKernel {
                             "post-execution payment acknowledgement had an invalid identifier; retaining full authorization exposure"
                         );
                     } else if !status_valid {
-                        payment_failure_code = Some("unexpected_settlement_status");
+                        payment_definitively_failed = rail_reported_failure;
+                        payment_failure_code = Some(if rail_reported_failure {
+                            "settlement_failed"
+                        } else {
+                            "unexpected_settlement_status"
+                        });
                         warn!(
                             request_id = %request.request_id,
                             operation,
@@ -1403,6 +1413,11 @@ impl ChioKernel {
                 ReceiptSettlement::from_authorization(authorization)
             } else if let Some(result) = payment_result.as_ref() {
                 ReceiptSettlement::from_payment_result(result)
+            } else if payment_definitively_failed {
+                ReceiptSettlement {
+                    payment_reference: Some(authorization.authorization_id.clone()),
+                    settlement_status: SettlementStatus::Failed,
+                }
             } else {
                 warn!(
                     request_id = %request.request_id,
@@ -1432,10 +1447,11 @@ impl ChioKernel {
         let settlement_attempt = payment_operation.map(|operation| {
             serde_json::json!({
                 "operation": operation,
-                "outcome": if payment_result.is_some() {
-                    "acknowledged"
-                } else {
-                    "unacknowledged"
+                "outcome": match payment_result.as_ref() {
+                    Some(result) if result.is_local_bookkeeping() => "locally_bookkept",
+                    Some(_) => "acknowledged",
+                    None if payment_definitively_failed => "failed",
+                    None => "pending"
                 },
                 "failure_code": payment_failure_code,
                 "observed_status": observed_payment_status,
@@ -1626,7 +1642,7 @@ impl ChioKernel {
         let Some(adapter) = self.payment_adapter.as_ref() else {
             return Ok(None);
         };
-        if !payment_authorization_credential_reserved {
+        if self.execution_nonce_required() && !payment_authorization_credential_reserved {
             return Err(crate::payment::PaymentAuthorizationFailure::before_rail(
                 "external payment authorization requires a freshly reserved execution nonce or governed approval",
             ));
@@ -1679,7 +1695,7 @@ impl ChioKernel {
         let authorization = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             adapter.authorize(&authorize_request)
         })) {
-            Ok(Ok(authorization)) => {
+            Ok(Ok(mut authorization)) => {
                 crate::payment::validate_payment_rail_identifier(
                     "authorization identifier",
                     &authorization.authorization_id,
@@ -1696,11 +1712,8 @@ impl ChioKernel {
                         )?;
                     }
                     None if authorization.settled => {
-                        return Err(
-                            crate::payment::PaymentAuthorizationFailure::invalid_authorization_id(
-                                "settled payment authorization is missing its transaction identifier",
-                            ),
-                        );
+                        authorization.settlement_transaction_id =
+                            Some(authorization.authorization_id.clone());
                     }
                     None => {}
                 }

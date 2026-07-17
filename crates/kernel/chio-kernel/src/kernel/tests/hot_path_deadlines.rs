@@ -51,6 +51,64 @@ struct HangingToolServer {
     invocations: Arc<AtomicU64>,
 }
 
+#[derive(Clone)]
+struct DeadlineFailingReleasePaymentAdapter {
+    authorizations: Arc<AtomicU64>,
+    releases: Arc<AtomicU64>,
+}
+
+impl PaymentAdapter for DeadlineFailingReleasePaymentAdapter {
+    fn authorize(
+        &self,
+        _request: &PaymentAuthorizeRequest,
+    ) -> Result<PaymentAuthorization, PaymentError> {
+        self.authorizations.fetch_add(1, Ordering::SeqCst);
+        Ok(PaymentAuthorization {
+            authorization_id: "deadline-retained-authorization".to_string(),
+            settled: false,
+            settlement_transaction_id: None,
+            metadata: serde_json::json!({"adapter": "deadline-retention"}),
+        })
+    }
+
+    fn capture(
+        &self,
+        authorization_id: &str,
+        _amount_units: u64,
+        _currency: &str,
+        _reference: &str,
+    ) -> Result<PaymentResult, PaymentError> {
+        Ok(PaymentResult {
+            transaction_id: authorization_id.to_string(),
+            settlement_status: RailSettlementStatus::Settled,
+            metadata: serde_json::json!({"adapter": "deadline-retention"}),
+        })
+    }
+
+    fn release(
+        &self,
+        _authorization_id: &str,
+        _reference: &str,
+    ) -> Result<PaymentResult, PaymentError> {
+        self.releases.fetch_add(1, Ordering::SeqCst);
+        Err(PaymentError::RailError(
+            "deadline path must retain post-dispatch authorization".to_string(),
+        ))
+    }
+
+    fn refund(
+        &self,
+        _transaction_id: &str,
+        _amount_units: u64,
+        _currency: &str,
+        _reference: &str,
+    ) -> Result<PaymentResult, PaymentError> {
+        Err(PaymentError::RailError(
+            "deadline path must retain post-dispatch settlement".to_string(),
+        ))
+    }
+}
+
 #[async_trait::async_trait]
 impl ToolServerConnection for HangingToolServer {
     fn server_id(&self) -> &str {
@@ -272,6 +330,116 @@ async fn dispatch_budget_expiry_runs_full_unwind_and_emits_cancelled_receipt(
         kernel.receipt_log().len(),
         1,
         "one Cancelled receipt persisted"
+    );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn nested_dispatch_deadline_retains_monetary_credentials_and_receipt_metadata(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let started = Arc::new(tokio::sync::Notify::new());
+    let authorizations = Arc::new(AtomicU64::new(0));
+    let releases = Arc::new(AtomicU64::new(0));
+    let mut config = make_monetary_config();
+    config.deadlines.dispatch_budget_ms = 200;
+    let mut kernel = make_kernel(config);
+    kernel.set_payment_adapter(Box::new(DeadlineFailingReleasePaymentAdapter {
+        authorizations: Arc::clone(&authorizations),
+        releases: Arc::clone(&releases),
+    }))?;
+    kernel.register_tool_server(Box::new(PendingMonetaryServer {
+        id: "nested-deadline-server".to_string(),
+        started,
+    }));
+
+    let agent_keypair = make_keypair();
+    let capability = make_capability(
+        &kernel,
+        &agent_keypair,
+        make_scope(vec![make_monetary_grant(
+            "nested-deadline-server",
+            "compute",
+            100,
+            1_000,
+            "USD",
+        )]),
+        300,
+    );
+    let mut request = make_request(
+        "nested-dispatch-deadline-retention",
+        &capability,
+        "compute",
+        "nested-deadline-server",
+    );
+    let nonce_config = ExecutionNonceConfig {
+        nonce_ttl_secs: 300,
+        nonce_store_capacity: 1024,
+        require_nonce: false,
+    };
+    kernel.set_execution_nonce_store(
+        nonce_config.clone(),
+        Box::new(InMemoryExecutionNonceStore::from_config(&nonce_config)),
+    );
+    let nonce_binding = binding_for_request(&capability, &request);
+    let nonce = mint_nonce_for_request(&kernel, &capability, &request, &nonce_config);
+    request.execution_nonce = Some(nonce.clone());
+    let session_id = kernel.open_session(
+        agent_keypair.public_key().to_hex(),
+        vec![capability.clone()],
+    )?;
+    kernel.activate_session(&session_id)?;
+    let parent_context = make_operation_context(
+        &session_id,
+        "nested-dispatch-deadline-parent",
+        &agent_keypair.public_key().to_hex(),
+    );
+    kernel.begin_session_request(&parent_context, OperationKind::ToolCall, true)?;
+    let mut client = NoopNestedFlowClient;
+
+    let response = kernel
+        .evaluate_tool_call_with_nested_flow_client_async(
+            &parent_context,
+            &request,
+            &mut client,
+            Some(serde_json::json!({"review_marker": "preserved"})),
+        )
+        .await?;
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert!(matches!(
+        response.terminal_state,
+        OperationTerminalState::Cancelled { .. }
+    ));
+    assert_eq!(authorizations.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        releases.load(Ordering::SeqCst),
+        0,
+        "a post-dispatch deadline must not release an ambiguous authorization"
+    );
+    assert!(
+        kernel
+            .verify_presented_execution_nonce(&nonce, &nonce_binding)
+            .is_err(),
+        "the post-dispatch deadline must retain the nonce replay marker"
+    );
+    let usage = kernel
+        .budget_store
+        .get_usage(&capability.id, 0)?
+        .ok_or_else(|| std::io::Error::other("deadline budget usage missing"))?;
+    assert_eq!(usage.total_cost_exposed, 100);
+    assert_eq!(usage.total_cost_realized_spend, 0);
+    let metadata = response
+        .receipt
+        .metadata
+        .as_ref()
+        .ok_or_else(|| std::io::Error::other("deadline receipt metadata missing"))?;
+    assert_eq!(metadata["review_marker"], "preserved");
+    let runtime = &metadata["chio_runtime"];
+    assert_eq!(runtime["post_dispatch_outcome_unknown"], true);
+    assert_eq!(runtime["retained_budget_exposure_units"], 100);
+    assert_eq!(
+        runtime["retained_payment_authorization_id"],
+        "deadline-retained-authorization"
     );
     Ok(())
 }

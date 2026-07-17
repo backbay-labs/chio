@@ -15,8 +15,7 @@ use chio_core::session::{
     CreateMessageResult, OperationContext, RequestId, RootDefinition, ToolCallOperation,
 };
 use chio_kernel::budget_store::{
-    BudgetAuthorizeHoldDecision, BudgetAuthorizeHoldRequest, BudgetAuthorizeMutationOutcome,
-    BudgetEventAuthority, BudgetMutationKind, BudgetMutationRecord,
+    BudgetAuthorizeMutationOutcome, BudgetEventAuthority, BudgetMutationKind, BudgetMutationRecord,
 };
 use chio_kernel::{
     BudgetStore, BudgetStoreError, BudgetUsageRecord, ChioKernel, InMemoryBudgetStore,
@@ -329,6 +328,30 @@ impl BudgetStore for FaultingBudgetStore {
         )
     }
 
+    fn try_charge_cost_with_ids(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        max_invocations: Option<u32>,
+        cost_units: u64,
+        max_cost_per_invocation: Option<u64>,
+        max_total_cost_units: Option<u64>,
+        hold_id: Option<&str>,
+        event_id: Option<&str>,
+    ) -> Result<bool, BudgetStoreError> {
+        self.mutation("try_charge_cost_with_ids")?;
+        self.inner.try_charge_cost_with_ids(
+            capability_id,
+            grant_index,
+            max_invocations,
+            cost_units,
+            max_cost_per_invocation,
+            max_total_cost_units,
+            hold_id,
+            event_id,
+        )
+    }
+
     fn try_charge_cost_with_ids_and_authority(
         &self,
         capability_id: &str,
@@ -381,14 +404,6 @@ impl BudgetStore for FaultingBudgetStore {
         )
     }
 
-    fn authorize_budget_hold(
-        &self,
-        request: BudgetAuthorizeHoldRequest,
-    ) -> Result<BudgetAuthorizeHoldDecision, BudgetStoreError> {
-        self.mutation("authorize_budget_hold")?;
-        self.inner.authorize_budget_hold(request)
-    }
-
     fn reverse_charge_cost(
         &self,
         capability_id: &str,
@@ -398,6 +413,24 @@ impl BudgetStore for FaultingBudgetStore {
         self.mutation("reverse_charge_cost")?;
         self.inner
             .reverse_charge_cost(capability_id, grant_index, cost_units)
+    }
+
+    fn reverse_charge_cost_with_ids(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        cost_units: u64,
+        hold_id: Option<&str>,
+        event_id: Option<&str>,
+    ) -> Result<(), BudgetStoreError> {
+        self.mutation("reverse_charge_cost_with_ids")?;
+        self.inner.reverse_charge_cost_with_ids(
+            capability_id,
+            grant_index,
+            cost_units,
+            hold_id,
+            event_id,
+        )
     }
 
     fn reverse_charge_cost_with_ids_and_authority(
@@ -429,6 +462,24 @@ impl BudgetStore for FaultingBudgetStore {
         self.mutation("reduce_charge_cost")?;
         self.inner
             .reduce_charge_cost(capability_id, grant_index, cost_units)
+    }
+
+    fn reduce_charge_cost_with_ids(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        cost_units: u64,
+        hold_id: Option<&str>,
+        event_id: Option<&str>,
+    ) -> Result<(), BudgetStoreError> {
+        self.mutation("reduce_charge_cost_with_ids")?;
+        self.inner.reduce_charge_cost_with_ids(
+            capability_id,
+            grant_index,
+            cost_units,
+            hold_id,
+            event_id,
+        )
     }
 
     fn reduce_charge_cost_with_ids_and_authority(
@@ -464,6 +515,26 @@ impl BudgetStore for FaultingBudgetStore {
             grant_index,
             exposed_cost_units,
             realized_cost_units,
+        )
+    }
+
+    fn settle_charge_cost_with_ids(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        exposed_cost_units: u64,
+        realized_cost_units: u64,
+        hold_id: Option<&str>,
+        event_id: Option<&str>,
+    ) -> Result<(), BudgetStoreError> {
+        self.mutation("settle_charge_cost_with_ids")?;
+        self.inner.settle_charge_cost_with_ids(
+            capability_id,
+            grant_index,
+            exposed_cost_units,
+            realized_cost_units,
+            hold_id,
+            event_id,
         )
     }
 
@@ -514,6 +585,91 @@ impl BudgetStore for FaultingBudgetStore {
         self.inner
             .list_mutation_events(limit, capability_id, grant_index)
     }
+
+    fn budget_guarantee_level(&self) -> chio_kernel::budget_store::BudgetGuaranteeLevel {
+        self.inner.budget_guarantee_level()
+    }
+
+    fn budget_authority_profile(&self) -> chio_kernel::budget_store::BudgetAuthorityProfile {
+        self.inner.budget_authority_profile()
+    }
+
+    fn budget_metering_profile(&self) -> chio_kernel::budget_store::BudgetMeteringProfile {
+        self.inner.budget_metering_profile()
+    }
+
+    fn list_open_holds_older_than(
+        &self,
+        older_than_unix_ms: u64,
+        limit: usize,
+    ) -> Result<Vec<chio_kernel::budget_store::OpenHoldSummary>, BudgetStoreError> {
+        self.inner
+            .list_open_holds_older_than(older_than_unix_ms, limit)
+    }
+
+    fn expire_open_hold(&self, hold_id: &str) -> Result<bool, BudgetStoreError> {
+        self.mutation("expire_open_hold")?;
+        self.inner.expire_open_hold(hold_id)
+    }
+
+    fn open_hold_count(&self) -> Result<u64, BudgetStoreError> {
+        self.inner.open_hold_count()
+    }
+
+    fn record_payment_journal(
+        &self,
+        entry: &chio_kernel::payment::PaymentJournalRecord,
+    ) -> Result<(), BudgetStoreError> {
+        self.mutation("record_payment_journal")?;
+        self.inner.record_payment_journal(entry)
+    }
+
+    fn advance_payment_journal(
+        &self,
+        request_id: &str,
+        expected: chio_kernel::payment::PaymentJournalState,
+        next: chio_kernel::payment::PaymentJournalState,
+        authorization_id: Option<&str>,
+        transaction_id: Option<&str>,
+        settle: Option<chio_kernel::payment::PaymentSettleIntent>,
+    ) -> Result<(), BudgetStoreError> {
+        self.mutation("advance_payment_journal")?;
+        self.inner.advance_payment_journal(
+            request_id,
+            expected,
+            next,
+            authorization_id,
+            transaction_id,
+            settle,
+        )
+    }
+
+    fn close_payment_journal(&self, request_id: &str) -> Result<bool, BudgetStoreError> {
+        self.mutation("close_payment_journal")?;
+        self.inner.close_payment_journal(request_id)
+    }
+
+    fn list_incomplete_payment_journal(
+        &self,
+        older_than_unix_ms: u64,
+    ) -> Result<Vec<chio_kernel::payment::PaymentJournalRecord>, BudgetStoreError> {
+        self.inner
+            .list_incomplete_payment_journal(older_than_unix_ms)
+    }
+
+    fn get_payment_journal(
+        &self,
+        request_id: &str,
+    ) -> Result<Option<chio_kernel::payment::PaymentJournalRecord>, BudgetStoreError> {
+        self.inner.get_payment_journal(request_id)
+    }
+
+    fn payment_journal_reconcile_failed_rail(
+        &self,
+        request_id: &str,
+    ) -> Result<Option<String>, BudgetStoreError> {
+        self.inner.payment_journal_reconcile_failed_rail(request_id)
+    }
 }
 
 pub fn assert_wrapped_budget_replay_outcome() -> Result<(), String> {
@@ -546,11 +702,163 @@ pub fn assert_wrapped_budget_replay_outcome() -> Result<(), String> {
     Ok(())
 }
 
+pub fn assert_wrapped_budget_hold_sweep() -> Result<(), String> {
+    let files = CrashFiles::new(CrashBoundary::BeforeReceiptPersist);
+    let inner = Arc::new(
+        SqliteBudgetStore::open(&files.budget)
+            .map_err(|error| format!("open wrapped hold-sweep budget database: {error}"))?,
+    );
+    let store = FaultingBudgetStore::new(inner, None);
+    let authorized = store
+        .try_charge_cost_with_ids_and_authority_outcome(
+            "dst-hold-sweep-capability",
+            0,
+            Some(1),
+            10,
+            Some(10),
+            Some(10),
+            Some("dst-hold-sweep-hold"),
+            Some("dst-hold-sweep-authorize"),
+            None,
+        )
+        .map_err(|error| format!("authorize wrapped hold-sweep hold: {error}"))?;
+    require(
+        authorized.allowed,
+        "wrapped hold-sweep authorization denied",
+    )?;
+    require(
+        store
+            .open_hold_count()
+            .map_err(|error| format!("count wrapped open holds: {error}"))?
+            == 1,
+        "wrapped hold count did not reach one",
+    )?;
+    let open = store
+        .list_open_holds_older_than(u64::MAX, 8)
+        .map_err(|error| format!("list wrapped open holds: {error}"))?;
+    require(
+        open.len() == 1 && open[0].hold_id == "dst-hold-sweep-hold",
+        "wrapped hold listing lost the open hold",
+    )?;
+    require(
+        store
+            .expire_open_hold("dst-hold-sweep-hold")
+            .map_err(|error| format!("expire wrapped open hold: {error}"))?,
+        "wrapped hold expiration did not apply",
+    )?;
+    require(
+        store
+            .open_hold_count()
+            .map_err(|error| format!("count wrapped holds after expiration: {error}"))?
+            == 0,
+        "wrapped hold remained open after expiration",
+    )?;
+    Ok(())
+}
+
 struct FaultingAdmissionHook {
     evaluations: Arc<AtomicU64>,
     releases: Arc<AtomicU64>,
     readiness_polls: Arc<AtomicU64>,
     fail_release: bool,
+}
+
+#[derive(Default)]
+struct DstPaymentRailState {
+    authorizations: AtomicU64,
+    capture_attempts: AtomicU64,
+    capture_effects: AtomicU64,
+    captured_references: Mutex<HashMap<(String, String), (u64, String)>>,
+}
+
+struct DstPaymentAdapter {
+    state: Arc<DstPaymentRailState>,
+}
+
+impl chio_kernel::PaymentAdapter for DstPaymentAdapter {
+    fn rail_id(&self) -> &str {
+        "dst-payment"
+    }
+
+    fn authorize(
+        &self,
+        request: &chio_kernel::PaymentAuthorizeRequest,
+    ) -> Result<chio_kernel::PaymentAuthorization, chio_kernel::PaymentError> {
+        self.state.authorizations.fetch_add(1, Ordering::SeqCst);
+        Ok(chio_kernel::PaymentAuthorization {
+            authorization_id: format!("dst-auth-{}", request.reference),
+            settled: false,
+            settlement_transaction_id: None,
+            metadata: serde_json::json!({}),
+        })
+    }
+
+    fn capture(
+        &self,
+        authorization_id: &str,
+        amount_units: u64,
+        currency: &str,
+        reference: &str,
+    ) -> Result<chio_kernel::PaymentResult, chio_kernel::PaymentError> {
+        self.state.capture_attempts.fetch_add(1, Ordering::SeqCst);
+        let key = (authorization_id.to_string(), reference.to_string());
+        let mut captured = self.state.captured_references.lock().map_err(|_| {
+            chio_kernel::PaymentError::RailError(
+                "DST payment adapter capture state lock poisoned".to_string(),
+            )
+        })?;
+        if let Some((recorded_amount, recorded_currency)) = captured.get(&key) {
+            if *recorded_amount != amount_units || recorded_currency != currency {
+                return Err(chio_kernel::PaymentError::RailError(
+                    "DST payment adapter received a conflicting idempotent capture".to_string(),
+                ));
+            }
+        } else {
+            captured.insert(key, (amount_units, currency.to_string()));
+            self.state.capture_effects.fetch_add(1, Ordering::SeqCst);
+        }
+        Ok(chio_kernel::PaymentResult {
+            transaction_id: format!("dst-txn-{authorization_id}"),
+            settlement_status: chio_kernel::RailSettlementStatus::Settled,
+            metadata: serde_json::json!({}),
+        })
+    }
+
+    fn release(
+        &self,
+        authorization_id: &str,
+        _reference: &str,
+    ) -> Result<chio_kernel::PaymentResult, chio_kernel::PaymentError> {
+        Ok(chio_kernel::PaymentResult {
+            transaction_id: format!("dst-release-{authorization_id}"),
+            settlement_status: chio_kernel::RailSettlementStatus::Released,
+            metadata: serde_json::json!({}),
+        })
+    }
+
+    fn refund(
+        &self,
+        transaction_id: &str,
+        _amount_units: u64,
+        _currency: &str,
+        _reference: &str,
+    ) -> Result<chio_kernel::PaymentResult, chio_kernel::PaymentError> {
+        Ok(chio_kernel::PaymentResult {
+            transaction_id: format!("dst-refund-{transaction_id}"),
+            settlement_status: chio_kernel::RailSettlementStatus::Refunded,
+            metadata: serde_json::json!({}),
+        })
+    }
+
+    fn settlement_state(
+        &self,
+        _reference: &str,
+        authorization_id: Option<&str>,
+    ) -> Result<chio_kernel::RailSettlementState, chio_kernel::PaymentError> {
+        Ok(chio_kernel::RailSettlementState::Held {
+            authorization_id: authorization_id.unwrap_or("dst-auth-recovered").to_string(),
+        })
+    }
 }
 
 impl RuntimeAdmissionHook for FaultingAdmissionHook {
@@ -719,6 +1027,277 @@ pub fn run_episode(seed: u64) -> Result<EpisodeSummary, String> {
     oracle_conservation(concrete_budget.as_ref(), &capability.id, GRANT_INDEX)?;
 
     Ok(EpisodeSummary { plan })
+}
+
+pub fn run_payment_journal_episode(inject_record_failure: bool) -> Result<(), String> {
+    let files = CrashFiles::new(CrashBoundary::BeforeReceiptPersist);
+    let receipt_store = Arc::new(
+        SqliteReceiptStore::open(&files.receipts)
+            .map_err(|error| format!("open journal episode receipt database: {error}"))?,
+    );
+    let concrete_budget = Arc::new(
+        SqliteBudgetStore::open(&files.budget)
+            .map_err(|error| format!("open journal episode budget database: {error}"))?,
+    );
+    let budget_inner: Arc<dyn BudgetStore> = concrete_budget.clone();
+    let budget_store = Arc::new(FaultingBudgetStore::new(
+        budget_inner,
+        inject_record_failure.then_some(2),
+    ));
+    let rail_state = Arc::new(DstPaymentRailState::default());
+    let server_starts = Arc::new(AtomicU64::new(0));
+
+    let mut config = kernel_config();
+    config.dispatch_intent_journal = chio_kernel::DispatchIntentJournalMode::SideEffecting;
+    let mut kernel = ChioKernel::new(config);
+    let receipt_handle: Arc<dyn ReceiptStore> = receipt_store.clone();
+    kernel
+        .set_receipt_store_handle(receipt_handle)
+        .map_err(|error| format!("install journal episode receipt store: {error}"))?;
+    let budget_handle: Arc<dyn BudgetStore> = budget_store;
+    kernel.set_budget_store_handle(budget_handle);
+    kernel
+        .set_payment_adapter(Box::new(DstPaymentAdapter {
+            state: Arc::clone(&rail_state),
+        }))
+        .map_err(|error| format!("install journal episode payment adapter: {error}"))?;
+    kernel.register_tool_server(Box::new(YieldingServer {
+        starts: Arc::clone(&server_starts),
+        pending_polls: 0,
+        child_operation: false,
+    }));
+
+    let agent = Keypair::generate();
+    let capability = kernel
+        .issue_capability(&agent.public_key(), scope(), 300)
+        .map_err(|error| format!("issue journal episode capability: {error}"))?;
+    let seed = if inject_record_failure {
+        110_001
+    } else {
+        110_000
+    };
+    let request = request(seed, &capability);
+    let response = drive_evaluation(&kernel, &request, EvaluationMode::Complete)?
+        .ok_or_else(|| "journal episode did not complete".to_string())?
+        .map_err(|error| format!("journal episode evaluation failed: {error}"))?;
+
+    if inject_record_failure {
+        require(
+            response.verdict == Verdict::Deny,
+            "payment-journal write fault did not deny before dispatch",
+        )?;
+        require(
+            rail_state.authorizations.load(Ordering::SeqCst) == 0,
+            "payment-journal write fault reached the rail",
+        )?;
+        require(
+            server_starts.load(Ordering::SeqCst) == 0,
+            "payment-journal write fault reached the tool server",
+        )?;
+    } else {
+        require(
+            response.verdict == Verdict::Allow,
+            &format!(
+                "journal-enabled episode did not allow: reason={:?}, terminal_state={:?}",
+                response.reason, response.terminal_state
+            ),
+        )?;
+        require(
+            rail_state.authorizations.load(Ordering::SeqCst) == 1,
+            "journal-enabled episode did not authorize exactly once",
+        )?;
+        require(
+            rail_state.capture_attempts.load(Ordering::SeqCst) == 1,
+            "journal-enabled episode did not capture exactly once",
+        )?;
+        require(
+            rail_state.capture_effects.load(Ordering::SeqCst) == 1,
+            "journal-enabled episode did not apply exactly one capture effect",
+        )?;
+        require(
+            server_starts.load(Ordering::SeqCst) == 1,
+            "journal-enabled episode did not dispatch exactly once",
+        )?;
+    }
+
+    let incomplete = concrete_budget
+        .list_incomplete_payment_journal(u64::MAX)
+        .map_err(|error| format!("list journal episode rows: {error}"))?;
+    require(
+        incomplete.is_empty(),
+        "journal episode left an unexpected incomplete payment row",
+    )?;
+    oracle_conservation(concrete_budget.as_ref(), &capability.id, GRANT_INDEX)?;
+    Ok(())
+}
+
+pub fn run_payment_journal_restart_recovery_episode() -> Result<(), String> {
+    let files = CrashFiles::new(CrashBoundary::AfterReceiptPersist);
+    let receipt_store = Arc::new(
+        SqliteReceiptStore::open(&files.receipts)
+            .map_err(|error| format!("open recovery episode receipt database: {error}"))?,
+    );
+    let concrete_budget = Arc::new(
+        SqliteBudgetStore::open(&files.budget)
+            .map_err(|error| format!("open recovery episode budget database: {error}"))?,
+    );
+    let budget_inner: Arc<dyn BudgetStore> = concrete_budget.clone();
+    let budget_store = Arc::new(FaultingBudgetStore::new(budget_inner, Some(5)));
+    let rail_state = Arc::new(DstPaymentRailState::default());
+    let server_starts = Arc::new(AtomicU64::new(0));
+
+    let mut config = kernel_config();
+    config.dispatch_intent_journal = chio_kernel::DispatchIntentJournalMode::SideEffecting;
+    let mut kernel = ChioKernel::new(config);
+    let receipt_handle: Arc<dyn ReceiptStore> = receipt_store.clone();
+    kernel
+        .set_receipt_store_handle(receipt_handle)
+        .map_err(|error| format!("install recovery episode receipt store: {error}"))?;
+    let budget_handle: Arc<dyn BudgetStore> = budget_store;
+    kernel.set_budget_store_handle(budget_handle);
+    kernel
+        .set_payment_adapter(Box::new(DstPaymentAdapter {
+            state: Arc::clone(&rail_state),
+        }))
+        .map_err(|error| format!("install recovery episode payment adapter: {error}"))?;
+    kernel.register_tool_server(Box::new(YieldingServer {
+        starts: Arc::clone(&server_starts),
+        pending_polls: 0,
+        child_operation: false,
+    }));
+
+    let agent = Keypair::generate();
+    let capability = kernel
+        .issue_capability(&agent.public_key(), scope(), 300)
+        .map_err(|error| format!("issue recovery episode capability: {error}"))?;
+    let request = request(110_002, &capability);
+    let response = drive_evaluation(&kernel, &request, EvaluationMode::Complete)?
+        .ok_or_else(|| "recovery episode did not complete".to_string())?;
+    let error = response
+        .err()
+        .ok_or_else(|| "post-capture journal fault unexpectedly allowed".to_string())?;
+    require(
+        error
+            .to_string()
+            .contains("DST injected budget failure at mutation 5 (advance_payment_journal)"),
+        "post-capture journal fault did not fail the Settling advance",
+    )?;
+    require(
+        rail_state.authorizations.load(Ordering::SeqCst) == 1,
+        "recovery episode did not authorize exactly once",
+    )?;
+    require(
+        rail_state.capture_attempts.load(Ordering::SeqCst) == 1,
+        "recovery episode did not make exactly one initial capture attempt",
+    )?;
+    require(
+        rail_state.capture_effects.load(Ordering::SeqCst) == 1,
+        "recovery episode did not apply exactly one initial capture effect",
+    )?;
+    require(
+        server_starts.load(Ordering::SeqCst) == 1,
+        "recovery episode did not dispatch exactly once before restart",
+    )?;
+
+    let incomplete = concrete_budget
+        .list_incomplete_payment_journal(u64::MAX)
+        .map_err(|error| format!("list pre-restart recovery journal rows: {error}"))?;
+    let settling = incomplete
+        .iter()
+        .find(|row| row.request_id == request.request_id)
+        .ok_or_else(|| "post-capture fault did not leave a durable journal row".to_string())?;
+    require(
+        settling.state == chio_kernel::payment::PaymentJournalState::Settling,
+        "post-capture fault did not leave the journal in Settling",
+    )?;
+    require(
+        settling.settle_action == Some(chio_kernel::payment::PaymentSettleAction::Capture),
+        "post-capture fault lost the committed capture action",
+    )?;
+    require(
+        settling.authorization_id.is_some(),
+        "post-capture fault lost the durable authorization identifier",
+    )?;
+    let receipts_before_restart = receipt_store
+        .max_tool_receipt_seq()
+        .map_err(|error| format!("read pre-restart receipt sequence: {error}"))?;
+
+    drop(kernel);
+    drop(receipt_store);
+    drop(concrete_budget);
+
+    let reopened_budget = Arc::new(
+        SqliteBudgetStore::open(&files.budget)
+            .map_err(|error| format!("reopen recovery episode budget database: {error}"))?,
+    );
+    let reopened_budget_inner: Arc<dyn BudgetStore> = reopened_budget.clone();
+    let reopened_budget_wrapper = Arc::new(FaultingBudgetStore::new(reopened_budget_inner, None));
+    let reopened_receipts = Arc::new(
+        SqliteReceiptStore::open_existing(&files.receipts)
+            .map_err(|error| format!("reopen recovery episode receipt database: {error}"))?,
+    );
+
+    let mut recovered_config = kernel_config();
+    recovered_config.dispatch_intent_journal =
+        chio_kernel::DispatchIntentJournalMode::SideEffecting;
+    let mut recovered_kernel = ChioKernel::new(recovered_config);
+    let reopened_budget_handle: Arc<dyn BudgetStore> = reopened_budget_wrapper;
+    recovered_kernel.set_budget_store_handle(reopened_budget_handle);
+    recovered_kernel
+        .set_payment_adapter(Box::new(DstPaymentAdapter {
+            state: Arc::clone(&rail_state),
+        }))
+        .map_err(|error| format!("install reopened payment adapter: {error}"))?;
+    let reopened_receipt_handle: Arc<dyn ReceiptStore> = reopened_receipts.clone();
+    recovered_kernel
+        .set_receipt_store_handle(reopened_receipt_handle)
+        .map_err(|error| format!("install reopened receipt store: {error}"))?;
+
+    require(
+        rail_state.authorizations.load(Ordering::SeqCst) == 1,
+        "restart reconciliation performed a second authorization",
+    )?;
+    require(
+        rail_state.capture_attempts.load(Ordering::SeqCst) == 2,
+        "restart reconciliation did not replay the committed capture exactly once",
+    )?;
+    require(
+        rail_state.capture_effects.load(Ordering::SeqCst) == 1,
+        "restart reconciliation applied a duplicate capture effect",
+    )?;
+    require(
+        server_starts.load(Ordering::SeqCst) == 1,
+        "restart reconciliation dispatched the tool a second time",
+    )?;
+    let remaining = reopened_budget
+        .list_incomplete_payment_journal(u64::MAX)
+        .map_err(|error| format!("list post-restart recovery journal rows: {error}"))?;
+    require(
+        remaining.is_empty(),
+        "restart reconciliation did not close the payment journal",
+    )?;
+    let receipts_after_restart = reopened_receipts
+        .max_tool_receipt_seq()
+        .map_err(|error| format!("read post-restart receipt sequence: {error}"))?;
+    require(
+        receipts_after_restart == receipts_before_restart.saturating_add(1),
+        "restart reconciliation did not append exactly one recovery receipt",
+    )?;
+    let recovery_receipts = reopened_receipts
+        .list_tool_receipts(
+            8,
+            Some(&capability.id),
+            Some("dst-payment"),
+            Some("payment.reconcile"),
+            None,
+        )
+        .map_err(|error| format!("read restart reconciliation receipts: {error}"))?;
+    require(
+        recovery_receipts.len() == 1 && recovery_receipts[0].is_allowed(),
+        "restart reconciliation did not persist one signed allow receipt",
+    )?;
+    oracle_conservation(reopened_budget.as_ref(), &capability.id, GRANT_INDEX)?;
+    Ok(())
 }
 
 fn drive_evaluation(

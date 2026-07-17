@@ -988,11 +988,13 @@ fn governed_x402_prepaid_flow_records_governed_authorization_and_receipt_metadat
 
     let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(
-        X402PaymentAdapter::new(url)
-            .with_bearer_token("bridge-token")
-            .with_timeout(Duration::from_secs(2)),
-    )).expect("install payment adapter");
+    kernel
+        .set_payment_adapter(Box::new(
+            X402PaymentAdapter::new(url)
+                .with_bearer_token("bridge-token")
+                .with_timeout(Duration::from_secs(2)),
+        ))
+        .expect("install payment adapter");
     kernel.register_tool_server(Box::new(CountingMonetaryServer {
         id: "cost-srv".to_string(),
         invocations: invocations.clone(),
@@ -1097,9 +1099,11 @@ fn governed_x402_authorization_failure_denies_before_tool_execution() {
 
     let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(
-        X402PaymentAdapter::new(url).with_timeout(Duration::from_secs(2)),
-    )).expect("install payment adapter");
+    kernel
+        .set_payment_adapter(Box::new(
+            X402PaymentAdapter::new(url).with_timeout(Duration::from_secs(2)),
+        ))
+        .expect("install payment adapter");
     kernel.register_tool_server(Box::new(CountingMonetaryServer {
         id: "cost-srv".to_string(),
         invocations: invocations.clone(),
@@ -1187,7 +1191,7 @@ fn governed_x402_authorization_failure_denies_before_tool_execution() {
 }
 
 #[test]
-fn governed_acp_hold_flow_keeps_settlement_pending_without_capture_acknowledgement() {
+fn governed_acp_default_flow_completes_with_marked_local_bookkeeping() {
     let (url, request_rx, handle) = spawn_payment_test_server(
         200,
         serde_json::json!({
@@ -1202,12 +1206,14 @@ fn governed_acp_hold_flow_keeps_settlement_pending_without_capture_acknowledgeme
 
     let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(
-        AcpPaymentAdapter::new(url)
-            .with_authorize_path("/commerce/authorize")
-            .with_bearer_token("acp-token")
-            .with_timeout(Duration::from_secs(2)),
-    )).expect("install payment adapter");
+    kernel
+        .set_payment_adapter(Box::new(
+            AcpPaymentAdapter::new(url)
+                .with_authorize_path("/commerce/authorize")
+                .with_bearer_token("acp-token")
+                .with_timeout(Duration::from_secs(2)),
+        ))
+        .expect("install payment adapter");
     kernel.register_tool_server(Box::new(CountingMonetaryServer {
         id: "commerce-srv".to_string(),
         invocations: invocations.clone(),
@@ -1285,7 +1291,7 @@ fn governed_acp_hold_flow_keeps_settlement_pending_without_capture_acknowledgeme
         .get("financial")
         .expect("allow receipt should carry financial metadata");
     assert_eq!(financial["payment_reference"], "acp_hold_governed");
-    assert_eq!(financial["settlement_status"], "pending");
+    assert_eq!(financial["settlement_status"], "settled");
     assert_eq!(
         financial["cost_breakdown"]["payment"]["authorization_id"],
         "acp_hold_governed"
@@ -1297,6 +1303,14 @@ fn governed_acp_hold_flow_keeps_settlement_pending_without_capture_acknowledgeme
     assert_eq!(
         financial["cost_breakdown"]["payment"]["adapter_metadata"]["mode"],
         "shared_payment_token_hold"
+    );
+    assert_eq!(
+        financial["cost_breakdown"]["payment"]["settlement_attempt"]["operation"],
+        "capture"
+    );
+    assert_eq!(
+        financial["cost_breakdown"]["payment"]["settlement_attempt"]["outcome"],
+        "locally_bookkept"
     );
 
     let governed = metadata
@@ -1317,9 +1331,11 @@ fn governed_acp_hold_flow_keeps_settlement_pending_without_capture_acknowledgeme
 fn governed_acp_seller_mismatch_denies_before_payment_or_tool_execution() {
     let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(
-        AcpPaymentAdapter::new("http://127.0.0.1:1").with_timeout(Duration::from_millis(50)),
-    )).expect("install payment adapter");
+    kernel
+        .set_payment_adapter(Box::new(
+            AcpPaymentAdapter::new("http://127.0.0.1:1").with_timeout(Duration::from_millis(50)),
+        ))
+        .expect("install payment adapter");
     kernel.register_tool_server(Box::new(CountingMonetaryServer {
         id: "commerce-srv".to_string(),
         invocations: invocations.clone(),

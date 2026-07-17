@@ -188,8 +188,16 @@ impl ChioKernel {
     pub(crate) fn lock_runtime_trace_transition(
         &self,
     ) -> Result<std::sync::MutexGuard<'_, ()>, KernelError> {
-        self.runtime_trace_transition_lock.lock().map_err(|_| {
-            KernelError::Internal("runtime trace transition lock poisoned".to_string())
+        Ok(match self.runtime_trace_transition_lock.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                // This lock carries no protected state. It only serializes
+                // revocation and receipt trace ordering, so recovery is safe
+                // once the poisoned guard has restored mutual exclusion.
+                warn!("runtime trace transition lock was poisoned; recovering trace ordering");
+                self.runtime_trace_transition_lock.clear_poison();
+                poisoned.into_inner()
+            }
         })
     }
 

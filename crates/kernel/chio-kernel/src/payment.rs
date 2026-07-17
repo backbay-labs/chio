@@ -14,14 +14,19 @@ pub struct PaymentAuthorization {
     pub settled: bool,
     /// Rail transaction identifier for an already-settled authorization.
     ///
-    /// This is required when `settled` is true and is the only identifier that
-    /// may be passed to a later refund operation.
+    /// Adapters should provide this when `settled` is true. For compatibility
+    /// with prepaid adapters that predate this field, the kernel falls back to
+    /// `authorization_id` as the settlement reference when it is omitted.
     pub settlement_transaction_id: Option<String>,
     /// Rail-specific metadata such as idempotency keys, quote IDs, or expiry.
     pub metadata: serde_json::Value,
 }
 
 /// Result of a capture, settlement, release, or refund operation.
+///
+/// Built-in adapters mark `metadata.remote_acknowledged` to distinguish a
+/// response returned by a configured rail endpoint from compatibility-mode
+/// local bookkeeping.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct PaymentResult {
@@ -34,6 +39,16 @@ pub struct PaymentResult {
     /// Rail-specific metadata such as confirmations or idempotency keys.
     #[serde(default)]
     pub metadata: serde_json::Value,
+}
+
+impl PaymentResult {
+    #[must_use]
+    pub(crate) fn is_local_bookkeeping(&self) -> bool {
+        self.metadata
+            .get("remote_acknowledged")
+            .and_then(serde_json::Value::as_bool)
+            == Some(false)
+    }
 }
 
 /// Richer settlement states surfaced by payment rails.
@@ -161,7 +176,12 @@ impl ReceiptSettlement {
     pub fn from_authorization(authorization: &PaymentAuthorization) -> Self {
         Self {
             payment_reference: if authorization.settled {
-                authorization.settlement_transaction_id.clone()
+                Some(
+                    authorization
+                        .settlement_transaction_id
+                        .clone()
+                        .unwrap_or_else(|| authorization.authorization_id.clone()),
+                )
             } else {
                 Some(authorization.authorization_id.clone())
             },
@@ -464,9 +484,12 @@ pub struct PaymentJournalRecord {
 
 /// Thin HTTP payment bridge for x402-style per-request settlement.
 ///
-/// Authorization is always remote. Capture, release, and refund remain an
-/// explicit pending reconciliation state unless their acknowledgement paths
-/// are configured with the corresponding builders.
+/// Authorization is always remote. For compatibility, capture, release, and
+/// refund use explicitly marked local bookkeeping when their acknowledgement
+/// paths are absent. Configure the corresponding paths for remote
+/// acknowledgement, or call
+/// [`Self::requiring_remote_settlement_acknowledgements`] to fail closed when a
+/// path is absent.
 #[derive(Debug, Clone)]
 pub struct X402PaymentAdapter {
     base_url: String,
@@ -474,15 +497,19 @@ pub struct X402PaymentAdapter {
     capture_path: Option<String>,
     release_path: Option<String>,
     refund_path: Option<String>,
+    local_bookkeeping_fallback: bool,
     bearer_token: Option<String>,
     http: ureq::Agent,
 }
 
 /// Thin shared-payment-token payment bridge for ACP-style commerce approvals.
 ///
-/// Authorization is always remote. Capture, release, and refund remain an
-/// explicit pending reconciliation state unless their acknowledgement paths
-/// are configured with the corresponding builders.
+/// Authorization is always remote. For compatibility, capture, release, and
+/// refund use explicitly marked local bookkeeping when their acknowledgement
+/// paths are absent. Configure the corresponding paths for remote
+/// acknowledgement, or call
+/// [`Self::requiring_remote_settlement_acknowledgements`] to fail closed when a
+/// path is absent.
 #[derive(Debug, Clone)]
 pub struct AcpPaymentAdapter {
     base_url: String,
@@ -490,6 +517,7 @@ pub struct AcpPaymentAdapter {
     capture_path: Option<String>,
     release_path: Option<String>,
     refund_path: Option<String>,
+    local_bookkeeping_fallback: bool,
     bearer_token: Option<String>,
     http: ureq::Agent,
 }
@@ -503,6 +531,7 @@ impl X402PaymentAdapter {
             capture_path: None,
             release_path: None,
             refund_path: None,
+            local_bookkeeping_fallback: true,
             bearer_token: None,
             http: build_http_agent(Duration::from_secs(5)),
         }
@@ -529,6 +558,17 @@ impl X402PaymentAdapter {
     #[must_use]
     pub fn with_refund_path(mut self, path: impl Into<String>) -> Self {
         self.refund_path = Some(normalize_http_path(&path.into()));
+        self
+    }
+
+    /// Require configured endpoints for capture, release, and refund.
+    ///
+    /// The default preserves the legacy local-bookkeeping behavior and marks
+    /// its results as not remotely acknowledged. This builder disables that
+    /// fallback for deployments that require rail-confirmed terminal actions.
+    #[must_use]
+    pub fn requiring_remote_settlement_acknowledgements(mut self) -> Self {
+        self.local_bookkeeping_fallback = false;
         self
     }
 
@@ -554,6 +594,7 @@ impl AcpPaymentAdapter {
             capture_path: None,
             release_path: None,
             refund_path: None,
+            local_bookkeeping_fallback: true,
             bearer_token: None,
             http: build_http_agent(Duration::from_secs(5)),
         }
@@ -580,6 +621,17 @@ impl AcpPaymentAdapter {
     #[must_use]
     pub fn with_refund_path(mut self, path: impl Into<String>) -> Self {
         self.refund_path = Some(normalize_http_path(&path.into()));
+        self
+    }
+
+    /// Require configured endpoints for capture, release, and refund.
+    ///
+    /// The default preserves the legacy local-bookkeeping behavior and marks
+    /// its results as not remotely acknowledged. This builder disables that
+    /// fallback for deployments that require rail-confirmed terminal actions.
+    #[must_use]
+    pub fn requiring_remote_settlement_acknowledgements(mut self) -> Self {
+        self.local_bookkeeping_fallback = false;
         self
     }
 
@@ -675,12 +727,24 @@ impl PaymentAdapter for X402PaymentAdapter {
         currency: &str,
         reference: &str,
     ) -> Result<PaymentResult, PaymentError> {
-        let path = self.capture_path.as_deref().ok_or_else(|| {
-            PaymentError::NotConfigured(
-                "x402 capture acknowledgement endpoint is not configured".to_string(),
-            )
-        })?;
-        post_json(
+        let Some(path) = self.capture_path.as_deref() else {
+            if !self.local_bookkeeping_fallback {
+                return Err(PaymentError::NotConfigured(
+                    "x402 capture acknowledgement endpoint is not configured".to_string(),
+                ));
+            }
+            return Ok(local_bookkeeping_result(
+                "x402",
+                "prepaid",
+                "capture",
+                authorization_id,
+                RailSettlementStatus::Settled,
+                reference,
+                Some(amount_units),
+                Some(currency),
+            ));
+        };
+        let result: PaymentResult = post_json(
             &self.http,
             &self.base_url,
             self.bearer_token.as_deref(),
@@ -692,7 +756,8 @@ impl PaymentAdapter for X402PaymentAdapter {
                 currency: Some(currency),
                 reference,
             },
-        )
+        )?;
+        Ok(mark_remote_acknowledgement(result))
     }
 
     fn release(
@@ -700,12 +765,24 @@ impl PaymentAdapter for X402PaymentAdapter {
         authorization_id: &str,
         reference: &str,
     ) -> Result<PaymentResult, PaymentError> {
-        let path = self.release_path.as_deref().ok_or_else(|| {
-            PaymentError::NotConfigured(
-                "x402 release acknowledgement endpoint is not configured".to_string(),
-            )
-        })?;
-        post_json(
+        let Some(path) = self.release_path.as_deref() else {
+            if !self.local_bookkeeping_fallback {
+                return Err(PaymentError::NotConfigured(
+                    "x402 release acknowledgement endpoint is not configured".to_string(),
+                ));
+            }
+            return Ok(local_bookkeeping_result(
+                "x402",
+                "prepaid",
+                "release",
+                authorization_id,
+                RailSettlementStatus::Released,
+                reference,
+                None,
+                None,
+            ));
+        };
+        let result: PaymentResult = post_json(
             &self.http,
             &self.base_url,
             self.bearer_token.as_deref(),
@@ -717,7 +794,8 @@ impl PaymentAdapter for X402PaymentAdapter {
                 currency: None,
                 reference,
             },
-        )
+        )?;
+        Ok(mark_remote_acknowledgement(result))
     }
 
     fn refund(
@@ -727,12 +805,24 @@ impl PaymentAdapter for X402PaymentAdapter {
         currency: &str,
         reference: &str,
     ) -> Result<PaymentResult, PaymentError> {
-        let path = self.refund_path.as_deref().ok_or_else(|| {
-            PaymentError::NotConfigured(
-                "x402 refund acknowledgement endpoint is not configured".to_string(),
-            )
-        })?;
-        post_json(
+        let Some(path) = self.refund_path.as_deref() else {
+            if !self.local_bookkeeping_fallback {
+                return Err(PaymentError::NotConfigured(
+                    "x402 refund acknowledgement endpoint is not configured".to_string(),
+                ));
+            }
+            return Ok(local_bookkeeping_result(
+                "x402",
+                "prepaid",
+                "refund",
+                transaction_id,
+                RailSettlementStatus::Refunded,
+                reference,
+                Some(amount_units),
+                Some(currency),
+            ));
+        };
+        let result: PaymentResult = post_json(
             &self.http,
             &self.base_url,
             self.bearer_token.as_deref(),
@@ -744,7 +834,8 @@ impl PaymentAdapter for X402PaymentAdapter {
                 currency: Some(currency),
                 reference,
             },
-        )
+        )?;
+        Ok(mark_remote_acknowledgement(result))
     }
 }
 
@@ -832,12 +923,24 @@ impl PaymentAdapter for AcpPaymentAdapter {
         currency: &str,
         reference: &str,
     ) -> Result<PaymentResult, PaymentError> {
-        let path = self.capture_path.as_deref().ok_or_else(|| {
-            PaymentError::NotConfigured(
-                "ACP capture acknowledgement endpoint is not configured".to_string(),
-            )
-        })?;
-        post_json(
+        let Some(path) = self.capture_path.as_deref() else {
+            if !self.local_bookkeeping_fallback {
+                return Err(PaymentError::NotConfigured(
+                    "ACP capture acknowledgement endpoint is not configured".to_string(),
+                ));
+            }
+            return Ok(local_bookkeeping_result(
+                "acp",
+                "shared_payment_token_hold",
+                "capture",
+                authorization_id,
+                RailSettlementStatus::Settled,
+                reference,
+                Some(amount_units),
+                Some(currency),
+            ));
+        };
+        let result: PaymentResult = post_json(
             &self.http,
             &self.base_url,
             self.bearer_token.as_deref(),
@@ -849,7 +952,8 @@ impl PaymentAdapter for AcpPaymentAdapter {
                 currency: Some(currency),
                 reference,
             },
-        )
+        )?;
+        Ok(mark_remote_acknowledgement(result))
     }
 
     fn release(
@@ -857,12 +961,24 @@ impl PaymentAdapter for AcpPaymentAdapter {
         authorization_id: &str,
         reference: &str,
     ) -> Result<PaymentResult, PaymentError> {
-        let path = self.release_path.as_deref().ok_or_else(|| {
-            PaymentError::NotConfigured(
-                "ACP release acknowledgement endpoint is not configured".to_string(),
-            )
-        })?;
-        post_json(
+        let Some(path) = self.release_path.as_deref() else {
+            if !self.local_bookkeeping_fallback {
+                return Err(PaymentError::NotConfigured(
+                    "ACP release acknowledgement endpoint is not configured".to_string(),
+                ));
+            }
+            return Ok(local_bookkeeping_result(
+                "acp",
+                "shared_payment_token_hold",
+                "release",
+                authorization_id,
+                RailSettlementStatus::Released,
+                reference,
+                None,
+                None,
+            ));
+        };
+        let result: PaymentResult = post_json(
             &self.http,
             &self.base_url,
             self.bearer_token.as_deref(),
@@ -874,7 +990,8 @@ impl PaymentAdapter for AcpPaymentAdapter {
                 currency: None,
                 reference,
             },
-        )
+        )?;
+        Ok(mark_remote_acknowledgement(result))
     }
 
     fn refund(
@@ -884,12 +1001,24 @@ impl PaymentAdapter for AcpPaymentAdapter {
         currency: &str,
         reference: &str,
     ) -> Result<PaymentResult, PaymentError> {
-        let path = self.refund_path.as_deref().ok_or_else(|| {
-            PaymentError::NotConfigured(
-                "ACP refund acknowledgement endpoint is not configured".to_string(),
-            )
-        })?;
-        post_json(
+        let Some(path) = self.refund_path.as_deref() else {
+            if !self.local_bookkeeping_fallback {
+                return Err(PaymentError::NotConfigured(
+                    "ACP refund acknowledgement endpoint is not configured".to_string(),
+                ));
+            }
+            return Ok(local_bookkeeping_result(
+                "acp",
+                "shared_payment_token_hold",
+                "refund",
+                transaction_id,
+                RailSettlementStatus::Refunded,
+                reference,
+                Some(amount_units),
+                Some(currency),
+            ));
+        };
+        let result: PaymentResult = post_json(
             &self.http,
             &self.base_url,
             self.bearer_token.as_deref(),
@@ -901,7 +1030,8 @@ impl PaymentAdapter for AcpPaymentAdapter {
                 currency: Some(currency),
                 reference,
             },
-        )
+        )?;
+        Ok(mark_remote_acknowledgement(result))
     }
 }
 
@@ -970,6 +1100,55 @@ fn resolve_authorization_response_ids(
     Ok((authorization_id, settlement_transaction_id))
 }
 
+#[allow(clippy::too_many_arguments)]
+fn local_bookkeeping_result(
+    adapter: &str,
+    mode: &str,
+    action: &str,
+    transaction_id: &str,
+    settlement_status: RailSettlementStatus,
+    reference: &str,
+    amount_units: Option<u64>,
+    currency: Option<&str>,
+) -> PaymentResult {
+    PaymentResult {
+        transaction_id: transaction_id.to_string(),
+        settlement_status,
+        metadata: serde_json::json!({
+            "adapter": adapter,
+            "mode": mode,
+            "action": action,
+            "reference": reference,
+            "amount_units": amount_units,
+            "currency": currency,
+            "acknowledgement": "local_bookkeeping",
+            "remote_acknowledged": false
+        }),
+    }
+}
+
+fn mark_remote_acknowledgement(mut result: PaymentResult) -> PaymentResult {
+    let mut metadata = match std::mem::take(&mut result.metadata) {
+        serde_json::Value::Object(metadata) => metadata,
+        serde_json::Value::Null => serde_json::Map::new(),
+        rail_metadata => {
+            let mut metadata = serde_json::Map::new();
+            metadata.insert("rail_metadata".to_string(), rail_metadata);
+            metadata
+        }
+    };
+    metadata.insert(
+        "acknowledgement".to_string(),
+        serde_json::Value::String("remote".to_string()),
+    );
+    metadata.insert(
+        "remote_acknowledged".to_string(),
+        serde_json::Value::Bool(true),
+    );
+    result.metadata = serde_json::Value::Object(metadata);
+    result
+}
+
 fn post_json<B: Serialize, T: DeserializeOwned>(
     http: &ureq::Agent,
     base_url: &str,
@@ -1024,7 +1203,10 @@ fn default_true() -> bool {
 fn map_http_payment_error(error: ureq::Error) -> PaymentError {
     match error {
         ureq::Error::Status(402, _response) => PaymentError::InsufficientFunds,
-        ureq::Error::Status(400 | 401 | 403 | 404 | 405 | 422, response) => {
+        // A 409 can mean the idempotent operation raced with a request the
+        // rail may already have processed. Other 4xx responses are explicit
+        // client-side rejections and are safe to retry with a fresh request.
+        ureq::Error::Status(status @ 400..=499, response) if status != 409 => {
             PaymentError::Declined(response_error_message(response))
         }
         ureq::Error::Status(status, response) => PaymentError::Unavailable(format!(
@@ -1239,9 +1421,16 @@ mod tests {
             settlement_transaction_id: Some("txn_456".to_string()),
             metadata: serde_json::json!({ "provider": "x402" }),
         };
+        let settled_legacy = PaymentAuthorization {
+            authorization_id: "auth_legacy".to_string(),
+            settled: true,
+            settlement_transaction_id: None,
+            metadata: serde_json::json!({ "provider": "legacy-prepaid" }),
+        };
 
         let pending_receipt = ReceiptSettlement::from_authorization(&pending);
         let settled_receipt = ReceiptSettlement::from_authorization(&settled);
+        let settled_legacy_receipt = ReceiptSettlement::from_authorization(&settled_legacy);
 
         assert_eq!(
             pending_receipt.payment_reference.as_deref(),
@@ -1253,6 +1442,14 @@ mod tests {
             Some("txn_456")
         );
         assert_eq!(settled_receipt.settlement_status, SettlementStatus::Settled);
+        assert_eq!(
+            settled_legacy_receipt.payment_reference.as_deref(),
+            Some("auth_legacy")
+        );
+        assert_eq!(
+            settled_legacy_receipt.settlement_status,
+            SettlementStatus::Settled
+        );
     }
 
     #[test]
@@ -1379,11 +1576,36 @@ mod tests {
     }
 
     #[test]
-    fn x402_adapter_treats_ambiguous_http_conflicts_as_outcome_unknown() {
-        for status in [408, 409] {
+    fn x402_adapter_treats_http_conflict_as_outcome_unknown() {
+        let (url, _request_rx, handle) = spawn_once_json_server(
+            409,
+            serde_json::json!({ "error": "authorization outcome unknown" }),
+        );
+        let adapter = X402PaymentAdapter::new(url).with_timeout(Duration::from_secs(2));
+
+        let error = adapter
+            .authorize(&PaymentAuthorizeRequest {
+                amount_units: 125,
+                currency: "USD".to_string(),
+                payer: "agent-1".to_string(),
+                payee: "tool-server".to_string(),
+                reference: "req-http-409".to_string(),
+                governed: None,
+                commerce: None,
+            })
+            .expect_err("ambiguous HTTP response must fail closed");
+
+        assert!(matches!(error, PaymentError::Unavailable(_)));
+        assert!(error.outcome_unknown());
+        handle.join().expect("server thread should exit cleanly");
+    }
+
+    #[test]
+    fn x402_adapter_treats_non_conflict_client_errors_as_known_declines() {
+        for status in [406, 408, 413, 425, 429, 451] {
             let (url, _request_rx, handle) = spawn_once_json_server(
                 status,
-                serde_json::json!({ "error": "authorization outcome unknown" }),
+                serde_json::json!({ "error": "request rejected before processing" }),
             );
             let adapter = X402PaymentAdapter::new(url).with_timeout(Duration::from_secs(2));
 
@@ -1397,10 +1619,10 @@ mod tests {
                     governed: None,
                     commerce: None,
                 })
-                .expect_err("ambiguous HTTP response must fail closed");
+                .expect_err("explicit HTTP rejection must fail cleanly");
 
-            assert!(matches!(error, PaymentError::Unavailable(_)));
-            assert!(error.outcome_unknown());
+            assert!(matches!(error, PaymentError::Declined(_)));
+            assert!(!error.outcome_unknown());
             handle.join().expect("server thread should exit cleanly");
         }
     }
@@ -1519,9 +1741,49 @@ mod tests {
     }
 
     #[test]
-    fn built_in_adapters_surface_unconfigured_settlement_for_reconciliation() {
+    fn default_built_in_adapters_use_explicit_local_bookkeeping() {
         let x402 = X402PaymentAdapter::new("http://127.0.0.1:1");
         let acp = AcpPaymentAdapter::new("http://127.0.0.1:1");
+
+        for (result, expected_status) in [
+            (
+                x402.capture("auth", 1, "USD", "request"),
+                RailSettlementStatus::Settled,
+            ),
+            (
+                x402.release("auth", "request"),
+                RailSettlementStatus::Released,
+            ),
+            (
+                x402.refund("auth", 1, "USD", "request"),
+                RailSettlementStatus::Refunded,
+            ),
+            (
+                acp.capture("auth", 1, "USD", "request"),
+                RailSettlementStatus::Settled,
+            ),
+            (
+                acp.release("auth", "request"),
+                RailSettlementStatus::Released,
+            ),
+            (
+                acp.refund("auth", 1, "USD", "request"),
+                RailSettlementStatus::Refunded,
+            ),
+        ] {
+            let result = result.expect("default adapter must preserve local bookkeeping");
+            assert_eq!(result.settlement_status, expected_status);
+            assert!(result.is_local_bookkeeping());
+            assert_eq!(result.metadata["acknowledgement"], "local_bookkeeping");
+        }
+    }
+
+    #[test]
+    fn strict_built_in_adapters_reject_missing_acknowledgement_endpoints() {
+        let x402 = X402PaymentAdapter::new("http://127.0.0.1:1")
+            .requiring_remote_settlement_acknowledgements();
+        let acp = AcpPaymentAdapter::new("http://127.0.0.1:1")
+            .requiring_remote_settlement_acknowledgements();
 
         for result in [
             x402.capture("auth", 1, "USD", "request"),
@@ -1531,10 +1793,9 @@ mod tests {
             acp.release("auth", "request"),
             acp.refund("auth", 1, "USD", "request"),
         ] {
-            let error = result.expect_err("local bookkeeping must not acknowledge a rail action");
+            let error = result.expect_err("strict mode requires a remote endpoint");
             assert!(matches!(error, PaymentError::NotConfigured(_)));
             assert!(!error.outcome_unknown());
-            assert!(error.to_string().contains("endpoint is not configured"));
         }
     }
 
@@ -1558,6 +1819,9 @@ mod tests {
         assert!(request.contains("\"amountUnits\":42"));
         assert_eq!(result.transaction_id, "txn-captured");
         assert_eq!(result.settlement_status, RailSettlementStatus::Settled);
+        assert!(!result.is_local_bookkeeping());
+        assert_eq!(result.metadata["remote_acknowledged"], true);
+        assert_eq!(result.metadata["acknowledgement"], "remote");
         handle.join().expect("server thread should exit cleanly");
     }
 

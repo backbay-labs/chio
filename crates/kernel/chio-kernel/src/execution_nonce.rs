@@ -30,6 +30,7 @@
 //! deployments flip `require_nonce` to make every execution-bound dispatch
 //! present a fresh nonce.
 
+use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime};
@@ -41,7 +42,9 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, warn};
 use uuid::Uuid;
 
-use crate::replay_retention::{advance_replay_clock, ReplayRetention};
+use crate::replay_retention::{
+    advance_replay_clock, PendingReplayClockRebaseline, ReplayRetention,
+};
 use crate::KernelError;
 
 /// Schema identifier for Chio execution nonces.
@@ -51,7 +54,12 @@ pub const EXECUTION_NONCE_SCHEMA: &str = "chio.execution_nonce.v1";
 pub const DEFAULT_EXECUTION_NONCE_TTL_SECS: u64 = 30;
 
 /// Default capacity for the in-memory replay-prevention LRU cache.
-pub const DEFAULT_EXECUTION_NONCE_STORE_CAPACITY: usize = 16_384;
+///
+/// This provides shared operational headroom for roughly 2,000 reservations
+/// per second across the default 30-second nonce lifetime, plus short bursts.
+pub const DEFAULT_EXECUTION_NONCE_STORE_CAPACITY: usize = 65_536;
+
+const EXECUTION_NONCE_CAPABILITY_FAIR_SHARE_DIVISOR: usize = 8;
 
 #[must_use]
 pub fn is_supported_execution_nonce_schema(schema: &str) -> bool {
@@ -143,7 +151,7 @@ impl SignedExecutionNonce {
 pub struct ExecutionNonceConfig {
     /// How many seconds a nonce is valid after issuance. Default: 30.
     pub nonce_ttl_secs: u64,
-    /// Maximum entries in the replay-prevention LRU cache. Default: 16_384.
+    /// Maximum entries in the replay-prevention LRU cache. Default: 65,536.
     pub nonce_store_capacity: usize,
     /// When `true`, the kernel's strict-mode verify paths reject any call
     /// that does not present a signed nonce. Default: `false` (opt-in).
@@ -199,6 +207,21 @@ pub trait ExecutionNonceStore: Send + Sync {
         self.reserve(nonce_id)
     }
 
+    /// Reserve a nonce within the capability that presented it.
+    ///
+    /// The provided implementation preserves compatibility with existing
+    /// stores. Stores that enforce tenant fairness can override this method
+    /// and account for the verified capability without changing legacy
+    /// unscoped reservations.
+    fn reserve_until_for_capability(
+        &self,
+        nonce_id: &str,
+        nonce_expires_at: i64,
+        _capability_id: &str,
+    ) -> Result<bool, KernelError> {
+        self.reserve_until(nonce_id, nonce_expires_at)
+    }
+
     /// Whether this store can create and conditionally roll back an owned
     /// reservation before tool dispatch begins.
     fn supports_dispatch_reservations(&self) -> bool {
@@ -216,6 +239,20 @@ pub trait ExecutionNonceStore: Send + Sync {
         _reservation_id: &str,
     ) -> Result<bool, KernelError> {
         self.reserve_until(nonce_id, nonce_expires_at)
+    }
+
+    /// Reserve a capability-scoped nonce for one dispatch attempt.
+    ///
+    /// The default delegates to the existing dispatch-reservation contract so
+    /// third-party stores keep their owner-aware rollback behavior.
+    fn reserve_for_dispatch_for_capability(
+        &self,
+        nonce_id: &str,
+        nonce_expires_at: i64,
+        _capability_id: &str,
+        reservation_id: &str,
+    ) -> Result<bool, KernelError> {
+        self.reserve_for_dispatch(nonce_id, nonce_expires_at, reservation_id)
     }
 
     /// Remove an owned reservation after a failure known to precede any tool
@@ -247,13 +284,17 @@ pub struct InMemoryExecutionNonceStore {
 
 struct ExecutionNonceState {
     cache: LruCache<String, ExecutionNonceEntry>,
+    capability_counts: HashMap<String, usize>,
+    per_capability_capacity: usize,
     wall_clock_high_water: SystemTime,
     monotonic_high_water: Instant,
+    pending_clock_rebaseline: Option<PendingReplayClockRebaseline>,
 }
 
 struct ExecutionNonceEntry {
     retention: ReplayRetention,
     dispatch_reservation_id: Option<String>,
+    capability_id: Option<String>,
 }
 
 impl InMemoryExecutionNonceStore {
@@ -276,8 +317,11 @@ impl InMemoryExecutionNonceStore {
         Self {
             inner: Mutex::new(ExecutionNonceState {
                 cache: LruCache::new(nz),
+                capability_counts: HashMap::new(),
+                per_capability_capacity: execution_nonce_capability_capacity(capacity),
                 wall_clock_high_water: SystemTime::now(),
                 monotonic_high_water: Instant::now(),
+                pending_clock_rebaseline: None,
             }),
             ttl,
         }
@@ -290,6 +334,16 @@ impl InMemoryExecutionNonceStore {
             config.nonce_store_capacity,
             Duration::from_secs(config.nonce_ttl_secs),
         )
+    }
+
+    /// Return `(occupied_entries, capacity)` for local utilization monitoring.
+    pub fn utilization(&self) -> Result<(usize, usize), KernelError> {
+        let state = self.inner.lock().map_err(|_| {
+            KernelError::Internal(
+                "execution nonce store mutex poisoned; cannot report utilization".to_string(),
+            )
+        })?;
+        Ok((state.cache.len(), state.cache.cap().get()))
     }
 }
 
@@ -315,6 +369,20 @@ impl ExecutionNonceStore for InMemoryExecutionNonceStore {
         )
     }
 
+    fn reserve_until_for_capability(
+        &self,
+        nonce_id: &str,
+        nonce_expires_at: i64,
+        capability_id: &str,
+    ) -> Result<bool, KernelError> {
+        self.reserve_entry_for_capability(
+            nonce_id,
+            ReplayRetention::signed_until_unix_i64(nonce_expires_at),
+            capability_id,
+            None,
+        )
+    }
+
     fn supports_dispatch_reservations(&self) -> bool {
         true
     }
@@ -328,6 +396,21 @@ impl ExecutionNonceStore for InMemoryExecutionNonceStore {
         self.reserve_entry(
             nonce_id,
             ReplayRetention::signed_until_unix_i64(nonce_expires_at),
+            Some(reservation_id),
+        )
+    }
+
+    fn reserve_for_dispatch_for_capability(
+        &self,
+        nonce_id: &str,
+        nonce_expires_at: i64,
+        capability_id: &str,
+        reservation_id: &str,
+    ) -> Result<bool, KernelError> {
+        self.reserve_entry_for_capability(
+            nonce_id,
+            ReplayRetention::signed_until_unix_i64(nonce_expires_at),
+            capability_id,
             Some(reservation_id),
         )
     }
@@ -350,7 +433,11 @@ impl ExecutionNonceStore for InMemoryExecutionNonceStore {
             .peek(nonce_id)
             .is_some_and(|entry| entry.dispatch_reservation_id.as_deref() == Some(reservation_id));
         if owned {
-            state.cache.pop(nonce_id);
+            if let Some(entry) = state.cache.pop(nonce_id) {
+                if let Some(capability_id) = entry.capability_id {
+                    decrement_capability_count(&mut state.capability_counts, &capability_id);
+                }
+            }
         }
         Ok(owned)
     }
@@ -363,19 +450,65 @@ impl InMemoryExecutionNonceStore {
         retention: ReplayRetention,
         dispatch_reservation_id: Option<&str>,
     ) -> Result<bool, KernelError> {
-        self.reserve_entry_at(
+        self.reserve_entry_with_capability(nonce_id, retention, None, dispatch_reservation_id)
+    }
+
+    fn reserve_entry_for_capability(
+        &self,
+        nonce_id: &str,
+        retention: ReplayRetention,
+        capability_id: &str,
+        dispatch_reservation_id: Option<&str>,
+    ) -> Result<bool, KernelError> {
+        self.reserve_entry_with_capability(
             nonce_id,
             retention,
+            Some(capability_id),
+            dispatch_reservation_id,
+        )
+    }
+
+    fn reserve_entry_with_capability(
+        &self,
+        nonce_id: &str,
+        retention: ReplayRetention,
+        capability_id: Option<&str>,
+        dispatch_reservation_id: Option<&str>,
+    ) -> Result<bool, KernelError> {
+        self.reserve_entry_at_with_capability(
+            nonce_id,
+            retention,
+            capability_id,
             dispatch_reservation_id,
             SystemTime::now(),
             Instant::now(),
         )
     }
 
+    #[cfg(test)]
     fn reserve_entry_at(
         &self,
         nonce_id: &str,
         retention: ReplayRetention,
+        dispatch_reservation_id: Option<&str>,
+        now_wall: SystemTime,
+        now_monotonic: Instant,
+    ) -> Result<bool, KernelError> {
+        self.reserve_entry_at_with_capability(
+            nonce_id,
+            retention,
+            None,
+            dispatch_reservation_id,
+            now_wall,
+            now_monotonic,
+        )
+    }
+
+    fn reserve_entry_at_with_capability(
+        &self,
+        nonce_id: &str,
+        retention: ReplayRetention,
+        capability_id: Option<&str>,
         dispatch_reservation_id: Option<&str>,
         now_wall: SystemTime,
         now_monotonic: Instant,
@@ -386,15 +519,19 @@ impl InMemoryExecutionNonceStore {
         })?;
         let mut wall_clock_high_water = state.wall_clock_high_water;
         let mut monotonic_high_water = state.monotonic_high_water;
-        let validated_high_water = advance_replay_clock(
+        let mut pending_clock_rebaseline = state.pending_clock_rebaseline;
+        let clock_result = advance_replay_clock(
             "execution_nonce",
             &mut wall_clock_high_water,
             &mut monotonic_high_water,
+            &mut pending_clock_rebaseline,
             now_wall,
             now_monotonic,
-        )?;
+        );
         state.wall_clock_high_water = wall_clock_high_water;
         state.monotonic_high_water = monotonic_high_water;
+        state.pending_clock_rebaseline = pending_clock_rebaseline;
+        let validated_high_water = clock_result?;
 
         let key = nonce_id.to_string();
         if let Some(entry) = state.cache.peek(&key) {
@@ -417,7 +554,11 @@ impl InMemoryExecutionNonceStore {
             .map(|(expired_key, _)| expired_key.clone())
             .collect::<Vec<_>>();
         for expired_key in expired_keys {
-            state.cache.pop(&expired_key);
+            if let Some(entry) = state.cache.pop(&expired_key) {
+                if let Some(capability_id) = entry.capability_id {
+                    decrement_capability_count(&mut state.capability_counts, &capability_id);
+                }
+            }
         }
         if retention.is_signed() && retention.signed_horizon_elapsed_at(validated_high_water) {
             error!("elapsed signed horizon; denying replay reservation");
@@ -432,14 +573,70 @@ impl InMemoryExecutionNonceStore {
                 "execution nonce store capacity exhausted; fail-closed".to_string(),
             ));
         }
+
+        if let Some(capability_id) = capability_id {
+            let capability_entries = state
+                .capability_counts
+                .get(capability_id)
+                .copied()
+                .unwrap_or(0);
+            if capability_entries >= state.per_capability_capacity {
+                warn!(
+                    capability_id,
+                    capability_entries,
+                    per_capability_capacity = state.per_capability_capacity,
+                    "execution nonce store capability quota exhausted; preserving capacity for other capabilities"
+                );
+                return Err(KernelError::Internal(
+                    "execution nonce store per-capability quota exhausted; fail-closed".to_string(),
+                ));
+            }
+        }
+
         state.cache.put(
             key,
             ExecutionNonceEntry {
                 retention,
                 dispatch_reservation_id: dispatch_reservation_id.map(str::to_string),
+                capability_id: capability_id.map(str::to_string),
             },
         );
+        if let Some(capability_id) = capability_id {
+            *state
+                .capability_counts
+                .entry(capability_id.to_string())
+                .or_insert(0) += 1;
+        }
+        warn_on_high_utilization(
+            "execution nonce",
+            state.cache.len(),
+            state.cache.cap().get(),
+        );
         Ok(true)
+    }
+}
+
+fn execution_nonce_capability_capacity(capacity: usize) -> usize {
+    capacity.div_ceil(EXECUTION_NONCE_CAPABILITY_FAIR_SHARE_DIVISOR)
+}
+
+fn decrement_capability_count(counts: &mut HashMap<String, usize>, capability_id: &str) {
+    let Some(count) = counts.get_mut(capability_id) else {
+        return;
+    };
+    *count = count.saturating_sub(1);
+    if *count == 0 {
+        counts.remove(capability_id);
+    }
+}
+
+fn warn_on_high_utilization(store: &'static str, live_entries: usize, capacity: usize) {
+    let alert_threshold = capacity.saturating_sub(capacity / 5);
+    if live_entries >= alert_threshold {
+        warn!(
+            store,
+            live_entries, capacity, "replay store utilization reached 80 percent"
+        );
     }
 }
 
@@ -552,7 +749,11 @@ pub fn verify_execution_nonce(
     // consumed marker for the full validity window - otherwise the row
     // can be pruned while the nonce is still cryptographically valid,
     // allowing replay within the remaining window.
-    match nonce_store.reserve_until(&presented.nonce.nonce_id, presented.nonce.expires_at) {
+    match nonce_store.reserve_until_for_capability(
+        &presented.nonce.nonce_id,
+        presented.nonce.expires_at,
+        &presented.nonce.bound_to.capability_id,
+    ) {
         Ok(true) => Ok(()),
         Ok(false) => {
             warn!(
@@ -842,6 +1043,131 @@ mod tests {
         let expired_store = InMemoryExecutionNonceStore::new(1, Duration::ZERO);
         assert!(expired_store.reserve("nonce-a")?);
         assert!(expired_store.reserve("nonce-b")?);
+        Ok(())
+    }
+
+    #[test]
+    fn in_memory_utilization_reports_live_entries_and_capacity(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let store = InMemoryExecutionNonceStore::new(5, Duration::from_secs(60));
+        assert_eq!(store.utilization()?, (0, 5));
+        assert!(store.reserve("nonce-a")?);
+        assert!(store.reserve("nonce-b")?);
+        assert_eq!(store.utilization()?, (2, 5));
+        Ok(())
+    }
+
+    #[test]
+    fn verification_quota_preserves_capacity_for_other_capabilities(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let keypair = Keypair::generate();
+        let config = ExecutionNonceConfig {
+            nonce_ttl_secs: 120,
+            nonce_store_capacity: 8,
+            require_nonce: true,
+        };
+        let store = InMemoryExecutionNonceStore::from_config(&config);
+        assert_eq!(store.inner.lock().unwrap().per_capability_capacity, 1);
+        let now = i64::try_from(SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs())?;
+
+        let capability_a = sample_binding();
+        let first = mint_execution_nonce(&keypair, capability_a.clone(), &config, now)?;
+        let second = mint_execution_nonce(&keypair, capability_a.clone(), &config, now)?;
+        verify_execution_nonce(&first, &keypair.public_key(), &capability_a, now, &store)?;
+        assert!(matches!(
+            verify_execution_nonce(
+                &second,
+                &keypair.public_key(),
+                &capability_a,
+                now,
+                &store,
+            ),
+            Err(ExecutionNonceError::Store(message))
+                if message.contains("per-capability quota exhausted")
+        ));
+
+        let mut capability_b = capability_a;
+        capability_b.capability_id = "cap-456".to_string();
+        let other = mint_execution_nonce(&keypair, capability_b.clone(), &config, now)?;
+        verify_execution_nonce(&other, &keypair.public_key(), &capability_b, now, &store)?;
+        assert_eq!(store.utilization()?, (2, 8));
+        Ok(())
+    }
+
+    #[test]
+    fn scoped_dispatch_rollback_releases_capability_quota() -> Result<(), KernelError> {
+        let store = InMemoryExecutionNonceStore::new(8, Duration::from_secs(60));
+        assert!(store.reserve_for_dispatch_for_capability(
+            "nonce-a",
+            i64::MAX,
+            "capability-a",
+            "owner-a",
+        )?);
+        assert!(store
+            .reserve_for_dispatch_for_capability("nonce-b", i64::MAX, "capability-a", "owner-b",)
+            .is_err());
+        assert!(!store.rollback_dispatch_reservation("nonce-a", "owner-b")?);
+        assert!(store
+            .reserve_for_dispatch_for_capability("nonce-b", i64::MAX, "capability-a", "owner-b",)
+            .is_err());
+        assert!(store.rollback_dispatch_reservation("nonce-a", "owner-a")?);
+        assert!(store.reserve_for_dispatch_for_capability(
+            "nonce-b",
+            i64::MAX,
+            "capability-a",
+            "owner-b",
+        )?);
+        Ok(())
+    }
+
+    #[test]
+    fn expired_scoped_entry_releases_capability_quota() -> Result<(), KernelError> {
+        let start_wall = UNIX_EPOCH.checked_add(Duration::from_secs(10_000)).unwrap();
+        let start_monotonic = Instant::now();
+        let store = InMemoryExecutionNonceStore::new(8, Duration::from_secs(60));
+        {
+            let mut state = store.inner.lock().unwrap();
+            state.wall_clock_high_water = start_wall;
+            state.monotonic_high_water = start_monotonic;
+        }
+        let expired_retention = ReplayRetention::signed_until_at(
+            start_wall.checked_add(Duration::from_secs(1)),
+            start_wall,
+            start_monotonic,
+        );
+        assert!(store.reserve_entry_at_with_capability(
+            "nonce-a",
+            expired_retention,
+            Some("capability-a"),
+            None,
+            start_wall,
+            start_monotonic,
+        )?);
+
+        let later_wall = start_wall.checked_add(Duration::from_secs(2)).unwrap();
+        let later_monotonic = start_monotonic.checked_add(Duration::from_secs(2)).unwrap();
+        let live_retention = ReplayRetention::signed_until_at(
+            later_wall.checked_add(Duration::from_secs(60)),
+            later_wall,
+            later_monotonic,
+        );
+        assert!(store.reserve_entry_at_with_capability(
+            "nonce-b",
+            live_retention,
+            Some("capability-a"),
+            None,
+            later_wall,
+            later_monotonic,
+        )?);
+        assert_eq!(
+            store
+                .inner
+                .lock()
+                .unwrap()
+                .capability_counts
+                .get("capability-a"),
+            Some(&1)
+        );
         Ok(())
     }
 

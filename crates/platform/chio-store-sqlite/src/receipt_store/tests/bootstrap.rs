@@ -314,18 +314,20 @@ fn empty_store_reports_zero_committed_entry_for_operator_surfaces() {
 
     assert_eq!(store.latest_committed_entry_seq().test_unwrap(), 0);
 
+    // Flush is an initialization barrier for the asynchronous receipt writer:
+    // the actor cannot process it until verified-head seeding has completed.
+    let flush = store.flush_receipt_writes().test_unwrap();
+    assert_eq!(flush.latest_committed_entry_seq, 0);
+    assert_eq!(flush.latest_checkpointed_entry_seq, 0);
+    assert_eq!(flush.uncheckpointed_start_seq, None);
+    assert_eq!(flush.uncheckpointed_end_seq, None);
+
     let health = store.receipt_store_health().test_unwrap();
     assert!(health.healthy);
     assert_eq!(health.latest_committed_entry_seq, 0);
     assert_eq!(health.latest_checkpointed_entry_seq, 0);
     assert_eq!(health.uncheckpointed_start_seq, None);
     assert_eq!(health.uncheckpointed_end_seq, None);
-
-    let flush = store.flush_receipt_writes().test_unwrap();
-    assert_eq!(flush.latest_committed_entry_seq, 0);
-    assert_eq!(flush.latest_checkpointed_entry_seq, 0);
-    assert_eq!(flush.uncheckpointed_start_seq, None);
-    assert_eq!(flush.uncheckpointed_end_seq, None);
 
     let status = store.receipt_checkpoint_status(Some(10)).test_unwrap();
     assert!(status.healthy);

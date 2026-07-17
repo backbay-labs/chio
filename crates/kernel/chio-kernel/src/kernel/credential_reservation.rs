@@ -26,7 +26,7 @@ pub(crate) struct DispatchCredentialReservation<'a> {
     reservation_id: String,
     dpop_key: Option<(String, String)>,
     execution_nonce_id: Option<String>,
-    legacy_execution_nonce: Option<(String, i64)>,
+    legacy_execution_nonce: Option<(String, i64, String)>,
     execution_nonce_present: bool,
     approval_key: Option<(String, String, String)>,
     credentials_present: bool,
@@ -68,7 +68,8 @@ impl DispatchCredentialReservation<'_> {
     pub(crate) fn reserve_legacy_execution_nonce_at_effect_boundary(
         &mut self,
     ) -> Result<(), KernelError> {
-        let Some((nonce_id, nonce_expires_at)) = self.legacy_execution_nonce.take() else {
+        let Some((nonce_id, nonce_expires_at, capability_id)) = self.legacy_execution_nonce.take()
+        else {
             return Ok(());
         };
         let store = self
@@ -83,7 +84,7 @@ impl DispatchCredentialReservation<'_> {
         match run_credential_store_operation(
             &self.reservation_id,
             "legacy execution nonce reservation",
-            || store.reserve_until(&nonce_id, nonce_expires_at),
+            || store.reserve_until_for_capability(&nonce_id, nonce_expires_at, &capability_id),
         ) {
             Ok(true) => Ok(()),
             Ok(false) => Err(KernelError::Internal(
@@ -348,9 +349,10 @@ impl ChioKernel {
                         &reservation.reservation_id,
                         "execution nonce reservation",
                         || {
-                            store.reserve_for_dispatch(
+                            store.reserve_for_dispatch_for_capability(
                                 &presented.nonce.nonce_id,
                                 presented.nonce.expires_at,
+                                &presented.nonce.bound_to.capability_id,
                                 &reservation.reservation_id,
                             )
                         },
@@ -365,8 +367,11 @@ impl ChioKernel {
                         Err(error) => return Err(error),
                     }
                 } else {
-                    reservation.legacy_execution_nonce =
-                        Some((presented.nonce.nonce_id.clone(), presented.nonce.expires_at));
+                    reservation.legacy_execution_nonce = Some((
+                        presented.nonce.nonce_id.clone(),
+                        presented.nonce.expires_at,
+                        presented.nonce.bound_to.capability_id.clone(),
+                    ));
                 }
             }
 

@@ -26,6 +26,7 @@
 //!    and the proof's `signature` field
 //! 6. Nonce replay -- nonce must not have been seen during the proof's signed validity window
 
+use std::collections::HashMap;
 use std::num::NonZeroUsize;
 use std::sync::Mutex;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
@@ -38,13 +39,23 @@ use chio_core::crypto::{
 use chio_kernel_core::{dpop_freshness_valid, nonce_admits};
 use lru::LruCache;
 use serde::{Deserialize, Serialize};
-use tracing::error;
+use tracing::{error, warn};
 
-use crate::replay_retention::{advance_replay_clock, ReplayRetention};
+use crate::replay_retention::{
+    advance_replay_clock, PendingReplayClockRebaseline, ReplayRetention,
+};
 use crate::KernelError;
 
 /// Schema identifier for Chio DPoP proofs.
 pub const DPOP_SCHEMA: &str = "chio.dpop_proof.v1";
+
+/// Default number of live DPoP nonce markers retained by the in-memory store.
+///
+/// This covers roughly 200 proofs per second across the default 300-second
+/// proof lifetime, with headroom for short bursts.
+pub const DEFAULT_DPOP_NONCE_STORE_CAPACITY: usize = 65_536;
+
+const DPOP_CAPABILITY_FAIR_SHARE_DIVISOR: usize = 8;
 
 #[must_use]
 pub fn is_supported_dpop_schema(schema: &str) -> bool {
@@ -134,7 +145,7 @@ pub struct DpopConfig {
     pub proof_ttl_secs: u64,
     /// How many seconds of future-dated clock skew to tolerate. Default: 30.
     pub max_clock_skew_secs: u64,
-    /// Maximum number of entries in the nonce replay cache. Default: 8192.
+    /// Maximum number of entries in the nonce replay cache. Default: 65,536.
     pub nonce_store_capacity: usize,
 }
 
@@ -143,7 +154,7 @@ impl Default for DpopConfig {
         Self {
             proof_ttl_secs: 300,
             max_clock_skew_secs: 30,
-            nonce_store_capacity: 8192,
+            nonce_store_capacity: DEFAULT_DPOP_NONCE_STORE_CAPACITY,
         }
     }
 }
@@ -168,8 +179,11 @@ pub struct DpopNonceStore {
 
 struct DpopNonceState {
     cache: LruCache<(String, String), DpopNonceEntry>,
+    capability_counts: HashMap<String, usize>,
+    per_capability_capacity: usize,
     wall_clock_high_water: SystemTime,
     monotonic_high_water: Instant,
+    pending_clock_rebaseline: Option<PendingReplayClockRebaseline>,
 }
 
 struct DpopNonceEntry {
@@ -207,11 +221,24 @@ impl DpopNonceStore {
         Self {
             inner: Mutex::new(DpopNonceState {
                 cache: LruCache::new(nz),
+                capability_counts: HashMap::new(),
+                per_capability_capacity: dpop_capability_capacity(capacity),
                 wall_clock_high_water: SystemTime::now(),
                 monotonic_high_water: Instant::now(),
+                pending_clock_rebaseline: None,
             }),
             ttl,
         }
+    }
+
+    /// Return `(occupied_entries, capacity)` for local utilization monitoring.
+    pub fn utilization(&self) -> Result<(usize, usize), KernelError> {
+        let state = self.inner.lock().map_err(|_| {
+            KernelError::DpopVerificationFailed(
+                "nonce store mutex poisoned; cannot report utilization".to_string(),
+            )
+        })?;
+        Ok((state.cache.len(), state.cache.cap().get()))
     }
 
     /// Check a nonce using the store's local fallback TTL.
@@ -292,15 +319,19 @@ impl DpopNonceStore {
         })?;
         let mut wall_clock_high_water = state.wall_clock_high_water;
         let mut monotonic_high_water = state.monotonic_high_water;
-        let validated_high_water = advance_replay_clock(
+        let mut pending_clock_rebaseline = state.pending_clock_rebaseline;
+        let clock_result = advance_replay_clock(
             "dpop_nonce",
             &mut wall_clock_high_water,
             &mut monotonic_high_water,
+            &mut pending_clock_rebaseline,
             now_wall,
             now_monotonic,
-        )?;
+        );
         state.wall_clock_high_water = wall_clock_high_water;
         state.monotonic_high_water = monotonic_high_water;
+        state.pending_clock_rebaseline = pending_clock_rebaseline;
+        let validated_high_water = clock_result?;
 
         let already_live = state.cache.peek(&key).is_some_and(|entry| {
             !entry
@@ -322,7 +353,9 @@ impl DpopNonceStore {
             .map(|(expired_key, _)| expired_key.clone())
             .collect::<Vec<_>>();
         for expired_key in expired_keys {
-            state.cache.pop(&expired_key);
+            if state.cache.pop(&expired_key).is_some() {
+                decrement_capability_count(&mut state.capability_counts, &expired_key.1);
+            }
         }
         if retention.is_signed() && retention.signed_horizon_elapsed_at(validated_high_water) {
             error!("elapsed signed horizon; denying replay reservation");
@@ -338,6 +371,24 @@ impl DpopNonceStore {
             ));
         }
 
+        let capability_entries = state
+            .capability_counts
+            .get(capability_id)
+            .copied()
+            .unwrap_or(0);
+        if capability_entries >= state.per_capability_capacity {
+            warn!(
+                capability_id,
+                capability_entries,
+                per_capability_capacity = state.per_capability_capacity,
+                "DPoP nonce store capability quota exhausted; preserving capacity for other capabilities"
+            );
+            return Err(KernelError::DpopVerificationFailed(
+                "nonce store per-capability quota exhausted; cannot verify replay safety"
+                    .to_string(),
+            ));
+        }
+
         state.cache.put(
             key,
             DpopNonceEntry {
@@ -345,6 +396,11 @@ impl DpopNonceStore {
                 dispatch_reservation_id: dispatch_reservation_id.map(str::to_string),
             },
         );
+        *state
+            .capability_counts
+            .entry(capability_id.to_string())
+            .or_insert(0) += 1;
+        warn_on_high_utilization("DPoP nonce", state.cache.len(), state.cache.cap().get());
         Ok(true)
     }
 
@@ -398,10 +454,34 @@ impl DpopNonceStore {
             .cache
             .peek(&key)
             .is_some_and(|entry| entry.dispatch_reservation_id.as_deref() == Some(reservation_id));
-        if owned {
-            state.cache.pop(&key);
+        if owned && state.cache.pop(&key).is_some() {
+            decrement_capability_count(&mut state.capability_counts, capability_id);
         }
         Ok(owned)
+    }
+}
+
+fn dpop_capability_capacity(capacity: usize) -> usize {
+    capacity.div_ceil(DPOP_CAPABILITY_FAIR_SHARE_DIVISOR)
+}
+
+fn decrement_capability_count(counts: &mut HashMap<String, usize>, capability_id: &str) {
+    let Some(count) = counts.get_mut(capability_id) else {
+        return;
+    };
+    *count = count.saturating_sub(1);
+    if *count == 0 {
+        counts.remove(capability_id);
+    }
+}
+
+fn warn_on_high_utilization(store: &'static str, live_entries: usize, capacity: usize) {
+    let alert_threshold = capacity.saturating_sub(capacity / 5);
+    if live_entries >= alert_threshold {
+        warn!(
+            store,
+            live_entries, capacity, "replay store utilization reached 80 percent"
+        );
     }
 }
 
@@ -611,15 +691,30 @@ mod backend_tests {
     fn shared_dpop_and_approval_store_capacity_pressure_does_not_evict_live_reservation(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let store = DpopNonceStore::new(2, Duration::from_secs(60));
-        assert!(store.reserve_for_dispatch_until("nonce-a", "capability", u64::MAX, "owner-a")?);
-        assert!(store.reserve_for_dispatch_until("nonce-b", "capability", u64::MAX, "owner-b")?);
+        assert!(store.reserve_for_dispatch_until(
+            "nonce-a",
+            "capability-a",
+            u64::MAX,
+            "owner-a"
+        )?);
+        assert!(store.reserve_for_dispatch_until(
+            "nonce-b",
+            "capability-b",
+            u64::MAX,
+            "owner-b"
+        )?);
         assert!(store
-            .reserve_for_dispatch_until("nonce-c", "capability", u64::MAX, "owner-c")
+            .reserve_for_dispatch_until("nonce-c", "capability-c", u64::MAX, "owner-c")
             .is_err());
-        assert!(!store.check_and_insert("nonce-a", "capability")?);
-        assert!(!store.check_and_insert("nonce-b", "capability")?);
-        assert!(store.rollback_dispatch_reservation("nonce-a", "capability", "owner-a")?);
-        assert!(store.reserve_for_dispatch_until("nonce-c", "capability", u64::MAX, "owner-c")?);
+        assert!(!store.check_and_insert("nonce-a", "capability-a")?);
+        assert!(!store.check_and_insert("nonce-b", "capability-b")?);
+        assert!(store.rollback_dispatch_reservation("nonce-a", "capability-a", "owner-a")?);
+        assert!(store.reserve_for_dispatch_until(
+            "nonce-c",
+            "capability-c",
+            u64::MAX,
+            "owner-c"
+        )?);
         Ok(())
     }
 
@@ -634,6 +729,36 @@ mod backend_tests {
         let expired_store = DpopNonceStore::new(1, Duration::ZERO);
         assert!(expired_store.check_and_insert("nonce-a", "capability")?);
         assert!(expired_store.check_and_insert("nonce-b", "capability")?);
+        Ok(())
+    }
+
+    #[test]
+    fn per_capability_quota_preserves_capacity_for_other_capabilities(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let store = DpopNonceStore::new(512, Duration::from_secs(60));
+        let per_capability_capacity = store.inner.lock().unwrap().per_capability_capacity;
+        assert!(per_capability_capacity < 512);
+
+        for index in 0..per_capability_capacity {
+            assert!(store.check_and_insert(&format!("attacker-{index}"), "capability-a")?);
+        }
+        assert!(store
+            .check_and_insert("attacker-over-quota", "capability-a")
+            .is_err());
+        assert!(store.check_and_insert("other", "capability-b")?);
+        assert_eq!(store.utilization()?, (per_capability_capacity + 1, 512));
+        Ok(())
+    }
+
+    #[test]
+    fn small_store_capability_quota_reserves_a_fair_share() -> Result<(), KernelError> {
+        let store = DpopNonceStore::new(8, Duration::from_secs(60));
+        assert_eq!(store.inner.lock().unwrap().per_capability_capacity, 1);
+        assert!(store.check_and_insert("capability-a-first", "capability-a")?);
+        assert!(store
+            .check_and_insert("capability-a-second", "capability-a")
+            .is_err());
+        assert!(store.check_and_insert("capability-b-first", "capability-b")?);
         Ok(())
     }
 
@@ -689,7 +814,7 @@ mod backend_tests {
         );
         assert!(store.check_and_insert_entry_at(
             "other",
-            "intent",
+            "other-intent",
             other_retention,
             None,
             forward_wall,
@@ -723,7 +848,7 @@ mod backend_tests {
         );
         assert!(store.check_and_insert_entry_at(
             "new-signed",
-            "intent",
+            "new-intent",
             later_horizon,
             None,
             rollback_wall,
@@ -731,7 +856,7 @@ mod backend_tests {
         )?);
         assert!(store.check_and_insert_entry_at(
             "local-only",
-            "intent",
+            "local-intent",
             ReplayRetention::local(Duration::from_secs(60)),
             None,
             rollback_wall,
@@ -781,6 +906,68 @@ mod backend_tests {
             None,
             start_wall.checked_add(Duration::from_secs(2)).unwrap(),
             start_monotonic.checked_add(Duration::from_secs(2)).unwrap(),
+        )?);
+        Ok(())
+    }
+
+    #[test]
+    fn confirmed_suspend_gap_does_not_reopen_a_live_dpop_marker(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let start_wall = UNIX_EPOCH.checked_add(Duration::from_secs(10_000)).unwrap();
+        let start_monotonic = Instant::now();
+        let store = DpopNonceStore::new(4, Duration::from_secs(60));
+        {
+            let mut state = store.inner.lock().unwrap();
+            state.wall_clock_high_water = start_wall;
+            state.monotonic_high_water = start_monotonic;
+        }
+        let used_retention = ReplayRetention::signed_until_at(
+            start_wall.checked_add(Duration::from_secs(10_000)),
+            start_wall,
+            start_monotonic,
+        );
+        assert!(store.check_and_insert_entry_at(
+            "used",
+            "capability",
+            used_retention,
+            None,
+            start_wall,
+            start_monotonic,
+        )?);
+
+        let resumed_wall = start_wall.checked_add(Duration::from_secs(3_600)).unwrap();
+        assert!(matches!(
+            store.check_and_insert_entry_at(
+                "first-probe",
+                "capability",
+                used_retention,
+                None,
+                resumed_wall,
+                start_monotonic.checked_add(Duration::from_secs(1)).unwrap(),
+            ),
+            Err(KernelError::ReplayClockAnomaly {
+                direction: crate::ReplayClockDirection::ForwardJump,
+                ..
+            })
+        ));
+
+        let confirmed_wall = resumed_wall.checked_add(Duration::from_secs(2)).unwrap();
+        let confirmed_monotonic = start_monotonic.checked_add(Duration::from_secs(3)).unwrap();
+        assert!(store.check_and_insert_entry_at(
+            "second-probe",
+            "probe-capability",
+            used_retention,
+            None,
+            confirmed_wall,
+            confirmed_monotonic,
+        )?);
+        assert!(!store.check_and_insert_entry_at(
+            "used",
+            "capability",
+            used_retention,
+            None,
+            confirmed_wall,
+            confirmed_monotonic,
         )?);
         Ok(())
     }

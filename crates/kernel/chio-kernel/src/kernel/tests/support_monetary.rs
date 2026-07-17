@@ -1426,7 +1426,7 @@ fn capture_panic_retains_full_authorization_and_budget_exposure() {
 }
 
 #[test]
-fn malformed_capture_and_release_acknowledgements_retain_full_exposure() {
+fn malformed_or_failed_settlement_acknowledgements_retain_full_exposure() {
     let cases = [
         (
             "capture-invalid-id",
@@ -1437,6 +1437,7 @@ fn malformed_capture_and_release_acknowledgements_retain_full_exposure() {
                 metadata: serde_json::json!({}),
             },
             "invalid_transaction_identifier",
+            "pending",
         ),
         (
             "capture-wrong-status",
@@ -1447,6 +1448,18 @@ fn malformed_capture_and_release_acknowledgements_retain_full_exposure() {
                 metadata: serde_json::json!({}),
             },
             "unexpected_settlement_status",
+            "pending",
+        ),
+        (
+            "capture-failed",
+            40,
+            PaymentResult {
+                transaction_id: "tx-capture-failed".to_string(),
+                settlement_status: RailSettlementStatus::Failed,
+                metadata: serde_json::json!({}),
+            },
+            "settlement_failed",
+            "failed",
         ),
         (
             "release-invalid-id",
@@ -1457,6 +1470,7 @@ fn malformed_capture_and_release_acknowledgements_retain_full_exposure() {
                 metadata: serde_json::json!({}),
             },
             "invalid_transaction_identifier",
+            "pending",
         ),
         (
             "release-wrong-status",
@@ -1467,10 +1481,24 @@ fn malformed_capture_and_release_acknowledgements_retain_full_exposure() {
                 metadata: serde_json::json!({}),
             },
             "unexpected_settlement_status",
+            "pending",
+        ),
+        (
+            "release-failed",
+            0,
+            PaymentResult {
+                transaction_id: "tx-release-failed".to_string(),
+                settlement_status: RailSettlementStatus::Failed,
+                metadata: serde_json::json!({}),
+            },
+            "settlement_failed",
+            "failed",
         ),
     ];
 
-    for (case, actual_cost, payment_result, expected_failure_code) in cases {
+    for (case, actual_cost, payment_result, expected_failure_code, expected_settlement_status) in
+        cases
+    {
         let mut kernel = make_kernel(make_monetary_config());
         assert!(
             kernel
@@ -1513,7 +1541,10 @@ fn malformed_capture_and_release_acknowledgements_retain_full_exposure() {
         assert_eq!(usage.total_cost_exposed, 100, "case {case}");
         assert_eq!(usage.total_cost_realized_spend, 0, "case {case}");
         let metadata = response.receipt.metadata.as_ref().unwrap();
-        assert_eq!(metadata["financial"]["settlement_status"], "pending");
+        assert_eq!(
+            metadata["financial"]["settlement_status"], expected_settlement_status,
+            "case {case}"
+        );
         assert_eq!(
             metadata["financial"]["cost_breakdown"]["payment"]["settlement_attempt"]
                 ["failure_code"],

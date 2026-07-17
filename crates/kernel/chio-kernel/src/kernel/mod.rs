@@ -201,15 +201,17 @@ pub trait RuntimeAdmissionHook: Send + Sync {
     /// reservation. The kernel invokes this when
     /// [`Self::requires_dispatch_revalidation`] returns true, after readiness
     /// has returned `Pending` at least once, and after payment authorization or
-    /// any single-use dispatch credential reservation. Hooks used by those
-    /// paths must implement a non-consuming check; the default denies.
+    /// any single-use dispatch credential reservation. The default preserves
+    /// the original admission verdict so legacy and immutable hooks remain
+    /// compatible when another component forces a final readiness pass. Mutable
+    /// hooks opt in with [`Self::requires_dispatch_revalidation`] and override
+    /// this method; any error from an opted-in implementation remains
+    /// fail-closed.
     fn revalidate_before_dispatch(
         &self,
         _context: &RuntimeAdmissionRevalidationContext<'_>,
     ) -> Result<(), KernelError> {
-        Err(KernelError::Internal(
-            "runtime admission hook does not support readiness revalidation".to_string(),
-        ))
+        Ok(())
     }
 
     /// Remove request-scoped readiness state, including any retained waker.
@@ -834,7 +836,6 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
 
     fn poll_parent_cancellation(&mut self) -> Result<(), KernelError> {
         self.ensure_parent_not_cancelled()?;
-        self.mark_nested_interaction_observed();
         let result = self.client.poll_parent_cancellation(self.parent_context);
         self.latch_matching_cancellation(&result, None)?;
         result

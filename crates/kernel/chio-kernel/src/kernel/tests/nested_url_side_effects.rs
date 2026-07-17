@@ -7,6 +7,8 @@ struct NestedChildThenUrlElicitationServer {
 
 struct NestedNotificationThenUrlElicitationServer;
 
+struct CancellationPollThenUrlElicitationServer;
+
 struct RevalidationReadyRuntimeAdmissionHook {
     calls: std::sync::Arc<AtomicU64>,
     releases: std::sync::Arc<AtomicU64>,
@@ -97,6 +99,32 @@ impl ToolServerConnection for NestedNotificationThenUrlElicitationServer {
         bridge.notify_resources_list_changed()?;
         Err(KernelError::UrlElicitationsRequired {
             message: "URL elicitation requested after nested notification".to_string(),
+            elicitations: Vec::new(),
+        })
+    }
+}
+
+#[async_trait::async_trait]
+impl ToolServerConnection for CancellationPollThenUrlElicitationServer {
+    fn server_id(&self) -> &str {
+        "nested-cancellation-poll-server"
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        vec!["poll".to_string()]
+    }
+
+    async fn invoke(
+        &self,
+        _tool_name: &str,
+        _arguments: serde_json::Value,
+        nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<serde_json::Value, KernelError> {
+        let bridge = nested_flow_bridge
+            .ok_or_else(|| KernelError::Internal("nested-flow bridge missing".to_string()))?;
+        bridge.poll_parent_cancellation()?;
+        Err(KernelError::UrlElicitationsRequired {
+            message: "URL elicitation requested after a cancellation poll".to_string(),
             elicitations: Vec::new(),
         })
     }
@@ -289,6 +317,57 @@ fn nested_notification_before_url_elicitation_is_terminal_without_child_receipt(
         OperationTerminalState::Incomplete { .. }
     ));
     assert_eq!(kernel.receipt_log().len(), 1);
+    assert!(kernel.child_receipt_log().is_empty());
+    Ok(())
+}
+
+#[test]
+fn cancellation_poll_before_url_elicitation_preserves_typed_pre_effect_result(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut kernel = make_kernel(make_config());
+    kernel.register_tool_server(Box::new(CancellationPollThenUrlElicitationServer));
+
+    let agent_keypair = make_keypair();
+    let capability = make_capability(
+        &kernel,
+        &agent_keypair,
+        make_scope(vec![make_grant("nested-cancellation-poll-server", "poll")]),
+        300,
+    );
+    let request = make_request(
+        "nested-poll-before-url",
+        &capability,
+        "poll",
+        "nested-cancellation-poll-server",
+    );
+    let session_id = kernel.open_session(
+        agent_keypair.public_key().to_hex(),
+        vec![capability.clone()],
+    )?;
+    kernel.activate_session(&session_id)?;
+    let context = make_operation_context(
+        &session_id,
+        &request.request_id,
+        &agent_keypair.public_key().to_hex(),
+    );
+    kernel.begin_session_request(&context, OperationKind::ToolCall, true)?;
+
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?;
+    let result = runtime.block_on(async {
+        let mut client = NoopNestedFlowClient;
+        kernel
+            .evaluate_tool_call_with_nested_flow_client_async(&context, &request, &mut client, None)
+            .await
+    });
+
+    assert!(matches!(
+        result,
+        Err(KernelError::UrlElicitationsRequired { message, .. })
+            if message == "URL elicitation requested after a cancellation poll"
+    ));
+    assert!(kernel.receipt_log().is_empty());
     assert!(kernel.child_receipt_log().is_empty());
     Ok(())
 }

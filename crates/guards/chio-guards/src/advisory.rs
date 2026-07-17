@@ -270,12 +270,11 @@ impl Guard for AdvisoryPipeline {
         }
     }
 
-    fn requires_dispatch_revalidation(&self) -> bool {
-        true
-    }
-
-    fn revalidate_before_dispatch(&self, ctx: &GuardContext) -> Result<(), KernelError> {
-        crate::revalidate_non_consuming_guard(self, ctx)
+    fn revalidate_before_dispatch(&self, _ctx: &GuardContext) -> Result<(), KernelError> {
+        // Advisory evaluation reads mutable session state and records evidence.
+        // Preserve the admission verdict and evidence instead of evaluating the
+        // pipeline a second time at dispatch.
+        Ok(())
     }
 }
 
@@ -442,6 +441,7 @@ impl AdvisoryGuard for DataTransferAdvisoryGuard {
 mod tests {
     use super::*;
     use chio_http_session::{RecordParams, SessionJournal};
+    use std::sync::atomic::{AtomicU64, Ordering};
 
     fn make_journal(session_id: &str) -> Arc<SessionJournal> {
         Arc::new(SessionJournal::new(session_id.to_string()))
@@ -668,6 +668,27 @@ mod tests {
         }
     }
 
+    struct CountingSignal {
+        calls: Arc<AtomicU64>,
+    }
+
+    impl AdvisoryGuard for CountingSignal {
+        fn name(&self) -> &str {
+            "counting-signal"
+        }
+
+        fn evaluate(&self, _ctx: &GuardContext) -> Result<Vec<AdvisorySignal>, KernelError> {
+            let call = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+            Ok(vec![AdvisorySignal {
+                guard_name: self.name().to_string(),
+                description: format!("admission call {call}"),
+                severity: AdvisorySeverity::Low,
+                metadata: Some(serde_json::json!({"call": call})),
+                promoted: false,
+            }])
+        }
+    }
+
     #[test]
     fn advisory_pipeline_allows_without_promotion() {
         let mut pipeline = AdvisoryPipeline::new(PromotionPolicy::new());
@@ -781,6 +802,47 @@ mod tests {
         let outputs = pipeline.last_outputs().expect("outputs");
         assert_eq!(outputs.len(), 1);
         assert!(matches!(outputs[0], GuardOutput::Advisory(_)));
+    }
+
+    #[test]
+    fn dispatch_revalidation_preserves_admission_signals_without_re_evaluating() {
+        let calls = Arc::new(AtomicU64::new(0));
+        let mut pipeline = AdvisoryPipeline::new(PromotionPolicy::new());
+        pipeline.add(Box::new(CountingSignal {
+            calls: Arc::clone(&calls),
+        }));
+
+        let (request, scope, agent_id, server_id) = make_ctx();
+        let ctx = guard_ctx(&request, &scope, &agent_id, &server_id);
+        let decision = pipeline.evaluate(&ctx).expect("admission evaluation");
+        assert_eq!(decision.verdict, Verdict::Allow);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        let admission_signals = pipeline.last_signals().expect("admission signals");
+        let admission_outputs =
+            serde_json::to_value(pipeline.last_outputs().expect("admission outputs"))
+                .expect("serialize admission outputs");
+
+        assert!(!pipeline.requires_dispatch_revalidation());
+        pipeline
+            .revalidate_before_dispatch(&ctx)
+            .expect("forced dispatch revalidation");
+        pipeline
+            .revalidate_required_before_dispatch(&ctx)
+            .expect("required dispatch revalidation");
+
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        let retained_signals = pipeline.last_signals().expect("retained signals");
+        assert_eq!(retained_signals.len(), admission_signals.len());
+        assert_eq!(
+            retained_signals[0].description,
+            admission_signals[0].description
+        );
+        assert_eq!(retained_signals[0].metadata, admission_signals[0].metadata);
+        assert_eq!(
+            serde_json::to_value(pipeline.last_outputs().expect("retained outputs"))
+                .expect("serialize retained outputs"),
+            admission_outputs
+        );
     }
 
     // -- AnomalyAdvisoryGuard tests --

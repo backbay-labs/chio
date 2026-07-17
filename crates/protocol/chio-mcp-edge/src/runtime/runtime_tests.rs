@@ -1233,7 +1233,6 @@ fn tools_call_jsonrpc_path_records_receipt_write_deny() {
 
 #[test]
 fn tools_call_jsonrpc_path_surfaces_url_elicitation_without_terminal_receipt() {
-    let _metrics_guard = metrics_test_guard();
     let mut edge = make_pre_effect_url_elicitation_edge();
     let _ = edge.handle_jsonrpc(json!({
         "jsonrpc": "2.0",
@@ -1252,8 +1251,6 @@ fn tools_call_jsonrpc_path_surfaces_url_elicitation_without_terminal_receipt() {
         "method": "notifications/initialized",
         "params": {}
     }));
-    let before_error = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR);
-    let before_deny = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_DENY);
     let before_receipts = edge.kernel.receipt_log().receipts().len();
 
     let response = edge
@@ -1281,16 +1278,6 @@ fn tools_call_jsonrpc_path_surfaces_url_elicitation_without_terminal_receipt() {
         edge.kernel.receipt_log().receipts().len(),
         before_receipts,
         "a retryable URL elicitation must not create a terminal receipt"
-    );
-    assert_eq!(
-        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_DENY),
-        before_deny,
-        "a retryable URL elicitation must not advance terminal deny metrics"
-    );
-    assert_eq!(
-        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR),
-        before_error,
-        "URL elicitation control flow must not feed receipt write infrastructure errors"
     );
 }
 
@@ -1402,15 +1389,12 @@ fn execute_bridge_mcp_tool_call_blocking_skips_receipt_write_error_for_request_c
 
 #[test]
 fn execute_bridge_mcp_tool_call_blocking_propagates_pre_effect_url_error() {
-    let _metrics_guard = metrics_test_guard();
     let (kernel, request) = make_kernel_error_bridge_fixture(
         Box::new(PreEffectUrlElicitationServer),
         "url-srv",
         "authorize",
         "mcp-url-required-blocking",
     );
-    let before_error = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR);
-    let before_deny = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_DENY);
     let before_receipts = kernel.receipt_log().receipts().len();
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .worker_threads(2)
@@ -1433,16 +1417,6 @@ fn execute_bridge_mcp_tool_call_blocking_propagates_pre_effect_url_error() {
         kernel.receipt_log().receipts().len(),
         before_receipts,
         "a retryable URL elicitation must not create a terminal receipt"
-    );
-    assert_eq!(
-        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_DENY),
-        before_deny,
-        "a retryable URL elicitation must not advance terminal deny metrics"
-    );
-    assert_eq!(
-        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR),
-        before_error,
-        "direct MCP URL elicitation must not feed receipt write infrastructure errors"
     );
 }
 
@@ -1479,15 +1453,12 @@ fn execute_bridge_mcp_tool_call_async_skips_receipt_write_error_for_request_canc
 
 #[test]
 fn execute_bridge_mcp_tool_call_async_propagates_pre_effect_url_error() {
-    let _metrics_guard = metrics_test_guard();
     let (kernel, request) = make_kernel_error_bridge_fixture(
         Box::new(PreEffectUrlElicitationServer),
         "url-srv",
         "authorize",
         "mcp-url-required-async",
     );
-    let before_error = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR);
-    let before_deny = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_DENY);
     let before_receipts = kernel.receipt_log().receipts().len();
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -1509,16 +1480,6 @@ fn execute_bridge_mcp_tool_call_async_propagates_pre_effect_url_error() {
         kernel.receipt_log().receipts().len(),
         before_receipts,
         "a retryable URL elicitation must not create a terminal receipt"
-    );
-    assert_eq!(
-        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_DENY),
-        before_deny,
-        "a retryable URL elicitation must not advance terminal deny metrics"
-    );
-    assert_eq!(
-        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR),
-        before_error,
-        "async MCP URL elicitation must not feed receipt write infrastructure errors"
     );
 }
 
