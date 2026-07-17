@@ -459,8 +459,8 @@ discretion, mirroring ADR-0015 D3/D5):
   error is `ReconcileFailed`, never a silent close. Because the id is carried by the
   return type, recovery never has to guess or reconstruct it from ad hoc metadata.
 - `Authorized`: authorize succeeded but no terminal action was ever committed (the crash
-  predates step 3, so `settle_action` is NULL). For the in-tree prepaid X402/ACP adapters,
-  funds move inside `authorize` itself, and this state spans the entire tool-execution
+  predates step 3, so `settle_action` is NULL). For the in-tree prepaid X402/ACP-Commerce
+  adapters, funds move inside `authorize` itself, and this state spans the entire tool-execution
   window (the post-execution settle is skipped once `authorization.settled == true`, so
   the journal never advances past `Authorized` until close): a wide crash window, not a
   narrow one. No capture amount was chosen either way, so query
