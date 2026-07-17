@@ -96,8 +96,15 @@ impl SqliteDeadLetterStore {
             .pool
             .get()
             .map_err(|err| DeadLetterStoreError::Backend(err.to_string()))?;
+        // IMMEDIATE, not deferred: this transaction reads then writes, and a
+        // deferred read-to-write upgrade that loses a race with another writer
+        // gets an instant SQLITE_BUSY (the busy handler is bypassed on upgrades
+        // to avoid deadlock), so concurrent dead-letter writers - the kernel
+        // routing consumer racing the settle drain - would error spuriously
+        // instead of waiting out the pool's busy_timeout. Taking the write lock
+        // up front serializes them within the timeout budget.
         let tx = connection
-            .transaction()
+            .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(|err| DeadLetterStoreError::Backend(err.to_string()))?;
 
         let existing = tx

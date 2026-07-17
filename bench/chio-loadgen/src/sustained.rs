@@ -80,12 +80,19 @@ pub fn run_sustained(
     let run_start = Instant::now();
     let run_end = schedule_run_end(run_start, config.duration)?;
 
-    // Pre-size the latency buffer before the RSS baseline is sampled: the backing
-    // allocation (and any push-driven doubling spikes during the run) is then
-    // charged to the process before rss_start, not against the measured RSS
-    // growth budget. Capacity tracks the pacer's dispatch count (rate x duration),
-    // capped so a pathological config cannot request an unbounded allocation.
+    // Pre-size the latency buffer before the RSS baseline is sampled, and touch
+    // every element so the backing pages are resident now: `with_capacity` alone
+    // (and a zero-fill, which calloc serves from untouched copy-on-write zero
+    // pages) maps virtual pages that would only become resident as pushes write
+    // them mid-run, counting the buffer against the measured RSS growth budget
+    // (at the preallocation cap the buffer alone is 64 MiB, a whole default
+    // budget). Writing a nonzero fill then clearing keeps the capacity while
+    // charging the resident pages to the baseline. Capacity tracks the pacer's
+    // dispatch count (rate x duration), capped so a pathological config cannot
+    // request an unbounded allocation.
     let mut latencies_ns: Vec<u64> = Vec::with_capacity(expected_dispatch_count(config));
+    latencies_ns.resize(latencies_ns.capacity(), 1);
+    latencies_ns.clear();
 
     let rss_start = rss::current_rss_bytes();
     let mut rss_high_water = rss_start;
@@ -179,7 +186,12 @@ pub fn run_sustained(
 /// or unsupported sampler reads as a broken lane, not a silent pass. (The Linux
 /// and macOS samplers return `Some`, so the real gate path is unaffected.)
 pub fn enforce_budget(report: &LoadReport, config: &LoadgenConfig) -> Result<(), LoadgenError> {
-    if report.calls_attempted == 0 {
+    // Deny on zero completions as well as zero attempts: [`run_sustained`] can
+    // only produce reports with `calls_attempted == calls_ok` (any dispatch
+    // failure aborts the run), but `LoadReport` fields are public, so a caller
+    // gating on a hand-assembled report must not pass one that completed
+    // nothing.
+    if report.calls_attempted == 0 || report.calls_ok == 0 {
         return Err(LoadgenError::EmptyRun);
     }
 
@@ -373,6 +385,19 @@ mod tests {
                 Err(LoadgenError::EmptyRun)
             ),
             "a run that dispatched no calls must deny with EmptyRun"
+        );
+
+        // Attempts without a single completion must deny too: run_sustained
+        // cannot produce this shape, but the report fields are public and a
+        // hand-assembled report that completed nothing must not pass the gate.
+        let mut no_completions = make_report(10, 0);
+        no_completions.calls_ok = 0;
+        assert!(
+            matches!(
+                enforce_budget(&no_completions, &config),
+                Err(LoadgenError::EmptyRun)
+            ),
+            "a run that completed no calls must deny with EmptyRun"
         );
     }
 

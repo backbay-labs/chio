@@ -94,6 +94,9 @@ fn chaos_sigterm_drain_loses_no_durable_acks() {
             .arg(&db_path)
             .arg(&ack_path)
             .arg(MAX_RECEIPTS.to_string())
+            // Round index as the id nonce: rounds reuse one store, and a
+            // recycled OS pid would otherwise collide on the UNIQUE receipt_id.
+            .arg(round.to_string())
             .stdout(Stdio::null())
             .stderr(Stdio::inherit())
             .spawn()
@@ -125,12 +128,24 @@ fn chaos_sigterm_drain_loses_no_durable_acks() {
             continue;
         }
 
-        // Send SIGTERM via std-only means; no signal-hook dependency.
+        // Send SIGTERM via std-only means; no signal-hook dependency. A failed
+        // delivery must fail the round here, not surface 30s later as a
+        // misattributed "victim still alive" timeout.
         let pid = child.id();
-        let _ = Command::new("kill")
+        let kill_status = Command::new("kill")
             .args(["-TERM", &pid.to_string()])
             .status()
             .test_expect("send SIGTERM to victim");
+        if !kill_status.success() {
+            let _ = child.kill();
+            let _ = child.wait();
+            panic!(
+                "{}",
+                ChaosError::Victim(format!(
+                    "round {round}: kill -TERM {pid} exited with {kill_status:?}; signal delivery failed"
+                ))
+            );
+        }
 
         let status = match wait_for_exit_within(&mut child, EXIT_TIMEOUT) {
             Some(status) => status,

@@ -64,6 +64,9 @@ fn chaos_kill_mid_append_preserves_durable_acks() {
             .arg(&db_path)
             .arg(&ack_path)
             .arg(MAX_RECEIPTS.to_string())
+            // Round index as the id nonce: rounds reuse one store, and a
+            // recycled OS pid would otherwise collide on the UNIQUE receipt_id.
+            .arg(round.to_string())
             .stdout(Stdio::null())
             .stderr(Stdio::inherit())
             .spawn()
@@ -233,4 +236,38 @@ fn ack_checker_detects_fabricated_loss() {
         matches!(error, ChaosError::InvariantViolated(_)),
         "fabricated ack must be reported as InvariantViolated, got {error:?}"
     );
+
+    // Second sabotage arm: a committed-but-lost receipt. The store keeps the
+    // claim log append-only through a BEFORE DELETE trigger, so a committed
+    // entry cannot vanish through SQL; a post-crash torn write or page loss
+    // could still drop one physically. Reproduce that by dropping the guard
+    // trigger and deleting a middle committed row behind the store's back. The
+    // committed floor is unchanged, so a checker that stopped at the floor
+    // comparison would still pass this ack file; only the per-ack read-back
+    // catches the hole.
+    let sabotage_seq = committed - 1;
+    {
+        let connection = rusqlite::Connection::open(&db_path).test_unwrap();
+        connection
+            .pragma_update(None, "busy_timeout", 5000)
+            .test_unwrap();
+        connection
+            .execute_batch("DROP TRIGGER IF EXISTS claim_receipt_log_entries_reject_delete")
+            .test_unwrap();
+        let deleted = connection
+            .execute(
+                "DELETE FROM claim_receipt_log_entries WHERE entry_seq = ?1",
+                rusqlite::params![i64::try_from(sabotage_seq).test_expect("sabotage seq fits i64")],
+            )
+            .test_unwrap();
+        assert_eq!(deleted, 1, "sabotage must delete exactly one committed row");
+    }
+    let error = check_durable_acks(&store, &ack_path).test_unwrap_err();
+    match &error {
+        ChaosError::InvariantViolated(message) => assert!(
+            message.contains(&sabotage_seq.to_string()),
+            "the violation must name the sabotaged entry_seq {sabotage_seq}, got: {message}"
+        ),
+        other => panic!("a committed-but-lost ack must be InvariantViolated, got {other:?}"),
+    }
 }

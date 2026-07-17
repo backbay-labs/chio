@@ -686,7 +686,14 @@ the tests and lanes named.
   `--cfg loom` (`make loom`; the kernel is gated to compile under loom), and one
   model was ported to drive the real `chio_kernel::session::Session` (terminal-
   state admission invariant) rather than a hand-built stand-in. New nightly lane
-  `loom-nightly.yml` matrixed over the three targets.
+  `loom-nightly.yml` matrixed over the targets (one job per target so a hang
+  cannot mask the others). The store crate's `loom_receipt_writer` commit-actor
+  accounting models run as a fourth matrixed target under their own
+  `chio_store_sqlite_loom` cfg; the store's settlement-routing loom stand-in was
+  replaced by a real concurrent SQLite race test
+  (`chio-store-sqlite/tests/settle_attempts_races.rs`) because every SQL
+  statement it modeled is already an atomic step, leaving loom nothing to
+  falsify.
 
 ### Not done (remains as follow-up)
 

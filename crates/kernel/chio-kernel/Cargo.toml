@@ -110,13 +110,6 @@ libc = "0.2"
 [dev-dependencies]
 loom = { workspace = true }
 
-# Under loom the interleaving model constructs the real `Session` from
-# chio-core session types (SessionId, OperationContext, ...). chio-core is
-# already an unconditional dependency; naming it in the integration test crate
-# needs an explicit loom-only dev-dependency entry.
-[target.'cfg(loom)'.dev-dependencies]
-chio-core = { workspace = true }
-
 [target.'cfg(not(loom))'.dev-dependencies]
 chio-store-sqlite = { workspace = true }
 chio-test-support = { workspace = true }

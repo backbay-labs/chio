@@ -255,13 +255,15 @@ kani:
 kani-smoke:
 	./scripts/check-kani-smoke.sh
 
-# Loom interleaving models. Each of the three TCB models runs under
-# `--cfg loom` with the model checker bounded to 3 preemptions. Slow and
-# memory-heavy: one crate per invocation, never package-wide.
+# Loom interleaving models. Each TCB model target runs under `--cfg loom`
+# with the model checker bounded to 3 preemptions. Slow and memory-heavy:
+# one crate per invocation, never package-wide. Keep this target list in
+# sync with the matrix in .github/workflows/loom-nightly.yml.
 loom:
 	RUSTFLAGS="--cfg loom" LOOM_MAX_PREEMPTIONS=3 $(CARGO) test --release -p chio-kernel --test loom_concurrency
 	RUSTFLAGS="--cfg loom" LOOM_MAX_PREEMPTIONS=3 $(CARGO) test --release -p chio-otel-receipt-exporter --test loom_ring_sender_vs_shutdown
 	RUSTFLAGS="--cfg loom" LOOM_MAX_PREEMPTIONS=3 $(CARGO) test --release -p chio-wasm-guards --test loom_instance_pre_reload_vs_checkout
+	RUSTFLAGS="--cfg chio_store_sqlite_loom" LOOM_MAX_PREEMPTIONS=3 $(CARGO) test --release -p chio-store-sqlite --test loom_receipt_writer
 
 mutants:
 	./scripts/mutants-gate.sh

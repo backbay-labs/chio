@@ -64,7 +64,7 @@ pub enum LoadgenError {
         "arrival_rate_hz {arrival_rate_hz} exceeds the nanosecond pacer resolution of 1_000_000_000 Hz; dispatches cannot be spaced below one nanosecond"
     )]
     ArrivalRateTooHigh { arrival_rate_hz: u32 },
-    #[error("sustained run dispatched no calls")]
+    #[error("sustained run completed no successful calls")]
     EmptyRun,
     #[error(
         "resident-set size was never measured, so the growth budget cannot be proven satisfied"

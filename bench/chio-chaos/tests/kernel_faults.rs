@@ -13,10 +13,9 @@
 
 #![forbid(unsafe_code)]
 
-use std::env::VarError;
 use std::time::Duration;
 
-use chio_chaos::ChaosError;
+use chio_chaos::{chaos_iterations, ChaosError};
 use chio_kernel::{
     Guard, GuardContext, GuardDecision, HotPathDeadlineConfig, KernelError, Verdict,
 };
@@ -44,21 +43,7 @@ const HUNG_TOOL_LATENCY_MS: u64 = 4_000;
 const GUARD_SLEEP: Duration = Duration::from_secs(2);
 
 fn iterations() -> u64 {
-    match std::env::var("CHIO_CHAOS_ITERATIONS") {
-        Ok(raw) => {
-            let parsed: u64 = raw
-                .trim()
-                .parse()
-                .test_expect("CHIO_CHAOS_ITERATIONS must be a u64");
-            parsed.max(1)
-        }
-        Err(VarError::NotPresent) => DEFAULT_ITERATIONS,
-        // Fail closed rather than silently reverting to the default: a set but
-        // non-unicode knob is a corrupted input, not an unset one.
-        Err(VarError::NotUnicode(_)) => {
-            panic!("CHIO_CHAOS_ITERATIONS is set but not valid unicode")
-        }
-    }
+    chaos_iterations(DEFAULT_ITERATIONS).test_expect("CHIO_CHAOS_ITERATIONS must be a u64")
 }
 
 /// A durable Sqlite-backed config; `tool_latency` starts at zero because the
