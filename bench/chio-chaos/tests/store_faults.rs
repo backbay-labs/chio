@@ -77,6 +77,20 @@ fn expect_disk_full(error: &ReceiptStoreError, context: &str) -> Result<(), Chao
     }
 }
 
+/// Whether a post-fault error is a fail-closed rejection. Once the cap forces a
+/// store-wide append fault, `commit_receipt_batch` may poison the verified head,
+/// after which subsequent appends deny with a `Conflict` (`poisoned_head_error`)
+/// rather than another `SQLITE_FULL`. Both are correct fail-closed behavior; the
+/// invariant this asserts is that the handle keeps rejecting, not that every
+/// later error carries the same code. Only an `Ok` append (rejection did not
+/// persist) or an unrelated error type is a violation.
+fn expect_fail_closed(error: &ReceiptStoreError, context: &str) -> Result<(), ChaosError> {
+    match error {
+        ReceiptStoreError::Conflict(_) => Ok(()),
+        other => expect_disk_full(other, context),
+    }
+}
+
 /// Whether a preserved error message carries SQLite's disk-full signal. Used only
 /// for the flush-path snapshot shape whose numeric error code was dropped; the
 /// canonical SQLITE_FULL text is "database or disk is full".
@@ -177,7 +191,9 @@ fn chaos_enospc_denies_typed_and_recovers() -> Result<(), ChaosError> {
         // (a) The rejection is the typed SQLITE_FULL surface.
         expect_disk_full(fault, "initial full")?;
         // (b) Fail-closed persistence: the store keeps rejecting on the same
-        // handle. Every subsequent append also denies with SQLITE_FULL.
+        // handle. Every subsequent append denies fail-closed, either with another
+        // SQLITE_FULL or (once the store-wide fault poisons the verified head)
+        // with a poisoned-head Conflict.
         for i in 0..8u64 {
             let receipt = chaos_receipt(&format!("enospc-after-{i}"), 2_000 + i)?;
             match store.append_chio_receipt_returning_seq(&receipt) {
@@ -186,7 +202,7 @@ fn chaos_enospc_denies_typed_and_recovers() -> Result<(), ChaosError> {
                         "append returned seq {seq} after the store reported full; rejection did not persist"
                     )))
                 }
-                Err(error) => expect_disk_full(&error, "post-fault persistence")?,
+                Err(error) => expect_fail_closed(&error, "post-fault persistence")?,
             }
         }
     }
