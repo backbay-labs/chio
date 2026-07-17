@@ -1197,6 +1197,14 @@ impl BudgetStore for InMemoryBudgetStore {
         &self,
         request: BudgetAuthorizeHoldRequest,
     ) -> Result<BudgetAuthorizeHoldDecision, BudgetStoreError> {
+        if request.payment_journal.is_some() {
+            // The in-memory store cannot journal the money path durably, and
+            // a silently dropped journal row would leave a rail movement
+            // unrecoverable after a crash. Deny rather than proceed.
+            return Err(BudgetStoreError::Invariant(
+                "payment journal is not supported by this budget store".to_string(),
+            ));
+        }
         let mut inner = self.lock_inner()?;
         let allowed = inner.try_charge_cost_with_ids_and_authority(
             &request.capability_id,

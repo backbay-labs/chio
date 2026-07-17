@@ -359,6 +359,14 @@ pub mod families {
         LabeledGauge::new(CHIO_RECEIPT_UNCHECKPOINTED_SEQ_RANGE, &[]);
     pub static RECEIPT_CHECKPOINT_AGE_SECONDS: LabeledGauge =
         LabeledGauge::new(CHIO_RECEIPT_SECONDS_SINCE_LAST_CHECKPOINT, &[]);
+
+    // Money-path families. Producers: the kernel settlement routing consumer
+    // and the budget-hold sweeper; renderer: the kernel /metrics endpoint.
+    pub static SETTLEMENT_UNRESOLVED: LabeledCounter =
+        LabeledCounter::new(CHIO_SETTLEMENT_UNRESOLVED_TOTAL, &[]);
+    pub static BUDGET_OPEN_HOLDS: LabeledGauge = LabeledGauge::new(CHIO_BUDGET_OPEN_HOLDS, &[]);
+    pub static BUDGET_HOLDS_EXPIRED: LabeledCounter =
+        LabeledCounter::new(CHIO_BUDGET_HOLDS_EXPIRED_TOTAL, &[]);
 }
 
 /// Seed every KNOWN label set at zero once at startup so `absent_over_time`
@@ -376,6 +384,9 @@ pub fn preregister_known_label_sets() {
     families::SIGNING_QUEUE_BLOCK.preregister(&["oversized"]);
     families::OTEL_INGRESS_DROP.preregister(&[]);
     families::OTEL_SINK_DROP.preregister(&[]);
+    families::SETTLEMENT_UNRESOLVED.preregister(&[]);
+    families::BUDGET_OPEN_HOLDS.preregister(&[]);
+    families::BUDGET_HOLDS_EXPIRED.preregister(&[]);
     // DLQ/SOC/alert-dispatch known exporters and routes are seeded by the SIEM
     // serve mode from configured exporter/backend names, because their label
     // domain is deployment-configured rather than fixed.
@@ -403,6 +414,14 @@ pub fn render_otel_drop_families(out: &mut String) {
 pub fn render_receipt_watchdog_gauges(out: &mut String) {
     families::RECEIPT_UNCHECKPOINTED_RANGE.render(out);
     families::RECEIPT_CHECKPOINT_AGE_SECONDS.render(out);
+}
+
+/// Render the money-path families (producers: the kernel settlement routing
+/// consumer and the budget-hold sweeper).
+pub fn render_money_path_families(out: &mut String) {
+    families::SETTLEMENT_UNRESOLVED.render(out);
+    families::BUDGET_OPEN_HOLDS.render(out);
+    families::BUDGET_HOLDS_EXPIRED.render(out);
 }
 
 /// Render the alert-pack families that serving surfaces compose.

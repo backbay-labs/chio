@@ -19,6 +19,13 @@ use super::*;
 pub enum KernelBuildError {
     #[error("invalid hot-path deadline config: {0}")]
     InvalidDeadlineConfig(String),
+    #[error(
+        "settlement observer requires a durable settlement retry store: call \
+         set_settlement_retry_store before set_settlement_observer, so every retryable or \
+         permanent settlement outcome lands a settle_attempts or settle_dead_letters row \
+         instead of a warn-only log"
+    )]
+    MissingSettlementRetryStore,
 }
 
 impl ChioKernel {
@@ -356,6 +363,9 @@ impl ChioKernel {
             federation_local_kernel_id: ArcSwap::from_pointee(Option::<String>::None),
             signing_task,
             settlement_observer: None,
+            settlement_retry_store: None,
+            settlement_retry_policy: chio_settle::RetryPolicy::default(),
+            budget_hold_sweep: None,
             revocation_view: None,
             budget_registry: Mutex::new(chio_kernel_core::InMemoryBudgetRegistry::new()),
             rss_shed: Arc::new(AtomicBool::new(false)),
@@ -704,20 +714,61 @@ impl ChioKernel {
         &mut self,
         receipt_store: Arc<dyn ReceiptStore>,
     ) -> Result<(), KernelError> {
-        // Before anything else, resolve every dispatch intent that survived
-        // a restart: each one marks a call whose effect may have run with no
-        // receipt. Reconciliation runs strictly BEFORE the store is attached
-        // or any background worker starts, so no new dispatch can journal an
-        // intent that interleaves with the boot pass, and a reconcile
-        // failure refuses the attach outright (fail-closed) instead of
-        // leaving a store serving with unresolved open intents. The default
-        // posture dead-letters orphans into durable, health-flipping
-        // incidents (a side effect is never blindly replayed); a store
+        // The handle is installed before recovery runs because the money-path
+        // reconcile below emits signed reconciliation receipts through it.
+        // Nothing serves yet (this method owns the kernel mutably), so no new
+        // dispatch can journal an intent that interleaves with the boot pass.
+        // Every fallible attach step follows; if any refuses, the handle and
+        // any worker installed on the way are rolled back so a failed attach
+        // never leaves a store serving (fail-closed), exactly as if the
+        // attach had been refused up front.
+        self.receipt_store = Some(Arc::clone(&receipt_store));
+        if let Err(error) = self.finish_receipt_store_attach(receipt_store) {
+            self.receipt_store = None;
+            self.retention_maintenance = None;
+            self.dispatch_intent_recovery = None;
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    fn finish_receipt_store_attach(
+        &mut self,
+        receipt_store: Arc<dyn ReceiptStore>,
+    ) -> Result<(), KernelError> {
+        // Resolve the money path first: every incomplete payment-journal row
+        // reaches a terminal outcome before the intent pass below runs, so
+        // that pass consults settled journal state instead of racing it. No
+        // priced call is in flight at attach time, so no grace horizon
+        // applies.
+        if self.payment_journal_active() {
+            let journal_report = self.reconcile_payment_journal(0)?;
+            if journal_report.resolved > 0 || journal_report.reconcile_failed > 0 {
+                tracing::warn!(
+                    resolved = journal_report.resolved,
+                    reconcile_failed = journal_report.reconcile_failed,
+                    "payment journal rows survived a restart; reconciled before serving"
+                );
+            }
+        }
+        // Resolve every dispatch intent that survived a restart: each one
+        // marks a call whose effect may have run with no receipt.
+        // Reconciliation runs strictly before any background worker starts,
+        // and a reconcile failure refuses the attach outright (fail-closed)
+        // instead of leaving a store serving with unresolved open intents.
+        // Monetary orphans resolve through the payment journal when it is in
+        // force; everything else dead-letters into durable, health-flipping
+        // incidents (a side effect is never blindly replayed). A store
         // without the journal reports an empty pass, and a store shared
         // with a live sibling writer defers that sibling's in-flight
         // intents to their owner rather than claiming them as orphans.
-        let report =
-            receipt_store.reconcile_dispatch_intents(&crate::DefaultDispatchIntentReconciler)?;
+        let report = if self.payment_journal_active() {
+            receipt_store.reconcile_dispatch_intents(&crate::MonetaryDispatchIntentReconciler {
+                kernel: self,
+            })?
+        } else {
+            receipt_store.reconcile_dispatch_intents(&crate::DefaultDispatchIntentReconciler)?
+        };
         if report.dead_lettered > 0 || report.monetary_reconciled > 0 {
             tracing::warn!(
                 open = report.open,
@@ -853,12 +904,42 @@ impl ChioKernel {
                     crate::receipt_store::DISPATCH_INTENT_RECOVERY_INTERVAL,
                 )
             });
-        self.receipt_store = Some(receipt_store);
         Ok(())
     }
 
-    pub fn set_payment_adapter(&mut self, payment_adapter: Box<dyn PaymentAdapter>) {
+    /// Install the payment rail adapter. Fail-closed recovery mirror of the
+    /// store attach: when a receipt store is already attached, the attach-
+    /// time money pass ran while the journal was inert (no adapter), so any
+    /// incomplete payment-journal rows from a prior run are still open.
+    /// Installing the adapter makes them resolvable, so the same
+    /// reconciliation pass runs here; a pass that cannot complete uninstalls
+    /// the adapter and refuses, exactly as a failed attach refuses the
+    /// store, so the kernel never serves priced calls over an unreconciled
+    /// journal.
+    pub fn set_payment_adapter(
+        &mut self,
+        payment_adapter: Box<dyn PaymentAdapter>,
+    ) -> Result<(), KernelError> {
         self.payment_adapter = Some(payment_adapter);
+        if self.receipt_store.is_some() && self.payment_journal_active() {
+            match self.reconcile_payment_journal(0) {
+                Ok(report) => {
+                    if report.resolved > 0 || report.reconcile_failed > 0 {
+                        tracing::warn!(
+                            resolved = report.resolved,
+                            reconcile_failed = report.reconcile_failed,
+                            "payment journal rows survived a restart; reconciled at adapter \
+                             install"
+                        );
+                    }
+                }
+                Err(error) => {
+                    self.payment_adapter = None;
+                    return Err(error);
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn set_price_oracle(&mut self, price_oracle: Box<dyn PriceOracle>) {
@@ -923,13 +1004,151 @@ impl ChioKernel {
     /// receipt bytes; the hook MUST NOT mutate the receipt store and
     /// MUST NOT block the dispatch path on its own latency. Hook
     /// failures are surfaced through
-    /// [`Self::run_settlement_observer`]'s return value and are routed
-    /// through the retry/dead-letter machinery.
+    /// [`Self::run_settlement_observer`]'s return value and routed through
+    /// the retry/dead-letter machinery.
+    ///
+    /// Fail-closed wiring: a durable settlement retry store MUST already
+    /// be installed (see [`Self::set_settlement_retry_store`]) so every
+    /// retryable or permanent outcome lands a durable `settle_attempts` or
+    /// `settle_dead_letters` row. An observer without one would degrade
+    /// those outcomes to a warn plus a counter, so the install is rejected
+    /// here, at wiring time, never discovered at first use.
     pub fn set_settlement_observer(
         &mut self,
         hook: std::sync::Arc<dyn chio_settle::SettlementHook>,
-    ) {
+    ) -> Result<(), KernelBuildError> {
+        if self.settlement_retry_store.is_none() {
+            return Err(KernelBuildError::MissingSettlementRetryStore);
+        }
         self.settlement_observer = Some(hook);
+        Ok(())
+    }
+
+    /// Install the durable settlement retry/dead-letter sink the observer
+    /// routing consumer writes to. Required before
+    /// [`Self::set_settlement_observer`]: an observer whose outcomes have
+    /// no durable sink is refused at wiring time.
+    pub fn set_settlement_retry_store(
+        &mut self,
+        store: std::sync::Arc<dyn crate::settlement_retry::SettlementRetryStore>,
+    ) {
+        self.settlement_retry_store = Some(store);
+    }
+
+    /// Start the background sweeper for orphaned budget holds: once at
+    /// start, then every `interval_secs`, every open hold older than
+    /// `horizon_secs` is expired and its remaining exposure released (no
+    /// spend recorded), so a crash between a hold and its reconcile no
+    /// longer burns capacity forever. Use
+    /// [`DEFAULT_HOLD_SWEEP_INTERVAL_SECS`] and
+    /// [`DEFAULT_HOLD_EXPIRY_HORIZON_SECS`] unless the deployment has a
+    /// reason to deviate; the horizon must sit far above any legitimate
+    /// in-flight call. Restarting replaces (and joins) a previous sweeper.
+    pub fn start_budget_hold_sweeper(&mut self, interval_secs: u64, horizon_secs: u64) {
+        self.budget_hold_sweep = Some(super::budget_sweep::BudgetHoldSweepHandle::spawn(
+            Arc::clone(&self.budget_store),
+            interval_secs,
+            horizon_secs,
+        ));
+    }
+
+    /// Whether the durable payment journal is in force: a payment adapter is
+    /// installed and the dispatch-intent journal covers the monetary class.
+    pub(crate) fn payment_journal_active(&self) -> bool {
+        self.payment_adapter.is_some()
+            && !matches!(
+                self.config.dispatch_intent_journal,
+                crate::receipt_store::DispatchIntentJournalMode::Off
+            )
+    }
+
+    /// Advance the payment journal for a monetary call. Fail-closed: an
+    /// advance that cannot commit surfaces an error so the caller denies or
+    /// unwinds rather than moving money without a recoverable record. No-op
+    /// when the journal is not in force.
+    pub(crate) fn advance_payment_journal_if_active(
+        &self,
+        request_id: &str,
+        expected: crate::payment::PaymentJournalState,
+        next: crate::payment::PaymentJournalState,
+        authorization_id: Option<&str>,
+        transaction_id: Option<&str>,
+        settle: Option<crate::payment::PaymentSettleIntent>,
+    ) -> Result<(), KernelError> {
+        if !self.payment_journal_active() {
+            return Ok(());
+        }
+        self.with_budget_store(|store| {
+            store
+                .advance_payment_journal(
+                    request_id,
+                    expected,
+                    next,
+                    authorization_id,
+                    transaction_id,
+                    settle,
+                )
+                .map_err(KernelError::from)
+        })
+    }
+
+    /// Close the payment journal after the receipt commits. A crash before
+    /// the close leaves a Settled row that boot reconciliation closes
+    /// against the attested receipt, so a close failure here is warned, not
+    /// fatal.
+    ///
+    /// State-aware: a row still in `Settling` is never closed from here. On
+    /// the success path the settle advance to `Settled` precedes the
+    /// receipt, so a `Settling` row at receipt time means the rail call
+    /// failed or never confirmed AFTER its terminal action was durably
+    /// committed - money may have moved. The failure receipt records
+    /// `settlement_status: failed`, and the row must stay open so boot
+    /// reconciliation can replay the committed action (idempotent by the
+    /// adapter contract) instead of losing its only recovery handle.
+    pub(crate) fn close_payment_journal_best_effort(&self, request_id: &str) {
+        if !self.payment_journal_active() {
+            return;
+        }
+        match self.with_budget_store(|store| {
+            store
+                .get_payment_journal(request_id)
+                .map_err(KernelError::from)
+        }) {
+            Ok(Some(row)) if row.state == crate::payment::PaymentJournalState::Settling => {
+                tracing::warn!(
+                    request_id = %request_id,
+                    rail = %row.rail,
+                    "payment journal row is still Settling at receipt commit; leaving it open \
+                     for boot reconciliation to replay the committed settle action"
+                );
+                return;
+            }
+            Ok(_) => {}
+            Err(error) => {
+                // Unknown state: never destroy a possible recovery handle.
+                // A stray open Settled row at the next boot re-emits an
+                // advisory reconciliation receipt, never a second charge.
+                tracing::warn!(
+                    request_id = %request_id,
+                    reason = %redacted!(&error.to_string()),
+                    "payment journal lookup failed at receipt commit; leaving the row for boot \
+                     reconciliation"
+                );
+                return;
+            }
+        }
+        let closed = self.with_budget_store(|store| {
+            store
+                .close_payment_journal(request_id)
+                .map_err(KernelError::from)
+        });
+        if let Err(error) = closed {
+            tracing::warn!(
+                request_id = %request_id,
+                reason = %redacted!(&error.to_string()),
+                "payment journal close failed; boot reconciliation will close the row"
+            );
+        }
     }
 
     /// Return a clone of the active settlement observer, or `None` when
@@ -955,6 +1174,131 @@ impl ChioKernel {
             receipt,
             &[self.public_key()],
         )
+    }
+
+    /// Route the settlement-observer outcome into the retry/dead-letter
+    /// machinery. Fail-loud and fail-closed: an outcome that cannot be
+    /// persisted is warned and counted, never silently dropped.
+    pub(crate) fn route_settlement_observer_status(
+        &self,
+        receipt: &chio_core::receipt::body::ChioReceipt,
+        status: &settlement_observer::SettlementObserverStatus,
+    ) {
+        use settlement_observer::SettlementObserverStatus as Status;
+        let (reason, retryable) = match status {
+            // Steady state: no hook, or the receipt is outside the
+            // marketplace surface. Nothing is owed downstream.
+            Status::NotRegistered | Status::Skipped { .. } => return,
+            Status::Observed { outcome } => match self.classify_and_persist(receipt, outcome) {
+                Ok(()) => return,
+                Err(error) => (error.to_string(), true),
+            },
+            Status::HookFailed { error } => {
+                // A hook error is a transient settlement failure (an RPC
+                // outage looks exactly like a rail returning Retryable), so
+                // it consumes the same bounded retry/dead-letter envelope:
+                // a durable settle_attempts row that `chio settle drive`
+                // picks up, dead-lettering after the policy's max attempts.
+                // Warn-only routing would leave the outcome undriven and
+                // unbounded.
+                let outcome = chio_settle::SettlementOutcome::retryable(error.clone());
+                match self.classify_and_persist(receipt, &outcome) {
+                    Ok(()) => return,
+                    Err(persist_error) => (persist_error.to_string(), true),
+                }
+            }
+        };
+        tracing::warn!(
+            receipt_id = %receipt.id,
+            retryable,
+            reason = %redacted!(&reason),
+            "settlement outcome unresolved"
+        );
+        chio_metrics_spec::runtime::families::SETTLEMENT_UNRESOLVED.incr(&[]);
+    }
+
+    /// Classify an observed settlement outcome against the retry policy and
+    /// persist the decision: retryable outcomes upsert a bounded attempt row,
+    /// terminal failures land an idempotent dead-letter row, and resolved
+    /// outcomes clear the envelope.
+    pub(crate) fn classify_and_persist(
+        &self,
+        receipt: &chio_core::receipt::body::ChioReceipt,
+        outcome: &chio_settle::SettlementOutcome,
+    ) -> Result<(), crate::settlement_retry::SettlementRetryError> {
+        use crate::settlement_retry::{SettleAttemptRecord, SettlementRetryError};
+        use chio_settle::RetryDecision;
+
+        let store = self.settlement_retry_store.as_deref();
+        let prior_attempts = match store {
+            Some(store) => store
+                .load_attempt(&receipt.id)?
+                .map(|attempt| attempt.attempts)
+                .unwrap_or(0),
+            None => 0,
+        };
+        match chio_settle::classify_attempt(&self.settlement_retry_policy, prior_attempts, outcome)
+        {
+            RetryDecision::Skip { .. } => {
+                // Resolved (accepted or skipped): the receipt owes nothing
+                // downstream, so any bounded envelope for it is cleared.
+                if let Some(store) = store {
+                    store.clear_attempt(&receipt.id)?;
+                }
+                Ok(())
+            }
+            RetryDecision::Retry { attempt, backoff } => {
+                let Some(store) = store else {
+                    return Err(SettlementRetryError::Backend(
+                        "no settlement retry store installed".to_string(),
+                    ));
+                };
+                let reason = match outcome {
+                    chio_settle::SettlementOutcome::Retryable { reason, .. } => reason.clone(),
+                    other => format!("{other:?}"),
+                };
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|elapsed| elapsed.as_secs())
+                    .unwrap_or(0);
+                store.upsert_attempt(&SettleAttemptRecord {
+                    receipt_id: receipt.id.clone(),
+                    finalized_at: receipt.timestamp,
+                    attempts: attempt,
+                    next_visible_at: now.saturating_add(backoff.as_secs().max(1)),
+                    last_reason: Some(reason),
+                })
+            }
+            RetryDecision::DeadLetter { reason } => {
+                let Some(store) = store else {
+                    return Err(SettlementRetryError::Backend(
+                        "no settlement retry store installed".to_string(),
+                    ));
+                };
+                let record = chio_settle::DeadLetterRecord::new(
+                    receipt.id.clone(),
+                    receipt.timestamp,
+                    prior_attempts.saturating_add(1),
+                    reason,
+                );
+                match store.insert_dead_letter(&record) {
+                    Ok(_) => store.clear_attempt(&receipt.id),
+                    Err(SettlementRetryError::Conflict(message)) => {
+                        // A divergent dead-letter row already exists. Keep the
+                        // original row (operators clear it explicitly) and
+                        // surface the divergence loud.
+                        tracing::warn!(
+                            receipt_id = %receipt.id,
+                            reason = %redacted!(&message),
+                            "dead-letter insert conflicted with a divergent row"
+                        );
+                        chio_metrics_spec::runtime::families::SETTLEMENT_UNRESOLVED.incr(&[]);
+                        Ok(())
+                    }
+                    Err(other) => Err(other),
+                }
+            }
+        }
     }
 
     /// Install a memory-provenance chain.

@@ -2,6 +2,7 @@ use super::*;
 
 mod api_mcp;
 mod attest;
+mod budget;
 mod certify_cert;
 mod did_passport;
 mod federation;
@@ -21,6 +22,7 @@ mod trust_cmd;
 mod workflow;
 
 use api_mcp::{dispatch_api, dispatch_mcp};
+use budget::dispatch_budget;
 #[allow(unused_imports)]
 pub(crate) use self::attest::{
     cmd_chio_attest_runtime_quote_verify, cmd_chio_attest_supply_chain_verify, decode_fixed_hex,
@@ -236,7 +238,10 @@ pub(crate) fn run() {
         Commands::Pheromone { command } => dispatch_chio_pheromone_command(command),
         Commands::Replay(args) => cmd_replay(&args),
         Commands::Lineage { command } => dispatch_lineage(command, json_output),
-        Commands::Settle { command } => dispatch_settle(command, json_output, receipt_db),
+        Commands::Settle { command } => {
+            dispatch_settle(command, json_output, receipt_db, &cli.settlement_driver)
+        }
+        Commands::Budget { command } => dispatch_budget(command, json_output, budget_db.clone()),
         Commands::Doctor(args) => cmd_doctor(&args, json_output),
         Commands::Arena { command } => dispatch_arena(command, json_output),
         Commands::Bind {

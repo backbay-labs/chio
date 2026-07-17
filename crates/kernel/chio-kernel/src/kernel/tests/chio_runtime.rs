@@ -1933,6 +1933,7 @@ fn authorize_fabricated_drop_hold(
                     hold_id: Some("hold-drop-guard-tests".to_string()),
                     event_id: Some("hold-drop-guard-tests:authorize".to_string()),
                     authority: None,
+                    payment_journal: None,
                 })?;
             assert!(
                 matches!(
@@ -2030,7 +2031,7 @@ fn drop_pre_dispatch_monetary_unwinds_without_receipt(
     // hold is reversed, reservations released, and no receipt is recorded.
     let mut kernel = make_kernel(make_config());
     let payment = TrackingPaymentAdapter::new();
-    kernel.set_payment_adapter(Box::new(payment.clone()));
+    kernel.set_payment_adapter(Box::new(payment.clone())).expect("install payment adapter");
     let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
     let releases = std::sync::Arc::new(AtomicU64::new(0));
     kernel.set_runtime_admission_hook(std::sync::Arc::new(
@@ -4717,7 +4718,7 @@ fn url_elicitation_monetary_reversal_failure_records_monetary_hold_ids_async(
         vec!["compute"],
         std::sync::Arc::clone(&stream_attempts),
     )));
-    kernel.set_payment_adapter(Box::new(FailingReleasePaymentAdapter));
+    kernel.set_payment_adapter(Box::new(FailingReleasePaymentAdapter)).expect("install payment adapter");
 
     let agent_kp = make_keypair();
     let cap = make_capability(
@@ -4765,7 +4766,7 @@ fn url_elicitation_monetary_reversal_failure_records_monetary_hold_ids_nested_fl
         vec!["compute"],
         std::sync::Arc::clone(&stream_attempts),
     )));
-    kernel.set_payment_adapter(Box::new(FailingReleasePaymentAdapter));
+    kernel.set_payment_adapter(Box::new(FailingReleasePaymentAdapter)).expect("install payment adapter");
 
     let agent_kp = make_keypair();
     let cap = make_capability(

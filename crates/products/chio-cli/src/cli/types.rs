@@ -83,6 +83,11 @@ pub(crate) struct Cli {
     #[arg(long, global = true)]
     pub(crate) budget_db: Option<PathBuf>,
 
+    /// Settlement driver: `none` (default; the settle drive is inert) or
+    /// `ops` (run the reference settlement hook when driving due attempts).
+    #[arg(long, global = true, default_value = "none")]
+    pub(crate) settlement_driver: String,
+
     /// Optional SQLite database path for durable remote MCP session tombstones.
     #[arg(long, global = true)]
     pub(crate) session_db: Option<PathBuf>,
@@ -474,6 +479,13 @@ pub(crate) enum Commands {
     Settle {
         #[command(subcommand)]
         command: SettleCommands,
+    },
+
+    /// Inspect and release capability budget holds in the durable budget
+    /// store (see the global `--budget-db`).
+    Budget {
+        #[command(subcommand)]
+        command: BudgetCommands,
     },
 
     /// Query, diff, or list anchored roots in the lineage DAG.

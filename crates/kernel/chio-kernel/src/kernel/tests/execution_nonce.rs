@@ -427,7 +427,7 @@ fn strict_nonce_mode_preflights_nonce_then_executes_once() {
 fn strict_nonce_mode_payment_denial_does_not_consume_nonce() {
     let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(DecliningPaymentAdapter));
+    kernel.set_payment_adapter(Box::new(DecliningPaymentAdapter)).expect("install payment adapter");
     kernel.register_tool_server(Box::new(CountingMonetaryServer {
         id: "cost-srv".to_string(),
         invocations: invocations.clone(),
@@ -482,7 +482,7 @@ fn strict_nonce_mode_payment_denial_does_not_consume_nonce() {
     );
     assert_eq!(invocations.load(std::sync::atomic::Ordering::SeqCst), 0);
 
-    kernel.set_payment_adapter(Box::new(StubPaymentAdapter));
+    kernel.set_payment_adapter(Box::new(StubPaymentAdapter)).expect("install payment adapter");
     request.request_id = "req-nonce-payment-allow".to_string();
     let allowed = kernel.evaluate_tool_call_blocking(&request).unwrap();
     assert_eq!(allowed.verdict, Verdict::Allow);

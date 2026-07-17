@@ -3,7 +3,10 @@ use std::path::Path;
 use std::sync::{Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chio_kernel::budget_store::{BudgetEventAuthority, BudgetMutationKind, BudgetMutationRecord};
+use chio_kernel::budget_store::{
+    AuthorizedBudgetHold, BudgetAuthorizeHoldDecision, BudgetAuthorizeHoldRequest,
+    BudgetEventAuthority, BudgetMutationKind, BudgetMutationRecord, DeniedBudgetHold,
+};
 use chio_kernel::{BudgetStore, BudgetStoreError, BudgetUsageRecord};
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 

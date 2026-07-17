@@ -62,12 +62,13 @@ pub use observe::{
     SettlementFinalityStatus, SettlementRecoveryAction,
 };
 pub use ops::{
-    classify_settlement_lane, ensure_settlement_operation_allowed, SettlementAlertSeverity,
-    SettlementControlChangeRecord, SettlementControlState, SettlementEmergencyControls,
-    SettlementEmergencyMode, SettlementIncidentAlert, SettlementIndexerCursor,
-    SettlementIndexerCursorInput, SettlementIndexerStatus, SettlementLaneRuntimeStatus,
-    SettlementLaneRuntimeStatusInput, SettlementOperationKind, SettlementRecoveryRecord,
-    SettlementRuntimeReport, SettlementRuntimeStatus, CHIO_SETTLE_RUNTIME_REPORT_SCHEMA,
+    classify_settlement_lane, ensure_settlement_operation_allowed, OpsSettlementHook,
+    SettlementAlertSeverity, SettlementControlChangeRecord, SettlementControlState,
+    SettlementDriveStep, SettlementEmergencyControls, SettlementEmergencyMode,
+    SettlementIncidentAlert, SettlementIndexerCursor, SettlementIndexerCursorInput,
+    SettlementIndexerStatus, SettlementLaneRuntimeStatus, SettlementLaneRuntimeStatusInput,
+    SettlementOperationKind, SettlementRecoveryRecord, SettlementRuntime, SettlementRuntimeReport,
+    SettlementRuntimeStatus, CHIO_SETTLE_RUNTIME_REPORT_SCHEMA,
 };
 pub use payments::{
     build_x402_payment_requirements, evaluate_circle_nanopayment, prepare_paymaster_compatibility,
@@ -78,9 +79,9 @@ pub use payments::{
     DEFAULT_MAX_EIP3009_NONCE_ENTRIES,
 };
 pub use retry::{
-    classify_attempt, DeadLetterRecord, RetryDecision, RetryPolicy, DEFAULT_BACKOFF_CAP_MS,
-    DEFAULT_BACKOFF_MULTIPLIER, DEFAULT_INITIAL_BACKOFF_MS, DEFAULT_MAX_RETRIES,
-    SETTLE_DEAD_LETTER_SCHEMA,
+    classify_attempt, DeadLetterRecord, RetryDecision, RetryPolicy, RetryPolicyError,
+    DEFAULT_BACKOFF_CAP_MS, DEFAULT_BACKOFF_MULTIPLIER, DEFAULT_INITIAL_BACKOFF_MS,
+    DEFAULT_MAX_RETRIES, SETTLE_DEAD_LETTER_SCHEMA,
 };
 pub use solana::{
     compare_commitments, prepare_solana_settlement, verify_solana_binding_and_receipt,

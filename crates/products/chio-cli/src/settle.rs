@@ -485,3 +485,286 @@ mod tests {
         assert_eq!(report.settled[1].receipt_id, "rcpt-B");
     }
 }
+
+/// Schema string emitted on the wire for drive reports.
+pub const SETTLE_DRIVE_REPORT_SCHEMA: &str = "chio.settle.drive-report.v1";
+
+/// Summary of one settlement drive pass over due `settle_attempts` rows.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SettleDriveReport {
+    /// Attempts that settled: a `settlement_reconciliations` row was
+    /// written and the bounded envelope cleared.
+    pub settled: u64,
+    /// Attempts re-armed with a later visibility.
+    pub retried: u64,
+    /// Attempts that landed a dead-letter row.
+    pub dead_lettered: u64,
+    /// Attempts cleared without a settled record (skipped outcomes and
+    /// receipts outside the marketplace surface).
+    pub skipped: u64,
+}
+
+/// Drive due settlement attempts through the reference hook: for each due
+/// `settle_attempts` row, load the finalized receipt, rebuild its
+/// observation, and apply the driver step. Settled attempts write the
+/// `settlement_reconciliations` row `chio settle status` reports (IOU
+/// minting stays with the signing-capable credit lane); recoverable
+/// failures re-arm; terminal failures dead-letter. Bounded by `batch`.
+pub fn run_settlement_drive(
+    store_path: &Path,
+    batch: usize,
+) -> Result<SettleDriveReport, SettleStatusError> {
+    use chio_kernel::settlement_retry::{SettleAttemptRecord, SettlementRetryStore};
+
+    let receipts = chio_store_sqlite::SqliteReceiptStore::open(store_path)
+        .map_err(|error| SettleStatusError::Backend(error.to_string()))?;
+    let retry_store = chio_store_sqlite::SqliteSettlementRetryStore::open_alongside(&receipts)
+        .map_err(|error| SettleStatusError::Backend(error.to_string()))?;
+    let runtime = chio_settle::SettlementRuntime::new(
+        chio_settle::OpsSettlementHook::new(),
+        chio_settle::RetryPolicy::default(),
+    );
+    let connection = Connection::open(store_path)
+        .map_err(|error| SettleStatusError::Backend(error.to_string()))?;
+
+    let now_unix_secs = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs())
+        .unwrap_or(0);
+    let due = retry_store
+        .due_attempts(now_unix_secs, batch)
+        .map_err(|error| SettleStatusError::Backend(error.to_string()))?;
+
+    let mut report = SettleDriveReport::default();
+    for attempt in due {
+        let raw_json: Option<String> = connection
+            .query_row(
+                "SELECT raw_json FROM chio_tool_receipts WHERE receipt_id = ?1",
+                rusqlite::params![attempt.receipt_id],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| SettleStatusError::Backend(error.to_string()))?;
+        let Some(raw_json) = raw_json else {
+            // The attempt references a receipt this store does not hold:
+            // nothing can ever settle it, so it terminates as a dead letter
+            // rather than spinning forever.
+            dead_letter_attempt(
+                &retry_store,
+                &attempt,
+                "finalized receipt not found in this store",
+            )?;
+            report.dead_lettered += 1;
+            continue;
+        };
+        let receipt: chio_core::receipt::body::ChioReceipt = serde_json::from_str(&raw_json)
+            .map_err(|error| SettleStatusError::Backend(error.to_string()))?;
+        let observation = chio_kernel::settlement_observer::build_observation(
+            &receipt,
+            std::slice::from_ref(&receipt.kernel_key),
+        );
+        let Some(observation) = observation else {
+            // Unpriced or malformed for the marketplace surface: nothing is
+            // owed downstream.
+            retry_store
+                .clear_attempt(&attempt.receipt_id)
+                .map_err(|error| SettleStatusError::Backend(error.to_string()))?;
+            report.skipped += 1;
+            continue;
+        };
+        match runtime.drive(&observation, attempt.attempts) {
+            chio_settle::SettlementDriveStep::Settle { transcript_id } => {
+                connection
+                    .execute(
+                        "INSERT INTO settlement_reconciliations \
+                         (receipt_id, reconciliation_state, note, updated_at) \
+                         VALUES (?1, 'settled', ?2, ?3) \
+                         ON CONFLICT(receipt_id) DO UPDATE SET \
+                           reconciliation_state = 'settled', \
+                           note = excluded.note, \
+                           updated_at = excluded.updated_at",
+                        rusqlite::params![
+                            attempt.receipt_id,
+                            format!("transcript={transcript_id}"),
+                            now_unix_secs.min(i64::MAX as u64) as i64,
+                        ],
+                    )
+                    .map_err(|error| SettleStatusError::Backend(error.to_string()))?;
+                retry_store
+                    .clear_attempt(&attempt.receipt_id)
+                    .map_err(|error| SettleStatusError::Backend(error.to_string()))?;
+                report.settled += 1;
+            }
+            chio_settle::SettlementDriveStep::Retry {
+                attempts,
+                backoff,
+                reason,
+            } => {
+                retry_store
+                    .upsert_attempt(&SettleAttemptRecord {
+                        receipt_id: attempt.receipt_id.clone(),
+                        finalized_at: attempt.finalized_at,
+                        attempts,
+                        next_visible_at: now_unix_secs
+                            .saturating_add(backoff.as_secs().max(1)),
+                        last_reason: Some(reason),
+                    })
+                    .map_err(|error| SettleStatusError::Backend(error.to_string()))?;
+                report.retried += 1;
+            }
+            chio_settle::SettlementDriveStep::DeadLetter { reason } => {
+                dead_letter_attempt(&retry_store, &attempt, &reason)?;
+                report.dead_lettered += 1;
+            }
+            chio_settle::SettlementDriveStep::Skip { .. } => {
+                retry_store
+                    .clear_attempt(&attempt.receipt_id)
+                    .map_err(|error| SettleStatusError::Backend(error.to_string()))?;
+                report.skipped += 1;
+            }
+        }
+    }
+    Ok(report)
+}
+
+fn dead_letter_attempt(
+    retry_store: &chio_store_sqlite::SqliteSettlementRetryStore,
+    attempt: &chio_kernel::settlement_retry::SettleAttemptRecord,
+    reason: &str,
+) -> Result<(), SettleStatusError> {
+    use chio_kernel::settlement_retry::SettlementRetryStore;
+    let record = chio_settle::DeadLetterRecord::new(
+        attempt.receipt_id.clone(),
+        attempt.finalized_at,
+        attempt.attempts.saturating_add(1),
+        reason,
+    );
+    retry_store
+        .insert_dead_letter(&record)
+        .map_err(|error| SettleStatusError::Backend(error.to_string()))?;
+    retry_store
+        .clear_attempt(&attempt.receipt_id)
+        .map_err(|error| SettleStatusError::Backend(error.to_string()))?;
+    Ok(())
+}
+
+/// `chio settle drive` entry point: run one drive pass and report.
+pub fn cmd_settle_drive(
+    store_path: &Path,
+    batch: usize,
+    json: bool,
+) -> Result<i32, SettleStatusError> {
+    let report = run_settlement_drive(store_path, batch)?;
+    if json {
+        let value = serde_json::json!({
+            "schema": SETTLE_DRIVE_REPORT_SCHEMA,
+            "settled": report.settled,
+            "retried": report.retried,
+            "deadLettered": report.dead_lettered,
+            "skipped": report.skipped,
+        });
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&value)
+                .map_err(|error| SettleStatusError::Backend(error.to_string()))?
+        );
+    } else {
+        println!(
+            "settled {}  retried {}  dead-lettered {}  skipped {}",
+            report.settled, report.retried, report.dead_lettered, report.skipped
+        );
+    }
+    Ok(0)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod drive_tests {
+    use super::*;
+    use chio_kernel::settlement_retry::{SettleAttemptRecord, SettlementRetryStore};
+    use tempfile::TempDir;
+
+    fn signed_money_receipt(receipt_id: &str) -> chio_core::receipt::body::ChioReceipt {
+        let keypair = chio_core::crypto::Keypair::generate();
+        let action = chio_core::receipt::decision::ToolCallAction::from_parameters(
+            serde_json::json!({"k": "v"}),
+        )
+        .expect("hash parameters");
+        chio_core::receipt::body::ChioReceipt::sign(
+            chio_core::receipt::body::ChioReceiptBody {
+                id: receipt_id.to_string(),
+                timestamp: 100,
+                capability_id: "cap-1".to_string(),
+                tool_server: "srv".to_string(),
+                tool_name: "tool".to_string(),
+                action,
+                decision: Some(chio_core::receipt::decision::Decision::Allow),
+                receipt_kind: Default::default(),
+                boundary_class: Default::default(),
+                observation_outcome: None,
+                tool_origin: Default::default(),
+                redaction_mode: Default::default(),
+                actor_chain: Vec::new(),
+                content_hash: "content-1".to_string(),
+                policy_hash: "policy-1".to_string(),
+                evidence: Vec::new(),
+                metadata: Some(serde_json::json!({
+                    "financial": {"cost_charged": 250, "currency": "USD"}
+                })),
+                trust_level: chio_core::receipt::kinds::TrustLevel::default(),
+                tenant_id: None,
+                kernel_key: keypair.public_key(),
+                bbs_projection_version: None,
+            },
+            &keypair,
+        )
+        .expect("sign receipt")
+    }
+
+    #[test]
+    fn drive_settles_a_due_attempt_and_status_reports_it() {
+        use chio_kernel::ReceiptStore;
+
+        let dir = TempDir::new().expect("tempdir");
+        let path = dir.path().join("drive.sqlite3");
+        let receipts = chio_store_sqlite::SqliteReceiptStore::open(&path).expect("open receipts");
+        let receipt = signed_money_receipt("rcpt-drive-1");
+        receipts
+            .append_chio_receipt(&receipt)
+            .expect("append receipt");
+
+        let retry_store = chio_store_sqlite::SqliteSettlementRetryStore::open_alongside(&receipts)
+            .expect("open retry store");
+        retry_store
+            .upsert_attempt(&SettleAttemptRecord {
+                receipt_id: receipt.id.clone(),
+                finalized_at: 100,
+                attempts: 1,
+                next_visible_at: 0,
+                last_reason: Some("rail temporarily unavailable".to_string()),
+            })
+            .expect("seed attempt");
+        drop(receipts);
+
+        let report = run_settlement_drive(&path, 16).expect("drive");
+        assert_eq!(report.settled, 1, "the due attempt settles: {report:?}");
+        assert!(
+            retry_store
+                .load_attempt(&receipt.id)
+                .expect("load attempt")
+                .is_none(),
+            "the bounded envelope drains"
+        );
+
+        // The settled record is exactly what chio settle status reads.
+        let status = SettleStatusReport::load(&path).expect("status");
+        assert!(status
+            .settled
+            .iter()
+            .any(|row| row.receipt_id == receipt.id));
+
+        // Idempotent: nothing is due on a second pass.
+        let again = run_settlement_drive(&path, 16).expect("second drive");
+        assert_eq!(again, SettleDriveReport::default());
+    }
+}

@@ -110,6 +110,27 @@ const RUNTIME_METRIC_FAMILIES: &[GuardMetricFamily] = &[
         labels: &[],
         buckets: &[],
     },
+    GuardMetricFamily {
+        name: chio_metrics_spec::CHIO_SETTLEMENT_UNRESOLVED_TOTAL,
+        help: "Total money-bearing receipts whose settlement outcome could not be resolved.",
+        kind: PrometheusMetricKind::Counter,
+        labels: &[],
+        buckets: &[],
+    },
+    GuardMetricFamily {
+        name: chio_metrics_spec::CHIO_BUDGET_OPEN_HOLDS,
+        help: "Capability budget holds currently in disposition=open.",
+        kind: PrometheusMetricKind::Gauge,
+        labels: &[],
+        buckets: &[],
+    },
+    GuardMetricFamily {
+        name: chio_metrics_spec::CHIO_BUDGET_HOLDS_EXPIRED_TOTAL,
+        help: "Total capability budget holds swept to disposition=expired.",
+        kind: PrometheusMetricKind::Counter,
+        labels: &[],
+        buckets: &[],
+    },
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -145,6 +166,7 @@ pub fn render_guard_metrics_prometheus() -> String {
     chio_metrics_spec::runtime::render_otel_drop_families(&mut output);
     chio_metrics_spec::runtime::families::SIGNING_QUEUE_BLOCK.render(&mut output);
     chio_metrics_spec::runtime::render_receipt_watchdog_gauges(&mut output);
+    chio_metrics_spec::runtime::render_money_path_families(&mut output);
     output
 }
 

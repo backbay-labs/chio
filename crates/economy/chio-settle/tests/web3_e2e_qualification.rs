@@ -105,9 +105,7 @@ fn e2e_step<T, E: std::fmt::Display>(
     label: &'static str,
     result: Result<T, E>,
 ) -> Result<T, Box<dyn std::error::Error>> {
-    result.map_err(|error| {
-        std::io::Error::new(std::io::ErrorKind::Other, format!("{label}: {error}")).into()
-    })
+    result.map_err(|error| std::io::Error::other(format!("{label}: {error}")).into())
 }
 
 struct StaticBackend {
@@ -1172,11 +1170,7 @@ async fn web3_partner_qualification_emits_integrated_recovery_bundle(
         confirm_transaction(&config, &impair_root_tx).await,
     )?;
     if !impair_root_receipt.status {
-        return Err(std::io::Error::new(
-            std::io::ErrorKind::Other,
-            "impair proof root publication reverted",
-        )
-        .into());
+        return Err(std::io::Error::other("impair proof root publication reverted").into());
     }
     let impair_tx = e2e_step(
         "submit bond impair",
