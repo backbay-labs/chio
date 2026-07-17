@@ -253,7 +253,7 @@ pub trait PaymentAdapter: Send + Sync {
     ) -> Result<RailSettlementState, PaymentError> {
         let _ = (reference, authorization_id);
         Err(PaymentError::Unavailable(
-            "settlement_state query not implemented by this adapter".to_string(),
+            "settlement_state query is unavailable on this adapter".to_string(),
         ))
     }
 }
