@@ -5,9 +5,6 @@
 
 use super::*;
 use crate::runtime_trust_reports::{
-    AgentExposureLedgerQueryArgs, AuthorizationContextListArgs, BehavioralFeedExportArgs,
-    CapitalBookExportArgs, CreditBondIssueArgs, CreditBondListArgs, CreditFacilityIssueArgs,
-    CreditFacilityListArgs, ExposureLedgerQueryArgs, SharedEvidenceListArgs,
     cmd_trust_authorization_context_list, cmd_trust_authorization_context_metadata,
     cmd_trust_authorization_context_review_pack, cmd_trust_behavioral_feed_export,
     cmd_trust_capital_allocation_issue, cmd_trust_capital_book_export,
@@ -15,7 +12,10 @@ use crate::runtime_trust_reports::{
     cmd_trust_credit_bond_issue, cmd_trust_credit_bond_list, cmd_trust_credit_bond_simulate,
     cmd_trust_credit_facility_evaluate, cmd_trust_credit_facility_issue,
     cmd_trust_credit_facility_list, cmd_trust_credit_scorecard_export,
-    cmd_trust_evidence_share_list, cmd_trust_exposure_ledger_export,
+    cmd_trust_evidence_share_list, cmd_trust_exposure_ledger_export, AgentExposureLedgerQueryArgs,
+    AuthorizationContextListArgs, BehavioralFeedExportArgs, CapitalBookExportArgs,
+    CreditBondIssueArgs, CreditBondListArgs, CreditFacilityIssueArgs, CreditFacilityListArgs,
+    ExposureLedgerQueryArgs, SharedEvidenceListArgs,
 };
 
 #[allow(clippy::too_many_arguments)]
@@ -32,248 +32,233 @@ pub(crate) fn dispatch_trust(
     control_token: Option<String>,
 ) -> Result<(), CliError> {
     match command {
-            TrustCommands::Serve {
-                listen,
-                service_token,
-                tenant_read_tokens,
-                advertise_url,
-                peer_urls,
-                allow_local_peer_urls,
-                cluster_sync_interval_ms,
-                policy,
+        TrustCommands::Serve {
+            listen,
+            service_token,
+            tenant_read_tokens,
+            advertise_url,
+            peer_urls,
+            allow_local_peer_urls,
+            cluster_sync_interval_ms,
+            policy,
+            enterprise_providers_file,
+            federation_policies_file,
+            scim_lifecycle_file,
+            verifier_policies_file,
+            verifier_challenge_db,
+            passport_statuses_file,
+            passport_issuance_offers_file,
+            certification_registry_file,
+            certification_discovery_file,
+            certification_public_metadata_ttl_seconds,
+        } => cmd_trust_serve(
+            listen,
+            &service_token,
+            &tenant_read_tokens,
+            policy.as_deref(),
+            enterprise_providers_file.as_deref(),
+            federation_policies_file.as_deref(),
+            scim_lifecycle_file.as_deref(),
+            verifier_policies_file.as_deref(),
+            verifier_challenge_db.as_deref(),
+            passport_statuses_file.as_deref(),
+            passport_issuance_offers_file.as_deref(),
+            certification_registry_file.as_deref(),
+            certification_discovery_file.as_deref(),
+            receipt_db.as_deref(),
+            revocation_db.as_deref(),
+            authority_seed_file.as_deref(),
+            authority_db.as_deref(),
+            budget_db.as_deref(),
+            session_db.as_deref(),
+            advertise_url.as_deref(),
+            allow_local_peer_urls,
+            certification_public_metadata_ttl_seconds,
+            &peer_urls,
+            cluster_sync_interval_ms,
+        ),
+        TrustCommands::Provider { command } => match command {
+            TrustProviderCommands::List {
                 enterprise_providers_file,
-                federation_policies_file,
-                scim_lifecycle_file,
-                verifier_policies_file,
-                verifier_challenge_db,
-                passport_statuses_file,
-                passport_issuance_offers_file,
-                certification_registry_file,
-                certification_discovery_file,
-                certification_public_metadata_ttl_seconds,
-            } => cmd_trust_serve(
-                listen,
-                &service_token,
-                &tenant_read_tokens,
-                policy.as_deref(),
+            } => admin::cmd_trust_provider_list(
+                json_output,
                 enterprise_providers_file.as_deref(),
-                federation_policies_file.as_deref(),
-                scim_lifecycle_file.as_deref(),
-                verifier_policies_file.as_deref(),
-                verifier_challenge_db.as_deref(),
-                passport_statuses_file.as_deref(),
-                passport_issuance_offers_file.as_deref(),
-                certification_registry_file.as_deref(),
-                certification_discovery_file.as_deref(),
-                receipt_db.as_deref(),
-                revocation_db.as_deref(),
-                authority_seed_file.as_deref(),
-                authority_db.as_deref(),
-                budget_db.as_deref(),
-                session_db.as_deref(),
-                advertise_url.as_deref(),
-                allow_local_peer_urls,
-                certification_public_metadata_ttl_seconds,
-                &peer_urls,
-                cluster_sync_interval_ms,
+                control_url.as_deref(),
+                control_token.as_deref(),
             ),
-            TrustCommands::Provider { command } => match command {
-                TrustProviderCommands::List {
-                    enterprise_providers_file,
-                } => admin::cmd_trust_provider_list(
-                    json_output,
-                    enterprise_providers_file.as_deref(),
-                    control_url.as_deref(),
-                    control_token.as_deref(),
-                ),
-                TrustProviderCommands::Get {
-                    provider_id,
-                    enterprise_providers_file,
-                } => admin::cmd_trust_provider_get(
-                    &provider_id,
-                    json_output,
-                    enterprise_providers_file.as_deref(),
-                    control_url.as_deref(),
-                    control_token.as_deref(),
-                ),
-                TrustProviderCommands::Upsert {
-                    input,
-                    enterprise_providers_file,
-                } => admin::cmd_trust_provider_upsert(
+            TrustProviderCommands::Get {
+                provider_id,
+                enterprise_providers_file,
+            } => admin::cmd_trust_provider_get(
+                &provider_id,
+                json_output,
+                enterprise_providers_file.as_deref(),
+                control_url.as_deref(),
+                control_token.as_deref(),
+            ),
+            TrustProviderCommands::Upsert {
+                input,
+                enterprise_providers_file,
+            } => admin::cmd_trust_provider_upsert(
+                &input,
+                json_output,
+                enterprise_providers_file.as_deref(),
+                control_url.as_deref(),
+                control_token.as_deref(),
+            ),
+            TrustProviderCommands::Delete {
+                provider_id,
+                enterprise_providers_file,
+            } => admin::cmd_trust_provider_delete(
+                &provider_id,
+                json_output,
+                enterprise_providers_file.as_deref(),
+                control_url.as_deref(),
+                control_token.as_deref(),
+            ),
+        },
+        TrustCommands::FederationPolicy { command } => match command {
+            TrustFederationPolicyCommands::List {
+                federation_policies_file,
+            } => admin::cmd_trust_federation_policy_list(
+                json_output,
+                federation_policies_file.as_deref(),
+                control_url.as_deref(),
+                control_token.as_deref(),
+            ),
+            TrustFederationPolicyCommands::Get {
+                policy_id,
+                federation_policies_file,
+            } => admin::cmd_trust_federation_policy_get(
+                &policy_id,
+                json_output,
+                federation_policies_file.as_deref(),
+                control_url.as_deref(),
+                control_token.as_deref(),
+            ),
+            TrustFederationPolicyCommands::Upsert {
+                input,
+                federation_policies_file,
+            } => admin::cmd_trust_federation_policy_upsert(
+                &input,
+                json_output,
+                federation_policies_file.as_deref(),
+                control_url.as_deref(),
+                control_token.as_deref(),
+            ),
+            TrustFederationPolicyCommands::Delete {
+                policy_id,
+                federation_policies_file,
+            } => admin::cmd_trust_federation_policy_delete(
+                &policy_id,
+                json_output,
+                federation_policies_file.as_deref(),
+                control_url.as_deref(),
+                control_token.as_deref(),
+            ),
+            TrustFederationPolicyCommands::Evaluate { input } => {
+                admin::cmd_trust_federation_policy_evaluate(
                     &input,
                     json_output,
-                    enterprise_providers_file.as_deref(),
                     control_url.as_deref(),
                     control_token.as_deref(),
-                ),
-                TrustProviderCommands::Delete {
-                    provider_id,
-                    enterprise_providers_file,
-                } => admin::cmd_trust_provider_delete(
-                    &provider_id,
-                    json_output,
-                    enterprise_providers_file.as_deref(),
-                    control_url.as_deref(),
-                    control_token.as_deref(),
-                ),
-            },
-            TrustCommands::FederationPolicy { command } => match command {
-                TrustFederationPolicyCommands::List {
-                    federation_policies_file,
-                } => admin::cmd_trust_federation_policy_list(
-                    json_output,
-                    federation_policies_file.as_deref(),
-                    control_url.as_deref(),
-                    control_token.as_deref(),
-                ),
-                TrustFederationPolicyCommands::Get {
-                    policy_id,
-                    federation_policies_file,
-                } => admin::cmd_trust_federation_policy_get(
-                    &policy_id,
-                    json_output,
-                    federation_policies_file.as_deref(),
-                    control_url.as_deref(),
-                    control_token.as_deref(),
-                ),
-                TrustFederationPolicyCommands::Upsert {
-                    input,
-                    federation_policies_file,
-                } => admin::cmd_trust_federation_policy_upsert(
-                    &input,
-                    json_output,
-                    federation_policies_file.as_deref(),
-                    control_url.as_deref(),
-                    control_token.as_deref(),
-                ),
-                TrustFederationPolicyCommands::Delete {
-                    policy_id,
-                    federation_policies_file,
-                } => admin::cmd_trust_federation_policy_delete(
-                    &policy_id,
-                    json_output,
-                    federation_policies_file.as_deref(),
-                    control_url.as_deref(),
-                    control_token.as_deref(),
-                ),
-                TrustFederationPolicyCommands::Evaluate { input } => {
-                    admin::cmd_trust_federation_policy_evaluate(
-                        &input,
-                        json_output,
-                        control_url.as_deref(),
-                        control_token.as_deref(),
-                    )
-                }
-            },
-            TrustCommands::EvidenceShare { command } => match command {
-                TrustEvidenceShareCommands::List {
-                    capability,
-                    agent_subject,
-                    tool_server,
-                    tool_name,
+                )
+            }
+        },
+        TrustCommands::EvidenceShare { command } => match command {
+            TrustEvidenceShareCommands::List {
+                capability,
+                agent_subject,
+                tool_server,
+                tool_name,
+                since,
+                until,
+                issuer,
+                partner,
+                limit,
+            } => cmd_trust_evidence_share_list(
+                SharedEvidenceListArgs {
+                    capability_id: capability.as_deref(),
+                    agent_subject: agent_subject.as_deref(),
+                    tool_server: tool_server.as_deref(),
+                    tool_name: tool_name.as_deref(),
                     since,
                     until,
-                    issuer,
-                    partner,
+                    issuer: issuer.as_deref(),
+                    partner: partner.as_deref(),
                     limit,
-                } => cmd_trust_evidence_share_list(
-                    SharedEvidenceListArgs {
-                        capability_id: capability.as_deref(),
-                        agent_subject: agent_subject.as_deref(),
-                        tool_server: tool_server.as_deref(),
-                        tool_name: tool_name.as_deref(),
-                        since,
-                        until,
-                        issuer: issuer.as_deref(),
-                        partner: partner.as_deref(),
-                        limit,
-                    },
-                    QueryBackend {
-                        json_output,
-                        receipt_db_path: receipt_db.as_deref(),
-                        control_url: control_url.as_deref(),
-                        control_token: control_token.as_deref(),
-                    },
-                ),
-            },
-            TrustCommands::AuthorizationContext { command } => match command {
-                TrustAuthorizationContextCommands::Metadata => {
-                    cmd_trust_authorization_context_metadata(
-                        json_output,
-                        receipt_db.as_deref(),
-                        control_url.as_deref(),
-                        control_token.as_deref(),
-                    )
-                }
-                TrustAuthorizationContextCommands::List {
-                    capability,
-                    agent_subject,
-                    tool_server,
-                    tool_name,
+                },
+                QueryBackend {
+                    json_output,
+                    receipt_db_path: receipt_db.as_deref(),
+                    control_url: control_url.as_deref(),
+                    control_token: control_token.as_deref(),
+                },
+            ),
+        },
+        TrustCommands::AuthorizationContext { command } => match command {
+            TrustAuthorizationContextCommands::Metadata => {
+                cmd_trust_authorization_context_metadata(
+                    json_output,
+                    receipt_db.as_deref(),
+                    control_url.as_deref(),
+                    control_token.as_deref(),
+                )
+            }
+            TrustAuthorizationContextCommands::List {
+                capability,
+                agent_subject,
+                tool_server,
+                tool_name,
+                since,
+                until,
+                limit,
+            } => cmd_trust_authorization_context_list(
+                AuthorizationContextListArgs {
+                    capability_id: capability.as_deref(),
+                    agent_subject: agent_subject.as_deref(),
+                    tool_server: tool_server.as_deref(),
+                    tool_name: tool_name.as_deref(),
                     since,
                     until,
                     limit,
-                } => cmd_trust_authorization_context_list(
-                    AuthorizationContextListArgs {
-                        capability_id: capability.as_deref(),
-                        agent_subject: agent_subject.as_deref(),
-                        tool_server: tool_server.as_deref(),
-                        tool_name: tool_name.as_deref(),
-                        since,
-                        until,
-                        limit,
-                    },
-                    QueryBackend {
-                        json_output,
-                        receipt_db_path: receipt_db.as_deref(),
-                        control_url: control_url.as_deref(),
-                        control_token: control_token.as_deref(),
-                    },
-                ),
-                TrustAuthorizationContextCommands::ReviewPack {
-                    capability,
-                    agent_subject,
-                    tool_server,
-                    tool_name,
+                },
+                QueryBackend {
+                    json_output,
+                    receipt_db_path: receipt_db.as_deref(),
+                    control_url: control_url.as_deref(),
+                    control_token: control_token.as_deref(),
+                },
+            ),
+            TrustAuthorizationContextCommands::ReviewPack {
+                capability,
+                agent_subject,
+                tool_server,
+                tool_name,
+                since,
+                until,
+                limit,
+            } => cmd_trust_authorization_context_review_pack(
+                AuthorizationContextListArgs {
+                    capability_id: capability.as_deref(),
+                    agent_subject: agent_subject.as_deref(),
+                    tool_server: tool_server.as_deref(),
+                    tool_name: tool_name.as_deref(),
                     since,
                     until,
                     limit,
-                } => cmd_trust_authorization_context_review_pack(
-                    AuthorizationContextListArgs {
-                        capability_id: capability.as_deref(),
-                        agent_subject: agent_subject.as_deref(),
-                        tool_server: tool_server.as_deref(),
-                        tool_name: tool_name.as_deref(),
-                        since,
-                        until,
-                        limit,
-                    },
-                    QueryBackend {
-                        json_output,
-                        receipt_db_path: receipt_db.as_deref(),
-                        control_url: control_url.as_deref(),
-                        control_token: control_token.as_deref(),
-                    },
-                ),
-            },
-            TrustCommands::Appraisal { command } => match command {
-                TrustRuntimeAttestationAppraisalCommands::Export { input, policy_file } => {
-                    cmd_trust_runtime_attestation_appraisal_export(
-                        &input,
-                        policy_file.as_deref(),
-                        json_output,
-                        authority_seed_file.as_deref(),
-                        authority_db.as_deref(),
-                        control_url.as_deref(),
-                        control_token.as_deref(),
-                    )
-                }
-                TrustRuntimeAttestationAppraisalCommands::ExportResult {
-                    issuer,
-                    input,
-                    policy_file,
-                } => cmd_trust_runtime_attestation_appraisal_result_export(
-                    issuer.as_str(),
+                },
+                QueryBackend {
+                    json_output,
+                    receipt_db_path: receipt_db.as_deref(),
+                    control_url: control_url.as_deref(),
+                    control_token: control_token.as_deref(),
+                },
+            ),
+        },
+        TrustCommands::Appraisal { command } => match command {
+            TrustRuntimeAttestationAppraisalCommands::Export { input, policy_file } => {
+                cmd_trust_runtime_attestation_appraisal_export(
                     &input,
                     policy_file.as_deref(),
                     json_output,
@@ -281,495 +266,524 @@ pub(crate) fn dispatch_trust(
                     authority_db.as_deref(),
                     control_url.as_deref(),
                     control_token.as_deref(),
-                ),
-                TrustRuntimeAttestationAppraisalCommands::Import { input, policy_file } => {
-                    cmd_trust_runtime_attestation_appraisal_import(
-                        &input,
-                        &policy_file,
+                )
+            }
+            TrustRuntimeAttestationAppraisalCommands::ExportResult {
+                issuer,
+                input,
+                policy_file,
+            } => cmd_trust_runtime_attestation_appraisal_result_export(
+                issuer.as_str(),
+                &input,
+                policy_file.as_deref(),
+                json_output,
+                authority_seed_file.as_deref(),
+                authority_db.as_deref(),
+                control_url.as_deref(),
+                control_token.as_deref(),
+            ),
+            TrustRuntimeAttestationAppraisalCommands::Import { input, policy_file } => {
+                cmd_trust_runtime_attestation_appraisal_import(
+                    &input,
+                    &policy_file,
+                    json_output,
+                    control_url.as_deref(),
+                    control_token.as_deref(),
+                )
+            }
+        },
+        TrustCommands::BehavioralFeed { command } => match command {
+            TrustBehavioralFeedCommands::Export {
+                capability,
+                agent_subject,
+                tool_server,
+                tool_name,
+                since,
+                until,
+                receipt_limit,
+            } => cmd_trust_behavioral_feed_export(
+                BehavioralFeedExportArgs {
+                    capability_id: capability.as_deref(),
+                    agent_subject: agent_subject.as_deref(),
+                    tool_server: tool_server.as_deref(),
+                    tool_name: tool_name.as_deref(),
+                    since,
+                    until,
+                    receipt_limit,
+                },
+                SignedQueryBackend {
+                    query: QueryBackend {
                         json_output,
-                        control_url.as_deref(),
-                        control_token.as_deref(),
-                    )
-                }
-            },
-            TrustCommands::BehavioralFeed { command } => match command {
-                TrustBehavioralFeedCommands::Export {
-                    capability,
-                    agent_subject,
-                    tool_server,
-                    tool_name,
-                    since,
-                    until,
-                    receipt_limit,
-                } => cmd_trust_behavioral_feed_export(
-                    BehavioralFeedExportArgs {
-                        capability_id: capability.as_deref(),
-                        agent_subject: agent_subject.as_deref(),
-                        tool_server: tool_server.as_deref(),
-                        tool_name: tool_name.as_deref(),
-                        since,
-                        until,
-                        receipt_limit,
+                        receipt_db_path: receipt_db.as_deref(),
+                        control_url: control_url.as_deref(),
+                        control_token: control_token.as_deref(),
                     },
-                    SignedQueryBackend {
-                        query: QueryBackend {
-                            json_output,
-                            receipt_db_path: receipt_db.as_deref(),
-                            control_url: control_url.as_deref(),
-                            control_token: control_token.as_deref(),
-                        },
-                        budget_db_path: budget_db.as_deref(),
-                        authority_seed_path: authority_seed_file.as_deref(),
-                        authority_db_path: authority_db.as_deref(),
-                        certification_registry_file: None,
-                    },
-                ),
-            },
-            TrustCommands::ExposureLedger { command } => match command {
-                TrustExposureLedgerCommands::Export {
-                    capability,
-                    agent_subject,
-                    tool_server,
-                    tool_name,
+                    budget_db_path: budget_db.as_deref(),
+                    authority_seed_path: authority_seed_file.as_deref(),
+                    authority_db_path: authority_db.as_deref(),
+                    certification_registry_file: None,
+                },
+            ),
+        },
+        TrustCommands::ExposureLedger { command } => match command {
+            TrustExposureLedgerCommands::Export {
+                capability,
+                agent_subject,
+                tool_server,
+                tool_name,
+                since,
+                until,
+                receipt_limit,
+                decision_limit,
+            } => cmd_trust_exposure_ledger_export(
+                ExposureLedgerQueryArgs {
+                    capability_id: capability.as_deref(),
+                    agent_subject: agent_subject.as_deref(),
+                    tool_server: tool_server.as_deref(),
+                    tool_name: tool_name.as_deref(),
                     since,
                     until,
                     receipt_limit,
                     decision_limit,
-                } => cmd_trust_exposure_ledger_export(
-                    ExposureLedgerQueryArgs {
-                        capability_id: capability.as_deref(),
-                        agent_subject: agent_subject.as_deref(),
-                        tool_server: tool_server.as_deref(),
-                        tool_name: tool_name.as_deref(),
-                        since,
-                        until,
-                        receipt_limit,
-                        decision_limit,
+                },
+                SignedQueryBackend {
+                    query: QueryBackend {
+                        json_output,
+                        receipt_db_path: receipt_db.as_deref(),
+                        control_url: control_url.as_deref(),
+                        control_token: control_token.as_deref(),
                     },
-                    SignedQueryBackend {
-                        query: QueryBackend {
-                            json_output,
-                            receipt_db_path: receipt_db.as_deref(),
-                            control_url: control_url.as_deref(),
-                            control_token: control_token.as_deref(),
-                        },
-                        budget_db_path: None,
-                        authority_seed_path: authority_seed_file.as_deref(),
-                        authority_db_path: authority_db.as_deref(),
-                        certification_registry_file: None,
-                    },
-                ),
-            },
-            TrustCommands::CreditScorecard { command } => match command {
-                TrustCreditScorecardCommands::Export {
-                    agent_subject,
-                    capability,
-                    tool_server,
-                    tool_name,
+                    budget_db_path: None,
+                    authority_seed_path: authority_seed_file.as_deref(),
+                    authority_db_path: authority_db.as_deref(),
+                    certification_registry_file: None,
+                },
+            ),
+        },
+        TrustCommands::CreditScorecard { command } => match command {
+            TrustCreditScorecardCommands::Export {
+                agent_subject,
+                capability,
+                tool_server,
+                tool_name,
+                since,
+                until,
+                receipt_limit,
+                decision_limit,
+            } => cmd_trust_credit_scorecard_export(
+                &agent_subject,
+                ExposureLedgerQueryArgs {
+                    capability_id: capability.as_deref(),
+                    agent_subject: Some(&agent_subject),
+                    tool_server: tool_server.as_deref(),
+                    tool_name: tool_name.as_deref(),
                     since,
                     until,
                     receipt_limit,
                     decision_limit,
-                } => cmd_trust_credit_scorecard_export(
-                    &agent_subject,
-                    ExposureLedgerQueryArgs {
-                        capability_id: capability.as_deref(),
-                        agent_subject: Some(&agent_subject),
-                        tool_server: tool_server.as_deref(),
-                        tool_name: tool_name.as_deref(),
-                        since,
-                        until,
-                        receipt_limit,
-                        decision_limit,
+                },
+                SignedQueryBackend {
+                    query: QueryBackend {
+                        json_output,
+                        receipt_db_path: receipt_db.as_deref(),
+                        control_url: control_url.as_deref(),
+                        control_token: control_token.as_deref(),
                     },
-                    SignedQueryBackend {
-                        query: QueryBackend {
-                            json_output,
-                            receipt_db_path: receipt_db.as_deref(),
-                            control_url: control_url.as_deref(),
-                            control_token: control_token.as_deref(),
-                        },
-                        budget_db_path: budget_db.as_deref(),
-                        authority_seed_path: authority_seed_file.as_deref(),
-                        authority_db_path: authority_db.as_deref(),
-                        certification_registry_file: None,
-                    },
-                ),
-            },
-            TrustCommands::CapitalBook { command } => match command {
-                TrustCapitalBookCommands::Export {
-                    agent_subject,
-                    capability,
-                    tool_server,
-                    tool_name,
+                    budget_db_path: budget_db.as_deref(),
+                    authority_seed_path: authority_seed_file.as_deref(),
+                    authority_db_path: authority_db.as_deref(),
+                    certification_registry_file: None,
+                },
+            ),
+        },
+        TrustCommands::CapitalBook { command } => match command {
+            TrustCapitalBookCommands::Export {
+                agent_subject,
+                capability,
+                tool_server,
+                tool_name,
+                since,
+                until,
+                receipt_limit,
+                facility_limit,
+                bond_limit,
+                loss_event_limit,
+            } => cmd_trust_capital_book_export(
+                CapitalBookExportArgs {
+                    agent_subject: &agent_subject,
+                    capability_id: capability.as_deref(),
+                    tool_server: tool_server.as_deref(),
+                    tool_name: tool_name.as_deref(),
                     since,
                     until,
                     receipt_limit,
                     facility_limit,
                     bond_limit,
                     loss_event_limit,
-                } => cmd_trust_capital_book_export(
-                    CapitalBookExportArgs {
-                        agent_subject: &agent_subject,
-                        capability_id: capability.as_deref(),
-                        tool_server: tool_server.as_deref(),
-                        tool_name: tool_name.as_deref(),
-                        since,
-                        until,
-                        receipt_limit,
-                        facility_limit,
-                        bond_limit,
-                        loss_event_limit,
-                    },
-                    SignedQueryBackend {
-                        query: QueryBackend {
-                            json_output,
-                            receipt_db_path: receipt_db.as_deref(),
-                            control_url: control_url.as_deref(),
-                            control_token: control_token.as_deref(),
-                        },
-                        budget_db_path: None,
-                        authority_seed_path: authority_seed_file.as_deref(),
-                        authority_db_path: authority_db.as_deref(),
-                        certification_registry_file: None,
-                    },
-                ),
-            },
-            TrustCommands::CapitalInstruction { command } => match command {
-                TrustCapitalInstructionCommands::Issue { input_file } => {
-                    cmd_trust_capital_instruction_issue(
-                        &input_file,
+                },
+                SignedQueryBackend {
+                    query: QueryBackend {
                         json_output,
-                        receipt_db.as_deref(),
-                        authority_seed_file.as_deref(),
-                        authority_db.as_deref(),
-                        control_url.as_deref(),
-                        control_token.as_deref(),
-                    )
-                }
-            },
-            TrustCommands::CapitalAllocation { command } => match command {
-                TrustCapitalAllocationCommands::Issue {
-                    input_file,
-                    certification_registry_file,
-                } => cmd_trust_capital_allocation_issue(
+                        receipt_db_path: receipt_db.as_deref(),
+                        control_url: control_url.as_deref(),
+                        control_token: control_token.as_deref(),
+                    },
+                    budget_db_path: None,
+                    authority_seed_path: authority_seed_file.as_deref(),
+                    authority_db_path: authority_db.as_deref(),
+                    certification_registry_file: None,
+                },
+            ),
+        },
+        TrustCommands::CapitalInstruction { command } => match command {
+            TrustCapitalInstructionCommands::Issue { input_file } => {
+                cmd_trust_capital_instruction_issue(
                     &input_file,
-                    SignedQueryBackend {
-                        query: QueryBackend {
-                            json_output,
-                            receipt_db_path: receipt_db.as_deref(),
-                            control_url: control_url.as_deref(),
-                            control_token: control_token.as_deref(),
-                        },
-                        budget_db_path: budget_db.as_deref(),
-                        authority_seed_path: authority_seed_file.as_deref(),
-                        authority_db_path: authority_db.as_deref(),
-                        certification_registry_file: certification_registry_file.as_deref(),
-                    },
-                ),
-            },
-            TrustCommands::Facility { command } => match command {
-                TrustCreditFacilityCommands::Evaluate {
-                    agent_subject,
-                    capability,
-                    tool_server,
-                    tool_name,
-                    since,
-                    until,
-                    receipt_limit,
-                    decision_limit,
-                    certification_registry_file,
-                } => cmd_trust_credit_facility_evaluate(
-                    AgentExposureLedgerQueryArgs {
-                        agent_subject: &agent_subject,
-                        capability_id: capability.as_deref(),
-                        tool_server: tool_server.as_deref(),
-                        tool_name: tool_name.as_deref(),
-                        since,
-                        until,
-                        receipt_limit,
-                        decision_limit,
-                    },
-                    SignedQueryBackend {
-                        query: QueryBackend {
-                            json_output,
-                            receipt_db_path: receipt_db.as_deref(),
-                            control_url: control_url.as_deref(),
-                            control_token: control_token.as_deref(),
-                        },
-                        budget_db_path: budget_db.as_deref(),
-                        authority_seed_path: None,
-                        authority_db_path: None,
-                        certification_registry_file: certification_registry_file.as_deref(),
-                    },
-                ),
-                TrustCreditFacilityCommands::Issue {
-                    agent_subject,
-                    capability,
-                    tool_server,
-                    tool_name,
-                    since,
-                    until,
-                    receipt_limit,
-                    decision_limit,
-                    supersedes_facility_id,
-                    certification_registry_file,
-                } => cmd_trust_credit_facility_issue(
-                    CreditFacilityIssueArgs {
-                        query: AgentExposureLedgerQueryArgs {
-                            agent_subject: &agent_subject,
-                            capability_id: capability.as_deref(),
-                            tool_server: tool_server.as_deref(),
-                            tool_name: tool_name.as_deref(),
-                            since,
-                            until,
-                            receipt_limit,
-                            decision_limit,
-                        },
-                        supersedes_facility_id: supersedes_facility_id.as_deref(),
-                    },
-                    SignedQueryBackend {
-                        query: QueryBackend {
-                            json_output,
-                            receipt_db_path: receipt_db.as_deref(),
-                            control_url: control_url.as_deref(),
-                            control_token: control_token.as_deref(),
-                        },
-                        budget_db_path: budget_db.as_deref(),
-                        authority_seed_path: authority_seed_file.as_deref(),
-                        authority_db_path: authority_db.as_deref(),
-                        certification_registry_file: certification_registry_file.as_deref(),
-                    },
-                ),
-                TrustCreditFacilityCommands::List {
-                    facility_id,
-                    capability,
-                    agent_subject,
-                    tool_server,
-                    tool_name,
-                    disposition,
-                    lifecycle_state,
-                    limit,
-                } => cmd_trust_credit_facility_list(
-                    CreditFacilityListArgs {
-                        facility_id: facility_id.as_deref(),
-                        capability_id: capability.as_deref(),
-                        agent_subject: agent_subject.as_deref(),
-                        tool_server: tool_server.as_deref(),
-                        tool_name: tool_name.as_deref(),
-                        disposition: disposition.as_deref(),
-                        lifecycle_state: lifecycle_state.as_deref(),
-                        limit,
-                    },
-                    QueryBackend {
-                        json_output,
-                        receipt_db_path: receipt_db.as_deref(),
-                        control_url: control_url.as_deref(),
-                        control_token: control_token.as_deref(),
-                    },
-                ),
-            },
-            TrustCommands::Bond { command } => match command {
-                TrustCreditBondCommands::Evaluate {
-                    agent_subject,
-                    capability,
-                    tool_server,
-                    tool_name,
-                    since,
-                    until,
-                    receipt_limit,
-                    decision_limit,
-                    certification_registry_file,
-                } => cmd_trust_credit_bond_evaluate(
-                    AgentExposureLedgerQueryArgs {
-                        agent_subject: &agent_subject,
-                        capability_id: capability.as_deref(),
-                        tool_server: tool_server.as_deref(),
-                        tool_name: tool_name.as_deref(),
-                        since,
-                        until,
-                        receipt_limit,
-                        decision_limit,
-                    },
-                    SignedQueryBackend {
-                        query: QueryBackend {
-                            json_output,
-                            receipt_db_path: receipt_db.as_deref(),
-                            control_url: control_url.as_deref(),
-                            control_token: control_token.as_deref(),
-                        },
-                        budget_db_path: budget_db.as_deref(),
-                        authority_seed_path: None,
-                        authority_db_path: None,
-                        certification_registry_file: certification_registry_file.as_deref(),
-                    },
-                ),
-                TrustCreditBondCommands::Issue {
-                    agent_subject,
-                    capability,
-                    tool_server,
-                    tool_name,
-                    since,
-                    until,
-                    receipt_limit,
-                    decision_limit,
-                    supersedes_bond_id,
-                    certification_registry_file,
-                } => cmd_trust_credit_bond_issue(
-                    CreditBondIssueArgs {
-                        query: AgentExposureLedgerQueryArgs {
-                            agent_subject: &agent_subject,
-                            capability_id: capability.as_deref(),
-                            tool_server: tool_server.as_deref(),
-                            tool_name: tool_name.as_deref(),
-                            since,
-                            until,
-                            receipt_limit,
-                            decision_limit,
-                        },
-                        supersedes_bond_id: supersedes_bond_id.as_deref(),
-                    },
-                    SignedQueryBackend {
-                        query: QueryBackend {
-                            json_output,
-                            receipt_db_path: receipt_db.as_deref(),
-                            control_url: control_url.as_deref(),
-                            control_token: control_token.as_deref(),
-                        },
-                        budget_db_path: budget_db.as_deref(),
-                        authority_seed_path: authority_seed_file.as_deref(),
-                        authority_db_path: authority_db.as_deref(),
-                        certification_registry_file: certification_registry_file.as_deref(),
-                    },
-                ),
-                TrustCreditBondCommands::Simulate {
-                    bond_id,
-                    autonomy_tier,
-                    runtime_assurance_tier,
-                    call_chain_present,
-                    policy_file,
-                } => cmd_trust_credit_bond_simulate(
-                    &bond_id,
-                    &autonomy_tier,
-                    &runtime_assurance_tier,
-                    call_chain_present,
-                    &policy_file,
-                    json_output,
-                    receipt_db.as_deref(),
-                    control_url.as_deref(),
-                    control_token.as_deref(),
-                ),
-                TrustCreditBondCommands::List {
-                    bond_id,
-                    facility_id,
-                    capability,
-                    agent_subject,
-                    tool_server,
-                    tool_name,
-                    disposition,
-                    lifecycle_state,
-                    limit,
-                } => cmd_trust_credit_bond_list(
-                    CreditBondListArgs {
-                        bond_id: bond_id.as_deref(),
-                        facility_id: facility_id.as_deref(),
-                        capability_id: capability.as_deref(),
-                        agent_subject: agent_subject.as_deref(),
-                        tool_server: tool_server.as_deref(),
-                        tool_name: tool_name.as_deref(),
-                        disposition: disposition.as_deref(),
-                        lifecycle_state: lifecycle_state.as_deref(),
-                        limit,
-                    },
-                    QueryBackend {
-                        json_output,
-                        receipt_db_path: receipt_db.as_deref(),
-                        control_url: control_url.as_deref(),
-                        control_token: control_token.as_deref(),
-                    },
-                ),
-            },
-            TrustCommands::Loss { command } => match command {
-                TrustCreditLossLifecycleCommands::Evaluate {
-                    bond_id,
-                    event_kind,
-                    amount_units,
-                    amount_currency,
-                } => cmd_trust_credit_loss_lifecycle_evaluate(
-                    &bond_id,
-                    &event_kind,
-                    amount_units,
-                    amount_currency.as_deref(),
-                    json_output,
-                    receipt_db.as_deref(),
-                    control_url.as_deref(),
-                    control_token.as_deref(),
-                ),
-                TrustCreditLossLifecycleCommands::Issue {
-                    bond_id,
-                    event_kind,
-                    amount_units,
-                    amount_currency,
-                    authority_chain_file,
-                    execution_window_file,
-                    rail_file,
-                    observed_execution_file,
-                    appeal_window_ends_at,
-                    description,
-                } => cmd_trust_credit_loss_lifecycle_issue(
-                    &bond_id,
-                    &event_kind,
-                    amount_units,
-                    amount_currency.as_deref(),
-                    authority_chain_file.as_deref(),
-                    execution_window_file.as_deref(),
-                    rail_file.as_deref(),
-                    observed_execution_file.as_deref(),
-                    appeal_window_ends_at,
-                    description.as_deref(),
                     json_output,
                     receipt_db.as_deref(),
                     authority_seed_file.as_deref(),
                     authority_db.as_deref(),
                     control_url.as_deref(),
                     control_token.as_deref(),
-                ),
-                TrustCreditLossLifecycleCommands::List {
-                    event_id,
-                    bond_id,
-                    facility_id,
-                    capability,
-                    agent_subject,
-                    tool_server,
-                    tool_name,
-                    event_kind,
-                    limit,
-                } => cmd_trust_credit_loss_lifecycle_list(
-                    CreditLossLifecycleListArgs {
-                        event_id: event_id.as_deref(),
-                        bond_id: bond_id.as_deref(),
-                        facility_id: facility_id.as_deref(),
-                        capability_id: capability.as_deref(),
-                        agent_subject: agent_subject.as_deref(),
-                        tool_server: tool_server.as_deref(),
-                        tool_name: tool_name.as_deref(),
-                        event_kind: event_kind.as_deref(),
-                        limit,
-                    },
-                    QueryBackend {
+                )
+            }
+        },
+        TrustCommands::CapitalAllocation { command } => match command {
+            TrustCapitalAllocationCommands::Issue {
+                input_file,
+                certification_registry_file,
+            } => cmd_trust_capital_allocation_issue(
+                &input_file,
+                SignedQueryBackend {
+                    query: QueryBackend {
                         json_output,
                         receipt_db_path: receipt_db.as_deref(),
                         control_url: control_url.as_deref(),
                         control_token: control_token.as_deref(),
                     },
-                ),
-            },
-            TrustCommands::CreditBacktest { command } => match command {
-                TrustCreditBacktestCommands::Export {
-                    agent_subject,
-                    capability,
-                    tool_server,
-                    tool_name,
+                    budget_db_path: budget_db.as_deref(),
+                    authority_seed_path: authority_seed_file.as_deref(),
+                    authority_db_path: authority_db.as_deref(),
+                    certification_registry_file: certification_registry_file.as_deref(),
+                },
+            ),
+        },
+        TrustCommands::Facility { command } => match command {
+            TrustCreditFacilityCommands::Evaluate {
+                agent_subject,
+                capability,
+                tool_server,
+                tool_name,
+                since,
+                until,
+                receipt_limit,
+                decision_limit,
+                certification_registry_file,
+            } => cmd_trust_credit_facility_evaluate(
+                AgentExposureLedgerQueryArgs {
+                    agent_subject: &agent_subject,
+                    capability_id: capability.as_deref(),
+                    tool_server: tool_server.as_deref(),
+                    tool_name: tool_name.as_deref(),
+                    since,
+                    until,
+                    receipt_limit,
+                    decision_limit,
+                },
+                SignedQueryBackend {
+                    query: QueryBackend {
+                        json_output,
+                        receipt_db_path: receipt_db.as_deref(),
+                        control_url: control_url.as_deref(),
+                        control_token: control_token.as_deref(),
+                    },
+                    budget_db_path: budget_db.as_deref(),
+                    authority_seed_path: None,
+                    authority_db_path: None,
+                    certification_registry_file: certification_registry_file.as_deref(),
+                },
+            ),
+            TrustCreditFacilityCommands::Issue {
+                agent_subject,
+                capability,
+                tool_server,
+                tool_name,
+                since,
+                until,
+                receipt_limit,
+                decision_limit,
+                supersedes_facility_id,
+                certification_registry_file,
+            } => cmd_trust_credit_facility_issue(
+                CreditFacilityIssueArgs {
+                    query: AgentExposureLedgerQueryArgs {
+                        agent_subject: &agent_subject,
+                        capability_id: capability.as_deref(),
+                        tool_server: tool_server.as_deref(),
+                        tool_name: tool_name.as_deref(),
+                        since,
+                        until,
+                        receipt_limit,
+                        decision_limit,
+                    },
+                    supersedes_facility_id: supersedes_facility_id.as_deref(),
+                },
+                SignedQueryBackend {
+                    query: QueryBackend {
+                        json_output,
+                        receipt_db_path: receipt_db.as_deref(),
+                        control_url: control_url.as_deref(),
+                        control_token: control_token.as_deref(),
+                    },
+                    budget_db_path: budget_db.as_deref(),
+                    authority_seed_path: authority_seed_file.as_deref(),
+                    authority_db_path: authority_db.as_deref(),
+                    certification_registry_file: certification_registry_file.as_deref(),
+                },
+            ),
+            TrustCreditFacilityCommands::List {
+                facility_id,
+                capability,
+                agent_subject,
+                tool_server,
+                tool_name,
+                disposition,
+                lifecycle_state,
+                limit,
+            } => cmd_trust_credit_facility_list(
+                CreditFacilityListArgs {
+                    facility_id: facility_id.as_deref(),
+                    capability_id: capability.as_deref(),
+                    agent_subject: agent_subject.as_deref(),
+                    tool_server: tool_server.as_deref(),
+                    tool_name: tool_name.as_deref(),
+                    disposition: disposition.as_deref(),
+                    lifecycle_state: lifecycle_state.as_deref(),
+                    limit,
+                },
+                QueryBackend {
+                    json_output,
+                    receipt_db_path: receipt_db.as_deref(),
+                    control_url: control_url.as_deref(),
+                    control_token: control_token.as_deref(),
+                },
+            ),
+        },
+        TrustCommands::Bond { command } => match command {
+            TrustCreditBondCommands::Evaluate {
+                agent_subject,
+                capability,
+                tool_server,
+                tool_name,
+                since,
+                until,
+                receipt_limit,
+                decision_limit,
+                certification_registry_file,
+            } => cmd_trust_credit_bond_evaluate(
+                AgentExposureLedgerQueryArgs {
+                    agent_subject: &agent_subject,
+                    capability_id: capability.as_deref(),
+                    tool_server: tool_server.as_deref(),
+                    tool_name: tool_name.as_deref(),
+                    since,
+                    until,
+                    receipt_limit,
+                    decision_limit,
+                },
+                SignedQueryBackend {
+                    query: QueryBackend {
+                        json_output,
+                        receipt_db_path: receipt_db.as_deref(),
+                        control_url: control_url.as_deref(),
+                        control_token: control_token.as_deref(),
+                    },
+                    budget_db_path: budget_db.as_deref(),
+                    authority_seed_path: None,
+                    authority_db_path: None,
+                    certification_registry_file: certification_registry_file.as_deref(),
+                },
+            ),
+            TrustCreditBondCommands::Issue {
+                agent_subject,
+                capability,
+                tool_server,
+                tool_name,
+                since,
+                until,
+                receipt_limit,
+                decision_limit,
+                supersedes_bond_id,
+                certification_registry_file,
+            } => cmd_trust_credit_bond_issue(
+                CreditBondIssueArgs {
+                    query: AgentExposureLedgerQueryArgs {
+                        agent_subject: &agent_subject,
+                        capability_id: capability.as_deref(),
+                        tool_server: tool_server.as_deref(),
+                        tool_name: tool_name.as_deref(),
+                        since,
+                        until,
+                        receipt_limit,
+                        decision_limit,
+                    },
+                    supersedes_bond_id: supersedes_bond_id.as_deref(),
+                },
+                SignedQueryBackend {
+                    query: QueryBackend {
+                        json_output,
+                        receipt_db_path: receipt_db.as_deref(),
+                        control_url: control_url.as_deref(),
+                        control_token: control_token.as_deref(),
+                    },
+                    budget_db_path: budget_db.as_deref(),
+                    authority_seed_path: authority_seed_file.as_deref(),
+                    authority_db_path: authority_db.as_deref(),
+                    certification_registry_file: certification_registry_file.as_deref(),
+                },
+            ),
+            TrustCreditBondCommands::Simulate {
+                bond_id,
+                autonomy_tier,
+                runtime_assurance_tier,
+                call_chain_present,
+                policy_file,
+            } => cmd_trust_credit_bond_simulate(
+                &bond_id,
+                &autonomy_tier,
+                &runtime_assurance_tier,
+                call_chain_present,
+                &policy_file,
+                json_output,
+                receipt_db.as_deref(),
+                control_url.as_deref(),
+                control_token.as_deref(),
+            ),
+            TrustCreditBondCommands::List {
+                bond_id,
+                facility_id,
+                capability,
+                agent_subject,
+                tool_server,
+                tool_name,
+                disposition,
+                lifecycle_state,
+                limit,
+            } => cmd_trust_credit_bond_list(
+                CreditBondListArgs {
+                    bond_id: bond_id.as_deref(),
+                    facility_id: facility_id.as_deref(),
+                    capability_id: capability.as_deref(),
+                    agent_subject: agent_subject.as_deref(),
+                    tool_server: tool_server.as_deref(),
+                    tool_name: tool_name.as_deref(),
+                    disposition: disposition.as_deref(),
+                    lifecycle_state: lifecycle_state.as_deref(),
+                    limit,
+                },
+                QueryBackend {
+                    json_output,
+                    receipt_db_path: receipt_db.as_deref(),
+                    control_url: control_url.as_deref(),
+                    control_token: control_token.as_deref(),
+                },
+            ),
+        },
+        TrustCommands::Loss { command } => match command {
+            TrustCreditLossLifecycleCommands::Evaluate {
+                bond_id,
+                event_kind,
+                amount_units,
+                amount_currency,
+            } => cmd_trust_credit_loss_lifecycle_evaluate(
+                &bond_id,
+                &event_kind,
+                amount_units,
+                amount_currency.as_deref(),
+                json_output,
+                receipt_db.as_deref(),
+                control_url.as_deref(),
+                control_token.as_deref(),
+            ),
+            TrustCreditLossLifecycleCommands::Issue {
+                bond_id,
+                event_kind,
+                amount_units,
+                amount_currency,
+                authority_chain_file,
+                execution_window_file,
+                rail_file,
+                observed_execution_file,
+                appeal_window_ends_at,
+                description,
+            } => cmd_trust_credit_loss_lifecycle_issue(
+                &bond_id,
+                &event_kind,
+                amount_units,
+                amount_currency.as_deref(),
+                authority_chain_file.as_deref(),
+                execution_window_file.as_deref(),
+                rail_file.as_deref(),
+                observed_execution_file.as_deref(),
+                appeal_window_ends_at,
+                description.as_deref(),
+                json_output,
+                receipt_db.as_deref(),
+                authority_seed_file.as_deref(),
+                authority_db.as_deref(),
+                control_url.as_deref(),
+                control_token.as_deref(),
+            ),
+            TrustCreditLossLifecycleCommands::List {
+                event_id,
+                bond_id,
+                facility_id,
+                capability,
+                agent_subject,
+                tool_server,
+                tool_name,
+                event_kind,
+                limit,
+            } => cmd_trust_credit_loss_lifecycle_list(
+                CreditLossLifecycleListArgs {
+                    event_id: event_id.as_deref(),
+                    bond_id: bond_id.as_deref(),
+                    facility_id: facility_id.as_deref(),
+                    capability_id: capability.as_deref(),
+                    agent_subject: agent_subject.as_deref(),
+                    tool_server: tool_server.as_deref(),
+                    tool_name: tool_name.as_deref(),
+                    event_kind: event_kind.as_deref(),
+                    limit,
+                },
+                QueryBackend {
+                    json_output,
+                    receipt_db_path: receipt_db.as_deref(),
+                    control_url: control_url.as_deref(),
+                    control_token: control_token.as_deref(),
+                },
+            ),
+        },
+        TrustCommands::CreditBacktest { command } => match command {
+            TrustCreditBacktestCommands::Export {
+                agent_subject,
+                capability,
+                tool_server,
+                tool_name,
+                since,
+                until,
+                receipt_limit,
+                decision_limit,
+                window_seconds,
+                window_count,
+                stale_after_seconds,
+                certification_registry_file,
+            } => cmd_trust_credit_backtest_export(
+                CreditBacktestExportArgs {
+                    agent_subject: &agent_subject,
+                    capability_id: capability.as_deref(),
+                    tool_server: tool_server.as_deref(),
+                    tool_name: tool_name.as_deref(),
                     since,
                     until,
                     receipt_limit,
@@ -777,337 +791,390 @@ pub(crate) fn dispatch_trust(
                     window_seconds,
                     window_count,
                     stale_after_seconds,
-                    certification_registry_file,
-                } => cmd_trust_credit_backtest_export(
-                    CreditBacktestExportArgs {
-                        agent_subject: &agent_subject,
-                        capability_id: capability.as_deref(),
-                        tool_server: tool_server.as_deref(),
-                        tool_name: tool_name.as_deref(),
-                        since,
-                        until,
-                        receipt_limit,
-                        decision_limit,
-                        window_seconds,
-                        window_count,
-                        stale_after_seconds,
+                },
+                BudgetQueryBackend {
+                    query: QueryBackend {
+                        json_output,
+                        receipt_db_path: receipt_db.as_deref(),
+                        control_url: control_url.as_deref(),
+                        control_token: control_token.as_deref(),
                     },
-                    BudgetQueryBackend {
-                        query: QueryBackend {
-                            json_output,
-                            receipt_db_path: receipt_db.as_deref(),
-                            control_url: control_url.as_deref(),
-                            control_token: control_token.as_deref(),
-                        },
-                        budget_db_path: budget_db.as_deref(),
-                        certification_registry_file: certification_registry_file.as_deref(),
-                        authority_seed_path: authority_seed_file.as_deref(),
-                    },
-                ),
-            },
-            TrustCommands::ProviderRiskPackage { command } => match command {
-                TrustProviderRiskPackageCommands::Export {
-                    agent_subject,
-                    capability,
-                    tool_server,
-                    tool_name,
+                    budget_db_path: budget_db.as_deref(),
+                    certification_registry_file: certification_registry_file.as_deref(),
+                    authority_seed_path: authority_seed_file.as_deref(),
+                },
+            ),
+        },
+        TrustCommands::ProviderRiskPackage { command } => match command {
+            TrustProviderRiskPackageCommands::Export {
+                agent_subject,
+                capability,
+                tool_server,
+                tool_name,
+                since,
+                until,
+                receipt_limit,
+                decision_limit,
+                recent_loss_limit,
+                certification_registry_file,
+            } => cmd_trust_provider_risk_package_export(
+                ProviderRiskPackageExportArgs {
+                    agent_subject: &agent_subject,
+                    capability_id: capability.as_deref(),
+                    tool_server: tool_server.as_deref(),
+                    tool_name: tool_name.as_deref(),
                     since,
                     until,
                     receipt_limit,
                     decision_limit,
                     recent_loss_limit,
-                    certification_registry_file,
-                } => cmd_trust_provider_risk_package_export(
-                    ProviderRiskPackageExportArgs {
-                        agent_subject: &agent_subject,
-                        capability_id: capability.as_deref(),
-                        tool_server: tool_server.as_deref(),
-                        tool_name: tool_name.as_deref(),
-                        since,
-                        until,
-                        receipt_limit,
-                        decision_limit,
-                        recent_loss_limit,
+                },
+                SignedQueryBackend {
+                    query: QueryBackend {
+                        json_output,
+                        receipt_db_path: receipt_db.as_deref(),
+                        control_url: control_url.as_deref(),
+                        control_token: control_token.as_deref(),
                     },
-                    SignedQueryBackend {
-                        query: QueryBackend {
-                            json_output,
-                            receipt_db_path: receipt_db.as_deref(),
-                            control_url: control_url.as_deref(),
-                            control_token: control_token.as_deref(),
-                        },
-                        budget_db_path: budget_db.as_deref(),
-                        authority_seed_path: authority_seed_file.as_deref(),
-                        authority_db_path: authority_db.as_deref(),
-                        certification_registry_file: certification_registry_file.as_deref(),
-                    },
-                ),
-            },
-            TrustCommands::LiabilityProvider { command } => match command {
-                TrustLiabilityProviderCommands::Issue {
-                    input_file,
-                    supersedes_provider_record_id,
-                } => cmd_trust_liability_provider_issue(
+                    budget_db_path: budget_db.as_deref(),
+                    authority_seed_path: authority_seed_file.as_deref(),
+                    authority_db_path: authority_db.as_deref(),
+                    certification_registry_file: certification_registry_file.as_deref(),
+                },
+            ),
+        },
+        TrustCommands::LiabilityProvider { command } => match command {
+            TrustLiabilityProviderCommands::Issue {
+                input_file,
+                supersedes_provider_record_id,
+            } => cmd_trust_liability_provider_issue(
+                &input_file,
+                supersedes_provider_record_id.as_deref(),
+                json_output,
+                receipt_db.as_deref(),
+                authority_seed_file.as_deref(),
+                authority_db.as_deref(),
+                control_url.as_deref(),
+                control_token.as_deref(),
+            ),
+            TrustLiabilityProviderCommands::List {
+                provider_id,
+                jurisdiction,
+                coverage_class,
+                currency,
+                lifecycle_state,
+                limit,
+            } => cmd_trust_liability_provider_list(
+                provider_id.as_deref(),
+                jurisdiction.as_deref(),
+                coverage_class.as_deref(),
+                currency.as_deref(),
+                lifecycle_state.as_deref(),
+                limit,
+                json_output,
+                receipt_db.as_deref(),
+                control_url.as_deref(),
+                control_token.as_deref(),
+            ),
+            TrustLiabilityProviderCommands::Resolve {
+                provider_id,
+                jurisdiction,
+                coverage_class,
+                currency,
+            } => cmd_trust_liability_provider_resolve(
+                &provider_id,
+                &jurisdiction,
+                &coverage_class,
+                &currency,
+                json_output,
+                receipt_db.as_deref(),
+                control_url.as_deref(),
+                control_token.as_deref(),
+            ),
+        },
+        TrustCommands::LiabilityMarket { command } => match command {
+            TrustLiabilityMarketCommands::QuoteRequestIssue { input_file } => {
+                cmd_trust_liability_quote_request_issue(
                     &input_file,
-                    supersedes_provider_record_id.as_deref(),
                     json_output,
                     receipt_db.as_deref(),
                     authority_seed_file.as_deref(),
                     authority_db.as_deref(),
                     control_url.as_deref(),
                     control_token.as_deref(),
-                ),
-                TrustLiabilityProviderCommands::List {
-                    provider_id,
-                    jurisdiction,
-                    coverage_class,
-                    currency,
-                    lifecycle_state,
-                    limit,
-                } => cmd_trust_liability_provider_list(
-                    provider_id.as_deref(),
-                    jurisdiction.as_deref(),
-                    coverage_class.as_deref(),
-                    currency.as_deref(),
-                    lifecycle_state.as_deref(),
-                    limit,
+                )
+            }
+            TrustLiabilityMarketCommands::QuoteResponseIssue { input_file } => {
+                cmd_trust_liability_quote_response_issue(
+                    &input_file,
                     json_output,
                     receipt_db.as_deref(),
+                    authority_seed_file.as_deref(),
+                    authority_db.as_deref(),
                     control_url.as_deref(),
                     control_token.as_deref(),
-                ),
-                TrustLiabilityProviderCommands::Resolve {
-                    provider_id,
-                    jurisdiction,
-                    coverage_class,
-                    currency,
-                } => cmd_trust_liability_provider_resolve(
-                    &provider_id,
-                    &jurisdiction,
-                    &coverage_class,
-                    &currency,
+                )
+            }
+            TrustLiabilityMarketCommands::PricingAuthorityIssue { input_file } => {
+                cmd_trust_liability_pricing_authority_issue(
+                    &input_file,
                     json_output,
                     receipt_db.as_deref(),
+                    authority_seed_file.as_deref(),
+                    authority_db.as_deref(),
                     control_url.as_deref(),
                     control_token.as_deref(),
-                ),
-            },
-            TrustCommands::LiabilityMarket { command } => match command {
-                TrustLiabilityMarketCommands::QuoteRequestIssue { input_file } => {
-                    cmd_trust_liability_quote_request_issue(
-                        &input_file,
-                        json_output,
-                        receipt_db.as_deref(),
-                        authority_seed_file.as_deref(),
-                        authority_db.as_deref(),
-                        control_url.as_deref(),
-                        control_token.as_deref(),
-                    )
-                }
-                TrustLiabilityMarketCommands::QuoteResponseIssue { input_file } => {
-                    cmd_trust_liability_quote_response_issue(
-                        &input_file,
-                        json_output,
-                        receipt_db.as_deref(),
-                        authority_seed_file.as_deref(),
-                        authority_db.as_deref(),
-                        control_url.as_deref(),
-                        control_token.as_deref(),
-                    )
-                }
-                TrustLiabilityMarketCommands::PricingAuthorityIssue { input_file } => {
-                    cmd_trust_liability_pricing_authority_issue(
-                        &input_file,
-                        json_output,
-                        receipt_db.as_deref(),
-                        authority_seed_file.as_deref(),
-                        authority_db.as_deref(),
-                        control_url.as_deref(),
-                        control_token.as_deref(),
-                    )
-                }
-                TrustLiabilityMarketCommands::PlacementIssue { input_file } => {
-                    cmd_trust_liability_placement_issue(
-                        &input_file,
-                        json_output,
-                        receipt_db.as_deref(),
-                        authority_seed_file.as_deref(),
-                        authority_db.as_deref(),
-                        control_url.as_deref(),
-                        control_token.as_deref(),
-                    )
-                }
-                TrustLiabilityMarketCommands::BoundCoverageIssue { input_file } => {
-                    cmd_trust_liability_bound_coverage_issue(
-                        &input_file,
-                        json_output,
-                        receipt_db.as_deref(),
-                        authority_seed_file.as_deref(),
-                        authority_db.as_deref(),
-                        control_url.as_deref(),
-                        control_token.as_deref(),
-                    )
-                }
-                TrustLiabilityMarketCommands::AutoBindIssue { input_file } => {
-                    cmd_trust_liability_auto_bind_issue(
-                        &input_file,
-                        json_output,
-                        receipt_db.as_deref(),
-                        authority_seed_file.as_deref(),
-                        authority_db.as_deref(),
-                        control_url.as_deref(),
-                        control_token.as_deref(),
-                    )
-                }
-                TrustLiabilityMarketCommands::ClaimIssue { input_file } => {
-                    cmd_trust_liability_claim_issue(
-                        &input_file,
-                        json_output,
-                        receipt_db.as_deref(),
-                        authority_seed_file.as_deref(),
-                        authority_db.as_deref(),
-                        control_url.as_deref(),
-                        control_token.as_deref(),
-                    )
-                }
-                TrustLiabilityMarketCommands::ClaimResponseIssue { input_file } => {
-                    cmd_trust_liability_claim_response_issue(
-                        &input_file,
-                        json_output,
-                        receipt_db.as_deref(),
-                        authority_seed_file.as_deref(),
-                        authority_db.as_deref(),
-                        control_url.as_deref(),
-                        control_token.as_deref(),
-                    )
-                }
-                TrustLiabilityMarketCommands::DisputeIssue { input_file } => {
-                    cmd_trust_liability_claim_dispute_issue(
-                        &input_file,
-                        json_output,
-                        receipt_db.as_deref(),
-                        authority_seed_file.as_deref(),
-                        authority_db.as_deref(),
-                        control_url.as_deref(),
-                        control_token.as_deref(),
-                    )
-                }
-                TrustLiabilityMarketCommands::AdjudicationIssue { input_file } => {
-                    cmd_trust_liability_claim_adjudication_issue(
-                        &input_file,
-                        json_output,
-                        receipt_db.as_deref(),
-                        authority_seed_file.as_deref(),
-                        authority_db.as_deref(),
-                        control_url.as_deref(),
-                        control_token.as_deref(),
-                    )
-                }
-                TrustLiabilityMarketCommands::ClaimPayoutInstructionIssue { input_file } => {
-                    cmd_trust_liability_claim_payout_instruction_issue(
-                        &input_file,
-                        json_output,
-                        receipt_db.as_deref(),
-                        authority_seed_file.as_deref(),
-                        authority_db.as_deref(),
-                        control_url.as_deref(),
-                        control_token.as_deref(),
-                    )
-                }
-                TrustLiabilityMarketCommands::ClaimPayoutReceiptIssue { input_file } => {
-                    cmd_trust_liability_claim_payout_receipt_issue(
-                        &input_file,
-                        json_output,
-                        receipt_db.as_deref(),
-                        authority_seed_file.as_deref(),
-                        authority_db.as_deref(),
-                        control_url.as_deref(),
-                        control_token.as_deref(),
-                    )
-                }
-                TrustLiabilityMarketCommands::ClaimSettlementInstructionIssue { input_file } => {
-                    cmd_trust_liability_claim_settlement_instruction_issue(
-                        &input_file,
-                        json_output,
-                        receipt_db.as_deref(),
-                        authority_seed_file.as_deref(),
-                        authority_db.as_deref(),
-                        control_url.as_deref(),
-                        control_token.as_deref(),
-                    )
-                }
-                TrustLiabilityMarketCommands::ClaimSettlementReceiptIssue { input_file } => {
-                    cmd_trust_liability_claim_settlement_receipt_issue(
-                        &input_file,
-                        json_output,
-                        receipt_db.as_deref(),
-                        authority_seed_file.as_deref(),
-                        authority_db.as_deref(),
-                        control_url.as_deref(),
-                        control_token.as_deref(),
-                    )
-                }
-                TrustLiabilityMarketCommands::List {
-                    quote_request_id,
-                    provider_id,
-                    agent_subject,
-                    jurisdiction,
-                    coverage_class,
-                    currency,
+                )
+            }
+            TrustLiabilityMarketCommands::PlacementIssue { input_file } => {
+                cmd_trust_liability_placement_issue(
+                    &input_file,
+                    json_output,
+                    receipt_db.as_deref(),
+                    authority_seed_file.as_deref(),
+                    authority_db.as_deref(),
+                    control_url.as_deref(),
+                    control_token.as_deref(),
+                )
+            }
+            TrustLiabilityMarketCommands::BoundCoverageIssue { input_file } => {
+                cmd_trust_liability_bound_coverage_issue(
+                    &input_file,
+                    json_output,
+                    receipt_db.as_deref(),
+                    authority_seed_file.as_deref(),
+                    authority_db.as_deref(),
+                    control_url.as_deref(),
+                    control_token.as_deref(),
+                )
+            }
+            TrustLiabilityMarketCommands::AutoBindIssue { input_file } => {
+                cmd_trust_liability_auto_bind_issue(
+                    &input_file,
+                    json_output,
+                    receipt_db.as_deref(),
+                    authority_seed_file.as_deref(),
+                    authority_db.as_deref(),
+                    control_url.as_deref(),
+                    control_token.as_deref(),
+                )
+            }
+            TrustLiabilityMarketCommands::ClaimIssue { input_file } => {
+                cmd_trust_liability_claim_issue(
+                    &input_file,
+                    json_output,
+                    receipt_db.as_deref(),
+                    authority_seed_file.as_deref(),
+                    authority_db.as_deref(),
+                    control_url.as_deref(),
+                    control_token.as_deref(),
+                )
+            }
+            TrustLiabilityMarketCommands::ClaimResponseIssue { input_file } => {
+                cmd_trust_liability_claim_response_issue(
+                    &input_file,
+                    json_output,
+                    receipt_db.as_deref(),
+                    authority_seed_file.as_deref(),
+                    authority_db.as_deref(),
+                    control_url.as_deref(),
+                    control_token.as_deref(),
+                )
+            }
+            TrustLiabilityMarketCommands::DisputeIssue { input_file } => {
+                cmd_trust_liability_claim_dispute_issue(
+                    &input_file,
+                    json_output,
+                    receipt_db.as_deref(),
+                    authority_seed_file.as_deref(),
+                    authority_db.as_deref(),
+                    control_url.as_deref(),
+                    control_token.as_deref(),
+                )
+            }
+            TrustLiabilityMarketCommands::AdjudicationIssue { input_file } => {
+                cmd_trust_liability_claim_adjudication_issue(
+                    &input_file,
+                    json_output,
+                    receipt_db.as_deref(),
+                    authority_seed_file.as_deref(),
+                    authority_db.as_deref(),
+                    control_url.as_deref(),
+                    control_token.as_deref(),
+                )
+            }
+            TrustLiabilityMarketCommands::ClaimPayoutInstructionIssue { input_file } => {
+                cmd_trust_liability_claim_payout_instruction_issue(
+                    &input_file,
+                    json_output,
+                    receipt_db.as_deref(),
+                    authority_seed_file.as_deref(),
+                    authority_db.as_deref(),
+                    control_url.as_deref(),
+                    control_token.as_deref(),
+                )
+            }
+            TrustLiabilityMarketCommands::ClaimPayoutReceiptIssue { input_file } => {
+                cmd_trust_liability_claim_payout_receipt_issue(
+                    &input_file,
+                    json_output,
+                    receipt_db.as_deref(),
+                    authority_seed_file.as_deref(),
+                    authority_db.as_deref(),
+                    control_url.as_deref(),
+                    control_token.as_deref(),
+                )
+            }
+            TrustLiabilityMarketCommands::ClaimSettlementInstructionIssue { input_file } => {
+                cmd_trust_liability_claim_settlement_instruction_issue(
+                    &input_file,
+                    json_output,
+                    receipt_db.as_deref(),
+                    authority_seed_file.as_deref(),
+                    authority_db.as_deref(),
+                    control_url.as_deref(),
+                    control_token.as_deref(),
+                )
+            }
+            TrustLiabilityMarketCommands::ClaimSettlementReceiptIssue { input_file } => {
+                cmd_trust_liability_claim_settlement_receipt_issue(
+                    &input_file,
+                    json_output,
+                    receipt_db.as_deref(),
+                    authority_seed_file.as_deref(),
+                    authority_db.as_deref(),
+                    control_url.as_deref(),
+                    control_token.as_deref(),
+                )
+            }
+            TrustLiabilityMarketCommands::List {
+                quote_request_id,
+                provider_id,
+                agent_subject,
+                jurisdiction,
+                coverage_class,
+                currency,
+                limit,
+            } => cmd_trust_liability_market_list(
+                LiabilityMarketListArgs {
+                    quote_request_id: quote_request_id.as_deref(),
+                    provider_id: provider_id.as_deref(),
+                    agent_subject: agent_subject.as_deref(),
+                    jurisdiction: jurisdiction.as_deref(),
+                    coverage_class: coverage_class.as_deref(),
+                    currency: currency.as_deref(),
                     limit,
-                } => cmd_trust_liability_market_list(
-                    LiabilityMarketListArgs {
-                        quote_request_id: quote_request_id.as_deref(),
-                        provider_id: provider_id.as_deref(),
-                        agent_subject: agent_subject.as_deref(),
-                        jurisdiction: jurisdiction.as_deref(),
-                        coverage_class: coverage_class.as_deref(),
-                        currency: currency.as_deref(),
-                        limit,
-                    },
-                    QueryBackend {
-                        json_output,
-                        receipt_db_path: receipt_db.as_deref(),
-                        control_url: control_url.as_deref(),
-                        control_token: control_token.as_deref(),
-                    },
-                ),
-                TrustLiabilityMarketCommands::ClaimsList {
-                    claim_id,
-                    provider_id,
-                    agent_subject,
-                    jurisdiction,
-                    policy_number,
+                },
+                QueryBackend {
+                    json_output,
+                    receipt_db_path: receipt_db.as_deref(),
+                    control_url: control_url.as_deref(),
+                    control_token: control_token.as_deref(),
+                },
+            ),
+            TrustLiabilityMarketCommands::ClaimsList {
+                claim_id,
+                provider_id,
+                agent_subject,
+                jurisdiction,
+                policy_number,
+                limit,
+            } => cmd_trust_liability_claims_list(
+                LiabilityClaimsListArgs {
+                    claim_id: claim_id.as_deref(),
+                    provider_id: provider_id.as_deref(),
+                    agent_subject: agent_subject.as_deref(),
+                    jurisdiction: jurisdiction.as_deref(),
+                    policy_number: policy_number.as_deref(),
                     limit,
-                } => cmd_trust_liability_claims_list(
-                    LiabilityClaimsListArgs {
-                        claim_id: claim_id.as_deref(),
-                        provider_id: provider_id.as_deref(),
-                        agent_subject: agent_subject.as_deref(),
-                        jurisdiction: jurisdiction.as_deref(),
-                        policy_number: policy_number.as_deref(),
-                        limit,
-                    },
-                    QueryBackend {
-                        json_output,
-                        receipt_db_path: receipt_db.as_deref(),
-                        control_url: control_url.as_deref(),
-                        control_token: control_token.as_deref(),
-                    },
-                ),
-            },
-            TrustCommands::UnderwritingInput { command } => match command {
-                TrustUnderwritingInputCommands::Export {
-                    capability,
-                    agent_subject,
-                    tool_server,
-                    tool_name,
+                },
+                QueryBackend {
+                    json_output,
+                    receipt_db_path: receipt_db.as_deref(),
+                    control_url: control_url.as_deref(),
+                    control_token: control_token.as_deref(),
+                },
+            ),
+        },
+        TrustCommands::UnderwritingInput { command } => match command {
+            TrustUnderwritingInputCommands::Export {
+                capability,
+                agent_subject,
+                tool_server,
+                tool_name,
+                since,
+                until,
+                receipt_limit,
+                certification_registry_file,
+            } => cmd_trust_underwriting_input_export(
+                UnderwritingPolicyInputArgs {
+                    capability_id: capability.as_deref(),
+                    agent_subject: agent_subject.as_deref(),
+                    tool_server: tool_server.as_deref(),
+                    tool_name: tool_name.as_deref(),
                     since,
                     until,
                     receipt_limit,
-                    certification_registry_file,
-                } => cmd_trust_underwriting_input_export(
-                    UnderwritingPolicyInputArgs {
+                },
+                SignedQueryBackend {
+                    query: QueryBackend {
+                        json_output,
+                        receipt_db_path: receipt_db.as_deref(),
+                        control_url: control_url.as_deref(),
+                        control_token: control_token.as_deref(),
+                    },
+                    budget_db_path: budget_db.as_deref(),
+                    authority_seed_path: authority_seed_file.as_deref(),
+                    authority_db_path: authority_db.as_deref(),
+                    certification_registry_file: certification_registry_file.as_deref(),
+                },
+            ),
+        },
+        TrustCommands::UnderwritingDecision { command } => match command {
+            TrustUnderwritingDecisionCommands::Evaluate {
+                capability,
+                agent_subject,
+                tool_server,
+                tool_name,
+                since,
+                until,
+                receipt_limit,
+                certification_registry_file,
+            } => cmd_trust_underwriting_decision_evaluate(
+                UnderwritingPolicyInputArgs {
+                    capability_id: capability.as_deref(),
+                    agent_subject: agent_subject.as_deref(),
+                    tool_server: tool_server.as_deref(),
+                    tool_name: tool_name.as_deref(),
+                    since,
+                    until,
+                    receipt_limit,
+                },
+                BudgetQueryBackend {
+                    query: QueryBackend {
+                        json_output,
+                        receipt_db_path: receipt_db.as_deref(),
+                        control_url: control_url.as_deref(),
+                        control_token: control_token.as_deref(),
+                    },
+                    budget_db_path: budget_db.as_deref(),
+                    certification_registry_file: certification_registry_file.as_deref(),
+                    authority_seed_path: authority_seed_file.as_deref(),
+                },
+            ),
+            TrustUnderwritingDecisionCommands::Simulate {
+                capability,
+                agent_subject,
+                tool_server,
+                tool_name,
+                since,
+                until,
+                receipt_limit,
+                policy_file,
+                certification_registry_file,
+            } => cmd_trust_underwriting_decision_simulate(
+                UnderwritingDecisionSimulateArgs {
+                    input: UnderwritingPolicyInputArgs {
                         capability_id: capability.as_deref(),
                         agent_subject: agent_subject.as_deref(),
                         tool_server: tool_server.as_deref(),
@@ -1116,32 +1183,33 @@ pub(crate) fn dispatch_trust(
                         until,
                         receipt_limit,
                     },
-                    SignedQueryBackend {
-                        query: QueryBackend {
-                            json_output,
-                            receipt_db_path: receipt_db.as_deref(),
-                            control_url: control_url.as_deref(),
-                            control_token: control_token.as_deref(),
-                        },
-                        budget_db_path: budget_db.as_deref(),
-                        authority_seed_path: authority_seed_file.as_deref(),
-                        authority_db_path: authority_db.as_deref(),
-                        certification_registry_file: certification_registry_file.as_deref(),
+                    policy_file: &policy_file,
+                },
+                BudgetQueryBackend {
+                    query: QueryBackend {
+                        json_output,
+                        receipt_db_path: receipt_db.as_deref(),
+                        control_url: control_url.as_deref(),
+                        control_token: control_token.as_deref(),
                     },
-                ),
-            },
-            TrustCommands::UnderwritingDecision { command } => match command {
-                TrustUnderwritingDecisionCommands::Evaluate {
-                    capability,
-                    agent_subject,
-                    tool_server,
-                    tool_name,
-                    since,
-                    until,
-                    receipt_limit,
-                    certification_registry_file,
-                } => cmd_trust_underwriting_decision_evaluate(
-                    UnderwritingPolicyInputArgs {
+                    budget_db_path: budget_db.as_deref(),
+                    certification_registry_file: certification_registry_file.as_deref(),
+                    authority_seed_path: authority_seed_file.as_deref(),
+                },
+            ),
+            TrustUnderwritingDecisionCommands::Issue {
+                capability,
+                agent_subject,
+                tool_server,
+                tool_name,
+                since,
+                until,
+                receipt_limit,
+                certification_registry_file,
+                supersedes_decision_id,
+            } => cmd_trust_underwriting_decision_issue(
+                UnderwritingDecisionIssueArgs {
+                    input: UnderwritingPolicyInputArgs {
                         capability_id: capability.as_deref(),
                         agent_subject: agent_subject.as_deref(),
                         tool_server: tool_server.as_deref(),
@@ -1150,228 +1218,160 @@ pub(crate) fn dispatch_trust(
                         until,
                         receipt_limit,
                     },
-                    BudgetQueryBackend {
-                        query: QueryBackend {
-                            json_output,
-                            receipt_db_path: receipt_db.as_deref(),
-                            control_url: control_url.as_deref(),
-                            control_token: control_token.as_deref(),
-                        },
-                        budget_db_path: budget_db.as_deref(),
-                        certification_registry_file: certification_registry_file.as_deref(),
-                        authority_seed_path: authority_seed_file.as_deref(),
+                    supersedes_decision_id: supersedes_decision_id.as_deref(),
+                },
+                SignedQueryBackend {
+                    query: QueryBackend {
+                        json_output,
+                        receipt_db_path: receipt_db.as_deref(),
+                        control_url: control_url.as_deref(),
+                        control_token: control_token.as_deref(),
                     },
-                ),
-                TrustUnderwritingDecisionCommands::Simulate {
-                    capability,
-                    agent_subject,
-                    tool_server,
-                    tool_name,
-                    since,
-                    until,
-                    receipt_limit,
-                    policy_file,
-                    certification_registry_file,
-                } => cmd_trust_underwriting_decision_simulate(
-                    UnderwritingDecisionSimulateArgs {
-                        input: UnderwritingPolicyInputArgs {
-                            capability_id: capability.as_deref(),
-                            agent_subject: agent_subject.as_deref(),
-                            tool_server: tool_server.as_deref(),
-                            tool_name: tool_name.as_deref(),
-                            since,
-                            until,
-                            receipt_limit,
-                        },
-                        policy_file: &policy_file,
-                    },
-                    BudgetQueryBackend {
-                        query: QueryBackend {
-                            json_output,
-                            receipt_db_path: receipt_db.as_deref(),
-                            control_url: control_url.as_deref(),
-                            control_token: control_token.as_deref(),
-                        },
-                        budget_db_path: budget_db.as_deref(),
-                        certification_registry_file: certification_registry_file.as_deref(),
-                        authority_seed_path: authority_seed_file.as_deref(),
-                    },
-                ),
-                TrustUnderwritingDecisionCommands::Issue {
-                    capability,
-                    agent_subject,
-                    tool_server,
-                    tool_name,
-                    since,
-                    until,
-                    receipt_limit,
-                    certification_registry_file,
-                    supersedes_decision_id,
-                } => cmd_trust_underwriting_decision_issue(
-                    UnderwritingDecisionIssueArgs {
-                        input: UnderwritingPolicyInputArgs {
-                            capability_id: capability.as_deref(),
-                            agent_subject: agent_subject.as_deref(),
-                            tool_server: tool_server.as_deref(),
-                            tool_name: tool_name.as_deref(),
-                            since,
-                            until,
-                            receipt_limit,
-                        },
-                        supersedes_decision_id: supersedes_decision_id.as_deref(),
-                    },
-                    SignedQueryBackend {
-                        query: QueryBackend {
-                            json_output,
-                            receipt_db_path: receipt_db.as_deref(),
-                            control_url: control_url.as_deref(),
-                            control_token: control_token.as_deref(),
-                        },
-                        budget_db_path: budget_db.as_deref(),
-                        authority_seed_path: authority_seed_file.as_deref(),
-                        authority_db_path: authority_db.as_deref(),
-                        certification_registry_file: certification_registry_file.as_deref(),
-                    },
-                ),
-                TrustUnderwritingDecisionCommands::List {
-                    decision_id,
-                    capability,
-                    agent_subject,
-                    tool_server,
-                    tool_name,
-                    outcome,
-                    lifecycle_state,
-                    appeal_status,
+                    budget_db_path: budget_db.as_deref(),
+                    authority_seed_path: authority_seed_file.as_deref(),
+                    authority_db_path: authority_db.as_deref(),
+                    certification_registry_file: certification_registry_file.as_deref(),
+                },
+            ),
+            TrustUnderwritingDecisionCommands::List {
+                decision_id,
+                capability,
+                agent_subject,
+                tool_server,
+                tool_name,
+                outcome,
+                lifecycle_state,
+                appeal_status,
+                limit,
+            } => cmd_trust_underwriting_decision_list(
+                UnderwritingDecisionListArgs {
+                    decision_id: decision_id.as_deref(),
+                    capability_id: capability.as_deref(),
+                    agent_subject: agent_subject.as_deref(),
+                    tool_server: tool_server.as_deref(),
+                    tool_name: tool_name.as_deref(),
+                    outcome: outcome.as_deref(),
+                    lifecycle_state: lifecycle_state.as_deref(),
+                    appeal_status: appeal_status.as_deref(),
                     limit,
-                } => cmd_trust_underwriting_decision_list(
-                    UnderwritingDecisionListArgs {
-                        decision_id: decision_id.as_deref(),
-                        capability_id: capability.as_deref(),
-                        agent_subject: agent_subject.as_deref(),
-                        tool_server: tool_server.as_deref(),
-                        tool_name: tool_name.as_deref(),
-                        outcome: outcome.as_deref(),
-                        lifecycle_state: lifecycle_state.as_deref(),
-                        appeal_status: appeal_status.as_deref(),
-                        limit,
-                    },
-                    QueryBackend {
-                        json_output,
-                        receipt_db_path: receipt_db.as_deref(),
-                        control_url: control_url.as_deref(),
-                        control_token: control_token.as_deref(),
-                    },
-                ),
-            },
-            TrustCommands::UnderwritingAppeal { command } => match command {
-                TrustUnderwritingAppealCommands::Create {
-                    decision_id,
-                    requested_by,
-                    reason,
-                    note,
-                } => cmd_trust_underwriting_appeal_create(
-                    &decision_id,
-                    &requested_by,
-                    &reason,
-                    note.as_deref(),
+                },
+                QueryBackend {
                     json_output,
-                    receipt_db.as_deref(),
-                    control_url.as_deref(),
-                    control_token.as_deref(),
-                ),
-                TrustUnderwritingAppealCommands::Resolve {
-                    appeal_id,
-                    resolution,
-                    resolved_by,
-                    note,
-                    replacement_decision_id,
-                } => cmd_trust_underwriting_appeal_resolve(
-                    UnderwritingAppealResolveArgs {
-                        appeal_id: &appeal_id,
-                        resolution: &resolution,
-                        resolved_by: &resolved_by,
-                        note: note.as_deref(),
-                        replacement_decision_id: replacement_decision_id.as_deref(),
-                    },
-                    QueryBackend {
-                        json_output,
-                        receipt_db_path: receipt_db.as_deref(),
-                        control_url: control_url.as_deref(),
-                        control_token: control_token.as_deref(),
-                    },
-                ),
-            },
-            TrustCommands::TraceVerify {
-                log,
-                trusted_keys,
-                spec,
-                apalache_bin,
-                timeout_secs,
-                itf_output,
-                report_output,
-            } => cmd_trust_trace_verify(
-                &log,
-                &trusted_keys,
-                spec,
-                &apalache_bin,
-                timeout_secs,
-                itf_output.as_deref(),
-                report_output.as_deref(),
-                json_output,
+                    receipt_db_path: receipt_db.as_deref(),
+                    control_url: control_url.as_deref(),
+                    control_token: control_token.as_deref(),
+                },
             ),
-            TrustCommands::Revoke { capability_id } => cmd_trust_revoke(
-                &capability_id,
+        },
+        TrustCommands::UnderwritingAppeal { command } => match command {
+            TrustUnderwritingAppealCommands::Create {
+                decision_id,
+                requested_by,
+                reason,
+                note,
+            } => cmd_trust_underwriting_appeal_create(
+                &decision_id,
+                &requested_by,
+                &reason,
+                note.as_deref(),
                 json_output,
-                revocation_db.as_deref(),
+                receipt_db.as_deref(),
                 control_url.as_deref(),
                 control_token.as_deref(),
             ),
-            TrustCommands::FederatedIssue {
-                presentation_response,
-                challenge,
-                capability_policy,
-                enterprise_identity,
-                delegation_policy,
-                upstream_capability_id,
-            } => admin::cmd_trust_federated_issue(
-                &presentation_response,
-                &challenge,
-                &capability_policy,
-                enterprise_identity.as_deref(),
-                delegation_policy.as_deref(),
-                upstream_capability_id.as_deref(),
-                json_output,
-                control_url.as_deref(),
-                control_token.as_deref(),
+            TrustUnderwritingAppealCommands::Resolve {
+                appeal_id,
+                resolution,
+                resolved_by,
+                note,
+                replacement_decision_id,
+            } => cmd_trust_underwriting_appeal_resolve(
+                UnderwritingAppealResolveArgs {
+                    appeal_id: &appeal_id,
+                    resolution: &resolution,
+                    resolved_by: &resolved_by,
+                    note: note.as_deref(),
+                    replacement_decision_id: replacement_decision_id.as_deref(),
+                },
+                QueryBackend {
+                    json_output,
+                    receipt_db_path: receipt_db.as_deref(),
+                    control_url: control_url.as_deref(),
+                    control_token: control_token.as_deref(),
+                },
             ),
-            TrustCommands::FederatedDelegationPolicyCreate {
-                output,
-                signing_seed_file,
-                issuer,
-                partner,
-                verifier,
-                capability_policy,
-                expires_at,
-                purpose,
-                parent_capability_id,
-            } => admin::cmd_trust_federated_delegation_policy_create(
-                &output,
-                &signing_seed_file,
-                &issuer,
-                &partner,
-                &verifier,
-                &capability_policy,
-                expires_at,
-                purpose.as_deref(),
-                parent_capability_id.as_deref(),
-                json_output,
-            ),
-            TrustCommands::Status { capability_id } => cmd_trust_status(
-                &capability_id,
-                json_output,
-                revocation_db.as_deref(),
-                control_url.as_deref(),
-                control_token.as_deref(),
-            ),
+        },
+        TrustCommands::TraceVerify {
+            log,
+            trusted_keys,
+            spec,
+            apalache_bin,
+            timeout_secs,
+            itf_output,
+            report_output,
+        } => cmd_trust_trace_verify(
+            &log,
+            &trusted_keys,
+            spec,
+            &apalache_bin,
+            timeout_secs,
+            itf_output.as_deref(),
+            report_output.as_deref(),
+            json_output,
+        ),
+        TrustCommands::Revoke { capability_id } => cmd_trust_revoke(
+            &capability_id,
+            json_output,
+            revocation_db.as_deref(),
+            control_url.as_deref(),
+            control_token.as_deref(),
+        ),
+        TrustCommands::FederatedIssue {
+            presentation_response,
+            challenge,
+            capability_policy,
+            enterprise_identity,
+            delegation_policy,
+            upstream_capability_id,
+        } => admin::cmd_trust_federated_issue(
+            &presentation_response,
+            &challenge,
+            &capability_policy,
+            enterprise_identity.as_deref(),
+            delegation_policy.as_deref(),
+            upstream_capability_id.as_deref(),
+            json_output,
+            control_url.as_deref(),
+            control_token.as_deref(),
+        ),
+        TrustCommands::FederatedDelegationPolicyCreate {
+            output,
+            signing_seed_file,
+            issuer,
+            partner,
+            verifier,
+            capability_policy,
+            expires_at,
+            purpose,
+            parent_capability_id,
+        } => admin::cmd_trust_federated_delegation_policy_create(
+            &output,
+            &signing_seed_file,
+            &issuer,
+            &partner,
+            &verifier,
+            &capability_policy,
+            expires_at,
+            purpose.as_deref(),
+            parent_capability_id.as_deref(),
+            json_output,
+        ),
+        TrustCommands::Status { capability_id } => cmd_trust_status(
+            &capability_id,
+            json_output,
+            revocation_db.as_deref(),
+            control_url.as_deref(),
+            control_token.as_deref(),
+        ),
     }
 }

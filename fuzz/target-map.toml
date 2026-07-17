@@ -33,8 +33,15 @@ notes    = "Round-trips canonical JSON; catches sort drift and float canonicaliz
 crate    = "chio-core-types"
 path     = "fuzz/fuzz_targets/capability_receipt.rs"
 triggers = [
+    "crates/core/chio-core-types/src/_generated/**",
     "crates/core/chio-core-types/src/capability*.rs",
     "crates/core/chio-core-types/src/receipt*.rs",
+    "crates/trust/chio-reputation/**",
+    "sdks/python/chio-temporal/src/chio_temporal/grants.py",
+    "sdks/python/packages/chio-bedrock/src/chio_bedrock/receipt.py",
+    "sdks/typescript/packages/browser/src/index.ts",
+    "sdks/typescript/packages/node-http/src/interceptor.ts",
+    "sdks/typescript/packages/passkey/src/request.ts",
     "spec/schemas/capability/**",
     "spec/schemas/receipt/**",
     "tests/bindings/vectors/capability/**",
@@ -165,6 +172,8 @@ notes    = "ACP NDJSON plus handle_jsonrpc dispatch."
 crate    = "chio-wasm-guards"
 path     = "fuzz/fuzz_targets/wasm_preinstantiate_validate.rs"
 triggers = [
+    "crates/sdk/chio-guard-sdk/**",
+    "crates/sdk/chio-guard-sdk-macros/**",
     "crates/guards/chio-wasm-guards/**",
     "spec/schemas/wasm-guard/**",
 ]
@@ -175,6 +184,8 @@ notes    = "ComponentBackend, WasmtimeBackend, format detect; trust-boundary."
 crate    = "chio-wasm-guards"
 path     = "fuzz/fuzz_targets/wit_host_call_boundary.rs"
 triggers = [
+    "crates/sdk/chio-guard-sdk/**",
+    "crates/sdk/chio-guard-sdk-macros/**",
     "crates/guards/chio-wasm-guards/**",
     "spec/schemas/wasm-guard/**",
 ]
@@ -185,6 +196,7 @@ notes    = "GuardRequest/GuestDenyResponse serde deserialization; trust-boundary
 crate    = "chio-wasm-guards"
 path     = "fuzz/fuzz_targets/wasm_guard_escape.rs"
 triggers = [
+    "crates/sdk/chio-guard-sdk-macros/**",
     "crates/guards/chio-wasm-guards/**",
     "spec/schemas/wasm-guard/**",
 ]

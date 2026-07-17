@@ -34,6 +34,7 @@ mod host_call;
 mod identity;
 mod kernel_service;
 mod layer;
+mod metrics;
 mod request_metadata;
 mod service;
 

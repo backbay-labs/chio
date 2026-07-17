@@ -4,6 +4,7 @@ kernel:
   allow_sampling: true
   allow_elicitation: true
   allow_ephemeral_receipt_log: true
+  allow_ephemeral_revocation_store: true
 
 capabilities:
   default:

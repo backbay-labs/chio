@@ -7,6 +7,8 @@ members = [
     "crates/core/chio-errors",
     "crates/core/chio-adversarial-suite",
     "crates/core/chio-arena",
+    "crates/core/chio-bounded",
+    "crates/core/chio-supervisor",
     #
     # Kernel variants
     "crates/kernel/chio-kernel",
@@ -126,6 +128,7 @@ members = [
     # HTTP & session
     "crates/protocol/chio-hosted-mcp",
     "crates/platform/chio-http-core",
+    "crates/protocol/chio-http-serve",
     "crates/platform/chio-http-session",
     #
     # Products
@@ -363,6 +366,8 @@ chio-attest-verify = { path = "crates/trust/chio-attest-verify" }
 chio-autonomy = { path = "crates/economy/chio-autonomy" }
 chio-bedrock-converse-adapter = { path = "crates/protocol/chio-bedrock-converse-adapter" }
 chio-binding-helpers = { path = "crates/sdk/chio-binding-helpers" }
+chio-bounded = { path = "crates/core/chio-bounded" }
+chio-supervisor = { path = "crates/core/chio-supervisor" }
 chio-cohere-tools-adapter = { path = "crates/protocol/chio-cohere-tools-adapter" }
 chio-config = { path = "crates/platform/chio-config" }
 chio-conformance = { path = "crates/tooling/chio-conformance" }
@@ -400,6 +405,7 @@ chio-guard-sdk-macros = { path = "crates/sdk/chio-guard-sdk-macros" }
 chio-guards = { path = "crates/guards/chio-guards" }
 chio-hosted-mcp = { path = "crates/protocol/chio-hosted-mcp" }
 chio-http-core = { path = "crates/platform/chio-http-core" }
+chio-http-serve = { path = "crates/protocol/chio-http-serve" }
 chio-http-session = { path = "crates/platform/chio-http-session" }
 chio-kernel = { path = "crates/kernel/chio-kernel" }
 chio-kernel-browser = { path = "crates/kernel/chio-kernel-browser" }

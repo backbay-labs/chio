@@ -630,13 +630,21 @@ pub(super) fn validate_execution_lease_context(
             "execution lease budget allocation max units missing".to_string(),
         ));
     }
-    if allocation.reserved_units
-        + allocation.active_units
-        + allocation.consumed_units
-        + allocation.released_units
-        + allocation.reversed_units
-        > allocation.max_units
-    {
+    let allocation_total = [
+        allocation.reserved_units,
+        allocation.active_units,
+        allocation.consumed_units,
+        allocation.released_units,
+        allocation.reversed_units,
+    ]
+    .into_iter()
+    .try_fold(0_u64, |total, units| total.checked_add(units))
+    .ok_or_else(|| {
+        TransactionPassportError::RuntimeSecurityClaimFailed(
+            "execution lease budget allocation exceeds max units".to_string(),
+        )
+    })?;
+    if allocation_total > allocation.max_units {
         return Err(TransactionPassportError::RuntimeSecurityClaimFailed(
             "execution lease budget allocation exceeds max units".to_string(),
         ));
@@ -669,6 +677,12 @@ pub(super) fn validate_execution_lease_context(
         &join_receipt.parent_set_hash,
     )?;
     validate_digest_field("join receipt result digest", &join_receipt.result_digest)?;
+    ensure_runtime_identity_is_trusted(
+        "join receipt issuer",
+        &join_receipt.issuer,
+        trusted_roots,
+        trusted_root_signer_keys,
+    )?;
     verify_join_receipt_signature(join_receipt)?;
     if join_receipt.dag_ordinal == 0 || join_receipt.hlc_unix_ms == 0 {
         return Err(TransactionPassportError::RuntimeSecurityClaimFailed(

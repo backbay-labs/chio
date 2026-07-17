@@ -19,7 +19,6 @@ use crate::pure::{
 };
 use crate::wire::{
     BindingError, EvaluateRequestJson, SignReceiptRequestJson, VerifyCapabilityRequestJson,
-    VerifyReceiptResultJson,
 };
 use crate::{BrowserClock, WebCryptoRng};
 
@@ -115,7 +114,7 @@ pub fn verify_capability(token_json: &str, authority_pub_hex: &str) -> Result<Js
         token,
         trusted_issuers_hex,
         clock_override_unix_secs: None,
-        peer_capabilities: Some(CapabilityNegotiation::v1_default()),
+        peer_capabilities: Some(CapabilityNegotiation::t1_default()),
         capability_trust_roots: BTreeMap::new(),
         parent_budget_snapshots: Vec::new(),
     };

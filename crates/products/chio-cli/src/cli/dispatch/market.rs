@@ -1,5 +1,5 @@
-use super::*;
 use super::output::{write_bytes, write_pretty_json_line};
+use super::*;
 
 pub(crate) fn parse_market_tier(value: &str) -> Result<chio_reputation::ReputationTier, CliError> {
     match value {

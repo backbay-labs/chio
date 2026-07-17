@@ -133,7 +133,7 @@ async function discardRequestBody(req: http.IncomingMessage): Promise<void> {
 }
 
 async function startEvaluateSidecar(
-  result: EvaluateResponse,
+  result: unknown,
   verifyValid: boolean,
   onVerify?: () => void,
 ): Promise<{ server: http.Server; url: string }> {
@@ -151,6 +151,38 @@ async function startEvaluateSidecar(
         onVerify?.();
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(verifyResponse(verifyValid)));
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    })().catch((error: unknown) => {
+      res.writeHead(500, { "Content-Type": "text/plain" });
+      res.end(error instanceof Error ? error.message : String(error));
+    });
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const address = server.address();
+  if (address == null || typeof address === "string") {
+    throw new Error("server not listening");
+  }
+
+  return {
+    server,
+    url: `http://127.0.0.1:${address.port}`,
+  };
+}
+
+async function startEvaluateRawSidecar(
+  body: string,
+): Promise<{ server: http.Server; url: string }> {
+  const server = http.createServer((req, res) => {
+    void (async () => {
+      if (req.method === "POST" && req.url === "/chio/evaluate") {
+        await discardRequestBody(req);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(body);
         return;
       }
 
@@ -259,6 +291,25 @@ describe("ChioSidecarClient.evaluate", () => {
     }
   });
 
+  it("normalizes omitted receipt evidence to an empty array", async () => {
+    const receipt = authoritativeAllowReceipt() as Partial<HttpReceipt>;
+    delete receipt.evidence;
+    const result = {
+      verdict: { verdict: "allow" },
+      receipt,
+      evidence: [],
+    };
+    const { server, url } = await startEvaluateSidecar(result, true);
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: url });
+      const evaluated = await client.evaluate(testRequest());
+      expect(evaluated.receipt.evidence).toEqual([]);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
   it("rejects allow-shaped responses without structural receipt authority", async () => {
     const result: EvaluateResponse = {
       verdict: { verdict: "allow" },
@@ -316,13 +367,33 @@ describe("ChioSidecarClient.evaluate", () => {
     }
   });
 
+  it("rejects inconsistent deny verdict with allow-shaped receipt", async () => {
+    const result: EvaluateResponse = {
+      verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
+      receipt: authoritativeAllowReceipt(),
+      evidence: [],
+    };
+    const { server, url } = await startEvaluateSidecar(result, true);
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: url });
+      await expectSidecarError(
+        client.evaluate(testRequest()),
+        "chio_invalid_receipt",
+      );
+    } finally {
+      await closeServer(server);
+    }
+  });
+
   it("does not verify non-allow responses", async () => {
     let verifyCalls = 0;
     const result: EvaluateResponse = {
       verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
       receipt: {
-        ...legacyBareReceipt(),
+        ...authoritativeAllowReceipt(),
         verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
+        response_status: 403,
       },
       evidence: [],
     };
@@ -334,6 +405,138 @@ describe("ChioSidecarClient.evaluate", () => {
       const client = new ChioSidecarClient({ sidecarUrl: url });
       await expect(client.evaluate(testRequest())).resolves.toEqual(result);
       expect(verifyCalls).toBe(0);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it("allows deny responses that omit the receipt field", async () => {
+    const result = {
+      verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
+      evidence: [],
+    } as unknown as EvaluateResponse;
+    const { server, url } = await startEvaluateSidecar(result, true);
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: url });
+      await expect(client.evaluate(testRequest())).resolves.toEqual(result);
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it("rejects allow responses that omit the receipt field", async () => {
+    const result = {
+      verdict: { verdict: "allow" },
+      evidence: [],
+    } as unknown as EvaluateResponse;
+
+    const { server, url } = await startEvaluateSidecar(result, true);
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: url });
+      await expectSidecarError(
+        client.evaluate(testRequest()),
+        "chio_invalid_receipt",
+      );
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it("rejects non-allow responses with receipts missing semantics fields", async () => {
+    const result: EvaluateResponse = {
+      verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
+      receipt: {
+        ...legacyBareReceipt(),
+        verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
+      },
+      evidence: [],
+    };
+    const { server, url } = await startEvaluateSidecar(result, true);
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: url });
+      await expectSidecarError(
+        client.evaluate(testRequest()),
+        "chio_evaluation_failed",
+      );
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it("rejects mediated decision receipts with observation outcomes", async () => {
+    const result: EvaluateResponse = {
+      verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
+      receipt: {
+        ...authoritativeAllowReceipt(),
+        verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
+        response_status: 403,
+        observation_outcome: "observed",
+      },
+      evidence: [],
+    };
+    const { server, url } = await startEvaluateSidecar(result, true);
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: url });
+      await expectSidecarError(
+        client.evaluate(testRequest()),
+        "chio_evaluation_failed",
+      );
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it("rejects advisory receipts without observation outcomes", async () => {
+    const result: EvaluateResponse = {
+      verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
+      receipt: {
+        ...advisoryAllowReceipt(),
+        verdict: { verdict: "deny", reason: "blocked", guard: "policy", http_status: 403 },
+        response_status: 403,
+        observation_outcome: undefined,
+      },
+      evidence: [],
+    };
+    const { server, url } = await startEvaluateSidecar(result, true);
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: url });
+      await expectSidecarError(
+        client.evaluate(testRequest()),
+        "chio_evaluation_failed",
+      );
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it("throws evaluation-failed SidecarError for malformed JSON evaluate responses", async () => {
+    const { server, url } = await startEvaluateRawSidecar("{not json");
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: url });
+      await expectSidecarError(
+        client.evaluate(testRequest()),
+        "chio_evaluation_failed",
+      );
+    } finally {
+      await closeServer(server);
+    }
+  });
+
+  it("throws evaluation-failed SidecarError for incomplete evaluate responses", async () => {
+    const { server, url } = await startEvaluateSidecar({}, true);
+
+    try {
+      const client = new ChioSidecarClient({ sidecarUrl: url });
+      await expectSidecarError(
+        client.evaluate(testRequest()),
+        "chio_evaluation_failed",
+      );
     } finally {
       await closeServer(server);
     }

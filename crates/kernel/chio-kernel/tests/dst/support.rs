@@ -14,7 +14,10 @@ use chio_core::session::{
     CreateElicitationOperation, CreateElicitationResult, CreateMessageOperation,
     CreateMessageResult, OperationContext, RequestId, RootDefinition, ToolCallOperation,
 };
-use chio_kernel::budget_store::{BudgetEventAuthority, BudgetMutationKind, BudgetMutationRecord};
+use chio_kernel::budget_store::{
+    BudgetAuthorizeHoldDecision, BudgetAuthorizeHoldRequest, BudgetAuthorizeMutationOutcome,
+    BudgetEventAuthority, BudgetMutationKind, BudgetMutationRecord,
+};
 use chio_kernel::{
     BudgetStore, BudgetStoreError, BudgetUsageRecord, ChioKernel, InMemoryBudgetStore,
     KernelConfig, KernelError, NestedFlowBridge, NestedFlowClient, PeerCapabilities, ReceiptStore,
@@ -352,6 +355,40 @@ impl BudgetStore for FaultingBudgetStore {
         )
     }
 
+    fn try_charge_cost_with_ids_and_authority_outcome(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        max_invocations: Option<u32>,
+        cost_units: u64,
+        max_cost_per_invocation: Option<u64>,
+        max_total_cost_units: Option<u64>,
+        hold_id: Option<&str>,
+        event_id: Option<&str>,
+        authority: Option<&BudgetEventAuthority>,
+    ) -> Result<BudgetAuthorizeMutationOutcome, BudgetStoreError> {
+        self.mutation("try_charge_cost_with_ids_and_authority_outcome")?;
+        self.inner.try_charge_cost_with_ids_and_authority_outcome(
+            capability_id,
+            grant_index,
+            max_invocations,
+            cost_units,
+            max_cost_per_invocation,
+            max_total_cost_units,
+            hold_id,
+            event_id,
+            authority,
+        )
+    }
+
+    fn authorize_budget_hold(
+        &self,
+        request: BudgetAuthorizeHoldRequest,
+    ) -> Result<BudgetAuthorizeHoldDecision, BudgetStoreError> {
+        self.mutation("authorize_budget_hold")?;
+        self.inner.authorize_budget_hold(request)
+    }
+
     fn reverse_charge_cost(
         &self,
         capability_id: &str,
@@ -477,6 +514,36 @@ impl BudgetStore for FaultingBudgetStore {
         self.inner
             .list_mutation_events(limit, capability_id, grant_index)
     }
+}
+
+pub fn assert_wrapped_budget_replay_outcome() -> Result<(), String> {
+    let store = FaultingBudgetStore::new(Arc::new(InMemoryBudgetStore::new()), None);
+    let authorize = || {
+        store.try_charge_cost_with_ids_and_authority_outcome(
+            "dst-replay-capability",
+            0,
+            Some(1),
+            1,
+            Some(1),
+            Some(1),
+            Some("dst-replay-hold"),
+            Some("dst-replay-event"),
+            None,
+        )
+    };
+
+    let first = authorize().map_err(|error| format!("first wrapped authorization: {error}"))?;
+    if !first.allowed || first.replayed_event {
+        return Err(format!(
+            "first wrapped authorization had unexpected outcome: {first:?}"
+        ));
+    }
+
+    let replay = authorize().map_err(|error| format!("replayed wrapped authorization: {error}"))?;
+    if !replay.allowed || !replay.replayed_event {
+        return Err(format!("wrapped store erased replay metadata: {replay:?}"));
+    }
+    Ok(())
 }
 
 struct FaultingAdmissionHook {
@@ -941,7 +1008,7 @@ pub fn oracle_conservation(
                     unnamed_outstanding += exposure;
                 }
             }
-            BudgetMutationKind::ReverseExposure => {
+            BudgetMutationKind::ReverseExposure | BudgetMutationKind::ExpireHold => {
                 invocations = invocations
                     .checked_sub(1)
                     .ok_or_else(|| format!("{} reversed without admission", event.event_id))?;
@@ -1433,8 +1500,12 @@ fn kernel_config() -> KernelConfig {
         max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: false,
         allow_ephemeral_receipt_log: false,
+        allow_ephemeral_revocation_store: true,
         checkpoint_batch_size: 0,
         retention_config: None,
+        memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
+        deadlines: chio_kernel::HotPathDeadlineConfig::default(),
+        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     }
 }
 

@@ -121,4 +121,3 @@ pub(crate) fn local_receipt_read_context(
         )),
     }
 }
-

@@ -183,7 +183,7 @@ export interface ChioHttpRequest {
 
 export interface EvaluateResponse {
   verdict: Verdict;
-  receipt: HttpReceipt;
+  receipt?: HttpReceipt | undefined;
   evidence: GuardEvidence[];
 }
 

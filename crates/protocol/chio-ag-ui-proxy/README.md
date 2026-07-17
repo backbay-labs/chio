@@ -1,47 +1,53 @@
 # chio-ag-ui-proxy
 
-AG-UI proxy for Chio -- capability-validated interception of agent-to-UI event
-streams.
+Capability-gated proxy for AG-UI (agent-to-UI) event streams. It sits between
+an agent and a UI client, classifies each event, checks it against a
+capability token using Chio's capability and delegation-budget model, and
+signs an audit receipt for the decision. It does not implement SSE or
+WebSocket transport itself; the caller owns the connection and reports
+delivery through `Transport`.
 
-## What it does
+## Responsibilities
 
-`chio-ag-ui-proxy` intercepts event streams flowing from an AI agent to a UI
-client, validating capability tokens for UI-facing actions and producing signed
-receipts that include event type, target UI component, and action
-classification.
+- Re-derive each event's `EventClassification` from its `EventType`
+  server-side and block on any mismatch with the classification the caller
+  supplied.
+- Gate restricted classifications (`Mutate`, `Navigate`, `Create`, `Destroy`,
+  `Submit` by default) behind a capability token; allow tokenless `Display`
+  events only when `allow_display_without_capability` is set.
+- Run every capability-bearing event through `verify_capability_full` (issuer
+  trust, signature, time bounds, crypto floor, chain binding) and scope-grant
+  matching against a synthetic `ag-ui` tool server.
+- Bind matched grants to the event's real `event_id`, `session_id`, and
+  target component, so a grant scoped to one session or component cannot be
+  satisfied by a differently-labeled payload.
+- Enforce sibling-sum delegation budgets across events for the life of the
+  proxy, seeded from `ParentBudgetSnapshot`s or registered at runtime.
+- Sign an `AgUiReceipt` for every evaluated event, forwarded or blocked, and
+  update `Transport`'s forwarded/blocked counters.
 
-Supported transport modes:
+## Public API
 
-- SSE (Server-Sent Events) -- unidirectional server-to-client stream.
-- WebSocket -- bidirectional communication.
+- `AgUiProxy` - `new`, `try_new`, `evaluate`, `register_parent_budget`,
+  `register_admitted_child_budget`, `config`.
+- `AgUiProxyConfig`, `proxy::ParentBudgetSnapshot`, `proxy::AdmittedChildBudget` -
+  restricted classifications, trusted issuers, revoked capability IDs, peer
+  capability profile, chain-binding trust roots, delegation budget seeding.
+- `ProxyDecision`, `proxy::AgUiProxyError` - the forward/block outcome and the
+  error type `evaluate` returns.
+- `AgUiEvent`, `EventClassification`, `TargetComponent`, `event::EventType` -
+  the wire event, its raw type, and its policy classification.
+- `AgUiReceipt`, `AgUiReceiptBody`, `AgUiReceiptVerification` - the signed
+  audit record, its unsigned body, and the trusted-key verification result.
+- `Transport`, `TransportKind` - connection metadata and forwarded/blocked
+  counters.
 
-The proxy classifies each `AgUiEvent` into an `EventClassification` and
-identifies the `TargetComponent`. `ProxyDecision` describes the outcome (allow,
-deny, or require capability). `AgUiReceipt` and `AgUiReceiptBody` carry the
-signed audit record.
+## Testing
 
-Public types: `AgUiProxy`, `AgUiProxyConfig`, `ProxyDecision`, `AgUiEvent`,
-`EventClassification`, `TargetComponent`, `AgUiReceipt`, `Transport`,
-`TransportKind`.
+`cargo test -p chio-ag-ui-proxy`
 
-## Position in the system
+## See also
 
-```
-Agent
-  |
-  v
-[chio-ag-ui-proxy]  -- capability validation, receipt signing
-  |
-  v
-UI client
-```
-
-Depends on `chio-core` and `chio-kernel-core` (default features disabled to
-keep the dependency surface small).
-
-## Building
-
-```bash
-cargo build -p chio-ag-ui-proxy
-cargo test -p chio-ag-ui-proxy
-```
+- `chio-core` - capability, crypto, and error types this crate builds on.
+- `chio-kernel-core` - `verify_capability_full`, scope matching, and the
+  budget-registry primitives this crate calls directly.

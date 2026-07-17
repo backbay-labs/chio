@@ -28,14 +28,14 @@ pub(crate) fn cmd_chio_federation_treaty_intersect(
             )?,
         );
     }
-    let intersection =
-        chio_federation::treaty::compute_ladder_intersection(&treaty_scope, &manifests, now_unix_ms)
-            .map_err(|error| {
-            CliError::cli_other_error(format!("Chio treaty intersection: {error}"))
-        })?;
-    let json = chio_federation::treaty::ladder_intersection_json(&intersection).map_err(|error| {
-        CliError::cli_other_error(format!("Chio treaty intersection: {error}"))
-    })?;
+    let intersection = chio_federation::treaty::compute_ladder_intersection(
+        &treaty_scope,
+        &manifests,
+        now_unix_ms,
+    )
+    .map_err(|error| CliError::cli_other_error(format!("Chio treaty intersection: {error}")))?;
+    let json = chio_federation::treaty::ladder_intersection_json(&intersection)
+        .map_err(|error| CliError::cli_other_error(format!("Chio treaty intersection: {error}")))?;
     write_json_string(report, &format!("{json}\n"))
 }
 
@@ -53,10 +53,10 @@ pub(crate) fn cmd_chio_federation_treaty_admit(
         .map_err(|error| CliError::cli_other_error(format!("Chio treaty scope: {error}")))?;
     let intersection_json =
         read_utf8_json_file(ladder_intersection_path, "Chio ladder intersection")?;
-    let ladder_intersection = chio_federation::treaty::ladder_intersection_from_json(&intersection_json)
-        .map_err(|error| {
-            CliError::cli_other_error(format!("Chio ladder intersection: {error}"))
-        })?;
+    let ladder_intersection = chio_federation::treaty::ladder_intersection_from_json(
+        &intersection_json,
+    )
+    .map_err(|error| CliError::cli_other_error(format!("Chio ladder intersection: {error}")))?;
     let verified_evidence = evidence
         .iter()
         .map(|item| {
@@ -131,15 +131,16 @@ pub(crate) fn cmd_chio_attest_buyer_verify_packet(
     report: &Path,
 ) -> Result<(), CliError> {
     let packet_json = read_utf8_json_file(packet_path, "Chio buyer attestation packet")?;
-    let packet = chio_attest_buyer::buyer_attestation_packet_from_json(&packet_json).map_err(
-        |error| CliError::cli_other_error(format!("Chio buyer attestation packet: {error}")),
-    )?;
+    let packet =
+        chio_attest_buyer::buyer_attestation_packet_from_json(&packet_json).map_err(|error| {
+            CliError::cli_other_error(format!("Chio buyer attestation packet: {error}"))
+        })?;
     let lineage_json =
         read_utf8_json_file(lineage_statement_path, "Chio receipt lineage statement")?;
-    let lineage: chio_attest_buyer::ReceiptLineageStatement =
-        serde_json::from_str(&lineage_json).map_err(|error| {
-            CliError::cli_other_error(format!("Chio receipt lineage statement: {error}"))
-        })?;
+    let lineage: chio_attest_buyer::ReceiptLineageStatement = serde_json::from_str(&lineage_json)
+        .map_err(|error| {
+        CliError::cli_other_error(format!("Chio receipt lineage statement: {error}"))
+    })?;
     let continuation_json =
         read_utf8_json_file(continuation_path, "Chio cross-kernel continuation")?;
     let continuation: chio_attest_buyer::CrossKernelContinuation =
@@ -156,10 +157,10 @@ pub(crate) fn cmd_chio_attest_buyer_verify_packet(
         })?;
     let bilateral_json =
         read_utf8_json_file(bilateral_invocation_path, "Chio bilateral invocation")?;
-    let bilateral: chio_attest_buyer::BilateralInvocation =
-        serde_json::from_str(&bilateral_json).map_err(|error| {
-            CliError::cli_other_error(format!("Chio bilateral invocation: {error}"))
-        })?;
+    let bilateral: chio_attest_buyer::BilateralInvocation = serde_json::from_str(&bilateral_json)
+        .map_err(|error| {
+        CliError::cli_other_error(format!("Chio bilateral invocation: {error}"))
+    })?;
     let verification = chio_attest_buyer::verify_buyer_attestation_packet(
         &packet,
         &lineage,
@@ -316,13 +317,16 @@ mod tests {
             error_text.contains("evidence_class=artifact_sha256"),
             "error should describe evidence format: {error_text}"
         );
-        assert!(!report_path.exists(), "malformed evidence must not write a report");
+        assert!(
+            !report_path.exists(),
+            "malformed evidence must not write a report"
+        );
         Ok(())
     }
 
     #[test]
-    fn buyer_verify_packet_returns_error_when_report_denies() -> Result<(), Box<dyn std::error::Error>>
-    {
+    fn buyer_verify_packet_returns_error_when_report_denies(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         use chio_attest_buyer::{
             bilateral_invocation_binding_sha256, receipt_lineage_statement_sha256,
             BilateralInvocation, BuyerAttestationPacket, CrossBoundaryAdmissionReport,
@@ -333,8 +337,9 @@ mod tests {
         };
         use chio_core_types::crypto::{canonical_json_bytes, sha256_hex};
 
-        fn canonical_sha256(value: &impl serde::Serialize) -> Result<String, Box<dyn std::error::Error>>
-        {
+        fn canonical_sha256(
+            value: &impl serde::Serialize,
+        ) -> Result<String, Box<dyn std::error::Error>> {
             Ok(sha256_hex(&canonical_json_bytes(value)?))
         }
 
@@ -520,7 +525,10 @@ mod tests {
         Ok(TreatyScope {
             schema: CHIO_FEDERATION_TREATY_SCOPE_SCHEMA.to_string(),
             treaty_id: "treaty-buyer-vendor".to_string(),
-            participant_kernel_ids: vec![manifest_a.kernel_id.clone(), manifest_b.kernel_id.clone()],
+            participant_kernel_ids: vec![
+                manifest_a.kernel_id.clone(),
+                manifest_b.kernel_id.clone(),
+            ],
             participant_public_keys: vec![buyer_key.public_key(), vendor_key.public_key()],
             ladder_manifest_sha256s: vec![
                 governance_ladder_manifest_sha256(manifest_a)?,

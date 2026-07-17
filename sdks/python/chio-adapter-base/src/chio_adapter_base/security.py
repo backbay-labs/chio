@@ -41,6 +41,7 @@ import asyncio
 import dataclasses
 import os
 import pathlib
+import re
 import shlex
 import subprocess
 import threading
@@ -113,6 +114,23 @@ _ENV_DENY_EXACT: frozenset[str] = frozenset(
     }
 )
 
+_WINDOWS_ABSOLUTE_BARE_TOKEN_RE = re.compile(
+    r"(?P<token>"
+    r"(?<![A-Za-z0-9+.-])[A-Za-z]:(?:[\\]|/(?!/))[^\s\"']*"
+    r"|(?<!:)\\\\[^\\/\s\"']+[\\/][^\\/\s\"']+(?:[\\/][^\s\"']*)?"
+    r"|(?<!:)//[^/\s\"']+/[^/\s\"']+(?:/[^\s\"']*)?"
+    r")"
+)
+_WINDOWS_ABSOLUTE_EMBEDDED_TOKEN_RE = re.compile(
+    r"(?P<token>"
+    r"(?<![A-Za-z0-9+.-])[A-Za-z]:(?:[\\]|/(?!/)).*"
+    r"|(?<!:)\\\\[^\\/]+[\\/][^\\/]+(?:[\\/].*)?"
+    r"|(?<!:)//[^/]+/[^/]+(?:/.*)?"
+    r")"
+)
+_SSH_REMOTE_COMMANDS: frozenset[str] = frozenset({"scp", "rsync", "sftp"})
+_SSH_REMOTE_SPEC_RE = re.compile(r"^(?:[^@\s:/]+@)?[A-Za-z][A-Za-z0-9_.-]*:.+")
+
 
 class ChioPathEscapeError(PermissionError):
     """Raised when a shell argv token escapes the workspace root.
@@ -131,14 +149,71 @@ class ChioPathEscapeError(PermissionError):
 
 def _is_denied_env(name: str) -> bool:
     """Return True if the env var ``name`` carries credentials."""
-    if name in _ENV_DENY_EXACT:
-        return True
     upper = name.upper()
+    if upper in _ENV_DENY_EXACT:
+        return True
     if any(upper.startswith(prefix) for prefix in _ENV_DENY_PREFIXES):
         return True
     if any(upper.endswith(suffix) for suffix in _ENV_DENY_SUFFIXES):
         return True
     return False
+
+
+def _reject_windows_absolute_escape(token: str, root: str) -> None:
+    normalised = token.replace("\\", "/")
+    if any(seg == ".." for seg in normalised.split("/")):
+        raise ChioPathEscapeError(token, "dotdot_segment")
+
+    token_path = pathlib.PureWindowsPath(token)
+    root_path = pathlib.PureWindowsPath(root)
+    if not token_path.is_absolute() or not root_path.is_absolute():
+        raise ChioPathEscapeError(token, "outside_workspace")
+
+    token_parts = tuple(part.casefold() for part in token_path.parts)
+    root_parts = tuple(part.casefold() for part in root_path.parts)
+    if len(token_parts) < len(root_parts) or token_parts[: len(root_parts)] != root_parts:
+        raise ChioPathEscapeError(token, "outside_workspace")
+
+
+def _without_quoted_shell_spans(command: str) -> str:
+    chars: list[str] = []
+    quote: str | None = None
+    for ch in command:
+        if quote is None:
+            if ch in {"'", '"'}:
+                quote = ch
+                chars.append(" ")
+            else:
+                chars.append(ch)
+            continue
+
+        chars.append(" ")
+        if ch == quote:
+            quote = None
+    return "".join(chars)
+
+
+def _is_windows_absolute_root(root: str) -> bool:
+    root_path = pathlib.PureWindowsPath(root)
+    return bool(root_path.drive) and root_path.is_absolute()
+
+
+def _ssh_remote_tokens(argv: list[str], root_text: str | None) -> frozenset[str]:
+    if root_text is None or _is_windows_absolute_root(root_text) or not argv:
+        return frozenset()
+    command = argv[0].replace("\\", "/").rsplit("/", 1)[-1].lower()
+    if command not in _SSH_REMOTE_COMMANDS:
+        return frozenset()
+    return frozenset(token for token in argv[1:] if _SSH_REMOTE_SPEC_RE.match(token))
+
+
+def _is_ssh_remote_windows_candidate(
+    candidate: str,
+    remote_tokens: frozenset[str],
+) -> bool:
+    return candidate in remote_tokens or any(
+        remote.endswith(f"@{candidate}") for remote in remote_tokens
+    )
 
 
 def sanitised_env(*, base: Mapping[str, str] | None = None) -> dict[str, str]:
@@ -151,6 +226,18 @@ def sanitised_env(*, base: Mapping[str, str] | None = None) -> dict[str, str]:
     """
     source = base if base is not None else os.environ
     return {k: v for k, v in source.items() if not _is_denied_env(k)}
+
+
+_GIT_GLOBAL_OPTIONS_WITH_VALUES: frozenset[str] = frozenset(
+    {
+        "--config-env",
+        "--exec-path",
+        "--git-dir",
+        "--namespace",
+        "--super-prefix",
+        "--work-tree",
+    }
+)
 
 
 def harden_git_argv(argv: list[str]) -> list[str]:
@@ -167,9 +254,8 @@ def harden_git_argv(argv: list[str]) -> list[str]:
 
     Returns a new list; does not mutate ``argv``.
     """
-    try:
-        subcommand_idx = argv.index("commit")
-    except ValueError:
+    subcommand_idx = _git_subcommand_index(argv)
+    if subcommand_idx is None or argv[subcommand_idx] != "commit":
         return list(argv)
     tail = argv[subcommand_idx + 1 :]
     if "--verify" in tail:
@@ -180,6 +266,37 @@ def harden_git_argv(argv: list[str]) -> list[str]:
     if "--no-verify" in tail:
         return list(argv)
     return [*argv[: subcommand_idx + 1], "--no-verify", *tail]
+
+
+def _git_subcommand_index(argv: list[str]) -> int | None:
+    executable_name = (
+        argv[0].replace("\\", "/").rsplit("/", 1)[-1].lower() if argv else ""
+    )
+    index = 1 if executable_name in {"git", "git.exe"} else 0
+    while index < len(argv):
+        arg = argv[index]
+        if arg == "--":
+            return None
+        if arg in ("-C", "-c"):
+            index += 2
+            continue
+        if (arg.startswith("-C") or arg.startswith("-c")) and len(arg) > 2:
+            index += 1
+            continue
+        if arg in _GIT_GLOBAL_OPTIONS_WITH_VALUES:
+            index += 2
+            continue
+        if any(
+            arg.startswith(f"{option}=")
+            for option in _GIT_GLOBAL_OPTIONS_WITH_VALUES
+        ):
+            index += 1
+            continue
+        if arg.startswith("-"):
+            index += 1
+            continue
+        return index
+    return None
 
 
 def reject_shell_argv_escape(
@@ -201,17 +318,54 @@ def reject_shell_argv_escape(
         argv = shlex.split(command or "")
     except ValueError:
         return
-    root_path = pathlib.Path(str(root)).resolve() if root is not None else None
+    root_text = str(root) if root is not None else None
+    root_path = pathlib.Path(root_text).resolve() if root_text is not None else None
+    ssh_remote_tokens = _ssh_remote_tokens(argv, root_text)
+    if root_path is not None:
+        unquoted_command = _without_quoted_shell_spans(command or "")
+        for raw_windows_absolute in _WINDOWS_ABSOLUTE_BARE_TOKEN_RE.finditer(
+            unquoted_command
+        ):
+            candidate = raw_windows_absolute.group("token")
+            if _is_ssh_remote_windows_candidate(candidate, ssh_remote_tokens):
+                continue
+            _reject_windows_absolute_escape(
+                candidate,
+                root_text or "",
+            )
     for token in argv:
         normalised = token.replace("\\", "/")
         segments = normalised.split("/")
         if any(seg == ".." for seg in segments):
             raise ChioPathEscapeError(token, "dotdot_segment")
-        if root_path is not None and normalised.startswith("/"):
+        if root_text is not None:
+            for embedded_windows_absolute in _WINDOWS_ABSOLUTE_EMBEDDED_TOKEN_RE.finditer(
+                token
+            ):
+                candidate = embedded_windows_absolute.group("token")
+                if _is_ssh_remote_windows_candidate(candidate, ssh_remote_tokens):
+                    continue
+                _reject_windows_absolute_escape(
+                    candidate,
+                    root_text,
+                )
+        is_windows_absolute = (
+            len(normalised) >= 3
+            and normalised[0].isalpha()
+            and normalised[1] == ":"
+            and normalised[2] == "/"
+        ) or normalised.startswith("//")
+        if root_text is not None and is_windows_absolute:
+            if _is_ssh_remote_windows_candidate(token, ssh_remote_tokens):
+                continue
+            _reject_windows_absolute_escape(token, root_text)
+            continue
+        is_absolute_token = normalised.startswith("/")
+        if root_path is not None and is_absolute_token:
             try:
                 resolved = pathlib.Path(token).resolve()
-            except OSError:
-                continue
+            except OSError as exc:
+                raise ChioPathEscapeError(token, "outside_workspace") from exc
             try:
                 resolved.relative_to(root_path)
             except ValueError as exc:

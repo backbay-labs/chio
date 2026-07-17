@@ -65,8 +65,8 @@ jobs:
               red=1
             else
               IFS=$'\t' read -r _name status conclusion url <<< "${line}"
-              case "${conclusion}" in
-                success|neutral|skipped|pending)
+              case "${status}:${conclusion}" in
+                completed:success|completed:neutral|completed:skipped)
                   ;;
                 *)
                   red=1

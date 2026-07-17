@@ -30,9 +30,11 @@
 
 use std::fs;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
-use chio_kernel::{ExecutionNonceStore, KernelError, DEFAULT_EXECUTION_NONCE_STORE_CAPACITY};
+use chio_kernel::{
+    ExecutionNonceStore, KernelError, ReplayClockDirection, DEFAULT_EXECUTION_NONCE_STORE_CAPACITY,
+};
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, Connection, TransactionBehavior};
@@ -43,17 +45,65 @@ use rusqlite::{params, Connection, TransactionBehavior};
 /// the nonce would have expired anyway.
 const RETENTION_GRACE_SECS: i64 = 60;
 
+/// Maximum unexplained wall-clock skew accepted before nonce reservation
+/// fails with a typed clock anomaly and leaves durable replay state unchanged.
+pub const MAX_EXECUTION_NONCE_CLOCK_SKEW_SECS: u64 = 300;
+
+const MAX_EXECUTION_NONCE_CLOCK_SKEW_I64: i64 = 300;
+
 fn configure_pooled_connection(connection: &mut Connection) -> rusqlite::Result<()> {
     connection.execute_batch("PRAGMA busy_timeout = 5000;")
 }
 
-/// Opaque error type returned by the SQLite nonce store.
-#[derive(Debug)]
-pub struct SqliteExecutionNonceStoreError(String);
+/// Error returned by the SQLite nonce store.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SqliteExecutionNonceStoreError {
+    /// SQLite, pool, filesystem, configuration, or invariant failure.
+    Storage(String),
+    /// Wall-clock movement that cannot safely advance replay retention.
+    ClockAnomaly {
+        direction: ReplayClockDirection,
+        observed_unix_secs: i64,
+        high_water_unix_secs: i64,
+        max_tolerated_skew_secs: u64,
+    },
+}
+
+impl SqliteExecutionNonceStoreError {
+    fn storage(message: impl Into<String>) -> Self {
+        Self::Storage(message.into())
+    }
+
+    fn clock_anomaly(
+        direction: ReplayClockDirection,
+        observed_unix_secs: i64,
+        high_water_unix_secs: i64,
+    ) -> Self {
+        Self::ClockAnomaly {
+            direction,
+            observed_unix_secs,
+            high_water_unix_secs,
+            max_tolerated_skew_secs: MAX_EXECUTION_NONCE_CLOCK_SKEW_SECS,
+        }
+    }
+}
 
 impl std::fmt::Display for SqliteExecutionNonceStoreError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "sqlite execution nonce store error: {}", self.0)
+        match self {
+            Self::Storage(message) => {
+                write!(f, "sqlite execution nonce store error: {message}")
+            }
+            Self::ClockAnomaly {
+                direction,
+                observed_unix_secs,
+                high_water_unix_secs,
+                max_tolerated_skew_secs,
+            } => write!(
+                f,
+                "sqlite execution nonce replay clock {direction}: observed {observed_unix_secs}, high-water {high_water_unix_secs}, maximum tolerated skew {max_tolerated_skew_secs}s"
+            ),
+        }
     }
 }
 
@@ -61,19 +111,19 @@ impl std::error::Error for SqliteExecutionNonceStoreError {}
 
 impl From<rusqlite::Error> for SqliteExecutionNonceStoreError {
     fn from(e: rusqlite::Error) -> Self {
-        Self(e.to_string())
+        Self::Storage(e.to_string())
     }
 }
 
 impl From<std::io::Error> for SqliteExecutionNonceStoreError {
     fn from(e: std::io::Error) -> Self {
-        Self(e.to_string())
+        Self::Storage(e.to_string())
     }
 }
 
 impl From<r2d2::Error> for SqliteExecutionNonceStoreError {
     fn from(e: r2d2::Error) -> Self {
-        Self(e.to_string())
+        Self::Storage(e.to_string())
     }
 }
 
@@ -81,7 +131,18 @@ impl From<r2d2::Error> for SqliteExecutionNonceStoreError {
 pub struct SqliteExecutionNonceStore {
     pool: Pool<SqliteConnectionManager>,
     capacity: usize,
+    clock_anchor_wall: i64,
+    clock_anchor_monotonic: Instant,
 }
+
+/// Execution-nonce-store schema revision. Bump on every schema-affecting change.
+const EXECUTION_NONCE_STORE_SUPPORTED_SCHEMA_VERSION: i32 = 0;
+/// Stable key under which this store records its schema revision in the shared
+/// keyed metadata table, distinct from any co-located store's key.
+const EXECUTION_NONCE_STORE_SCHEMA_KEY: &str = "execution_nonce";
+/// Tables shipped before schema stamping existed, used to adopt a pre-stamping
+/// execution-nonce database rather than reject it as foreign.
+const EXECUTION_NONCE_STORE_LEGACY_ANCHOR_TABLES: &[&str] = &["chio_execution_nonces"];
 
 impl SqliteExecutionNonceStore {
     /// Open the store at the given path. Creates the parent directory
@@ -100,14 +161,20 @@ impl SqliteExecutionNonceStore {
     ) -> Result<Self, SqliteExecutionNonceStoreError> {
         Self::validate_capacity(capacity)?;
         let path = path.as_ref();
-        if let Some(parent) = path.parent() {
-            if !parent.as_os_str().is_empty() {
-                fs::create_dir_all(parent)?;
-            }
+        // Resolve any `file:` URI to its on-disk parent before creating it, so a
+        // URI-configured store creates the real backing directory rather than a
+        // bogus scheme-prefixed one.
+        if let Some(parent) = crate::sqlite_parent_dir_to_create(path) {
+            fs::create_dir_all(&parent)?;
         }
         let manager = SqliteConnectionManager::file(path).with_init(configure_pooled_connection);
         let pool = Pool::builder().max_size(8).build(manager)?;
-        let store = Self { pool, capacity };
+        let store = Self {
+            pool,
+            capacity,
+            clock_anchor_wall: now_secs(),
+            clock_anchor_monotonic: Instant::now(),
+        };
         store.run_migrations()?;
         store.validate_retained_row_capacity()?;
         Ok(store)
@@ -125,7 +192,12 @@ impl SqliteExecutionNonceStore {
         Self::validate_capacity(capacity)?;
         let manager = SqliteConnectionManager::memory().with_init(configure_pooled_connection);
         let pool = Pool::builder().max_size(1).build(manager)?;
-        let store = Self { pool, capacity };
+        let store = Self {
+            pool,
+            capacity,
+            clock_anchor_wall: now_secs(),
+            clock_anchor_monotonic: Instant::now(),
+        };
         store.run_migrations()?;
         store.validate_retained_row_capacity()?;
         Ok(store)
@@ -133,18 +205,24 @@ impl SqliteExecutionNonceStore {
 
     fn validate_capacity(capacity: usize) -> Result<(), SqliteExecutionNonceStoreError> {
         if capacity == 0 {
-            return Err(SqliteExecutionNonceStoreError(
-                "execution nonce store capacity must be greater than zero".to_string(),
+            return Err(SqliteExecutionNonceStoreError::storage(
+                "execution nonce store capacity must be greater than zero",
             ));
         }
         Ok(())
     }
 
     fn run_migrations(&self) -> Result<(), SqliteExecutionNonceStoreError> {
-        let mut conn = self
-            .pool
-            .get()
-            .map_err(|e| SqliteExecutionNonceStoreError(format!("pool acquire: {e}")))?;
+        let mut conn = self.pool.get().map_err(|error| {
+            SqliteExecutionNonceStoreError::storage(format!("pool acquire: {error}"))
+        })?;
+        crate::check_schema_version(
+            &conn,
+            EXECUTION_NONCE_STORE_SCHEMA_KEY,
+            EXECUTION_NONCE_STORE_SUPPORTED_SCHEMA_VERSION,
+            EXECUTION_NONCE_STORE_LEGACY_ANCHOR_TABLES,
+        )
+        .map_err(|error| SqliteExecutionNonceStoreError::storage(error.to_string()))?;
         conn.execute_batch(
             r#"
             PRAGMA journal_mode = WAL;
@@ -177,29 +255,34 @@ impl SqliteExecutionNonceStore {
             );
             "#,
         )?;
+
         let capacity = i64::try_from(self.capacity).map_err(|_| {
-            SqliteExecutionNonceStoreError(
-                "execution nonce store capacity exceeds SQLite integer range".to_string(),
+            SqliteExecutionNonceStoreError::storage(
+                "execution nonce store capacity exceeds SQLite integer range",
             )
         })?;
         tx.execute(
             "INSERT INTO chio_execution_nonce_limits (singleton, capacity) VALUES (1, ?1) ON CONFLICT(singleton) DO NOTHING",
             params![capacity],
         )?;
+
+        let migration_now = self.expected_wall_now();
+        let maximum_seed = migration_now.saturating_add(MAX_EXECUTION_NONCE_CLOCK_SKEW_I64);
         tx.execute(
             r#"
             INSERT INTO chio_execution_nonce_clock (singleton, wall_clock_high_water)
-            SELECT 1, MAX(?1, COALESCE(MAX(consumed_at), ?2))
+            SELECT 1, MAX(?1, MIN(COALESCE(MAX(consumed_at), ?1), ?2))
             FROM chio_execution_nonces
             WHERE true
-            ON CONFLICT(singleton) DO UPDATE SET
-                wall_clock_high_water = MAX(
-                    chio_execution_nonce_clock.wall_clock_high_water,
-                    excluded.wall_clock_high_water
-                )
+            ON CONFLICT(singleton) DO NOTHING
             "#,
-            params![now_secs(), i64::MIN],
+            params![migration_now, maximum_seed],
         )?;
+        tx.execute(
+            "UPDATE chio_execution_nonce_clock SET wall_clock_high_water = MAX(wall_clock_high_water, ?1) WHERE singleton = 1",
+            params![migration_now],
+        )?;
+
         let has_dispatch_reservation_id = {
             let mut statement = tx.prepare("PRAGMA table_info(chio_execution_nonces)")?;
             let columns = statement.query_map([], |row| row.get::<_, String>(1))?;
@@ -219,31 +302,39 @@ impl SqliteExecutionNonceStore {
             )?;
         }
         tx.commit()?;
+
+        crate::stamp_schema_version(
+            &conn,
+            EXECUTION_NONCE_STORE_SCHEMA_KEY,
+            EXECUTION_NONCE_STORE_SUPPORTED_SCHEMA_VERSION,
+        )
+        .map_err(|error| SqliteExecutionNonceStoreError::storage(error.to_string()))?;
         Ok(())
     }
 
     fn validate_retained_row_capacity(&self) -> Result<(), SqliteExecutionNonceStoreError> {
-        let mut conn = self
-            .pool
-            .get()
-            .map_err(|e| SqliteExecutionNonceStoreError(format!("pool acquire: {e}")))?;
+        let mut conn = self.pool.get().map_err(|error| {
+            SqliteExecutionNonceStoreError::storage(format!("pool acquire: {error}"))
+        })?;
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let wall_clock_high_water = tx.query_row(
             "SELECT wall_clock_high_water FROM chio_execution_nonce_clock WHERE singleton = 1",
             [],
             |row| row.get::<_, i64>(0),
         )?;
+        self.validate_persisted_clock(wall_clock_high_water)?;
         tx.execute(
             "DELETE FROM chio_execution_nonces WHERE expires_at <= ?1",
             params![wall_clock_high_water],
         )?;
+
         let retained_rows =
             tx.query_row("SELECT COUNT(*) FROM chio_execution_nonces", [], |row| {
                 row.get::<_, i64>(0)
             })?;
         let retained_rows = usize::try_from(retained_rows).map_err(|_| {
-            SqliteExecutionNonceStoreError(
-                "retained execution nonce row count cannot be represented as usize".to_string(),
+            SqliteExecutionNonceStoreError::storage(
+                "retained execution nonce row count cannot be represented as usize",
             )
         })?;
         let persisted_capacity = tx.query_row(
@@ -251,23 +342,146 @@ impl SqliteExecutionNonceStore {
             [],
             |row| row.get::<_, i64>(0),
         )?;
-        tx.commit()?;
+        let requested_capacity = i64::try_from(self.capacity).map_err(|_| {
+            SqliteExecutionNonceStoreError::storage(
+                "execution nonce store capacity exceeds SQLite integer range",
+            )
+        })?;
+
+        if requested_capacity < persisted_capacity {
+            return Err(SqliteExecutionNonceStoreError::storage(format!(
+                "execution nonce capacity cannot shrink from {persisted_capacity} to {requested_capacity}"
+            )));
+        }
         if retained_rows > self.capacity {
-            return Err(SqliteExecutionNonceStoreError(format!(
+            return Err(SqliteExecutionNonceStoreError::storage(format!(
                 "configured capacity {} is below the {retained_rows} retained execution nonce rows",
                 self.capacity
             )));
         }
-        let requested_capacity = i64::try_from(self.capacity).map_err(|_| {
-            SqliteExecutionNonceStoreError(
-                "execution nonce store capacity exceeds SQLite integer range".to_string(),
-            )
-        })?;
-        if persisted_capacity != requested_capacity {
-            return Err(SqliteExecutionNonceStoreError(format!(
-                "persisted execution nonce capacity {persisted_capacity} does not match requested capacity {requested_capacity}"
+        if requested_capacity > persisted_capacity {
+            let changed = tx.execute(
+                "UPDATE chio_execution_nonce_limits SET capacity = ?1 WHERE singleton = 1 AND capacity = ?2",
+                params![requested_capacity, persisted_capacity],
+            )?;
+            if changed != 1 {
+                return Err(SqliteExecutionNonceStoreError::storage(
+                    "execution nonce capacity changed during serialized reconfiguration",
+                ));
+            }
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    fn expected_wall_now(&self) -> i64 {
+        let elapsed =
+            i64::try_from(self.clock_anchor_monotonic.elapsed().as_secs()).unwrap_or(i64::MAX);
+        self.clock_anchor_wall.saturating_add(elapsed)
+    }
+
+    fn validate_persisted_clock(
+        &self,
+        wall_clock_high_water: i64,
+    ) -> Result<(), SqliteExecutionNonceStoreError> {
+        let expected = self.expected_wall_now();
+        if wall_clock_high_water > expected.saturating_add(MAX_EXECUTION_NONCE_CLOCK_SKEW_I64) {
+            return Err(SqliteExecutionNonceStoreError::clock_anomaly(
+                ReplayClockDirection::Rollback,
+                expected,
+                wall_clock_high_water,
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_observed_clock(
+        &self,
+        observed: i64,
+        wall_clock_high_water: i64,
+    ) -> Result<(), SqliteExecutionNonceStoreError> {
+        let expected = self.expected_wall_now();
+        if observed > expected.saturating_add(MAX_EXECUTION_NONCE_CLOCK_SKEW_I64) {
+            return Err(SqliteExecutionNonceStoreError::clock_anomaly(
+                ReplayClockDirection::ForwardJump,
+                observed,
+                expected,
+            ));
+        }
+        if observed < expected.saturating_sub(MAX_EXECUTION_NONCE_CLOCK_SKEW_I64) {
+            return Err(SqliteExecutionNonceStoreError::clock_anomaly(
+                ReplayClockDirection::Rollback,
+                observed,
+                expected,
+            ));
+        }
+        if observed < wall_clock_high_water {
+            return Err(SqliteExecutionNonceStoreError::clock_anomaly(
+                ReplayClockDirection::Rollback,
+                observed,
+                wall_clock_high_water,
+            ));
+        }
+        Ok(())
+    }
+
+    /// Deliberately lower a latched clock high-water after the host clock has
+    /// been corrected. The exact old value is a compare-and-swap guard, and
+    /// recovery never deletes retained nonce rows.
+    pub fn recover_clock_high_water(
+        path: impl AsRef<Path>,
+        expected_high_water: i64,
+        corrected_high_water: i64,
+    ) -> Result<(), SqliteExecutionNonceStoreError> {
+        let path = path.as_ref();
+        let filesystem_path = path
+            .to_str()
+            .map(crate::sqlite_uri_filesystem_path)
+            .unwrap_or_else(|| path.to_path_buf());
+        if !filesystem_path.is_file() {
+            return Err(SqliteExecutionNonceStoreError::storage(format!(
+                "execution nonce database does not exist: {}",
+                filesystem_path.display()
             )));
         }
+
+        let observed_now = now_secs();
+        let minimum_corrected = observed_now.saturating_sub(MAX_EXECUTION_NONCE_CLOCK_SKEW_I64);
+        let maximum_corrected = observed_now.saturating_add(MAX_EXECUTION_NONCE_CLOCK_SKEW_I64);
+        if corrected_high_water < minimum_corrected || corrected_high_water > maximum_corrected {
+            return Err(SqliteExecutionNonceStoreError::storage(format!(
+                "corrected high-water {corrected_high_water} is not within the tolerated skew of current wall time {observed_now}"
+            )));
+        }
+        if corrected_high_water >= expected_high_water {
+            return Err(SqliteExecutionNonceStoreError::storage(
+                "clock recovery must lower the expected high-water",
+            ));
+        }
+
+        let mut connection = Connection::open(path)?;
+        configure_pooled_connection(&mut connection)?;
+        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let actual_high_water = transaction.query_row(
+            "SELECT wall_clock_high_water FROM chio_execution_nonce_clock WHERE singleton = 1",
+            [],
+            |row| row.get::<_, i64>(0),
+        )?;
+        if actual_high_water != expected_high_water {
+            return Err(SqliteExecutionNonceStoreError::storage(format!(
+                "clock recovery compare-and-swap failed: expected {expected_high_water}, found {actual_high_water}"
+            )));
+        }
+        let changed = transaction.execute(
+            "UPDATE chio_execution_nonce_clock SET wall_clock_high_water = ?1 WHERE singleton = 1 AND wall_clock_high_water = ?2",
+            params![corrected_high_water, expected_high_water],
+        )?;
+        if changed != 1 {
+            return Err(SqliteExecutionNonceStoreError::storage(
+                "clock recovery compare-and-swap did not update the high-water",
+            ));
+        }
+        transaction.commit()?;
         Ok(())
     }
 
@@ -325,14 +539,13 @@ impl SqliteExecutionNonceStore {
         dispatch_reservation_id: Option<&str>,
     ) -> Result<bool, SqliteExecutionNonceStoreError> {
         if nonce_id.trim().is_empty() || nonce_id.trim() != nonce_id {
-            return Err(SqliteExecutionNonceStoreError(
-                "nonce_id must be non-empty and unpadded".to_string(),
+            return Err(SqliteExecutionNonceStoreError::storage(
+                "nonce_id must be non-empty and unpadded",
             ));
         }
-        let mut conn = self
-            .pool
-            .get()
-            .map_err(|e| SqliteExecutionNonceStoreError(format!("pool acquire: {e}")))?;
+        let mut conn = self.pool.get().map_err(|error| {
+            SqliteExecutionNonceStoreError::storage(format!("pool acquire: {error}"))
+        })?;
 
         let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
 
@@ -341,17 +554,13 @@ impl SqliteExecutionNonceStore {
             [],
             |row| row.get::<_, i64>(0),
         )?;
-        let clock_rolled_back = now < wall_clock_high_water;
-        let updated_high_water = wall_clock_high_water.max(now);
+        self.validate_observed_clock(now, wall_clock_high_water)?;
+        let updated_high_water = now;
         if updated_high_water != wall_clock_high_water {
             tx.execute(
                 "UPDATE chio_execution_nonce_clock SET wall_clock_high_water = ?1 WHERE singleton = 1",
                 params![updated_high_water],
             )?;
-        }
-        if clock_rolled_back {
-            tx.commit()?;
-            return Ok(false);
         }
 
         let prune_at = if let Some(signed_expires_at) = signed_expires_at {
@@ -393,7 +602,7 @@ impl SqliteExecutionNonceStore {
         )?;
         if retained_rows >= capacity {
             tx.commit()?;
-            return Err(SqliteExecutionNonceStoreError(format!(
+            return Err(SqliteExecutionNonceStoreError::storage(format!(
                 "execution nonce store capacity {} exhausted; denying reservation fail-closed",
                 capacity
             )));
@@ -430,15 +639,37 @@ fn now_secs() -> i64 {
     .unwrap_or(i64::MAX)
 }
 
+fn kernel_store_error(error: SqliteExecutionNonceStoreError) -> KernelError {
+    match error {
+        SqliteExecutionNonceStoreError::ClockAnomaly {
+            direction,
+            observed_unix_secs,
+            high_water_unix_secs,
+            max_tolerated_skew_secs,
+        } => KernelError::ReplayClockAnomaly {
+            store: "sqlite_execution_nonce_store",
+            direction,
+            observed_unix_secs,
+            high_water_unix_secs,
+            max_tolerated_skew_secs,
+        },
+        SqliteExecutionNonceStoreError::Storage(message) => {
+            KernelError::Internal(format!("sqlite execution nonce store: {message}"))
+        }
+    }
+}
+
 impl ExecutionNonceStore for SqliteExecutionNonceStore {
     fn reserve(&self, nonce_id: &str) -> Result<bool, KernelError> {
-        // Compatibility path for callers without a signed expiry. Its fixed
-        // grace is a local retention contract only; signed execution-nonce
-        // verification uses `reserve_until` with the artifact's `expires_at`.
+        // Back-compat path: callers that do not know the nonce's signed
+        // expiry estimate the kernel default TTL and delegate to
+        // `reserve_until` so the consumed marker survives the full
+        // cryptographic validity window.
         let now = now_secs();
-        let expires_at = now.saturating_add(RETENTION_GRACE_SECS);
-        self.try_reserve(nonce_id, now, expires_at)
-            .map_err(|e| KernelError::Internal(format!("sqlite execution nonce store: {e}")))
+        let estimated_nonce_expiry = now.saturating_add(
+            i64::try_from(chio_kernel::DEFAULT_EXECUTION_NONCE_TTL_SECS).unwrap_or(0),
+        );
+        self.reserve_until(nonce_id, estimated_nonce_expiry)
     }
 
     fn reserve_until(&self, nonce_id: &str, nonce_expires_at: i64) -> Result<bool, KernelError> {
@@ -453,7 +684,7 @@ impl ExecutionNonceStore for SqliteExecutionNonceStore {
         let baseline = now.saturating_add(RETENTION_GRACE_SECS);
         let expires_at = retention.max(baseline);
         self.try_reserve_signed_entry(nonce_id, now, nonce_expires_at, expires_at, None)
-            .map_err(|e| KernelError::Internal(format!("sqlite execution nonce store: {e}")))
+            .map_err(kernel_store_error)
     }
 
     fn supports_dispatch_reservations(&self) -> bool {
@@ -476,7 +707,7 @@ impl ExecutionNonceStore for SqliteExecutionNonceStore {
             retention.max(baseline),
             Some(reservation_id),
         )
-        .map_err(|e| KernelError::Internal(format!("sqlite execution nonce store: {e}")))
+        .map_err(kernel_store_error)
     }
 
     fn rollback_dispatch_reservation(
@@ -550,8 +781,8 @@ mod tests {
         assert!(store
             .try_reserve(
                 "capacity-c",
-                now.saturating_add(1_000),
-                now.saturating_add(1_100),
+                now.saturating_add(200),
+                now.saturating_add(300),
             )
             .unwrap());
     }
@@ -699,75 +930,100 @@ mod tests {
         assert!(store.try_reserve("a", now, now.saturating_add(30)).unwrap());
         // The explicit local API preserves caller-controlled prune and reuse.
         assert!(store
-            .try_reserve("a", now.saturating_add(1_000), now.saturating_add(1_030))
+            .try_reserve("a", now.saturating_add(60), now.saturating_add(90))
             .unwrap());
     }
 
     #[test]
-    fn high_water_survives_reopen_and_closes_the_rollback_interval() {
+    fn forward_jump_is_typed_and_latched_clock_is_recoverable() {
         let path = unique_db_path("chio-exec-nonce-high-water");
-        let base_time;
+        let base_time = now_secs();
+        let high_water_before;
         {
             let store = SqliteExecutionNonceStore::open(&path).unwrap();
-            base_time = now_secs();
             assert!(store
                 .try_reserve_signed_entry(
                     "used",
                     base_time,
-                    base_time.saturating_add(5),
-                    base_time.saturating_add(10),
+                    base_time.saturating_add(10_000),
+                    base_time.saturating_add(10_060),
                     None,
                 )
                 .unwrap());
-            assert!(store
-                .try_reserve(
-                    "forward-local",
-                    base_time.saturating_add(1_000),
-                    base_time.saturating_add(2_000),
-                )
-                .unwrap());
-            let conn = store.pool.get().unwrap();
-            let used_rows = conn
+            high_water_before = store
+                .pool
+                .get()
+                .unwrap()
                 .query_row(
-                    "SELECT COUNT(*) FROM chio_execution_nonces WHERE nonce_id = 'used'",
+                    "SELECT wall_clock_high_water FROM chio_execution_nonce_clock WHERE singleton = 1",
                     [],
                     |row| row.get::<_, i64>(0),
                 )
                 .unwrap();
-            assert_eq!(used_rows, 0);
+            let error = store
+                .try_reserve(
+                    "forward-local",
+                    base_time.saturating_add(MAX_EXECUTION_NONCE_CLOCK_SKEW_I64 + 1),
+                    base_time.saturating_add(20_000),
+                )
+                .unwrap_err();
+            assert!(matches!(
+                error,
+                SqliteExecutionNonceStoreError::ClockAnomaly {
+                    direction: ReplayClockDirection::ForwardJump,
+                    ..
+                }
+            ));
+            let conn = store.pool.get().unwrap();
+            let high_water_after = conn
+                .query_row(
+                    "SELECT wall_clock_high_water FROM chio_execution_nonce_clock WHERE singleton = 1",
+                    [],
+                    |row| row.get::<_, i64>(0),
+                )
+                .unwrap();
+            assert_eq!(high_water_after, high_water_before);
         }
 
+        let latched_high_water = base_time.saturating_add(1_000);
+        let connection = Connection::open(&path).unwrap();
+        connection
+            .execute(
+                "UPDATE chio_execution_nonce_clock SET wall_clock_high_water = ?1 WHERE singleton = 1",
+                params![latched_high_water],
+            )
+            .unwrap();
+        drop(connection);
+
+        let error = match SqliteExecutionNonceStore::open(&path) {
+            Ok(_) => panic!("a latched future high-water must require recovery"),
+            Err(error) => error,
+        };
+        assert!(matches!(
+            error,
+            SqliteExecutionNonceStoreError::ClockAnomaly {
+                direction: ReplayClockDirection::Rollback,
+                high_water_unix_secs,
+                ..
+            } if high_water_unix_secs == latched_high_water
+        ));
+
+        let corrected_high_water = now_secs();
+        SqliteExecutionNonceStore::recover_clock_high_water(
+            &path,
+            latched_high_water,
+            corrected_high_water,
+        )
+        .unwrap();
         let reopened = SqliteExecutionNonceStore::open(&path).unwrap();
         assert!(!reopened
-            .try_reserve_signed_entry(
-                "used",
-                base_time.saturating_add(500),
-                base_time.saturating_add(3_000),
-                base_time.saturating_add(3_000),
-                None,
-            )
-            .unwrap());
-        assert!(!reopened
-            .try_reserve(
-                "local-during-rollback",
-                base_time.saturating_add(500),
-                base_time.saturating_add(3_000),
-            )
-            .unwrap());
-        assert!(reopened
-            .try_reserve_signed_entry(
-                "caught-up",
-                base_time.saturating_add(1_000),
-                base_time.saturating_add(3_000),
-                base_time.saturating_add(3_000),
-                None,
-            )
+            .try_reserve("used", now_secs(), base_time.saturating_add(10_060),)
             .unwrap());
         let _ = fs::remove_file(path);
     }
 
     #[test]
-    fn legacy_database_seeds_high_water_from_existing_consumption() {
+    fn legacy_database_caps_high_water_seed_from_existing_consumption() {
         let path = unique_db_path("chio-exec-nonce-legacy-high-water");
         let now = now_secs();
         {
@@ -802,18 +1058,46 @@ mod tests {
                 |row| row.get::<_, i64>(0),
             )
             .unwrap();
-        assert_eq!(high_water, now.saturating_add(1_000));
+        assert!(high_water >= now);
+        assert!(
+            high_water <= now_secs().saturating_add(MAX_EXECUTION_NONCE_CLOCK_SKEW_I64),
+            "legacy seed {high_water} must stay within the tolerated clock skew"
+        );
         drop(conn);
-        assert!(!store
-            .try_reserve_signed_entry(
-                "new-signed",
-                now.saturating_add(500),
-                now.saturating_add(3_000),
-                now.saturating_add(3_000),
-                None,
-            )
+        let error = store
+            .try_reserve("legacy-used", now_secs(), now.saturating_add(2_000))
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            SqliteExecutionNonceStoreError::ClockAnomaly {
+                direction: ReplayClockDirection::Rollback,
+                ..
+            }
+        ));
+        drop(store);
+
+        SqliteExecutionNonceStore::recover_clock_high_water(&path, high_water, now_secs()).unwrap();
+        let reopened = SqliteExecutionNonceStore::open(&path).unwrap();
+        assert!(!reopened
+            .try_reserve("legacy-used", now_secs(), now.saturating_add(2_000))
             .unwrap());
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn typed_store_clock_anomaly_maps_to_typed_kernel_error() {
+        let error =
+            SqliteExecutionNonceStoreError::clock_anomaly(ReplayClockDirection::Rollback, 10, 20);
+        assert!(matches!(
+            kernel_store_error(error),
+            KernelError::ReplayClockAnomaly {
+                store: "sqlite_execution_nonce_store",
+                direction: ReplayClockDirection::Rollback,
+                observed_unix_secs: 10,
+                high_water_unix_secs: 20,
+                max_tolerated_skew_secs: MAX_EXECUTION_NONCE_CLOCK_SKEW_SECS,
+            }
+        ));
     }
 
     #[test]
@@ -862,16 +1146,10 @@ mod tests {
     }
 
     #[test]
-    fn independently_opened_handles_cannot_change_the_persisted_capacity() {
+    fn independently_opened_handles_can_only_increase_persisted_capacity() {
         let path = unique_db_path("chio-exec-nonce-capacity-handle-mismatch");
         let store = SqliteExecutionNonceStore::open_with_capacity(&path, 1).unwrap();
-        let error = match SqliteExecutionNonceStore::open_with_capacity(&path, 2) {
-            Ok(_) => panic!("a second handle must not weaken the persisted capacity"),
-            Err(error) => error,
-        };
-        assert!(error
-            .to_string()
-            .contains("does not match requested capacity"));
+        let larger = SqliteExecutionNonceStore::open_with_capacity(&path, 2).unwrap();
 
         let now = now_secs();
         assert!(store
@@ -879,7 +1157,14 @@ mod tests {
             .unwrap());
         assert!(store
             .try_reserve("persisted-limit-b", now, now.saturating_add(300))
-            .is_err());
+            .unwrap());
+        drop(larger);
+
+        let error = match SqliteExecutionNonceStore::open_with_capacity(&path, 1) {
+            Ok(_) => panic!("a later handle must not shrink the persisted capacity"),
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains("cannot shrink from 2 to 1"));
         drop(store);
         let _ = fs::remove_file(path);
     }
@@ -903,7 +1188,7 @@ mod tests {
             Ok(_) => panic!("store must not evict retained rows to satisfy a smaller capacity"),
             Err(error) => error,
         };
-        assert!(error.to_string().contains("below the 2 retained"));
+        assert!(error.to_string().contains("cannot shrink from 2 to 1"));
 
         let reopened = SqliteExecutionNonceStore::open_with_capacity(&path, 2).unwrap();
         let reopen_now = now_secs();

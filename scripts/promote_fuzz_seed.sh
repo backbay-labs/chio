@@ -287,6 +287,10 @@ OWNER_CRATE="$(basename "$OWNER_PATH")"
 CRATE_UNDERSCORED="$(printf '%s' "$OWNER_CRATE" | tr '-' '_')"
 FUZZ_FN="fuzz_${TARGET_IDENT}"
 
+# Owner crates live under crates/<group>/<name>; walk up to the repo root.
+OWNER_DEPTH="$(printf '%s' "$OWNER_PATH" | awk -F/ '{print NF}')"
+CORPUS_INCLUDE_PREFIX="$(printf '../%.0s' $(seq 1 "$OWNER_DEPTH"))"
+
 # Detect whether the owner crate has proptest in [dev-dependencies] so we
 # do not emit a body that fails to compile.
 OWNER_CARGO_TOML="$OWNER_DIR/Cargo.toml"
@@ -317,7 +321,7 @@ use ${CRATE_UNDERSCORED}::fuzz::${FUZZ_FN};
 fn regression_${TARGET_IDENT}_${SHA16}() {
     let seed: &[u8] = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../fuzz/corpus/$TARGET/$SHA.bin",
+        "/${CORPUS_INCLUDE_PREFIX}fuzz/corpus/$TARGET/$SHA.bin",
     ));
     // The fuzz entry point swallows recoverable errors and only panics on
     // invariant breaks; calling it directly is the stable surface.
@@ -342,7 +346,7 @@ use proptest::prelude::*;
 fn regression_${TARGET_IDENT}_${SHA16}() {
     let seed: &[u8] = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../fuzz/corpus/$TARGET/$SHA.bin",
+        "/${CORPUS_INCLUDE_PREFIX}fuzz/corpus/$TARGET/$SHA.bin",
     ));
     ${FUZZ_FN}(seed);
 }
@@ -374,7 +378,7 @@ use ${CRATE_UNDERSCORED}::fuzz::${FUZZ_FN};
 fn regression_${TARGET_IDENT}_${SHA16}() {
     let seed: &[u8] = include_bytes!(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../fuzz/corpus/$TARGET/$SHA.bin",
+        "/${CORPUS_INCLUDE_PREFIX}fuzz/corpus/$TARGET/$SHA.bin",
     ));
     ${FUZZ_FN}(seed);
 }

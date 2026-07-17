@@ -24,9 +24,10 @@ impl ChioKernel {
         client: &mut C,
         extra_metadata: Option<serde_json::Value>,
     ) -> Result<ToolCallResponse, KernelError> {
-        let receipt_context = EvaluationReceiptContext::new(
-            self.resolve_tenant_id_for_session(Some(&parent_context.session_id)),
-        );
+        let tenant_id = self.resolve_tenant_id_for_session(Some(&parent_context.session_id));
+        let _tenant_scope =
+            self.scope_receipt_tenant_id_for_request(&request.request_id, tenant_id.clone());
+        let receipt_context = EvaluationReceiptContext::new(tenant_id);
         self.evaluate_tool_call_with_nested_flow_client_core(
             parent_context,
             request,
@@ -45,7 +46,7 @@ impl ChioKernel {
         extra_metadata: Option<serde_json::Value>,
         mut receipt_context: EvaluationReceiptContext,
     ) -> Result<ToolCallResponse, KernelError> {
-        let runtime_admission_input_metadata = extra_metadata;
+        let runtime_admission_input_metadata = extra_metadata.clone();
         let sanitized_metadata =
             sanitize_external_receipt_metadata(runtime_admission_input_metadata.clone());
         let safe_external_metadata = strip_external_receipt_provenance(sanitized_metadata.clone());
@@ -68,6 +69,39 @@ impl ChioKernel {
                 None,
                 safe_external_metadata.clone(),
             );
+        }
+
+        // RSS soft ceiling: shed new admissions before the OS OOM-kills the
+        // mediator. The nested-flow path gates on the same atomic-load fast
+        // path as the top-level evaluate, right after the emergency stop, so
+        // sampling/elicitation-bearing tool calls cannot allocate and run after
+        // the sampler raised the soft-ceiling flag.
+        if self.is_rss_shedding() {
+            warn!(
+                request_id = %request.request_id,
+                "rss soft ceiling exceeded -- shedding evaluate_tool_call (nested flow)"
+            );
+            // Receipt-totality: persist a signed deny receipt naming the shed
+            // resource, like the emergency-stop fast path above, so the overload
+            // denial has the same audit trail as every other admission decision.
+            // The shed still returns Overloaded so the tower load-shed edge
+            // surfaces backpressure; a receipt-persist failure is logged but must
+            // not mask the shed decision (fail-closed).
+            if let Err(receipt_error) = self.record_overload_shed_deny_receipt(
+                request,
+                crate::OverloadResource::Allocation,
+                now,
+                extra_metadata.clone(),
+            ) {
+                warn!(
+                    request_id = %request.request_id,
+                    reason = %redacted!(&receipt_error.to_string()),
+                    "failed to persist overload-shed deny receipt"
+                );
+            }
+            return Err(KernelError::Overloaded {
+                resource: crate::OverloadResource::Allocation,
+            });
         }
 
         // The pre-dispatch receipt-version admission gate must run on the
@@ -96,6 +130,10 @@ impl ChioKernel {
             }
         };
         receipt_context.set_federation_admission(receipt_admission.clone());
+        let _federation_scope = self.scope_receipt_federation_admission_for_request(
+            &request.request_id,
+            receipt_admission.clone(),
+        );
 
         let extra_metadata = match normalize_external_receipt_metadata(sanitized_metadata) {
             Ok(metadata) => metadata,
@@ -223,12 +261,11 @@ impl ChioKernel {
             return self.build_deny_response(request, &receipt_context, &msg, now, None);
         }
 
-        if let Err(error) = self.record_observed_capability_snapshot(cap) {
-            let msg = error.to_string();
-            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "failed to persist capability lineage");
-            return self.build_deny_response(request, &receipt_context, &msg, now, None);
-        }
-
+        // Confirm durable persistence is healthy BEFORE the first writer-backed
+        // metadata write below. Recording capability lineage runs through the
+        // receipt writer, so a serving-closed writer must be denied at these
+        // gates first; otherwise the lineage write fails against a dead writer and
+        // surfaces its own error (or a 500) instead of the clean fail-closed deny.
         if let Err(error) = self.ensure_federated_receipt_persistence_ready(
             request.federated_origin_kernel_id.as_deref(),
         ) {
@@ -237,6 +274,22 @@ impl ChioKernel {
                 request_id = %request.request_id,
                 reason = %redacted!(&msg),
                 "federated receipt persistence unavailable pre-dispatch (nested flow)"
+            );
+            return self.build_receipt_persistence_failclosed_deny_response_with_metadata(
+                request,
+                &receipt_context,
+                &msg,
+                now,
+                None,
+                None,
+            );
+        }
+        if let Err(error) = self.ensure_tcb_locks_healthy() {
+            let msg = error.to_string();
+            warn!(
+                request_id = %request.request_id,
+                reason = %redacted!(&msg),
+                "tcb lock poisoned pre-dispatch (nested flow)"
             );
             return self.build_receipt_persistence_failclosed_deny_response_with_metadata(
                 request,
@@ -262,6 +315,30 @@ impl ChioKernel {
                 None,
                 None,
             );
+        }
+        if let Err(error) = self.ensure_revocation_durability_ready() {
+            let msg = error.to_string();
+            warn!(
+                request_id = %request.request_id,
+                reason = %redacted!(&msg),
+                "revocation durability unavailable pre-dispatch (nested flow)"
+            );
+            return self.build_receipt_persistence_failclosed_deny_response_with_metadata(
+                request,
+                &receipt_context,
+                &msg,
+                now,
+                None,
+                None,
+            );
+        }
+
+        // Persistence is confirmed healthy, so the writer-backed lineage write can
+        // run without racing a dead writer.
+        if let Err(error) = self.record_observed_capability_snapshot(cap) {
+            let msg = error.to_string();
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "failed to persist capability lineage");
+            return self.build_deny_response(request, &receipt_context, &msg, now, None);
         }
 
         let (matched_grant_index, budget_mutation) = match self.check_and_increment_budget(
@@ -347,29 +424,131 @@ impl ChioKernel {
                 );
             }
         };
+        // A receipt-store read error while resolving the parent call-chain
+        // receipt fails closed, but check_and_increment_budget above already
+        // consumed the pre-execution budget (invocation count / monetary hold).
+        // Route the error through the same reversal + deny path the governed and
+        // guard denial branches use so a transient store failure never burns
+        // quota or holds funds for a call that never dispatches.
+        let governed_call_chain_receipt_evidence = match self.governed_call_chain_receipt_evidence(
+            request,
+            cap,
+            Some(parent_context),
+            validated_governed_admission
+                .as_ref()
+                .and_then(|admission| admission.call_chain_proof.clone()),
+        ) {
+            Ok(evidence) => evidence,
+            Err(error) => {
+                let msg = error.to_string();
+                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "governed call-chain evidence lookup failed (nested flow)");
+                let cleanup = self.cleanup_pre_admission_budget_state(
+                    request,
+                    cap,
+                    &budget_mutation,
+                    extra_metadata.clone(),
+                    None,
+                );
+                if let (Some(charge), Some(reverse)) =
+                    (budget_mutation.charge_result(), cleanup.reverse.as_ref())
+                {
+                    return self.build_pre_execution_monetary_deny_response_with_metadata(
+                        request,
+                        &receipt_context,
+                        &msg,
+                        now,
+                        charge,
+                        reverse.committed_cost_units_after,
+                        cap,
+                        self.merge_budget_receipt_metadata(
+                            cleanup.metadata,
+                            self.budget_execution_receipt_metadata(
+                                charge,
+                                Some(("reversed", reverse)),
+                            ),
+                        ),
+                    );
+                }
+                return self.build_deny_response_with_metadata(
+                    request,
+                    &receipt_context,
+                    &msg,
+                    now,
+                    Some(matched_grant_index),
+                    cleanup.metadata,
+                );
+            }
+        };
         receipt_context.set_governed_evidence(
-            self.governed_call_chain_receipt_evidence(
-                request,
-                cap,
-                Some(parent_context),
-                validated_governed_admission
-                    .as_ref()
-                    .and_then(|admission| admission.call_chain_proof.clone()),
-            ),
+            governed_call_chain_receipt_evidence,
             validated_governed_admission
                 .as_ref()
                 .and_then(|admission| admission.verified_runtime_attestation.clone()),
         );
 
-        let session_roots =
-            self.session_enforceable_filesystem_root_paths_owned(&parent_context.session_id)?;
+        // The session's enforceable filesystem roots scope the guards below. A
+        // parent session that was closed or evicted concurrently (or a poisoned
+        // session lock) surfaces here as an error, but check_and_increment_budget
+        // above already consumed the pre-execution budget (invocation count /
+        // monetary hold). Route the error through the same reversal + deny path
+        // the governed, call-chain, and guard denial branches use so a transient
+        // session-lookup failure never burns quota or holds funds for a call that
+        // never dispatches. The top-level async path is unaffected: it receives
+        // session_filesystem_roots as a parameter.
+        let session_roots = match self
+            .session_enforceable_filesystem_root_paths_owned(&parent_context.session_id)
+        {
+            Ok(roots) => roots,
+            Err(error) => {
+                let msg = error.to_string();
+                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "session filesystem roots lookup failed pre-dispatch (nested flow)");
+                let cleanup = self.cleanup_pre_admission_budget_state(
+                    request,
+                    cap,
+                    &budget_mutation,
+                    extra_metadata.clone(),
+                    None,
+                );
+                if let (Some(charge), Some(reverse)) =
+                    (budget_mutation.charge_result(), cleanup.reverse.as_ref())
+                {
+                    return self.build_pre_execution_monetary_deny_response_with_metadata(
+                        request,
+                        &receipt_context,
+                        &msg,
+                        now,
+                        charge,
+                        reverse.committed_cost_units_after,
+                        cap,
+                        self.merge_budget_receipt_metadata(
+                            cleanup.metadata,
+                            self.budget_execution_receipt_metadata(
+                                charge,
+                                Some(("reversed", reverse)),
+                            ),
+                        ),
+                    );
+                }
+                return self.build_deny_response_with_metadata(
+                    request,
+                    &receipt_context,
+                    &msg,
+                    now,
+                    Some(matched_grant_index),
+                    cleanup.metadata,
+                );
+            }
+        };
 
-        let pre_invocation_guard_evidence = match self.run_guards(
-            request,
-            &cap.scope,
-            Some(session_roots.as_slice()),
-            Some(matched_grant_index),
-        ) {
+        let pre_invocation_guard_evidence = match self
+            .run_guards_within_budget(
+                request,
+                &cap.scope,
+                Some(session_roots.as_slice()),
+                Some(matched_grant_index),
+            )
+            .await
+        {
             Ok(evidence) => evidence,
             Err(e) => {
                 let msg = e.error.to_string();
@@ -484,8 +663,8 @@ impl ChioKernel {
                     &pre_invocation_guard_evidence,
                     || {
                         self.build_runtime_admission_pre_execution_monetary_deny_response_with_metadata(
-                request,
-                &receipt_context,
+                            request,
+                            &receipt_context,
                         &msg,
                         now,
                         charge,
@@ -498,7 +677,7 @@ impl ChioKernel {
                                 Some(("reversed", reverse)),
                             ),
                         ),
-                    )
+                        )
                     },
                 );
             }
@@ -587,7 +766,53 @@ impl ChioKernel {
             });
         }
 
-        // The tool-server lookup is hoisted above the drop-guard
+        // For a side-effecting or monetary call, durably journal a dispatch
+        // intent BEFORE the earliest possible effect (the prepaid authorize
+        // below, or the nested tool dispatch), exactly as the top-level
+        // evaluator does: the crash-window guarantee must hold on every path
+        // that can execute a tool. On failure, reverse every pre-execution
+        // hold through the same pre-dispatch unwind the admission and
+        // authorize arms use, then deny before any effect. Read-only calls
+        // return None here and pay nothing.
+        let has_monetary = budget_mutation.charge_result().is_some();
+        let dispatch_intent =
+            match self.record_dispatch_intent_if_side_effecting(request, has_monetary, now_unix_ms)
+            {
+                Ok(handle) => handle,
+                Err(error) => {
+                    let msg = error.to_string();
+                    warn!(
+                        request_id = %request.request_id,
+                        reason = %redacted!(&msg),
+                        "dispatch intent write failed; denying before dispatch (nested flow)"
+                    );
+                    return self.with_pre_invocation_guard_evidence(
+                        &pre_invocation_guard_evidence,
+                        || {
+                            self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                                request,
+                                evaluation_context: &receipt_context,
+                                reason: &msg,
+                                timestamp: now,
+                                matched_grant_index,
+                                cap,
+                                budget_mutation: &budget_mutation,
+                                payment_authorization: None,
+                                receipt_metadata: receipt_metadata.clone(),
+                                runtime_admission_metadata: runtime_admission_metadata.clone(),
+                                budget_lease_acquired,
+                            })
+                        },
+                    );
+                }
+            };
+        // Register the handle for the whole evaluation so whichever terminal
+        // receipt commits first consumes the intent; the guard clears the
+        // registration when this future finishes (or is dropped).
+        let _dispatch_intent_scope =
+            self.scope_dispatch_intent_for_request(&request.request_id, dispatch_intent);
+
+        // RFC-0002: the tool-server lookup is hoisted above the drop-guard
         // construction so its failure can never early-return through `?`
         // while the guard is armed. This kernel-owned lookup is the only
         // trustworthy missing-server pre-dispatch boundary.
@@ -784,6 +1009,41 @@ impl ChioKernel {
             }
         }
 
+        // Legacy execution-nonce stores expose consume-only reservations.
+        // Defer that irreversible consume until every mutable admission check
+        // has passed and immediately before payment authorization can touch an
+        // external rail.
+        let legacy_nonce_reservation =
+            if budget_mutation.charge_result().is_some() && self.payment_adapter.is_some() {
+                credential_reservation.reserve_legacy_execution_nonce_at_effect_boundary()
+            } else {
+                Ok(())
+            };
+        if let Err(error) = legacy_nonce_reservation {
+            post_admission_drop_guard.disarm();
+            drop(post_admission_drop_guard);
+            let mut msg = error.to_string();
+            if let Err(rollback_error) = credential_reservation.rollback_before_dispatch() {
+                msg = format!("{msg}; {rollback_error}");
+            }
+            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "legacy execution nonce reservation denied");
+            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                    request,
+                    evaluation_context: &receipt_context,
+                    reason: &msg,
+                    timestamp: current_unix_timestamp(),
+                    matched_grant_index,
+                    cap,
+                    budget_mutation: &budget_mutation,
+                    payment_authorization: None,
+                    receipt_metadata: receipt_metadata.clone(),
+                    runtime_admission_metadata: runtime_admission_metadata.clone(),
+                    budget_lease_acquired,
+                })
+            });
+        }
+
         let mut payment_credential_disposition = PaymentCredentialDisposition::NonePresent;
         let payment_authorization = match self.authorize_payment_if_needed(
             request,
@@ -888,6 +1148,28 @@ impl ChioKernel {
                 );
             }
         };
+        // Bind an acknowledged rail authorization to the durable intent. The
+        // intent already records that a monetary effect may occur, so an attach
+        // failure is logged for reconciliation without retrying the rail call.
+        if let Some(authorization) = payment_authorization.as_ref() {
+            if let Some(handle) = self.dispatch_intent_for_request(Some(&request.request_id)) {
+                let budget = self.config.deadlines.receipt_append_budget();
+                if let Err(error) = self.with_receipt_store(|store| {
+                    Ok(store.attach_dispatch_intent_rail_ref_with_timeout(
+                        &handle.request_id,
+                        handle.tenant_id.as_deref(),
+                        &authorization.authorization_id,
+                        budget,
+                    )?)
+                }) {
+                    warn!(
+                        request_id = %request.request_id,
+                        reason = %redacted!(&error.to_string()),
+                        "dispatch intent rail-ref attach failed"
+                    );
+                }
+            }
+        }
         post_admission_drop_guard.set_payment_authorization(payment_authorization.as_ref());
         post_admission_drop_guard
             .set_payment_credential_disposition(payment_credential_disposition);
@@ -1023,10 +1305,12 @@ impl ChioKernel {
         // the `&mut self` call must happen first. There is no await between here
         // and the invoke below, so the future cannot be dropped in this window.
         post_admission_drop_guard.mark_dispatch_started();
-        let tool_output_result = {
+        let nested_interaction_observed = std::sync::atomic::AtomicBool::new(false);
+        let dispatch_call = async {
             let mut bridge = SessionNestedFlowBridge {
                 sessions: &self.sessions,
                 child_receipts: post_admission_drop_guard.child_receipts_mut(),
+                nested_interaction_observed: &nested_interaction_observed,
                 parent_context,
                 allow_sampling: self.config.allow_sampling,
                 allow_sampling_tool_use: self.config.allow_sampling_tool_use,
@@ -1056,16 +1340,49 @@ impl ChioKernel {
                 Err(error) => Err(error),
             }
         };
-        post_admission_drop_guard.flush_child_receipts()?;
+        // Bound the nested tool-server call by the dispatch budget on the same
+        // hot path the top-level dispatch enforces, so a blocking nested
+        // `invoke_stream`/`invoke` cannot slip past the deadline. The shared
+        // helper isolates a connection that blocks synchronously before its
+        // first `.await` from the async worker pool via `block_in_place` (the
+        // nested-flow bridge borrows the caller's client and session state, so
+        // the future cannot be moved onto `spawn_blocking` like the top-level
+        // path). On expiry the buffered child receipts recorded so far are still
+        // persisted below, and the abort arm unwinds like a cancellation.
+        let tool_output_result = match self
+            .config
+            .deadlines
+            .dispatch_budget_for(&request.server_id)
+        {
+            Some(budget) => {
+                crate::kernel::dispatch::dispatch_nested_call_within_budget(dispatch_call, budget)
+                    .await
+            }
+            None => dispatch_call.await,
+        };
+        let nested_interaction_observed =
+            nested_interaction_observed.load(std::sync::atomic::Ordering::Acquire);
+        // Persist buffered children before interpreting the tool result. The
+        // guard remains armed until a terminal response is durably committed,
+        // and retains any suffix whose append outcome is unknown.
+        post_admission_drop_guard.record_buffered_child_receipts()?;
         let tool_output = match tool_output_result {
             Ok(output) => {
                 let _retention_disposition = credential_reservation.commit();
                 output
             }
-            Err(error @ KernelError::UrlElicitationsRequired { .. }) => {
+            Err(error @ KernelError::UrlElicitationsRequired { .. })
+                if nested_interaction_observed =>
+            {
+                // A nested request or notification crossed the bridge before
+                // the server requested URL elicitation. That interaction may
+                // already have changed client-visible state, so retain every
+                // admitted resource and record a terminal, fail-closed result.
+                // Only an elicitation with no preceding nested interaction is
+                // eligible for the typed pre-effect return below.
                 let _retention_disposition = credential_reservation.commit();
                 let reason =
-                    format!("URL elicitation requested after tool-server dispatch began: {error}");
+                    format!("URL elicitation requested after a nested interaction: {error}");
                 let retained = self.retain_post_dispatch_state(
                     receipt_metadata.clone(),
                     runtime_admission_metadata.clone(),
@@ -1076,7 +1393,7 @@ impl ChioKernel {
                 warn!(
                     request_id = %request.request_id,
                     reason = %redacted!(&reason),
-                    "tool call requested URL elicitation after dispatch"
+                    "tool call requested URL elicitation after a nested interaction"
                 );
                 let result =
                     self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
@@ -1093,6 +1410,93 @@ impl ChioKernel {
                         )
                     });
                 return post_admission_drop_guard.finish_terminal(result);
+            }
+            Err(error @ KernelError::UrlElicitationsRequired { .. }) => {
+                // URL elicitation is a typed pre-effect result from the tool
+                // boundary. Unwind admission resources without replacing it.
+                post_admission_drop_guard.disarm();
+                drop(post_admission_drop_guard);
+                let credential_cleanup = if payment_authorization.is_some() {
+                    credential_reservation.commit().map(|_| ())
+                } else {
+                    credential_reservation.rollback_before_dispatch()
+                };
+                if let Err(credential_error) = credential_cleanup {
+                    self.record_url_elicitation_budget_cleanup_fault(
+                        request,
+                        &receipt_context,
+                        matched_grant_index,
+                        "url_elicitation_credential_cleanup",
+                        &redacted!(&credential_error).to_string(),
+                        vec![cap.id.clone()],
+                        receipt_metadata.clone(),
+                        &pre_invocation_guard_evidence,
+                    );
+                }
+                self.release_runtime_admission_reservations_for_url_elicitation_cleanup(
+                    request,
+                    &receipt_context,
+                    matched_grant_index,
+                    runtime_admission_metadata.clone(),
+                    &pre_invocation_guard_evidence,
+                );
+                if budget_lease_acquired {
+                    if let Err(reason) = self.release_admitted_capability_budget(cap) {
+                        let mut hold_ids = vec![cap.id.clone()];
+                        if let Some(parent_link) = cap.delegation_chain.last() {
+                            hold_ids.push(parent_link.capability_id.clone());
+                        }
+                        self.record_url_elicitation_budget_cleanup_fault(
+                            request,
+                            &receipt_context,
+                            matched_grant_index,
+                            "url_elicitation_child_budget_release",
+                            &redacted!(&reason).to_string(),
+                            hold_ids,
+                            receipt_metadata.clone(),
+                            &pre_invocation_guard_evidence,
+                        );
+                    }
+                }
+                let budget_reversal = match payment_authorization.as_ref() {
+                    Some(payment_authorization) => self
+                        .unwind_aborted_monetary_invocation(
+                            request,
+                            cap,
+                            budget_mutation.charge_result(),
+                            Some(payment_authorization),
+                        )
+                        .map(|_| ()),
+                    None => self
+                        .reverse_pre_execution_budget_mutation(cap, &budget_mutation)
+                        .map(|_| ()),
+                };
+                if let Err(reversal_error) = budget_reversal {
+                    let mut hold_ids = vec![cap.id.clone()];
+                    if let Some(payment_authorization) = payment_authorization.as_ref() {
+                        hold_ids.push(payment_authorization.authorization_id.clone());
+                    }
+                    if let Some(charge) = budget_mutation.charge_result() {
+                        hold_ids.push(charge.budget_hold_id.clone());
+                    }
+                    self.record_url_elicitation_budget_cleanup_fault(
+                        request,
+                        &receipt_context,
+                        matched_grant_index,
+                        "url_elicitation_budget_reversal",
+                        &redacted!(&reversal_error).to_string(),
+                        hold_ids,
+                        receipt_metadata,
+                        &pre_invocation_guard_evidence,
+                    );
+                }
+                self.clear_dispatch_intent_for_non_dispatch_exit(request);
+                warn!(
+                    request_id = %request.request_id,
+                    reason = %redacted!(&error),
+                    "tool call requires URL elicitation before side effect"
+                );
+                return Err(error);
             }
             Err(KernelError::RequestCancelled { reason, .. }) => {
                 let _retention_disposition = credential_reservation.commit();
@@ -1117,6 +1521,47 @@ impl ChioKernel {
                             now,
                             Some(matched_grant_index),
                             retained,
+                        )
+                    });
+                return post_admission_drop_guard.finish_terminal(result);
+            }
+            Err(KernelError::HotPathDeadlineExceeded { stage, budget_ms }) => {
+                let reason = format!("hot-path deadline exceeded at {stage}: budget {budget_ms}ms");
+                let unwind = self.unwind_aborted_monetary_invocation(
+                    request,
+                    cap,
+                    budget_mutation.charge_result(),
+                    payment_authorization.as_ref(),
+                )?;
+                warn!(
+                    request_id = %request.request_id,
+                    reason = %redacted!(&reason),
+                    "tool call deadline expired"
+                );
+                // A timed-out dispatch may already have applied its side effect,
+                // so the runtime-admission reservation is retained and marked
+                // auditable rather than released.
+                let result =
+                    self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                        self.build_cancelled_response_with_metadata(
+                            request,
+                            &receipt_context,
+                            &reason,
+                            now,
+                            Some(matched_grant_index),
+                            self.mark_runtime_admission_reservations_retained_fail_closed(
+                                match (budget_mutation.charge_result(), unwind.as_ref()) {
+                                    (Some(charge), Some(reverse)) => self
+                                        .merge_budget_receipt_metadata(
+                                            runtime_admission_metadata.clone(),
+                                            self.budget_execution_receipt_metadata(
+                                                charge,
+                                                Some(("reversed", reverse)),
+                                            ),
+                                        ),
+                                    _ => runtime_admission_metadata.clone(),
+                                },
+                            ),
                         )
                     });
                 return post_admission_drop_guard.finish_terminal(result);

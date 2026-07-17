@@ -1,142 +1,263 @@
-# chio-control-plane Architecture Notes
+# chio-control-plane architecture
 
-## Module Boundaries
+## Overview
 
-`lib.rs` exposes CLI-facing helpers for policy loading, kernel construction,
-local store wiring, and authority seed management. The `trust_control` module
-owns the HTTP trust service, remote clients, cluster replication, and report
-endpoints. Its submodules split the broad route surface into service types,
-service runtime, configuration/public registry helpers, domain handlers,
-health projection, and cluster/report logic. Federation, SCIM lifecycle,
-passport verifier, enterprise-provider, attestation, issuance, evidence export,
-reputation, and certification support remain separate crate-local modules.
-`attestation.rs` is the runtime-attestation API root. Its child modules keep
-provider verification concerns focused: `attestation/model.rs` owns verifier
-policies, adapters, and error types; `attestation/verification.rs` owns JWT,
-JWKS, COSE, certificate-chain, appraisal, and vendor-claim helpers; and
-`attestation/tests.rs` holds provider verifier branch coverage.
+`chio-control-plane` has two trust positions in one crate. `lib.rs`,
+`policy`, `issuance`, and `attestation` are local composition code: they run
+inside the same process as the kernel they wire and are trusted to the same
+degree as their caller. `trust_control` is a network-facing service (plus the
+client that talks to it) that a Chio deployment runs standalone; its handlers
+treat every inbound request as untrusted until bearer or cluster-peer
+authentication and store-level checks pass. The crate owns no protocol types.
+It composes `chio-kernel` with SQLite-backed local stores, HTTP-backed remote
+store adapters, and roughly a dozen domain subsystems (attestation,
+certification, evidence export, federation policy, passport issuance, SCIM,
+risk/finance) behind one crate boundary, so that `chio-cli` and the other
+product binaries have a single dependency for "run or talk to a Chio trust
+plane."
 
-`policy.rs` owns policy YAML loading, HushSpec materialization, guard pipeline
-construction, default capability synthesis, and policy identity hashing.
-`policy/tests.rs` holds policy parser, guard-construction, capability, and
-HushSpec regression coverage.
+## Diagram
 
-`evidence_export.rs` owns the CLI and trust-control orchestration surface for
-evidence export, import, verification, signed federation policy creation,
-package rendering, filesystem IO, and query preparation. Its
-`evidence_export/verification.rs` child owns manifest hash verification,
-receipt and checkpoint signature checks, transparency-claim boundary checks,
-federation-policy attachment validation, import-package validation, verified
-package loading, and federated-share import construction.
-`evidence_export/tests.rs` holds export/import verification and disclosure
-notice coverage.
+```mermaid
+flowchart TD
+    cli["Chio CLI binaries"]
 
-`certify.rs` owns local certification artifact construction, registry state,
-local registry commands, public metadata/search/transparency data contracts,
-consumption request types, dispute handling, and entry rendering. Its
-`certify/network.rs` child owns cross-operator discovery, marketplace search,
-transparency, consumption, publish fan-out, and the corresponding network CLI
-commands.
+    subgraph compose["Local composition (lib.rs)"]
+        policy["load_policy to LoadedPolicy"]
+        build["build_kernel"]
+        configure["configure_* stores and authority"]
+        wrap["wrap_capability_authority"]
+    end
 
-`trust_control/service_runtime.rs` is the trust-service boot and route
-registration root. Its child modules own the remote runtime surfaces:
-`client.rs` builds remote clients, normalizes endpoints, signs cluster-peer
-requests, performs failover, and owns encoded path helpers; `public_registry.rs`
-performs unauthenticated public certification and generic registry lookups;
-`issuance.rs` signs and evaluates generic trust, governance, open-market, and
-federation policy requests; `reputation.rs` signs and evaluates portable
-reputation artifacts; `remote_stores.rs` adapts remote receipt and revocation
-endpoints to kernel store traits; `remote_authority.rs` adapts remote authority
-status and issuance to `CapabilityAuthority`; `budget.rs` adapts remote budget
-endpoints to `BudgetStore`; and `errors.rs` contains internal store-error
-conversion helpers.
+    subgraph runtime["Hosted runtime"]
+        kernel["ChioKernel"]
+        guards["Guard and post-invocation pipelines"]
+        authority["Capability authority"]
+    end
 
-`trust_control/service_types.rs` owns trust-control route constants, service
-configuration, client/state structs, federation/passport/receipt HTTP payloads,
-financial issue payloads, error adapters, and small request query structs. Its
-`service_types/cluster_budget.rs` child owns cluster status and snapshot wire
-views, cluster lease RPC payloads, replication delta payloads, and budget
-mutation request/response wire adapters.
+    subgraph stores["Store adapters"]
+        sqlite["SQLite local stores"]
+        remote["Remote HTTP store adapters"]
+    end
 
-`trust_control/config_and_public.rs` owns trust-control service startup, registry
-path resolution, admin registry loading, passport verifier challenge helpers,
-OID4VP metadata and request construction, public issuer/verifier discovery, and
-SCIM lifecycle response helpers. Its `config_and_public/generic_listing.rs`
-child owns public generic registry publisher, namespace, listing projection, and
-report construction helpers.
+    subgraph service["trust_control service (axum)"]
+        serve["serve_async and build_router"]
+        auth["report_validation auth and SSRF guard"]
+        handlers["Authority budget receipt passport risk handlers"]
+    end
 
-`trust_control/underwriting_and_support.rs` owns underwriting decision,
-simulation, appeal, exposure-ledger, credit-bond, credit-scorecard, and
-capital-book support builders. Its
-`underwriting_and_support/policy_support.rs` child owns policy-input
-construction, underwriting compliance evidence, risk signal derivation,
-behavioral-feed signing key loading, budget utilization reporting, trust HTTP
-error mapping, and trust-control store opening helpers.
+    subgraph cluster["Cluster replication"]
+        consensus["Consensus leader pick"]
+        sync["Pull based delta sync"]
+    end
 
-The trust-control HA and reporting surface is split by responsibility:
-`cluster.rs` owns cluster identity, peer state, membership, consensus,
-replication loops, peer snapshots and deltas, and budget-quorum commit
-metadata; `report_rendering.rs` owns JSON response metadata, snapshot and delta
-view conversion, receipt kind rendering, and leader-forwarding helpers;
-`report_validation.rs` owns URL normalization, cluster peer authentication,
-service and authority auth validation, control read-principal resolution,
-authority status loading, and metered-billing request validation; `reports.rs`
-owns operator, behavioral, economic-completion, runtime-attestation, exposure
-ledger, credit-scorecard, capital-book, and capital-issuance report builders.
-`capital_and_liability.rs` owns capital book, capital execution, credit
-facility, credit bond, credit loss, provider-risk, and credit backtest
-surfaces. Its `capital_and_liability/liability.rs` child owns liability
-provider registry, quote, placement, pricing authority, bound coverage,
-auto-bind, claim, payout, and settlement workflow artifact construction.
-`credit_and_loss.rs` owns provider-risk, scorecard, facility, bond, bonded
-execution simulation, and backtest helpers. Its
-`credit_and_loss/loss_lifecycle.rs` child owns credit loss lifecycle
-accounting, report construction, and signed lifecycle issuance.
-`cluster_and_reports.rs` remains a test-only regression aggregate for behavior
-that crosses those split modules.
+    client["TrustControlClient over ureq"]
 
-## Security and API Constraints
+    cli -->|load policy| policy
+    policy -->|guard profile| build
+    build -->|install guards| kernel
+    kernel --> guards
+    build -->|attach stores| configure
+    configure -->|tier gating| wrap
+    wrap --> authority
+    kernel -->|grants| authority
+    configure -->|local| sqlite
+    configure -->|control-url| remote
+    authority -->|persist| sqlite
+    cli -->|remote ops| client
+    client -->|HTTP| serve
+    remote -->|HTTP| serve
+    serve -->|per request| auth
+    auth -->|fail closed| handlers
+    handlers --> kernel
+    handlers --> sqlite
+    serve -->|leader sync| consensus
+    consensus --> sync
+    sync -->|apply deltas| handlers
+```
 
-The trust-control service fails closed before it serves authority, revocation,
-receipt, budget, passport, federation, certification, or economic report
-endpoints. `TrustServiceConfig::validate` runs before `serve_async` binds
-sockets or loads runtime state, and is the root authority boundary for the
-service. It rejects blank or padded service tokens, blank tenant ids, blank or
-padded tenant read-token ids and values, control characters in tenant
-read-token ids and values, tenant tokens that equal the admin service token,
-zero cluster sync intervals, and zero `certification_public_metadata_ttl_seconds`
-(which would otherwise publish discovery metadata whose `expires_at` equals
-`generated_at`). Token material is never trimmed or normalized silently;
-ambiguous secrets are rejected rather than coerced. Bearer-token comparison is
-constant time where request auth is evaluated.
+## Module map
 
-Remote clients follow the same no-ambient-authority rule: service tokens travel
-only in explicit bearer headers, never through endpoint URL userinfo or query
-material. `build_client` requires validated service bearer material and rejects
-blank or padded service tokens, empty endpoint lists, non-HTTP(S) endpoints,
-userinfo, query strings, and fragments before the remote client exists, then
-preserves the normalized endpoint list for valid clients. `build_public_client`
-reuses the same endpoint normalization for intentionally unauthenticated public
-endpoints. Local HTTP and HTTPS endpoints and comma-separated failover endpoints
-are supported, and the client API returns `CliError` without changing public
-method signatures.
+| Path | Responsibility |
+|---|---|
+| `src/lib.rs` | `CliError`, `JwtProviderProfile`, and the kernel/store wiring functions (`build_kernel`, `configure_*`) shared by every Chio CLI binary. |
+| `src/policy.rs` + `policy/*` | Parse Chio-YAML or HushSpec policy files into a `LoadedPolicy`: guard pipeline, default capabilities, reputation/runtime-assurance issuance policy (HushSpec only). |
+| `src/issuance.rs` + `issuance/*` | `wrap_capability_authority`: decorates a `CapabilityAuthority` with attestation verification, reputation-tier gating, and runtime-assurance-tier scope narrowing. |
+| `src/attestation.rs` + `attestation/*` | `RuntimeAttestationVerifierAdapter` and its Azure MAA, AWS Nitro, Google Confidential VM, and enterprise-verifier implementations; each produces a `VerifiedRuntimeAttestation`. |
+| `src/certify/` (`mod.rs` + siblings) | Build and sign MCP tool-server conformance certifications, a local registry, and a federated public discovery/marketplace network. |
+| `src/evidence_export.rs` + `evidence_export/*` | Export/import signed evidence bundles (receipts, checkpoints, lineage) with tenant disclosure notices and federation-policy scoping. |
+| `src/federation_policy.rs` | Permissionless federation open-admission policy registry with anti-sybil controls (proof-of-work, rate limit, bond-backed admission). |
+| `src/passport_verifier.rs` | SQLite-backed OID4VCI issuance-offer and OID4VP challenge/transaction stores, plus the portable-passport lifecycle registry. |
+| `src/enterprise_federation.rs` | Registries for enterprise IdPs (OIDC JWKS, OAuth introspection, SCIM, SAML) and certification-discovery-network operators. |
+| `src/scim_lifecycle.rs` | SCIM 2.0 user resource to `EnterpriseIdentityContext` mapping and tracked-capability bookkeeping. |
+| `src/reputation.rs` | CLI commands: local reputation inspection and local-vs-portable-passport comparison. |
+| `src/transaction_passport_risk.rs` | Binds `TransactionPassport` verification to a graph-referenced signed `chio-risk-comptroller` report. |
+| `src/trust_control.rs` + `trust_control/*` | The clustered trust-control HTTP service, its client, and cluster replication. Broken out below. |
 
-`build_cluster_state` normalizes `advertise_url` and `peer_urls` before the HA
-runtime starts; those normalized peer URLs become the cluster allowlist,
-peer-sync targets, consensus identifiers, leader metadata, and internal
-peer-auth node ids. The cluster URL validator rejects username/password
-material, query strings, and fragments for both advertised self URLs and
-configured peer URLs before cluster state is built, so an operator
-configuration field cannot become ambiguous authority-bearing or metadata-bearing
-URL material. Loopback peer URLs are allowed only when `allow_local_peer_urls`
-is set, and cluster peer-auth signature semantics are preserved for valid
-normalized peers.
+### `trust_control` breakdown
 
-## Affected Dependents
+`trust_control.rs` holds the shared import set (axum, the `chio_kernel`
+domain types, `subtle::ConstantTimeEq`, `tower_http`, ...) that every child
+module inherits via `use super::*;`, and controls what leaves the module:
+`cluster`, `service_runtime`, and `reports` are declared `pub mod` (reachable
+as `chio_control_plane::trust_control::{cluster,service_runtime,reports}`);
+`report_rendering` and `report_validation` are `pub(crate) mod` (internal
+only); the rest are private `mod`s whose items are flattened into
+`trust_control::*` by `pub use self::X::*` for `capital_and_liability`,
+`config_and_public`, `credit_and_loss`, `service_types`, and
+`underwriting_and_support`, and by `pub(crate) use self::X::*` (HTTP-only,
+not part of the Rust API) for `authority_handlers`, `budget_handlers`,
+`certification_handlers`, `passport_handlers`, `receipt_handlers`, and
+`risk_finance_handlers`.
 
-`chio-cli`, evidence export, reputation, remote receipt/revocation/budget/authority
-stores, and cluster peer sync construct `TrustServiceConfig` with the same
-fields and call the same service/client entrypoints. Invalid trust-control
-configuration, invalid remote control URLs or bearer tokens, and invalid HA
-peer configuration are rejected at the service and client boundaries rather than
-surfacing later as request-time internal errors or peer-sync state.
+| Path | Responsibility |
+|---|---|
+| `authority_handlers.rs` | Capability-authority admin: issue/rotate/revoke, SCIM, enterprise-provider and federation-admission-policy CRUD. |
+| `budget_handlers.rs` | Budget increment/charge/reverse/reduce handlers with quorum-commit-aware event ids and compensating rollback. |
+| `certification_handlers.rs` | Certification registry mutation plus the unauthenticated public discovery/marketplace surface. |
+| `passport_handlers.rs` | OID4VCI/OID4VP passport issuance, verification, wallet exchange, and federated cross-service capability issuance (`handle_federated_issue`). |
+| `receipt_handlers.rs` | Receipt read/write, analytics, evidence export/import, and the operator/economic/settlement report endpoints; enforces admin-vs-tenant read scoping. |
+| `risk_finance_handlers/{attestation,capital,credit,exposure,liability,reputation,underwriting}.rs` | Credit, capital, exposure, liability, underwriting, reputation, and runtime-attestation-appraisal report and issuance endpoints. |
+| `capital_and_liability.rs` + `capital_and_liability/liability.rs` | The subject-scoped capital-book ledger and capital-execution instructions; the full liability-insurance workflow (quote to bind to claim to settlement). |
+| `credit_and_loss.rs` + `credit_and_loss/loss_lifecycle.rs` | Credit provider risk package, scorecard, facility/bond issuance, bonded-execution autonomy gating, and delinquency/recovery/write-off lifecycle accounting. |
+| `underwriting_and_support.rs` + `underwriting_and_support/policy_support.rs` | Underwriting decisions and appeals, scorecard-dimension weighting, and shared store-opening/auth primitives used across the finance handlers. |
+| `config_and_public.rs` + `config_and_public/generic_listing.rs` | The `serve()` process entrypoint, registry loaders, OID4VP/OID4VCI plumbing, and the public generic-listing/namespace discovery surface. |
+| `reports.rs` | Builds the signed report/decision artifacts: exposure ledger, capital book, capital-allocation decisions, operator/behavioral-feed reports. |
+| `report_rendering.rs` | HTTP response shaping and leader-forwarding for cluster writes. |
+| `report_validation.rs` | Bearer and cluster-peer authentication, control-URL SSRF guarding, admin-vs-tenant read-principal resolution. |
+| `health.rs` | Unauthenticated `GET` liveness/status endpoint; each subsystem snapshot degrades to `available: false` instead of failing the request. |
+| `cluster/{consensus,deltas,partition,pull_budget,snapshots}.rs` | Quorum-gated leader designation, pull-based per-peer delta replication, partition simulation, and full-state snapshots. |
+| `service_runtime/{budget,client,errors,init,issuance,public_registry,remote_authority,remote_stores,reputation,router}.rs` | Server bootstrap (`serve_async`), axum `Router` construction (`router::build_router`), and the remote adapters (`RemoteCapabilityAuthority`, `RemoteReceiptStore`, `RemoteRevocationStore`, `RemoteBudgetStore`) plus `TrustControlClient` and its `client/*` transport. |
+| `service_types/{cluster_budget,config,paths,requests,responses,state}.rs` | Route-path constants, `TrustServiceConfig`, wire DTOs, and the `TrustServiceState` / `ClusterRuntimeState` app state. |
+
+## Data flow
+
+### Local kernel construction (CLI path)
+
+1. `policy::load_policy` parses a policy file into a `LoadedPolicy`.
+2. `build_kernel` constructs a `ChioKernel`, installing the default guard
+   profile (`chio_guards::default_runtime_guard_profile`) and the policy's
+   own guard/post-invocation pipelines.
+3. `configure_receipt_store` / `configure_revocation_store` /
+   `configure_budget_store` attach either a local `chio-store-sqlite` store or
+   a `Remote*Store` built from `--control-url`.
+4. `configure_capability_authority` attaches a `LocalCapabilityAuthority` or
+   `SqliteCapabilityAuthority` - wrapped by `issuance::wrap_capability_authority`
+   whenever a reputation or runtime-assurance policy is set - or a
+   `RemoteCapabilityAuthority` for `--control-url`.
+
+### Trust-control service request lifecycle
+
+1. `trust_control::config_and_public::serve` builds a tokio runtime and calls
+   `service_runtime::serve_async`.
+2. `serve_async` binds the listener, builds `ClusterRuntimeState` when peers
+   are configured, spawns `cluster::run_cluster_sync_loop`, and assembles the
+   axum `Router` via `router::build_router`.
+3. Each handler resolves an auth or read principal first
+   (`report_validation::validate_service_auth` /
+   `resolve_control_read_principal`) and fails closed (401/403) before
+   touching store state.
+4. On a clustered deployment, mutating handlers forward the write to the
+   current leader and wait for it to become locally visible before responding
+   (`report_rendering::forward_post_to_leader` and its authority/SCIM/budget
+   variants).
+
+### Cluster replication
+
+1. `cluster::consensus::compute_cluster_consensus_locked` recomputes the
+   leader on every status check: the lowest-sorted URL among peers that are
+   reachable, unpartitioned, and inside the lease TTL. This is a deterministic
+   pick over the locally observed peer set, not a voted election - there is no
+   term voting, log replication, or election RPC.
+2. `cluster::deltas::run_cluster_sync_loop` runs a serial per-peer pull round
+   (via `tokio::task::spawn_blocking` around a synchronous `ureq` client) for
+   cluster status, authority snapshot, and budget/tool-receipt/child-receipt/
+   lineage/revocation deltas.
+3. Delta pages enforce strict sequence contiguity (dense streams) or forward
+   progress (gap-tolerant streams); a peer that falls behind or overflows the
+   per-round pull budget is force-resynced from a full
+   `cluster::snapshots::apply_cluster_snapshot`.
+4. Every internal cluster endpoint authenticates the caller with
+   `report_validation::validate_cluster_peer_auth`: a shared-secret keyed
+   digest over canonical JSON (`{scheme, serviceToken, nodeId, endpoint,
+   issuedAt, term}`, not a public-key signature), constant-time compared,
+   allowlisted by node id against `peer_urls`, bounded to a 60-second skew
+   window, and rate-limited on repeated failure.
+
+## Invariants and failure modes
+
+- `TrustServiceConfig::validate` runs before `serve_async` binds a socket: it
+  rejects blank or padded service/tenant tokens, a tenant token equal to the
+  admin service token, control characters in token material, a zero cluster
+  sync interval, and a zero certification-metadata TTL.
+- Bearer and cluster-peer authentication both compare secrets with
+  `subtle::ConstantTimeEq`, never `==`.
+- `issuance::enforce_runtime_assurance_policy` is the only place that narrows
+  a granted capability scope: it denies requests above the resolved tier's
+  ceiling and appends `Constraint::MinimumRuntimeAssurance` to economically
+  sensitive grants. Reputation-tier gating (`issuance::enforce_tier_scope`) is
+  deny-only; it never rewrites a grant.
+- Reputation and runtime-assurance issuance gating are HushSpec-only:
+  `policy::loader::load_policy` always sets both to `None` on the plain
+  Chio-YAML path.
+- `configure_receipt_store` refuses to attach an in-memory SQLite path as a
+  durable receipt store - it would satisfy the kernel's persistence gate while
+  losing every receipt on restart. An intentionally ephemeral receipt log
+  requires the explicit `allow_ephemeral_receipt_log` policy flag instead.
+- Single-currency-per-book enforcement recurs across `capital_and_liability`,
+  `credit_and_loss`, and `underwriting_and_support`: mixed-currency state is
+  rejected with a conflict, never blended or auto-netted.
+- `trust_control::cluster` replication is pull-based and quorum-gated, not a
+  consensus protocol. Budget-acknowledgment witnessing only shrinks on
+  ambiguity, never grows, and a peer that force-snapshots is excluded from
+  quorum witnessing until fully re-synced.
+- `service_runtime::remote_stores::BoundedReceiptWriter` bounds concurrent
+  blocking remote-receipt writes to a fixed 2-worker pool with a depth-2 queue
+  and fails closed with a timeout rather than queuing unbounded work.
+- `service_runtime::remote_authority::AuthorityKeyCache` fails closed on an
+  unprimed cache: `deny_sentinel_public_key()` returns a freshly generated,
+  immediately discarded key - a guaranteed-wrong denial rather than a panic.
+
+## Dependencies
+
+Internal: `chio-kernel` supplies `ChioKernel` and every store/authority trait
+this crate implements locally (`chio-store-sqlite`) or over HTTP
+(`service_runtime::remote_*`); `chio-core` supplies protocol types;
+`chio-guards` supplies the default guard profile, `GuardPipeline`, and
+`PostInvocationPipeline`; `chio-policy` supplies HushSpec parsing and
+compilation for `policy::load_policy` (a dependency crate, distinct from this
+crate's own `policy` module - not aliased, just same-named); `chio-data-guards`
+and `chio-external-guards` supply the concrete guard adapters
+`policy::build_guard_pipeline` assembles, and `chio-external-guards` also
+supplies the SSRF IP-denial check `report_validation.rs` runs against cluster
+peer URLs; `chio-credentials` supplies OID4VCI/OID4VP and passport types for
+`passport_verifier` and the passport handlers; `chio-did` resolves `did:chio`
+identities; `chio-reputation` supplies the scoring math `issuance` and
+`reputation` wrap; `chio-conformance` supplies scenario/result loading for
+`certify`; `chio-mcp-adapter` supplies adapter error types surfaced through
+`CliError`; `chio-http-serve` supplies `ServeHygieneConfig` (body-size and
+timeout limits applied in `service_runtime::init`/`router`); `chio-metrics-spec`
+supplies the `/metrics` route's Prometheus rendering; `chio-errors` supplies
+the registry-backed diagnostic codes `CliError` maps onto; `chio-risk-comptroller`,
+`chio-transaction-passport`, `chio-trust-market-context`, `chio-commerce-order`,
+`chio-enterprise-export`, and `chio-agent-web-interop` are re-exported as
+facades rather than consumed internally.
+
+External: `axum` and `tower-http` implement the trust-control HTTP service;
+`ureq` (synchronous) implements `TrustControlClient` and every cluster-peer
+and outbound public-registry call - `reqwest` is a dependency only for its
+`Error` type in `CliError`'s `From` impl, not for making requests; `rsa`,
+`p384`, `x509-cert`, and `ciborium` implement JWT/JWKS/COSE/certificate-chain
+verification in `attestation`; `subtle` implements constant-time secret
+comparison; `chrono`, `base64`, `percent-encoding`, `serde_urlencoded`, and
+`url` support timestamp parsing, token encoding, and URL validation across the
+service and client.
+
+## Extension points
+
+`RuntimeAttestationVerifierAdapter` (`attestation.rs`) is the trait a new
+attestation backend implements: `adapter_name`, `verifier_family`, and
+`verify_and_appraise(evidence, now) -> Result<VerifiedRuntimeAttestation,
+Self::Error>`. The four adapters in this crate (Azure MAA, AWS Nitro, Google
+Confidential VM, enterprise verifier) are the reference implementations, not
+an exhaustive set.

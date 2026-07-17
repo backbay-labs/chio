@@ -6,6 +6,7 @@ from pathlib import Path
 
 from chio.invariants import (
     capability_body_canonical_json,
+    canonicalize_json,
     canonicalize_json_string,
     parse_capability_json,
     parse_receipt_json,
@@ -42,6 +43,16 @@ class VectorTests(unittest.TestCase):
                 case["canonical_json"],
                 case["id"],
             )
+
+    def test_canonical_strings_preserve_chio_control_escapes(self) -> None:
+        controls = "\u007f\u009f"
+        escaped_controls = r"\u007f\u009f"
+
+        self.assertEqual(canonicalize_json(controls), f'"{escaped_controls}"')
+        self.assertEqual(
+            canonicalize_json({controls: controls}),
+            f'{{"{escaped_controls}":"{escaped_controls}"}}',
+        )
 
     def test_hashing_vectors(self) -> None:
         fixture = load_vector("hashing")

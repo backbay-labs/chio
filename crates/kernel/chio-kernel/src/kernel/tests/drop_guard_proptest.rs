@@ -78,7 +78,8 @@ fn assert_drop_guard_budget_conservation(
                 {
                     drop_hold_authorizations += 1;
                 }
-                crate::budget_store::BudgetMutationKind::ReverseExposure => {
+                crate::budget_store::BudgetMutationKind::ReverseExposure
+                | crate::budget_store::BudgetMutationKind::ExpireHold => {
                     prop_assert_eq!(event.exposure_units, 5);
                     drop_hold_reversals += 1;
                 }
@@ -104,7 +105,8 @@ fn assert_drop_guard_budget_conservation(
                     invocations += 1;
                 }
             }
-            crate::budget_store::BudgetMutationKind::ReverseExposure => {
+            crate::budget_store::BudgetMutationKind::ReverseExposure
+            | crate::budget_store::BudgetMutationKind::ExpireHold => {
                 let exposure = u128::from(event.exposure_units);
                 prop_assert!(outstanding >= exposure);
                 prop_assert!(invocations > 0);

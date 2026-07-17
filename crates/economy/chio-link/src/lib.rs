@@ -2,7 +2,9 @@
 //!
 //! Reads price feeds (Chainlink, Pyth) behind a pluggable backend, caches and
 //! monitors them, applies circuit-breaker thresholds, and converts amounts
-//! across currencies to back budget enforcement with signed conversion evidence.
+//! across currencies to back budget enforcement with conversion evidence.
+//! Evidence leaves this crate unsigned ([`ExchangeRate::to_conversion_evidence`]
+//! sets `oracle_public_key` and `signature` to `None`); signing happens downstream.
 
 #![forbid(unsafe_code)]
 

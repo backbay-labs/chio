@@ -24,6 +24,36 @@ from chio_llamaindex import ChioFunctionTool
 
 
 class TestDefaultPolicyRedacts:
+    async def test_positional_chio_file_write_content_is_redacted(self) -> None:
+        captured_args: list[dict[str, Any]] = []
+
+        def write_file(path: str, content: str) -> str:
+            captured_args.append({"path": path, "content": content})
+            return f"wrote {len(content)} bytes to {path}"
+
+        async with allow_all() as chio:
+            tool = ChioFunctionTool(
+                fn=write_file,
+                name="chio_file_write",
+                description="write a file",
+                server_id="fs",
+                capability_id="cap-1",
+                chio_client=chio,
+            )
+            await tool.acall("/tmp/x", "PROD_SECRET=abc123")
+
+        eval_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        assert len(eval_calls) == 1
+        recorded = eval_calls[0]
+        assert recorded.parameters["path"] == "/tmp/x"
+        assert recorded.parameters["content"] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
+        }
+        assert captured_args == [
+            {"path": "/tmp/x", "content": "PROD_SECRET=abc123"}
+        ]
+
     async def test_chio_file_write_content_is_redacted_in_recorded_params(
         self,
     ) -> None:
@@ -76,6 +106,91 @@ class TestDefaultPolicyRedacts:
         assert recorded.parameters["patch"] == {
             "omitted": True,
             "byte_count": len(b"--- a\n+++ b\n@@ secret @@"),
+        }
+
+    async def test_chio_file_write_positional_args_are_redacted(self) -> None:
+        def write_file(path: str, content: str) -> str:
+            return f"wrote {len(content)} bytes to {path}"
+
+        async with allow_all() as chio:
+            tool = ChioFunctionTool(
+                fn=write_file,
+                name="chio_file_write",
+                description="write a file",
+                server_id="fs",
+                capability_id="cap-1",
+                chio_client=chio,
+            )
+            await tool.acall("/tmp/x", "PROD_SECRET=abc123")
+
+        eval_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        recorded = eval_calls[0]
+        assert recorded.parameters == {
+            "path": "/tmp/x",
+            "content": {
+                "omitted": True,
+                "byte_count": len(b"PROD_SECRET=abc123"),
+            },
+        }
+
+    async def test_async_callable_signature_drives_async_redaction(self) -> None:
+        captured_args: list[dict[str, str]] = []
+        custom = RedactionPolicy(body_fields={"async_upload": ("content",)})
+
+        def fallback(path: str, data: str) -> str:
+            return f"fallback:{path}:{len(data)}"
+
+        async def upload(path: str, content: str) -> str:
+            captured_args.append({"path": path, "content": content})
+            return f"uploaded {len(content)} bytes to {path}"
+
+        async with allow_all() as chio:
+            tool = ChioFunctionTool(
+                fn=fallback,
+                async_fn=upload,
+                name="async_upload",
+                description="upload a file",
+                server_id="fs",
+                capability_id="cap-1",
+                chio_client=chio,
+                redaction_policy=custom,
+            )
+            await tool.acall("/tmp/x", "PROD_SECRET=abc123")
+
+        eval_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        recorded = eval_calls[0]
+        assert recorded.parameters == {
+            "path": "/tmp/x",
+            "content": {
+                "omitted": True,
+                "byte_count": len(b"PROD_SECRET=abc123"),
+            },
+        }
+        assert captured_args == [
+            {"path": "/tmp/x", "content": "PROD_SECRET=abc123"}
+        ]
+
+    async def test_chio_file_write_body_alias_is_redacted(self) -> None:
+        def write_file(path: str, body: str) -> str:
+            return f"wrote {len(body)} bytes to {path}"
+
+        async with allow_all() as chio:
+            tool = ChioFunctionTool(
+                fn=write_file,
+                name="chio_file_write",
+                description="write a file",
+                server_id="fs",
+                capability_id="cap-1",
+                chio_client=chio,
+            )
+            await tool.acall(path="/tmp/x", body="PROD_SECRET=abc123")
+
+        eval_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
+        recorded = eval_calls[0]
+        assert recorded.parameters["path"] == "/tmp/x"
+        assert recorded.parameters["body"] == {
+            "omitted": True,
+            "byte_count": len(b"PROD_SECRET=abc123"),
         }
 
     async def test_unrelated_tool_passes_args_through(self) -> None:

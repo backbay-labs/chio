@@ -14,7 +14,8 @@ use chio_core_types::{
         decision::Decision,
         kinds::{ReceiptKind, TrustLevel},
     },
-    sha256_hex, PublicKey,
+    sha256_hex, PublicKey, CHIO_AGENT_WEB_PROOF_ENVELOPE_V1_SCHEMA,
+    CHIO_AGENT_WEB_PROOF_ENVELOPE_V2_SCHEMA,
 };
 use chio_transaction_passport::{
     verify_minimal_passport_artifacts, verify_transaction_passport_signature_with_evidence_graph,
@@ -731,8 +732,17 @@ fn verify_agent_web_interop_with_trust_mode(
         .iter()
         .filter(|node| node.role == AgentWebEvidenceRole::AgentWebProofEnvelope)
     {
+        let envelope_schema = match envelope_node.schema.as_str() {
+            CHIO_AGENT_WEB_PROOF_ENVELOPE_V1_SCHEMA => CHIO_AGENT_WEB_PROOF_ENVELOPE_V1_SCHEMA,
+            CHIO_AGENT_WEB_PROOF_ENVELOPE_V2_SCHEMA => CHIO_AGENT_WEB_PROOF_ENVELOPE_V2_SCHEMA,
+            schema => {
+                return Err(claim_failed(format!(
+                    "unsupported Agent Web proof envelope schema: {schema}"
+                )));
+            }
+        };
         let envelope: AgentWebProofEnvelope =
-            parse_artifact(bundle, envelope_node, "chio.agent-web-proof-envelope.v1")?;
+            parse_artifact(bundle, envelope_node, envelope_schema)?;
         validate_envelope(&bundle.passport, &passport_scope_sha256, &envelope, trust)?;
         if !envelope_ids.insert(envelope.envelope_id.clone()) {
             return Err(claim_failed(format!(
@@ -939,6 +949,20 @@ fn validate_agent_web_receipt(
     }
     if receipt.policy_hash != passport.verifier_policy_sha256 {
         return Err(claim_failed("Agent Web receipt policy digest mismatch"));
+    }
+    if !envelope.is_scope_bound_v2() {
+        let bound_ref = receipt
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("agent_web_receipt_ref"))
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| claim_failed("Agent Web receipt ref mismatch"))?;
+        if bound_ref != receipt_ref {
+            return Err(claim_failed("Agent Web receipt ref mismatch"));
+        }
+    }
+    if !envelope.is_scope_bound_v2() {
+        return Ok(());
     }
     validate_receipt_action_parameter(
         &receipt,

@@ -1,6 +1,11 @@
 {
   "matrixId": "chio.web3-operations-qualification.v1",
   "generatedAt": "2026-04-02T19:10:00Z",
+  "promotionStatus": "EXTERNAL_ASSURANCE_REQUIRED",
+  "nonTestnetGuard": {
+    "effectiveAt": "2026-07-04T01:48:54Z",
+    "summary": "Operations qualification remains rehearsal evidence only and does not authorize non-testnet contract promotion before external assurance."
+  },
   "cases": [
     {
       "id": "link.global_pause_and_runtime_alerts",
@@ -47,7 +52,7 @@
         "crates/economy/chio-settle/tests/runtime_devnet.rs"
       ],
       "command": "pnpm --dir contracts devnet:smoke && CARGO_TARGET_DIR=target/chio-settle-runtime CARGO_INCREMENTAL=0 CARGO_BUILD_JOBS=1 cargo test -p chio-settle --test runtime_devnet -- --nocapture",
-      "expectedOutcome": "The local end-to-end lane keeps contract, anchor, settlement, and observation evidence aligned."
+      "expectedOutcome": "The local end-to-end lane keeps contract, anchor, settlement, and observation evidence aligned for rehearsal only; the contract-family local-devnet qualification is historical evidence, not promotion evidence."
     },
     {
       "id": "kernel.web3_evidence_fail_closed_gates",

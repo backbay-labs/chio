@@ -21,25 +21,21 @@ compatibility-surface = []
 fuzz = ["dep:arbitrary"]
 
 [dependencies]
-async-trait = { workspace = true }
-futures = "0.3"
-tokio = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../../core/chio-core-types" }
 chio-cross-protocol = { workspace = true }
 chio-edge-metrics = { workspace = true }
 chio-kernel = { workspace = true }
 chio-manifest = { workspace = true }
 chio-mcp-edge = { workspace = true }
-chio-metrics-spec = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
-tracing = { workspace = true }
 # `arbitrary` is gated behind the `fuzz` feature so production builds stay
 # free of fuzz instrumentation.
 arbitrary = { version = "1", features = ["derive"], optional = true }
 
 [dev-dependencies]
+async-trait = { workspace = true }
 chio-test-support = { workspace = true }
 
 [lints]

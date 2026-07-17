@@ -25,6 +25,12 @@ ExecStart=/usr/local/bin/chio pheromone relay serve \
   --operator-token-env CHIO_RELAY_OPERATOR_TOKEN
 Restart=on-failure
 RestartSec=5s
+# Deliver SIGTERM first (systemd's default, made explicit) so the graceful drain
+# runs, and hold the kill escalation until after the bounded drain plus margin
+# can finish. The drain deadline is 25s; the platform grace period must be at
+# least TimeoutStopSec.
+KillSignal=SIGTERM
+TimeoutStopSec=35s
 NoNewPrivileges=true
 PrivateTmp=true
 ProtectHome=true

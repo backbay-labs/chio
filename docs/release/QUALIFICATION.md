@@ -198,8 +198,14 @@ CARGO_INCREMENTAL=0 cargo test -p chio-cli --test certify \
   -- --exact --nocapture
 ```
 
-Targeted web3-runtime qualification lanes currently used in local milestone
+Targeted web3-runtime qualification lanes currently used for local release
 closure:
+
+External assurance note: these web3-runtime lanes are rehearsal evidence only
+for the current contract family. They do not authorize mainnet deployment,
+non-testnet custody, or non-testnet promotion before external audit, testnet
+soak, artifact digest, runtime codehash, minimum-bar checklist, and
+security-owner sign-off.
 
 ```bash
 ./scripts/qualify-web3-runtime.sh

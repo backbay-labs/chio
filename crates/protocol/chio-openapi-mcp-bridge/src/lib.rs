@@ -292,6 +292,15 @@ impl ToolServerConnection for BridgeToolServer<'_> {
         self.bridge.tool_names()
     }
 
+    /// The generated manifest derives `has_side_effects` from the OpenAPI
+    /// operation's read-only annotation (safe GET/HEAD operations), so a
+    /// read-only route is exempt from side-effect handling (the
+    /// dispatch-intent journal in particular) while mutating routes stay
+    /// side-effecting.
+    fn tool_is_read_only(&self, tool_name: &str) -> bool {
+        self.bridge.manifest.tool_is_read_only(tool_name)
+    }
+
     async fn invoke(
         &self,
         tool_name: &str,
@@ -361,6 +370,15 @@ impl ToolServerConnection for OwnedBridgeToolServer {
 
     fn tool_names(&self) -> Vec<String> {
         self.manifest.tools.iter().map(|t| t.name.clone()).collect()
+    }
+
+    /// The generated manifest derives `has_side_effects` from the OpenAPI
+    /// operation's read-only annotation (safe GET/HEAD operations), so a
+    /// read-only route is exempt from side-effect handling (the
+    /// dispatch-intent journal in particular) while mutating routes stay
+    /// side-effecting.
+    fn tool_is_read_only(&self, tool_name: &str) -> bool {
+        self.manifest.tool_is_read_only(tool_name)
     }
 
     async fn invoke(

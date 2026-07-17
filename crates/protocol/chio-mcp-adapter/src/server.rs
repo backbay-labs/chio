@@ -73,6 +73,21 @@ impl ToolServerConnection for AdaptedMcpServer {
             .collect()
     }
 
+    /// The manifest derives `has_side_effects` from the upstream MCP
+    /// `readOnlyHint` annotation, so a hinted read-only tool is exempt from
+    /// side-effect handling (the dispatch-intent journal in particular)
+    /// while unhinted tools stay side-effecting. This is the server's own
+    /// self-reported claim, captured once at adapt time and never
+    /// re-verified per call; the MCP spec treats tool annotations as
+    /// untrusted hints, so a lying or compromised server can exempt its own
+    /// side-effecting tools from the journal's crash-window audit net
+    /// (policy, guards, and receipts are unaffected). See
+    /// `crates/protocol/chio-mcp-adapter/ARCHITECTURE.md` for the full trust
+    /// posture and the conservative parsing that bounds it.
+    fn tool_is_read_only(&self, tool_name: &str) -> bool {
+        self.manifest.tool_is_read_only(tool_name)
+    }
+
     async fn invoke(
         &self,
         tool_name: &str,

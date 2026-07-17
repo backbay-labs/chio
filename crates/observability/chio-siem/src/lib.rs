@@ -19,11 +19,13 @@
 #![forbid(unsafe_code)]
 
 pub mod alerting;
+pub mod cursor_store;
 pub mod dlq;
 pub mod event;
 pub mod exporter;
 pub mod exporters;
 pub mod manager;
+pub mod metrics_sink;
 pub mod ocsf;
 pub mod ratelimit;
 mod redaction;
@@ -32,6 +34,7 @@ pub use alerting::{
     derive_event_severity, derive_severity, Alert, AlertBackend, AlertSeverity, AlertingConfig,
     AlertingExporter, AlertingExporterBuilder, OpsGenieBackend, PagerDutyBackend,
 };
+pub use cursor_store::SiemCursorStore;
 pub use dlq::{DeadLetterQueue, FailedEvent};
 pub use event::SiemEvent;
 pub use exporter::{ExportError, ExportFuture, Exporter};
@@ -45,6 +48,7 @@ pub use exporters::webhook::{
     WebhookAuth, WebhookConfig, WebhookExporter, WebhookMethod, WebhookRetry,
 };
 pub use manager::{ExporterManager, SiemConfig, SiemError};
+pub use metrics_sink::{noop_metrics_sink, ExportOutcome, NoopMetricsSink, SiemMetricsSink};
 pub use ocsf::{
     receipt_to_ocsf, OCSF_CATEGORY_NAME, OCSF_CATEGORY_UID, OCSF_CLASS_NAME, OCSF_CLASS_UID,
     OCSF_PRODUCT_NAME, OCSF_PRODUCT_VENDOR, OCSF_SCHEMA_VERSION,

@@ -73,7 +73,7 @@ impl JournalState {
                         .ok_or("reserved total overflow")?;
                 }
             }
-            BudgetMutationKind::ReverseExposure => {
+            BudgetMutationKind::ReverseExposure | BudgetMutationKind::ExpireHold => {
                 next.invocations = next
                     .invocations
                     .checked_sub(1)
@@ -143,7 +143,8 @@ fn apply_hold_event(
             }
             BudgetMutationKind::ReverseExposure
             | BudgetMutationKind::ReleaseExposure
-            | BudgetMutationKind::ReconcileSpend => {
+            | BudgetMutationKind::ReconcileSpend
+            | BudgetMutationKind::ExpireHold => {
                 *unnamed_outstanding =
                     unnamed_outstanding.checked_sub(exposure).ok_or_else(|| {
                         format!("event {event_id} disposed exposure without a matching hold id")
@@ -172,7 +173,8 @@ fn apply_hold_event(
         }
         BudgetMutationKind::ReverseExposure
         | BudgetMutationKind::ReleaseExposure
-        | BudgetMutationKind::ReconcileSpend => {
+        | BudgetMutationKind::ReconcileSpend
+        | BudgetMutationKind::ExpireHold => {
             let hold = holds
                 .get_mut(hold_id)
                 .ok_or_else(|| format!("event {event_id} mutated unknown hold {hold_id}"))?;
@@ -428,6 +430,26 @@ mod tests {
                 outstanding: 0,
                 committed: 5,
                 released: 3,
+            }
+        );
+    }
+
+    #[test]
+    fn expired_hold_releases_exposure_and_invocation() {
+        let authorized = JournalState::default()
+            .apply(BudgetMutationKind::AuthorizeExposure, Some(true), 8, 0)
+            .unwrap_or_else(|error| panic!("authorize replay failed: {error}"));
+        let expired = authorized
+            .apply(BudgetMutationKind::ExpireHold, Some(true), 8, 0)
+            .unwrap_or_else(|error| panic!("expiry replay failed: {error}"));
+        assert_eq!(
+            expired,
+            JournalState {
+                invocations: 0,
+                reserved_total: 8,
+                outstanding: 0,
+                committed: 0,
+                released: 8,
             }
         );
     }

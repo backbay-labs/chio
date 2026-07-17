@@ -3,11 +3,9 @@
 //! The driver loads the canonical scenario corpus from
 //! `crates/tooling/chio-conformance/verdict_matrix/scenarios/` and emits a
 //! `(verdict, reason_code, scope_set)` tuple per scenario by forwarding each
-//! scenario to a Chio sidecar over the same `POST /chio/evaluate` wire surface
-//! the `sdks/lambda/chio-lambda-extension` runtime speaks in production. The
-//! Lambda extension itself does not embed kernel evaluation; it relays
-//! admission requests to a Chio sidecar, so this deployment-shape driver
-//! mirrors that contract exactly.
+//! scenario to a Chio sidecar over an HTTP `POST /chio/evaluate` wire surface.
+//! This driver holds no in-process kernel; it models a deployment shape that
+//! relies on a remote Chio evaluator for every verdict.
 //!
 //! ## Runtime-availability gate
 //!
@@ -22,7 +20,7 @@
 //!   a silent skip), so a misconfigured sidecar cannot masquerade as a pass.
 //! - When no sidecar URL is set, the driver reports every scenario as
 //!   `unsupported` with a diagnostic naming the missing variable. This is a
-//!   real availability gate, not a placeholder: the Lambda SDK has no in-process
+//!   real availability gate, not a placeholder: this driver has no in-process
 //!   kernel, so there is no verdict it can honestly emit without a sidecar.
 
 #![forbid(clippy::unwrap_used)]

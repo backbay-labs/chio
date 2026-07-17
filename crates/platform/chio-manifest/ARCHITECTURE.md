@@ -1,53 +1,75 @@
-# chio-manifest Architecture Notes
+# chio-manifest architecture
 
-## Boundary
+## Overview
 
-`chio-manifest` owns the native Chio tool discovery artifact:
-`chio.manifest.v1`. It defines the manifest schema structs, validates
-manifest-level invariants, signs manifests over canonical JSON, and verifies
-signed manifests against Chio public keys. It should not own adapter-specific
-tool synthesis, kernel admission state, capability issuance, guard execution,
-or billing enforcement.
+`chio-manifest` defines `chio.manifest.v1`, the signed discovery-and-trust
+artifact a Chio tool server uses to declare its tools before the kernel admits
+it. The crate is pure data, validation, and signing: no I/O, no runtime state,
+`#![forbid(unsafe_code)]`. Structural validation (`validate_manifest`) is
+deliberately independent of signer material, so a manifest's shape can be
+checked before a keypair is available; `sign_manifest` and `verify_manifest`
+layer the Ed25519 trust check on top. Tool-definition synthesis from a wire
+protocol, kernel admission state, capability issuance, and guard execution are
+deliberately absent from this crate; they live in the protocol adapters,
+`chio-kernel`, and the guard crates.
 
-## Pricing Metadata
+## Module map
 
-The manifest carries advisory pricing metadata that operators and authorities
-can use before issuing budgeted capabilities. `validate_manifest` rejects
-malformed identity, schema, server-tool, sandbox-permission, and pricing
-metadata before a manifest is signed. Flat pricing requires a base price;
-per-invocation and per-unit pricing require a unit price plus billing unit;
-hybrid pricing requires both base and unit prices plus a billing unit. Any
-present price amount must carry a three-letter uppercase currency code, and
-billing units must be non-empty and unpadded. The kernel enforces issued
-capability budgets; the signed discovery artifact must not carry ambiguous
-quote inputs that mislead authority-side planning.
+| Path | Responsibility |
+|------|----------------|
+| `src/lib.rs` | Manifest schema types (`ToolManifest`, `ToolDefinition`, `ToolPricing`, `PricingModel`, `RequiredPermissions`, `LatencyHint`, `ServerTool`, `SignedManifest`, `ManifestError`) and `sign_manifest`/`verify_manifest`. |
+| `src/validation.rs` | Structural validation (`validate_manifest` and its field-level helpers). Private module; only `validate_manifest` is re-exported. |
 
-## Security And API Constraints
+## Signing and verification lifecycle
 
-- `chio.manifest.v1` must stay frozen and backward-compatible for valid
-  manifests.
-- Unknown schema values, duplicate tool names, malformed server-tool
-  allowlists, and non-object per-tool schemas must fail closed in structural
-  validation.
-- Missing, malformed, or mismatched signer material must fail closed in
-  `sign_manifest` and `verify_manifest`, not in unsigned structural validation.
-- Validation must use Chio's algorithm-aware `PublicKey` decoder so Ed25519 and
-  supported FIPS encodings stay compatible when signed material is evaluated.
-- Server identity, display name, version, and required permission entries are
-  adapter and kernel admission metadata. Empty, padded, or duplicate text values
-  should fail closed during structural validation.
-- Pricing metadata is advisory, not the enforcement boundary, but signed
-  manifests must still reject model shapes that omit required quote fields.
-- Existing valid native builder output for flat, per-invocation, per-unit, and
-  hybrid pricing must continue to validate.
-- Adapter fixture updates should not be required solely to satisfy unsigned
-  structural validation. Fixtures that exercise signed-manifest admission should
-  still use deterministic valid keys.
+1. A tool server (typically a protocol adapter, e.g. `chio-mcp-adapter`) builds
+   a `ToolManifest` literal from its `ToolDefinition`s and embeds its own
+   Ed25519 public key as hex in `public_key`.
+2. `sign_manifest` calls `validate_manifest`, then confirms `public_key`
+   hex-decodes and equals the signing `Keypair`'s public key
+   (`ensure_embedded_public_key_matches`), then signs the canonical JSON
+   encoding of the manifest and returns `SignedManifest { manifest, signature,
+   signer_key }`.
+3. `verify_manifest` re-runs `validate_manifest` and the embedded-key check,
+   confirms `signed.signer_key` equals the caller-supplied trusted `PublicKey`,
+   and cryptographically verifies `signature` over the manifest's canonical
+   JSON.
+4. A failure at any step returns a `ManifestError`; there is no partial-success
+   result.
 
-## Affected Dependents
+## Invariants and failure modes
 
-Dependents are adapter tests and examples that synthesize manifests before
-calling `validate_manifest`. Structural validation rejects malformed tool
-schemas for those dependents, while unsigned manifests with placeholder public
-keys remain usable until a caller explicitly signs or verifies the manifest.
-`NativeTool` pricing builders emit the required fields.
+- `schema` must equal `TOOL_MANIFEST_SCHEMA` (`"chio.manifest.v1"`); any other
+  value is `UnsupportedSchema`.
+- `validate_manifest` never inspects `public_key` material; it is a pure
+  structural gate usable before a signer exists.
+- `tools` must be non-empty with unique names (`EmptyManifest`,
+  `DuplicateToolName`); `server_tools` entries must be unique
+  (`DuplicateServerTool`).
+- `input_schema` must be a JSON object; `output_schema`, if present, must also
+  be a JSON object (`InvalidInputSchema`, `InvalidOutputSchema`).
+- `server_id`, `name`, `version`, tool names, and required-permission entries
+  must be non-empty, unpadded, and free of control characters
+  (`InvalidManifestField`, `InvalidToolName`, `InvalidRequiredPermission`);
+  permission entries must also be unique within their list
+  (`DuplicateRequiredPermission`).
+- Pricing validates per model: `Flat` requires `base_price`;
+  `PerInvocation`/`PerUnit` require `unit_price` and `billing_unit`; `Hybrid`
+  requires both prices and `billing_unit`. Any price present must carry a
+  currency of exactly 3 uppercase ASCII letters (ISO 4217 shape; not checked
+  against the real currency list).
+- `ToolManifest`, `ToolDefinition`, `ToolPricing`, `RequiredPermissions`, and
+  `SignedManifest` are all annotated `#[serde(deny_unknown_fields)]`;
+  unrecognized JSON fields fail to deserialize instead of being dropped.
+- `sign_manifest` and `verify_manifest` fail closed with `VerificationFailed`
+  on an unparseable or mismatched embedded `public_key`, a signer-key
+  mismatch, or an invalid signature.
+
+## Dependencies
+
+- `chio-core` - `Keypair`, `PublicKey`, `Signature` (Ed25519 signing and
+  canonical-JSON verification, including the FIPS/hybrid-capable
+  `PublicKey::from_hex` decoder) and `MonetaryAmount` (also used for
+  capability budget scoping in `chio-core-types::capability::scope`).
+- `serde`, `serde_json` - manifest (de)serialization and JSON Schema values.
+- `thiserror` - `ManifestError`.

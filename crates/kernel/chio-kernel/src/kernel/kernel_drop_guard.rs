@@ -449,6 +449,13 @@ impl<'a> PostAdmissionDropGuard<'a> {
         result
     }
 
+    /// Persist the buffered child receipts on the normal path. This keeps the
+    /// main-branch API while sharing the append-outcome quarantine used by the
+    /// drop path, so an uncertain append is never retried.
+    pub(crate) fn record_buffered_child_receipts(&mut self) -> Result<(), KernelError> {
+        self.flush_child_receipts()
+    }
+
     /// Mark that the tool-server dispatch await has been entered. After this
     /// point a dropped future may correspond to an executed side effect, so
     /// the drop path must record a cancellation receipt and fail closed on
@@ -504,12 +511,26 @@ impl<'a> PostAdmissionDropGuard<'a> {
     /// Retain every state transition whose outcome became ambiguous after
     /// dispatch and identify the held exposure in the cancellation receipt.
     fn retain_post_dispatch_state(&self) -> Option<serde_json::Value> {
-        self.kernel.retain_post_dispatch_state(
+        let metadata = self.kernel.retain_post_dispatch_state(
             self.receipt_context.extra_metadata.clone(),
             self.receipt_context.runtime_admission_metadata.clone(),
             self.budget_mutation.charge_result(),
             self.budget_reconcile_decision.get(),
             self.payment_authorization.as_ref(),
+        );
+        if self.payment_credential_disposition == PaymentCredentialDisposition::NonePresent {
+            return metadata;
+        }
+        merge_metadata_objects(
+            metadata,
+            Some(serde_json::json!({
+                "chio_runtime": {
+                    "dispatch_credential_disposition": self.payment_credential_disposition,
+                    "dispatch_credential_retention_outcome_unknown": self
+                        .payment_credential_disposition
+                        == PaymentCredentialDisposition::RetentionOutcomeUnknown,
+                }
+            })),
         )
     }
 
@@ -531,7 +552,13 @@ impl<'a> PostAdmissionDropGuard<'a> {
             runtime_admission_metadata: self.receipt_context.runtime_admission_metadata.clone(),
             budget_lease_acquired: self.budget_lease_acquired,
         });
-        if !outcome.faults.is_empty() {
+        if outcome.faults.is_empty() {
+            // No terminal receipt is emitted for a clean pre-dispatch drop, so
+            // clear the durable intent explicitly. A bounded clear failure
+            // leaves the row available to recovery rather than losing it.
+            self.kernel
+                .clear_dispatch_intent_for_non_dispatch_exit(self.request);
+        } else {
             self.record_pre_dispatch_cleanup_fault_receipt(outcome.metadata);
         }
         #[cfg(debug_assertions)]
@@ -552,7 +579,8 @@ impl<'a> PostAdmissionDropGuard<'a> {
         {
             return None;
         }
-        if !self.child_receipts.is_empty() {
+        while !self.child_receipts.is_empty() {
+            let pending_before = self.child_receipts.len();
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 self.flush_child_receipts()
             }))
@@ -563,6 +591,12 @@ impl<'a> PostAdmissionDropGuard<'a> {
             });
             if let Err(error) = result {
                 self.child_receipt_persistence_failure_reason = Some(redacted!(&error).to_string());
+                // An outcome-unknown receipt was removed from the retry queue
+                // and quarantined. Continue with the untouched suffix, but stop
+                // when the failure happened before any append was attempted.
+                if self.child_receipts.len() >= pending_before {
+                    break;
+                }
             }
         }
         if self.child_receipts.is_empty()

@@ -17,7 +17,7 @@ fn strict_nonce_state_with_upstream(routes: Vec<RouteEntry>, upstream: String) -
     let signer_public_key = keypair.public_key();
     let trusted_capability_issuers = vec![signer_public_key.clone()];
     let trusted_receipt_signers = vec![signer_public_key];
-    let mut evaluator = RequestEvaluator::new_with_approval_store(
+    let mut evaluator = RequestEvaluator::new_ephemeral_with_approval_store(
         routes,
         keypair.clone(),
         "test-policy".to_string(),
@@ -43,10 +43,13 @@ fn strict_nonce_state_with_upstream(routes: Vec<RouteEntry>, upstream: String) -
             receipts: Vec::new(),
         }),
         receipt_store: None,
+        revocation_store: None,
         revoked_capability_ids: Mutex::new(HashSet::new()),
         trusted_capability_issuers,
         trusted_receipt_signers,
         sidecar_control_token: None,
+        receipt_backend: "ephemeral",
+        revocation_backend: "ephemeral",
     })
 }
 

@@ -218,6 +218,14 @@ pub(crate) fn assert_schema_accepts_value(schema: &Value, value: &Value, label: 
     );
 }
 
+pub(crate) fn assert_schema_rejects_value(schema: &Value, value: &Value, label: &str) {
+    let validator = jsonschema::validator_for(schema).test_expect("schema compiles");
+    assert!(
+        !validator.is_valid(value),
+        "schema unexpectedly accepted Agent Web artifact {label}"
+    );
+}
+
 pub(crate) fn agent_web_envelope_or_manifest_paths(relative_dir: &str) -> Vec<String> {
     let fixture_dir = workspace_root().join(relative_dir);
     let mut artifacts = std::fs::read_dir(&fixture_dir)
@@ -666,54 +674,54 @@ pub(crate) fn bind_agent_web_envelope_manifest_digests(
 }
 
 fn agent_web_envelope_signature_payload(envelope: &Value) -> Value {
-    agent_web_envelope_payload(
-        envelope,
-        &[
-            "schema",
-            "envelope_id",
-            "transaction_passport_ref",
-            "agent_web_passport_scope_sha256",
-            "source_protocol",
-            "source_protocol_version",
-            "external_subject",
-            "external_subject_path",
-            "external_subject_digest",
-            "external_subject_signature_ref",
-            "projection_manifest_ref",
-            "projection_manifest_sha256",
-            "chio_claim_refs",
-            "receipt_refs",
-            "disclosure_capsule_refs",
-            "settlement_refs",
-            "risk_refs",
-            "limitations",
-        ],
-    )
+    let mut fields = vec![
+        "schema",
+        "envelope_id",
+        "transaction_passport_ref",
+        "source_protocol",
+        "source_protocol_version",
+        "external_subject",
+        "external_subject_path",
+        "external_subject_digest",
+        "external_subject_signature_ref",
+        "projection_manifest_ref",
+        "projection_manifest_sha256",
+        "chio_claim_refs",
+        "receipt_refs",
+        "disclosure_capsule_refs",
+        "settlement_refs",
+        "risk_refs",
+        "limitations",
+    ];
+    if envelope.get("schema").and_then(Value::as_str) == Some("chio.agent-web-proof-envelope.v2") {
+        fields.insert(3, "agent_web_passport_scope_sha256");
+    }
+    agent_web_envelope_payload(envelope, &fields)
 }
 
 fn agent_web_envelope_id(envelope: &Value) -> String {
-    let payload = agent_web_envelope_payload(
-        envelope,
-        &[
-            "schema",
-            "transaction_passport_ref",
-            "agent_web_passport_scope_sha256",
-            "source_protocol",
-            "source_protocol_version",
-            "external_subject",
-            "external_subject_path",
-            "external_subject_digest",
-            "external_subject_signature_ref",
-            "projection_manifest_ref",
-            "projection_manifest_sha256",
-            "chio_claim_refs",
-            "receipt_refs",
-            "disclosure_capsule_refs",
-            "settlement_refs",
-            "risk_refs",
-            "limitations",
-        ],
-    );
+    let mut fields = vec![
+        "schema",
+        "transaction_passport_ref",
+        "source_protocol",
+        "source_protocol_version",
+        "external_subject",
+        "external_subject_path",
+        "external_subject_digest",
+        "external_subject_signature_ref",
+        "projection_manifest_ref",
+        "projection_manifest_sha256",
+        "chio_claim_refs",
+        "receipt_refs",
+        "disclosure_capsule_refs",
+        "settlement_refs",
+        "risk_refs",
+        "limitations",
+    ];
+    if envelope.get("schema").and_then(Value::as_str) == Some("chio.agent-web-proof-envelope.v2") {
+        fields.insert(2, "agent_web_passport_scope_sha256");
+    }
+    let payload = agent_web_envelope_payload(envelope, &fields);
     let canonical = chio_core_types::canonical_json_bytes(&payload)
         .test_expect("Agent Web envelope canonicalizes");
     chio_core_types::sha256_hex(&canonical)
@@ -999,6 +1007,139 @@ pub(crate) fn replace_agent_web_envelope_artifact(
 pub(crate) fn sign_agent_web_envelope_with_key(envelope: &mut Value, keypair: &Keypair) {
     let public_key = keypair.public_key().to_hex();
     sign_agent_web_envelope_value(envelope, keypair, &public_key);
+}
+
+pub(crate) fn downgrade_agent_web_bundle_to_signed_v1(bundle: &mut AgentWebInteropBundle) {
+    let sidecar_keypair = agent_web_fixture_sidecar_keypair();
+    let sidecar_public_key = sidecar_keypair.public_key().to_hex();
+    let kernel_keypair = agent_web_fixture_kernel_keypair();
+    let mut graph: Value = serde_json::from_slice(&bundle.evidence_graph_bytes)
+        .test_expect("Agent Web evidence graph parses");
+    if let Some(openapi_subject) = bundle.artifacts.get_mut("external/openapi-operation.json") {
+        let mut subject: Value =
+            serde_json::from_slice(openapi_subject).test_expect("Agent Web OpenAPI subject parses");
+        subject["x_chio_proof_envelope_profile"] =
+            Value::String("chio.agent-web-proof-envelope.v1".to_string());
+        *openapi_subject = json_bytes(subject);
+    }
+    let mut node_id_replacements = Vec::new();
+    let nodes = graph["nodes"]
+        .as_array_mut()
+        .test_expect("Agent Web evidence graph has nodes");
+
+    for node in nodes {
+        let previous_id = node["id"]
+            .as_str()
+            .test_expect("Agent Web evidence node has id")
+            .to_string();
+        let previous_sha256 = node["sha256"]
+            .as_str()
+            .test_expect("Agent Web evidence node has digest")
+            .to_string();
+        let role = node["role"]
+            .as_str()
+            .test_expect("Agent Web evidence node has role");
+        let path = node["path"]
+            .as_str()
+            .test_expect("Agent Web evidence node has path")
+            .to_string();
+        if role == "agent-web-proof-envelope" {
+            let mut envelope: Value = serde_json::from_slice(
+                bundle
+                    .artifacts
+                    .get(&path)
+                    .test_expect("Agent Web envelope exists"),
+            )
+            .test_expect("Agent Web envelope parses");
+            envelope["schema"] = Value::String("chio.agent-web-proof-envelope.v1".to_string());
+            envelope
+                .as_object_mut()
+                .test_expect("Agent Web envelope is an object")
+                .remove("agent_web_passport_scope_sha256");
+            if path == "standard-webhooks-envelope.json" {
+                let receipt_ref = envelope["receipt_refs"][0].clone();
+                envelope["receipt_refs"] = json!([receipt_ref.clone(), receipt_ref]);
+            }
+            if envelope.get("source_protocol").and_then(Value::as_str) == Some("openapi") {
+                envelope["external_subject_digest"] = Value::String(chio_core_types::sha256_hex(
+                    bundle
+                        .artifacts
+                        .get("external/openapi-operation.json")
+                        .test_expect("Agent Web OpenAPI subject exists"),
+                ));
+            }
+            sign_agent_web_envelope_value(&mut envelope, &sidecar_keypair, &sidecar_public_key);
+            let bytes = json_bytes(envelope);
+            node["schema"] = Value::String("chio.agent-web-proof-envelope.v1".to_string());
+            node["sha256"] = Value::String(chio_core_types::sha256_hex(&bytes));
+            bundle.artifacts.insert(path, bytes);
+        } else if role == "external-subject" && path == "external/openapi-operation.json" {
+            node["sha256"] = Value::String(chio_core_types::sha256_hex(
+                bundle
+                    .artifacts
+                    .get(&path)
+                    .test_expect("Agent Web OpenAPI subject exists"),
+            ));
+        } else if role == "receipt" {
+            let receipt: ChioReceipt = serde_json::from_slice(
+                bundle
+                    .artifacts
+                    .get(&path)
+                    .test_expect("Agent Web receipt exists"),
+            )
+            .test_expect("Agent Web receipt parses");
+            let mut body = receipt.body();
+            let receipt_ref = body
+                .action
+                .parameters
+                .get("agent_web_receipt_ref")
+                .and_then(Value::as_str)
+                .test_expect("Agent Web receipt action has receipt ref")
+                .to_string();
+            body.action = ToolCallAction::from_parameters(json!({
+                "legacy_projection": true,
+            }))
+            .test_expect("legacy Agent Web receipt action hashes");
+            body.metadata = Some(json!({ "agent_web_receipt_ref": receipt_ref }));
+            body.kernel_key = kernel_keypair.public_key();
+            let receipt = ChioReceipt::sign(body, &kernel_keypair)
+                .test_expect("legacy Agent Web receipt signs");
+            let bytes = json_bytes(
+                serde_json::to_value(receipt).test_expect("legacy Agent Web receipt serializes"),
+            );
+            node["sha256"] = Value::String(chio_core_types::sha256_hex(&bytes));
+            bundle.artifacts.insert(path, bytes);
+        }
+        let updated_sha256 = node["sha256"]
+            .as_str()
+            .test_expect("Agent Web evidence node has updated digest")
+            .to_string();
+        if previous_id == previous_sha256 && previous_id != updated_sha256 {
+            node["id"] = Value::String(updated_sha256.clone());
+            node_id_replacements.push((previous_id, updated_sha256));
+        }
+    }
+    for edge in graph["edges"]
+        .as_array_mut()
+        .test_expect("Agent Web evidence graph has edges")
+    {
+        for endpoint in ["from", "to"] {
+            let Some(current) = edge[endpoint].as_str() else {
+                continue;
+            };
+            if let Some((_, replacement)) = node_id_replacements
+                .iter()
+                .find(|(previous, _)| previous == current)
+            {
+                edge[endpoint] = Value::String(replacement.clone());
+            }
+        }
+    }
+
+    bundle.evidence_graph_bytes = json_bytes(graph);
+    bundle.passport.evidence_graph_sha256 =
+        chio_core_types::sha256_hex(&bundle.evidence_graph_bytes);
+    sign_transaction_passport(&mut bundle.passport);
 }
 
 pub(crate) fn append_agent_web_json_artifact(

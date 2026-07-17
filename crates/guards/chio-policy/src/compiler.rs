@@ -44,6 +44,7 @@ use crate::models::HushSpec;
 
 use chio_core::capability::scope::ChioScope;
 use chio_guards::{GuardPipeline, PostInvocationPipeline};
+use chio_kernel::MemoryBudgetConfig;
 
 use budgets::compile_budget_guards;
 use detection::compile_detection_guards;
@@ -82,24 +83,42 @@ pub struct CompiledPolicy {
 /// guard configurations. See the module-level documentation for the full
 /// mapping table. Missing sections compile to an empty pipeline; no error
 /// is raised for policies that do not exercise every guard type.
+///
+/// Uses the DEFAULT process memory budget for bounded-collection caps (e.g. the
+/// velocity guard's bucket cap). Deployments that lower the process memory budget
+/// should use [`compile_policy_with_memory_budget`] so the configured caps reach
+/// the compiled guards.
 pub fn compile_policy(policy: &HushSpec) -> Result<CompiledPolicy, CompileError> {
     compile_policy_with_source(policy, None)
 }
 
 /// Compile a HushSpec policy with an optional source path used to resolve
-/// relative auxiliary assets referenced by the policy.
+/// relative auxiliary assets referenced by the policy. Uses the DEFAULT process
+/// memory budget; see [`compile_policy_with_memory_budget`].
 pub fn compile_policy_with_source(
     policy: &HushSpec,
     source_path: Option<&Path>,
+) -> Result<CompiledPolicy, CompileError> {
+    compile_policy_with_memory_budget(policy, source_path, &MemoryBudgetConfig::defaults())
+}
+
+/// Compile a HushSpec policy threading a CONFIGURED process memory budget into
+/// the bounded-collection guards. Lowering `velocity_bucket_cap` on `budget`
+/// tightens the compiled velocity guard's bucket cap instead of it silently
+/// using the compiled-in default.
+pub fn compile_policy_with_memory_budget(
+    policy: &HushSpec,
+    source_path: Option<&Path>,
+    budget: &MemoryBudgetConfig,
 ) -> Result<CompiledPolicy, CompileError> {
     ensure_compilable_policy(policy)?;
 
     let mut builder = PipelineBuilder::new();
     let mut post_invocation = PostInvocationPipeline::new();
     let source_dir = source_path.and_then(|path| path.parent());
-    compile_rule_guards(policy, &mut builder, &mut post_invocation)?;
+    compile_rule_guards(policy, &mut builder, &mut post_invocation, budget)?;
     compile_detection_guards(policy, &mut builder, source_dir)?;
-    compile_budget_guards(policy, &mut builder)?;
+    compile_budget_guards(policy, &mut builder, budget)?;
     let default_scope = compile_scope(policy)?;
     let (guards, guard_names) = builder.finish();
     Ok(CompiledPolicy {

@@ -6,6 +6,241 @@ use dashmap::DashMap;
 
 use super::*;
 
+use std::collections::BTreeMap;
+use std::time::Duration;
+
+use super::construction::KernelBuildError;
+
+/// Wall-clock budgets for the mediation hot path. All values are milliseconds.
+/// `0` means "no deadline" (unbounded) for the opt-in guard and dispatch
+/// budgets, so a deployment that never sets one runs byte-for-byte as it did
+/// before deadlines existed. The receipt-append budget may not be `0`: an
+/// unbounded wedged-writer stall is never a valid posture, so it is rejected at
+/// load time and floor-clamped at read time as defense in depth.
+#[derive(Debug, Clone)]
+pub struct HotPathDeadlineConfig {
+    /// Budget for the whole guard pipeline, enforced around `run_guards`.
+    /// `0` disables (preserves the inline path).
+    pub guard_pipeline_budget_ms: u64,
+    /// Per-guard overrides keyed by `Guard::name()`. A named guard is enforced
+    /// against its own budget instead of the pipeline budget; `0` disables the
+    /// override for that guard. Any entry forces per-guard offload. A `BTreeMap`
+    /// keeps the canonical key order deterministic.
+    pub per_guard_budget_ms: BTreeMap<String, u64>,
+    /// Offload the guard pipeline to `spawn_blocking` even with no budget set,
+    /// so a blocking guard never pins an async worker. Default `false`.
+    pub always_offload_guards: bool,
+    /// Default per-dispatch budget, enforced around the tool-server call.
+    /// `0` disables. Default `0`.
+    pub dispatch_budget_ms: u64,
+    /// Per-tool-server dispatch overrides keyed by `ServerId` string.
+    pub per_server_dispatch_budget_ms: BTreeMap<String, u64>,
+    /// Watchdog bound on one receipt-append round trip through the commit
+    /// actor. Must be `>= MIN_RECEIPT_APPEND_BUDGET_MS`. Default 5000.
+    pub receipt_append_budget_ms: u64,
+    /// Writer-liveness watchdog poll cadence.
+    pub receipt_writer_poll_ms: u64,
+    /// Staleness threshold before a stuck writer is judged wedged.
+    pub receipt_writer_stall_ms: u64,
+}
+
+pub const DEFAULT_RECEIPT_APPEND_BUDGET_MS: u64 = 5_000;
+pub const MIN_RECEIPT_APPEND_BUDGET_MS: u64 = 250;
+pub const DEFAULT_RECEIPT_WRITER_POLL_MS: u64 = 1_000;
+pub const DEFAULT_RECEIPT_WRITER_STALL_MS: u64 = 10_000;
+
+impl Default for HotPathDeadlineConfig {
+    fn default() -> Self {
+        Self {
+            guard_pipeline_budget_ms: 0,
+            per_guard_budget_ms: BTreeMap::new(),
+            always_offload_guards: false,
+            dispatch_budget_ms: 0,
+            per_server_dispatch_budget_ms: BTreeMap::new(),
+            receipt_append_budget_ms: DEFAULT_RECEIPT_APPEND_BUDGET_MS,
+            receipt_writer_poll_ms: DEFAULT_RECEIPT_WRITER_POLL_MS,
+            receipt_writer_stall_ms: DEFAULT_RECEIPT_WRITER_STALL_MS,
+        }
+    }
+}
+
+impl HotPathDeadlineConfig {
+    /// Fail-closed load-time validation, run before kernel construction and
+    /// mirrored in the config-file validator.
+    pub fn validate(&self) -> Result<(), KernelBuildError> {
+        if self.receipt_append_budget_ms < MIN_RECEIPT_APPEND_BUDGET_MS {
+            return Err(KernelBuildError::InvalidDeadlineConfig(format!(
+                "receipt_append_budget_ms must be >= {MIN_RECEIPT_APPEND_BUDGET_MS}"
+            )));
+        }
+        if self.receipt_writer_poll_ms == 0 || self.receipt_writer_stall_ms == 0 {
+            return Err(KernelBuildError::InvalidDeadlineConfig(
+                "receipt writer poll and stall thresholds must be non-zero".to_string(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn ms_to_budget(ms: u64) -> Option<Duration> {
+        match ms {
+            0 => None,
+            v => Some(Duration::from_millis(v)),
+        }
+    }
+
+    pub fn guard_pipeline_budget(&self) -> Option<Duration> {
+        Self::ms_to_budget(self.guard_pipeline_budget_ms)
+    }
+
+    pub fn guard_budget_for(&self, name: &str) -> Option<Duration> {
+        match self.per_guard_budget_ms.get(name) {
+            // A per-guard `0` disables only this guard's override, not the
+            // pipeline deadline: any per-guard entry forces the offloaded path,
+            // so falling through to the pipeline budget keeps an override-of-zero
+            // guard bounded instead of running unbounded.
+            None | Some(0) => self.guard_pipeline_budget(),
+            Some(ms) => Self::ms_to_budget(*ms),
+        }
+    }
+
+    pub fn dispatch_budget_for(&self, server_id: &str) -> Option<Duration> {
+        match self.per_server_dispatch_budget_ms.get(server_id) {
+            Some(ms) => Self::ms_to_budget(*ms),
+            None => Self::ms_to_budget(self.dispatch_budget_ms),
+        }
+    }
+
+    /// Effective append bound, clamped to the floor so a host that constructs a
+    /// `KernelConfig` without running validation still never gets an unbounded
+    /// (or below-floor) append.
+    pub fn receipt_append_budget(&self) -> Duration {
+        Duration::from_millis(
+            self.receipt_append_budget_ms
+                .max(MIN_RECEIPT_APPEND_BUDGET_MS),
+        )
+    }
+}
+
+#[cfg(test)]
+mod hot_path_deadline_config_tests {
+    use super::*;
+
+    #[test]
+    fn default_disables_guard_and_dispatch_but_bounds_append() {
+        let cfg = HotPathDeadlineConfig::default();
+        assert_eq!(cfg.guard_pipeline_budget(), None);
+        assert_eq!(cfg.dispatch_budget_for("any-server"), None);
+        assert_eq!(
+            cfg.receipt_append_budget(),
+            Duration::from_millis(DEFAULT_RECEIPT_APPEND_BUDGET_MS)
+        );
+    }
+
+    #[test]
+    fn validate_rejects_zero_append_budget() {
+        let cfg = HotPathDeadlineConfig {
+            receipt_append_budget_ms: 0,
+            ..HotPathDeadlineConfig::default()
+        };
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn validate_rejects_below_floor_append_budget() {
+        let cfg = HotPathDeadlineConfig {
+            receipt_append_budget_ms: MIN_RECEIPT_APPEND_BUDGET_MS - 1,
+            ..HotPathDeadlineConfig::default()
+        };
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn validate_rejects_zero_poll_or_stall() {
+        let cfg = HotPathDeadlineConfig {
+            receipt_writer_poll_ms: 0,
+            ..HotPathDeadlineConfig::default()
+        };
+        assert!(cfg.validate().is_err());
+    }
+
+    #[test]
+    fn append_budget_is_clamped_to_floor_even_without_validation() {
+        // A host that bypasses validation still never runs an unbounded (or
+        // below-floor) append.
+        let cfg = HotPathDeadlineConfig {
+            receipt_append_budget_ms: 1,
+            ..HotPathDeadlineConfig::default()
+        };
+        assert_eq!(
+            cfg.receipt_append_budget(),
+            Duration::from_millis(MIN_RECEIPT_APPEND_BUDGET_MS)
+        );
+    }
+
+    #[test]
+    fn per_guard_and_per_server_overrides_resolve() {
+        let mut per_guard = BTreeMap::new();
+        per_guard.insert("slow-guard".to_string(), 200u64);
+        let mut per_server = BTreeMap::new();
+        per_server.insert("slow-srv".to_string(), 300u64);
+        let cfg = HotPathDeadlineConfig {
+            guard_pipeline_budget_ms: 100,
+            per_guard_budget_ms: per_guard,
+            dispatch_budget_ms: 150,
+            per_server_dispatch_budget_ms: per_server,
+            ..HotPathDeadlineConfig::default()
+        };
+        assert_eq!(
+            cfg.guard_budget_for("slow-guard"),
+            Some(Duration::from_millis(200))
+        );
+        assert_eq!(
+            cfg.guard_budget_for("other-guard"),
+            Some(Duration::from_millis(100))
+        );
+        assert_eq!(
+            cfg.dispatch_budget_for("slow-srv"),
+            Some(Duration::from_millis(300))
+        );
+        assert_eq!(
+            cfg.dispatch_budget_for("other-srv"),
+            Some(Duration::from_millis(150))
+        );
+    }
+
+    #[test]
+    fn per_guard_zero_override_inherits_pipeline_budget() {
+        // A per-guard entry of `0` disables only that guard's own override; the
+        // guard must still inherit the overall pipeline budget rather than run
+        // unbounded (any per-guard entry forces the offloaded, timed path).
+        let mut per_guard = BTreeMap::new();
+        per_guard.insert("disabled-override".to_string(), 0u64);
+        let cfg = HotPathDeadlineConfig {
+            guard_pipeline_budget_ms: 1_000,
+            per_guard_budget_ms: per_guard,
+            ..HotPathDeadlineConfig::default()
+        };
+        assert_eq!(
+            cfg.guard_budget_for("disabled-override"),
+            Some(Duration::from_millis(1_000))
+        );
+    }
+
+    #[test]
+    fn per_guard_zero_override_stays_unbounded_without_pipeline_budget() {
+        // With no pipeline budget configured, a `0` override genuinely means no
+        // deadline for that guard.
+        let mut per_guard = BTreeMap::new();
+        per_guard.insert("disabled-override".to_string(), 0u64);
+        let cfg = HotPathDeadlineConfig {
+            guard_pipeline_budget_ms: 0,
+            per_guard_budget_ms: per_guard,
+            ..HotPathDeadlineConfig::default()
+        };
+        assert_eq!(cfg.guard_budget_for("disabled-override"), None);
+    }
+}
+
 /// Configuration for the Chio Runtime Kernel.
 pub struct KernelConfig {
     /// Ed25519 keypair for signing receipts and issuing capabilities.
@@ -45,6 +280,13 @@ pub struct KernelConfig {
     /// durable receipt persistence before any tool side effect.
     pub allow_ephemeral_receipt_log: bool,
 
+    /// Allow a process-local (in-memory) revocation store when no durable or
+    /// remote revocation source is installed. This is for tests and local
+    /// scaffolds only; deployments should leave it false so a revoked
+    /// capability cannot be re-accepted after a restart drops the revocation
+    /// set.
+    pub allow_ephemeral_revocation_store: bool,
+
     /// Number of receipts between Merkle checkpoint snapshots. Default: 100.
     ///
     /// Set to 0 to disable automatic checkpointing for deployments that do not
@@ -57,6 +299,31 @@ pub struct KernelConfig {
     /// indefinitely. When `Some(config)`, the kernel will archive receipts
     /// that exceed the time or size threshold.
     pub retention_config: Option<crate::receipt_store::RetentionConfig>,
+
+    /// Per-process memory budget (bounded-structure caps + RSS soft ceiling).
+    pub memory_budget: MemoryBudgetConfig,
+
+    /// Wall-clock budgets for the mediation hot path. Construction input only,
+    /// not a wire payload, so this changes no signed or transmitted bytes.
+    pub deadlines: HotPathDeadlineConfig,
+
+    /// Which call classes must durably journal a dispatch intent before any
+    /// effect. Existing deployments construct this Off until an operator opts
+    /// in; the enum's own default (SideEffecting) is the fail-safe posture
+    /// for anyone deriving a value rather than spelling one.
+    pub dispatch_intent_journal: crate::receipt_store::DispatchIntentJournalMode,
+}
+
+impl KernelConfig {
+    pub(crate) fn memory_budget_receipt_mirror_capacity(&self) -> usize {
+        self.memory_budget.receipt_mirror_capacity
+    }
+    pub(crate) fn memory_budget_federation_cache_capacity(&self) -> usize {
+        self.memory_budget.federation_cache_capacity
+    }
+    pub(crate) fn memory_budget_federation_cache_idle_ttl_secs(&self) -> u64 {
+        self.memory_budget.federation_cache_idle_ttl_secs
+    }
 }
 
 /// Boot-time configuration for the kernel-side hybrid signing path.
@@ -119,9 +386,146 @@ pub(crate) fn receipt_crypto_floor(
 pub const DEFAULT_MAX_STREAM_DURATION_SECS: u64 = 300;
 pub const DEFAULT_MAX_STREAM_TOTAL_BYTES: u64 = 256 * 1024 * 1024;
 pub const DEFAULT_RUNTIME_ADMISSION_READINESS_TIMEOUT_MS: u64 = 30_000;
+/// Default cap on the number of chunks RETAINED from one streamed tool result.
+/// Bounds the accumulator `Vec<ToolCallChunk>` length and the per-chunk
+/// receipt-signing preimage even when every chunk is tiny and the byte cap is
+/// never reached. Generous for legitimate streams; `0` disables the cap.
+pub const DEFAULT_MAX_STREAM_CHUNKS: u64 = 1_048_576;
 pub const DEFAULT_CHECKPOINT_BATCH_SIZE: u64 = 100;
 pub const DEFAULT_RETENTION_DAYS: u64 = 90;
 pub const DEFAULT_MAX_SIZE_BYTES: u64 = 10_737_418_240;
+
+/// Per-process memory budget: bounded-structure capacities plus a process RSS
+/// soft ceiling. The soft ceiling is the in-process analog of the cgroup hard
+/// limit: the kernel sheds (Overloaded) before the OS OOM-kills it.
+#[derive(Debug, Clone)]
+pub struct MemoryBudgetConfig {
+    pub receipt_mirror_capacity: usize,
+    pub federation_cache_capacity: usize,
+    pub federation_cache_idle_ttl_secs: u64,
+    pub velocity_bucket_cap: usize,
+    pub admission_key_cap: usize,
+    pub journal_entry_cap: usize,
+    /// Max number of chunks retained from one streamed tool result. Bounds the
+    /// retained `Vec<ToolCallChunk>` and the per-chunk signing preimage so a flood
+    /// of tiny chunks that never trips `max_stream_total_bytes` still cannot grow
+    /// memory without bound. `0` disables the cap.
+    pub max_stream_chunks: u64,
+    /// Max number of DISTINCT tool names retained in each session journal's
+    /// cumulative `tool_counts` map. Unlike the `entries` and
+    /// `tool_sequence` rings, `tool_counts` is cumulative (it survives ring
+    /// eviction so the behavioral-sequence guard can answer "was this tool ever
+    /// invoked"), so a ring cannot bound it. Once a session reaches this many
+    /// distinct tool names a previously-unseen name is dropped fail-closed: a
+    /// dependent required-predecessor check then treats it as never-invoked and
+    /// denies. Sized well above any legitimate (registry-bounded) tool set.
+    pub journal_tool_counts_cap: usize,
+    /// Process RSS soft ceiling in bytes. When set and exceeded, new admissions
+    /// shed with Overloaded { Allocation }. Set to roughly 85-90% of the cgroup
+    /// memory.max so the graceful stop fires before the kill. Stage A ships None.
+    pub rss_soft_limit_bytes: Option<u64>,
+    /// How often the RSS sampler reads /proc/self/statm.
+    pub rss_sample_interval_secs: u64,
+}
+
+impl MemoryBudgetConfig {
+    pub fn defaults() -> Self {
+        Self {
+            receipt_mirror_capacity: 4096,
+            federation_cache_capacity: 8192,
+            federation_cache_idle_ttl_secs: 3600,
+            velocity_bucket_cap: 65_536,
+            admission_key_cap: 4096,
+            journal_entry_cap: 4096,
+            max_stream_chunks: DEFAULT_MAX_STREAM_CHUNKS,
+            journal_tool_counts_cap: 4096,
+            rss_soft_limit_bytes: None,
+            rss_sample_interval_secs: 30,
+        }
+    }
+}
+
+impl Default for MemoryBudgetConfig {
+    fn default() -> Self {
+        Self::defaults()
+    }
+}
+
+/// Owns the RSS sampler thread; signals stop and joins on drop. On non-Linux
+/// hosts the sampler is a no-op and the soft limit is inert (cgroup and
+/// try_reserve backstops still apply).
+pub(crate) struct RssSamplerHandle {
+    stop: Arc<AtomicBool>,
+    join: Option<std::thread::JoinHandle<()>>,
+}
+
+impl RssSamplerHandle {
+    pub(crate) fn spawn(shed: Arc<AtomicBool>, soft_limit_bytes: u64, interval_secs: u64) -> Self {
+        let stop = Arc::new(AtomicBool::new(false));
+        let worker_stop = Arc::clone(&stop);
+        let interval = std::time::Duration::from_secs(interval_secs.max(1));
+        let join = std::thread::spawn(move || {
+            use std::sync::atomic::Ordering;
+            while !worker_stop.load(Ordering::SeqCst) {
+                if let Some(rss) = read_process_rss_bytes() {
+                    shed.store(rss > soft_limit_bytes, Ordering::Relaxed);
+                }
+                let mut waited = std::time::Duration::ZERO;
+                let slice = std::time::Duration::from_millis(200);
+                while waited < interval && !worker_stop.load(Ordering::SeqCst) {
+                    std::thread::sleep(slice);
+                    waited += slice;
+                }
+            }
+        });
+        Self {
+            stop,
+            join: Some(join),
+        }
+    }
+}
+
+impl Drop for RssSamplerHandle {
+    fn drop(&mut self) {
+        self.stop.store(true, std::sync::atomic::Ordering::SeqCst);
+        if let Some(join) = self.join.take() {
+            let _ = join.join();
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn read_process_rss_bytes() -> Option<u64> {
+    let statm = std::fs::read_to_string("/proc/self/statm").ok()?;
+    let resident_pages: u64 = statm.split_whitespace().nth(1)?.parse().ok()?;
+    Some(resident_pages.saturating_mul(linux_page_size()))
+}
+
+/// Real system page size in bytes, read once via `sysconf(_SC_PAGESIZE)` and
+/// cached. Hosts with non-4-KiB pages (for example common 64-KiB-page ARM
+/// deployments) would otherwise undercount RSS by the page-size ratio and shed
+/// far past the configured soft ceiling. Falls back to 4096 only if the query
+/// fails.
+#[cfg(target_os = "linux")]
+fn linux_page_size() -> u64 {
+    use std::sync::OnceLock;
+    static PAGE_SIZE: OnceLock<u64> = OnceLock::new();
+    *PAGE_SIZE.get_or_init(|| {
+        // SAFETY: `sysconf` with a compile-time constant name has no
+        // preconditions; it returns the configured page size, or -1 on failure.
+        let raw = unsafe { libc::sysconf(libc::_SC_PAGESIZE) };
+        if raw > 0 {
+            raw as u64
+        } else {
+            4096
+        }
+    })
+}
+
+#[cfg(not(target_os = "linux"))]
+fn read_process_rss_bytes() -> Option<u64> {
+    None
+}
 
 /// The Chio Runtime Kernel.
 ///
@@ -132,20 +536,48 @@ pub const DEFAULT_MAX_SIZE_BYTES: u64 = 10_737_418_240;
 /// signing key, address, or internal state to the agent.
 pub struct ChioKernel {
     pub(super) config: KernelConfig,
-    pub(super) guards: Vec<Box<dyn Guard>>,
+    /// Guards are stored behind `Arc` so a single guard can be cloned into a
+    /// `spawn_blocking` task without moving the whole pipeline, letting the
+    /// deadline wrapper bound a blocking guard off the async worker.
+    pub(super) guards: Arc<Vec<Arc<dyn Guard>>>,
     pub(super) post_invocation_pipeline: crate::post_invocation::PostInvocationPipeline,
     pub(super) budget_store: Arc<dyn BudgetStore>,
     pub(super) budget_store_lock: Mutex<()>,
     pub(super) revocation_store: Arc<dyn RevocationStore>,
     pub(super) capability_authority: Box<dyn CapabilityAuthority>,
-    pub(super) tool_servers: HashMap<ServerId, Box<dyn ToolServerConnection>>,
+    // Held behind `Arc` so a single connection can be cloned into a
+    // `spawn_blocking` task, letting the dispatch deadline drive the call off the
+    // async worker (a connection that blocks before its first `.await` cannot then
+    // pin the worker).
+    pub(super) tool_servers: HashMap<ServerId, Arc<dyn ToolServerConnection>>,
     pub(super) resource_providers: Vec<Box<dyn ResourceProvider>>,
     pub(super) prompt_providers: Vec<Box<dyn PromptProvider>>,
     pub(super) sessions: DashMap<SessionId, Arc<Session>>,
     pub(super) receipt_log: Mutex<ReceiptLog>,
     pub(super) child_receipt_log: Mutex<ChildReceiptLog>,
+    /// Live entry-count gauges for the two receipt mirrors. Cloned from the
+    /// ring's gauge at construction so telemetry and the
+    /// bounded-structure registry (`bounded_structure_gauges`) can read the
+    /// count without locking the log.
+    pub(super) receipt_mirror_gauge: chio_bounded::SizeGauge,
+    pub(super) child_receipt_mirror_gauge: chio_bounded::SizeGauge,
     pub(super) receipt_store: Option<Arc<dyn ReceiptStore>>,
     pub(super) receipt_store_write_lock: Mutex<()>,
+    /// Retention maintenance worker, spawned at store attach when
+    /// `config.retention_config` is `Some`. Owns a dedicated OS thread that
+    /// calls `ReceiptStore::rotate_receipts` on `RetentionConfig.check_interval_secs`;
+    /// joined when this field is dropped (kernel drop). `None` when
+    /// retention is unconfigured or before a store is attached.
+    pub(super) retention_maintenance: Option<crate::receipt_store::RetentionMaintenanceHandle>,
+    /// Dispatch-intent recovery worker, spawned at store attach for stores
+    /// that coordinate sibling writer instances. Re-runs intent
+    /// reconciliation on a fixed cadence so a sibling that crashes while
+    /// this kernel stays up has its orphaned intents claimed and surfaced
+    /// (the attach-time pass correctly defers a live sibling's rows, and no
+    /// later attach may ever come). Joined when this field is dropped
+    /// (kernel drop). `None` for stores without sibling writers or before a
+    /// store is attached.
+    pub(super) dispatch_intent_recovery: Option<crate::receipt_store::DispatchIntentRecoveryHandle>,
     pub(super) payment_adapter: Option<Box<dyn PaymentAdapter>>,
     pub(super) price_oracle: Option<Box<dyn PriceOracle>>,
     pub(super) runtime_admission_hook: Option<Arc<dyn RuntimeAdmissionHook>>,
@@ -195,6 +627,13 @@ pub struct ChioKernel {
     /// `emergency_stop`, cleared on `emergency_resume`. Stored behind
     /// ArcSwap so health probes can read the current reason without blocking.
     pub(super) emergency_stop_reason: ArcSwap<Option<String>>,
+    /// Persistent degraded flag for the trusted computing base's locks. A
+    /// poisoned budget-registry or session lock means a panic unwound
+    /// mid-mutation, so the state it guarded may be half-updated. Tripping this
+    /// flag makes the pre-dispatch gate fail evaluations closed until an
+    /// operator-visible recovery, rather than silently proceeding on the
+    /// recovered `into_inner` state. It is TCB-critical: any poison denies.
+    pub(super) lock_poison: chio_supervisor::HealthFlag,
     /// Memory-provenance chain. When installed, every
     /// governed `MemoryWrite` action appends an entry after the allow
     /// receipt is signed, and every `MemoryRead` attaches the latest
@@ -227,13 +666,39 @@ pub struct ChioKernel {
     /// Populated only when the post-sign hook fires successfully. Kept
     /// in-memory; persistent storage plugs in via the federation-state
     /// APIs already in chio-federation.
+    /// Capped, idle-swept, gauged instead of an unbounded DashMap: federated
+    /// calls no longer grow kernel RSS without bound.
     pub(super) federation_dual_receipts:
-        DashMap<String, chio_federation::bilateral::DualSignedReceipt>,
+        Mutex<chio_bounded::BoundedMap<String, chio_federation::bilateral::DualSignedReceipt>>,
+    pub(super) federation_dual_receipts_gauge: chio_bounded::SizeGauge,
     /// DSSE signature-slice envelopes, indexed by ChioReceipt.id.
     /// These are emitted through the federation cosigner protocol rather than
     /// by loading Org A private key material in the tool-host kernel.
     pub(super) federation_dsse_envelopes:
-        DashMap<String, chio_federation::bilateral_dsse::DsseEnvelope>,
+        Mutex<chio_bounded::BoundedMap<String, chio_federation::bilateral_dsse::DsseEnvelope>>,
+    pub(super) federation_dsse_envelopes_gauge: chio_bounded::SizeGauge,
+    /// Optional durable backing for bilateral co-sign artifacts. When set, the
+    /// co-sign hook writes through to it before caching and the
+    /// accessors fall through to it on a cache miss.
+    pub(super) federation_artifact_store:
+        Option<std::sync::Arc<dyn crate::federation_artifact_store::FederationArtifactStore>>,
+    /// Request-keyed tenant scope for receipts. Async evaluate futures
+    /// can resume on a different worker after dispatch, so the scope is
+    /// stored in this map rather than a thread-local. The value is the
+    /// RESOLVED tenant, including `None` for a tenantless request: the entry
+    /// itself proves the request's tenant is known, so no reader falls back
+    /// to a thread-local that may carry a concurrent sibling task's tenant.
+    pub(super) receipt_tenant_ids: Arc<DashMap<String, Option<String>>>,
+    /// Request-keyed dispatch-intent handles. Receipts carry no request id
+    /// and the evaluate future can migrate workers at the dispatch await, so
+    /// the pre-dispatch intent binding travels in this map (exactly like the
+    /// tenant scope above) for the terminal receipt sink to consume.
+    pub(super) dispatch_intents: Arc<DashMap<String, crate::receipt_store::DispatchIntentHandle>>,
+    /// Request-keyed copy of the receipt-version admission snapshot.
+    /// Async evaluate futures may resume on a different Tokio worker
+    /// after dispatch. This map keeps the admitted version and peer state
+    /// available until the evaluation future finishes.
+    pub(super) receipt_federation_admissions: Arc<DashMap<String, ReceiptFederationAdmission>>,
     /// Operator-declared kernel identifier used as the
     /// `org_b_kernel_id` in bilateral co-signing. Defaults to the hex
     /// encoding of the kernel's signing public key, but operators can
@@ -252,6 +717,19 @@ pub struct ChioKernel {
     /// blocks dispatch; failures are surfaced through the retry/dead-
     /// letter machinery, not through this option.
     pub(super) settlement_observer: Option<std::sync::Arc<dyn chio_settle::SettlementHook>>,
+    /// Durable sink for unresolved settlement outcomes. When `Some`, the
+    /// observer routing consumer persists a bounded attempt row for
+    /// retryable outcomes and an idempotent dead-letter row for terminal
+    /// failures. When `None`, unresolved outcomes are logged loud and
+    /// counted, never silently dropped.
+    pub(super) settlement_retry_store:
+        Option<std::sync::Arc<dyn crate::settlement_retry::SettlementRetryStore>>,
+    /// Retry policy the routing consumer classifies settlement outcomes
+    /// against.
+    pub(super) settlement_retry_policy: chio_settle::RetryPolicy,
+    /// Background sweeper for orphaned budget holds. `None` until an
+    /// operator opts in via `start_budget_hold_sweeper`; joined on drop.
+    pub(super) budget_hold_sweep: Option<super::budget_sweep::BudgetHoldSweepHandle>,
     /// Recursive-delegation oracle handle. When `Some`, the verifier consults this
     /// arc-swap-backed snapshot on every delegated dispatch and denies
     /// the capability if any link in the chain (or the leaf) is in the
@@ -260,6 +738,18 @@ pub struct ChioKernel {
     /// shape stays feature-flag agnostic.
     pub(super) revocation_view: Option<std::sync::Arc<chio_kernel_core::RevocationView>>,
     pub(super) budget_registry: Mutex<chio_kernel_core::InMemoryBudgetRegistry>,
+    /// RSS soft-ceiling shed flag. Set by the sampler when process RSS exceeds
+    /// `memory_budget.rss_soft_limit_bytes`; read on the
+    /// admission fast path alongside the emergency stop.
+    pub(super) rss_shed: Arc<AtomicBool>,
+    /// Owns the sampler thread when a soft limit is configured; joins on drop.
+    pub(super) rss_sampler: Option<RssSamplerHandle>,
+    /// Receipt-writer liveness watchdog. Opt-in: the hosting edge spawns the
+    /// poll task, which publishes the latest verdict into an `ArcSwap` the
+    /// pre-dispatch readiness gate reads. Absent watchdog leaves the verdict
+    /// `Unknown` and the gate behaves as before.
+    pub(super) receipt_writer_watchdog:
+        std::sync::Arc<receipt_writer_watchdog::ReceiptWriterWatchdogHandle>,
 }
 
 impl ChioKernel {

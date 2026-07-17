@@ -16,8 +16,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use chio_lineage::anchor::AnchoredFrontier;
-use chio_lineage::diff::{LineageDiff, diff as compute_diff, render_text};
-use chio_lineage::query::{QueryBounds, QueryResult, forward, reverse};
+use chio_lineage::diff::{diff as compute_diff, render_text, LineageDiff};
+use chio_lineage::query::{forward, reverse, QueryBounds, QueryResult};
 use chio_lineage::schema::LineageGraph;
 use serde::{Deserialize, Serialize};
 
@@ -132,7 +132,7 @@ pub fn cmd_roots(roots_dir: &Path) -> Result<CliRootsReport, LineageCliError> {
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
     use super::*;
-    use chio_lineage::ingest_replay_corpus::{CorpusIngestError, CorpusReceiptRow, ingest_corpus};
+    use chio_lineage::ingest_replay_corpus::{ingest_corpus, CorpusIngestError, CorpusReceiptRow};
 
     fn fixture_graph() -> Result<LineageGraph, CorpusIngestError> {
         ingest_corpus(&[CorpusReceiptRow {

@@ -95,6 +95,25 @@ describe("@chio-protocol/next streaming and denial response", () => {
     });
   });
 
+  it("preserves the request body when the evaluator reads it", async () => {
+    const wrapped = withChio(async (request) => {
+      return new Response(await request.text());
+    }, {
+      evaluate: async (request) => {
+        expect(await request.text()).toBe("hello next");
+        return authorizedAllow();
+      },
+    });
+
+    const response = await wrapped(new Request("https://app.test/api/chat", {
+      method: "POST",
+      body: "hello next",
+    }));
+
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("hello next");
+  });
+
   it("denies server actions before invoking the action", async () => {
     let invoked = false;
     const action = withChioAction(async () => {
@@ -137,12 +156,8 @@ describe("@chio-protocol/next streaming and denial response", () => {
     expect(invoked).toBe(false);
   });
 
-  it("authorizes only the canonical \"allow\" result and denies legacy variants", async () => {
-    // The shared Rust VerifyReceiptResponse encodes Verdict::Allow as the
-    // canonical lowercase "allow" (see crates/platform/chio-http-core/src/evaluation.rs
-    // verdict_result()); it never emits "Allow"/"authorized"/"Authorized", so
-    // the gate authorizes only the canonical value and denies the rest.
-    const allowed = withChio(async () => new Response("ok"), {
+  it("authorizes only the canonical SDK allow result", async () => {
+    const allowed = withChio(async () => new Response("allow"), {
       evaluate: () => ({
         verdict: "allow" as const,
         decision: "allow" as const,
@@ -158,12 +173,14 @@ describe("@chio-protocol/next streaming and denial response", () => {
         parameter_hash_valid: true,
       }),
     });
-    const response = await allowed(new Request("https://app.test/api/chat"));
+    const response = await allowed(
+      new Request("https://app.test/api/chat"),
+    );
     expect(response.status).toBe(200);
-    expect(await response.text()).toBe("ok");
+    expect(await response.text()).toBe("allow");
 
-    for (const result of ["Allow", "authorized", "Authorized"]) {
-      const denied = withChio(async () => new Response("ok"), {
+    for (const result of ["authorized", "Authorized", "Allow"]) {
+      const denied = withChio(async () => new Response(result), {
         evaluate: () => ({
           verdict: "allow" as const,
           decision: "allow" as const,

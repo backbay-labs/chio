@@ -20,8 +20,10 @@ async-trait = { workspace = true }
 chio-control-plane = { workspace = true }
 chio-core = { package = "chio-core-types", path = "../../core/chio-core-types" }
 chio-egress-contract = { workspace = true, features = ["reqwest-egress"] }
+chio-http-serve = { workspace = true }
 chio-kernel = { workspace = true }
 chio-mcp-adapter = { workspace = true }
+chio-metrics-spec = { workspace = true }
 chio-store-sqlite = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -38,9 +40,6 @@ p256 = { version = "0.13", features = ["ecdsa"] }
 p384 = { version = "0.13", features = ["ecdsa"] }
 sha2 = { workspace = true }
 subtle = "2.6"
-
-[dev-dependencies]
-chio-siem = { workspace = true }
 
 [lints]
 workspace = true

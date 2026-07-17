@@ -176,9 +176,26 @@ pub struct KernelPolicyConfig {
     #[serde(default)]
     pub allow_ephemeral_receipt_log: bool,
 
+    /// Allow an in-memory revocation store when no durable or remote revocation
+    /// source is configured. This is intended for tests and local scaffolds
+    /// only; leaving it false denies dispatch rather than risk re-accepting a
+    /// revoked capability after a restart.
+    #[serde(default)]
+    pub allow_ephemeral_revocation_store: bool,
+
     /// Number of receipts between Merkle checkpoint snapshots.
     #[serde(default = "default_checkpoint_batch_size")]
     pub checkpoint_batch_size: u64,
+
+    /// Which call classes must durably journal a dispatch intent before
+    /// dispatch: `off`, `side_effecting`, or `all`. Absent keeps the
+    /// pre-journal write path (`off`), matching the staged rollout; this is
+    /// deliberately not the enum's own compiled default (`side_effecting`),
+    /// so an existing policy file does not silently change behavior when it
+    /// loads on a binary that understands this key. An unrecognized value is
+    /// rejected when the policy loads rather than falling back to a default.
+    #[serde(default = "default_dispatch_intent_journal")]
+    pub dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode,
 }
 
 impl Default for KernelPolicyConfig {
@@ -191,7 +208,9 @@ impl Default for KernelPolicyConfig {
             allow_elicitation: false,
             require_web3_evidence: false,
             allow_ephemeral_receipt_log: false,
+            allow_ephemeral_revocation_store: false,
             checkpoint_batch_size: default_checkpoint_batch_size(),
+            dispatch_intent_journal: default_dispatch_intent_journal(),
         }
     }
 }
@@ -206,4 +225,8 @@ fn default_delegation_depth_limit() -> u32 {
 
 fn default_checkpoint_batch_size() -> u64 {
     chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE
+}
+
+fn default_dispatch_intent_journal() -> chio_kernel::DispatchIntentJournalMode {
+    chio_kernel::DispatchIntentJournalMode::Off
 }

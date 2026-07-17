@@ -82,7 +82,7 @@ fn replay_entry_in_scope(
 #[test]
 fn published_agent_web_schemas_accept_supported_projection_fixtures() {
     let envelope_schema =
-        read_workspace_json("spec/schemas/chio-agent-web/v1/proof-envelope.schema.json");
+        read_workspace_json("spec/schemas/chio-agent-web/v2/proof-envelope.schema.json");
     let manifest_schema = read_workspace_json(
         "spec/schemas/chio-agent-web/v1/external-projection-manifest.schema.json",
     );
@@ -96,6 +96,127 @@ fn published_agent_web_schemas_accept_supported_projection_fixtures() {
             assert_schema_accepts_fixture(&manifest_schema, &relative_path);
         }
     }
+}
+
+#[test]
+fn published_v1_proof_envelope_schema_accepts_legacy_shape() {
+    let envelope_schema =
+        read_workspace_json("spec/schemas/chio-agent-web/v1/proof-envelope.schema.json");
+    let envelope_path = agent_web_envelope_or_manifest_paths(
+        "fixtures/proof-room/agent-web/valid-webhook-cloudevents",
+    )
+    .into_iter()
+    .find(|path| path.ends_with("-envelope.json"))
+    .test_expect("Agent Web fixture contains a proof envelope");
+    let mut legacy_envelope = read_workspace_json(&envelope_path);
+    legacy_envelope["schema"] = json!("chio.agent-web-proof-envelope.v1");
+    legacy_envelope
+        .as_object_mut()
+        .test_expect("proof envelope is an object")
+        .remove("agent_web_passport_scope_sha256");
+    let receipt_ref = legacy_envelope["receipt_refs"][0]
+        .as_str()
+        .test_expect("proof envelope has a receipt ref")
+        .to_string();
+    legacy_envelope["receipt_refs"] = json!([receipt_ref, receipt_ref]);
+
+    assert_schema_accepts_value(
+        &envelope_schema,
+        &legacy_envelope,
+        "legacy unscoped v1 proof envelope",
+    );
+
+    legacy_envelope["agent_web_passport_scope_sha256"] = json!(format!("{:064x}", 1));
+    assert_schema_rejects_value(
+        &envelope_schema,
+        &legacy_envelope,
+        "v1 proof envelope with a v2-only passport scope digest",
+    );
+}
+
+#[test]
+fn published_v2_proof_envelope_schema_requires_scope_and_unique_receipts() {
+    let envelope_schema =
+        read_workspace_json("spec/schemas/chio-agent-web/v2/proof-envelope.schema.json");
+    let envelope_path = agent_web_envelope_or_manifest_paths(
+        "fixtures/proof-room/agent-web/valid-webhook-cloudevents",
+    )
+    .into_iter()
+    .find(|path| path.ends_with("-envelope.json"))
+    .test_expect("Agent Web fixture contains a proof envelope");
+    let envelope = read_workspace_json(&envelope_path);
+
+    assert_schema_accepts_value(&envelope_schema, &envelope, "scope-bound v2 proof envelope");
+
+    let mut missing_scope = envelope.clone();
+    missing_scope
+        .as_object_mut()
+        .test_expect("proof envelope is an object")
+        .remove("agent_web_passport_scope_sha256");
+    assert_schema_rejects_value(
+        &envelope_schema,
+        &missing_scope,
+        "v2 proof envelope without a passport scope digest",
+    );
+
+    let mut duplicate_receipts = envelope;
+    let receipt_ref = duplicate_receipts["receipt_refs"][0]
+        .as_str()
+        .test_expect("proof envelope has a receipt ref")
+        .to_string();
+    duplicate_receipts["receipt_refs"] = json!([receipt_ref, receipt_ref]);
+    assert_schema_rejects_value(
+        &envelope_schema,
+        &duplicate_receipts,
+        "v2 proof envelope with duplicate receipt references",
+    );
+}
+
+#[test]
+fn verifier_accepts_signed_legacy_v1_envelope() {
+    let mut bundle = agent_web_bundle(AgentWebCase::Valid);
+    downgrade_agent_web_bundle_to_signed_v1(&mut bundle);
+
+    let receipt: chio_core_types::receipt::body::ChioReceipt = serde_json::from_slice(
+        bundle
+            .artifacts
+            .get("receipts/receipt-agent-web-webhook-allow.json")
+            .test_expect("legacy Agent Web receipt exists"),
+    )
+    .test_expect("legacy Agent Web receipt parses");
+    assert!(receipt
+        .action
+        .parameters
+        .get("agent_web_receipt_ref")
+        .is_none());
+    assert!(receipt.action.parameters.get("content_hash").is_none());
+    assert_eq!(
+        receipt
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("agent_web_receipt_ref"))
+            .and_then(serde_json::Value::as_str),
+        Some("receipt-agent-web-webhook-allow")
+    );
+    assert!(receipt
+        .verify_signature()
+        .test_expect("legacy Agent Web receipt signature verifies"));
+    let envelope: serde_json::Value = serde_json::from_slice(
+        bundle
+            .artifacts
+            .get("standard-webhooks-envelope.json")
+            .test_expect("legacy Agent Web envelope exists"),
+    )
+    .test_expect("legacy Agent Web envelope parses");
+    assert_eq!(
+        Some(receipt.content_hash.as_str()),
+        envelope
+            .get("external_subject_digest")
+            .and_then(serde_json::Value::as_str)
+    );
+
+    verify_agent_web_interop(&bundle)
+        .test_expect("new verifier accepts signed main-shape v1 envelopes and receipts");
 }
 
 #[test]
@@ -493,7 +614,7 @@ fn agent_web_interop_rejects_duplicate_envelope_id() {
         &mut bundle,
         "duplicate-standard-webhooks-envelope.json",
         "agent-web-proof-envelope",
-        "chio.agent-web-proof-envelope.v1",
+        "chio.agent-web-proof-envelope.v2",
         duplicate_envelope,
     );
     let (passport_key, kernel_key, sidecar_key) = default_role_keys();
@@ -1480,6 +1601,24 @@ fn agent_web_interop_rejects_openapi_without_proof_envelope_profile() {
         error
             .to_string()
             .contains("missing OpenAPI proof-envelope profile"),
+        "{error}"
+    );
+}
+
+#[test]
+fn agent_web_interop_rejects_openapi_profile_from_another_envelope_version() {
+    let mut bundle = agent_web_bundle(AgentWebCase::OpenApiProjection);
+    mutate_openapi_subject_and_bound_receipt(&mut bundle, |subject| {
+        subject["x_chio_proof_envelope_profile"] = json!("chio.agent-web-proof-envelope.v1");
+    });
+
+    let error = verify_agent_web_interop(&bundle)
+        .test_expect_err("OpenAPI profile must match its proof-envelope version");
+
+    assert!(
+        error
+            .to_string()
+            .contains("OpenAPI proof-envelope profile mismatch"),
         "{error}"
     );
 }

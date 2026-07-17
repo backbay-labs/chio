@@ -152,18 +152,12 @@ impl<E: ExternalGuard> Guard for ScopedAsyncGuard<E> {
             .map(GuardDecision::from_verdict)
     }
 
-    fn requires_dispatch_revalidation(&self) -> bool {
-        true
-    }
-
-    fn revalidate_before_dispatch(&self, ctx: &GuardContext) -> Result<(), KernelError> {
-        if !self.matches_tool(&ctx.request.tool_name) {
-            return Ok(());
-        }
-        Err(KernelError::GuardDenied(format!(
-            "external guard {} cannot revalidate without consuming adapter state",
-            self.name()
-        )))
+    fn revalidate_before_dispatch(&self, _ctx: &GuardContext) -> Result<(), KernelError> {
+        // External evaluation can consume rate-limit, cache, retry, and
+        // circuit-breaker state. The admission verdict is authoritative for
+        // this dispatch, so readiness revalidation must not call the adapter a
+        // second time.
+        Ok(())
     }
 }
 
@@ -384,14 +378,14 @@ mod tests {
     }
 
     #[test]
-    fn scoped_external_guard_immediate_dispatch_revalidation_is_scope_aware() {
+    fn scoped_external_guard_dispatch_revalidation_does_not_consume_adapter_twice() {
         let calls = Arc::new(AtomicU64::new(0));
         let adapter = AsyncGuardAdapter::builder(Arc::new(CountingExternalGuard {
             calls: Arc::clone(&calls),
         }))
         .build();
         let guard = ScopedAsyncGuard::new(adapter, vec!["send_*".to_string()]);
-        assert!(guard.requires_dispatch_revalidation());
+        assert!(!guard.requires_dispatch_revalidation());
 
         let (out_request, out_scope, out_agent, out_server) =
             revalidation_context_parts("read_file");
@@ -406,6 +400,7 @@ mod tests {
         guard
             .revalidate_before_dispatch(&out_context)
             .expect("out-of-scope external guard should not block dispatch");
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
 
         let (in_request, in_scope, in_agent, in_server) = revalidation_context_parts("send_email");
         let in_context = GuardContext {
@@ -416,10 +411,18 @@ mod tests {
             session_filesystem_roots: None,
             matched_grant_index: None,
         };
-        let error = guard
+        let decision = guard
+            .evaluate(&in_context)
+            .expect("in-scope external guard should evaluate once at admission");
+        assert_eq!(decision.verdict, Verdict::Allow);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        guard
             .revalidate_before_dispatch(&in_context)
-            .expect_err("in-scope external guard must fail closed without a pure recheck");
-        assert!(matches!(error, KernelError::GuardDenied(_)));
-        assert_eq!(calls.load(Ordering::SeqCst), 0);
+            .expect("readiness revalidation should preserve the admission verdict");
+        guard
+            .revalidate_required_before_dispatch(&in_context)
+            .expect("non-opted-in dispatch revalidation should be a no-op");
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 }

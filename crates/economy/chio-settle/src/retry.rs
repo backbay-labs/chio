@@ -17,6 +17,7 @@
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 use crate::hook::SettlementOutcome;
 use crate::SettlementError;
@@ -37,6 +38,18 @@ pub const DEFAULT_BACKOFF_MULTIPLIER: u32 = 2;
 
 /// Hard cap on a single backoff interval (avoids unbounded growth).
 pub const DEFAULT_BACKOFF_CAP_MS: u64 = 60_000;
+
+/// Upper bound [`RetryPolicy::validate`] enforces on `max_retries`. Well
+/// above the documented default; a policy above this is almost certainly a
+/// misconfiguration rather than an intentional envelope.
+const MAX_RETRIES: u32 = 32;
+
+/// Upper bound [`RetryPolicy::validate`] enforces on `backoff_cap_ms` (24
+/// hours). Bounds how long a stuck retry loop can wait between attempts.
+const MAX_BACKOFF_CAP_MS: u64 = 86_400_000;
+
+/// Upper bound [`RetryPolicy::validate`] enforces on `backoff_multiplier`.
+const MAX_BACKOFF_MULTIPLIER: u32 = 16;
 
 /// Documented retry envelope for the settlement observer slot.
 ///
@@ -69,7 +82,69 @@ impl Default for RetryPolicy {
     }
 }
 
+/// A [`RetryPolicy`] that [`RetryPolicy::validate`] rejects. Loading such a
+/// policy from configuration must fail closed rather than run with a bound
+/// that cannot be honored.
+#[derive(Debug, Error, Clone, Copy, PartialEq, Eq)]
+pub enum RetryPolicyError {
+    #[error("max_retries {max_retries} exceeds the upper bound of {MAX_RETRIES}")]
+    MaxRetriesTooHigh { max_retries: u32 },
+    #[error("initial_backoff_ms must be nonzero")]
+    InitialBackoffZero,
+    #[error("backoff_cap_ms must be nonzero")]
+    BackoffCapZero,
+    #[error(
+        "initial_backoff_ms {initial_backoff_ms} exceeds backoff_cap_ms {backoff_cap_ms}: \
+         the first retry could never fire within the cap"
+    )]
+    InitialBackoffExceedsCap {
+        initial_backoff_ms: u64,
+        backoff_cap_ms: u64,
+    },
+    #[error("backoff_cap_ms {backoff_cap_ms} exceeds the upper bound of {MAX_BACKOFF_CAP_MS}")]
+    BackoffCapTooHigh { backoff_cap_ms: u64 },
+    #[error("backoff_multiplier {backoff_multiplier} must be in 1..={MAX_BACKOFF_MULTIPLIER}")]
+    BackoffMultiplierOutOfRange { backoff_multiplier: u32 },
+}
+
 impl RetryPolicy {
+    /// Validate the bounded retry envelope. Fail closed at load time: a
+    /// policy that cannot be honored (a zero backoff, an initial backoff
+    /// past its own cap, or a bound so large the envelope stops being
+    /// bounded in practice) must be rejected before it reaches
+    /// [`classify_attempt`], not discovered from runaway retry behavior in
+    /// production.
+    pub const fn validate(&self) -> Result<(), RetryPolicyError> {
+        if self.max_retries > MAX_RETRIES {
+            return Err(RetryPolicyError::MaxRetriesTooHigh {
+                max_retries: self.max_retries,
+            });
+        }
+        if self.initial_backoff_ms == 0 {
+            return Err(RetryPolicyError::InitialBackoffZero);
+        }
+        if self.backoff_cap_ms == 0 {
+            return Err(RetryPolicyError::BackoffCapZero);
+        }
+        if self.backoff_cap_ms > MAX_BACKOFF_CAP_MS {
+            return Err(RetryPolicyError::BackoffCapTooHigh {
+                backoff_cap_ms: self.backoff_cap_ms,
+            });
+        }
+        if self.initial_backoff_ms > self.backoff_cap_ms {
+            return Err(RetryPolicyError::InitialBackoffExceedsCap {
+                initial_backoff_ms: self.initial_backoff_ms,
+                backoff_cap_ms: self.backoff_cap_ms,
+            });
+        }
+        if self.backoff_multiplier == 0 || self.backoff_multiplier > MAX_BACKOFF_MULTIPLIER {
+            return Err(RetryPolicyError::BackoffMultiplierOutOfRange {
+                backoff_multiplier: self.backoff_multiplier,
+            });
+        }
+        Ok(())
+    }
+
     /// Compute the backoff applied before the `attempt`-th retry.
     /// `attempt = 0` returns the configured initial backoff.
     /// Caps at [`Self::backoff_cap_ms`].
@@ -229,6 +304,108 @@ mod tests {
         assert_eq!(policy.initial_backoff_ms, DEFAULT_INITIAL_BACKOFF_MS);
         assert_eq!(policy.backoff_multiplier, DEFAULT_BACKOFF_MULTIPLIER);
         assert_eq!(policy.backoff_cap_ms, DEFAULT_BACKOFF_CAP_MS);
+    }
+
+    #[test]
+    fn default_policy_validates() {
+        assert!(RetryPolicy::default().validate().is_ok());
+    }
+
+    #[test]
+    fn validate_accepts_a_well_formed_custom_policy() {
+        let policy = RetryPolicy {
+            max_retries: 10,
+            initial_backoff_ms: 50,
+            backoff_multiplier: 3,
+            backoff_cap_ms: 30_000,
+        };
+        assert!(policy.validate().is_ok());
+    }
+
+    #[test]
+    fn validate_rejects_max_retries_above_the_bound() {
+        let policy = RetryPolicy {
+            max_retries: 33,
+            ..RetryPolicy::default()
+        };
+        match policy.validate() {
+            Err(RetryPolicyError::MaxRetriesTooHigh { max_retries }) => {
+                assert_eq!(max_retries, 33);
+            }
+            other => panic!("expected MaxRetriesTooHigh, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_rejects_zero_initial_backoff() {
+        let policy = RetryPolicy {
+            initial_backoff_ms: 0,
+            ..RetryPolicy::default()
+        };
+        assert_eq!(policy.validate(), Err(RetryPolicyError::InitialBackoffZero));
+    }
+
+    #[test]
+    fn validate_rejects_zero_backoff_cap() {
+        let policy = RetryPolicy {
+            backoff_cap_ms: 0,
+            ..RetryPolicy::default()
+        };
+        assert_eq!(policy.validate(), Err(RetryPolicyError::BackoffCapZero));
+    }
+
+    #[test]
+    fn validate_rejects_backoff_cap_above_the_bound() {
+        let policy = RetryPolicy {
+            backoff_cap_ms: 86_400_001,
+            ..RetryPolicy::default()
+        };
+        match policy.validate() {
+            Err(RetryPolicyError::BackoffCapTooHigh { backoff_cap_ms }) => {
+                assert_eq!(backoff_cap_ms, 86_400_001);
+            }
+            other => panic!("expected BackoffCapTooHigh, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_rejects_initial_backoff_past_the_cap() {
+        let policy = RetryPolicy {
+            initial_backoff_ms: 2_000,
+            backoff_cap_ms: 1_000,
+            ..RetryPolicy::default()
+        };
+        match policy.validate() {
+            Err(RetryPolicyError::InitialBackoffExceedsCap {
+                initial_backoff_ms,
+                backoff_cap_ms,
+            }) => {
+                assert_eq!(initial_backoff_ms, 2_000);
+                assert_eq!(backoff_cap_ms, 1_000);
+            }
+            other => panic!("expected InitialBackoffExceedsCap, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn validate_rejects_backoff_multiplier_out_of_range() {
+        let zero_multiplier = RetryPolicy {
+            backoff_multiplier: 0,
+            ..RetryPolicy::default()
+        };
+        assert!(matches!(
+            zero_multiplier.validate(),
+            Err(RetryPolicyError::BackoffMultiplierOutOfRange { .. })
+        ));
+
+        let excessive_multiplier = RetryPolicy {
+            backoff_multiplier: 17,
+            ..RetryPolicy::default()
+        };
+        assert!(matches!(
+            excessive_multiplier.validate(),
+            Err(RetryPolicyError::BackoffMultiplierOutOfRange { .. })
+        ));
     }
 
     #[test]

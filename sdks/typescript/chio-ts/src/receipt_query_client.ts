@@ -67,6 +67,14 @@ export class ReceiptQueryClient {
         cursor === undefined
           ? await this.query(params)
           : await this.query({ ...params, cursor });
+      if (
+        cursor !== undefined &&
+        response.nextCursor !== undefined &&
+        response.nextCursor !== null &&
+        response.nextCursor <= cursor
+      ) {
+        throw new QueryError("receipt query pagination cursor did not advance");
+      }
       if (response.receipts.length > 0) {
         yield response.receipts;
       }

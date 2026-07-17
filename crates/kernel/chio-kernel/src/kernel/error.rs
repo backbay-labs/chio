@@ -24,6 +24,60 @@ impl StructuredErrorReport {
     }
 }
 
+/// Which bounded resource shed. Included in the receipt deny reason and the
+/// structured error report so operators can see which policy fired.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OverloadResource {
+    ReceiptMirror,
+    FederationCache,
+    VelocityBuckets,
+    AdmissionKeys,
+    ConcurrencyBuckets,
+    SessionJournal,
+    StreamBytes,
+    StreamChunks,
+    Allocation,
+}
+
+/// A stage of the mediation hot path that can exceed its configured wall-clock
+/// budget. Carried in the deadline error and the structured report so operators
+/// can see which await ran long.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HotPathStage {
+    GuardPipeline,
+    Dispatch,
+    ReceiptAppend,
+}
+
+impl std::fmt::Display for HotPathStage {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let s = match self {
+            Self::GuardPipeline => "guard_pipeline",
+            Self::Dispatch => "dispatch",
+            Self::ReceiptAppend => "receipt_append",
+        };
+        f.write_str(s)
+    }
+}
+
+/// Direction of a wall-clock anomaly detected by a replay store.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ReplayClockDirection {
+    Rollback,
+    ForwardJump,
+}
+
+impl std::fmt::Display for ReplayClockDirection {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Rollback => f.write_str("rollback"),
+            Self::ForwardJump => f.write_str("forward_jump"),
+        }
+    }
+}
+
 /// Errors that can occur during kernel operations.
 #[derive(Debug, thiserror::Error)]
 pub enum KernelError {
@@ -159,6 +213,13 @@ pub enum KernelError {
     #[error("receipt persistence failed: {0}")]
     ReceiptPersistence(#[from] ReceiptStoreError),
 
+    /// A pre-dispatch dispatch-intent write failed, so the call was denied
+    /// BEFORE any effect. Distinct from `ReceiptPersistence` (which already
+    /// owns the `#[from] ReceiptStoreError` conversion) so a pre-effect deny
+    /// is distinguishable from a post-effect persistence failure.
+    #[error("dispatch intent persistence failed: {0}")]
+    DispatchIntentPersistence(String),
+
     #[error("revocation store error: {0}")]
     RevocationStore(#[from] RevocationStoreError),
 
@@ -181,6 +242,17 @@ pub enum KernelError {
 
     #[error("DPoP proof verification failed: {0}")]
     DpopVerificationFailed(String),
+
+    #[error(
+        "replay clock {direction} detected in {store}: observed {observed_unix_secs}, high-water {high_water_unix_secs}, maximum tolerated skew {max_tolerated_skew_secs}s"
+    )]
+    ReplayClockAnomaly {
+        store: &'static str,
+        direction: ReplayClockDirection,
+        observed_unix_secs: i64,
+        high_water_unix_secs: i64,
+        max_tolerated_skew_secs: u64,
+    },
 
     #[error("runtime admission readiness timed out after {timeout_ms}ms")]
     RuntimeAdmissionReadinessTimeout { timeout_ms: u64 },
@@ -207,6 +279,24 @@ pub enum KernelError {
          Tokio runtime; switch the host to a multi-thread Tokio runtime"
     )]
     SyncBridgeIncompatibleWithCurrentThreadRuntime,
+
+    /// The kernel shed load to stay within its memory budget. Always a deny;
+    /// never admits a call and never grows a collection.
+    #[error("kernel overloaded: {resource:?} at capacity")]
+    Overloaded { resource: OverloadResource },
+
+    /// A mediation-path stage exceeded its configured wall-clock budget. The
+    /// invocation is aborted fail-closed through the shared unwind path: budget
+    /// holds are reversed and, for a dispatch expiry, the runtime-admission
+    /// reservation is retained and marked auditable. Never yields Allow.
+    #[error("hot-path deadline exceeded at {stage}: budget {budget_ms}ms")]
+    HotPathDeadlineExceeded { stage: HotPathStage, budget_ms: u64 },
+
+    /// The receipt commit writer is wedged, saturated, or dead, as reported by
+    /// the receipt-writer watchdog. Enforced at the pre-dispatch readiness gate
+    /// so no tool side effect runs while receipts cannot be durably persisted.
+    #[error("receipt commit writer unavailable: {0}")]
+    ReceiptWriterUnavailable(String),
 }
 
 impl KernelError {
@@ -221,6 +311,12 @@ impl KernelError {
 
     pub fn report(&self) -> StructuredErrorReport {
         match self {
+            Self::Overloaded { resource } => self.report_with_context(
+                "CHIO-KERNEL-OVERLOADED",
+                serde_json::json!({ "resource": format!("{resource:?}") }),
+                "The kernel shed load to stay within its memory budget. Retry with backoff; \
+                 if sustained, raise the process memory budget or scale out.",
+            ),
             Self::UnknownSession(session_id) => self.report_with_context(
                 "CHIO-KERNEL-UNKNOWN-SESSION",
                 serde_json::json!({ "session_id": session_id.to_string() }),
@@ -320,6 +416,23 @@ impl KernelError {
                 "CHIO-KERNEL-GOVERNED-TRANSACTION-DENIED",
                 serde_json::json!({ "reason": reason }),
                 "Adjust the governed transaction intent so it satisfies the configured approval and policy requirements.",
+            ),
+            Self::ReplayClockAnomaly {
+                store,
+                direction,
+                observed_unix_secs,
+                high_water_unix_secs,
+                max_tolerated_skew_secs,
+            } => self.report_with_context(
+                "CHIO-KERNEL-REPLAY-CLOCK-ANOMALY",
+                serde_json::json!({
+                    "store": store,
+                    "direction": direction,
+                    "observed_unix_secs": observed_unix_secs,
+                    "high_water_unix_secs": high_water_unix_secs,
+                    "max_tolerated_skew_secs": max_tolerated_skew_secs,
+                }),
+                "Correct the host clock or perform the store's audited replay-state recovery procedure before retrying.",
             ),
             Self::GuardDenied(reason) => self.report_with_context(
                 "CHIO-KERNEL-GUARD-DENIED",
@@ -437,6 +550,11 @@ impl KernelError {
                 serde_json::json!({ "source": error.to_string() }),
                 "Check the configured receipt store connectivity, permissions, and schema health before retrying.",
             ),
+            Self::DispatchIntentPersistence(reason) => self.report_with_context(
+                "CHIO-KERNEL-DISPATCH-INTENT-PERSISTENCE",
+                serde_json::json!({ "reason": reason }),
+                "The pre-dispatch intent write failed and the call was denied before any effect; check receipt store writer health, then retry.",
+            ),
             Self::RevocationStore(error) => self.report_with_context(
                 "CHIO-KERNEL-REVOCATION-STORE",
                 serde_json::json!({ "source": error.to_string() }),
@@ -487,6 +605,69 @@ impl KernelError {
                 serde_json::json!({}),
                 "Move the host process to a multi-thread Tokio runtime so block_in_place can drive async tool dispatch. The public async evaluate_tool_call path is still backed by the blocking evaluator on this branch and is not a current-thread runtime workaround.",
             ),
+            Self::HotPathDeadlineExceeded { stage, budget_ms } => self.report_with_context(
+                "CHIO-KERNEL-HOT-PATH-DEADLINE",
+                serde_json::json!({ "stage": stage, "budget_ms": budget_ms }),
+                "Raise the offending stage budget in [deadlines] if the workload is legitimately slow, or repair the slow guard, tool server, or writer. Do not retry blindly; the request already failed closed.",
+            ),
+            Self::ReceiptWriterUnavailable(reason) => self.report_with_context(
+                "CHIO-KERNEL-RECEIPT-WRITER-UNAVAILABLE",
+                serde_json::json!({ "reason": reason }),
+                "The receipt commit writer is not durably accepting writes; repair or restart the writer. Requests deny until liveness recovers.",
+            ),
         }
+    }
+}
+
+#[cfg(test)]
+mod overload_tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+    use super::*;
+
+    #[test]
+    fn overloaded_reports_resource_and_fail_closed_code() {
+        let err = KernelError::Overloaded {
+            resource: OverloadResource::AdmissionKeys,
+        };
+        let report = err.report();
+        assert_eq!(report.code, "CHIO-KERNEL-OVERLOADED");
+        assert!(
+            err.to_string().contains("AdmissionKeys"),
+            "display must name the shed resource: {err}"
+        );
+        assert_eq!(
+            report.context.get("resource").and_then(|v| v.as_str()),
+            Some("AdmissionKeys")
+        );
+    }
+}
+
+#[cfg(test)]
+mod hot_path_error_taxonomy_tests {
+    use super::*;
+
+    #[test]
+    fn hot_path_stage_display_is_snake_case() {
+        assert_eq!(HotPathStage::GuardPipeline.to_string(), "guard_pipeline");
+        assert_eq!(HotPathStage::Dispatch.to_string(), "dispatch");
+        assert_eq!(HotPathStage::ReceiptAppend.to_string(), "receipt_append");
+    }
+
+    #[test]
+    fn hot_path_deadline_exceeded_reports_stable_code() {
+        let err = KernelError::HotPathDeadlineExceeded {
+            stage: HotPathStage::Dispatch,
+            budget_ms: 1500,
+        };
+        let report = err.report();
+        assert_eq!(report.code, "CHIO-KERNEL-HOT-PATH-DEADLINE");
+        assert!(err.to_string().contains("dispatch"));
+        assert!(err.to_string().contains("1500"));
+    }
+
+    #[test]
+    fn receipt_writer_unavailable_reports_stable_code() {
+        let err = KernelError::ReceiptWriterUnavailable("writer is Wedged".to_string());
+        assert_eq!(err.report().code, "CHIO-KERNEL-RECEIPT-WRITER-UNAVAILABLE");
     }
 }

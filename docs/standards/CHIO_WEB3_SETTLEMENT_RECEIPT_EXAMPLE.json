@@ -1,6 +1,6 @@
 {
   "dispatch": {
-    "schema": "chio.web3-settlement-dispatch.v1",
+    "schema": "chio.web3-settlement-dispatch.v2",
     "dispatch_id": "dispatch-web3-1",
     "issued_at": 1743292800,
     "trust_profile_id": "chio.official-web3-stack",
@@ -110,7 +110,9 @@
     "escrow_id": "escrow-web3-1",
     "escrow_contract": "0x1000000000000000000000000000000000000002",
     "bond_vault_contract": "0x1000000000000000000000000000000000000003",
+    "settlement_token_address": "0x735F1Ba389D9D350501dB8FBbB5b52477DcaddA8",
     "beneficiary_address": "0x2222222222222222222222222222222222222222",
+    "operator_key_hash": "0x0791868d8f29ea735f26a17a9aea038cd4255baac26eac5a74e58a07ed2f1975",
     "support_boundary": {
       "real_dispatch_supported": true,
       "anchor_proof_required": true,
@@ -158,6 +160,8 @@
       "chain_id": "eip155:8453",
       "contract_address": "0x1000000000000000000000000000000000000001",
       "operator_address": "0x1111111111111111111111111111111111111111",
+      "operator_key_hash": "0x0791868d8f29ea735f26a17a9aea038cd4255baac26eac5a74e58a07ed2f1975",
+      "operator_epoch": 1,
       "tx_hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     },
     "checkpoint_statement": {
@@ -260,7 +264,7 @@
     },
     "schema": "chio.anchor-inclusion-proof.v1"
   },
-  "schema": "chio.web3-settlement-execution-receipt.v1",
+  "schema": "chio.web3-settlement-execution-receipt.v2",
   "settled_amount": {
     "currency": "USD",
     "units": 150

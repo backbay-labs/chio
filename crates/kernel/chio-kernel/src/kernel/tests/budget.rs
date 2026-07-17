@@ -316,7 +316,9 @@ fn kernel_accepts_optional_payment_adapter_installation() {
     let mut kernel = make_kernel(make_monetary_config());
     assert!(kernel.payment_adapter.is_none());
 
-    kernel.set_payment_adapter(Box::new(StubPaymentAdapter));
+    kernel
+        .set_payment_adapter(Box::new(StubPaymentAdapter))
+        .expect("install payment adapter");
 
     assert!(kernel.payment_adapter.is_some());
 }
@@ -325,7 +327,9 @@ fn kernel_accepts_optional_payment_adapter_installation() {
 fn monetary_payment_authorization_denial_releases_budget_and_skips_tool_invocation() {
     let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(DecliningPaymentAdapter));
+    kernel
+        .set_payment_adapter(Box::new(DecliningPaymentAdapter))
+        .expect("install payment adapter");
     kernel.register_tool_server(Box::new(CountingMonetaryServer {
         id: "cost-srv".to_string(),
         invocations: invocations.clone(),
@@ -376,7 +380,9 @@ fn monetary_payment_authorization_denial_releases_budget_and_skips_tool_invocati
 #[test]
 fn monetary_prepaid_adapter_sets_payment_reference_on_allow_receipt() {
     let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(PrepaidSettledPaymentAdapter));
+    kernel
+        .set_payment_adapter(Box::new(PrepaidSettledPaymentAdapter))
+        .expect("install payment adapter");
     kernel.register_tool_server(Box::new(MonetaryCostServer::no_cost("cost-srv")));
 
     let agent_kp = Keypair::generate();
@@ -871,7 +877,9 @@ fn nested_hosted_sibling_sum_denial_reverses_pre_execution_monetary_charge() {
 fn payment_authorization_denial_releases_delegated_sibling_budget() {
     let fixture = make_sibling_sum_monetary_fixture("delegated-payment-deny-budget");
     let mut kernel = fixture.kernel;
-    kernel.set_payment_adapter(Box::new(DecliningPaymentAdapter));
+    kernel
+        .set_payment_adapter(Box::new(DecliningPaymentAdapter))
+        .expect("install payment adapter");
 
     let mut denied_request = ToolCallRequest {
         request_id: "req-delegated-payment-deny-a".to_string(),
@@ -895,7 +903,9 @@ fn payment_authorization_denial_releases_delegated_sibling_budget() {
         .as_deref()
         .is_some_and(|reason| reason.contains("payment authorization failed")));
 
-    kernel.set_payment_adapter(Box::new(StubPaymentAdapter));
+    kernel
+        .set_payment_adapter(Box::new(StubPaymentAdapter))
+        .expect("install payment adapter");
     let mut allowed_request = ToolCallRequest {
         request_id: "req-delegated-payment-deny-b".to_string(),
         capability: fixture.child_b.clone(),
@@ -928,7 +938,9 @@ fn payment_authorization_denial_releases_delegated_sibling_budget() {
 fn nested_payment_authorization_denial_releases_delegated_sibling_budget() {
     let fixture = make_sibling_sum_monetary_fixture("nested-delegated-payment-deny-budget");
     let mut kernel = fixture.kernel;
-    kernel.set_payment_adapter(Box::new(DecliningPaymentAdapter));
+    kernel
+        .set_payment_adapter(Box::new(DecliningPaymentAdapter))
+        .expect("install payment adapter");
     let session_id = kernel
         .open_session("nested-parent-agent".to_string(), Vec::new())
         .unwrap();
@@ -986,7 +998,9 @@ fn nested_payment_authorization_denial_releases_delegated_sibling_budget() {
         .as_deref()
         .is_some_and(|reason| reason.contains("payment authorization failed")));
 
-    kernel.set_payment_adapter(Box::new(StubPaymentAdapter));
+    kernel
+        .set_payment_adapter(Box::new(StubPaymentAdapter))
+        .expect("install payment adapter");
     let mut allowed_request = ToolCallRequest {
         request_id: "req-nested-payment-deny-b".to_string(),
         capability: fixture.child_b.clone(),

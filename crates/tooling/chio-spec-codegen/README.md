@@ -1,54 +1,110 @@
 # chio-spec-codegen
 
-Schema-to-Rust code generator for the Chio wire protocol. This is the Rust
-half of the four-language codegen pipeline (Python, TypeScript, and Go are
-the other three).
+The Rust target of Chio's four-language schema-to-code pipeline (Rust,
+Python, TypeScript, Go). Given repository-tracked spec inputs, it runs five
+independent, deterministic generator passes: chio-wire/v1 Rust types, the
+Chio error-code registry, state-machine artifacts, per-threat stub tests, and
+the threat-coverage markdown report.
 
-## What it does
+`cargo xtask codegen` drives the wire-type, error-registry, and state-machine
+passes in-process; the threat-model and threat-coverage-doc passes run through
+this crate's own `chio-spec-codegen` binary instead. It generates code and
+docs from schemas; `chio-spec-validate` does the opposite, validating
+instance documents against schemas for conformance scenarios and wire artifacts.
 
-`chio_spec_codegen::codegen_rust(schemas_dir, out_dir)` walks
-`spec/schemas/chio-wire/v1/**/*.schema.json`, registers every schema with a
-single `typify::TypeSpace`, renders the resulting token stream through
-`prettyplease`, prepends the `// DO NOT EDIT` header, and writes the result to
-`out_dir/chio_wire_v1.rs`. It also writes a header-only `out_dir/mod.rs` so the
-`_generated_check` integration test always finds a generated Rust file to
-validate even on a fresh clone.
+## Responsibilities
 
-The same Rust lane loads `spec/statemachines/*.toml`, validates each complete
-transition relation, and emits generated typestates, conformance non-edge
-data, and the state-machine reference. The check mode compares every expected
-file and rejects obsolete managed outputs that no longer have an input.
+- Walk `spec/schemas/chio-wire/v1/**/*.schema.json`, inline local `$ref`s,
+  register every schema with one `typify::TypeSpace`, and emit a single
+  formatted `chio_wire_v1.rs` plus a header-only `mod.rs`
+  (`codegen_rust`, `render_chio_wire_v1`).
+- Parse `spec/errors/registry.yaml` with a hand-rolled indentation parser,
+  validate it, and emit the `ErrorCodeSpec` table and lookup functions
+  consumed by `chio-errors` (`codegen_error_codes`, `render_error_codes`).
+- Load and optionally schema-validate `spec/security/chio-threat-model.v1.json`,
+  then emit one idempotent stub test per threat ID under
+  `crates/tooling/chio-conformance/tests/threats/` (`codegen_threat_model`).
+- Join the threat model, the adversarial-suite manifest, and existing stub
+  files into `docs/security/threat-coverage.md`, grouped by coverage state
+  (`codegen_threat_coverage_doc`).
+- Load `spec/statemachines/*.toml`, validate each complete transition relation,
+  and emit typestates, conformance relations, and the state-machine reference
+  (`codegen_statemachines`, `render_statemachine_outputs`). Check mode also
+  rejects obsolete managed outputs that no longer have an input.
+- Stamp every generated file with the canonical `GENERATED_HEADER` and skip
+  rewriting when the bytes are unchanged (`write_if_changed`), so `--check`
+  drift detection stays exact and unrelated regenerations produce no git diff.
+
+## Public API
+
+Root (`lib.rs`):
+
+- `codegen_rust(schemas_dir: &Path, out_dir: &Path) -> Result<()>` /
+  `render_chio_wire_v1(schemas_dir: &Path) -> Result<String>` - the wire-type pass.
+- `CodegenError`, `Result<T>` - shared error type and alias used by all five passes.
+- `GENERATED_HEADER`, `CHIO_WIRE_V1_OUTPUT`, `MOD_FILE`.
+
+Error registry (`errors_pass`, a private module re-exported at the crate root):
+
+- `codegen_error_codes(registry_path: &Path, out_dir: &Path) -> Result<()>` /
+  `render_error_codes(registry_path: &Path) -> Result<String>`.
+- `ERROR_REGISTRY_INPUT`, `ERRORS_GENERATED_DIR`, `ERROR_CODES_OUTPUT`.
+
+State machines (`statemachines_pass`):
+
+- `codegen_statemachines(input_dir: &Path, repo_root: &Path) -> Result<Vec<PathBuf>>` /
+  `check_statemachine_outputs(input_dir: &Path, repo_root: &Path) -> Result<Vec<PathBuf>>`.
+- `load_statemachines`, `render_statemachine_outputs`, `StateMachine`.
+- `STATEMACHINES_INPUT`, `CONFORMANCE_ORDERING_DIR`, `STATE_MACHINES_DOC_OUTPUT`.
+
+Threat-model stubs (`threat_model`):
+
+- `codegen_threat_model(threat_model_path: &Path, out_dir: &Path) -> Result<Vec<(String, PathBuf)>, CodegenError>`.
+- `load_threat_model`, `render_threat_stub`, `render_threats_mod`,
+  `validate_threat_model_against_schema`.
+- `ThreatEntry`, `ThreatModelDoc`, `THREAT_MODEL_INPUT`, `THREAT_MODEL_SCHEMA`,
+  `THREAT_STUBS_OUTPUT`.
+
+Threat-coverage doc (`threat_coverage_doc`):
+
+- `codegen_threat_coverage_doc_default(repo_root: &Path) -> Result<PathBuf, CodegenError>` -
+  the canonical entry point; resolves every input path from `repo_root`.
+- `codegen_threat_coverage_doc(inputs, out_path)`, `render_threat_coverage_doc(inputs)`,
+  `ThreatCoverageInputs`.
+- `ADVERSARIAL_MANIFEST`, `ESCAPE_HARNESS_DIR`, `THREAT_COVERAGE_DOC`, `THREAT_STUBS_DIR`.
+
+Binary (`chio-spec-codegen`):
+
+```text
+chio-spec-codegen <schemas-dir> <out-dir>
+chio-spec-codegen --errors-only
+chio-spec-codegen --statemachines [--check] [--repo-root <path>]
+chio-spec-codegen --threat-model <input.json> --out <stubs-dir>
+chio-spec-codegen --threat-model-doc [--repo-root <path>]
+```
 
 ## Toolchain
 
-- typify pin: `=0.4.3` (see `xtask/codegen-tools.lock.toml` for the full
+- `typify =0.4.3` (see `xtask/codegen-tools.lock.toml` for the full
   cross-language pin set).
-- schemars 0.8 for the `RootSchema` parsing surface.
-- prettyplease 0.2 for deterministic formatting of the emitted Rust source.
-- rustfmt from the active Rust toolchain for workspace-consistent layout of
-  distributed state-machine Rust outputs.
+- `schemars` 0.8 for the `RootSchema` parsing surface.
+- `prettyplease` 0.2 for deterministic wire-type formatting.
+- `rustfmt` from the active Rust toolchain for error-registry and distributed
+  state-machine Rust outputs.
 
-The version pin is enforced at `Cargo.toml`. Bumping typify is a deliberate,
-spec-affecting change; coordinate with the spec-drift CI workflow before
-bumping so the diff lands in a single PR.
+Bumping a generator pin is a spec-affecting change and should land with the
+complete regenerated diff.
 
-## Regeneration ritual
+## Regeneration
 
-The blessed entry point is the xtask. Both forms are equivalent:
+The xtask is the canonical Rust entry point:
 
 ```bash
-# Full regen (writes files in place).
 cargo xtask codegen rust
-# Alias accepted by the same dispatcher.
-cargo xtask codegen --lang rust
-
-# Drift check; exits non-zero if the on-disk file disagrees with the
-# regenerated bytes. Wired into CI by the codegen-no-diff lane.
 cargo xtask codegen --lang rust --check
 ```
 
-The standalone binary is also available for release-engineering scripts that
-do not want to take a dependency on the xtask harness:
+The standalone binary remains available to focused release tooling:
 
 ```bash
 cargo run -p chio-spec-codegen -- spec/schemas/chio-wire/v1 \
@@ -56,19 +112,12 @@ cargo run -p chio-spec-codegen -- spec/schemas/chio-wire/v1 \
 cargo run -p chio-spec-codegen -- --statemachines --check
 ```
 
-After regeneration, run:
-
-```bash
-cargo build -p chio-core-types
-cargo test  -p chio-core-types --test _generated_check
-```
-
 ## Output layout
 
 ```text
 crates/core/chio-core-types/src/_generated/
-  chio_wire_v1.rs   # all types, header-stamped, prettyplease-formatted
-  mod.rs            # header-only marker; not yet wired into lib.rs
+  chio_wire_v1.rs
+  mod.rs
 crates/trust/chio-federation/src/_generated/
   bilateral_dsse_producer_typestate.rs
 crates/tooling/chio-conformance/tests/_generated/
@@ -77,18 +126,34 @@ docs/reference/generated/
   STATE_MACHINES.md
 ```
 
-The `mod.rs` intentionally declares no submodules. Generated wire bindings are
-quarantined under `_generated/` and are not part of the `chio-core-types`
-public API. Wiring `chio_wire_v1` into the public surface of `chio-core-types`
-requires a deliberate API decision so the no_std + alloc build of
-`chio-kernel-core` keeps compiling against the stable manual types in
-`crates/core/chio-core-types/src/{capability,message,...}.rs`.
+## Testing
+
+`cargo test -p chio-spec-codegen`
+
+This includes `tests/threat_model_schema_test.rs`, a dedicated
+schema-conformance check on the checked-in `chio-threat-model.v1.json`
+instance; CI runs it by name
+(`cargo test -p chio-spec-codegen --test threat_model_schema_test`).
 
 ## House rules
 
-- No `unwrap()` / `expect()` in non-test code (workspace clippy denies).
+- No `unwrap()` or `expect()` in non-test code (workspace clippy denies).
 - No em dashes (U+2014); use `-` or parentheses.
-- The `// DO NOT EDIT` header must remain byte-for-byte identical with the
-  string consumed by `crates/core/chio-core-types/tests/_generated_check.rs`.
+- The `// DO NOT EDIT` header remains byte-for-byte identical with the string
+  consumed by `chio-core-types` generated-file checks.
 - State-machine owners, states, messages, guards, and output paths are
   validated before any managed output is written.
+
+## See also
+
+- `chio-spec-validate` - validates JSON instances against schemas; this
+  crate generates code and docs from schemas instead.
+- `chio-core-types` - holds the generated `src/_generated/chio_wire_v1.rs`
+  output (quarantined, not yet part of the public API).
+- `chio-errors` - holds the generated `error_codes.rs` output.
+- `chio-conformance` - holds the generated per-threat stub tests under
+  `tests/threats/`.
+- `xtask` - drives wire types, the error registry, and state machines
+  (`cargo xtask codegen rust`,
+  `cargo xtask errors regen`); see
+  `xtask/src/codegen/rust.rs`.

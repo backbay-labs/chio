@@ -263,14 +263,15 @@ fn concurrent_create_next_receipt_checkpoint_produces_one_checkpoint() {
     }
     drop(store);
 
-    const CONCURRENT_OPENERS: usize = 8;
-    let barrier = Arc::new(Barrier::new(CONCURRENT_OPENERS));
+    const CONCURRENT_WRITERS: usize = 8;
+    let stores = (0..CONCURRENT_WRITERS)
+        .map(|_| SqliteReceiptStore::open(&path).test_unwrap())
+        .collect::<Vec<_>>();
+    let barrier = Arc::new(Barrier::new(CONCURRENT_WRITERS));
     let mut handles = Vec::new();
-    for _ in 0..CONCURRENT_OPENERS {
-        let path = path.clone();
+    for store in stores {
         let barrier = Arc::clone(&barrier);
         handles.push(thread::spawn(move || {
-            let store = SqliteReceiptStore::open(&path).test_unwrap();
             barrier.wait();
             store
                 .create_next_receipt_checkpoint(10, &receipt_test_keypair())
@@ -458,23 +459,17 @@ fn open_backfills_claim_log_and_checkpoint_transparency_projections() {
     let path = unique_db_path("chio-receipts-legacy-projections");
     let tool_receipt = sample_receipt_with_id_and_timestamp("legacy-tool-1", 20);
     let child_receipt = sample_child_receipt_with_id_and_timestamp("legacy-child-1", 21);
-    let checkpoint_kp = receipt_test_keypair();
-    let first = build_checkpoint(1, 1, 1, &[b"legacy-one".to_vec()], &checkpoint_kp).test_unwrap();
-    let second = build_checkpoint_with_previous(
-        2,
-        2,
-        2,
-        &[b"legacy-two".to_vec()],
-        &checkpoint_kp,
-        Some(&first),
-    )
-    .test_unwrap();
 
+    // Seed a legacy pre-projection store with only the raw receipt tables,
+    // no checkpoints yet. The claim log backfill fail-closes whenever a
+    // checkpoint already exists over an empty projection, so the legacy
+    // checkpoint rows below are introduced only once the claim log projection
+    // is already populated by this first open.
     seed_pre_projection_store(
         &path,
         std::slice::from_ref(&tool_receipt),
         std::slice::from_ref(&child_receipt),
-        &[first.clone(), second.clone()],
+        &[],
     );
 
     let store = SqliteReceiptStore::open(&path).test_unwrap();
@@ -497,6 +492,30 @@ fn open_backfills_claim_log_and_checkpoint_transparency_projections() {
             ),
         ]
     );
+
+    // Now land legacy checkpoints on top of the already-backfilled claim
+    // log, inserted directly (bypassing `store_checkpoint`'s validation
+    // path) to simulate a store that predates checkpoint_tree_heads /
+    // checkpoint_predecessor_witnesses / checkpoint_publication_metadata.
+    let checkpoint_kp = receipt_test_keypair();
+    let first = build_checkpoint(1, 1, 1, &[b"legacy-one".to_vec()], &checkpoint_kp).test_unwrap();
+    let second = build_checkpoint_with_previous(
+        2,
+        2,
+        2,
+        &[b"legacy-two".to_vec()],
+        &checkpoint_kp,
+        Some(&first),
+    )
+    .test_unwrap();
+    insert_checkpoint_row(&store, &first, first.body.batch_end_seq);
+    insert_checkpoint_row(&store, &second, second.body.batch_end_seq);
+
+    // Reopening backfills the checkpoint transparency projections from the
+    // now-persisted legacy checkpoint rows. The claim log is already
+    // populated, so the (unaffected) validate branch runs, not the guarded
+    // empty-projection repair branch.
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
     assert_eq!(
         load_checkpoint_tree_head_rows(&store),
         vec![
@@ -551,10 +570,60 @@ fn open_backfills_claim_log_and_checkpoint_transparency_projections() {
 }
 
 #[test]
+fn failed_checkpoint_projection_backfill_rolls_back_lineage_backfill() {
+    let path = unique_db_path("chio-receipts-projection-backfill-rollback");
+    let child_receipt = sample_child_receipt_with_id_and_timestamp("rollback-child-1", 21);
+
+    // Establish the claim-log projection first. Bootstrap intentionally refuses
+    // to recreate an empty claim log after checkpoints exist, so this mirrors a
+    // legacy store whose claim log is intact but whose newer projections need
+    // repair.
+    seed_pre_projection_store(&path, &[], std::slice::from_ref(&child_receipt), &[]);
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    let connection = store.connection().test_unwrap();
+    connection
+        .execute("DELETE FROM request_lineage", [])
+        .test_unwrap();
+    let remaining_lineage: i64 = connection
+        .query_row("SELECT COUNT(*) FROM request_lineage", [], |row| row.get(0))
+        .test_unwrap();
+    assert_eq!(remaining_lineage, 0, "lineage repair precondition");
+    drop(connection);
+
+    let checkpoint_kp = receipt_test_keypair();
+    let checkpoint =
+        build_checkpoint(1, 1, 1, &[b"rollback".to_vec()], &checkpoint_kp).test_unwrap();
+    insert_checkpoint_row_with_statement_json(
+        &store,
+        &checkpoint,
+        checkpoint.body.batch_end_seq,
+        "{}",
+    );
+    drop(store);
+
+    let error = SqliteReceiptStore::open(&path).test_unwrap_err();
+    assert!(
+        error.to_string().contains("missing field `schema`"),
+        "unexpected error: {error}"
+    );
+
+    let connection = rusqlite::Connection::open(&path).test_unwrap();
+    let lineage_count: i64 = connection
+        .query_row("SELECT COUNT(*) FROM request_lineage", [], |row| row.get(0))
+        .test_unwrap();
+    assert_eq!(
+        lineage_count, 0,
+        "lineage writes must roll back when checkpoint projection repair fails"
+    );
+
+    let _ = fs::remove_file(path);
+}
+
+#[test]
 fn record_checkpoint_publication_trust_anchor_binding_is_idempotent_and_visible_in_export_summary()
 {
     let path = unique_db_path("chio-receipts-publication-binding");
-    let mut store = SqliteReceiptStore::open(&path).test_unwrap();
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
     let first_receipt = sample_receipt_with_id("publication-binding-first");
     let second_receipt = sample_receipt_with_id("publication-binding-second");
     let first_seq = store

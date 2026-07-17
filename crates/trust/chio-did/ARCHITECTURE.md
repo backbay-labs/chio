@@ -1,21 +1,65 @@
-# chio-did Architecture
+# chio-did architecture
 
-## Boundary
+## Overview
 
-`chio-did` owns the self-certifying `did:chio` method. A DID is derived from the Ed25519 public key bytes used elsewhere in Chio, and resolution builds a DID Document without registry lookup.
+`chio-did` is a pure library: no I/O, no runtime state, `#![forbid(unsafe_code)]`.
+It owns the `did:chio` method end to end, identifier derivation, parsing, and
+resolution, all of which are self-certifying functions of the public key
+bytes. Downstream crates (`chio-credentials`, `chio-control-plane`, `chio-cli`)
+treat a resolved `DidChio` as an identity anchor, so the validation performed
+here is the compatibility boundary for every consumer.
 
-## Internal Surfaces
+## Module map
 
-The crate boundary is intentionally small: `DidChio` parses and renders canonical identifiers, `DidDocument` and `DidVerificationMethod` describe the resolved document, and `DidService` attaches resolver-provided service metadata such as receipt-log and passport-status endpoints.
+| Path | Responsibility |
+|------|----------------|
+| `src/lib.rs` | The full public surface: `DidChio`, `DidDocument` and its parts, `DidService`, `ResolveOptions`, `DidError`, and `resolve_did_arc`. |
+| `src/fuzz.rs` | `fuzz` feature only. `fuzz_did_resolve`, the libFuzzer entry point driving the crate's parse paths. |
 
-## Trust Invariants
+## Resolution flow
 
-The security constraint is that resolver metadata must not weaken the self-certifying identifier. Service URLs are public trust hints, so they must be syntactically valid and transport-safe before entering a DID Document. Non-HTTPS service endpoints are rejected at construction time so receipt-log and passport-status services cannot advertise plaintext or local file endpoints.
+1. A caller holds an Ed25519 `chio_core::PublicKey`.
+2. `DidChio::from_public_key` checks `SigningAlgorithm::Ed25519` and wraps the
+   key; any other algorithm is rejected with `UnsupportedKeyAlgorithm`.
+3. `DidChio::as_str` / `Display` render `did:chio:<64 lowercase hex chars>`.
+4. `DidChio::from_str` (or the `resolve_did_arc` convenience) reverses this:
+   strip the `did:chio:` prefix, require exactly 64 lowercase hex bytes,
+   decode the public key, and re-check the algorithm.
+5. `resolve` / `resolve_with_options` build a `DidDocument`: one
+   `Ed25519VerificationKey2020` verification method (multibase-encoded key
+   with the `0xed01` Ed25519 multicodec prefix), referenced by both
+   `authentication` and `assertionMethod`, plus any `service` entries carried
+   in `ResolveOptions`.
+6. A caller may attach `DidService` entries (`receipt_log`, `passport_status`,
+   or `new` for a custom type); each is validated at construction time.
 
-## Dependent Surfaces
+## Invariants and failure modes
 
-Credential, federation, governance, and reputation code can treat resolved `did:chio` documents as identity anchors. That makes construction-time validation the compatibility boundary: bad service metadata must be rejected here rather than left for each downstream verifier to interpret differently.
+- The method-specific identifier must be exactly 64 lowercase hex characters;
+  wrong length, uppercase, or non-hex bytes all fail with
+  `InvalidMethodSpecificId`.
+- Only `SigningAlgorithm::Ed25519` keys form a valid `did:chio`; `P256`,
+  `P384`, and `Hybrid` keys fail with `UnsupportedKeyAlgorithm`, checked both
+  on construction from a `PublicKey` and after parsing from a string.
+- Every `DidService` endpoint must parse as a URL with an `https` scheme;
+  anything else (`http`, `file`, `ftp`, or unparseable) fails with
+  `InvalidServiceEndpoint` at construction, so an invalid service can never
+  reach a `DidDocument`.
+- `DidService::receipt_log` and `::passport_status` deduplicate same-kind
+  services deterministically: the first entry is unsuffixed (`#receipt-log`),
+  later ones get `-2`, `-3`, and so on.
+- Resolution is pure: no I/O, no network, no registry. A `DidDocument` is a
+  deterministic function of the DID's own bytes and the caller-supplied
+  `ResolveOptions`.
+- `DidDocument` and its parts (de)serialize with the DID-spec field names
+  (`@context`, `verificationMethod`, `assertionMethod`, `serviceEndpoint`,
+  `publicKeyMultibase`); `service` is omitted entirely when empty.
 
-## Verification Focus
+## Dependencies
 
-Tests should cover canonical identifier round trips, invalid key material, service URL scheme validation, service type validation, and document rendering that preserves the key-derived verification method.
+`chio-core` supplies `PublicKey` and `SigningAlgorithm` (production) and
+`Keypair` (tests). `serde` (with `derive`) implements the document
+(de)serialization; `thiserror` implements `DidError`; `bs58` encodes the
+multibase public key; `url` parses and validates service-endpoint URLs. The
+`fuzz` feature adds `arbitrary` and `serde_json`, used only by the standalone
+`fuzz` workspace's `did_resolve` target.

@@ -89,11 +89,15 @@ function verifyResponse() {
   };
 }
 
-async function startMockSidecar(): Promise<{ server: http.Server; url: string }> {
+async function startMockSidecar(
+  onEvaluate?: (requestBody: string) => void,
+): Promise<{ server: http.Server; url: string }> {
   const server = http.createServer((req, res) => {
     if (req.method === "POST" && req.url === "/chio/evaluate") {
-      req.resume();
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk: Buffer) => chunks.push(chunk));
       req.on("end", () => {
+        onEvaluate?.(Buffer.concat(chunks).toString("utf-8"));
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(allowResponse()));
       });
@@ -122,6 +126,49 @@ async function startMockSidecar(): Promise<{ server: http.Server; url: string }>
   return {
     server,
     url: `http://127.0.0.1:${addr.port}`,
+  };
+}
+
+async function startRecordingSidecar(): Promise<{
+  server: http.Server;
+  url: string;
+  evaluateBodies: Array<Record<string, unknown>>;
+}> {
+  const evaluateBodies: Array<Record<string, unknown>> = [];
+  const server = http.createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    req.on("end", () => {
+      if (req.method === "POST" && req.url === "/chio/evaluate") {
+        evaluateBodies.push(
+          JSON.parse(Buffer.concat(chunks).toString("utf-8")) as Record<string, unknown>,
+        );
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(allowResponse()));
+        return;
+      }
+
+      if (req.method === "POST" && req.url === "/chio/verify") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(verifyResponse()));
+        return;
+      }
+
+      res.writeHead(404);
+      res.end();
+    });
+  });
+
+  await new Promise<void>((resolve) => server.listen(0, resolve));
+  const addr = server.address();
+  if (addr == null || typeof addr === "string") {
+    throw new Error("sidecar not listening");
+  }
+
+  return {
+    server,
+    url: `http://127.0.0.1:${addr.port}`,
+    evaluateBodies,
   };
 }
 
@@ -246,6 +293,109 @@ describe("chio() middleware", () => {
         parsed: { hello: "world", count: 2 },
         hasRawBody: true,
       });
+    } finally {
+      server.close();
+      sidecar.server.close();
+    }
+  });
+
+  it("replays buffered bodies for downstream async iteration", async () => {
+    const sidecar = await startMockSidecar();
+    const app = express();
+    app.use(chio({ sidecarUrl: sidecar.url }));
+    app.post("/stream", async (req, res) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      res.type("text/plain").send(Buffer.concat(chunks).toString("utf-8"));
+    });
+
+    const server = http.createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    try {
+      const resp = await request(
+        server,
+        "POST",
+        "/stream",
+        {
+          "content-type": "text/plain",
+        },
+        "stream me",
+      );
+      expect(resp.status).toBe(200);
+      expect(resp.body).toBe("stream me");
+    } finally {
+      server.close();
+      sidecar.server.close();
+    }
+  });
+
+  it("keeps route-level patterns isolated while concurrent bodies buffer", async () => {
+    const observed: Array<{ path: string; route_pattern: string }> = [];
+    const sidecar = await startMockSidecar((requestBody) => {
+      const parsed = JSON.parse(requestBody) as { path: string; route_pattern: string };
+      observed.push({ path: parsed.path, route_pattern: parsed.route_pattern });
+    });
+    const app = express();
+    const guard = chio({ sidecarUrl: sidecar.url });
+    app.post("/alpha/:id", guard, (_req, res) => res.send("alpha"));
+    app.post("/beta/:id", guard, (_req, res) => res.send("beta"));
+
+    const server = http.createServer(app);
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    const slowPost = (
+      path: string,
+      firstDelayMs: number,
+      finalDelayMs: number,
+    ): Promise<{ status: number; body: string; headers: http.IncomingHttpHeaders }> => {
+      return new Promise((resolve, reject) => {
+        const addr = server.address();
+        if (addr == null || typeof addr === "string") {
+          reject(new Error("server not listening"));
+          return;
+        }
+        const req = http.request(
+          {
+            hostname: "127.0.0.1",
+            port: addr.port,
+            path,
+            method: "POST",
+            headers: { "content-type": "text/plain" },
+          },
+          (res) => {
+            const chunks: Buffer[] = [];
+            res.on("data", (chunk: Buffer) => chunks.push(chunk));
+            res.on("end", () => {
+              resolve({
+                status: res.statusCode ?? 0,
+                body: Buffer.concat(chunks).toString("utf-8"),
+                headers: res.headers,
+              });
+            });
+          },
+        );
+        req.on("error", reject);
+        setTimeout(() => req.write("part-1"), firstDelayMs);
+        setTimeout(() => req.end("part-2"), finalDelayMs);
+      });
+    };
+
+    try {
+      const alpha = slowPost("/alpha/1", 0, 30);
+      await new Promise<void>((resolve) => setTimeout(resolve, 5));
+      const beta = slowPost("/beta/2", 0, 80);
+      const [alphaResp, betaResp] = await Promise.all([alpha, beta]);
+      expect(alphaResp.status).toBe(200);
+      expect(betaResp.status).toBe(200);
+      expect(observed).toEqual(
+        expect.arrayContaining([
+          { path: "/alpha/1", route_pattern: "/alpha/:id" },
+          { path: "/beta/2", route_pattern: "/beta/:id" },
+        ]),
+      );
     } finally {
       server.close();
       sidecar.server.close();

@@ -163,6 +163,16 @@ class TestTerraformPlanReview:
         # out of scope.
         assert verdict.violations == []
 
+    def test_unknown_plan_shape_is_denied(self) -> None:
+        guard = PlanReviewGuard(
+            allowlist=ResourceTypeAllowlist(patterns=["*"]),
+        )
+        verdict = guard.review({"format_version": "1.2"})
+        assert not verdict.allowed
+        assert verdict.resources == []
+        assert verdict.violations[0]["resource_type"] == "unknown"
+        assert "did not match" in verdict.violations[0]["reason"]
+
     def test_destroy_blocked_by_default(self) -> None:
         guard = PlanReviewGuard(
             allowlist=ResourceTypeAllowlist(patterns=["aws_db_*"]),

@@ -27,14 +27,13 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use chio_appraisal::{
-    MarketplaceBasePrice, MarketplaceInvocationPrice, MarketplacePricingContext,
-    MarketplacePricingError, MarketplaceReputationTier,
-    compute_checked_marketplace_invocation_price,
+    compute_checked_marketplace_invocation_price, MarketplaceBasePrice, MarketplaceInvocationPrice,
+    MarketplacePricingContext, MarketplacePricingError, MarketplaceReputationTier,
 };
 use chio_guard_registry::{GuardPrice, MARKETPLACE_BLOCK_KEY};
-use chio_reputation::{ReputationTier, satisfies_floor};
+use chio_reputation::{satisfies_floor, ReputationTier};
 use chio_underwriting::{
-    MarketplaceCreditLimitRequest, MarketplaceLimitTier, compute_marketplace_credit_limit,
+    compute_marketplace_credit_limit, MarketplaceCreditLimitRequest, MarketplaceLimitTier,
 };
 use serde::{Deserialize, Serialize};
 

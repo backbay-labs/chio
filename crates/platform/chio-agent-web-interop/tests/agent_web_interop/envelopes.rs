@@ -37,7 +37,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     let ap2_mandate_chain = builder.artifact_bytes("external/ap2-mandate-chain.json");
     let x402_payment = builder.artifact_bytes("external/x402-payment.json");
     let cloudevents_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-cloudevents-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "cloudevents",
@@ -67,13 +67,13 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
         &mut builder.graph_nodes,
         "agent-web-proof-envelope",
         "cloudevents-envelope",
-        "chio.agent-web-proof-envelope.v1",
+        "chio.agent-web-proof-envelope.v2",
         "cloudevents-envelope.json",
         cloudevents_envelope,
     );
 
     let graphql_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-graphql-http-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "graphql-http",
@@ -103,7 +103,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
         &mut builder.graph_nodes,
         "agent-web-proof-envelope",
         "graphql-http-envelope",
-        "chio.agent-web-proof-envelope.v1",
+        "chio.agent-web-proof-envelope.v2",
         "graphql-http-envelope.json",
         graphql_envelope,
     );
@@ -124,7 +124,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
         ],
     };
     let mcp_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-mcp-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "mcp",
@@ -149,7 +149,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
         &mut builder.graph_nodes,
         "agent-web-proof-envelope",
         "mcp-envelope",
-        "chio.agent-web-proof-envelope.v1",
+        "chio.agent-web-proof-envelope.v2",
         "mcp-envelope.json",
         mcp_envelope,
     );
@@ -170,7 +170,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
         ],
     };
     let a2a_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-a2a-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "a2a",
@@ -195,13 +195,13 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
         &mut builder.graph_nodes,
         "agent-web-proof-envelope",
         "a2a-envelope",
-        "chio.agent-web-proof-envelope.v1",
+        "chio.agent-web-proof-envelope.v2",
         "a2a-envelope.json",
         a2a_envelope,
     );
 
     let openapi_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-openapi-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "openapi",
@@ -238,7 +238,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "openapi-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "openapi-envelope.json",
             openapi_envelope,
         );
@@ -258,7 +258,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }
 
     let acp_client_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-acp-client-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "acp-client",
@@ -292,7 +292,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "acp-client-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "acp-client-envelope.json",
             acp_client_envelope,
         );
@@ -312,7 +312,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }
 
     let acp_commerce_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-acp-commerce-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "acp-commerce",
@@ -349,7 +349,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "acp-commerce-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "acp-commerce-envelope.json",
             acp_commerce_envelope,
         );
@@ -369,7 +369,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }
 
     let ag_ui_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-ag-ui-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "ag-ui",
@@ -403,7 +403,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "ag-ui-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "ag-ui-envelope.json",
             ag_ui_envelope,
         );
@@ -423,7 +423,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }
 
     let browser_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-browser-automation-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "browser-automation",
@@ -458,7 +458,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "browser-automation-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "browser-automation-envelope.json",
             browser_envelope,
         );
@@ -478,7 +478,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }
 
     let rpa_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-rpa-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "rpa",
@@ -509,7 +509,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "rpa-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "rpa-envelope.json",
             rpa_envelope,
         );
@@ -529,7 +529,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }
 
     let email_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-gmail-api-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "gmail-api",
@@ -563,7 +563,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "email-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "email-envelope.json",
             email_envelope,
         );
@@ -583,7 +583,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }
 
     let calendar_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-google-calendar-api-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "google-calendar-api",
@@ -619,7 +619,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "calendar-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "calendar-envelope.json",
             calendar_envelope,
         );
@@ -639,7 +639,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }
 
     let slack_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-slack-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "slack",
@@ -673,7 +673,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "slack-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "slack-envelope.json",
             slack_envelope,
         );
@@ -693,7 +693,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }
 
     let oauth2_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-oauth2-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "oauth2",
@@ -729,7 +729,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "oauth2-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "oauth2-envelope.json",
             oauth2_envelope,
         );
@@ -749,7 +749,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }
 
     let openid_connect_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-openid-connect-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "openid-connect",
@@ -785,7 +785,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "openid-connect-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "openid-connect-envelope.json",
             openid_connect_envelope,
         );
@@ -805,7 +805,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }
 
     let scim_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-scim-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "scim",
@@ -839,7 +839,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "scim-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "scim-envelope.json",
             scim_envelope,
         );
@@ -859,7 +859,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }
 
     let spiffe_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-spiffe-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "spiffe",
@@ -895,7 +895,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "spiffe-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "spiffe-envelope.json",
             spiffe_envelope,
         );
@@ -915,7 +915,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }
 
     let kubernetes_admission_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-kubernetes-admission-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "kubernetes-admission",
@@ -949,7 +949,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "kubernetes-admission-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "kubernetes-admission-envelope.json",
             kubernetes_admission_envelope,
         );
@@ -969,7 +969,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }
 
     let oci_ref_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-oci-ref-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "oci",
@@ -1003,7 +1003,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "oci-ref-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "oci-ref-envelope.json",
             oci_ref_envelope,
         );
@@ -1023,7 +1023,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }
 
     let vc_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-vc-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "vc",
@@ -1057,7 +1057,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "vc-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "vc-envelope.json",
             vc_envelope,
         );
@@ -1077,7 +1077,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }
 
     let sd_jwt_vc_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-sd-jwt-vc-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "sd-jwt-vc",
@@ -1111,7 +1111,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "sd-jwt-vc-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "sd-jwt-vc-envelope.json",
             sd_jwt_vc_envelope,
         );
@@ -1131,7 +1131,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }
 
     let bbs_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-bbs-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "bbs",
@@ -1167,7 +1167,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "bbs-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "bbs-envelope.json",
             bbs_envelope,
         );
@@ -1187,7 +1187,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }
 
     let sigstore_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-sigstore-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "sigstore",
@@ -1221,7 +1221,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "sigstore-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "sigstore-envelope.json",
             sigstore_envelope,
         );
@@ -1241,7 +1241,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }
 
     let in_toto_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-in-toto-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "in-toto",
@@ -1275,7 +1275,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "in-toto-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "in-toto-envelope.json",
             in_toto_envelope,
         );
@@ -1295,7 +1295,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }
 
     let dsse_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-dsse-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "dsse",
@@ -1326,7 +1326,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "dsse-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "dsse-envelope.json",
             dsse_envelope,
         );
@@ -1346,7 +1346,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }
 
     let slsa_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-slsa-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "slsa-provenance",
@@ -1380,7 +1380,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "slsa-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "slsa-envelope.json",
             slsa_envelope,
         );
@@ -1400,7 +1400,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }
 
     let asyncapi_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-asyncapi-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "asyncapi",
@@ -1436,7 +1436,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "asyncapi-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "asyncapi-envelope.json",
             asyncapi_envelope,
         );
@@ -1456,7 +1456,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }
 
     let ap2_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-ap2-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "ap2",
@@ -1493,7 +1493,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "ap2-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "ap2-envelope.json",
             ap2_envelope,
         );
@@ -1513,7 +1513,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
     }
 
     let x402_envelope = json_bytes(json!({
-        "schema": "chio.agent-web-proof-envelope.v1",
+        "schema": "chio.agent-web-proof-envelope.v2",
         "envelope_id": "agent-web-envelope-x402-valid",
         "transaction_passport_ref": builder.passport.id,
         "source_protocol": "x402",
@@ -1552,7 +1552,7 @@ pub(crate) fn add_projection_envelopes(builder: &mut AgentWebBundleBuilder) {
             &mut builder.graph_nodes,
             "agent-web-proof-envelope",
             "x402-envelope",
-            "chio.agent-web-proof-envelope.v1",
+            "chio.agent-web-proof-envelope.v2",
             "x402-envelope.json",
             x402_envelope,
         );

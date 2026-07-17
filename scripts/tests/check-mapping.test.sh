@@ -15,6 +15,10 @@ mkdir -p \
   "${fixture_root}/formal/apalache" \
   "${fixture_root}/crates/kernel/chio-kernel-core/src"
 cp "${REPO_ROOT}/scripts/check-mapping.sh" "${fixture_root}/scripts/check-mapping.sh"
+if [[ "$(grep -Ec 'LC_ALL=C comm -(13|23)' "${fixture_root}/scripts/check-mapping.sh")" -ne 4 ]]; then
+  echo "check-mapping must run all sorted-set comparisons under the C locale" >&2
+  exit 1
+fi
 
 printf '%s\n' \
   '| Property | Model |' \

@@ -53,3 +53,8 @@ pub(crate) use self::state_converters::{
 pub(crate) use self::validation::{
     backfill_claim_receipt_log_entries, validate_claim_receipt_log_entries,
 };
+// Reachable in the lib build only through `backfill_claim_receipt_log_entries`
+// / `validate_claim_receipt_log_entries` above; this re-export exists so
+// tests can drive the fail-closed guard directly.
+#[cfg_attr(not(test), allow(unused_imports))]
+pub(crate) use self::validation::validate_or_backfill_claim_receipt_log_entries;

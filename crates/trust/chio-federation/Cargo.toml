@@ -30,8 +30,8 @@ thiserror = { workspace = true }
 # invocation schema is deferred until the producer
 # receives the missing invocation fields; this slice still serialises the
 # canonical-JSON in-toto Statement as Base64 and binds keyid as SHA-256 of
-# the passport public key (hex-encoded, via the `hex` crate). These three
-# deps are used exclusively by `bilateral_dsse.rs`.
+# the passport public key (hex-encoded, via the `hex` crate). base64, sha2,
+# and hex are also used by bilateral_verifier.rs and its submodules.
 base64 = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }

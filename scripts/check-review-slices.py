@@ -31,6 +31,7 @@ SLICES: tuple[ReviewSlice, ...] = (
         (
             "**/ARCHITECTURE.md",
             "README.md",
+            "CONTRIBUTING.md",
             "AGENTS.md",
             "CLAUDE.md",
             "docs/**",
@@ -66,6 +67,7 @@ SLICES: tuple[ReviewSlice, ...] = (
             "crates/kernel/chio-runtime-harness/**",
             "crates/kernel/chio-runtime-proof-parity/**",
             "crates/kernel/chio-swarm-authority/**",
+            "crates/core/chio-supervisor/**",
             "crates/protocol/chio-tool-call-fabric/**",
             "crates/protocol/chio-tower/**",
         ),
@@ -221,6 +223,7 @@ SLICES: tuple[ReviewSlice, ...] = (
             "compliance/**",
             "supply-chain/**",
             "tools/knowledge-base/**",
+            "CHANGELOG.md",
             "releases.toml",
             "deploy/**",
             "packaging/**",

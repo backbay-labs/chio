@@ -316,7 +316,7 @@ mod tests {
     }
 
     #[test]
-    fn mixed_pipeline_immediate_dispatch_revalidation_skips_legacy_child_but_forced_does_not() {
+    fn mixed_pipeline_revalidation_preserves_legacy_child_compatibility() {
         let calls = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
         let mut pipeline = GuardPipeline::new();
         pipeline.add(Box::new(RequiredRevalidationGuard {
@@ -337,7 +337,7 @@ mod tests {
         assert!(pipeline.requires_dispatch_revalidation());
         assert!(pipeline.revalidate_required_before_dispatch(&ctx).is_ok());
         assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
-        assert!(pipeline.revalidate_before_dispatch(&ctx).is_err());
+        assert!(pipeline.revalidate_before_dispatch(&ctx).is_ok());
         assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 2);
     }
 }

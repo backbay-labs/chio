@@ -1,7 +1,8 @@
 //! Sync guard trait for portable evaluation.
 //!
-//! The surface matches `chio_kernel::Guard` byte-for-byte so the same
-//! guard implementations run in both crates with no behavioural change:
+//! This surface is the portable admission-time subset of
+//! `chio_kernel::Guard`. The full kernel trait also exposes dispatch
+//! revalidation hooks for guards with mutable state:
 //!
 //! ```ignore
 //! pub trait Guard: Send + Sync {
@@ -21,8 +22,7 @@ use chio_core_types::capability::scope::ChioScope;
 
 use crate::Verdict;
 
-/// Sync guard trait. Signature-for-signature compatible with
-/// `chio_kernel::Guard`.
+/// Sync guard trait for portable admission-time evaluation.
 pub trait Guard: Send + Sync {
     /// Human-readable guard name (e.g. `forbidden-path`).
     fn name(&self) -> &str;

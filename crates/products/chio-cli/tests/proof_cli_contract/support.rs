@@ -87,8 +87,78 @@ const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BENEFICIARY_IDENTITY_KEYS: &str =
     "91a28a0b74381593a4d9469579208926afc8ad82c8839b7644359b9eba9a4b3a";
 const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ORACLE_KEYS: &str =
     "d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c";
+const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_CONTRACT_PACKAGE_ID: &str = "chio.official-web3-contracts";
+const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_REVIEWED_MANIFEST_HASH: &str =
+    "0x454a9a92b54a835a2776750196b171501bff6e5c02df1a192616194fc0a095cc";
+const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ROOT_REGISTRY_RUNTIME_CODEHASH: &str =
+    "0xfc5d76d87b02096c6ae32ce644a2b98ca0bdf3c56700ad16731fad2062e6bd7f";
+const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_IDENTITY_REGISTRY_RUNTIME_CODEHASH: &str =
+    "0xd4f87cc63c00d0640c8f232c8fac5e5cb99bc6cf185ef912225e07fa438614cc";
+const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ESCROW_RUNTIME_CODEHASH: &str =
+    "0x03d8f545c330922a33db6473430c50eafd527e04474f31abee2dc1f8c6ab2d36";
+const PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BOND_VAULT_RUNTIME_CODEHASH: &str =
+    "0x17f7936469584b38404765ac44bd7e2384337983e4bc6448a3500d0637711f09";
 const PUBLIC_SETTLEMENT_FIXTURE_INDEPENDENT_CHAIN_HEAD_JSON: &str =
     "{\"chain_id\":\"eip155:8453\",\"observed_block_number\":12345678,\"observed_block_hash\":\"0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"latest_block_number\":12345701}";
+const PUBLIC_SETTLEMENT_FIXTURE_ENV: &[(&str, &str)] = &[
+    (
+        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_CAPITAL_SIGNER_KEYS",
+        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_CAPITAL_SIGNER_KEYS,
+    ),
+    (
+        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BUNDLE_SIGNER_KEYS",
+        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BUNDLE_SIGNER_KEYS,
+    ),
+    (
+        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ANCHOR_KERNEL_KEYS",
+        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ANCHOR_KERNEL_KEYS,
+    ),
+    (
+        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BENEFICIARY_IDENTITY_KEYS",
+        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BENEFICIARY_IDENTITY_KEYS,
+    ),
+    (
+        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ORACLE_KEYS",
+        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ORACLE_KEYS,
+    ),
+    (
+        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_CONTRACT_PACKAGE_ID",
+        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_CONTRACT_PACKAGE_ID,
+    ),
+    (
+        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_REVIEWED_MANIFEST_HASH",
+        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_REVIEWED_MANIFEST_HASH,
+    ),
+    (
+        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ROOT_REGISTRY_RUNTIME_CODEHASH",
+        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ROOT_REGISTRY_RUNTIME_CODEHASH,
+    ),
+    (
+        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_IDENTITY_REGISTRY_RUNTIME_CODEHASH",
+        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_IDENTITY_REGISTRY_RUNTIME_CODEHASH,
+    ),
+    (
+        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ESCROW_RUNTIME_CODEHASH",
+        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ESCROW_RUNTIME_CODEHASH,
+    ),
+    (
+        "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BOND_VAULT_RUNTIME_CODEHASH",
+        PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BOND_VAULT_RUNTIME_CODEHASH,
+    ),
+    (
+        "CHIO_PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS",
+        "eip155:8453,eip155:42161",
+    ),
+    ("CHIO_PUBLIC_SETTLEMENT_MINIMUM_CONFIRMATIONS", "1"),
+    (
+        "CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON",
+        PUBLIC_SETTLEMENT_FIXTURE_INDEPENDENT_CHAIN_HEAD_JSON,
+    ),
+    (
+        "CHIO_PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS",
+        "1743293560",
+    ),
+];
 const DISCLOSURE_LINEAGE_SIGNATURE_SEED: [u8; 32] = [29; 32];
 const DISCLOSURE_FIXTURE_TRUSTED_SIGNER_KEYS: &str =
     "e8da63a40ca687c87cfce05cb24a786c7e75cc49c70db5573f026f1c6a86ceaa";
@@ -213,39 +283,6 @@ pub(crate) fn chio_command() -> std::process::Command {
                 DISCLOSURE_FIXTURE_TRUSTED_SIGNER_KEYS,
             ),
             (
-                "CHIO_PUBLIC_SETTLEMENT_TRUSTED_CAPITAL_SIGNER_KEYS",
-                PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_CAPITAL_SIGNER_KEYS,
-            ),
-            (
-                "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BUNDLE_SIGNER_KEYS",
-                PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BUNDLE_SIGNER_KEYS,
-            ),
-            (
-                "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ANCHOR_KERNEL_KEYS",
-                PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ANCHOR_KERNEL_KEYS,
-            ),
-            (
-                "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BENEFICIARY_IDENTITY_KEYS",
-                PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BENEFICIARY_IDENTITY_KEYS,
-            ),
-            (
-                "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ORACLE_KEYS",
-                PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ORACLE_KEYS,
-            ),
-            (
-                "CHIO_PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS",
-                "eip155:8453,eip155:42161",
-            ),
-            ("CHIO_PUBLIC_SETTLEMENT_MINIMUM_CONFIRMATIONS", "1"),
-            (
-                "CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON",
-                PUBLIC_SETTLEMENT_FIXTURE_INDEPENDENT_CHAIN_HEAD_JSON,
-            ),
-            (
-                "CHIO_PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS",
-                "1743293560",
-            ),
-            (
                 "CHIO_PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX",
                 COLLECT_SIGNATURE_SEED_HEX,
             ),
@@ -255,6 +292,7 @@ pub(crate) fn chio_command() -> std::process::Command {
             ),
         ],
     );
+    set_envs(&mut command, PUBLIC_SETTLEMENT_FIXTURE_ENV);
     command
 }
 
@@ -1148,7 +1186,7 @@ fn refresh_proof_room_source_verifier_report(bundle: &Path) {
 
 fn source_verifier_fixture_env() -> Vec<(&'static str, String)> {
     let (verifier_now, max_age_seconds) = standard_webhooks_clock_env();
-    vec![
+    let mut env = vec![
         (
             "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
             STANDARD_WEBHOOKS_VERIFIER_SECRET.to_string(),
@@ -1227,43 +1265,13 @@ fn source_verifier_fixture_env() -> Vec<(&'static str, String)> {
             "CHIO_DISCLOSURE_TRUSTED_CRYPTO_CONTEXT_REPORT_SIGNER_KEYS",
             DISCLOSURE_FIXTURE_TRUSTED_SIGNER_KEYS.to_string(),
         ),
-        (
-            "CHIO_PUBLIC_SETTLEMENT_TRUSTED_CAPITAL_SIGNER_KEYS",
-            PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_CAPITAL_SIGNER_KEYS.to_string(),
-        ),
-        (
-            "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BUNDLE_SIGNER_KEYS",
-            PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BUNDLE_SIGNER_KEYS.to_string(),
-        ),
-        (
-            "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ANCHOR_KERNEL_KEYS",
-            PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ANCHOR_KERNEL_KEYS.to_string(),
-        ),
-        (
-            "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BENEFICIARY_IDENTITY_KEYS",
-            PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_BENEFICIARY_IDENTITY_KEYS.to_string(),
-        ),
-        (
-            "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ORACLE_KEYS",
-            PUBLIC_SETTLEMENT_FIXTURE_TRUSTED_ORACLE_KEYS.to_string(),
-        ),
-        (
-            "CHIO_PUBLIC_SETTLEMENT_ALLOWED_CHAIN_IDS",
-            "eip155:8453,eip155:42161".to_string(),
-        ),
-        (
-            "CHIO_PUBLIC_SETTLEMENT_MINIMUM_CONFIRMATIONS",
-            "1".to_string(),
-        ),
-        (
-            "CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON",
-            PUBLIC_SETTLEMENT_FIXTURE_INDEPENDENT_CHAIN_HEAD_JSON.to_string(),
-        ),
-        (
-            "CHIO_PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS",
-            "1743293560".to_string(),
-        ),
-    ]
+    ];
+    env.extend(
+        PUBLIC_SETTLEMENT_FIXTURE_ENV
+            .iter()
+            .map(|(name, value)| (*name, (*value).to_string())),
+    );
+    env
 }
 
 fn standard_webhooks_clock_env() -> (String, String) {
@@ -1631,7 +1639,7 @@ fn agent_web_receipt_intents(bundle: &Path) -> BTreeMap<String, AgentWebReceiptI
         )
         .test_expect("Agent Web fixture artifact parses");
         if envelope.get("schema").and_then(serde_json::Value::as_str)
-            != Some("chio.agent-web-proof-envelope.v1")
+            != Some("chio.agent-web-proof-envelope.v2")
         {
             continue;
         }
@@ -1683,6 +1691,16 @@ pub(crate) fn refresh_agent_web_envelopes_for_subjects(
     )
     .test_expect("Agent Web transaction passport parses");
     let passport_scope_sha256 = agent_web_passport_scope_sha256(&passport);
+    let openapi_subject_path = bundle.join("external/openapi-operation.json");
+    if openapi_subject_path.is_file() {
+        let mut subject: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(&openapi_subject_path).test_expect("read Agent Web OpenAPI subject"),
+        )
+        .test_expect("Agent Web OpenAPI subject parses");
+        subject["x_chio_proof_envelope_profile"] =
+            serde_json::Value::String("chio.agent-web-proof-envelope.v2".to_string());
+        write_json(&openapi_subject_path, &subject);
+    }
     for node in evidence_graph["nodes"]
         .as_array_mut()
         .test_expect("graph nodes array")
@@ -1704,10 +1722,13 @@ pub(crate) fn refresh_agent_web_envelopes_for_subjects(
             .test_expect("Agent Web envelope has external subject path");
         envelope["external_subject_digest"] =
             serde_json::Value::String(sha256_file(&bundle.join(subject_path)));
+        envelope["schema"] =
+            serde_json::Value::String("chio.agent-web-proof-envelope.v2".to_string());
         envelope["agent_web_passport_scope_sha256"] =
             serde_json::Value::String(passport_scope_sha256.clone());
         sign_agent_web_envelope_value(&mut envelope, &keypair, &public_key);
         write_json(&envelope_path, &envelope);
+        node["schema"] = serde_json::Value::String("chio.agent-web-proof-envelope.v2".to_string());
         node["sha256"] = serde_json::Value::String(sha256_file(&envelope_path));
     }
 }

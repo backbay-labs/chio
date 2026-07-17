@@ -1,0 +1,194 @@
+//! loom model of the receipt commit actor's command-channel accounting.
+//!
+//! loom cannot execute SQLite, so this models the protocol invariant the
+//! real actor relies on (receipt_store.rs: pre-send inflight increment,
+//! unconditional dequeue decrement, bounded queue with fail-closed
+//! rejection) across concurrent Append- and Write-shaped producers.
+//! Run: RUSTFLAGS="--cfg chio_store_sqlite_loom" cargo test -p chio-store-sqlite --test loom_receipt_writer --release
+#![cfg_attr(not(any(loom, chio_store_sqlite_loom)), allow(dead_code))]
+
+#[cfg(any(loom, chio_store_sqlite_loom))]
+mod model {
+    use loom::sync::atomic::{AtomicU64, Ordering};
+    use loom::sync::{Arc, Mutex};
+    use loom::thread;
+    use std::collections::VecDeque;
+
+    const QUEUE_CAPACITY: usize = 2;
+
+    struct Channel {
+        queue: Mutex<VecDeque<u64>>,
+        inflight: AtomicU64,
+    }
+
+    impl Channel {
+        fn try_send(&self, job: u64) -> bool {
+            // Pre-send increment (receipt_store.rs append/run_write invariant).
+            self.inflight.fetch_add(1, Ordering::SeqCst);
+            let pushed = match self.queue.lock() {
+                Ok(mut queue) if queue.len() < QUEUE_CAPACITY => {
+                    queue.push_back(job);
+                    true
+                }
+                Ok(_) => false,
+                Err(_) => false,
+            };
+            if !pushed {
+                // Undo the speculative increment, exactly like try_send
+                // Full/Disconnected handling.
+                let mut current = self.inflight.load(Ordering::SeqCst);
+                loop {
+                    let next = current.saturating_sub(1);
+                    match self.inflight.compare_exchange(
+                        current,
+                        next,
+                        Ordering::SeqCst,
+                        Ordering::SeqCst,
+                    ) {
+                        Ok(_) => break,
+                        Err(observed) => current = observed,
+                    }
+                }
+            }
+            pushed
+        }
+
+        fn drain(&self) -> u64 {
+            let mut drained = 0;
+            loop {
+                let job = match self.queue.lock() {
+                    Ok(mut queue) => queue.pop_front(),
+                    Err(_) => None,
+                };
+                let Some(_job) = job else { break };
+                // Unconditional decrement on dequeue.
+                let mut current = self.inflight.load(Ordering::SeqCst);
+                loop {
+                    let next = current.saturating_sub(1);
+                    match self.inflight.compare_exchange(
+                        current,
+                        next,
+                        Ordering::SeqCst,
+                        Ordering::SeqCst,
+                    ) {
+                        Ok(_) => break,
+                        Err(observed) => current = observed,
+                    }
+                }
+                drained += 1;
+            }
+            drained
+        }
+    }
+
+    // Thin wrapper over the single-consumer drain loop (mirrors the writer
+    // actor's `handle_non_append_command`, which decrements `inflight`
+    // unconditionally on every dequeue path for both the Write arm and the
+    // Rotate arm). The accounting is command-agnostic, so one drain helper
+    // covers all producer shapes.
+    fn drain_all(channel: &Channel) -> u64 {
+        channel.drain()
+    }
+
+    #[test]
+    fn inflight_accounting_never_leaks_across_append_write_flush() {
+        loom::model(|| {
+            let channel = Arc::new(Channel {
+                queue: Mutex::new(VecDeque::new()),
+                inflight: AtomicU64::new(0),
+            });
+
+            let producer_a = {
+                let channel = Arc::clone(&channel);
+                thread::spawn(move || channel.try_send(1)) // Append-shaped
+            };
+            let producer_b = {
+                let channel = Arc::clone(&channel);
+                thread::spawn(move || channel.try_send(2)) // Write-shaped
+            };
+            let consumer = {
+                let channel = Arc::clone(&channel);
+                thread::spawn(move || channel.drain()) // actor loop
+            };
+
+            let sent_a = producer_a.join().unwrap_or(false);
+            let sent_b = producer_b.join().unwrap_or(false);
+            let _ = consumer.join();
+            // Final drain (actor keeps running until channel close).
+            channel.drain();
+
+            let accepted = u64::from(sent_a) + u64::from(sent_b);
+            let _ = accepted;
+            assert_eq!(
+                channel.inflight.load(Ordering::SeqCst),
+                0,
+                "inflight must be zero after every accepted job is drained"
+            );
+        });
+    }
+
+    #[test]
+    fn inflight_accounting_never_leaks_across_intent_consume_flush() {
+        loom::model(|| {
+            let channel = Arc::new(Channel {
+                queue: Mutex::new(VecDeque::new()),
+                inflight: AtomicU64::new(0),
+            });
+            // The dispatch-intent journal adds two producer shapes to the one
+            // channel: a metadata-only intent insert (Write-shaped) and the
+            // consuming receipt append (Append-shaped). The accounting is
+            // command-agnostic, so no interleaving with a concurrent drain
+            // may leak or double-count inflight.
+            let intent_writer = {
+                let channel = Arc::clone(&channel);
+                thread::spawn(move || channel.try_send(10)) // Write-shaped intent insert
+            };
+            let consuming_appender = {
+                let channel = Arc::clone(&channel);
+                thread::spawn(move || channel.try_send(11)) // Append-shaped consume
+            };
+            let drainer = {
+                let channel = Arc::clone(&channel);
+                thread::spawn(move || channel.drain())
+            };
+            let _ = intent_writer.join();
+            let _ = consuming_appender.join();
+            let _ = drainer.join();
+            channel.drain();
+            assert_eq!(
+                channel.inflight.load(Ordering::SeqCst),
+                0,
+                "inflight must be zero after every accepted intent and consume drains"
+            );
+        });
+    }
+
+    #[test]
+    fn append_and_rotate_preserve_inflight_accounting() {
+        loom::model(|| {
+            let channel = Arc::new(Channel {
+                queue: Mutex::new(VecDeque::new()),
+                inflight: AtomicU64::new(0),
+            });
+            let appender = {
+                let channel = Arc::clone(&channel);
+                thread::spawn(move || {
+                    let _ = channel.try_send(1); // Append-shaped
+                })
+            };
+            let rotator = {
+                let channel = Arc::clone(&channel);
+                thread::spawn(move || {
+                    let _ = channel.try_send(2); // Rotate-shaped
+                })
+            };
+            // Single consumer drains, decrementing unconditionally on dequeue.
+            drain_all(&channel);
+            appender.join().ok();
+            rotator.join().ok();
+            drain_all(&channel);
+            // No leaked or double-counted inflight, regardless of interleaving.
+            assert_eq!(channel.inflight.load(Ordering::SeqCst), 0);
+        });
+    }
+}

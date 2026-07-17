@@ -10,7 +10,7 @@ if ! command -v git >/dev/null 2>&1; then
     exit 1
 fi
 
-files=$(git ls-files '.cargo/mutants.toml' 'crates/*/mutants.toml')
+files=$(git ls-files '.cargo/mutants.toml' 'crates/*/mutants.toml' 'crates/*/*/mutants.toml')
 if [[ -z "${files}" ]]; then
     err "no mutants.toml files found"
     exit 1

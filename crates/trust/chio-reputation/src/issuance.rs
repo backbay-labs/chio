@@ -52,6 +52,14 @@ fn decay_weight(now: u64, timestamp: u64, half_life_days: u32) -> f64 {
 }
 
 fn scope_reduced(parent: &ChioScope, child: &ChioScope) -> bool {
+    if child
+        .grants
+        .iter()
+        .any(|child_grant| parent_grant_for(child_grant, parent).is_none())
+    {
+        return false;
+    }
+
     if child.grants.len() < parent.grants.len()
         || child.resource_grants.len() < parent.resource_grants.len()
         || child.prompt_grants.len() < parent.prompt_grants.len()
@@ -62,7 +70,7 @@ fn scope_reduced(parent: &ChioScope, child: &ChioScope) -> bool {
     child.grants.iter().any(|child_grant| {
         parent_grant_for(child_grant, parent)
             .map(|parent_grant| grant_scope_reduced(parent_grant, child_grant))
-            .unwrap_or(true)
+            .unwrap_or(false)
     })
 }
 
@@ -73,7 +81,7 @@ fn budget_reduced(parent: &ChioScope, child: &ChioScope) -> bool {
                 invocation_limit_reduced(parent_grant, child_grant)
                     || monetary_limit_reduced(parent_grant, child_grant)
             })
-            .unwrap_or(true)
+            .unwrap_or(false)
     })
 }
 
@@ -90,11 +98,15 @@ fn parent_grant_for<'a>(child: &ToolGrant, parent: &'a ChioScope) -> Option<&'a 
 }
 
 fn grant_scope_reduced(parent: &ToolGrant, child: &ToolGrant) -> bool {
+    if child
+        .operations
+        .iter()
+        .any(|operation| !parent.operations.contains(operation))
+    {
+        return false;
+    }
+
     child.operations.len() < parent.operations.len()
-        || child
-            .operations
-            .iter()
-            .any(|operation| !parent.operations.contains(operation))
         || child.constraints.len() > parent.constraints.len()
         || child
             .constraints

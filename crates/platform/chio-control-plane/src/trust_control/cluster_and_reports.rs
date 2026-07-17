@@ -36,6 +36,7 @@ mod cluster_and_reports_tests {
             certification_public_metadata_ttl_seconds: 300,
             peer_urls: Vec::new(),
             cluster_sync_interval: Duration::from_millis(25),
+            memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         }
     }
 
@@ -53,7 +54,8 @@ mod cluster_and_reports_tests {
         config.revocation_db_path = revocation_db_path;
         config.budget_db_path = budget_db_path;
         let cluster = build_cluster_state(&config, config.listen).test_unwrap();
-        TrustServiceState {
+        let cluster_progress = cluster.as_ref().map(|_| Arc::new(ClusterProgress::new()));
+        let state = TrustServiceState {
             config,
             enterprise_provider_registry: None,
             verifier_policy_registry: None,
@@ -61,7 +63,16 @@ mod cluster_and_reports_tests {
                 FederationAdmissionRateLimiter::default(),
             )),
             cluster,
+            cluster_progress,
+        };
+        // A fresh peer starts with force_snapshot = true (it must snapshot before
+        // its acks are trusted). Witness tests model
+        // peers that have ALREADY completed their initial sync, so clear it here;
+        // the force_snapshot exclusion itself is covered by its own test.
+        for peer in peer_urls {
+            update_peer_state(&state, peer, |peer| peer.force_snapshot = false);
         }
+        state
     }
 
     fn unique_temp_path(prefix: &str, extension: &str) -> PathBuf {
@@ -344,31 +355,32 @@ mod cluster_and_reports_tests {
         );
         update_peer_reachable(&state, "http://node-b");
         update_peer_reachable(&state, "http://node-c");
-        update_peer_budget_cursor(
+        update_peer_budget_acks(
             &state,
             "http://node-b",
-            BudgetCursor {
-                seq: 9,
-                updated_at: 14,
-                capability_id: "cap-1".to_string(),
-                grant_index: 0,
-            },
+            &[BudgetOriginAck {
+                origin_id: "http://node-a".to_string(),
+                event_seq: 9,
+            }],
         );
-        update_peer_budget_cursor(
+        update_peer_budget_acks(
             &state,
             "http://node-c",
-            BudgetCursor {
-                seq: 7,
-                updated_at: 12,
-                capability_id: "cap-1".to_string(),
-                grant_index: 0,
-            },
+            &[BudgetOriginAck {
+                origin_id: "http://node-a".to_string(),
+                event_seq: 7,
+            }],
         );
 
-        let commit = budget_write_quorum_commit_view(&state, 8).test_unwrap();
+        let write = BudgetWriteToken {
+            origin_id: "http://node-a".to_string(),
+            event_seq: 8,
+            budget_term: 1,
+        };
+        let commit = budget_write_quorum_commit_view(&state, &write).test_unwrap();
         assert!(commit.quorum_committed);
         assert_eq!(commit.quorum_size, 2);
-        assert_eq!(commit.committed_nodes, 2);
+        assert_eq!(commit.committed_nodes, 2); // self + node-b (acked 9 >= 8)
         assert_eq!(
             commit.witness_urls,
             vec!["http://node-a".to_string(), "http://node-b".to_string()]
@@ -396,6 +408,894 @@ mod cluster_and_reports_tests {
             body["budgetCommit"]["witnessUrls"],
             json!(["http://node-a", "http://node-b"])
         );
+    }
+
+    #[test]
+    fn witness_requires_same_origin_ack() {
+        let state = state_with_cluster(
+            "http://node-a",
+            &["http://node-b", "http://node-c"],
+            None,
+            None,
+            None,
+        );
+        update_peer_reachable(&state, "http://node-b");
+        update_peer_reachable(&state, "http://node-c");
+        // A high ack under an UNRELATED origin must not witness the write.
+        update_peer_budget_acks(
+            &state,
+            "http://node-b",
+            &[BudgetOriginAck {
+                origin_id: "http://other-origin".to_string(),
+                event_seq: 999,
+            }],
+        );
+        update_peer_budget_acks(
+            &state,
+            "http://node-c",
+            &[BudgetOriginAck {
+                origin_id: "http://other-origin".to_string(),
+                event_seq: 999,
+            }],
+        );
+        let write = BudgetWriteToken {
+            origin_id: "http://node-a".to_string(),
+            event_seq: 41,
+            budget_term: 1,
+        };
+        let commit = budget_write_quorum_commit_view(&state, &write).test_unwrap();
+        assert!(
+            !commit.quorum_committed,
+            "an ack under a different origin must not witness this write"
+        );
+        assert_eq!(commit.committed_nodes, 1, "only self counts");
+
+        // Now node-b acks THIS origin at >= 41: it flips to committed.
+        update_peer_budget_acks(
+            &state,
+            "http://node-b",
+            &[BudgetOriginAck {
+                origin_id: "http://node-a".to_string(),
+                event_seq: 41,
+            }],
+        );
+        let commit = budget_write_quorum_commit_view(&state, &write).test_unwrap();
+        assert!(commit.quorum_committed);
+        assert_eq!(commit.committed_nodes, 2);
+    }
+
+    #[test]
+    fn regressed_ack_head_is_cleared_before_validation_not_witnessed_at_old_high() {
+        // The per-peer sync round records a peer's freshly-advertised acks only at
+        // the END (finalize_peer_sync_round). If a peer REGRESSED its ack head
+        // (lost/restored its budget DB and now advertises a lower or absent head),
+        // the stale-HIGH recorded value would keep witnessing for the WHOLE round,
+        // so a budget write that checks the quorum view mid-round could commit
+        // against a peer that already disavowed the write - an over-count.
+        // `clamp_down_peer_budget_acks` applies the DECREASE/CLEAR immediately at the
+        // TOP of the round (sync_peer, right after update_peer_reachable): a no-op or
+        // max-merge would leave node-b witnessing seq 8; the down-clamp drops it out
+        // at the old-high seq.
+        let state = state_with_cluster(
+            "http://node-a",
+            &["http://node-b", "http://node-c"],
+            None,
+            None,
+            None,
+        );
+        update_peer_reachable(&state, "http://node-b");
+        update_peer_reachable(&state, "http://node-c");
+        // Both peers previously imported node-a's stream up to seq 10.
+        update_peer_budget_acks(
+            &state,
+            "http://node-b",
+            &[BudgetOriginAck {
+                origin_id: "http://node-a".to_string(),
+                event_seq: 10,
+            }],
+        );
+        update_peer_budget_acks(
+            &state,
+            "http://node-c",
+            &[BudgetOriginAck {
+                origin_id: "http://node-a".to_string(),
+                event_seq: 10,
+            }],
+        );
+
+        let write = BudgetWriteToken {
+            origin_id: "http://node-a".to_string(),
+            event_seq: 8,
+            budget_term: 1,
+        };
+        // Precondition: with both peers recorded at 10, the write at seq 8 witnesses
+        // on self + node-b + node-c.
+        let before = budget_write_quorum_commit_view(&state, &write).test_unwrap();
+        assert!(before.witness_urls.contains(&"http://node-b".to_string()));
+        assert_eq!(before.committed_nodes, 3);
+
+        // node-b REGRESSES to seq 5 (lost a suffix of node-a's stream). This is the
+        // top-of-round clamp that sync_peer now applies from cluster_status.
+        clamp_down_peer_budget_acks(
+            &state,
+            "http://node-b",
+            &[BudgetOriginAck {
+                origin_id: "http://node-a".to_string(),
+                event_seq: 5,
+            }],
+        );
+        // node-b no longer witnesses at seq 8 (5 < 8); the stale-high 10 is
+        // gone the instant the peer disavowed it, not at the end of the round.
+        let after = budget_write_quorum_commit_view(&state, &write).test_unwrap();
+        assert!(
+            !after.witness_urls.contains(&"http://node-b".to_string()),
+            "a regressed peer must not witness at the OLD-high seq"
+        );
+        assert_eq!(
+            after.committed_nodes, 2,
+            "only self + node-c (still at 10) witness after the regression"
+        );
+
+        // An INCREASE must NOT be applied by the clamp (increases wait for
+        // validation in finalize_peer_sync_round): even if node-b now advertises 20,
+        // the clamp leaves it at the regressed 5, so it still does not witness seq 8.
+        clamp_down_peer_budget_acks(
+            &state,
+            "http://node-b",
+            &[BudgetOriginAck {
+                origin_id: "http://node-a".to_string(),
+                event_seq: 20,
+            }],
+        );
+        let after_increase = budget_write_quorum_commit_view(&state, &write).test_unwrap();
+        assert!(
+            !after_increase
+                .witness_urls
+                .contains(&"http://node-b".to_string()),
+            "the clamp must not RAISE a head on an increase (increases wait for validation)"
+        );
+
+        // A CLEAR (origin no longer advertised at all) drops the origin entirely, so
+        // node-c stops witnessing it too.
+        clamp_down_peer_budget_acks(&state, "http://node-c", &[]);
+        let after_clear = budget_write_quorum_commit_view(&state, &write).test_unwrap();
+        assert!(
+            !after_clear
+                .witness_urls
+                .contains(&"http://node-c".to_string()),
+            "a peer that no longer advertises the origin must not witness it"
+        );
+        assert_eq!(after_clear.committed_nodes, 1, "only self remains");
+    }
+
+    proptest::proptest! {
+        #![proptest_config(proptest::prelude::ProptestConfig::with_cases(256))]
+
+        #[test]
+        fn prop_witness_never_overclaims_durability(
+            write_seq in 1u64..50,
+            // The write is authored under one of TWO authorities that share the
+            // single global event_seq stream: `origin-a` is the genesis authority
+            // and `origin-b` is the authority-change origin whose block starts
+            // mid-sequence. Each peer independently advertises a per-origin ack
+            // head for each authority (or none).
+            write_under_b in proptest::prelude::any::<bool>(),
+            ack_b_a in proptest::prelude::prop::option::of(0u64..60),
+            ack_b_b in proptest::prelude::prop::option::of(0u64..60),
+            ack_c_a in proptest::prelude::prop::option::of(0u64..60),
+            ack_c_b in proptest::prelude::prop::option::of(0u64..60),
+        ) {
+            let origin_a = "http://node-a";
+            let origin_b = "http://node-b-origin";
+            let state = state_with_cluster(
+                "http://node-a",
+                &["http://node-b", "http://node-c"],
+                None,
+                None,
+                None,
+            );
+            update_peer_reachable(&state, "http://node-b");
+            update_peer_reachable(&state, "http://node-c");
+            let advertise = |peer: &str, ack_a: Option<u64>, ack_b: Option<u64>| {
+                let mut acks = Vec::new();
+                if let Some(seq) = ack_a {
+                    acks.push(BudgetOriginAck { origin_id: origin_a.to_string(), event_seq: seq });
+                }
+                if let Some(seq) = ack_b {
+                    acks.push(BudgetOriginAck { origin_id: origin_b.to_string(), event_seq: seq });
+                }
+                update_peer_budget_acks(&state, peer, &acks);
+            };
+            advertise("http://node-b", ack_b_a, ack_b_b);
+            advertise("http://node-c", ack_c_a, ack_c_b);
+
+            let write_origin = if write_under_b { origin_b } else { origin_a };
+            let write = BudgetWriteToken {
+                origin_id: write_origin.to_string(),
+                event_seq: write_seq,
+                budget_term: 1,
+            };
+            let commit = budget_write_quorum_commit_view(&state, &write).test_unwrap();
+
+            // A peer witnesses iff its ack head for the WRITE's origin (not any
+            // other origin) is >= write_seq. An ack under the sibling authority
+            // never witnesses this write.
+            let peer_ack = |ack_a: Option<u64>, ack_b: Option<u64>| {
+                if write_under_b { ack_b } else { ack_a }
+            };
+            let peer_witnesses =
+                |ack: Option<u64>| ack.is_some_and(|seq| seq >= write_seq);
+            let expected_peer_witnesses =
+                usize::from(peer_witnesses(peer_ack(ack_b_a, ack_b_b)))
+                    + usize::from(peer_witnesses(peer_ack(ack_c_a, ack_c_b)));
+            let expected_committed = 1 + expected_peer_witnesses; // self + peers
+            proptest::prop_assert_eq!(commit.committed_nodes, expected_committed);
+            // quorum_size for 2 peers is 2; committed only when >= 2.
+            proptest::prop_assert_eq!(
+                commit.quorum_committed,
+                expected_committed >= commit.quorum_size
+            );
+            // Overclaim guard: never committed on self alone.
+            if expected_peer_witnesses == 0 {
+                proptest::prop_assert!(!commit.quorum_committed);
+            }
+        }
+    }
+
+    /// End-to-end proof that budget_ack_heads (the store SQL) ->
+    /// update_peer_budget_acks -> witness holds across an authority change. Two authorities share one
+    /// global event_seq stream; origin B's block starts mid-sequence (a
+    /// leadership change). A peer that has durably imported the contiguous
+    /// global prefix MUST witness B's write (no false time-out), and a global
+    /// hole MUST cap the head so a write above the hole is NOT witnessed.
+    #[test]
+    fn witness_counts_authority_change_origin_and_caps_at_global_hole() {
+        let origin_a = "http://origin-a";
+        let origin_b = "http://origin-b";
+        let event = |seq: u64, origin: &str| BudgetMutationEventView {
+            event_id: format!("evt-{origin}-{seq}"),
+            hold_id: None,
+            capability_id: "cap-x".to_string(),
+            grant_index: 0,
+            kind: "authorize_exposure".to_string(),
+            allowed: Some(true),
+            recorded_at: seq as i64,
+            event_seq: seq,
+            usage_seq: Some(seq),
+            exposure_units: 1,
+            realized_spend_units: 0,
+            max_invocations: None,
+            max_cost_per_invocation: None,
+            max_total_cost_units: None,
+            invocation_count_after: 1,
+            total_cost_exposed_after: 1,
+            total_cost_realized_spend_after: 0,
+            authority: Some(BudgetMutationAuthorityView {
+                authority_id: origin.to_string(),
+                lease_id: format!("{origin}#term-1"),
+                lease_epoch: 1,
+            }),
+        };
+        let import = |store: &SqliteBudgetStore, events: &[BudgetMutationEventView]| {
+            let records = events
+                .iter()
+                .map(|view| budget_mutation_record_from_view(view).test_unwrap())
+                .collect::<Vec<_>>();
+            store.import_snapshot_records(&[], &records).test_unwrap();
+        };
+        let acks_from = |heads: &[(String, u64)]| {
+            heads
+                .iter()
+                .map(|(origin_id, event_seq)| BudgetOriginAck {
+                    origin_id: origin_id.clone(),
+                    event_seq: *event_seq,
+                })
+                .collect::<Vec<_>>()
+        };
+
+        // --- Case 1: fully-imported contiguous prefix across an authority change.
+        // origin A owns global seqs 1..=3, origin B owns 4..=6 (authority change
+        // at seq 4). The whole 1..=6 prefix is gap-free.
+        let db1 = unique_temp_path("witness-authority-change", "sqlite3");
+        {
+            let store = SqliteBudgetStore::open(&db1).test_unwrap();
+            let mut events = Vec::new();
+            for seq in 1..=3 {
+                events.push(event(seq, origin_a));
+            }
+            for seq in 4..=6 {
+                events.push(event(seq, origin_b));
+            }
+            import(&store, &events);
+            let heads = store.budget_ack_heads().test_unwrap();
+            let b_head = heads
+                .iter()
+                .find(|(origin, _)| origin == origin_b)
+                .map(|(_, seq)| *seq);
+            // The old per-origin islands dropped B (its block starts at 4, island
+            // 3 != floor 0); the global head 6 now acks B at 6.
+            assert_eq!(
+                b_head,
+                Some(6),
+                "authority-change origin B must be acked at the global head, not dropped"
+            );
+
+            let state = state_with_cluster(
+                "http://node-a",
+                &["http://node-b", "http://node-c"],
+                None,
+                None,
+                None,
+            );
+            update_peer_reachable(&state, "http://node-b");
+            update_peer_reachable(&state, "http://node-c");
+            let acks = acks_from(&heads);
+            update_peer_budget_acks(&state, "http://node-b", &acks);
+            update_peer_budget_acks(&state, "http://node-c", &acks);
+            let write = BudgetWriteToken {
+                origin_id: origin_b.to_string(),
+                event_seq: 4,
+                budget_term: 1,
+            };
+            let commit = budget_write_quorum_commit_view(&state, &write).test_unwrap();
+            assert!(
+                commit.quorum_committed,
+                "the authority-change write must witness on a fully-imported quorum"
+            );
+            assert_eq!(commit.committed_nodes, 3);
+        }
+        let _ = std::fs::remove_file(&db1);
+
+        // --- Case 2: a global hole caps the head. origin A owns 1..=3,
+        // origin B owns 5..=6, so global seq 4 is MISSING. A MAX-per-origin ack
+        // head would report B = 6 and wrongly witness a write at 5; the
+        // contiguous global head is 3, so B must not be acked at all.
+        let db2 = unique_temp_path("witness-global-hole", "sqlite3");
+        {
+            let store = SqliteBudgetStore::open(&db2).test_unwrap();
+            let mut events = Vec::new();
+            for seq in 1..=3 {
+                events.push(event(seq, origin_a));
+            }
+            for seq in [5u64, 6] {
+                events.push(event(seq, origin_b));
+            }
+            import(&store, &events);
+            let heads = store.budget_ack_heads().test_unwrap();
+            assert!(
+                heads.iter().all(|(origin, _)| origin != origin_b),
+                "origin B must not be acked past the global hole at 4 (a MAX ack head would over-report)"
+            );
+
+            let state = state_with_cluster(
+                "http://node-a",
+                &["http://node-b", "http://node-c"],
+                None,
+                None,
+                None,
+            );
+            update_peer_reachable(&state, "http://node-b");
+            update_peer_reachable(&state, "http://node-c");
+            let acks = acks_from(&heads);
+            update_peer_budget_acks(&state, "http://node-b", &acks);
+            update_peer_budget_acks(&state, "http://node-c", &acks);
+            let write = BudgetWriteToken {
+                origin_id: origin_b.to_string(),
+                event_seq: 5,
+                budget_term: 1,
+            };
+            let commit = budget_write_quorum_commit_view(&state, &write).test_unwrap();
+            assert!(
+                !commit.quorum_committed,
+                "a write above a global hole must not witness (a MAX-per-origin ack head would)"
+            );
+            assert_eq!(
+                commit.committed_nodes, 1,
+                "only self counts when the global hole caps the head below the write"
+            );
+        }
+        let _ = std::fs::remove_file(&db2);
+    }
+
+    #[test]
+    fn peer_ack_regression_drops_stale_head_and_stops_witnessing() {
+        // A peer that restored an older budget DB (or lost a prefix) re-advertises
+        // a LOWER or empty ack set. The stored ack must
+        // REGRESS (replace, not max-merge) so that data-losing peer stops being
+        // counted as a witness for writes it no longer durably holds.
+        let origin = "http://node-a";
+        let state = state_with_cluster(
+            "http://node-a",
+            &["http://node-b", "http://node-c"],
+            None,
+            None,
+            None,
+        );
+        update_peer_reachable(&state, "http://node-b");
+        update_peer_reachable(&state, "http://node-c");
+        let ack = |seq: u64| {
+            vec![BudgetOriginAck {
+                origin_id: origin.to_string(),
+                event_seq: seq,
+            }]
+        };
+        let write = |seq: u64| BudgetWriteToken {
+            origin_id: origin.to_string(),
+            event_seq: seq,
+            budget_term: 1,
+        };
+        // Both peers ack origin at 10: a write at 8 witnesses on self + both.
+        update_peer_budget_acks(&state, "http://node-b", &ack(10));
+        update_peer_budget_acks(&state, "http://node-c", &ack(10));
+        let commit = budget_write_quorum_commit_view(&state, &write(8)).test_unwrap();
+        assert_eq!(commit.committed_nodes, 3);
+
+        // node-b restored an older DB and re-advertises head 5: the stale 10 must
+        // DROP, so a write at 8 no longer witnesses on node-b.
+        update_peer_budget_acks(&state, "http://node-b", &ack(5));
+        let commit = budget_write_quorum_commit_view(&state, &write(8)).test_unwrap();
+        assert_eq!(
+            commit.committed_nodes, 2,
+            "node-b's regressed head 5 < 8 must not witness the write at 8"
+        );
+        // node-b still witnesses a write at 5 (5 >= 5).
+        let commit = budget_write_quorum_commit_view(&state, &write(5)).test_unwrap();
+        assert_eq!(commit.committed_nodes, 3);
+
+        // An EMPTY re-advertisement drops node-b's origin entirely.
+        update_peer_budget_acks(&state, "http://node-b", &[]);
+        let commit = budget_write_quorum_commit_view(&state, &write(1)).test_unwrap();
+        assert_eq!(
+            commit.committed_nodes, 2,
+            "an empty advertisement drops node-b's ack, so only self + node-c witness"
+        );
+    }
+
+    #[test]
+    fn commit_metadata_names_the_write_authority_not_the_current_leader() {
+        // If leadership changes while a write waits, the commit metadata must name
+        // the authority that AUTHORED the write, not the current consensus leader
+        // (which never wrote the event).
+        let state = state_with_cluster("http://node-a", &["http://node-b"], None, None, None);
+        update_peer_reachable(&state, "http://node-b");
+        let write = BudgetWriteToken {
+            origin_id: "http://writer".to_string(),
+            event_seq: 4,
+            budget_term: 7,
+        };
+        let commit = budget_write_quorum_commit_view(&state, &write).test_unwrap();
+        assert_eq!(
+            commit.authority_id, "http://writer",
+            "commit authority must be the write's origin, not the consensus leader"
+        );
+        assert_eq!(commit.budget_term, 7);
+        assert_eq!(commit.lease_id, "http://writer#term-7");
+    }
+
+    #[test]
+    fn force_snapshot_peer_is_excluded_from_witnesses_until_resynced() {
+        // A peer demoted by a protocol error and pending a forced snapshot carries
+        // stale, untrusted acks. Even after a bare
+        // reachability probe flips it Healthy and it re-advertises acks, it must
+        // NOT witness until the snapshot + delta re-sync clears force_snapshot.
+        let origin = "http://node-a";
+        let state = state_with_cluster(
+            "http://node-a",
+            &["http://node-b", "http://node-c"],
+            None,
+            None,
+            None,
+        );
+        update_peer_reachable(&state, "http://node-b");
+        update_peer_reachable(&state, "http://node-c");
+        let ack = |seq: u64| {
+            vec![BudgetOriginAck {
+                origin_id: origin.to_string(),
+                event_seq: seq,
+            }]
+        };
+        update_peer_budget_acks(&state, "http://node-b", &ack(10));
+        update_peer_budget_acks(&state, "http://node-c", &ack(10));
+        let write = BudgetWriteToken {
+            origin_id: origin.to_string(),
+            event_seq: 8,
+            budget_term: 1,
+        };
+        let commit = budget_write_quorum_commit_view(&state, &write).test_unwrap();
+        assert_eq!(commit.committed_nodes, 3);
+
+        // node-b is Healthy (probed reachable) but still pending its forced
+        // snapshot: its stale acks must not witness.
+        update_peer_state(&state, "http://node-b", |peer| peer.force_snapshot = true);
+        let commit = budget_write_quorum_commit_view(&state, &write).test_unwrap();
+        assert_eq!(
+            commit.committed_nodes, 2,
+            "a force_snapshot peer must not witness until it re-syncs"
+        );
+
+        // Snapshot completed: force_snapshot cleared, node-b witnesses again.
+        update_peer_state(&state, "http://node-b", |peer| peer.force_snapshot = false);
+        let commit = budget_write_quorum_commit_view(&state, &write).test_unwrap();
+        assert_eq!(commit.committed_nodes, 3);
+    }
+
+    #[test]
+    fn peer_applying_a_snapshot_does_not_witness_at_its_old_high_ack() {
+        // A peer that is force_snapshot carries a stale-high ack head that is
+        // excluded from witnesses ONLY by the force_snapshot flag.
+        // apply_cluster_snapshot clears force_snapshot; if it left the old ack in
+        // place, any early return before finalize_peer_sync_round (an authority-sync
+        // error, a puller error) would leave the peer Healthy, NOT force_snapshot,
+        // and WITNESSING at an ack head this round never validated - an OVER-COUNT /
+        // budget double-spend. apply_cluster_snapshot instead clears
+        // budget_import_acks atomically with force_snapshot, so a peer coming out of
+        // snapshot recovery witnesses NOTHING until a completed pull round's finalize
+        // re-records a validated ack.
+        let origin = "http://node-a";
+        // A 2-node cluster (quorum 2): self + node-a is quorum, so node-a's witness
+        // decision alone flips quorum_committed.
+        let source_state =
+            state_with_cluster("http://node-a", &["http://node-b"], None, None, None);
+        let state = state_with_cluster("http://node-b", &["http://node-a"], None, None, None);
+
+        // node-a previously validated a high ack and is now pending a forced snapshot
+        // (e.g. an oversized delta window routed it to snapshot recovery).
+        update_peer_reachable(&state, "http://node-a");
+        update_peer_budget_acks(
+            &state,
+            "http://node-a",
+            &[BudgetOriginAck {
+                origin_id: origin.to_string(),
+                event_seq: 100,
+            }],
+        );
+        update_peer_state(&state, "http://node-a", |peer| peer.force_snapshot = true);
+
+        let write = BudgetWriteToken {
+            origin_id: origin.to_string(),
+            event_seq: 100,
+            budget_term: 1,
+        };
+        // While force_snapshot, the stale ack is already excluded (existing guard).
+        assert!(
+            !budget_write_quorum_commit_view(&state, &write)
+                .test_unwrap()
+                .quorum_committed,
+            "a force_snapshot peer must not witness"
+        );
+
+        // Apply a snapshot: force_snapshot clears. If the stale ack survived, node-a
+        // would now witness at 100, committing quorum on an ack this round never
+        // validated; the ack map must be cleared atomically with force_snapshot.
+        let snapshot = build_cluster_state_snapshot(&source_state).test_unwrap();
+        apply_cluster_snapshot(&state, "http://node-a", snapshot).test_unwrap();
+
+        assert_eq!(
+            with_peer_state(&state, "http://node-a", |peer| peer
+                .budget_import_acks
+                .get(origin)
+                .copied()),
+            Some(None),
+            "snapshot recovery must clear the peer's cached witness ack"
+        );
+        assert!(
+            !peer_should_force_snapshot(&state, "http://node-a"),
+            "the snapshot cleared force_snapshot"
+        );
+        // The peer is Healthy and no longer force_snapshot, yet it must NOT
+        // witness at its old-high ack until a validated finalize re-records one.
+        let commit = budget_write_quorum_commit_view(&state, &write).test_unwrap();
+        assert!(
+            !commit.quorum_committed,
+            "a peer coming out of snapshot recovery must not witness at its stale old-high ack head"
+        );
+        assert_eq!(
+            commit.committed_nodes, 1,
+            "only self witnesses; the just-resynced peer holds no validated ack yet"
+        );
+    }
+
+    #[test]
+    fn finalize_records_fresh_acks_only_when_the_peer_was_not_demoted() {
+        // A peer's freshly-advertised budget acks must become countable for a quorum
+        // commit ONLY after its pull round completes without demotion.
+        // finalize_peer_sync_round is the SINGLE ack-record site and runs after the
+        // pull round, so a peer demoted mid-round (a Protocol violation ->
+        // update_peer_failure -> Unhealthy) never has its fresh, unvalidated ack
+        // recorded. That closes the over-count window where an early progress wake
+        // let a parked writer commit on an ack the fail-closed path then removed.
+        let origin = "http://node-a";
+        let state = state_with_cluster(
+            "http://node-a",
+            &["http://node-b", "http://node-c"],
+            None,
+            None,
+            None,
+        );
+        update_peer_reachable(&state, "http://node-b");
+        update_peer_reachable(&state, "http://node-c");
+        let acks = vec![BudgetOriginAck {
+            origin_id: origin.to_string(),
+            event_seq: 9,
+        }];
+
+        // node-b was demoted during its round (route_pull -> update_peer_failure):
+        // finalize must NOT record its advertised ack. Under the old code the ack
+        // was recorded before the pull and an early wake could have committed on it.
+        update_peer_failure(&state, "http://node-b", "protocol violation".to_string());
+        finalize_peer_sync_round(&state, "http://node-b", &acks, 0);
+        let recorded_b = with_peer_state(&state, "http://node-b", |peer| {
+            peer.budget_import_acks.get(origin).copied()
+        })
+        .flatten();
+        assert_eq!(
+            recorded_b, None,
+            "a demoted peer's fresh ack must never be recorded (over-count guard)"
+        );
+
+        // node-c finished the round Healthy: finalize records its ack, so it can
+        // witness. This is the ONLY path that makes a fresh ack countable.
+        finalize_peer_sync_round(&state, "http://node-c", &acks, 0);
+        let recorded_c = with_peer_state(&state, "http://node-c", |peer| {
+            peer.budget_import_acks.get(origin).copied()
+        })
+        .flatten();
+        assert_eq!(
+            recorded_c,
+            Some(9),
+            "a non-demoted, non-force-snapshot peer records its advertised ack"
+        );
+
+        // The witness set counts self + node-c only: node-b (demoted) is excluded,
+        // and node-c counts solely because finalize recorded its ack post-validation.
+        let write = BudgetWriteToken {
+            origin_id: origin.to_string(),
+            event_seq: 9,
+            budget_term: 1,
+        };
+        let commit = budget_write_quorum_commit_view(&state, &write).test_unwrap();
+        assert_eq!(
+            commit.committed_nodes, 2,
+            "self + node-c witness; the demoted node-b never contributes its fresh ack"
+        );
+        assert!(commit.witness_urls.iter().any(|url| url == "http://node-c"));
+        assert!(!commit.witness_urls.iter().any(|url| url == "http://node-b"));
+    }
+
+    #[test]
+    fn a_transient_budget_error_leaves_the_peer_healthy_so_revocations_still_run() {
+        // The independent revocation lane in sync_peer runs unless the peer was
+        // DEMOTED. A transient
+        // budget-delta error (broken/slow budget endpoint) keeps the peer Healthy,
+        // so peer_was_demoted stays false and revocations still replicate. A Protocol
+        // violation demotes the peer, so revocations are skipped (fail-closed: an
+        // untrusted peer is not pulled from).
+        let state = state_with_cluster("http://node-a", &["http://node-b"], None, None, None);
+        update_peer_reachable(&state, "http://node-b");
+        assert!(!peer_was_demoted(&state, "http://node-b"));
+
+        // Transient budget error: peer stays reachable, so the revocation lane runs.
+        let mut records = 0u64;
+        let _ = route_pull(
+            &state,
+            "http://node-b",
+            Err(PullError::Transient(CliError::cli_other_error(
+                "budget endpoint slow",
+            ))),
+            &mut records,
+        );
+        assert!(
+            !peer_was_demoted(&state, "http://node-b"),
+            "a transient budget error must not demote the peer, so revocations still replicate"
+        );
+
+        // Protocol violation: peer demoted, so the revocation lane is skipped.
+        let _ = route_pull(
+            &state,
+            "http://node-b",
+            Err(PullError::Protocol(PeerProtocolError::NonContiguousPage {
+                expected_seq: 5,
+                found_seq: 9,
+            })),
+            &mut records,
+        );
+        assert!(
+            peer_was_demoted(&state, "http://node-b"),
+            "a Protocol violation demotes the peer, so its revocations are not pulled"
+        );
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn clearing_force_snapshot_then_notifying_wakes_a_parked_waiter() {
+        // A peer whose acks were recorded while still force_snapshot is excluded
+        // from witnesses; when its snapshot CLEARS
+        // force_snapshot, sync_peer must notify so the parked write re-checks and
+        // counts the now-valid peer, instead of timing out while the next peer in
+        // the round stalls. In a 3-node cluster (quorum 2), self + the just-cleared
+        // peer is quorum.
+        let state = state_with_cluster(
+            "http://node-a",
+            &["http://node-b", "http://node-c"],
+            None,
+            None,
+            None,
+        );
+        update_peer_reachable(&state, "http://node-b");
+        update_peer_reachable(&state, "http://node-c");
+        // node-b advertised the quorum-making ack but is still pending its snapshot
+        // (excluded); node-c never acks (simulating a slow peer in the same round).
+        update_peer_state(&state, "http://node-b", |peer| peer.force_snapshot = true);
+        update_peer_budget_acks(
+            &state,
+            "http://node-b",
+            &[BudgetOriginAck {
+                origin_id: "http://node-a".to_string(),
+                event_seq: 5,
+            }],
+        );
+        // While node-b is force_snapshot, quorum is NOT met (only self counts).
+        let write = BudgetWriteToken {
+            origin_id: "http://node-a".to_string(),
+            event_seq: 5,
+            budget_term: 1,
+        };
+        assert!(
+            !budget_write_quorum_commit_view(&state, &write)
+                .test_unwrap()
+                .quorum_committed
+        );
+
+        let loop_state = state.clone();
+        let background = tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            // The snapshot completes: force_snapshot cleared, then notify (exactly
+            // what sync_peer now does after apply_cluster_snapshot).
+            update_peer_state(&loop_state, "http://node-b", |peer| {
+                peer.force_snapshot = false
+            });
+            notify_cluster_progress(&loop_state);
+        });
+
+        let started = std::time::Instant::now();
+        let commit = wait_for_budget_write_quorum_commit(&state, write)
+            .await
+            .test_unwrap()
+            .test_unwrap();
+        assert!(commit.quorum_committed);
+        assert_eq!(commit.committed_nodes, 2, "self + the just-re-synced peer");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "the waiter must wake on the post-snapshot notify, not wait out the timeout"
+        );
+        background.await.test_unwrap();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn notify_cluster_progress_wakes_a_parked_waiter_on_quorum() {
+        // A waiter must wake as soon as the ack needed for quorum lands, not only
+        // when the whole sync round finishes. In a 3-node
+        // cluster (quorum 2), self + one peer is quorum: recording ONE peer's ack
+        // mid-round and bumping progress must commit the parked write promptly,
+        // well within the multi-second timeout, even though the other peer never
+        // acked in this round.
+        let state = state_with_cluster(
+            "http://node-a",
+            &["http://node-b", "http://node-c"],
+            None,
+            None,
+            None,
+        );
+        update_peer_reachable(&state, "http://node-b");
+        update_peer_reachable(&state, "http://node-c");
+        let write = BudgetWriteToken {
+            origin_id: "http://node-a".to_string(),
+            event_seq: 5,
+            budget_term: 1,
+        };
+
+        let loop_state = state.clone();
+        let background = tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            // One peer advertises the quorum-making ack mid-round; the other stays
+            // silent (simulating a slow/unreachable peer in the same round).
+            update_peer_budget_acks(
+                &loop_state,
+                "http://node-b",
+                &[BudgetOriginAck {
+                    origin_id: "http://node-a".to_string(),
+                    event_seq: 5,
+                }],
+            );
+            notify_cluster_progress(&loop_state);
+        });
+
+        let started = std::time::Instant::now();
+        let commit = wait_for_budget_write_quorum_commit(&state, write)
+            .await
+            .test_unwrap()
+            .test_unwrap();
+        assert!(commit.quorum_committed);
+        assert_eq!(commit.committed_nodes, 2, "self + the single acking peer");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(2),
+            "the waiter must wake on the mid-round ack, not wait out the timeout"
+        );
+        background.await.test_unwrap();
+    }
+
+    #[test]
+    fn budget_write_progress_close_fails_closed_while_clustered() {
+        // If the ClusterProgress sender is lost mid-write, a node that is STILL
+        // clustered must fail closed (503) so the caller rolls back
+        // the local exposure. Returning Ok(None) would render as a committed-
+        // looking leader-visible write with no quorum budgetCommit (fail-open).
+        // A genuinely unclustered node returns Ok(None).
+        let write = BudgetWriteToken {
+            origin_id: "http://node-a".to_string(),
+            event_seq: 7,
+            budget_term: 1,
+        };
+        let clustered = state_with_cluster("http://node-a", &["http://node-b"], None, None, None);
+        assert!(clustered.cluster.is_some(), "peers must build a cluster");
+        let response = match budget_write_progress_closed_outcome(&clustered, &write) {
+            Err(response) => response,
+            Ok(_) => panic!("a clustered node must fail closed when the progress channel closes"),
+        };
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+
+        // Genuinely unclustered: the closed channel is expected, not an error.
+        let mut unclustered = clustered.clone();
+        unclustered.cluster = None;
+        unclustered.cluster_progress = None;
+        assert!(matches!(
+            budget_write_progress_closed_outcome(&unclustered, &write),
+            Ok(None)
+        ));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn writer_wait_never_stalls_sync_loop() {
+        // Two peers, quorum_size 2. The writer parks on the progress watch; a
+        // simulated background round records an ack and notifies, and the writer
+        // observes the committed view without ever driving a sync itself.
+        let state = state_with_cluster(
+            "http://node-a",
+            &["http://node-b", "http://node-c"],
+            None,
+            None,
+            None,
+        );
+        update_peer_reachable(&state, "http://node-b");
+        update_peer_reachable(&state, "http://node-c");
+        let write = BudgetWriteToken {
+            origin_id: "http://node-a".to_string(),
+            event_seq: 5,
+            budget_term: 1,
+        };
+
+        let loop_state = state.clone();
+        let background = tokio::spawn(async move {
+            // Simulate one background round: import the ack, then notify.
+            tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            update_peer_budget_acks(
+                &loop_state,
+                "http://node-b",
+                &[BudgetOriginAck {
+                    origin_id: "http://node-a".to_string(),
+                    event_seq: 5,
+                }],
+            );
+            if let Some(progress) = loop_state.cluster_progress.as_ref() {
+                progress.notify_round_complete();
+            }
+        });
+
+        let commit = wait_for_budget_write_quorum_commit(&state, write)
+            .await
+            .test_unwrap()
+            .test_unwrap();
+        assert!(commit.quorum_committed);
+        background.await.test_unwrap();
     }
 
     #[test]
@@ -1043,6 +1943,129 @@ mod cluster_and_reports_tests {
     }
 
     #[test]
+    fn cluster_snapshot_range_encodes_a_huge_abandoned_run_and_the_follower_advances() {
+        // The snapshot's abandoned-seq field is RANGE-ENCODED, so a rollback storm's
+        // long contiguous abandoned run stays a single small (start, end) pair
+        // instead of an unbounded integer list. Enumerated, a real storm's
+        // millions-to-billions of seqs blow past MAX_PEER_RESPONSE_BYTES, the client
+        // fails to decode cluster_snapshot(), and the force-snapshot recovery path
+        // permanently stalls the peer (the snapshot backstop has no further fallback
+        // like the delta path does). Range-encoded, the snapshot stays tiny AND a
+        // fresh follower still learns every abandoned slot, so its contiguous ack
+        // head advances across the whole run.
+        let source_budget_db = unique_temp_path("cluster-source-abandoned-storm", "sqlite3");
+        let target_budget_db = unique_temp_path("cluster-target-abandoned-storm", "sqlite3");
+
+        let source_state = state_with_cluster(
+            "http://node-a",
+            &["http://node-b"],
+            None,
+            None,
+            Some(source_budget_db.clone()),
+        );
+        let target_state = state_with_cluster(
+            "http://node-b",
+            &["http://node-a"],
+            None,
+            None,
+            Some(target_budget_db.clone()),
+        );
+
+        // The abandoned run is (2, RUN_END); boundary events sit at seq 1 and
+        // RUN_END + 1, so [1..=RUN_END + 1] is contiguous once the run is recorded.
+        const RUN_END: u64 = 100_000;
+        let event = |seq: u64| BudgetMutationEventView {
+            event_id: format!("evt-{seq}"),
+            hold_id: None,
+            capability_id: "cap-storm".to_string(),
+            grant_index: 0,
+            kind: "authorize_exposure".to_string(),
+            allowed: Some(true),
+            recorded_at: seq as i64,
+            event_seq: seq,
+            usage_seq: Some(seq),
+            exposure_units: 1,
+            realized_spend_units: 0,
+            max_invocations: None,
+            max_cost_per_invocation: None,
+            max_total_cost_units: None,
+            invocation_count_after: 1,
+            total_cost_exposed_after: 1,
+            total_cost_realized_spend_after: 0,
+            authority: Some(BudgetMutationAuthorityView {
+                authority_id: "http://node-a".to_string(),
+                lease_id: "http://node-a#term-1".to_string(),
+                lease_epoch: 1,
+            }),
+        };
+
+        {
+            let store = SqliteBudgetStore::open(&source_budget_db).test_unwrap();
+            let records = [event(1), event(RUN_END + 1)]
+                .iter()
+                .map(|view| budget_mutation_record_from_view(view).test_unwrap())
+                .collect::<Vec<_>>();
+            store.import_snapshot_records(&[], &records).test_unwrap();
+            // A rollback storm abandons the whole (2, RUN_END) window.
+            store
+                .record_abandoned_event_seq_ranges(&[(2, RUN_END)])
+                .test_unwrap();
+        }
+
+        let snapshot = build_cluster_state_snapshot(&source_state).test_unwrap();
+
+        // The huge run is a SINGLE pair, not RUN_END - 1 integers.
+        assert_eq!(snapshot.budget_abandoned_seq_ranges.len(), 1);
+        assert_eq!(
+            (
+                snapshot.budget_abandoned_seq_ranges[0].start,
+                snapshot.budget_abandoned_seq_ranges[0].end,
+            ),
+            (2, RUN_END)
+        );
+
+        // The whole range-encoded snapshot fits well under the peer-response cap.
+        let encoded = serde_json::to_vec(&snapshot).test_unwrap();
+        assert!(
+            (encoded.len() as u64) < MAX_PEER_RESPONSE_BYTES,
+            "range-encoded snapshot must fit under the peer-response cap, got {} bytes",
+            encoded.len()
+        );
+        // The SAME run enumerated (one integer per seq) is orders of magnitude larger
+        // and grows linearly with the run length; a real storm crosses the 64 MiB cap
+        // and stalls recovery. Here the abandoned field ALONE dwarfs the whole ranged
+        // snapshot.
+        let enumerated_len = serde_json::to_vec(&(2..=RUN_END).collect::<Vec<u64>>())
+            .test_unwrap()
+            .len();
+        assert!(
+            enumerated_len > 10 * encoded.len(),
+            "enumerated abandoned seqs ({enumerated_len} bytes) must dwarf the range-encoded snapshot ({} bytes)",
+            encoded.len()
+        );
+
+        apply_cluster_snapshot(&target_state, "http://node-a", snapshot).test_unwrap();
+
+        // The follower learned every abandoned slot, so its contiguous ack head
+        // advances across the whole run to the tail event (no stall at the hole).
+        let target_store = SqliteBudgetStore::open(&target_budget_db).test_unwrap();
+        let head = target_store
+            .budget_ack_heads()
+            .test_unwrap()
+            .into_iter()
+            .find(|(origin, _)| origin == "http://node-a")
+            .map(|(_, seq)| seq);
+        assert_eq!(
+            head,
+            Some(RUN_END + 1),
+            "the follower's contiguous ack head must advance across the abandoned run to the tail event"
+        );
+
+        let _ = std::fs::remove_file(&source_budget_db);
+        let _ = std::fs::remove_file(&target_budget_db);
+    }
+
+    #[test]
     fn cluster_snapshot_round_trip_preserves_budget_usage_rows_without_mutation_events() {
         let source_budget_db = unique_temp_path("cluster-source-budget-usage-only", "sqlite3");
         let target_budget_db = unique_temp_path("cluster-target-budget-usage-only", "sqlite3");
@@ -1152,7 +2175,11 @@ mod cluster_and_reports_tests {
     }
 
     #[test]
-    fn budget_delta_import_handles_records_without_mutation_events() {
+    fn budget_delta_import_rejects_records_without_mutation_events() {
+        // The honest leader only emits usage projections alongside the mutation
+        // events they derive from. A records-only page
+        // would pin the global cursor past unimported events, so it must be a
+        // protocol violation (demote), NOT an accepted cursor advance.
         let budget_db = unique_temp_path("cluster-records-only-budget-delta", "sqlite3");
         let mut store = SqliteBudgetStore::open(&budget_db).test_unwrap();
         let response = BudgetDeltaResponse {
@@ -1166,51 +2193,393 @@ mod cluster_and_reports_tests {
                 seq: Some(42),
             }],
             mutation_events: Vec::new(),
+            abandoned_seqs: Vec::new(),
         };
 
-        let outcome = import_budget_delta_response(&mut store, &response, None).test_unwrap();
-        assert_eq!(outcome.applied_count, 1);
-        assert!(outcome.should_continue);
-        assert_eq!(outcome.next_cursor.test_unwrap().seq, 42);
-
-        let usage = store
+        let result =
+            import_budget_delta_response(&mut store, &response, None, &mut PullRoundBudget::new());
+        assert!(
+            matches!(
+                result,
+                Err(PullError::Protocol(
+                    PeerProtocolError::RecordsWithoutMutationEvents { record_count: 1 }
+                ))
+            ),
+            "a records-only budget page must be rejected as a protocol violation, got {result:?}"
+        );
+        // Fail-closed: nothing was imported and the usage row was not created.
+        assert!(store
             .get_usage("cap-records-only", 0)
             .test_unwrap()
-            .test_unwrap();
-        assert_eq!(usage.invocation_count, 3);
-        assert_eq!(usage.seq, 42);
-        assert_eq!(usage.total_cost_exposed, 55);
-        assert_eq!(usage.total_cost_realized_spend, 21);
+            .is_none());
+    }
+
+    #[test]
+    fn budget_delta_import_routes_oversized_page_to_snapshot_recovery() {
+        // An HONEST but unpageable budget delta page (a rollback storm packs more
+        // abandoned seqs into the covered range than a single page's
+        // BUDGET_DELTA_MAX_RECORDS cap) must route the peer through the full snapshot
+        // recovery path, NOT return a bare Transient that pins the cursor and stalls
+        // the peer's whole sync forever. The signal is PullError::ForceSnapshot;
+        // route_pull turns it into a force_snapshot flag
+        // (see oversized_budget_delta_routes_peer_to_force_snapshot_not_wedge).
+        let budget_db = unique_temp_path("cluster-oversized-budget-delta", "sqlite3");
+        let mut store = SqliteBudgetStore::open(&budget_db).test_unwrap();
+        let event = |seq: u64| BudgetMutationEventView {
+            event_id: format!("evt-{seq}"),
+            hold_id: None,
+            capability_id: "cap-storm".to_string(),
+            grant_index: 0,
+            kind: "authorize_exposure".to_string(),
+            allowed: Some(true),
+            recorded_at: seq as i64,
+            event_seq: seq,
+            usage_seq: Some(seq),
+            exposure_units: 1,
+            realized_spend_units: 0,
+            max_invocations: None,
+            max_cost_per_invocation: None,
+            max_total_cost_units: None,
+            invocation_count_after: 1,
+            total_cost_exposed_after: 1,
+            total_cost_realized_spend_after: 0,
+            authority: Some(BudgetMutationAuthorityView {
+                authority_id: "http://origin-storm".to_string(),
+                lease_id: "http://origin-storm#term-1".to_string(),
+                lease_epoch: 1,
+            }),
+        };
+        // MAX_LIST_LIMIT live events interspersed with a dense burst of abandoned
+        // (rolled-back-then-retried) seqs: events + abandoned exceeds
+        // BUDGET_DELTA_MAX_RECORDS for the covered range, so no smaller
+        // cursor-anchored page makes forward progress.
+        let live_events = MAX_LIST_LIMIT as u64;
+        let abandoned_start = live_events + 1;
+        let abandoned_end = BUDGET_DELTA_MAX_RECORDS as u64 + 1;
+        let response = BudgetDeltaResponse {
+            records: Vec::new(),
+            mutation_events: (1..=live_events).map(event).collect(),
+            abandoned_seqs: (abandoned_start..=abandoned_end).collect(),
+        };
+        let record_count = response.mutation_events.len() + response.abandoned_seqs.len();
+        assert!(
+            record_count > BUDGET_DELTA_MAX_RECORDS,
+            "the crafted page must exceed the record cap to exercise the oversized-page path"
+        );
+
+        let result =
+            import_budget_delta_response(&mut store, &response, None, &mut PullRoundBudget::new());
+        let Err(PullError::ForceSnapshot(error)) = result else {
+            panic!(
+                "an oversized budget page must route to snapshot recovery, not stall as Transient: {result:?}"
+            );
+        };
+        assert!(error.to_string().contains("full snapshot recovery"));
+        // Fail-closed: nothing from the unpageable window was imported as a prefix.
         assert!(store
-            .list_mutation_events(10, Some("cap-records-only"), Some(0))
+            .list_mutation_events(10, Some("cap-storm"), Some(0))
             .test_unwrap()
             .is_empty());
     }
 
     #[test]
-    fn budget_delta_import_rejects_oversized_peer_payloads() {
-        let budget_db = unique_temp_path("cluster-oversized-budget-delta", "sqlite3");
+    fn oversized_budget_delta_routes_peer_to_force_snapshot_not_wedge() {
+        // route_pull must turn a ForceSnapshot into a force_snapshot flag (so the
+        // next sync round full-resyncs and makes forward progress) while keeping the
+        // peer Healthy (honest backlog, not misbehavior), and short-circuit the
+        // round. A bare Transient flags nothing, leaving the cursor pinned
+        // indefinitely.
+        let state = state_with_cluster("http://node-a", &["http://node-b"], None, None, None);
+        update_peer_reachable(&state, "http://node-b");
+        assert!(
+            !peer_should_force_snapshot(&state, "http://node-b"),
+            "a freshly reachable, already-synced peer has no pending snapshot"
+        );
+
+        // A bare Transient neither demotes nor flags a snapshot, so the cursor stays
+        // pinned and the peer stalls.
+        let mut records = 0u64;
+        let transient = route_pull(
+            &state,
+            "http://node-b",
+            Err(PullError::Transient(CliError::cli_other_error(
+                "oversized transient",
+            ))),
+            &mut records,
+        );
+        assert!(transient.is_err(), "a Transient short-circuits the round");
+        assert!(
+            !peer_should_force_snapshot(&state, "http://node-b"),
+            "a bare Transient does NOT trigger snapshot recovery: this is the stall"
+        );
+
+        // ForceSnapshot flags the peer for a full resync without demoting it.
+        let mut records = 0u64;
+        let routed = route_pull(
+            &state,
+            "http://node-b",
+            Err(PullError::ForceSnapshot(CliError::cli_other_error(
+                "budget delta response contains 401 records, maximum is 400",
+            ))),
+            &mut records,
+        );
+        assert!(
+            routed.is_err(),
+            "ForceSnapshot short-circuits the round before update_peer_success clears the flag"
+        );
+        assert!(
+            peer_should_force_snapshot(&state, "http://node-b"),
+            "an oversized/unpageable page must route the peer to force-snapshot recovery"
+        );
+        // Not demoted to Unhealthy: an honest large window is not peer misbehavior.
+        assert!(
+            with_peer_state(&state, "http://node-b", |peer| peer.health.is_reachable())
+                .unwrap_or(false),
+            "force-snapshot recovery keeps an honest peer Healthy"
+        );
+        assert_eq!(records, 0, "an unpageable page counts no delta records");
+    }
+
+    #[test]
+    fn budget_puller_rejects_non_advancing_page() {
+        let budget_db = unique_temp_path("cluster-non-advancing-budget-delta", "sqlite3");
         let mut store = SqliteBudgetStore::open(&budget_db).test_unwrap();
+        // A non-empty page whose cursor does not advance past the caller's
+        // current cursor is a peer protocol violation, not a continuation.
+        let cursor = BudgetCursor {
+            seq: 40,
+            updated_at: 10,
+            capability_id: "cap-x".to_string(),
+            grant_index: 0,
+        };
         let response = BudgetDeltaResponse {
-            records: (0..=BUDGET_DELTA_MAX_RECORDS)
-                .map(|idx| BudgetUsageView {
-                    capability_id: format!("cap-{idx}"),
-                    grant_index: 0,
-                    invocation_count: 1,
-                    total_cost_exposed: 0,
-                    total_cost_realized_spend: 0,
-                    updated_at: 1_717_171_717,
-                    seq: Some(idx as u64 + 1),
-                })
-                .collect(),
-            mutation_events: Vec::new(),
+            records: Vec::new(),
+            mutation_events: vec![BudgetMutationEventView {
+                event_id: "evt-stuck".to_string(),
+                hold_id: None,
+                capability_id: "cap-x".to_string(),
+                grant_index: 0,
+                kind: "authorize_exposure".to_string(),
+                allowed: Some(true),
+                recorded_at: 11,
+                event_seq: 40, // equal to the cursor: does not advance
+                usage_seq: Some(40),
+                exposure_units: 1,
+                realized_spend_units: 0,
+                max_invocations: None,
+                max_cost_per_invocation: None,
+                max_total_cost_units: None,
+                invocation_count_after: 1,
+                total_cost_exposed_after: 1,
+                total_cost_realized_spend_after: 0,
+                authority: None,
+            }],
+            abandoned_seqs: Vec::new(),
+        };
+        let mut round = PullRoundBudget::new();
+        let result = import_budget_delta_response(&mut store, &response, Some(cursor), &mut round);
+        // event_seq 40 equals the cursor, so it is neither advancing nor
+        // cursor-anchored at the expected next seq (41): a protocol violation
+        // that demotes the peer. The contiguity guard now surfaces this as a
+        // NonContiguousPage (expected 41, found 40).
+        assert!(
+            matches!(
+                result,
+                Err(PullError::Protocol(PeerProtocolError::NonContiguousPage {
+                    expected_seq: 41,
+                    found_seq: 40
+                }))
+            ),
+            "a non-advancing non-empty budget page must be a protocol violation, got {result:?}"
+        );
+    }
+
+    #[test]
+    fn budget_puller_enforces_strict_global_contiguity() {
+        let budget_db = unique_temp_path("cluster-budget-cursor-jump", "sqlite3");
+        let mut store = SqliteBudgetStore::open(&budget_db).test_unwrap();
+
+        // A mutation-event view at event_seq S under a single origin.
+        let event = |seq: u64| BudgetMutationEventView {
+            event_id: format!("evt-{seq}"),
+            hold_id: None,
+            capability_id: "cap-j".to_string(),
+            grant_index: 0,
+            kind: "authorize_exposure".to_string(),
+            allowed: Some(true),
+            recorded_at: seq as i64,
+            event_seq: seq,
+            usage_seq: Some(seq),
+            exposure_units: 1,
+            realized_spend_units: 0,
+            max_invocations: None,
+            max_cost_per_invocation: None,
+            max_total_cost_units: None,
+            invocation_count_after: 1,
+            total_cost_exposed_after: 1,
+            total_cost_realized_spend_after: 0,
+            authority: Some(BudgetMutationAuthorityView {
+                authority_id: "http://origin-j".to_string(),
+                lease_id: "http://origin-j#term-1".to_string(),
+                lease_epoch: 1,
+            }),
         };
 
-        let result = import_budget_delta_response(&mut store, &response, None);
-        let Err(error) = result else {
-            panic!("oversized peer budget deltas should fail closed");
+        // From a fresh cursor (expected next event_seq 1), a page that starts at
+        // event_seq 5 is a forward cursor-jump that would skip the append-only
+        // events 1..4. It must be REJECTED and the cursor must NOT advance.
+        // The old max-advance-only guard (page max 6 > cursor 0) accepted this.
+        let jump = BudgetDeltaResponse {
+            records: Vec::new(),
+            mutation_events: vec![event(5), event(6)],
+            abandoned_seqs: Vec::new(),
         };
-        assert!(error.to_string().contains("budget delta response contains"));
+        let result =
+            import_budget_delta_response(&mut store, &jump, None, &mut PullRoundBudget::new());
+        assert!(
+            matches!(
+                result,
+                Err(PullError::Protocol(PeerProtocolError::NonContiguousPage {
+                    expected_seq: 1,
+                    found_seq: 5
+                }))
+            ),
+            "a budget page that skips unreplicated events must be rejected, got {result:?}"
+        );
+        // Fail-closed: the skipped page was never imported as a committed prefix.
+        assert!(store
+            .list_mutation_events(10, Some("cap-j"), Some(0))
+            .test_unwrap()
+            .is_empty());
+
+        // A cursor-anchored, gap-free page from the fresh cursor is accepted and
+        // advances the cursor to the page head.
+        let contiguous = BudgetDeltaResponse {
+            records: Vec::new(),
+            mutation_events: vec![event(1), event(2), event(3)],
+            abandoned_seqs: Vec::new(),
+        };
+        let outcome = import_budget_delta_response(
+            &mut store,
+            &contiguous,
+            None,
+            &mut PullRoundBudget::new(),
+        )
+        .test_unwrap();
+        assert!(outcome.should_continue);
+        assert_eq!(outcome.next_cursor.test_unwrap().seq, 3);
+
+        // The budget cursor is a single GLOBAL event_seq. A per-origin
+        // compaction floor must NOT authorize a global cursor jump: recording
+        // origin-j's floor at 9 does not license a page
+        // that starts at event_seq 10 from a cursor of 3, because the skipped
+        // global seqs 4..9 could carry a DIFFERENT origin's unreplicated events.
+        // The jump is a protocol violation regardless of any per-origin floor;
+        // fail-closed recovery is a full snapshot, not a floor-authorized jump.
+        store
+            .record_budget_import_floors(&[
+                budget_mutation_record_from_view(&event(10)).test_unwrap()
+            ])
+            .test_unwrap();
+        assert_eq!(
+            store.budget_import_floor("http://origin-j").test_unwrap(),
+            9
+        );
+        let cursor = BudgetCursor {
+            seq: 3,
+            updated_at: 3,
+            capability_id: "cap-j".to_string(),
+            grant_index: 0,
+        };
+        let compacted = BudgetDeltaResponse {
+            records: Vec::new(),
+            mutation_events: vec![event(10), event(11)],
+            abandoned_seqs: Vec::new(),
+        };
+        let result = import_budget_delta_response(
+            &mut store,
+            &compacted,
+            Some(cursor),
+            &mut PullRoundBudget::new(),
+        );
+        assert!(
+            matches!(
+                result,
+                Err(PullError::Protocol(PeerProtocolError::NonContiguousPage {
+                    expected_seq: 4,
+                    found_seq: 10
+                }))
+            ),
+            "a per-origin floor must not license a global cursor jump, got {result:?}"
+        );
+        // Fail-closed: only the gap-free prefix 1..3 remains committed.
+        assert_eq!(store.max_mutation_event_seq().test_unwrap(), 3);
+    }
+
+    #[test]
+    fn cluster_replication_heads_reports_heads_without_materializing() {
+        let budget_db = unique_temp_path("cluster-heads-budget", "sqlite3");
+        let revocation_db = unique_temp_path("cluster-heads-revocation", "sqlite3");
+        {
+            let store = SqliteBudgetStore::open(&budget_db).test_unwrap();
+            store
+                .try_charge_cost("cap-heads", 0, Some(5), 3, None, None)
+                .test_unwrap();
+            let revocations = SqliteRevocationStore::open(&revocation_db).test_unwrap();
+            revocations
+                .upsert_revocation(&RevocationRecord {
+                    capability_id: "cap-heads".to_string(),
+                    revoked_at: 77,
+                })
+                .test_unwrap();
+        }
+        let state = state_with_cluster(
+            "http://node-a",
+            &["http://node-b"],
+            None,
+            Some(revocation_db.clone()),
+            Some(budget_db.clone()),
+        );
+        let heads = cluster_replication_heads(&state).test_unwrap();
+        assert_eq!(heads.budget_seq, 1);
+        assert_eq!(heads.tool_seq, 0);
+        let cursor = heads.revocation_cursor.test_unwrap();
+        assert_eq!(cursor.revoked_at, 77);
+        assert_eq!(cursor.capability_id, "cap-heads");
+    }
+
+    #[test]
+    fn status_advertises_contiguous_ack_heads() {
+        // Wire shape: budgetAckHeads serializes as camelCase originId/eventSeq
+        // when non-empty, and is omitted entirely when empty (additive,
+        // backward-compatible with older peers who never witness).
+        let response = ClusterStatusResponse {
+            self_url: "http://node-a".to_string(),
+            leader_url: None,
+            role: "follower".to_string(),
+            has_quorum: true,
+            quorum_size: 2,
+            reachable_nodes: 2,
+            election_term: 1,
+            authority_lease: None,
+            replication: ClusterReplicationHeadsView::default(),
+            peers: Vec::new(),
+            budget_ack_heads: vec![BudgetOriginAck {
+                origin_id: "http://origin-o".to_string(),
+                event_seq: 3,
+            }],
+        };
+        let value = serde_json::to_value(&response).test_unwrap();
+        assert_eq!(value["budgetAckHeads"][0]["originId"], "http://origin-o");
+        assert_eq!(value["budgetAckHeads"][0]["eventSeq"], 3);
+
+        // Empty ack heads are omitted from the wire (skip_serializing_if).
+        let empty = ClusterStatusResponse {
+            budget_ack_heads: Vec::new(),
+            ..response
+        };
+        let value = serde_json::to_value(&empty).test_unwrap();
+        assert!(value.get("budgetAckHeads").is_none());
     }
 
     #[test]

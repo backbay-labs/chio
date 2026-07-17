@@ -38,6 +38,14 @@ import {
 import { createHash } from "node:crypto";
 import { PassThrough } from "node:stream";
 
+function decodeQueryComponent(value: string): string | undefined {
+  try {
+    return decodeURIComponent(value.replace(/\+/g, " "));
+  } catch {
+    return undefined;
+  }
+}
+
 /** Fastify-specific Chio config. */
 export interface ChioFastifyConfig extends ChioConfig {
   /**
@@ -128,10 +136,26 @@ const chioPlugin: FastifyPluginAsync<ChioFastifyConfig> = async (
       for (const pair of qs.split("&")) {
         const eqIndex = pair.indexOf("=");
         if (eqIndex === -1) {
-          query[decodeURIComponent(pair)] = "";
+          const key = decodeQueryComponent(pair);
+          if (key == null) {
+            reply.code(400).send({
+              error: CHIO_ERROR_CODES.EVALUATION_FAILED,
+              message: "malformed query parameter encoding",
+            });
+            return reply;
+          }
+          query[key] = "";
         } else {
-          query[decodeURIComponent(pair.slice(0, eqIndex))] =
-            decodeURIComponent(pair.slice(eqIndex + 1));
+          const key = decodeQueryComponent(pair.slice(0, eqIndex));
+          const value = decodeQueryComponent(pair.slice(eqIndex + 1));
+          if (key == null || value == null) {
+            reply.code(400).send({
+              error: CHIO_ERROR_CODES.EVALUATION_FAILED,
+              message: "malformed query parameter encoding",
+            });
+            return reply;
+          }
+          query[key] = value;
         }
       }
     }
@@ -166,33 +190,47 @@ const chioPlugin: FastifyPluginAsync<ChioFastifyConfig> = async (
       bodyLength,
       routePattern,
       capabilityId,
+      forwardHeaders: resolved.forwardHeaders,
     });
 
     try {
       const result = await resolved.client.evaluate(chioReq, rawHeaders["x-chio-capability"] ?? undefined);
+      const receipt = result.receipt;
 
-      if (!isAllowed(result.verdict) || !isAuthorizedHttpReceipt(result.receipt)) {
-        reply.code(verdictStatus(result.verdict)).send({
+      if (
+        !isAllowed(result.verdict)
+        || receipt == null
+        || !isAuthorizedHttpReceipt(receipt)
+      ) {
+        const payload: {
+          error: string;
+          message: string;
+          receipt_id?: string;
+          suggestion: string;
+        } = {
           error: CHIO_ERROR_CODES.ACCESS_DENIED,
           message: verdictReason(result.verdict),
-          receipt_id: result.receipt.id,
           suggestion: "provide a valid capability token in the X-Chio-Capability header or chio_capability query parameter",
-        });
+        };
+        if (receipt?.id != null) {
+          payload.receipt_id = receipt.id;
+        }
+        reply.code(verdictStatus(result.verdict)).send(payload);
         return reply;
       }
 
-      const verification = await resolved.client.verifyReceipt(result.receipt);
-      if (!isAuthoritativeVerification(verification, result.receipt)) {
+      const verification = await resolved.client.verifyReceipt(receipt);
+      if (!isAuthoritativeVerification(verification, receipt)) {
         reply.code(502).send({
           error: CHIO_ERROR_CODES.INVALID_RECEIPT,
           message: "sidecar returned an unverified receipt",
-          receipt_id: result.receipt.id,
+          receipt_id: receipt.id,
         });
         return reply;
       }
 
       // Attach receipt ID header after authorization and receipt verification.
-      reply.header("X-Chio-Receipt-Id", result.receipt.id);
+      reply.header("X-Chio-Receipt-Id", receipt.id);
 
       // Attach result for downstream handlers
       request.chioResult = result;

@@ -51,7 +51,7 @@ fn valid_capability_token_json(id: &str, issuer: &Keypair) -> String {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn grpc_post_denied_without_capability() {
     let keypair = Keypair::generate();
-    let layer = ChioLayer::new(keypair, "test-policy-grpc".to_string());
+    let layer = ChioLayer::new_ephemeral(keypair, "test-policy-grpc".to_string());
 
     let inner = tower::service_fn(|_req: Request<TestBody>| async {
         panic!("inner should not be called");
@@ -96,7 +96,7 @@ async fn grpc_post_denied_without_capability() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn grpc_post_allowed_with_capability() {
     let keypair = Keypair::generate();
-    let layer = ChioLayer::new(keypair.clone(), "test-policy-grpc".to_string());
+    let layer = ChioLayer::new_ephemeral(keypair.clone(), "test-policy-grpc".to_string());
 
     let inner = tower::service_fn(|_req: Request<TestBody>| async {
         let mut resp = http::Response::new(Full::new(Bytes::new()));
@@ -145,7 +145,7 @@ async fn grpc_post_allowed_with_capability() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn grpc_receipt_id_format() {
     let keypair = Keypair::generate();
-    let layer = ChioLayer::new(keypair.clone(), "test-policy-grpc".to_string());
+    let layer = ChioLayer::new_ephemeral(keypair.clone(), "test-policy-grpc".to_string());
 
     let inner = tower::service_fn(|_req: Request<TestBody>| async {
         Ok::<http::Response<TestBody>, Box<dyn std::error::Error + Send + Sync>>(
@@ -196,7 +196,7 @@ async fn grpc_receipt_id_format() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn grpc_bearer_identity() {
     let keypair = Keypair::generate();
-    let layer = ChioLayer::new(keypair.clone(), "test-policy-grpc".to_string());
+    let layer = ChioLayer::new_ephemeral(keypair.clone(), "test-policy-grpc".to_string());
 
     let inner = tower::service_fn(|_req: Request<TestBody>| async {
         Ok::<http::Response<TestBody>, Box<dyn std::error::Error + Send + Sync>>(

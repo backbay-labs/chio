@@ -875,13 +875,13 @@ mod tests {
 
     #[test]
     fn verify_only_readmit_does_not_change_holders() {
-        // Codex round 12 Finding 1: a verifier-only re-admit (portable/preflight
-        // verdict) has NO release path, so it MUST NOT take a holder lease. A
-        // real dispatch holds child's edge (holders == 1). Repeated verify-only
-        // re-admits of the SAME child must leave the count at the real-holder
-        // count, so the real dispatch's later release still frees the edge. RED
-        // before the fix: each verify-only re-admit did `holders += 1`, so the
-        // release dropped to a non-zero count and the edge stayed pinned.
+        // A verifier-only re-admit (portable/preflight verdict) has NO release
+        // path, so it MUST NOT take a holder lease. A real dispatch holds
+        // child's edge (holders == 1). Repeated verify-only re-admits of the
+        // SAME child must leave the count at the real-holder count, so the
+        // real dispatch's later release still frees the edge. If a verify-only
+        // re-admit did `holders += 1`, the release would drop the count to a
+        // non-zero value and the edge would stay pinned forever.
         let mut registry = InMemoryBudgetRegistry::new();
         registry
             .register_parent("p".to_string(), MAX_BUDGET_SHARE_BPS)

@@ -202,7 +202,7 @@ fn resign_agent_web_receipt_for_subject_digest(
         .filter_map(|bytes| serde_json::from_slice::<Value>(bytes).ok())
         .find(|envelope| {
             envelope.get("schema").and_then(Value::as_str)
-                == Some("chio.agent-web-proof-envelope.v1")
+                == Some("chio.agent-web-proof-envelope.v2")
                 && envelope
                     .get("receipt_refs")
                     .and_then(Value::as_array)

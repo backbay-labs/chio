@@ -26,7 +26,11 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
-from chio_adapter_base.redact import RedactionPolicy, redact_args
+from chio_adapter_base.redact import (
+    RedactionPolicy,
+    bind_and_redact,
+    redact_args,
+)
 from chio_sdk.client import ChioClient
 from chio_sdk.errors import ChioDeniedError, ChioError
 from chio_sdk.models import ChioReceipt, ChioScope
@@ -136,6 +140,7 @@ class ChioFunctionTool(FunctionTool):
             else RedactionPolicy.chio_default()
         )
         self._last_receipt: ChioReceipt | None = None
+        self._tool_callable = async_fn or fn
 
     # ------------------------------------------------------------------
     # Accessors
@@ -212,14 +217,14 @@ class ChioFunctionTool(FunctionTool):
         parent :meth:`FunctionTool.acall` so default schema handling,
         callbacks, and :class:`ToolOutput` construction match upstream.
         """
-        parameters = _materialise_parameters(args, kwargs)
-        # Redact body fields (e.g. chio_file_write.content) before they
-        # cross into the sidecar so the receipt log never carries the raw
-        # secret bytes. The underlying function still receives the real
-        # args via ``super().acall(*args, **kwargs)`` below.
-        recorded_parameters = redact_args(
-            self.metadata.name,
-            parameters,
+        # Bind-and-redact before values cross into the sidecar. The
+        # underlying function still receives the real args via
+        # ``super().acall(*args, **kwargs)`` below.
+        recorded_parameters = _materialise_parameters(
+            args,
+            kwargs,
+            fn=self._tool_callable,
+            tool_name=self.metadata.name or "",
             policy=self._redaction_policy,
         )
         receipt = await self._evaluate(recorded_parameters)
@@ -331,18 +336,41 @@ def _build_metadata(
 def _materialise_parameters(
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
+    *,
+    fn: Callable[..., Any] | None,
+    tool_name: str,
+    policy: RedactionPolicy,
 ) -> dict[str, Any]:
-    """Collapse ``(*args, **kwargs)`` into a kwargs dict for evaluation.
+    """Collapse ``(*args, **kwargs)`` into a redacted evaluation payload.
 
     LlamaIndex planners call tools with keyword arguments parsed from
-    the LLM's JSON output, so positional arguments are rare. We still
-    preserve them under a synthetic ``_args`` key so the sidecar's
-    parameter hash reflects every value the tool saw.
+    the LLM's JSON output, so positional arguments are rare. When they
+    appear, bind them to the wrapped callable's signature first so
+    protected fields such as ``content`` are still redacted by name.
     """
-    if not args:
-        return dict(kwargs)
-    merged: dict[str, Any] = dict(kwargs)
-    merged["_args"] = list(args)
+    if args and fn is not None:
+        try:
+            bound = inspect.signature(fn).bind_partial(*args, **kwargs)
+        except (TypeError, ValueError):
+            pass
+        else:
+            return redact_args(
+                tool_name,
+                dict(bound.arguments),
+                policy=policy,
+            )
+
+    redacted_args, redacted_kwargs = bind_and_redact(
+        fn,
+        args,
+        kwargs,
+        tool_name=tool_name,
+        policy=policy,
+    )
+    if not redacted_args:
+        return dict(redacted_kwargs)
+    merged: dict[str, Any] = dict(redacted_kwargs)
+    merged["_args"] = list(redacted_args)
     return merged
 
 

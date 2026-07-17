@@ -63,7 +63,7 @@ pub(crate) fn handle_agent_message(
                     agent_id: session_agent_id.to_string(),
                     arguments: tool_call.arguments,
                     dpop_proof: None,
-                execution_nonce: None,
+                    execution_nonce: None,
                     governed_intent: None,
                     approval_token: None,
                     model_metadata: None,
@@ -165,4 +165,3 @@ pub(crate) fn normalize_agent_message(
         ),
     }
 }
-

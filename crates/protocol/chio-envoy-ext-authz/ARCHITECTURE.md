@@ -1,53 +1,92 @@
-# chio-envoy-ext-authz architecture note
+# chio-envoy-ext-authz architecture
 
-## Boundaries
+## Overview
 
-- `lib.rs` owns the public surface, generated proto re-exports, and stable adapter types re-exported for downstream wiring.
-- `translate.rs` owns the trust-boundary projection from Envoy `CheckRequest` into the local `ToolCallRequest`. It strips raw secrets, hashes bearer and body bytes, derives `http.<method>.<path>` tool identities, and returns `TranslateError` for malformed Envoy input.
-- `service.rs` owns the tonic `Authorization` implementation. It coordinates translation, kernel evaluation, logging, and response conversion, and is unaware of metadata field names.
-- `response.rs` owns Envoy `CheckResponse` construction, including the HTTP status Envoy returns and the dynamic metadata attached to responses.
-- `metadata.rs` owns dynamic-metadata field construction from already-admitted wire facts.
-- `error.rs` owns public error types. `TranslateError` is part of the crate API, so new variants are avoided unless the security value justifies a public compatibility break.
+This crate is an untrusted edge adapter: Envoy delivers `CheckRequest`s built
+from live network traffic, and everything the crate emits into a
+`ToolCallRequest` has passed through validation or been discarded first. It
+speaks the Envoy `ext_authz` gRPC contract on one side and a small
+protocol-agnostic `ToolCallRequest` / `Verdict` pair on the other, deliberately
+holding no dependency on `chio-kernel` or `chio-http-core` so it can be linked
+into any Envoy-fronted service on its own. `#![forbid(unsafe_code)]` and
+`#![deny(missing_docs)]` apply crate-wide.
 
-## Fail-Closed Response Boundary
+## Module map
 
-Fail-closed responses carry a stable generic client-visible reason. The specific
-translation or kernel fault is logged, not returned in the denial body or header,
-so internal faults do not cross the ext_authz trust boundary.
+| Path | Responsibility |
+|------|----------------|
+| `src/lib.rs` | Public surface: re-exports, module declarations, and the generated `proto` module tree (mirrors the vendored `.proto` package hierarchy). |
+| `src/service.rs` | `EnvoyKernel` trait and `ChioExtAuthzService`, the tonic `Authorization::check` implementation coordinating translate, evaluate, and respond. |
+| `src/translate.rs` | Envoy `CheckRequest` to `ToolCallRequest` projection: method/path normalization, tool-identity derivation, caller-identity extraction, header allowlisting, body and bearer-token hashing. |
+| `src/response.rs` | `Verdict` to `CheckResponse` construction: OK/Denied HTTP responses, Envoy status-code mapping, header sanitization, dynamic metadata attachment. |
+| `src/metadata.rs` | `prost_types::Struct` builders for the `chio.*` dynamic metadata fields. |
+| `src/error.rs` | `TranslateError` and `KernelError`, the crate's public error types. |
+| `build.rs` | Compiles the vendored `proto/` tree via `tonic-build`, sourcing a vendored `protoc` binary when `PROTOC` is unset. |
+| `proto/` | Minimal vendored subset of Envoy's `envoy.service.auth.v3` API; field numbers match upstream so wire compatibility holds. |
 
-## Dynamic Metadata
+## Check request lifecycle
 
-`CheckResponse.dynamic_metadata` is the access-log surface for Chio verdict data.
-Every response attaches stable metadata: verdict class for allow,
-reason/guard/status for policy denies, and fail-closed markers for translation or
-kernel faults. Raw bearer tokens, capability tokens, request bodies, translation
-errors, and kernel error strings are never exposed through metadata.
+1. Envoy calls `Authorization/Check` with a `CheckRequest` (`service.rs`).
+2. `check_request_to_tool_call` projects it into a `ToolCallRequest`: derive
+   the `http.<method>.<path>` tool identity, split path from query, allowlist
+   policy-relevant headers (stripping `authorization` and
+   `x-chio-capability-token`), and extract caller identity in order -
+   `x-chio-capability-token`, then `Authorization: Bearer`, then the mTLS peer
+   principal, then anonymous. A malformed request returns `TranslateError`
+   before the kernel is ever invoked.
+3. `ChioExtAuthzService::check` hands the `ToolCallRequest` to the configured
+   `EnvoyKernel::evaluate`.
+4. `verdict_to_response` maps `Verdict::Allow` to an `OkHttpResponse` and
+   `Verdict::Deny` to a `DeniedHttpResponse` carrying the caller-supplied HTTP
+   status (mapped to the nearest Envoy `StatusCode`, defaulting to 403) plus
+   `x-chio-denial-reason` / `x-chio-denial-guard` headers.
+5. Every response carries `dynamic_metadata` under the `chio.*` namespace for
+   Envoy's access log. Translation or kernel errors instead produce
+   `fail_closed_response()`: a stable 500 with `chio.fail_closed = true` and no
+   internal error text.
 
-`Verdict::Deny` carries a caller-supplied `http_status`, but Envoy's generated
-`StatusCode` enum cannot represent every `u16`. Deny response construction
-computes the admitted Envoy status once and uses that same value for the
-`DeniedHttpResponse` and the `chio.http_status` metadata field, so dynamic
-metadata never reports an unsupported or non-denial status as applied policy
-state (an unsupported deny status reports 403 in both places).
+## Invariants and failure modes
 
-## Constraints
+- Fail closed: any `TranslateError` or `EnvoyKernel::evaluate` error yields a
+  `Code::Internal` `DeniedHttpResponse` with a fixed, generic reason. The
+  actual fault is logged via `tracing::warn`, never returned to the caller.
+- Raw secrets never cross the response boundary: `authorization` and
+  `x-chio-capability-token` are excluded from the forwarded header map; only a
+  SHA-256 hex digest of the bearer token (and, when present, the body) is
+  retained.
+- Header values written back onto responses (`x-chio-denial-reason`,
+  `x-chio-denial-guard`) are sanitized: control characters become spaces and an
+  empty result becomes `"unspecified"`, so a guard name or denial reason
+  cannot inject control bytes into response headers.
+- HTTP method strings must be non-empty, equal to their own trimmed form, and
+  free of control or whitespace bytes, or translation rejects with
+  `TranslateError::InvalidHttpMethod`.
+- `Verdict::Deny.http_status` maps to the nearest representable Envoy
+  `StatusCode`, falling back to 403 when unmapped. The same mapped value backs
+  both the `DeniedHttpResponse` status and the `chio.http_status` metadata
+  field, so the two never disagree.
+- `.proto` files under `proto/` vendor only the fields this crate uses, but
+  preserve upstream field numbers, so wire compatibility with Envoy holds
+  despite the subset.
 
-- Fail closed on malformed input and kernel errors.
-- Do not forward raw bearer tokens or capability tokens.
-- Preserve the public `EnvoyKernel`, `ToolCallRequest`, `Verdict`, and `TranslateError` API.
-- Preserve deny verdict behavior: policy denial reason, guard name, and HTTP status (401, 403, 429, 503, and other supported denial statuses) remain visible to the downstream client.
-- Do not edit generated protobuf output directly.
+## Dependencies
 
-## Dependents
+Internal: none. The crate depends on no `chio-*` crate; `EnvoyKernel` is the
+seam a caller implements to plug in `chio-kernel`, `chio-http-core`'s
+`HttpAuthority`, or any other policy engine without this crate depending on
+either.
 
-- `examples/istio-ext-authz` depends on the adapter's header names and fail-closed behavior, but not on private response or metadata helpers.
-- Research and operations docs describe the adapter as the Envoy HTTP ext_authz boundary.
-- No Rust crate imports the private `service.rs`, `response.rs`, or `metadata.rs` helpers.
+External: `tonic` / `prost` / `prost-types` for the gRPC service and generated
+types, `tokio` and `async-trait` for the async trait and service, `thiserror`
+for error types, `tracing` for structured logs, `sha2` / `hex` for bearer-token
+and body hashing. Build-time only: `tonic-build` compiles `proto/`, and
+`protoc-bin-vendored` supplies `protoc` when the `PROTOC` environment variable
+is unset.
 
-## Verification Focus
+## Extension points
 
-Tests cover translation rejection for malformed Envoy requests, stable
-fail-closed response bodies for translation and kernel faults, deny-status
-metadata matching the admitted Envoy status, absence of raw bearer tokens and
-request bodies in metadata, and preservation of supported policy deny statuses
-such as 401, 403, 429, and 503.
+`EnvoyKernel` is the sole extension point: implement
+`async fn evaluate(&self, request: ToolCallRequest) -> Result<Verdict, KernelError>`
+and construct `ChioExtAuthzService::new(your_kernel)`. No implementation ships
+in this crate; `tests/translate.rs` and the `lib.rs` doc example provide
+mock and illustrative implementations only.

@@ -1,0 +1,57 @@
+[Unit]
+Description=Chio remote MCP edge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=chio-edge
+Group=chio-edge
+RuntimeDirectory=chio-mcp-edge
+StateDirectory=chio-mcp-edge
+ConfigurationDirectory=chio
+UMask=0077
+# Provide CHIO_AUTH_TOKEN and CHIO_ADMIN_TOKEN (read by `chio mcp serve-http`
+# from the environment so the secrets are not visible via ps/proc) in this file,
+# mode 0600.
+EnvironmentFile=/etc/chio/chio-mcp-edge.env
+# Set --policy, --server-id, and the upstream tool-server command after `--` to
+# the values for this deployment.
+ExecStart=/usr/local/bin/chio mcp serve-http \
+  --policy /etc/chio/mcp-edge-policy.yaml \
+  --server-id chio-mcp-edge \
+  --listen 127.0.0.1:8931 \
+  --receipt-db /var/lib/chio-mcp-edge/edge-receipts.sqlite3 \
+  --revocation-db /var/lib/chio-mcp-edge/edge-revocations.sqlite3 \
+  --authority-db /var/lib/chio-mcp-edge/edge-authority.sqlite3 \
+  --session-db /var/lib/chio-mcp-edge/edge-sessions.sqlite3 \
+  -- \
+  /usr/local/bin/chio-mcp-upstream
+Restart=on-failure
+RestartSec=5s
+# Deliver SIGTERM first (systemd's default, made explicit) so the graceful drain
+# runs, and hold the kill escalation until after the bounded drain plus the
+# receipt-flush margin can finish. The drain deadline is 25s; the platform grace
+# period must be at least TimeoutStopSec.
+KillSignal=SIGTERM
+# Signal only the edge (the unit's main process) on stop, not the whole control
+# group. The upstream tool server after `--` lives in the same cgroup; with the
+# default control-group kill mode systemd would SIGTERM it at the same instant the
+# edge begins its drain, tearing down the upstream out from under in-flight MCP
+# calls. `mixed` sends the stop signal to the main process first and only
+# escalates to the rest of the group (SIGKILL) after TimeoutStopSec, so the edge
+# can drain against a live upstream.
+KillMode=mixed
+TimeoutStopSec=35s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/chio-mcp-edge
+# Memory and OOM directives (MemoryMax, MemoryHigh, OOMScoreAdjust, LimitNOFILE,
+# LimitAS) are the per-process RSS ceiling owned by the bounded-memory work; set
+# them here from that single source of truth so this unit and the trust-control
+# unit share one OOM posture.
+
+[Install]
+WantedBy=multi-user.target

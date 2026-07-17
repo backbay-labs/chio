@@ -132,6 +132,11 @@ pub(crate) struct Cli {
     #[arg(long, global = true)]
     pub(crate) budget_db: Option<PathBuf>,
 
+    /// Settlement driver: `none` (default; the settle drive is inert) or
+    /// `ops` (run the reference settlement hook when driving due attempts).
+    #[arg(long, global = true, default_value = "none")]
+    pub(crate) settlement_driver: String,
+
     /// Optional SQLite database path for durable remote MCP session tombstones.
     #[arg(long, global = true)]
     pub(crate) session_db: Option<PathBuf>,
@@ -244,6 +249,39 @@ mod cli_env_tests {
         restore_env("CHIO_ADMIN_TOKEN", prior_admin);
         restore_env("CHIO_MCP_AUTH_TOKEN", prior_mcp_auth);
         restore_env("CHIO_MCP_ADMIN_TOKEN", prior_mcp_admin);
+    }
+
+    #[test]
+    fn receipt_retention_repair_uses_the_advertised_nested_command() {
+        // The bricked-store error text and operator guidance tell operators to
+        // run `chio receipt retention repair --archive <path>`. That advertised
+        // command must actually parse and route to the repair path.
+        let parsed = parse_cli([
+            "chio",
+            "receipt",
+            "retention",
+            "repair",
+            "--archive",
+            "archive.sqlite3",
+        ]);
+        assert!(
+            parsed.is_ok(),
+            "advertised `chio receipt retention repair` must parse: {:?}",
+            parsed.err().map(|error| error.to_string())
+        );
+        // The advertised nested spelling is the single supported one: the flat
+        // `retention-repair` form must not linger and diverge from the guidance.
+        assert!(
+            parse_cli([
+                "chio",
+                "receipt",
+                "retention-repair",
+                "--archive",
+                "a.sqlite3"
+            ])
+            .is_err(),
+            "the flat `retention-repair` spelling must not be accepted"
+        );
     }
 
     #[test]
@@ -535,6 +573,13 @@ pub(crate) enum Commands {
         command: SettleCommands,
     },
 
+    /// Inspect and release capability budget holds in the durable budget
+    /// store (see the global `--budget-db`).
+    Budget {
+        #[command(subcommand)]
+        command: BudgetCommands,
+    },
+
     /// Query, diff, or list anchored roots in the lineage DAG.
     ///
     /// Surfaces the lineage graph (`chio-lineage`):
@@ -630,7 +675,8 @@ pub(crate) enum Commands {
     /// evaluate, HITL approval endpoints) but with:
     ///
     /// - no upstream proxy (the catch-all `/{*path}` 502s loud);
-    /// - in-memory stores by default (no `--receipt-db`);
+    /// - durable receipts by default (pass `--allow-ephemeral-receipts` for
+    ///   the in-memory quickstart that leaves no on-disk artifacts);
     /// - a friendly startup banner that prints the bound address.
     ///
     /// `chio api protect` remains the canonical name for production
@@ -644,10 +690,15 @@ pub(crate) enum Commands {
         #[arg(long, default_value = "127.0.0.1:9090")]
         listen: String,
 
-        /// Optional SQLite receipt store path. Defaults to in-memory
-        /// so the first run leaves no on-disk artifacts.
+        /// Optional SQLite receipt store path for a durable audit log.
         #[arg(long = "receipt-store")]
         receipt_store: Option<PathBuf>,
+
+        /// Permit in-memory receipts, whose audit evidence is lost on every
+        /// restart. Required to boot without `--receipt-store`. For local
+        /// development only.
+        #[arg(long, default_value_t = false)]
+        allow_ephemeral_receipts: bool,
 
         /// Print the chio-hermes config snippet (env vars + slash
         /// commands) on startup so users can copy/paste into their

@@ -46,7 +46,7 @@
 //! memory grow without limit. Tests can pick a smaller capacity to exercise
 //! backpressure deterministically via [`SigningTaskHandle::with_capacity`].
 
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use chio_core::crypto::{Ed25519Backend, SigningBackend};
@@ -161,14 +161,11 @@ const fn clamp_u64_to_usize(value: u64) -> usize {
 }
 #[cfg_attr(test, allow(unused_imports))]
 pub use chio_metrics_spec::CHIO_SIGNING_QUEUE_BLOCK_TOTAL as METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL;
-static SIGNING_QUEUE_BLOCK_TOTAL: AtomicU64 = AtomicU64::new(0);
 
-pub(crate) fn signing_queue_block_total() -> u64 {
-    SIGNING_QUEUE_BLOCK_TOTAL.load(Ordering::Relaxed)
-}
-
-fn record_signing_queue_block() {
-    SIGNING_QUEUE_BLOCK_TOTAL.fetch_add(1, Ordering::Relaxed);
+/// +1 on chio_signing_queue_block_total{reason}. `reason` is one of
+/// "byte_budget", "channel_full", "oversized".
+fn record_signing_queue_block(reason: &str) {
+    chio_metrics_spec::runtime::families::SIGNING_QUEUE_BLOCK.incr(&[reason]);
 }
 
 /// Result of a non-blocking [`SigningTaskHandle::try_sign`]: either the oneshot
@@ -579,7 +576,10 @@ impl SigningTaskHandle {
         let permits = self.permits_for(canonical_content.len());
         let permit = match Arc::clone(&self.aggregate_byte_budget).try_acquire_many_owned(permits) {
             Ok(permit) => permit,
-            Err(_) => return EnqueueOutcome::Backpressure(body, canonical_content),
+            Err(_) => {
+                record_signing_queue_block("byte_budget");
+                return EnqueueOutcome::Backpressure(body, canonical_content);
+            }
         };
         let (reply_tx, reply_rx) = oneshot::channel();
         let request = SignRequest {
@@ -594,7 +594,7 @@ impl SigningTaskHandle {
         match sender.try_send(request) {
             Ok(()) => EnqueueOutcome::Enqueued(reply_rx),
             Err(mpsc::error::TrySendError::Full(rejected)) => {
-                record_signing_queue_block();
+                record_signing_queue_block("channel_full");
                 EnqueueOutcome::Backpressure(rejected.body, rejected.canonical_content)
             }
             Err(mpsc::error::TrySendError::Closed(rejected)) => {
@@ -670,6 +670,7 @@ impl SigningTaskHandle {
         // The closed-check inside `sign_inline_if_open` keeps shutdown exclusion:
         // a post-shutdown oversized request is refused, not inline-signed.
         if self.exceeds_aggregate_budget(len) {
+            record_signing_queue_block("oversized");
             return self.sign_inline_if_open(body, canonical_content);
         }
 

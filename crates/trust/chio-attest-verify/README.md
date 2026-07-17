@@ -1,15 +1,42 @@
 # chio-attest-verify
 
-Single source of truth for Sigstore verification across the Chio workspace.
-Release-archive verification, WASM guard signing, and the verifier fuzz
-target all consume this crate; no other crate is permitted to call
-`sigstore-rs` directly.
+The workspace's sole caller of `sigstore-rs`. Verifies Sigstore keyless
+signatures (bundles and detached blob signatures) against an embedded
+Fulcio/Rekor trust root, verifies TEE quotes from Intel TDX, AMD SEV-SNP, and
+AWS Nitro and binds them to a kernel signing key and receipt root, and loads
+signed per-tenant identity policies. Lives under `crates/trust/`.
 
-## Trait surface
+## Responsibilities
 
-The crate exposes a single `AttestVerifier` trait and one production impl,
-`SigstoreVerifier`. The trait surface is fixed and consumed verbatim by the
-guard registry and the verifier fuzz harness:
+- Own every direct `sigstore-rs` call in the workspace; no other crate
+  declares the `sigstore` dependency.
+- Verify Sigstore bundles and detached blob/byte signatures against the
+  embedded Sigstore Public Good Instance trust root (`SigstoreVerifier`).
+- Verify TEE quotes for Intel TDX, AMD SEV-SNP, and AWS Nitro, binding each
+  into the kernel signing key and receipt root (`tee-quotes` feature).
+- Parse, structurally validate, and (via `TenantPolicyLoader`) signature- and
+  staleness-verify per-tenant `ExpectedIdentity` policy files.
+- Ship the embedded Sigstore TUF trust root under `sigstore-root/` and the
+  `tuf-rebake` binary that refreshes it from the public-good TUF repository.
+
+## Public API
+
+- `AttestVerifier` - `verify_blob`, `verify_bytes`, `verify_bundle`;
+  `SigstoreVerifier::with_embedded_root()` is the production implementation.
+- `QuoteVerifier::verify_quote` - implemented by `nitro::NitroVerifier`,
+  `sev_snp::SevSnpVerifier`, `tdx::TdxDcapVerifier` (all behind `tee-quotes`).
+- `ExpectedIdentity`, `VerifiedAttestation`, `AttestError` - request, result,
+  and fail-closed (`#[non_exhaustive]`) error type for `AttestVerifier`.
+- `TeeKind`, `QuoteTcbStatus`, `QuoteVerificationContext`, `VerifiedQuote`,
+  `expect_report_data` - shared TEE quote shapes and the kernel-key /
+  receipt-root binding function.
+- `policy::TenantPolicy`, `policy_loader::TenantPolicyLoader`,
+  `TenantPolicyResolver`, `StaticTenantPolicyMap` - signed per-tenant
+  identity-policy schema, loader, and resolver trait.
+- `BOOTSTRAP_TENANT_ID`, `TENANT_POLICY_SCHEMA_VERSION`,
+  `DEFAULT_STALENESS_HORIZON` - policy constants re-exported at the crate root.
+
+## Usage
 
 ```rust
 use chio_attest_verify::{AttestVerifier, ExpectedIdentity, SigstoreVerifier};
@@ -25,80 +52,36 @@ let claims = verifier.verify_bundle(&artifact_bytes, &bundle_json_bytes, &expect
 assert!(!claims.rekor_inclusion_verified);
 ```
 
-### `verify_bundle`
+## Feature flags
 
-Consumes a Sigstore protobuf Bundle (cert chain + signature + Rekor
-transparency entry) and runs the keyless flow against the embedded Fulcio
-trust root, including Rekor log-entry consistency. `sigstore-rs` does not
-currently verify Rekor Merkle inclusion or the Signed Entry Timestamp
-(SET), so Chio marks `VerifiedAttestation.rekor_inclusion_verified =
-false` until this crate performs those checks itself. Callers that require
-Rekor inclusion verification MUST deny while this field is `false`.
+| Flag | Effect |
+|------|--------|
+| `pq` | Enables `chio-core-types/pq` and pulls in `fips204`. No ML-DSA certificate-verification path is wired in this crate; `TenantPolicy::pq_identity_regexps` is a reserved, currently-unused schema field. |
+| `tee-quotes` | Compiles the `nitro`, `sev_snp`, `tdx`, and `tee_signature` modules (TEE quote backends and their shared ECDSA verification helpers). |
+| `kani` | Opts in to the `#[cfg(kani)]`-gated `kani_public_harnesses` module for tooling that wants its doc comments without invoking the Kani toolchain. Production builds never compile the module regardless of this flag. |
 
-### `verify_blob` / `verify_bytes`
+## Testing
 
-For detached `(artifact, signature, leaf-cert)` triples that do not carry
-a Rekor inclusion proof. These paths perform certificate-chain validation
-against Fulcio, OIDC issuer match, identity SAN regex match, certificate
-validity-window check, and signature verification, but mark the resulting
-`VerifiedAttestation.rekor_inclusion_verified = false`.
+```
+cargo test -p chio-attest-verify
+cargo test -p chio-attest-verify --features tee-quotes
+cargo test -p chio-attest-verify --features pq
+```
 
-## Embedded TUF trust root
+`tests/nitro_unit.rs`, `tests/sev_snp_unit.rs`, `tests/tdx_unit.rs`,
+`tests/nitro_root_rotation.rs`, and `tests/cross_backend_conformance.rs`
+require `tee-quotes`; `tests/v318_migration.rs` and `tests/migration.rs`
+require `pq`. The pinned fixture corpora under `fixtures/quotes/` regenerate
+via `cargo run -p chio-attest-verify --example generate_<backend>_fixtures
+--features tee-quotes`.
 
-The crate ships the Sigstore Public Good Instance trust root in tree under
-`sigstore-root/`:
+## See also
 
-- `root.json` is the TUF root (kept for the quarterly re-bake job and
-  audit trail).
-- `trusted_root.json` is the runtime artifact consumed via `include_bytes!`.
-
-`build.rs` fails the compile if either file is missing. The quarterly
-CODEOWNERS-reviewed re-bake job refreshes both files in lockstep via
-`scripts/tuf-rebake.sh --write`; `scripts/tuf-rebake.sh --check`
-fails closed when the checked-in materials are missing, malformed, or stale.
-
-## OIDC issuer regex
-
-For chio's GitHub-hosted release workflows the canonical
-`ExpectedIdentity` is:
-
-- `certificate_oidc_issuer = "https://token.actions.githubusercontent.com"`
-- `certificate_identity_regexp =
-  "https://github\.com/backbay-labs/chio/\.github/workflows/release-binaries\.yml@refs/tags/v.*"`
-
-The verifier anchors the regex with `^...$` internally; callers may omit
-or include their own anchors without behavioural difference.
-
-## Integration tests
-
-`tests/integration.rs` exercises the real `SigstoreVerifier` against the
-embedded trust root. The hermetic test suite covers the fail-closed
-contract on every trait method:
-
-- `constructor_loads_embedded_trust_root`: the embedded TUF JSON parses
-  and yields a usable `dyn AttestVerifier`.
-- `verify_bundle_rejects_malformed_json`: garbage JSON surfaces as
-  `AttestError::Malformed`.
-- `verify_bundle_rejects_empty_bundle_object`: a syntactically valid but
-  semantically empty bundle is rejected.
-- `verify_bytes_rejects_random_garbage`: non-PEM/non-DER certificate
-  inputs are rejected before signature verification.
-- `verify_bytes_rejects_self_signed_cert_against_fulcio_root`: a leaf
-  that does not chain to Fulcio is rejected at the chain-validation step.
-- `verify_blob_returns_io_error_for_missing_artifact`: missing artifact
-  paths surface as `AttestError::Io`.
-
-The positive end-to-end keyless flow requires a Fulcio-issued certificate
-from a real OIDC workflow run, which is not hermetically reproducible
-inside `cargo test`. The release-binaries CI workflow exercises that path
-online via `cosign verify-blob` against published release archives.
-
-## Forbidden constructs
-
-This is a trust-boundary crate. The following are forbidden in any file
-under `src/` (enforced at the lint level and by reviewer checklist):
-
-- `unwrap_used` and `expect_used` (clippy `forbid`).
-- `todo!()`, `unimplemented!()`, and bare `panic!()` in any verification
-  path (per EXECUTION-BOARD.md "No verifier or trust-boundary stubs").
-- Direct `sigstore-rs` imports from any crate other than this one.
+- `chio-guard-registry` - wraps `AttestVerifier` to verify guard-image
+  signatures (`GuardSigstoreVerifier`).
+- `chio-weights` - wraps `SigstoreVerifier::verify_bundle` to verify model-card
+  bundles.
+- `chio-cli`, `chio-bedrock-converse-adapter` - consume `AttestVerifier` for
+  release-artifact and signed-config verification.
+- `chio-core-types` - supplies `canonical_json_bytes` and `crypto::PublicKey`
+  used by the policy and quote-binding paths.

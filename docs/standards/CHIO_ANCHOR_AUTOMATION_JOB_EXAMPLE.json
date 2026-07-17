@@ -33,7 +33,7 @@
     "batch_end_seq": 104200,
     "tree_size": 1,
     "merkle_root": "0xfdfec88997674fb776d72f55b7f0a6679524f730d2cdc418d4c691dca05167ea",
-    "operator_key_hash": "0x9999999999999999999999999999999999999999999999999999999999999999",
+    "operator_key_hash": "0x0791868d8f29ea735f26a17a9aea038cd4255baac26eac5a74e58a07ed2f1975",
     "call_data": "0xaabbccdd",
     "requires_delegate_authorization": true
   }

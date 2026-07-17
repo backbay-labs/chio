@@ -1,108 +1,107 @@
 # chio-bedrock-converse-adapter
 
-Mediates Amazon Bedrock Runtime Converse and ConverseStream tool-use traffic
-in Chio.
+Adapts Amazon Bedrock Runtime Converse and ConverseStream tool-use traffic to
+the Chio `ProviderAdapter` contract: Bedrock `toolUse` content blocks lift
+into fabric `ToolInvocation`s, and kernel verdicts lower into Bedrock
+`toolResult` content blocks. The live transport signs every call with SigV4
+through the AWS SDK for Rust and is pinned to one AWS region and one Bedrock
+API surface for v1. It is one of Chio's native provider adapters, alongside
+sibling crates such as `chio-anthropic-tools-adapter` that translate other
+providers' tool-call dialects into the same fabric contract.
 
-## Transport
+## Responsibilities
 
-The live transport, `transport::AwsSdkTransport`, calls the Bedrock Runtime
-Converse operation through the AWS SDK for Rust (`aws-sdk-bedrockruntime`),
-which signs every request with SigV4. It is built from an
-`aws_types::sdk_config::SdkConfig` (the shape the AWS default credential and
-region chain produces, via `aws_config::defaults(..).load().await`) or from
-caller-supplied static credentials, and is pinned to `us-east-1`. The SDK
-lifts the model's `toolUse` blocks; `BedrockAdapter::converse` drives the call
-and feeds the response to `lift_batch`.
+- Drive the live Bedrock Runtime `Converse` operation through
+  `aws-sdk-bedrockruntime` (SigV4-signed) and re-encode its typed response
+  back to Bedrock Converse JSON (`transport::AwsSdkTransport`).
+- Lift `toolUse` content blocks from a batch Converse response into
+  `ToolInvocation`, enforcing any declared `toolConfig` tool names
+  (`BedrockAdapter::lift_batch`).
+- Lower a kernel `VerdictResult` into a Bedrock `toolResult` block: JSON
+  Pointer redactions on the allow path, a structured `chio` denial payload on
+  the deny path (`BedrockAdapter::lower_tool_result`).
+- Gate `ConverseStream` tool-use events: buffer `contentBlockStart` /
+  `contentBlockDelta` frames per block, evaluate the completed JSON input
+  against a caller-supplied verdict closure, and release frames only on
+  allow (`BedrockAdapter::gate_converse_stream`).
+- Resolve the calling IAM principal from a signed `iam_principals.toml` and
+  its Sigstore bundle before any tool-use traffic can be lifted, with an STS
+  `GetCallerIdentity` bootstrap path.
+- Reject construction or configuration that drifts from the v1 region and
+  API pin.
 
-`transport::MockTransport` records intended calls and replays scripted Converse
-responses, so the adapter is exercised without contacting AWS. Hermetic tests
-(`tests/sdk_transport.rs`) inject a `StaticReplayClient` as the SDK HTTP client
-to run the real Converse serialize/deserialize path offline.
+## Public API
 
-## Pinned upstream SDK and region
+- `BedrockAdapter` - adapter handle; `new`, `new_with_signed_iam_principals_config`,
+  `new_with_signed_iam_principals_config_from_sts`, `converse`, `lift_batch`,
+  `lower_tool_result`, `gate_converse_stream`, `principal_owner`,
+  `matched_iam_principal_pattern`.
+- `BedrockAdapterConfig` - server identity, the pinned region/API version, and
+  IAM caller fields; `new`, `with_assumed_role_session_arn`, `validate`,
+  `principal`.
+- `BedrockAdapterError` - construction and config errors (`UnsupportedRegion`,
+  `UnsupportedApiVersion`, `Transport`, `IamPrincipals`).
+- `transport::{Transport, AwsSdkTransport, MockTransport, TransportError,
+  ConverseRequest, BedrockOperation}` - `BEDROCK_REGION` and
+  `BEDROCK_CONVERSE_API_VERSION` are re-exported at the crate root.
+- `iam_principals::{IamPrincipalsConfig, IamPrincipalMapping,
+  AwsStsCallerIdentityProvider, BedrockCallerIdentity,
+  ResolvedBedrockPrincipal, IamPrincipalConfigError}` - re-exported at the
+  crate root, along with `DEFAULT_IAM_PRINCIPALS_CONFIG_PATH`.
+- `native::{ToolConfig, ToolSpec, ToolUseBlock, ToolResultBlock,
+  ToolResultStatus}` - Bedrock wire types, re-exported at the crate root.
+- `adapter::streaming::GatedConverseStream` - the bytes, events, invocations,
+  and verdicts returned by `gate_converse_stream`.
+- `BedrockAdapter` implements `chio_tool_call_fabric::ProviderAdapter`,
+  `chio_provider_adapter_core::Provider`, and `chio_core::LoadedWeights`
+  (always unavailable, since Amazon Bedrock Converse does not expose runtime
+  loaded model bytes).
 
-- AWS SDK crate: `aws-sdk-bedrockruntime = "1.130.0"`, pinned once in the
-  root workspace `Cargo.toml` and inherited by this crate.
-- Region: `us-east-1` only for v1.
-- API marker: `bedrock.converse.v1`, exposed as
-  `chio_bedrock_converse_adapter::transport::BEDROCK_CONVERSE_API_VERSION`.
+## Pinned surface
 
-Bumping the SDK version, region, or API marker is a deliberate PR that must
-re-record the Bedrock conformance fixtures.
+| Constant | Value |
+|----------|-------|
+| `BEDROCK_REGION` | `us-east-1` |
+| `BEDROCK_CONVERSE_API_VERSION` | `bedrock.converse.v1` |
+| workspace `aws-sdk-bedrockruntime` | `1.130.0` |
 
-## Implementation Status
+`BedrockAdapterConfig::validate` and `BedrockAdapter::new` reject any other
+region or API version at construction; `Transport::validate_operation`
+re-checks the region on every call. Bumping the SDK pin or region requires a
+fixture re-record PR against the Bedrock conformance fixtures in
+`chio-provider-conformance`.
 
-| Deliverable                                                               | Status |
-| ------------------------------------------------------------------------- | ------ |
-| Workspace SDK pin, `us-east-1` gate, native types, transport trait        | done |
-| AWS-SDK-backed `Converse` transport (SigV4) plus recording `MockTransport` | done |
-| `ProviderAdapter::lift`/`lower` for batch `Converse` toolUse/toolResult blocks | done |
-| `ConverseStream` buffering with verdict at `contentBlockStart` for `toolUse` | done |
-| IAM principal disambiguation via signed `config/iam_principals.toml` and STS bootstrap | done |
-| 12 Bedrock conformance fixtures and cold-init budget evidence             | done |
-| Cross-provider demo with byte-equal verdicts across OpenAI, Anthropic, and Bedrock | done |
-| Release audit row, provider integration guide, and Bedrock error taxonomy doctest | this PR |
+## IAM principal mapping
 
-## Crate layout
+Production initialization should use
+`BedrockAdapter::new_with_signed_iam_principals_config_from_sts`: it resolves
+STS `GetCallerIdentity` once per process, loads `config/iam_principals.toml`,
+verifies the adjacent `config/iam_principals.toml.sigstore-bundle.json`
+through the `chio-attest-verify` `AttestVerifier`, and resolves the caller to
+the shared `Principal::BedrockIam` shape. Mapping entries are ordered; the
+first exact or `*` wildcard match against the caller ARN wins. For an STS
+assumed-role caller, the adapter keeps the original assumed-role session ARN
+in `assumed_role_session_arn` and stores the canonical IAM role ARN
+separately in `caller_arn`.
 
-```text
-crates/protocol/chio-bedrock-converse-adapter/
-  Cargo.toml      workspace SDK dependency, pin metadata, lints
-  README.md       this file
-  src/
-    iam_principals.rs signed IAM mapping loader, STS identity cache
-    lib.rs        BedrockAdapter, BedrockAdapterConfig, error type
-    native.rs     toolConfig, toolUse, toolResult wire types
-    transport.rs  Transport trait, AwsSdkTransport, MockTransport, region and API pins
-  config/
-    iam_principals.toml          default signed-config path
-    iam_principals.example.toml  operator template
-```
-
-## Scope
-
-The transport permits only the `Converse` and `ConverseStream` operations and
-rejects any region other than `us-east-1`. Native structs cover the subset
-needed by lift/lower: `toolConfig`, `toolUse`, and `toolResult`.
-
-## IAM Principal Mapping
-
-Production Bedrock initialization should use
-`BedrockAdapter::new_with_signed_iam_principals_config_from_sts`. It performs
-one STS `GetCallerIdentity` call per process, loads
-`config/iam_principals.toml`, verifies the adjacent Sigstore bundle, and then
-resolves the caller to the shared `Principal::BedrockIam` shape.
-
-The required bundle path is the TOML path plus `.sigstore-bundle.json`:
-
-```text
-config/iam_principals.toml
-config/iam_principals.toml.sigstore-bundle.json
-```
-
-The verifier is the shared `chio-attest-verify` `AttestVerifier` surface.
-Operators must pass the expected Sigstore certificate identity and OIDC issuer
-from their deployment policy. Missing config, missing bundle, rejected
-signature, invalid TOML, unsupported schema, and unmapped callers all fail
-closed before tool-use traffic is lifted.
-
-Mapping order matters. The first exact or `*` wildcard match wins. For STS
-assumed-role callers, the adapter preserves the original
-`arn:aws:sts::...:assumed-role/.../...` session ARN in
-`assumed_role_session_arn` and stores the canonical IAM role ARN in
-`caller_arn`; it does not collapse the two fields.
+Fails closed on a missing config file, a missing Sigstore bundle, a rejected
+signature, invalid TOML, an unsupported `config_version`, and a caller ARN
+with no matching mapping (`IamPrincipalConfigError`).
 
 ## Adapter-visible error taxonomy
 
 Bedrock Runtime surfaces batch failures as AWS JSON error envelopes and
 ConverseStream failures as event-stream exception objects such as
-`throttlingException` and `internalServerException`. Rows marked
-`AWS Bedrock Runtime boundary` are emitted by the live `AwsSdkTransport`
-Converse path: `BedrockAdapter::converse` maps the SDK error taxonomy into the
-adapter-visible classes below (throttling to `RateLimited`, service 5xx to
-`Upstream5xx`, model timeout to a transport error, validation/access errors to
-`Malformed`). Rows marked `current adapter path` are emitted by the lift/lower,
-streaming, or evaluator path.
+`throttlingException` and `internalServerException`. `BedrockAdapter::converse`
+maps the live `AwsSdkTransport` Converse path's AWS SDK errors (rows marked
+`AWS Bedrock Runtime boundary`) as follows: throttling to `RateLimited`;
+model-timeout, internal-server, and service-unavailable exceptions to
+`Upstream5xx` (status 408, 500, and 503 respectively); validation,
+access-denied, and other service exceptions to `Malformed`. The local
+per-call timeout wrapper, not an AWS-emitted exception, produces
+`TransportTimeout` (marked `transport boundary`). Rows marked `current
+adapter path` are produced directly by the lift, streaming, or evaluator
+code in this crate.
 
 The table is parsed by `tests/error_taxonomy_doctest.rs`; keep each envelope
 as one valid inline JSON object.
@@ -119,27 +118,28 @@ as one valid inline JSON object.
 | `ProviderError::Malformed` | `{"event":"contentBlockDelta","data":{"contentBlockIndex":0,"delta":{"toolUse":{"input":"{}"}}}}` | `urn:chio:error:provider:bedrock` (`CHIO-PROVIDER-BEDROCK`) + current adapter path | Bedrock Converse provider adapter returned a normalized provider error. Fail closed for impossible or out-of-order native ConverseStream shapes. Registry help: Inspect the provider error details and retry only when the adapter marks the failure transient. |
 <!-- error-taxonomy:end -->
 
-`ProviderError::Other` is intentionally absent. Native Bedrock envelopes must
-map to a concrete class above, or fail closed as `Malformed` when the shape
-cannot be trusted.
+`ProviderError::Other` is intentionally absent: every Bedrock-visible failure
+must map to one of the seven classes above, or fail closed as `Malformed`
+when the shape cannot be trusted.
 
-## Building
+## Testing
 
-```bash
-cargo build -p chio-bedrock-converse-adapter
-```
+`cargo test -p chio-bedrock-converse-adapter`
 
-## House rules
+`tests/sdk_transport.rs` injects a `StaticReplayClient` as the AWS SDK's HTTP
+client, so the real Converse serialize/deserialize path runs with no network
+access. `tests/error_taxonomy_doctest.rs` parses the taxonomy table above out
+of this file and cross-checks it against `ProviderError`.
+`benches/verdict_latency.rs` is a `#[test]`-based bench target asserting a
+500ms p99 cold-init-to-verdict budget over `MockTransport`.
 
-- No em dashes (U+2014) anywhere in code, comments, or documentation.
-- Workspace clippy lints `unwrap_used = "deny"` and `expect_used = "deny"`
-  apply; no exceptions.
-- No `todo!()`, `unimplemented!()`, or bare `panic!()` in trust-boundary
-  paths.
-- Fail-closed: invalid region or API-surface config rejects at construction.
+## See also
 
-## References
-
-- Fabric trait surface: `crates/protocol/chio-tool-call-fabric/src/lib.rs`.
-- Sibling adapter convention:
-  `crates/protocol/chio-anthropic-tools-adapter/`.
+- `chio-tool-call-fabric` - defines `ProviderAdapter`, `ProviderError`, and
+  the fabric types this crate implements against.
+- `chio-provider-adapter-core` - supplies the `Provider` trait and the
+  shared streaming-gate and loaded-weights helpers used here.
+- `chio-anthropic-tools-adapter` - sibling provider adapter with the same
+  lift/lower/gate shape for Anthropic tool calls.
+- `chio-provider-conformance` - exercises this adapter's fixtures behind its
+  `fixtures-bedrock` feature.

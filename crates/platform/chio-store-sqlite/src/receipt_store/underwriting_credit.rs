@@ -14,186 +14,196 @@ impl SqliteReceiptStore {
             ));
         }
 
-        let artifact = &decision.body;
-        let mut connection = self.connection()?;
-        let tx = connection.transaction()?;
-        let existing = tx
-            .query_row(
-                "SELECT decision_id FROM underwriting_decisions WHERE decision_id = ?1",
-                params![artifact.decision_id],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?;
-        if existing.is_some() {
-            return Err(ReceiptStoreError::Conflict(format!(
-                "underwriting decision `{}` already exists",
-                artifact.decision_id
-            )));
-        }
-
-        if let Some(supersedes_decision_id) = artifact.supersedes_decision_id.as_deref() {
-            let state = tx
+        let decision_owned = decision.clone();
+        self.writer_handle().run_write(move |connection| {
+            let decision = &decision_owned;
+            let artifact = &decision.body;
+            let tx = connection.transaction()?;
+            let existing = tx
                 .query_row(
-                    "SELECT lifecycle_state, superseded_by_decision_id
-                     FROM underwriting_decisions
-                     WHERE decision_id = ?1",
-                    params![supersedes_decision_id],
-                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+                    "SELECT decision_id FROM underwriting_decisions WHERE decision_id = ?1",
+                    params![artifact.decision_id],
+                    |row| row.get::<_, String>(0),
                 )
-                .optional()?
-                .ok_or_else(|| {
-                    ReceiptStoreError::NotFound(format!(
-                        "superseded underwriting decision `{supersedes_decision_id}` not found"
-                    ))
-                })?;
-            if state.0
-                != underwriting_lifecycle_state_label(UnderwritingDecisionLifecycleState::Active)
-                || state.1.is_some()
-            {
+                .optional()?;
+            if existing.is_some() {
                 return Err(ReceiptStoreError::Conflict(format!(
-                    "underwriting decision `{supersedes_decision_id}` is not active"
+                    "underwriting decision `{}` already exists",
+                    artifact.decision_id
                 )));
             }
-        }
 
-        let premium_units = artifact
-            .premium
-            .quoted_amount
-            .as_ref()
-            .map(|amount| amount.units as i64);
-        tx.execute(
-            "INSERT INTO underwriting_decisions (
+            if let Some(supersedes_decision_id) = artifact.supersedes_decision_id.as_deref() {
+                let state = tx
+                    .query_row(
+                        "SELECT lifecycle_state, superseded_by_decision_id
+                     FROM underwriting_decisions
+                     WHERE decision_id = ?1",
+                        params![supersedes_decision_id],
+                        |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+                    )
+                    .optional()?
+                    .ok_or_else(|| {
+                        ReceiptStoreError::NotFound(format!(
+                            "superseded underwriting decision `{supersedes_decision_id}` not found"
+                        ))
+                    })?;
+                if state.0
+                    != underwriting_lifecycle_state_label(
+                        UnderwritingDecisionLifecycleState::Active,
+                    )
+                    || state.1.is_some()
+                {
+                    return Err(ReceiptStoreError::Conflict(format!(
+                        "underwriting decision `{supersedes_decision_id}` is not active"
+                    )));
+                }
+            }
+
+            let premium_units = artifact
+                .premium
+                .quoted_amount
+                .as_ref()
+                .map(|amount| amount.units as i64);
+            tx.execute(
+                "INSERT INTO underwriting_decisions (
                 decision_id, issued_at, capability_id, subject_key, tool_server, tool_name,
                 outcome, lifecycle_state, review_state, risk_class, supersedes_decision_id,
                 superseded_by_decision_id, premium_units, raw_json, signer_key, signature
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, NULL, ?12, ?13, ?14, ?15)",
-            params![
-                artifact.decision_id,
-                artifact.issued_at as i64,
-                artifact.evaluation.input.filters.capability_id.as_deref(),
-                artifact.evaluation.input.filters.agent_subject.as_deref(),
-                artifact.evaluation.input.filters.tool_server.as_deref(),
-                artifact.evaluation.input.filters.tool_name.as_deref(),
-                underwriting_decision_outcome_label(artifact.evaluation.outcome),
-                underwriting_lifecycle_state_label(artifact.lifecycle_state),
-                underwriting_review_state_label(artifact.review_state),
-                underwriting_risk_class_label(artifact.evaluation.risk_class),
-                artifact.supersedes_decision_id.as_deref(),
-                premium_units,
-                serde_json::to_string(decision)?,
-                decision.signer_key.to_hex(),
-                decision.signature.to_hex(),
-            ],
-        )?;
-
-        if let Some(supersedes_decision_id) = artifact.supersedes_decision_id.as_deref() {
-            tx.execute(
-                "UPDATE underwriting_decisions
-                 SET lifecycle_state = ?1, superseded_by_decision_id = ?2
-                 WHERE decision_id = ?3",
                 params![
-                    underwriting_lifecycle_state_label(
-                        UnderwritingDecisionLifecycleState::Superseded,
-                    ),
                     artifact.decision_id,
-                    supersedes_decision_id,
+                    artifact.issued_at as i64,
+                    artifact.evaluation.input.filters.capability_id.as_deref(),
+                    artifact.evaluation.input.filters.agent_subject.as_deref(),
+                    artifact.evaluation.input.filters.tool_server.as_deref(),
+                    artifact.evaluation.input.filters.tool_name.as_deref(),
+                    underwriting_decision_outcome_label(artifact.evaluation.outcome),
+                    underwriting_lifecycle_state_label(artifact.lifecycle_state),
+                    underwriting_review_state_label(artifact.review_state),
+                    underwriting_risk_class_label(artifact.evaluation.risk_class),
+                    artifact.supersedes_decision_id.as_deref(),
+                    premium_units,
+                    serde_json::to_string(decision)?,
+                    decision.signer_key.to_hex(),
+                    decision.signature.to_hex(),
                 ],
             )?;
-        }
 
-        tx.commit()?;
-        Ok(())
+            if let Some(supersedes_decision_id) = artifact.supersedes_decision_id.as_deref() {
+                tx.execute(
+                    "UPDATE underwriting_decisions
+                 SET lifecycle_state = ?1, superseded_by_decision_id = ?2
+                 WHERE decision_id = ?3",
+                    params![
+                        underwriting_lifecycle_state_label(
+                            UnderwritingDecisionLifecycleState::Superseded,
+                        ),
+                        artifact.decision_id,
+                        supersedes_decision_id,
+                    ],
+                )?;
+            }
+
+            tx.commit()?;
+            Ok(())
+        })
     }
 
     pub fn create_underwriting_appeal(
         &mut self,
         request: &UnderwritingAppealCreateRequest,
     ) -> Result<UnderwritingAppealRecord, ReceiptStoreError> {
-        let mut connection = self.connection()?;
-        let tx = connection.transaction()?;
-        let exists = tx
-            .query_row(
-                "SELECT decision_id FROM underwriting_decisions WHERE decision_id = ?1",
-                params![request.decision_id],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?;
-        if exists.is_none() {
-            return Err(ReceiptStoreError::NotFound(format!(
-                "underwriting decision `{}` not found",
-                request.decision_id
-            )));
-        }
-        let open_appeal = tx
-            .query_row(
-                "SELECT appeal_id FROM underwriting_appeals
+        let request_owned = request.clone();
+        self.writer_handle().run_write(move |connection| {
+            let request = &request_owned;
+            let tx = connection.transaction()?;
+            let exists = tx
+                .query_row(
+                    "SELECT decision_id FROM underwriting_decisions WHERE decision_id = ?1",
+                    params![request.decision_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?;
+            if exists.is_none() {
+                return Err(ReceiptStoreError::NotFound(format!(
+                    "underwriting decision `{}` not found",
+                    request.decision_id
+                )));
+            }
+            let open_appeal = tx
+                .query_row(
+                    "SELECT appeal_id FROM underwriting_appeals
                  WHERE decision_id = ?1 AND status = ?2",
-                params![
-                    request.decision_id,
-                    underwriting_appeal_status_label(UnderwritingAppealStatus::Open)
-                ],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?;
-        if let Some(appeal_id) = open_appeal {
-            return Err(ReceiptStoreError::Conflict(format!(
-                "underwriting decision `{}` already has open appeal `{appeal_id}`",
-                request.decision_id
-            )));
-        }
+                    params![
+                        request.decision_id,
+                        underwriting_appeal_status_label(UnderwritingAppealStatus::Open)
+                    ],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?;
+            if let Some(appeal_id) = open_appeal {
+                return Err(ReceiptStoreError::Conflict(format!(
+                    "underwriting decision `{}` already has open appeal `{appeal_id}`",
+                    request.decision_id
+                )));
+            }
 
-        let created_at = unix_now();
-        let appeal_id = format!(
-            "uwa-{}",
-            chio_core::sha256_hex(
-                &canonical_json_bytes(&(
-                    &request.decision_id,
-                    &request.requested_by,
-                    &request.reason,
-                    &request.note,
-                    created_at,
-                ))
-                .map_err(|error| ReceiptStoreError::Canonical(error.to_string()))?
-            )
-        );
-        let record = UnderwritingAppealRecord {
-            schema: chio_kernel::UNDERWRITING_APPEAL_SCHEMA.to_string(),
-            appeal_id: appeal_id.clone(),
-            decision_id: request.decision_id.clone(),
-            requested_by: request.requested_by.clone(),
-            reason: request.reason.clone(),
-            status: UnderwritingAppealStatus::Open,
-            created_at,
-            updated_at: created_at,
-            note: request.note.clone(),
-            resolved_by: None,
-            replacement_decision_id: None,
-        };
-        tx.execute(
-            "INSERT INTO underwriting_appeals (
+            let created_at = unix_now();
+            let appeal_id = format!(
+                "uwa-{}",
+                chio_core::sha256_hex(
+                    &canonical_json_bytes(&(
+                        &request.decision_id,
+                        &request.requested_by,
+                        &request.reason,
+                        &request.note,
+                        created_at,
+                    ))
+                    .map_err(|error| ReceiptStoreError::Canonical(error.to_string()))?
+                )
+            );
+            let record = UnderwritingAppealRecord {
+                schema: chio_kernel::UNDERWRITING_APPEAL_SCHEMA.to_string(),
+                appeal_id: appeal_id.clone(),
+                decision_id: request.decision_id.clone(),
+                requested_by: request.requested_by.clone(),
+                reason: request.reason.clone(),
+                status: UnderwritingAppealStatus::Open,
+                created_at,
+                updated_at: created_at,
+                note: request.note.clone(),
+                resolved_by: None,
+                replacement_decision_id: None,
+            };
+            tx.execute(
+                "INSERT INTO underwriting_appeals (
                 appeal_id, decision_id, requested_by, reason, status, note,
                 created_at, updated_at, resolved_by, replacement_decision_id
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, NULL, NULL)",
-            params![
-                record.appeal_id,
-                record.decision_id,
-                record.requested_by,
-                record.reason,
-                underwriting_appeal_status_label(record.status),
-                record.note.as_deref(),
-                record.created_at as i64,
-                record.updated_at as i64,
-            ],
-        )?;
-        tx.commit()?;
-        Ok(record)
+                params![
+                    record.appeal_id,
+                    record.decision_id,
+                    record.requested_by,
+                    record.reason,
+                    underwriting_appeal_status_label(record.status),
+                    record.note.as_deref(),
+                    record.created_at as i64,
+                    record.updated_at as i64,
+                ],
+            )?;
+            tx.commit()?;
+            Ok(record)
+        })
     }
 
     pub fn resolve_underwriting_appeal(
         &mut self,
         request: &UnderwritingAppealResolveRequest,
     ) -> Result<UnderwritingAppealRecord, ReceiptStoreError> {
-        let mut connection = self.connection()?;
+        let request_owned = request.clone();
+        self.writer_handle().run_write(move |connection| {
+        let request = &request_owned;
         let tx = connection.transaction()?;
         let mut record = query_underwriting_appeal(&tx, &request.appeal_id)?.ok_or_else(|| {
             ReceiptStoreError::NotFound(format!(
@@ -260,6 +270,7 @@ impl SqliteReceiptStore {
         )?;
         tx.commit()?;
         Ok(record)
+        })
     }
 
     pub fn query_underwriting_decisions(
@@ -393,95 +404,98 @@ impl SqliteReceiptStore {
             ));
         }
 
-        let artifact = &facility.body;
-        let mut connection = self.connection()?;
-        let tx = connection.transaction()?;
-        let existing = tx
-            .query_row(
-                "SELECT facility_id FROM credit_facilities WHERE facility_id = ?1",
-                params![artifact.facility_id],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?;
-        if existing.is_some() {
-            return Err(ReceiptStoreError::Conflict(format!(
-                "credit facility `{}` already exists",
-                artifact.facility_id
-            )));
-        }
-
-        if let Some(supersedes_facility_id) = artifact.supersedes_facility_id.as_deref() {
-            let state = tx
+        let facility_owned = facility.clone();
+        self.writer_handle().run_write(move |connection| {
+            let facility = &facility_owned;
+            let artifact = &facility.body;
+            let tx = connection.transaction()?;
+            let existing = tx
                 .query_row(
-                    "SELECT lifecycle_state, superseded_by_facility_id, expires_at
-                     FROM credit_facilities
-                     WHERE facility_id = ?1",
-                    params![supersedes_facility_id],
-                    |row| {
-                        Ok((
-                            row.get::<_, String>(0)?,
-                            row.get::<_, Option<String>>(1)?,
-                            row.get::<_, i64>(2)?,
-                        ))
-                    },
+                    "SELECT facility_id FROM credit_facilities WHERE facility_id = ?1",
+                    params![artifact.facility_id],
+                    |row| row.get::<_, String>(0),
                 )
-                .optional()?
-                .ok_or_else(|| {
-                    ReceiptStoreError::NotFound(format!(
-                        "superseded credit facility `{supersedes_facility_id}` not found"
-                    ))
-                })?;
-            if state.0
-                != credit_facility_lifecycle_state_label(CreditFacilityLifecycleState::Active)
-                || state.1.is_some()
-                || state.2.max(0) as u64 <= unix_now()
-            {
+                .optional()?;
+            if existing.is_some() {
                 return Err(ReceiptStoreError::Conflict(format!(
-                    "credit facility `{supersedes_facility_id}` is not active"
+                    "credit facility `{}` already exists",
+                    artifact.facility_id
                 )));
             }
-        }
 
-        tx.execute(
-            "INSERT INTO credit_facilities (
+            if let Some(supersedes_facility_id) = artifact.supersedes_facility_id.as_deref() {
+                let state = tx
+                    .query_row(
+                        "SELECT lifecycle_state, superseded_by_facility_id, expires_at
+                     FROM credit_facilities
+                     WHERE facility_id = ?1",
+                        params![supersedes_facility_id],
+                        |row| {
+                            Ok((
+                                row.get::<_, String>(0)?,
+                                row.get::<_, Option<String>>(1)?,
+                                row.get::<_, i64>(2)?,
+                            ))
+                        },
+                    )
+                    .optional()?
+                    .ok_or_else(|| {
+                        ReceiptStoreError::NotFound(format!(
+                            "superseded credit facility `{supersedes_facility_id}` not found"
+                        ))
+                    })?;
+                if state.0
+                    != credit_facility_lifecycle_state_label(CreditFacilityLifecycleState::Active)
+                    || state.1.is_some()
+                    || state.2.max(0) as u64 <= unix_now()
+                {
+                    return Err(ReceiptStoreError::Conflict(format!(
+                        "credit facility `{supersedes_facility_id}` is not active"
+                    )));
+                }
+            }
+
+            tx.execute(
+                "INSERT INTO credit_facilities (
                 facility_id, issued_at, expires_at, capability_id, subject_key, tool_server,
                 tool_name, disposition, lifecycle_state, supersedes_facility_id,
                 superseded_by_facility_id, raw_json, signer_key, signature
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, NULL, ?11, ?12, ?13)",
-            params![
-                artifact.facility_id,
-                artifact.issued_at as i64,
-                artifact.expires_at as i64,
-                artifact.report.filters.capability_id.as_deref(),
-                artifact.report.filters.agent_subject.as_deref(),
-                artifact.report.filters.tool_server.as_deref(),
-                artifact.report.filters.tool_name.as_deref(),
-                credit_facility_disposition_label(artifact.report.disposition),
-                credit_facility_lifecycle_state_label(artifact.lifecycle_state),
-                artifact.supersedes_facility_id.as_deref(),
-                serde_json::to_string(facility)?,
-                facility.signer_key.to_hex(),
-                facility.signature.to_hex(),
-            ],
-        )?;
-
-        if let Some(supersedes_facility_id) = artifact.supersedes_facility_id.as_deref() {
-            tx.execute(
-                "UPDATE credit_facilities
-                 SET lifecycle_state = ?1, superseded_by_facility_id = ?2
-                 WHERE facility_id = ?3",
                 params![
-                    credit_facility_lifecycle_state_label(
-                        CreditFacilityLifecycleState::Superseded,
-                    ),
                     artifact.facility_id,
-                    supersedes_facility_id,
+                    artifact.issued_at as i64,
+                    artifact.expires_at as i64,
+                    artifact.report.filters.capability_id.as_deref(),
+                    artifact.report.filters.agent_subject.as_deref(),
+                    artifact.report.filters.tool_server.as_deref(),
+                    artifact.report.filters.tool_name.as_deref(),
+                    credit_facility_disposition_label(artifact.report.disposition),
+                    credit_facility_lifecycle_state_label(artifact.lifecycle_state),
+                    artifact.supersedes_facility_id.as_deref(),
+                    serde_json::to_string(facility)?,
+                    facility.signer_key.to_hex(),
+                    facility.signature.to_hex(),
                 ],
             )?;
-        }
 
-        tx.commit()?;
-        Ok(())
+            if let Some(supersedes_facility_id) = artifact.supersedes_facility_id.as_deref() {
+                tx.execute(
+                    "UPDATE credit_facilities
+                 SET lifecycle_state = ?1, superseded_by_facility_id = ?2
+                 WHERE facility_id = ?3",
+                    params![
+                        credit_facility_lifecycle_state_label(
+                            CreditFacilityLifecycleState::Superseded,
+                        ),
+                        artifact.facility_id,
+                        supersedes_facility_id,
+                    ],
+                )?;
+            }
+
+            tx.commit()?;
+            Ok(())
+        })
     }
 
     pub fn query_credit_facilities(
@@ -578,93 +592,96 @@ impl SqliteReceiptStore {
             ));
         }
 
-        let artifact = &bond.body;
-        let mut connection = self.connection()?;
-        let tx = connection.transaction()?;
-        let existing = tx
-            .query_row(
-                "SELECT bond_id FROM credit_bonds WHERE bond_id = ?1",
-                params![artifact.bond_id],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?;
-        if existing.is_some() {
-            return Err(ReceiptStoreError::Conflict(format!(
-                "credit bond `{}` already exists",
-                artifact.bond_id
-            )));
-        }
-
-        if let Some(supersedes_bond_id) = artifact.supersedes_bond_id.as_deref() {
-            let state = tx
+        let bond_owned = bond.clone();
+        self.writer_handle().run_write(move |connection| {
+            let bond = &bond_owned;
+            let artifact = &bond.body;
+            let tx = connection.transaction()?;
+            let existing = tx
                 .query_row(
-                    "SELECT lifecycle_state, superseded_by_bond_id, expires_at
-                     FROM credit_bonds
-                     WHERE bond_id = ?1",
-                    params![supersedes_bond_id],
-                    |row| {
-                        Ok((
-                            row.get::<_, String>(0)?,
-                            row.get::<_, Option<String>>(1)?,
-                            row.get::<_, i64>(2)?,
-                        ))
-                    },
+                    "SELECT bond_id FROM credit_bonds WHERE bond_id = ?1",
+                    params![artifact.bond_id],
+                    |row| row.get::<_, String>(0),
                 )
-                .optional()?
-                .ok_or_else(|| {
-                    ReceiptStoreError::NotFound(format!(
-                        "superseded credit bond `{supersedes_bond_id}` not found"
-                    ))
-                })?;
-            if state.0 != credit_bond_lifecycle_state_label(CreditBondLifecycleState::Active)
-                || state.1.is_some()
-                || state.2.max(0) as u64 <= unix_now()
-            {
+                .optional()?;
+            if existing.is_some() {
                 return Err(ReceiptStoreError::Conflict(format!(
-                    "credit bond `{supersedes_bond_id}` is not active"
+                    "credit bond `{}` already exists",
+                    artifact.bond_id
                 )));
             }
-        }
 
-        tx.execute(
-            "INSERT INTO credit_bonds (
+            if let Some(supersedes_bond_id) = artifact.supersedes_bond_id.as_deref() {
+                let state = tx
+                    .query_row(
+                        "SELECT lifecycle_state, superseded_by_bond_id, expires_at
+                     FROM credit_bonds
+                     WHERE bond_id = ?1",
+                        params![supersedes_bond_id],
+                        |row| {
+                            Ok((
+                                row.get::<_, String>(0)?,
+                                row.get::<_, Option<String>>(1)?,
+                                row.get::<_, i64>(2)?,
+                            ))
+                        },
+                    )
+                    .optional()?
+                    .ok_or_else(|| {
+                        ReceiptStoreError::NotFound(format!(
+                            "superseded credit bond `{supersedes_bond_id}` not found"
+                        ))
+                    })?;
+                if state.0 != credit_bond_lifecycle_state_label(CreditBondLifecycleState::Active)
+                    || state.1.is_some()
+                    || state.2.max(0) as u64 <= unix_now()
+                {
+                    return Err(ReceiptStoreError::Conflict(format!(
+                        "credit bond `{supersedes_bond_id}` is not active"
+                    )));
+                }
+            }
+
+            tx.execute(
+                "INSERT INTO credit_bonds (
                 bond_id, issued_at, expires_at, facility_id, capability_id, subject_key,
                 tool_server, tool_name, disposition, lifecycle_state, supersedes_bond_id,
                 superseded_by_bond_id, raw_json, signer_key, signature
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, NULL, ?12, ?13, ?14)",
-            params![
-                artifact.bond_id,
-                artifact.issued_at as i64,
-                artifact.expires_at as i64,
-                artifact.report.latest_facility_id.as_deref(),
-                artifact.report.filters.capability_id.as_deref(),
-                artifact.report.filters.agent_subject.as_deref(),
-                artifact.report.filters.tool_server.as_deref(),
-                artifact.report.filters.tool_name.as_deref(),
-                credit_bond_disposition_label(artifact.report.disposition),
-                credit_bond_lifecycle_state_label(artifact.lifecycle_state),
-                artifact.supersedes_bond_id.as_deref(),
-                serde_json::to_string(bond)?,
-                bond.signer_key.to_hex(),
-                bond.signature.to_hex(),
-            ],
-        )?;
-
-        if let Some(supersedes_bond_id) = artifact.supersedes_bond_id.as_deref() {
-            tx.execute(
-                "UPDATE credit_bonds
-                 SET lifecycle_state = ?1, superseded_by_bond_id = ?2
-                 WHERE bond_id = ?3",
                 params![
-                    credit_bond_lifecycle_state_label(CreditBondLifecycleState::Superseded),
                     artifact.bond_id,
-                    supersedes_bond_id,
+                    artifact.issued_at as i64,
+                    artifact.expires_at as i64,
+                    artifact.report.latest_facility_id.as_deref(),
+                    artifact.report.filters.capability_id.as_deref(),
+                    artifact.report.filters.agent_subject.as_deref(),
+                    artifact.report.filters.tool_server.as_deref(),
+                    artifact.report.filters.tool_name.as_deref(),
+                    credit_bond_disposition_label(artifact.report.disposition),
+                    credit_bond_lifecycle_state_label(artifact.lifecycle_state),
+                    artifact.supersedes_bond_id.as_deref(),
+                    serde_json::to_string(bond)?,
+                    bond.signer_key.to_hex(),
+                    bond.signature.to_hex(),
                 ],
             )?;
-        }
 
-        tx.commit()?;
-        Ok(())
+            if let Some(supersedes_bond_id) = artifact.supersedes_bond_id.as_deref() {
+                tx.execute(
+                    "UPDATE credit_bonds
+                 SET lifecycle_state = ?1, superseded_by_bond_id = ?2
+                 WHERE bond_id = ?3",
+                    params![
+                        credit_bond_lifecycle_state_label(CreditBondLifecycleState::Superseded),
+                        artifact.bond_id,
+                        supersedes_bond_id,
+                    ],
+                )?;
+            }
+
+            tx.commit()?;
+            Ok(())
+        })
     }
 
     pub fn query_credit_bonds(
@@ -767,72 +784,75 @@ impl SqliteReceiptStore {
             ));
         }
 
-        let artifact = &event.body;
-        let mut connection = self.connection()?;
-        let tx = connection.transaction()?;
-        let existing = tx
-            .query_row(
-                "SELECT event_id FROM credit_loss_lifecycle WHERE event_id = ?1",
-                params![artifact.event_id],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?;
-        if existing.is_some() {
-            return Err(ReceiptStoreError::Conflict(format!(
-                "credit loss lifecycle `{}` already exists",
-                artifact.event_id
-            )));
-        }
+        let event_owned = event.clone();
+        self.writer_handle().run_write(move |connection| {
+            let event = &event_owned;
+            let artifact = &event.body;
+            let tx = connection.transaction()?;
+            let existing = tx
+                .query_row(
+                    "SELECT event_id FROM credit_loss_lifecycle WHERE event_id = ?1",
+                    params![artifact.event_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?;
+            if existing.is_some() {
+                return Err(ReceiptStoreError::Conflict(format!(
+                    "credit loss lifecycle `{}` already exists",
+                    artifact.event_id
+                )));
+            }
 
-        let bond_exists = tx
-            .query_row(
-                "SELECT bond_id FROM credit_bonds WHERE bond_id = ?1",
-                params![artifact.bond_id],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?;
-        if bond_exists.is_none() {
-            return Err(ReceiptStoreError::NotFound(format!(
-                "credit bond `{}` not found",
-                artifact.bond_id
-            )));
-        }
+            let bond_exists = tx
+                .query_row(
+                    "SELECT bond_id FROM credit_bonds WHERE bond_id = ?1",
+                    params![artifact.bond_id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()?;
+            if bond_exists.is_none() {
+                return Err(ReceiptStoreError::NotFound(format!(
+                    "credit bond `{}` not found",
+                    artifact.bond_id
+                )));
+            }
 
-        tx.execute(
-            "INSERT INTO credit_loss_lifecycle (
+            tx.execute(
+                "INSERT INTO credit_loss_lifecycle (
                 event_id, issued_at, bond_id, facility_id, capability_id, subject_key,
                 tool_server, tool_name, event_kind, projected_bond_lifecycle_state,
                 raw_json, signer_key, signature
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-            params![
-                artifact.event_id,
-                artifact.issued_at as i64,
-                artifact.bond_id,
-                artifact.report.summary.facility_id.as_deref(),
-                artifact.report.summary.capability_id.as_deref(),
-                artifact.report.summary.agent_subject.as_deref(),
-                artifact.report.summary.tool_server.as_deref(),
-                artifact.report.summary.tool_name.as_deref(),
-                credit_loss_lifecycle_event_kind_label(artifact.event_kind),
-                credit_bond_lifecycle_state_label(artifact.projected_bond_lifecycle_state),
-                serde_json::to_string(event)?,
-                event.signer_key.to_hex(),
-                event.signature.to_hex(),
-            ],
-        )?;
+                params![
+                    artifact.event_id,
+                    artifact.issued_at as i64,
+                    artifact.bond_id,
+                    artifact.report.summary.facility_id.as_deref(),
+                    artifact.report.summary.capability_id.as_deref(),
+                    artifact.report.summary.agent_subject.as_deref(),
+                    artifact.report.summary.tool_server.as_deref(),
+                    artifact.report.summary.tool_name.as_deref(),
+                    credit_loss_lifecycle_event_kind_label(artifact.event_kind),
+                    credit_bond_lifecycle_state_label(artifact.projected_bond_lifecycle_state),
+                    serde_json::to_string(event)?,
+                    event.signer_key.to_hex(),
+                    event.signature.to_hex(),
+                ],
+            )?;
 
-        tx.execute(
-            "UPDATE credit_bonds
+            tx.execute(
+                "UPDATE credit_bonds
              SET lifecycle_state = ?1
              WHERE bond_id = ?2",
-            params![
-                credit_bond_lifecycle_state_label(artifact.projected_bond_lifecycle_state),
-                artifact.bond_id,
-            ],
-        )?;
+                params![
+                    credit_bond_lifecycle_state_label(artifact.projected_bond_lifecycle_state),
+                    artifact.bond_id,
+                ],
+            )?;
 
-        tx.commit()?;
-        Ok(())
+            tx.commit()?;
+            Ok(())
+        })
     }
 
     pub fn query_credit_loss_lifecycle(

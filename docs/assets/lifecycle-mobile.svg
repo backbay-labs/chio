@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 680" width="480" height="680" role="img" aria-label="Life of a tool call: present, verify, budget, guard in, dispatch, guard out, meter and sign, commit; every outcome becomes a signed receipt">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#130d0a"/>
+      <stop offset="1" stop-color="#1b140d"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#8f7ff2" stop-opacity="0.3"/>
+      <stop offset="0.6" stop-color="#8f7ff2" stop-opacity="0.06"/>
+      <stop offset="1" stop-color="#8f7ff2" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="480" height="680" fill="url(#bg)"/>
+
+  <text x="240" y="38" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" letter-spacing="2.5" fill="#d8cfc0" fill-opacity="0.55">LIFE OF A TOOL CALL</text>
+
+  <!-- vertical track -->
+  <path d="M64 80 V596" stroke="#b08d5b" stroke-opacity="0.28" stroke-width="1"/>
+
+  <!-- node glows -->
+  <g>
+    <circle cx="64" cy="80" r="26" fill="url(#glow)"/><circle cx="64" cy="154" r="26" fill="url(#glow)"/>
+    <circle cx="64" cy="228" r="26" fill="url(#glow)"/><circle cx="64" cy="302" r="26" fill="url(#glow)"/>
+    <circle cx="64" cy="376" r="26" fill="url(#glow)"/><circle cx="64" cy="450" r="26" fill="url(#glow)"/>
+    <circle cx="64" cy="524" r="26" fill="url(#glow)"/><circle cx="64" cy="596" r="26" fill="url(#glow)"/>
+  </g>
+  <!-- node rings -->
+  <g fill="#16101c" stroke="#8f7ff2" stroke-opacity="0.6" stroke-width="1.2">
+    <circle cx="64" cy="80" r="18"/><circle cx="64" cy="154" r="18"/><circle cx="64" cy="228" r="18"/><circle cx="64" cy="302" r="18"/>
+    <circle cx="64" cy="376" r="18"/><circle cx="64" cy="450" r="18"/><circle cx="64" cy="524" r="18"/><circle cx="64" cy="596" r="18"/>
+  </g>
+  <!-- icons -->
+  <g fill="none" stroke="#c3b6ff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+    <g transform="translate(64,80)"><rect x="-8" y="-6" width="16" height="12" rx="2"/><path d="M-4 -1 H4"/></g>
+    <g transform="translate(64,154)"><path d="M-6 0 L-2 5 L7 -6"/></g>
+    <g transform="translate(64,228)"><circle cx="0" cy="0" r="7"/><path d="M0 -4 L4 0 L0 4 L-4 0 Z" stroke-width="1.2"/></g>
+    <g transform="translate(64,302)"><path d="M0 -8 L7 -5 L7 1 C7 6 4 9 0 10 C-4 9 -7 6 -7 1 L-7 -5 Z"/></g>
+    <g transform="translate(64,376)"><path d="M-7 0 H6"/><path d="M2 -4 L7 0 L2 4"/></g>
+    <g transform="translate(64,450)"><path d="M-7 -6 H7 L2 1 V7 L-2 5 V1 Z"/></g>
+    <g transform="translate(64,524)"><circle cx="0" cy="0" r="6.5"/><path d="M-3 0 L-1 2.5 L3.5 -3" stroke="#f2eadc"/></g>
+    <g transform="translate(64,596)"><ellipse cx="0" cy="-5" rx="6" ry="2.2"/><path d="M-6 -5 V5"/><path d="M6 -5 V5"/><path d="M-6 5 C-6 7.2 6 7.2 6 5"/></g>
+  </g>
+  <!-- numbers + names -->
+  <g font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" letter-spacing="1.5" fill="#b08d5b">
+    <text x="100" y="70">01</text><text x="100" y="144">02</text><text x="100" y="218">03</text><text x="100" y="292">04</text>
+    <text x="100" y="366">05</text><text x="100" y="440">06</text><text x="100" y="514">07</text><text x="100" y="586">08</text>
+  </g>
+  <g font-family="Georgia, 'Times New Roman', serif" font-size="19" fill="#e7ded0">
+    <text x="100" y="88">Present</text><text x="100" y="162">Verify</text><text x="100" y="236">Budget</text><text x="100" y="310">Guard (in)</text>
+    <text x="100" y="384">Dispatch</text><text x="100" y="458">Guard (out)</text><text x="100" y="532">Meter and sign</text><text x="100" y="604">Commit</text>
+  </g>
+
+  <text x="240" y="652" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-size="14.5" fill="#d8cfc0" fill-opacity="0.75">Every outcome becomes a signed receipt.</text>
+</svg>

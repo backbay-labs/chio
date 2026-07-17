@@ -177,6 +177,30 @@ describe("chio fastify plugin", () => {
     await fastify.close();
   });
 
+  it("returns a controlled error for malformed query encoding", async () => {
+    const fastify = Fastify();
+    let handlerReached = false;
+    await fastify.register(chio, {
+      sidecarUrl: "http://127.0.0.1:1",
+      timeoutMs: 500,
+    });
+
+    fastify.get("/test", async () => {
+      handlerReached = true;
+      return { data: "reached handler" };
+    });
+
+    const response = await fastify.inject({
+      method: "GET",
+      url: "/test?bad=%E0%A4%A",
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(JSON.parse(response.body).message).toBe("malformed query parameter encoding");
+    expect(handlerReached).toBe(false);
+    await fastify.close();
+  });
+
   it("skip patterns with regex work", async () => {
     const fastify = Fastify();
     await fastify.register(chio, {
@@ -228,6 +252,68 @@ describe("chio fastify plugin", () => {
     );
     expect(observedBodyLength).toBe(Buffer.byteLength(payload));
 
+    sidecar.server.close();
+    await fastify.close();
+  });
+
+  it("forwards configured headers to Chio evaluation", async () => {
+    let observedHeaders: Record<string, string> | undefined;
+    const sidecar = await startMockSidecar((requestBody) => {
+      const parsed = JSON.parse(requestBody) as { headers?: Record<string, string> };
+      observedHeaders = parsed.headers;
+    });
+
+    const fastify = Fastify();
+    await fastify.register(chio, {
+      sidecarUrl: sidecar.url,
+      forwardHeaders: ["content-type", "x-tenant-id"],
+    });
+
+    fastify.post("/tenant", async () => ({ ok: true }));
+
+    const response = await fastify.inject({
+      method: "POST",
+      url: "/tenant",
+      headers: {
+        "content-type": "application/json",
+        "x-tenant-id": "tenant-1",
+        "x-secret": "drop-me",
+      },
+      payload: "{}",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(observedHeaders).toMatchObject({
+      "content-type": "application/json",
+      "x-tenant-id": "tenant-1",
+    });
+    expect(observedHeaders).not.toHaveProperty("x-secret");
+
+    sidecar.server.close();
+    await fastify.close();
+  });
+
+  it("decodes plus signs in query parameters like URLSearchParams", async () => {
+    let observedQuery: Record<string, string> | undefined;
+    const sidecar = await startMockSidecar((requestBody) => {
+      const parsed = JSON.parse(requestBody) as { query?: Record<string, string> };
+      observedQuery = parsed.query;
+    });
+
+    const fastify = Fastify();
+    await fastify.register(chio, {
+      sidecarUrl: sidecar.url,
+    });
+
+    fastify.get("/search", async () => ({ ok: true }));
+
+    const response = await fastify.inject({
+      method: "GET",
+      url: "/search?q=hello+world&flag",
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(observedQuery).toEqual({ q: "hello world", flag: "" });
     sidecar.server.close();
     await fastify.close();
   });

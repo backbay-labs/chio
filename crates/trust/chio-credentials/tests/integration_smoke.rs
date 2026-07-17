@@ -2,10 +2,17 @@ use chio_core::crypto::Keypair;
 use chio_credentials::{
     build_agent_passport, create_passport_presentation_challenge,
     create_signed_passport_verifier_policy, ensure_signed_passport_verifier_policy_active,
-    issue_reputation_credential, respond_to_passport_presentation_challenge, verify_agent_passport,
+    issue_chio_passport_jwt_vc_json, issue_chio_passport_sd_jwt_vc, issue_reputation_credential,
+    respond_to_oid4vp_request, respond_to_passport_presentation_challenge,
+    sign_oid4vp_request_object, verify_agent_passport, verify_chio_passport_jwt_vc_json,
+    verify_chio_passport_sd_jwt_vc, verify_oid4vp_direct_post_response,
     verify_passport_presentation_challenge, verify_passport_presentation_response,
-    verify_signed_passport_verifier_policy, AgentPassport, AttestationWindow,
-    ChioCredentialEvidence, CredentialError, PassportPresentationOptions, PassportVerifierPolicy,
+    verify_signed_oid4vp_request_object, verify_signed_passport_verifier_policy, AgentPassport,
+    AttestationWindow, ChioCredentialEvidence, CredentialError, Oid4vpDcqlQuery,
+    Oid4vpRequestObject, Oid4vpRequestedCredential, PassportPresentationOptions,
+    PassportVerifierPolicy, CHIO_PASSPORT_SD_JWT_VC_FORMAT, CHIO_PASSPORT_SD_JWT_VC_TYPE,
+    OID4VP_CLIENT_ID_SCHEME_REDIRECT_URI, OID4VP_RESPONSE_MODE_DIRECT_POST_JWT,
+    OID4VP_RESPONSE_TYPE_VP_TOKEN,
 };
 use chio_did::DidChio;
 use chio_reputation::{
@@ -190,6 +197,114 @@ fn presentation_rejects_holder_mismatch() {
     .test_unwrap_err("wrong holder should fail closed");
 
     assert!(matches!(error, CredentialError::PresentationHolderMismatch));
+}
+
+#[test]
+fn portable_credentials_expire_at_exact_exp() {
+    let issuer = Keypair::from_seed(&[21_u8; 32]);
+    let passport = sample_passport(22, 23).test_unwrap("build passport for portable expiration");
+
+    let sd_jwt = issue_chio_passport_sd_jwt_vc(
+        &passport,
+        "https://trust.example.com",
+        &issuer,
+        1_710_000_100,
+        None,
+    )
+    .test_unwrap("issue portable sd-jwt");
+    let sd_jwt_error =
+        verify_chio_passport_sd_jwt_vc(&sd_jwt.compact, &issuer.public_key(), 1_710_086_400)
+            .test_unwrap_err("portable sd-jwt should expire at exact exp");
+    assert!(sd_jwt_error.to_string().contains("expired"));
+
+    let jwt_vc = issue_chio_passport_jwt_vc_json(
+        &passport,
+        "https://trust.example.com",
+        &issuer,
+        1_710_000_100,
+        None,
+    )
+    .test_unwrap("issue portable jwt vc");
+    let jwt_vc_error =
+        verify_chio_passport_jwt_vc_json(&jwt_vc.compact, &issuer.public_key(), 1_710_086_400)
+            .test_unwrap_err("portable jwt vc should expire at exact exp");
+    assert!(jwt_vc_error.to_string().contains("expired"));
+}
+
+#[test]
+fn oid4vp_artifacts_expire_at_exact_exp() {
+    let authority = Keypair::from_seed(&[31_u8; 32]);
+    let issuer = Keypair::from_seed(&[32_u8; 32]);
+    let holder = Keypair::from_seed(&[33_u8; 32]);
+    let holder_did = did_from_public_key(holder.public_key());
+    let credential = issue_reputation_credential(
+        &issuer,
+        sample_scorecard(&holder.public_key().to_hex()),
+        sample_evidence(),
+        1_710_000_000,
+        1_710_086_400,
+    )
+    .test_unwrap("issue reputation credential");
+    let passport =
+        build_agent_passport(&holder_did.to_string(), vec![credential]).test_unwrap("passport");
+    let portable = issue_chio_passport_sd_jwt_vc(
+        &passport,
+        "https://trust.example.com",
+        &issuer,
+        1_710_000_100,
+        None,
+    )
+    .test_unwrap("portable credential");
+    let request = Oid4vpRequestObject {
+        client_id: "https://verifier.example.com".to_string(),
+        client_id_scheme: OID4VP_CLIENT_ID_SCHEME_REDIRECT_URI.to_string(),
+        response_uri: "https://verifier.example.com/v1/public/passport/oid4vp/direct-post"
+            .to_string(),
+        response_mode: OID4VP_RESPONSE_MODE_DIRECT_POST_JWT.to_string(),
+        response_type: OID4VP_RESPONSE_TYPE_VP_TOKEN.to_string(),
+        nonce: "nonce-1".to_string(),
+        state: "state-1".to_string(),
+        iat: 1_710_000_100,
+        exp: 1_710_000_400,
+        jti: "oid4vp-1".to_string(),
+        request_uri: "https://verifier.example.com/v1/public/passport/oid4vp/requests/oid4vp-1"
+            .to_string(),
+        dcql_query: Oid4vpDcqlQuery {
+            credentials: vec![Oid4vpRequestedCredential {
+                id: "chio-passport".to_string(),
+                format: CHIO_PASSPORT_SD_JWT_VC_FORMAT.to_string(),
+                vct: CHIO_PASSPORT_SD_JWT_VC_TYPE.to_string(),
+                claims: vec!["chio_issuer_dids".to_string()],
+                issuer_allowlist: vec!["https://trust.example.com".to_string()],
+            }],
+        },
+        identity_assertion: None,
+    };
+
+    let request_jwt =
+        sign_oid4vp_request_object(&request, &authority).test_unwrap("sign request object");
+    let request_error =
+        verify_signed_oid4vp_request_object(&request_jwt, &authority.public_key(), request.exp)
+            .test_unwrap_err("OID4VP request should expire at exact exp");
+    assert!(request_error.to_string().contains("expired"));
+
+    let mut long_lived_request = request;
+    long_lived_request.exp = 1_710_001_000;
+    let response_jwt = respond_to_oid4vp_request(
+        &holder,
+        &portable.compact,
+        &long_lived_request,
+        1_710_000_200,
+    )
+    .test_unwrap("respond to oid4vp request");
+    let response_error = verify_oid4vp_direct_post_response(
+        &response_jwt,
+        &long_lived_request,
+        &issuer.public_key(),
+        1_710_000_500,
+    )
+    .test_unwrap_err("OID4VP response should expire at exact exp");
+    assert!(response_error.to_string().contains("expired"));
 }
 
 #[test]

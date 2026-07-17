@@ -41,10 +41,10 @@ from typing import Any
 
 from chio_sdk.errors import ChioDeniedError, ChioValidationError
 from chio_sdk.models import (
-    ChioReceipt,
-    ChioScope,
     CallerIdentity,
     CapabilityToken,
+    ChioReceipt,
+    ChioScope,
     Decision,
     EvaluateResponse,
     GuardEvidence,
@@ -53,7 +53,6 @@ from chio_sdk.models import (
     Verdict,
     VerifyReceiptResponse,
 )
-
 
 # ---------------------------------------------------------------------------
 # Verdicts
@@ -85,15 +84,11 @@ class MockVerdict:
     evidence: tuple[GuardEvidence, ...] = ()
 
     @classmethod
-    def allow_verdict(
-        cls, *, guard: str = "mock", reason: str | None = None
-    ) -> MockVerdict:
+    def allow_verdict(cls, *, guard: str = "mock", reason: str | None = None) -> MockVerdict:
         return cls(allow=True, guard=guard, reason=reason)
 
     @classmethod
-    def deny_verdict(
-        cls, reason: str, *, guard: str = "mock"
-    ) -> MockVerdict:
+    def deny_verdict(cls, reason: str, *, guard: str = "mock") -> MockVerdict:
         return cls(allow=False, reason=reason, guard=guard)
 
 
@@ -136,13 +131,16 @@ class RecordedCall:
 
 
 def _canonical_json(obj: Any) -> bytes:
-    return json.dumps(
-        obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-    ).encode("utf-8")
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
 
 
 def _sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+def _is_synthetic_unsigned_receipt(receipt: ChioReceipt | HttpReceipt) -> bool:
+    metadata = getattr(receipt, "metadata", None)
+    return isinstance(metadata, Mapping) and metadata.get("chio_streaming_synthetic") is True
 
 
 MOCK_PUBLIC_KEY = _sha256_hex(b"chio-sdk-python mock public key")
@@ -169,9 +167,7 @@ def _normalize_verdict(result: MockVerdict | bool | None) -> MockVerdict:
         return MockVerdict.deny_verdict("policy denied")
     if isinstance(result, MockVerdict):
         return result
-    raise ChioValidationError(
-        "policy must return MockVerdict, bool, or None"
-    )
+    raise ChioValidationError("policy must return MockVerdict, bool, or None")
 
 
 # ---------------------------------------------------------------------------
@@ -211,9 +207,7 @@ class MockChioClient:
         kernel_key: str = MOCK_PUBLIC_KEY,
         policy_hash: str = MOCK_POLICY_HASH,
     ) -> None:
-        self._policy: Policy = policy or (
-            lambda _tool, _scope, _ctx: MockVerdict.allow_verdict()
-        )
+        self._policy: Policy = policy or (lambda _tool, _scope, _ctx: MockVerdict.allow_verdict())
         self._raise_on_deny = raise_on_deny
         self._kernel_key = _hex_or_hash(kernel_key)
         self._policy_hash = _hex_or_hash(policy_hash)
@@ -318,9 +312,7 @@ class MockChioClient:
     ) -> CapabilityToken:
         """Fail closed like the real sidecar attenuation route."""
         if not new_scope.is_subset_of(token.scope):
-            raise ChioValidationError(
-                "new_scope must be a subset of the parent token scope"
-            )
+            raise ChioValidationError("new_scope must be a subset of the parent token scope")
         self.calls.append(
             RecordedCall(
                 method="attenuate_capability",
@@ -341,7 +333,11 @@ class MockChioClient:
 
     async def verify_receipt(self, receipt: ChioReceipt) -> bool:
         """Return ``True`` for any receipt whose ``kernel_key`` matches."""
-        valid = receipt.kernel_key == self._kernel_key or bool(receipt.signature)
+        valid = (
+            False
+            if _is_synthetic_unsigned_receipt(receipt)
+            else receipt.kernel_key == self._kernel_key or bool(receipt.signature)
+        )
         self.calls.append(
             RecordedCall(
                 method="verify_receipt",
@@ -351,7 +347,11 @@ class MockChioClient:
         return valid
 
     async def verify_http_receipt(self, receipt: HttpReceipt) -> VerifyReceiptResponse:
-        valid = receipt.kernel_key == self._kernel_key or bool(receipt.signature)
+        valid = (
+            False
+            if _is_synthetic_unsigned_receipt(receipt)
+            else receipt.kernel_key == self._kernel_key or bool(receipt.signature)
+        )
         self.calls.append(
             RecordedCall(
                 method="verify_http_receipt",
@@ -372,16 +372,12 @@ class MockChioClient:
             ok=valid,
         )
 
-    async def verify_receipt_chain(
-        self, receipts: list[ChioReceipt]
-    ) -> bool:
+    async def verify_receipt_chain(self, receipts: list[ChioReceipt]) -> bool:
         """Mirror the real client's content-hash chain check."""
         if len(receipts) < 2:
             return True
         for i in range(1, len(receipts)):
-            prev_canonical = _canonical_json(
-                receipts[i - 1].model_dump(exclude_none=True)
-            )
+            prev_canonical = _canonical_json(receipts[i - 1].model_dump(exclude_none=True))
             expected_hash = _sha256_hex(prev_canonical)
             if receipts[i].content_hash != expected_hash:
                 return False
@@ -413,9 +409,7 @@ class MockChioClient:
             "capability_id": capability_id,
             "parameters": parameters,
         }
-        verdict = _normalize_verdict(
-            self._policy(tool_name, scope, context)
-        )
+        verdict = _normalize_verdict(self._policy(tool_name, scope, context))
         recorded = RecordedCall(
             method="evaluate_tool_call",
             tool_name=tool_name,
@@ -480,9 +474,7 @@ class MockChioClient:
             "capability_id": capability_id,
             "capability_token": capability_token,
         }
-        mock_verdict = _normalize_verdict(
-            self._policy(route_pattern, scope_for_policy, context)
-        )
+        mock_verdict = _normalize_verdict(self._policy(route_pattern, scope_for_policy, context))
         recorded = RecordedCall(
             method="evaluate_http_request",
             tool_name=route_pattern,
@@ -510,13 +502,11 @@ class MockChioClient:
             )
         )
         receipt = HttpReceipt(
-            id=_sha256_hex(f"mock-hr-{uuid.uuid4().hex}".encode("utf-8")),
+            id=_sha256_hex(f"mock-hr-{uuid.uuid4().hex}".encode()),
             request_id=request_id,
             route_pattern=route_pattern,
             method=method,
-            caller_identity_hash=_sha256_hex(
-                _canonical_json(caller.model_dump(exclude_none=True))
-            ),
+            caller_identity_hash=_sha256_hex(_canonical_json(caller.model_dump(exclude_none=True))),
             session_id=session_id,
             verdict=verdict_model,
             receipt_kind="mediated_decision",
@@ -560,15 +550,11 @@ class MockChioClient:
 
         approvals = getattr(self, "_pending_approvals", {})
         resolved = getattr(self, "_resolved_approvals", {})
-        self.calls.append(
-            RecordedCall(method="get_approval", context={"approval_id": approval_id})
-        )
+        self.calls.append(RecordedCall(method="get_approval", context={"approval_id": approval_id}))
         pending = approvals.get(approval_id)
         resolution = resolved.get(approval_id)
         if pending is None and resolution is None:
-            raise ChioError(
-                f"approval {approval_id} not found", code="HTTP_404"
-            )
+            raise ChioError(f"approval {approval_id} not found", code="HTTP_404")
         return Approval(
             pending=PendingApproval.model_validate(pending) if pending else None,
             resolution=resolution,
@@ -587,16 +573,10 @@ class MockChioClient:
             ResolvedApproval,
         )
 
-        normalised = (
-            ApprovalVerdict.from_action(verdict)
-            if isinstance(verdict, str)
-            else verdict
-        )
+        normalised = ApprovalVerdict.from_action(verdict) if isinstance(verdict, str) else verdict
         approvals = getattr(self, "_pending_approvals", {})
         if approval_id not in approvals:
-            raise ChioError(
-                f"approval {approval_id} not found", code="HTTP_404"
-            )
+            raise ChioError(f"approval {approval_id} not found", code="HTTP_404")
         resolved = getattr(self, "_resolved_approvals", {})
         if not hasattr(self, "_resolved_approvals"):
             self._resolved_approvals = resolved
@@ -637,9 +617,7 @@ class MockChioClient:
         summary: str | None = None,
         triggered_by: list[str] | None = None,
     ) -> str:
-        approvals: dict[str, Any] = getattr(
-            self, "_pending_approvals", {}
-        )
+        approvals: dict[str, Any] = getattr(self, "_pending_approvals", {})
         if not hasattr(self, "_pending_approvals"):
             self._pending_approvals = approvals
         approval_id = f"mock-ap-{uuid.uuid4().hex[:8]}"
@@ -709,7 +687,7 @@ class MockChioClient:
             )
         )
         return ChioReceipt(
-            id=_sha256_hex(f"mock-r-{uuid.uuid4().hex}".encode("utf-8")),
+            id=_sha256_hex(f"mock-r-{uuid.uuid4().hex}".encode()),
             timestamp=int(time.time()),
             capability_id=capability_id,
             tool_server=tool_server,
@@ -759,9 +737,7 @@ def deny_all(
     ``raise_on_deny=False`` to receive deny receipts instead.
     """
     return MockChioClient(
-        policy=lambda _t, _s, _c: MockVerdict.deny_verdict(
-            reason, guard=guard
-        ),
+        policy=lambda _t, _s, _c: MockVerdict.deny_verdict(reason, guard=guard),
         **kwargs,
     )
 
@@ -789,18 +765,14 @@ def with_policy(
         return MockChioClient(policy=policy, **kwargs)
     if isinstance(policy, Mapping):
         return MockChioClient(policy=_compile_dict_policy(policy), **kwargs)
-    raise ChioValidationError(
-        "policy must be a callable or a mapping spec"
-    )
+    raise ChioValidationError("policy must be a callable or a mapping spec")
 
 
 def _compile_dict_policy(spec: Mapping[str, Any]) -> Policy:
     """Compile a dict-based policy spec into a callable."""
     default = str(spec.get("default", "allow")).lower()
     if default not in ("allow", "deny"):
-        raise ChioValidationError(
-            "policy 'default' must be 'allow' or 'deny'"
-        )
+        raise ChioValidationError("policy 'default' must be 'allow' or 'deny'")
 
     raw_allow = spec.get("allow") or []
     if isinstance(raw_allow, str):
@@ -828,9 +800,7 @@ def _compile_dict_policy(spec: Mapping[str, Any]) -> Policy:
             return MockVerdict.allow_verdict()
         if default == "allow":
             return MockVerdict.allow_verdict()
-        return MockVerdict.deny_verdict(
-            f"tool '{tool_name}' not in allow list"
-        )
+        return MockVerdict.deny_verdict(f"tool '{tool_name}' not in allow list")
 
     return _policy
 

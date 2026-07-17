@@ -274,6 +274,69 @@ pub(crate) fn parse_persisted_checkpoint_row(
     Ok(checkpoint)
 }
 
+/// Confirm every persisted checkpoint COLUMN that mirrors a signed body field
+/// still matches that body. The `kernel_checkpoints` row stores
+/// checkpoint_seq/batch_start_seq/batch_end_seq/tree_size/merkle_root/issued_at
+/// and kernel_key as their OWN columns in addition to the signed
+/// `statement_json`, so a column corrupted out of band (immutability trigger
+/// bypassed) while statement_json is untouched must still be caught. Pure O(1)
+/// int/string equality over a single row (no Ed25519 verify), so it is safe on
+/// the incremental hot path. The `signature` column is the
+/// signature OVER the body, not a body field, so each caller checks it
+/// separately. Fail closed on any divergence.
+pub(crate) fn ensure_checkpoint_columns_match_body(
+    row: &PersistedCheckpointRow,
+    body: &KernelCheckpointBody,
+) -> Result<(), ReceiptStoreError> {
+    if body.checkpoint_seq != row.checkpoint_seq {
+        return Err(ReceiptStoreError::Conflict(format!(
+            "checkpoint row seq {} does not match signed checkpoint_seq {}; run `chio receipt audit`",
+            row.checkpoint_seq, body.checkpoint_seq
+        )));
+    }
+    if body.batch_start_seq != row.batch_start_seq {
+        return Err(ReceiptStoreError::Conflict(format!(
+            "checkpoint {} batch_start_seq column {} does not match signed body {}; run `chio receipt audit`",
+            row.checkpoint_seq, row.batch_start_seq, body.batch_start_seq
+        )));
+    }
+    if body.batch_end_seq != row.batch_end_seq {
+        return Err(ReceiptStoreError::Conflict(format!(
+            "checkpoint {} batch_end_seq column {} does not match signed body {}; run `chio receipt audit`",
+            row.checkpoint_seq, row.batch_end_seq, body.batch_end_seq
+        )));
+    }
+    if body.tree_size as u64 != row.tree_size {
+        return Err(ReceiptStoreError::Conflict(format!(
+            "checkpoint {} tree_size column {} does not match signed body {}; run `chio receipt audit`",
+            row.checkpoint_seq, row.tree_size, body.tree_size
+        )));
+    }
+    if body.merkle_root.to_hex() != row.merkle_root_hex {
+        return Err(ReceiptStoreError::Conflict(format!(
+            "checkpoint {} merkle_root column {} does not match signed body {}; run `chio receipt audit`",
+            row.checkpoint_seq,
+            row.merkle_root_hex,
+            body.merkle_root.to_hex()
+        )));
+    }
+    if body.issued_at != row.issued_at {
+        return Err(ReceiptStoreError::Conflict(format!(
+            "checkpoint {} issued_at column {} does not match signed body {}; run `chio receipt audit`",
+            row.checkpoint_seq, row.issued_at, body.issued_at
+        )));
+    }
+    if body.kernel_key.to_hex() != row.kernel_key_hex {
+        return Err(ReceiptStoreError::Conflict(format!(
+            "checkpoint {} kernel_key column {} does not match signed body {}; run `chio receipt audit`",
+            row.checkpoint_seq,
+            row.kernel_key_hex,
+            body.kernel_key.to_hex()
+        )));
+    }
+    Ok(())
+}
+
 pub(crate) fn verify_latest_checkpoint_integrity(
     connection: &Connection,
 ) -> Result<(), ReceiptStoreError> {
@@ -281,6 +344,184 @@ pub(crate) fn verify_latest_checkpoint_integrity(
         return Ok(());
     }
     verify_checkpoint_chain_integrity(connection).map(|_| ())
+}
+
+/// The archival watermark that may be TRUSTED to skip the live Merkle rebuild
+/// for every checkpoint whose `batch_end_seq <= W`, or 0 when no exemption is
+/// safe. The watermark ledger's DB triggers enforce monotonicity ONLY, not that
+/// the covered rows were ever archived, so three independent facts must hold
+/// before the exemption applies:
+///
+/// 1. `W` matches a persisted checkpoint's `batch_end_seq`. The archival path
+///    only ever advances `W` to a checkpoint boundary (`compute_archival_watermark`)
+///    and `kernel_checkpoints` is immutable and signature-verified, so a genuine
+///    `W` always lands on a boundary. A forged `W` past the latest real
+///    checkpoint would otherwise skip the rebuild for never-archived live ranges.
+///
+/// 2. No live claim-log row survives at or below `W`. A matching boundary is not
+///    proof of archival: a raw INSERT of `W` at a real boundary while the covered
+///    rows stay live would satisfy (1) yet skip the Merkle rebuild for corrupted
+///    still-present rows. The archival delete removes the entire covered claim-log
+///    prefix atomically with the watermark insert, so a truly archived `W` leaves
+///    no live row `entry_seq <= W`; any survivor means the prefix was never
+///    archived.
+///
+/// 3. The archive named in the ledger actually holds the `[1, W]` claim-log
+///    prefix. Conditions (1) and (2) are equally satisfied by a genuine rotation
+///    and by an out-of-band delete of the live prefix followed by a planted
+///    watermark: both land on a boundary and leave no live prefix row. Only the
+///    genuine rotation co-archives the deleted rows first. Skipping the rebuild
+///    trusts that those rows survive in the archive, so opening the archive and
+///    confirming it covers the prefix ties the exemption to the evidence rather
+///    than to the mere absence of live rows. A missing, unreadable, or short
+///    archive is not proof of archival and withdraws the exemption.
+///
+/// Fail-closed: any condition failing yields 0 (full verification, which then
+/// rejects a truly unarchived prefix because its live rows are gone). Bounded to
+/// two indexed existence probes plus one archive open and indexed count, never an
+/// O(log length) scan.
+pub(crate) fn trusted_retention_watermark(
+    connection: &Connection,
+) -> Result<u64, ReceiptStoreError> {
+    let raw = retention_watermark(connection)?.unwrap_or(0);
+    if raw == 0 {
+        return Ok(0);
+    }
+    let raw_i64 = sqlite_i64(raw, "retention watermark")?;
+    let boundary_matches: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM kernel_checkpoints WHERE batch_end_seq = ?1)",
+        params![raw_i64],
+        |row| row.get(0),
+    )?;
+    if !boundary_matches {
+        return Ok(0);
+    }
+    let live_prefix_present: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM claim_receipt_log_entries WHERE entry_seq <= ?1)",
+        params![raw_i64],
+        |row| row.get(0),
+    )?;
+    if live_prefix_present {
+        return Ok(0);
+    }
+    if !archived_prefix_is_backed(connection, raw_i64)? {
+        return Ok(0);
+    }
+    Ok(raw)
+}
+
+/// True only when the archive named by the current watermark ledger row holds
+/// the co-archived claim-log rows that re-derive the SIGNED checkpoint roots for
+/// every checkpoint covered by `watermark`.
+///
+/// A count of `entry_seq <= watermark` rows is not proof: an archive that merely
+/// holds `watermark` rows keyed on the right `entry_seq` values but carrying
+/// replaced or corrupted `raw_json` would satisfy a count check while no longer
+/// matching the signed checkpoint roots, so skipping the live Merkle rebuild for
+/// that prefix would accept a store whose only retained evidence has been
+/// tampered. Instead, for each covered checkpoint this re-derives the Merkle
+/// root from the archived receipts in the checkpoint's batch range and compares
+/// it to the checkpoint's signed root (obtained by parsing the live
+/// `kernel_checkpoints` row, which validates the signature and that the stored
+/// root matches the signed body). The kernel signing key is required to produce
+/// a batch of receipts that hash to a signed root, so a forged archive cannot
+/// pass. This is the deep re-verification the watermark exemption promises to
+/// serve from the archive; it is bounded to the archived rows and runs on the
+/// open/health path, never per append.
+///
+/// Opens the archive read-only on its own connection (never ATTACHing onto the
+/// caller's). Any missing, unreadable, short, non-contiguous, or root-divergent
+/// archive returns false so the caller falls back to full verification, which
+/// then rejects the store because the live prefix was deleted (fail-closed).
+fn archived_prefix_is_backed(
+    connection: &Connection,
+    watermark: i64,
+) -> Result<bool, ReceiptStoreError> {
+    let Some(archive_path) = latest_watermark_archive_path(connection)? else {
+        return Ok(false);
+    };
+    archive_path_backs_prefix(
+        connection,
+        &archive_path,
+        sqlite_u64(watermark, "watermark")?,
+    )
+}
+
+/// True only when the archive at `archive_path` holds co-archived claim-log rows
+/// that re-derive the SIGNED checkpoint roots for every checkpoint covered by
+/// `watermark`.
+///
+/// The watermark-trust reader (`archived_prefix_is_backed`) resolves the path
+/// from the ledger, but the rotation and repair paths must vet a SPECIFIC
+/// archive before advancing or sealing a watermark over it: a subsequent
+/// rotation must confirm the ledger archive still backs the committed prefix
+/// before extending it, and a repair must confirm the supplied (or ledger)
+/// archive re-derives the covered roots before deleting the orphaned live rows.
+/// A row count is not proof: an archive holding the right `entry_seq` values but
+/// replaced or corrupted `raw_json` would satisfy a count while no longer
+/// matching the signed roots. Opens the archive read-only on its own connection.
+/// Any missing, unreadable, short, non-contiguous, or root-divergent archive
+/// returns false (never an error) so every caller falls back to full
+/// verification fail-closed.
+pub(crate) fn archive_path_backs_prefix(
+    connection: &Connection,
+    archive_path: &str,
+    watermark: u64,
+) -> Result<bool, ReceiptStoreError> {
+    if watermark == 0 {
+        return Ok(false);
+    }
+    let flags =
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX;
+    let Ok(archive) = rusqlite::Connection::open_with_flags(archive_path, flags) else {
+        return Ok(false);
+    };
+    let covered: Vec<PersistedCheckpointRow> = load_all_persisted_checkpoint_rows(connection)?
+        .into_iter()
+        .filter(|row| row.batch_end_seq <= watermark)
+        .collect();
+    // A trusted watermark must fall on a real checkpoint boundary, so at least
+    // one covered checkpoint must exist; none means the boundary is not backed.
+    if covered.is_empty() {
+        return Ok(false);
+    }
+    for row in covered {
+        // Parse validates the signature and that the stored root matches the
+        // signed body, so `body.merkle_root` is the authenticated root.
+        let checkpoint = parse_persisted_checkpoint_row(row)?;
+        if !archive_batch_matches_signed_root(&archive, &checkpoint)? {
+            return Ok(false);
+        }
+    }
+    Ok(true)
+}
+
+/// Re-derive the Merkle root of `checkpoint`'s batch range from the archived
+/// receipts and compare it to the checkpoint's signed root. False (not an error)
+/// when the archive is missing rows, has the wrong leaf count, or produces a
+/// different root, so the caller withdraws the watermark exemption fail-closed.
+fn archive_batch_matches_signed_root(
+    archive: &Connection,
+    checkpoint: &KernelCheckpoint,
+) -> Result<bool, ReceiptStoreError> {
+    let rows = match load_claim_tree_canonical_bytes_range(
+        archive,
+        checkpoint.body.batch_start_seq,
+        checkpoint.body.batch_end_seq,
+    ) {
+        Ok(rows) => rows,
+        // A short or non-contiguous archived range is not proof of archival.
+        Err(_) => return Ok(false),
+    };
+    let receipt_bytes: Vec<Vec<u8>> = rows.into_iter().map(|(_, bytes)| bytes).collect();
+    if receipt_bytes.len() != checkpoint.body.tree_size {
+        return Ok(false);
+    }
+    let tree = match chio_core::merkle::MerkleTree::from_leaves(&receipt_bytes) {
+        Ok(tree) => tree,
+        Err(_) => return Ok(false),
+    };
+    Ok(tree.root() == checkpoint.body.merkle_root)
 }
 
 pub(crate) fn verify_checkpoint_chain_integrity(
@@ -292,9 +533,20 @@ pub(crate) fn verify_checkpoint_chain_integrity(
     let mut expected_witness_ids = BTreeSet::new();
     let mut expected_publication_ids = BTreeSet::new();
 
+    let watermark = trusted_retention_watermark(connection)?;
     for row in rows {
-        let checkpoint = parse_persisted_checkpoint_row(row.clone())?;
-        validate_checkpoint_against_claim_log(connection, &checkpoint)?;
+        let checkpoint = parse_persisted_checkpoint_row(row.clone())?; // signature + column consistency
+                                                                       // Checkpoints fully covered by a persisted archival watermark have
+                                                                       // had their claim-log rows co-archived and deleted; their deep Merkle
+                                                                       // re-verification is served from the archive. Skip only the live
+                                                                       // Merkle rebuild for them; everything else (signature above, projection
+                                                                       // rows, predecessor linkage below) still runs. Because W is always
+                                                                       // some checkpoint's batch_end_seq and batches tile the prefix
+                                                                       // contiguously (ADR-0008), no checkpoint range straddles the
+                                                                       // watermark, so the exemption is all-or-nothing per checkpoint.
+        if checkpoint.body.batch_end_seq > watermark {
+            validate_checkpoint_against_claim_log(connection, &checkpoint)?;
+        }
         validate_checkpoint_projection_rows(connection, &row, &checkpoint)?;
         let (_, expected_witness, _) = expected_checkpoint_projection_rows(&row, &checkpoint)?;
         expected_head_ids.insert(row.checkpoint_seq);
@@ -321,7 +573,9 @@ pub(crate) fn verify_checkpoint_chain_integrity(
     Ok(latest)
 }
 
-fn validate_checkpoint_base(checkpoint: &KernelCheckpoint) -> Result<(), ReceiptStoreError> {
+pub(crate) fn validate_checkpoint_base(
+    checkpoint: &KernelCheckpoint,
+) -> Result<(), ReceiptStoreError> {
     if checkpoint.body.checkpoint_seq != 1 {
         return Err(ReceiptStoreError::Conflict(format!(
             "first checkpoint in store must have checkpoint_seq 1, got {}",
@@ -340,6 +594,67 @@ fn validate_checkpoint_base(checkpoint: &KernelCheckpoint) -> Result<(), Receipt
         ));
     }
     Ok(())
+}
+
+/// Confirm the LATEST persisted checkpoint is CHAIN-CONNECTED before an
+/// operator/health surface (`flush_report`) trusts its `batch_end_seq`. A single
+/// row parsed by `parse_persisted_checkpoint_row` validates only its OWN
+/// columns/body/signature; a latest row with a skipped `checkpoint_seq` or a
+/// wrong predecessor digest still parses individually yet is DISCONNECTED from
+/// the chain, which a full `verify_checkpoint_chain_integrity` would reject.
+/// This is the bounded predecessor check:
+/// for the base checkpoint (seq 1) confirm it is a valid base; otherwise read
+/// the IMMEDIATELY PRIOR checkpoint row (seq - 1) and confirm predecessor
+/// linkage (contiguous seq/batch + matching `previous_checkpoint_sha256`). One
+/// indexed row read + linkage compare, NOT a full O(N) chain walk, so it never
+/// lands on the per-append hot path. Fail closed on any gap or mismatch.
+pub(crate) fn latest_checkpoint_is_chain_connected(
+    connection: &Connection,
+    checkpoint: &KernelCheckpoint,
+) -> Result<(), ReceiptStoreError> {
+    let checkpoint_seq = checkpoint.body.checkpoint_seq;
+    // Prefix-completeness guard: the immediate-predecessor
+    // link below proves only that the LATEST checkpoint connects to seq - 1. An
+    // EARLIER checkpoint row missing from the persisted chain (a partial import,
+    // an out-of-band delete) leaves seq-1..seq intact yet the range that earlier
+    // checkpoint attested is no longer covered, and `flush_report` would still
+    // report this checkpoint's `batch_end_seq` as checkpointed - hiding an
+    // uncheckpointed range and letting retention prune unattested entries. The
+    // persisted chain must therefore hold EVERY seq 1..=checkpoint_seq with no
+    // gap. Because `checkpoint_seq` values are unique and positive and this is
+    // the LATEST checkpoint (its seq is the max), `COUNT(*) == checkpoint_seq`
+    // together with `MAX(checkpoint_seq) == checkpoint_seq` proves the prefix is
+    // gap-free. This is one aggregate over the checkpoint table (its row count is
+    // ~ entries / batch, and there is NO per-checkpoint parse, signature verify,
+    // or Merkle rebuild), so it stays bounded and never re-verifies whole
+    // history; a full `verify_checkpoint_chain_integrity` parses and
+    // re-validates every checkpoint. A genuine earlier-row TAMPER (an interior
+    // predecessor/projection corrupted while all rows remain present) is not a
+    // gap and stays the domain of the O(N) `chio receipt audit`.
+    let (present, max_seq) = connection.query_row(
+        "SELECT COUNT(*), COALESCE(MAX(checkpoint_seq), 0) FROM kernel_checkpoints",
+        [],
+        |row| Ok((row.get::<_, i64>(0)?, row.get::<_, i64>(1)?)),
+    )?;
+    let present = sqlite_u64(present, "persisted checkpoint count")?;
+    let max_seq = sqlite_u64(max_seq, "persisted checkpoint max seq")?;
+    if max_seq != checkpoint_seq || present != checkpoint_seq {
+        return Err(ReceiptStoreError::Conflict(format!(
+            "checkpoint chain prefix is incomplete: latest checkpoint is {checkpoint_seq} but the persisted chain holds {present} checkpoints up to {max_seq}; run `chio receipt audit`"
+        )));
+    }
+    if checkpoint_seq <= 1 {
+        return validate_checkpoint_base(checkpoint);
+    }
+    let predecessor_seq = checkpoint_seq - 1;
+    let Some(predecessor_row) = load_persisted_checkpoint_row(connection, predecessor_seq)? else {
+        return Err(ReceiptStoreError::Conflict(format!(
+            "checkpoint {checkpoint_seq} predecessor {predecessor_seq} is missing; run `chio receipt audit`"
+        )));
+    };
+    let predecessor = parse_persisted_checkpoint_row(predecessor_row)?;
+    chio_kernel::checkpoint::validate_checkpoint_predecessor(&predecessor, checkpoint)
+        .map_err(checkpoint_error_to_receipt_store)
 }
 
 pub(crate) fn validate_checkpoint_against_claim_log(
@@ -385,6 +700,17 @@ pub(crate) fn store_kernel_checkpoint_atomic(
 ) -> Result<(), ReceiptStoreError> {
     ensure_checkpoint_transparency_guards(connection)?;
     let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    // Operator / import append re-verification: a
+    // manually stored or externally imported checkpoint is a rare, off-hot-path
+    // surface. `store_kernel_checkpoint_tx` only parses the LATEST checkpoint as
+    // the predecessor, so a mid-chain tamper (an earlier checkpoint or a
+    // projection row whose latest row still parses) would go undetected and this
+    // append would extend an already-corrupt chain. Re-verify the FULL persisted
+    // chain here so the operator path fails closed. This is the operator/import
+    // surface ONLY; the background builder (maybe_build_checkpoint /
+    // insert_checkpoint_incremental_tx) deliberately stays on the O(b)
+    // incremental head and does not run through here.
+    verify_checkpoint_chain_integrity(&tx)?;
     store_kernel_checkpoint_tx(&tx, checkpoint)?;
     tx.commit()?;
     Ok(())
@@ -451,51 +777,73 @@ pub(crate) fn create_next_receipt_checkpoint_atomic(
     Ok(report)
 }
 
-fn store_kernel_checkpoint_tx(
+/// Insert one checkpoint with single-shot validation against a KNOWN
+/// predecessor: validate_checkpoint (one signature), predecessor linkage,
+/// claim-log range check for the new range only, INSERT (projection triggers
+/// populate tree-head/witness/publication rows), read-back equality, and
+/// projection-row validation for the new row. No chain rebuild. Returns the
+/// checkpoint now persisted at this seq (the one just inserted, or the
+/// concurrently committed winner that was adopted) so the caller can catch
+/// its cached head up to it.
+pub(crate) fn insert_checkpoint_incremental_tx(
     tx: &rusqlite::Transaction<'_>,
+    predecessor: Option<&KernelCheckpoint>,
     checkpoint: &KernelCheckpoint,
-) -> Result<(), ReceiptStoreError> {
+) -> Result<KernelCheckpoint, ReceiptStoreError> {
     chio_kernel::checkpoint::validate_checkpoint(checkpoint)
         .map_err(checkpoint_error_to_receipt_store)?;
-
-    if let Some(existing) = load_persisted_checkpoint_row(tx, checkpoint.body.checkpoint_seq)? {
-        let existing_checkpoint = parse_persisted_checkpoint_row(existing.clone())?;
-        if existing_checkpoint == *checkpoint {
-            validate_checkpoint_projection_rows(tx, &existing, checkpoint)?;
-            verify_checkpoint_chain_integrity(tx)?;
-            return Ok(());
-        }
-        return Err(ReceiptStoreError::Conflict(format!(
-            "checkpoint {} already exists with different content",
-            checkpoint.body.checkpoint_seq
-        )));
-    }
-    validate_checkpoint_against_claim_log(tx, checkpoint)?;
-
-    match verify_checkpoint_chain_integrity(tx)? {
+    match predecessor {
         Some(predecessor) => {
-            if checkpoint.body.checkpoint_seq <= predecessor.body.checkpoint_seq {
-                return Err(ReceiptStoreError::Conflict(format!(
-                    "checkpoint {} must be appended after existing checkpoint {}",
-                    checkpoint.body.checkpoint_seq, predecessor.body.checkpoint_seq
-                )));
-            }
-            chio_kernel::checkpoint::validate_checkpoint_predecessor(&predecessor, checkpoint)
+            chio_kernel::checkpoint::validate_checkpoint_predecessor(predecessor, checkpoint)
                 .map_err(|error| {
                     ReceiptStoreError::Conflict(format!(
                         "checkpoint predecessor continuity violation: {error}"
                     ))
                 })?;
         }
-        None if checkpoint.body.checkpoint_seq != 1 => {
-            return Err(ReceiptStoreError::Conflict(format!(
-                "checkpoint {} cannot initialize an empty checkpoint log",
-                checkpoint.body.checkpoint_seq
-            )));
-        }
         None => validate_checkpoint_base(checkpoint)?,
     }
-
+    validate_checkpoint_against_claim_log(tx, checkpoint)?;
+    // Idempotent and concurrent-winner background-checkpoint convergence
+    // (the byte-identical case and the clock-skew case).
+    // Two kernels or store instances sharing one receipt DB can each build the
+    // same due checkpoint before either head catches up. The loser reaches
+    // here after the winner already committed a row at this seq. A
+    // byte-identical winner is adopted as-is. A winner that differs only by its
+    // wall-clock `issued_at` (and thus its signature) is still a VALID
+    // checkpoint for the same range, so instead of failing the raw INSERT on
+    // the primary-key conflict (which would record writer.last_error and report
+    // the store UNHEALTHY though the persisted chain is valid) we VALIDATE the
+    // winner BOUNDED and ADOPT it: its signature (via parse_persisted_
+    // checkpoint_row), its predecessor linkage against our cached predecessor,
+    // its own claim-log range (validate_checkpoint_against_claim_log for THAT
+    // one checkpoint's batch range only), and its projection rows. That is one
+    // checkpoint plus its bounded batch range, NOT a full chain rebuild.
+    // Only a genuinely invalid or divergent-predecessor winner stays
+    // fail-closed.
+    if let Some(existing) = load_persisted_checkpoint_row(tx, checkpoint.body.checkpoint_seq)? {
+        let existing_checkpoint = parse_persisted_checkpoint_row(existing.clone())?;
+        if existing_checkpoint != *checkpoint {
+            match predecessor {
+                Some(predecessor) => {
+                    chio_kernel::checkpoint::validate_checkpoint_predecessor(
+                        predecessor,
+                        &existing_checkpoint,
+                    )
+                    .map_err(|error| {
+                        ReceiptStoreError::Conflict(format!(
+                            "checkpoint {} already exists with a divergent predecessor linkage: {error}",
+                            checkpoint.body.checkpoint_seq
+                        ))
+                    })?;
+                }
+                None => validate_checkpoint_base(&existing_checkpoint)?,
+            }
+            validate_checkpoint_against_claim_log(tx, &existing_checkpoint)?;
+        }
+        validate_checkpoint_projection_rows(tx, &existing, &existing_checkpoint)?;
+        return Ok(existing_checkpoint);
+    }
     let statement_json = serde_json::to_string(&checkpoint.body)?;
     tx.execute(
         r#"
@@ -517,7 +865,6 @@ fn store_kernel_checkpoint_tx(
         ],
     )
     .map_err(|error| ReceiptStoreError::Conflict(format!("checkpoint append conflict: {error}")))?;
-
     let stored =
         load_persisted_checkpoint_row(tx, checkpoint.body.checkpoint_seq)?.ok_or_else(|| {
             ReceiptStoreError::Conflict(format!(
@@ -533,8 +880,45 @@ fn store_kernel_checkpoint_tx(
         )));
     }
     validate_checkpoint_projection_rows(tx, &stored, &parsed)?;
-    verify_checkpoint_chain_integrity(tx)?;
-    Ok(())
+    Ok(parsed)
+}
+
+fn store_kernel_checkpoint_tx(
+    tx: &rusqlite::Transaction<'_>,
+    checkpoint: &KernelCheckpoint,
+) -> Result<(), ReceiptStoreError> {
+    chio_kernel::checkpoint::validate_checkpoint(checkpoint)
+        .map_err(checkpoint_error_to_receipt_store)?;
+
+    if let Some(existing) = load_persisted_checkpoint_row(tx, checkpoint.body.checkpoint_seq)? {
+        let existing_checkpoint = parse_persisted_checkpoint_row(existing.clone())?;
+        if existing_checkpoint == *checkpoint {
+            validate_checkpoint_projection_rows(tx, &existing, checkpoint)?;
+            return Ok(());
+        }
+        return Err(ReceiptStoreError::Conflict(format!(
+            "checkpoint {} already exists with different content",
+            checkpoint.body.checkpoint_seq
+        )));
+    }
+
+    let predecessor = load_latest_persisted_checkpoint_row(tx)?
+        .map(parse_persisted_checkpoint_row)
+        .transpose()?;
+    if let Some(predecessor) = predecessor.as_ref() {
+        if checkpoint.body.checkpoint_seq <= predecessor.body.checkpoint_seq {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "checkpoint {} must be appended after existing checkpoint {}",
+                checkpoint.body.checkpoint_seq, predecessor.body.checkpoint_seq
+            )));
+        }
+    } else if checkpoint.body.checkpoint_seq != 1 {
+        return Err(ReceiptStoreError::Conflict(format!(
+            "checkpoint {} cannot initialize an empty checkpoint log",
+            checkpoint.body.checkpoint_seq
+        )));
+    }
+    insert_checkpoint_incremental_tx(tx, predecessor.as_ref(), checkpoint).map(|_| ())
 }
 
 fn validate_checkpoint_claim_log_signer_range(
@@ -685,7 +1069,7 @@ fn expected_checkpoint_projection_rows(
     Ok((head, witness, publication))
 }
 
-fn validate_checkpoint_projection_rows(
+pub(crate) fn validate_checkpoint_projection_rows(
     connection: &Connection,
     row: &PersistedCheckpointRow,
     checkpoint: &KernelCheckpoint,

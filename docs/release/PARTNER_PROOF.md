@@ -91,10 +91,10 @@ target-chain factory, and rollout environment explicitly.
   qualification matrix over `did:chio` plus explicit `did:web`, `did:key`, and
   `did:jwk` compatibility inputs, projected passport profile families, and
   fail-closed subject or issuer mismatch handling
-- one mostly immutable official web3 contract family, with the
-  owner-managed identity registry as the only mutable contract, plus one
-  bounded `chio-link`, `chio-anchor`, `chio-settle`, automation, CCIP, and
-  payment-interop stack over that contract family
+- one official non-proxy web3 contract family with fixed deployed bytecode
+  for the root registry, escrow, bond vault, and price resolver, plus explicit
+  governed surfaces for identity records, price feeds, token allowlists, pause
+  controls, delegates, and operator records
 - one bounded web3 operations contract over runtime reports, indexer
   drift/replay visibility, emergency modes, promotion policy, readiness audit,
   and one dedicated web3 partner-proof package with remaining external

@@ -86,7 +86,11 @@ fn metrics_kernel_with_web3_evidence(
         require_web3_evidence,
         checkpoint_batch_size: chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
+        memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
+        deadlines: chio_kernel::HotPathDeadlineConfig::default(),
+        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
         allow_ephemeral_receipt_log: true,
+        allow_ephemeral_revocation_store: true,
     };
     let mut kernel = chio_kernel::ChioKernel::new(config);
     kernel.register_tool_server(Box::new(MetricsToolServer));
@@ -367,7 +371,9 @@ fn mcp_edge_emits_chio_receipt_write_total() -> Result<(), Box<dyn Error>> {
         "mcp edge kernel error path must advance receipt write error"
     );
 
-    let body = chio_mcp_edge::render_mcp_edge_metrics_prometheus();
+    let body = chio_mcp_edge::render_mcp_edge_metrics_prometheus(
+        chio_kernel::ReceiptWriterLiveness::Unknown,
+    );
     assert!(body.contains(CHIO_RECEIPT_WRITE_TOTAL));
     assert!(body.contains("outcome=\"allow\""));
     assert!(body.contains("outcome=\"pending_approval\""));
@@ -470,7 +476,9 @@ fn acp_edge_emits_chio_receipt_write_total() -> Result<(), Box<dyn Error>> {
         "acp edge orchestrator error path must advance receipt write error"
     );
 
-    let body = chio_acp_edge::render_acp_edge_metrics_prometheus();
+    let body = chio_acp_edge::render_acp_edge_metrics_prometheus(
+        chio_kernel::ReceiptWriterLiveness::Unknown,
+    );
     assert!(body.contains(CHIO_RECEIPT_WRITE_TOTAL));
     assert!(body.contains("outcome=\"allow\""));
     assert!(body.contains("outcome=\"pending_approval\""));
@@ -577,7 +585,9 @@ fn a2a_edge_emits_chio_receipt_write_total() -> Result<(), Box<dyn Error>> {
         "a2a edge orchestrator error path must advance receipt write error"
     );
 
-    let body = chio_a2a_edge::render_a2a_edge_metrics_prometheus();
+    let body = chio_a2a_edge::render_a2a_edge_metrics_prometheus(
+        chio_kernel::ReceiptWriterLiveness::Unknown,
+    );
     assert!(body.contains(CHIO_RECEIPT_WRITE_TOTAL));
     assert!(body.contains("outcome=\"allow\""));
     assert!(body.contains("outcome=\"pending_approval\""));
@@ -599,7 +609,7 @@ fn a2a_edge_emits_chio_receipt_write_total() -> Result<(), Box<dyn Error>> {
 fn http_core_emits_kernel_decision_latency_and_guard_evaluations() -> Result<(), Box<dyn Error>> {
     let before_count = chio_http_core::decision_latency_count();
     let before_allow = chio_http_core::guard_evaluations_total(chio_http_core::GUARD_OUTCOME_ALLOW);
-    let authority = chio_http_core::HttpAuthority::new(
+    let authority = chio_http_core::HttpAuthority::new_ephemeral(
         Keypair::generate(),
         "metrics-registry-test-policy".to_string(),
     );
@@ -1231,4 +1241,231 @@ async fn iroh_transport_lane_and_outbox_families_emit() -> Result<(), Box<dyn Er
     );
 
     Ok(())
+}
+
+/// Rule-referenced families with no emitter anywhere in the tree, exempt from
+/// the emission gate with a documented reason. `chio_sidecar_requests_total` is
+/// referenced by the sidecar burn-rate recording rules and the
+/// `ChioSidecarMetricsMissing` alert but has no producer in the codebase; it is
+/// a pre-existing gap (wiring the sidecar request counter is deferred). The gate
+/// still asserts the family has a registry descriptor.
+const GATE_EXEMPT_UNPRODUCED: &[&str] = &["chio_sidecar_requests_total"];
+
+/// Emission gate: every metric name referenced by the shipped alert or recording
+/// rules must have a production emission path that renders a non-zero sample. A
+/// registered, rule-referenced family with no producer fails the build.
+#[test]
+fn rule_pack_metrics_have_production_emitters() -> Result<(), Box<dyn Error>> {
+    // Receipt-write and the runtime families are process-global; serialize with
+    // the other per-edge metrics tests.
+    let _metrics_guard = receipt_metrics_test_guard()?;
+    let alert_rules = include_str!("../../../../deploy/prometheus/chio-alert-rules.yml");
+    let recording_rules = include_str!("../../../../deploy/prometheus/chio-recording-rules.yml");
+    let referenced = extract_chio_metric_base_names(&[alert_rules, recording_rules]);
+
+    for name in &referenced {
+        assert!(
+            is_registered_metric(name),
+            "rule-referenced metric {name} has no registry descriptor"
+        );
+        if GATE_EXEMPT_UNPRODUCED.contains(&name.as_str()) {
+            continue;
+        }
+        let rendered = drive_and_render(name)?
+            .unwrap_or_else(|| panic!("rule-referenced metric {name} has NO production emitter"));
+        assert!(
+            rendered.lines().any(|line| sample_is_nonzero(line, name)),
+            "metric {name} rendered no non-zero sample after driving its producer: {rendered}"
+        );
+    }
+    Ok(())
+}
+
+/// Collect the base metric names (stripping `_bucket`/`_count`/`_sum`) of every
+/// `chio_*` token in the rule YAML.
+fn extract_chio_metric_base_names(sources: &[&str]) -> std::collections::BTreeSet<String> {
+    let mut names = std::collections::BTreeSet::new();
+    for source in sources {
+        let bytes = source.as_bytes();
+        let mut i = 0;
+        while i < bytes.len() {
+            if source[i..].starts_with("chio_") {
+                let start = i;
+                let mut j = i;
+                while j < bytes.len()
+                    && (bytes[j].is_ascii_lowercase()
+                        || bytes[j].is_ascii_digit()
+                        || bytes[j] == b'_')
+                {
+                    j += 1;
+                }
+                let mut token = &source[start..j];
+                for suffix in ["_bucket", "_count", "_sum"] {
+                    if let Some(base) = token.strip_suffix(suffix) {
+                        token = base;
+                        break;
+                    }
+                }
+                names.insert(token.to_string());
+                i = j;
+            } else {
+                i += 1;
+            }
+        }
+    }
+    names
+}
+
+/// True when `line` is a sample for `name` (counter/gauge value or a histogram
+/// `_count`/`_bucket`/`_sum` value) whose trailing numeric value is > 0.
+fn sample_is_nonzero(line: &str, name: &str) -> bool {
+    if !line.starts_with(name) {
+        return false;
+    }
+    let rest = &line[name.len()..];
+    if !rest.starts_with([' ', '{', '_']) {
+        return false;
+    }
+    matches!(
+        line.rsplit(' ').next().and_then(|value| value.trim().parse::<f64>().ok()),
+        Some(value) if value > 0.0
+    )
+}
+
+/// Drive the production emitter for `name` and return the rendered body, or None
+/// if this metric has no known production emission path (a gate failure).
+fn drive_and_render(name: &str) -> Result<Option<String>, Box<dyn Error>> {
+    use chio_metrics_spec::runtime::families;
+    let mut out = String::new();
+    if name == chio_metrics_spec::CHIO_FAIL_OPEN_SUSPECTED_TOTAL {
+        families::FAIL_OPEN_SUSPECTED.incr(&["tower"]);
+        families::FAIL_OPEN_SUSPECTED.render(&mut out);
+    } else if name == chio_metrics_spec::CHIO_DISPATCH_FAILURE_TOTAL {
+        families::DISPATCH_FAILURE.incr(&["http_authority", "error"]);
+        families::DISPATCH_FAILURE.render(&mut out);
+    } else if name == chio_metrics_spec::CHIO_CAPABILITY_REVOCATION_LAG_SECONDS {
+        families::CAPABILITY_REVOCATION_LAG.observe(&["control_plane"], 5.0);
+        families::CAPABILITY_REVOCATION_LAG.render(&mut out);
+    } else if name == chio_metrics_spec::CHIO_ALERT_DISPATCH_TOTAL {
+        families::ALERT_DISPATCH_TOTAL.incr(&["pagerduty", "success"]);
+        families::ALERT_DISPATCH_TOTAL.render(&mut out);
+    } else if name == chio_metrics_spec::CHIO_ALERT_DISPATCH_LATENCY_SECONDS {
+        families::ALERT_DISPATCH_LATENCY.observe(&["pagerduty", "success"], 0.5);
+        families::ALERT_DISPATCH_LATENCY.render(&mut out);
+    } else if name == chio_metrics_spec::CHIO_SOC_EXPORT_TOTAL {
+        families::SOC_EXPORT_TOTAL.incr(&["splunk", "ok"]);
+        families::SOC_EXPORT_TOTAL.render(&mut out);
+    } else if name == chio_metrics_spec::CHIO_GUARD_EVAL_DURATION_SECONDS {
+        families::GUARD_EVAL_DURATION.observe(&["gate-guard", "allow"], 0.001);
+        families::GUARD_EVAL_DURATION.render(&mut out);
+    } else if name == chio_metrics_spec::CHIO_RECEIPT_UNCHECKPOINTED_SEQ_RANGE {
+        families::RECEIPT_UNCHECKPOINTED_RANGE.set(&[], 9);
+        families::RECEIPT_UNCHECKPOINTED_RANGE.render(&mut out);
+    } else if name == chio_metrics_spec::CHIO_RECEIPT_SECONDS_SINCE_LAST_CHECKPOINT {
+        families::RECEIPT_CHECKPOINT_AGE_SECONDS.set(&[], 30);
+        families::RECEIPT_CHECKPOINT_AGE_SECONDS.render(&mut out);
+    } else {
+        return existing_infra_driver(name);
+    }
+    Ok(Some(out))
+}
+
+/// Drive the pre-existing infra families through the same production entry
+/// points the dedicated per-edge tests use, returning None only for a name with
+/// no driver here.
+fn existing_infra_driver(name: &str) -> Result<Option<String>, Box<dyn Error>> {
+    if name == CHIO_KERNEL_DECISION_LATENCY_SECONDS {
+        let authority = chio_http_core::HttpAuthority::new_ephemeral(
+            Keypair::generate(),
+            "emission-gate-policy".to_string(),
+        );
+        let query = HashMap::new();
+        let _ = authority.evaluate(chio_http_core::HttpAuthorityInput {
+            request_id: "emission-gate-http-1".to_string(),
+            method: chio_http_core::HttpMethod::Get,
+            route_pattern: "/gate".to_string(),
+            path: "/gate",
+            query: &query,
+            caller: chio_http_core::CallerIdentity {
+                subject: "emission-gate".to_string(),
+                auth_method: chio_http_core::AuthMethod::Anonymous,
+                verified: false,
+                tenant: None,
+                agent_id: None,
+            },
+            body_hash: None,
+            body_length: 0,
+            session_id: None,
+            capability_id_hint: None,
+            presented_capability: None,
+            requested_tool_server: None,
+            requested_tool_name: None,
+            requested_arguments: None,
+            execution_nonce: None,
+            model_metadata: None,
+            policy: chio_http_core::HttpAuthorityPolicy::SessionAllow,
+        })?;
+        return Ok(Some(chio_http_core::render_http_core_metrics_prometheus()));
+    }
+    if name == CHIO_ANCHOR_ROUND_LATENCY_SECONDS {
+        let keypair = Keypair::generate();
+        let witness = chio_anchor::AnchorBatchWitness {
+            kind: chio_anchor::AnchorBatchWitnessKind::Rekor,
+            witness_id: "rekor:emission-gate".to_string(),
+            root: Hash::zero(),
+            observed_at: Some(unix_now()),
+        };
+        let _ = chio_anchor::build_anchor_batch(
+            vec!["gate-checkpoint".to_string()],
+            witness,
+            unix_now(),
+            &keypair,
+        )?;
+        return Ok(Some(chio_anchor::render_anchor_metrics_prometheus()));
+    }
+    if name == CHIO_FEDERATION_HOP_LATENCY_SECONDS {
+        let origin = Keypair::generate();
+        let tool_host = Keypair::generate();
+        let cosigner = chio_federation::bilateral::InProcessCoSigner::new(
+            "origin-kernel",
+            origin.clone(),
+            tool_host.public_key(),
+        );
+        let receipt = sample_receipt(&tool_host)?;
+        let _ = chio_federation::bilateral::co_sign_with_origin(
+            "origin-kernel",
+            &origin.public_key(),
+            "tool-host-kernel",
+            &tool_host,
+            receipt,
+            &cosigner,
+        )?;
+        return Ok(Some(
+            chio_federation::metrics::render_federation_metrics_prometheus(),
+        ));
+    }
+    if name == CHIO_RECEIPT_WRITE_TOTAL {
+        let (kernel, issuer) = metrics_kernel();
+        let agent = Keypair::generate();
+        let _ = chio_mcp_edge::execute_bridge_mcp_tool_call(
+            &kernel,
+            chio_mcp_edge::BridgeMcpToolCallRequest {
+                request_id: "emission-gate-mcp-1".to_string(),
+                capability: capability_for_tool(&issuer, &agent)?,
+                server_id: "emission-gate-srv".to_string(),
+                tool_name: "echo".to_string(),
+                arguments: json!({"message": "gate"}),
+                agent_id: agent.public_key().to_hex(),
+                execution_nonce: None,
+                governed_intent: None,
+                model_metadata: None,
+                route_selection_metadata: None,
+                peer_supports_chio_tool_streaming: false,
+            },
+        )?;
+        return Ok(Some(chio_mcp_edge::render_mcp_edge_metrics_prometheus(
+            chio_kernel::ReceiptWriterLiveness::Unknown,
+        )));
+    }
+    Ok(None)
 }

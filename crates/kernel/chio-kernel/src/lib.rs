@@ -35,6 +35,7 @@ pub mod custody;
 pub mod dpop;
 pub mod evidence_export;
 pub mod execution_nonce;
+pub mod federation_artifact_store;
 pub mod governed_approval_replay;
 pub mod memory_provenance;
 pub mod observability;
@@ -55,6 +56,7 @@ pub mod revocation_store;
 pub mod runtime;
 mod runtime_trace;
 pub mod session;
+pub mod settlement_retry;
 pub mod transport;
 pub mod weights_binding;
 
@@ -353,9 +355,9 @@ pub use memory_provenance::{
     MEMORY_PROVENANCE_ENTRY_SCHEMA, MEMORY_PROVENANCE_GENESIS_PREV_HASH,
 };
 pub use observability::metrics::{
-    guard_metrics_endpoint, render_guard_metrics_prometheus, GuardMetricFamily,
-    MetricsEndpointResponse, PrometheusMetricKind, GUARD_METRICS_PATH, GUARD_METRIC_FAMILIES,
-    METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL, METRIC_CHIO_OTEL_SINK_DROP_TOTAL,
+    guard_metrics_endpoint, record_receipt_health_gauges, render_guard_metrics_prometheus,
+    GuardMetricFamily, MetricsEndpointResponse, PrometheusMetricKind, GUARD_METRICS_PATH,
+    GUARD_METRIC_FAMILIES, METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL, METRIC_CHIO_OTEL_SINK_DROP_TOTAL,
     PROMETHEUS_TEXT_CONTENT_TYPE,
 };
 pub use operator_report::{behavioral_anomaly_score, BehavioralAnomalyScore, EmaBaselineState};
@@ -401,7 +403,7 @@ pub use payment::{
     AcpPaymentAdapter, CommercePaymentContext, GovernedPaymentContext, PaymentAdapter,
     PaymentAuthorization, PaymentAuthorizeRequest, PaymentCredentialDisposition, PaymentError,
     PaymentResult, PreDispatchPaymentUnwindEvidence, PreDispatchPaymentUnwindStatus,
-    RailSettlementStatus, ReceiptSettlement, X402PaymentAdapter,
+    RailSettlementState, RailSettlementStatus, ReceiptSettlement, X402PaymentAdapter,
 };
 pub use post_invocation::{
     PipelineOutcome, PostInvocationContext, PostInvocationHook, PostInvocationPipeline,
@@ -420,11 +422,13 @@ pub use receipt_query::{
     ReceiptReadContext, ReceiptReadContextSource, MAX_QUERY_LIMIT,
 };
 pub use receipt_store::{
-    AuthorizationReceiptConsumption, FederatedEvidenceShareImport, FederatedEvidenceShareSummary,
+    AuthorizationReceiptConsumption, DispatchIntentJournalMode, DispatchIntentKey,
+    DispatchIntentReconcileReport, DispatchIntentReconciler, DispatchIntentRecord,
+    DispatchIntentResolution, FederatedEvidenceShareImport, FederatedEvidenceShareSummary,
     ReceiptCheckpointCreateReport, ReceiptCheckpointRange, ReceiptCheckpointStatusReport,
     ReceiptFlushReport, ReceiptStore, ReceiptStoreError, ReceiptStoreHealthReport,
-    ReceiptWalCheckpointReport, ReceiptWriterCounters, RetentionConfig, StoredChildReceipt,
-    StoredToolReceipt,
+    ReceiptWalCheckpointReport, ReceiptWriterCounters, ReceiptWriterLiveness, RetentionConfig,
+    SideEffectClass, StoredChildReceipt, StoredToolReceipt,
 };
 pub use revocation_runtime::{InMemoryRevocationStore, RevocationStore};
 pub use revocation_store::{RevocationRecord, RevocationStoreError};
@@ -448,15 +452,21 @@ mod kernel;
 pub(crate) use kernel::{current_unix_timestamp, MatchingGrant, ReceiptContent};
 
 pub use kernel::{
-    AgentId, CapabilityId, ChildReceiptLog, ChioKernel, FederationTreatyAdmissionBinding,
-    FederationTreatyVerification, Guard, GuardContext, GuardDecision, HybridSigningConfig,
-    KernelConfig, KernelError, PromptProvider, ReceiptLog, ResourceProvider,
-    RuntimeAdmissionContext, RuntimeAdmissionDecision, RuntimeAdmissionHook,
-    RuntimeAdmissionReadinessToken, RuntimeAdmissionRevalidationContext, ServerId,
-    StructuredErrorReport, VerifiedFederationTreatyMaterial, DEFAULT_CHECKPOINT_BATCH_SIZE,
-    DEFAULT_MAX_SIZE_BYTES, DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
-    DEFAULT_RETENTION_DAYS, DEFAULT_RUNTIME_ADMISSION_READINESS_TIMEOUT_MS,
-    EMERGENCY_STOP_DENY_REASON,
+    AgentId, BudgetHoldSweepHandle, CapabilityId, ChildReceiptLog, ChioKernel,
+    DefaultDispatchIntentReconciler, FederationTreatyAdmissionBinding,
+    FederationTreatyVerification, Guard, GuardContext, GuardDecision, HotPathDeadlineConfig,
+    HotPathStage, HybridSigningConfig, KernelBuildError, KernelConfig, KernelError,
+    MemoryBudgetConfig, MonetaryDispatchIntentReconciler, OverloadResource,
+    PaymentReconcileOutcome, PaymentReconcileReport, PromptProvider, ReceiptLog,
+    ReplayClockDirection, ResourceProvider, RuntimeAdmissionContext, RuntimeAdmissionDecision,
+    RuntimeAdmissionHook, RuntimeAdmissionReadinessToken, RuntimeAdmissionRevalidationContext,
+    ServerId, StructuredErrorReport, VerifiedFederationTreatyMaterial,
+    DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_HOLD_EXPIRY_HORIZON_SECS,
+    DEFAULT_HOLD_SWEEP_INTERVAL_SECS, DEFAULT_MAX_SIZE_BYTES, DEFAULT_MAX_STREAM_DURATION_SECS,
+    DEFAULT_MAX_STREAM_TOTAL_BYTES, DEFAULT_RECEIPT_APPEND_BUDGET_MS,
+    DEFAULT_RECEIPT_WRITER_POLL_MS, DEFAULT_RECEIPT_WRITER_STALL_MS, DEFAULT_RETENTION_DAYS,
+    DEFAULT_RUNTIME_ADMISSION_READINESS_TIMEOUT_MS, EMERGENCY_STOP_DENY_REASON,
+    MIN_RECEIPT_APPEND_BUDGET_MS,
 };
 
 pub use kernel::evaluator::ToolEvaluator;

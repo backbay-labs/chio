@@ -73,10 +73,10 @@ pub trait ToolEvaluator: Send + Sync {
     /// Dispatch the validated request to the appropriate tool server.
     ///
     /// The default body routes through
-    /// [`ChioKernel::dispatch_tool_call_with_cost`], which uses this
-    /// dispatch order: try streaming first, use `invoke_with_cost`
-    /// only for monetary grants, and report `None` cost for non-monetary
-    /// grants.
+    /// [`ChioKernel::dispatch_tool_call_with_cost`], which enforces the
+    /// configured dispatch budget and uses this dispatch order: try streaming
+    /// first, use `invoke_with_cost` only for monetary grants, and report `None`
+    /// cost for non-monetary grants.
     async fn dispatch(
         &self,
         kernel: &ChioKernel,

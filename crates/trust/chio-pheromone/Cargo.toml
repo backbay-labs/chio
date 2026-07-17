@@ -1,6 +1,6 @@
 [package]
 name = "chio-pheromone"
-description = "Local Chio pheromone substrate and transit evidence types"
+description = "Local Chio pheromone substrate and observation-cost evidence types"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

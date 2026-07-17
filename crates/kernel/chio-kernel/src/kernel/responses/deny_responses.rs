@@ -335,7 +335,12 @@ impl ChioKernel {
             tenant_id: None,
         })?;
 
-        self.record_chio_receipt(&receipt)?;
+        // A fail-closed deny admits no tool, so it must always surface as a signed
+        // verdict rather than a 500. When the deny fires because durable
+        // persistence is down, appending to that same closed store would fail and
+        // mask the verdict, so this records best-effort and never fails the deny on
+        // a serving-closed store.
+        self.record_failclosed_deny_receipt(&receipt)?;
 
         Ok(ToolCallResponse {
             request_id: request.request_id.clone(),
@@ -403,6 +408,43 @@ impl ChioKernel {
             reason,
             "kernel",
         )
+    }
+
+    /// Persist a signed local deny receipt for an RSS/allocation load-shed.
+    ///
+    /// The shed is checked on the same pre-negotiation fast path as the
+    /// emergency stop, which already records a signed deny receipt. Recording
+    /// one here keeps overload denials inside the same receipt-totality audit
+    /// trail every other admission decision has, and makes the `OverloadResource`
+    /// actually appear in a receipt deny reason as `error.rs` documents. The
+    /// caller still returns [`KernelError::Overloaded`] so the
+    /// tower load-shed edge surfaces backpressure; this only records evidence and
+    /// never changes the error. A receipt-persist failure is surfaced to the
+    /// caller, which logs it without masking the shed decision (fail-closed).
+    pub(crate) fn record_overload_shed_deny_receipt(
+        &self,
+        request: &ToolCallRequest,
+        resource: crate::OverloadResource,
+        timestamp: u64,
+        extra_metadata: Option<serde_json::Value>,
+    ) -> Result<(), KernelError> {
+        let reason =
+            format!("kernel shed load to stay within its memory budget (resource: {resource:?})");
+        let evaluation_context = EvaluationReceiptContext::default();
+        // Local, non-federated v1 deny receipt: the shed runs before receipt
+        // negotiation and peer pinning, exactly like the emergency-stop path.
+        let _response = self.build_local_v1_failclosed_deny_response_with_metadata(
+            ReceiptResponseContext {
+                request,
+                evaluation_context: &evaluation_context,
+                timestamp,
+                matched_grant_index: None,
+                extra_metadata,
+            },
+            &reason,
+            "kernel.overload",
+        )?;
+        Ok(())
     }
 
     /// Build a Deny response for pre-dispatch receipt persistence admission.

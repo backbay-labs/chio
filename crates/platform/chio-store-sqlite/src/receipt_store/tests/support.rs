@@ -242,6 +242,18 @@ pub(super) fn sample_receipt_with_keypair(
     .test_unwrap()
 }
 
+/// Thin wrapper over `sample_receipt_with_keypair` that pins the receipt body
+/// `timestamp` (which drives retention aging). `seq` disambiguates receipts
+/// that share a timestamp by folding into the receipt id, so each row is unique.
+pub(super) fn sample_receipt_with_keypair_and_timestamp(
+    id: &str,
+    seq: u64,
+    timestamp: u64,
+    keypair: &Keypair,
+) -> ChioReceipt {
+    sample_receipt_with_keypair(&format!("{id}-{seq}"), timestamp, keypair)
+}
+
 pub(super) fn sample_receipt_with_keypair_and_tenant(
     id: &str,
     timestamp: u64,
@@ -281,6 +293,13 @@ pub(super) fn receipt_test_keypair() -> Keypair {
     Keypair::from_seed(&[0x42; 32])
 }
 
+pub(super) fn signer(keypair: &Keypair, max_batch: u64) -> BackgroundCheckpointSigner {
+    BackgroundCheckpointSigner {
+        keypair: Arc::new(keypair.clone()),
+        max_batch,
+    }
+}
+
 pub(super) fn sample_child_receipt_with_id_and_timestamp(
     id: &str,
     timestamp: u64,
@@ -311,6 +330,19 @@ pub(super) fn sample_child_receipt_with_keypair_and_timestamp(
         keypair,
     )
     .test_unwrap()
+}
+
+/// Thin wrapper over `sample_child_receipt_with_keypair_and_timestamp` that
+/// folds `seq` into the receipt id, mirroring
+/// `sample_receipt_with_keypair_and_timestamp`. `seq` disambiguates receipts
+/// that share a timestamp band so each row is unique.
+pub(super) fn sample_child_receipt_with_keypair_seq_and_timestamp(
+    id: &str,
+    seq: u64,
+    timestamp: u64,
+    keypair: &Keypair,
+) -> ChildRequestReceipt {
+    sample_child_receipt_with_keypair_and_timestamp(&format!("{id}-{seq}"), timestamp, keypair)
 }
 
 pub(super) fn canonical_receipt_bytes(
@@ -1879,6 +1911,20 @@ pub(super) const TRANSPARENCY_PROJECTION_GUARD_TRIGGER_NAMES: &[&str] = &[
     "checkpoint_publication_trust_anchor_bindings_reject_update",
     "checkpoint_publication_trust_anchor_bindings_reject_delete",
 ];
+
+/// The `receipt_id` of the earliest-appended live tool receipt (lowest
+/// `seq`). Used by retention tests to attach reconciliation rows to a
+/// receipt that will fall inside an archival watermark.
+pub(super) fn first_tool_receipt_id(
+    store: &SqliteReceiptStore,
+) -> Result<String, ReceiptStoreError> {
+    let connection = store.reader_connection_for_test()?;
+    Ok(connection.query_row(
+        "SELECT receipt_id FROM chio_tool_receipts ORDER BY seq LIMIT 1",
+        [],
+        |row| row.get(0),
+    )?)
+}
 
 pub(super) fn trigger_exists(store: &SqliteReceiptStore, name: &str) -> bool {
     let connection = store.connection().test_unwrap();

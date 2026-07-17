@@ -5,7 +5,7 @@
 // and prints the next command. Network egress is opt-in.
 
 import { cpSync, existsSync, mkdirSync, realpathSync, statSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { findTemplate, listTemplateSlugs, TEMPLATES } from "./templates.js";
 
@@ -125,7 +125,19 @@ export function runCli(
       message: `error: template source not found at ${sourceDir}`,
     };
   }
-  const destination = resolve(env.cwd, opts.destination ?? template.slug);
+  const cwd = resolve(env.cwd);
+  const destination = resolve(cwd, opts.destination ?? template.slug);
+  const relativeDestination = relative(cwd, destination);
+  if (
+    relativeDestination === ".." ||
+    relativeDestination.startsWith(`..${sep}`) ||
+    isAbsolute(relativeDestination)
+  ) {
+    return {
+      status: "error",
+      message: `error: destination ${destination} must stay within ${cwd}`,
+    };
+  }
   if (env.exists(destination)) {
     return {
       status: "error",

@@ -36,6 +36,23 @@ test("parseRpcMessages parses a single JSON body", () => {
   ]);
 });
 
+test("parseRpcMessages parses a JSON-RPC batch array body", () => {
+  assert.deepEqual(
+    parseRpcMessages("[{\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\"},{\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"ok\":true}}]"),
+    [
+      {
+        jsonrpc: "2.0",
+        method: "notifications/message",
+      },
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        result: { ok: true },
+      },
+    ],
+  );
+});
+
 test("parseRpcMessages parses text/event-stream bodies", () => {
   const rawBody = [
     "data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\",\"params\":{\"index\":1}}",
@@ -95,6 +112,169 @@ test("readRpcMessagesUntilTerminal stops after the matching terminal response", 
       jsonrpc: "2.0",
       method: "notifications/message",
       params: { index: 1 },
+    },
+  ]);
+});
+
+test("readRpcMessagesUntilTerminal skips onMessage for terminal EOF data", async () => {
+  const seen: unknown[] = [];
+  const response = streamResponse(
+    [
+      "data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/message\",\"params\":{\"index\":1}}\n\n",
+      "data: {\"jsonrpc\":\"2.0\",\"id\":7,\"result\":{\"ok\":true}}",
+    ],
+    {
+      status: 200,
+      headers: {
+        "content-type": "text/event-stream",
+      },
+    },
+  );
+
+  const messages = await readRpcMessagesUntilTerminal(response, 7, async (message) => {
+    seen.push(message);
+  });
+
+  assert.deepEqual(messages.at(-1), {
+    jsonrpc: "2.0",
+    id: 7,
+    result: { ok: true },
+  });
+  assert.deepEqual(seen, [
+    {
+      jsonrpc: "2.0",
+      method: "notifications/message",
+      params: { index: 1 },
+    },
+  ]);
+});
+
+test("readRpcMessagesUntilTerminal dispatches batch body notifications", async () => {
+  const seen: unknown[] = [];
+  const response = new Response(
+    JSON.stringify([
+      {
+        jsonrpc: "2.0",
+        method: "notifications/message",
+        params: { index: 1 },
+      },
+      {
+        jsonrpc: "2.0",
+        id: 7,
+        result: { ok: true },
+      },
+    ]),
+    {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+      },
+    },
+  );
+
+  const messages = await readRpcMessagesUntilTerminal(response, 7, async (message) => {
+    seen.push(message);
+  });
+
+  assert.deepEqual(messages, [
+    {
+      jsonrpc: "2.0",
+      method: "notifications/message",
+      params: { index: 1 },
+    },
+    {
+      jsonrpc: "2.0",
+      id: 7,
+      result: { ok: true },
+    },
+  ]);
+  assert.deepEqual(seen, [
+    {
+      jsonrpc: "2.0",
+      method: "notifications/message",
+      params: { index: 1 },
+    },
+  ]);
+});
+
+test("readRpcMessagesUntilTerminal stops batch dispatch after terminal response", async () => {
+  const seen: unknown[] = [];
+  const response = new Response(
+    JSON.stringify([
+      {
+        jsonrpc: "2.0",
+        method: "notifications/message",
+        params: { index: 1 },
+      },
+      {
+        jsonrpc: "2.0",
+        id: 7,
+        result: { ok: true },
+      },
+      {
+        jsonrpc: "2.0",
+        method: "notifications/message",
+        params: { index: 2 },
+      },
+    ]),
+    {
+      status: 200,
+      headers: {
+        "content-type": "application/json",
+      },
+    },
+  );
+
+  const messages = await readRpcMessagesUntilTerminal(response, 7, async (message) => {
+    seen.push(message);
+  });
+
+  assert.deepEqual(messages, [
+    {
+      jsonrpc: "2.0",
+      method: "notifications/message",
+      params: { index: 1 },
+    },
+    {
+      jsonrpc: "2.0",
+      id: 7,
+      result: { ok: true },
+    },
+  ]);
+  assert.deepEqual(seen, [
+    {
+      jsonrpc: "2.0",
+      method: "notifications/message",
+      params: { index: 1 },
+    },
+  ]);
+});
+
+test("readRpcMessagesUntilTerminal keeps JSON-RPC id types strict", async () => {
+  const response = streamResponse(
+    [
+      "data: {\"jsonrpc\":\"2.0\",\"id\":\"1\",\"result\":{\"from\":\"string\"}}\n\n",
+      "data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"from\":\"number\"}}\n\n",
+    ],
+    {
+      status: 200,
+      headers: {
+        "content-type": "text/event-stream",
+      },
+    },
+  );
+
+  const messages = await readRpcMessagesUntilTerminal(response, 1, async () => {});
+  assert.deepEqual(messages, [
+    {
+      jsonrpc: "2.0",
+      id: "1",
+      result: { from: "string" },
+    },
+    {
+      jsonrpc: "2.0",
+      id: 1,
+      result: { from: "number" },
     },
   ]);
 });

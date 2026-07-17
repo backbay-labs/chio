@@ -93,6 +93,35 @@ Hosted session lifecycle tuning now uses these canonical env names:
 
 ## 2. Initial Deployment Procedure
 
+### Supervised deployment and shutdown grace (systemd)
+
+Run trust-control, the remote MCP edge, and the pheromone relay under a
+supervisor in production so a crash auto-restarts and a stop leaves a grace
+window for the graceful drain. Reference units ship under
+`docs/release/systemd/` (trust-control, MCP edge) and
+`docs/release/chio-pheromone-relay/systemd/` (relay). The raw `chio ... serve`
+commands shown below are for local development and one-off runs.
+
+```bash
+install -m 0644 docs/release/systemd/chio-trust-control.service /etc/systemd/system/
+install -m 0644 docs/release/systemd/chio-mcp-edge.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl enable --now chio-trust-control.service chio-mcp-edge.service
+```
+
+Each service installs a SIGTERM handler and drains in-flight requests before it
+exits, bounded by a 25s drain deadline. The units set `KillSignal=SIGTERM` and
+`TimeoutStopSec=35s` (the drain deadline plus a flush margin) so systemd only
+escalates to SIGKILL after the drain can finish.
+
+Deploy contract: set the platform stop grace period at least as high as
+`TimeoutStopSec` so the drain is not preempted. On managed platforms that means
+Cloud Run `timeoutSeconds`, ECS `stopTimeout`, or Kubernetes
+`terminationGracePeriodSeconds` >= 35s. The per-process memory and OOM directives
+(`MemoryMax`, `OOMScoreAdjust`, `LimitNOFILE`, `vm.overcommit_memory`) are owned
+by the bounded-memory deployment guidance; set them in these units from that
+single source of truth.
+
 ### Trust-Control
 
 1. Create a dedicated state directory, for example:

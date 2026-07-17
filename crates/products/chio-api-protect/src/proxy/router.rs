@@ -22,6 +22,10 @@ pub(crate) fn build_app(state: Arc<ProxyState>) -> Router {
     Router::new()
         .route("/chio/evaluate", post(sidecar_evaluate_handler))
         .route("/chio/verify", post(sidecar_verify_handler))
+        // Liveness is process-only; readiness is dependency-aware. Splitting them
+        // lets a liveness probe keep a healthy process alive through a dependency
+        // blip while a readiness probe pulls it from rotation when it can only deny.
+        .route("/chio/live", get(sidecar_liveness_handler))
         .route("/chio/health", get(sidecar_health_handler))
         .merge(approval_routes)
         .route("/v1/capabilities/mint", post(sidecar_mint_handler))
@@ -59,9 +63,41 @@ pub(crate) fn build_app(state: Arc<ProxyState>) -> Router {
             post(sidecar_evaluate_tool_call_handler),
         )
         .route("/v1/evaluate", post(sidecar_removed_evaluate_handler))
+        // Admin-gated Prometheus scrape endpoint. Mounted before the catch-all
+        // so axum prefers this specific route, and gated by the same
+        // sidecar-control posture as the approval routes.
+        .route(
+            "/metrics",
+            get(handle_metrics).route_layer(middleware::from_fn_with_state(
+                Arc::clone(&state),
+                require_sidecar_control_middleware,
+            )),
+        )
         .route("/{*path}", any(proxy_handler))
         .route("/", any(proxy_handler))
         .with_state(state)
+}
+
+/// Compose the Prometheus scrape body from the kernel guard families, the
+/// http-core mediation-edge families, and the alert-pack families.
+async fn handle_metrics() -> impl axum::response::IntoResponse {
+    let alert_pack = || {
+        let mut out = String::new();
+        chio_metrics_spec::runtime::render_alert_pack_families(&mut out);
+        out
+    };
+    let body = chio_metrics_spec::runtime::compose_metrics_body(&[
+        &chio_kernel::render_guard_metrics_prometheus,
+        &chio_http_core::metrics::render_http_core_metrics_prometheus,
+        &alert_pack,
+    ]);
+    (
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; version=0.0.4",
+        )],
+        body,
+    )
 }
 
 pub(crate) async fn require_sidecar_control_middleware(
@@ -99,6 +135,16 @@ pub(crate) async fn proxy_handler(
     };
 
     let path = uri.path().to_string();
+    if let Some(key) = duplicate_query_key(uri.query()) {
+        return (
+            StatusCode::BAD_REQUEST,
+            axum::Json(serde_json::json!({
+                "error": "chio_bad_request",
+                "message": format!("duplicate query parameter `{key}`"),
+            })),
+        )
+            .into_response();
+    }
     let query = parse_query_params(uri.query());
     let forwarded_query = forwarded_query_string(uri.query());
 
@@ -295,10 +341,11 @@ pub(crate) async fn find_revoked_capability_id(
 ) -> Option<String> {
     let capability_id = presented_capability_id(raw_capability)
         .or_else(|| capability_id_hint.map(ToOwned::to_owned))?;
-    let revoked_capability_ids = state.revoked_capability_ids.lock().await;
-    revoked_capability_ids
-        .contains(&capability_id)
-        .then_some(capability_id)
+    if state.capability_is_revoked(&capability_id).await {
+        Some(capability_id)
+    } else {
+        None
+    }
 }
 
 pub(crate) async fn revoked_proxy_response(

@@ -27,6 +27,41 @@ pub(crate) async fn handle_list_tool_receipts(
         Ok(store) => store,
         Err(response) => return response,
     };
+    // Point-load by receipt id: resolve exactly one receipt from the durable
+    // store (bounded to one row) so a bounded in-memory mirror eviction on the
+    // kernel does not cause a false denial of a governed call-chain
+    // continuation. A by-id load is not tenant-scoped, so it is restricted to
+    // the admin service principal (fail-closed): a tenant read token must use
+    // the tenant-filtered list surface instead.
+    if let Some(receipt_id) = query.receipt_id.as_deref() {
+        if !matches!(principal, ResolvedControlReadPrincipal::AdminService) {
+            return plain_http_error(
+                StatusCode::FORBIDDEN,
+                "receipt point-load by id requires the admin service token",
+            );
+        }
+        let receipts = match store.load_chio_receipt(receipt_id) {
+            Ok(Some(receipt)) => match serde_json::to_value(receipt) {
+                Ok(value) => vec![value],
+                Err(error) => {
+                    return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
+                }
+            },
+            Ok(None) => Vec::new(),
+            Err(error) => {
+                return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
+            }
+        };
+        return Json(ReceiptListResponse {
+            configured: true,
+            backend: "sqlite".to_string(),
+            kind: "tool".to_string(),
+            count: receipts.len(),
+            filters: json!({ "receiptId": receipt_id }),
+            receipts,
+        })
+        .into_response();
+    }
     let kernel_query = ReceiptQuery {
         capability_id: query.capability_id.clone(),
         tool_server: query.tool_server.clone(),
@@ -147,6 +182,33 @@ pub(crate) async fn handle_list_child_receipts(
         Ok(store) => store,
         Err(response) => return response,
     };
+    // Point-load by receipt id (admin service only: tenant read tokens are
+    // already rejected above). Resolves exactly one child receipt from the
+    // durable store so bounded-mirror eviction on the kernel does not falsely
+    // deny a governed call-chain continuation.
+    if let Some(receipt_id) = query.receipt_id.as_deref() {
+        let receipts = match store.load_child_receipt(receipt_id) {
+            Ok(Some(receipt)) => match serde_json::to_value(receipt) {
+                Ok(value) => vec![value],
+                Err(error) => {
+                    return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
+                }
+            },
+            Ok(None) => Vec::new(),
+            Err(error) => {
+                return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
+            }
+        };
+        return Json(ReceiptListResponse {
+            configured: true,
+            backend: "sqlite".to_string(),
+            kind: "child".to_string(),
+            count: receipts.len(),
+            filters: json!({ "receiptId": receipt_id }),
+            receipts,
+        })
+        .into_response();
+    }
     let read_context = principal.receipt_read_context();
     let receipts = match store.list_child_receipts_with_context(
         &read_context,

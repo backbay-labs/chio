@@ -7,7 +7,7 @@ All manifests assume the sidecar listens on `:9090` and exposes `GET /chio/healt
 The application talks to the kernel over `http://localhost:9090`.
 
 See `docs/protocols/CLOUD-SIDECAR-INTEGRATION.md` for the architectural
-rationale, env var catalogue, and receipt-sink options.
+rationale, the sidecar flag reference, and durable receipt-store options.
 
 ## Files
 
@@ -29,26 +29,53 @@ Search and replace the following before applying:
 | `ghcr.io/backbay-labs/chio-sidecar:latest` | Chio sidecar image you have built and pushed |
 | `PROJECT_ID`, `REGION` | GCP project and region (Cloud Run) |
 | `ACCOUNT_ID` | AWS account ID (ECS) |
-| `EFS_FILESYSTEM_ID` | ECS EFS volume containing `/chio-config/kernel.yaml` and `/chio-config/spec/openapi.yaml` |
+| `EFS_FILESYSTEM_ID` | ECS EFS filesystem holding the read-only spec/seed shares |
+| `EFS_SEED_ACCESS_POINT_ID` | ECS EFS access point for the seed directory |
 | Key Vault / Secret Manager ARNs | Pre-created secret references |
 
 ## Required secrets
 
-Each manifest wires the following as secret references (never inline):
+Each manifest delivers the receipt-signing seed as a mounted secret file
+(never inline), addressed by `--authority-seed-file`:
 
-- `CHIO_SIGNING_KEY` -- Ed25519 signing key for receipts
-- `CHIO_CAPABILITY_AUTHORITY_URL` -- URL of the capability authority
+- authority signing seed -- the Ed25519 seed the kernel signs receipts with,
+  mounted read-only at `/etc/chio/seed/authority.seed` from the platform secret
+  store (Secret Manager on Cloud Run, an EFS access point on ECS, Key Vault on
+  Azure Container Apps).
 
 Non-secret configuration is passed as CLI flags to the sidecar subcommand
 (`chio api protect`), not via environment variables:
 
 - `--listen` -- bind address (default `127.0.0.1:9090`; the manifests bind `0.0.0.0:9090`); the health route is fixed at `/chio/health`
 - `--upstream` -- the protected upstream base URL
-- `--spec` -- the OpenAPI spec used to derive tool scopes
-- `--receipt-store` -- receipt destination
+- `--spec` -- the OpenAPI document the kernel derives its route and scope table from (the operator-provided spec, not the upstream)
+- `--receipt-store` -- path to the SQLite audit log, on the read-write receipt volume (see durability caveats below)
+- `--authority-seed-file` -- path to the secret-mounted signing seed
 
-Kernel and policy configuration is loaded from a mounted `chio.yaml`, which may
-reference secrets via `${VAR}` interpolation (see the manifests for the exact flags).
+The kernel policy is derived from the OpenAPI spec plus these flags; there is no
+separately mounted kernel or policy config file.
+
+## Durable receipt store
+
+`--receipt-store` opens a SQLite audit log in WAL mode. WAL coordinates readers
+and writers through a shared-memory index that only works when every connection
+is on the same host and a local (non-network) filesystem, so the store is a
+single-writer, single-host database:
+
+- Give the receipt database a **local (non-network) filesystem**, never a shared
+  network filesystem. WAL is not safe over Filestore/NFS, Amazon EFS, or Azure
+  Files; the sidecar fails closed at startup if the mounted filesystem cannot
+  support WAL rather than run without durability.
+- For a **durable** audit trail, give the database a per-instance disk. The ECS
+  reference attaches a per-task block volume and expects `desiredCount: 1`. Two
+  instances writing one receipt file corrupt it, so run exactly one writer per
+  database.
+- Cloud Run and Azure Container Apps have **no per-instance persistent disk**, so
+  their references run the log on a local in-memory volume: WAL works, but the
+  log is lost on every instance or revision recycle. For durable receipts on
+  those platforms, front a client-server audit store or move to a per-instance
+  disk platform (a StatefulSet PVC, or an ECS task with an attached block
+  volume).
 
 ## Startup ordering
 
@@ -68,9 +95,9 @@ the sidecar is healthy:
 
 ## Fail-closed behaviour
 
-If the sidecar cannot load its mounted `chio.yaml` or the policy bundle, it
-exits non-zero. The platform then marks the container unhealthy (ECS, Azure)
-or fails the revision (Cloud Run), which prevents the app container from
+If the sidecar cannot load its mounted OpenAPI spec or open its durable receipt
+store, it exits non-zero. The platform then marks the container unhealthy (ECS,
+Azure) or fails the revision (Cloud Run), which prevents the app container from
 starting. The restart policies are configured to `always` so transient
 failures recover automatically while permanent misconfigurations stay down.
 
@@ -98,8 +125,8 @@ az deployment group create \
   --parameters \
       managedEnvironmentId=/subscriptions/.../managedEnvironments/my-env \
       userAssignedIdentityId=/subscriptions/.../userAssignedIdentities/chio-mi \
-      chioSigningKeySecretUri=https://my-kv.vault.azure.net/secrets/chio-signing-key \
-      chioCapabilityAuthoritySecretUri=https://my-kv.vault.azure.net/secrets/chio-cap-authority-url
+      chioAuthoritySeedSecretUri=https://my-kv.vault.azure.net/secrets/chio-authority-seed \
+      specStorageName=chio-openapi-spec
 ```
 
 ### Sidecar image

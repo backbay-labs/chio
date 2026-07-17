@@ -394,6 +394,15 @@ impl ToolServerConnection for NativeChioService {
             .collect()
     }
 
+    /// Native tools declare side effects at registration (`read_only()`
+    /// clears the default), so the manifest annotation is authoritative:
+    /// declared read-only tools are exempt from side-effect handling (the
+    /// dispatch-intent journal in particular), everything else stays
+    /// side-effecting.
+    fn tool_is_read_only(&self, tool_name: &str) -> bool {
+        self.manifest.tool_is_read_only(tool_name)
+    }
+
     async fn invoke(
         &self,
         tool_name: &str,
@@ -668,5 +677,40 @@ mod tests {
                 .map(|amount| amount.units),
             Some(10)
         );
+    }
+
+    #[test]
+    fn native_service_reports_read_only_from_tool_declarations() {
+        let service = NativeChioServiceBuilder::new(
+            "srv-native",
+            "7b0f6f631f6e66207140ead0b6b2e9418916d2c4b3c7448ba5f7ed27f5c8d038",
+        )
+        .server_name("Native Service")
+        .server_version("0.1.0")
+        .tool(
+            NativeTool::new(
+                "lookup",
+                "Read a value",
+                serde_json::json!({"type": "object"}),
+            )
+            .read_only(),
+            |_arguments| Ok(serde_json::json!({})),
+        )
+        .tool(
+            NativeTool::new(
+                "store",
+                "Write a value",
+                serde_json::json!({"type": "object"}),
+            ),
+            |_arguments| Ok(serde_json::json!({})),
+        )
+        .build()
+        .test_unwrap();
+
+        // A declared read-only tool is exempt from side-effect handling; the
+        // default declaration and unknown names stay side-effecting.
+        assert!(service.tool_is_read_only("lookup"));
+        assert!(!service.tool_is_read_only("store"));
+        assert!(!service.tool_is_read_only("missing"));
     }
 }

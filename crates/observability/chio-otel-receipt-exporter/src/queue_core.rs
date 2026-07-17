@@ -137,8 +137,8 @@ impl<T: BoundedQueueItem> BoundedDropOldestQueue<T> {
 }
 
 impl<T> BoundedDropOldestQueue<T> {
-    pub fn front(&self) -> Option<&T> {
-        self.queue.front()
+    pub fn front_mut(&mut self) -> Option<&mut T> {
+        self.queue.front_mut()
     }
 
     pub fn snapshot(&self) -> BoundedQueueSnapshot {
@@ -159,9 +159,32 @@ impl<T> BoundedDropOldestQueue<T> {
         }
     }
 
-    pub fn record_appended(&mut self, spans: usize) {
-        self.appended_batches += 1;
+    /// Account receipts that crossed the store-append boundary during a drain.
+    /// Split from batch-completion accounting: a retryable partial append
+    /// records the spans it managed to append here, but the batch is NOT yet
+    /// counted as completed, so one OTLP batch resumed across several retries
+    /// has its spans summed exactly once and is never reported as a completed
+    /// batch while it is still queued.
+    pub fn record_appended_spans(&mut self, spans: usize) {
         self.appended_spans += spans as u64;
+    }
+
+    /// Count one fully-appended batch. Called only after the whole batch is
+    /// confirmed appended (the `Ok` path in the drain loop), so a batch retained
+    /// for retry after a partial append is not counted as completed while it is
+    /// still queued, and a batch that finishes across multiple drains is counted
+    /// exactly once.
+    pub fn record_appended_batch(&mut self) {
+        self.appended_batches += 1;
+    }
+
+    /// Add the bytes of receipts cached on the front item (the signed/canonical
+    /// receipts retained for retry after a retryable append error) to the queue
+    /// byte budget, so a batch held during a store outage is accounted at its
+    /// true resident memory rather than only its original OTLP estimate.
+    /// `pop_front` subtracts the same bytes via the item's `bytes()`.
+    pub fn record_prepared_bytes(&mut self, bytes: usize) {
+        self.queued_bytes = self.queued_bytes.saturating_add(bytes);
     }
 
     pub fn record_append_error(&mut self, spans: usize) {

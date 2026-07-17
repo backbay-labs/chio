@@ -1,5 +1,31 @@
 use super::*;
 
+/// Liability claim workflow artifacts embed the full signed chain of prior
+/// artifacts (claim -> response -> dispute -> adjudication ->
+/// payout_instruction -> payout_receipt -> settlement_instruction ->
+/// settlement_receipt), each carrying the one before it. Deserializing and
+/// structurally comparing these deeply nested values (to validate that a new
+/// artifact references the persisted prior stage unchanged) can require more
+/// stack than the single writer actor's thread allots by default. Running
+/// that work on a scoped worker thread with a larger stack keeps the writer
+/// actor's own thread untouched while staying safe as the chain grows.
+fn run_with_generous_stack<F, T>(job: F) -> Result<T, ReceiptStoreError>
+where
+    F: FnOnce() -> Result<T, ReceiptStoreError> + Send,
+    T: Send,
+{
+    std::thread::scope(|scope| {
+        let handle = std::thread::Builder::new()
+            .stack_size(16 * 1024 * 1024)
+            .spawn_scoped(scope, job)?;
+        handle.join().map_err(|_| {
+            ReceiptStoreError::Canonical(
+                "liability claim workflow worker thread panicked".to_string(),
+            )
+        })?
+    })
+}
+
 impl SqliteReceiptStore {
     pub fn record_liability_claim_package(
         &mut self,
@@ -15,8 +41,11 @@ impl SqliteReceiptStore {
         }
         claim.body.validate().map_err(ReceiptStoreError::Conflict)?;
 
+        let claim_owned = claim.clone();
+        self.writer_handle().run_write(move |connection| {
+        run_with_generous_stack(move || {
+        let claim = &claim_owned;
         let artifact = &claim.body;
-        let mut connection = self.connection()?;
         let tx = connection.transaction()?;
         let existing = tx
             .query_row(
@@ -168,6 +197,8 @@ impl SqliteReceiptStore {
 
         tx.commit()?;
         Ok(())
+        })
+        })
     }
 
     pub fn record_liability_claim_response(
@@ -187,80 +218,85 @@ impl SqliteReceiptStore {
             .validate()
             .map_err(ReceiptStoreError::Conflict)?;
 
-        let artifact = &response.body;
-        let mut connection = self.connection()?;
-        let tx = connection.transaction()?;
-        let existing = tx
-            .query_row(
-                "SELECT claim_response_id
+        let response_owned = response.clone();
+        self.writer_handle().run_write(move |connection| {
+            run_with_generous_stack(move || {
+                let response = &response_owned;
+                let artifact = &response.body;
+                let tx = connection.transaction()?;
+                let existing = tx
+                    .query_row(
+                        "SELECT claim_response_id
                  FROM liability_claim_responses
                  WHERE claim_response_id = ?1",
-                params![artifact.claim_response_id],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?;
-        if existing.is_some() {
-            return Err(ReceiptStoreError::Conflict(format!(
-                "liability claim response `{}` already exists",
-                artifact.claim_response_id
-            )));
-        }
+                        params![artifact.claim_response_id],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .optional()?;
+                if existing.is_some() {
+                    return Err(ReceiptStoreError::Conflict(format!(
+                        "liability claim response `{}` already exists",
+                        artifact.claim_response_id
+                    )));
+                }
 
-        let stored_claim_raw_json = tx
-            .query_row(
-                "SELECT raw_json
+                let stored_claim_raw_json = tx
+                    .query_row(
+                        "SELECT raw_json
                  FROM liability_claim_packages
                  WHERE claim_id = ?1",
-                params![artifact.claim.body.claim_id],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?
-            .ok_or_else(|| {
-                ReceiptStoreError::NotFound(format!(
-                    "liability claim package `{}` not found",
-                    artifact.claim.body.claim_id
-                ))
-            })?;
-        let stored_claim: SignedLiabilityClaimPackage =
-            serde_json::from_str(&stored_claim_raw_json)?;
-        if stored_claim.body != artifact.claim.body {
-            return Err(ReceiptStoreError::Conflict(
-                "liability claim response claim does not match the persisted claim package"
-                    .to_string(),
-            ));
-        }
+                        params![artifact.claim.body.claim_id],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .optional()?
+                    .ok_or_else(|| {
+                        ReceiptStoreError::NotFound(format!(
+                            "liability claim package `{}` not found",
+                            artifact.claim.body.claim_id
+                        ))
+                    })?;
+                let stored_claim: SignedLiabilityClaimPackage =
+                    serde_json::from_str(&stored_claim_raw_json)?;
+                if stored_claim.body != artifact.claim.body {
+                    return Err(ReceiptStoreError::Conflict(
+                        "liability claim response claim does not match the persisted claim package"
+                            .to_string(),
+                    ));
+                }
 
-        tx.execute(
-            "INSERT INTO liability_claim_responses (
+                tx.execute(
+                    "INSERT INTO liability_claim_responses (
                 claim_response_id, issued_at, claim_id, provider_id, disposition,
                 raw_json, signer_key, signature
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![
-                artifact.claim_response_id,
-                artifact.issued_at as i64,
-                artifact.claim.body.claim_id,
-                artifact
-                    .claim
-                    .body
-                    .bound_coverage
-                    .body
-                    .placement
-                    .body
-                    .quote_response
-                    .body
-                    .quote_request
-                    .body
-                    .provider_policy
-                    .provider_id,
-                serde_json::to_string(&artifact.disposition)?,
-                serde_json::to_string(response)?,
-                response.signer_key.to_hex(),
-                response.signature.to_hex(),
-            ],
-        )?;
+                    params![
+                        artifact.claim_response_id,
+                        artifact.issued_at as i64,
+                        artifact.claim.body.claim_id,
+                        artifact
+                            .claim
+                            .body
+                            .bound_coverage
+                            .body
+                            .placement
+                            .body
+                            .quote_response
+                            .body
+                            .quote_request
+                            .body
+                            .provider_policy
+                            .provider_id,
+                        serde_json::to_string(&artifact.disposition)?,
+                        serde_json::to_string(response)?,
+                        response.signer_key.to_hex(),
+                        response.signature.to_hex(),
+                    ],
+                )?;
 
-        tx.commit()?;
-        Ok(())
+                tx.commit()?;
+                Ok(())
+            })
+        })
     }
 
     pub fn record_liability_claim_dispute(
@@ -280,8 +316,11 @@ impl SqliteReceiptStore {
             .validate()
             .map_err(ReceiptStoreError::Conflict)?;
 
+        let dispute_owned = dispute.clone();
+        self.writer_handle().run_write(move |connection| {
+        run_with_generous_stack(move || {
+        let dispute = &dispute_owned;
         let artifact = &dispute.body;
-        let mut connection = self.connection()?;
         let tx = connection.transaction()?;
         let existing = tx
             .query_row(
@@ -354,6 +393,8 @@ impl SqliteReceiptStore {
 
         tx.commit()?;
         Ok(())
+        })
+        })
     }
 
     pub fn record_liability_claim_adjudication(
@@ -373,75 +414,80 @@ impl SqliteReceiptStore {
             .validate()
             .map_err(ReceiptStoreError::Conflict)?;
 
-        let artifact = &adjudication.body;
-        let mut connection = self.connection()?;
-        let tx = connection.transaction()?;
-        let existing = tx
-            .query_row(
-                "SELECT adjudication_id
+        let adjudication_owned = adjudication.clone();
+        self.writer_handle().run_write(move |connection| {
+            run_with_generous_stack(move || {
+                let adjudication = &adjudication_owned;
+                let artifact = &adjudication.body;
+                let tx = connection.transaction()?;
+                let existing = tx
+                    .query_row(
+                        "SELECT adjudication_id
                  FROM liability_claim_adjudications
                  WHERE adjudication_id = ?1",
-                params![artifact.adjudication_id],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?;
-        if existing.is_some() {
-            return Err(ReceiptStoreError::Conflict(format!(
-                "liability claim adjudication `{}` already exists",
-                artifact.adjudication_id
-            )));
-        }
+                        params![artifact.adjudication_id],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .optional()?;
+                if existing.is_some() {
+                    return Err(ReceiptStoreError::Conflict(format!(
+                        "liability claim adjudication `{}` already exists",
+                        artifact.adjudication_id
+                    )));
+                }
 
-        let stored_dispute_raw_json = tx
-            .query_row(
-                "SELECT raw_json
+                let stored_dispute_raw_json = tx
+                    .query_row(
+                        "SELECT raw_json
                  FROM liability_claim_disputes
                  WHERE dispute_id = ?1",
-                params![artifact.dispute.body.dispute_id],
-                |row| row.get::<_, String>(0),
-            )
-            .optional()?
-            .ok_or_else(|| {
-                ReceiptStoreError::NotFound(format!(
-                    "liability claim dispute `{}` not found",
-                    artifact.dispute.body.dispute_id
-                ))
-            })?;
-        let stored_dispute: SignedLiabilityClaimDispute =
-            serde_json::from_str(&stored_dispute_raw_json)?;
-        if stored_dispute.body != artifact.dispute.body {
-            return Err(ReceiptStoreError::Conflict(
+                        params![artifact.dispute.body.dispute_id],
+                        |row| row.get::<_, String>(0),
+                    )
+                    .optional()?
+                    .ok_or_else(|| {
+                        ReceiptStoreError::NotFound(format!(
+                            "liability claim dispute `{}` not found",
+                            artifact.dispute.body.dispute_id
+                        ))
+                    })?;
+                let stored_dispute: SignedLiabilityClaimDispute =
+                    serde_json::from_str(&stored_dispute_raw_json)?;
+                if stored_dispute.body != artifact.dispute.body {
+                    return Err(ReceiptStoreError::Conflict(
                 "liability claim adjudication dispute does not match the persisted claim dispute"
                     .to_string(),
             ));
-        }
+                }
 
-        tx.execute(
-            "INSERT INTO liability_claim_adjudications (
+                tx.execute(
+                    "INSERT INTO liability_claim_adjudications (
                 adjudication_id, issued_at, claim_id, dispute_id, outcome,
                 raw_json, signer_key, signature
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-            params![
-                artifact.adjudication_id,
-                artifact.issued_at as i64,
-                artifact
-                    .dispute
-                    .body
-                    .provider_response
-                    .body
-                    .claim
-                    .body
-                    .claim_id,
-                artifact.dispute.body.dispute_id,
-                serde_json::to_string(&artifact.outcome)?,
-                serde_json::to_string(adjudication)?,
-                adjudication.signer_key.to_hex(),
-                adjudication.signature.to_hex(),
-            ],
-        )?;
+                    params![
+                        artifact.adjudication_id,
+                        artifact.issued_at as i64,
+                        artifact
+                            .dispute
+                            .body
+                            .provider_response
+                            .body
+                            .claim
+                            .body
+                            .claim_id,
+                        artifact.dispute.body.dispute_id,
+                        serde_json::to_string(&artifact.outcome)?,
+                        serde_json::to_string(adjudication)?,
+                        adjudication.signer_key.to_hex(),
+                        adjudication.signature.to_hex(),
+                    ],
+                )?;
 
-        tx.commit()?;
-        Ok(())
+                tx.commit()?;
+                Ok(())
+            })
+        })
     }
 
     pub fn record_liability_claim_payout_instruction(
@@ -461,8 +507,11 @@ impl SqliteReceiptStore {
             .validate()
             .map_err(ReceiptStoreError::Conflict)?;
 
+        let payout_instruction_owned = payout_instruction.clone();
+        self.writer_handle().run_write(move |connection| {
+        run_with_generous_stack(move || {
+        let payout_instruction = &payout_instruction_owned;
         let artifact = &payout_instruction.body;
-        let mut connection = self.connection()?;
         let tx = connection.transaction()?;
         let existing = tx
             .query_row(
@@ -537,6 +586,8 @@ impl SqliteReceiptStore {
 
         tx.commit()?;
         Ok(())
+        })
+        })
     }
 
     pub fn record_liability_claim_payout_receipt(
@@ -556,8 +607,11 @@ impl SqliteReceiptStore {
             .validate()
             .map_err(ReceiptStoreError::Conflict)?;
 
+        let payout_receipt_owned = payout_receipt.clone();
+        self.writer_handle().run_write(move |connection| {
+        run_with_generous_stack(move || {
+        let payout_receipt = &payout_receipt_owned;
         let artifact = &payout_receipt.body;
-        let mut connection = self.connection()?;
         let tx = connection.transaction()?;
         let existing = tx
             .query_row(
@@ -632,6 +686,8 @@ impl SqliteReceiptStore {
 
         tx.commit()?;
         Ok(())
+        })
+        })
     }
 
     pub fn record_liability_claim_settlement_instruction(
@@ -651,8 +707,11 @@ impl SqliteReceiptStore {
             .validate()
             .map_err(ReceiptStoreError::Conflict)?;
 
+        let settlement_instruction_owned = settlement_instruction.clone();
+        self.writer_handle().run_write(move |connection| {
+        run_with_generous_stack(move || {
+        let settlement_instruction = &settlement_instruction_owned;
         let artifact = &settlement_instruction.body;
-        let mut connection = self.connection()?;
         let tx = connection.transaction()?;
         let existing = tx
             .query_row(
@@ -737,6 +796,8 @@ impl SqliteReceiptStore {
 
         tx.commit()?;
         Ok(())
+        })
+        })
     }
 
     pub fn record_liability_claim_settlement_receipt(
@@ -756,8 +817,11 @@ impl SqliteReceiptStore {
             .validate()
             .map_err(ReceiptStoreError::Conflict)?;
 
+        let settlement_receipt_owned = settlement_receipt.clone();
+        self.writer_handle().run_write(move |connection| {
+        run_with_generous_stack(move || {
+        let settlement_receipt = &settlement_receipt_owned;
         let artifact = &settlement_receipt.body;
-        let mut connection = self.connection()?;
         let tx = connection.transaction()?;
         let existing = tx
             .query_row(
@@ -847,6 +911,8 @@ impl SqliteReceiptStore {
 
         tx.commit()?;
         Ok(())
+        })
+        })
     }
 
     pub fn query_liability_claim_workflows(

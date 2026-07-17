@@ -39,7 +39,18 @@ manifest_rel = str(manifest_path.relative_to(root))
 
 try:
     tracked_schema_inventory = subprocess.run(
-        ["git", "-C", str(root), "ls-files", "-z", "--", "spec/schemas"],
+        [
+            "git",
+            "-C",
+            str(root),
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "--",
+            "spec/schemas",
+        ],
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -134,7 +145,18 @@ checked_active_chio_schema_text_roots = checked_chio_schema_roots + (
 )
 try:
     tracked = subprocess.run(
-        ["git", "-C", str(root), "ls-files", "-z", "--", *checked_chio_schema_roots],
+        [
+            "git",
+            "-C",
+            str(root),
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "--",
+            *checked_chio_schema_roots,
+        ],
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
@@ -150,7 +172,18 @@ except (OSError, subprocess.CalledProcessError) as error:
 
 try:
     tracked_active = subprocess.run(
-        ["git", "-C", str(root), "ls-files", "-z", "--", *checked_active_chio_schema_text_roots],
+        [
+            "git",
+            "-C",
+            str(root),
+            "ls-files",
+            "-z",
+            "--cached",
+            "--others",
+            "--exclude-standard",
+            "--",
+            *checked_active_chio_schema_text_roots,
+        ],
         check=True,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,

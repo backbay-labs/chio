@@ -69,6 +69,8 @@ The shipped emergency-control posture is bounded:
   `recovery_only`, or `halted` modes
 - `chio-settle` can enter `dispatch_paused`, `refund_only`, `recovery_only`,
   or `halted` modes
+- on-chain contract pause gates new risk and operator-mediated movement while
+  leaving expired escrow refunds and expired bond principal recovery open
 
 These controls narrow write behavior only. They do not rewrite prior receipts,
 proofs, or finality state. Qualification records the resulting control-state

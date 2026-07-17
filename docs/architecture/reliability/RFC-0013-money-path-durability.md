@@ -459,9 +459,20 @@ discretion, mirroring ADR-0015 D3/D5):
   error is `ReconcileFailed`, never a silent close. Because the id is carried by the
   return type, recovery never has to guess or reconstruct it from ad hoc metadata.
 - `Authorized`: authorize succeeded but no terminal action was ever committed (the crash
-  predates step 3, so `settle_action` is NULL). No capture amount was chosen, so the only
-  sound, price-free completion is to `release` the hold (idempotent) and close; funds
-  were only held.
+  predates step 3, so `settle_action` is NULL). For the in-tree prepaid X402/ACP adapters,
+  funds move inside `authorize` itself, and this state spans the entire tool-execution
+  window (the post-execution settle is skipped once `authorization.settled == true`, so
+  the journal never advances past `Authorized` until close): a wide crash window, not a
+  narrow one. No capture amount was chosen either way, so query
+  `settlement_state(request_id, Some(authorization_id))` by the durable reference and
+  authorization id, exactly as in the `HoldPlaced` case above, and match the returned
+  `RailSettlementState`: `NoAuthorization` reverses the budget hold and closes (funds
+  never moved); `Held { authorization_id }` releases the hold (idempotent) and closes
+  (no price was ever chosen, so release is the only sound, price-free completion);
+  `Settled { authorization_id, result }` records the id and emits a signed reconciliation
+  receipt for the already-moved amount instead of releasing (releasing here would reverse
+  the local hold and erase the only record of the charge). An `Unavailable` error is
+  `ReconcileFailed`, never a silent release.
 - `Settling`: a terminal action IS durable. Replay exactly the recorded `settle_action`
   and `settle_amount_units` (idempotent by the amended contract): `Capture` re-captures
   the recorded amount, `Release` releases the hold. This is a predeclared, price-free

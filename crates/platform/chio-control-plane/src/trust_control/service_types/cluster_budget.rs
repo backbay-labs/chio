@@ -15,6 +15,18 @@ pub(crate) struct ClusterStatusResponse {
     pub(crate) authority_lease: Option<ClusterAuthorityLeaseView>,
     pub(crate) replication: ClusterReplicationHeadsView,
     pub(crate) peers: Vec<PeerStatusView>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) budget_ack_heads: Vec<BudgetOriginAck>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct BudgetOriginAck {
+    pub(crate) origin_id: String,
+    /// Contiguous ack head: the highest event_seq S from origin_id such that
+    /// every event in (floor..S] is present (no gap) down to the durable
+    /// trusted floor. NOT MAX(event_seq), NOT anchored on MIN(present).
+    pub(crate) event_seq: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -70,6 +82,31 @@ pub(crate) struct ClusterStateSnapshotResponse {
     pub(crate) budgets: Vec<BudgetUsageView>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) budget_mutation_events: Vec<BudgetMutationEventView>,
+    /// Abandoned/tombstoned budget event_seqs (rolled-back-then-re-appended
+    /// writes' original seqs), range-encoded as inclusive `(start, end)` runs.
+    /// Carried so a fresh follower treats these slots as filled and its contiguous
+    /// ack head does not stall at the hole. Range-encoded rather than one entry per
+    /// seq so a rollback storm - which abandons a long contiguous run - stays a
+    /// handful of small pairs instead of millions of integers that would push the
+    /// snapshot body past MAX_PEER_RESPONSE_BYTES and permanently break the
+    /// force-snapshot recovery path. Additive and default-empty: a mixed-version
+    /// peer that omits it simply relies on the delete-trigger path, never on a
+    /// wrong value.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) budget_abandoned_seq_ranges: Vec<AbandonedSeqRange>,
+}
+
+/// A contiguous run of abandoned/tombstoned budget event_seqs, inclusive on both
+/// ends. The cluster snapshot carries the abandoned set as a list of these runs so
+/// a rollback storm collapses to a few small pairs rather than an unbounded integer
+/// list that could exceed MAX_PEER_RESPONSE_BYTES. Lossless: a follower expands each
+/// run to the identical seq set, preserving the filled-or-abandoned head-advance
+/// semantics.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AbandonedSeqRange {
+    pub(crate) start: u64,
+    pub(crate) end: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -301,6 +338,12 @@ pub(crate) struct BudgetDeltaResponse {
     pub(crate) records: Vec<BudgetUsageView>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub(crate) mutation_events: Vec<BudgetMutationEventView>,
+    /// Abandoned/tombstoned event_seqs above the cursor, so the puller can treat
+    /// those slots as filled when verifying the pulled page is gap-free and does
+    /// not demote a leader whose stream legitimately skips a rolled-back seq.
+    /// Additive and default-empty for mixed-version peers.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub(crate) abandoned_seqs: Vec<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

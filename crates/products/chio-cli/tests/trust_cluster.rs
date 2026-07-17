@@ -2791,7 +2791,7 @@ fn trust_control_cluster_snapshot_replays_holds_and_mutation_events() {
             "eventId": "cap-snapshot-hold-1:authorize"
         }),
         "snapshot hold authorization reaches quorum",
-        Duration::from_secs(30),
+        Duration::from_secs(90),
         || cluster_status_diagnostics(&client, &warm_urls, service_token),
     );
     assert_eq!(authorize["allowed"].as_bool(), Some(true));

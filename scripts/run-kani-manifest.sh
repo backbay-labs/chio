@@ -237,7 +237,7 @@ while IFS=$'\t' read -r crate harness unwind timeout features unwinding_checks; 
   [[ -z "$crate" ]] && continue
   COUNT=$((COUNT + 1))
 
-  CMD=(cargo kani -p "$crate" --lib --harness "$harness"
+  CMD=(cargo kani -p "$crate" --lib --harness "$harness" --exact
        --default-unwind "$unwind")
   if [[ "$unwinding_checks" != "true" ]]; then
     CMD+=(--no-unwinding-checks)

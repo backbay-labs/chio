@@ -4,7 +4,7 @@ use chio_wasm_guards::{
     register_guard_pool_metric_families, GuardPoolMetrics, MetricFamilyDescriptor,
     MetricFamilyKind, EVAL_DURATION_BUCKETS_SECONDS, GUARD_POOL_METRIC_FAMILIES,
     HOST_CALL_DURATION_BUCKETS_SECONDS, HOST_FN_LABEL_VALUES, LABEL_EPOCH, LABEL_GUARD_ID,
-    LABEL_HOST_FN, LABEL_OUTCOME, LABEL_REASON_CLASS, LABEL_TENANT_ID, LABEL_VERDICT,
+    LABEL_HOST_FN, LABEL_OUTCOME, LABEL_REASON, LABEL_REASON_CLASS, LABEL_TENANT_ID, LABEL_VERDICT,
     METRIC_CHIO_GUARD_DENY_TOTAL, METRIC_CHIO_GUARD_EVAL_DURATION_SECONDS,
     METRIC_CHIO_GUARD_FUEL_CONSUMED_TOTAL, METRIC_CHIO_GUARD_HOST_CALL_DURATION_SECONDS,
     METRIC_CHIO_GUARD_MODULE_BYTES, METRIC_CHIO_GUARD_POOL_CHECKOUT_TOTAL,
@@ -120,10 +120,23 @@ fn runtime_metric_descriptors_lock_counter_names_and_units() {
     for name in names {
         let descriptor = family(RUNTIME_METRIC_FAMILIES, name);
         assert_eq!(descriptor.kind, MetricFamilyKind::Counter);
-        assert!(descriptor.labels.is_empty());
         assert_eq!(descriptor.unit, Some("count"));
         assert!(descriptor.buckets.is_empty());
     }
+
+    // The signing family carries the `reason` label so the exported descriptor
+    // matches the workspace descriptor and the kernel renderer, which emit
+    // chio_signing_queue_block_total{reason="..."}.
+    let signing = family(
+        RUNTIME_METRIC_FAMILIES,
+        METRIC_CHIO_SIGNING_QUEUE_BLOCK_TOTAL,
+    );
+    assert_eq!(signing.labels, &[LABEL_REASON]);
+    // The OTEL-drop families remain unlabeled.
+    let otel_ingress = family(RUNTIME_METRIC_FAMILIES, METRIC_CHIO_OTEL_INGRESS_DROP_TOTAL);
+    assert!(otel_ingress.labels.is_empty());
+    let otel_sink = family(RUNTIME_METRIC_FAMILIES, METRIC_CHIO_OTEL_SINK_DROP_TOTAL);
+    assert!(otel_sink.labels.is_empty());
 }
 
 #[test]
@@ -214,6 +227,8 @@ fn exposes_normative_label_value_sets() {
             "oversize",
             "fuel",
             "trap",
+            "malformed",
+            "other",
         ]
     );
     assert_eq!(

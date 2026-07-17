@@ -67,6 +67,17 @@ impl ToolManifest {
     pub fn allows_server_tool(&self, server_tool: ServerTool) -> bool {
         self.server_tools.contains(&server_tool)
     }
+
+    /// Whether the named tool is annotated as having no side effects. A tool
+    /// absent from the manifest reads as NOT read-only: only a positive
+    /// annotation may exempt a call from side-effect handling, so unknown
+    /// tools keep the fail-safe side-effecting classification.
+    pub fn tool_is_read_only(&self, tool_name: &str) -> bool {
+        self.tools
+            .iter()
+            .find(|tool| tool.name == tool_name)
+            .is_some_and(|tool| !tool.has_side_effects)
+    }
 }
 
 /// Provider-native server tools that require manifest allowlisting.

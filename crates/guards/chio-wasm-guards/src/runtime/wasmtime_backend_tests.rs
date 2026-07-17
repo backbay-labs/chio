@@ -138,9 +138,45 @@ fn no_chio_alloc_uses_offset_zero() {
 }
 
 #[test]
-fn chio_alloc_oob_falls_back() {
+fn get_config_reports_full_length_for_truncated_buffer() {
+    let wat = r#"
+            (module
+                (import "chio" "get_config" (func $get_config (param i32 i32 i32 i32) (result i32)))
+                (memory (export "memory") 1)
+                (data (i32.const 8192) "secret")
+                (func (export "evaluate") (param $ptr i32) (param $len i32) (result i32)
+                    (local $copied i32)
+                    (local.set $copied
+                        (call $get_config
+                            (i32.const 8192)
+                            (i32.const 6)
+                            (i32.const 32)
+                            (i32.const 4)))
+                    (if (result i32) (i32.eq (local.get $copied) (i32.const 6))
+                        (then (i32.const 0))
+                        (else (i32.const 1))
+                    )
+                )
+            )
+        "#;
+
+    let mut config = std::collections::HashMap::new();
+    config.insert("secret".to_string(), "abcdef".to_string());
+    let engine = create_shared_engine().unwrap();
+    let mut backend = WasmtimeBackend::with_engine_and_config(engine, config);
+    backend.load_module(wat.as_bytes(), 1_000_000).unwrap();
+
+    let req = make_guard_request();
+    let result = backend.evaluate(&req).unwrap();
+    assert!(
+        result.is_allow(),
+        "expected ALLOW when get_config returned the full value byte count, got: {result:?}"
+    );
+}
+
+#[test]
+fn chio_alloc_oob_fails_closed() {
     // WAT module with chio_alloc that returns 999_999_999 (out-of-bounds).
-    // evaluate checks that ptr == 0 (proving fallback occurred).
     let wat = r#"
             (module
                 (import "chio" "log" (func $log (param i32 i32 i32)))
@@ -152,11 +188,7 @@ fn chio_alloc_oob_falls_back() {
                     (i32.const 999999999)
                 )
                 (func (export "evaluate") (param $ptr i32) (param $len i32) (result i32)
-                    ;; Return ALLOW (0) only if ptr == 0 (fallback), else DENY (1)
-                    (if (result i32) (i32.eqz (local.get $ptr))
-                        (then (i32.const 0))
-                        (else (i32.const 1))
-                    )
+                    (i32.const 0)
                 )
             )
         "#;
@@ -165,17 +197,13 @@ fn chio_alloc_oob_falls_back() {
     backend.load_module(wat.as_bytes(), 1_000_000).unwrap();
 
     let req = make_guard_request();
-    let result = backend.evaluate(&req).unwrap();
-    assert!(
-        result.is_allow(),
-        "expected ALLOW (OOB chio_alloc should fall back to offset 0), got: {result:?}"
-    );
+    let error = backend.evaluate(&req).unwrap_err();
+    assert!(error.to_string().contains("out-of-bounds pointer"));
 }
 
 #[test]
-fn chio_alloc_negative_falls_back() {
+fn chio_alloc_negative_fails_closed() {
     // WAT module with chio_alloc that returns -1 (negative pointer).
-    // evaluate checks that ptr == 0 (proving fallback occurred).
     let wat = r#"
             (module
                 (import "chio" "log" (func $log (param i32 i32 i32)))
@@ -187,11 +215,7 @@ fn chio_alloc_negative_falls_back() {
                     (i32.const -1)
                 )
                 (func (export "evaluate") (param $ptr i32) (param $len i32) (result i32)
-                    ;; Return ALLOW (0) only if ptr == 0 (fallback), else DENY (1)
-                    (if (result i32) (i32.eqz (local.get $ptr))
-                        (then (i32.const 0))
-                        (else (i32.const 1))
-                    )
+                    (i32.const 0)
                 )
             )
         "#;
@@ -200,11 +224,33 @@ fn chio_alloc_negative_falls_back() {
     backend.load_module(wat.as_bytes(), 1_000_000).unwrap();
 
     let req = make_guard_request();
-    let result = backend.evaluate(&req).unwrap();
-    assert!(
-        result.is_allow(),
-        "expected ALLOW (negative chio_alloc should fall back to offset 0), got: {result:?}"
-    );
+    let error = backend.evaluate(&req).unwrap_err();
+    assert!(error.to_string().contains("out-of-bounds pointer"));
+}
+
+#[test]
+fn chio_alloc_trap_fails_closed() {
+    let wat = r#"
+            (module
+                (import "chio" "log" (func $log (param i32 i32 i32)))
+                (import "chio" "get_config" (func $get_config (param i32 i32 i32 i32) (result i32)))
+                (import "chio" "get_time_unix_secs" (func $get_time (result i64)))
+                (memory (export "memory") 2)
+                (func (export "chio_alloc") (param $size i32) (result i32)
+                    unreachable
+                )
+                (func (export "evaluate") (param $ptr i32) (param $len i32) (result i32)
+                    (i32.const 0)
+                )
+            )
+        "#;
+
+    let mut backend = WasmtimeBackend::new().unwrap();
+    backend.load_module(wat.as_bytes(), 1_000_000).unwrap();
+
+    let req = make_guard_request();
+    let error = backend.evaluate(&req).unwrap_err();
+    assert!(error.to_string().contains("chio_alloc call failed"));
 }
 
 // -------------------------------------------------------------------

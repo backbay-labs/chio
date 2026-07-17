@@ -177,6 +177,18 @@ const PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV: &str =
     "CHIO_PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL";
 const PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS_ENV: &str =
     "CHIO_PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS";
+const PUBLIC_SETTLEMENT_TRUSTED_CONTRACT_PACKAGE_ID_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_CONTRACT_PACKAGE_ID";
+const PUBLIC_SETTLEMENT_TRUSTED_REVIEWED_MANIFEST_HASH_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_REVIEWED_MANIFEST_HASH";
+const PUBLIC_SETTLEMENT_TRUSTED_ROOT_REGISTRY_RUNTIME_CODEHASH_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ROOT_REGISTRY_RUNTIME_CODEHASH";
+const PUBLIC_SETTLEMENT_TRUSTED_IDENTITY_REGISTRY_RUNTIME_CODEHASH_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_IDENTITY_REGISTRY_RUNTIME_CODEHASH";
+const PUBLIC_SETTLEMENT_TRUSTED_ESCROW_RUNTIME_CODEHASH_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_ESCROW_RUNTIME_CODEHASH";
+const PUBLIC_SETTLEMENT_TRUSTED_BOND_VAULT_RUNTIME_CODEHASH_ENV: &str =
+    "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BOND_VAULT_RUNTIME_CODEHASH";
 const PUBLIC_SETTLEMENT_REORGED_INDEPENDENT_CHAIN_HEAD_JSON: &str =
     "{\"chain_id\":\"eip155:8453\",\"observed_block_number\":12345678,\"observed_block_hash\":\"0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd\",\"latest_block_number\":12345701}";
 const PROOF_ROOM_TRUSTED_RECEIPT_KERNEL_KEYS_ENV: &str =
@@ -196,7 +208,6 @@ const SOURCE_VERIFIER_CLAIM_PREFIXES: [&str; 11] = [
     CLAIM_PREFIX_TRANSACTION,
     CLAIM_PREFIX_MARKET,
 ];
-
 pub(crate) fn agent_web_verifier_trust_from_env(
 ) -> Result<chio_agent_web_interop::AgentWebVerifierTrust, String> {
     let mut trust = match env::var(AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV) {
@@ -274,10 +285,7 @@ fn optional_u64_from_env(env_name: &str) -> Result<Option<u64>, String> {
     }
 }
 
-fn parse_public_keys(
-    env_name: &str,
-    keys: &str,
-) -> Result<Vec<chio_core_types::PublicKey>, String> {
+fn parse_public_keys(env_name: &str, keys: &str) -> Result<Vec<PublicKey>, String> {
     if keys.trim().is_empty() {
         return Err(format!(
             "{env_name} must contain comma-separated public keys"
@@ -290,14 +298,13 @@ fn parse_public_keys(
             if key.is_empty() {
                 return Err(format!("{env_name} must not contain empty public keys"));
             }
-            chio_core_types::PublicKey::from_hex(key)
+            PublicKey::from_hex(key)
                 .map_err(|error| format!("{env_name} contains invalid public key: {error}"))
         })
         .collect()
 }
 
-pub(crate) fn trust_market_trusted_authority_keys_from_env(
-) -> Result<Vec<chio_core_types::PublicKey>, String> {
+pub(crate) fn trust_market_trusted_authority_keys_from_env() -> Result<Vec<PublicKey>, String> {
     match env::var(TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV) {
         Ok(keys) => parse_public_keys(TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV, &keys),
         Err(env::VarError::NotPresent) => Err(format!(
@@ -309,8 +316,7 @@ pub(crate) fn trust_market_trusted_authority_keys_from_env(
     }
 }
 
-pub(crate) fn enterprise_trusted_approval_signer_keys_from_env(
-) -> Result<Vec<chio_core_types::PublicKey>, String> {
+pub(crate) fn enterprise_trusted_approval_signer_keys_from_env() -> Result<Vec<PublicKey>, String> {
     required_public_keys_from_env(
         ENTERPRISE_TRUSTED_APPROVAL_KEYS_ENV,
         "enterprise approval signer",
@@ -318,36 +324,33 @@ pub(crate) fn enterprise_trusted_approval_signer_keys_from_env(
 }
 
 pub(crate) fn enterprise_trusted_risk_comptroller_signer_keys_from_env(
-) -> Result<Vec<chio_core_types::PublicKey>, String> {
+) -> Result<Vec<PublicKey>, String> {
     required_public_keys_from_env(
         ENTERPRISE_TRUSTED_RISK_COMPTROLLER_KEYS_ENV,
         "enterprise risk comptroller signer",
     )
 }
 
-pub(crate) fn enterprise_trusted_receipt_kernel_keys_from_env(
-) -> Result<Vec<chio_core_types::PublicKey>, String> {
+pub(crate) fn enterprise_trusted_receipt_kernel_keys_from_env() -> Result<Vec<PublicKey>, String> {
     required_public_keys_from_env(
         ENTERPRISE_TRUSTED_RECEIPT_KERNEL_KEYS_ENV,
         "enterprise receipt kernel",
     )
 }
 
-pub(crate) fn commerce_trusted_provider_keys_from_env(
-) -> Result<Vec<chio_core_types::PublicKey>, String> {
+pub(crate) fn commerce_trusted_provider_keys_from_env() -> Result<Vec<PublicKey>, String> {
     required_public_keys_from_env(COMMERCE_TRUSTED_PROVIDER_KEYS_ENV, "commerce provider")
 }
 
 pub(crate) fn commerce_trusted_event_authority_receipt_kernel_keys_from_env(
-) -> Result<Vec<chio_core_types::PublicKey>, String> {
+) -> Result<Vec<PublicKey>, String> {
     required_public_keys_from_env(
         COMMERCE_TRUSTED_EVENT_AUTHORITY_RECEIPT_KERNEL_KEYS_ENV,
         "commerce event authority receipt kernel",
     )
 }
 
-pub(crate) fn commerce_trusted_payment_signer_keys_from_env(
-) -> Result<Vec<chio_core_types::PublicKey>, String> {
+pub(crate) fn commerce_trusted_payment_signer_keys_from_env() -> Result<Vec<PublicKey>, String> {
     required_public_keys_from_env(
         COMMERCE_TRUSTED_PAYMENT_SIGNER_KEYS_ENV,
         "commerce payment signer",
@@ -369,10 +372,7 @@ pub(crate) fn disclosure_lineage_verifier_trust_from_env(
     )
 }
 
-fn required_public_keys_from_env(
-    env_name: &str,
-    label: &str,
-) -> Result<Vec<chio_core_types::PublicKey>, String> {
+fn required_public_keys_from_env(env_name: &str, label: &str) -> Result<Vec<PublicKey>, String> {
     match env::var(env_name) {
         Ok(keys) => parse_public_keys(env_name, &keys),
         Err(env::VarError::NotPresent) => Err(format!("{env_name} must pin trusted {label} keys")),
@@ -400,6 +400,21 @@ fn parse_string_list(env_name: &str, values: &str) -> Result<Vec<String>, String
 fn required_string_list_from_env(env_name: &str, label: &str) -> Result<Vec<String>, String> {
     match env::var(env_name) {
         Ok(values) => parse_string_list(env_name, &values),
+        Err(env::VarError::NotPresent) => Err(format!("{env_name} must pin trusted {label}")),
+        Err(env::VarError::NotUnicode(_)) => Err(format!("{env_name} must be valid UTF-8")),
+    }
+}
+
+fn required_string_from_env(env_name: &str, label: &str) -> Result<String, String> {
+    match env::var(env_name) {
+        Ok(value) => {
+            let value = value.trim();
+            if value.is_empty() {
+                Err(format!("{env_name} must pin trusted {label}"))
+            } else {
+                Ok(value.to_string())
+            }
+        }
         Err(env::VarError::NotPresent) => Err(format!("{env_name} must pin trusted {label}")),
         Err(env::VarError::NotUnicode(_)) => Err(format!("{env_name} must be valid UTF-8")),
     }
@@ -679,14 +694,45 @@ pub(crate) fn public_settlement_verifier_trust_from_env(
         independent_chain_head: optional_public_settlement_independent_chain_head_from_env(
             proof_bundle,
         )?,
+        trusted_dispute_event_blocks: Vec::new(),
+        trusted_release_event_blocks: Vec::new(),
+        trusted_release_event_logs: Vec::new(),
+        trusted_refund_event_logs: Vec::new(),
         verifier_now_unix_seconds: optional_u64_from_env(
             PUBLIC_SETTLEMENT_VERIFIER_NOW_UNIX_SECONDS_ENV,
         )?,
+        trusted_runtime_codehashes: Some(
+            chio_web3::settlement_proof::PublicSettlementRuntimeCodehashTrust {
+                contract_package_id: required_string_from_env(
+                    PUBLIC_SETTLEMENT_TRUSTED_CONTRACT_PACKAGE_ID_ENV,
+                    "public settlement contract package id",
+                )?,
+                reviewed_manifest_hash: required_string_from_env(
+                    PUBLIC_SETTLEMENT_TRUSTED_REVIEWED_MANIFEST_HASH_ENV,
+                    "public settlement reviewed manifest hash",
+                )?,
+                root_registry_runtime_codehash: required_string_from_env(
+                    PUBLIC_SETTLEMENT_TRUSTED_ROOT_REGISTRY_RUNTIME_CODEHASH_ENV,
+                    "public settlement root registry runtime codehash",
+                )?,
+                identity_registry_runtime_codehash: required_string_from_env(
+                    PUBLIC_SETTLEMENT_TRUSTED_IDENTITY_REGISTRY_RUNTIME_CODEHASH_ENV,
+                    "public settlement identity registry runtime codehash",
+                )?,
+                escrow_runtime_codehash: required_string_from_env(
+                    PUBLIC_SETTLEMENT_TRUSTED_ESCROW_RUNTIME_CODEHASH_ENV,
+                    "public settlement escrow runtime codehash",
+                )?,
+                bond_vault_runtime_codehash: required_string_from_env(
+                    PUBLIC_SETTLEMENT_TRUSTED_BOND_VAULT_RUNTIME_CODEHASH_ENV,
+                    "public settlement bond vault runtime codehash",
+                )?,
+            },
+        ),
     })
 }
 
-pub(crate) fn transaction_trusted_root_keys_from_env(
-) -> Result<Vec<chio_core_types::PublicKey>, String> {
+pub(crate) fn transaction_trusted_root_keys_from_env() -> Result<Vec<PublicKey>, String> {
     match env::var(TRANSACTION_TRUSTED_ROOT_KEYS_ENV) {
         Ok(keys) => parse_public_keys(TRANSACTION_TRUSTED_ROOT_KEYS_ENV, &keys),
         Err(env::VarError::NotPresent) => Err(format!(
@@ -716,8 +762,7 @@ pub(crate) fn runtime_trust_from_env(
     })
 }
 
-pub(crate) fn swarm_trusted_witness_keys_from_env(
-) -> Result<Vec<chio_core_types::PublicKey>, String> {
+pub(crate) fn swarm_trusted_witness_keys_from_env() -> Result<Vec<PublicKey>, String> {
     match env::var(SWARM_TRUSTED_WITNESS_KEYS_ENV) {
         Ok(keys) => parse_public_keys(SWARM_TRUSTED_WITNESS_KEYS_ENV, &keys),
         Err(env::VarError::NotPresent) => Err(format!(
@@ -731,7 +776,7 @@ pub(crate) fn swarm_trusted_witness_keys_from_env(
 
 pub(crate) fn swarm_trusted_witness_keys_for_bundle(
     _bundle: &chio_swarm_authority::SwarmAuthorityBundle,
-) -> Result<Vec<chio_core_types::PublicKey>, String> {
+) -> Result<Vec<PublicKey>, String> {
     swarm_trusted_witness_keys_from_env()
 }
 
@@ -765,7 +810,7 @@ fn parse_proof_room_public_key_set(env_name: &str, keys: &str) -> Result<BTreeSe
             if key.is_empty() {
                 return Err(format!("{env_name} must not contain empty public keys"));
             }
-            chio_core_types::PublicKey::from_hex(key)
+            PublicKey::from_hex(key)
                 .map(|key| key.to_hex())
                 .map_err(|error| format!("{env_name} contains invalid public key: {error}"))
         })
@@ -782,7 +827,7 @@ const RISK_GUARANTEE_DECISION_SCHEMA: &str = "chio.risk.guarantee-decision.v1";
 const COMMERCE_PROVIDER_SELECTION_REPORT_SCHEMA: &str =
     "chio.commerce.provider-selection-report.v1";
 const CHIO_RECEIPT_SCHEMA: &str = "chio.receipt.v1";
-const WEB3_SETTLEMENT_EXECUTION_RECEIPT_SCHEMA: &str = "chio.web3-settlement-execution-receipt.v1";
+const WEB3_SETTLEMENT_EXECUTION_RECEIPT_SCHEMA: &str = "chio.web3-settlement-execution-receipt.v2";
 const WEB3_SETTLEMENT_PROOF_BUNDLE_SCHEMA: &str = "chio.web3-settlement-proof-bundle.v1";
 
 const REQUIRED_AUTHORITY_ARTIFACTS: &[(&str, &str)] = &[

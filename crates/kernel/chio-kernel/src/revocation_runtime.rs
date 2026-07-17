@@ -13,6 +13,13 @@ pub trait RevocationStore: Send + Sync {
 
     /// Revoke a capability. Returns `true` if it was newly revoked.
     fn revoke(&self, capability_id: &str) -> Result<bool, RevocationStoreError>;
+
+    /// Whether this store loses its revocation set on process restart. The
+    /// default is the safe (loud) assumption so an unknown store is treated as
+    /// ephemeral; durable and remote stores override to `false`.
+    fn is_ephemeral(&self) -> bool {
+        true
+    }
 }
 
 /// In-memory revocation store for development and testing.

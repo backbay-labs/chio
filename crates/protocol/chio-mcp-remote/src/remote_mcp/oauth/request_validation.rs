@@ -144,4 +144,3 @@ pub(super) fn resolve_exchange_scopes(
         ))
     }
 }
-

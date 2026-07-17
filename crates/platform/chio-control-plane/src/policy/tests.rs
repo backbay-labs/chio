@@ -159,6 +159,48 @@ kernel:
 }
 
 #[test]
+fn parse_policy_dispatch_intent_journal_defaults_to_off() {
+    // No `kernel.dispatch_intent_journal` key at all: the pre-journal write
+    // path must be preserved, not the enum's own compiled default
+    // (`SideEffecting`), so loading an existing policy file on a binary that
+    // understands this key never silently starts journaling.
+    let policy = parse_policy(EXAMPLE_POLICY).test_unwrap();
+    assert_eq!(
+        policy.kernel.dispatch_intent_journal,
+        chio_kernel::DispatchIntentJournalMode::Off
+    );
+}
+
+#[test]
+fn parse_policy_dispatch_intent_journal_accepts_side_effecting_and_all() {
+    for (value, expected) in [
+        ("off", chio_kernel::DispatchIntentJournalMode::Off),
+        (
+            "side_effecting",
+            chio_kernel::DispatchIntentJournalMode::SideEffecting,
+        ),
+        ("all", chio_kernel::DispatchIntentJournalMode::All),
+    ] {
+        let yaml = format!("kernel:\n  dispatch_intent_journal: \"{value}\"\n");
+        let policy = parse_policy(&yaml)
+            .unwrap_or_else(|e| panic!("policy should parse for {value:?}: {e}"));
+        assert_eq!(policy.kernel.dispatch_intent_journal, expected);
+    }
+}
+
+#[test]
+fn parse_policy_rejects_unrecognized_dispatch_intent_journal_value() {
+    // Fail-closed: an unrecognized value must reject the policy at parse
+    // time, not silently fall back to a default the operator did not ask for.
+    let yaml = "kernel:\n  dispatch_intent_journal: \"sometimes\"\n";
+    let result = parse_policy(yaml);
+    assert!(
+        result.is_err(),
+        "an unrecognized dispatch_intent_journal value must reject at parse, got {result:?}"
+    );
+}
+
+#[test]
 fn build_pipeline_from_policy() {
     let policy = parse_policy(EXAMPLE_POLICY).test_unwrap();
     let pipeline = build_guard_pipeline(&policy.guards).test_unwrap();

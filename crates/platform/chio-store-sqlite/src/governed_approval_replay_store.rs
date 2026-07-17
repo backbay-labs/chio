@@ -251,23 +251,35 @@ impl SqliteGovernedApprovalReplayStore {
             [],
             |row| row.get::<_, i64>(0),
         )?;
-        tx.commit()?;
+        let requested_capacity = i64::try_from(self.capacity).map_err(|_| {
+            SqliteGovernedApprovalReplayStoreError(
+                "governed approval replay capacity exceeds SQLite integer range".to_string(),
+            )
+        })?;
+        if requested_capacity < persisted_capacity {
+            return Err(SqliteGovernedApprovalReplayStoreError(format!(
+                "governed approval replay capacity cannot shrink from {persisted_capacity} to {requested_capacity}"
+            )));
+        }
         if retained_rows > self.capacity {
             return Err(SqliteGovernedApprovalReplayStoreError(format!(
                 "configured capacity {} is below the {retained_rows} retained governed approval replay rows",
                 self.capacity
             )));
         }
-        let requested_capacity = i64::try_from(self.capacity).map_err(|_| {
-            SqliteGovernedApprovalReplayStoreError(
-                "governed approval replay capacity exceeds SQLite integer range".to_string(),
-            )
-        })?;
-        if persisted_capacity != requested_capacity {
-            return Err(SqliteGovernedApprovalReplayStoreError(format!(
-                "persisted governed approval replay capacity {persisted_capacity} does not match requested capacity {requested_capacity}"
-            )));
+        if requested_capacity > persisted_capacity {
+            let changed = tx.execute(
+                "UPDATE chio_governed_approval_replay_limits SET capacity = ?1 WHERE singleton = 1 AND capacity = ?2",
+                params![requested_capacity, persisted_capacity],
+            )?;
+            if changed != 1 {
+                return Err(SqliteGovernedApprovalReplayStoreError(
+                    "governed approval replay capacity changed during serialized reconfiguration"
+                        .to_string(),
+                ));
+            }
         }
+        tx.commit()?;
         Ok(())
     }
 
@@ -756,21 +768,15 @@ mod tests {
             Ok(_) => panic!("open must reject a capacity below retained rows"),
             Err(error) => error,
         };
-        assert!(error.to_string().contains("below the 2 retained"));
+        assert!(error.to_string().contains("cannot shrink from 2 to 1"));
         let _ = fs::remove_file(path);
     }
 
     #[test]
-    fn independently_opened_handles_cannot_change_the_persisted_capacity() {
+    fn independently_opened_handles_can_only_increase_persisted_capacity() {
         let path = unique_db_path("chio-approval-replay-capacity-handle-mismatch");
         let store = SqliteGovernedApprovalReplayStore::open_with_capacity(&path, 1).unwrap();
-        let error = match SqliteGovernedApprovalReplayStore::open_with_capacity(&path, 2) {
-            Ok(_) => panic!("a second handle must not weaken the persisted capacity"),
-            Err(error) => error,
-        };
-        assert!(error
-            .to_string()
-            .contains("does not match requested capacity"));
+        let larger = SqliteGovernedApprovalReplayStore::open_with_capacity(&path, 2).unwrap();
 
         let expires_at = u64::try_from(now_secs()).unwrap().saturating_add(60);
         assert!(store
@@ -778,7 +784,14 @@ mod tests {
             .unwrap());
         assert!(store
             .reserve_for_dispatch("subject", "request-b", "intent", expires_at, "owner-b")
-            .is_err());
+            .unwrap());
+        drop(larger);
+
+        let error = match SqliteGovernedApprovalReplayStore::open_with_capacity(&path, 1) {
+            Ok(_) => panic!("a later handle must not shrink the persisted capacity"),
+            Err(error) => error,
+        };
+        assert!(error.to_string().contains("cannot shrink from 2 to 1"));
         drop(store);
         let _ = fs::remove_file(path);
     }

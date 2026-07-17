@@ -1,39 +1,99 @@
-# chio-cohere-tools-adapter Architecture
+# chio-cohere-tools-adapter architecture
 
-## Ownership Boundary
+## Overview
 
-`chio-cohere-tools-adapter` owns the Cohere `/v2/chat` translation boundary. It accepts native Cohere chat and stream payloads, routes outbound requests through the adapter transport, lifts Cohere `tool_calls` blocks into Chio `ToolInvocation` values, gates streaming `tool-call-end` frames before bytes are forwarded, and lowers kernel verdicts plus tool results back into Cohere `tool` role messages.
+The adapter owns the Cohere `/v2/chat` translation boundary: native
+request/response bytes in, `chio_tool_call_fabric::ToolInvocation` out; a
+verdict in, a native Cohere `tool` message out. It has no dependency on
+`chio-kernel` or any policy engine. The caller (in production, the Chio
+kernel; in `chio-provider-conformance`, a fixture replay) supplies the
+`VerdictResult` for each invocation, either by calling `lower_tool_message`
+directly (batch path) or through the `evaluate` closure passed to
+`chat_stream` / `gate_sse_stream` (streaming path). The crate never decides
+allow or deny on its own. `CohereAdapter` implements
+`chio_provider_adapter_core::Provider` (`provider_id`, `api_version`) for
+identity purposes; it does not implement `chio_tool_call_fabric::ProviderAdapter`.
 
-The crate does not own kernel policy evaluation, receipt signing, canonical JSON primitives, HTTP client internals, or provider-wide streaming parsers. Those stay in `chio-tool-call-fabric`, `chio-core`, and `chio-provider-adapter-core`.
+## Module map
 
-## Internal Surfaces
+| Path | Responsibility |
+|------|----------------|
+| `src/lib.rs` | `CohereAdapterConfig`, `CohereAdapter`, the API-version pin check, batch lift (`lift_batch`, `invocation_from_tool_call`), verdict lowering (`lower_tool_message`), redaction application, and deny-reason formatting. |
+| `src/transport.rs` | `Transport` trait, the pinned `COHERE_*` constants, `CohereTransport` (real `reqwest`-backed client via `chio_provider_adapter_core::http`), and `MockTransport` (hermetic, backed by `MockHttpTransport`). |
+| `src/streaming.rs` | `gate_sse_stream`: SSE frame parsing and per-call verdict gating for the `/v2/chat` stream surface. |
+| `src/native.rs` | Cohere v2 wire types: `ToolCallBlock`, `ToolCallFunction`, `ToolResultMessage`, `ToolResultContent`. |
+| `src/loaded_weights.rs` | `chio_core::LoadedWeights` impl for `CohereAdapter`; always reports unavailable. |
 
-- `src/lib.rs` owns public configuration, adapter construction, provider identity, non-streaming lift, verdict lowering, and provenance stamping.
-- `src/transport.rs` owns real and mock Cohere `/v2/chat` transport behavior, including the pinned transport API version and HTTP error taxonomy mapping.
-- `src/streaming.rs` owns deterministic SSE parsing and gating for Cohere `tool-call-end` frames.
-- `src/native.rs` owns the Cohere wire shapes that are stable enough to expose to tests and downstream adapter callers.
-- `tests/live_transport.rs` verifies the real HTTP transport shape with a local mock server and no live Cohere dependency.
-- `tests/error_taxonomy_doctest.rs` keeps README error taxonomy documentation aligned with adapter-visible failures.
+## Request lifecycle
 
-## API-Version Pin
+1. `chat` (batch) or `chat_stream` (SSE) calls `ensure_supported_api_version`,
+   then `Transport::send_chat` or `send_chat_stream`.
+2. `CohereTransport` POSTs the caller's raw `/v2/chat` JSON body to
+   `COHERE_CHAT_HOST` + `COHERE_CHAT_PATH` with a `Bearer` header through
+   `chio_provider_adapter_core::http::HttpTransport`; transport failures map
+   to `ProviderError` via `map_transport_error`.
+3. Batch: `lift_batch` validates the outer envelope
+   (`chio_provider_adapter_core::response_body`), reads `message.tool_calls`,
+   and calls `invocation_from_tool_call` per entry: validates `id`,
+   `type == "function"`, and `function.name`, parses `arguments` as a JSON
+   object, and re-encodes it as RFC 8785 canonical bytes.
+4. Stream: `gate_sse_stream` parses SSE frames
+   (`SseParseOptions::ignoring_unknown`) and for each `tool-call-end` frame
+   (`tool_call` read from `data.tool_call` or `data.delta.tool_call`) runs
+   `invocation_from_tool_call` (the same per-call validation as the batch
+   path), then the caller's `evaluate` closure; a `Deny` or a
+   redaction-bearing `Allow` aborts the call. Every frame's raw bytes are
+   otherwise forwarded in order.
+5. The caller, not this crate, produces the `VerdictResult` for each
+   invocation, batch or streamed.
+6. `lower_tool_message` applies `Allow` redactions (JSON Pointer paths) or
+   formats a `Deny` reason, canonicalizes the result, and returns a
+   `ToolResultMessage` for the next Cohere turn.
 
-`CohereAdapterConfig::new` constructs configs pinned to
-`transport::COHERE_API_VERSION`, but the config is public, serializable, and
-cloneable, and `Transport::api_version` advertises an upstream API surface an
-injected transport claims to implement. Every runtime path that sends native
-requests, gates provider output, stamps provenance, or lowers tool results fails
-closed unless `config.api_version == COHERE_API_VERSION`, and outbound send paths
-also fail closed unless `transport.api_version() == COHERE_API_VERSION`, so a
-stale custom transport cannot receive `/v2/chat` request bytes against a drifted
-API surface. Public construction stays compatible: `CohereAdapter::new` remains
-infallible, but operational paths reject drift before any outbound request or
-provenance-bearing conversion.
+## Invariants and failure modes
 
-## Verification Contract
+- Every public entry point calls `ensure_supported_api_version` first:
+  `config.api_version` and `transport.api_version()` must both equal
+  `COHERE_API_VERSION` ("2025-04"), or the call fails closed before any
+  transport send or provenance stamp. `CohereAdapter::new` itself stays
+  infallible; only operational calls enforce the pin.
+- Streaming gate failure is all-or-nothing per call to `gate_sse_stream`: the
+  first denied tool call, or an allow verdict that requests redactions,
+  returns `Err` and discards the whole buffered response. There is no
+  partial forwarding.
+- `tool_call.id`, `function.name`, and the `tool_call_id` passed to
+  `lower_tool_message` must be non-empty and free of surrounding whitespace,
+  or the call fails as `ProviderError::Malformed`.
+- Tool call arguments must parse as a JSON object; anything else fails as
+  `ProviderError::BadToolArgs`.
+- `CohereTransport::new` / `with_base_url` / `from_env` refuse an empty API
+  key (`TransportError::MissingApiKey`) rather than send an empty bearer
+  token.
+- `MockTransport` fails closed when its scripted response queue is
+  exhausted, rather than returning an empty success.
+- `README.md`'s error-taxonomy table (between the `error-taxonomy:start` /
+  `:end` markers) is checked against live adapter behavior by
+  `tests/error_taxonomy_doctest.rs`; the two must stay in sync.
 
-Regression tests prove that a drifted config API version rejects `chat` and
-`chat_stream` before the mock transport records a send, rejects direct
-non-streaming lift before provenance stamping, and rejects direct lowering before
-producing a native tool message; a drifted transport pin rejects `chat` and
-`chat_stream` before the transport receives a send. The crate is hermetic: no
-test requires a live Cohere API key or network outside local mock servers.
+## Dependencies
+
+`chio-core` is aliased to `chio-core-types` (`Cargo.toml`: `chio-core = {
+package = "chio-core-types" }`); it supplies `canonical::canonical_json_bytes`
+and the `LoadedWeights` / `LoadedWeightsUnavailable` trait implemented in
+`loaded_weights.rs`. `chio-tool-call-fabric` supplies the kernel-facing types
+this adapter translates to and from (`ToolInvocation`, `VerdictResult`,
+`ProviderError`, `ProviderRequest`, `Redaction`, `ProvenanceStamp`,
+`Principal`, `DenyReason`). `chio-provider-adapter-core` supplies the HTTP
+transport, SSE frame parser, response-envelope validator, and the
+`impl_unavailable_loaded_weights!` macro used in `loaded_weights.rs`.
+`async-trait` backs the `Transport` trait; `thiserror` backs `TransportError`
+and `CohereAdapterError`.
+
+## Extension points
+
+`Transport` is the seam for outbound `/v2/chat` delivery: implement it to
+point the adapter at something other than `CohereTransport`, as
+`MockTransport` does for hermetic tests. `CohereAdapter::chat_stream` and
+`gate_sse_stream` take an `evaluate` closure as the verdict seam; the crate
+places no constraint on where that verdict comes from beyond the
+`VerdictResult` shape.

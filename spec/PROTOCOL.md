@@ -1155,14 +1155,25 @@ fields, silently repair an over-disclosure, or make absent signatures trusted.
 
 ### 6.3.6 Agent Web Envelope Family
 
-`chio.agent-web-proof-envelope.v1` is the launch projection envelope for
+`chio.agent-web-proof-envelope.v2` is the current projection envelope for
 external protocol objects. It binds one source protocol and version, one
-external subject path and digest, Chio receipt references, transaction passport
-reference, projection manifest reference and digest, optional settlement, risk,
-and disclosure references, limitation text, Chio claim references, and the
-envelope signature. The envelope is accepted only with
+external subject path and digest, unique Chio receipt references, a transaction
+passport reference and canonical passport-scope digest, a projection manifest
+reference and digest, optional settlement, risk, and disclosure references,
+limitation text, Chio claim references, and the envelope signature. The scope
+digest and corresponding receipt action bindings prevent an envelope from being
+replayed against a different passport scope, manifest, source protocol, or
+source version. The envelope is accepted only with
 `chio.agent-web.external-projection-manifest.v1` and
 `chio.agent-web.interop-verifier-report.v1` for the same projection.
+
+`chio.agent-web-proof-envelope.v1` remains a verification-only compatibility
+format. Its published schema and canonical signed payload do not contain the
+passport-scope digest, and legacy duplicate receipt references remain valid at
+the schema boundary. New producers MUST emit v2. Verifiers that accept v1 MUST
+use the v1 canonical identifier and signature payload, require the legacy
+receipt-to-envelope bindings, and MUST NOT reinterpret v1 as carrying v2 scope
+authority.
 
 The projection manifest declares which external fields were used, which were
 not used, the digest algorithm, source protocol version, sidecar-bound fields,

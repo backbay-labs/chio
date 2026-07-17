@@ -61,14 +61,51 @@ JSON response so callers can render it without an exception path.
 ### `signReceipt`
 
 ```swift
-public func signReceipt(bodyJson: String, signingSeedHex: String) throws -> String
+public func signReceipt(
+    bodyJson: String,
+    canonicalContentHex: String,
+    signingSeedHex: String
+) throws -> String
 ```
 
-Signs an `ChioReceiptBody` JSON with the 32-byte Ed25519 seed
-(lowercase hex, optional `0x` prefix). The body's `kernel_key` must
-equal the public key derived from `signingSeedHex`; otherwise the
-function throws `ChioMobileError.kernelKeyMismatch(message:)`. Returns
-the signed `ChioReceipt` as JSON.
+The public WYSIWYS signer for an `ChioReceiptBody` JSON (fail-closed).
+`canonicalContentHex` is the lowercase-hex encoding of the exact byte
+preimage `body.content_hash` was derived from; the signer recomputes
+`sha256_hex(canonicalContent)` inside the trust boundary and throws
+`ChioMobileError.signingFailed(message:)` when it disagrees with
+`body.content_hash`. This closes the render-A / sign-B forgery at the
+mobile boundary. An empty hex string (or a bare `0x`) is accepted and
+decodes to an empty preimage, matching a zero-chunk stream receipt.
+
+The body's `kernel_key` must equal the public key derived from
+`signingSeedHex`; otherwise the function throws
+`ChioMobileError.kernelKeyMismatch(message:)`. Signs with the 32-byte
+Ed25519 seed (lowercase hex, optional `0x` prefix). Returns the signed
+`ChioReceipt` as JSON.
+
+Callers that only forward an upstream-minted body and cannot carry the
+preimage must use `signReceiptRelayingTrustedBody` instead.
+
+### `signReceiptRelayingTrustedBody`
+
+```swift
+public func signReceiptRelayingTrustedBody(
+    bodyJson: String,
+    signingSeedHex: String
+) throws -> String
+```
+
+Relay-signs an already-minted, upstream-trusted receipt body. This is
+NOT the default public signer: it trusts the caller-supplied
+`body.content_hash` and does not recompute it. Use only to forward a
+body an upstream trusted producer (the kernel) already minted, where
+the WYSIWYS recompute already ran. Content-bearing callers that
+construct receipts at the boundary must use `signReceipt` instead so
+the recompute gate runs over the canonical content preimage.
+
+The body's `kernel_key` must equal the public key derived from
+`signingSeedHex`; otherwise the function throws
+`ChioMobileError.kernelKeyMismatch(message:)`.
 
 ### `verifyCapability`
 
@@ -79,6 +116,19 @@ public func verifyCapability(tokenJson: String, authorityPubHex: String) throws 
 Verifies a capability token against a trusted authority public key.
 Uses the device wall-clock for the time-bound check; use
 `evaluate()` with `now_secs` populated if you need a pinned clock.
+
+### `verifyCapabilityWithContext`
+
+```swift
+public func verifyCapabilityWithContext(requestJson: String) throws -> VerifiedCapability
+```
+
+Verifies a capability token with the full portable JSON context.
+`requestJson` accepts the same trust-root and parent-budget snapshot
+fields as `evaluate` (`capability_trust_roots`,
+`parent_budget_snapshots`), letting delegated tokens seed sibling-sum
+budget enforcement before verification. Complements `verifyCapability`,
+which only takes a token and a single authority key.
 
 ### `verifyPassport`
 
@@ -99,10 +149,32 @@ Verifies a portable passport envelope (v1 wire format). Pass
 public func attestAppAttest(keyId: String, challengeHex: String) throws -> String
 ```
 
-Produces an App Attest evidence envelope bound to a server-issued challenge.
-The function validates `challengeHex` and returns
-`ChioMobileError.attestationUnavailable(message:)`; the platform verifier is
-not yet wired.
+Produces an App Attest challenge envelope bound to `challengeHex`. The
+iOS host app still calls DeviceCheck to produce the platform
+attestation object; this entry point only returns the server challenge
+envelope that object must bind to before `verifyAppAttestEvidence`
+accepts it.
+
+### `verifyAppAttestEvidence`
+
+```swift
+public func verifyAppAttestEvidence(
+    keyId: String,
+    challengeHex: String,
+    appId: String,
+    attestationCborHex: String,
+    previousCounter: Int64
+) throws -> String
+```
+
+Verifies Apple App Attest platform evidence against the issued challenge:
+validates the certificate chain to the pinned Apple App Attestation root,
+binds the server challenge, checks the app id hash, binds the attestation
+leaf key to the credential public key, and enforces counter monotonicity.
+Pass `previousCounter = -1` when no prior counter exists, otherwise pass
+the last accepted counter; the verifier rejects same-or-lower counters
+fail-closed. Throws `ChioMobileError.attestationRejected(message:)` on
+any verification failure.
 
 ### `attestPlayIntegrity`
 
@@ -110,10 +182,32 @@ not yet wired.
 public func attestPlayIntegrity(nonceHex: String) throws -> String
 ```
 
-Produces the Android-compatible Play Integrity evidence shape. The Swift
-surface keeps the name for cross-platform parity; the function validates
-`nonceHex` and returns `ChioMobileError.attestationUnavailable(message:)`;
-the platform verifier is not yet wired.
+Produces a Play Integrity challenge envelope bound to `nonceHex`. The
+Android host app still calls the Play Integrity API to produce the JWS;
+this entry point only returns the nonce envelope the JWS must bind to
+before `verifyPlayIntegrityEvidence` accepts it. Exposed on the Swift
+surface for cross-platform parity.
+
+### `verifyPlayIntegrityEvidence`
+
+```swift
+public func verifyPlayIntegrityEvidence(
+    token: String,
+    expectedNonce: String,
+    expectedPackageName: String,
+    expectedAudience: String,
+    jwksJson: String
+) throws -> String
+```
+
+Verifies a Play Integrity JWS against the pinned Google JWKS: checks
+`aud` against `expectedAudience`, `exp` against the current time, the
+server-supplied nonce against `expectedNonce` byte-for-byte, the package
+name, and the app/device recognition verdicts. `jwksJson` is accepted by
+the function signature but is only honoured in non-production builds;
+production verification always uses the pinned Google JWKS. Throws
+`ChioMobileError.attestationRejected(message:)` on any verification
+failure.
 
 ### `verifyMobileReceipt`
 
@@ -121,10 +215,15 @@ the platform verifier is not yet wired.
 public func verifyMobileReceipt(receiptJson: String, evidenceJson: String) throws -> String
 ```
 
-Verifies a mobile receipt against App Attest or Play Integrity evidence before
-forwarding it to the hosted oracle. The function validates both JSON envelopes
-and returns `ChioMobileError.attestationUnavailable(message:)`; the
-receipt-chain verifier is not yet wired.
+Shape-checks a mobile receipt against App Attest or Play Integrity
+evidence before it is handed to the hosted oracle. This does not
+authorize a capability or prove device integrity: the returned JSON
+status is explicitly non-authoritative (`"authoritative": false`,
+`"authorized": false`) until full receipt-chain verification is wired to
+trusted issuer pins and challenge binding. Throws
+`ChioMobileError.attestationRejected(message:)` when either envelope
+fails to parse or the evidence platform is neither `app_attest` nor
+`play_integrity`.
 
 ## Records
 
@@ -167,9 +266,11 @@ payload blob; decode with `Data(hexEncoded:)`.
 public enum ChioMobileError: Error {
     case invalidJson(message: String)
     case invalidHex(message: String)
+    case weakEntropy(message: String)
     case invalidCapability(message: String)
     case invalidPassport(message: String)
     case attestationUnavailable(message: String)
+    case attestationRejected(message: String)
     case kernelKeyMismatch(message: String)
     case signingFailed(message: String)
     case evaluationDenied(message: String)
@@ -179,7 +280,13 @@ public enum ChioMobileError: Error {
 
 Every variant carries a `message: String` describing the failure.
 Render it directly via `error.localizedDescription` or a custom
-`LocalizedError` adapter.
+`LocalizedError` adapter. `weakEntropy` is thrown by `signReceipt` and
+`signReceiptRelayingTrustedBody` when the signing seed decodes to all
+zero bytes. `attestationUnavailable` and `evaluationDenied` are part of
+the error surface but are not thrown by any entry point in this crate
+today: `evaluate()` encodes a deny verdict in-band in its JSON response
+rather than throwing, and the attestation-evidence verifiers throw
+`attestationRejected` on failure.
 
 ## Minimal usage
 

@@ -19,12 +19,30 @@ impl ChioKernel {
         &self,
         params: ReceiptParams<'_>,
     ) -> Result<ChioReceipt, KernelError> {
-        // An explicit override takes precedence over the authenticated tenant
-        // carried by this evaluation's receipt context.
+        // Multi-tenant receipt isolation: resolve tenant_id for this receipt.
+        // Precedence:
+        //   1. An explicit override on `ReceiptParams` (currently unused).
+        //   2. The request-keyed tenant context set by the evaluate path.
+        //      A present entry is authoritative even when it resolves to
+        //      no tenant: falling through to the thread-local scope from a
+        //      known-tenantless request would adopt whatever tenant a
+        //      concurrent sibling task's scope guard left on the resuming
+        //      worker thread.
+        //   3. The active scoped tenant context set by the evaluate path
+        //      from `session.auth_context().enterprise_identity.tenant_id`,
+        //      for receipts built outside any request-scoped evaluation.
+        //
+        // Tenant_id is never taken from a caller-provided field on the
+        // request: allowing caller choice would defeat the isolation the
+        // store-level WHERE clause enforces.
         let tenant_id = params
             .tenant_id
             .clone()
-            .or_else(|| params.evaluation_context.tenant_id.clone());
+            .or_else(|| params.evaluation_context.tenant_id.clone())
+            .or_else(|| {
+                self.receipt_tenant_id_for_request(params.request_id)
+                    .unwrap_or_else(current_scoped_receipt_tenant_id)
+            });
 
         let request_metadata = params.request_id.map(|request_id| {
             serde_json::json!({
@@ -135,9 +153,16 @@ impl ChioKernel {
         let admitted_peer = if let Some(origin_kernel_id) =
             request.federated_origin_kernel_id.as_deref()
         {
+            let request_admission = self.receipt_federation_admission_for_request(
+                &request.request_id,
+                request.federated_origin_kernel_id.as_deref(),
+            );
+            let thread_admission = current_scoped_receipt_federation_admission();
             let admission = evaluation_context
                 .federation_admission
                 .as_ref()
+                .or(request_admission.as_ref())
+                .or(thread_admission.as_ref())
                 .ok_or_else(|| {
                     KernelError::Internal(format!(
                         "federation admission snapshot missing for origin kernel {origin_kernel_id}"
@@ -159,14 +184,14 @@ impl ChioKernel {
                     peer.kernel_id
                 )));
             }
-            Some(peer)
+            Some(peer.clone())
         } else {
             None
         };
         self.apply_federation_cosign(
             request,
             receipt,
-            admitted_peer,
+            admitted_peer.as_ref(),
             evaluation_context.verified_treaty_material.as_ref(),
         )?;
         Ok(())
@@ -207,7 +232,7 @@ impl ChioKernel {
     }
 
     pub(crate) fn record_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), KernelError> {
-        self.record_chio_receipt_inner(receipt, None, None)
+        self.record_chio_receipt_inner(receipt, None, None, None)
     }
 
     fn record_terminal_chio_receipt(
@@ -216,7 +241,23 @@ impl ChioKernel {
         receipt: &ChioReceipt,
         evaluation_context: &EvaluationReceiptContext,
     ) -> Result<(), KernelError> {
-        self.record_chio_receipt_inner(receipt, Some(request), Some(evaluation_context))
+        self.record_chio_receipt_inner(
+            receipt,
+            Some(request),
+            Some(evaluation_context),
+            Some(&request.request_id),
+        )
+    }
+
+    /// Persist a receipt and atomically consume a matching durable dispatch
+    /// intent when one is registered for `request_id`.
+    #[cfg(test)]
+    pub(crate) fn record_chio_receipt_consuming_optional_intent(
+        &self,
+        receipt: &ChioReceipt,
+        request_id: Option<&str>,
+    ) -> Result<(), KernelError> {
+        self.record_chio_receipt_inner(receipt, None, None, request_id)
     }
 
     fn record_chio_receipt_inner(
@@ -224,6 +265,7 @@ impl ChioKernel {
         receipt: &ChioReceipt,
         request: Option<&crate::runtime::ToolCallRequest>,
         evaluation_context: Option<&EvaluationReceiptContext>,
+        request_id: Option<&str>,
     ) -> Result<(), KernelError> {
         // Serialize revocation and persistence before the store lock, then
         // release both locks before callbacks.
@@ -238,6 +280,13 @@ impl ChioKernel {
             }
         }
         let trace_event;
+        // Scope the receipt-store write lock so it is released before the
+        // settlement observer runs. Holding the mutex across
+        // `run_settlement_observer` would serialize all concurrent receipt
+        // persistence behind potentially I/O-bound hook latency; the observer
+        // needs only a fully-persisted receipt, so the guard is dropped first.
+        // Checkpoint construction runs on the store's writer actor, so this
+        // critical section holds no checkpoint work.
         {
             let _receipt_store_write = self.receipt_store_write_lock.lock().map_err(|_| {
                 KernelError::Internal("receipt store write lock poisoned".to_string())
@@ -248,28 +297,96 @@ impl ChioKernel {
                         .to_string(),
                 ));
             }
-            let stored_seq = self
-                .with_receipt_store(|store| Ok(store.append_chio_receipt_returning_seq(receipt)?));
-            let stored_seq = match stored_seq {
-                Ok(stored_seq) => stored_seq,
-                Err(error) => {
-                    warn!(
-                        receipt_id = %receipt.id,
-                        reason = %redacted!(&error),
-                        audit_fault = "terminal_receipt_append_outcome_unknown",
-                        "terminal receipt append returned an error after persistence began"
-                    );
-                    return Err(error);
+            // Resolve the request's intent handle only under the write lock.
+            // A request can persist more than one receipt concurrently (a
+            // cleanup-fault receipt racing the terminal outcome), and the
+            // first to commit consumes the durable row and drops the handle
+            // below. A lookup before the lock would hand both callers the
+            // handle and send the loser into the consuming append against
+            // the already-deleted row; under the lock the loser observes the
+            // removal and appends plainly.
+            let intent = self.dispatch_intent_for_request(request_id);
+            // Bound the commit round trip so a wedged writer cannot pin the
+            // kernel-wide receipt write lock (and thus every subsequent tool
+            // call) indefinitely. On timeout this fails closed with
+            // ReceiptPersistence(Timeout); no allow response is signed until the
+            // append succeeds.
+            let budget = self.config.deadlines.receipt_append_budget();
+            let append_result = match intent {
+                Some(intent) => {
+                    // The key binds the consume to the exact attested call:
+                    // request id from the pre-dispatch handle, parameter hash
+                    // and tenant from the receipt itself. Any disagreement
+                    // aborts the transaction with the receipt unpersisted.
+                    let key = crate::receipt_store::DispatchIntentKey {
+                        request_id: intent.request_id,
+                        parameter_hash: receipt.action.parameter_hash.clone(),
+                        tenant_id: receipt.tenant_id.clone(),
+                    };
+                    match self.with_receipt_store(|store| {
+                        Ok(store.append_chio_receipt_consuming_intent_with_timeout(
+                            receipt, &key, budget,
+                        ))
+                    }) {
+                        Ok(Some(Ok(sequence))) => {
+                            // The consuming append deleted the durable
+                            // row; drop the request-scoped handle under
+                            // the same write lock so any later receipt
+                            // for this request appends plainly instead of
+                            // retrying the consume against the missing
+                            // row.
+                            self.mark_dispatch_intent_consumed(&key.request_id);
+                            Ok(sequence)
+                        }
+                        Ok(Some(Err(error))) => {
+                            // A timeout is an UNCERTAIN consume: the job
+                            // is still queued on the single writer and
+                            // may commit after this wait expired, so a
+                            // retained handle could send a later receipt
+                            // for the request back through the consume
+                            // and reject it against a row the late commit
+                            // already deleted. Drop the handle so later
+                            // receipts append plainly; if the queued job
+                            // never lands, the still-open row surfaces at
+                            // the next boot instead of costing an audit
+                            // record now. A definitive refusal (the row
+                            // is provably still present) keeps the handle
+                            // so the next receipt can consume it. This
+                            // receipt's own error propagates unchanged
+                            // either way.
+                            if matches!(
+                                error,
+                                crate::receipt_store::ReceiptStoreError::Timeout { .. }
+                            ) {
+                                self.mark_dispatch_intent_consumed(&key.request_id);
+                            }
+                            Err(error.into())
+                        }
+                        Ok(None) => Ok(None),
+                        Err(error) => Err(error),
+                    }
                 }
+                None => match self.with_receipt_store(|store| {
+                    Ok(store.append_chio_receipt_with_timeout(receipt, budget))
+                }) {
+                    Ok(Some(Ok(sequence))) => Ok(sequence),
+                    Ok(Some(Err(error))) => Err(error.into()),
+                    Ok(None) => Ok(None),
+                    Err(error) => Err(error),
+                },
             };
+            if let Err(error) = append_result {
+                warn!(
+                    receipt_id = %receipt.id,
+                    reason = %redacted!(&error),
+                    audit_fault = "terminal_receipt_append_outcome_unknown",
+                    "terminal receipt append returned an error after persistence began"
+                );
+                return Err(error);
+            }
             self.append_chio_receipt_to_local_log(receipt.clone());
             if let Some(evaluation_context) = evaluation_context {
                 evaluation_context.mark_terminal_receipt_committed();
-            }
-            if let Some(seq) = stored_seq.flatten() {
-                if self.should_checkpoint_after_seq(seq) {
-                    self.maybe_trigger_checkpoint_locked(seq)?;
-                }
             }
             trace_event = if self.runtime_trace_observer.is_some() {
                 Some(RuntimeTraceEvent::ReceiptAppended {
@@ -284,89 +401,48 @@ impl ChioKernel {
         if let Some(event) = trace_event {
             self.observe_runtime_trace(event);
         }
-        let _settlement_status = self.run_settlement_observer(receipt);
+        // The terminal receipt is durable: the money path's journal row (if
+        // any) has served its purpose and closes. A crash before this close
+        // leaves a row boot reconciliation closes against this receipt. The
+        // close is state-aware: a row still in Settling belongs to a failed
+        // or unconfirmed rail call and survives for boot reconciliation to
+        // replay (see close_payment_journal_best_effort).
+        if let Some(request_id) = request_id {
+            self.close_payment_journal_best_effort(request_id);
+        }
+        let settlement_status = self.run_settlement_observer(receipt);
+        self.route_settlement_observer_status(receipt, &settlement_status);
         Ok(())
     }
 
-    pub(crate) fn should_checkpoint_after_seq(&self, seq: u64) -> bool {
-        let last_checkpoint_seq = self.last_checkpoint_seq.load(Ordering::SeqCst);
-        seq > 0
-            && self.checkpoint_batch_size > 0
-            && seq > last_checkpoint_seq
-            && (seq - last_checkpoint_seq) >= self.checkpoint_batch_size
+    /// Whether a durable receipt store is configured but no longer serving (its
+    /// commit writer has died or its verified head is poisoned). This is exactly
+    /// the condition the pre-dispatch persistence gate denies on, so the deny it
+    /// produces must not try to append to the same store.
+    fn receipt_store_serving_closed(&self) -> bool {
+        matches!(
+            self.with_receipt_store(|store| Ok(store.writer_serving_closed())),
+            Ok(Some(true))
+        )
     }
 
-    pub(crate) fn maybe_trigger_checkpoint_locked(
+    /// Persist a fail-closed deny receipt, tolerating a serving-closed durable
+    /// store. Several pre-dispatch gates deny precisely because the durable
+    /// receipt writer can no longer persist; appending this deny receipt to that
+    /// same closed store would fail and mask a clean signed Deny as an opaque
+    /// error. A deny executes no tool, so nothing is admitted without a durable
+    /// receipt: when the store is serving-closed, record the signed deny in the
+    /// in-memory log for local audit and surface the verdict instead of failing.
+    /// When the store is serving, persist durably as usual.
+    pub(crate) fn record_failclosed_deny_receipt(
         &self,
-        batch_end_seq: u64,
+        receipt: &ChioReceipt,
     ) -> Result<(), KernelError> {
-        const CHECKPOINT_CONFLICT_RETRIES: usize = 8;
-
-        for attempt in 0..=CHECKPOINT_CONFLICT_RETRIES {
-            self.refresh_checkpoint_counters_from_store()?;
-            let last_checkpoint_seq = self.last_checkpoint_seq.load(Ordering::SeqCst);
-            if batch_end_seq <= last_checkpoint_seq {
-                return Ok(());
-            }
-
-            match self.with_receipt_store(|store| {
-                Ok(store.create_next_receipt_checkpoint(
-                    self.checkpoint_batch_size,
-                    &self.config.keypair,
-                )?)
-            }) {
-                Ok(Some(report)) if report.created => {
-                    if let Some(checkpoint_seq) = report.checkpoint_seq {
-                        self.checkpoint_seq_counter
-                            .store(checkpoint_seq, Ordering::SeqCst);
-                    }
-                    self.last_checkpoint_seq
-                        .store(report.latest_checkpointed_entry_seq, Ordering::SeqCst);
-                    return Ok(());
-                }
-                Ok(Some(_)) | Ok(None) => {
-                    self.refresh_checkpoint_counters_from_store()?;
-                    return Ok(());
-                }
-                Err(KernelError::ReceiptPersistence(ReceiptStoreError::Conflict(_)))
-                    if attempt < CHECKPOINT_CONFLICT_RETRIES =>
-                {
-                    let latest = self.refresh_checkpoint_counters_from_store()?;
-                    if latest
-                        .as_ref()
-                        .is_some_and(|checkpoint| checkpoint.body.batch_end_seq >= batch_end_seq)
-                    {
-                        return Ok(());
-                    }
-                }
-                Err(err) => return Err(err),
-            }
+        if self.receipt_store_serving_closed() {
+            self.append_chio_receipt_to_local_log(receipt.clone());
+            return Ok(());
         }
-
-        Err(KernelError::Internal(
-            "checkpoint store conflict retry budget exhausted".to_string(),
-        ))
-    }
-
-    fn refresh_checkpoint_counters_from_store(
-        &self,
-    ) -> Result<Option<KernelCheckpoint>, KernelError> {
-        let latest = self
-            .with_receipt_store(|store| Ok(store.load_latest_checkpoint()?))?
-            .flatten();
-        match latest.as_ref() {
-            Some(checkpoint) => {
-                self.checkpoint_seq_counter
-                    .store(checkpoint.body.checkpoint_seq, Ordering::SeqCst);
-                self.last_checkpoint_seq
-                    .store(checkpoint.body.batch_end_seq, Ordering::SeqCst);
-            }
-            None => {
-                self.checkpoint_seq_counter.store(0, Ordering::SeqCst);
-                self.last_checkpoint_seq.store(0, Ordering::SeqCst);
-            }
-        }
-        Ok(latest)
+        self.record_chio_receipt(receipt)
     }
 }
 

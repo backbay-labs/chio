@@ -84,7 +84,9 @@ fn later_root_claim_failure_does_not_reserve_agent_web_replay_ids() {
     )
     .as_secs();
     let verifier_now = host_now.saturating_add(60);
-    let replay_max_age = verifier_now.saturating_sub(1_770_508_800).saturating_add(300);
+    let replay_max_age = verifier_now
+        .saturating_sub(1_770_508_800)
+        .saturating_add(300);
     let verifier_now = verifier_now.to_string();
     let replay_max_age = replay_max_age.to_string();
     let env_values = [

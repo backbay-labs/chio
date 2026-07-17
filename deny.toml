@@ -53,12 +53,6 @@ ignore = [
     # last-checked = 2026-06-08; proc-macro-error2 is unmaintained (RUSTSEC-2026-0173). It is a compile-time
     # transitive through alloy-sol-macro and sigstore/oci-spec codegen. No runtime code is shipped from this crate.
     "RUSTSEC-2026-0173",
-    # last-checked = 2026-07-02; anyhow 1.0.102 unsound in Error::downcast_mut() after Error::context()
-    # (RUSTSEC-2026-0190, UB from a borrow-rule violation). Chio never calls downcast_mut (workspace grep: 0 hits),
-    # so the unsoundness is unreachable/latent. anyhow is a workspace-wide transitive dep and main is on 1.0.102 too;
-    # the real fix is anyhow >=1.0.103, deferred to a coordinated dep bump + cargo-vet re-audit (bumping it alone
-    # fails cargo-vet with an unvetted version). Clears with that batch.
-    "RUSTSEC-2026-0190",
     # last-checked = 2026-07-03; quick-xml 0.39.4 unbounded-allocation memory-exhaustion DoS
     # (RUSTSEC-2026-0194 entity expansion, RUSTSEC-2026-0195 NsReader namespace declarations).
     # Pulled only transitively via iroh -> netwatch -> netdev -> plist for local network-interface
@@ -302,6 +296,13 @@ name = "mio"
 name = "windows-targets"
 
 [[bans.skip]]
+# last-checked = 2026-07-10. `core-foundation` resolves to 0.9.x through
+# iroh -> hickory-resolver -> system-configuration and 0.10.x through
+# alloy/reqwest -> rustls-platform-verifier. This is an upstream macOS
+# platform dependency split.
+name = "core-foundation"
+
+[[bans.skip]]
 # `hashbrown` resolves to 0.12 (tonic 0.12 -> tower 0.4 -> indexmap 1),
 # 0.14 (wasmtime/cranelift 29.x), and 0.15/0.16 (everything else). Cannot
 # unify without bumping tonic or wasmtime, both gated on separate roadmap
@@ -318,6 +319,55 @@ name = "getrandom"
 # `rand` 0.8 (chio-guards/internal), 0.9 (transitive through alloy), and
 # 0.10 (newer crates) coexist. Same cascade as getrandom above.
 name = "rand"
+
+[[bans.skip]]
+# last-checked = 2026-07-10. Ed25519/Curve25519 ecosystem split: stable
+# ed25519-dalek still depends on curve25519-dalek 4.x while newer transitive
+# stacks have started adopting the 5.0.0 release-candidate line.
+name = "curve25519-dalek"
+
+[[bans.skip]]
+name = "ed25519"
+
+[[bans.skip]]
+name = "ed25519-dalek"
+
+[[bans.skip]]
+name = "fiat-crypto"
+
+[[bans.skip]]
+# last-checked = 2026-07-10. Transitive utility splits introduced by the
+# iroh, rustls-platform-verifier, and wasm streaming dependency stacks.
+name = "lru"
+
+[[bans.skip]]
+name = "pem-rfc7468"
+
+[[bans.skip]]
+name = "rustls-platform-verifier"
+
+[[bans.skip]]
+name = "spin"
+
+[[bans.skip]]
+name = "strum"
+
+[[bans.skip]]
+name = "strum_macros"
+
+[[bans.skip]]
+name = "toml_edit"
+
+[[bans.skip]]
+name = "wasm-streams"
+
+[[bans.skip]]
+# last-checked = 2026-07-10. Legacy proc-macro-error remains in transitive
+# codegen paths while proc-macro-error 1.x is pulled by newer stacks.
+name = "proc-macro-error"
+
+[[bans.skip]]
+name = "proc-macro-error-attr"
 
 [[bans.skip]]
 # last-checked = 2026-05-03. `syn` 1.x is a known proc-macro

@@ -1,6 +1,7 @@
 use super::*;
 use axum::body::to_bytes;
 use chio_core_types::capability::{
+    attenuation::{DelegationLink, DelegationLinkBody},
     governance::{GovernedApprovalDecision, GovernedApprovalToken, GovernedApprovalTokenBody},
     scope::ChioScope,
     token::{CapabilityToken, CapabilityTokenBody},
@@ -140,6 +141,37 @@ impl MockUpstreamServer {
         })
     }
 
+    /// Accept one connection and read the request, then hold the socket open
+    /// without responding so a client with a request timeout must give up on its
+    /// own. Stands in for an upstream that received the request but stalls.
+    fn spawn_unresponsive() -> Option<Self> {
+        let listener = Self::bind_mock_upstream_listener()?;
+        let address = listener.local_addr().test_unwrap();
+        let requests = Arc::new(std::sync::Mutex::new(Vec::new()));
+        let request_log = Arc::clone(&requests);
+        let handle = thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let request = read_http_request(&mut stream);
+                request_log.lock().test_unwrap().push(request);
+                // Never write a response. Block reading until the client gives up
+                // and closes the connection, modeling an upstream that stalls
+                // indefinitely rather than sleeping a fixed interval: the caller's
+                // request timeout must be what ends the hop.
+                let mut sink = [0_u8; 256];
+                while let Ok(read) = stream.read(&mut sink) {
+                    if read == 0 {
+                        break;
+                    }
+                }
+            }
+        });
+        Some(Self {
+            base_url: format!("http://{}", address),
+            requests,
+            handle,
+        })
+    }
+
     fn base_url(&self) -> String {
         self.base_url.clone()
     }
@@ -183,10 +215,20 @@ fn test_state_with_receipt_db(
         } else {
             (None, Vec::new(), Vec::new(), HashSet::new())
         };
+    // Mirror the proxy's serving modes: a durable sibling store when a receipt
+    // database is configured, an in-memory store shared with the release path
+    // otherwise, so a release is honored in-process even without a receipt db.
+    let revocation_store: Option<Arc<dyn chio_kernel::RevocationStore>> = Some(match receipt_db {
+        Some(path) => Arc::new(
+            chio_store_sqlite::SqliteRevocationStore::open(format!("{path}.revocations"))
+                .test_unwrap(),
+        ) as Arc<dyn chio_kernel::RevocationStore>,
+        None => Arc::new(chio_kernel::InMemoryRevocationStore::new()),
+    });
     let signer_public_key = keypair.public_key();
     let trusted_capability_issuers = vec![signer_public_key.clone()];
     let trusted_receipt_signers = vec![signer_public_key];
-    let evaluator = RequestEvaluator::new_with_approval_store(
+    let evaluator = RequestEvaluator::new_ephemeral_with_approval_store(
         routes,
         keypair.clone(),
         "test-policy".to_string(),
@@ -208,10 +250,60 @@ fn test_state_with_receipt_db(
             receipts: tool_receipts,
         }),
         receipt_store,
+        revocation_store,
         revoked_capability_ids: Mutex::new(revoked_capability_ids),
         trusted_capability_issuers,
         trusted_receipt_signers,
         sidecar_control_token: None,
+        receipt_backend: "ephemeral",
+        revocation_backend: "ephemeral",
+    })
+}
+
+/// Build proxy state whose upstream client aborts a hop after `timeout`, so a
+/// stalled upstream surfaces inside the handler instead of hanging.
+fn test_state_with_client_timeout(
+    routes: Vec<RouteEntry>,
+    upstream: String,
+    timeout: std::time::Duration,
+) -> Arc<ProxyState> {
+    let keypair = Keypair::generate();
+    let approval_store: Arc<dyn ApprovalStore> = Arc::new(InMemoryApprovalStore::new());
+    let signer_public_key = keypair.public_key();
+    let trusted_capability_issuers = vec![signer_public_key.clone()];
+    let trusted_receipt_signers = vec![signer_public_key];
+    let evaluator = RequestEvaluator::new_ephemeral_with_approval_store(
+        routes,
+        keypair.clone(),
+        "test-policy".to_string(),
+        Arc::clone(&approval_store),
+    );
+    let egress_contract = default_upstream_egress_contract(&upstream).test_unwrap();
+    let http_client = client_builder_with_contract(&egress_contract)
+        .timeout(timeout)
+        .build()
+        .test_unwrap();
+    Arc::new(ProxyState {
+        evaluator,
+        signer_keypair: keypair,
+        upstream,
+        http_client,
+        egress_contract,
+        approval_admin: ApprovalAdmin::new(approval_store),
+        receipt_log: Mutex::new(ReceiptLog {
+            receipts: Vec::new(),
+        }),
+        tool_receipt_log: Mutex::new(ToolReceiptLog {
+            receipts: Vec::new(),
+        }),
+        receipt_store: None,
+        revocation_store: None,
+        revoked_capability_ids: Mutex::new(HashSet::new()),
+        trusted_capability_issuers,
+        trusted_receipt_signers,
+        sidecar_control_token: None,
+        receipt_backend: "ephemeral",
+        revocation_backend: "ephemeral",
     })
 }
 
@@ -269,7 +361,12 @@ fn temp_receipt_db_path() -> String {
 }
 
 fn with_peer_addr(mut request: Request<Body>, peer: SocketAddr) -> Request<Body> {
-    request.extensions_mut().insert(ConnectInfo(peer));
+    // The capped serve listener exposes the peer address as `CappedPeerAddr`, so
+    // the sidecar-control checks read `ConnectInfo<CappedPeerAddr>`; mirror that
+    // extension type here rather than the bare `SocketAddr`.
+    request
+        .extensions_mut()
+        .insert(ConnectInfo(CappedPeerAddr(peer)));
     request
 }
 
@@ -600,6 +697,63 @@ async fn approval_routes_are_handled_before_proxy_catch_all() {
         .get_pending("ap-route-1")
         .test_unwrap()
         .is_none());
+}
+
+#[tokio::test]
+async fn metrics_route_serves_rule_pack_families_when_authorized() {
+    // Drive at least one guard family so the body is non-trivial.
+    chio_metrics_spec::runtime::families::GUARD_VERDICT.incr(&["route-test-guard", "allow"]);
+    chio_metrics_spec::runtime::preregister_known_label_sets();
+
+    let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+    let request = with_loopback_peer(
+        Request::builder()
+            .method("GET")
+            .uri("/metrics")
+            .body(Body::empty())
+            .test_unwrap(),
+    );
+    let response = build_app(Arc::clone(&state))
+        .oneshot(request)
+        .await
+        .test_unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let bytes = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .test_unwrap();
+    let body = String::from_utf8(bytes.to_vec()).test_unwrap();
+    assert!(
+        body.contains("chio_guard_verdict_total"),
+        "guard family missing: {body}"
+    );
+    assert!(
+        body.contains("chio_fail_open_suspected_total"),
+        "alert-pack family missing: {body}"
+    );
+    assert!(
+        body.contains("chio_dispatch_failure_total"),
+        "alert-pack family missing: {body}"
+    );
+}
+
+#[tokio::test]
+async fn metrics_route_is_gated() {
+    let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+    // No loopback peer and no bearer token: the sidecar-control gate must refuse.
+    let request = Request::builder()
+        .method("GET")
+        .uri("/metrics")
+        .body(Body::empty())
+        .test_unwrap();
+    let response = build_app(Arc::clone(&state))
+        .oneshot(request)
+        .await
+        .test_unwrap();
+    assert_ne!(
+        response.status(),
+        StatusCode::OK,
+        "unauthenticated scrape must be refused"
+    );
 }
 
 #[tokio::test]
@@ -1094,6 +1248,54 @@ async fn proxy_handler_surfaces_upstream_failures_after_allowing_request() {
         http_status_scope(log.receipts[0].metadata.as_ref()),
         Some(CHIO_HTTP_STATUS_SCOPE_FINAL)
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn proxy_handler_records_receipt_when_upstream_times_out() {
+    // An allowed request whose upstream accepts the connection but never responds
+    // must still finalize a receipt. The per-hop client timeout fires inside the
+    // handler, so the stall is recorded as a bad-gateway receipt rather than
+    // leaving the handler parked for an outer timeout to drop mid-flight.
+    let Some(server) = MockUpstreamServer::spawn_unresponsive() else {
+        return;
+    };
+    let state = test_state_with_client_timeout(
+        vec![RouteEntry {
+            pattern: "/pets".to_string(),
+            method: HttpMethod::Get,
+            operation_id: Some("listPets".to_string()),
+            policy: PolicyDecision::SessionAllow,
+        }],
+        server.base_url(),
+        std::time::Duration::from_millis(150),
+    );
+    let request = Request::builder()
+        .method("GET")
+        .uri("/pets")
+        .body(Body::empty())
+        .test_unwrap();
+
+    // The handler must return on its own once the upstream call times out; the
+    // outer guard only trips (failing the test) if it never does.
+    let response = tokio::time::timeout(
+        std::time::Duration::from_secs(5),
+        proxy_handler(State(Arc::clone(&state)), request),
+    )
+    .await
+    .test_unwrap();
+
+    assert_eq!(response.status(), StatusCode::BAD_GATEWAY);
+    let receipt_id = response
+        .headers()
+        .get("x-chio-receipt-id")
+        .and_then(|value| value.to_str().ok())
+        .test_unwrap()
+        .to_string();
+
+    let log = state.receipt_log.lock().await;
+    assert_eq!(log.receipts.len(), 1);
+    assert_eq!(log.receipts[0].id, receipt_id);
+    assert_eq!(log.receipts[0].response_status, 502);
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -1598,11 +1800,259 @@ async fn sidecar_release_persists_revocation_and_blocks_reuse() {
     let json: serde_json::Value = serde_json::from_slice(&body).test_unwrap();
     assert_eq!(json["message"], "capability token has been revoked");
 
-    let _ = std::fs::remove_file(receipt_db);
+    let _ = std::fs::remove_file(&receipt_db);
+    let _ = std::fs::remove_file(format!("{receipt_db}.revocations"));
 }
 
 #[tokio::test]
-async fn sidecar_release_requires_persistent_receipt_store() {
+async fn sidecar_release_reaches_a_replica_booted_before_the_revocation() {
+    // A sibling replica that started before the revocation keeps a stale, empty
+    // in-memory set. It must still deny the released capability by reading the
+    // shared durable revocation store the release path writes to.
+    let receipt_db = temp_receipt_db_path();
+    let routes = || {
+        vec![RouteEntry {
+            pattern: "/pets".to_string(),
+            method: HttpMethod::Post,
+            operation_id: Some("createPet".to_string()),
+            policy: PolicyDecision::DenyByDefault,
+        }]
+    };
+
+    // Replica B boots first, before any capability has been revoked.
+    let replica_b = test_state_with_receipt_db(
+        routes(),
+        "http://127.0.0.1:1".to_string(),
+        Some(&receipt_db),
+    );
+
+    // Replica A handles the release while replica B is already serving.
+    let replica_a = test_state_with_receipt_db(
+        routes(),
+        "http://127.0.0.1:1".to_string(),
+        Some(&receipt_db),
+    );
+    let release_request = with_loopback_peer(
+        Request::builder()
+            .method("POST")
+            .uri("/v1/capabilities/release")
+            .header("content-type", "application/json")
+            .body(Body::from(
+                serde_json::to_vec(&serde_json::json!({
+                    "capability_id": "cap-revoked",
+                    "job_uid": "job-uid-1",
+                    "reason": "completed",
+                }))
+                .test_unwrap(),
+            ))
+            .test_unwrap(),
+    );
+    let release_response =
+        sidecar_release_handler(State(Arc::clone(&replica_a)), release_request).await;
+    assert_eq!(release_response.status(), StatusCode::OK);
+
+    // Replica B never reloaded its in-memory set...
+    assert!(replica_b.revoked_capability_ids.lock().await.is_empty());
+    // ...yet the shared durable store makes the revocation visible to it.
+    let found = find_revoked_capability_id(&replica_b, None, Some("cap-revoked")).await;
+    assert_eq!(found, Some("cap-revoked".to_string()));
+
+    let _ = std::fs::remove_file(&receipt_db);
+    let _ = std::fs::remove_file(format!("{receipt_db}.revocations"));
+}
+
+#[tokio::test]
+async fn sidecar_validate_capability_honors_a_durable_only_revocation() {
+    let receipt_db = temp_receipt_db_path();
+
+    // Replica B mints a token and keeps serving; its in-memory revocation set is
+    // never reloaded after boot.
+    let replica_b = test_state_with_receipt_db(
+        Vec::new(),
+        "http://127.0.0.1:1".to_string(),
+        Some(&receipt_db),
+    );
+    let mint_response = build_app(Arc::clone(&replica_b))
+        .oneshot(loopback_post(
+            "/v1/capabilities",
+            serde_json::json!({
+                "subject": Keypair::generate().public_key().to_hex(),
+                "scope": { "grants": [], "resource_grants": [], "prompt_grants": [] },
+                "ttl_seconds": 600,
+            }),
+        ))
+        .await
+        .test_unwrap();
+    let token: CapabilityToken = serde_json::from_slice(
+        &to_bytes(mint_response.into_body(), 1024 * 1024)
+            .await
+            .test_unwrap(),
+    )
+    .test_unwrap();
+
+    // Replica A releases the capability on the shared durable store.
+    let replica_a = test_state_with_receipt_db(
+        Vec::new(),
+        "http://127.0.0.1:1".to_string(),
+        Some(&receipt_db),
+    );
+    let release_response = build_app(Arc::clone(&replica_a))
+        .oneshot(loopback_post(
+            "/v1/capabilities/release",
+            serde_json::json!({ "capability_id": token.id, "reason": "completed" }),
+        ))
+        .await
+        .test_unwrap();
+    assert_eq!(release_response.status(), StatusCode::OK);
+
+    // Replica B never reloaded its in-memory set, yet validate consults the
+    // durable store and reports the token as revoked. Without that lookup the
+    // freshly minted, trusted, signed token would validate as live.
+    assert!(replica_b.revoked_capability_ids.lock().await.is_empty());
+    let validate_response = build_app(Arc::clone(&replica_b))
+        .oneshot(loopback_post(
+            "/v1/capabilities/validate",
+            serde_json::to_value(&token).test_unwrap(),
+        ))
+        .await
+        .test_unwrap();
+    let json: serde_json::Value = serde_json::from_slice(
+        &to_bytes(validate_response.into_body(), 1024 * 1024)
+            .await
+            .test_unwrap(),
+    )
+    .test_unwrap();
+    assert_eq!(json["valid"], false);
+    assert!(json["reason"].as_str().test_unwrap().contains("revoked"));
+
+    let _ = std::fs::remove_file(&receipt_db);
+    let _ = std::fs::remove_file(format!("{receipt_db}.revocations"));
+}
+
+#[tokio::test]
+async fn sidecar_evaluate_tool_call_honors_a_durable_only_revocation() {
+    let receipt_db = temp_receipt_db_path();
+
+    let replica_b = test_state_with_receipt_db(
+        Vec::new(),
+        "http://127.0.0.1:1".to_string(),
+        Some(&receipt_db),
+    );
+    let replica_a = test_state_with_receipt_db(
+        Vec::new(),
+        "http://127.0.0.1:1".to_string(),
+        Some(&receipt_db),
+    );
+
+    // Replica A releases the capability on the shared durable store.
+    let release_response = build_app(Arc::clone(&replica_a))
+        .oneshot(loopback_post(
+            "/v1/capabilities/release",
+            serde_json::json!({ "capability_id": "cap-durable-revoked" }),
+        ))
+        .await
+        .test_unwrap();
+    assert_eq!(release_response.status(), StatusCode::OK);
+
+    // Replica B never reloaded its in-memory set, yet the advisory evaluation
+    // consults the durable store and drops the call as revoked. Without that
+    // lookup the advisory checks would report as passed.
+    assert!(replica_b.revoked_capability_ids.lock().await.is_empty());
+    let evaluate_response = build_app(Arc::clone(&replica_b))
+        .oneshot(loopback_post(
+            "/v1/evaluate/advisory",
+            serde_json::json!({
+                "capability_id": "cap-durable-revoked",
+                "tool_server": "fs",
+                "tool_name": "read",
+                "parameters": {},
+            }),
+        ))
+        .await
+        .test_unwrap();
+    assert_eq!(evaluate_response.status(), StatusCode::OK);
+    let receipt_bytes = to_bytes(evaluate_response.into_body(), 1024 * 1024)
+        .await
+        .test_unwrap();
+    let (_body, receipt) = parse_advisory_evaluation_body(&receipt_bytes);
+    assert_eq!(
+        receipt.observation_outcome,
+        Some(ObservationOutcome::Dropped)
+    );
+    let alias_outcome = receipt
+        .metadata
+        .as_ref()
+        .and_then(|m| m.get("advisory_check_outcome"))
+        .and_then(|v| v.as_str());
+    assert_eq!(alias_outcome, Some("capability_revoked"));
+
+    let _ = std::fs::remove_file(&receipt_db);
+    let _ = std::fs::remove_file(format!("{receipt_db}.revocations"));
+}
+
+/// Durable-by-default for embedders: constructing `ProtectConfig` with no
+/// receipt store and no explicit ephemeral opt-in must refuse to start, so a
+/// library user cannot silently run with in-memory receipts. The gate runs
+/// before any listener bind, so the durable-store error surfaces regardless of
+/// the listen address.
+#[tokio::test]
+async fn run_refuses_to_start_without_durable_receipts_unless_opted_in() {
+    let config = ProtectConfig {
+        upstream: "http://127.0.0.1:1".to_string(),
+        spec_content: Some(PETSTORE_YAML.to_string()),
+        spec_path: None,
+        listen_addr: "127.0.0.1:1".to_string(),
+        receipt_db: None,
+        allow_ephemeral_receipts: false,
+        sidecar_control_token: None,
+        signer_seed_hex: None,
+        trusted_capability_issuers: Vec::new(),
+        upstream_request_timeout: DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
+    };
+    let error = ProtectProxy::new(config).run().await.test_unwrap_err();
+    let message = error.to_string();
+    assert!(
+        message.contains("durable receipt store"),
+        "an embedded proxy without a durable store must refuse to start, got: {message}"
+    );
+}
+
+/// Durable-by-default for embedders: an in-memory receipt path (`:memory:` or a
+/// `file:...?mode=memory` URI) opens a SQLite database that vanishes on restart,
+/// so the boot gate must treat it like a missing store and refuse to start
+/// without the explicit ephemeral opt-in. Otherwise the proxy would open
+/// in-memory stores yet advertise a durable receipt backend and silently lose
+/// audit evidence.
+#[tokio::test]
+async fn run_refuses_to_start_with_an_in_memory_receipt_path_unless_opted_in() {
+    for receipt_db in [":memory:", "file:receipts.db?mode=memory"] {
+        let config = ProtectConfig {
+            upstream: "http://127.0.0.1:1".to_string(),
+            spec_content: Some(PETSTORE_YAML.to_string()),
+            spec_path: None,
+            listen_addr: "127.0.0.1:1".to_string(),
+            receipt_db: Some(receipt_db.to_string()),
+            allow_ephemeral_receipts: false,
+            sidecar_control_token: None,
+            signer_seed_hex: None,
+            trusted_capability_issuers: Vec::new(),
+            upstream_request_timeout: DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
+        };
+        let error = ProtectProxy::new(config).run().await.test_unwrap_err();
+        let message = error.to_string();
+        assert!(
+            message.contains("durable receipt store"),
+            "an in-memory receipt path ({receipt_db}) must refuse to start without an opt-in, got: {message}"
+        );
+    }
+}
+
+/// In ephemeral mode there is no durable receipt database, but the sidecar
+/// still shares an in-memory revocation store with the embedded kernel, so a
+/// release must succeed and revoke the capability in-process rather than fail
+/// and leave the token authorizing until it expires.
+#[tokio::test]
+async fn sidecar_release_revokes_in_process_without_a_receipt_store() {
     let state = test_state(
         vec![RouteEntry {
             pattern: "/pets".to_string(),
@@ -1611,6 +2061,10 @@ async fn sidecar_release_requires_persistent_receipt_store() {
             policy: PolicyDecision::DenyByDefault,
         }],
         "http://127.0.0.1:1".to_string(),
+    );
+    assert!(
+        state.receipt_store.is_none(),
+        "ephemeral serving mode has no durable receipt store"
     );
 
     let release_request = with_loopback_peer(
@@ -1630,22 +2084,26 @@ async fn sidecar_release_requires_persistent_receipt_store() {
     );
     let release_response =
         sidecar_release_handler(State(Arc::clone(&state)), release_request).await;
-    assert_eq!(release_response.status(), StatusCode::INTERNAL_SERVER_ERROR);
+    assert_eq!(release_response.status(), StatusCode::OK);
 
     let bytes = to_bytes(release_response.into_body(), 1024 * 1024)
         .await
         .test_unwrap();
     let json: serde_json::Value = serde_json::from_slice(&bytes).test_unwrap();
-    assert_eq!(
-        json["message"],
-        "persistent receipt_db must be configured for capability release"
-    );
+    assert_eq!(json["released"], true);
 
-    assert!(!state
+    // The release takes effect in-process for both the validate path (in-memory
+    // set) and the mediated path (the shared revocation store).
+    assert!(state
         .revoked_capability_ids
         .lock()
         .await
         .contains("cap-revoked"));
+    let store = state.revocation_store.as_ref().test_unwrap();
+    assert!(
+        chio_kernel::RevocationStore::is_revoked(store.as_ref(), "cap-revoked").test_unwrap(),
+        "the shared revocation store must record the release"
+    );
 }
 
 #[tokio::test]
@@ -2362,6 +2820,166 @@ async fn sidecar_validate_capability_reports_revoked_capability() {
     let _ = std::fs::remove_file(receipt_db);
 }
 
+/// Build a leaf capability token whose delegation chain records `parent_id` as
+/// an ancestor. The leaf is signed by the trusted issuer so it passes the
+/// issuer-trust, signature, and expiry gates; only the ancestor's revocation
+/// status is left for the validate handler to weigh.
+fn child_token_with_chain_ancestor(
+    state: &ProxyState,
+    leaf_id: &str,
+    parent_id: &str,
+) -> CapabilityToken {
+    let now = chrono::Utc::now().timestamp() as u64;
+    let delegator = Keypair::generate();
+    let delegatee = Keypair::generate();
+    let link = DelegationLink::sign(
+        DelegationLinkBody {
+            capability_id: parent_id.to_string(),
+            delegator: delegator.public_key(),
+            delegatee: delegatee.public_key(),
+            attenuations: Vec::new(),
+            timestamp: now,
+            scope_hash: None,
+        },
+        &delegator,
+    )
+    .test_unwrap();
+    CapabilityToken::sign(
+        CapabilityTokenBody {
+            id: leaf_id.to_string(),
+            issuer: state.signer_keypair.public_key(),
+            subject: delegatee.public_key(),
+            scope: ChioScope::default(),
+            issued_at: now.saturating_sub(60),
+            expires_at: now + 3600,
+            delegation_chain: vec![link],
+        },
+        &state.signer_keypair,
+    )
+    .test_unwrap()
+}
+
+#[tokio::test]
+async fn sidecar_validate_capability_rejects_revoked_delegation_chain_ancestor() {
+    let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+    let parent_id = "cap-parent-delegator";
+    let child = child_token_with_chain_ancestor(&state, "cap-child-leaf", parent_id);
+
+    // Revoke the parent capability while the leaf itself stays live: the
+    // validate handler must still refuse the delegated child.
+    state
+        .revoked_capability_ids
+        .lock()
+        .await
+        .insert(parent_id.to_string());
+
+    let validate_body = serde_json::to_value(&child).test_unwrap();
+    let response = build_app(Arc::clone(&state))
+        .oneshot(loopback_post("/v1/capabilities/validate", validate_body))
+        .await
+        .test_unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let bytes = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .test_unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).test_unwrap();
+    assert_eq!(json["valid"], false);
+    assert!(json["reason"].as_str().test_unwrap().contains("chain"));
+}
+
+#[tokio::test]
+async fn sidecar_validate_capability_accepts_live_delegation_chain() {
+    let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+    let child = child_token_with_chain_ancestor(&state, "cap-child-live", "cap-parent-live");
+
+    let validate_body = serde_json::to_value(&child).test_unwrap();
+    let response = build_app(Arc::clone(&state))
+        .oneshot(loopback_post("/v1/capabilities/validate", validate_body))
+        .await
+        .test_unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let bytes = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .test_unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).test_unwrap();
+    assert_eq!(json["valid"], true);
+    assert_eq!(json["capability_id"], "cap-child-live");
+}
+
+/// An untrusted token must be rejected on issuer trust before its delegation
+/// chain is walked, so an unauthenticated caller cannot force one revocation
+/// lookup per fabricated ancestor. The leaf carries a revoked ancestor, so a
+/// handler that walked the chain first would report the chain-revoked reason;
+/// the correct order reports the untrusted-issuer reason and never consults the
+/// ancestor's revocation status.
+#[tokio::test]
+async fn sidecar_validate_capability_checks_issuer_trust_before_walking_chain() {
+    let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+    let untrusted_issuer = Keypair::generate();
+    let parent_id = "cap-parent-untrusted";
+
+    let now = chrono::Utc::now().timestamp() as u64;
+    let delegator = Keypair::generate();
+    let delegatee = Keypair::generate();
+    let link = DelegationLink::sign(
+        DelegationLinkBody {
+            capability_id: parent_id.to_string(),
+            delegator: delegator.public_key(),
+            delegatee: delegatee.public_key(),
+            attenuations: Vec::new(),
+            timestamp: now,
+            scope_hash: None,
+        },
+        &delegator,
+    )
+    .test_unwrap();
+    let child = CapabilityToken::sign(
+        CapabilityTokenBody {
+            id: "cap-child-untrusted".to_string(),
+            issuer: untrusted_issuer.public_key(),
+            subject: delegatee.public_key(),
+            scope: ChioScope::default(),
+            issued_at: now.saturating_sub(60),
+            expires_at: now + 3600,
+            delegation_chain: vec![link],
+        },
+        &untrusted_issuer,
+    )
+    .test_unwrap();
+
+    // Revoke the ancestor. A handler that walks the chain before the issuer
+    // gate would surface this; the correct order never reaches it.
+    state
+        .revoked_capability_ids
+        .lock()
+        .await
+        .insert(parent_id.to_string());
+
+    let validate_body = serde_json::to_value(&child).test_unwrap();
+    let response = build_app(Arc::clone(&state))
+        .oneshot(loopback_post("/v1/capabilities/validate", validate_body))
+        .await
+        .test_unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+
+    let bytes = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .test_unwrap();
+    let json: serde_json::Value = serde_json::from_slice(&bytes).test_unwrap();
+    assert_eq!(json["valid"], false);
+    let reason = json["reason"].as_str().test_unwrap();
+    assert!(
+        reason.contains("issuer is not trusted"),
+        "an untrusted token must be rejected on issuer trust before its chain is walked, got: {reason}"
+    );
+    assert!(
+        !reason.contains("chain"),
+        "the delegation chain must not be consulted for an untrusted token, got: {reason}"
+    );
+}
+
 #[tokio::test]
 async fn sidecar_validate_capability_rejects_untrusted_issuer() {
     let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
@@ -2964,4 +3582,95 @@ async fn sidecar_evaluate_tool_call_denies_parameter_hash_mismatch() {
         .and_then(|m| m.get("advisory_check_outcome"))
         .and_then(|v| v.as_str());
     assert_eq!(alias_outcome, Some("parameter_hash_mismatch"));
+}
+
+#[tokio::test]
+async fn live_route_reports_process_healthy_without_consulting_dependencies() {
+    let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+    let request = Request::builder()
+        .method("GET")
+        .uri("/chio/live")
+        .body(Body::empty())
+        .test_unwrap();
+
+    let response = build_app(Arc::clone(&state))
+        .oneshot(request)
+        .await
+        .test_unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .test_unwrap();
+    let health: HealthResponse = serde_json::from_slice(&body).test_unwrap();
+    assert_eq!(health.status, SidecarStatus::Healthy);
+}
+
+#[tokio::test]
+async fn health_route_reports_ready_when_the_receipt_store_is_reachable() {
+    let db_path = temp_receipt_db_path();
+    let state =
+        test_state_with_receipt_db(Vec::new(), "http://127.0.0.1:1".to_string(), Some(&db_path));
+    let request = Request::builder()
+        .method("GET")
+        .uri("/chio/health")
+        .body(Body::empty())
+        .test_unwrap();
+
+    let response = build_app(Arc::clone(&state))
+        .oneshot(request)
+        .await
+        .test_unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024 * 1024)
+        .await
+        .test_unwrap();
+    let health: HealthResponse = serde_json::from_slice(&body).test_unwrap();
+    assert_eq!(health.status, SidecarStatus::Healthy);
+}
+
+#[tokio::test]
+async fn readiness_consults_the_store_reachability_signal() {
+    // With no store there is no dependency to fail, so readiness is healthy. The
+    // reachability signal it consults is true for a working store; a store whose
+    // connection could no longer answer this query drives readiness to unhealthy.
+    let state = test_state(Vec::new(), "http://127.0.0.1:1".to_string());
+    assert_eq!(state.readiness_status().await, SidecarStatus::Healthy);
+
+    let db_path = temp_receipt_db_path();
+    let store = SqliteReceiptStore::open(&db_path).test_unwrap();
+    assert!(
+        store.is_reachable(),
+        "a freshly opened store must be reachable"
+    );
+}
+
+#[tokio::test]
+async fn reachability_probe_touches_the_write_path_and_persists_nothing() {
+    let db_path = temp_receipt_db_path();
+    let store = SqliteReceiptStore::open(&db_path).test_unwrap();
+
+    // A healthy store probes reachable, and the probe rolls back: exercising the
+    // write path must not leave a durable receipt behind.
+    assert!(
+        store.is_reachable(),
+        "a freshly opened store must be reachable"
+    );
+    assert!(
+        store.load_receipts().test_unwrap().is_empty(),
+        "the readiness probe must not persist a receipt"
+    );
+
+    // Drop the receipt table out of band, as a bad migration or schema corruption
+    // would. A bare connection check would still answer here; the write-path probe
+    // must not, so an instance that can no longer persist receipts leaves rotation.
+    let side = rusqlite::Connection::open(&db_path).test_unwrap();
+    side.execute("DROP TABLE http_receipts", []).test_unwrap();
+    drop(side);
+
+    assert!(
+        !store.is_reachable(),
+        "a store that can no longer persist receipts must fail readiness"
+    );
 }

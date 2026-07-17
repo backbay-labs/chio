@@ -15,6 +15,8 @@ pub fn build_chain_anchor_record(
         tx_hash: confirmed.tx_hash.clone(),
         block_number: confirmed.block_number,
         block_hash: confirmed.block_hash.clone(),
+        operator_key_hash: confirmed.operator_key_hash.clone(),
+        operator_epoch: confirmed.operator_epoch,
         anchored_merkle_root: checkpoint.body.merkle_root,
         anchored_checkpoint_seq: checkpoint.body.checkpoint_seq,
     }

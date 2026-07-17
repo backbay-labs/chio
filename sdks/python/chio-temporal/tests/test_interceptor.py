@@ -13,7 +13,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
-from chio_sdk.errors import ChioDeniedError
+from chio_sdk.errors import ChioDeniedError, ChioValidationError
 from chio_sdk.models import (
     CapabilityToken,
     ChioScope,
@@ -115,6 +115,23 @@ class _NextInterceptor:
         return self.result
 
 
+class AttenuatingMockChioClient(MockChioClient):
+    async def attenuate_capability(
+        self,
+        token: CapabilityToken,
+        *,
+        new_scope: ChioScope,
+    ) -> CapabilityToken:
+        child = await self.create_capability(
+            subject=getattr(token, "subject", "agent:attenuated"),
+            scope=new_scope,
+        )
+        store: dict[str, Any] = getattr(self, "_tokens", {})
+        store[child.id] = child
+        self._tokens = store  # type: ignore[attr-defined]
+        return child
+
+
 @contextmanager
 def _patched_activity_info(info: activity.Info):
     """Temporarily patch ``activity.info()`` to return ``info``."""
@@ -153,6 +170,21 @@ async def _mint_token(
     store[token.id] = token
     chio._tokens = store  # type: ignore[attr-defined]
     return token
+
+
+def _install_minting_attenuation(chio: MockChioClient) -> None:
+    async def attenuate_capability(
+        token: CapabilityToken,
+        *,
+        new_scope: ChioScope,
+    ) -> CapabilityToken:
+        if not new_scope.is_subset_of(token.scope):
+            raise ChioValidationError(
+                "new_scope must be a subset of the parent token scope"
+            )
+        return await _mint_token(chio, subject=token.subject, scope=new_scope)
+
+    chio.attenuate_capability = attenuate_capability  # type: ignore[method-assign]
 
 
 def _scope_aware_policy(chio: MockChioClient) -> Any:
@@ -249,6 +281,24 @@ class TestAllowVerdict:
         evaluate_calls = [c for c in chio.calls if c.method == "evaluate_tool_call"]
         assert len(evaluate_calls) == 1
         assert evaluate_calls[0].tool_server == "email-srv"
+
+    async def test_run_scoped_grant_rejects_missing_run_id(self) -> None:
+        async with allow_all() as chio:
+            token = await _mint_token(
+                chio,
+                subject="agent:alice",
+                scope=_scope_for_tools("send_email"),
+            )
+            grant = WorkflowGrant(
+                workflow_id="wf-1",
+                token=token,
+                tool_server="srv",
+                run_id="run-1",
+            )
+
+        assert grant.matches(workflow_id="wf-1", run_id="run-1")
+        assert not grant.matches(workflow_id="wf-1", run_id="run-2")
+        assert not grant.matches(workflow_id="wf-1", run_id=None)
 
 
 # ---------------------------------------------------------------------------
@@ -371,7 +421,30 @@ class TestDenyVerdict:
         assert receipt.metadata["sidecar_receipt_id"] == opaque_receipt_id
         assert receipt.is_denied
 
-    def test_is_sha256_hex_accepts_lowercase_digest_only(self) -> None:
+    def test_deny_receipt_hashes_mixed_case_sidecar_receipt_id(self) -> None:
+        import hashlib
+
+        mixed_case_receipt_id = "A" * 64
+        info = _default_info(activity_type="send_email")
+        receipt = _deny_receipt_from_error(
+            info=info,
+            capability_id="cap-1",
+            tool_server="srv",
+            parameters={"payload": "secret"},
+            exc=ChioDeniedError(
+                "denied",
+                guard="ScopeGuard",
+                reason="no write perms",
+                receipt_id=mixed_case_receipt_id,
+            ),
+        )
+
+        expected_id = hashlib.sha256(mixed_case_receipt_id.encode("utf-8")).hexdigest()
+        assert receipt.id == expected_id
+        assert receipt.id != mixed_case_receipt_id.lower()
+        assert receipt.metadata["sidecar_receipt_id"] == mixed_case_receipt_id
+
+    def test_is_sha256_hex_accepts_only_lowercase_digest(self) -> None:
         assert _is_sha256_hex("a" * 64)
         assert not _is_sha256_hex("A" * 64)
         assert not _is_sha256_hex("not-a-digest")
@@ -407,7 +480,7 @@ class TestDenyVerdict:
 
 class TestAttenuatedGrant:
     async def test_activity_override_narrows_scope_and_is_enforced(self) -> None:
-        chio = MockChioClient()
+        chio = AttenuatingMockChioClient()
         chio.set_policy(_scope_aware_policy(chio))
 
         parent = await _mint_token(
@@ -428,8 +501,6 @@ class TestAttenuatedGrant:
         child_grant = await parent_grant.attenuate_for_activity(
             chio, new_scope=child_scope
         )
-        # Index child token for the policy.
-        chio._tokens[child_grant.token.id] = child_grant.token  # type: ignore[attr-defined]
 
         interceptor = ChioActivityInterceptor(chio_client=chio)
         interceptor.register_workflow_grant(parent_grant)

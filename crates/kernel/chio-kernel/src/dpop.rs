@@ -40,7 +40,7 @@ use lru::LruCache;
 use serde::{Deserialize, Serialize};
 use tracing::error;
 
-use crate::replay_retention::ReplayRetention;
+use crate::replay_retention::{advance_replay_clock, ReplayRetention};
 use crate::KernelError;
 
 /// Schema identifier for Chio DPoP proofs.
@@ -169,6 +169,7 @@ pub struct DpopNonceStore {
 struct DpopNonceState {
     cache: LruCache<(String, String), DpopNonceEntry>,
     wall_clock_high_water: SystemTime,
+    monotonic_high_water: Instant,
 }
 
 struct DpopNonceEntry {
@@ -207,6 +208,7 @@ impl DpopNonceStore {
             inner: Mutex::new(DpopNonceState {
                 cache: LruCache::new(nz),
                 wall_clock_high_water: SystemTime::now(),
+                monotonic_high_water: Instant::now(),
             }),
             ttl,
         }
@@ -288,16 +290,22 @@ impl DpopNonceStore {
                 "nonce store mutex poisoned; cannot verify replay safety".to_string(),
             )
         })?;
-        let clock_rolled_back = now_wall < state.wall_clock_high_water;
-        if now_wall > state.wall_clock_high_water {
-            state.wall_clock_high_water = now_wall;
-        }
-        let wall_clock_high_water = state.wall_clock_high_water;
+        let mut wall_clock_high_water = state.wall_clock_high_water;
+        let mut monotonic_high_water = state.monotonic_high_water;
+        let validated_high_water = advance_replay_clock(
+            "dpop_nonce",
+            &mut wall_clock_high_water,
+            &mut monotonic_high_water,
+            now_wall,
+            now_monotonic,
+        )?;
+        state.wall_clock_high_water = wall_clock_high_water;
+        state.monotonic_high_water = monotonic_high_water;
 
         let already_live = state.cache.peek(&key).is_some_and(|entry| {
             !entry
                 .retention
-                .is_expired_at(wall_clock_high_water, now_monotonic)
+                .is_expired_at(validated_high_water, now_monotonic)
         });
         if !nonce_admits(already_live) {
             return Ok(false);
@@ -309,17 +317,15 @@ impl DpopNonceStore {
             .filter(|(_, entry)| {
                 entry
                     .retention
-                    .is_expired_at(wall_clock_high_water, now_monotonic)
+                    .is_expired_at(validated_high_water, now_monotonic)
             })
             .map(|(expired_key, _)| expired_key.clone())
             .collect::<Vec<_>>();
         for expired_key in expired_keys {
             state.cache.pop(&expired_key);
         }
-        if retention.is_signed()
-            && (clock_rolled_back || retention.signed_horizon_elapsed_at(wall_clock_high_water))
-        {
-            error!("wall-clock rollback or elapsed signed horizon; denying replay reservation");
+        if retention.is_signed() && retention.signed_horizon_elapsed_at(validated_high_water) {
+            error!("elapsed signed horizon; denying replay reservation");
             return Ok(false);
         }
         if state.cache.len() >= state.cache.cap().get() {
@@ -649,12 +655,16 @@ mod backend_tests {
     }
 
     #[test]
-    fn signed_replay_stays_closed_after_reclamation_and_clock_rollback(
+    fn signed_replay_stays_closed_after_reclamation_and_tolerated_clock_skew(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let start_wall = UNIX_EPOCH.checked_add(Duration::from_secs(10_000)).unwrap();
         let start_monotonic = Instant::now();
         let store = DpopNonceStore::new(3, Duration::from_secs(60));
-        store.inner.lock().unwrap().wall_clock_high_water = start_wall;
+        {
+            let mut state = store.inner.lock().unwrap();
+            state.wall_clock_high_water = start_wall;
+            state.monotonic_high_water = start_monotonic;
+        }
 
         let used_deadline = start_wall.checked_add(Duration::from_secs(10)).unwrap();
         let used_retention =
@@ -711,7 +721,7 @@ mod backend_tests {
             rollback_wall,
             rollback_monotonic,
         );
-        assert!(!store.check_and_insert_entry_at(
+        assert!(store.check_and_insert_entry_at(
             "new-signed",
             "intent",
             later_horizon,
@@ -726,6 +736,51 @@ mod backend_tests {
             None,
             rollback_wall,
             rollback_monotonic,
+        )?);
+        Ok(())
+    }
+
+    #[test]
+    fn suspicious_forward_clock_jump_is_rejected_without_latching_dpop_store(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let start_wall = UNIX_EPOCH.checked_add(Duration::from_secs(10_000)).unwrap();
+        let start_monotonic = Instant::now();
+        let store = DpopNonceStore::new(2, Duration::from_secs(60));
+        {
+            let mut state = store.inner.lock().unwrap();
+            state.wall_clock_high_water = start_wall;
+            state.monotonic_high_water = start_monotonic;
+        }
+        let retention = ReplayRetention::signed_until_at(
+            start_wall.checked_add(Duration::from_secs(1_000)),
+            start_wall,
+            start_monotonic,
+        );
+        let error = store
+            .check_and_insert_entry_at(
+                "jumped",
+                "capability",
+                retention,
+                None,
+                start_wall.checked_add(Duration::from_secs(302)).unwrap(),
+                start_monotonic.checked_add(Duration::from_secs(1)).unwrap(),
+            )
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            KernelError::ReplayClockAnomaly {
+                direction: crate::ReplayClockDirection::ForwardJump,
+                ..
+            }
+        ));
+
+        assert!(store.check_and_insert_entry_at(
+            "recovered",
+            "capability",
+            retention,
+            None,
+            start_wall.checked_add(Duration::from_secs(2)).unwrap(),
+            start_monotonic.checked_add(Duration::from_secs(2)).unwrap(),
         )?);
         Ok(())
     }

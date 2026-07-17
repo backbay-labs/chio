@@ -69,7 +69,7 @@
 # CI posture is non-advisory (blocking); the [PUBLIC-WITNESS-LINT] prefix
 # below makes the blocking companion contract visible in logs.
 
-set -uo pipefail
+set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
@@ -106,7 +106,8 @@ trap 'rm -f "$failures_file"' EXIT
 # examples/, *_test.rs, *_tests.rs. Pre-filter to files that actually
 # contain the sync-wrapper token to avoid spawning grep on every file.
 candidate_files="$(mktemp)"
-trap 'rm -f "$failures_file" "$candidate_files"' EXIT
+all_files="$(mktemp)"
+trap 'rm -f "$failures_file" "$candidate_files" "$all_files"' EXIT
 
 find crates/ -name '*.rs' -type f \
     -not -path '*/tests/*' \
@@ -115,9 +116,18 @@ find crates/ -name '*.rs' -type f \
     -not -path '*/examples/*' \
     -not -name '*_test.rs' \
     -not -name '*_tests.rs' \
-    -print0 \
-| xargs -0 grep -lE "$SYNC_CALL_RE" 2>/dev/null \
-| sort > "$candidate_files" || true
+    -print0 > "$all_files"
+
+while IFS= read -r -d '' file; do
+    if grep -qE "$SYNC_CALL_RE" "$file"; then
+        printf '%s\n' "$file"
+    else
+        status=$?
+        if [[ "$status" -gt 1 ]]; then
+            exit "$status"
+        fi
+    fi
+done < "$all_files" | sort > "$candidate_files"
 
 while IFS= read -r file; do
     [[ -z "$file" ]] && continue

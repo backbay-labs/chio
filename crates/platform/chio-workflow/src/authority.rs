@@ -46,6 +46,13 @@ pub enum WorkflowError {
         currency: String,
     },
 
+    /// A step reported cost in a currency that does not match the declared budget.
+    #[error("budget currency mismatch: expected {expected_currency}, got {actual_currency}")]
+    BudgetCurrencyMismatch {
+        expected_currency: String,
+        actual_currency: String,
+    },
+
     /// The workflow time limit has been exceeded.
     #[error("time limit exceeded: {elapsed_secs}s of {limit_secs}s allowed")]
     TimeLimitExceeded { elapsed_secs: u64, limit_secs: u64 },
@@ -94,6 +101,9 @@ pub struct WorkflowExecution {
     pub time_limit_secs: Option<u64>,
     /// Whether the execution is still active.
     pub active: bool,
+    /// Explicit terminal outcome for fail-closed aborts that do not map to
+    /// completed step state.
+    terminal_outcome: Option<WorkflowOutcome>,
 }
 
 pub struct StepExecutionRecordInput {
@@ -216,6 +226,7 @@ impl WorkflowAuthority {
             budget_limit,
             time_limit_secs,
             active: true,
+            terminal_outcome: None,
         })
     }
 
@@ -250,15 +261,7 @@ impl WorkflowAuthority {
             });
         }
 
-        if let Some(limit_secs) = execution.time_limit_secs {
-            let elapsed = current_unix_secs().saturating_sub(execution.started_at);
-            if elapsed >= limit_secs {
-                return Err(WorkflowError::TimeLimitExceeded {
-                    elapsed_secs: elapsed,
-                    limit_secs,
-                });
-            }
-        }
+        validate_time_limit(execution)?;
 
         Ok(())
     }
@@ -276,18 +279,61 @@ impl WorkflowAuthority {
             ));
         }
 
-        let step_budget_exceeded = input.cost.as_ref().and_then(|cost| {
-            step.budget_limit.as_ref().and_then(|limit| {
-                if cost.currency != limit.currency || cost.units > limit.units {
-                    Some((limit.units, cost.units, limit.currency.clone()))
-                } else {
-                    None
+        let time_limit_exceeded = match validate_time_limit(execution) {
+            Ok(()) => None,
+            Err(WorkflowError::TimeLimitExceeded {
+                elapsed_secs,
+                limit_secs,
+            }) => Some((elapsed_secs, limit_secs)),
+            Err(err) => return Err(err),
+        };
+
+        let budget_currency_mismatch = input.cost.as_ref().and_then(|cost| {
+            if let Some(ref limit) = step.budget_limit {
+                if cost.currency != limit.currency {
+                    return Some((
+                        limit.currency.clone(),
+                        cost.currency.clone(),
+                        format!(
+                            "step cost currency {} does not match budget currency {}",
+                            cost.currency, limit.currency
+                        ),
+                    ));
                 }
-            })
+            }
+            if let Some(ref limit) = execution.budget_limit {
+                if cost.currency != limit.currency {
+                    return Some((
+                        limit.currency.clone(),
+                        cost.currency.clone(),
+                        format!(
+                            "step cost currency {} does not match budget currency {}",
+                            cost.currency, limit.currency
+                        ),
+                    ));
+                }
+            }
+            None
         });
 
-        if let Some(ref c) = input.cost {
-            execution.budget_spent = execution.budget_spent.saturating_add(c.units);
+        let step_budget_exceeded = if budget_currency_mismatch.is_none() {
+            input.cost.as_ref().and_then(|cost| {
+                step.budget_limit.as_ref().and_then(|limit| {
+                    if cost.units > limit.units {
+                        Some((limit.units, cost.units, limit.currency.clone()))
+                    } else {
+                        None
+                    }
+                })
+            })
+        } else {
+            None
+        };
+
+        if budget_currency_mismatch.is_none() {
+            if let Some(ref c) = input.cost {
+                execution.budget_spent = execution.budget_spent.saturating_add(c.units);
+            }
         }
 
         // Always record the step so the audit trail is complete, even when
@@ -311,8 +357,22 @@ impl WorkflowAuthority {
 
         execution.step_records.push(record);
 
+        if let Some((expected_currency, actual_currency, reason)) = budget_currency_mismatch {
+            execution.active = false;
+            execution.terminal_outcome = Some(WorkflowOutcome::Denied { reason });
+            return Err(WorkflowError::BudgetCurrencyMismatch {
+                expected_currency,
+                actual_currency,
+            });
+        }
+
         if let Some((limit_units, spent_units, currency)) = step_budget_exceeded {
             execution.active = false;
+            execution.terminal_outcome = Some(WorkflowOutcome::BudgetExceeded {
+                limit_units,
+                spent_units,
+                currency: currency.clone(),
+            });
             execution.budget_limit = Some(MonetaryAmount {
                 units: limit_units,
                 currency: currency.clone(),
@@ -329,12 +389,29 @@ impl WorkflowAuthority {
         if let Some(ref limit) = execution.budget_limit {
             if execution.budget_spent > limit.units {
                 execution.active = false;
+                execution.terminal_outcome = Some(WorkflowOutcome::BudgetExceeded {
+                    limit_units: limit.units,
+                    spent_units: execution.budget_spent,
+                    currency: limit.currency.clone(),
+                });
                 return Err(WorkflowError::BudgetExceeded {
                     limit_units: limit.units,
                     spent_units: execution.budget_spent,
                     currency: limit.currency.clone(),
                 });
             }
+        }
+
+        if let Some((elapsed_secs, limit_secs)) = time_limit_exceeded {
+            execution.active = false;
+            execution.terminal_outcome = Some(WorkflowOutcome::TimedOut {
+                limit_secs,
+                elapsed_secs,
+            });
+            return Err(WorkflowError::TimeLimitExceeded {
+                elapsed_secs,
+                limit_secs,
+            });
         }
 
         if input.outcome == StepOutcome::Failed || input.outcome == StepOutcome::Denied {
@@ -356,6 +433,21 @@ impl WorkflowAuthority {
         let duration_ms = completed_at
             .saturating_sub(execution.started_at)
             .saturating_mul(1000);
+        let has_recorded_failure = execution
+            .step_records
+            .iter()
+            .any(|step| matches!(step.outcome, StepOutcome::Failed | StepOutcome::Denied));
+        if execution.terminal_outcome.is_none() && !has_recorded_failure {
+            if let Some(limit_secs) = execution.time_limit_secs {
+                let elapsed_secs = completed_at.saturating_sub(execution.started_at);
+                if elapsed_secs >= limit_secs {
+                    execution.terminal_outcome = Some(WorkflowOutcome::TimedOut {
+                        limit_secs,
+                        elapsed_secs,
+                    });
+                }
+            }
+        }
 
         let outcome = determine_outcome(&execution);
 
@@ -459,6 +551,10 @@ fn determine_outcome(execution: &WorkflowExecution) -> WorkflowOutcome {
         }
     }
 
+    if let Some(outcome) = execution.terminal_outcome.clone() {
+        return outcome;
+    }
+
     if let Some(ref limit) = execution.budget_limit {
         if execution.budget_spent > limit.units {
             return WorkflowOutcome::BudgetExceeded {
@@ -470,6 +566,19 @@ fn determine_outcome(execution: &WorkflowExecution) -> WorkflowOutcome {
     }
 
     WorkflowOutcome::Completed
+}
+
+fn validate_time_limit(execution: &WorkflowExecution) -> Result<(), WorkflowError> {
+    if let Some(limit_secs) = execution.time_limit_secs {
+        let elapsed = current_unix_secs().saturating_sub(execution.started_at);
+        if elapsed >= limit_secs {
+            return Err(WorkflowError::TimeLimitExceeded {
+                elapsed_secs: elapsed,
+                limit_secs,
+            });
+        }
+    }
+    Ok(())
 }
 
 fn current_unix_secs() -> u64 {
@@ -778,6 +887,106 @@ mod tests {
     }
 
     #[test]
+    fn mismatched_budget_currency_fails_without_spending_units() {
+        let manifest = make_manifest();
+        let grant = make_grant();
+        let authority = WorkflowAuthority::new(Keypair::generate());
+        let mut execution = authority
+            .begin(
+                &manifest,
+                &grant,
+                "agent-1".to_string(),
+                "cap-1".to_string(),
+                None,
+            )
+            .unwrap();
+
+        let result = authority.record_step(
+            &mut execution,
+            &manifest.steps[0],
+            StepExecutionRecordInput {
+                outcome: StepOutcome::Success,
+                duration_ms: 100,
+                cost: Some(MonetaryAmount {
+                    units: 50,
+                    currency: "EUR".to_string(),
+                }),
+                tool_receipt_id: None,
+                output_hash: None,
+            },
+        );
+
+        assert!(matches!(
+            result,
+            Err(WorkflowError::BudgetCurrencyMismatch {
+                expected_currency,
+                actual_currency
+            }) if expected_currency == "USD" && actual_currency == "EUR"
+        ));
+        assert_eq!(execution.budget_spent, 0);
+        assert_eq!(execution.step_records.len(), 1);
+        assert_eq!(execution.step_records[0].step_index, 0);
+        assert_eq!(
+            execution.step_records[0]
+                .cost
+                .as_ref()
+                .map(|cost| cost.currency.as_str()),
+            Some("EUR")
+        );
+        assert!(!execution.active);
+
+        let receipt = authority.finalize(execution).unwrap();
+        assert!(matches!(receipt.outcome, WorkflowOutcome::Denied { .. }));
+        assert_eq!(receipt.steps.len(), 1);
+        assert!(receipt.total_cost.is_none());
+    }
+
+    #[test]
+    fn record_step_rejects_elapsed_time_limit() {
+        let manifest = make_manifest();
+        let mut grant = make_grant();
+        grant.max_duration_secs = Some(1);
+        let authority = WorkflowAuthority::new(Keypair::generate());
+        let mut execution = authority
+            .begin(
+                &manifest,
+                &grant,
+                "agent-1".to_string(),
+                "cap-1".to_string(),
+                None,
+            )
+            .unwrap();
+        execution.started_at = current_unix_secs().saturating_sub(2);
+
+        let result = authority.record_step(
+            &mut execution,
+            &manifest.steps[0],
+            StepExecutionRecordInput {
+                outcome: StepOutcome::Success,
+                duration_ms: 100,
+                cost: None,
+                tool_receipt_id: None,
+                output_hash: None,
+            },
+        );
+
+        assert!(matches!(
+            result,
+            Err(WorkflowError::TimeLimitExceeded { limit_secs: 1, .. })
+        ));
+        assert_eq!(execution.step_records.len(), 1);
+        assert_eq!(execution.step_records[0].step_index, 0);
+        assert!(!execution.active);
+
+        let receipt = authority.finalize(execution).unwrap();
+        assert!(matches!(
+            receipt.outcome,
+            WorkflowOutcome::TimedOut { limit_secs: 1, .. }
+        ));
+        assert_eq!(receipt.steps.len(), 1);
+    }
+
+    #[test]
     fn step_order_enforcement() {
         let manifest = make_manifest();
         let grant = make_grant();
@@ -835,6 +1044,51 @@ mod tests {
         // Trying to validate next step should fail
         let result = authority.validate_step(&execution, &manifest.steps[1], &grant);
         assert!(matches!(result, Err(WorkflowError::InvalidState(_))));
+    }
+
+    #[test]
+    fn failed_step_finalized_late_preserves_step_failed_outcome() {
+        let manifest = make_manifest();
+        let mut grant = make_grant();
+        grant.max_duration_secs = Some(1);
+        let authority = WorkflowAuthority::new(Keypair::generate());
+
+        let mut execution = authority
+            .begin(
+                &manifest,
+                &grant,
+                "agent-1".to_string(),
+                "cap-1".to_string(),
+                None,
+            )
+            .unwrap();
+
+        authority
+            .record_step(
+                &mut execution,
+                &manifest.steps[0],
+                StepExecutionRecordInput {
+                    outcome: StepOutcome::Failed,
+                    duration_ms: 50,
+                    cost: None,
+                    tool_receipt_id: Some("tool-receipt-1".to_string()),
+                    output_hash: Some("output-hash-1".to_string()),
+                },
+            )
+            .unwrap();
+
+        execution.started_at = current_unix_secs().saturating_sub(2);
+
+        let receipt = authority.finalize(execution).unwrap();
+        assert!(matches!(
+            receipt.outcome,
+            WorkflowOutcome::StepFailed { step_index: 0, .. }
+        ));
+        assert_eq!(receipt.steps.len(), 1);
+        assert_eq!(
+            receipt.steps[0].tool_receipt_id.as_deref(),
+            Some("tool-receipt-1")
+        );
     }
 
     #[test]

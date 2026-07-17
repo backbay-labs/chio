@@ -47,6 +47,7 @@ chio-federation = { workspace = true }
 chio-federation-transport-iroh = { workspace = true }
 iroh = { version = "1.0", default-features = false, features = ["tls-ring"] }
 chio-hosted-mcp = { workspace = true }
+chio-http-serve = { workspace = true }
 chio-kernel = { workspace = true }
 chio-guards = { workspace = true }
 chio-guard-registry = { workspace = true, features = ["marketplace"] }
@@ -54,6 +55,8 @@ chio-underwriting = { workspace = true }
 chio-web3 = { workspace = true }
 chio-lineage = { workspace = true }
 chio-listing = { workspace = true }
+chio-log-redact = { workspace = true }
+chio-metrics-spec = { workspace = true }
 chio-policy = { workspace = true }
 chio-proof-room = { workspace = true }
 chio-mcp-adapter = { workspace = true }
@@ -70,6 +73,7 @@ chio-reputation = { workspace = true }
 chio-runtime = { workspace = true }
 chio-swarm-authority = { workspace = true }
 chio-selective-disclosure = { workspace = true, features = ["bbs"] }
+chio-settle = { workspace = true }
 chio-store-sqlite = { workspace = true }
 chio-tee-frame = { workspace = true }
 chio-tool-call-fabric = { workspace = true }
@@ -114,7 +118,6 @@ uuid = { workspace = true, features = ["v4"] }
 [dev-dependencies]
 chio-credit = { workspace = true }
 chio-open-market = { workspace = true }
-chio-settle = { workspace = true }
 chio-test-support = { workspace = true }
 insta = { version = "1.42", features = ["json", "redactions"] }
 jsonschema = { workspace = true }

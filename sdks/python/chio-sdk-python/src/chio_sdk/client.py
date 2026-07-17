@@ -590,7 +590,7 @@ class ChioClient:
         ``count`` field is dropped to match the documented signature
         from the chio-hermes integration plan.
         """
-        data = await self._get("/approvals/pending")
+        data = await self._get("/approvals/pending", allow_array=True)
         # The sidecar response is `{"approvals": [...], "count": N}`.
         # Tolerate a bare list response for forward compatibility.
         payload = (
@@ -739,7 +739,9 @@ class ChioClient:
     # Internal HTTP helpers
     # ------------------------------------------------------------------
 
-    async def _get(self, path: str) -> dict[str, Any]:
+    async def _get(
+        self, path: str, *, allow_array: bool = False
+    ) -> dict[str, Any] | list[Any]:
         try:
             resp = await self._http.get(path)
         except httpx.ConnectError as exc:
@@ -750,7 +752,7 @@ class ChioClient:
             raise ChioTimeoutError(
                 f"Request to {path} timed out"
             ) from exc
-        return self._handle_response(resp)
+        return self._handle_response(resp, allow_array=allow_array)
 
     async def _post(
         self,
@@ -772,9 +774,21 @@ class ChioClient:
         return self._handle_response(resp)
 
     @staticmethod
-    def _handle_response(resp: httpx.Response) -> dict[str, Any]:
+    def _handle_response(
+        resp: httpx.Response, *, allow_array: bool = False
+    ) -> dict[str, Any] | list[Any]:
         if resp.status_code == 403:
-            data = resp.json()
+            try:
+                data = resp.json()
+            except Exception:
+                body = resp.text.strip()
+                data = {
+                    "message": "denied",
+                    "reason": body[:200] if body else "Chio sidecar returned 403",
+                    "reason_code": "HTTP_403",
+                }
+            if not isinstance(data, dict):
+                data = {"message": "denied", "reason": str(data), "reason_code": "HTTP_403"}
             raise ChioDeniedError(
                 data.get("message", "denied"),
                 guard=data.get("guard"),
@@ -790,4 +804,18 @@ class ChioClient:
                 f"Chio sidecar returned {resp.status_code}: {detail}",
                 code=f"HTTP_{resp.status_code}",
             )
-        return resp.json()  # type: ignore[no-any-return]
+        try:
+            data = resp.json()
+        except Exception as exc:
+            raise ChioError(
+                "Chio sidecar returned malformed JSON response",
+                code="INVALID_RESPONSE",
+            ) from exc
+        if allow_array and isinstance(data, list):
+            return data
+        if not isinstance(data, dict):
+            raise ChioError(
+                f"Chio sidecar returned invalid JSON response: {data!r}",
+                code="INVALID_RESPONSE",
+            )
+        return data

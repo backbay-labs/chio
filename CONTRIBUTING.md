@@ -58,7 +58,19 @@ cargo clippy --workspace -- -D warnings && \
 cargo fmt --all -- --check
 ```
 
-This is the same gate enforced in continuous integration.
+This is the minimal verification gate. Continuous integration runs a broader
+PR-tier lane (structural checks, hygiene scripts, and the wasm-guards test
+split). Equivalent shortcuts:
+
+```bash
+make help           # list all Makefile targets by tier
+make gate           # minimal gate above (build, test, clippy, fmt-check)
+make ci             # PR-tier CI (mirrors .github/workflows/ci.yml check job)
+make codegen-check  # schema/codegen drift gate for spec changes
+```
+
+For the heavier local gate used before release qualification, run `make
+ci-workspace`.
 
 ## House rules
 

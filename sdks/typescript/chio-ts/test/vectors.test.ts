@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 import {
   ChioInvariantError,
+  canonicalizeJson,
   canonicalizeJsonString,
   capabilityBodyCanonicalJson,
   parseCapabilityJson,
@@ -50,6 +51,22 @@ test("canonical vectors round-trip through the TS invariant helper", async () =>
       vectorCase.id,
     );
   }
+});
+
+test("canonical strings preserve Chio control escapes in values and object keys", () => {
+  assert.equal(canonicalizeJson("\u007f\u009f"), '"\\u007f\\u009f"');
+  assert.equal(canonicalizeJson({ "\u007f\u009f": "\u007f\u009f" }), '{"\\u007f\\u009f":"\\u007f\\u009f"}');
+  assert.equal(
+    canonicalizeJsonString('{"\\u007f\\u009f":"\\u007f\\u009f"}'),
+    '{"\\u007f\\u009f":"\\u007f\\u009f"}',
+  );
+});
+
+test("canonical JSON rejects duplicate object keys", () => {
+  assert.throws(
+    () => canonicalizeJsonString('{"scope":"read","scope":"write"}'),
+    (error) => error instanceof ChioInvariantError && /duplicate object key/.test(error.message),
+  );
 });
 
 test("hashing vectors round-trip through the TS invariant helpers", async () => {

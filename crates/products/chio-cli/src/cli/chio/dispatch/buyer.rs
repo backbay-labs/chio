@@ -1,6 +1,6 @@
 use super::{
-    BUYER_REVIEW_ARTIFACT_FILES, read_utf8_json_file, validate_runtime_relative_path,
-    write_json_string,
+    read_utf8_json_file, validate_runtime_relative_path, write_json_string,
+    BUYER_REVIEW_ARTIFACT_FILES,
 };
 use crate::CliError;
 use std::fs;
@@ -8,10 +8,7 @@ use std::path::Path;
 
 use chio_errors::_generated::error_codes::TRANSACTION_BUYER_REVIEW_REJECTED;
 
-pub(crate) fn cmd_chio_attest_buyer_package(
-    run_output: &Path,
-    out: &Path,
-) -> Result<(), CliError> {
+pub(crate) fn cmd_chio_attest_buyer_package(run_output: &Path, out: &Path) -> Result<(), CliError> {
     let run_output_root = run_output.canonicalize().map_err(|error| {
         CliError::cli_io_error(format!(
             "failed to canonicalize Chio buyer run output {}: {error}",
@@ -88,9 +85,10 @@ pub(crate) fn cmd_chio_attest_buyer_package(
     let packet_json = packet_json.ok_or_else(|| {
         CliError::cli_other_error("Chio buyer package is missing buyer packet artifact")
     })?;
-    let packet = chio_attest_buyer::buyer_attestation_packet_from_json(&packet_json).map_err(
-        |error| CliError::cli_other_error(format!("Chio buyer attestation packet: {error}")),
-    )?;
+    let packet =
+        chio_attest_buyer::buyer_attestation_packet_from_json(&packet_json).map_err(|error| {
+            CliError::cli_other_error(format!("Chio buyer attestation packet: {error}"))
+        })?;
     let generated_at_unix_ms = generated_at_unix_ms.ok_or_else(|| {
         CliError::cli_other_error("Chio buyer package is missing runtime evidence manifest")
     })?;
@@ -102,9 +100,8 @@ pub(crate) fn cmd_chio_attest_buyer_package(
         generated_at_unix_ms,
         artifacts,
     };
-    let json = serde_json::to_string_pretty(&package).map_err(|error| {
-        CliError::cli_other_error(format!("Chio buyer package JSON: {error}"))
-    })?;
+    let json = serde_json::to_string_pretty(&package)
+        .map_err(|error| CliError::cli_other_error(format!("Chio buyer package JSON: {error}")))?;
     write_json_string(out, &format!("{json}\n"))
 }
 
@@ -117,12 +114,11 @@ pub(crate) fn cmd_chio_attest_buyer_verify(
     let package_json = read_utf8_json_file(package_path, "Chio buyer review package")?;
     let package = chio_attest_buyer::buyer_attestation_review_package_from_json(&package_json)
         .map_err(|error| {
-        CliError::cli_other_error(format!("Chio buyer review package: {error}"))
-    })?;
+            CliError::cli_other_error(format!("Chio buyer review package: {error}"))
+        })?;
     let base_dir = package_path.parent().unwrap_or_else(|| Path::new("."));
     let sources = read_buyer_review_sources(base_dir, &package)?;
-    let trust_bundle_json =
-        read_utf8_json_file(trust_bundle_path, "Chio verifier trust bundle")?;
+    let trust_bundle_json = read_utf8_json_file(trust_bundle_path, "Chio verifier trust bundle")?;
     let context_json = read_utf8_json_file(context_path, "Chio verification context")?;
     let report = chio_attest_buyer::verify_buyer_attestation_review_package_with_proof_replay_json(
         &package,
@@ -133,10 +129,8 @@ pub(crate) fn cmd_chio_attest_buyer_verify(
     .map_err(|error| {
         CliError::cli_other_error(format!("Chio buyer review verification: {error}"))
     })?;
-    let json =
-        chio_attest_buyer::buyer_attestation_review_report_json(&report).map_err(|error| {
-            CliError::cli_other_error(format!("Chio buyer review report: {error}"))
-        })?;
+    let json = chio_attest_buyer::buyer_attestation_review_report_json(&report)
+        .map_err(|error| CliError::cli_other_error(format!("Chio buyer review report: {error}")))?;
     write_json_string(report_path, &format!("{json}\n"))?;
     if report.accepted {
         Ok(())
@@ -161,15 +155,16 @@ pub(crate) fn cmd_chio_attest_buyer_verify_proof(
     report_path: &Path,
 ) -> Result<(), CliError> {
     let package_json = read_utf8_json_file(package_path, "Chio attest proof package")?;
-    let trust_bundle_json =
-        read_utf8_json_file(trust_bundle_path, "Chio verifier trust bundle")?;
+    let trust_bundle_json = read_utf8_json_file(trust_bundle_path, "Chio verifier trust bundle")?;
     let context_json = read_utf8_json_file(context_path, "Chio verification context")?;
     let report = chio_attest_buyer::verify_proof_package_json(
         &package_json,
         &trust_bundle_json,
         &context_json,
     )
-    .map_err(|error| CliError::cli_other_error(format!("Chio attest proof verification: {error}")))?;
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chio attest proof verification: {error}"))
+    })?;
     write_json_string(report_path, &format!("{}\n", report.json))?;
     if report.accepted {
         Ok(())
@@ -265,28 +260,22 @@ pub(crate) fn buyer_review_verification_state(
     {
         return "fixture_only";
     }
-    let has_strict_dsse = report
-        .checks
-        .iter()
-        .any(|check| {
-            check.passed
-                && matches!(
-                    check.code.as_str(),
-                    "chio_attest_buyer.review.strict_dsse_treaty_bound"
-                        | "chio_buyer_review.strict_dsse_treaty_bound"
-                )
-        });
-    let proof_accepted = report
-        .checks
-        .iter()
-        .any(|check| {
-            check.passed
-                && matches!(
-                    check.code.as_str(),
-                    "chio_attest_buyer.review.proof_verifier_accepted"
-                        | "chio_buyer_review.proof_verifier_accepted"
-                )
-        });
+    let has_strict_dsse = report.checks.iter().any(|check| {
+        check.passed
+            && matches!(
+                check.code.as_str(),
+                "chio_attest_buyer.review.strict_dsse_treaty_bound"
+                    | "chio_buyer_review.strict_dsse_treaty_bound"
+            )
+    });
+    let proof_accepted = report.checks.iter().any(|check| {
+        check.passed
+            && matches!(
+                check.code.as_str(),
+                "chio_attest_buyer.review.proof_verifier_accepted"
+                    | "chio_buyer_review.proof_verifier_accepted"
+            )
+    });
     let existing_verifier_replayed = report.checks.iter().any(|check| {
         check.passed
             && matches!(

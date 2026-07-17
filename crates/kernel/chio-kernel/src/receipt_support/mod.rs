@@ -12,7 +12,10 @@ pub use coupling::{receipt_body_fields_coupled, ReceiptCouplingExpectation};
 pub(crate) use receipt_building::{
     build_child_request_receipt, child_outcome_payload, child_terminal_state, next_receipt_id,
 };
-pub(crate) use receipt_content::{receipt_content_for_output, truncate_stream_to_byte_limit};
+pub(crate) use receipt_content::{
+    accumulate_stream_under_caps, receipt_content_for_output, stream_limit_reason,
+    truncate_stream_to_limits,
+};
 #[cfg(test)]
 pub(crate) use receipt_metadata::{governed_request_metadata, request_receipt_metadata};
 pub(crate) use receipt_metadata::{

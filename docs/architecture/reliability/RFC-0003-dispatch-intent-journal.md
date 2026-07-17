@@ -290,98 +290,74 @@ fn append_chio_receipt_consuming_intent(
 
 The SQLite implementations live next to
 `append_chio_receipt_consuming_authorization`
-(`crates/platform/chio-store-sqlite/src/receipt_store.rs:564-597`) but, unlike
-that method (which opens its own connection and `Immediate` transaction
-directly), both route through the `ReceiptCommitActor`:
-`record_dispatch_intent` sends `ReceiptCommitCommand::Intent`, and
-`append_chio_receipt_consuming_intent` sends `ReceiptCommitCommand::Append` with
-`consume_intent = Some(key)`. This keeps every journal write on the single
-writer thread that RFC-0006 establishes.
+(`crates/platform/chio-store-sqlite/src/receipt_store.rs:564-597`) and, like
+that method, run inside their own `Immediate` transaction, but both route
+through the `ReceiptCommitActor`'s single writer connection as jobs on the
+existing generic `Write` command rather than opening a connection directly:
+`record_dispatch_intent` queues a metadata-only `Write` job
+(`WriterHandle::run_write`, `receipt_store.rs:798-804`), and
+`append_chio_receipt_consuming_intent` queues a receipt-appending `Write` job
+(`WriterHandle::run_write_receipt`, `receipt_store.rs:810-816`) that performs
+the consume and the receipt insert together. This keeps every journal write on
+the single writer thread that RFC-0006 establishes.
 
-### ReceiptCommitActor group-commit path
+### Dispatch-intent writer jobs
 
-Extend the command enum
-(`crates/platform/chio-store-sqlite/src/receipt_store.rs:147-150`) with an `Intent`
-variant, and add an optional consume key to `ReceiptCommitRequest` (currently at
-`receipt_store.rs:141-145`):
+As shipped, this does not extend `ReceiptCommitCommand`
+(`crates/platform/chio-store-sqlite/src/receipt_store.rs:482-521`) with an
+`Intent` variant, and `ReceiptCommitRequest` (`receipt_store.rs:448-456`) gains
+no `consume_intent` field; both are unchanged from RFC-0006 (`Append`, `Flush`,
+`Write { job, appends_receipts }`, `ReseedHead`, `InstallSigner`, `Rotate`,
+`RetentionRepair`). A heterogeneous Intent+Append group-commit batch was the
+original design sketch, but every dispatch-intent operation instead rides the
+existing `Write` command as its own independent job on the single writer, each
+inside its own transaction:
 
-```rust
-struct ReceiptCommitRequest {
-    receipt: ChioReceipt,
-    raw_json: String,
-    consume_intent: Option<DispatchIntentKey>, // NEW
-    response: mpsc::SyncSender<Result<u64, ReceiptStoreError>>,
-}
+- **Insert** (`record_dispatch_intent`, `receipt_store.rs:3276-3284`): a
+  metadata-only `Write` job (`dispatch_intent_insert_job`,
+  `receipt_store/support/dispatch_intent.rs:77-88`) that opens its own
+  `TransactionBehavior::Immediate` transaction, runs `insert_dispatch_intent_tx`
+  (`INSERT ... ON CONFLICT(COALESCE(tenant_id, ''), request_id) DO NOTHING`,
+  mapping `changed == 0` to `ReceiptStoreError::Conflict`, fail-closed; the
+  existing row is left untouched), and commits.
+- **Consume** (`append_chio_receipt_consuming_intent`,
+  `receipt_store.rs:3354-3361`): a receipt-appending `Write` job whose closure
+  (`receipt_store.rs:3413-3422`) opens its own `Immediate` transaction, runs
+  `finalize_dispatch_intent_tx` (a tenant- and parameter-hash-guarded `DELETE`)
+  then `append_chio_receipt_tx` then the lineage statement, and commits once.
+  A `parameter_hash` or tenant mismatch is a `Conflict` raised from inside the
+  transaction and rolls back that job's commit, so the receipt insert and the
+  intent delete either both land or neither does.
+- **Rail-ref attach, clear, timeout sweep, dead-letter resolve, reconcile**:
+  each is its own `Write` (or bounded/detached `Write`) job with its own
+  transaction, guarded on the row's current `state` so a job that arrives
+  after the row already changed state is a no-op `NotFound` rather than a
+  corrupting write (`attach_dispatch_intent_rail_ref`,
+  `clear_dispatch_intent`, `resolve_dead_letter_dispatch_intent`,
+  `receipt_store.rs:3429`, `3461`, `4008`).
 
-enum DispatchIntentOp {
-    /// Pre-dispatch durable intent write.
-    Insert(DispatchIntentRecord),
-    /// Post-authorize best-effort rail reference attach (money path).
-    AttachRailRef {
-        request_id: String,
-        rail_authorization_id: String,
-    },
-}
+Because each of these is queued and run as its own job, relative ordering
+between two operations on the same request comes from the writer's FIFO
+queue, not from sharing a batch or a transaction. For example, the
+timeout-path compensating sweep
+(`record_dispatch_intent_with_timeout`, `receipt_store.rs:3299-3348`) is
+enqueued strictly after the insert job it sweeps, so it always observes that
+insert's outcome. There is no heterogeneous Intent+Append batch anywhere in
+the store: cross-operation partial commit is not merely guarded against, it
+is structurally impossible, because no two distinct dispatch-intent
+operations, or an intent operation and an unrelated receipt append, ever
+share a transaction. This is simpler than the group-commit batch originally
+sketched here and gives the same same-transaction-consume guarantee, since
+the only two statements that must be atomic together (the intent DELETE and
+the receipt INSERT) already share one job's one transaction.
 
-struct DispatchIntentRequest {
-    op: DispatchIntentOp,
-    response: mpsc::SyncSender<Result<u64, ReceiptStoreError>>, // Ok(()) as Ok(0)
-}
-
-enum ReceiptCommitCommand {
-    Append(Box<ReceiptCommitRequest>),
-    Intent(Box<DispatchIntentRequest>), // NEW
-    Flush(mpsc::SyncSender<Result<(), ReceiptStoreError>>),
-}
-```
-
-The drain loop (`receipt_commit_actor_loop`, `receipt_store.rs:283-316`) already
-coalesces up to `RECEIPT_GROUP_COMMIT_MAX_BATCH` commands. Two arms change, not
-one. The outer `match command` at `receipt_store.rs:290` today seeds a batch only
-for `Append` (and handles `Flush`); it gains an `Intent` arm so an intent that
-arrives while the writer is idle (the common pre-dispatch case, since the intent
-write is the first thing an effecting call does) seeds a batch. The inner
-`recv_timeout` arm at `receipt_store.rs:295-303` also gains an `Intent` case so
-intents coalesce into an in-flight `Append` batch. Because the batch is now
-heterogeneous, the homogeneous `requests: Vec<ReceiptCommitRequest>` collection
-threaded through `commit_receipt_batch` / `append_receipt_batch`
-(`receipt_store.rs:318-415`, response fan-out at `receipt_store.rs:345-347`) becomes
-a batch of a two-variant item (append vs. intent), and each variant routes its own
-typed response (`Result<u64, ReceiptStoreError>` for appends, `Ok(0)` sentinel for
-intents). The batch is then processed inside the single `Immediate` transaction:
-
-- For an `Intent` carrying `DispatchIntentOp::Insert`:
-  `insert_dispatch_intent_tx(&tx, &intent)` (a plain `INSERT ... ON
-  CONFLICT(request_id) DO NOTHING`; zero rows changed maps to
-  `ReceiptStoreError::Conflict`, fail-closed).
-- For an `Intent` carrying `DispatchIntentOp::AttachRailRef`:
-  `attach_dispatch_intent_rail_ref_tx(&tx, ...)` (an `UPDATE chio_dispatch_intents
-  SET rail_authorization_id = ?2 WHERE request_id = ?1 AND state = 'open'`). Zero
-  rows changed is reported to the caller as `ReceiptStoreError::NotFound` on that
-  request's response channel only; because the attach is best-effort (see the money
-  path below), it never aborts the shared batch the way `Insert` and consume
-  failures do.
-- For an `Append` with `consume_intent = Some(key)`: run
-  `finalize_dispatch_intent_tx(&tx, &key)` and `append_chio_receipt_tx(&tx, ...)` in
-  that order, both inside the one transaction. `finalize_dispatch_intent_tx` is a
-  `DELETE FROM chio_dispatch_intents WHERE request_id = ?1 AND parameter_hash = ?2`
-  guarded on `tenant_id`; a `parameter_hash` mismatch or missing row is a
-  `ReceiptStoreError::Conflict` and aborts the whole batch (fail-closed, no partial
-  commit).
-- For an `Append` with `consume_intent = None`: unchanged behavior.
-
-Because the intent DELETE and the receipt INSERT share the one `tx.commit()` at
-`receipt_store.rs:411`, they are atomic: a crash before commit leaves the intent open
-and the receipt absent; a successful commit removes the intent and persists the
-receipt. This is the requirement's "consume in the same writer transaction" property,
-built on the existing group-commit machinery rather than a new writer.
-
-Durability of the pre-dispatch intent write: `record_dispatch_intent` sends an
-`Intent` command and blocks on the response channel exactly as `append` does at
-`receipt_store.rs:192-199`. The response is sent only after `tx.commit()` returns, so
-the caller observes a durable (WAL-fsynced) commit before it proceeds to dispatch.
-Saturation and disconnect are surfaced through the same typed errors already defined
-at `receipt_store.rs:182-190` and `receipt_store.rs:268-274`.
+Durability of the pre-dispatch intent write: `record_dispatch_intent` blocks
+on the `Write` job's response channel exactly as a batched `Append` does, and
+the response is sent only after that job's `tx.commit()` returns, so the
+caller observes a durable (WAL-fsynced) commit before it proceeds to dispatch.
+Saturation and a disconnected/dead writer are surfaced through the same typed
+`ReceiptStoreError` variants (`Pool`, `Timeout`, `Sqlite`) every other writer
+job already uses.
 
 ### Kernel control-flow changes
 
@@ -444,6 +420,23 @@ before ever returning `SafeToReplay`. Given a class, the method:
   `unwind_aborted_monetary_invocation`, the same charge-gated reversal the
   authorize and admission abort arms use, so no hold leaks), and denies before
   dispatch.
+
+Trust posture of the read-only signal: for a tool reached through the MCP adapter
+(`crates/protocol/chio-mcp-adapter/src/server.rs`, `AdaptedMcpServer::tool_is_read_only`),
+the read-only exemption bottoms out in the upstream MCP server's own
+`readOnlyHint` tool annotation, captured into the manifest once at adapt time
+(`crates/protocol/chio-mcp-adapter/src/manifest.rs`, `infer_has_side_effects`), not
+re-verified per call. The MCP spec treats tool annotations as untrusted hints from
+the server describing itself, so a lying or compromised upstream server can mark
+its own side-effecting tools `readOnlyHint: true` and exempt them from the journal's
+crash-window audit net; policy evaluation, guards, and receipt issuance are
+unaffected; only the pre-dispatch durable intent write is skipped. The parsing is
+conservative in the operator's favor, not the server's: a malformed hint or an
+explicit `destructiveHint: true` overrides a `readOnlyHint: true` and the tool
+still journals (`McpToolSafetyHints::has_side_effects`); only a clean, present
+`readOnlyHint: true` with no destructive hint earns the exemption.
+`DispatchIntentJournalMode::All` is the operator override for a deployment that
+does not trust its upstream servers' self-reported hints.
 
 Money path (F70, extended by RFC-0013): after `authorize_payment_if_needed`
 (line 469) returns a `PaymentAuthorization`, attach its `authorization_id` to the
@@ -561,10 +554,26 @@ unhealthy and appears in the CLI `trust receipt health` output
 (`crates/products/chio-cli/src/cli/trust/receipt/health.rs:60-73`). Note that the
 CLI opening its own store still cannot see a live kernel's in-memory writer counters;
 persistent orphan and dead-letter rows are visible to any reader because they live in
-the database, which is the point of making them durable. On a pre-journal database
-opened via `open_existing` (which runs no DDL), the counting queries treat a missing
-`chio_dispatch_intents` table as zero rows (see migration notes). Live writer-liveness polling
-is out of scope here and tracked separately in the wave-3 program.
+the database, which is the point of making them durable. `open_existing` now also runs
+the additive migration DDL when the on-disk schema predates the journal (see migration
+notes below), so any connection built through `open` or `open_existing` has the table
+by the time it returns; the counting queries still treat a missing
+`chio_dispatch_intents` table as zero rows as a defensive fallback for a raw connection
+that bypasses both open paths (for example a read-only health sampler). Live
+writer-liveness polling is out of scope here and tracked separately in the wave-3
+program.
+
+The sanctioned remediation for a dead-letter incident is `chio receipt
+resolve-dead-letter --request-id <id> [--tenant <tenant>] --note <note>`, backed by
+`ReceiptStore::resolve_dead_letter_dispatch_intent`. It transitions the row to a
+terminal `resolved` state that stops counting against `dead_letter_dispatch_intents`
+(and therefore `healthy`) while appending the operator's note to the existing
+resolution detail rather than overwriting it, so the row stays on disk as a complete,
+auditable history. It refuses (fail-closed) when the request id does not name an
+intent, or names one that is not currently `dead_letter` (still open, already
+reconciled, or already resolved), so an operator cannot silently resolve the wrong
+incident or resolve one twice. `chio receipt health`'s human output names this command
+whenever `dead_letter_dispatch_intents` is nonzero.
 
 ### Config
 
@@ -596,6 +605,15 @@ impl Default for DispatchIntentJournalMode {
 }
 ```
 
+Every `KernelConfig` construction site pins this field explicitly (Rust has no
+struct-literal defaulting), so the file-config lowering layers are what let an
+operator change it without a code change: the `receipts.dispatch_intent_journal`
+key in a `chio.yaml`-configured deployment, and the `kernel.dispatch_intent_journal`
+key in a policy-file-configured `chio-cli` deployment. Both lowerings default the
+absent key to `Off`, not the enum's own compiled default, so upgrading a binary
+never silently starts journaling for a deployment that has not opted in; a
+present but unrecognized value rejects at config load time.
+
 ### Error taxonomy (typed, fail-closed)
 
 `ReceiptStoreError` (`crates/kernel/chio-kernel/src/receipt_store.rs:151`) already
@@ -623,8 +641,8 @@ effect has run.
 ### Crates, dirs, LOC, CI tier
 
 - `crates/platform/chio-store-sqlite`: table DDL, `insert_dispatch_intent_tx`,
-  `finalize_dispatch_intent_tx`, `reconcile_dispatch_intents`, actor `Intent`
-  variant, batch changes. ~320 LOC + ~250 LOC tests.
+  `finalize_dispatch_intent_tx`, `reconcile_dispatch_intents`, per-op `Write`
+  writer jobs. ~320 LOC + ~250 LOC tests.
 - `crates/kernel/chio-kernel`: types (`DispatchIntentRecord`, `SideEffectClass`,
   `DispatchIntentKey`), trait methods, `record_dispatch_intent_if_side_effecting`,
   consume wiring in `record_chio_receipt`, health fields, config, boot hook. ~260
@@ -641,11 +659,11 @@ effect has run.
   signed and never entered into `chio_tool_receipts` or the Merkle tree, so
   checkpoint and inclusion-proof semantics (ADR-0008) are untouched.
 - New non-audit SQLite table `chio_dispatch_intents` (schema above), created
-  idempotently in the `SqliteReceiptStore::open` / `open_with_pool_config` path
-  (the DDL batch at `open.rs:129` runs for both fresh and existing files, so
-  existing databases gain the table on next kernel open via `CREATE TABLE IF NOT
-  EXISTS`). `open_existing` (`open.rs:102-126`) returns early and runs no DDL by
-  design; see migration notes below.
+  idempotently by the fresh-create path (`SqliteReceiptStore::open` /
+  `open_with_pool_config`) via `CREATE TABLE IF NOT EXISTS`, and by
+  `open_existing`'s additive migration when the on-disk schema revision
+  predates the journal (the receipt-store schema revision is bumped 0 -> 1 for
+  exactly this table); see migration notes below.
 - `ReceiptStoreHealthReport` gains two `#[serde(default)]` count fields (additive,
   camelCase, backward compatible with existing JSON consumers).
 - Any serialized intent record or reconciliation report uses RFC 8785 canonical JSON,
@@ -653,14 +671,17 @@ effect has run.
 
 ## Migration and compatibility
 
-- Backward compatible. The new table is additive; older binaries ignore it (the
-  existing-schema check, `require_existing_receipt_schema` at `open.rs:1126-1157`,
-  requires a fixed table list and tolerates extra tables). Newer binaries create it
-  in the `open` path. `open_existing` (used by the CLI, `health.rs:43`) runs no DDL,
-  so any read of `chio_dispatch_intents` must treat a missing table as zero rows: a
-  database that never journaled has no orphans, so this is an accurate report, not a
-  fail-open of the invariant (the serving kernel always opens through the DDL path
-  and always has the table before its first intent write).
+- Backward compatible. The new table is additive, but not silently so for an
+  older binary: the receipt-store schema revision is bumped 0 -> 1 for exactly
+  this table, so an older binary's `FutureSchema` check refuses a database
+  this journal has touched rather than silently serving without reconciling or
+  surfacing rows it does not know about. Both `open` (fresh files, via the
+  unconditional DDL) and `open_existing` (used by the CLI, `health.rs:43`, via
+  the additive migration when the on-disk revision is older) create the table
+  before returning. A raw connection that bypasses both open paths (a
+  read-only sampler) must still treat a missing table as zero rows: a
+  database that never journaled has no orphans, so this is an accurate
+  report, not a fail-open of the invariant.
 - No data migration: there are no historical intents. Existing receipts are
   unaffected.
 - Staged rollout via `DispatchIntentJournalMode`. Ship defaulting to `Off` in the
@@ -668,6 +689,14 @@ effect has run.
   data is in hand, and make `SideEffecting` the compiled default in the third. The
   money path (F70) can be gated independently: enable intents for `Monetary` first,
   since that is the highest-consequence class.
+- Operators enable the mode without a code change through the `dispatch_intent_journal`
+  key: `receipts.dispatch_intent_journal` in a `chio.yaml`-configured deployment
+  (`crates/platform/chio-config/src/schema.rs`), or `kernel.dispatch_intent_journal`
+  in a policy-file-configured `chio-cli` deployment
+  (`crates/platform/chio-control-plane/src/policy/types.rs`). Both accept `"off"`,
+  `"side_effecting"`, or `"all"`; an absent key keeps `Off` regardless of the
+  enum's own compiled default, and an unrecognized value rejects at config load
+  time rather than silently falling back to a default.
 - Health `healthy` tightening (dead-letter rows flip unhealthy) is behavior-visible
   to operators; document it in the release notes so a newly surfaced orphan is read
   as "recovery working", not "new fault".
@@ -747,8 +776,11 @@ effect has run.
    dead-letter incident record are self-contained in this RFC; alert routing for a
    nonzero `dead_letter_dispatch_intents` count rides the RFC-0009 observability and
    alerting wiring.
-2. This RFC (RFC-0003) lands next: schema, actor `Intent` variant, same-transaction
-   consume, kernel wiring, health fields, config defaulting to `Off`.
+2. This RFC (RFC-0003) lands next: schema, per-op dispatch-intent writer jobs, same-transaction
+   consume, kernel wiring, health fields, config defaulting to `Off`, and the
+   operator-facing `dispatch_intent_journal` config key (`receipts.dispatch_intent_journal`
+   in `chio.yaml`, `kernel.dispatch_intent_journal` in a `chio-cli` policy file) so a
+   file-configured deployment can flip the mode without a code change.
 3. Enable `Monetary` then `SideEffecting` via config after nightly kill-injection soak
    is green; promote `SideEffecting` to compiled default.
 4. RFC-0013 extends the money path: it upgrades `rail_authorization_id` handling into

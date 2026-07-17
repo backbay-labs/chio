@@ -25,6 +25,8 @@ pub use types::{
 };
 pub use verification::verify_inclusion_onchain;
 
+use crate::AnchorError;
+
 #[cfg(test)]
 use chio_egress_contract::HttpEgressContract;
 
@@ -32,13 +34,13 @@ pub(crate) use validation::parse_validated_evm_anchor_target;
 
 pub fn operator_key_hash(
     binding: &chio_core::web3::identity::SignedWeb3IdentityBinding,
-) -> alloy_primitives::B256 {
+) -> Result<alloy_primitives::B256, AnchorError> {
     hashing::operator_key_hash(binding)
 }
 
 pub fn operator_key_hash_hex(
     binding: &chio_core::web3::identity::SignedWeb3IdentityBinding,
-) -> String {
+) -> Result<String, AnchorError> {
     hashing::operator_key_hash_hex(binding)
 }
 
@@ -50,7 +52,9 @@ mod tests {
     use std::thread;
     use std::time::Duration;
 
+    use alloy_primitives::keccak256;
     use alloy_sol_types::SolCall;
+    use chio_core::crypto::PublicKey;
     use chio_core::web3::anchors::AnchorInclusionProof;
     use chio_core::web3::identity::{SignedWeb3IdentityBinding, Web3KeyBindingPurpose};
     use chio_kernel::checkpoint::KernelCheckpoint;
@@ -60,9 +64,9 @@ mod tests {
     use super::{
         build_chain_anchor_record, confirm_root_publication, ensure_publication_ready,
         evm_anchor_devnet_rpc_egress_contract, hash_to_b256, inspect_publication_guard,
-        operator_key_hash, prepare_delegate_registration, prepare_root_publication, publish_root,
-        validate_rpc_egress_contract, verify_inclusion_onchain, EvmAnchorTarget,
-        EvmPublicationReceipt, HttpEgressContract,
+        operator_key_hash, operator_key_hash_hex, prepare_delegate_registration,
+        prepare_root_publication, publish_root, validate_rpc_egress_contract,
+        verify_inclusion_onchain, EvmAnchorTarget, EvmPublicationReceipt, HttpEgressContract,
     };
 
     use chio_test_support::prelude::*;
@@ -229,6 +233,86 @@ mod tests {
         format!("0x{}", hex::encode(data))
     }
 
+    const CONFIRM_TX_HASH: &str =
+        "0xdeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddead";
+    const CONFIRM_BLOCK_HASH: &str =
+        "0xabababababababababababababababababababababababababababababababab";
+
+    fn successful_publication_receipt(
+        target: &EvmAnchorTarget,
+        checkpoint: &KernelCheckpoint,
+        binding: &SignedWeb3IdentityBinding,
+        tx_hash: &str,
+    ) -> Value {
+        json!({
+            "blockNumber": "0x2a",
+            "blockHash": CONFIRM_BLOCK_HASH,
+            "transactionHash": tx_hash,
+            "to": target.contract_address,
+            "status": "0x1",
+            "logs": [root_published_log(target, checkpoint, binding, tx_hash)],
+        })
+    }
+
+    fn root_published_log(
+        target: &EvmAnchorTarget,
+        checkpoint: &KernelCheckpoint,
+        binding: &SignedWeb3IdentityBinding,
+        tx_hash: &str,
+    ) -> Value {
+        let operator_key_hash = operator_key_hash(binding).test_expect("operator key hash");
+        let mut data = Vec::with_capacity(32 * 7);
+        data.extend_from_slice(hash_to_b256(&checkpoint.body.merkle_root).as_slice());
+        push_abi_u64(&mut data, checkpoint.body.batch_start_seq);
+        push_abi_u64(&mut data, checkpoint.body.batch_end_seq);
+        push_abi_u64(&mut data, checkpoint.body.tree_size as u64);
+        push_abi_u64(&mut data, 1_744_000_123_u64);
+        data.extend_from_slice(operator_key_hash.as_slice());
+        push_abi_u64(&mut data, 1);
+        json!({
+            "address": target.contract_address,
+            "topics": [
+                root_published_topic0(),
+                address_topic(&target.operator_address),
+                address_topic(&target.publisher_address),
+                u64_topic(checkpoint.body.checkpoint_seq),
+            ],
+            "data": format!("0x{}", hex::encode(data)),
+            "transactionHash": tx_hash,
+            "blockHash": CONFIRM_BLOCK_HASH,
+            "blockNumber": "0x2a",
+        })
+    }
+
+    fn push_abi_u64(data: &mut Vec<u8>, value: u64) {
+        data.extend_from_slice(&[0_u8; 24]);
+        data.extend_from_slice(&value.to_be_bytes());
+    }
+
+    fn root_published_topic0() -> String {
+        format!(
+            "0x{}",
+            hex::encode(
+                keccak256(
+                    "RootPublished(address,address,uint64,bytes32,uint64,uint64,uint64,uint64,bytes32,uint64)"
+                        .as_bytes()
+                )
+                .as_slice()
+            )
+        )
+    }
+
+    fn address_topic(address: &str) -> String {
+        let address_hex = address
+            .strip_prefix("0x")
+            .test_expect("test EVM address has 0x prefix");
+        format!("0x{}{}", "0".repeat(24), address_hex.to_ascii_lowercase())
+    }
+
+    fn u64_topic(value: u64) -> String {
+        format!("0x{value:064x}")
+    }
+
     fn read_http_request<R: Read>(stream: &mut R) -> String {
         let mut request = Vec::new();
         let mut chunk = [0_u8; 1024];
@@ -350,6 +434,38 @@ mod tests {
         assert!(error
             .to_string()
             .contains("does not match operator address"));
+    }
+
+    #[test]
+    fn prepare_root_publication_accepts_operator_address_case_mismatch() {
+        let checkpoint = sample_checkpoint();
+        let mut target = sample_target("http://127.0.0.1:8545");
+        let mut binding = sample_binding();
+        target.operator_address = "0x735f1ba389d9d350501db8fbbb5b52477dcadda8".to_string();
+        binding.certificate.settlement_address =
+            "0x735F1Ba389D9D350501dB8FBbB5b52477DcaddA8".to_string();
+
+        let prepared = prepare_root_publication(&target, &checkpoint, &binding)
+            .test_expect("matching EVM operator addresses should prepare");
+
+        assert_eq!(prepared.operator_address, target.operator_address);
+    }
+
+    #[test]
+    fn prepare_root_publication_rejects_non_ed25519_operator_key() {
+        let checkpoint = sample_checkpoint();
+        let target = sample_target("http://127.0.0.1:8545");
+        let mut binding = sample_binding();
+        let mut encoded_point = [0u8; 65];
+        encoded_point[0] = 0x04;
+        binding.certificate.chio_public_key =
+            PublicKey::from_p256_sec1(&encoded_point).test_expect("P-256 key parses");
+
+        let error = prepare_root_publication(&target, &checkpoint, &binding)
+            .test_expect_err("non-Ed25519 operator key should fail");
+
+        assert!(matches!(error, crate::AnchorError::InvalidBinding(_)));
+        assert!(error.to_string().contains("Ed25519"));
     }
 
     #[test]
@@ -667,15 +783,18 @@ mod tests {
                 batchEndSeq: checkpoint.body.batch_end_seq,
                 treeSize: checkpoint.body.tree_size as u64,
                 publishedAt: 1_744_000_123_u64,
-                operatorKeyHash: operator_key_hash(&binding),
+                operatorKeyHash: operator_key_hash(&binding).test_expect("operator key hash"),
+                operatorEpoch: 1,
             },
         ));
+        let target = sample_target("http://127.0.0.1:0");
         let Some(server) = MockJsonRpcServer::spawn(vec![
-            rpc_result(json!({
-                "blockNumber": "0x2a",
-                "blockHash": "0xabc",
-                "status": "0x1",
-            })),
+            rpc_result(successful_publication_receipt(
+                &target,
+                &checkpoint,
+                &binding,
+                CONFIRM_TX_HASH,
+            )),
             rpc_result(json!(stored)),
         ]) else {
             return;
@@ -687,7 +806,7 @@ mod tests {
             &target,
             &checkpoint,
             &binding,
-            "0xdeadbeef",
+            CONFIRM_TX_HASH,
             &egress_contract,
         )
         .await
@@ -696,18 +815,86 @@ mod tests {
         let requests = server.requests();
         server.join();
 
-        assert_eq!(receipt.tx_hash, "0xdeadbeef");
+        assert_eq!(receipt.tx_hash, CONFIRM_TX_HASH);
+        assert_eq!(receipt.block_hash, CONFIRM_BLOCK_HASH);
         assert_eq!(receipt.block_number, 42);
         assert_eq!(receipt.published_at, 1_744_000_123);
+        assert_eq!(
+            receipt.operator_key_hash,
+            format!(
+                "0x{}",
+                hex::encode(
+                    operator_key_hash(&binding)
+                        .test_expect("operator key hash")
+                        .as_slice()
+                )
+            )
+        );
         assert_eq!(requests[0]["method"], "eth_getTransactionReceipt");
         assert_eq!(requests[1]["method"], "eth_call");
+        assert_eq!(requests[1]["params"][1]["blockHash"], CONFIRM_BLOCK_HASH);
+        assert_eq!(requests[1]["params"][1]["requireCanonical"], true);
+    }
+
+    #[tokio::test]
+    async fn confirm_root_publication_retries_with_block_number_for_ganache_block_object_error() {
+        let checkpoint = sample_checkpoint();
+        let binding = sample_binding();
+        let stored = encode_hex(IChioRootRegistry::getRootCall::abi_encode_returns(
+            &IChioRootRegistry::RootEntry {
+                merkleRoot: hash_to_b256(&checkpoint.body.merkle_root),
+                checkpointSeq: checkpoint.body.checkpoint_seq,
+                batchStartSeq: checkpoint.body.batch_start_seq,
+                batchEndSeq: checkpoint.body.batch_end_seq,
+                treeSize: checkpoint.body.tree_size as u64,
+                publishedAt: 1_744_000_123_u64,
+                operatorKeyHash: operator_key_hash(&binding).test_expect("operator key hash"),
+                operatorEpoch: 1,
+            },
+        ));
+        let target = sample_target("http://127.0.0.1:0");
+        let Some(server) = MockJsonRpcServer::spawn(vec![
+            rpc_result(successful_publication_receipt(
+                &target,
+                &checkpoint,
+                &binding,
+                CONFIRM_TX_HASH,
+            )),
+            rpc_error(-32700, r#"Cannot wrap a "object" as a json-rpc type"#),
+            rpc_result(json!(stored)),
+        ]) else {
+            return;
+        };
+        let target = sample_target(server.base_url());
+        let egress_contract = sample_rpc_contract(server.base_url());
+
+        let receipt = confirm_root_publication(
+            &target,
+            &checkpoint,
+            &binding,
+            CONFIRM_TX_HASH,
+            &egress_contract,
+        )
+        .await
+        .test_expect("confirm publication through Ganache fallback");
+
+        let requests = server.requests();
+        server.join();
+
+        assert_eq!(receipt.tx_hash, CONFIRM_TX_HASH);
+        assert_eq!(requests.len(), 3);
+        assert_eq!(requests[1]["method"], "eth_call");
+        assert_eq!(requests[1]["params"][1]["blockHash"], CONFIRM_BLOCK_HASH);
+        assert_eq!(requests[1]["params"][1]["requireCanonical"], true);
+        assert_eq!(requests[2]["method"], "eth_call");
+        assert_eq!(requests[2]["params"][1], "0x2a");
     }
 
     #[tokio::test]
     async fn confirm_root_publication_rejects_failed_transaction_status() {
         let Some(server) = MockJsonRpcServer::spawn(vec![rpc_result(json!({
             "blockNumber": "0x2a",
-            "blockHash": "0xabc",
+            "blockHash": CONFIRM_BLOCK_HASH,
             "status": "0x0",
         }))]) else {
             return;
@@ -721,7 +908,7 @@ mod tests {
             &target,
             &checkpoint,
             &binding,
-            "0xdeadbeef",
+            CONFIRM_TX_HASH,
             &egress_contract,
         )
         .await
@@ -743,15 +930,18 @@ mod tests {
                 batchEndSeq: checkpoint.body.batch_end_seq,
                 treeSize: checkpoint.body.tree_size as u64 + 1,
                 publishedAt: 1_744_000_123_u64,
-                operatorKeyHash: operator_key_hash(&binding),
+                operatorKeyHash: operator_key_hash(&binding).test_expect("operator key hash"),
+                operatorEpoch: 1,
             },
         ));
+        let target = sample_target("http://127.0.0.1:0");
         let Some(server) = MockJsonRpcServer::spawn(vec![
-            rpc_result(json!({
-                "blockNumber": "0x2a",
-                "blockHash": "0xabc",
-                "status": "0x1",
-            })),
+            rpc_result(successful_publication_receipt(
+                &target,
+                &checkpoint,
+                &binding,
+                CONFIRM_TX_HASH,
+            )),
             rpc_result(json!(stored)),
         ]) else {
             return;
@@ -763,7 +953,7 @@ mod tests {
             &target,
             &checkpoint,
             &binding,
-            "0xdeadbeef",
+            CONFIRM_TX_HASH,
             &egress_contract,
         )
         .await
@@ -776,10 +966,110 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn confirm_root_publication_rejects_receipt_without_matching_event() {
+        let checkpoint = sample_checkpoint();
+        let binding = sample_binding();
+        let target = sample_target("http://127.0.0.1:0");
+        let Some(server) = MockJsonRpcServer::spawn(vec![rpc_result(json!({
+            "blockNumber": "0x2a",
+            "blockHash": CONFIRM_BLOCK_HASH,
+            "transactionHash": CONFIRM_TX_HASH,
+            "to": target.contract_address,
+            "status": "0x1",
+            "logs": [],
+        }))]) else {
+            return;
+        };
+        let target = sample_target(server.base_url());
+        let egress_contract = sample_rpc_contract(server.base_url());
+
+        let error = confirm_root_publication(
+            &target,
+            &checkpoint,
+            &binding,
+            CONFIRM_TX_HASH,
+            &egress_contract,
+        )
+        .await
+        .test_expect_err("receipt without event should fail");
+
+        let requests = server.requests();
+        server.join();
+        assert_eq!(requests.len(), 1);
+        assert!(error
+            .to_string()
+            .contains("missing matching RootPublished log"));
+    }
+
+    #[tokio::test]
+    async fn confirm_root_publication_rejects_short_receipt_block_hash() {
+        let checkpoint = sample_checkpoint();
+        let binding = sample_binding();
+        let target = sample_target("http://127.0.0.1:0");
+        let mut receipt =
+            successful_publication_receipt(&target, &checkpoint, &binding, CONFIRM_TX_HASH);
+        receipt["blockHash"] = json!("0xabc");
+        let Some(server) = MockJsonRpcServer::spawn(vec![rpc_result(receipt)]) else {
+            return;
+        };
+        let target = sample_target(server.base_url());
+        let egress_contract = sample_rpc_contract(server.base_url());
+
+        let error = confirm_root_publication(
+            &target,
+            &checkpoint,
+            &binding,
+            CONFIRM_TX_HASH,
+            &egress_contract,
+        )
+        .await
+        .test_expect_err("short block hash should fail");
+
+        let requests = server.requests();
+        server.join();
+        assert_eq!(requests.len(), 1);
+        assert!(error.to_string().contains("receipt blockHash"));
+    }
+
+    #[tokio::test]
+    async fn confirm_root_publication_rejects_log_block_hash_mismatch() {
+        let checkpoint = sample_checkpoint();
+        let binding = sample_binding();
+        let target = sample_target("http://127.0.0.1:0");
+        let mut receipt =
+            successful_publication_receipt(&target, &checkpoint, &binding, CONFIRM_TX_HASH);
+        receipt["logs"][0]["blockHash"] =
+            json!("0xcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcdcd");
+        let Some(server) = MockJsonRpcServer::spawn(vec![rpc_result(receipt)]) else {
+            return;
+        };
+        let target = sample_target(server.base_url());
+        let egress_contract = sample_rpc_contract(server.base_url());
+
+        let error = confirm_root_publication(
+            &target,
+            &checkpoint,
+            &binding,
+            CONFIRM_TX_HASH,
+            &egress_contract,
+        )
+        .await
+        .test_expect_err("log block hash mismatch should fail");
+
+        let requests = server.requests();
+        server.join();
+        assert_eq!(requests.len(), 1);
+        assert!(error
+            .to_string()
+            .contains("missing matching RootPublished log"));
+    }
+
+    #[tokio::test]
     async fn inspect_publication_guard_decodes_authorization_and_sequence() {
+        let binding = sample_binding();
         let Some(server) = MockJsonRpcServer::spawn(vec![
             rpc_result(json!(encode_hex(
-                IChioRootRegistry::isAuthorizedPublisherCall::abi_encode_returns(&true)
+                IChioRootRegistry::isAuthorizedPublisherForKeyHashCall::abi_encode_returns(&true)
             ))),
             rpc_result(json!(encode_hex(
                 IChioRootRegistry::getLatestSeqCall::abi_encode_returns(&41_u64)
@@ -790,12 +1080,16 @@ mod tests {
         let target = sample_delegate_target(server.base_url());
         let egress_contract = sample_rpc_contract(server.base_url());
 
-        let guard = inspect_publication_guard(&target, &egress_contract)
+        let guard = inspect_publication_guard(&target, &binding, &egress_contract)
             .await
             .test_expect("inspect guard");
 
         server.join();
         assert!(guard.publisher_authorized);
+        assert_eq!(
+            guard.operator_key_hash,
+            operator_key_hash_hex(&binding).test_expect("operator key hash")
+        );
         assert_eq!(guard.latest_checkpoint_seq, 41);
         assert_eq!(guard.next_checkpoint_seq_min, 42);
         assert!(guard.requires_delegate_authorization);
@@ -803,9 +1097,11 @@ mod tests {
 
     #[tokio::test]
     async fn ensure_publication_ready_rejects_unauthorized_publisher() {
+        let checkpoint = sample_checkpoint();
+        let binding = sample_binding();
         let Some(server) = MockJsonRpcServer::spawn(vec![
             rpc_result(json!(encode_hex(
-                IChioRootRegistry::isAuthorizedPublisherCall::abi_encode_returns(&false)
+                IChioRootRegistry::isAuthorizedPublisherForKeyHashCall::abi_encode_returns(&false)
             ))),
             rpc_result(json!(encode_hex(
                 IChioRootRegistry::getLatestSeqCall::abi_encode_returns(&41_u64)
@@ -816,7 +1112,7 @@ mod tests {
         let target = sample_delegate_target(server.base_url());
         let egress_contract = sample_rpc_contract(server.base_url());
 
-        let error = ensure_publication_ready(&target, 42, &egress_contract)
+        let error = ensure_publication_ready(&target, &checkpoint, &binding, &egress_contract)
             .await
             .test_expect_err("unauthorized publisher should fail");
 
@@ -826,9 +1122,12 @@ mod tests {
 
     #[tokio::test]
     async fn ensure_publication_ready_rejects_checkpoint_regression() {
+        let mut checkpoint = sample_checkpoint();
+        checkpoint.body.checkpoint_seq = 41;
+        let binding = sample_binding();
         let Some(server) = MockJsonRpcServer::spawn(vec![
             rpc_result(json!(encode_hex(
-                IChioRootRegistry::isAuthorizedPublisherCall::abi_encode_returns(&true)
+                IChioRootRegistry::isAuthorizedPublisherForKeyHashCall::abi_encode_returns(&true)
             ))),
             rpc_result(json!(encode_hex(
                 IChioRootRegistry::getLatestSeqCall::abi_encode_returns(&41_u64)
@@ -839,19 +1138,22 @@ mod tests {
         let target = sample_delegate_target(server.base_url());
         let egress_contract = sample_rpc_contract(server.base_url());
 
-        let error = ensure_publication_ready(&target, 41, &egress_contract)
+        let error = ensure_publication_ready(&target, &checkpoint, &binding, &egress_contract)
             .await
             .test_expect_err("checkpoint regression should fail");
 
         server.join();
-        assert!(error.to_string().contains("must be >="));
+        assert!(error.to_string().contains("must equal"));
     }
 
     #[tokio::test]
-    async fn ensure_publication_ready_accepts_next_checkpoint() {
+    async fn ensure_publication_ready_rejects_skipped_checkpoint_sequence() {
+        let mut checkpoint = sample_checkpoint();
+        checkpoint.body.checkpoint_seq = 44;
+        let binding = sample_binding();
         let Some(server) = MockJsonRpcServer::spawn(vec![
             rpc_result(json!(encode_hex(
-                IChioRootRegistry::isAuthorizedPublisherCall::abi_encode_returns(&true)
+                IChioRootRegistry::isAuthorizedPublisherForKeyHashCall::abi_encode_returns(&true)
             ))),
             rpc_result(json!(encode_hex(
                 IChioRootRegistry::getLatestSeqCall::abi_encode_returns(&41_u64)
@@ -862,7 +1164,48 @@ mod tests {
         let target = sample_delegate_target(server.base_url());
         let egress_contract = sample_rpc_contract(server.base_url());
 
-        let guard = ensure_publication_ready(&target, 42, &egress_contract)
+        let error = ensure_publication_ready(&target, &checkpoint, &binding, &egress_contract)
+            .await
+            .test_expect_err("skipped checkpoint sequence should fail");
+
+        server.join();
+        assert!(error.to_string().contains("must equal"));
+    }
+
+    #[tokio::test]
+    async fn ensure_publication_ready_accepts_next_checkpoint() {
+        let mut checkpoint = sample_checkpoint();
+        checkpoint.body.checkpoint_seq = 42;
+        checkpoint.body.batch_start_seq = 10;
+        checkpoint.body.batch_end_seq = 20;
+        let binding = sample_binding();
+        let latest_root = IChioRootRegistry::RootEntry {
+            merkleRoot: hash_to_b256(&checkpoint.body.merkle_root),
+            checkpointSeq: checkpoint.body.checkpoint_seq - 1,
+            batchStartSeq: 1,
+            batchEndSeq: checkpoint.body.batch_start_seq - 1,
+            treeSize: checkpoint.body.tree_size as u64,
+            publishedAt: 1_744_000_123_u64,
+            operatorKeyHash: operator_key_hash(&binding).test_expect("operator key hash"),
+            operatorEpoch: 1,
+        };
+        let Some(server) = MockJsonRpcServer::spawn(vec![
+            rpc_result(json!(encode_hex(
+                IChioRootRegistry::isAuthorizedPublisherForKeyHashCall::abi_encode_returns(&true)
+            ))),
+            rpc_result(json!(encode_hex(
+                IChioRootRegistry::getLatestSeqCall::abi_encode_returns(&41_u64)
+            ))),
+            rpc_result(json!(encode_hex(
+                IChioRootRegistry::getLatestRootCall::abi_encode_returns(&latest_root)
+            ))),
+        ]) else {
+            return;
+        };
+        let target = sample_delegate_target(server.base_url());
+        let egress_contract = sample_rpc_contract(server.base_url());
+
+        let guard = ensure_publication_ready(&target, &checkpoint, &binding, &egress_contract)
             .await
             .test_expect("checkpoint 42 should be accepted");
 
@@ -871,9 +1214,50 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn ensure_publication_ready_rejects_batch_gap_against_latest_root() {
+        let mut checkpoint = sample_checkpoint();
+        checkpoint.body.checkpoint_seq = 42;
+        checkpoint.body.batch_start_seq = 10;
+        checkpoint.body.batch_end_seq = 20;
+        let binding = sample_binding();
+        let latest_root = IChioRootRegistry::RootEntry {
+            merkleRoot: hash_to_b256(&checkpoint.body.merkle_root),
+            checkpointSeq: checkpoint.body.checkpoint_seq - 1,
+            batchStartSeq: 1,
+            batchEndSeq: checkpoint.body.batch_start_seq - 2,
+            treeSize: checkpoint.body.tree_size as u64,
+            publishedAt: 1_744_000_123_u64,
+            operatorKeyHash: operator_key_hash(&binding).test_expect("operator key hash"),
+            operatorEpoch: 1,
+        };
+        let Some(server) = MockJsonRpcServer::spawn(vec![
+            rpc_result(json!(encode_hex(
+                IChioRootRegistry::isAuthorizedPublisherForKeyHashCall::abi_encode_returns(&true)
+            ))),
+            rpc_result(json!(encode_hex(
+                IChioRootRegistry::getLatestSeqCall::abi_encode_returns(&41_u64)
+            ))),
+            rpc_result(json!(encode_hex(
+                IChioRootRegistry::getLatestRootCall::abi_encode_returns(&latest_root)
+            ))),
+        ]) else {
+            return;
+        };
+        let target = sample_delegate_target(server.base_url());
+        let egress_contract = sample_rpc_contract(server.base_url());
+
+        let error = ensure_publication_ready(&target, &checkpoint, &binding, &egress_contract)
+            .await
+            .test_expect_err("batch gap should fail preflight");
+
+        server.join();
+        assert!(error.to_string().contains("batch_start_seq"));
+    }
+
+    #[tokio::test]
     async fn verify_inclusion_onchain_decodes_registry_verdict() {
         let Some(server) = MockJsonRpcServer::spawn(vec![rpc_result(json!(encode_hex(
-            IChioRootRegistry::verifyInclusionDetailedCall::abi_encode_returns(&true)
+            IChioRootRegistry::verifyInclusionDetailedForKeyHashCall::abi_encode_returns(&true)
         )))]) else {
             return;
         };
@@ -891,6 +1275,20 @@ mod tests {
         assert!(verified);
         assert_eq!(requests.len(), 1);
         assert_eq!(requests[0]["method"], "eth_call");
+        let call_data = hex::decode(
+            requests[0]["params"][0]["data"]
+                .as_str()
+                .test_expect("eth_call data is string")
+                .trim_start_matches("0x"),
+        )
+        .test_expect("eth_call data decodes");
+        let decoded =
+            IChioRootRegistry::verifyInclusionDetailedForKeyHashCall::abi_decode(&call_data)
+                .test_expect("verifyInclusionDetailedForKeyHash call decodes");
+        assert_eq!(
+            decoded.operatorKeyHash,
+            operator_key_hash(&proof.key_binding_certificate).test_expect("operator key hash")
+        );
     }
 
     #[tokio::test]
@@ -917,6 +1315,9 @@ mod tests {
             tx_hash: "0xdeadbeef".to_string(),
             block_number: 42,
             block_hash: "0xabc".to_string(),
+            operator_key_hash: "0x2222222222222222222222222222222222222222222222222222222222222222"
+                .to_string(),
+            operator_epoch: 1,
             published_at: 1_744_000_123,
         };
 
@@ -927,6 +1328,9 @@ mod tests {
         assert_eq!(record.operator_address, target.operator_address);
         assert_eq!(record.tx_hash, confirmed.tx_hash);
         assert_eq!(record.block_number, confirmed.block_number);
+        assert_eq!(record.block_hash, confirmed.block_hash);
+        assert_eq!(record.operator_key_hash, confirmed.operator_key_hash);
+        assert_eq!(record.operator_epoch, confirmed.operator_epoch);
         assert_eq!(record.anchored_merkle_root, checkpoint.body.merkle_root);
     }
 }

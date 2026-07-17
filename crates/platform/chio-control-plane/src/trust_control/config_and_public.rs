@@ -1315,6 +1315,7 @@ mod config_and_public_tests {
             certification_public_metadata_ttl_seconds: 900,
             peer_urls: Vec::new(),
             cluster_sync_interval: Duration::from_millis(200),
+            memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         }
     }
 

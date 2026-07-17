@@ -1,0 +1,27 @@
+[package]
+name = "chio-bounded"
+description = "Reusable bounded in-memory collections (ring, capacity-and-TTL map) with a live size gauge, for Chio serving processes"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_bounded"
+
+[dependencies]
+
+[target.'cfg(loom)'.dependencies]
+loom = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(loom)"] }

@@ -211,12 +211,7 @@ mod replay_report_tests {
 
     #[test]
     fn clean_report_serializes_with_null_divergence_and_exit_zero() {
-        let report = ReplayReport::clean(
-            "./receipts/",
-            42,
-            "abc123",
-            Some("abc123".to_string()),
-        );
+        let report = ReplayReport::clean("./receipts/", 42, "abc123", Some("abc123".to_string()));
         let json = render_json_string(&report).unwrap();
         let value: serde_json::Value = serde_json::from_str(&json).unwrap();
 
@@ -328,9 +323,7 @@ mod replay_report_tests {
             byte_offset: None,
             expected: None,
             observed: None,
-            detail: Some(
-                "signer=ed25519:deadbeef... signature mismatch".to_string(),
-            ),
+            detail: Some("signer=ed25519:deadbeef... signature mismatch".to_string()),
         };
         let report = ReplayReport::diverged(
             "./capture.ndjson",
@@ -522,10 +515,7 @@ mod replay_report_tests {
             .unwrap()
             .join("spec/schemas/chio-replay-report/v1.schema.json");
         let bytes = std::fs::read(&schema_path).unwrap_or_else(|e| {
-            panic!(
-                "schema file must exist at {}: {e}",
-                schema_path.display(),
-            )
+            panic!("schema file must exist at {}: {e}", schema_path.display(),)
         });
         let schema_json: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
         let schema_const = schema_json["properties"]["schema"]["const"]

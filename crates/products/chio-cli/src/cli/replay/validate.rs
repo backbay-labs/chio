@@ -204,15 +204,17 @@ pub fn load_trusted_kernel_pubkey(
         ))
     })?;
     if bytes.len() == 32 {
-        return chio_core::PublicKey::from_hex(&hex::encode(bytes)).map_err(|e| {
-            ValidateError::TenantSig(format!("invalid trusted kernel pubkey: {e}"))
-        });
+        return chio_core::PublicKey::from_hex(&hex::encode(bytes))
+            .map_err(|e| ValidateError::TenantSig(format!("invalid trusted kernel pubkey: {e}")));
     }
     let text = std::str::from_utf8(&bytes)
         .map_err(|e| ValidateError::TenantSig(format!("non-utf8 trusted kernel pubkey: {e}")))?
         .trim();
     chio_core::PublicKey::from_hex(text).map_err(|e| {
-        ValidateError::TenantSig(format!("invalid trusted kernel pubkey {}: {e}", path.display()))
+        ValidateError::TenantSig(format!(
+            "invalid trusted kernel pubkey {}: {e}",
+            path.display()
+        ))
     })
 }
 
@@ -228,9 +230,8 @@ pub fn validate_invocation_canonical(frame: &chio_tee_frame::Frame) -> Result<()
     // typed value yields the canonical bytes; re-encoding the original
     // `serde_json::Value` MUST match. Mismatch implies the wire bytes
     // were not in canonical form to begin with.
-    let typed_bytes = chio_core::canonical::canonical_json_bytes(&invocation).map_err(|e| {
-        ValidateError::Invocation(format!("canonicalize typed invocation: {e}"))
-    })?;
+    let typed_bytes = chio_core::canonical::canonical_json_bytes(&invocation)
+        .map_err(|e| ValidateError::Invocation(format!("canonicalize typed invocation: {e}")))?;
     let raw_bytes = chio_core::canonical::canonical_json_bytes(&frame.invocation).map_err(|e| {
         ValidateError::Invocation(format!("canonicalize raw invocation value: {e}"))
     })?;
@@ -324,7 +325,7 @@ pub fn validate_frame(
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod replay_validate_tests {
     use super::*;
-    use chio_tool_call_fabric::{Principal, ProviderId, ProvenanceStamp, ToolInvocation};
+    use chio_tool_call_fabric::{Principal, ProvenanceStamp, ProviderId, ToolInvocation};
     use ed25519_dalek::{Signer, SigningKey};
     use std::time::SystemTime;
 

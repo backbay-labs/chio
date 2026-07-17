@@ -216,5 +216,8 @@ async fn new_tenants_are_rejected_after_bucket_cap() {
         Err(error) => error,
     };
 
-    assert!(matches!(error, KernelServiceError::Overloaded));
+    // With the default (non-zero) idle window, the sole existing tenant is not
+    // idle-reapable, so a new tenant sees the distinct TenantTableFull rather
+    // than a per-tenant Overloaded.
+    assert!(matches!(error, KernelServiceError::TenantTableFull));
 }

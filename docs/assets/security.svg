@@ -1,0 +1,68 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 360" width="1200" height="360" role="img" aria-label="Chio defense in depth: a trusted core, fail-closed admission, a guard pipeline, active defense, and signed evidence">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#130d0a"/>
+      <stop offset="1" stop-color="#1b140d"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#8f7ff2" stop-opacity="0.34"/>
+      <stop offset="0.6" stop-color="#8f7ff2" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#8f7ff2" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="360" fill="url(#bg)"/>
+
+  <g stroke="#b08d5b" stroke-opacity="0.35" stroke-width="1">
+    <path d="M38 44 H50 M44 38 V50"/>
+    <path d="M1150 44 H1162 M1156 38 V50"/>
+    <path d="M38 316 H50 M44 310 V322"/>
+    <path d="M1150 316 H1162 M1156 310 V322"/>
+  </g>
+
+  <text x="600" y="46" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" letter-spacing="4" fill="#d8cfc0" fill-opacity="0.55">DEFENSE IN DEPTH</text>
+
+  <g stroke="#b08d5b" stroke-opacity="0.12" stroke-width="1">
+    <path d="M240 92 V272"/><path d="M480 92 V272"/><path d="M720 92 V272"/><path d="M960 92 V272"/>
+  </g>
+
+  <!-- helpers: glow + ring per card -->
+  <g>
+    <circle cx="120" cy="130" r="48" fill="url(#glow)"/><circle cx="360" cy="130" r="48" fill="url(#glow)"/><circle cx="600" cy="130" r="48" fill="url(#glow)"/><circle cx="840" cy="130" r="48" fill="url(#glow)"/><circle cx="1080" cy="130" r="48" fill="url(#glow)"/>
+  </g>
+  <g fill="#16101c" fill-opacity="0.55" stroke="#8f7ff2" stroke-opacity="0.55" stroke-width="1.2">
+    <circle cx="120" cy="130" r="34"/><circle cx="360" cy="130" r="34"/><circle cx="600" cy="130" r="34"/><circle cx="840" cy="130" r="34"/><circle cx="1080" cy="130" r="34"/>
+  </g>
+
+  <!-- icons -->
+  <g fill="none" stroke="#c3b6ff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <!-- 1 trusted core: shield + check -->
+    <g transform="translate(120,130) scale(1.15)"><path d="M0 -13 L11 -8 L11 1 C11 8 6 13 0 15 C-6 13 -11 8 -11 1 L-11 -8 Z"/><path d="M-4.5 0 L-1 4 L5.5 -5" stroke="#f2eadc" stroke-width="2"/></g>
+    <!-- 2 fail-closed: padlock -->
+    <g transform="translate(360,130) scale(1.15)"><rect x="-8" y="-1" width="16" height="12" rx="2"/><path d="M-5 -1 V-5 A5 5 0 0 1 5 -5 V-1"/><circle cx="0" cy="4.5" r="1.5" fill="#c3b6ff" stroke="none"/></g>
+    <!-- 3 guard pipeline: funnel -->
+    <g transform="translate(600,130) scale(1.15)"><path d="M-10 -8 H10 L2.5 1 V9 L-2.5 6.5 V1 Z"/></g>
+    <!-- 4 active defense: radar/reticle -->
+    <g transform="translate(840,130) scale(1.15)"><circle cx="0" cy="0" r="9"/><circle cx="0" cy="0" r="4.2"/><path d="M0 -12 V-8 M0 12 V8 M-12 0 H-8 M12 0 H8"/><circle cx="4.5" cy="-4.5" r="1.6" fill="#f2eadc" stroke="none"/></g>
+    <!-- 5 signed evidence: medallion + ribbons -->
+    <g transform="translate(1080,130) scale(1.15)"><circle cx="0" cy="-3" r="7"/><path d="M-3 -3 L-1 -1 L3 -5.5" stroke="#f2eadc" stroke-width="1.8"/><path d="M-3.5 3 L-5 10 L-1.5 7.5"/><path d="M3.5 3 L5 10 L1.5 7.5"/></g>
+  </g>
+
+  <!-- indices -->
+  <g text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="2.5" fill="#b08d5b">
+    <text x="120" y="192">01</text><text x="360" y="192">02</text><text x="600" y="192">03</text><text x="840" y="192">04</text><text x="1080" y="192">05</text>
+  </g>
+  <!-- names -->
+  <g text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="19" fill="#efe7db">
+    <text x="120" y="215">Trusted core</text><text x="360" y="215">Fail-closed</text><text x="600" y="215">Guard pipeline</text><text x="840" y="215">Active defense</text><text x="1080" y="215">Signed evidence</text>
+  </g>
+  <!-- one-liners -->
+  <g text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12" fill="#b3a99b">
+    <text x="120" y="236">only the kernel is trusted</text><text x="360" y="236">errors deny; no receipt, no call</text><text x="600" y="236">native · data · WASM · external</text><text x="840" y="236">IFC · decoys · quarantine</text><text x="1080" y="236">canonical, PQ-ready receipts</text>
+  </g>
+
+  <!-- spine -->
+  <path d="M150 300 H1050" stroke="#b08d5b" stroke-opacity="0.3" stroke-width="1"/>
+  <rect x="594" y="294" width="12" height="12" transform="rotate(45 600 300)" fill="#1b140d" stroke="#b08d5b" stroke-opacity="0.7"/>
+  <text x="600" y="330" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-style="italic" font-size="14" fill="#d8cfc0" fill-opacity="0.75">Every call crosses every layer, and each one fails closed.</text>
+</svg>

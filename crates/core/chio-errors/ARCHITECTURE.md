@@ -1,64 +1,73 @@
-# chio-errors Architecture
+# chio-errors architecture
 
-## Boundary
+## Overview
 
-`chio-errors` owns the typed Chio error taxonomy and diagnostic construction
-surface. It exposes canonical `Domain`, `Severity`, `Code`, `Diagnostic`, and
-`ChioError` types, plus lookup access to the generated error registry and the
-JSON-RPC bridge. It does not decide policy, evaluate guards, format CLI output,
-or translate transport status codes. Callers should bring domain context and
-message text; this crate should bind those messages to stable Chio registry
-metadata when a registry entry exists.
+`chio-errors` is a pure type and data crate: no I/O, no runtime state,
+`#![forbid(unsafe_code)]`, and no internal `chio-*` dependencies, so it sits
+at the base of the dependency graph alongside `chio-core-types`. It owns the
+`Domain` / `Severity` / `Code` taxonomy every Chio error is classified under,
+the `Diagnostic` / `ChioError` types that carry them, and a registry of
+canonical `ErrorCodeSpec` entries generated from `spec/errors/registry.yaml`.
+The core design idea is the split between free-form construction, which
+accepts any code, domain, severity, and message, and registry-verified
+construction and lookup, which cannot silently drift from the registry entry
+it names.
 
-## Module Boundaries
+## Module map
 
-- `code` owns the serializable diagnostic code string wrapper.
-- `domain` owns stable error-domain slugs and parsing.
-- `severity` owns severity ordering and parsing.
-- `diagnostic` owns the structured diagnostic and error types.
-- `jsonrpc_bridge` owns conversion between registry entries and wire-side
-  JSON-RPC numeric codes.
-- `_generated::error_codes` is generated from `spec/errors/registry.yaml` by
-  `chio-spec-codegen` and must not be edited directly.
+| Path | Responsibility |
+|------|----------------|
+| `src/lib.rs` | Crate root: `#![forbid(unsafe_code)]`, module declarations, the top-level `pub use` surface, and the `Result<T>` alias. |
+| `src/code.rs` | `Code`, a serializable string wrapper for diagnostic codes. |
+| `src/domain.rs` | `Domain` (20-variant, `non_exhaustive`, stable slugs) and `UnknownDomain`. |
+| `src/severity.rs` | `Severity` (`Info < Warning < Error < Fatal`, ordered) and `UnknownSeverity`. |
+| `src/diagnostic.rs` | `Diagnostic` and `ChioError`: construction, `Display` formatting, registry-verified binding (`registry_spec`), and the `diagnostic` / `error` / `*_from_spec` free functions. |
+| `src/jsonrpc_bridge.rs` | Conversion between `ErrorCodeSpec` and wire-side JSON-RPC numeric codes. |
+| `src/_generated/error_codes.rs` | Generated from `spec/errors/registry.yaml` by `chio-spec-codegen`: `ErrorCodeSpec`, 104 per-error constants, the `ERROR_CODES` table, and the `lookup_*` functions. Not hand-edited. |
+| `src/_generated/mod.rs` | Declares the generated `error_codes` submodule. |
 
-## Registry Binding
+## Registry binding
 
-Registry entries carry canonical URN, domain, severity, summary, help,
-stability, string-code, and JSON-RPC metadata. Two binding paths exist, and the
-ownership boundary between them is deliberate:
+- Free-form path: `Diagnostic::new` / `diagnostic()` and `ChioError::new` /
+  `error()` take a code, domain, severity, and message directly. No registry
+  check happens; any `Code` value, including an unregistered or malformed
+  one, is accepted.
+- Registry-bound path: `Diagnostic::from_spec` / `diagnostic_from_spec()` and
+  `ChioError::from_spec` / `error_from_spec()` take an `&ErrorCodeSpec` and a
+  local message. The code, domain, severity, and help text come from the
+  spec; the caller supplies only the message.
+- Verified lookup: `registry_spec()` looks up the diagnostic's stored code in
+  `ERROR_CODES` via `lookup_error_code` and returns the entry only if the
+  diagnostic's stored domain and severity both equal the entry's. A
+  diagnostic built free-form with a registered URN but a mismatched domain or
+  severity resolves to `None`, not a corrected entry.
+- Keyed views over `ERROR_CODES`: `lookup_error_code` by URN,
+  `lookup_jsonrpc_code` by wire numeric code, and `lookup_string_code` by
+  legacy string code. `lookup_string_code` fails closed to `None` when more
+  than one entry shares a string code (the registry currently has one such
+  duplicate, `CHIO-CLI-JSON`, shared by two entries); `lookup_string_code_matches`
+  is the only way to enumerate every collision.
 
-- `lookup_error_code` is a raw code-keyed registry query, useful for hovers and
-  direct lookups.
-- `Diagnostic::registry_spec` and `ChioError::registry_spec` are verified
-  bindings: they return a registry entry only when the diagnostic's code,
-  domain, and severity all match that entry. A free-form constructor can build
-  a diagnostic whose code is a registered URN while its domain or severity
-  disagrees with the registry; the verified binding rejects that case rather
-  than attaching stable string-code, stability, or help metadata to a
-  contradictory local error.
+## Invariants and failure modes
 
-Generated lookup helpers stay simple by code alone. The non-generated
-diagnostic API owns the stronger "is this diagnostic actually bound to the
-registry entry it names" rule.
+- `registry_spec()` requires an exact domain and severity match against the
+  registry entry named by the diagnostic's code; it never substitutes the
+  registry's values over a mismatched local diagnostic.
+- `lookup_string_code` returns `None` rather than an arbitrary first match
+  when a string code is ambiguous.
+- `Domain` is `#[non_exhaustive]`; matches on it must handle future variants.
+- `Code::from_str` is infallible; `Domain::from_str` and `Severity::from_str`
+  reject unknown input and preserve it on `UnknownDomain` / `UnknownSeverity`
+  for error reporting.
+- `_generated/*` is produced by `chio-spec-codegen` from
+  `spec/errors/registry.yaml` (`cargo run -p chio-spec-codegen --
+  --errors-only`); its header comment marks it DO NOT EDIT.
+- Every lookup is a linear scan over the static `ERROR_CODES` slice; there is
+  no index and no allocation on the read path.
 
-## Security And API Constraints
+## Dependencies
 
-- Preserve public API compatibility for `Code::new`, `diagnostic`, `error`,
-  registry lookup functions, and generated `ErrorCodeSpec` constants.
-- Do not edit `_generated` files directly. Registry data changes must go through
-  `spec/errors/registry.yaml` and `chio-spec-codegen`.
-- Diagnostics built from registry entries must use the registry's URN, domain,
-  severity, and help text without allowing callers to accidentally mismatch
-  those fields.
-- Unknown free-form codes must remain representable for compatibility CLI and transport
-  surfaces.
-- JSON-RPC bridge behavior must remain fail-closed for unmapped numeric codes.
-
-## Affected Dependents
-
-Direct dependents include `chio-cli`, `chio-control-plane`, and `chio-lsp`.
-Downstream consumers through `chio-control-plane` include `chio-hosted-mcp`,
-`chio-mcp-remote`, `chio-conformance`, `chio-mercury`, and `chio-wall`.
-`chio-control-plane` reporting must use the verified `registry_spec` method so
-it does not attach registry metadata to a mismatched diagnostic by raw code
-alone.
+No internal `chio-*` dependencies. External: `serde` for `Serialize` /
+`Deserialize` on `Code`, `Domain`, `Severity`, `Diagnostic`, and `ChioError`;
+`thiserror` for the `UnknownDomain`, `UnknownSeverity`, and `ChioError` error
+derives.

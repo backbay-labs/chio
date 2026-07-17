@@ -2,6 +2,9 @@ use super::*;
 
 const EXECUTION_NONCE_PREFLIGHT_CLEANUP_FAULT_REASON: &str =
     "execution nonce preflight cleanup failed";
+const URL_ELICITATION_CLEANUP_FAULT_REASON: &str =
+    "URL elicitation runtime admission cleanup failed";
+const URL_ELICITATION_BUDGET_CLEANUP_FAULT_REASON: &str = "URL elicitation budget cleanup failed";
 
 pub(super) struct PreDispatchCleanupDeny<'a> {
     pub(super) request: &'a ToolCallRequest,
@@ -53,15 +56,178 @@ impl ChioKernel {
         build()
     }
 
+    /// Release runtime-admission reservations during a URL-elicitation
+    /// pre-dispatch unwind, recording a signed fault receipt when the release
+    /// FAILS. The URL-elicitation arm returns `Err(UrlElicitationsRequired)` to
+    /// propagate the elicitation payload and so records NO terminal receipt; a
+    /// failed reservation release would therefore leave the stuck lease on NO
+    /// append-only entry. When
+    /// `release_runtime_admission_reservations_for_pre_dispatch_denial` folds a
+    /// `reservation_release_failed` marker into the returned metadata, record a
+    /// signed cancellation/fault receipt naming the stuck lease id(s) and the
+    /// failure reason (the standard pre-dispatch fault-receipt shape) so an
+    /// operator can locate the possibly-stuck reservation. Best-effort: a
+    /// receipt-recording failure is logged with an `audit_fault` field. The
+    /// caller still returns `Err(UrlElicitationsRequired)`, preserving the
+    /// elicitation response.
+    pub(super) fn release_runtime_admission_reservations_for_url_elicitation_cleanup(
+        &self,
+        request: &ToolCallRequest,
+        evaluation_context: &EvaluationReceiptContext,
+        matched_grant_index: usize,
+        metadata: Option<serde_json::Value>,
+        pre_invocation_guard_evidence: &[chio_core::receipt::metadata::GuardEvidence],
+    ) {
+        let mut released = metadata;
+        if let Err(error) = self.release_runtime_admission_reservations(released.as_ref()) {
+            released = merge_metadata_objects(
+                released,
+                Some(serde_json::json!({
+                    "chio_runtime": {
+                        "reservation_release_failed": true,
+                        "reservation_release_failure_reason": redacted!(&error).to_string(),
+                    }
+                })),
+            );
+        }
+        let runtime = released
+            .as_ref()
+            .and_then(|value| value.get("chio_runtime"))
+            .and_then(serde_json::Value::as_object);
+        let release_failed = runtime
+            .and_then(|runtime| runtime.get("reservation_release_failed"))
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false);
+        if !release_failed {
+            return;
+        }
+        // The `released` metadata already carries the stuck lease's reserved
+        // ids and the `reservation_release_failure_reason`; fold in an explicit
+        // cleanup-fault entry (step + reason + hold_ids) mirroring the standard
+        // pre-dispatch fault-receipt shape so the stuck lease is queryable.
+        let reason = runtime
+            .and_then(|runtime| runtime.get("reservation_release_failure_reason"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or("runtime admission reservation release failed")
+            .to_string();
+        let hold_ids = reserved_runtime_admission_ids(released.as_ref());
+        let fault_metadata = merge_metadata_objects(
+            released,
+            Some(serde_json::json!({
+                "chio_runtime": {
+                    "pre_dispatch_cleanup_failed": true,
+                    "pre_dispatch_cleanup_faults": [{
+                        "step": "url_elicitation_runtime_admission_release",
+                        "reason": reason,
+                        "hold_ids": hold_ids,
+                    }],
+                }
+            })),
+        );
+        let _guard_evidence_scope =
+            scope_pre_invocation_guard_evidence(pre_invocation_guard_evidence.to_vec());
+        let audit_context = evaluation_context.additional_audit_receipt_context();
+        if let Err(error) = self.build_cancelled_response_with_metadata(
+            request,
+            &audit_context,
+            URL_ELICITATION_CLEANUP_FAULT_REASON,
+            current_unix_timestamp(),
+            Some(matched_grant_index),
+            fault_metadata,
+        ) {
+            warn!(
+                request_id = %request.request_id,
+                reason = %redacted!(&error),
+                audit_fault = "url_elicitation_cleanup_reservation_release_unrecorded",
+                "failed to record URL-elicitation cleanup reservation-release fault receipt"
+            );
+        }
+    }
+
+    /// Record a signed fault receipt for a BUDGET cleanup step that FAILED
+    /// during the URL-elicitation pre-dispatch unwind (Fix: the child-budget
+    /// lease release and the pre-execution budget reversal now RECORD-AND-
+    /// CONTINUE instead of `?`-short-circuiting, so a transient budget-store
+    /// failure cannot replace the `Err(UrlElicitationsRequired)` response). The
+    /// arm returns the elicitation error and records no terminal receipt, so
+    /// without this the stuck child share / budget slot would land on NO
+    /// append-only entry. Best-effort: a receipt-recording failure is logged
+    /// with an `audit_fault` field; the caller still returns the elicitation
+    /// error.
+    // The fault receipt legitimately needs the request, grant, failing step,
+    // reason, stuck hold ids, admission metadata, and guard evidence to locate
+    // the stuck reservation; grouping them into a params struct would only
+    // rename the same inputs.
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn record_url_elicitation_budget_cleanup_fault(
+        &self,
+        request: &ToolCallRequest,
+        evaluation_context: &EvaluationReceiptContext,
+        matched_grant_index: usize,
+        step: &'static str,
+        reason: &str,
+        hold_ids: Vec<String>,
+        metadata: Option<serde_json::Value>,
+        pre_invocation_guard_evidence: &[chio_core::receipt::metadata::GuardEvidence],
+    ) {
+        let fault_metadata = merge_metadata_objects(
+            metadata,
+            Some(serde_json::json!({
+                "chio_runtime": {
+                    "pre_dispatch_cleanup_failed": true,
+                    "pre_dispatch_cleanup_faults": [{
+                        "step": step,
+                        "reason": reason,
+                        "hold_ids": hold_ids,
+                    }],
+                }
+            })),
+        );
+        let _guard_evidence_scope =
+            scope_pre_invocation_guard_evidence(pre_invocation_guard_evidence.to_vec());
+        let audit_context = evaluation_context.additional_audit_receipt_context();
+        if let Err(error) = self.build_cancelled_response_with_metadata(
+            request,
+            &audit_context,
+            URL_ELICITATION_BUDGET_CLEANUP_FAULT_REASON,
+            current_unix_timestamp(),
+            Some(matched_grant_index),
+            fault_metadata,
+        ) {
+            warn!(
+                request_id = %request.request_id,
+                reason = %redacted!(&error),
+                audit_fault = "url_elicitation_budget_cleanup_fault_unrecorded",
+                "failed to record URL-elicitation budget cleanup fault receipt"
+            );
+        }
+    }
+
+    /// Unwind all pre-dispatch state and record the signed deny receipt for
+    /// an evaluation whose tool provably did not run. Every caller owns
+    /// either a pre-dispatch denial or a dispatch error that precedes any
+    /// tool side effect, so on an error exit here (a failed cleanup step or
+    /// a failed deny-receipt append) the evaluation returns without a
+    /// terminal receipt and the journaled dispatch intent must not survive:
+    /// an open row for a call that never executed would dead-letter at the
+    /// next boot as a false orphan. The clear is bounded, open-state
+    /// guarded, and a no-op both for denials reached before the intent write
+    /// (no handle registered) and for a deny receipt that already consumed
+    /// the intent (the consume unregisters the handle).
     pub(super) fn build_pre_dispatch_cleanup_deny_response(
         &self,
         denial: PreDispatchCleanupDeny<'_>,
     ) -> Result<ToolCallResponse, KernelError> {
-        self.build_pre_dispatch_cleanup_deny_response_with_payment_outcome(
+        let request = denial.request;
+        let result = self.build_pre_dispatch_cleanup_deny_response_with_payment_outcome(
             denial,
             None,
             PaymentCredentialDisposition::NonePresent,
-        )
+        );
+        if result.is_err() {
+            self.clear_dispatch_intent_for_non_dispatch_exit(request);
+        }
+        result
     }
 
     pub(super) fn build_pre_dispatch_cleanup_deny_response_with_credentials(
@@ -69,11 +235,16 @@ impl ChioKernel {
         denial: PreDispatchCleanupDeny<'_>,
         payment_credential_disposition: PaymentCredentialDisposition,
     ) -> Result<ToolCallResponse, KernelError> {
-        self.build_pre_dispatch_cleanup_deny_response_with_payment_outcome(
+        let request = denial.request;
+        let result = self.build_pre_dispatch_cleanup_deny_response_with_payment_outcome(
             denial,
             None,
             payment_credential_disposition,
-        )
+        );
+        if result.is_err() {
+            self.clear_dispatch_intent_for_non_dispatch_exit(request);
+        }
+        result
     }
 
     pub(super) fn build_payment_authorization_outcome_unknown_deny_response(
@@ -82,11 +253,16 @@ impl ChioKernel {
         outcome_unknown_reason: &str,
         payment_credential_disposition: PaymentCredentialDisposition,
     ) -> Result<ToolCallResponse, KernelError> {
-        self.build_pre_dispatch_cleanup_deny_response_with_payment_outcome(
+        let request = denial.request;
+        let result = self.build_pre_dispatch_cleanup_deny_response_with_payment_outcome(
             denial,
             Some(outcome_unknown_reason),
             payment_credential_disposition,
-        )
+        );
+        if result.is_err() {
+            self.clear_dispatch_intent_for_non_dispatch_exit(request);
+        }
+        result
     }
 
     fn build_pre_dispatch_cleanup_deny_response_with_payment_outcome(

@@ -497,6 +497,25 @@ fn replay_nonce_and_diversity_limits_fail_closed() {
 }
 
 #[test]
+fn replay_window_expires_at_exact_boundary() {
+    let passport_key = key(1);
+    let kernel_key = key(2);
+    let deposit_body = body(&passport_key);
+    let deposit = sign_deposit(deposit_body.clone(), &passport_key).expect("sign deposit");
+    let mut context = live_context(&passport_key, &kernel_key);
+    context.now_unix_ms = deposit_body.timestamp_unix_ms + context.replay_window_ms;
+    context.scarcity_policies[0].window_end_unix_ms = context.now_unix_ms + 1;
+    refresh_policy_window_id(&mut context.scarcity_policies[0]);
+
+    let substrate = InMemoryPheromoneSubstrate::new();
+    let err = substrate
+        .deposit(deposit, &context)
+        .expect_err("exact replay-window boundary is expired");
+
+    assert_eq!(err.code(), "replay_window_exceeded");
+}
+
+#[test]
 fn diversity_limit_is_scoped_by_treaty() {
     let passport_key = key(1);
     let kernel_key = key(2);

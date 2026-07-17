@@ -56,13 +56,14 @@ function validateDenoWasmGlue(module: DenoWasmGlueModule): void {
 }
 
 export async function loadDenoWasm(
-  input: DenoWasmInput | Promise<DenoWasmInput> = fetch(resolveDenoWasmUrl()),
+  input?: DenoWasmInput | Promise<DenoWasmInput>,
 ): Promise<DenoWasmBindings> {
   if (wasmReady === undefined) {
     wasmReady = (async () => {
       const module = await importDenoWasmGlue(import.meta.url);
       validateDenoWasmGlue(module);
-      await module.default({ module_or_path: await input });
+      const resolvedInput = input ?? fetch(resolveDenoWasmUrl());
+      await module.default({ module_or_path: await resolvedInput });
       return {
         evaluate: module.evaluate,
         mint_signing_seed_hex: module.mint_signing_seed_hex,

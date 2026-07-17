@@ -26,7 +26,20 @@ pub(super) fn begin_session_request_in_sessions(
     cancellable: bool,
 ) -> Result<SessionRequestStart, KernelError> {
     let session = session_from_map(sessions, &context.session_id)?;
-    Ok(session.track_request(context, operation_kind, cancellable)?)
+    match session.track_request(context, operation_kind, cancellable) {
+        Ok(start) => Ok(start),
+        Err(SessionError::ParentRequestCancelled {
+            parent_request_id,
+            reason,
+            ..
+        }) => Err(KernelError::RequestCancelled {
+            request_id: parent_request_id,
+            reason: reason.unwrap_or_else(|| {
+                "parent session request cancelled before nested child dispatch".to_string()
+            }),
+        }),
+        Err(error) => Err(error.into()),
+    }
 }
 
 pub(super) fn begin_child_request_in_sessions(

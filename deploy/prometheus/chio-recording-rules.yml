@@ -90,3 +90,7 @@ groups:
             0.95,
             sum by (route, outcome, le) (rate(chio_alert_dispatch_latency_seconds_bucket[5m]))
           )
+
+      - record: chio:receipt_uncheckpointed_seq_range:max_5m
+        expr: |
+          max_over_time(chio_receipt_uncheckpointed_seq_range[5m])

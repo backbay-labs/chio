@@ -202,13 +202,22 @@ fn append_child_receipt_fails_closed_on_existing_claim_log_projection_drift() {
         receipt.tool_name = "sh".to_string();
     });
 
-    let error = store
+    // The default incremental append fast path uses an O(1) checkpoint-
+    // predecessor check plus an O(b) delta cross-check instead of an O(N)
+    // claim-log content re-derive-and-compare on every append; neither rescans
+    // an existing row's content. An append that does not touch the tampered row
+    // therefore succeeds; the store still fails closed on the drift, just
+    // observed through the audit surfaces (`receipt_store_health` /
+    // `receipt_checkpoint_status`), which keep the full per-row verification on
+    // purpose.
+    store
         .append_child_receipt(&sample_child_receipt_with_id_and_timestamp(
             "child-after-claim-log-drift",
             2,
         ))
-        .test_unwrap_err();
+        .test_unwrap();
 
+    let error = store.receipt_store_health().test_unwrap_err();
     assert!(
         error.to_string().contains("claim receipt log entry")
             && error.to_string().contains("diverges"),
@@ -750,6 +759,70 @@ fn open_existing_checkpoint_status_does_not_repair_missing_projection() {
         missing_count, 0,
         "open_existing/status must not repair checkpoint projection rows"
     );
+
+    let _ = fs::remove_file(path);
+}
+
+/// The read-only health sampler the SIEM serve-mode watchdog uses must NOT
+/// propagate a checkpoint-chain-integrity Err. On the fixed interval the
+/// watchdog logs-and-skips a sample error with no gauge update, so a corrupt
+/// store would look silent instead of alarming. Under chain corruption the
+/// read-only path must instead return a report carrying the checkpoint_error and
+/// a large-backlog range (checkpointed defaults to 0, spanning the whole
+/// committed log) so the watchdog still emits a gauge, matching the fail-open
+/// shape of `receipt_checkpoint_status`.
+#[test]
+fn health_read_only_reports_checkpoint_error_under_chain_corruption() {
+    let path = unique_db_path("chio-receipts-health-ro-chain-corruption");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    let receipt = sample_receipt_with_id("rcpt-health-ro-chain-corruption");
+    let seq = store
+        .append_chio_receipt_returning_seq(&receipt)
+        .test_unwrap();
+    let checkpoint_kp = receipt_test_keypair();
+    let checkpoint = build_checkpoint(
+        1,
+        seq,
+        seq,
+        &canonical_receipt_bytes(&store, seq, seq),
+        &checkpoint_kp,
+    )
+    .test_unwrap();
+    ReceiptStore::store_checkpoint(&store, &checkpoint).test_unwrap();
+
+    // Corrupt the checkpoint chain: drop the immutability trigger and delete a
+    // projection row so verify_checkpoint_chain_integrity fails on reopen.
+    let connection = store.connection().test_unwrap();
+    connection
+        .execute_batch(
+            r#"
+            DROP TRIGGER IF EXISTS checkpoint_publication_metadata_reject_delete;
+            DELETE FROM checkpoint_publication_metadata WHERE checkpoint_seq = 1;
+            "#,
+        )
+        .test_unwrap();
+    drop(connection);
+    drop(store);
+
+    let report = SqliteReceiptStore::receipt_store_health_read_only(&path).test_unwrap();
+    assert!(
+        !report.healthy,
+        "a corrupt chain is not healthy: {report:?}"
+    );
+    assert!(
+        report
+            .checkpoint_error
+            .as_deref()
+            .unwrap_or_default()
+            .contains("projection"),
+        "the read-only sampler must attach the chain-integrity error: {report:?}"
+    );
+    assert_eq!(report.latest_checkpointed_entry_seq, 0);
+    assert_eq!(report.latest_checkpoint_seq, None);
+    // The uncheckpointed range must span the whole committed log so the watchdog
+    // emits a large-backlog gauge rather than skipping the sample.
+    assert_eq!(report.uncheckpointed_start_seq, Some(1));
+    assert_eq!(report.uncheckpointed_end_seq, Some(seq));
 
     let _ = fs::remove_file(path);
 }

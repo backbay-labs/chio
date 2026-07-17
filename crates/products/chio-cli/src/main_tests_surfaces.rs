@@ -637,7 +637,6 @@ fn chio_runtime_signing_dispatch_uses_chio_handlers() {
     assert!(runtime_dispatch.contains("cmd_chio_runtime_sign_pheromone_query_report("));
 }
 
-
 #[test]
 fn chio_runtime_dispatch_uses_chio_command_types() {
     let runtime_dispatch = include_str!("cli/dispatch/runtime.rs");
@@ -814,7 +813,6 @@ fn chio_pheromone_remaining_relay_dispatch_uses_chio_handlers() {
     }
 }
 
-
 #[test]
 fn chio_authority_gate_validates_local_signing_keys_schema() {
     let script = include_str!("../../../../scripts/check-chio-authority-issuance.sh");
@@ -830,7 +828,6 @@ fn chio_authority_gate_validates_local_signing_keys_schema() {
             "authority gate must schema-validate local signing keys"
         );
 }
-
 
 #[test]
 fn chio_attest_buyer_dispatch_uses_canonical_crate_names() {

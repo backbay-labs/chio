@@ -6,7 +6,10 @@ use std::path::{Path, PathBuf};
 pub(super) fn sorted_files(dir: &Path) -> Result<Vec<PathBuf>, CliError> {
     let mut files = Vec::new();
     for entry in fs::read_dir(dir).map_err(|error| {
-        CliError::cli_io_error(format!("failed to read directory {}: {error}", dir.display()))
+        CliError::cli_io_error(format!(
+            "failed to read directory {}: {error}",
+            dir.display()
+        ))
     })? {
         let entry = entry.map_err(|error| {
             CliError::cli_io_error(format!("failed to read directory entry: {error}"))
@@ -52,18 +55,21 @@ pub(super) fn trusted_archive_packagers_from_signing_key(
     now_unix_ms: u64,
 ) -> chio_pheromone_relay::RelayAlertAssuranceTrustedArchivePackagersDocument {
     chio_pheromone_relay::RelayAlertAssuranceTrustedArchivePackagersDocument {
-        schema: chio_pheromone_relay::PHEROMONE_RELAY_ALERT_ASSURANCE_TRUSTED_ARCHIVE_PACKAGERS_SCHEMA
-            .to_string(),
+        schema:
+            chio_pheromone_relay::PHEROMONE_RELAY_ALERT_ASSURANCE_TRUSTED_ARCHIVE_PACKAGERS_SCHEMA
+                .to_string(),
         local_kernel_id,
         min_created_at_unix_ms: now_unix_ms,
-        packagers: vec![chio_pheromone_relay::RelayAlertAssuranceTrustedArchivePackager {
-            packager_id: packager_id.to_string(),
-            key_id: packager_key_id.to_string(),
-            public_key,
-            valid_from_unix_ms: now_unix_ms.saturating_sub(1),
-            valid_until_unix_ms: now_unix_ms.saturating_add(24 * 60 * 60 * 1000),
-            status: "active".to_string(),
-        }],
+        packagers: vec![
+            chio_pheromone_relay::RelayAlertAssuranceTrustedArchivePackager {
+                packager_id: packager_id.to_string(),
+                key_id: packager_key_id.to_string(),
+                public_key,
+                valid_from_unix_ms: now_unix_ms.saturating_sub(1),
+                valid_until_unix_ms: now_unix_ms.saturating_add(24 * 60 * 60 * 1000),
+                status: "active".to_string(),
+            },
+        ],
     }
 }
 

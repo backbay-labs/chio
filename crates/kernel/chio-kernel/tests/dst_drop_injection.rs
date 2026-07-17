@@ -5,7 +5,8 @@ use std::collections::HashSet;
 
 use serde::Deserialize;
 use support::{
-    run_child_flush_mutation, run_crash_reopen, run_episode, CrashBoundary, EpisodeClass,
+    assert_wrapped_budget_replay_outcome, run_child_flush_mutation, run_crash_reopen, run_episode,
+    CrashBoundary, EpisodeClass,
 };
 
 const FIXED_SEEDS: &str = include_str!("dst/seeds.toml");
@@ -106,6 +107,13 @@ fn dst_child_receipt_flush_regression_is_killed() {
             .is_err_and(|error| error.contains("ChildReceiptsFlushed violated")),
         "deliberate child-receipt flush omission survived the oracle: {mutation:?}"
     );
+}
+
+#[test]
+fn dst_budget_wrapper_preserves_replay_outcome() {
+    if let Err(error) = assert_wrapped_budget_replay_outcome() {
+        panic!("DST budget wrapper replay check failed: {error}");
+    }
 }
 
 #[test]

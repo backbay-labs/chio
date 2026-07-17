@@ -5,7 +5,9 @@
 #   ghcr.io/backbay-labs/chio-sidecar      -- replace with the sidecar image you pushed
 #   PROJECT_ID / REGION              -- substitute for your GCP project and region
 #   projects/PROJECT_ID/secrets/...  -- create the secrets in Secret Manager first
-#   chio-kernel-config / chio-openapi-spec -- Secret Manager secrets mounted below
+#   chio-openapi-spec / chio-authority-seed -- Secret Manager secrets mounted below
+#   chio-sidecar-control-token       -- bearer token gating /metrics + control
+#                                       endpoints (a metrics scraper presents it)
 #
 # Deploy:
 #   gcloud run services replace deploy/cloud-run/service.yaml --region REGION
@@ -26,11 +28,29 @@ spec:
     metadata:
       annotations:
         # Keep at least one warm instance to amortise sidecar cold starts.
+        # This reference runs an explicitly ephemeral in-memory audit log
+        # (--allow-ephemeral-receipts): Cloud Run has no per-instance persistent
+        # disk, so there is no durable local backend to pin. maxScale stays 1 so a
+        # single instance keeps one coherent in-memory audit stream; for a durable
+        # audit trail across scale or restart, front a client-server audit store
+        # or move to a per-instance-disk platform (see the sidecar args note).
         autoscaling.knative.dev/minScale: "1"
-        autoscaling.knative.dev/maxScale: "100"
+        autoscaling.knative.dev/maxScale: "1"
         # App waits until chio-sidecar startupProbe succeeds.
         run.googleapis.com/container-dependencies: '{"app":["chio-sidecar"]}'
         run.googleapis.com/execution-environment: gen2
+        # The sidecar serves /metrics on the ingress port (:9090) carrying the
+        # kernel/edge/alert-pack families, but the route is sidecar-control-gated:
+        # it answers ONLY a loopback caller or a request bearing
+        # `Authorization: Bearer $CHIO_SIDECAR_CONTROL_TOKEN`. A bare
+        # `prometheus.io/scrape: "true"` would point an unauthenticated scraper at
+        # public ingress and get 403, so it is intentionally omitted. Scrape with
+        # that auth instead: a Managed Prometheus PodMonitoring / scrape_config
+        # whose `authorization.credentials` is the control token wired below, or a
+        # co-located collector scraping http://localhost:9090/metrics (loopback is
+        # allowed without a token). The path/port below are documentation only.
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "9090"
     spec:
       serviceAccountName: chio-sidecar@PROJECT_ID.iam.gserviceaccount.com
       containerConcurrency: 80
@@ -89,24 +109,33 @@ spec:
             - "/etc/chio/spec/openapi.yaml"
             - "--listen"
             - "0.0.0.0:9090"
+            # Cloud Run has no per-instance persistent disk, so the audit log
+            # cannot be durable here. Opt into ephemeral in-memory receipts
+            # explicitly instead of pointing --receipt-store at scratch storage,
+            # which would boot reporting a durable backend yet lose every receipt
+            # on revision recycle. For a durable audit trail, front a client-server
+            # store or run on a per-instance-disk platform.
+            - "--allow-ephemeral-receipts"
+            - "--authority-seed-file"
+            - "/etc/chio/seed/authority.seed"
           env:
             - name: CHIO_LOG_LEVEL
               value: "info"
-            - name: CHIO_CAPABILITY_AUTHORITY_URL
+            # Sidecar-control bearer token that gates /metrics and the control
+            # endpoints. A remote metrics scraper must send it as
+            # `Authorization: Bearer <token>`; a co-located loopback collector
+            # needs no token. Without it, only loopback callers can reach
+            # /metrics.
+            - name: CHIO_SIDECAR_CONTROL_TOKEN
               valueFrom:
                 secretKeyRef:
-                  name: chio-capability-authority-url
-                  key: latest
-            - name: CHIO_SIGNING_KEY
-              valueFrom:
-                secretKeyRef:
-                  name: chio-signing-key
+                  name: chio-sidecar-control-token
                   key: latest
           volumeMounts:
-            - name: chio-kernel-config
-              mountPath: /etc/chio/kernel
             - name: chio-openapi-spec
               mountPath: /etc/chio/spec
+            - name: chio-authority-seed
+              mountPath: /etc/chio/seed
           resources:
             limits:
               cpu: "500m"
@@ -118,22 +147,43 @@ spec:
             initialDelaySeconds: 1
             periodSeconds: 1
             failureThreshold: 30
-          livenessProbe:
+          readinessProbe:
             httpGet:
+              # Dependency-aware readiness: /chio/health returns 503 when the
+              # receipt store can no longer persist, so a post-startup outage
+              # pulls the instance from rotation instead of routing traffic to a
+              # sidecar that can only deny. Without this probe, readiness never
+              # re-checks after the startup gate and the instance stays in
+              # rotation despite /chio/health failing.
               path: /chio/health
               port: 9090
             periodSeconds: 10
             failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              # Process-only liveness: a dependency blip must not restart a
+              # container that is still serving. Readiness gates on /chio/health.
+              path: /chio/live
+              port: 9090
+            periodSeconds: 10
+            failureThreshold: 3
       volumes:
-        - name: chio-kernel-config
-          secret:
-            secretName: chio-kernel-config
-            items:
-              - key: latest
-                path: kernel.yaml
         - name: chio-openapi-spec
           secret:
             secretName: chio-openapi-spec
             items:
               - key: latest
                 path: openapi.yaml
+        - name: chio-authority-seed
+          secret:
+            secretName: chio-authority-seed
+            items:
+              - key: latest
+                path: authority.seed
+        # No receipt-store volume: this reference keeps the audit log in memory
+        # (--allow-ephemeral-receipts) because Cloud Run offers no per-instance
+        # persistent disk. A durable receipt log is a single-writer SQLite database
+        # in WAL mode, which needs a local (non-network) filesystem and so cannot
+        # run on Filestore/NFS. For a durable audit trail, run on a platform with a
+        # per-instance disk (a StatefulSet PVC, an ECS task with an attached block
+        # volume) or front a client-server audit store.

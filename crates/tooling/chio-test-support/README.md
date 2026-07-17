@@ -1,47 +1,62 @@
 # chio-test-support
 
-Shared test-only assertion helpers for the Chio workspace.
+Shared test-only assertion helpers for the Chio workspace. The workspace denies
+`clippy::unwrap_used` and `clippy::expect_used` everywhere, including test code,
+so this crate supplies extension traits that fail a test with a `panic!` instead
+of the banned inherent methods, plus loopback-bind probes for integration tests
+that spawn local listeners.
 
-## What it does
+## Responsibilities
 
-The workspace denies `clippy::unwrap_used` and `clippy::expect_used` everywhere,
-including test code. This crate provides small extension traits that give tests
-the same fail-on-unexpected-variant ergonomics through explicit `panic!` calls,
-so test bodies stay readable without reaching for the banned inherent methods.
+- Provide `test_unwrap` / `test_expect` / `test_unwrap_err` / `test_expect_err`
+  extension methods on `Result` and `Option` as drop-in replacements for the
+  banned `.unwrap()` / `.expect()`.
+- Preserve the calling test's panic location with `#[track_caller]`, so a
+  failure points at the assertion, not at this crate's internals.
+- Provide loopback-bind probes so integration tests can distinguish an
+  environmental sandbox denial (skip) from a real bind regression (fail).
 
-Two intentionally distinct families are exposed:
+## Public API
 
-- `prelude` (the dominant convention): context-free `value.test_unwrap()` for
-  `Result` and `Option`, plus `test_expect(context)` / `test_unwrap_err()` /
-  `test_expect_err(context)`.
-- `ctx`: context-carrying `value.test_unwrap(context)` and
-  `result.test_unwrap_err(context)`.
+- `plain::{TestResultOk, TestResultErr}` - context-free `test_unwrap()` /
+  `test_expect(context)` on `Result<T, E: Debug>` and `Option<T>`, and
+  `test_unwrap_err()` / `test_expect_err(context)` on `Result<T, E>`.
+- `prelude::*` - re-exports `plain::{TestResultOk, TestResultErr}`; the default
+  import for the dominant workspace convention.
+- `ctx::{TestUnwrap, TestUnwrapErr}` - context-carrying `test_unwrap(context)`
+  on `Result<T, E: Display>` and `Option<T>`, and `test_unwrap_err(context)` on
+  `Result<T, E>`.
+- `loopback::{loopback_bind_available, skip_when_loopback_bind_denied,
+  reserve_listen_addr, reserve_listen_addr_for, is_loopback_bind_denied}`.
 
-Both families deliberately use the `test_unwrap` method name, so a single source
-file imports exactly one of them.
+`plain` and `ctx` both define a `test_unwrap` method, so a source file should
+import exactly one family, never both.
 
-Helper panics preserve the test call site with `#[track_caller]`, so failures
-point at the assertion that made the bad assumption rather than the support
-crate implementation line.
-
-The `loopback` module centralizes local listener helpers for integration tests
-that spawn temporary HTTP or trust-control services. Use
-`skip_when_loopback_bind_denied(test_name)` at the start of a socket-backed test
-and return early only when the local sandbox denies `127.0.0.1:0` binds. Use
-`reserve_listen_addr()` or `reserve_listen_addr_for(label)` after that probe to
-allocate an ephemeral address. Permission denials are treated as environmental;
-address conflicts and other bind failures still fail the test.
-
-## Where it fits
-
-Add it as a `[dev-dependencies]` entry and import the helpers from a
-`#[cfg(test)]` module:
+## Usage
 
 ```rust
-use chio_test_support::prelude::*; // or: use chio_test_support::ctx::*;
-use chio_test_support::loopback::{reserve_listen_addr, skip_when_loopback_bind_denied};
+use chio_test_support::prelude::*;
+
+let value = compute_result().test_unwrap();
 ```
 
-The crate is `publish = false`, has no dependencies, and carries no runtime
-code; it centralizes the assertion helpers shared across the workspace's test
-suites.
+```rust
+use chio_test_support::loopback::{reserve_listen_addr, skip_when_loopback_bind_denied};
+
+if skip_when_loopback_bind_denied("my_test") {
+    return;
+}
+let addr = reserve_listen_addr();
+```
+
+## Testing
+
+`cargo test -p chio-test-support`
+
+## See also
+
+- `chio-cli` - the only current consumer of the `loopback` probes, used by CLI
+  integration tests that spin up local HTTP and trust-control servers.
+- Added as a `[dev-dependencies]` entry (`prelude` / `ctx`) by 30 further
+  crates spanning the core, kernel, economy, platform, protocol, observability,
+  sdk, and trust layers.

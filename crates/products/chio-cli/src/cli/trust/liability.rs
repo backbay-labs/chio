@@ -36,7 +36,8 @@ pub(crate) fn cmd_trust_liability_provider_issue(
             report,
             supersedes_provider_record_id: supersedes_provider_record_id.map(ToOwned::to_owned),
         };
-        trust_control::service_runtime::client::build_client(url, token)?.issue_liability_provider(&request)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .issue_liability_provider(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
@@ -92,7 +93,8 @@ pub(crate) fn cmd_trust_liability_provider_list(
 
     let report = if let Some(url) = control_url {
         let token = require_control_token(control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.list_liability_providers(&query)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .list_liability_providers(&query)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
@@ -139,7 +141,8 @@ pub(crate) fn cmd_trust_liability_provider_resolve(
 
     let report = if let Some(url) = control_url {
         let token = require_control_token(control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.resolve_liability_provider(&query)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .resolve_liability_provider(&query)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
@@ -187,7 +190,8 @@ pub(crate) fn cmd_trust_liability_quote_request_issue(
     let request = load_liability_quote_request_issue_request(input_file)?;
     let quote_request = if let Some(url) = control_url {
         let token = require_control_token(control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.issue_liability_quote_request(&request)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .issue_liability_quote_request(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
@@ -239,7 +243,8 @@ pub(crate) fn cmd_trust_liability_quote_response_issue(
     let request = load_liability_quote_response_issue_request(input_file)?;
     let quote_response = if let Some(url) = control_url {
         let token = require_control_token(control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.issue_liability_quote_response(&request)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .issue_liability_quote_response(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
@@ -287,7 +292,8 @@ pub(crate) fn cmd_trust_liability_pricing_authority_issue(
     let request = load_liability_pricing_authority_issue_request(input_file)?;
     let authority = if let Some(url) = control_url {
         let token = require_control_token(control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.issue_liability_pricing_authority(&request)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .issue_liability_pricing_authority(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
@@ -333,7 +339,8 @@ pub(crate) fn cmd_trust_liability_placement_issue(
     let request = load_liability_placement_issue_request(input_file)?;
     let placement = if let Some(url) = control_url {
         let token = require_control_token(control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.issue_liability_placement(&request)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .issue_liability_placement(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
@@ -376,7 +383,8 @@ pub(crate) fn cmd_trust_liability_bound_coverage_issue(
     let request = load_liability_bound_coverage_issue_request(input_file)?;
     let bound = if let Some(url) = control_url {
         let token = require_control_token(control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.issue_liability_bound_coverage(&request)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .issue_liability_bound_coverage(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
@@ -418,7 +426,8 @@ pub(crate) fn cmd_trust_liability_auto_bind_issue(
     let request = load_liability_auto_bind_issue_request(input_file)?;
     let decision = if let Some(url) = control_url {
         let token = require_control_token(control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.issue_liability_auto_bind(&request)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .issue_liability_auto_bind(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
@@ -478,7 +487,8 @@ pub(crate) fn cmd_trust_liability_claim_issue(
     let request = load_liability_claim_issue_request(input_file)?;
     let claim = if let Some(url) = control_url {
         let token = require_control_token(control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.issue_liability_claim_package(&request)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .issue_liability_claim_package(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
@@ -520,7 +530,8 @@ pub(crate) fn cmd_trust_liability_claim_response_issue(
     let request = load_liability_claim_response_issue_request(input_file)?;
     let response = if let Some(url) = control_url {
         let token = require_control_token(control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.issue_liability_claim_response(&request)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .issue_liability_claim_response(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
@@ -562,7 +573,8 @@ pub(crate) fn cmd_trust_liability_claim_dispute_issue(
     let request = load_liability_claim_dispute_issue_request(input_file)?;
     let dispute = if let Some(url) = control_url {
         let token = require_control_token(control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.issue_liability_claim_dispute(&request)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .issue_liability_claim_dispute(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
@@ -604,7 +616,8 @@ pub(crate) fn cmd_trust_liability_claim_adjudication_issue(
     let request = load_liability_claim_adjudication_issue_request(input_file)?;
     let adjudication = if let Some(url) = control_url {
         let token = require_control_token(control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.issue_liability_claim_adjudication(&request)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .issue_liability_claim_adjudication(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
@@ -702,7 +715,8 @@ pub(crate) fn cmd_trust_liability_claim_payout_receipt_issue(
     let request = load_liability_claim_payout_receipt_issue_request(input_file)?;
     let payout_receipt = if let Some(url) = control_url {
         let token = require_control_token(control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.issue_liability_claim_payout_receipt(&request)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .issue_liability_claim_payout_receipt(&request)?
     } else {
         let receipt_db_path = receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
@@ -867,7 +881,8 @@ pub(crate) fn cmd_trust_liability_market_list(
 
     let report = if let Some(url) = backend.control_url {
         let token = require_control_token(backend.control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.liability_market_workflows(&query)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .liability_market_workflows(&query)?
     } else {
         let receipt_db_path = backend.receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
@@ -956,7 +971,8 @@ pub(crate) fn cmd_trust_liability_claims_list(
 
     let report = if let Some(url) = backend.control_url {
         let token = require_control_token(backend.control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.liability_claim_workflows(&query)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .liability_claim_workflows(&query)?
     } else {
         let receipt_db_path = backend.receipt_db_path.ok_or_else(|| {
             CliError::cli_other_error(
@@ -1149,8 +1165,9 @@ pub(crate) fn load_liability_claim_settlement_receipt_issue_request(
 pub(crate) fn parse_liability_coverage_class(
     value: &str,
 ) -> Result<chio_kernel::LiabilityCoverageClass, CliError> {
-    serde_json::from_str(&format!("\"{value}\""))
-        .map_err(|_| CliError::policy_constraint_error(format!("invalid liability coverage class `{value}`")))
+    serde_json::from_str(&format!("\"{value}\"")).map_err(|_| {
+        CliError::policy_constraint_error(format!("invalid liability coverage class `{value}`"))
+    })
 }
 
 pub(crate) fn parse_liability_provider_lifecycle_state(

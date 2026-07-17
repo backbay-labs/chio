@@ -1,5 +1,87 @@
 use super::*;
 
+/// Receipt-store schema revision. Bump on every schema-affecting change so an
+/// older binary refuses to open a database it cannot fully interpret.
+///
+/// Revision history:
+/// - 0: initial stamped schema.
+/// - 1: adds the `chio_dispatch_intents` journal table. An older binary must
+///   refuse a database that may carry open intent rows, because it would
+///   serve without reconciling them or surfacing them in health.
+const RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION: i32 = 1;
+
+/// Stable key under which this store records its schema revision in the shared
+/// keyed metadata table. Distinct from the co-located approval store's key so the
+/// two track their revisions independently in the one sidecar file.
+const RECEIPT_STORE_SCHEMA_KEY: &str = "receipt";
+
+/// Tables that identify a database this receipt store may open, all of them the
+/// store's own: `chio_tool_receipts` is the current anchor (also the table the
+/// store shipped before schema stamping existed) and `http_receipts` /
+/// `tool_receipts` are legacy names it may still encounter on disk. A populated
+/// database carrying none of these is refused rather than adopted, so a path
+/// mistargeted at another store's file (an approval, revocation, budget, or
+/// authority database) never has receipt tables written into it.
+///
+/// `chio api protect` co-locates the receipt and approval stores in one SQLite
+/// file and opens the receipt store first, so this store owns the shared file's
+/// provenance anchor. The approval store, opened second, adopts the
+/// receipt-anchored file through its own co-located open; the receipt store never
+/// needs to recognize a neighbor's table to bootstrap the shared file, so a
+/// standalone approval database is refused here.
+const RECEIPT_STORE_LEGACY_ANCHOR_TABLES: &[&str] =
+    &["chio_tool_receipts", "http_receipts", "tool_receipts"];
+
+/// The subset of legacy anchors whose names are generic enough that an unrelated
+/// SQLite database could carry them by coincidence. Adopting an unstamped
+/// database on one of these names alone would let a mistargeted path capture a
+/// foreign file, so each must also carry a receipt payload column before it is
+/// accepted. The Chio-specific `chio_tool_receipts` anchor needs no such check.
+const RECEIPT_STORE_GENERIC_LEGACY_ANCHOR_TABLES: &[&str] = &["http_receipts", "tool_receipts"];
+
+/// Non-audit operational journal: one durable row per in-flight
+/// side-effecting or monetary dispatch, written before the effect and
+/// consumed in the same transaction as the receipt append. Never signed,
+/// never entered into chio_tool_receipts, and never counted by checkpoints
+/// or retention. Shared by the create path and the `open_existing` additive
+/// migration from schema revision 0, so both produce identical DDL.
+///
+/// `owner_token` names the store instance that journaled the row (one fresh
+/// token per open, never reused across restarts). Reconciliation skips rows
+/// carrying the reconciling instance's own token, which is what makes the
+/// pass safe to re-run while serving: liveness comes from the sidecar
+/// writer mark, identity from the token, and neither involves a clock (a
+/// paused-but-live writer keeps both).
+///
+/// A row's identity is (tenant, request id): request ids are caller-supplied
+/// and only unique within a tenant, so tenant-scoped uniqueness keeps one
+/// tenant's open or dead-letter intent from blocking an unrelated tenant's
+/// request that reuses the id. The unique index folds a NULL tenant to ''
+/// (a nullable column in a plain UNIQUE constraint would admit duplicate
+/// NULLs), so tenantless rows still conflict with each other.
+const DISPATCH_INTENT_JOURNAL_DDL: &str = r#"
+    CREATE TABLE IF NOT EXISTS chio_dispatch_intents (
+        request_id            TEXT NOT NULL,
+        capability_id         TEXT NOT NULL,
+        tool_server           TEXT NOT NULL,
+        tool_name             TEXT NOT NULL,
+        parameter_hash        TEXT NOT NULL,
+        side_effect_class     TEXT NOT NULL,
+        monetary              INTEGER NOT NULL,
+        rail                  TEXT,
+        rail_authorization_id TEXT,
+        tenant_id             TEXT,
+        created_at_unix_ms    INTEGER NOT NULL,
+        state                 TEXT NOT NULL DEFAULT 'open',
+        resolution_detail     TEXT,
+        owner_token           TEXT
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_chio_dispatch_intents_tenant_request
+        ON chio_dispatch_intents(COALESCE(tenant_id, ''), request_id);
+    CREATE INDEX IF NOT EXISTS idx_chio_dispatch_intents_state
+        ON chio_dispatch_intents(state);
+"#;
+
 fn configure_sqlite_connection(connection: &mut Connection) -> Result<(), ReceiptStoreError> {
     connection.execute_batch(
         r#"
@@ -7,6 +89,7 @@ fn configure_sqlite_connection(connection: &mut Connection) -> Result<(), Receip
         PRAGMA synchronous = FULL;
         PRAGMA busy_timeout = 5000;
         PRAGMA foreign_keys = ON;
+        PRAGMA auto_vacuum = INCREMENTAL;
         "#,
     )?;
     assert_sqlite_durability_pragmas(connection)?;
@@ -58,19 +141,45 @@ impl SqliteReceiptStore {
         path: impl AsRef<Path>,
         pool_config: crate::SqlitePoolConfig,
     ) -> Result<Self, ReceiptStoreError> {
-        Self::open_with_pool_config_and_flags(path, pool_config, true)
+        Self::open_with_options(
+            path,
+            crate::SqliteStoreOptions {
+                pool: pool_config,
+                ..crate::SqliteStoreOptions::default()
+            },
+        )
     }
 
     fn open_existing_with_pool_config(
         path: impl AsRef<Path>,
         pool_config: crate::SqlitePoolConfig,
     ) -> Result<Self, ReceiptStoreError> {
-        Self::open_with_pool_config_and_flags(path, pool_config, false)
+        Self::open_existing_with_options(
+            path,
+            crate::SqliteStoreOptions {
+                pool: pool_config,
+                ..crate::SqliteStoreOptions::default()
+            },
+        )
+    }
+
+    pub fn open_with_options(
+        path: impl AsRef<Path>,
+        options: crate::SqliteStoreOptions,
+    ) -> Result<Self, ReceiptStoreError> {
+        Self::open_with_pool_config_and_flags(path, options, true)
+    }
+
+    pub fn open_existing_with_options(
+        path: impl AsRef<Path>,
+        options: crate::SqliteStoreOptions,
+    ) -> Result<Self, ReceiptStoreError> {
+        Self::open_with_pool_config_and_flags(path, options, false)
     }
 
     fn open_with_pool_config_and_flags(
         path: impl AsRef<Path>,
-        pool_config: crate::SqlitePoolConfig,
+        options: crate::SqliteStoreOptions,
         create_if_missing: bool,
     ) -> Result<Self, ReceiptStoreError> {
         let path = path.as_ref();
@@ -81,8 +190,11 @@ impl SqliteReceiptStore {
         };
 
         if create_if_missing {
-            if let Some(parent) = path.parent() {
-                fs::create_dir_all(parent)?;
+            // Resolve `file:` URIs to their on-disk path before deriving the
+            // parent: a raw `parent()` on `file:/dir/db?mode=rwc` folds the
+            // scheme and query into a bogus directory and skips the real one.
+            if let Some(parent) = crate::sqlite_parent_dir_to_create(path) {
+                fs::create_dir_all(&parent)?;
             }
         }
 
@@ -101,34 +213,79 @@ impl SqliteReceiptStore {
         };
         if !create_if_missing {
             require_existing_receipt_schema(path, &connection)?;
+            // Validate provenance before configuring pragmas: a foreign or
+            // future database must be refused before any write touches its
+            // header, so a mistargeted path is never mutated into WAL mode.
+            let on_disk_version = crate::check_schema_version(
+                &connection,
+                RECEIPT_STORE_SCHEMA_KEY,
+                RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION,
+                RECEIPT_STORE_LEGACY_ANCHOR_TABLES,
+            )
+            .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
             configure_sqlite_connection(&mut connection)?;
+            if on_disk_version < RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION {
+                // Additive migration up to the supported revision (currently
+                // only the dispatch-intent journal table), then stamp it:
+                // once this binary may write intent rows into the file, an
+                // older binary must refuse to open it rather than serve
+                // without reconciling those rows or surfacing them in
+                // health.
+                connection.execute_batch(DISPATCH_INTENT_JOURNAL_DDL)?;
+                crate::stamp_schema_version(
+                    &connection,
+                    RECEIPT_STORE_SCHEMA_KEY,
+                    RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION,
+                )
+                .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
+            }
             super::support::ensure_transparency_projection_guards(&connection)?;
             drop(connection);
 
             let reader_pool = build_receipt_pool(
                 path,
-                pool_config.reader_pool_max_size,
+                options.pool.reader_pool_max_size,
                 "reader",
                 connection_flags,
             )?;
             let writer_pool = build_receipt_pool(
                 path,
-                pool_config.writer_pool_max_size,
+                options.pool.writer_pool_max_size,
                 "writer",
                 connection_flags,
             )?;
 
+            let instance_token = fresh_instance_token();
+            let writer_lifetime_lock = acquire_writer_lifetime_lock(path, &instance_token)?;
             return Ok(Self {
-                receipt_commit_actor: ReceiptCommitActor::start(writer_pool),
+                receipt_commit_actor: ReceiptCommitActor::start(
+                    writer_pool,
+                    options.incremental_verification,
+                ),
                 pool: reader_pool,
                 strict_tenant_isolation: std::sync::atomic::AtomicBool::new(true),
+                incremental_verification: options.incremental_verification,
+                writer_lifetime_lock,
+                instance_token,
             });
         }
 
+        // Validate provenance before configuring pragmas: an existing file that
+        // is a foreign database must be refused before any write touches its
+        // header, so a mistargeted path is never mutated into WAL mode. The
+        // schema-version check adopts an unstamped database on a legacy anchor
+        // name alone, so first reject one whose generic anchor lacks the receipt
+        // shape, keeping a foreign file that merely reuses the name out.
+        reject_foreign_legacy_receipt_anchor(&connection)?;
+        crate::check_schema_version(
+            &connection,
+            RECEIPT_STORE_SCHEMA_KEY,
+            RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION,
+            RECEIPT_STORE_LEGACY_ANCHOR_TABLES,
+        )
+        .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
         configure_sqlite_connection(&mut connection)?;
-        let transaction =
-            connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-        transaction.execute_batch(
+        connection.execute_batch(
             r#"
             CREATE TABLE IF NOT EXISTS chio_tool_receipts (
                 seq INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1032,38 +1189,80 @@ impl SqliteReceiptStore {
             CREATE INDEX IF NOT EXISTS idx_federated_share_lineage_subject
                 ON federated_share_capability_lineage(subject_key);
 
+            CREATE TABLE IF NOT EXISTS receipt_retention_watermark (
+                archived_through_entry_seq INTEGER NOT NULL,
+                archived_through_timestamp INTEGER NOT NULL,
+                archive_path               TEXT NOT NULL,
+                archive_sha256             TEXT,
+                rotated_at                 INTEGER NOT NULL,
+                CHECK (archived_through_entry_seq >= 0)
+            );
+
             "#,
         )?;
-        transaction.execute_batch(crate::IOU_ENVELOPE_MIGRATION)?;
-        ensure_tool_receipt_attribution_columns(&transaction)?;
-        super::support::ensure_receipt_lineage_statement_columns(&transaction)?;
-        super::support::drop_transparency_projection_guards(&transaction)?;
-        backfill_tool_receipt_attribution_columns(&transaction)?;
-        super::support::backfill_provenance_lineage_tables(&transaction)?;
-        super::support::backfill_claim_receipt_log_entries(&transaction)?;
-        super::support::backfill_checkpoint_transparency_projections(&transaction)?;
-        super::support::ensure_transparency_projection_guards(&transaction)?;
-        transaction.commit()?;
+        connection.execute_batch(DISPATCH_INTENT_JOURNAL_DDL)?;
+        connection.execute_batch(crate::IOU_ENVELOPE_MIGRATION)?;
+        ensure_tool_receipt_attribution_columns(&connection)?;
+        super::support::ensure_receipt_lineage_statement_columns(&connection)?;
+        super::support::drop_transparency_projection_guards(&connection)?;
+        let backfill_result = (|| -> Result<(), ReceiptStoreError> {
+            let transaction =
+                connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+            super::support::ensure_receipt_retention_watermark_table(&transaction)?;
+            super::support::ensure_receipt_retention_tombstones(&transaction)?;
+            backfill_tool_receipt_attribution_columns(&transaction)?;
+            super::support::backfill_provenance_lineage_tables(&transaction)?;
+            super::support::backfill_claim_receipt_log_entries(&transaction)?;
+            super::support::backfill_checkpoint_transparency_projections(&transaction)?;
+            transaction.commit()?;
+            Ok(())
+        })();
+        let guard_result = super::support::ensure_transparency_projection_guards(&connection);
+        match (backfill_result, guard_result) {
+            (Ok(()), Ok(())) => {}
+            (Err(error), Ok(())) => return Err(error),
+            (Ok(()), Err(error)) => return Err(error),
+            (Err(backfill_error), Err(guard_error)) => {
+                return Err(ReceiptStoreError::Canonical(format!(
+                    "receipt projection backfill failed ({backfill_error}); restoring immutability guards also failed ({guard_error})"
+                )));
+            }
+        }
+
+        crate::stamp_schema_version(
+            &connection,
+            RECEIPT_STORE_SCHEMA_KEY,
+            RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION,
+        )
+        .map_err(|error| ReceiptStoreError::Conflict(error.to_string()))?;
 
         drop(connection);
 
         let reader_pool = build_receipt_pool(
             path,
-            pool_config.reader_pool_max_size,
+            options.pool.reader_pool_max_size,
             "reader",
             connection_flags,
         )?;
         let writer_pool = build_receipt_pool(
             path,
-            pool_config.writer_pool_max_size,
+            options.pool.writer_pool_max_size,
             "writer",
             connection_flags,
         )?;
 
+        let instance_token = fresh_instance_token();
+        let writer_lifetime_lock = acquire_writer_lifetime_lock(path, &instance_token)?;
         Ok(Self {
-            receipt_commit_actor: ReceiptCommitActor::start(writer_pool),
+            receipt_commit_actor: ReceiptCommitActor::start(
+                writer_pool,
+                options.incremental_verification,
+            ),
             pool: reader_pool,
             strict_tenant_isolation: std::sync::atomic::AtomicBool::new(true),
+            incremental_verification: options.incremental_verification,
+            writer_lifetime_lock,
+            instance_token,
         })
     }
 
@@ -1080,6 +1279,66 @@ impl SqliteReceiptStore {
             },
         )
     }
+}
+
+/// Identity of one store instance for the rows it journals, distinct across
+/// every open of every process (a fresh UUID, never persisted or reused).
+/// Reconciliation treats a row carrying a different token as another
+/// instance's work, so nothing about the token needs to survive a restart:
+/// a restarted instance's previous rows are foreign to it by construction,
+/// exactly as a crashed sibling's are.
+fn fresh_instance_token() -> String {
+    uuid::Uuid::now_v7().to_string()
+}
+
+/// Mark this instance as a live writer on the database file: a shared
+/// advisory lock on a sidecar file, plus an exclusive lock on a per-owner
+/// mark named by `instance_token`, both held for the store's lifetime and
+/// released by the OS when the process exits, cleanly or not.
+/// Dispatch-intent reconciliation reads liveness from these marks before
+/// claiming open intents as orphans: a foreign row's owner is probed
+/// through its own per-owner mark, and a row naming no probeable owner is
+/// claimed only after converting the shared mark to exclusive, proving no
+/// sibling writer instance at all. Probes and conversions happen only
+/// under the sibling-serializing probe mutex at `probe_path` (see
+/// `WriterLifetimeLock`). Taking the shared mark blocks only while a
+/// sibling holds the exclusive conversion for the duration of its bounded
+/// reconcile pass. In-memory databases have no on-disk file to coordinate
+/// on and take no locks.
+fn acquire_writer_lifetime_lock(
+    path: &Path,
+    instance_token: &str,
+) -> Result<Option<WriterLifetimeLock>, ReceiptStoreError> {
+    let (Some(lock_path), Some(probe_path), Some(owner_mark_path)) = (
+        crate::sqlite_writer_lock_path(path),
+        crate::sqlite_reconcile_lock_path(path),
+        crate::sqlite_owner_mark_path(path, instance_token),
+    ) else {
+        return Ok(None);
+    };
+    let mark = open_sidecar_lock_file(&lock_path)?;
+    mark.lock_shared()?;
+    // The owner mark is held before the store can journal a single row, so
+    // a reconcile probe that acquires it is proof this owner journals
+    // nothing further. A fresh UUID cannot be contended; refuse rather
+    // than share.
+    let owner_lock = open_sidecar_lock_file(&owner_mark_path)?;
+    match owner_lock.try_lock() {
+        Ok(()) => {}
+        Err(std::fs::TryLockError::WouldBlock) => {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "owner liveness mark for a fresh store open is already held: {}",
+                owner_mark_path.display()
+            )));
+        }
+        Err(std::fs::TryLockError::Error(error)) => return Err(error.into()),
+    }
+    Ok(Some(WriterLifetimeLock {
+        mark,
+        probe_path,
+        database_path: path.to_path_buf(),
+        _owner_mark: OwnerLivenessMark::new(owner_lock, owner_mark_path),
+    }))
 }
 
 fn build_receipt_pool(
@@ -1144,4 +1403,57 @@ fn require_existing_receipt_schema(
     }
 
     Ok(())
+}
+
+/// Refuse an unstamped database whose generic legacy anchor (`http_receipts` or
+/// `tool_receipts`) does not carry a receipt payload column. These names are
+/// generic enough that an unrelated SQLite database could hold one by
+/// coincidence; the schema-version check would otherwise adopt and stamp such a
+/// file as a receipt store. A database already carrying the Chio application_id
+/// is provably a Chio store and is left to the schema-version check.
+fn reject_foreign_legacy_receipt_anchor(connection: &Connection) -> Result<(), ReceiptStoreError> {
+    let application_id: i32 =
+        connection.query_row("PRAGMA application_id", [], |row| row.get(0))?;
+    if application_id != 0 {
+        return Ok(());
+    }
+    for anchor in RECEIPT_STORE_GENERIC_LEGACY_ANCHOR_TABLES {
+        if table_exists(connection, anchor)?
+            && !table_has_receipt_payload_column(connection, anchor)?
+        {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "database has a `{anchor}` table without a receipt payload column \
+                 (raw_json or receipt_json); refusing to adopt a foreign database as a receipt store"
+            )));
+        }
+    }
+    Ok(())
+}
+
+fn table_exists(connection: &Connection, table: &str) -> Result<bool, ReceiptStoreError> {
+    let present: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1)",
+        [table],
+        |row| row.get(0),
+    )?;
+    Ok(present)
+}
+
+/// Whether `table` stores a receipt payload under a recognised JSON column:
+/// `raw_json` on the current store, `receipt_json` on the pre-stamping one. The
+/// table name is one of the store's own compile-time anchors, never caller
+/// input, and `PRAGMA table_info` takes no bound parameter for it.
+fn table_has_receipt_payload_column(
+    connection: &Connection,
+    table: &str,
+) -> Result<bool, ReceiptStoreError> {
+    let mut statement = connection.prepare(&format!("PRAGMA table_info({table})"))?;
+    let mut rows = statement.query([])?;
+    while let Some(row) = rows.next()? {
+        let column: String = row.get(1)?;
+        if column.eq_ignore_ascii_case("raw_json") || column.eq_ignore_ascii_case("receipt_json") {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }

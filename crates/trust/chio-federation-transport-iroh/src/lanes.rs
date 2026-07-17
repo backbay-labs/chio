@@ -16,3 +16,8 @@ pub mod fanout;
 pub mod limits;
 pub mod pheromone;
 pub mod revocation;
+
+/// Nightly loom concurrency models. Cfg-gated behind `chio_iroh_transport_loom`,
+/// so off by default.
+#[cfg(all(test, chio_iroh_transport_loom))]
+mod limits_loom;

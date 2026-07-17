@@ -81,6 +81,17 @@ class TestCookieExtractor:
         assert identity.auth_method.method == "cookie"
         assert identity.auth_method.cookie_hash == _sha256("abc123")
 
+    def test_extracts_session_cookie_from_split_cookie_headers(self) -> None:
+        scope = _make_scope()
+        scope["headers"] = [
+            (b"cookie", b"session=abc123"),
+            (b"cookie", b"other=xyz"),
+        ]
+        identity = CookieExtractor().extract(scope)
+        assert identity is not None
+        assert identity.auth_method.method == "cookie"
+        assert identity.auth_method.cookie_hash == _sha256("abc123")
+
     def test_custom_cookie_name(self) -> None:
         scope = _make_scope({"cookie": "sid=my-session"})
         identity = CookieExtractor("sid").extract(scope)

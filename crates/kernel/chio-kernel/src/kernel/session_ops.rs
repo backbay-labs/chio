@@ -79,12 +79,17 @@ impl<'a> SessionRequestCompletionGuard<'a> {
 impl Drop for SessionRequestCompletionGuard<'_> {
     fn drop(&mut self) {
         if self.armed {
+            let reason = self
+                .kernel
+                .session(&self.session_id)
+                .and_then(|session| session.inflight().get(&self.request_id))
+                .filter(|request| request.cancellation_requested)
+                .and_then(|request| request.cancellation_reason)
+                .unwrap_or_else(|| "session tool call evaluation dropped".to_string());
             if let Err(error) = self.kernel.complete_session_request_with_terminal_state(
                 &self.session_id,
                 &self.request_id,
-                OperationTerminalState::Cancelled {
-                    reason: "session tool call evaluation dropped".to_string(),
-                },
+                OperationTerminalState::Cancelled { reason },
             ) {
                 warn!(
                     session_id = %self.session_id,
@@ -618,6 +623,21 @@ impl ChioKernel {
         self.with_session_mut(session_id, |session| {
             session
                 .request_cancellation(request_id)
+                .map_err(KernelError::from)
+        })
+    }
+
+    /// Mark an in-flight session request as cancelled and retain the first
+    /// caller-supplied reason for subsequent boundaries and terminal state.
+    pub fn request_session_cancellation_with_reason(
+        &self,
+        session_id: &SessionId,
+        request_id: &RequestId,
+        reason: &str,
+    ) -> Result<(), KernelError> {
+        self.with_session_mut(session_id, |session| {
+            session
+                .request_cancellation_with_reason(request_id, reason)
                 .map_err(KernelError::from)
         })
     }

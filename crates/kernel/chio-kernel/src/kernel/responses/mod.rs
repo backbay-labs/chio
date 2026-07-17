@@ -1,5 +1,3 @@
-use std::sync::atomic::Ordering;
-
 use chio_core::{
     receipt::kinds::BoundaryClass, receipt::kinds::ReceiptKind, receipt::kinds::RedactionMode,
     receipt::kinds::ToolOrigin, receipt::signing::ReceiptSigningHandle,

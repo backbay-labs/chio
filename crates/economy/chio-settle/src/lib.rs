@@ -40,14 +40,16 @@ pub use config::{
 pub use evm::{
     build_failure_receipt, build_reversal_receipt, confirm_transaction, estimate_call_gas,
     finalize_bond_lock, finalize_escrow_dispatch, prepare_bond_expiry, prepare_bond_impair,
-    prepare_bond_lock, prepare_bond_release, prepare_dual_sign_release, prepare_erc20_approval,
-    prepare_escrow_refund, prepare_merkle_release, prepare_web3_escrow_dispatch,
+    prepare_bond_lock, prepare_bond_proof_root_publication, prepare_bond_release,
+    prepare_dual_sign_release, prepare_erc20_approval, prepare_escrow_refund,
+    prepare_merkle_release, prepare_merkle_release_root_publication, prepare_web3_escrow_dispatch,
     read_bond_snapshot, read_escrow_snapshot, scale_chio_amount_to_token_minor_units,
     static_validate_call, submit_call, BondLockRequest, DualSignReleaseInput,
     EscrowDispatchRequest, EscrowExecutionAmount, EscrowSnapshot, EvmBondSnapshot, EvmLogEntry,
     EvmSignature, EvmTransactionReceipt, PreparedBondExpiry, PreparedBondImpair, PreparedBondLock,
-    PreparedBondRelease, PreparedDualSignRelease, PreparedErc20Approval, PreparedEscrowCreate,
-    PreparedEscrowRefund, PreparedEvmCall, PreparedMerkleRelease,
+    PreparedBondProofRoot, PreparedBondRelease, PreparedDualSignRelease, PreparedErc20Approval,
+    PreparedEscrowCreate, PreparedEscrowRefund, PreparedEvmCall, PreparedMerkleRelease,
+    SettlementAnchorContentBinding,
 };
 pub use hook::{
     SettlementHook, SettlementHookError, SettlementObservation, SettlementOutcome,
@@ -60,12 +62,13 @@ pub use observe::{
     SettlementFinalityStatus, SettlementRecoveryAction,
 };
 pub use ops::{
-    classify_settlement_lane, ensure_settlement_operation_allowed, SettlementAlertSeverity,
-    SettlementControlChangeRecord, SettlementControlState, SettlementEmergencyControls,
-    SettlementEmergencyMode, SettlementIncidentAlert, SettlementIndexerCursor,
-    SettlementIndexerCursorInput, SettlementIndexerStatus, SettlementLaneRuntimeStatus,
-    SettlementLaneRuntimeStatusInput, SettlementOperationKind, SettlementRecoveryRecord,
-    SettlementRuntimeReport, SettlementRuntimeStatus, CHIO_SETTLE_RUNTIME_REPORT_SCHEMA,
+    classify_settlement_lane, ensure_settlement_operation_allowed, OpsSettlementHook,
+    SettlementAlertSeverity, SettlementControlChangeRecord, SettlementControlState,
+    SettlementDriveStep, SettlementEmergencyControls, SettlementEmergencyMode,
+    SettlementIncidentAlert, SettlementIndexerCursor, SettlementIndexerCursorInput,
+    SettlementIndexerStatus, SettlementLaneRuntimeStatus, SettlementLaneRuntimeStatusInput,
+    SettlementOperationKind, SettlementRecoveryRecord, SettlementRuntime, SettlementRuntimeReport,
+    SettlementRuntimeStatus, CHIO_SETTLE_RUNTIME_REPORT_SCHEMA,
 };
 pub use payments::{
     build_x402_payment_requirements, evaluate_circle_nanopayment, prepare_paymaster_compatibility,
@@ -76,9 +79,9 @@ pub use payments::{
     DEFAULT_MAX_EIP3009_NONCE_ENTRIES,
 };
 pub use retry::{
-    classify_attempt, DeadLetterRecord, RetryDecision, RetryPolicy, DEFAULT_BACKOFF_CAP_MS,
-    DEFAULT_BACKOFF_MULTIPLIER, DEFAULT_INITIAL_BACKOFF_MS, DEFAULT_MAX_RETRIES,
-    SETTLE_DEAD_LETTER_SCHEMA,
+    classify_attempt, DeadLetterRecord, RetryDecision, RetryPolicy, RetryPolicyError,
+    DEFAULT_BACKOFF_CAP_MS, DEFAULT_BACKOFF_MULTIPLIER, DEFAULT_INITIAL_BACKOFF_MS,
+    DEFAULT_MAX_RETRIES, SETTLE_DEAD_LETTER_SCHEMA,
 };
 pub use solana::{
     compare_commitments, prepare_solana_settlement, verify_solana_binding_and_receipt,

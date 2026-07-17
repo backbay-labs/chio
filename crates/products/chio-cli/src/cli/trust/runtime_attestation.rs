@@ -1,16 +1,20 @@
 use super::*;
 
 pub(crate) fn parse_governed_autonomy_tier(value: &str) -> Result<GovernedAutonomyTier, CliError> {
-    serde_json::from_str(&format!("\"{value}\""))
-        .map_err(|_| CliError::policy_constraint_error(format!("invalid governed autonomy tier `{value}`")))
+    serde_json::from_str(&format!("\"{value}\"")).map_err(|_| {
+        CliError::policy_constraint_error(format!("invalid governed autonomy tier `{value}`"))
+    })
 }
 
 pub(crate) fn parse_runtime_assurance_tier(value: &str) -> Result<RuntimeAssuranceTier, CliError> {
-    serde_json::from_str(&format!("\"{value}\""))
-        .map_err(|_| CliError::policy_constraint_error(format!("invalid runtime assurance tier `{value}`")))
+    serde_json::from_str(&format!("\"{value}\"")).map_err(|_| {
+        CliError::policy_constraint_error(format!("invalid runtime assurance tier `{value}`"))
+    })
 }
 
-pub(crate) fn load_runtime_attestation_evidence(path: &Path) -> Result<RuntimeAttestationEvidence, CliError> {
+pub(crate) fn load_runtime_attestation_evidence(
+    path: &Path,
+) -> Result<RuntimeAttestationEvidence, CliError> {
     let contents = fs::read_to_string(path)?;
     if path
         .extension()
@@ -49,11 +53,10 @@ pub(crate) fn cmd_trust_runtime_attestation_appraisal_export(
     let evidence = load_runtime_attestation_evidence(input_path)?;
     let report = if let Some(url) = control_url {
         let token = require_control_token(control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.runtime_attestation_appraisal(
-            &RuntimeAttestationAppraisalRequest {
+        trust_control::service_runtime::client::build_client(url, token)?
+            .runtime_attestation_appraisal(&RuntimeAttestationAppraisalRequest {
                 runtime_attestation: evidence,
-            },
-        )?
+            })?
     } else {
         let runtime_assurance_policy = policy_file
             .map(load_policy)
@@ -122,12 +125,13 @@ pub(crate) fn cmd_trust_runtime_attestation_appraisal_result_export(
     let evidence = load_runtime_attestation_evidence(input_path)?;
     let result = if let Some(url) = control_url {
         let token = require_control_token(control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.runtime_attestation_appraisal_result(
-            &RuntimeAttestationAppraisalResultExportRequest {
-                issuer: issuer.to_string(),
-                runtime_attestation: evidence,
-            },
-        )?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .runtime_attestation_appraisal_result(
+                &RuntimeAttestationAppraisalResultExportRequest {
+                    issuer: issuer.to_string(),
+                    runtime_attestation: evidence,
+                },
+            )?
     } else {
         let runtime_assurance_policy = policy_file
             .map(load_policy)
@@ -183,7 +187,8 @@ pub(crate) fn cmd_trust_runtime_attestation_appraisal_import(
 
     let report = if let Some(url) = control_url {
         let token = require_control_token(control_token)?;
-        trust_control::service_runtime::client::build_client(url, token)?.import_runtime_attestation_appraisal(&request)?
+        trust_control::service_runtime::client::build_client(url, token)?
+            .import_runtime_attestation_appraisal(&request)?
     } else {
         trust_control::reports::build_runtime_attestation_appraisal_import_report(
             &request,

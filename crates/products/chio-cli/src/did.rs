@@ -60,12 +60,10 @@ mod tests {
     #[test]
     fn resolve_identifier_requires_exactly_one_source() {
         assert!(resolve_identifier(None, None).is_err());
-        assert!(
-            resolve_identifier(
-                Some("did:chio:d04ab232742bb4ab3a1368bd4615fa0ee602dfd08f52a2408e8dc3f92f2aee72"),
-                Some("d04ab232742bb4ab3a1368bd4615fa0ee602dfd08f52a2408e8dc3f92f2aee72")
-            )
-            .is_err()
-        );
+        assert!(resolve_identifier(
+            Some("did:chio:d04ab232742bb4ab3a1368bd4615fa0ee602dfd08f52a2408e8dc3f92f2aee72"),
+            Some("d04ab232742bb4ab3a1368bd4615fa0ee602dfd08f52a2408e8dc3f92f2aee72")
+        )
+        .is_err());
     }
 }

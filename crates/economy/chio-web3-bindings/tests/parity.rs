@@ -245,6 +245,37 @@ fn standards_and_runtime_constants_remain_in_sync() {
     );
 
     assert_eq!(chain_configuration.primary_chain_id, BASE_MAINNET_CAIP2);
+    for contract in &contract_package.contracts {
+        let artifact = match contract.contract_id.as_str() {
+            "chio.root-registry" => CHIO_ROOT_REGISTRY_ARTIFACT,
+            "chio.escrow" => CHIO_ESCROW_ARTIFACT,
+            "chio.bond-vault" => CHIO_BOND_VAULT_ARTIFACT,
+            "chio.identity-registry" => CHIO_IDENTITY_REGISTRY_ARTIFACT,
+            "chio.price-resolver" => CHIO_PRICE_RESOLVER_ARTIFACT,
+            other => panic!("unexpected web3 contract id in package: {other}"),
+        };
+        let parsed: Value = serde_json::from_str(artifact)
+            .unwrap_or_else(|error| panic!("parse artifact for {}: {error}", contract.contract_id));
+        assert_eq!(
+            contract.creation_bytecode_hash,
+            parsed["creationBytecodeHash"]
+                .as_str()
+                .unwrap_or_else(|| panic!(
+                    "{} artifact missing creationBytecodeHash",
+                    contract.contract_id
+                ))
+        );
+        assert_eq!(
+            contract.deployed_runtime_codehash,
+            parsed["deployedRuntimeCodehash"]
+                .as_str()
+                .unwrap_or_else(|| panic!(
+                    "{} artifact missing deployedRuntimeCodehash",
+                    contract.contract_id
+                ))
+        );
+    }
+
     let deployment_ids = chain_configuration
         .deployments
         .iter()

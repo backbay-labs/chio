@@ -109,6 +109,20 @@ def _verify_report(authorized: bool) -> dict:
     }
 
 
+def test_handle_response_maps_non_json_403_to_denied_error() -> None:
+    response = httpx.Response(
+        403,
+        content=b"<html>forbidden by proxy</html>",
+        headers={"content-type": "text/html"},
+    )
+
+    with pytest.raises(ChioDeniedError) as exc_info:
+        ChioClient._handle_response(response)
+
+    assert exc_info.value.reason == "<html>forbidden by proxy</html>"
+    assert exc_info.value.reason_code == "HTTP_403"
+
+
 def _advisory_receipt_dict(outcome: str = "evaluated") -> dict:
     advisory = _make_receipt_dict()
     advisory["trust_level"] = "advisory"
@@ -175,6 +189,18 @@ class TestHealth:
         async with ChioClient(BASE) as client:
             data = await client.health()
             assert data["status"] == "healthy"
+
+    @respx.mock
+    async def test_403_with_non_json_body_raises_denied(self) -> None:
+        respx.get(f"{BASE}/chio/health").mock(
+            return_value=httpx.Response(403, text="forbidden")
+        )
+        async with ChioClient(BASE) as client:
+            with pytest.raises(ChioDeniedError) as exc_info:
+                await client.health()
+        assert exc_info.value.message == "denied"
+        assert exc_info.value.reason == "forbidden"
+        assert exc_info.value.reason_code == "HTTP_403"
 
 
 # ---------------------------------------------------------------------------
@@ -592,6 +618,28 @@ class TestErrorHandling:
                     parameters={},
                 )
             assert exc_info.value.guard == "TimeGuard"
+
+    @respx.mock
+    async def test_denied_error_handles_non_json_body(self) -> None:
+        respx.get(f"{BASE}/chio/health").mock(
+            return_value=httpx.Response(403, text="<html>forbidden</html>")
+        )
+        async with ChioClient(BASE) as client:
+            with pytest.raises(ChioDeniedError) as exc_info:
+                await client.health()
+            assert exc_info.value.message == "denied"
+            assert exc_info.value.reason == "<html>forbidden</html>"
+            assert exc_info.value.reason_code == "HTTP_403"
+
+    @respx.mock
+    async def test_malformed_success_raises_typed_chio_error(self) -> None:
+        respx.get(f"{BASE}/chio/health").mock(
+            return_value=httpx.Response(200, text="not json")
+        )
+        async with ChioClient(BASE) as client:
+            with pytest.raises(ChioError) as exc_info:
+                await client.health()
+            assert exc_info.value.code == "INVALID_RESPONSE"
 
     @respx.mock
     async def test_server_error(self) -> None:

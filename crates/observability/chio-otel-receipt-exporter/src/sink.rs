@@ -70,6 +70,12 @@ impl CanonicalChioReceipt {
         &self.receipt
     }
 
+    /// The signed receipt id (stable across retries once prepared).
+    #[must_use]
+    pub fn receipt_id(&self) -> &str {
+        &self.receipt.id
+    }
+
     #[must_use]
     pub fn canonical(&self) -> &Arc<CanonicalBytes> {
         &self.canonical
@@ -165,23 +171,48 @@ impl ReceiptStoreSink {
         Self { sink, config }
     }
 
+    /// Generate the signed receipts for a batch once (pure, no store append).
+    /// The caller caches the result so a retry never re-signs and never mints a
+    /// fresh id for a span that was already prepared.
+    pub fn prepare_receipts(
+        &self,
+        export: &OtlpGrpcTraceExport,
+    ) -> Result<Vec<CanonicalChioReceipt>, OTelReceiptExportError> {
+        validate_export_batch_limits(export)?;
+        export
+            .spans()
+            .map(|span| self.canonical_receipt_for_span(span))
+            .collect()
+    }
+
+    /// Append `receipts[*appended..]`, advancing `*appended` after each success.
+    /// Returns Err on the first failed append (with `*appended` = how many
+    /// succeeded), so the caller can resume at exactly that cursor with the
+    /// SAME ids.
+    pub fn append_from(
+        &self,
+        receipts: &[CanonicalChioReceipt],
+        appended: &mut usize,
+    ) -> Result<(), OTelReceiptExportError> {
+        while *appended < receipts.len() {
+            self.sink
+                .append_chio_receipt_canonical(receipts[*appended].clone())?;
+            *appended += 1;
+        }
+        Ok(())
+    }
+
     pub fn export_traces(
         &self,
         export: &OtlpGrpcTraceExport,
     ) -> Result<ReceiptStoreSinkSummary, OTelReceiptExportError> {
-        validate_export_batch_limits(export)?;
-        let receipts = export
-            .spans()
-            .map(|span| self.canonical_receipt_for_span(span))
-            .collect::<Result<Vec<_>, _>>()?;
-
-        let mut summary = ReceiptStoreSinkSummary::default();
-        for receipt in receipts {
-            self.sink.append_chio_receipt_canonical(receipt)?;
-            summary.accepted_spans += 1;
-            summary.appended_receipts += 1;
-        }
-        Ok(summary)
+        let receipts = self.prepare_receipts(export)?;
+        let mut appended = 0usize;
+        self.append_from(&receipts, &mut appended)?;
+        Ok(ReceiptStoreSinkSummary {
+            accepted_spans: appended,
+            appended_receipts: appended,
+        })
     }
 
     pub fn receipt_for_span(&self, span: &OtlpSpan) -> Result<ChioReceipt, OTelReceiptExportError> {

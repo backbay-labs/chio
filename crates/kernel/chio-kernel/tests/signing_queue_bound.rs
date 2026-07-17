@@ -553,3 +553,100 @@ async fn shutdown_before_send_rejects_request_no_post_shutdown_enqueue() {
         Ok(_) => panic!("the oversized inline fallback must not bypass shutdown exclusion"),
     }
 }
+
+#[tokio::test(flavor = "current_thread")]
+async fn signing_block_counter_covers_all_inline_fallbacks() {
+    // Every signing-queue block path records chio_signing_queue_block_total{reason}
+    // with the right reason. Drive all three inline-fallback branches (byte_budget
+    // via an exhausted aggregate semaphore, channel_full via a full bounded
+    // channel, oversized via a single preimage larger than the aggregate budget)
+    // through the async
+    // `sign` path (try_sign does not record). On the current-thread runtime the
+    // spawned task does not run until awaited, so a first request enqueued via
+    // `try_sign` keeps its permit/channel slot held while the second request
+    // hits backpressure and inline-signs.
+    use chio_metrics_spec::runtime::families;
+    let keypair = Keypair::from_seed(&KERNEL_SEED);
+
+    // byte_budget: tiny 4-byte aggregate budget, generous channel. The first
+    // request holds the whole budget; the second (1 byte) fits the budget size
+    // but finds zero permits available, hitting the byte_budget branch.
+    {
+        let handle = SigningTaskHandle::with_capacity_max_content_and_queued_bytes(
+            keypair.clone(),
+            /* capacity */ 256,
+            /* per-request cap */ 0,
+            /* aggregate budget */ 4,
+        );
+        let first_content = vec![0x11u8; 4];
+        let first_body = body_for_content(&keypair, &first_content);
+        let first_rx = handle
+            .try_sign(first_body, first_content)
+            .expect("first request holds the whole aggregate budget");
+        let second_content = vec![0x22u8; 1];
+        let second_body = body_for_content(&keypair, &second_content);
+        handle
+            .sign(second_body, second_content)
+            .await
+            .expect("byte-budget backpressure inline-signs");
+        drop(first_rx);
+        handle.shutdown().await;
+    }
+
+    // channel_full: capacity 1, generous budget. The first request fills the
+    // channel; the second acquires a permit but finds the channel full.
+    {
+        let handle = SigningTaskHandle::with_capacity_max_content_and_queued_bytes(
+            keypair.clone(),
+            /* capacity */ 1,
+            /* per-request cap */ 0,
+            /* aggregate budget */ 1024 * 1024,
+        );
+        let first_content = vec![0x33u8; 8];
+        let first_body = body_for_content(&keypair, &first_content);
+        let first_rx = handle
+            .try_sign(first_body, first_content)
+            .expect("first request fills the single channel slot");
+        let second_content = vec![0x44u8; 8];
+        let second_body = body_for_content(&keypair, &second_content);
+        handle
+            .sign(second_body, second_content)
+            .await
+            .expect("channel-full backpressure inline-signs");
+        drop(first_rx);
+        handle.shutdown().await;
+    }
+
+    // oversized: a single preimage larger than the aggregate budget inline-signs
+    // without ever being enqueued.
+    {
+        let handle = SigningTaskHandle::with_capacity_max_content_and_queued_bytes(
+            keypair.clone(),
+            /* capacity */ 256,
+            /* per-request cap */ 0,
+            /* aggregate budget */ 4,
+        );
+        let oversized = vec![0x55u8; 64];
+        let oversized_body = body_for_content(&keypair, &oversized);
+        handle
+            .sign(oversized_body, oversized)
+            .await
+            .expect("oversized preimage inline-signs");
+        handle.shutdown().await;
+    }
+
+    let mut body = String::new();
+    families::SIGNING_QUEUE_BLOCK.render(&mut body);
+    assert!(
+        body.contains("chio_signing_queue_block_total{reason=\"byte_budget\"}"),
+        "{body}"
+    );
+    assert!(
+        body.contains("chio_signing_queue_block_total{reason=\"channel_full\"}"),
+        "{body}"
+    );
+    assert!(
+        body.contains("chio_signing_queue_block_total{reason=\"oversized\"}"),
+        "{body}"
+    );
+}

@@ -55,8 +55,8 @@ pub(super) fn validate_subject(
         "x_chio_proof_envelope_profile",
         "missing OpenAPI proof-envelope profile",
     )?;
-    if proof_envelope_profile != "chio.agent-web-proof-envelope.v1" {
-        return Err(claim_failed("unsupported OpenAPI proof-envelope profile"));
+    if proof_envelope_profile != envelope.schema {
+        return Err(claim_failed("OpenAPI proof-envelope profile mismatch"));
     }
     required_json_str(value, "operation_id", "missing OpenAPI operation id")?;
     let method = required_json_str(value, "method", "missing OpenAPI method")?;

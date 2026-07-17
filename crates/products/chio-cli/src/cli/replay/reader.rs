@@ -296,7 +296,11 @@ mod replay_reader_tests {
     fn iter_directory_mode_mixed_json_and_ndjson() {
         let tmp = tempfile::tempdir().unwrap();
         write_file(tmp.path(), "01-single.json", "{\"id\":\"a\"}");
-        write_file(tmp.path(), "02-stream.ndjson", "{\"id\":\"b\"}\n{\"id\":\"c\"}\n");
+        write_file(
+            tmp.path(),
+            "02-stream.ndjson",
+            "{\"id\":\"b\"}\n{\"id\":\"c\"}\n",
+        );
         let reader = ReceiptLogReader::open(tmp.path()).unwrap();
         let receipts: Vec<_> = reader
             .iter()

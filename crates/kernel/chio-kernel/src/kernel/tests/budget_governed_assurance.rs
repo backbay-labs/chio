@@ -992,7 +992,7 @@ fn governed_x402_prepaid_flow_records_governed_authorization_and_receipt_metadat
         X402PaymentAdapter::new(url)
             .with_bearer_token("bridge-token")
             .with_timeout(Duration::from_secs(2)),
-    ));
+    )).expect("install payment adapter");
     kernel.register_tool_server(Box::new(CountingMonetaryServer {
         id: "cost-srv".to_string(),
         invocations: invocations.clone(),
@@ -1099,7 +1099,7 @@ fn governed_x402_authorization_failure_denies_before_tool_execution() {
     let mut kernel = make_kernel(make_monetary_config());
     kernel.set_payment_adapter(Box::new(
         X402PaymentAdapter::new(url).with_timeout(Duration::from_secs(2)),
-    ));
+    )).expect("install payment adapter");
     kernel.register_tool_server(Box::new(CountingMonetaryServer {
         id: "cost-srv".to_string(),
         invocations: invocations.clone(),
@@ -1207,7 +1207,7 @@ fn governed_acp_hold_flow_keeps_settlement_pending_without_capture_acknowledgeme
             .with_authorize_path("/commerce/authorize")
             .with_bearer_token("acp-token")
             .with_timeout(Duration::from_secs(2)),
-    ));
+    )).expect("install payment adapter");
     kernel.register_tool_server(Box::new(CountingMonetaryServer {
         id: "commerce-srv".to_string(),
         invocations: invocations.clone(),
@@ -1319,7 +1319,7 @@ fn governed_acp_seller_mismatch_denies_before_payment_or_tool_execution() {
     let mut kernel = make_kernel(make_monetary_config());
     kernel.set_payment_adapter(Box::new(
         AcpPaymentAdapter::new("http://127.0.0.1:1").with_timeout(Duration::from_millis(50)),
-    ));
+    )).expect("install payment adapter");
     kernel.register_tool_server(Box::new(CountingMonetaryServer {
         id: "commerce-srv".to_string(),
         invocations: invocations.clone(),

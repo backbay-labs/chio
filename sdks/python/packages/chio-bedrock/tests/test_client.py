@@ -211,6 +211,35 @@ def test_receipt_id_and_signature_use_v1_content_addressing() -> None:
     assert "decision" not in receipt
 
 
+def test_receipt_verifier_rejects_uppercase_content_addressed_id() -> None:
+    receipt = _sample_receipt()
+    receipt["id"] = receipt["id"].upper()
+    receipt["signature"] = _v1_signature(receipt)
+
+    assert not verify_receipt(receipt)
+
+
+def test_redacted_trace_receipt_does_not_embed_invocation_parameters() -> None:
+    secret = "customer secret prompt"
+    receipt = _sample_receipt(
+        parameters={
+            "modelId": "model-a",
+            "messages": [{"role": "user", "content": [{"text": secret}]}],
+        }
+    )
+
+    assert receipt["redaction_mode"] == "redacted"
+    assert "parameters" not in receipt["action"]
+    assert receipt["action"]["parameter_hash"] == _hash_value(
+        {
+            "modelId": "model-a",
+            "messages": [{"role": "user", "content": [{"text": secret}]}],
+        }
+    )
+    assert secret not in json.dumps(receipt)
+    assert verify_receipt(receipt)
+
+
 def test_receipt_verifier_rejects_symbolic_ids_even_when_legacy_signed() -> None:
     receipt = {
         "id": "rcpt-bedrock-symbolic",
@@ -257,6 +286,11 @@ def test_receipt_verifier_rejects_invalid_v1_trace_receipts() -> None:
     mismatched_id["id"] = "0" * 64
     mismatched_id["signature"] = _v1_signature(mismatched_id)
     assert not verify_receipt(mismatched_id)
+
+    uppercase_id = _sample_receipt()
+    uppercase_id["id"] = uppercase_id["id"].upper()
+    uppercase_id["signature"] = _v1_signature(uppercase_id)
+    assert not verify_receipt(uppercase_id)
 
     missing_trust_level = _sample_receipt()
     missing_trust_level.pop("trust_level")
@@ -477,6 +511,18 @@ def test_verify_trusted_receipt_returns_structured_outcome() -> None:
     assert happy.signer_trusted
     assert happy.reasons == ()
     assert happy.ok is True
+
+    uppercase_id = dict(receipt)
+    uppercase_id["id"] = receipt["id"].upper()
+    uppercase_id["signature"] = sign_trusted_receipt_body(uppercase_id, _TRUSTED_SEED)
+    uppercase = verify_trusted_receipt(
+        uppercase_id,
+        trusted_kernel_keys=[_TRUSTED_PUB_HEX],
+        invocation_parameters=params,
+    )
+    assert uppercase.ok is False
+    assert uppercase.receipt_id_ok is False
+    assert uppercase.signature_ok is True
 
     untrusted = verify_trusted_receipt(
         receipt,

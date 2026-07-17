@@ -1,78 +1,57 @@
-# chio-core Architecture
+# chio-core architecture
 
-## Role
+## Overview
 
-`chio-core` is the unified protocol import surface for consumers that want one
-crate rather than direct imports from every domain crate. It re-exports
-`chio-core-types` for canonical protocol artifacts and re-exports the dedicated
-domain crates for appraisal, autonomy, credit, federation, governance, markets,
-underwriting, and Web3 contracts.
+`chio-core` sits at the base of the dependency graph as a pure protocol crate:
+in-memory types, validation, and cryptography with no I/O and no runtime state.
+It plays two roles. It is a facade that re-exports `chio-core-types` and the
+economic and trust domain crates under one `chio_core::*` path, and it owns three
+cross-cutting contracts (`extension`, `identity_network`, `standards`) that
+constrain how the protocol is extended without belonging to any single
+lower-level crate.
 
-The crate also owns the Chio extension standards that do not naturally belong to
-one lower-level protocol crate:
+## Module map
 
-- `extension/mod.rs` declares the extension standard API and reexports the
-  private child modules.
-- `extension/model.rs` defines the extension inventory, official stack package,
-  extension manifest, negotiation report, and qualification matrix data models.
-- `extension/error.rs` owns extension contract error reporting.
-- `extension/validation.rs` owns fail-closed shape, reference, guardrail, and
-  qualification matrix validation.
-- `extension/negotiation.rs` owns compatibility negotiation and rejection
-  report construction.
-- `extension/tests.rs` owns extension contract unit tests and reference
-  artifact validation.
-- `identity_network.rs` defines cross-network identity and trust artifacts.
-- `standards.rs` defines shared machine-readable standard catalogs.
-- `lib.rs` is a compatibility facade and should stay additive unless a
-  deliberate breaking release is approved.
+| Path | Responsibility |
+|------|----------------|
+| `src/lib.rs` | Facade. Re-exports `chio-core-types` modules and the domain crates, and declares the three owned modules. Additive compatibility surface. |
+| `src/extension/model.rs` | Data models: extension inventory, official-stack package, extension manifest, negotiation report, qualification matrix. |
+| `src/extension/validation.rs` | Fail-closed shape, reference, guardrail, and qualification validation. |
+| `src/extension/negotiation.rs` | Compatibility negotiation and rejection-report construction. |
+| `src/extension/error.rs` | `ExtensionContractError` reporting. |
+| `src/identity_network/types.rs` | Public identity profile, wallet directory entry, and routing manifest artifacts. |
+| `src/identity_network/validation.rs` | Entry-point validators for identity and wallet artifacts. |
+| `src/identity_network/validators.rs` | Shared field-level checks used by the validators. |
+| `src/standards.rs` | Portable claim catalog, portable identity binding, governed-auth binding, and provenance-anchor constants. |
 
 ## Boundaries
 
-`chio-core` must stay pure protocol logic. It should not perform I/O, launch
-runtimes, read policy files, or depend on kernel state. Validation functions can
-compare in-memory artifacts and must fail closed on malformed schemas, missing
-fields, duplicate identifiers, unknown references, privilege widening, truth
-mutation, and extension evidence modes that lack local policy activation.
+`chio-core` performs no I/O, launches no runtime, reads no policy files, and
+holds no kernel state. Validation compares in-memory artifacts only. The public
+re-export set is a compatibility contract: exported names are additive, and
+removing or narrowing one is a breaking change that requires a deliberate
+migration.
 
-Public re-exports are a compatibility contract. New helpers should be additive,
-and existing exported names should not be removed or narrowed without an
-explicit migration.
+## Invariants and failure modes
 
-## Cross-Artifact Agreement
+- Every validator fails closed on malformed schema, missing fields, duplicate
+  identifiers, unknown references, privilege widening, truth mutation, and
+  extension evidence modes without local policy activation.
+- Official-stack agreement is bidirectional. A package component names its
+  extension points and an inventory point names its official components; if
+  either side asserts a point-to-component edge the other does not reciprocate,
+  validation rejects before negotiation.
+- `negotiate_extension` assumes the three artifact validators have already run.
+  It reports compatibility for valid-but-incompatible artifacts and does not
+  re-check shape.
+- `validate_qualification_matrix` is shape-only; contextual matrix validation is
+  not wired.
 
-The extension contract is intentionally cross-artifact: inventories name
-extension points, official stack packages name first-party components, manifests
-target those components, and qualification matrices record the cases that prove
-the boundary. The load-bearing constraint is not field validation but agreement
-between artifacts.
+## Dependencies
 
-Official stack consistency is bidirectional. A package component names its
-extension points and an inventory point names its official components; both
-sides must agree. If either side claims an official point-to-component edge that
-the other does not reciprocate, validation fails closed before negotiation,
-so a manifest cannot target an official baseline that the inventory and stack do
-not actually share.
-
-## Local Invariants
-
-- `validate_extension_inventory` validates the inventory in isolation.
-- `validate_official_stack_package` validates the inventory and package
-  together, including bidirectional point-to-component agreement before profile
-  coverage is trusted.
-- `validate_extension_manifest` validates manifest shape and runtime guardrails
-  independent of a package.
-- `negotiate_extension` assumes the three artifact validators have already
-  rejected malformed inputs, then reports compatibility reasons for valid but
-  incompatible artifacts.
-- `validate_qualification_matrix` is shape-only; contextual matrix validation
-  is not yet wired.
-
-## Verification Focus
-
-Tests should cover facade export stability, extension inventory/package graph
-agreement in both directions, manifest negotiation rejection paths, identity
-network validation, and byte-stable serde for public protocol artifacts that
-flow through this facade. When lower-level crates add signed or canonical
-types, `chio-core` verification should prove the re-export path does not
-change their construction, validation, or serialized field names.
+Internal: `chio-core-types` holds the actual protocol definitions; the domain
+crates `chio-appraisal`, `chio-autonomy`, `chio-credit`, `chio-federation`,
+`chio-governance`, `chio-listing`, `chio-market`, `chio-open-market`,
+`chio-underwriting`, and `chio-web3` supply the economic and trust artifacts this
+crate re-exports. External: `serde`/`serde_json` for artifacts, `ed25519-dalek`,
+`sha2`, `hex` for signing and hashing, and `url` for identity references.

@@ -109,4 +109,7 @@ pub enum AuthorityStoreError {
 
     #[error("authority fence rejected mutation: {0}")]
     Fence(String),
+
+    #[error("{0}")]
+    Schema(String),
 }

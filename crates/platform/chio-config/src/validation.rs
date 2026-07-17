@@ -129,6 +129,24 @@ fn validate_kernel(config: &ChioConfig, errors: &mut Vec<String>) {
     if config.kernel.signing_key.is_empty() {
         errors.push("kernel.signing_key must not be empty".to_string());
     }
+    // An unbounded wedged-writer stall is never a valid posture, so a 0 /
+    // below-floor receipt-append budget or a zero poll/stall rejects at load.
+    // The floor mirrors the runtime kernel's minimum append budget.
+    const MIN_RECEIPT_APPEND_BUDGET_MS: u64 = 250;
+    let deadlines = &config.kernel.deadlines;
+    if let Some(budget) = deadlines.receipt_append_budget_ms {
+        if budget < MIN_RECEIPT_APPEND_BUDGET_MS {
+            errors.push(format!(
+                "kernel.deadlines.receipt_append_budget_ms must be >= {MIN_RECEIPT_APPEND_BUDGET_MS}"
+            ));
+        }
+    }
+    if deadlines.receipt_writer_poll_ms == Some(0) {
+        errors.push("kernel.deadlines.receipt_writer_poll_ms must be non-zero".to_string());
+    }
+    if deadlines.receipt_writer_stall_ms == Some(0) {
+        errors.push("kernel.deadlines.receipt_writer_stall_ms must be non-zero".to_string());
+    }
 }
 
 /// Logging level must be a known value.
@@ -168,6 +186,7 @@ mod tests {
                 signing_key: "generate".to_string(),
                 receipt_store: "sqlite:///tmp/test.db".to_string(),
                 log_level: "info".to_string(),
+                deadlines: KernelDeadlinesFileConfig::default(),
             },
             adapters: vec![AdapterConfig {
                 id: "test".to_string(),
@@ -196,6 +215,32 @@ mod tests {
     fn minimal_valid_config_passes() {
         let config = minimal_config();
         validate(&config).unwrap_or_else(|e| panic!("validation should pass: {e}"));
+    }
+
+    #[test]
+    fn rejects_zero_receipt_append_budget_in_config_file() -> TestResult {
+        let mut config = minimal_config();
+        config.kernel.deadlines = KernelDeadlinesFileConfig {
+            receipt_append_budget_ms: Some(0),
+            ..KernelDeadlinesFileConfig::default()
+        };
+        let ConfigError::Validation(errors) = validation_error(validate(&config)) else {
+            return Err("expected ConfigError::Validation".into());
+        };
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.contains("receipt_append_budget_ms")),
+            "unexpected errors: {errors:?}"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn accepts_absent_deadlines_section() -> TestResult {
+        let config = minimal_config();
+        validate(&config)?;
+        Ok(())
     }
 
     #[test]

@@ -28,6 +28,12 @@ export function canonicalJsonBytes(value: unknown): Uint8Array {
   return new TextEncoder().encode(canonicalJsonString(value));
 }
 
+function canonicalizeString(value: string): string {
+  return JSON.stringify(value).replace(/[\u007f-\u009f]/g, (control) =>
+    `\\u${control.charCodeAt(0).toString(16).padStart(4, "0")}`
+  );
+}
+
 function canonicalize(value: unknown): string {
   if (value === null) {
     return "null";
@@ -46,7 +52,7 @@ function canonicalize(value: unknown): string {
   }
 
   if (typeof value === "string") {
-    return JSON.stringify(value);
+    return canonicalizeString(value);
   }
 
   if (Array.isArray(value)) {
@@ -64,7 +70,7 @@ function canonicalize(value: unknown): string {
         // Skip undefined values (matches Rust serde behavior with skip_serializing_if)
         continue;
       }
-      entries.push(`${JSON.stringify(key)}:${canonicalize(v)}`);
+      entries.push(`${canonicalizeString(key)}:${canonicalize(v)}`);
     }
     return `{${entries.join(",")}}`;
   }

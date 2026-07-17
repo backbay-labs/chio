@@ -35,7 +35,10 @@ pub enum PartitionError {
     /// A production-flagged caller tried to write into a replay-flagged
     /// store, or vice versa.
     #[error("partition mismatch: store is {store}, write requested {requested}")]
-    Mismatch { store: &'static str, requested: &'static str },
+    Mismatch {
+        store: &'static str,
+        requested: &'static str,
+    },
 
     /// Tried to mint a production receipt-id with the replay namespace
     /// helper, or vice versa. This is the type-level dual of
@@ -128,8 +131,7 @@ impl ReplayPartition {
                 run_id: run_id.clone(),
             }),
             StorePartition::Production => Err(PartitionError::NamespaceMismatch(
-                "ReplayPartition cannot be constructed from a production-flagged store"
-                    .to_string(),
+                "ReplayPartition cannot be constructed from a production-flagged store".to_string(),
             )),
         }
     }
@@ -173,7 +175,9 @@ mod replay_receipt_partition_tests {
             StorePartition::Replay { run_id } => {
                 assert_eq!(run_id.len(), 32, "uuid simple form is 32 hex chars");
                 assert!(
-                    run_id.bytes().all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()),
+                    run_id
+                        .bytes()
+                        .all(|b| b.is_ascii_hexdigit() && !b.is_ascii_uppercase()),
                     "uuid simple form is lowercase hex"
                 );
             }
@@ -220,7 +224,8 @@ mod replay_receipt_partition_tests {
     #[test]
     fn production_partition_compatible_with_itself() {
         let p = StorePartition::Production;
-        p.ensure_compatible_with(&StorePartition::Production).unwrap();
+        p.ensure_compatible_with(&StorePartition::Production)
+            .unwrap();
     }
 
     #[test]
@@ -290,9 +295,7 @@ mod replay_receipt_partition_tests {
     fn replay_receipt_id_method_uses_namespaced_format() {
         let store = StorePartition::replay_with_run_id("run-42").unwrap();
         let rp = ReplayPartition::new(&store).unwrap();
-        let id = rp
-            .replay_receipt_id("01H7ZZZZZZZZZZZZZZZZZZZZZZ")
-            .unwrap();
+        let id = rp.replay_receipt_id("01H7ZZZZZZZZZZZZZZZZZZZZZZ").unwrap();
         assert_eq!(id, "replay:run-42:01H7ZZZZZZZZZZZZZZZZZZZZZZ");
     }
 

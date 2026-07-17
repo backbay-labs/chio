@@ -1,43 +1,55 @@
-# chio-test-support Architecture
+# chio-test-support architecture
 
-## Module Boundaries
+## Overview
 
-`src/lib.rs` owns the full public surface. The `plain` module provides the
-default context-free helper family re-exported by `prelude`; the `ctx` module
-provides context-carrying helpers for call sites that want the context argument
-on every unwrap. The `loopback` module owns local listener probes used by
-integration tests that spawn short-lived HTTP or trust-control services. The
-crate intentionally has no runtime dependencies and is consumed only as a
-dev-dependency across the workspace.
+`chio-test-support` is a pure, dependency-free test-support library outside the
+kernel trust boundary: nothing in it runs in production, and it exists only to
+satisfy the workspace's fail-closed `unwrap_used`/`expect_used` lint policy
+inside `#[cfg(test)]` code and integration test binaries. The design keeps two
+non-overlapping trait families (`plain`, `ctx`) that both terminate in a
+`panic!`, so a failed assumption always fails the test rather than propagating
+an `Err`.
 
-## Call-Site Diagnostics
+## Module map
 
-These helpers replace banned `unwrap` and `expect` calls in test code. Every
-helper method carries `#[track_caller]` so a helper panic reports the test
-assertion call that made the bad assumption, not the implementation line inside
-`chio-test-support`. The `ctx` family matches the value directly at the
-assertion boundary rather than routing through `unwrap_or_else`, which keeps
-call-site location tracking exact.
+All modules live in `src/lib.rs`; the crate has no submodule files.
 
-## Security And API Constraints
+| Module | Responsibility |
+|--------|-----------------|
+| `plain` | Context-free `TestResultOk` / `TestResultErr` traits for `Result` / `Option`; the dominant workspace convention. |
+| `ctx` | Context-carrying `TestUnwrap` / `TestUnwrapErr` traits; every call takes a `&str` label. |
+| `prelude` | Re-exports `plain::{TestResultOk, TestResultErr}` as the default glob import. |
+| `loopback` | `TcpListener`-based probes: detect whether the sandbox permits loopback binds, and reserve an ephemeral address for a local test server. |
+| `tests` (`#[cfg(test)]`) | Unit tests asserting panic message text and `#[track_caller]` location for both trait families, and loopback-denial classification. |
 
-The public trait names, method names, module names, and prelude exports must
-stay source-compatible. The crate must stay dependency-free and test-only.
-Helper failure must remain an explicit panic, not a production error type.
-Trait implementations must not add `Debug` or `Display` bounds for payloads
-that are not rendered in the panic message, because several downstream tests
-unwrap opaque handles.
+## Boundaries
 
-Loopback helpers must distinguish environmental socket permission denials from
-real bind failures. A locked-down local sandbox may skip a socket-backed test
-after a failed probe, but address conflicts, malformed addresses, and service
-startup failures must still fail loudly so CI continues to catch regressions.
+- No production code path reaches this crate; every public function either
+  panics (test-fail) or probes a local socket.
+- `loopback` functions hold no state across calls: probes bind and immediately
+  drop a `TcpListener` rather than keeping a listener open for a caller.
+- `#![forbid(unsafe_code)]` - no `unsafe` is permitted anywhere in the crate.
 
-## Dependents
+## Invariants and failure modes
 
-Downstream code imports from `chio_test_support::prelude::*` and
-`chio_test_support::ctx::*`. CLI integration tests that spawn loopback services
-import `chio_test_support::loopback::*` rather than copying local socket probes.
-The centralized loopback probe keeps broad local workspace gates strict while
-letting developer sandboxes that deny local binds report explicit environmental
-skips in the affected integration tests.
+- Every helper carries `#[track_caller]`, so a panic reports the caller's
+  source location, not a line inside `chio-test-support`.
+- `plain::TestResultErr` omits a `T: Debug` bound on purpose, so call sites can
+  unwrap the error of a `Result` whose `Ok` payload (for example a store
+  connection handle) does not implement `Debug`.
+- `plain` and `ctx` both define `test_unwrap`; a source file must import only
+  one family (`prelude::*` or `ctx::*`). Importing both makes the call
+  ambiguous.
+- `is_loopback_bind_denied` matches only `ErrorKind::PermissionDenied`. Address
+  conflicts (`AddrInUse`) and other bind errors are excluded on purpose so they
+  still fail the test instead of being treated as an environmental skip.
+- `reserve_listen_addr_for` panics on any bind failure other than a permission
+  denial, and its panic message points the caller at
+  `skip_when_loopback_bind_denied`.
+
+## Dependencies
+
+None. `[dependencies]` is empty in `Cargo.toml`; the crate uses only `std`
+(`std::fmt`, `std::io`, `std::net`, and `std::panic` in tests) and is
+`publish = false`. It is consumed exclusively as a `[dev-dependencies]` entry
+by 30 crates workspace-wide.

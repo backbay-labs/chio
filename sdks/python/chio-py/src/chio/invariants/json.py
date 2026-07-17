@@ -9,6 +9,15 @@ from typing import Any
 from ..errors import ChioInvariantError, parse_json_text
 
 _EXPONENT_RE = re.compile(r"e([+-])0+(\d+)$")
+_DEL_C1_RE = re.compile(r"[\u007f-\u009f]")
+
+
+def _canonical_json_string(value: str) -> str:
+    encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+    return _DEL_C1_RE.sub(
+        lambda match: f"\\u{ord(match.group(0)):04x}",
+        encoded,
+    )
 
 
 def _canonicalize_float(value: float) -> str:
@@ -38,7 +47,7 @@ def canonicalize_json(value: Any) -> str:
     if isinstance(value, float):
         return _canonicalize_float(value)
     if isinstance(value, str):
-        return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
+        return _canonical_json_string(value)
     if isinstance(value, list):
         return "[" + ",".join(canonicalize_json(item) for item in value) + "]"
     if isinstance(value, dict):
@@ -46,7 +55,7 @@ def canonicalize_json(value: Any) -> str:
             raise ChioInvariantError("canonical_json", "canonical JSON object keys must be strings")
         items = sorted(value.items(), key=lambda item: item[0].encode("utf-16-be"))
         return "{" + ",".join(
-            f"{json.dumps(key, ensure_ascii=False, separators=(',', ':'))}:{canonicalize_json(entry_value)}"
+            f"{_canonical_json_string(key)}:{canonicalize_json(entry_value)}"
             for key, entry_value in items
         ) + "}"
     raise ChioInvariantError(

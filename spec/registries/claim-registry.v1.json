@@ -392,7 +392,7 @@
     {
       "id": "claim.agent_web.external_subject_digest_bound",
       "status": "enforced",
-      "schema_artifact": "spec/schemas/chio-agent-web/v1/proof-envelope.schema.json",
+      "schema_artifact": "spec/schemas/chio-agent-web/v2/proof-envelope.schema.json",
       "summary": "The Agent Web verifier recomputes each external subject digest and rejects any Standard Webhooks or CloudEvents envelope whose detached subject bytes do not match the envelope digest.",
       "introduced_in": "agent-web-interop-v1",
       "proof_manifest_ref": "manifest.agent_web.external_subject_digest_bound"

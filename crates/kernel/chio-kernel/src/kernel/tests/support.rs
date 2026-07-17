@@ -52,6 +52,10 @@ use rusqlite::{params, Connection, OptionalExtension, Row};
 
 struct SqliteReceiptStore {
     connection: Mutex<Connection>,
+    // Test-double analogue of the real store's writer-actor signer install
+    // (`enable_background_checkpoints`). `None` until installed;
+    // `max_batch == 0` disables checkpointing (ADR-0008).
+    background_checkpoint_signer: Mutex<Option<(std::sync::Arc<Keypair>, u64)>>,
 }
 
 static UNIQUE_RECEIPT_DB_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -123,10 +127,29 @@ impl SqliteReceiptStore {
                     is_current INTEGER NOT NULL DEFAULT 1,
                     raw_json TEXT NOT NULL
                 );
+
+                CREATE TABLE IF NOT EXISTS chio_dispatch_intents (
+                    request_id            TEXT NOT NULL,
+                    capability_id         TEXT NOT NULL,
+                    tool_server           TEXT NOT NULL,
+                    tool_name             TEXT NOT NULL,
+                    parameter_hash        TEXT NOT NULL,
+                    side_effect_class     TEXT NOT NULL,
+                    monetary              INTEGER NOT NULL,
+                    rail                  TEXT,
+                    rail_authorization_id TEXT,
+                    tenant_id             TEXT,
+                    created_at_unix_ms    INTEGER NOT NULL,
+                    state                 TEXT NOT NULL DEFAULT 'open',
+                    resolution_detail     TEXT
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_chio_dispatch_intents_tenant_request
+                    ON chio_dispatch_intents(COALESCE(tenant_id, ''), request_id);
                 "#,
         )?;
         Ok(Self {
             connection: Mutex::new(connection),
+            background_checkpoint_signer: Mutex::new(None),
         })
     }
 
@@ -136,11 +159,11 @@ impl SqliteReceiptStore {
         })
     }
 
-    fn load_checkpoint_by_seq(
-        &self,
+    fn load_checkpoint_by_seq_locked(
+        connection: &Connection,
         checkpoint_seq: u64,
     ) -> Result<Option<KernelCheckpoint>, ReceiptStoreError> {
-        self.connection()?
+        connection
             .query_row(
                 "SELECT raw_json FROM kernel_checkpoints WHERE checkpoint_seq = ?1",
                 params![checkpoint_seq as i64],
@@ -150,6 +173,199 @@ impl SqliteReceiptStore {
             .map(|raw_json| serde_json::from_str(&raw_json))
             .transpose()
             .map_err(Into::into)
+    }
+
+    fn load_checkpoint_by_seq(
+        &self,
+        checkpoint_seq: u64,
+    ) -> Result<Option<KernelCheckpoint>, ReceiptStoreError> {
+        let connection = self.connection()?;
+        Self::load_checkpoint_by_seq_locked(&connection, checkpoint_seq)
+    }
+
+    /// Locked analogue of the `ReceiptStore::load_latest_checkpoint` default,
+    /// usable from a call site that already holds `self.connection`'s guard
+    /// (avoids re-locking the non-reentrant `Mutex<Connection>`).
+    fn load_latest_checkpoint_locked(
+        connection: &Connection,
+    ) -> Result<Option<KernelCheckpoint>, ReceiptStoreError> {
+        let mut checkpoint_seq = 1;
+        let mut latest = None;
+        loop {
+            let Some(checkpoint) = Self::load_checkpoint_by_seq_locked(connection, checkpoint_seq)?
+            else {
+                return Ok(latest);
+            };
+            checkpoint_seq = checkpoint
+                .body
+                .checkpoint_seq
+                .checked_add(1)
+                .ok_or_else(|| {
+                    ReceiptStoreError::Conflict(
+                        "checkpoint_seq overflow while loading latest".to_string(),
+                    )
+                })?;
+            latest = Some(checkpoint);
+        }
+    }
+
+    fn receipts_canonical_bytes_range_locked(
+        connection: &Connection,
+        start_seq: u64,
+        end_seq: u64,
+    ) -> Result<Vec<(u64, Vec<u8>)>, ReceiptStoreError> {
+        let mut statement = connection.prepare(
+            r#"
+                SELECT seq, raw_json
+                FROM chio_tool_receipts
+                WHERE seq >= ?1 AND seq <= ?2
+                ORDER BY seq ASC
+                "#,
+        )?;
+        let rows = statement.query_map(params![start_seq as i64, end_seq as i64], |row| {
+            Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+        })?;
+
+        rows.map(|row| {
+            let (seq, raw_json) = row?;
+            let value = serde_json::from_str::<serde_json::Value>(&raw_json)?;
+            let bytes = canonical_json_bytes(&value)
+                .map_err(|error| ReceiptStoreError::Canonical(error.to_string()))?;
+            Ok((seq.max(0) as u64, bytes))
+        })
+        .collect()
+    }
+
+    fn store_checkpoint_locked(
+        connection: &Connection,
+        checkpoint: &KernelCheckpoint,
+    ) -> Result<(), ReceiptStoreError> {
+        let raw_json = serde_json::to_string(checkpoint)?;
+        connection.execute(
+            r#"
+                INSERT INTO kernel_checkpoints (checkpoint_seq, raw_json)
+                VALUES (?1, ?2)
+                ON CONFLICT(checkpoint_seq) DO UPDATE SET raw_json = excluded.raw_json
+                "#,
+            params![checkpoint.body.checkpoint_seq as i64, raw_json],
+        )?;
+        Ok(())
+    }
+
+    fn create_next_receipt_checkpoint_locked(
+        connection: &Connection,
+        max_batch: u64,
+        keypair: &Keypair,
+    ) -> Result<ReceiptCheckpointCreateReport, ReceiptStoreError> {
+        if max_batch == 0 {
+            return Err(ReceiptStoreError::Conflict(
+                "checkpoint max_batch must be greater than zero".to_string(),
+            ));
+        }
+        let latest_committed_entry_seq = connection.query_row(
+            "SELECT COALESCE(MAX(seq), 0) FROM chio_tool_receipts",
+            [],
+            |row| row.get::<_, i64>(0),
+        )?;
+        let latest_committed_entry_seq = latest_committed_entry_seq.max(0) as u64;
+        let previous_checkpoint = Self::load_latest_checkpoint_locked(connection)?;
+        let latest_checkpointed_entry_seq = previous_checkpoint
+            .as_ref()
+            .map_or(0, |checkpoint| checkpoint.body.batch_end_seq);
+        if latest_committed_entry_seq <= latest_checkpointed_entry_seq {
+            return Ok(ReceiptCheckpointCreateReport {
+                created: false,
+                checkpoint_seq: None,
+                batch_start_seq: None,
+                batch_end_seq: None,
+                latest_committed_entry_seq,
+                latest_checkpointed_entry_seq,
+            });
+        }
+        let batch_start_seq = latest_checkpointed_entry_seq + 1;
+        let batch_end_seq = latest_committed_entry_seq.min(batch_start_seq + max_batch - 1);
+        let receipt_bytes_with_seqs = Self::receipts_canonical_bytes_range_locked(
+            connection,
+            batch_start_seq,
+            batch_end_seq,
+        )?;
+        let expected_len = batch_end_seq - batch_start_seq + 1;
+        if receipt_bytes_with_seqs.len() as u64 != expected_len
+            || receipt_bytes_with_seqs
+                .first()
+                .map(|(seq, _)| *seq)
+                .unwrap_or(0)
+                != batch_start_seq
+            || receipt_bytes_with_seqs
+                .last()
+                .map(|(seq, _)| *seq)
+                .unwrap_or(0)
+                != batch_end_seq
+        {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "checkpoint receipt range {}..={} is not contiguous",
+                batch_start_seq, batch_end_seq
+            )));
+        }
+        let receipt_bytes = receipt_bytes_with_seqs
+            .into_iter()
+            .map(|(_, bytes)| bytes)
+            .collect::<Vec<_>>();
+        let checkpoint_seq = previous_checkpoint.as_ref().map_or(Ok(1), |checkpoint| {
+            checkpoint
+                .body
+                .checkpoint_seq
+                .checked_add(1)
+                .ok_or_else(|| {
+                    ReceiptStoreError::Conflict(
+                        "checkpoint_seq overflow while creating receipt checkpoint".to_string(),
+                    )
+                })
+        })?;
+        let checkpoint = build_checkpoint_with_previous(
+            checkpoint_seq,
+            batch_start_seq,
+            batch_end_seq,
+            &receipt_bytes,
+            keypair,
+            previous_checkpoint.as_ref(),
+        )
+        .map_err(|error| {
+            ReceiptStoreError::Conflict(format!("checkpoint build failed: {error}"))
+        })?;
+        Self::store_checkpoint_locked(connection, &checkpoint)?;
+        Ok(ReceiptCheckpointCreateReport {
+            created: true,
+            checkpoint_seq: Some(checkpoint.body.checkpoint_seq),
+            batch_start_seq: Some(checkpoint.body.batch_start_seq),
+            batch_end_seq: Some(checkpoint.body.batch_end_seq),
+            latest_committed_entry_seq,
+            latest_checkpointed_entry_seq: checkpoint.body.batch_end_seq,
+        })
+    }
+
+    /// Test-double analogue of the real store's writer-actor checkpoint
+    /// construction: synchronous, but performed under the same
+    /// connection lock as the triggering append, so concurrent callers see
+    /// contiguous batches without needing a conflict-retry loop.
+    fn maybe_build_background_checkpoint_locked(
+        connection: &Connection,
+        seq: u64,
+        signer: &(std::sync::Arc<Keypair>, u64),
+    ) -> Result<(), ReceiptStoreError> {
+        let (keypair, max_batch) = signer;
+        if *max_batch == 0 {
+            return Ok(());
+        }
+        let latest_checkpointed_entry_seq = Self::load_latest_checkpoint_locked(connection)?
+            .map_or(0, |checkpoint| checkpoint.body.batch_end_seq);
+        if seq <= latest_checkpointed_entry_seq
+            || (seq - latest_checkpointed_entry_seq) < *max_batch
+        {
+            return Ok(());
+        }
+        Self::create_next_receipt_checkpoint_locked(connection, *max_batch, keypair)?;
+        Ok(())
     }
 
     fn get_delegation_chain(
@@ -272,8 +488,182 @@ impl ReceiptStore for SqliteReceiptStore {
         Ok(())
     }
 
+    fn supports_durable_dispatch_intent_journal(&self) -> bool {
+        // The test double writes to a WAL file on disk, so its journal rows
+        // survive a crash like the production store's.
+        true
+    }
+
+    fn record_dispatch_intent(
+        &self,
+        intent: &crate::receipt_store::DispatchIntentRecord,
+    ) -> Result<(), ReceiptStoreError> {
+        let class = match intent.side_effect_class {
+            crate::receipt_store::SideEffectClass::ReadOnly => "read_only",
+            crate::receipt_store::SideEffectClass::SideEffecting => "side_effecting",
+            crate::receipt_store::SideEffectClass::Monetary => "monetary",
+        };
+        let changed = self.connection()?.execute(
+            r#"
+                INSERT INTO chio_dispatch_intents (
+                    request_id, capability_id, tool_server, tool_name,
+                    parameter_hash, side_effect_class, monetary, rail,
+                    rail_authorization_id, tenant_id, created_at_unix_ms, state
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, 'open')
+                ON CONFLICT(COALESCE(tenant_id, ''), request_id) DO NOTHING
+                "#,
+            params![
+                intent.request_id,
+                intent.capability_id,
+                intent.tool_server,
+                intent.tool_name,
+                intent.parameter_hash,
+                class,
+                i64::from(intent.monetary),
+                intent.rail.as_deref(),
+                intent.rail_authorization_id.as_deref(),
+                intent.tenant_id.as_deref(),
+                intent.created_at_unix_ms as i64,
+            ],
+        )?;
+        if changed == 0 {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "dispatch intent for request `{}` already exists in its tenant scope",
+                intent.request_id
+            )));
+        }
+        Ok(())
+    }
+
+    fn append_chio_receipt_consuming_intent(
+        &self,
+        receipt: &ChioReceipt,
+        key: &crate::receipt_store::DispatchIntentKey,
+    ) -> Result<Option<u64>, ReceiptStoreError> {
+        if receipt.action.parameter_hash != key.parameter_hash {
+            return Err(ReceiptStoreError::Conflict(
+                "dispatch intent key parameter_hash does not match appended receipt".to_string(),
+            ));
+        }
+        if receipt.tenant_id.as_deref() != key.tenant_id.as_deref() {
+            return Err(ReceiptStoreError::Conflict(
+                "dispatch intent key tenant id does not match appended receipt".to_string(),
+            ));
+        }
+        let raw_json = serde_json::to_string(receipt)?;
+        let mut connection = self.connection()?;
+        let tx = connection.transaction()?;
+        // Delete-guarded consume, matching the real store: a missing or
+        // mismatched intent row aborts the whole transaction, so the receipt
+        // never persists without consuming exactly the journaled intent.
+        let deleted = tx.execute(
+            "DELETE FROM chio_dispatch_intents \
+             WHERE request_id = ?1 AND parameter_hash = ?2 \
+               AND ((tenant_id IS NULL AND ?3 IS NULL) OR tenant_id = ?3)",
+            params![key.request_id, key.parameter_hash, key.tenant_id.as_deref()],
+        )?;
+        if deleted == 0 {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "dispatch intent for request `{}` not found with matching parameter_hash; \
+                 refusing to commit the receipt",
+                key.request_id
+            )));
+        }
+        let rows = tx.execute(
+            r#"
+                INSERT INTO chio_tool_receipts (
+                    receipt_id,
+                    timestamp,
+                    capability_id,
+                    raw_json
+                ) VALUES (?1, ?2, ?3, ?4)
+                ON CONFLICT(receipt_id) DO NOTHING
+                "#,
+            params![
+                receipt.id,
+                receipt.timestamp as i64,
+                receipt.capability_id,
+                raw_json,
+            ],
+        )?;
+        let seq = (rows > 0).then(|| tx.last_insert_rowid().max(0) as u64);
+        tx.commit()?;
+        Ok(seq)
+    }
+
+    fn attach_dispatch_intent_rail_ref(
+        &self,
+        request_id: &str,
+        tenant_id: Option<&str>,
+        rail_authorization_id: &str,
+    ) -> Result<(), ReceiptStoreError> {
+        let changed = self.connection()?.execute(
+            "UPDATE chio_dispatch_intents SET rail_authorization_id = ?3 \
+             WHERE request_id = ?1 \
+               AND ((tenant_id IS NULL AND ?2 IS NULL) OR tenant_id = ?2) \
+               AND state = 'open'",
+            params![request_id, tenant_id, rail_authorization_id],
+        )?;
+        if changed == 0 {
+            return Err(ReceiptStoreError::NotFound(format!(
+                "open dispatch intent for request `{request_id}` not found for rail-ref attach"
+            )));
+        }
+        Ok(())
+    }
+
+    fn clear_dispatch_intent(
+        &self,
+        key: &crate::receipt_store::DispatchIntentKey,
+    ) -> Result<(), ReceiptStoreError> {
+        let changed = self.connection()?.execute(
+            "DELETE FROM chio_dispatch_intents \
+             WHERE request_id = ?1 AND parameter_hash = ?2 \
+               AND ((tenant_id IS NULL AND ?3 IS NULL) OR tenant_id = ?3) \
+               AND state = 'open'",
+            params![key.request_id, key.parameter_hash, key.tenant_id.as_deref()],
+        )?;
+        if changed == 0 {
+            return Err(ReceiptStoreError::NotFound(format!(
+                "open dispatch intent for request `{}` not found with matching parameter_hash",
+                key.request_id
+            )));
+        }
+        Ok(())
+    }
+
+    fn open_dispatch_intent_count(&self) -> Result<u64, ReceiptStoreError> {
+        let count: i64 = self.connection()?.query_row(
+            "SELECT COUNT(*) FROM chio_dispatch_intents WHERE state = 'open'",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(count.max(0) as u64)
+    }
+
+    fn dead_letter_dispatch_intent_count(&self) -> Result<u64, ReceiptStoreError> {
+        let count: i64 = self.connection()?.query_row(
+            "SELECT COUNT(*) FROM chio_dispatch_intents WHERE state = 'dead_letter'",
+            [],
+            |row| row.get(0),
+        )?;
+        Ok(count.max(0) as u64)
+    }
+
     fn supports_kernel_signed_checkpoints(&self) -> bool {
         true
+    }
+
+    fn enable_background_checkpoints(
+        &self,
+        keypair: Keypair,
+        max_batch: u64,
+    ) -> Result<bool, ReceiptStoreError> {
+        let mut signer = self.background_checkpoint_signer.lock().map_err(|_| {
+            ReceiptStoreError::Conflict("background checkpoint signer lock poisoned".to_string())
+        })?;
+        *signer = Some((std::sync::Arc::new(keypair), max_batch));
+        Ok(true)
     }
 
     fn append_chio_receipt_returning_seq(
@@ -299,7 +689,48 @@ impl ReceiptStore for SqliteReceiptStore {
                 raw_json,
             ],
         )?;
-        Ok((rows > 0).then(|| connection.last_insert_rowid().max(0) as u64))
+        let seq = (rows > 0).then(|| connection.last_insert_rowid().max(0) as u64);
+        if let Some(seq) = seq {
+            // Test-double analogue of the real store's writer-actor checkpoint
+            // construction: performed synchronously, still under the
+            // connection lock this append holds, so it never observes a
+            // concurrent writer's half-committed state.
+            let signer = self.background_checkpoint_signer.lock().map_err(|_| {
+                ReceiptStoreError::Conflict(
+                    "background checkpoint signer lock poisoned".to_string(),
+                )
+            })?;
+            if let Some(signer) = signer.as_ref() {
+                Self::maybe_build_background_checkpoint_locked(&connection, seq, signer)?;
+            }
+        }
+        Ok(seq)
+    }
+
+    fn flush_receipt_writes(&self) -> Result<ReceiptFlushReport, ReceiptStoreError> {
+        // The double builds checkpoints synchronously, in-line with each
+        // append (see `append_chio_receipt_returning_seq`), so there is
+        // nothing queued to drain; report the current committed and
+        // checkpointed positions.
+        let connection = self.connection()?;
+        let latest_committed_entry_seq = connection.query_row(
+            "SELECT COALESCE(MAX(seq), 0) FROM chio_tool_receipts",
+            [],
+            |row| row.get::<_, i64>(0),
+        )?;
+        let latest_committed_entry_seq = latest_committed_entry_seq.max(0) as u64;
+        let latest_checkpoint = Self::load_latest_checkpoint_locked(&connection)?;
+        let latest_checkpointed_entry_seq = latest_checkpoint
+            .as_ref()
+            .map_or(0, |checkpoint| checkpoint.body.batch_end_seq);
+        let latest_checkpoint_seq =
+            latest_checkpoint.map(|checkpoint| checkpoint.body.checkpoint_seq);
+        Ok(ReceiptFlushReport {
+            latest_committed_entry_seq,
+            latest_checkpoint_seq,
+            latest_checkpointed_entry_seq,
+            ..Default::default()
+        })
     }
 
     fn append_child_receipt(&self, receipt: &ChildRequestReceipt) -> Result<(), ReceiptStoreError> {
@@ -369,16 +800,8 @@ impl ReceiptStore for SqliteReceiptStore {
     }
 
     fn store_checkpoint(&self, checkpoint: &KernelCheckpoint) -> Result<(), ReceiptStoreError> {
-        let raw_json = serde_json::to_string(checkpoint)?;
-        self.connection()?.execute(
-            r#"
-                INSERT INTO kernel_checkpoints (checkpoint_seq, raw_json)
-                VALUES (?1, ?2)
-                ON CONFLICT(checkpoint_seq) DO UPDATE SET raw_json = excluded.raw_json
-                "#,
-            params![checkpoint.body.checkpoint_seq as i64, raw_json],
-        )?;
-        Ok(())
+        let connection = self.connection()?;
+        Self::store_checkpoint_locked(&connection, checkpoint)
     }
 
     fn create_next_receipt_checkpoint(
@@ -386,88 +809,8 @@ impl ReceiptStore for SqliteReceiptStore {
         max_batch: u64,
         keypair: &Keypair,
     ) -> Result<ReceiptCheckpointCreateReport, ReceiptStoreError> {
-        if max_batch == 0 {
-            return Err(ReceiptStoreError::Conflict(
-                "checkpoint max_batch must be greater than zero".to_string(),
-            ));
-        }
-        let latest_committed_entry_seq = self.connection()?.query_row(
-            "SELECT COALESCE(MAX(seq), 0) FROM chio_tool_receipts",
-            [],
-            |row| row.get::<_, i64>(0),
-        )?;
-        let latest_committed_entry_seq = latest_committed_entry_seq.max(0) as u64;
-        let previous_checkpoint = self.load_latest_checkpoint()?;
-        let latest_checkpointed_entry_seq = previous_checkpoint
-            .as_ref()
-            .map_or(0, |checkpoint| checkpoint.body.batch_end_seq);
-        if latest_committed_entry_seq <= latest_checkpointed_entry_seq {
-            return Ok(ReceiptCheckpointCreateReport {
-                created: false,
-                checkpoint_seq: None,
-                batch_start_seq: None,
-                batch_end_seq: None,
-                latest_committed_entry_seq,
-                latest_checkpointed_entry_seq,
-            });
-        }
-        let batch_start_seq = latest_checkpointed_entry_seq + 1;
-        let batch_end_seq = latest_committed_entry_seq.min(batch_start_seq + max_batch - 1);
-        let receipt_bytes_with_seqs =
-            self.receipts_canonical_bytes_range(batch_start_seq, batch_end_seq)?;
-        let expected_len = batch_end_seq - batch_start_seq + 1;
-        if receipt_bytes_with_seqs.len() as u64 != expected_len
-            || receipt_bytes_with_seqs
-                .first()
-                .map(|(seq, _)| *seq)
-                .unwrap_or(0)
-                != batch_start_seq
-            || receipt_bytes_with_seqs
-                .last()
-                .map(|(seq, _)| *seq)
-                .unwrap_or(0)
-                != batch_end_seq
-        {
-            return Err(ReceiptStoreError::Conflict(format!(
-                "checkpoint receipt range {}..={} is not contiguous",
-                batch_start_seq, batch_end_seq
-            )));
-        }
-        let receipt_bytes = receipt_bytes_with_seqs
-            .into_iter()
-            .map(|(_, bytes)| bytes)
-            .collect::<Vec<_>>();
-        let checkpoint_seq = previous_checkpoint.as_ref().map_or(Ok(1), |checkpoint| {
-            checkpoint
-                .body
-                .checkpoint_seq
-                .checked_add(1)
-                .ok_or_else(|| {
-                    ReceiptStoreError::Conflict(
-                        "checkpoint_seq overflow while creating receipt checkpoint".to_string(),
-                    )
-                })
-        })?;
-        let checkpoint = build_checkpoint_with_previous(
-            checkpoint_seq,
-            batch_start_seq,
-            batch_end_seq,
-            &receipt_bytes,
-            keypair,
-            previous_checkpoint.as_ref(),
-        )
-        .map_err(|error| {
-            ReceiptStoreError::Conflict(format!("checkpoint build failed: {error}"))
-        })?;
-        self.store_checkpoint(&checkpoint)?;
-        Ok(ReceiptCheckpointCreateReport {
-            created: true,
-            checkpoint_seq: Some(checkpoint.body.checkpoint_seq),
-            batch_start_seq: Some(checkpoint.body.batch_start_seq),
-            batch_end_seq: Some(checkpoint.body.batch_end_seq),
-            latest_committed_entry_seq,
-            latest_checkpointed_entry_seq: checkpoint.body.batch_end_seq,
-        })
+        let connection = self.connection()?;
+        Self::create_next_receipt_checkpoint_locked(&connection, max_batch, keypair)
     }
 
     fn load_checkpoint_by_seq(
@@ -745,8 +1088,12 @@ fn make_config() -> KernelConfig {
         max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: false,
         allow_ephemeral_receipt_log: true,
+        allow_ephemeral_revocation_store: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
+        memory_budget: crate::MemoryBudgetConfig::defaults(),
+        deadlines: crate::HotPathDeadlineConfig::default(),
+        dispatch_intent_journal: crate::DispatchIntentJournalMode::Off,
     }
 }
 
@@ -1776,6 +2123,195 @@ impl ReceiptStore for AppendOnlyReceiptStore {
         _receipt: &ChildRequestReceipt,
     ) -> Result<(), ReceiptStoreError> {
         Ok(())
+    }
+}
+
+/// A store that reports retention support but, like the real prefix-watermark
+/// store, cannot honor a tenant-scoped policy (it inherits the default
+/// `supports_tenant_scoped_retention` = false). Used to prove the attach path
+/// rejects a tenant-scoped retention config before spawning the worker.
+#[derive(Default)]
+struct RetentionCapableReceiptStore;
+
+impl ReceiptStore for RetentionCapableReceiptStore {
+    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    fn append_child_receipt(
+        &self,
+        _receipt: &ChildRequestReceipt,
+    ) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    fn supports_retention(&self) -> bool {
+        true
+    }
+}
+
+/// A receipt store whose supervised commit writer has died. Appends would still
+/// nominally succeed, but the writer flag reports serving-closed, so the kernel
+/// pre-dispatch gate must fail closed before any tool executes.
+struct DeadWriterReceiptStore;
+
+impl ReceiptStore for DeadWriterReceiptStore {
+    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    fn append_child_receipt(
+        &self,
+        _receipt: &ChildRequestReceipt,
+    ) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    fn writer_serving_closed(&self) -> bool {
+        true
+    }
+}
+
+/// A receipt store whose supervised commit writer is serving-closed AND whose
+/// appends now fail, modelling a real poisoned-head or dead-writer store rather
+/// than one that still silently accepts writes. The pre-dispatch gate must deny
+/// before any tool executes, and the fail-closed deny it builds must not be
+/// masked into an error by attempting to persist itself through the same closed
+/// writer.
+struct RejectingDeadWriterReceiptStore;
+
+impl ReceiptStore for RejectingDeadWriterReceiptStore {
+    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+        Err(ReceiptStoreError::Pool(
+            "receipt append rejected by a serving-closed commit writer".to_string(),
+        ))
+    }
+
+    fn append_child_receipt(
+        &self,
+        _receipt: &ChildRequestReceipt,
+    ) -> Result<(), ReceiptStoreError> {
+        Err(ReceiptStoreError::Pool(
+            "child receipt append rejected by a serving-closed commit writer".to_string(),
+        ))
+    }
+
+    fn writer_serving_closed(&self) -> bool {
+        true
+    }
+}
+
+/// A commit writer that is always serving closed and, once armed, fails every
+/// capability-lineage write like a poisoned writer. It records whether the
+/// lineage write was attempted so a test can prove the pre-dispatch gate denies
+/// BEFORE any writer-backed metadata write runs. Arming is deferred so capability
+/// issuance during test setup (which also records lineage) still succeeds.
+struct SnapshotTrackingDeadWriterStore {
+    snapshot_attempted: std::sync::Arc<AtomicBool>,
+    fail_snapshots: std::sync::Arc<AtomicBool>,
+}
+
+impl ReceiptStore for SnapshotTrackingDeadWriterStore {
+    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    fn append_child_receipt(
+        &self,
+        _receipt: &ChildRequestReceipt,
+    ) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    fn writer_serving_closed(&self) -> bool {
+        true
+    }
+
+    fn record_capability_snapshot(
+        &self,
+        _token: &CapabilityToken,
+        _parent_capability_id: Option<&str>,
+    ) -> Result<(), ReceiptStoreError> {
+        if self.fail_snapshots.load(Ordering::SeqCst) {
+            self.snapshot_attempted.store(true, Ordering::SeqCst);
+            return Err(ReceiptStoreError::Pool(
+                "capability lineage write rejected by a dead receipt writer".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// A store-authoritative point-lookup store: appended chio receipts are retained
+/// in-memory and `load_chio_receipt` resolves them by id. Models a durable store
+/// that implements point loads, so an evicted parent receipt still resolves from
+/// the store after the bounded mirror drops it.
+#[derive(Default)]
+struct PointLookupReceiptStore {
+    chio: std::sync::Mutex<std::collections::HashMap<String, ChioReceipt>>,
+}
+
+impl ReceiptStore for PointLookupReceiptStore {
+    fn append_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+        if let Ok(mut map) = self.chio.lock() {
+            map.insert(receipt.id.clone(), receipt.clone());
+        }
+        Ok(())
+    }
+
+    fn append_child_receipt(
+        &self,
+        _receipt: &ChildRequestReceipt,
+    ) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    fn load_chio_receipt(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Option<ChioReceipt>, ReceiptStoreError> {
+        Ok(self
+            .chio
+            .lock()
+            .ok()
+            .and_then(|map| map.get(receipt_id).cloned()))
+    }
+}
+
+/// A store that appends fine (so the local mirror is populated) but fails every
+/// point load with a read-boundary error, exercising the fail-closed
+/// error-propagation path.
+#[derive(Default)]
+struct ErroringReceiptStore;
+
+impl ReceiptStore for ErroringReceiptStore {
+    fn append_chio_receipt(&self, _receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    fn append_child_receipt(
+        &self,
+        _receipt: &ChildRequestReceipt,
+    ) -> Result<(), ReceiptStoreError> {
+        Ok(())
+    }
+
+    fn load_chio_receipt(
+        &self,
+        _receipt_id: &str,
+    ) -> Result<Option<ChioReceipt>, ReceiptStoreError> {
+        Err(ReceiptStoreError::ReadBoundary(
+            "simulated receipt store read failure".to_string(),
+        ))
+    }
+
+    fn load_child_receipt(
+        &self,
+        _receipt_id: &str,
+    ) -> Result<Option<ChildRequestReceipt>, ReceiptStoreError> {
+        Err(ReceiptStoreError::ReadBoundary(
+            "simulated child receipt store read failure".to_string(),
+        ))
     }
 }
 

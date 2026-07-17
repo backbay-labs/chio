@@ -6,6 +6,7 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 PR_WORKFLOW="${REPO_ROOT}/.github/workflows/cflite_pr.yml"
 MUTANTS_WORKFLOW="${REPO_ROOT}/.github/workflows/mutants.yml"
 DOCS="${REPO_ROOT}/docs/fuzzing/continuous.md"
+BUDGET_SCRIPT="${REPO_ROOT}/scripts/check-fuzz-budget.sh"
 
 python3 - <<'PY' "${PR_WORKFLOW}" "${MUTANTS_WORKFLOW}"
 from pathlib import Path
@@ -14,8 +15,8 @@ import sys
 pr_text = Path(sys.argv[1]).read_text(encoding="utf-8")
 pr_start = pr_text.index("name: Verify 30-day fuzz budget")
 pr_end = pr_text.index("changed-target-sampling:", pr_start)
-if "GH_FUZZ_BUDGET_CAP_MODE: fail" not in pr_text[pr_start:pr_end]:
-    raise SystemExit("cflite_pr budget gate must set cap mode to fail")
+if "GH_FUZZ_BUDGET_CAP_MODE: warn" not in pr_text[pr_start:pr_end]:
+    raise SystemExit("cflite_pr budget gate must keep its advisory cap mode")
 
 mutants_text = Path(sys.argv[2]).read_text(encoding="utf-8")
 mutants_path = Path(sys.argv[2]).resolve()
@@ -57,9 +58,33 @@ if "hard halt" not in mutants_block:
     raise SystemExit("mutants-pr budget gate must document hard halt behavior")
 PY
 
-if ! grep -q "PR-time fuzz and mutation gates hard halt" "${DOCS}"; then
-  echo "FAIL: docs/fuzzing/continuous.md must describe PR hard halt behavior" >&2
+if ! grep -q "PR-time CFLite budget checks are advisory" "${DOCS}"; then
+  echo "FAIL: docs/fuzzing/continuous.md must describe PR CFLite advisory behavior" >&2
   exit 1
 fi
 
-echo "PASS: PR fuzz budget gates and docs agree on hard halt behavior"
+if ! grep -q "PR-time mutation gates hard halt" "${DOCS}"; then
+  echo "FAIL: docs/fuzzing/continuous.md must describe PR mutation hard halt behavior" >&2
+  exit 1
+fi
+if ! grep -q 'proof-mutants.yml' "${DOCS}"; then
+  echo "FAIL: docs/fuzzing/continuous.md must include proof-mutants budget accounting" >&2
+  exit 1
+fi
+
+python3 - <<'PY' "${BUDGET_SCRIPT}"
+from pathlib import Path
+import sys
+
+script = Path(sys.argv[1]).read_text(encoding="utf-8")
+if 'cap_mode="${GH_FUZZ_BUDGET_CAP_MODE:-fail}"' not in script:
+    raise SystemExit("fuzz budget cap mode must default to fail")
+if 'missing_workflow_mode="${GH_FUZZ_BUDGET_MISSING_WORKFLOW_MODE:-fail}"' not in script:
+    raise SystemExit("missing workflow mode must default to fail")
+if "workflow ${wf} is not registered yet; counting 0 minutes" in script:
+    raise SystemExit("missing workflow must not be counted as zero minutes by default")
+if '"proof-mutants.yml"' not in script:
+    raise SystemExit("proof-mutants workflow must count against the shared budget")
+PY
+
+echo "PASS: PR fuzz budget gates and docs agree on advisory and hard halt behavior"

@@ -155,7 +155,7 @@ pub(in crate::commands) fn export_controlled_adoption(
             relative_display(output, &proof_package_path)?,
             relative_display(output, &inquiry_package_path)?,
         ],
-        note: "Reference material remains bounded to one approved claim and one design-partner renewal cohort. Broader marketing claims require a later milestone."
+        note: "Reference material remains bounded to one approved claim and one design-partner renewal cohort. Broader marketing claims are outside this approved reference scope."
             .to_string(),
     };
     let reference_readiness_brief_path = output.join("reference-readiness-brief.json");

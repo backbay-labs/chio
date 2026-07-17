@@ -246,8 +246,12 @@ fn make_monetary_config() -> KernelConfig {
         max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: false,
         allow_ephemeral_receipt_log: true,
+        allow_ephemeral_revocation_store: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
+        memory_budget: crate::MemoryBudgetConfig::defaults(),
+        deadlines: crate::HotPathDeadlineConfig::default(),
+        dispatch_intent_journal: crate::DispatchIntentJournalMode::Off,
     }
 }
 
@@ -1241,7 +1245,12 @@ async fn dropping_async_evaluate_after_dispatch_retains_budget_payment_and_recei
     let started = std::sync::Arc::new(tokio::sync::Notify::new());
     let payment = TrackingPaymentAdapter::new();
     let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(payment.clone()));
+    assert!(
+        kernel
+            .set_payment_adapter(Box::new(payment.clone()))
+            .is_ok(),
+        "payment adapter installation must succeed"
+    );
     kernel.register_tool_server(Box::new(PendingMonetaryServer {
         id: "cost-srv".to_string(),
         started: std::sync::Arc::clone(&started),
@@ -1344,7 +1353,12 @@ async fn dropping_async_evaluate_after_dispatch_retains_budget_payment_and_recei
 #[test]
 fn capture_panic_retains_full_authorization_and_budget_exposure() {
     let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(PanickingCapturePaymentAdapter));
+    assert!(
+        kernel
+            .set_payment_adapter(Box::new(PanickingCapturePaymentAdapter))
+            .is_ok(),
+        "payment adapter installation must succeed"
+    );
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 40, "USD")));
 
     let agent_kp = Keypair::generate();
@@ -1458,9 +1472,14 @@ fn malformed_capture_and_release_acknowledgements_retain_full_exposure() {
 
     for (case, actual_cost, payment_result, expected_failure_code) in cases {
         let mut kernel = make_kernel(make_monetary_config());
-        kernel.set_payment_adapter(Box::new(MalformedSettlementPaymentAdapter {
-            result: payment_result,
-        }));
+        assert!(
+            kernel
+                .set_payment_adapter(Box::new(MalformedSettlementPaymentAdapter {
+                    result: payment_result,
+                }))
+                .is_ok(),
+            "payment adapter installation must succeed for case {case}"
+        );
         kernel.register_tool_server(Box::new(MonetaryCostServer::new(
             "cost-srv",
             actual_cost,
@@ -1539,8 +1558,12 @@ fn make_dpop_kernel_and_cap(
         max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: false,
         allow_ephemeral_receipt_log: true,
+        allow_ephemeral_revocation_store: true,
         checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
         retention_config: None,
+        memory_budget: crate::MemoryBudgetConfig::defaults(),
+        deadlines: crate::HotPathDeadlineConfig::default(),
+        dispatch_intent_journal: crate::DispatchIntentJournalMode::Off,
     };
     let mut kernel = make_kernel(config);
     kernel.register_tool_server(Box::new(EchoServer::new(server, vec![tool])));

@@ -7,6 +7,10 @@ export type JsonRpcMessage = Record<string, unknown> & {
 
 export type RpcMessageHandler = (message: JsonRpcMessage) => void | Promise<void>;
 
+function rpcIdsEqual(left: JsonRpcId | undefined, right: JsonRpcId | undefined): boolean {
+  return left === right;
+}
+
 function parseJsonRpcMessage(input: string): JsonRpcMessage {
   return JSON.parse(input) as JsonRpcMessage;
 }
@@ -16,8 +20,9 @@ export function parseRpcMessages(rawBody: string): JsonRpcMessage[] {
   if (!trimmed) {
     return [];
   }
-  if (trimmed.startsWith("{")) {
-    return [parseJsonRpcMessage(trimmed)];
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    const parsed = JSON.parse(trimmed) as JsonRpcMessage | JsonRpcMessage[];
+    return Array.isArray(parsed) ? parsed : [parsed];
   }
 
   const messages: JsonRpcMessage[] = [];
@@ -40,14 +45,23 @@ export function parseRpcMessages(rawBody: string): JsonRpcMessage[] {
   return messages;
 }
 
+function isTerminalMessage(message: JsonRpcMessage, expectedId: JsonRpcId | undefined): boolean {
+  return expectedId !== undefined && rpcIdsEqual(message.id, expectedId) && !message.method;
+}
+
 export async function readRpcMessagesUntilTerminal(
   response: Response,
   expectedId?: JsonRpcId,
   onMessage: RpcMessageHandler = async () => {},
 ): Promise<JsonRpcMessage[]> {
   if (!response.body) {
-    const messages = parseRpcMessages(await response.text());
-    for (const message of messages) {
+    const parsedMessages = parseRpcMessages(await response.text());
+    const messages: JsonRpcMessage[] = [];
+    for (const message of parsedMessages) {
+      messages.push(message);
+      if (isTerminalMessage(message, expectedId)) {
+        break;
+      }
       await onMessage(message);
     }
     return messages;
@@ -78,7 +92,7 @@ export async function readRpcMessagesUntilTerminal(
         if (eventData.length > 0) {
           const message = parseJsonRpcMessage(eventData.join("\n"));
           messages.push(message);
-          if (expectedId !== undefined && message.id === expectedId && !message.method) {
+          if (isTerminalMessage(message, expectedId)) {
             await reader.cancel();
             return messages;
           }
@@ -93,19 +107,34 @@ export async function readRpcMessagesUntilTerminal(
     }
   }
 
+  if (buffer.trim()) {
+    if (buffer.startsWith("data:")) {
+      eventData.push(buffer.slice(5).trimStart());
+    }
+  }
+
   if (eventData.length > 0) {
     const message = parseJsonRpcMessage(eventData.join("\n"));
     messages.push(message);
-    await onMessage(message);
+    if (!isTerminalMessage(message, expectedId)) {
+      await onMessage(message);
+    }
   }
   if (messages.length === 0) {
-    messages.push(...parseRpcMessages(rawBody));
+    const parsedMessages = parseRpcMessages(rawBody);
+    for (const message of parsedMessages) {
+      messages.push(message);
+      if (isTerminalMessage(message, expectedId)) {
+        return messages;
+      }
+      await onMessage(message);
+    }
   }
   return messages;
 }
 
 export function terminalMessage(messages: JsonRpcMessage[], expectedId: JsonRpcId): JsonRpcMessage {
-  const match = messages.find((message) => message.id === expectedId && !message.method);
+  const match = messages.find((message) => rpcIdsEqual(message.id, expectedId) && !message.method);
   if (!match) {
     throw new Error(`no terminal response for JSON-RPC id ${expectedId}`);
   }

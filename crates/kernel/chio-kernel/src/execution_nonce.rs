@@ -41,7 +41,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, warn};
 use uuid::Uuid;
 
-use crate::replay_retention::ReplayRetention;
+use crate::replay_retention::{advance_replay_clock, ReplayRetention};
 use crate::KernelError;
 
 /// Schema identifier for Chio execution nonces.
@@ -191,13 +191,12 @@ pub trait ExecutionNonceStore: Send + Sync {
     /// `nonce_expires_at` so replay protection covers the nonce's full
     /// validity window.
     ///
-    /// Implementations must override this method. Silently falling back to
-    /// [`Self::reserve`] could release the replay marker before the signed
-    /// artifact expires, so the default denies fail-closed.
-    fn reserve_until(&self, _nonce_id: &str, _nonce_expires_at: i64) -> Result<bool, KernelError> {
-        Err(KernelError::Internal(
-            "execution nonce store does not support signed-expiry retention".to_string(),
-        ))
+    /// The default preserves compatibility with legacy stores whose local
+    /// retention policy already spans the nonce validity window. Durable
+    /// stores should override this method to bind retention to the signed
+    /// absolute expiry.
+    fn reserve_until(&self, nonce_id: &str, _nonce_expires_at: i64) -> Result<bool, KernelError> {
+        self.reserve(nonce_id)
     }
 
     /// Whether this store can create and conditionally roll back an owned
@@ -249,6 +248,7 @@ pub struct InMemoryExecutionNonceStore {
 struct ExecutionNonceState {
     cache: LruCache<String, ExecutionNonceEntry>,
     wall_clock_high_water: SystemTime,
+    monotonic_high_water: Instant,
 }
 
 struct ExecutionNonceEntry {
@@ -277,6 +277,7 @@ impl InMemoryExecutionNonceStore {
             inner: Mutex::new(ExecutionNonceState {
                 cache: LruCache::new(nz),
                 wall_clock_high_water: SystemTime::now(),
+                monotonic_high_water: Instant::now(),
             }),
             ttl,
         }
@@ -383,17 +384,23 @@ impl InMemoryExecutionNonceStore {
             error!("execution nonce store mutex poisoned; denying fail-closed");
             KernelError::Internal("execution nonce store mutex poisoned; fail-closed".to_string())
         })?;
-        let clock_rolled_back = now_wall < state.wall_clock_high_water;
-        if now_wall > state.wall_clock_high_water {
-            state.wall_clock_high_water = now_wall;
-        }
-        let wall_clock_high_water = state.wall_clock_high_water;
+        let mut wall_clock_high_water = state.wall_clock_high_water;
+        let mut monotonic_high_water = state.monotonic_high_water;
+        let validated_high_water = advance_replay_clock(
+            "execution_nonce",
+            &mut wall_clock_high_water,
+            &mut monotonic_high_water,
+            now_wall,
+            now_monotonic,
+        )?;
+        state.wall_clock_high_water = wall_clock_high_water;
+        state.monotonic_high_water = monotonic_high_water;
 
         let key = nonce_id.to_string();
         if let Some(entry) = state.cache.peek(&key) {
             if !entry
                 .retention
-                .is_expired_at(wall_clock_high_water, now_monotonic)
+                .is_expired_at(validated_high_water, now_monotonic)
             {
                 return Ok(false);
             }
@@ -405,17 +412,15 @@ impl InMemoryExecutionNonceStore {
             .filter(|(_, entry)| {
                 entry
                     .retention
-                    .is_expired_at(wall_clock_high_water, now_monotonic)
+                    .is_expired_at(validated_high_water, now_monotonic)
             })
             .map(|(expired_key, _)| expired_key.clone())
             .collect::<Vec<_>>();
         for expired_key in expired_keys {
             state.cache.pop(&expired_key);
         }
-        if retention.is_signed()
-            && (clock_rolled_back || retention.signed_horizon_elapsed_at(wall_clock_high_water))
-        {
-            error!("wall-clock rollback or elapsed signed horizon; denying replay reservation");
+        if retention.is_signed() && retention.signed_horizon_elapsed_at(validated_high_water) {
+            error!("elapsed signed horizon; denying replay reservation");
             return Ok(false);
         }
         if state.cache.len() >= state.cache.cap().get() {
@@ -771,7 +776,7 @@ mod tests {
     }
 
     #[test]
-    fn legacy_store_without_signed_expiry_support_fails_closed() {
+    fn legacy_store_falls_back_to_its_reserve_contract() {
         let kp = Keypair::generate();
         let config = ExecutionNonceConfig::default();
         let binding = sample_binding();
@@ -784,17 +789,14 @@ mod tests {
         .unwrap();
         let signed = mint_execution_nonce(&kp, binding.clone(), &config, now).unwrap();
 
-        let error = verify_execution_nonce(
+        verify_execution_nonce(
             &signed,
             &kp.public_key(),
             &binding,
             now,
             &LegacyExecutionNonceStore,
         )
-        .unwrap_err();
-        assert!(
-            matches!(error, ExecutionNonceError::Store(reason) if reason.contains("signed-expiry retention"))
-        );
+        .unwrap();
     }
 
     #[test]
@@ -876,7 +878,7 @@ mod tests {
     }
 
     #[test]
-    fn signed_replay_stays_closed_after_reclamation_and_clock_rollback(
+    fn signed_replay_stays_closed_after_reclamation_and_tolerated_clock_skew(
     ) -> Result<(), Box<dyn std::error::Error>> {
         let start_wall = UNIX_EPOCH.checked_add(Duration::from_secs(10_000)).unwrap();
         let start_monotonic = Instant::now();
@@ -931,7 +933,7 @@ mod tests {
             rollback_wall,
             rollback_monotonic,
         );
-        assert!(!store.reserve_entry_at(
+        assert!(store.reserve_entry_at(
             "new-signed",
             later_horizon,
             None,
@@ -944,6 +946,47 @@ mod tests {
             None,
             rollback_wall,
             rollback_monotonic,
+        )?);
+        Ok(())
+    }
+
+    #[test]
+    fn suspicious_clock_jump_is_typed_and_does_not_latch_high_water(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let start_wall = UNIX_EPOCH.checked_add(Duration::from_secs(10_000)).unwrap();
+        let start_monotonic = Instant::now();
+        let store = InMemoryExecutionNonceStore::new(2, Duration::from_secs(60));
+        {
+            let mut state = store.inner.lock().unwrap();
+            state.wall_clock_high_water = start_wall;
+            state.monotonic_high_water = start_monotonic;
+        }
+        let retention = ReplayRetention::signed_until_at(
+            start_wall.checked_add(Duration::from_secs(1_000)),
+            start_wall,
+            start_monotonic,
+        );
+        let jumped_wall = start_wall.checked_add(Duration::from_secs(302)).unwrap();
+        let next_monotonic = start_monotonic.checked_add(Duration::from_secs(1)).unwrap();
+        let error = store
+            .reserve_entry_at("jumped", retention, None, jumped_wall, next_monotonic)
+            .unwrap_err();
+        assert!(matches!(
+            error,
+            KernelError::ReplayClockAnomaly {
+                direction: crate::ReplayClockDirection::ForwardJump,
+                ..
+            }
+        ));
+
+        let recovered_wall = start_wall.checked_add(Duration::from_secs(2)).unwrap();
+        let recovered_monotonic = start_monotonic.checked_add(Duration::from_secs(2)).unwrap();
+        assert!(store.reserve_entry_at(
+            "recovered",
+            retention,
+            None,
+            recovered_wall,
+            recovered_monotonic,
         )?);
         Ok(())
     }

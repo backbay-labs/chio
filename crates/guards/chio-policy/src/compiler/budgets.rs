@@ -10,6 +10,7 @@ use chio_guards::{agent_velocity::AgentVelocityConfig, AgentVelocityGuard};
 pub(super) fn compile_budget_guards(
     policy: &HushSpec,
     builder: &mut PipelineBuilder,
+    memory_budget: &chio_kernel::MemoryBudgetConfig,
 ) -> Result<(), CompileError> {
     let Some(extensions) = &policy.extensions else {
         return Ok(());
@@ -45,7 +46,13 @@ pub(super) fn compile_budget_guards(
             window_secs: 60,
             burst_factor: 1.0,
         };
-        builder.add(AgentVelocityGuard::new(config));
+        // Thread the CONFIGURED process memory budget so a lowered
+        // `velocity_bucket_cap` bounds this origin-budget guard's agent/session
+        // bucket maps instead of them growing unbounded.
+        builder.add(AgentVelocityGuard::from_memory_budget(
+            config,
+            memory_budget,
+        ));
     }
 
     Ok(())

@@ -72,6 +72,18 @@ impl DeadLetterQueue {
         self.inner.len()
     }
 
+    /// Return the number of entries attributed to a single exporter.
+    ///
+    /// The DLQ is shared across all exporters, so the per-exporter DLQ-depth
+    /// gauge must count only the entries produced by that exporter rather than
+    /// the global length.
+    pub fn depth_for_exporter(&self, exporter: &str) -> usize {
+        self.inner
+            .iter()
+            .filter(|event| event.exporter_name == exporter)
+            .count()
+    }
+
     /// Return true if the queue contains no entries.
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()

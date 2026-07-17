@@ -1,73 +1,105 @@
-# chio-cross-protocol Architecture Notes
+# chio-cross-protocol architecture
 
-## Module Boundaries
+## Overview
 
-`lib.rs` declares the public cross-protocol modules and does not flatten their
-APIs at the crate root.
+`chio-cross-protocol` is a shared library crate, not an edge itself: no
+transport, no server loop, no protocol wire format. It sits between the
+outward protocol edges (A2A, ACP, MCP, OpenAI-shaped bridges) and
+`chio-kernel`, giving them one orchestrator (`CrossProtocolOrchestrator`) and
+one set of signed-lineage types so capability, scope, route, and trace are
+computed the same way regardless of which edge originated the request.
+Execution is synchronous: the orchestrator and every `TargetProtocolExecutor`
+call the kernel's blocking evaluation entry point directly; edges on an async
+runtime cross back in through `sync_bridge_shared::block_on_tool_server_invoke`.
 
-- `discovery.rs`: target protocol enum, parser, display implementation, schema
-  target-protocol lookup, and `TargetProtocolRegistry`.
-- `lifecycle.rs`: runtime lifecycle surfaces and metadata contracts.
-- `semantic_hints.rs`: bridge fidelity and tool semantic-hint extraction.
-- `routing.rs`: route availability, candidate evidence, route-selection
-  evidence, planner decisions, and route metadata.
-- `execution.rs`: kernel-bound execution request, target request/response
-  handoff, target executor trait, and OpenAI-shaped target executor.
-- `capability_bridge.rs`: capability references, capability envelopes, protocol
-  trace data, bridge trait, and attenuation/hash helpers.
-- `orchestrator.rs`: shared orchestration runtime and signed metadata assembly.
-- `validation.rs`: request-boundary validation and schema extension helpers.
-- `error.rs`: cross-protocol bridge error type.
+## Module map
 
-The crate is intentionally a shared substrate for protocol edge crates rather
-than a product surface. Callers import the owning module for each domain instead
-of relying on root-level aliases.
+| Path | Responsibility |
+|------|----------------|
+| `src/lib.rs` | Declares the public modules. No root-level re-exports; callers import the owning module. |
+| `src/capability_bridge.rs` | `CrossProtocolCapabilityRef`, `CrossProtocolCapabilityEnvelope`, trace types, the `CapabilityBridge` trait, and the parent-hash/scope-attenuation helpers the orchestrator uses. |
+| `src/discovery.rs` | `DiscoveryProtocol` enum, its parser and `Display`, and `TargetProtocolRegistry` (executor lookup, default-target resolution). |
+| `src/error.rs` | `BridgeError`, the crate's error type. |
+| `src/execution.rs` | `CrossProtocolExecutionRequest`/`CrossProtocolTargetRequest`, the `TargetProtocolExecutor` trait, and the built-in `OpenAiTargetExecutor`. |
+| `src/lifecycle.rs` | `RuntimeLifecycleSurface`/`RuntimeLifecycleContract`: entrypoint and delivery-mode metadata for claim-eligible vs. compatibility-only bridge surfaces. |
+| `src/orchestrator.rs` | `CrossProtocolOrchestrator::execute`, deny-path signing, trace-context construction, and `OrchestratedToolCall` (including its receipt-metadata rendering). |
+| `src/routing.rs` | Route-candidate evidence, `plan_authoritative_route`, and signed `RouteSelectionEvidence`. |
+| `src/semantic_hints.rs` | `BridgeFidelity` and `BridgeSemanticHints`, derived from `x-chio-*` tool schema extensions. |
+| `src/sync_bridge_shared.rs` | `block_on_tool_server_invoke`: shared synchronous-bridge shim for compatibility-surface edges, mirroring the kernel's runtime-flavor gate. |
+| `src/validation.rs` | Private (`mod validation`, not `pub`). Request-identity validation and capability-ref cross-checks used by the orchestrator; schema-extension accessors used by `discovery` and `semantic_hints`. |
+| `src/tests.rs` | `#[cfg(test)]` unit tests: mock `CapabilityBridge`/`TargetProtocolExecutor`/`ToolServerConnection`, orchestrator lineage checks, and route-planning behavior. |
 
-## Orchestrator Boundary Validation
+## Bridged call lifecycle
 
-The orchestrator builds signed receipt metadata from request identity fields and
-caller-provided capability references. An orchestrator-owned validation step runs
-before capability reference injection, route planning, trace construction,
-target execution, or receipt signing, turning lineage data from trusted caller
-metadata into a checked shared invariant:
+`CrossProtocolOrchestrator::execute` runs one bridged call end to end:
 
-- `origin_request_id`, `kernel_request_id`, `target_server_id`,
-  `target_tool_name`, and `agent_id` must be non-empty, unpadded, and
-  control-free. Values are not trimmed, because signed lineage must describe
-  exactly what the caller submitted. `origin_request_id` becomes the source hop
-  id and bridge id suffix; the others cross from protocol edges into native
-  kernel execution.
-- A supplied `CrossProtocolCapabilityRef` must match the active capability id,
-  the deterministic parent capability hash, and the `CapabilityBridge`
-  `source_protocol`. A request entering through one protocol cannot carry a
-  capability reference whose `originProtocol` belongs to another, even when its
-  id and parent hash are otherwise valid; protocol-edge metadata is not trusted
-  when it disagrees with the bridge object the caller selected.
+1. `validate_execution_request_boundary` rejects empty, padded, or
+   control-character identity fields before any lineage is built.
+2. `CapabilityBridge::extract_capability_ref` reads an existing ref from the
+   source envelope; if present, `validate_provided_capability_ref` checks it
+   against the active capability's id, parent hash, and `source_protocol`. If
+   absent, a fresh ref is built from the capability.
+3. `CapabilityBridge::inject_capability_ref` projects the ref into a clone of
+   the source envelope (`projected_request`).
+4. `attenuate_scope_for_tool` narrows the parent capability's grants to the
+   concrete target server/tool; the orchestrator rejects
+   (`BridgeError::InvalidAttenuation`) if the result is not a subset of the
+   parent scope.
+5. `plan_authoritative_route` decides `Select`, `Attenuate`, or `Deny` from
+   governed-intent control-plane hints and route availability.
+6. On `Deny`, the kernel signs a deny response (`sign_planned_deny_response`);
+   route and trace evidence are still built, so denied attempts get full
+   signed lineage too.
+7. On `Select`/`Attenuate`, a `Native` target dispatches straight to
+   `ChioKernel::evaluate_tool_call_blocking_with_metadata`; any other target
+   dispatches to the registered `TargetProtocolExecutor`.
+8. Route/trace evidence assemble from the returned hops (trace id and session
+   fingerprint are `sha256` over canonical JSON). `OrchestratedToolCall::metadata()`
+   renders the final `chio.*` metadata object callers attach to their own
+   protocol response.
 
-Malformed requests fail closed with `BridgeError::InvalidRequest` at the shared
-orchestrator boundary rather than reaching route planning or kernel execution.
+## Invariants and failure modes
 
-## Security and API Constraints
+- Request-identity fields (`origin_request_id`, `kernel_request_id`,
+  `target_server_id`, `target_tool_name`, `agent_id`) must be non-empty,
+  unpadded, and control-character-free, and are not trimmed: signed lineage
+  must describe exactly what the caller submitted.
+- A caller-supplied capability ref is rejected if its `originProtocol` does
+  not match the bridge's `source_protocol`, even with a valid id and parent
+  hash.
+- `plan_authoritative_route` never selects a non-`Native` target with no
+  registered executor, even if marked available, and fails closed to `Deny`
+  when no candidate route is available.
+- Route-selection evidence and any caller-supplied `receipt_context` are
+  threaded into the kernel call and land inside the signed receipt metadata,
+  not just this crate's return type.
+- `block_on_tool_server_invoke` fails closed with
+  `SyncBridgeIncompatibleWithCurrentThreadRuntime` under a current-thread
+  Tokio runtime rather than risking a deadlock; it uses `block_in_place` on a
+  multi-thread runtime and `futures::executor::block_on` with none active.
+- `#![forbid(unsafe_code)]` at the crate root.
 
-The orchestrator fails closed before signing or forwarding misleading lineage.
-Route selection evidence, trace ids, receipt metadata, and capability envelope
-fields stay canonical and byte-stable for valid requests. Public type names,
-trait methods, struct fields, and serialized field names stay source-compatible.
-Native and registered target execution continues to route through the kernel.
+## Dependencies
 
-## Affected Dependents
+Internal: `chio-kernel` supplies `ChioKernel`, tool-call evaluation,
+deny-signing, and kernel error types. The `chio-core` dependency is aliased
+to `chio-core-types` (`chio-core = { package = "chio-core-types", ... }`) and
+supplies `CapabilityToken`, `ChioScope`, governance types, canonical JSON,
+and `sha256_hex`. `chio-manifest` supplies `ToolDefinition` and
+`LatencyHint` for target-protocol and semantic-hint resolution.
 
-No transitive crate edits are expected. `chio-a2a-edge`, `chio-acp-edge`,
-`chio-acp-proxy`, `chio-mcp-edge`, and other crates using
-`CrossProtocolOrchestrator`, `CapabilityBridge`, `TargetProtocolExecutor`, and
-`CrossProtocolExecutionRequest` keep the same API. Malformed requests change
-from kernel/routing behavior to `BridgeError::InvalidRequest`.
+External: `serde`/`serde_json` for every wire type, `thiserror` for
+`BridgeError`, `tokio` and `futures` for the runtime-flavor detection and
+non-Tokio fallback in `sync_bridge_shared`. `async-trait` is a declared
+dependency but is exercised only by the crate's own `#[cfg(test)]` mock
+`ToolServerConnection`; the crate's own traits (`CapabilityBridge`,
+`TargetProtocolExecutor`) are synchronous.
 
-## Verification Focus
+## Extension points
 
-Tests cover identity-field rejection before route planning, capability id and
-parent-hash mismatch rejection, source-protocol drift rejection, metadata byte
-stability for valid bridge requests, and kernel handoff parity for native and
-registered executors. Edge-crate smoke tests prove that A2A, ACP, MCP, and
-OpenAPI callers inherit the shared orchestrator boundary without reimplementing
-lineage validation.
+- `CapabilityBridge` - implement to extract/inject a
+  `CrossProtocolCapabilityRef` and protocol context for a new source
+  protocol's request-envelope shape.
+- `TargetProtocolExecutor` - implement and register with
+  `TargetProtocolRegistry` / `CrossProtocolOrchestrator::with_executor` to
+  add a non-native bridge target beyond the built-in `OpenAiTargetExecutor`.

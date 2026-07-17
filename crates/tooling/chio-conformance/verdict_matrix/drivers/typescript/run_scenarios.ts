@@ -7,7 +7,7 @@ import {
   type EvaluateResponse,
   type HttpMethod,
   type Verdict as SdkVerdict,
-} from "../../../../../sdks/typescript/packages/node-http/src/index.ts";
+} from "../../../../../../sdks/typescript/packages/node-http/src/index.ts";
 
 export const TYPESCRIPT_NODE_HTTP_DRIVER = "typescript-node-http";
 

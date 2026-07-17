@@ -41,6 +41,70 @@ pub struct ChioConfig {
     pub wasm_guards: Vec<WasmGuardEntry>,
 }
 
+/// Kernel default for the maximum capability delegation depth. The file schema
+/// does not yet expose this knob, so a config-built kernel takes the same
+/// conservative bound the runtime scaffolds use elsewhere.
+const DEFAULT_MAX_DELEGATION_DEPTH: u32 = 5;
+
+impl ChioConfig {
+    /// Lower this validated file config into the runtime [`chio_kernel::KernelConfig`]
+    /// used to construct a `ChioKernel`.
+    ///
+    /// This is the bridge that makes a loaded `chio.yaml` actually govern kernel
+    /// behavior: the operator's `[kernel.deadlines]` budgets flow through
+    /// [`KernelDeadlinesFileConfig::to_hot_path_deadline_config`] into the
+    /// constructed kernel's `deadlines`, `kernel.signing_key` becomes the
+    /// receipt-signing keypair, and the `[receipts]` section governs the
+    /// checkpoint cadence (`checkpoint_interval`), retention window
+    /// (`retention_days`), and dispatch-intent journal mode
+    /// (`dispatch_intent_journal`) rather than silently defaulting them.
+    ///
+    /// Fields the file schema does not yet express take the kernel's own
+    /// defaults, chosen fail-closed: nested sampling and elicitation stay
+    /// disabled, no external capability authorities are trusted, and ephemeral
+    /// receipt logs are refused so successful dispatch requires durable receipt
+    /// persistence. Deployments that need those knobs configure them on the
+    /// returned value before construction.
+    pub fn to_kernel_config(&self) -> Result<chio_kernel::KernelConfig, crate::ConfigError> {
+        let keypair = self.kernel.signing_keypair()?;
+        Ok(chio_kernel::KernelConfig {
+            keypair,
+            ca_public_keys: Vec::new(),
+            max_delegation_depth: DEFAULT_MAX_DELEGATION_DEPTH,
+            policy_hash: String::new(),
+            allow_sampling: false,
+            allow_sampling_tool_use: false,
+            allow_elicitation: false,
+            max_stream_duration_secs: chio_kernel::DEFAULT_MAX_STREAM_DURATION_SECS,
+            max_stream_total_bytes: chio_kernel::DEFAULT_MAX_STREAM_TOTAL_BYTES,
+            require_web3_evidence: false,
+            allow_ephemeral_receipt_log: false,
+            // Fail-closed like the receipt log above: a file-configured
+            // deployment must wire a durable revocation store rather than
+            // silently accepting an in-memory set that forgets revocations on
+            // restart.
+            allow_ephemeral_revocation_store: false,
+            // Honor the operator's `[receipts]` settings: the checkpoint cadence
+            // and the retention window are parsed by this same crate, so they
+            // must reach the kernel instead of reverting to hard-coded defaults.
+            // The remaining `RetentionConfig` knobs (archive path, size ceiling,
+            // tenant scope) are not yet expressed in the file schema and keep
+            // their defaults.
+            checkpoint_batch_size: self.receipts.checkpoint_interval,
+            retention_config: Some(chio_kernel::RetentionConfig {
+                retention_days: self.receipts.retention_days,
+                ..chio_kernel::RetentionConfig::default()
+            }),
+            memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
+            deadlines: self.kernel.deadlines.to_hot_path_deadline_config(),
+            // Honor the operator's `[receipts].dispatch_intent_journal`: absent
+            // means the pre-journal write path (`Off`), matching the staged
+            // rollout default, not the enum's own compiled default.
+            dispatch_intent_journal: self.receipts.dispatch_intent_journal,
+        })
+    }
+}
+
 /// Kernel section -- the only section that is always required.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -55,6 +119,70 @@ pub struct KernelConfig {
     /// Log level override for the kernel.
     #[serde(default = "default_log_level")]
     pub log_level: String,
+
+    /// Hot-path wall-clock budgets. Optional; validated at load.
+    #[serde(default)]
+    pub deadlines: KernelDeadlinesFileConfig,
+}
+
+impl KernelConfig {
+    /// Resolve `signing_key` into the receipt-signing keypair. The literal
+    /// `"generate"` mints a fresh ephemeral key for dev mode; any other value is
+    /// parsed as a 32-byte Ed25519 seed in lowercase hex.
+    pub fn signing_keypair(&self) -> Result<chio_core::crypto::Keypair, crate::ConfigError> {
+        if self.signing_key == "generate" {
+            return Ok(chio_core::crypto::Keypair::generate());
+        }
+        chio_core::crypto::Keypair::from_seed_hex(&self.signing_key)
+            .map_err(|e| crate::ConfigError::Kernel(format!("invalid kernel.signing_key: {e}")))
+    }
+}
+
+/// Config-file surface for the runtime hot-path deadline budgets. Only the
+/// scalar budgets are exposed here; the per-guard and per-server override maps
+/// are set programmatically. All fields optional so an absent
+/// `[kernel.deadlines]` table is valid.
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct KernelDeadlinesFileConfig {
+    #[serde(default)]
+    pub guard_pipeline_budget_ms: Option<u64>,
+    #[serde(default)]
+    pub dispatch_budget_ms: Option<u64>,
+    #[serde(default)]
+    pub receipt_append_budget_ms: Option<u64>,
+    #[serde(default)]
+    pub receipt_writer_poll_ms: Option<u64>,
+    #[serde(default)]
+    pub receipt_writer_stall_ms: Option<u64>,
+}
+
+impl KernelDeadlinesFileConfig {
+    /// Overlay the file-configured scalar budgets onto the kernel defaults to
+    /// produce the runtime deadline config. Each `Some` replaces the matching
+    /// field; each `None` keeps the default. This is the bridge that lets an
+    /// operator's `[kernel.deadlines]` table actually govern kernel behavior; the
+    /// per-guard and per-server override maps are set programmatically, not from
+    /// the file, so they retain their defaults.
+    pub fn to_hot_path_deadline_config(&self) -> chio_kernel::HotPathDeadlineConfig {
+        let mut config = chio_kernel::HotPathDeadlineConfig::default();
+        if let Some(ms) = self.guard_pipeline_budget_ms {
+            config.guard_pipeline_budget_ms = ms;
+        }
+        if let Some(ms) = self.dispatch_budget_ms {
+            config.dispatch_budget_ms = ms;
+        }
+        if let Some(ms) = self.receipt_append_budget_ms {
+            config.receipt_append_budget_ms = ms;
+        }
+        if let Some(ms) = self.receipt_writer_poll_ms {
+            config.receipt_writer_poll_ms = ms;
+        }
+        if let Some(ms) = self.receipt_writer_stall_ms {
+            config.receipt_writer_stall_ms = ms;
+        }
+        config
+    }
 }
 
 /// A single adapter entry that connects to an upstream API.
@@ -121,6 +249,17 @@ pub struct ReceiptsConfig {
     /// How many days to retain receipts.
     #[serde(default = "default_retention_days")]
     pub retention_days: u64,
+
+    /// Which call classes must durably journal a dispatch intent before
+    /// dispatch: `"off"`, `"side_effecting"`, or `"all"`. Absent keeps the
+    /// pre-journal write path (`off`), matching the staged rollout; this is
+    /// deliberately not the enum's own compiled default (`side_effecting`),
+    /// so an existing deployment's file does not silently change behavior
+    /// when it upgrades to a binary that understands this key. An
+    /// unrecognized value is rejected at config load time rather than
+    /// falling back to a default.
+    #[serde(default = "default_dispatch_intent_journal")]
+    pub dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode,
 }
 
 impl Default for ReceiptsConfig {
@@ -129,6 +268,7 @@ impl Default for ReceiptsConfig {
             store: default_receipt_store(),
             checkpoint_interval: default_checkpoint_interval(),
             retention_days: default_retention_days(),
+            dispatch_intent_journal: default_dispatch_intent_journal(),
         }
     }
 }
@@ -278,6 +418,10 @@ fn default_retention_days() -> u64 {
     90
 }
 
+fn default_dispatch_intent_journal() -> chio_kernel::DispatchIntentJournalMode {
+    chio_kernel::DispatchIntentJournalMode::Off
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -288,6 +432,10 @@ mod tests {
         assert_eq!(r.store, "sqlite:///var/chio/receipts.db");
         assert_eq!(r.checkpoint_interval, 100);
         assert_eq!(r.retention_days, 90);
+        assert_eq!(
+            r.dispatch_intent_journal,
+            chio_kernel::DispatchIntentJournalMode::Off
+        );
     }
 
     #[test]
@@ -338,6 +486,220 @@ mod tests {
         assert_eq!(
             auth.header.unwrap_or_else(|| panic!("header missing")),
             "Authorization"
+        );
+    }
+
+    #[test]
+    fn deadline_scalars_convert_into_kernel_config() {
+        let file = KernelDeadlinesFileConfig {
+            guard_pipeline_budget_ms: Some(1_500),
+            dispatch_budget_ms: Some(2_500),
+            receipt_append_budget_ms: Some(750),
+            receipt_writer_poll_ms: Some(250),
+            receipt_writer_stall_ms: Some(30_000),
+        };
+        let config = file.to_hot_path_deadline_config();
+        assert_eq!(config.guard_pipeline_budget_ms, 1_500);
+        assert_eq!(config.dispatch_budget_ms, 2_500);
+        assert_eq!(config.receipt_append_budget_ms, 750);
+        assert_eq!(config.receipt_writer_poll_ms, 250);
+        assert_eq!(config.receipt_writer_stall_ms, 30_000);
+    }
+
+    #[test]
+    fn absent_deadline_scalars_keep_kernel_defaults() {
+        let config = KernelDeadlinesFileConfig::default().to_hot_path_deadline_config();
+        let defaults = chio_kernel::HotPathDeadlineConfig::default();
+        assert_eq!(
+            config.guard_pipeline_budget_ms,
+            defaults.guard_pipeline_budget_ms
+        );
+        assert_eq!(config.dispatch_budget_ms, defaults.dispatch_budget_ms);
+        assert_eq!(
+            config.receipt_append_budget_ms,
+            defaults.receipt_append_budget_ms
+        );
+        assert_eq!(
+            config.receipt_writer_poll_ms,
+            defaults.receipt_writer_poll_ms
+        );
+        assert_eq!(
+            config.receipt_writer_stall_ms,
+            defaults.receipt_writer_stall_ms
+        );
+    }
+
+    #[test]
+    fn loaded_deadlines_reach_the_constructed_kernel_config() {
+        // A loaded `chio.yaml` whose `[kernel.deadlines]` differs from every
+        // kernel default must carry those budgets all the way into the runtime
+        // `KernelConfig` the kernel is built from. A bridge that lowered
+        // `HotPathDeadlineConfig::default()` instead would leave configured
+        // budgets disabled; this asserts the operator's values win.
+        let yaml = r#"
+kernel:
+  signing_key: "generate"
+  deadlines:
+    guard_pipeline_budget_ms: 1500
+    dispatch_budget_ms: 2500
+    receipt_append_budget_ms: 750
+    receipt_writer_poll_ms: 250
+    receipt_writer_stall_ms: 30000
+
+adapters:
+  - id: "petstore"
+    protocol: "openapi"
+    upstream: "http://localhost:8000"
+"#;
+        let config =
+            crate::load_from_str(yaml).unwrap_or_else(|e| panic!("config should load: {e}"));
+        let kernel_config = config
+            .to_kernel_config()
+            .unwrap_or_else(|e| panic!("kernel config should build: {e}"));
+
+        assert_eq!(kernel_config.deadlines.guard_pipeline_budget_ms, 1_500);
+        assert_eq!(kernel_config.deadlines.dispatch_budget_ms, 2_500);
+        assert_eq!(kernel_config.deadlines.receipt_append_budget_ms, 750);
+        assert_eq!(kernel_config.deadlines.receipt_writer_poll_ms, 250);
+        assert_eq!(kernel_config.deadlines.receipt_writer_stall_ms, 30_000);
+
+        // The lowered config must actually construct a kernel through the
+        // validated entrypoint, proving the budgets reach a live kernel.
+        chio_kernel::ChioKernel::try_new(kernel_config)
+            .unwrap_or_else(|e| panic!("kernel should construct from config deadlines: {e}"));
+    }
+
+    #[test]
+    fn loaded_receipt_settings_reach_the_constructed_kernel_config() {
+        // A loaded `chio.yaml` whose `[receipts]` section sets a non-default
+        // checkpoint cadence and retention window must carry both into the
+        // runtime `KernelConfig`. A bridge that hard-coded the checkpoint
+        // default and dropped retention would leave the operator's values
+        // unenforced; this asserts they win.
+        let yaml = r#"
+kernel:
+  signing_key: "generate"
+
+receipts:
+  checkpoint_interval: 250
+  retention_days: 30
+
+adapters:
+  - id: "petstore"
+    protocol: "openapi"
+    upstream: "http://localhost:8000"
+"#;
+        let config =
+            crate::load_from_str(yaml).unwrap_or_else(|e| panic!("config should load: {e}"));
+        assert_eq!(config.receipts.checkpoint_interval, 250);
+        assert_eq!(config.receipts.retention_days, 30);
+
+        let kernel_config = config
+            .to_kernel_config()
+            .unwrap_or_else(|e| panic!("kernel config should build: {e}"));
+
+        assert_eq!(kernel_config.checkpoint_batch_size, 250);
+        let retention = kernel_config
+            .retention_config
+            .as_ref()
+            .unwrap_or_else(|| panic!("retention config should be honored, not dropped"));
+        assert_eq!(retention.retention_days, 30);
+
+        chio_kernel::ChioKernel::try_new(kernel_config)
+            .unwrap_or_else(|e| panic!("kernel should construct from config receipts: {e}"));
+    }
+
+    #[test]
+    fn absent_dispatch_intent_journal_key_lowers_to_off() {
+        // No `[receipts].dispatch_intent_journal` key at all: the pre-journal
+        // write path must be preserved, not the enum's own compiled default
+        // (`SideEffecting`), so upgrading a binary never silently starts
+        // journaling for an existing deployment's file.
+        let yaml = r#"
+kernel:
+  signing_key: "generate"
+
+adapters:
+  - id: "petstore"
+    protocol: "openapi"
+    upstream: "http://localhost:8000"
+"#;
+        let config =
+            crate::load_from_str(yaml).unwrap_or_else(|e| panic!("config should load: {e}"));
+        assert_eq!(
+            config.receipts.dispatch_intent_journal,
+            chio_kernel::DispatchIntentJournalMode::Off
+        );
+
+        let kernel_config = config
+            .to_kernel_config()
+            .unwrap_or_else(|e| panic!("kernel config should build: {e}"));
+        assert_eq!(
+            kernel_config.dispatch_intent_journal,
+            chio_kernel::DispatchIntentJournalMode::Off
+        );
+    }
+
+    #[test]
+    fn explicit_dispatch_intent_journal_values_reach_the_constructed_kernel_config() {
+        for (value, expected) in [
+            ("off", chio_kernel::DispatchIntentJournalMode::Off),
+            (
+                "side_effecting",
+                chio_kernel::DispatchIntentJournalMode::SideEffecting,
+            ),
+            ("all", chio_kernel::DispatchIntentJournalMode::All),
+        ] {
+            let yaml = format!(
+                r#"
+kernel:
+  signing_key: "generate"
+
+receipts:
+  dispatch_intent_journal: "{value}"
+
+adapters:
+  - id: "petstore"
+    protocol: "openapi"
+    upstream: "http://localhost:8000"
+"#
+            );
+            let config = crate::load_from_str(&yaml)
+                .unwrap_or_else(|e| panic!("config should load for {value:?}: {e}"));
+            assert_eq!(config.receipts.dispatch_intent_journal, expected);
+
+            let kernel_config = config
+                .to_kernel_config()
+                .unwrap_or_else(|e| panic!("kernel config should build for {value:?}: {e}"));
+            assert_eq!(kernel_config.dispatch_intent_journal, expected);
+
+            chio_kernel::ChioKernel::try_new(kernel_config).unwrap_or_else(|e| {
+                panic!("kernel should construct with dispatch_intent_journal {value:?}: {e}")
+            });
+        }
+    }
+
+    #[test]
+    fn unrecognized_dispatch_intent_journal_value_rejects_at_load() {
+        // Fail-closed: an unrecognized value must reject the config at load
+        // time, not silently fall back to a default the operator did not ask
+        // for.
+        let yaml = r#"
+kernel:
+  signing_key: "generate"
+
+receipts:
+  dispatch_intent_journal: "sometimes"
+
+adapters:
+  - id: "petstore"
+    protocol: "openapi"
+    upstream: "http://localhost:8000"
+"#;
+        let result = crate::load_from_str(yaml);
+        assert!(
+            result.is_err(),
+            "an unrecognized dispatch_intent_journal value must reject at load, got {result:?}"
         );
     }
 }

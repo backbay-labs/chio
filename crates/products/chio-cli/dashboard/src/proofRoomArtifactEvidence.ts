@@ -293,20 +293,25 @@ export function manifestArtifactsBySchemaOrHint(
 
 export async function readProofRoomArtifacts<T extends { schema: string }>(
   manifest: ProofRoomBundleManifest,
-  schema: string,
+  schema: string | readonly string[],
   rendererHint: string,
   label: string,
   sourceLabel: 'selected' | 'served',
   readArtifact: ProofRoomArtifactReader,
 ): Promise<T[]> {
+  const supportedSchemas = typeof schema === 'string' ? [schema] : schema
   return Promise.all(
-    manifestArtifactsBySchemaOrHint(manifest, schema, rendererHint).map(async (artifact) => {
-      const report = await readArtifact<T>(artifact, `${sourceLabel} ${label}`)
-      if (report.schema !== schema) {
-        throw new Error(`${sourceLabel} ${label} has unsupported schema`)
-      }
-      return report
-    }),
+    (manifest.artifacts ?? [])
+      .filter(
+        (artifact) => supportedSchemas.includes(artifact.schema) || artifact.renderer_hint === rendererHint,
+      )
+      .map(async (artifact) => {
+        const report = await readArtifact<T>(artifact, `${sourceLabel} ${label}`)
+        if (!supportedSchemas.includes(report.schema)) {
+          throw new Error(`${sourceLabel} ${label} has unsupported schema`)
+        }
+        return report
+      }),
   )
 }
 

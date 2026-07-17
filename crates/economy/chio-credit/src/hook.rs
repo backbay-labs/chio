@@ -1,14 +1,15 @@
 //! Credit evaluator hook trait routing signed receipts to IOU envelopes.
 //!
-//! This wires the `chio-credit` crate to the kernel evaluator's
-//! post-dispatch observer slot (the async-kernel observer). The hook
+//! This defines the integration point a kernel evaluator would invoke
+//! from its post-dispatch observer slot (the async-kernel observer) to
+//! route the `chio-credit` crate into receipt finalization. The hook
 //! receives a fully signed [`ChioReceipt`] after
 //! receipt finalization and returns either zero or one
 //! [`IouEnvelope`]. Fail-closed semantics: signature-invalid or
 //! malformed receipts mint nothing.
 //!
 //! The trait is intentionally minimal so the economic crate owns IOU
-//! semantics; the kernel only needs to invoke the hook on each
+//! semantics; a kernel wiring this hook only needs to invoke it on each
 //! finalized receipt and stash the result. Persistence is handled
 //! by the store binding in [`crate::store_binding`].
 

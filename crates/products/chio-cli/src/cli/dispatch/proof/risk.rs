@@ -15,7 +15,7 @@ const RISK_GUARANTEE_DECISION_SCHEMA: &str = "chio.risk.guarantee-decision.v1";
 const COMMERCE_PROVIDER_SELECTION_REPORT_SCHEMA: &str =
     "chio.commerce.provider-selection-report.v1";
 const CHIO_RECEIPT_SCHEMA: &str = "chio.receipt.v1";
-const WEB3_SETTLEMENT_EXECUTION_RECEIPT_SCHEMA: &str = "chio.web3-settlement-execution-receipt.v1";
+const WEB3_SETTLEMENT_EXECUTION_RECEIPT_SCHEMA: &str = "chio.web3-settlement-execution-receipt.v2";
 const WEB3_SETTLEMENT_PROOF_BUNDLE_SCHEMA: &str = "chio.web3-settlement-proof-bundle.v1";
 
 pub(super) struct RiskRoute {

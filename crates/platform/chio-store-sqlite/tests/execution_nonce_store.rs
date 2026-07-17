@@ -60,7 +60,7 @@ fn expired_row_is_pruned_and_slot_becomes_free() {
     let now = now_secs();
     assert!(store.try_reserve("nonce-c", now, now + 10).test_unwrap());
     assert!(store
-        .try_reserve("nonce-c", now + 1_000, now + 1_060)
+        .try_reserve("nonce-c", now + 20, now + 80)
         .test_unwrap());
 }
 

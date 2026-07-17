@@ -9,7 +9,8 @@
 #   case 1: no regression deletions               -> guard exits 0
 #   case 2: regression deleted, no issue link     -> guard exits 1
 #   case 3: regression deleted, link in PR_BODY   -> guard exits 0
-#   case 4: regression deleted, link in commit    -> guard exits 0
+#   case 4: regression deleted, wrong filename    -> guard exits 1
+#   case 5: regression deleted, link in commit    -> guard exits 0
 #
 # Each case asserts the expected exit code; the script aborts (set -e)
 # on the first failure. Runs without network or any repo state outside
@@ -112,7 +113,7 @@ git reset -q --hard "$BASE"
 # ----------------------------------------------------------------------
 git rm -q tests/regression_cafef00d.rs
 git commit -q -m "case3: drop legacy regression test"
-export PR_BODY="Removing the cafef00d regression because closes #4242 fixed the underlying parser bug."
+export PR_BODY="Removing regression_cafef00d.rs because closes #4242 fixed the underlying parser bug."
 rc=$(run_guard)
 if [[ "$rc" -ne 0 ]]; then
     echo "case 3 FAIL: expected exit 0, got $rc" >&2
@@ -124,21 +125,36 @@ unset PR_BODY
 git reset -q --hard "$BASE"
 
 # ----------------------------------------------------------------------
-# case 4: delete + paired issue URL in commit message -> exit 0
+# case 4: delete + issue link naming the wrong regression -> exit 1
 # ----------------------------------------------------------------------
 git rm -q crates/kernel/chio-kernel-core/tests/regression_deadbeef.rs
 git commit -q -m "case4: drop deadbeef regression
 
-Crash was reclassified as a duplicate of
-https://github.com/backbay-labs/chio/issues/9999 so the regression test is
-redundant."
+refs #7777 (drops tests/regression_cafef00d.rs)"
+unset PR_BODY
+rc=$(run_guard)
+if [[ "$rc" -ne 1 ]]; then
+    echo "case 4 FAIL: expected exit 1, got $rc" >&2
+    exit 1
+fi
+echo "case 4 OK (wrong filename stays unpaired, exit 1)"
+
+git reset -q --hard "$BASE"
+
+# ----------------------------------------------------------------------
+# case 5: delete + paired issue URL in commit message -> exit 0
+# ----------------------------------------------------------------------
+git rm -q crates/kernel/chio-kernel-core/tests/regression_deadbeef.rs
+git commit -q -m "case5: drop deadbeef regression
+
+Crash was reclassified as a duplicate of https://github.com/backbay-labs/chio/issues/9999 (drops regression_deadbeef.rs)."
 unset PR_BODY
 rc=$(run_guard)
 if [[ "$rc" -ne 0 ]]; then
-    echo "case 4 FAIL: expected exit 0, got $rc" >&2
+    echo "case 5 FAIL: expected exit 0, got $rc" >&2
     exit 1
 fi
-echo "case 4 OK (paired via commit URL, exit 0)"
+echo "case 5 OK (paired via commit URL, exit 0)"
 
 echo
 echo "regression_deletion_test: ALL CASES PASS"

@@ -88,10 +88,10 @@ dst_lists="$(registry_mapping_lists "${dst_runner}" "Deterministic simulation ha
 dst_harness_list="${dst_lists%%$'\034'*}"
 dst_mapping_list="${dst_lists#*$'\034'}"
 
-unmapped_loom="$(comm -23 <(printf '%s\n' "${loom_harness_list}") <(printf '%s\n' "${loom_mapping_list}"))"
-extra_loom_mapping="$(comm -13 <(printf '%s\n' "${loom_harness_list}") <(printf '%s\n' "${loom_mapping_list}"))"
-unmapped_dst="$(comm -23 <(printf '%s\n' "${dst_harness_list}") <(printf '%s\n' "${dst_mapping_list}"))"
-extra_dst_mapping="$(comm -13 <(printf '%s\n' "${dst_harness_list}") <(printf '%s\n' "${dst_mapping_list}"))"
+unmapped_loom="$(LC_ALL=C comm -23 <(printf '%s\n' "${loom_harness_list}") <(printf '%s\n' "${loom_mapping_list}"))"
+extra_loom_mapping="$(LC_ALL=C comm -13 <(printf '%s\n' "${loom_harness_list}") <(printf '%s\n' "${loom_mapping_list}"))"
+unmapped_dst="$(LC_ALL=C comm -23 <(printf '%s\n' "${dst_harness_list}") <(printf '%s\n' "${dst_mapping_list}"))"
+extra_dst_mapping="$(LC_ALL=C comm -13 <(printf '%s\n' "${dst_harness_list}") <(printf '%s\n' "${dst_mapping_list}"))"
 
 # --- Required model leaf invariants -----------------------------------------
 # These leaves are part of the release evidence contract. Unlike the legacy

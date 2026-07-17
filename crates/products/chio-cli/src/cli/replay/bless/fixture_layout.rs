@@ -14,7 +14,9 @@ pub(crate) fn map_replay_fixture_error(error: chio_replay_corpus::WriterError) -
             "invalid replay fixture directory {}: {source}",
             path.display()
         )),
-        other => CliError::replay_fixture_error(format!("invalid replay fixture directory: {other}")),
+        other => {
+            CliError::replay_fixture_error(format!("invalid replay fixture directory: {other}"))
+        }
     }
 }
 
@@ -36,7 +38,11 @@ mod replay_bless_layout_tests {
         let temp = tempfile::tempdir().unwrap();
         let fixture_dir = temp.path().join("family").join("name");
         std::fs::create_dir_all(&fixture_dir).unwrap();
-        std::fs::write(fixture_dir.join(chio_replay_corpus::CHECKPOINT_FILENAME), b"{}").unwrap();
+        std::fs::write(
+            fixture_dir.join(chio_replay_corpus::CHECKPOINT_FILENAME),
+            b"{}",
+        )
+        .unwrap();
         std::fs::write(fixture_dir.join(chio_replay_corpus::RECEIPTS_FILENAME), b"").unwrap();
         std::fs::write(fixture_dir.join(chio_replay_corpus::ROOT_FILENAME), b"00").unwrap();
 

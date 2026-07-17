@@ -7,20 +7,35 @@ use dashmap::DashMap;
 use crate::budget_store::BudgetCommitMetadata;
 use crate::*;
 
+mod budget_sweep;
 mod credential_reservation;
+mod dispatch_intent;
 mod error;
 mod kernel_drop_guard;
 mod kernel_scopes;
 mod kernel_struct;
 #[cfg(debug_assertions)]
 mod ledger_audit;
+mod payment_reconcile;
 mod verified_treaty;
 
-pub use error::{KernelError, StructuredErrorReport};
+pub use budget_sweep::{
+    BudgetHoldSweepHandle, DEFAULT_HOLD_EXPIRY_HORIZON_SECS, DEFAULT_HOLD_SWEEP_INTERVAL_SECS,
+};
+pub use construction::KernelBuildError;
+pub use dispatch_intent::DefaultDispatchIntentReconciler;
+pub use error::{
+    HotPathStage, KernelError, OverloadResource, ReplayClockDirection, StructuredErrorReport,
+};
 pub use kernel_struct::{
-    ChioKernel, HybridSigningConfig, KernelConfig, DEFAULT_CHECKPOINT_BATCH_SIZE,
-    DEFAULT_MAX_SIZE_BYTES, DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
-    DEFAULT_RETENTION_DAYS, DEFAULT_RUNTIME_ADMISSION_READINESS_TIMEOUT_MS,
+    ChioKernel, HotPathDeadlineConfig, HybridSigningConfig, KernelConfig, MemoryBudgetConfig,
+    DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_SIZE_BYTES, DEFAULT_MAX_STREAM_DURATION_SECS,
+    DEFAULT_MAX_STREAM_TOTAL_BYTES, DEFAULT_RECEIPT_APPEND_BUDGET_MS,
+    DEFAULT_RECEIPT_WRITER_POLL_MS, DEFAULT_RECEIPT_WRITER_STALL_MS, DEFAULT_RETENTION_DAYS,
+    DEFAULT_RUNTIME_ADMISSION_READINESS_TIMEOUT_MS, MIN_RECEIPT_APPEND_BUDGET_MS,
+};
+pub use payment_reconcile::{
+    MonetaryDispatchIntentReconciler, PaymentReconcileOutcome, PaymentReconcileReport,
 };
 pub use verified_treaty::{
     FederationTreatyAdmissionBinding, FederationTreatyVerification,
@@ -29,11 +44,16 @@ pub use verified_treaty::{
 
 pub(crate) use dispatch::{dispatch_admission_error_reason, RuntimeReadinessRevalidation};
 pub(crate) use kernel_drop_guard::{
-    PostAdmissionDropGuard, PostAdmissionReceiptContext, PreDispatchCleanup,
-    PreDispatchCleanupOutcome,
+    reserved_runtime_admission_ids, PostAdmissionDropGuard, PostAdmissionReceiptContext,
+    PreDispatchCleanup, PreDispatchCleanupOutcome,
 };
+#[cfg(test)]
+pub(crate) use kernel_scopes::scope_receipt_tenant_id;
 pub(crate) use kernel_scopes::{
+    current_scoped_receipt_federation_admission, current_scoped_receipt_tenant_id,
     extract_tenant_id_from_auth_context, EvaluationReceiptContext, ReceiptFederationAdmission,
+    ScopedKernelDispatchIntent, ScopedKernelReceiptFederationAdmission,
+    ScopedKernelReceiptTenantId,
 };
 pub(crate) use kernel_struct::{capability_crypto_floor, receipt_crypto_floor};
 
@@ -460,13 +480,13 @@ pub trait Guard: Send + Sync {
     }
 
     /// Revalidate mutable guard state without consuming a second quota,
-    /// approval, or rate-limit token. The kernel invokes this after readiness
-    /// has suspended or when [`Self::requires_dispatch_revalidation`] returns
-    /// true. Guards used by either path must override this method.
+    /// approval, or rate-limit token. This default is a no-op so legacy and
+    /// immutable guards remain compatible when another component forces a
+    /// final readiness pass. Mutable guards opt in with
+    /// [`Self::requires_dispatch_revalidation`] and override this method; any
+    /// error from an opted-in implementation remains fail-closed.
     fn revalidate_before_dispatch(&self, _ctx: &GuardContext) -> Result<(), KernelError> {
-        Err(KernelError::GuardDenied(
-            "guard does not support readiness revalidation".to_string(),
-        ))
+        Ok(())
     }
 }
 
@@ -537,70 +557,125 @@ pub trait PromptProvider: Send + Sync {
     }
 }
 
-/// In-memory append-only log of signed receipts.
+/// Default capacity for a process-local receipt mirror when constructed without
+/// an explicit budget (tests / benches). The kernel construction path threads
+/// the configured `MemoryBudgetConfig::receipt_mirror_capacity` instead.
+const DEFAULT_RECEIPT_MIRROR_CAPACITY: usize = 4096;
+
+/// In-memory bounded ring of signed receipts. Process-local inspection mirror;
+/// a durable receipt store is authoritative for id lookups.
 ///
-/// This remains useful for process-local inspection even when a durable
-/// backend is configured.
-#[derive(Clone, Default)]
+/// `Clone` yields a read-only snapshot (used by the `receipt_log()` accessor).
+#[derive(Clone)]
 pub struct ReceiptLog {
-    receipts: Vec<ChioReceipt>,
+    ring: chio_bounded::Ring<ChioReceipt>,
 }
 
 impl ReceiptLog {
     pub fn new() -> Self {
-        Self::default()
+        Self::with_capacity(
+            DEFAULT_RECEIPT_MIRROR_CAPACITY,
+            chio_bounded::SizeGauge::new(),
+        )
+    }
+
+    pub fn with_capacity(capacity: usize, gauge: chio_bounded::SizeGauge) -> Self {
+        Self {
+            ring: chio_bounded::Ring::with_capacity(capacity, gauge),
+        }
     }
 
     pub fn append(&mut self, receipt: ChioReceipt) {
-        self.receipts.push(receipt);
+        // Evicted receipts are already durably persisted (the store write in
+        // record_chio_receipt precedes this mirror append) or ephemeral by
+        // policy, so dropping the evicted item is safe. Caveat: for an
+        // append-only/remote store that does NOT implement point lookups, this
+        // mirror is the only lookup source, so eviction here
+        // makes an older receipt unresolvable and parent-receipt call-chain
+        // validation fails closed. Such deployments must implement
+        // ReceiptStore::load_chio_receipt (see has_local_receipt_id).
+        let _evicted = self.ring.push(receipt);
     }
 
     pub fn len(&self) -> usize {
-        self.receipts.len()
+        self.ring.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.receipts.is_empty()
+        self.ring.is_empty()
     }
 
-    pub fn receipts(&self) -> &[ChioReceipt] {
-        &self.receipts
+    pub fn iter(&self) -> impl Iterator<Item = &ChioReceipt> {
+        self.ring.iter()
+    }
+
+    /// Cloned snapshot of the mirror (process-local inspection). Bounded by the
+    /// ring capacity.
+    pub fn receipts(&self) -> Vec<ChioReceipt> {
+        self.ring.iter().cloned().collect()
     }
 
     pub fn get(&self, index: usize) -> Option<&ChioReceipt> {
-        self.receipts.get(index)
+        self.ring.iter().nth(index)
     }
 }
 
-/// In-memory append-only log of signed child-request receipts.
-#[derive(Clone, Default)]
+impl Default for ReceiptLog {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// In-memory bounded ring of signed child-request receipts.
+#[derive(Clone)]
 pub struct ChildReceiptLog {
-    receipts: Vec<ChildRequestReceipt>,
+    ring: chio_bounded::Ring<ChildRequestReceipt>,
 }
 
 impl ChildReceiptLog {
     pub fn new() -> Self {
-        Self::default()
+        Self::with_capacity(
+            DEFAULT_RECEIPT_MIRROR_CAPACITY,
+            chio_bounded::SizeGauge::new(),
+        )
+    }
+
+    pub fn with_capacity(capacity: usize, gauge: chio_bounded::SizeGauge) -> Self {
+        Self {
+            ring: chio_bounded::Ring::with_capacity(capacity, gauge),
+        }
     }
 
     pub fn append(&mut self, receipt: ChildRequestReceipt) {
-        self.receipts.push(receipt);
+        let _evicted = self.ring.push(receipt);
     }
 
     pub fn len(&self) -> usize {
-        self.receipts.len()
+        self.ring.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.receipts.is_empty()
+        self.ring.is_empty()
     }
 
-    pub fn receipts(&self) -> &[ChildRequestReceipt] {
-        &self.receipts
+    pub fn iter(&self) -> impl Iterator<Item = &ChildRequestReceipt> {
+        self.ring.iter()
+    }
+
+    /// Cloned snapshot of the mirror (process-local inspection). Bounded by the
+    /// ring capacity.
+    pub fn receipts(&self) -> Vec<ChildRequestReceipt> {
+        self.ring.iter().cloned().collect()
     }
 
     pub fn get(&self, index: usize) -> Option<&ChildRequestReceipt> {
-        self.receipts.get(index)
+        self.ring.iter().nth(index)
+    }
+}
+
+impl Default for ChildReceiptLog {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -663,6 +738,7 @@ impl PreExecutionBudgetMutation {
 struct SessionNestedFlowBridge<'a, C> {
     sessions: &'a DashMap<SessionId, Arc<Session>>,
     child_receipts: &'a mut Vec<ChildRequestReceipt>,
+    nested_interaction_observed: &'a std::sync::atomic::AtomicBool,
     parent_context: &'a OperationContext,
     allow_sampling: bool,
     allow_sampling_tool_use: bool,
@@ -673,6 +749,49 @@ struct SessionNestedFlowBridge<'a, C> {
 }
 
 impl<C> SessionNestedFlowBridge<'_, C> {
+    fn mark_nested_interaction_observed(&self) {
+        self.nested_interaction_observed
+            .store(true, std::sync::atomic::Ordering::Release);
+    }
+
+    fn ensure_parent_not_cancelled(&self) -> Result<(), KernelError> {
+        let session = session_from_map(self.sessions, &self.parent_context.session_id)?;
+        let request_id = &self.parent_context.request_id;
+        let Some(parent) = session.inflight().get(request_id) else {
+            return Err(KernelError::RequestCancelled {
+                request_id: request_id.clone(),
+                reason: "parent session request completed during nested dispatch".to_string(),
+            });
+        };
+        if parent.cancellation_requested {
+            return Err(KernelError::RequestCancelled {
+                request_id: request_id.clone(),
+                reason: parent.cancellation_reason.unwrap_or_else(|| {
+                    "parent session request cancelled during nested dispatch".to_string()
+                }),
+            });
+        }
+        Ok(())
+    }
+
+    fn latch_matching_cancellation<T>(
+        &mut self,
+        result: &Result<T, KernelError>,
+        child_request_id: Option<&RequestId>,
+    ) -> Result<(), KernelError> {
+        let Err(KernelError::RequestCancelled { request_id, reason }) = result else {
+            return Ok(());
+        };
+        if request_id != &self.parent_context.request_id
+            && child_request_id.is_none_or(|child_request_id| request_id != child_request_id)
+        {
+            return Ok(());
+        }
+        session_from_map(self.sessions, &self.parent_context.session_id)?
+            .request_cancellation_with_reason(request_id, reason)?;
+        Ok(())
+    }
+
     fn complete_child_request_with_receipt<T: serde::Serialize>(
         &mut self,
         child_context: &OperationContext,
@@ -700,16 +819,30 @@ impl<C> SessionNestedFlowBridge<'_, C> {
     }
 }
 
+impl<C> Drop for SessionNestedFlowBridge<'_, C> {
+    fn drop(&mut self) {
+        if let Some(session) = self.sessions.get(&self.parent_context.session_id) {
+            session.mark_request_dispatch_finished(&self.parent_context.request_id);
+        }
+    }
+}
+
 impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
     fn parent_request_id(&self) -> &RequestId {
         &self.parent_context.request_id
     }
 
     fn poll_parent_cancellation(&mut self) -> Result<(), KernelError> {
-        self.client.poll_parent_cancellation(self.parent_context)
+        self.ensure_parent_not_cancelled()?;
+        self.mark_nested_interaction_observed();
+        let result = self.client.poll_parent_cancellation(self.parent_context);
+        self.latch_matching_cancellation(&result, None)?;
+        result
     }
 
     fn list_roots(&mut self) -> Result<Vec<RootDefinition>, KernelError> {
+        self.ensure_parent_not_cancelled()?;
+        self.mark_nested_interaction_observed();
         let (child_context, _start) = begin_child_request_in_sessions(
             self.sessions,
             self.parent_context,
@@ -733,14 +866,7 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
                 .replace_roots(roots.clone());
             Ok(roots)
         })();
-        if matches!(
-            &result,
-            Err(KernelError::RequestCancelled { request_id, .. })
-                if request_id == &child_context.request_id
-        ) {
-            session_from_map(self.sessions, &child_context.session_id)?
-                .request_cancellation(&child_context.request_id)?;
-        }
+        self.latch_matching_cancellation(&result, Some(&child_context.request_id))?;
         self.complete_child_request_with_receipt(
             &child_context,
             OperationKind::ListRoots,
@@ -754,6 +880,8 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
         &mut self,
         operation: CreateMessageOperation,
     ) -> Result<CreateMessageResult, KernelError> {
+        self.ensure_parent_not_cancelled()?;
+        self.mark_nested_interaction_observed();
         let (child_context, _start) = begin_child_request_in_sessions(
             self.sessions,
             self.parent_context,
@@ -773,14 +901,7 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
             self.client
                 .create_message(self.parent_context, &child_context, &operation)
         })();
-        if matches!(
-            &result,
-            Err(KernelError::RequestCancelled { request_id, .. })
-                if request_id == &child_context.request_id
-        ) {
-            session_from_map(self.sessions, &child_context.session_id)?
-                .request_cancellation(&child_context.request_id)?;
-        }
+        self.latch_matching_cancellation(&result, Some(&child_context.request_id))?;
         self.complete_child_request_with_receipt(
             &child_context,
             OperationKind::CreateMessage,
@@ -794,6 +915,8 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
         &mut self,
         operation: CreateElicitationOperation,
     ) -> Result<CreateElicitationResult, KernelError> {
+        self.ensure_parent_not_cancelled()?;
+        self.mark_nested_interaction_observed();
         let (child_context, _start) = begin_child_request_in_sessions(
             self.sessions,
             self.parent_context,
@@ -812,14 +935,7 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
             self.client
                 .create_elicitation(self.parent_context, &child_context, &operation)
         })();
-        if matches!(
-            &result,
-            Err(KernelError::RequestCancelled { request_id, .. })
-                if request_id == &child_context.request_id
-        ) {
-            session_from_map(self.sessions, &child_context.session_id)?
-                .request_cancellation(&child_context.request_id)?;
-        }
+        self.latch_matching_cancellation(&result, Some(&child_context.request_id))?;
         self.complete_child_request_with_receipt(
             &child_context,
             OperationKind::CreateElicitation,
@@ -830,15 +946,21 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
     }
 
     fn notify_elicitation_completed(&mut self, elicitation_id: &str) -> Result<(), KernelError> {
+        self.ensure_parent_not_cancelled()?;
         let session = session_from_map(self.sessions, &self.parent_context.session_id)?;
         session.validate_context(self.parent_context)?;
         session.ensure_operation_allowed(OperationKind::ToolCall)?;
 
-        self.client
-            .notify_elicitation_completed(self.parent_context, elicitation_id)
+        self.mark_nested_interaction_observed();
+        let result = self
+            .client
+            .notify_elicitation_completed(self.parent_context, elicitation_id);
+        self.latch_matching_cancellation(&result, None)?;
+        result
     }
 
     fn notify_resource_updated(&mut self, uri: &str) -> Result<(), KernelError> {
+        self.ensure_parent_not_cancelled()?;
         let session = session_from_map(self.sessions, &self.parent_context.session_id)?;
         session.validate_context(self.parent_context)?;
         session.ensure_operation_allowed(OperationKind::ToolCall)?;
@@ -847,17 +969,26 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
             return Ok(());
         }
 
-        self.client
-            .notify_resource_updated(self.parent_context, uri)
+        self.mark_nested_interaction_observed();
+        let result = self
+            .client
+            .notify_resource_updated(self.parent_context, uri);
+        self.latch_matching_cancellation(&result, None)?;
+        result
     }
 
     fn notify_resources_list_changed(&mut self) -> Result<(), KernelError> {
+        self.ensure_parent_not_cancelled()?;
         let session = session_from_map(self.sessions, &self.parent_context.session_id)?;
         session.validate_context(self.parent_context)?;
         session.ensure_operation_allowed(OperationKind::ToolCall)?;
 
-        self.client
-            .notify_resources_list_changed(self.parent_context)
+        self.mark_nested_interaction_observed();
+        let result = self
+            .client
+            .notify_resources_list_changed(self.parent_context);
+        self.latch_matching_cancellation(&result, None)?;
+        result
     }
 }
 
@@ -1168,6 +1299,10 @@ pub mod settlement_observer;
 // signing leaves the synchronous critical path.
 #[path = "signing_task.rs"]
 pub(crate) mod signing_task;
+// Receipt-writer liveness watchdog. Publishes the latest verdict the
+// pre-dispatch readiness gate reads.
+#[path = "receipt_writer_watchdog.rs"]
+mod receipt_writer_watchdog;
 #[cfg(test)]
 #[path = "tests.rs"]
 mod tests;

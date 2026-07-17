@@ -1624,7 +1624,7 @@
         },
         {
           "kind": "schema",
-          "ref": "spec/schemas/chio-agent-web/v1/proof-envelope.schema.json"
+          "ref": "spec/schemas/chio-agent-web/v2/proof-envelope.schema.json"
         }
       ]
     },

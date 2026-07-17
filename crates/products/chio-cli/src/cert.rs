@@ -4,8 +4,8 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use chio_acp_proxy::{
-    ComplianceCertificate, ComplianceConfig, ComplianceReceiptEntry, VerificationMode,
-    generate_compliance_certificate, verify_compliance_certificate,
+    generate_compliance_certificate, verify_compliance_certificate, ComplianceCertificate,
+    ComplianceConfig, ComplianceReceiptEntry, VerificationMode,
 };
 
 use crate::CliError;

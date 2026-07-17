@@ -312,8 +312,24 @@ where
     if len > max_bytes {
         return Err(IrohLaneError::FrameTooLarge(len));
     }
-    let mut buf = vec![0u8; len];
-    reader.read_exact(&mut buf).await?;
+    // Grow the buffer as bytes actually arrive instead of committing `len` up
+    // front: a peer that declares a large length then dribbles holds only what it
+    // has sent (the per-phase ReadFrame timeout still bounds the dribble).
+    const READ_CHUNK: usize = 64 * 1024;
+    let mut buf: Vec<u8> = Vec::with_capacity(len.min(READ_CHUNK));
+    let mut remaining = len;
+    let mut chunk = [0u8; READ_CHUNK];
+    while remaining > 0 {
+        let want = remaining.min(READ_CHUNK);
+        let n = reader.read(&mut chunk[..want]).await?;
+        if n == 0 {
+            return Err(IrohLaneError::Io(std::io::Error::from(
+                std::io::ErrorKind::UnexpectedEof,
+            )));
+        }
+        buf.extend_from_slice(&chunk[..n]);
+        remaining -= n;
+    }
     Ok(buf)
 }
 
@@ -453,6 +469,21 @@ impl PheromoneBatchHandler {
         // the HTTP path, so a sender that has since fallen out of scope cannot replay.
         (self.scope_check)(&authenticated_sender, &batch)?;
 
+        // RE-RESOLVE AGAINST THE CURRENT DIRECTORY BEFORE TOUCHING RECEIVER STATE
+        // (fail-closed). The admission gate authorized this endpoint at `after_handshake`,
+        // but the directory reloader can publish a deny-all (expiry, revoked local binding,
+        // below-minVersion, or an untrusted signing issuer) - or a successor that tombstones
+        // this sender - DURING the accept_bi + request-frame read this handler just awaited.
+        // Resolving the sender only once at accept would let a peer that connected just
+        // before that swap still deliver a batch under a directory that is no longer valid.
+        // Resolve again now, immediately before any receiver/inbox mutation: an endpoint the
+        // current directory no longer admits (or now binds to a different kernel) is reset
+        // here rather than received under a stale directory.
+        let remote = conn.remote_id();
+        if resolve_authenticated_sender(&self.gate, &remote)? != authenticated_sender {
+            return Err(IrohLaneError::Unadmitted(remote.fmt_short().to_string()));
+        }
+
         // DEDUP BEFORE RECEIVE (fail-closed idempotency): compute the deterministic
         // inbox nonce and consult the store BEFORE mutating receiver state. On a
         // retry of an already-admitted batch, re-running receive_batch would re-enter
@@ -516,49 +547,118 @@ impl PheromoneBatchHandler {
                         slot.release()?;
                         stored
                     } else {
-                        let now = (self.now)();
-                        // The report type (chio-pheromone-runtime PheromoneReceiveReport)
-                        // is not nameable here; it flows through by inference. The per-frame
-                        // verifier (pheromone_gossip.rs:236/244) runs inside this call,
-                        // unchanged, and only ever on a batch not already in the inbox.
-                        let fresh = match self
+                        // WINNER-PATH DURABLE-VERDICT RECOVERY (symmetric with the loser
+                        // path below). Winning the reservation and finding no
+                        // recorded inbox verdict does NOT prove the batch is unreceived across
+                        // the two-store boundary. receive_batch self-commits its runtime
+                        // mutation (deposits + receive-report) in the RUNTIME store; slot.commit()
+                        // marks the RELAY reservation committed in a SEPARATE durable write, with
+                        // a cross-store fsync between the two. A hard crash (SIGKILL / OOM /
+                        // power) in that window leaves the batch ADMITTED in the runtime store
+                        // but the relay reservation committed = 0, which the store reclaims at
+                        // open; a redelivery then re-wins the reservation and reaches HERE.
+                        // Consult the runtime store by batch hash BEFORE re-running
+                        // receive_batch: if it already holds a committed receive-report, ADOPT
+                        // that durable verdict rather than re-running the receiver (which would
+                        // re-enter the runtime replay window and reject the already-admitted
+                        // deposits - a spurious "rejected" verdict that dead-letters an accepted
+                        // batch). The hash is sha256_hex over the same canonical batch bytes the
+                        // runtime store keys on (batch_sha256 == sha256_hex(canonical_json_bytes)),
+                        // identical to the loser path.
+                        let batch_sha256 = sha256_hex(&batch_bytes);
+                        // SCOPE THE RECOVERED VERDICT TO THE AUTHENTICATED SENDER
+                        // (fail-closed): a batch hash is NOT sender-unique. A DIFFERENT
+                        // authenticated sender can durably record a verdict for these exact
+                        // batch bytes - either an envelope-rejected report (any peer that
+                        // replays the bytes with the WRONG identity trips
+                        // gossiping_peer_kernel_id != authenticated_sender), or, for a batch
+                        // whose gossiping_peer_kernel_id it legitimately owns, an accepted
+                        // one. Adopting it verbatim would attribute that sender's verdict to
+                        // OUR (authenticated_sender, nonce) inbox key, bypassing the
+                        // per-frame verifier's gossiping_peer_kernel_id == authenticated_sender
+                        // binding: a wrong sender could POISON this batch hash with a rejected
+                        // verdict before the real sender arrives, or RECEIVE an accepted verdict
+                        // for another sender's batch. The runtime-store lookup is now itself
+                        // sender-scoped at the query level, so it returns THIS sender's row (or
+                        // None); the `.filter` re-checks the deserialized sender as
+                        // belt-and-suspenders. Any non-matching (or absent) report falls through
+                        // to receive_batch, which re-runs that verifier under THIS sender.
+                        if let Some(recovered) = self
                             .receiver
-                            .receive_batch(batch.clone(), authenticated_sender.clone(), now)
-                            .await
+                            .recorded_report_for_batch(&batch_sha256, &authenticated_sender)
+                            .await?
+                            .filter(|recovered| {
+                                recovered.authenticated_sender_kernel_id == authenticated_sender
+                            })
                         {
-                            // receive_batch self-commits its runtime mutation only on Ok; an
-                            // Err admitted nothing. The still-ARMED guard drops on this
-                            // `?`-return and RELEASES the slot so a redelivery can re-claim
-                            // and re-receive. Fail-closed.
-                            Err(error) => return Err(error.into()),
-                            Ok(fresh) => fresh,
-                        };
-                        // Deposits are now committed. COMMIT the slot: disarm (a cancel/panic
-                        // in the committed-but-unrecorded window below must NOT release, or a
-                        // redelivery would re-receive an already-admitted batch, yielding a
-                        // spurious "rejected" durable verdict for deposits that were in fact
-                        // admitted) AND persist the durable commit marker so a PROCESS crash in
-                        // this window leaves a reservation that survives the store's
-                        // clear-at-open, forcing redelivery down the fail-closed loser path.
-                        slot.commit()?;
-                        match self
-                            .store
-                            .record_inbox(&authenticated_sender, &nonce, &batch, &fresh)
-                        {
-                            // Durable verdict recorded: it now short-circuits any redelivery
-                            // at lookup_inbox_report BEFORE the reservation is consulted, so
-                            // the reservation is redundant. Release it to bound
-                            // reservation-table growth (fail-closed on the store error; the
-                            // recorded verdict still short-circuits the peer's retry).
-                            Ok(_) => slot.release()?,
-                            // A committed batch whose verdict failed to record must NOT be
-                            // re-received. Leave the slot HELD (already disarmed): a
-                            // redelivery loses the reservation and takes the loser /
-                            // fail-closed path, never re-running the receiver. The peer retry
-                            // fail-closes pending operational recovery.
-                            Err(error) => return Err(error.into()),
+                            // Adopt the durable verdict as the inbox record so both peers
+                            // converge. record_inbox is idempotent (ON CONFLICT), so a
+                            // concurrent handler recording first is harmless. RELEASE the
+                            // committed residual reservation via the guard (disarming it so the
+                            // Drop does not release again) now that the durable inbox row
+                            // short-circuits any later redelivery at lookup_inbox_report before
+                            // the reservation is consulted. NEVER re-run receive_batch. The lane
+                            // accept counter is NOT incremented here: `handle` returns Ok on this
+                            // recovery, and `accept` counts LANE_OUTCOME_ACCEPT once for every
+                            // Ok(()), exactly as it does for a fresh delivery or an inbox hit.
+                            // Counting here too would emit TWO accept samples for one recovered
+                            // redelivery (metric dedupe).
+                            let _ = self.store.record_inbox(
+                                &authenticated_sender,
+                                &nonce,
+                                &batch,
+                                &recovered,
+                            )?;
+                            slot.release()?;
+                            recovered
+                        } else {
+                            let now = (self.now)();
+                            // The report type (chio-pheromone-runtime PheromoneReceiveReport)
+                            // is not nameable here; it flows through by inference. The per-frame
+                            // verifier (pheromone_gossip.rs:236/244) runs inside this call,
+                            // unchanged, and only ever on a batch neither already in the inbox
+                            // nor durably committed in the runtime store.
+                            let fresh = match self
+                                .receiver
+                                .receive_batch(batch.clone(), authenticated_sender.clone(), now)
+                                .await
+                            {
+                                // receive_batch self-commits its runtime mutation only on Ok; an
+                                // Err admitted nothing. The still-ARMED guard drops on this
+                                // `?`-return and RELEASES the slot so a redelivery can re-claim
+                                // and re-receive. Fail-closed.
+                                Err(error) => return Err(error.into()),
+                                Ok(fresh) => fresh,
+                            };
+                            // Deposits are now committed. COMMIT the slot: disarm (a cancel/panic
+                            // in the committed-but-unrecorded window below must NOT release, or a
+                            // redelivery would re-receive an already-admitted batch, yielding a
+                            // spurious "rejected" durable verdict for deposits that were in fact
+                            // admitted) AND persist the durable commit marker so a PROCESS crash
+                            // in this window leaves a reservation that survives the store's
+                            // clear-at-open, forcing redelivery down the fail-closed loser path.
+                            slot.commit()?;
+                            match self.store.record_inbox(
+                                &authenticated_sender,
+                                &nonce,
+                                &batch,
+                                &fresh,
+                            ) {
+                                // Durable verdict recorded: it now short-circuits any redelivery
+                                // at lookup_inbox_report BEFORE the reservation is consulted, so
+                                // the reservation is redundant. Release it to bound
+                                // reservation-table growth (fail-closed on the store error; the
+                                // recorded verdict still short-circuits the peer's retry).
+                                Ok(_) => slot.release()?,
+                                // A committed batch whose verdict failed to record must NOT be
+                                // re-received. Leave the slot HELD (already disarmed): a
+                                // redelivery loses the reservation and takes the loser /
+                                // fail-closed path, never re-running the receiver. The peer retry
+                                // fail-closes pending operational recovery.
+                                Err(error) => return Err(error.into()),
+                            }
+                            fresh
                         }
-                        fresh
                     }
                 } else {
                     // Loser: a concurrent handler is receiving this exact batch. Do
@@ -577,13 +677,68 @@ impl PheromoneBatchHandler {
                         }
                         tokio::time::sleep(DEDUP_WAIT_BACKOFF).await;
                     }
-                    // Fail-closed if the winner has not recorded within the bound: the
-                    // peer retries and the durable inbox short-circuits the retry.
-                    verdict.ok_or_else(|| {
-                        IrohLaneError::DedupInFlight(format!(
-                            "sender {authenticated_sender} nonce {nonce} still receiving"
-                        ))
-                    })?
+                    match verdict {
+                        Some(stored) => stored,
+                        None => {
+                            // Durable-verdict recovery: the bounded poll found no recorded
+                            // inbox verdict, but the runtime store may
+                            // have durably committed this batch before a crash in the
+                            // commit-to-record window (receive_batch self-committed the
+                            // deposits; the process died before record_inbox wrote the
+                            // durable verdict, leaving the reservation committed=1). A
+                            // redelivery then lost the slot and reached this loser path.
+                            // Consult the runtime store by batch hash: the hash is
+                            // sha256_hex over the same canonical batch bytes the runtime
+                            // store keys on (batch_sha256 == sha256_hex(canonical_json_bytes)).
+                            let batch_sha256 = sha256_hex(&batch_bytes);
+                            // SCOPE THE RECOVERED VERDICT TO THE AUTHENTICATED SENDER
+                            // (fail-closed), identically to the winner path above: a batch hash
+                            // is NOT sender-unique, so a report the store holds for these bytes
+                            // may belong to a DIFFERENT authenticated sender. Adopting it would
+                            // attribute another sender's verdict to OUR (authenticated_sender,
+                            // nonce), bypassing the per-frame gossiping_peer_kernel_id ==
+                            // authenticated_sender binding. The runtime-store lookup is now itself
+                            // sender-scoped at the query level; the `.filter` re-checks the
+                            // deserialized sender as belt-and-suspenders. A wrong-sender (or
+                            // absent) report denies here so the peer retries and the durable inbox
+                            // short-circuits once THIS sender's own verdict is recorded.
+                            if let Some(recovered) = self
+                                .receiver
+                                .recorded_report_for_batch(&batch_sha256, &authenticated_sender)
+                                .await?
+                                .filter(|recovered| {
+                                    recovered.authenticated_sender_kernel_id == authenticated_sender
+                                })
+                            {
+                                // Adopt the durable verdict as the inbox record so both
+                                // peers converge. record_inbox is idempotent (ON CONFLICT),
+                                // so a concurrent winner recording first is harmless.
+                                let _ = self.store.record_inbox(
+                                    &authenticated_sender,
+                                    &nonce,
+                                    &batch,
+                                    &recovered,
+                                )?;
+                                // Release the committed residual reservation now that the
+                                // durable inbox row short-circuits any later redelivery at
+                                // lookup_inbox_report before the reservation is consulted.
+                                // The lane accept counter is NOT incremented here: `handle`
+                                // returns Ok on this recovery and `accept` counts
+                                // LANE_OUTCOME_ACCEPT once for every Ok(()), so counting here too
+                                // would double-count one recovered redelivery (metric dedupe).
+                                self.store
+                                    .release_inbox_slot(&authenticated_sender, &nonce)?;
+                                recovered
+                            } else {
+                                // Fail-closed if there is no durable verdict FOR THIS SENDER
+                                // to recover: the peer retries and the durable inbox
+                                // short-circuits the retry once the winner records.
+                                return Err(IrohLaneError::DedupInFlight(format!(
+                                    "sender {authenticated_sender} nonce {nonce} still receiving"
+                                )));
+                            }
+                        }
+                    }
                 }
             }
         };
@@ -609,7 +764,7 @@ impl ProtocolHandler for PheromoneBatchHandler {
         // Concurrency cap: acquire one in-flight permit (held for the whole
         // handler) or shed under saturation with a distinct busy code, so one
         // hostile peer cannot spawn unbounded accept tasks.
-        let _permit = match self.limiter.admit().await {
+        let _permit = match self.limiter.admit_peer(&conn.remote_id()).await {
             Ok(permit) => permit,
             Err(error) => {
                 crate::metrics::record_lane_frame(
@@ -931,8 +1086,8 @@ where
             Ok(outcome) if outcome.accepted => {
                 store.mark_delivered(&entry.outbox_id)?;
                 report.delivered = report.delivered.saturating_add(1);
-                // OBSERVE-ONLY: the iroh outbox drain emits the delivery outcome the
-                // shipped HTTP relay already meters; this path was previously dark.
+                // Observe-only: the iroh outbox drain emits the delivery outcome the
+                // shipped HTTP relay already meters.
                 crate::metrics::record_outbox(crate::metrics::OUTBOX_DELIVERED);
             }
             Ok(_) => {
@@ -1014,11 +1169,51 @@ mod tests {
     use chio_federation::pheromone_gossip::PHEROMONE_GOSSIP_SCHEMA;
     use chio_federation::pheromone_gossip::PHEROMONE_TRANSIT_POLICY_SCHEMA;
     use iroh::SecretKey;
+    use std::sync::atomic::AtomicBool;
+    use std::sync::atomic::Ordering;
 
     const NOW: u64 = 1_766_000_000_500;
     const RECIPIENT: &str = "did:chio:buyer-kernel";
     const TREATY: &str = "treaty:buyer-llamaworks:support-ops";
     const NAMESPACE: &str = "dev.chio.support";
+
+    /// Serializes every test that records a pheromone-lane ACCEPT so the double-count
+    /// tests can assert an EXACT delta on the process-global metric
+    /// statics. Without it, the ~8 parallel accept-counting tests in this module would
+    /// perturb the shared counter between a test's before/after reads. Any NEW test that
+    /// drives a successful delivery (a lane ACCEPT) MUST acquire this guard.
+    static COUNTED_ACCEPT_SERIAL: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    /// Read the pheromone-lane ACCEPT counter once it stops advancing. The acceptor
+    /// records the metric in `accept()` AFTER `handle` returns - i.e. after the dialer has
+    /// already read the report and `deliver_batch_over_iroh` returned - so a naive read
+    /// right after delivery can miss it. Serialized by [`COUNTED_ACCEPT_SERIAL`], only
+    /// this test's own delivery can advance the counter, so waiting for it to reach
+    /// `at_least` and then hold steady is deterministic.
+    async fn settled_pheromone_accept_total(before: u64, at_least: u64) -> u64 {
+        let read = || {
+            crate::metrics::lane_total(
+                crate::metrics::LANE_PHEROMONE,
+                crate::metrics::LANE_OUTCOME_ACCEPT,
+            )
+        };
+        let mut last = read();
+        let mut stable = 0u32;
+        for _ in 0..400 {
+            tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            let now = read();
+            if now == last && now >= before + at_least {
+                stable += 1;
+                if stable >= 4 {
+                    return now;
+                }
+            } else if now != last {
+                stable = 0;
+                last = now;
+            }
+        }
+        last
+    }
 
     fn endpoint_from_seed(seed: u8) -> EndpointId {
         SecretKey::from_bytes(&[seed; 32]).public()
@@ -1289,7 +1484,7 @@ mod tests {
     async fn read_len_delimited_enforces_the_configured_ingress_cap() {
         // A frame WITHIN the transport hard cap but OVER the configured body limit is
         // rejected before allocation, so the iroh ingress is no laxer than the HTTP
-        // relay's DefaultBodyLimit (the FINDING 3 parity fix).
+        // relay's DefaultBodyLimit.
         let configured = 256_000usize; // production relay max_body_bytes
         let mut framed: Vec<u8> = Vec::new();
         let over_configured = (configured as u32).saturating_add(1);
@@ -1302,6 +1497,32 @@ mod tests {
             IrohLaneError::FrameTooLarge(len) => assert_eq!(len as u32, over_configured),
             other => panic!("expected FrameTooLarge, got {other:?}"),
         }
+    }
+
+    #[tokio::test]
+    async fn incremental_read_holds_only_delivered_bytes() {
+        // A frame that declares a large length but is fully delivered still reads
+        // back byte-for-byte, and the buffer never pre-commits the declared length.
+        let payload = vec![7u8; 200 * 1024];
+        let mut framed = Vec::new();
+        framed.extend_from_slice(&(payload.len() as u32).to_be_bytes());
+        framed.extend_from_slice(&payload);
+        let mut reader = std::io::Cursor::new(framed);
+        let out = read_len_delimited(&mut reader, 8 * 1024 * 1024)
+            .await
+            .expect("a fully-delivered frame reads back");
+        assert_eq!(out, payload);
+
+        // A truncated body (declares more than it delivers) fails with an EOF Io
+        // error after consuming only the delivered bytes, never allocating `len`.
+        let mut short = Vec::new();
+        short.extend_from_slice(&(64u32 * 1024).to_be_bytes());
+        short.extend_from_slice(&[1u8; 10]); // only 10 of 65536 bytes delivered
+        let mut reader = std::io::Cursor::new(short);
+        let err = read_len_delimited(&mut reader, 8 * 1024 * 1024)
+            .await
+            .expect_err("a truncated frame is rejected");
+        assert!(matches!(err, IrohLaneError::Io(_)), "unexpected: {err:?}");
     }
 
     // -- Inbox-reservation lifecycle (InboxSlotGuard) --
@@ -1400,7 +1621,7 @@ mod tests {
 
     #[test]
     fn winning_the_reservation_does_not_prove_the_batch_is_unreceived() {
-        // Premise of handle()'s post-win RE-READ (FINDING 2, the "reservation won after
+        // Premise of handle()'s post-win RE-READ (the "reservation won after
         // another handler recorded+released" race): because the winner RELEASES its slot
         // after recording the durable verdict (to bound reservation-table growth), a later
         // redelivery can WIN the SAME (sender, nonce) reservation AGAIN even though the
@@ -1596,6 +1817,7 @@ mod tests {
 
     #[tokio::test]
     async fn admitted_dialer_batch_accepted_over_quic() {
+        let _serial = COUNTED_ACCEPT_SERIAL.lock().await;
         let dialer_seed = 20u8;
         let gate = verified_gate("did:chio:bob", 1, dialer_seed, false);
         let acceptor = bind_endpoint(21, Some(gate.clone())).await;
@@ -1614,6 +1836,658 @@ mod tests {
         .expect("delivery completes before timeout")
         .expect("admitted dialer delivers its batch");
         assert!(outcome.accepted, "admitted dialer's batch is accepted");
+
+        router.shutdown().await.ok();
+    }
+
+    /// A receiver double that records whether `receive_batch` ever ran, so a deny-all
+    /// swap between admission and receive can be proven to admit nothing.
+    struct ReceiveProbe {
+        received: Arc<AtomicBool>,
+    }
+
+    #[async_trait::async_trait]
+    impl RelayBatchReceiver for ReceiveProbe {
+        async fn receive_batch(
+            &self,
+            _batch: PheromoneGossipBatch,
+            _authenticated_sender_kernel_id: String,
+            _received_at_unix_ms: u64,
+        ) -> Result<chio_pheromone_runtime::PheromoneReceiveReport, PheromoneRelayError> {
+            self.received.store(true, Ordering::SeqCst);
+            Err(PheromoneRelayError::Json(
+                "receiver must not run after a deny-all swap".to_string(),
+            ))
+        }
+    }
+
+    #[tokio::test]
+    async fn deny_all_swap_between_admission_and_receive_admits_nothing() {
+        // A peer admitted at the handshake must not deliver a batch once the directory has
+        // swapped to deny-all. The swap is published mid-handle - after the connection was
+        // admitted and the request frame read, but before any receiver state is touched -
+        // modeling the reloader publishing deny-all while a peer is already in flight. The
+        // handler must re-resolve against the live directory and refuse to receive, so the
+        // batch never reaches the receiver.
+        let dialer_seed = 60u8;
+        let gate = verified_gate("did:chio:bob", 1, dialer_seed, false);
+
+        let received = Arc::new(AtomicBool::new(false));
+        let receiver: Arc<dyn RelayBatchReceiver> = Arc::new(ReceiveProbe {
+            received: Arc::clone(&received),
+        });
+
+        // Swap the shared directory to deny-all at the exact instant the batch is scoped.
+        let swap_gate = gate.clone();
+        let scope_check: InboundBatchScopeCheck = Arc::new(
+            move |_sender: &str,
+                  _batch: &PheromoneGossipBatch|
+                  -> Result<(), PheromoneRelayError> {
+                swap_gate.swap(Arc::new(
+                    crate::identity::VerifiedDirectory::empty_deny_all(),
+                ));
+                Ok(())
+            },
+        );
+
+        let store = Arc::new(SqlitePheromoneRelayStore::open_in_memory().unwrap());
+        let now: Arc<dyn Fn() -> u64 + Send + Sync> = Arc::new(|| NOW);
+        let handler = PheromoneBatchHandler::new(
+            gate.clone(),
+            receiver,
+            Arc::clone(&store),
+            now,
+            scope_check,
+        );
+
+        let acceptor = bind_endpoint(61, Some(gate.clone())).await;
+        let router = Router::builder(acceptor)
+            .accept(ALPN_PHEROMONE_BATCH, handler)
+            .spawn();
+        let acceptor_addr = direct_addr(router.endpoint());
+
+        let dialer = bind_endpoint(dialer_seed, None).await;
+        let batch = direct_batch("did:chio:bob");
+        let outcome = tokio::time::timeout(
+            Duration::from_secs(20),
+            deliver_batch_over_iroh(&dialer, acceptor_addr, &batch),
+        )
+        .await
+        .expect("delivery attempt completes before timeout");
+
+        assert!(
+            outcome.is_err(),
+            "a batch delivered after the directory swapped to deny-all must fail closed"
+        );
+        assert!(
+            !received.load(Ordering::SeqCst),
+            "the receiver must never run once the directory has swapped to deny-all"
+        );
+
+        router.shutdown().await.ok();
+    }
+
+    /// A receiver double shared by BOTH recovery tests (loser and winner path):
+    /// its `receive_batch` must never run (neither recovery path re-receives an
+    /// already-admitted batch), and its `recorded_report_for_batch` surfaces the
+    /// durably-committed runtime verdict. The panic is the teeth: any recovery path
+    /// that re-runs the receiver trips it.
+    struct RecoveringReceiver {
+        report: chio_pheromone_runtime::PheromoneReceiveReport,
+    }
+
+    #[async_trait::async_trait]
+    impl RelayBatchReceiver for RecoveringReceiver {
+        async fn receive_batch(
+            &self,
+            _batch: PheromoneGossipBatch,
+            _authenticated_sender_kernel_id: String,
+            _received_at_unix_ms: u64,
+        ) -> Result<chio_pheromone_runtime::PheromoneReceiveReport, PheromoneRelayError> {
+            panic!("recovery path must not re-run receive_batch");
+        }
+
+        async fn recorded_report_for_batch(
+            &self,
+            _batch_sha256: &str,
+            _authenticated_sender_kernel_id: &str,
+        ) -> Result<Option<chio_pheromone_runtime::PheromoneReceiveReport>, PheromoneRelayError>
+        {
+            Ok(Some(self.report.clone()))
+        }
+    }
+
+    #[tokio::test]
+    async fn verdict_recovery_converges_after_commit_before_record_crash() {
+        let _serial = COUNTED_ACCEPT_SERIAL.lock().await;
+        // A crash after receive_batch self-commits its deposits but before record_inbox
+        // writes the durable verdict leaves the reservation committed=1. A redelivery
+        // loses the slot and reaches the loser path; it must recover the durable verdict
+        // (via recorded_report_for_batch) and converge, never dead-letter the accepted
+        // batch.
+        let dialer_seed = 40u8;
+        let gate = verified_gate("did:chio:bob", 1, dialer_seed, false);
+
+        // The batch the dialer delivers, and the (sender, nonce) it keys on.
+        let batch = direct_batch("did:chio:bob");
+        let batch_bytes = canonical_json_bytes(&batch).unwrap();
+        let nonce = inbox_nonce(&batch_bytes);
+        let sender = "did:chio:bob";
+
+        // Seed the crash-after-commit-before-record state: a COMMITTED residual
+        // reservation for (sender, nonce) with NO recorded verdict, so the handler's
+        // reserve_inbox_slot loses and the redelivery takes the loser path.
+        let store = Arc::new(SqlitePheromoneRelayStore::open_in_memory().unwrap());
+        assert!(store.reserve_inbox_slot(sender, &nonce).unwrap().won);
+        store
+            .mark_inbox_reservation_committed(sender, &nonce)
+            .unwrap();
+        assert!(store.lookup_inbox_report(sender, &nonce).unwrap().is_none());
+
+        // The durable verdict the runtime store committed before the crash, surfaced
+        // by the receiver double. Its batch_sha256 matches the handler's lookup key
+        // (canonical_sha256 of the batch), though the double returns it regardless.
+        let canned = chio_pheromone_runtime::PheromoneReceiveReport {
+            schema: "chio.pheromone-receive-report.v1".to_string(),
+            accepted: true,
+            batch_outcome: chio_pheromone_runtime::PheromoneBatchOutcome::Accepted,
+            accepted_frame_count: batch.frames.len() as u64,
+            rejected_frame_count: 0,
+            batch_sha256: core_sha256_hex(&batch_bytes),
+            recipient_kernel_id: RECIPIENT.to_string(),
+            authenticated_sender_kernel_id: sender.to_string(),
+            received_at_unix_ms: NOW,
+            frames: Vec::new(),
+        };
+
+        let receiver: Arc<dyn RelayBatchReceiver> = Arc::new(RecoveringReceiver { report: canned });
+        let scope_check: InboundBatchScopeCheck = Arc::new(
+            |_sender: &str, _batch: &PheromoneGossipBatch| -> Result<(), PheromoneRelayError> {
+                Ok(())
+            },
+        );
+        let now: Arc<dyn Fn() -> u64 + Send + Sync> = Arc::new(|| NOW);
+        let handler = PheromoneBatchHandler::new(
+            gate.clone(),
+            receiver,
+            Arc::clone(&store),
+            now,
+            scope_check,
+        );
+
+        let before = crate::metrics::lane_total(
+            crate::metrics::LANE_PHEROMONE,
+            crate::metrics::LANE_OUTCOME_ACCEPT,
+        );
+
+        let acceptor = bind_endpoint(41, Some(gate.clone())).await;
+        let router = Router::builder(acceptor)
+            .accept(ALPN_PHEROMONE_BATCH, handler)
+            .spawn();
+        let acceptor_addr = direct_addr(router.endpoint());
+
+        let dialer = bind_endpoint(dialer_seed, None).await;
+        let outcome = tokio::time::timeout(
+            Duration::from_secs(20),
+            deliver_batch_over_iroh(&dialer, acceptor_addr, &batch),
+        )
+        .await
+        .expect("delivery completes before timeout")
+        .expect("loser path recovers the durable verdict and returns it");
+
+        // Convergence: the dialer reads the recovered accepted verdict, and the
+        // durable inbox now records it so a further redelivery short-circuits.
+        assert!(
+            outcome.accepted,
+            "the recovered verdict is the accepted one"
+        );
+        assert!(
+            store.lookup_inbox_report(sender, &nonce).unwrap().is_some(),
+            "recovery adopts the durable verdict as the inbox record"
+        );
+        // Metric dedupe: a recovered redelivery must count EXACTLY ONE accept, like a
+        // fresh delivery or an inbox hit. `accept` counts one accept for every Ok(()); a
+        // stray inner count in handle's loser-path recovery would emit a SECOND sample
+        // (delta == 2 instead of 1).
+        let after = settled_pheromone_accept_total(before, 1).await;
+        assert_eq!(
+            after - before,
+            1,
+            "loser-path recovery counts exactly one accept, not two"
+        );
+
+        router.shutdown().await.ok();
+    }
+
+    #[tokio::test]
+    async fn winner_path_adopts_durable_verdict_after_commit_before_mark_crash() {
+        let _serial = COUNTED_ACCEPT_SERIAL.lock().await;
+        // WINNER path, symmetric with the loser-path recovery above.
+        // The winner and loser paths cover two DIFFERENT crash windows, distinguished
+        // solely by the reservation's committed flag at open:
+        //  - LOSER window (test above): a crash AFTER slot.commit() leaves a
+        //    committed = 1 reservation that SURVIVES clear-at-open, so a redelivery
+        //    LOSES reserve_inbox_slot and takes the loser path.
+        //  - WINNER window (this test): a crash BETWEEN receive_batch self-committing
+        //    its runtime deposits (in the RUNTIME store) and slot.commit() marking the
+        //    RELAY reservation committed leaves committed = 0, which the store reclaims
+        //    at open. A redelivery therefore WINS reserve_inbox_slot, re-reads the RELAY
+        //    inbox (still None), and, absent the runtime-store consult, would re-run
+        //    receive_batch on an already-admitted batch. The runtime replay-nonce
+        //    idempotency then turns every frame into ReplayWindowExceeded, recording +
+        //    returning a spurious REJECTED verdict that dead-letters an accepted batch.
+        //    The winner path instead consults the RUNTIME store by batch_sha256 first and
+        //    ADOPTS the durable verdict, never re-running receive_batch.
+        //
+        // The shared RecoveringReceiver double PANICS if receive_batch is called: a winner
+        // path that re-ran the receiver would trip the panic (the delivery fails / never
+        // returns the accepted report). The recovery path instead adopts the durable
+        // verdict without touching the receiver.
+        let dialer_seed = 44u8;
+        let gate = verified_gate("did:chio:bob", 1, dialer_seed, false);
+
+        // The batch the dialer redelivers, and the (sender, nonce) it keys on.
+        let batch = direct_batch("did:chio:bob");
+        let batch_bytes = canonical_json_bytes(&batch).unwrap();
+        let nonce = inbox_nonce(&batch_bytes);
+        let sender = "did:chio:bob";
+
+        // Reproduce the crash-before-mark residual: an EMPTY relay reservation table
+        // (the committed = 0 reservation was reclaimed at open) and NO recorded inbox
+        // verdict, so the handler's own reserve_inbox_slot WINS and the post-win re-read
+        // finds None - the winner path. Only the RUNTIME store (via the receiver double)
+        // holds the durable verdict.
+        let store = Arc::new(SqlitePheromoneRelayStore::open_in_memory().unwrap());
+        assert!(
+            store.lookup_inbox_report(sender, &nonce).unwrap().is_none(),
+            "no relay inbox verdict is recorded before recovery (winner-path premise)"
+        );
+
+        // The durable verdict the runtime store committed before the crash, surfaced by
+        // the receiver double. Its batch_sha256 matches the handler's lookup key
+        // (canonical sha256 of the batch), though the double returns it regardless.
+        let canned = chio_pheromone_runtime::PheromoneReceiveReport {
+            schema: "chio.pheromone-receive-report.v1".to_string(),
+            accepted: true,
+            batch_outcome: chio_pheromone_runtime::PheromoneBatchOutcome::Accepted,
+            accepted_frame_count: batch.frames.len() as u64,
+            rejected_frame_count: 0,
+            batch_sha256: core_sha256_hex(&batch_bytes),
+            recipient_kernel_id: RECIPIENT.to_string(),
+            authenticated_sender_kernel_id: sender.to_string(),
+            received_at_unix_ms: NOW,
+            frames: Vec::new(),
+        };
+
+        // The SHARED double: receive_batch PANICS (teeth), recorded_report_for_batch
+        // returns the durable verdict. A winner path that re-ran the receiver would panic
+        // here; the recovery path adopts the durable verdict instead.
+        let receiver: Arc<dyn RelayBatchReceiver> = Arc::new(RecoveringReceiver { report: canned });
+        let scope_check: InboundBatchScopeCheck = Arc::new(
+            |_sender: &str, _batch: &PheromoneGossipBatch| -> Result<(), PheromoneRelayError> {
+                Ok(())
+            },
+        );
+        let now: Arc<dyn Fn() -> u64 + Send + Sync> = Arc::new(|| NOW);
+        let handler = PheromoneBatchHandler::new(
+            gate.clone(),
+            receiver,
+            Arc::clone(&store),
+            now,
+            scope_check,
+        );
+
+        let before = crate::metrics::lane_total(
+            crate::metrics::LANE_PHEROMONE,
+            crate::metrics::LANE_OUTCOME_ACCEPT,
+        );
+
+        let acceptor = bind_endpoint(45, Some(gate.clone())).await;
+        let router = Router::builder(acceptor)
+            .accept(ALPN_PHEROMONE_BATCH, handler)
+            .spawn();
+        let acceptor_addr = direct_addr(router.endpoint());
+
+        let dialer = bind_endpoint(dialer_seed, None).await;
+        let outcome = tokio::time::timeout(
+            Duration::from_secs(20),
+            deliver_batch_over_iroh(&dialer, acceptor_addr, &batch),
+        )
+        .await
+        .expect("delivery completes before timeout")
+        .expect("the winner path adopts the durable verdict (never re-runs receive_batch)");
+
+        // Convergence: the dialer reads the recovered ACCEPTED verdict (not a spurious
+        // ReplayWindowExceeded REJECTED), the durable inbox now records it so a further
+        // redelivery short-circuits, and the recovery counts an accept, never a
+        // dead-letter.
+        assert!(
+            outcome.accepted,
+            "the winner path returns the recovered accepted verdict, not a spurious rejection"
+        );
+        assert!(
+            store.lookup_inbox_report(sender, &nonce).unwrap().is_some(),
+            "winner-path recovery adopts the durable verdict as the inbox record"
+        );
+        // Metric dedupe: a recovered redelivery must count EXACTLY ONE accept. A stray
+        // winner-path inner count would make delta == 2 instead of 1.
+        let after = settled_pheromone_accept_total(before, 1).await;
+        assert_eq!(
+            after - before,
+            1,
+            "winner-path recovery counts exactly one accept, not two"
+        );
+
+        router.shutdown().await.ok();
+    }
+
+    /// A receiver double for the sender-scoping tests: its
+    /// `recorded_report_for_batch` returns a durable verdict recorded under a
+    /// DIFFERENT authenticated sender, and its `receive_batch` records that it ran
+    /// (via `received`) and returns a distinguishable FRESH verdict. A recovery
+    /// path that (wrongly) adopts the cross-sender verdict never runs receive_batch;
+    /// the SCOPED path discards it and either falls through to receive_batch (winner)
+    /// or denies (loser).
+    struct WrongSenderRecoveringReceiver {
+        recovered: chio_pheromone_runtime::PheromoneReceiveReport,
+        fresh: chio_pheromone_runtime::PheromoneReceiveReport,
+        received: Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    #[async_trait::async_trait]
+    impl RelayBatchReceiver for WrongSenderRecoveringReceiver {
+        async fn receive_batch(
+            &self,
+            _batch: PheromoneGossipBatch,
+            _authenticated_sender_kernel_id: String,
+            _received_at_unix_ms: u64,
+        ) -> Result<chio_pheromone_runtime::PheromoneReceiveReport, PheromoneRelayError> {
+            self.received
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            Ok(self.fresh.clone())
+        }
+
+        async fn recorded_report_for_batch(
+            &self,
+            _batch_sha256: &str,
+            _authenticated_sender_kernel_id: &str,
+        ) -> Result<Option<chio_pheromone_runtime::PheromoneReceiveReport>, PheromoneRelayError>
+        {
+            Ok(Some(self.recovered.clone()))
+        }
+    }
+
+    /// Build a `PheromoneReceiveReport` for these `batch` bytes under `sender` with
+    /// the given `accepted` outcome, for the sender-scoping tests.
+    fn scoping_report(
+        batch: &PheromoneGossipBatch,
+        batch_bytes: &[u8],
+        sender: &str,
+        accepted: bool,
+    ) -> chio_pheromone_runtime::PheromoneReceiveReport {
+        let frame_count = batch.frames.len() as u64;
+        chio_pheromone_runtime::PheromoneReceiveReport {
+            schema: "chio.pheromone-receive-report.v1".to_string(),
+            accepted,
+            batch_outcome: if accepted {
+                chio_pheromone_runtime::PheromoneBatchOutcome::Accepted
+            } else {
+                chio_pheromone_runtime::PheromoneBatchOutcome::Rejected
+            },
+            accepted_frame_count: if accepted { frame_count } else { 0 },
+            rejected_frame_count: if accepted { 0 } else { frame_count },
+            batch_sha256: core_sha256_hex(batch_bytes),
+            recipient_kernel_id: RECIPIENT.to_string(),
+            authenticated_sender_kernel_id: sender.to_string(),
+            received_at_unix_ms: NOW,
+            frames: Vec::new(),
+        }
+    }
+
+    #[tokio::test]
+    async fn winner_path_rejects_recovered_verdict_from_a_different_sender() {
+        let _serial = COUNTED_ACCEPT_SERIAL.lock().await;
+        // Sender-scoping (SECURITY). The runtime store keys receive reports by
+        // batch_sha256 ALONE, so a verdict it holds for these batch bytes may have been
+        // recorded under a DIFFERENT authenticated sender. The winner path must NOT adopt
+        // such a verdict verbatim: that would attribute another sender's accept/reject to
+        // THIS (sender, nonce), bypassing the per-frame gossiping_peer_kernel_id ==
+        // authenticated_sender binding. It must discard the cross-sender verdict and fall
+        // through to receive_batch, re-verifying under THIS sender.
+        //
+        // recorded_report_for_batch returns an ACCEPTED verdict recorded under
+        // "did:chio:alice"; the authenticated sender is "did:chio:bob"; the fresh
+        // receive_batch verdict for bob is a distinguishable REJECTED one. An unscoped
+        // winner path would adopt alice's accepted verdict (the dialer reads accepted ==
+        // true and receive_batch never runs); the scoped winner path discards alice's
+        // verdict, runs receive_batch under bob, and returns bob's rejected verdict.
+        let dialer_seed = 46u8;
+        let gate = verified_gate("did:chio:bob", 1, dialer_seed, false);
+
+        let batch = direct_batch("did:chio:bob");
+        let batch_bytes = canonical_json_bytes(&batch).unwrap();
+        let nonce = inbox_nonce(&batch_bytes);
+        let sender = "did:chio:bob";
+
+        // Empty reservation table + no recorded inbox verdict => the handler wins its
+        // own reserve_inbox_slot and the post-win re-read finds None: the winner path.
+        let store = Arc::new(SqlitePheromoneRelayStore::open_in_memory().unwrap());
+        assert!(store.lookup_inbox_report(sender, &nonce).unwrap().is_none());
+
+        // The runtime store holds an ACCEPTED verdict for these bytes recorded under a
+        // DIFFERENT authenticated sender (alice); the fresh receive_batch verdict for
+        // bob is a distinguishable REJECTED one.
+        let recovered = scoping_report(&batch, &batch_bytes, "did:chio:alice", true);
+        let fresh = scoping_report(&batch, &batch_bytes, sender, false);
+        let received = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let receiver: Arc<dyn RelayBatchReceiver> = Arc::new(WrongSenderRecoveringReceiver {
+            recovered,
+            fresh,
+            received: Arc::clone(&received),
+        });
+        let scope_check: InboundBatchScopeCheck = Arc::new(
+            |_sender: &str, _batch: &PheromoneGossipBatch| -> Result<(), PheromoneRelayError> {
+                Ok(())
+            },
+        );
+        let now: Arc<dyn Fn() -> u64 + Send + Sync> = Arc::new(|| NOW);
+        let handler = PheromoneBatchHandler::new(
+            gate.clone(),
+            receiver,
+            Arc::clone(&store),
+            now,
+            scope_check,
+        );
+
+        let acceptor = bind_endpoint(47, Some(gate.clone())).await;
+        let router = Router::builder(acceptor)
+            .accept(ALPN_PHEROMONE_BATCH, handler)
+            .spawn();
+        let acceptor_addr = direct_addr(router.endpoint());
+
+        let dialer = bind_endpoint(dialer_seed, None).await;
+        let outcome = tokio::time::timeout(
+            Duration::from_secs(20),
+            deliver_batch_over_iroh(&dialer, acceptor_addr, &batch),
+        )
+        .await
+        .expect("delivery completes before timeout")
+        .expect("the scoped winner path returns the fresh verdict, not the cross-sender one");
+
+        assert!(
+            !outcome.accepted,
+            "a verdict recorded under a DIFFERENT sender is NOT adopted; the fresh receive_batch verdict (rejected) is returned"
+        );
+        assert!(
+            received.load(std::sync::atomic::Ordering::SeqCst),
+            "the scoped winner path falls through to receive_batch under THIS sender"
+        );
+        let stored = store.lookup_inbox_report(sender, &nonce).unwrap().unwrap();
+        assert_eq!(
+            stored.authenticated_sender_kernel_id, sender,
+            "the recorded inbox verdict is scoped to THIS authenticated sender, not the recovered one"
+        );
+
+        router.shutdown().await.ok();
+    }
+
+    #[tokio::test]
+    async fn loser_path_rejects_recovered_verdict_from_a_different_sender() {
+        let _serial = COUNTED_ACCEPT_SERIAL.lock().await;
+        // Sender-scoping (SECURITY), loser path. Symmetric with the winner-path test: a
+        // committed residual reservation with no recorded inbox verdict sends the
+        // redelivery down the loser path, where the runtime store holds a verdict for
+        // these bytes recorded under a DIFFERENT sender. The loser path must NOT adopt it
+        // (that would hand THIS sender another sender's accepted verdict); it must deny
+        // (fail-closed DedupInFlight).
+        //
+        // recorded_report_for_batch returns an ACCEPTED verdict recorded under
+        // "did:chio:alice"; the authenticated sender is "did:chio:bob". The loser path
+        // never calls receive_batch, so `received` stays false either way. An unscoped
+        // loser path would adopt alice's accepted verdict (the dialer reads accepted ==
+        // true); the scoped loser path denies and the delivery fails closed.
+        let dialer_seed = 48u8;
+        let gate = verified_gate("did:chio:bob", 1, dialer_seed, false);
+
+        let batch = direct_batch("did:chio:bob");
+        let batch_bytes = canonical_json_bytes(&batch).unwrap();
+        let nonce = inbox_nonce(&batch_bytes);
+        let sender = "did:chio:bob";
+
+        // Seed the crash-after-commit residual: a COMMITTED reservation for
+        // (sender, nonce) with NO recorded verdict, so reserve_inbox_slot LOSES and
+        // the redelivery takes the loser path.
+        let store = Arc::new(SqlitePheromoneRelayStore::open_in_memory().unwrap());
+        assert!(store.reserve_inbox_slot(sender, &nonce).unwrap().won);
+        store
+            .mark_inbox_reservation_committed(sender, &nonce)
+            .unwrap();
+        assert!(store.lookup_inbox_report(sender, &nonce).unwrap().is_none());
+
+        let recovered = scoping_report(&batch, &batch_bytes, "did:chio:alice", true);
+        let fresh = scoping_report(&batch, &batch_bytes, sender, false);
+        let received = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let receiver: Arc<dyn RelayBatchReceiver> = Arc::new(WrongSenderRecoveringReceiver {
+            recovered,
+            fresh,
+            received: Arc::clone(&received),
+        });
+        let scope_check: InboundBatchScopeCheck = Arc::new(
+            |_sender: &str, _batch: &PheromoneGossipBatch| -> Result<(), PheromoneRelayError> {
+                Ok(())
+            },
+        );
+        let now: Arc<dyn Fn() -> u64 + Send + Sync> = Arc::new(|| NOW);
+        let handler = PheromoneBatchHandler::new(
+            gate.clone(),
+            receiver,
+            Arc::clone(&store),
+            now,
+            scope_check,
+        );
+
+        let acceptor = bind_endpoint(49, Some(gate.clone())).await;
+        let router = Router::builder(acceptor)
+            .accept(ALPN_PHEROMONE_BATCH, handler)
+            .spawn();
+        let acceptor_addr = direct_addr(router.endpoint());
+
+        let dialer = bind_endpoint(dialer_seed, None).await;
+        let result = tokio::time::timeout(
+            Duration::from_secs(20),
+            deliver_batch_over_iroh(&dialer, acceptor_addr, &batch),
+        )
+        .await
+        .expect("delivery completes before timeout");
+
+        assert!(
+            result.is_err(),
+            "the scoped loser path denies a cross-sender recovered verdict (fail-closed), never adopts it"
+        );
+        assert!(
+            !received.load(std::sync::atomic::Ordering::SeqCst),
+            "the loser path never re-runs receive_batch"
+        );
+        assert!(
+            store.lookup_inbox_report(sender, &nonce).unwrap().is_none(),
+            "no cross-sender verdict is recorded as THIS sender's inbox record"
+        );
+
+        router.shutdown().await.ok();
+    }
+
+    /// A receiver double that always accepts, for the per-peer-cap wiring test.
+    struct AcceptingReceiver {
+        report: chio_pheromone_runtime::PheromoneReceiveReport,
+    }
+
+    #[async_trait::async_trait]
+    impl RelayBatchReceiver for AcceptingReceiver {
+        async fn receive_batch(
+            &self,
+            _batch: PheromoneGossipBatch,
+            _authenticated_sender_kernel_id: String,
+            _received_at_unix_ms: u64,
+        ) -> Result<chio_pheromone_runtime::PheromoneReceiveReport, PheromoneRelayError> {
+            Ok(self.report.clone())
+        }
+    }
+
+    #[tokio::test]
+    async fn per_peer_cap_one_still_admits_a_single_dialer() {
+        let _serial = COUNTED_ACCEPT_SERIAL.lock().await;
+        // A per-peer cap of 1 must not break a single, sequential dialer: the guard
+        // releases when the handler task ends, so the exchange completes (the accept site
+        // calls admit_peer, not admit).
+        let dialer_seed = 42u8;
+        let gate = verified_gate("did:chio:bob", 1, dialer_seed, false);
+        let batch = direct_batch("did:chio:bob");
+        let batch_bytes = canonical_json_bytes(&batch).unwrap();
+        let report = chio_pheromone_runtime::PheromoneReceiveReport {
+            schema: "chio.pheromone-receive-report.v1".to_string(),
+            accepted: true,
+            batch_outcome: chio_pheromone_runtime::PheromoneBatchOutcome::Accepted,
+            accepted_frame_count: batch.frames.len() as u64,
+            rejected_frame_count: 0,
+            batch_sha256: core_sha256_hex(&batch_bytes),
+            recipient_kernel_id: RECIPIENT.to_string(),
+            authenticated_sender_kernel_id: "did:chio:bob".to_string(),
+            received_at_unix_ms: NOW,
+            frames: Vec::new(),
+        };
+
+        let store = Arc::new(SqlitePheromoneRelayStore::open_in_memory().unwrap());
+        let receiver: Arc<dyn RelayBatchReceiver> = Arc::new(AcceptingReceiver { report });
+        let scope_check: InboundBatchScopeCheck = Arc::new(
+            |_sender: &str, _batch: &PheromoneGossipBatch| -> Result<(), PheromoneRelayError> {
+                Ok(())
+            },
+        );
+        let now: Arc<dyn Fn() -> u64 + Send + Sync> = Arc::new(|| NOW);
+        let handler = PheromoneBatchHandler::new(gate.clone(), receiver, store, now, scope_check)
+            .with_accept_limits(AcceptLimitConfig {
+                max_in_flight_per_peer: 1,
+                ..AcceptLimitConfig::default()
+            });
+
+        let acceptor = bind_endpoint(43, Some(gate.clone())).await;
+        let router = Router::builder(acceptor)
+            .accept(ALPN_PHEROMONE_BATCH, handler)
+            .spawn();
+        let acceptor_addr = direct_addr(router.endpoint());
+
+        let dialer = bind_endpoint(dialer_seed, None).await;
+        let outcome = tokio::time::timeout(
+            Duration::from_secs(15),
+            deliver_batch_over_iroh(&dialer, acceptor_addr, &batch),
+        )
+        .await
+        .expect("delivery completes before timeout")
+        .expect("a per-peer cap of 1 still admits a single dialer");
+        assert!(
+            outcome.accepted,
+            "single dialer under per-peer cap 1 is accepted"
+        );
 
         router.shutdown().await.ok();
     }
@@ -1726,6 +2600,7 @@ mod tests {
 
     #[tokio::test]
     async fn real_verifier_accepts_admitted_senders_own_batch_over_quic() {
+        let _serial = COUNTED_ACCEPT_SERIAL.lock().await;
         let dialer_seed = 24u8;
         // The gate resolves the dialer endpoint to did:chio:bob.
         let gate = verified_gate("did:chio:bob", 1, dialer_seed, false);
@@ -1755,6 +2630,7 @@ mod tests {
 
     #[tokio::test]
     async fn real_verifier_rejects_batch_whose_author_is_not_the_authenticated_sender_over_quic() {
+        let _serial = COUNTED_ACCEPT_SERIAL.lock().await;
         let dialer_seed = 26u8;
         // The dialer endpoint is admitted, resolving to did:chio:bob...
         let gate = verified_gate("did:chio:bob", 1, dialer_seed, false);
@@ -1784,7 +2660,7 @@ mod tests {
         router.shutdown().await.ok();
     }
 
-    // -- Client-side slowloris bound (finding B) --
+    // -- Client-side slowloris bound --
     //
     // A recipient that completes the handshake and reads the batch but never
     // returns the report frame must not hang the dialer forever (which would
@@ -1848,7 +2724,7 @@ mod tests {
         router.shutdown().await.ok();
     }
 
-    // -- Sender-mismatch rows are re-queued, never dead-lettered (finding D) --
+    // -- Sender-mismatch rows are re-queued, never dead-lettered --
 
     #[tokio::test]
     async fn sender_mismatch_row_is_requeued_not_dead_lettered() {
@@ -1901,7 +2777,7 @@ mod tests {
         }
     }
 
-    // -- Outbound directory-scope enforcement on the drain (finding C) --
+    // -- Outbound directory-scope enforcement on the drain --
 
     #[tokio::test]
     async fn outbound_scope_rejection_skips_dial_and_folds_into_retry() {

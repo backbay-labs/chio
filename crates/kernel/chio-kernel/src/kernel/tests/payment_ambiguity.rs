@@ -177,11 +177,11 @@ impl PaymentAdapter for PaymentAmbiguityAdapter {
     }
 }
 
-struct FailingReverseBudgetStore {
+struct PaymentAmbiguityFailingReverseBudgetStore {
     inner: InMemoryBudgetStore,
 }
 
-impl FailingReverseBudgetStore {
+impl PaymentAmbiguityFailingReverseBudgetStore {
     fn new() -> Self {
         Self {
             inner: InMemoryBudgetStore::new(),
@@ -189,7 +189,7 @@ impl FailingReverseBudgetStore {
     }
 }
 
-impl BudgetStore for FailingReverseBudgetStore {
+impl BudgetStore for PaymentAmbiguityFailingReverseBudgetStore {
     fn try_increment(
         &self,
         capability_id: &str,
@@ -216,6 +216,31 @@ impl BudgetStore for FailingReverseBudgetStore {
             cost_units,
             max_cost_per_invocation,
             max_total_cost_units,
+        )
+    }
+
+    fn try_charge_cost_with_ids_and_authority_outcome(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        max_invocations: Option<u32>,
+        cost_units: u64,
+        max_cost_per_invocation: Option<u64>,
+        max_total_cost_units: Option<u64>,
+        hold_id: Option<&str>,
+        event_id: Option<&str>,
+        authority: Option<&crate::budget_store::BudgetEventAuthority>,
+    ) -> Result<crate::budget_store::BudgetAuthorizeMutationOutcome, BudgetStoreError> {
+        self.inner.try_charge_cost_with_ids_and_authority_outcome(
+            capability_id,
+            grant_index,
+            max_invocations,
+            cost_units,
+            max_cost_per_invocation,
+            max_total_cost_units,
+            hold_id,
+            event_id,
+            authority,
         )
     }
 
@@ -399,16 +424,21 @@ fn make_payment_ambiguity_fixture(
         Box::new(InMemoryExecutionNonceStore::from_config(&nonce_config)),
     );
     if matches!(mode, PaymentAmbiguityMode::ReleaseThenBudgetReversalError) {
-        kernel.set_budget_store(Box::new(FailingReverseBudgetStore::new()));
+        kernel.set_budget_store(Box::new(PaymentAmbiguityFailingReverseBudgetStore::new()));
     }
     kernel.register_tool_server(Box::new(CountingMonetaryServer {
         id: "payment-ambiguity-server".to_string(),
         invocations: std::sync::Arc::clone(&invocations),
     }));
-    kernel.set_payment_adapter(Box::new(PaymentAmbiguityAdapter {
-        mode,
-        counters: counters.clone(),
-    }));
+    assert!(
+        kernel
+            .set_payment_adapter(Box::new(PaymentAmbiguityAdapter {
+                mode,
+                counters: counters.clone(),
+            }))
+            .is_ok(),
+        "payment adapter installation must succeed"
+    );
     let agent = make_keypair();
     let capability = make_capability(
         &kernel,
@@ -458,10 +488,15 @@ fn make_governed_payment_failure_fixture(
         id: "governed-payment-failure-server".to_string(),
         invocations: std::sync::Arc::clone(&invocations),
     }));
-    kernel.set_payment_adapter(Box::new(PaymentAmbiguityAdapter {
-        mode: payment_mode,
-        counters: counters.clone(),
-    }));
+    assert!(
+        kernel
+            .set_payment_adapter(Box::new(PaymentAmbiguityAdapter {
+                mode: payment_mode,
+                counters: counters.clone(),
+            }))
+            .is_ok(),
+        "payment adapter installation must succeed"
+    );
     let agent = make_keypair();
     let capability = make_capability(
         &kernel,
@@ -534,7 +569,7 @@ async fn dpop_only_payment_requests_never_reach_the_external_rail(
     kernel.set_payment_adapter(Box::new(PaymentAmbiguityAdapter {
         mode: PaymentAmbiguityMode::AuthorizeRailError,
         counters: counters.clone(),
-    }));
+    }))?;
     kernel.set_dpop_store(
         dpop::DpopNonceStore::new(1024, std::time::Duration::from_secs(300)),
         dpop::DpopConfig::default(),

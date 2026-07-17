@@ -1,36 +1,87 @@
-# chio-governance Architecture
+# chio-governance architecture
 
-## Boundary
+## Overview
 
-`chio-governance` owns Chio capability leases, destructive-action governance receipts, generic governance charters, and governance case evaluation. It sits below verifier crates and must fail closed before signed authorization artifacts are accepted by higher-level proof or runtime paths.
+`chio-governance` defines and verifies Chio's governance authorization
+artifacts: capability leases, destructive-action governance receipts, and
+generic governance charters and cases that attach to a `chio-listing`
+identity. It is a pure verification and data-modeling library: no I/O, no
+runtime state, `#![forbid(unsafe_code)]`, and every public function either
+verifies an artifact the caller already holds or builds an unsigned artifact
+body for the caller to sign. It sits in the trust layer below the crates that
+consume it directly (`chio-attest-buyer-core`, `chio-federation-authority`)
+and is re-exported wholesale by `chio-core` and `chio-open-market` as
+`governance`; it does not mint capability tokens, run kernel guard pipelines,
+persist receipts, or resolve registry data from the network.
 
-The crate defines and verifies governance artifacts. It does not mint capability tokens, evaluate kernel guard pipelines, write receipt logs, settle payments, or resolve registry data from the network. Callers provide signed artifacts and the current evaluation time.
+## Module map
 
-## Lease Authorization
+| Path | Responsibility |
+|------|----------------|
+| `src/lib.rs` | Crate root. Re-exports `chio-core-types` (`canonical_json_bytes`, `crypto`, `receipt`) and `chio-listing` (as `listing`); declares the five public modules. |
+| `src/lease.rs` | `CapabilityLeaseArtifact`, `CapabilityLeaseActionClass`, `SignedCapabilityLease`, `verify_capability_lease`. |
+| `src/authorization.rs` | `GovernanceReceiptArtifact`, `SignedGovernanceReceipt`, `verify_destructive_authorization`, `verify_step_governance_boundary`. |
+| `src/generic.rs` | Generic governance charter and case data model (authority scope, evidence references, findings), issue requests, schema constants, and the charter/case builders. |
+| `src/evaluation.rs` | `evaluate_generic_governance_case` and the case-state-to-effective-state mapping. |
+| `src/error.rs` | `GovernanceAuthorizationError`. |
+| `src/validation.rs` | Crate-private non-empty and SHA-256-hex field validators shared by `lease.rs`, `authorization.rs`, and `generic.rs`. |
 
-Capability leases bind issuer, subject, scope digest, action class, and validity window. Verification checks schema, signature, scope digest, expiry, and issuance time so a future-dated lease cannot authorize a present action.
+## Verification order
 
-Destructive authorization adds a signed governance receipt. The receipt must bind the lease id, workflow id, step hash, issuing kernel, and validity window before a destructive step can proceed.
+Lease and receipt checks (`verify_capability_lease`,
+`verify_destructive_authorization`, `verify_step_governance_boundary`) all
+validate schema and shape, verify the signature, and enforce the
+issuance/expiry window before checking identity bindings: an exact
+`scope_digest` match for leases, and lease id / workflow id / step hash
+matches for receipts. `verify_step_governance_boundary` requires a valid,
+unexpired receipt for any step marked `destructive` and requires none
+otherwise.
 
-## Module Map
+Generic case evaluation (`evaluate_generic_governance_case`) is a strict
+pipeline; the first failure short-circuits the rest and resolves to a
+`GenericGovernanceFinding` rather than an `Err`:
 
-- `lib.rs` is the crate root. It declares modules and re-exports only the upstream `chio-core-types` and `chio-listing` namespaces needed by this crate's public types.
-- `lease.rs` owns capability lease action classes, lease artifacts, signed lease aliases, and lease verification.
-- `authorization.rs` owns governance receipt artifacts and destructive or step-boundary authorization checks.
-- `generic.rs` owns generic governance charter, case, issue request, evidence, and finding data models plus artifact builders.
-- `evaluation.rs` owns generic governance case evaluation and the effective-state mapping.
-- `validation.rs` owns crate-local non-empty and SHA-256 hex validators.
-- `error.rs` owns public authorization errors.
-- `tests.rs` keeps crate-local behavior tests out of the public API root.
+1. Validate the listing body and `current_publisher` shape (a hard `Err`, not
+   a finding).
+2. Verify the signature and body of the listing, charter, case, and, if
+   present, the activation and prior case.
+3. If present, the activation's `local_operator_id` must equal the charter's
+   `governing_operator_id`.
+4. Charter, case, and listing must agree on governing operator, charter id,
+   and namespace; charter and case must not be expired as of `evaluated_at`.
+5. The charter must allow the case's kind and, where scoped, admit the
+   current publisher and listing subject.
+6. `Freeze`/`Sanction` cases require a matching trust activation; superseding
+   and appeal cases require a matching `prior_case`.
+7. `effective_state_for_case` maps case state and kind to an effective state
+   (clear, disputed, frozen, sanctioned, appealed) and an admission-blocking
+   flag: only an `Enforced` `Freeze` or `Sanction` case blocks admission.
 
-## Governance Cases
+## Invariants and failure modes
 
-Generic governance cases evaluate listing identity, charter scope, activation binding, appeal or supersession targets, and effective admission impact. Failures return structured findings instead of panicking so callers can report why a listing is disputed, frozen, sanctioned, or clear.
+- Every artifact checks its schema constant before anything else and fails
+  closed on mismatch.
+- Signature verification always runs before body values are trusted for an
+  authorization decision; an unverifiable signature never falls through to a
+  pass.
+- Expiry is exclusive at the boundary: `expires_at_unix_ms <= now` is
+  rejected, not just `<`.
+- Generic case evaluation never panics on malformed or adversarial input:
+  shape and signature failures resolve to an `Ok` evaluation carrying a
+  finding; only an internal crypto or canonicalization error surfaces as
+  `Err(String)`.
+- The crate does not mint capability tokens, run kernel guard pipelines,
+  persist receipts, settle payments, or fetch registry data from the network.
 
-## Invariants
+## Dependencies
 
-- Unsupported schemas fail closed.
-- Signatures are checked before artifact contents authorize anything.
-- Scope digests and step hashes are exact SHA-256 hex bindings.
-- Future-dated and expired leases or receipts are rejected.
-- Evaluation errors are structured findings, not implicit allow decisions.
+Internal: `chio-core-types` supplies canonical JSON (`canonical_json_bytes`),
+hashing (`sha256_hex`), `Keypair` and signature verification, and
+`SignedExportEnvelope<T>`, the generic signed-artifact wrapper that
+`SignedCapabilityLease`, `SignedGovernanceReceipt`,
+`SignedGenericGovernanceCharter`, and `SignedGenericGovernanceCase` all alias.
+`chio-listing` supplies the listing and trust-activation types
+(`SignedGenericListing`, `SignedGenericTrustActivation`,
+`GenericRegistryPublisher`, `normalize_namespace`) that case evaluation checks
+against; re-exported here as `listing`. External: `serde` for artifact
+(de)serialization and `thiserror` for `GovernanceAuthorizationError`.

@@ -7,7 +7,7 @@ use std::time::{Instant, SystemTime};
 use lru::LruCache;
 use tracing::error;
 
-use crate::replay_retention::ReplayRetention;
+use crate::replay_retention::{advance_replay_clock, ReplayRetention};
 use crate::KernelError;
 
 /// Default number of live governed approvals retained by the in-memory store.
@@ -65,6 +65,7 @@ pub struct InMemoryGovernedApprovalReplayStore {
 struct ApprovalReplayState {
     cache: LruCache<(String, String, String), ApprovalReplayEntry>,
     wall_clock_high_water: SystemTime,
+    monotonic_high_water: Instant,
 }
 
 struct ApprovalReplayEntry {
@@ -86,6 +87,7 @@ impl InMemoryGovernedApprovalReplayStore {
             inner: Mutex::new(ApprovalReplayState {
                 cache: LruCache::new(capacity),
                 wall_clock_high_water: SystemTime::now(),
+                monotonic_high_water: Instant::now(),
             }),
         }
     }
@@ -118,11 +120,17 @@ impl InMemoryGovernedApprovalReplayStore {
             )
         })?;
 
-        let clock_rolled_back = now_wall < state.wall_clock_high_water;
-        if now_wall > state.wall_clock_high_water {
-            state.wall_clock_high_water = now_wall;
-        }
-        let high_water = state.wall_clock_high_water;
+        let mut wall_clock_high_water = state.wall_clock_high_water;
+        let mut monotonic_high_water = state.monotonic_high_water;
+        let high_water = advance_replay_clock(
+            "governed_approval",
+            &mut wall_clock_high_water,
+            &mut monotonic_high_water,
+            now_wall,
+            now_monotonic,
+        )?;
+        state.wall_clock_high_water = wall_clock_high_water;
+        state.monotonic_high_water = monotonic_high_water;
 
         if state
             .cache
@@ -142,8 +150,8 @@ impl InMemoryGovernedApprovalReplayStore {
             state.cache.pop(&expired_key);
         }
 
-        if clock_rolled_back || retention.signed_horizon_elapsed_at(high_water) {
-            error!("wall-clock rollback or elapsed approval horizon; denying replay reservation");
+        if retention.signed_horizon_elapsed_at(high_water) {
+            error!("elapsed approval horizon; denying replay reservation");
             return Ok(false);
         }
         if state.cache.len() >= state.cache.cap().get() {

@@ -19,6 +19,8 @@ default = []
 fuzz = ["dep:arbitrary"]
 
 [dependencies]
+chio-core = { workspace = true }
+chio-kernel = { workspace = true }
 serde = { workspace = true }
 serde_yml = { workspace = true }
 thiserror = { workspace = true }

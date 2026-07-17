@@ -110,11 +110,19 @@ pub(crate) enum ChioRuntimeCommands {
         scenario: PathBuf,
 
         /// Static proof package used as the parity baseline.
-        #[arg(long = "static-package", value_name = "PATH", requires = "static_report")]
+        #[arg(
+            long = "static-package",
+            value_name = "PATH",
+            requires = "static_report"
+        )]
         static_package: Option<PathBuf>,
 
         /// Static verifier report used as the parity baseline.
-        #[arg(long = "static-report", value_name = "PATH", requires = "static_package")]
+        #[arg(
+            long = "static-report",
+            value_name = "PATH",
+            requires = "static_package"
+        )]
         static_report: Option<PathBuf>,
 
         /// Directory for local runtime stores.

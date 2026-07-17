@@ -1,8 +1,20 @@
 # Chio Web3 Contract Security Review
 
+> Historical review only as of 2026-07-04. This file is not a promotion signal
+> and does not authorize mainnet deployment, non-testnet custody, or
+> non-testnet promotion. Current contract review evidence must include
+> independent adversarial review. Confirmed critical/high blockers:
+> `F1-root-forgery`, `F3-settlement-replay`,
+> `escrow-proof-release-unbound`, `F2-unbound-commitments`,
+> `F4-delegate-brick`, `bondvault-impair-reentrancy-slash-cap-bypass`,
+> `CHIO-AC-01`, and `no-emergency-stop-deactivation-ineffective`.
+> Promotion remains blocked until external audit, testnet soak, artifact
+> digest, runtime codehash, and minimum-bar checks pass with security-owner
+> sign-off.
+
 ## Scope
 
-This review covers the official `v2.34` contract family:
+This review covers the official Chio web3 contract family:
 
 - `ChioIdentityRegistry`
 - `ChioRootRegistry`
@@ -51,11 +63,13 @@ This review covers the official `v2.34` contract family:
   - Escrow release is beneficiary-driven today. The research discussed
     beneficiary-or-relayer authorization, but a relayer allowlist is not part
     of the current runtime surface.
-- No CREATE2 deploy script yet
-  - The package now ships deterministic deployment templates, but live chain
-    execution still needs an operator-specific deployment runner.
+- Live CREATE2 deploy script is assurance-gated
+  - This historical review predates the current reviewed-manifest runner.
+    `contracts/scripts/promote-deployment.mjs` now covers deterministic
+    CREATE2 execution, but non-testnet use remains blocked on target-specific
+    approval and external assurance evidence.
 - No proxy upgrade path
-  - This is intentional, but it means defect remediation requires replacement
+  - This is intentional, but it means defect fixes require replacement
     deployments and config migration rather than in-place upgrades.
 
 ## Reviewed Invariants

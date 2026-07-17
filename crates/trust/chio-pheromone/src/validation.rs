@@ -82,7 +82,7 @@ pub(crate) fn validate_deposit_static(
     if body
         .timestamp_unix_ms
         .saturating_add(context.replay_window_ms)
-        < context.now_unix_ms
+        <= context.now_unix_ms
     {
         return Err(PheromoneError::ReplayWindowExceeded(body.nonce.clone()));
     }

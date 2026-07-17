@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-web3/v2/settlement-dispatch.schema.json",
+  "title": "Chio Web3 Settlement Dispatch",
+  "type": "object",
+  "additionalProperties": true,
+  "required": [
+    "schema",
+    "dispatch_id",
+    "issued_at",
+    "trust_profile_id",
+    "contract_package_id",
+    "chain_id",
+    "capital_instruction",
+    "settlement_path",
+    "settlement_amount",
+    "escrow_id",
+    "escrow_contract",
+    "bond_vault_contract",
+    "settlement_token_address",
+    "beneficiary_address",
+    "operator_key_hash",
+    "support_boundary"
+  ],
+  "properties": {
+    "schema": { "const": "chio.web3-settlement-dispatch.v2" },
+    "dispatch_id": { "type": "string", "minLength": 1 },
+    "issued_at": { "type": "integer", "minimum": 0 },
+    "trust_profile_id": { "type": "string", "minLength": 1 },
+    "contract_package_id": { "type": "string", "minLength": 1 },
+    "chain_id": { "type": "string", "minLength": 1 },
+    "capital_instruction": { "type": "object" },
+    "bond": { "type": "object" },
+    "settlement_path": { "enum": ["dual_signature", "merkle_proof"] },
+    "settlement_amount": { "$ref": "#/$defs/money" },
+    "escrow_id": { "type": "string", "minLength": 1 },
+    "escrow_contract": { "type": "string", "minLength": 1 },
+    "bond_vault_contract": { "type": "string", "minLength": 1 },
+    "settlement_token_address": { "type": "string", "minLength": 1 },
+    "beneficiary_address": { "type": "string", "minLength": 1 },
+    "operator_key_hash": { "type": "string", "pattern": "^0x[0-9a-fA-F]{64}$" },
+    "support_boundary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "real_dispatch_supported",
+        "anchor_proof_required",
+        "oracle_evidence_required_for_fx",
+        "custody_boundary_explicit",
+        "reversal_supported"
+      ],
+      "properties": {
+        "real_dispatch_supported": { "type": "boolean" },
+        "anchor_proof_required": { "type": "boolean" },
+        "oracle_evidence_required_for_fx": { "type": "boolean" },
+        "custody_boundary_explicit": { "type": "boolean" },
+        "reversal_supported": { "type": "boolean" }
+      }
+    },
+    "note": { "type": "string" }
+  },
+  "$defs": {
+    "money": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["units", "currency"],
+      "properties": {
+        "units": { "type": "integer", "minimum": 1 },
+        "currency": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

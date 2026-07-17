@@ -1,4 +1,5 @@
 use super::*;
+use std::collections::HashSet;
 
 /// HTTP response header mirroring the signed receipt's advisory trust level.
 /// Gate clients on this value (or on receipt `trust_level`) before treating
@@ -14,6 +15,18 @@ pub(crate) fn parse_query_params(raw_query: Option<&str>) -> HashMap<String, Str
                 .collect()
         })
         .unwrap_or_default()
+}
+
+pub(crate) fn duplicate_query_key(raw_query: Option<&str>) -> Option<String> {
+    let raw_query = raw_query?;
+    let mut seen = HashSet::new();
+    for (key, _) in url::form_urlencoded::parse(raw_query.as_bytes()) {
+        let key = key.into_owned();
+        if !seen.insert(key.clone()) {
+            return Some(key);
+        }
+    }
+    None
 }
 
 pub(crate) fn forwarded_query_string(raw_query: Option<&str>) -> Option<String> {
@@ -155,4 +168,20 @@ pub(crate) fn extract_transport_capability(
         .and_then(|value| value.to_str().ok())
         .map(ToOwned::to_owned)
         .or_else(|| query.get("chio_capability").cloned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn duplicate_query_key_detects_decoded_duplicates() {
+        let query = url::form_urlencoded::Serializer::new(String::new())
+            .append_pair("role", "user")
+            .append_pair("mode", "full")
+            .append_pair("role", "admin")
+            .finish();
+
+        assert_eq!(duplicate_query_key(Some(&query)).as_deref(), Some("role"));
+    }
 }

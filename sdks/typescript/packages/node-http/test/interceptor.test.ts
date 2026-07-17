@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import http, { type IncomingHttpHeaders } from "node:http";
+import { PassThrough } from "node:stream";
 import { describe, it, expect } from "vitest";
 import {
   buildChioHttpRequest,
@@ -54,14 +55,14 @@ function verifyResponse() {
 }
 
 async function startMockSidecar(
-  onEvaluate?: (body: string) => void,
+  onEvaluate?: (body: string, headers: IncomingHttpHeaders) => void,
 ): Promise<{ server: http.Server; url: string }> {
   const server = http.createServer((req, res) => {
     if (req.method === "POST" && req.url === "/chio/evaluate") {
       const chunks: Buffer[] = [];
       req.on("data", (chunk: Buffer) => chunks.push(chunk));
       req.on("end", () => {
-        onEvaluate?.(Buffer.concat(chunks).toString("utf-8"));
+        onEvaluate?.(Buffer.concat(chunks).toString("utf-8"), req.headers);
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify(allowResponse()));
       });
@@ -208,6 +209,75 @@ describe("buildChioHttpRequest", () => {
     expect(req.body_length).toBe(42);
     expect(req.capability_id).toBe("cap-123");
   });
+
+  it("honors custom forwarded headers", () => {
+    const opts: BuildRequestOptions = {
+      method: "GET",
+      path: "/tenant",
+      query: {},
+      headers: {
+        "content-type": "application/json",
+        "x-tenant-id": "tenant-a",
+        authorization: "Bearer secret",
+      },
+      caller: {
+        subject: "anonymous",
+        auth_method: { method: "anonymous" },
+        verified: false,
+      },
+      bodyHash: undefined,
+      bodyLength: 0,
+      routePattern: "/tenant",
+      capabilityId: undefined,
+      forwardHeaders: ["content-type", "x-tenant-id"],
+    };
+
+    const req = buildChioHttpRequest(opts);
+
+    expect(req.headers["content-type"]).toBe("application/json");
+    expect(req.headers["x-tenant-id"]).toBe("tenant-a");
+    expect(req.headers["authorization"]).toBeUndefined();
+  });
+
+  it("filters credential headers from custom forwarded header allowlists", () => {
+    const opts: BuildRequestOptions = {
+      method: "POST",
+      path: "/pets",
+      query: {},
+      headers: {
+        "content-type": "application/json",
+        cookie: "sid=secret",
+        authorization: "Bearer policy-token",
+        "x-api-key": "api-key-secret",
+        "x-chio-capability": "{\"id\":\"cap-123\"}",
+        "x-chio-capability-token": "cap-token-secret",
+        "x-tenant-id": "tenant-a",
+      },
+      caller: {
+        subject: "anonymous",
+        auth_method: { method: "anonymous" },
+        verified: false,
+      },
+      bodyHash: undefined,
+      bodyLength: 0,
+      routePattern: "/pets",
+      capabilityId: undefined,
+      forwardHeaders: [
+        "authorization",
+        "cookie",
+        "x-api-key",
+        "x-chio-capability",
+        "x-chio-capability-token",
+        "x-tenant-id",
+      ],
+    };
+
+    const req = buildChioHttpRequest(opts);
+
+    expect(req.headers).toEqual({
+      "x-tenant-id": "tenant-a",
+    });
+  });
 });
 
 describe("resolveConfig", () => {
@@ -225,18 +295,101 @@ describe("resolveConfig", () => {
     expect(resolved.client).toBeDefined();
   });
 
+  it("returns a fresh default header list", () => {
+    const first = resolveConfig({});
+    first.forwardHeaders.push("authorization");
+
+    expect(resolveConfig({}).forwardHeaders).toEqual([
+      "content-type",
+      "content-length",
+    ]);
+  });
+
   it("coerces fail-open sidecar errors to fail-closed", () => {
     const resolved = resolveConfig({ onSidecarError: "allow" });
     expect(resolved.onSidecarError).toBe("deny");
+  });
+
+  it("returns a fresh default forwarded header list", () => {
+    const first = resolveConfig({});
+    first.forwardHeaders.push("authorization");
+
+    const second = resolveConfig({});
+    expect(second.forwardHeaders).toEqual([
+      "content-type",
+      "content-length",
+    ]);
   });
 
   it("uses custom timeout", () => {
     const resolved = resolveConfig({ timeoutMs: 10000 });
     expect(resolved.timeoutMs).toBe(10000);
   });
+
+  it("stores custom forwarded headers", () => {
+    const resolved = resolveConfig({ forwardHeaders: ["x-tenant-id"] });
+    expect(resolved.forwardHeaders).toEqual(["x-tenant-id"]);
+  });
 });
 
 describe("request body preservation", () => {
+  it("decodes plus signs in query parameters like URLSearchParams", async () => {
+    let observedQuery: Record<string, string> | undefined;
+    const sidecar = await startMockSidecar((body) => {
+      observedQuery = JSON.parse(body).query as Record<string, string>;
+    });
+    const resolved = resolveConfig({ sidecarUrl: sidecar.url });
+
+    const server = http.createServer(async (req, res) => {
+      const outcome = await interceptNodeRequest(req, res, resolved);
+      if (outcome.responseSent) {
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("ok");
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    try {
+      const response = await request(server, "GET", "/search?q=hello+world&flag");
+      expect(response.status).toBe(200);
+      expect(observedQuery).toEqual({ q: "hello world", flag: "" });
+    } finally {
+      server.close();
+      sidecar.server.close();
+    }
+  });
+
+  it("allows known-empty parsed bodies to evaluate as empty requests", async () => {
+    let observed: { body_hash?: string; body_length?: number } | undefined;
+    const sidecar = await startMockSidecar((body) => {
+      observed = JSON.parse(body) as { body_hash?: string; body_length?: number };
+    });
+    const resolved = resolveConfig({ sidecarUrl: sidecar.url });
+
+    const server = http.createServer(async (req, res) => {
+      (req as http.IncomingMessage & { body?: unknown }).body = {};
+
+      const outcome = await interceptNodeRequest(req, res, resolved);
+      if (outcome.responseSent) {
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("ok");
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    try {
+      const response = await request(server, "GET", "/empty");
+      expect(response.status).toBe(200);
+      expect(observed?.body_length).toBe(0);
+      expect(observed).not.toHaveProperty("body_hash");
+    } finally {
+      server.close();
+      sidecar.server.close();
+    }
+  });
+
   it("preserves IncomingMessage bodies for downstream consumers", async () => {
     const sidecar = await startMockSidecar();
     const resolved = resolveConfig({ sidecarUrl: sidecar.url });
@@ -274,6 +427,139 @@ describe("request body preservation", () => {
     }
   });
 
+  it("does not hang when the request stream was already consumed", async () => {
+    let evaluateCalls = 0;
+    const sidecar = await startMockSidecar(() => {
+      evaluateCalls += 1;
+    });
+    const resolved = resolveConfig({ sidecarUrl: sidecar.url });
+
+    const server = http.createServer((req, res) => {
+      req.resume();
+      req.on("end", () => {
+        void (async () => {
+          const outcome = await interceptNodeRequest(req, res, resolved);
+          if (outcome.responseSent) {
+            return;
+          }
+          res.writeHead(200, { "Content-Type": "text/plain" });
+          res.end("ok");
+        })().catch((error: unknown) => {
+          res.writeHead(500, { "Content-Type": "text/plain" });
+          res.end(error instanceof Error ? error.message : String(error));
+        });
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    try {
+      const body = "already consumed";
+      const response = await request(
+        server,
+        "POST",
+        "/upload",
+        body,
+        {
+          "content-length": String(Buffer.byteLength(body)),
+          "content-type": "text/plain",
+        },
+      );
+      expect(response.status).toBe(400);
+      expect(JSON.parse(response.body)).toMatchObject({
+        error: "chio_evaluation_failed",
+      });
+      expect(evaluateCalls).toBe(0);
+    } finally {
+      server.close();
+      sidecar.server.close();
+    }
+  });
+
+  it("fails closed when a chunked request stream was already consumed", async () => {
+    let evaluateCalls = 0;
+    const sidecar = await startMockSidecar(() => {
+      evaluateCalls += 1;
+    });
+    const resolved = resolveConfig({ sidecarUrl: sidecar.url });
+
+    const server = http.createServer((req, res) => {
+      req.resume();
+      req.on("end", () => {
+        void (async () => {
+          const outcome = await interceptNodeRequest(req, res, resolved);
+          if (outcome.responseSent) {
+            return;
+          }
+          res.writeHead(200, { "Content-Type": "text/plain" });
+          res.end("ok");
+        })().catch((error: unknown) => {
+          res.writeHead(500, { "Content-Type": "text/plain" });
+          res.end(error instanceof Error ? error.message : String(error));
+        });
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    try {
+      const response = await request(
+        server,
+        "POST",
+        "/upload",
+        "already consumed",
+        { "content-type": "text/plain" },
+      );
+      expect(response.status).toBe(400);
+      expect(JSON.parse(response.body)).toMatchObject({
+        error: "chio_evaluation_failed",
+      });
+      expect(evaluateCalls).toBe(0);
+    } finally {
+      server.close();
+      sidecar.server.close();
+    }
+  });
+
+  it("reads complete but not drained IncomingMessage bodies", async () => {
+    let lastEvaluateBody: string | undefined;
+    const sidecar = await startMockSidecar((body) => {
+      lastEvaluateBody = body;
+    });
+    const resolved = resolveConfig({ sidecarUrl: sidecar.url });
+    const body = "complete body";
+    const req = new PassThrough() as PassThrough & http.IncomingMessage;
+    req.method = "POST";
+    req.url = "/upload";
+    req.headers = { "content-type": "text/plain" };
+    Object.defineProperty(req, "complete", {
+      configurable: true,
+      value: true,
+    });
+    req.end(body);
+    const res = new http.ServerResponse(req);
+
+    try {
+      const outcome = await interceptNodeRequest(req, res, resolved);
+      expect(outcome.responseSent).toBe(false);
+
+      const parsed = JSON.parse(lastEvaluateBody ?? "{}") as {
+        body_hash?: string;
+        body_length?: number;
+      };
+      expect(parsed.body_length).toBe(Buffer.byteLength(body));
+      expect(parsed.body_hash).toBe(
+        createHash("sha256").update(Buffer.from(body, "utf-8")).digest("hex"),
+      );
+
+      const replayed: Buffer[] = [];
+      for await (const chunk of req) {
+        replayed.push(Buffer.from(chunk));
+      }
+      expect(Buffer.concat(replayed).toString("utf-8")).toBe(body);
+    } finally {
+      sidecar.server.close();
+    }
+  });
+
   it("preserves Web Request bodies by reading from a clone", async () => {
     let lastBodyHash: string | undefined;
     const sidecar = await startMockSidecar((body) => {
@@ -297,6 +583,45 @@ describe("request body preservation", () => {
         createHash("sha256").update(Buffer.from("hello web", "utf-8")).digest("hex"),
       );
     } finally {
+      sidecar.server.close();
+    }
+  });
+
+  it("forwards configured Node request headers to the sidecar", async () => {
+    let lastEvaluateBody: string | undefined;
+    const sidecar = await startMockSidecar((body) => {
+      lastEvaluateBody = body;
+    });
+    const resolved = resolveConfig({
+      sidecarUrl: sidecar.url,
+      forwardHeaders: ["content-type", "x-tenant-id"],
+    });
+
+    const server = http.createServer(async (req, res) => {
+      const outcome = await interceptNodeRequest(req, res, resolved);
+      if (outcome.responseSent) {
+        return;
+      }
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end("ok");
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    try {
+      const response = await request(
+        server,
+        "GET",
+        "/tenant",
+        undefined,
+        { "content-type": "application/json", "x-tenant-id": "tenant-a" },
+      );
+      expect(response.status).toBe(200);
+      expect(lastEvaluateBody).toBeDefined();
+      const evaluated = JSON.parse(lastEvaluateBody ?? "{}") as { headers: Record<string, string> };
+      expect(evaluated.headers["x-tenant-id"]).toBe("tenant-a");
+      expect(evaluated.headers["content-type"]).toBe("application/json");
+    } finally {
+      server.close();
       sidecar.server.close();
     }
   });
@@ -326,6 +651,33 @@ describe("request body preservation", () => {
     }
   });
 
+  it("returns a controlled error for malformed Node query encoding", async () => {
+    const resolved = resolveConfig({
+      sidecarUrl: "http://127.0.0.1:1",
+      timeoutMs: 200,
+    });
+    let handlerReached = false;
+
+    const server = http.createServer(async (req, res) => {
+      const outcome = await interceptNodeRequest(req, res, resolved);
+      if (!outcome.responseSent) {
+        handlerReached = true;
+        res.writeHead(200);
+        res.end("handler");
+      }
+    });
+    await new Promise<void>((resolve) => server.listen(0, resolve));
+
+    try {
+      const response = await request(server, "GET", "/test?bad=%E0%A4%A");
+      expect(response.status).toBe(400);
+      expect(JSON.parse(response.body).message).toBe("malformed query parameter encoding");
+      expect(handlerReached).toBe(false);
+    } finally {
+      server.close();
+    }
+  });
+
   it("fails closed for Web sidecar errors even when fail-open is requested", async () => {
     const resolved = resolveConfig({
       sidecarUrl: "http://127.0.0.1:1",
@@ -342,5 +694,74 @@ describe("request body preservation", () => {
     expect(result).toBeNull();
     expect(passthrough).toBeNull();
     expect(response.headers.get("X-Chio-Receipt-Id")).toBeNull();
+  });
+
+  it("forwards query capability tokens to the sidecar", async () => {
+    let forwardedCapability: string | string[] | undefined;
+    let evaluatedCapabilityId: string | undefined;
+    const token = JSON.stringify({ id: "cap-query" });
+    const sidecar = await startMockSidecar((body, headers) => {
+      forwardedCapability = headers["x-chio-capability"];
+      evaluatedCapabilityId = JSON.parse(body).capability_id as string | undefined;
+    });
+    const resolved = resolveConfig({ sidecarUrl: sidecar.url });
+
+    try {
+      const { response } = await interceptWebRequest(
+        new Request(`http://example.com/upload?chio_capability=${encodeURIComponent(token)}`, {
+          method: "GET",
+        }),
+        resolved,
+      );
+
+      expect(response.status).toBe(200);
+      expect(forwardedCapability).toBe(token);
+      expect(evaluatedCapabilityId).toBe("cap-query");
+    } finally {
+      sidecar.server.close();
+    }
+  });
+
+  it("denies duplicate query capability tokens before sidecar evaluation", async () => {
+    let called = false;
+    const sidecar = await startMockSidecar(() => {
+      called = true;
+    });
+    const resolved = resolveConfig({ sidecarUrl: sidecar.url });
+
+    try {
+      const { response, result } = await interceptWebRequest(
+        new Request("http://example.com/upload?chio_capability=a&chio_capability=b", {
+          method: "GET",
+        }),
+        resolved,
+      );
+
+      expect(response.status).toBe(403);
+      expect(result).toBeNull();
+      expect(called).toBe(false);
+    } finally {
+      sidecar.server.close();
+    }
+  });
+
+  it("fails closed when Web request bodies cannot be cloned", async () => {
+    const sidecar = await startMockSidecar();
+    const resolved = resolveConfig({ sidecarUrl: sidecar.url });
+    const request = new Request("http://example.com/upload", {
+      method: "POST",
+      body: "already consumed",
+    });
+    await request.text();
+
+    try {
+      const { response, result, passthrough } = await interceptWebRequest(request, resolved);
+
+      expect(response.status).toBe(502);
+      expect(result).toBeNull();
+      expect(passthrough).toBeNull();
+    } finally {
+      sidecar.server.close();
+    }
   });
 });

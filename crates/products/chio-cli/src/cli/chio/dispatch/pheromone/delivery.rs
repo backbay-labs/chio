@@ -38,11 +38,7 @@ pub(crate) fn cmd_chio_pheromone_relay_alert_delivery_import(
     .map_err(|error| {
         CliError::cli_other_error(format!("Chio relay alert delivery import: {error}"))
     })?;
-    write_pretty_json(
-        report,
-        &delivery_report,
-        "Chio relay alert delivery report",
-    )
+    write_pretty_json(report, &delivery_report, "Chio relay alert delivery report")
 }
 
 pub(crate) fn cmd_chio_pheromone_relay_alert_delivery_acknowledge(
@@ -154,9 +150,7 @@ pub(crate) fn cmd_chio_pheromone_relay_alert_delivery_drift_window(
         },
     )
     .map_err(|error| {
-        CliError::cli_other_error(format!(
-            "Chio relay alert delivery drift-window: {error}"
-        ))
+        CliError::cli_other_error(format!("Chio relay alert delivery drift-window: {error}"))
     })?;
     write_pretty_json(
         report,

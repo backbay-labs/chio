@@ -119,12 +119,41 @@ pub(crate) async fn sidecar_verify_handler(
     (StatusCode::OK, axum::Json(verification)).into_response()
 }
 
-pub(crate) async fn sidecar_health_handler(State(_state): State<Arc<ProxyState>>) -> Response {
+/// Process-only liveness. Returns `200` while the process runs. A dependency blip
+/// must not trip liveness, or an orchestrator would restart a container that is
+/// serving correctly; dependency health is reported by `/chio/health` instead.
+pub(crate) async fn sidecar_liveness_handler() -> Response {
     (
         StatusCode::OK,
         axum::Json(HealthResponse {
             status: SidecarStatus::Healthy,
             version: env!("CARGO_PKG_VERSION").to_string(),
+            // Liveness is process-only and stateless, so it does not inspect the
+            // embedded kernel's storage backends; readiness reports those.
+            receipt_backend: String::new(),
+            revocation_backend: String::new(),
+        }),
+    )
+        .into_response()
+}
+
+/// Dependency-aware readiness. Consults the proxy state instead of reporting a
+/// constant healthy, so a broken runtime dependency yields a non-200 that pulls the
+/// instance from routing. Also surfaces the embedded kernel's receipt and revocation
+/// backends so operators can confirm durable-by-default storage is in effect.
+pub(crate) async fn sidecar_health_handler(State(state): State<Arc<ProxyState>>) -> Response {
+    let status = state.readiness_status().await;
+    let code = match status {
+        SidecarStatus::Healthy => StatusCode::OK,
+        SidecarStatus::Degraded | SidecarStatus::Unhealthy => StatusCode::SERVICE_UNAVAILABLE,
+    };
+    (
+        code,
+        axum::Json(HealthResponse {
+            status,
+            version: env!("CARGO_PKG_VERSION").to_string(),
+            receipt_backend: state.receipt_backend.to_string(),
+            revocation_backend: state.revocation_backend.to_string(),
         }),
     )
         .into_response()
@@ -313,15 +342,36 @@ pub(crate) async fn sidecar_release_handler(
     }
 
     let capability_id = release_request.capability_id.trim().to_string();
-    let Some(store) = &state.receipt_store else {
+
+    // Record the release in the receipt store's revoked-capabilities table when
+    // a durable receipt database is configured, so a restart reloads it into the
+    // in-memory validate set. In ephemeral mode there is no such table; the
+    // shared revocation store below still makes the release effective in-process.
+    if let Some(store) = &state.receipt_store {
+        let mut store = store.lock().await;
+        if let Err(error) = store.revoke_capability(&capability_id) {
+            warn!("failed to persist capability revocation: {error}");
+            return internal_json_error_response(
+                "chio_capability_release_failed",
+                &error.to_string(),
+            );
+        }
+    }
+
+    // Record in the revocation store shared with the embedded kernel. It is
+    // present in every serving mode (the durable sibling database, or an
+    // in-memory store in ephemeral mode), so a release takes effect for mediated
+    // dispatch in-process and, when durable, for a sibling replica sharing the
+    // volume without waiting for a restart. Fail closed: a release that cannot be
+    // recorded must not report success.
+    let Some(revocation_store) = &state.revocation_store else {
         return internal_json_error_response(
             "chio_capability_release_failed",
-            "persistent receipt_db must be configured for capability release",
+            "no revocation store is configured for capability release",
         );
     };
-    let mut store = store.lock().await;
-    if let Err(error) = store.revoke_capability(&capability_id) {
-        warn!("failed to persist capability revocation: {error}");
+    if let Err(error) = revocation_store.revoke(&capability_id) {
+        warn!("failed to record capability revocation: {error}");
         return internal_json_error_response("chio_capability_release_failed", &error.to_string());
     }
     state
@@ -650,12 +700,9 @@ pub(crate) async fn sidecar_validate_capability_handler(
     let expires_at = Some(token.expires_at);
 
     // Fail-closed: revoked capabilities are invalid even if the signature
-    // verifies and `expires_at` is in the future.
-    let revoked = state
-        .revoked_capability_ids
-        .lock()
-        .await
-        .contains(&capability_id);
+    // verifies and `expires_at` is in the future. Consult the durable store as
+    // well so a revocation a sibling replica recorded is honored here too.
+    let revoked = state.capability_is_revoked(&capability_id).await;
     if revoked {
         return (
             StatusCode::OK,
@@ -708,6 +755,33 @@ pub(crate) async fn sidecar_validate_capability_handler(
             }),
         )
             .into_response();
+    }
+
+    // A delegated token is only as live as its lineage: revoking a parent must
+    // invalidate every attenuated child minted beneath it. Consult the durable
+    // store for each delegation-chain ancestor so this freshness signal matches
+    // the mediated request path, which also rejects a token when any chain
+    // ancestor is revoked.
+    //
+    // This walk runs only after the issuer, signature, and expiry gates above,
+    // so an untrusted or unverified token cannot force one durable revocation
+    // lookup per fabricated ancestor: a caller must present a trusted, signed,
+    // unexpired token before its chain is weighed.
+    for ancestor in &token.delegation_chain {
+        if state.capability_is_revoked(&ancestor.capability_id).await {
+            return (
+                StatusCode::OK,
+                axum::Json(SidecarValidateCapabilityResponse {
+                    valid: false,
+                    reason: Some(
+                        "a delegated capability in the chain has been revoked".to_string(),
+                    ),
+                    expires_at,
+                    capability_id,
+                }),
+            )
+                .into_response();
+        }
     }
 
     if let Some(expected_subject) = validate_request.expected_subject.as_deref() {
@@ -1055,10 +1129,8 @@ pub(crate) async fn sidecar_evaluate_tool_call_handler(
         .map(|hash| hash.trim().to_ascii_lowercase());
 
     let revoked = state
-        .revoked_capability_ids
-        .lock()
-        .await
-        .contains(&evaluate_request.capability_id);
+        .capability_is_revoked(&evaluate_request.capability_id)
+        .await;
 
     let hash_mismatch = match claimed_hash.as_ref() {
         Some(claimed) => !claimed.is_empty() && *claimed != parameter_hash,
@@ -1149,7 +1221,7 @@ pub(crate) fn require_sidecar_control_request(
         if sidecar_control_bearer_token_matches(request, expected_bearer_token) {
             return Ok(());
         }
-        if let Some(peer) = request.extensions().get::<ConnectInfo<SocketAddr>>() {
+        if let Some(peer) = request.extensions().get::<ConnectInfo<CappedPeerAddr>>() {
             warn!(
                 peer = %peer.0,
                 "rejecting sidecar control request without valid bearer token"
@@ -1160,13 +1232,13 @@ pub(crate) fn require_sidecar_control_request(
         return Err(sidecar_control_forbidden_response(true));
     }
 
-    if let Some(peer) = request.extensions().get::<ConnectInfo<SocketAddr>>() {
+    if let Some(peer) = request.extensions().get::<ConnectInfo<CappedPeerAddr>>() {
         if peer.0.ip().is_loopback() {
             return Ok(());
         }
     }
 
-    if let Some(peer) = request.extensions().get::<ConnectInfo<SocketAddr>>() {
+    if let Some(peer) = request.extensions().get::<ConnectInfo<CappedPeerAddr>>() {
         warn!(
             peer = %peer.0,
             "rejecting non-loopback sidecar control request without configured bearer token"

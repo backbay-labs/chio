@@ -1,113 +1,105 @@
 # chio-conformance
 
-Cross-language conformance harness for the Chio agent
-protocol. The crate exposes a Rust library plus a small bin set that loads
-JSON scenario descriptors, drives peer implementations against the Chio
-HTTP edge, and renders a Markdown compatibility report.
+Cross-language and cross-SDK conformance harness for the Chio protocol. The
+crate is a small library (scenario loading, live-run orchestration, report
+rendering) fronting a large integration and negative-conformance test suite
+that drives the kernel, the reference peer SDKs, and other Chio crates
+against the wire shape defined in `spec/schemas/chio-wire/v1/` and
+`spec/PROTOCOL.md`.
 
-It is the same harness Chio uses internally to keep the kernel, the
-TypeScript reference peer, the Python reference peer, the C++ peer (via
-`chio-cpp-kernel-ffi`) and Go peer in agreement on the wire shape defined
-by `spec/schemas/chio-wire/v1/`. The crate is source-installable from the
-Chio repository so external implementers can run the same scenarios without a
-manual monorepo checkout. It is not listed as registry-public yet because its
-non-dev dependency graph still includes private Chio workspace crates.
+The crate is source-installable from the Chio repository so external
+implementers can run the same scenarios without a full monorepo checkout. It
+is not published to crates.io: its non-dev dependency graph still includes
+private Chio workspace crates.
 
-## Quickstart
+## Responsibilities
 
-```bash
-cargo install --git https://github.com/backbay-labs/chio chio-conformance
-chio-conformance-runner \
-    --peer python \
-    --scenarios-dir <path/to/scenarios> \
-    --results-dir <path/to/results> \
-    --report-output <path/to/report.md>
+- Load and validate JSON scenario descriptors and recorded results, failing
+  closed on missing directories, empty scenario sets, symlinked fixture
+  escapes, and malformed JSON (`load.rs`).
+- Orchestrate a live cross-language run: locate or build the `chio` binary,
+  spawn `chio mcp serve-http` against a policy fixture and a mock upstream
+  MCP server, drive peer client processes over remote HTTP, and collect their
+  JSON results (`runner.rs`). Python and Node.js reference peers ship in the
+  crate; Go and C++ peers build from `sdks/go/chio-go` and
+  `sdks/cpp/chio-cpp` when run in-repo.
+- Drive native (non-MCP-wrapped) capability, delegation, receipt, DPoP, and
+  governed-transaction fixtures directly against kernel types over an
+  `artifact`, `stdio`, or `http` executor, with no MCP framing involved
+  (`native_suite.rs`).
+- Parse and validate `peers.lock.toml`, the pinned peer-binary release
+  manifest `chio conformance fetch-peers` downloads from (`peers.rs`).
+- Render the cross-language compatibility matrix and the native conformance
+  report as Markdown (`report.rs`).
+- Host `verdict_matrix/`, a 48-scenario corpus and diff oracle that asserts
+  `(verdict, reason_code, scope_set)` equality between the in-process Rust
+  kernel and external SDK/deployment-shape drivers.
+- Carry the negative-conformance and threat-model regression suite under
+  `tests/`, exercising production crates (`chio-siem`, `chio-link`,
+  `chio-anchor`, `chio-federation-transport-iroh`, ...) directly as evidence
+  that their fail-closed guarantees hold.
+
+## Public API
+
+Library (`src/lib.rs`):
+
+- `load_scenarios_from_dir`, `load_results_from_dir`, `LoadError` - scenario
+  and result loading.
+- `ScenarioDescriptor`, `ScenarioResult`, `CompatibilityReport`, and their
+  enums (`ScenarioCategory`, `Transport`, `PeerRole`, `DeploymentMode`,
+  `ResultStatus`, `RequiredCapabilities`) - the scenario/result data model.
+- `default_run_options`, `run_conformance_harness`, `ConformanceRunOptions`,
+  `ConformanceRunSummary`, `PeerTarget`, `ConformanceAuthMode`, `RunnerError`
+  - the live cross-language runner.
+- `default_native_run_options`, `run_native_conformance_suite`,
+  `NativeConformanceRunOptions`, `NativeConformanceRunSummary`,
+  `NativeDriver`, `NativeScenarioDescriptor`, `NativeScenarioResult`,
+  `fixture_messages_for_request` - the native suite.
+- `generate_markdown_report` - cross-language report rendering.
+- `peers::{PeersLock, PeerEntry, PeersLockError, default_peers_lock_path,
+  sha256_hex, SUPPORTED_LANGUAGES}` - `peers.lock.toml` handling.
+
+Binaries (`src/bin/`):
+
+| Binary | Purpose |
+|---|---|
+| `chio-conformance-runner` | Runs the live cross-language harness end to end. |
+| `chio-conformance-report` | Renders a report from existing scenario/result directories. |
+| `chio-native-conformance-runner` | Runs the native suite. |
+| `chio-native-conformance-fixture` | Native fixture tool server (stdio or HTTP) that the native suite's `stdio`/`http` drivers talk to. |
+
+## Usage
+
+```rust
+use chio_conformance::{default_run_options, run_conformance_harness, PeerTarget};
+
+let mut options = default_run_options();
+options.peers = vec![PeerTarget::Python];
+let summary = run_conformance_harness(&options)?;
+println!("report: {}", summary.report_output.display());
 ```
-
-A higher-level workflow (peer binary fetch, JSON report shape, scenario
-selectors) is exposed through the `chio` CLI:
-
-```bash
-chio conformance fetch-peers
-chio conformance run --peer python --report json /tmp/report.json
-```
-
-See `docs/conformance.md` in this repository for the standalone
-external-consumer flow.
-
-## Bundled fixtures
-
-The crate ships with the same fixture tree it exercises in CI. The Cargo
-`include` directive keeps the following paths in the installable package:
-
-- `tests/conformance/scenarios/**` - JSON scenario descriptors covering
-  `mcp_core`, `auth`, `tasks`, `nested_callbacks`, `notifications`, and
-  `chio-extensions`.
-- `tests/conformance/fixtures/mcp_core/**` - the default MCP policy and
-  mock upstream server used by `default_run_options()`.
-- `tests/conformance/native/scenarios/**` - native capability, delegation,
-  receipt, revocation, DPoP, and governed-transaction scenarios used by
-  `default_native_run_options()`.
-- `tests/conformance/peers/python/**` - reference Python peer (server and
-  client) used by the `--peer python` mode.
-- `tests/conformance/peers/js/**` - reference Node.js peer used by the
-  `--peer js` mode.
-
-The C++ and Go peers are built from sources outside the crate (the C++
-peer lives under `sdks/cpp/chio-cpp/`, the Go peer under
-`sdks/go/chio-go/`) and are only available when the crate is consumed
-in-repo. External consumers should drive their own peer binaries via the
-`ConformanceRunOptions` API or the `chio conformance fetch-peers`
-subcommand.
-
-## Peer language coverage
-
-| Peer    | Status        | Notes                                                            |
-| ------- | ------------- | ---------------------------------------------------------------- |
-| Python  | bundled       | Reference peer at `tests/conformance/peers/python/`              |
-| Node.js | bundled       | Reference peer at `tests/conformance/peers/js/`                  |
-| C++     | in-repo only  | Built from `sdks/cpp/chio-cpp/` via `chio-cpp-kernel-ffi`    |
-| Go      | in-repo only  | Built from `sdks/go/chio-go/`                               |
-
-C++ P0 scenario coverage (`mcp_core` and `auth`) is covered by the
-`cpp_peer_p0` integration test in `crates/tooling/chio-conformance/tests/`.
 
 ## Feature flags
 
-- `in-repo-fixtures` (default): resolve fixture and scenario paths against
-  the Chio repository layout through `default_repo_root()`
-  and `default_run_options()`. When the crate is consumed from a package
-  without the monorepo root, the same defaults fall back to the bundled
-  crate-local `tests/conformance/` tree. Disable via
-  `--no-default-features` when driving the runner with explicit absolute
-  paths through `ConformanceRunOptions`.
+| Flag | Effect |
+|------|--------|
+| `in-repo-fixtures` (default) | Resolves scenario and fixture paths against the Chio repository layout via `default_repo_root()`; falls back to the bundled crate-local `tests/conformance/` tree when no monorepo root is found. |
+| `chio-bbs` | Pulls in `chio-selective-disclosure` and `chio-workflow` to enable the BBS selective-disclosure conformance test. |
 
-## Library entry points
+## Testing
 
-The library re-exports the runner, scenario loader, native suite, and
-report generator:
+`cargo test -p chio-conformance`
 
-```rust
-use chio_conformance::{
-    default_run_options,
-    run_conformance_harness,
-    PeerTarget,
-};
+Most `tests/*_live.rs` cases self-skip when their peer toolchain (`node`,
+`python3` >= 3.11 with `chio-sdk-python`, `go`, `cmake`) is not on `PATH`. The
+verdict-matrix cross-language and deployment-shape drivers report every
+scenario as `unsupported` without an operator-supplied
+`CHIO_VERDICT_MATRIX_SIDECAR_URL`.
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let mut options = default_run_options();
-    options.peers = vec![PeerTarget::Python];
-    let summary = run_conformance_harness(&options)?;
-    println!("results: {}", summary.results_dir.display());
-    Ok(())
-}
-```
+## See also
 
-## License
-
-Licensed under Apache-2.0. See `LICENSE` in the repository root.
-
-## Further reading
-
-- `docs/conformance.md` - standalone consumer flow.
-- `spec/PROTOCOL.md` - normative wire-level protocol specification.
+- `chio-kernel` - the request evaluator this suite verifies.
+- `chio-cli` - `chio conformance run` / `chio conformance fetch-peers` wrap this crate's runner and peer-lock API.
+- `chio-control-plane` - its `certify` module builds signed certification artifacts from this crate's scenario/result loaders.
+- `docs/conformance.md` - the standalone external-consumer flow.
+- `spec/PROTOCOL.md` - the normative protocol this suite conforms to.

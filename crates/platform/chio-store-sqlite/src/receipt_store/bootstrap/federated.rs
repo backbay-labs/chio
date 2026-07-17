@@ -9,10 +9,12 @@ impl SqliteReceiptStore {
             .duration_since(UNIX_EPOCH)
             .map(|duration| duration.as_secs())
             .unwrap_or(0);
-        let mut connection = self.connection()?;
-        let tx = connection.transaction()?;
-        tx.execute(
-            r#"
+        let import_owned = import.clone();
+        self.writer_handle().run_write(move |connection| {
+            let import = &import_owned;
+            let tx = connection.transaction()?;
+            tx.execute(
+                r#"
             INSERT INTO federated_evidence_shares (
                 share_id,
                 manifest_hash,
@@ -34,28 +36,28 @@ impl SqliteReceiptStore {
                 require_proofs = excluded.require_proofs,
                 query_json = excluded.query_json
             "#,
-            params![
-                import.share_id,
-                import.manifest_hash,
-                imported_at as i64,
-                import.exported_at as i64,
-                import.issuer,
-                import.partner,
-                import.signer_public_key,
-                if import.require_proofs { 1_i64 } else { 0_i64 },
-                import.query_json,
-            ],
-        )?;
+                params![
+                    import.share_id,
+                    import.manifest_hash,
+                    imported_at as i64,
+                    import.exported_at as i64,
+                    import.issuer,
+                    import.partner,
+                    import.signer_public_key,
+                    if import.require_proofs { 1_i64 } else { 0_i64 },
+                    import.query_json,
+                ],
+            )?;
 
-        let lineage_by_capability = import
-            .capability_lineage
-            .iter()
-            .map(|snapshot| (snapshot.capability_id.as_str(), snapshot))
-            .collect::<BTreeMap<_, _>>();
+            let lineage_by_capability = import
+                .capability_lineage
+                .iter()
+                .map(|snapshot| (snapshot.capability_id.as_str(), snapshot))
+                .collect::<BTreeMap<_, _>>();
 
-        for snapshot in &import.capability_lineage {
-            tx.execute(
-                r#"
+            for snapshot in &import.capability_lineage {
+                tx.execute(
+                    r#"
                 INSERT INTO federated_share_capability_lineage (
                     share_id,
                     capability_id,
@@ -76,30 +78,30 @@ impl SqliteReceiptStore {
                     delegation_depth = excluded.delegation_depth,
                     parent_capability_id = excluded.parent_capability_id
                 "#,
-                params![
-                    import.share_id,
-                    snapshot.capability_id,
-                    snapshot.subject_key,
-                    snapshot.issuer_key,
-                    snapshot.issued_at as i64,
-                    snapshot.expires_at as i64,
-                    snapshot.grants_json,
-                    snapshot.delegation_depth as i64,
-                    snapshot.parent_capability_id,
-                ],
-            )?;
-        }
+                    params![
+                        import.share_id,
+                        snapshot.capability_id,
+                        snapshot.subject_key,
+                        snapshot.issuer_key,
+                        snapshot.issued_at as i64,
+                        snapshot.expires_at as i64,
+                        snapshot.grants_json,
+                        snapshot.delegation_depth as i64,
+                        snapshot.parent_capability_id,
+                    ],
+                )?;
+            }
 
-        for record in &import.tool_receipts {
-            let attribution = extract_receipt_attribution(&record.receipt);
-            let lineage_subject = lineage_by_capability
-                .get(record.receipt.capability_id.as_str())
-                .map(|snapshot| snapshot.subject_key.as_str());
-            let lineage_issuer = lineage_by_capability
-                .get(record.receipt.capability_id.as_str())
-                .map(|snapshot| snapshot.issuer_key.as_str());
-            tx.execute(
-                r#"
+            for record in &import.tool_receipts {
+                let attribution = extract_receipt_attribution(&record.receipt);
+                let lineage_subject = lineage_by_capability
+                    .get(record.receipt.capability_id.as_str())
+                    .map(|snapshot| snapshot.subject_key.as_str());
+                let lineage_issuer = lineage_by_capability
+                    .get(record.receipt.capability_id.as_str())
+                    .map(|snapshot| snapshot.issuer_key.as_str());
+                tx.execute(
+                    r#"
                 INSERT INTO federated_share_tool_receipts (
                     share_id,
                     seq,
@@ -118,36 +120,37 @@ impl SqliteReceiptStore {
                     issuer_key = excluded.issuer_key,
                     raw_json = excluded.raw_json
                 "#,
-                params![
-                    import.share_id,
-                    record.seq as i64,
-                    record.receipt.id,
-                    record.receipt.timestamp as i64,
-                    record.receipt.capability_id,
-                    attribution
-                        .subject_key
-                        .or_else(|| lineage_subject.map(ToOwned::to_owned)),
-                    attribution
-                        .issuer_key
-                        .or_else(|| lineage_issuer.map(ToOwned::to_owned)),
-                    serde_json::to_string(&record.receipt)?,
-                ],
-            )?;
-        }
+                    params![
+                        import.share_id,
+                        record.seq as i64,
+                        record.receipt.id,
+                        record.receipt.timestamp as i64,
+                        record.receipt.capability_id,
+                        attribution
+                            .subject_key
+                            .or_else(|| lineage_subject.map(ToOwned::to_owned)),
+                        attribution
+                            .issuer_key
+                            .or_else(|| lineage_issuer.map(ToOwned::to_owned)),
+                        serde_json::to_string(&record.receipt)?,
+                    ],
+                )?;
+            }
 
-        tx.commit()?;
+            tx.commit()?;
 
-        Ok(FederatedEvidenceShareSummary {
-            share_id: import.share_id.clone(),
-            manifest_hash: import.manifest_hash.clone(),
-            imported_at,
-            exported_at: import.exported_at,
-            issuer: import.issuer.clone(),
-            partner: import.partner.clone(),
-            signer_public_key: import.signer_public_key.clone(),
-            require_proofs: import.require_proofs,
-            tool_receipts: import.tool_receipts.len() as u64,
-            capability_lineage: import.capability_lineage.len() as u64,
+            Ok(FederatedEvidenceShareSummary {
+                share_id: import.share_id.clone(),
+                manifest_hash: import.manifest_hash.clone(),
+                imported_at,
+                exported_at: import.exported_at,
+                issuer: import.issuer.clone(),
+                partner: import.partner.clone(),
+                signer_public_key: import.signer_public_key.clone(),
+                require_proofs: import.require_proofs,
+                tool_receipts: import.tool_receipts.len() as u64,
+                capability_lineage: import.capability_lineage.len() as u64,
+            })
         })
     }
 
@@ -370,20 +373,25 @@ impl SqliteReceiptStore {
         parent_capability_id: &str,
         share_id: Option<&str>,
     ) -> Result<(), ReceiptStoreError> {
-        self.connection()?.execute(
-            r#"
-            INSERT INTO federated_lineage_bridges (
-                local_capability_id,
-                parent_capability_id,
-                share_id
-            ) VALUES (?1, ?2, ?3)
-            ON CONFLICT(local_capability_id) DO UPDATE SET
-                parent_capability_id = excluded.parent_capability_id,
-                share_id = excluded.share_id
-            "#,
-            params![local_capability_id, parent_capability_id, share_id],
-        )?;
-        Ok(())
+        let local_capability_id = local_capability_id.to_string();
+        let parent_capability_id = parent_capability_id.to_string();
+        let share_id = share_id.map(ToString::to_string);
+        self.writer_handle().run_write(move |connection| {
+            connection.execute(
+                r#"
+                INSERT INTO federated_lineage_bridges (
+                    local_capability_id,
+                    parent_capability_id,
+                    share_id
+                ) VALUES (?1, ?2, ?3)
+                ON CONFLICT(local_capability_id) DO UPDATE SET
+                    parent_capability_id = excluded.parent_capability_id,
+                    share_id = excluded.share_id
+                "#,
+                params![local_capability_id, parent_capability_id, share_id],
+            )?;
+            Ok(())
+        })
     }
 
     pub(crate) fn federated_lineage_bridge_parent(

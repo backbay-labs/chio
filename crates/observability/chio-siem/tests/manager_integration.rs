@@ -306,6 +306,7 @@ async fn manager_cursor_advance_after_export() {
         rate_limit: None,
         trusted_kernel_keys: std::collections::BTreeSet::new(),
         read_context: chio_kernel::ReceiptReadContext::local_operator_admin_all(),
+        cursor_db_path: None,
     };
 
     let mut manager = ExporterManager::new(config.clone()).expect("open ExporterManager");
@@ -386,6 +387,7 @@ async fn manager_failure_isolation_dlq() {
         rate_limit: None,
         trusted_kernel_keys: std::collections::BTreeSet::new(),
         read_context: chio_kernel::ReceiptReadContext::local_operator_admin_all(),
+        cursor_db_path: None,
     };
 
     let mut manager = ExporterManager::new(config).expect("open ExporterManager");
@@ -447,6 +449,7 @@ async fn manager_cursor_advances_past_dlq() {
         rate_limit: None,
         trusted_kernel_keys: std::collections::BTreeSet::new(),
         read_context: chio_kernel::ReceiptReadContext::local_operator_admin_all(),
+        cursor_db_path: None,
     })
     .expect("open mgr1");
     mgr1.add_exporter(Box::new(FailingExporter));
@@ -481,6 +484,7 @@ async fn manager_cursor_advances_past_dlq() {
         rate_limit: None,
         trusted_kernel_keys: std::collections::BTreeSet::new(),
         read_context: chio_kernel::ReceiptReadContext::local_operator_admin_all(),
+        cursor_db_path: None,
     })
     .expect("open mgr2");
     mgr2.add_exporter(Box::new(counter.clone()));
@@ -528,6 +532,7 @@ async fn manager_retries_transient_failure_without_dlq() {
         rate_limit: None,
         trusted_kernel_keys: std::collections::BTreeSet::new(),
         read_context: chio_kernel::ReceiptReadContext::local_operator_admin_all(),
+        cursor_db_path: None,
     })
     .expect("open ExporterManager");
     manager.add_exporter(Box::new(exporter.clone()));
@@ -588,6 +593,7 @@ async fn manager_rate_limits_bursts_without_silent_drop() {
         }),
         trusted_kernel_keys: std::collections::BTreeSet::new(),
         read_context: chio_kernel::ReceiptReadContext::local_operator_admin_all(),
+        cursor_db_path: None,
     })
     .expect("open ExporterManager");
     manager.add_exporter(Box::new(exporter.clone()));

@@ -78,4 +78,3 @@ pub(crate) fn tool_response_messages(
     });
     messages
 }
-

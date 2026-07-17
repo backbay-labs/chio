@@ -205,9 +205,9 @@ jobs:
         uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: formal/lean4/Chio/.lake
-          key: ${{ runner.os }}-lake-${{ hashFiles('formal/lean4/Chio/lean-toolchain', 'formal/lean4/Chio/lakefile.toml', 'formal/lean4/Chio/lake-manifest.json') }}-${{ github.sha }}
+          key: ${{ runner.os }}-lake-${{ hashFiles('formal/lean4/Chio/lean-toolchain', 'formal/lean4/Chio/lakefile.lean', 'formal/lean4/Chio/lake-manifest.json') }}-${{ github.sha }}
           restore-keys: |
-            ${{ runner.os }}-lake-${{ hashFiles('formal/lean4/Chio/lean-toolchain', 'formal/lean4/Chio/lakefile.toml', 'formal/lean4/Chio/lake-manifest.json') }}-
+            ${{ runner.os }}-lake-${{ hashFiles('formal/lean4/Chio/lean-toolchain', 'formal/lean4/Chio/lakefile.lean', 'formal/lean4/Chio/lake-manifest.json') }}-
 
       - name: Build proofs and validate proof registries
         run: bash scripts/check-formal-proofs.sh

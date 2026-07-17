@@ -1,38 +1,96 @@
-# chio-provider-adapter-core Architecture
+# chio-provider-adapter-core architecture
 
-## Boundaries
+## Overview
 
-- `lib.rs` is the public adapter-core facade. It exposes provider identity, loaded-weights helpers, streaming gate helpers, deny-reason text, and SSE parsing types. SSE parsing lives behind an internal `sse` module while the public re-exports and CRLF byte fidelity for `SseFrame::raw` are preserved.
-- `http.rs` owns shared provider HTTP transport, mock transport, auth configuration, status classification, and NDJSON parsing.
-- Provider adapters depend on this crate for fail-closed stream parsing, common HTTP error taxonomy, and test transport seams.
+`chio-provider-adapter-core` is the outbound edge shared by every native
+provider-tool adapter (OpenAI, Anthropic, Bedrock, Gemini, Groq, Mistral,
+Cohere, Ollama). It carries requests from the kernel's tool-call fabric to an
+untrusted upstream provider API and buffers the response. It is a pure library
+(no kernel state, `#![forbid(unsafe_code)]`); the trust-sensitive work it owns
+is validating transport config and auth material eagerly at construction, and
+gating streamed tool calls on a kernel verdict before any byte reaches the
+caller.
 
-## Outbound Trust Boundary
+## Module map
 
-`HttpTransport::new` validates the caller-supplied `HttpTransportConfig::base_url`
-before any request can be built: empty or padded values, non-HTTP(S) schemes,
-embedded userinfo, query strings, and fragments fail closed. Provider secrets
-flow through `AuthScheme` and provider-specific headers, never through URL
-userinfo or opaque base-URL query strings, so request-target construction has a
-single ambient-authority path.
+| Path | Responsibility |
+|------|----------------|
+| `src/lib.rs` | Public facade: `Provider` trait, `GatedStream`, verdict-enforcement helpers, `LoadedWeights` "unavailable" boilerplate, and re-exports from `response`, `sse`, `streaming`. |
+| `src/http.rs` | Public (`pub mod`). HTTP transport: `HttpTransportConfig`, `AuthScheme`, `HttpTransport`, `ProviderHttpTransport`, status/error classification, NDJSON parsing, `MockHttpTransport`. |
+| `src/sse.rs` | Private. Fail-closed SSE frame parser (`parse_sse_frames`), byte-exact retention, done-sentinel and event/type cross-check handling. |
+| `src/streaming.rs` | Private. `gate_openai_sse_tool_calls`: decodes OpenAI-compatible streaming tool calls and gates emission on a kernel verdict. |
+| `src/response.rs` | Private. Batch-response envelope unwrapping and OpenAI-shaped `tool_calls[]` decoding. |
 
-`validate_auth_scheme` checks all auth material at transport construction, before
-a `reqwest::Client` is returned:
+## Request and stream lifecycle
 
-- `AuthScheme::QueryParam` validates both the API key value and the parameter
-  name, rejecting empty, padded, or control-byte-bearing names. Query-auth secret
-  values are not included in diagnostics.
-- `AuthScheme::Bearer` rejects empty, padded, internal-whitespace, and
-  control-byte tokens before the `Authorization: Bearer <token>` default header
-  is formed.
-- Custom header and query auth values keep the generic secret validation.
+1. An adapter builds a `HttpTransportConfig` and calls `HttpTransport::new`,
+   which validates the base URL and auth material before returning a client -
+   a malformed config never reaches the network.
+2. The adapter posts through `ProviderHttpTransport` (typically held as
+   `Arc<dyn ProviderHttpTransport>`): `post_json` for batch calls, `post_sse`
+   or `post_ndjson` for streaming. Default headers resolve once at
+   construction; query-param auth is appended per request; a non-2xx response
+   becomes `HttpTransportError::Status`.
+3. Batch responses go through `response_body` to unwrap the transport
+   envelope, then `openai_tool_call_to_function_call` decodes each
+   `tool_calls[]` entry.
+4. Streamed SSE bodies go through `parse_sse_frames` into `SseFrame`s that
+   retain their original bytes. For the OpenAI-compatible shape,
+   `gate_openai_sse_tool_calls` decodes each frame's tool calls, invokes the
+   caller's `invoke` closure to build a `ToolInvocation`, calls `evaluate` for
+   a kernel `VerdictResult`, and enforces allow-with-no-redactions via
+   `ensure_streaming_allow_no_redactions` before appending the frame's raw
+   bytes to the forwarded output.
+5. `map_http_status` / `map_transport_error` translate status and transport
+   failures into the shared `chio-tool-call-fabric::ProviderError` taxonomy.
 
-## Constraints
+## Invariants and failure modes
 
-- Preserve public API compatibility for `SseFrame`, `SseParseOptions`, `UnknownSseFieldPolicy`, `parse_sse_frames`, `HttpTransportConfig`, `HttpTransportError`, `ProviderHttpTransport`, `MockHttpTransport`, and status/transport error mapping.
-- Preserve fail-closed parsing for invalid UTF-8, malformed JSON data, unknown-field rejection, event/type mismatch, and missing event names under cross-check mode.
-- Preserve done-sentinel semantics: terminator frames expose `done = true`, `data = None`, and retain the original bytes for forwarding.
+- `HttpTransport::new` rejects an empty or whitespace-padded `base_url`, a
+  non-`http`/`https` scheme, and embedded userinfo, query strings, or
+  fragments before building a client.
+- `validate_auth_scheme` runs at construction: bearer and header values
+  reject empty or padded strings, bearer tokens additionally reject internal
+  whitespace and control bytes, and a query parameter's name is validated
+  separately from its value so a rejected name never echoes the secret.
+- `parse_sse_frames` requires valid UTF-8 and JSON `data`; under
+  `UnknownSseFieldPolicy::Reject` an unrecognized field fails the frame, and
+  under `with_event_type_cross_check` a mismatched `event`/`type` pair or an
+  unnamed data frame fails closed.
+- `gate_openai_sse_tool_calls` requires every verdict to be
+  `VerdictResult::Allow` with empty redactions; a `Deny` or a redacted
+  `Allow` fails the whole stream rather than forwarding a partial result.
+- `parse_ndjson_lines` fails closed on any non-empty line that is not valid
+  JSON.
+- `MockHttpTransport` fails closed with `MockExhausted` when its scripted
+  response queue is empty, so a missing test expectation is a failure, not a
+  false success.
+- Direct `reqwest::Client` construction and sends are marked
+  `CHIO_EGRESS_LINT_ALLOW_DIRECT_REQWEST`, the repo's sanctioned egress point
+  for outbound provider calls.
 
-## Affected Dependents
+## Dependencies
 
-- `chio-openai`, `chio-groq-tools-adapter`, `chio-mistral-tools-adapter`, `chio-cohere-tools-adapter`, and `chio-gemini-tools-adapter` call the shared SSE parser; `chio-gemini-tools-adapter` is the direct query-auth dependent and uses the stable `key` parameter name. Other provider adapters use bearer or header auth through the same shared construction boundary.
-- Provider replay and conformance tests rely on the shared `ProviderError` taxonomy and byte-stable stream gating behavior.
+- `chio-tool-call-fabric` - `ProviderId`, `ProviderError`, `ToolInvocation`,
+  `VerdictResult`, `DenyReason`: the vocabulary every helper here speaks.
+- `chio-core` (aliased in `Cargo.toml` to the `chio-core-types` package) -
+  `LoadedWeights`, `LoadedWeightsUnavailable`.
+- `reqwest` (`json`, `query`, `rustls`) - the HTTP client behind
+  `HttpTransport`.
+- `async-trait` - makes `ProviderHttpTransport` dyn-compatible so adapters
+  hold `Arc<dyn ProviderHttpTransport>` and swap in `MockHttpTransport` for
+  tests.
+- `serde_json`, `thiserror`, `tokio` - payload decoding, `HttpTransportError`,
+  and the async runtime.
+- Dev-only: `chio-test-support`, `wiremock` - back the `http.rs` integration
+  tests against a bound mock server.
+
+## Extension points
+
+- `ProviderHttpTransport` - implement to replace `HttpTransport`, or use
+  `MockHttpTransport` to script upstream responses in tests.
+- `Provider` - an adapter implements `provider_id`/`api_version` to identify
+  itself.
+- `gate_openai_sse_tool_calls`'s `invoke` and `evaluate` closures - where a
+  provider adapter wires its native call struct and verdict lookup into the
+  shared gate loop.

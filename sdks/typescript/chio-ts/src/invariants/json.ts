@@ -21,6 +21,12 @@ function compareUtf16(a: string, b: string): number {
   return 0;
 }
 
+function canonicalizeString(value: string): string {
+  return JSON.stringify(value).replace(/[\u007f-\u009f]/g, (control) =>
+    `\\u${control.charCodeAt(0).toString(16).padStart(4, "0")}`
+  );
+}
+
 function canonicalizeRawNumber(raw: string): string {
   if (!/[.eE]/.test(raw)) {
     return raw === "-0" ? "0" : raw;
@@ -46,13 +52,13 @@ function canonicalizeParsedJson(value: ParsedJson): string {
     case "number":
       return canonicalizeRawNumber(value.raw);
     case "string":
-      return JSON.stringify(value.value);
+      return canonicalizeString(value.value);
     case "array":
       return `[${value.items.map((item) => canonicalizeParsedJson(item)).join(",")}]`;
     case "object":
       return `{${Array.from(value.entries.entries())
         .sort(([left], [right]) => compareUtf16(left, right))
-        .map(([key, entryValue]) => `${JSON.stringify(key)}:${canonicalizeParsedJson(entryValue)}`)
+        .map(([key, entryValue]) => `${canonicalizeString(key)}:${canonicalizeParsedJson(entryValue)}`)
         .join(",")}}`;
   }
 }
@@ -117,6 +123,9 @@ class JsonTextCanonicalParser {
       const key = this.parseString();
       this.skipWhitespace();
       this.expect(":");
+      if (entries.has(key)) {
+        throw new ChioInvariantError("json", `input contains duplicate object key: ${key}`);
+      }
       entries.set(key, this.parseValue());
       this.skipWhitespace();
       if (this.consumeIf("}")) {
@@ -221,15 +230,25 @@ export function canonicalizeJson(value: unknown): string {
       }
       return JSON.stringify(value);
     case "string":
-      return JSON.stringify(value);
+      return canonicalizeString(value);
     case "object":
       if (Array.isArray(value)) {
         return `[${value.map((item) => canonicalizeJson(item)).join(",")}]`;
       }
 
-      return `{${Object.entries(value as Record<string, unknown>)
+      const entries = Object.entries(value as Record<string, unknown>);
+      for (const [, entryValue] of entries) {
+        if (entryValue === undefined) {
+          throw new ChioInvariantError(
+            "canonical_json",
+            "canonical JSON does not support undefined object fields",
+          );
+        }
+      }
+
+      return `{${entries
         .sort(([left], [right]) => compareUtf16(left, right))
-        .map(([key, entryValue]) => `${JSON.stringify(key)}:${canonicalizeJson(entryValue)}`)
+        .map(([key, entryValue]) => `${canonicalizeString(key)}:${canonicalizeJson(entryValue)}`)
         .join(",")}}`;
     default:
       throw new ChioInvariantError(

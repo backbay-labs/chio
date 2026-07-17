@@ -290,14 +290,24 @@ pub struct SqliteEncryptedBlobStore {
     pool: Pool<SqliteConnectionManager>,
 }
 
+/// Encrypted-blob-store schema revision. Bump on every schema-affecting change.
+const ENCRYPTED_BLOB_STORE_SUPPORTED_SCHEMA_VERSION: i32 = 0;
+/// Stable key under which this store records its schema revision in the shared
+/// keyed metadata table, distinct from any co-located store's key.
+const ENCRYPTED_BLOB_STORE_SCHEMA_KEY: &str = "encrypted_blob";
+/// Tables shipped before schema stamping existed, used to adopt a pre-stamping
+/// encrypted-blob database rather than reject it as foreign.
+const ENCRYPTED_BLOB_STORE_LEGACY_ANCHOR_TABLES: &[&str] = &["chio_encrypted_blobs"];
+
 impl SqliteEncryptedBlobStore {
     /// Open the store at `path`, creating parent directories if needed.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, BlobStoreError> {
         let path = path.as_ref();
-        if let Some(parent) = path.parent() {
-            if !parent.as_os_str().is_empty() {
-                fs::create_dir_all(parent)?;
-            }
+        // Resolve any `file:` URI to its on-disk parent before creating it, so a
+        // URI-configured store creates the real backing directory rather than a
+        // bogus scheme-prefixed one.
+        if let Some(parent) = crate::sqlite_parent_dir_to_create(path) {
+            fs::create_dir_all(&parent)?;
         }
         let manager = SqliteConnectionManager::file(path);
         let pool = Pool::builder().max_size(8).build(manager)?;
@@ -317,6 +327,13 @@ impl SqliteEncryptedBlobStore {
 
     fn run_migrations(&self) -> Result<(), BlobStoreError> {
         let conn = self.pool.get()?;
+        crate::check_schema_version(
+            &conn,
+            ENCRYPTED_BLOB_STORE_SCHEMA_KEY,
+            ENCRYPTED_BLOB_STORE_SUPPORTED_SCHEMA_VERSION,
+            ENCRYPTED_BLOB_STORE_LEGACY_ANCHOR_TABLES,
+        )
+        .map_err(|error| BlobStoreError::Sqlite(error.to_string()))?;
         conn.execute_batch(
             r#"
             PRAGMA journal_mode = WAL;
@@ -335,6 +352,12 @@ impl SqliteEncryptedBlobStore {
                 ON chio_encrypted_blobs(tenant_id, created_at);
             "#,
         )?;
+        crate::stamp_schema_version(
+            &conn,
+            ENCRYPTED_BLOB_STORE_SCHEMA_KEY,
+            ENCRYPTED_BLOB_STORE_SUPPORTED_SCHEMA_VERSION,
+        )
+        .map_err(|error| BlobStoreError::Sqlite(error.to_string()))?;
         Ok(())
     }
 

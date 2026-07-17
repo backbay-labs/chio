@@ -2,11 +2,17 @@
 
 ## Purpose
 
-This document closes the reproducible promotion slice of phase `174`.
+This document defines how the shipped bounded web3 stack moves from local
+qualification to reviewed-manifest rollout without implying unattended
+public-chain deployment.
 
-It defines how the shipped bounded web3 stack moves from local qualification
-to reviewed-manifest rollout without implying unattended public-chain
-deployment.
+## Non-Testnet Guard
+
+Mainnet deployment, non-testnet custody, and non-testnet promotion are blocked
+until external audit, testnet soak, artifact digest, runtime codehash, and
+minimum-bar checks pass with security-owner sign-off. Local and Base Sepolia
+lanes are rehearsal only. The local-devnet qualification JSON and prior
+contract security review are historical evidence, not promotion signals.
 
 ## Promotion Inputs
 
@@ -23,7 +29,8 @@ For local rehearsal those inputs are:
 - a generated approval artifact under `target/web3-promotion-qualification/`
 - `--local-devnet --rollback-on-failure`
 
-For operator rollout the reviewed manifest is derived from one shipped template:
+For non-testnet operator rollout the reviewed manifest is derived from one
+shipped template:
 
 - `contracts/deployments/base-mainnet.template.json`
 - `contracts/deployments/base-sepolia.template.json`
@@ -54,7 +61,7 @@ Run:
 
 Required evidence:
 
-- `contracts/reports/local-devnet-qualification.json`
+- `contracts/reports/local-devnet-qualification.json` (historical local evidence)
 - `target/web3-runtime-qualification/qualification.log`
 - `docs/release/CHIO_WEB3_READINESS_AUDIT.md`
 
@@ -113,7 +120,7 @@ node contracts/scripts/promote-deployment.mjs \
   --rollback-on-failure
 ```
 
-Operator rollout command shape:
+Non-testnet rollout command shape:
 
 ```bash
 node contracts/scripts/promote-deployment.mjs \
@@ -124,7 +131,8 @@ node contracts/scripts/promote-deployment.mjs \
   --deployer-key "$CHIO_BASE_DEPLOYER_KEY" \
   --registry-admin-key "$CHIO_BASE_REGISTRY_ADMIN_KEY" \
   --operator-key "$CHIO_BASE_OPERATOR_KEY" \
-  --price-admin-key "$CHIO_BASE_PRICE_ADMIN_KEY"
+  --price-admin-key "$CHIO_BASE_PRICE_ADMIN_KEY" \
+  --assurance-unlock approvals/base-mainnet.assurance.json
 ```
 
 Public testnet rehearsal command shape:
@@ -134,6 +142,7 @@ pnpm --dir contracts deploy:base-sepolia-deps \
   --rpc-url "$CHIO_BASE_SEPOLIA_RPC_URL" \
   --deployer-key "$CHIO_BASE_SEPOLIA_DEPLOYER_KEY" \
   --role-address "$CHIO_BASE_SEPOLIA_WALLET" \
+  --operator-key-hash "$CHIO_BASE_SEPOLIA_OPERATOR_KEY_HASH" \
   --base-builder-code "$CHIO_BASE_BUILDER_CODE" \
   --output-dir target/web3-live-rollout/base-sepolia/dependencies
 
@@ -167,10 +176,12 @@ pnpm --dir contracts smoke:base-sepolia \
 
 The dependency step is for public testnet rehearsal only. It deploys a Base
 Sepolia CREATE2 factory plus mock Chainlink-compatible aggregators and emits
-`base-sepolia.review-inputs.json`. Mainnet promotion must replace those mock
-feed placeholders with reviewed live Chainlink feed addresses. Refresh the
-testnet mock feed timestamps before delayed readback or any rehearsal that waits
-longer than the configured heartbeat windows.
+`base-sepolia.review-inputs.json`. The `CHIO_BASE_SEPOLIA_OPERATOR_KEY_HASH`
+value is the runtime Ed25519 public-key hash that promotion registers on chain.
+Mainnet promotion must replace those mock feed placeholders with reviewed live
+Chainlink feed addresses. Refresh the testnet mock feed timestamps before
+delayed readback or any rehearsal that waits longer than the configured
+heartbeat windows.
 
 The Base Sepolia smoke reads the promoted deployment record, then executes the
 minimum public-chain transaction path: operator/entity setup, mock feed refresh,
@@ -179,10 +190,10 @@ proof release, final proof release, and timeout refund. It must finish with
 `status: pass` and preserve transaction hashes under
 `target/web3-live-rollout/base-sepolia/base-sepolia-smoke.json`.
 
-For a one-wallet pilot, the review-inputs file can set only `role_address`;
-`prepare-reviewed-manifest.mjs` will use it as registry admin, price admin,
-operator, and delegate. Production promotion should split those roles before
-mainnet approval.
+For a one-wallet pilot, the review-inputs file can set `role_address` plus
+`operator_key_hash`; `prepare-reviewed-manifest.mjs` will use the role address
+as registry admin, price admin, operator, and delegate. Production promotion
+should split those roles before mainnet approval.
 
 Prepare one reviewed chain manifest from one shipped template:
 
@@ -227,6 +238,8 @@ configured through `cdp env`.
 Required review points:
 
 - registry-admin, price-admin, and operator addresses are filled explicitly
+- non-testnet promotion has an approved assurance artifact with matching
+  approval id, release id, policy id, chain id, and security-owner sign-off
 - testnet and mainnet feed addresses plus heartbeat_seconds are reviewed
   intentionally against current Chainlink inventory before approval
 - Base Sepolia smoke evidence is attached for the promoted deployment before
@@ -245,12 +258,14 @@ Required review points:
   runner must receive signer keys for those reviewed roles explicitly
 - deferred capabilities in
   `docs/standards/CHIO_WEB3_CONTRACT_PACKAGE.json` remain deferred unless a
-  separate milestone reopens them
+  separate reviewed package version reopens them
 
 ### 5. Hosted Publication Gate
 
 Public deployment remains held outside the repo-local gate until:
 
+- external audit, testnet soak, artifact digest, runtime codehash, and
+  minimum-bar gates pass with zero unresolved critical/high findings
 - hosted workflow observation is attached to the candidate revision
 - the staged hosted artifact bundle under `target/release-qualification/web3-runtime/`
   includes both runtime and promotion qualification evidence
@@ -283,12 +298,14 @@ Operator rollback semantics:
 - live rollback is replacement-oriented, not proxy-upgrade-oriented
 - stop broader promotion immediately
 - retain the reviewed manifest, approval, report, and rollback plan
-- recut a superseding reviewed manifest if remediation is required
+- recut a replacement reviewed manifest if a fix is required
 
 ## Non-Claims
 
 - This document does not claim that Chio performs unattended testnet or mainnet
   deployment.
+- This document does not claim that local-devnet qualification, ABI parity, or
+  the prior security review authorizes non-testnet promotion.
 - This document does not replace custody, sanctions, or legal review required
   by the operator.
 - This document does not override the repository-wide release rule that hosted

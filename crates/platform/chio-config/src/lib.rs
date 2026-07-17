@@ -41,4 +41,9 @@ pub enum ConfigError {
     /// Post-deserialization validation found one or more problems.
     #[error("validation errors:\n{}", .0.iter().map(|e| format!("  - {e}")).collect::<Vec<_>>().join("\n"))]
     Validation(Vec<String>),
+
+    /// A validated config could not be lowered into a runtime kernel config
+    /// (for example, a malformed `kernel.signing_key`).
+    #[error("kernel config error: {0}")]
+    Kernel(String),
 }

@@ -46,6 +46,20 @@ fn default_route_resolver(_method: &str, path: &str) -> String {
     path.to_string()
 }
 
+/// Durable sink for the outer HTTP receipts that [`crate::ChioService`] signs.
+///
+/// The embedded authorization kernel already persists its own receipts to a
+/// configured store, but the HTTP decision and final-response receipts are signed
+/// at the tower edge and would otherwise live only in the response extensions.
+/// When the evaluator is built with a durable receipt store, those HTTP receipts
+/// are converted to core receipts (re-signed with the kernel keypair) and
+/// appended here so the HTTP audit trail survives a restart.
+#[derive(Clone)]
+struct HttpReceiptSink {
+    keypair: std::sync::Arc<Keypair>,
+    store: std::sync::Arc<dyn chio_kernel::ReceiptStore>,
+}
+
 /// Chio request evaluator. Holds the shared HTTP authority and tower-specific hooks.
 pub struct ChioEvaluator {
     authority: HttpAuthority,
@@ -54,13 +68,58 @@ pub struct ChioEvaluator {
     /// When true, sidecar errors allow the request through (fail-open).
     /// Default is false (fail-closed).
     fail_open: bool,
+    /// Durable sink for the HTTP receipts signed at the tower edge. `Some` only
+    /// when the evaluator was built with a durable receipt store.
+    receipt_sink: Option<HttpReceiptSink>,
+    /// Whether the operator explicitly opted into ephemeral (in-memory)
+    /// receipts. With no durable sink and no opt-in the evaluator is
+    /// fail-closed, and every receipt-emitting path (including the transport
+    /// deny path) must refuse rather than sign a receipt that cannot be
+    /// durably recorded.
+    allow_ephemeral: bool,
 }
 
 impl ChioEvaluator {
-    /// Create a new evaluator with the given keypair and policy hash.
+    /// Create a fail-closed evaluator with the given keypair and policy hash.
+    ///
+    /// No durable store is attached, so the first mediated call denies until a
+    /// durable store is wired through [`ChioEvaluator::builder`]. Use
+    /// [`ChioEvaluator::new_ephemeral`] for a local scaffold that intends
+    /// in-memory persistence.
     pub fn new(keypair: Keypair, policy_hash: String) -> Self {
         Self {
             authority: HttpAuthority::new(keypair, policy_hash),
+            identity_extractor: crate::identity::extract_identity,
+            route_resolver: default_route_resolver,
+            fail_open: false,
+            receipt_sink: None,
+            allow_ephemeral: false,
+        }
+    }
+
+    /// Create an explicitly ephemeral evaluator (in-memory receipt log and
+    /// revocation store) for local scaffolds and tests.
+    pub fn new_ephemeral(keypair: Keypair, policy_hash: String) -> Self {
+        Self {
+            authority: HttpAuthority::new_ephemeral(keypair, policy_hash),
+            identity_extractor: crate::identity::extract_identity,
+            route_resolver: default_route_resolver,
+            fail_open: false,
+            receipt_sink: None,
+            allow_ephemeral: true,
+        }
+    }
+
+    /// Start building an evaluator backed by durable receipt and revocation
+    /// stores.
+    #[must_use]
+    pub fn builder(keypair: Keypair, policy_hash: String) -> ChioEvaluatorBuilder {
+        ChioEvaluatorBuilder {
+            keypair,
+            policy_hash,
+            receipt_store: None,
+            revocation_store: None,
+            allow_ephemeral: false,
             identity_extractor: crate::identity::extract_identity,
             route_resolver: default_route_resolver,
             fail_open: false,
@@ -193,6 +252,70 @@ impl ChioEvaluator {
             .sign_transport_deny_receipt(input)
             .map_err(Into::into)
     }
+
+    /// Whether the receipts this evaluator signs can be recorded: either a
+    /// durable receipt store is attached, or the operator explicitly opted into
+    /// ephemeral (in-memory) receipts. When neither holds the evaluator is
+    /// fail-closed - the embedded kernel denies normal requests for missing
+    /// durable persistence - so a transport-level denial must refuse the same
+    /// way instead of emitting a signed receipt whose audit record is silently
+    /// dropped. Denial evidence must be as durable as allow evidence.
+    pub(crate) fn receipts_are_audited(&self) -> bool {
+        self.receipt_sink.is_some() || self.allow_ephemeral
+    }
+
+    /// Whether outer HTTP receipts are appended to a durable store. When this is
+    /// false there is no durable audit trail to guarantee, so the service keeps
+    /// its receipts best-effort in the response extensions and skips the
+    /// pre-forward decision-receipt persist that would otherwise fail an allowed
+    /// request closed on a store error.
+    pub(crate) fn has_durable_receipt_sink(&self) -> bool {
+        self.receipt_sink.is_some()
+    }
+
+    /// Append an outer HTTP receipt to the durable receipt store when one is
+    /// configured. [`crate::ChioService`] signs decision, final-response, and
+    /// transport-deny receipts at the HTTP edge; without this they would live
+    /// only in the response extensions and vanish on restart, so a configured
+    /// durable store must receive them.
+    ///
+    /// With no durable sink attached the append is a no-op: an ephemeral or
+    /// store-less evaluator keeps its receipts best-effort.
+    ///
+    /// Only a receipt that converts into a verifiable core receipt may enter the
+    /// durable audit log; the store rejects anything it cannot re-verify. An
+    /// HTTP receipt that cannot be represented as a verifiable core receipt
+    /// (for example one whose embedded kernel key does not match the durable sink
+    /// keypair, so no well-formed signed receipt can be produced) is skipped
+    /// rather than failing the request closed or writing a record the store could
+    /// never verify. A record that IS verifiable but that the store then fails to
+    /// persist still propagates the error so the caller can fail the request
+    /// closed, matching durable-by-default: a protected effect must not complete
+    /// while a valid audit record is silently dropped.
+    pub(crate) fn persist_http_receipt(&self, receipt: &HttpReceipt) -> Result<(), ChioTowerError> {
+        let Some(sink) = &self.receipt_sink else {
+            return Ok(());
+        };
+        let chio_receipt = match receipt.to_chio_receipt_with_keypair(&sink.keypair) {
+            Ok(chio_receipt) => chio_receipt,
+            Err(error) => {
+                tracing::warn!(
+                    %error,
+                    receipt_id = %receipt.id,
+                    "skipping durable persistence of an HTTP receipt that cannot be converted into a verifiable core receipt"
+                );
+                return Ok(());
+            }
+        };
+        sink.store
+            .append_chio_receipt(&chio_receipt)
+            .map_err(|error| {
+                ChioTowerError::ReceiptPersist(format!(
+                    "failed to append HTTP receipt to durable receipt store: {error}"
+                ))
+            })?;
+        Ok(())
+    }
 }
 
 fn extract_presented_capability<'a>(
@@ -211,6 +334,92 @@ fn policy_mode(method: HttpMethod) -> HttpAuthorityPolicy {
         HttpAuthorityPolicy::SessionAllow
     } else {
         HttpAuthorityPolicy::DenyByDefault
+    }
+}
+
+/// Builder for a [`ChioEvaluator`] backed by durable stores. `build` is
+/// fallible because attaching a durable receipt store hydrates checkpoint
+/// counters and can fail. `allow_ephemeral` defaults to `false` (fail-closed).
+pub struct ChioEvaluatorBuilder {
+    keypair: Keypair,
+    policy_hash: String,
+    receipt_store: Option<std::sync::Arc<dyn chio_kernel::ReceiptStore>>,
+    revocation_store: Option<std::sync::Arc<dyn chio_kernel::RevocationStore>>,
+    allow_ephemeral: bool,
+    identity_extractor: IdentityExtractor,
+    route_resolver: RouteResolver,
+    fail_open: bool,
+}
+
+impl ChioEvaluatorBuilder {
+    #[must_use]
+    pub fn receipt_store(mut self, store: std::sync::Arc<dyn chio_kernel::ReceiptStore>) -> Self {
+        self.receipt_store = Some(store);
+        self
+    }
+
+    #[must_use]
+    pub fn revocation_store(
+        mut self,
+        store: std::sync::Arc<dyn chio_kernel::RevocationStore>,
+    ) -> Self {
+        self.revocation_store = Some(store);
+        self
+    }
+
+    #[must_use]
+    pub fn allow_ephemeral(mut self, allow: bool) -> Self {
+        self.allow_ephemeral = allow;
+        self
+    }
+
+    #[must_use]
+    pub fn with_identity_extractor(mut self, extractor: IdentityExtractor) -> Self {
+        self.identity_extractor = extractor;
+        self
+    }
+
+    #[must_use]
+    pub fn with_route_resolver(mut self, resolver: RouteResolver) -> Self {
+        self.route_resolver = resolver;
+        self
+    }
+
+    #[must_use]
+    pub fn with_fail_open(mut self, fail_open: bool) -> Self {
+        self.fail_open = fail_open;
+        self
+    }
+
+    pub fn build(self) -> Result<ChioEvaluator, ChioTowerError> {
+        let mut builder = HttpAuthority::builder()
+            .allow_ephemeral_receipt_log(self.allow_ephemeral)
+            .allow_ephemeral_revocation_store(self.allow_ephemeral);
+        // A configured durable receipt store backs both the embedded kernel and
+        // the tower edge: the store handle moves into the authority builder, and
+        // a clone (with the kernel keypair) stays on the evaluator so the outer
+        // HTTP receipts the service signs are appended to the same store.
+        let receipt_sink = self.receipt_store.as_ref().map(|store| HttpReceiptSink {
+            keypair: std::sync::Arc::new(self.keypair.clone()),
+            store: std::sync::Arc::clone(store),
+        });
+        if let Some(store) = self.receipt_store {
+            builder = builder.receipt_store(store);
+        }
+        if let Some(store) = self.revocation_store {
+            builder = builder.revocation_store(store);
+        }
+        let authority = builder
+            .build(self.keypair, self.policy_hash)
+            .map_err(ChioTowerError::from)?;
+        Ok(ChioEvaluator {
+            authority,
+            identity_extractor: self.identity_extractor,
+            route_resolver: self.route_resolver,
+            fail_open: self.fail_open,
+            receipt_sink,
+            allow_ephemeral: self.allow_ephemeral,
+        })
     }
 }
 
@@ -249,6 +458,8 @@ impl Clone for ChioEvaluator {
             identity_extractor: self.identity_extractor,
             route_resolver: self.route_resolver,
             fail_open: self.fail_open,
+            receipt_sink: self.receipt_sink.clone(),
+            allow_ephemeral: self.allow_ephemeral,
         }
     }
 }
@@ -324,7 +535,7 @@ mod tests {
     #[test]
     fn evaluate_safe_method_allowed() {
         let keypair = Keypair::generate();
-        let evaluator = ChioEvaluator::new(keypair, "test-policy".to_string());
+        let evaluator = ChioEvaluator::new_ephemeral(keypair, "test-policy".to_string());
         let caller = CallerIdentity::anonymous();
         let headers = http::HeaderMap::new();
 
@@ -350,9 +561,144 @@ mod tests {
     }
 
     #[test]
+    fn builder_with_durable_stores_allows_safe_method() -> Result<(), Box<dyn std::error::Error>> {
+        let dir = tempfile::tempdir()?;
+        let receipt_store: std::sync::Arc<dyn chio_kernel::ReceiptStore> = std::sync::Arc::new(
+            chio_store_sqlite::SqliteReceiptStore::open(dir.path().join("receipts.db"))?,
+        );
+        let revocation_store: std::sync::Arc<dyn chio_kernel::RevocationStore> =
+            std::sync::Arc::new(chio_store_sqlite::SqliteRevocationStore::open(
+                dir.path().join("revocations.db"),
+            )?);
+        let evaluator = ChioEvaluator::builder(Keypair::generate(), "test-policy".to_string())
+            .receipt_store(receipt_store)
+            .revocation_store(revocation_store)
+            .build()?;
+        assert!(!evaluator.is_fail_open());
+
+        let caller = CallerIdentity::anonymous();
+        let headers = http::HeaderMap::new();
+        let result = evaluate(
+            &evaluator,
+            "GET",
+            "/pets",
+            &HashMap::new(),
+            caller,
+            &headers,
+        )?;
+        assert!(
+            result.verdict.is_allowed(),
+            "a durable-backed evaluator must allow a safe request"
+        );
+        Ok(())
+    }
+
+    /// A receipt store that counts appends without verifying, so a test can
+    /// observe whether `persist_http_receipt` reached the append at all.
+    #[derive(Default)]
+    struct CountingReceiptStore {
+        appended: std::sync::atomic::AtomicUsize,
+    }
+
+    impl CountingReceiptStore {
+        fn append_count(&self) -> usize {
+            self.appended.load(std::sync::atomic::Ordering::SeqCst)
+        }
+    }
+
+    impl chio_kernel::ReceiptStore for CountingReceiptStore {
+        fn append_chio_receipt(
+            &self,
+            _receipt: &chio_core_types::receipt::body::ChioReceipt,
+        ) -> Result<(), chio_kernel::ReceiptStoreError> {
+            self.appended
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(())
+        }
+
+        fn append_child_receipt(
+            &self,
+            _receipt: &chio_core_types::receipt::lineage::ChildRequestReceipt,
+        ) -> Result<(), chio_kernel::ReceiptStoreError> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn persists_a_well_formed_http_receipt_to_a_verifying_store(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // A real durable store recomputes the action parameter hash and rejects a
+        // receipt whose hash does not match its parameters. The outer HTTP receipt
+        // must convert into a core receipt that this verification accepts, or a
+        // durable deployment fails closed on every request instead of serving with
+        // persistence.
+        let dir = tempfile::tempdir()?;
+        let keypair = Keypair::generate();
+        let store: std::sync::Arc<dyn chio_kernel::ReceiptStore> = std::sync::Arc::new(
+            chio_store_sqlite::SqliteReceiptStore::open(dir.path().join("receipts.db"))?,
+        );
+        let evaluator = ChioEvaluator::builder(keypair, "durable-policy".to_string())
+            .receipt_store(store)
+            .allow_ephemeral(true)
+            .build()?;
+
+        let result = evaluate(
+            &evaluator,
+            "GET",
+            "/pets",
+            &HashMap::new(),
+            CallerIdentity::anonymous(),
+            &http::HeaderMap::new(),
+        )?;
+
+        // The verifying durable store must accept the converted HTTP receipt.
+        evaluator.persist_http_receipt(&result.receipt)?;
+        Ok(())
+    }
+
+    #[test]
+    fn skips_an_http_receipt_that_cannot_convert_to_a_verifiable_record(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        // A receipt whose embedded kernel key does not match the durable sink
+        // keypair cannot be re-signed into a well-formed core receipt. It must be
+        // skipped, never appended, and must not fail the request closed: the
+        // durable audit log only ever receives verifiable records, and a record
+        // that cannot be made verifiable is dropped rather than forcing a
+        // fail-closed on every request.
+        let store = std::sync::Arc::new(CountingReceiptStore::default());
+        let sink_store: std::sync::Arc<dyn chio_kernel::ReceiptStore> = store.clone();
+        let evaluator = ChioEvaluator::builder(Keypair::generate(), "durable-policy".to_string())
+            .receipt_store(sink_store)
+            .allow_ephemeral(true)
+            .build()?;
+
+        // A receipt signed by a different kernel keypair carries a foreign
+        // kernel_key, so converting it under the sink keypair cannot produce a
+        // signed core receipt.
+        let foreign_evaluator =
+            ChioEvaluator::new_ephemeral(Keypair::generate(), "foreign-policy".to_string());
+        let foreign = evaluate(
+            &foreign_evaluator,
+            "GET",
+            "/pets",
+            &HashMap::new(),
+            CallerIdentity::anonymous(),
+            &http::HeaderMap::new(),
+        )?;
+
+        evaluator.persist_http_receipt(&foreign.receipt)?;
+        assert_eq!(
+            store.append_count(),
+            0,
+            "an HTTP receipt that cannot be converted into a verifiable core receipt must not be appended"
+        );
+        Ok(())
+    }
+
+    #[test]
     fn evaluate_unsafe_method_denied_without_capability() {
         let keypair = Keypair::generate();
-        let evaluator = ChioEvaluator::new(keypair, "test-policy".to_string());
+        let evaluator = ChioEvaluator::new_ephemeral(keypair, "test-policy".to_string());
         let caller = CallerIdentity::anonymous();
         let headers = http::HeaderMap::new();
 
@@ -381,7 +727,7 @@ mod tests {
     #[test]
     fn evaluate_unsafe_method_allowed_with_capability() {
         let keypair = Keypair::generate();
-        let evaluator = ChioEvaluator::new(keypair.clone(), "test-policy".to_string());
+        let evaluator = ChioEvaluator::new_ephemeral(keypair.clone(), "test-policy".to_string());
         let caller = CallerIdentity::anonymous();
         let mut headers = http::HeaderMap::new();
         headers.insert(
@@ -411,7 +757,7 @@ mod tests {
     #[test]
     fn evaluate_invalid_method() {
         let keypair = Keypair::generate();
-        let evaluator = ChioEvaluator::new(keypair, "test-policy".to_string());
+        let evaluator = ChioEvaluator::new_ephemeral(keypair, "test-policy".to_string());
         let caller = CallerIdentity::anonymous();
         let headers = http::HeaderMap::new();
 
@@ -429,7 +775,7 @@ mod tests {
     #[test]
     fn evaluate_all_safe_methods() {
         let keypair = Keypair::generate();
-        let evaluator = ChioEvaluator::new(keypair, "test-policy".to_string());
+        let evaluator = ChioEvaluator::new_ephemeral(keypair, "test-policy".to_string());
         let headers = http::HeaderMap::new();
 
         for method in &["GET", "HEAD", "OPTIONS"] {
@@ -450,7 +796,7 @@ mod tests {
     #[test]
     fn evaluate_all_unsafe_methods_denied() {
         let keypair = Keypair::generate();
-        let evaluator = ChioEvaluator::new(keypair, "test-policy".to_string());
+        let evaluator = ChioEvaluator::new_ephemeral(keypair, "test-policy".to_string());
         let headers = http::HeaderMap::new();
 
         for method in &["POST", "PUT", "PATCH", "DELETE"] {
@@ -474,7 +820,8 @@ mod tests {
     #[test]
     fn fail_open_mode() {
         let keypair = Keypair::generate();
-        let evaluator = ChioEvaluator::new(keypair, "test-policy".to_string()).with_fail_open(true);
+        let evaluator =
+            ChioEvaluator::new_ephemeral(keypair, "test-policy".to_string()).with_fail_open(true);
         assert!(evaluator.is_fail_open());
     }
 
@@ -485,8 +832,8 @@ mod tests {
             path.trim_end_matches('/').to_string()
         }
         let keypair = Keypair::generate();
-        let evaluator =
-            ChioEvaluator::new(keypair, "test-policy".to_string()).with_route_resolver(resolver);
+        let evaluator = ChioEvaluator::new_ephemeral(keypair, "test-policy".to_string())
+            .with_route_resolver(resolver);
 
         let caller = CallerIdentity::anonymous();
         let headers = http::HeaderMap::new();
@@ -515,7 +862,7 @@ mod tests {
     #[test]
     fn evaluator_clone() {
         let keypair = Keypair::generate();
-        let evaluator = ChioEvaluator::new(keypair, "test-policy".to_string());
+        let evaluator = ChioEvaluator::new_ephemeral(keypair, "test-policy".to_string());
         let cloned = evaluator.clone();
 
         let caller = CallerIdentity::anonymous();
@@ -542,7 +889,7 @@ mod tests {
     #[test]
     fn evaluate_invalid_capability_is_denied() {
         let keypair = Keypair::generate();
-        let evaluator = ChioEvaluator::new(keypair, "test-policy".to_string());
+        let evaluator = ChioEvaluator::new_ephemeral(keypair, "test-policy".to_string());
         let caller = CallerIdentity::anonymous();
         let mut headers = http::HeaderMap::new();
         headers.insert(
@@ -571,7 +918,7 @@ mod tests {
     #[test]
     fn evaluate_query_parameters_affect_content_hash() {
         let keypair = Keypair::generate();
-        let evaluator = ChioEvaluator::new(keypair, "test-policy".to_string());
+        let evaluator = ChioEvaluator::new_ephemeral(keypair, "test-policy".to_string());
         let caller = CallerIdentity::anonymous();
         let headers = http::HeaderMap::new();
         let mut query_a = HashMap::new();
@@ -597,7 +944,7 @@ mod tests {
     #[test]
     fn finalize_receipt_marks_final_scope() {
         let keypair = Keypair::generate();
-        let evaluator = ChioEvaluator::new(keypair, "test-policy".to_string());
+        let evaluator = ChioEvaluator::new_ephemeral(keypair, "test-policy".to_string());
         let caller = CallerIdentity::anonymous();
         let headers = http::HeaderMap::new();
         let query = HashMap::new();

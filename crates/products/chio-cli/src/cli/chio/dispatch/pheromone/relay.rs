@@ -2,8 +2,9 @@ use super::{
     build_iroh_outbound_endpoint, build_iroh_router, build_peer_directory_bundle_trust,
     iroh_transport_metrics_prometheus, load_chio_verified_workflow_resolver,
     load_chio_workflow_verifier_trust_bundle, load_iroh_serve_inputs,
-    load_relay_peer_directory_from_paths, load_relay_signing_key, read_json_documents_from_dir,
-    read_utf8_json_file, unix_now_ms, write_json_string, write_pretty_json, IrohServeInputs,
+    load_relay_peer_directory_from_paths, load_relay_signing_key, note_router_liveness,
+    read_json_documents_from_dir, read_utf8_json_file, run_directory_reloader, unix_now_ms,
+    write_json_string, write_pretty_json, DirectoryReloadConfig, IrohServeInputs,
 };
 use crate::CliError;
 use std::collections::HashMap;
@@ -33,11 +34,36 @@ impl chio_pheromone_relay::RelayBatchReceiver for CliRelayBatchReceiver {
         config.authenticated_sender_kernel_id = authenticated_sender_kernel_id;
         config.validation_context.now_unix_ms = received_at_unix_ms;
         let store = chio_pheromone_runtime::store::SqlitePheromoneRuntimeStore::open(&self.store)
-            .map_err(|error| chio_pheromone_relay::PheromoneRelayError::Json(error.to_string()))?;
+            .map_err(|error| {
+            chio_pheromone_relay::PheromoneRelayError::Json(error.to_string())
+        })?;
         let receiver =
             chio_pheromone_runtime::PheromoneReceiver::new(store, self.resolver.clone(), config);
         receiver
             .receive_batch(&batch, &self.transit_policy)
+            .map_err(|error| chio_pheromone_relay::PheromoneRelayError::Json(error.to_string()))
+    }
+
+    async fn recorded_report_for_batch(
+        &self,
+        batch_sha256: &str,
+        authenticated_sender_kernel_id: &str,
+    ) -> Result<
+        Option<chio_pheromone_runtime::PheromoneReceiveReport>,
+        chio_pheromone_relay::PheromoneRelayError,
+    > {
+        // Consult the same runtime store receive_batch opens: surface a
+        // durably-committed verdict for this (batch, sender) pair without re-running
+        // receive_batch. The sender scope is applied at the query
+        // level so a cross-sender verdict for the same bytes is never returned. Store
+        // errors map to the Json variant, the same internal-error shape receive_batch
+        // uses for a store-open failure above.
+        let store = chio_pheromone_runtime::store::SqlitePheromoneRuntimeStore::open(&self.store)
+            .map_err(|error| {
+            chio_pheromone_relay::PheromoneRelayError::Json(error.to_string())
+        })?;
+        store
+            .lookup_receive_report_by_batch(batch_sha256, authenticated_sender_kernel_id)
             .map_err(|error| chio_pheromone_relay::PheromoneRelayError::Json(error.to_string()))
     }
 }
@@ -192,15 +218,14 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
     )?;
     let policy_json = read_utf8_json_file(transit_policy, "Chio pheromone transit policy")?;
     let workflow_trust_bundle = load_chio_workflow_verifier_trust_bundle(trust_bundle)?;
-    let (transit_policy, receiver_config) =
-        chio_pheromone_runtime::runtime_policy_from_json(
-            &policy_json,
-            now,
-            workflow_trust_bundle.runtime_policy_issuer_public_keys(),
-        )
-        .map_err(|error| {
-            CliError::cli_other_error(format!("Chio pheromone runtime policy: {error}"))
-        })?;
+    let (transit_policy, receiver_config) = chio_pheromone_runtime::runtime_policy_from_json(
+        &policy_json,
+        now,
+        workflow_trust_bundle.runtime_policy_issuer_public_keys(),
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!("Chio pheromone runtime policy: {error}"))
+    })?;
     let resolver = load_chio_verified_workflow_resolver(proof_package, trust_bundle, context)?;
     let relay_store = std::sync::Arc::new(
         chio_pheromone_relay::SqlitePheromoneRelayStore::open(store).map_err(|error| {
@@ -223,7 +248,12 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
     let iroh_mount_plan = iroh_inputs.map(|inputs| {
         let receiver: std::sync::Arc<dyn chio_pheromone_relay::RelayBatchReceiver> =
             receiver.clone();
-        (inputs, receiver, relay_store.clone(), peer_directory.clone())
+        (
+            inputs,
+            receiver,
+            relay_store.clone(),
+            peer_directory.clone(),
+        )
     });
     let mut service = chio_pheromone_relay::PheromoneRelayService::new(
         chio_pheromone_relay::PheromoneRelayConfig {
@@ -298,10 +328,70 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
             .map_err(|error| {
                 CliError::cli_other_error(format!("Chio pheromone relay bind: {error}"))
             })?;
+
+        // Spawn the directory reloader and the router-liveness watchdog alongside the
+        // serve when the iroh transport is mounted. Both are dedicated tasks feeding
+        // shared state, aborted before the router teardown below.
+        let iroh_background = iroh_mount.as_ref().map(|mount| {
+            let alive = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+            chio_federation_transport_iroh::metrics::set_router_alive(true);
+
+            // Re-verify the directory bundle every interval, fail closed on expiry.
+            let reloader = match (iroh_transport_directory, trusted_issuers) {
+                (Some(bundle_path), Some(issuers_path)) => {
+                    let reload_config = DirectoryReloadConfig {
+                        interval: std::time::Duration::from_secs(60),
+                        bundle_path: bundle_path.to_path_buf(),
+                        trusted_issuers_path: issuers_path.to_path_buf(),
+                        // This node's actual bound transport endpoint. The reloader
+                        // rechecks every re-verified successor against it and fails
+                        // closed to deny-all if the successor tombstones or rotates
+                        // this binding.
+                        local_transport_endpoint: mount.endpoint_id,
+                        // This node's localKernelId, so the recheck requires the
+                        // successor to bind THIS kernel to THIS endpoint (mirroring the
+                        // startup check), not merely that the endpoint resolves to some
+                        // kernel.
+                        local_kernel_id: mount.transport_local_kernel_id.clone(),
+                    };
+                    Some(tokio::spawn(run_directory_reloader(
+                        mount.gate.clone(),
+                        reload_config,
+                        std::sync::Arc::new(unix_now_ms),
+                        std::sync::Arc::clone(&alive),
+                    )))
+                }
+                _ => None,
+            };
+
+            // A panicked accept task kills the whole Router while HTTP keeps
+            // serving; poll liveness and make the freeze loud.
+            let router = mount.router.clone();
+            let watchdog_alive = std::sync::Arc::clone(&alive);
+            let watchdog = tokio::spawn(async move {
+                let mut ticker = tokio::time::interval(std::time::Duration::from_secs(5));
+                loop {
+                    ticker.tick().await;
+                    if router.is_shutdown() || router.endpoint().is_closed() {
+                        note_router_liveness(false);
+                        watchdog_alive.store(false, std::sync::atomic::Ordering::SeqCst);
+                        break;
+                    }
+                }
+            });
+            (reloader, watchdog)
+        });
+
         let serve_result = service
             .serve(listener)
             .await
             .map_err(|error| CliError::cli_other_error(format!("Chio pheromone relay: {error}")));
+        if let Some((reloader, watchdog)) = iroh_background {
+            if let Some(reloader) = reloader {
+                reloader.abort();
+            }
+            watchdog.abort();
+        }
         if let Some(mount) = iroh_mount {
             // The live iroh federation-transport metrics are scraped on the relay's
             // own /metrics endpoint for the whole process lifetime (see the
@@ -334,20 +424,18 @@ pub(crate) fn cmd_chio_pheromone_relay_enqueue(
         "Chio peer directory",
     )?;
     let batch_json = read_utf8_json_file(batch, "Chio pheromone relay batch")?;
-    let batch: chio_federation::pheromone_gossip::PheromoneGossipBatch = serde_json::from_str(&batch_json)
-        .map_err(|error| CliError::cli_other_error(format!("Chio relay batch: {error}")))?;
+    let batch: chio_federation::pheromone_gossip::PheromoneGossipBatch =
+        serde_json::from_str(&batch_json)
+            .map_err(|error| CliError::cli_other_error(format!("Chio relay batch: {error}")))?;
     let transit_policy_json =
         read_utf8_json_file(transit_policy, "Chio pheromone relay transit policy")?;
     let workflow_trust_bundle = load_chio_workflow_verifier_trust_bundle(trust_bundle)?;
-    let (transit_policy, _receiver_config) =
-        chio_pheromone_runtime::runtime_policy_from_json(
-            &transit_policy_json,
-            now_unix_ms,
-            workflow_trust_bundle.runtime_policy_issuer_public_keys(),
-        )
-        .map_err(|error| {
-            CliError::cli_other_error(format!("Chio relay transit policy: {error}"))
-        })?;
+    let (transit_policy, _receiver_config) = chio_pheromone_runtime::runtime_policy_from_json(
+        &transit_policy_json,
+        now_unix_ms,
+        workflow_trust_bundle.runtime_policy_issuer_public_keys(),
+    )
+    .map_err(|error| CliError::cli_other_error(format!("Chio relay transit policy: {error}")))?;
     validate_relay_enqueue_batch(&directory, &batch, &transit_policy, now_unix_ms)?;
     let peer_entry = directory
         .peer(&batch.recipient_kernel_id)
@@ -629,14 +717,15 @@ fn drain_due_batches_over_iroh(
 
         // scope_check: the SAME outbound directory-scope gate the HTTP tick applies
         // before post_batch, evaluated against the CURRENT peer directory (fail-closed).
-        let scope_check = move |recipient: &str,
-                                batch: &chio_federation::pheromone_gossip::PheromoneGossipBatch| {
-            chio_pheromone_relay::enforce_outbound_peer_batch_directory_scope(
-                &peer_directory,
-                recipient,
-                batch,
-            )
-        };
+        let scope_check =
+            move |recipient: &str,
+                  batch: &chio_federation::pheromone_gossip::PheromoneGossipBatch| {
+                chio_pheromone_relay::enforce_outbound_peer_batch_directory_scope(
+                    &peer_directory,
+                    recipient,
+                    batch,
+                )
+            };
 
         let drain = chio_federation_transport_iroh::lanes::pheromone::drain_outbox_over_iroh(
             relay_store,
@@ -706,9 +795,8 @@ pub(crate) fn write_relay_outbound_event_report(
             Some(code)
         },
     };
-    let json = serde_json::to_string_pretty(&report).map_err(|error| {
-        CliError::cli_other_error(format!("Chio relay event report: {error}"))
-    })?;
+    let json = serde_json::to_string_pretty(&report)
+        .map_err(|error| CliError::cli_other_error(format!("Chio relay event report: {error}")))?;
     let path = report_dir.join(format!("{generated_at_unix_ms}-outbound-delivery.json"));
     write_json_string(&path, &format!("{json}\n"))
 }
@@ -797,22 +885,22 @@ pub(crate) fn validate_relay_enqueue_batch(
             batch.schema
         )));
     }
-    let verification_context = chio_federation::pheromone_gossip::PheromoneGossipBatchVerificationContext {
-        now_unix_ms,
-        recipient_kernel_id: batch.recipient_kernel_id.clone(),
-        authenticated_sender_kernel_id: directory.local_kernel_id().to_string(),
-    };
-    chio_federation::pheromone_gossip::verify_pheromone_gossip_batch(batch, transit_policy, &verification_context)
-        .map_err(|error| {
-            CliError::cli_other_error(format!("Chio relay enqueue batch: {error}"))
-        })?;
+    let verification_context =
+        chio_federation::pheromone_gossip::PheromoneGossipBatchVerificationContext {
+            now_unix_ms,
+            recipient_kernel_id: batch.recipient_kernel_id.clone(),
+            authenticated_sender_kernel_id: directory.local_kernel_id().to_string(),
+        };
+    chio_federation::pheromone_gossip::verify_pheromone_gossip_batch(
+        batch,
+        transit_policy,
+        &verification_context,
+    )
+    .map_err(|error| CliError::cli_other_error(format!("Chio relay enqueue batch: {error}")))?;
     Ok(())
 }
 
-pub(crate) fn cmd_chio_pheromone_relay_status(
-    store: &Path,
-    report: &Path,
-) -> Result<(), CliError> {
+pub(crate) fn cmd_chio_pheromone_relay_status(store: &Path, report: &Path) -> Result<(), CliError> {
     let now = unix_now_ms();
     let relay_store =
         chio_pheromone_relay::SqlitePheromoneRelayStore::open(store).map_err(|error| {
@@ -864,9 +952,7 @@ pub(crate) fn cmd_chio_pheromone_relay_observe(
             profile,
             recent_failure_limit: limit,
         })
-        .map_err(|error| {
-            CliError::cli_other_error(format!("Chio relay observability: {error}"))
-        })?;
+        .map_err(|error| CliError::cli_other_error(format!("Chio relay observability: {error}")))?;
     write_pretty_json(report, &report_document, "Chio relay observability")
 }
 
@@ -1021,9 +1107,9 @@ mod tests {
         use chio_federation_transport_iroh::identity::transport_endorsement_preimage;
         use chio_federation_transport_iroh::identity::TransportDirectoryBundleBody;
         use chio_federation_transport_iroh::identity::TransportDirectoryBundleDocument;
+        use chio_federation_transport_iroh::identity::TransportDirectoryBundleTrust;
         use chio_federation_transport_iroh::identity::TransportDirectoryDocument;
         use chio_federation_transport_iroh::identity::TransportDirectoryEntry;
-        use chio_federation_transport_iroh::identity::TransportDirectoryBundleTrust;
         use chio_federation_transport_iroh::identity::TrustedTransportDirectoryIssuer;
         use chio_federation_transport_iroh::identity::TRANSPORT_DIRECTORY_BUNDLE_SCHEMA;
         use chio_pheromone_relay::PeerDirectory;
@@ -1218,11 +1304,20 @@ mod tests {
             )
             .expect("iroh drain tick runs");
 
-            assert_eq!(report.delivered, 0, "nothing is delivered to an unlisted peer");
-            assert_eq!(report.retried, 1, "the batch folds into the durable retry path");
+            assert_eq!(
+                report.delivered, 0,
+                "nothing is delivered to an unlisted peer"
+            );
+            assert_eq!(
+                report.retried, 1,
+                "the batch folds into the durable retry path"
+            );
             assert!(!report.accepted, "a retried tick is not fully accepted");
             assert!(
-                report.failures.iter().any(|line| line.contains("unknown_peer")),
+                report
+                    .failures
+                    .iter()
+                    .any(|line| line.contains("unknown_peer")),
                 "the failure must be the fail-closed unknown_peer code, got {:?}",
                 report.failures
             );
@@ -1252,8 +1347,8 @@ mod tests {
 
         #[test]
         fn direct_address_book_threads_the_socket_onto_the_resolved_endpoint() {
-            // FINDING 1 (codex round-7): in a relay-disabled / direct-address deployment
-            // the resolver must thread the --iroh-peer-addr socket onto the resolved
+            // In a relay-disabled / direct-address deployment the resolver must thread
+            // the --iroh-peer-addr socket onto the resolved
             // EndpointId so the drain can dial a peer known only by EndpointId + socket,
             // while an id-only resolution still works where discovery/relay is configured.
             let directory = verified_directory("did:chio:buyer", 24);
@@ -1264,7 +1359,10 @@ mod tests {
             let id_only =
                 resolve_dialable_transport_addr(&directory, &empty_book, "did:chio:buyer")
                     .expect("admitted recipient resolves");
-            assert_eq!(id_only.id, expected_endpoint, "the directory EndpointId is kept");
+            assert_eq!(
+                id_only.id, expected_endpoint,
+                "the directory EndpointId is kept"
+            );
             assert!(
                 id_only.ip_addrs().next().is_none(),
                 "with no book entry the address is id-only"

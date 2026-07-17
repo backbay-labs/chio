@@ -78,6 +78,7 @@ pub enum EscrowExecutionAmount {
 pub struct PreparedMerkleRelease {
     pub escrow_id: String,
     pub chain_id: String,
+    pub receipt_hash: String,
     pub receipt_leaf_hash: String,
     pub merkle_root: String,
     pub partial: bool,
@@ -97,7 +98,7 @@ impl PreparedMerkleRelease {
             chain_id: self.chain_id.clone(),
             lane_kind: "evm_merkle_proof".to_string(),
             capability_commitment,
-            receipt_reference: self.receipt_leaf_hash.clone(),
+            receipt_reference: self.receipt_hash.clone(),
             operator_identity,
             settlement_amount: self.observed_amount.clone(),
         }
@@ -121,11 +122,70 @@ pub struct DualSignReleaseInput {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
+pub struct DualSignRegistryEvidence {
+    pub chain_id: String,
+    pub identity_registry_contract: String,
+    pub operator_address: String,
+    pub block_number: u64,
+    pub block_hash: String,
+    pub observed_at: u64,
+    pub operator_key_hash: String,
+    pub settlement_key: String,
+    pub registered_at: u64,
+    pub operator_epoch: u64,
+    pub active: bool,
+}
+
+impl From<DualSignRegistryEvidence>
+    for chio_core::web3::settlement::Web3SettlementIdentityRegistryEvidence
+{
+    fn from(evidence: DualSignRegistryEvidence) -> Self {
+        Self {
+            chain_id: evidence.chain_id,
+            identity_registry_contract: evidence.identity_registry_contract,
+            operator_address: evidence.operator_address,
+            block_number: evidence.block_number,
+            block_hash: evidence.block_hash,
+            observed_at: evidence.observed_at,
+            operator_key_hash: evidence.operator_key_hash,
+            settlement_key: evidence.settlement_key,
+            registered_at: evidence.registered_at,
+            operator_epoch: evidence.operator_epoch,
+            active: evidence.active,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
+pub struct DualSignRegistryEvidenceBinding {
+    pub identity_registry_contract: String,
+    pub operator_address: String,
+    pub settlement_key: String,
+}
+
+impl From<DualSignRegistryEvidenceBinding>
+    for chio_core::web3::settlement::Web3SettlementIdentityRegistryEvidenceBinding
+{
+    fn from(binding: DualSignRegistryEvidenceBinding) -> Self {
+        Self {
+            identity_registry_contract: binding.identity_registry_contract,
+            operator_address: binding.operator_address,
+            settlement_key: binding.settlement_key,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields)]
 pub struct PreparedDualSignRelease {
     pub escrow_id: String,
     pub chain_id: String,
     pub receipt_hash: String,
     pub digest: String,
+    pub operator_epoch: u64,
+    pub identity_registry_evidence: DualSignRegistryEvidence,
+    pub identity_registry_evidence_binding: DualSignRegistryEvidenceBinding,
     pub settlement_amount_minor_units: u128,
     pub observed_amount: MonetaryAmount,
     pub signature: EvmSignature,
@@ -171,6 +231,7 @@ pub struct PreparedBondLock {
     pub vault_id: String,
     pub bond_id_hash: String,
     pub facility_id_hash: String,
+    pub operator_key_hash: String,
     pub collateral_minor_units: u128,
     pub reserve_requirement_minor_units: u128,
     pub call: PreparedEvmCall,
@@ -181,7 +242,9 @@ pub struct PreparedBondLock {
 pub struct PreparedBondRelease {
     pub vault_id: String,
     pub chain_id: String,
+    pub operator_key_hash: String,
     pub evidence_hash: String,
+    pub merkle_root: String,
     pub call: PreparedEvmCall,
 }
 
@@ -190,7 +253,9 @@ pub struct PreparedBondRelease {
 pub struct PreparedBondImpair {
     pub vault_id: String,
     pub chain_id: String,
+    pub operator_key_hash: String,
     pub evidence_hash: String,
+    pub merkle_root: String,
     pub slash_amount_minor_units: u128,
     pub call: PreparedEvmCall,
 }
@@ -246,7 +311,9 @@ pub struct EscrowSnapshot {
 pub struct EvmBondSnapshot {
     pub vault_id: String,
     pub principal_address: String,
+    pub operator_key_hash: String,
     pub expires_at: u64,
+    pub observed_at: u64,
     pub locked_minor_units: u128,
     pub reserve_requirement_minor_units: u128,
     pub reserve_requirement_ratio_bps: u16,
@@ -269,4 +336,5 @@ pub(super) struct JsonRpcEnvelope {
 pub(super) struct JsonRpcError {
     pub(super) code: i64,
     pub(super) message: String,
+    pub(super) data: Option<Value>,
 }

@@ -24,7 +24,6 @@ pub enum PolicyRefError {
     /// loaded by the underlying [`load_policy`] flow.
     #[error("workspace policy path failed to load: {0}")]
     Load(String),
-
 }
 
 /// Resolved-policy summary used by reports. For the full materialized
@@ -258,5 +257,4 @@ mod replay_policy_ref_tests {
         assert!(!is_lower_hex_64(&"A".repeat(64)));
         assert!(!is_lower_hex_64(&"g".repeat(64))); // out of [0-9a-f]
     }
-
 }

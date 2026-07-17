@@ -31,8 +31,21 @@ import {
 import { VALID_METHODS, verdictReason, verdictStatus } from "./http-helpers.js";
 
 const bufferedNodeBodies = new WeakMap<IncomingMessage, Buffer>();
+const defaultForwardHeaders = ["content-type", "content-length"];
 
 // -- Helpers --
+
+class RequestBodyUnavailableError extends Error {}
+
+class RequestInputError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status = 403) {
+    super(message);
+    this.name = "RequestInputError";
+    this.status = status;
+  }
+}
 
 function sha256Hex(input: Uint8Array | string): string {
   return createHash("sha256").update(input).digest("hex");
@@ -53,27 +66,79 @@ function headersToRecord(headers: Record<string, string | string[] | undefined>)
   return result;
 }
 
-function parseQueryString(url: string): Record<string, string> {
+interface ParsedQueryString {
+  query: Record<string, string>;
+  capabilityToken?: string;
+  error?: string;
+  status?: number;
+}
+
+function decodeQueryComponent(value: string): string | undefined {
+  try {
+    return decodeURIComponent(value.replace(/\+/g, " "));
+  } catch {
+    return undefined;
+  }
+}
+
+function parseQueryString(url: string): ParsedQueryString {
   const query: Record<string, string> = {};
   const qIndex = url.indexOf("?");
-  if (qIndex === -1) return query;
+  if (qIndex === -1) return { query };
   const qs = url.slice(qIndex + 1);
+  const capabilityTokens: string[] = [];
   for (const pair of qs.split("&")) {
     const eqIndex = pair.indexOf("=");
     if (eqIndex === -1) {
-      query[decodeURIComponent(pair)] = "";
+      const key = decodeQueryComponent(pair);
+      if (key == null) {
+        return { query: {}, error: "malformed query parameter encoding" };
+      }
+      query[key] = "";
+      if (key === "chio_capability") {
+        capabilityTokens.push("");
+      }
     } else {
-      const key = decodeURIComponent(pair.slice(0, eqIndex));
-      const value = decodeURIComponent(pair.slice(eqIndex + 1));
+      const key = decodeQueryComponent(pair.slice(0, eqIndex));
+      const value = decodeQueryComponent(pair.slice(eqIndex + 1));
+      if (key == null || value == null) {
+        return { query: {}, error: "malformed query parameter encoding" };
+      }
       query[key] = value;
+      if (key === "chio_capability") {
+        capabilityTokens.push(value);
+      }
     }
   }
-  return query;
+  if (capabilityTokens.length > 1) {
+    return {
+      query: {},
+      error: "duplicate chio_capability query parameters are not allowed",
+      status: 403,
+    };
+  }
+  const capabilityToken = capabilityTokens[0];
+  return capabilityToken === undefined ? { query } : { query, capabilityToken };
 }
 
 function extractPath(url: string): string {
   const qIndex = url.indexOf("?");
   return qIndex === -1 ? url : url.slice(0, qIndex);
+}
+
+/** Preserve percent-encoding in absolute Request URLs. */
+export function extractRequestPath(url: string): string {
+  const withoutQuery = extractPath(url);
+  try {
+    const parsed = new URL(withoutQuery);
+    const prefix = parsed.origin;
+    if (withoutQuery.startsWith(prefix)) {
+      return withoutQuery.slice(prefix.length) || "/";
+    }
+  } catch {
+    // Fall through for relative URLs.
+  }
+  return withoutQuery;
 }
 
 /** Default route pattern resolver -- returns the raw path as pattern. */
@@ -100,7 +165,7 @@ export function resolveConfig(config: ChioConfig): ResolvedConfig {
     routePatternResolver: config.routePatternResolver ?? defaultRoutePatternResolver,
     onSidecarError: "deny",
     timeoutMs: config.timeoutMs ?? 5000,
-    forwardHeaders: config.forwardHeaders ?? ["content-type", "content-length"],
+    forwardHeaders: [...(config.forwardHeaders ?? defaultForwardHeaders)],
     client,
   };
 }
@@ -128,6 +193,7 @@ export interface BuildRequestOptions {
   /** Optional structured arguments forwarded with synthetic tool calls. */
   toolArguments?: unknown;
   modelMetadata?: ChioHttpRequest["model_metadata"] | undefined;
+  forwardHeaders?: string[] | undefined;
 }
 
 export function getBufferedNodeRequestBody(req: IncomingMessage): Buffer | undefined {
@@ -158,6 +224,16 @@ function capabilityIdFromToken(rawToken: string | undefined): string | undefined
   }
 }
 
+const CREDENTIAL_HEADER_DENYLIST = new Set([
+  "authorization",
+  "cookie",
+  "proxy-authorization",
+  "set-cookie",
+  "x-api-key",
+  "x-chio-capability",
+  "x-chio-capability-token",
+]);
+
 /** Build a ChioHttpRequest from extracted request parts. */
 export function buildChioHttpRequest(opts: BuildRequestOptions): ChioHttpRequest {
   return {
@@ -166,7 +242,7 @@ export function buildChioHttpRequest(opts: BuildRequestOptions): ChioHttpRequest
     route_pattern: opts.routePattern,
     path: opts.path,
     query: opts.query,
-    headers: filterHeaders(opts.headers, ["content-type", "content-length"]),
+    headers: filterHeaders(opts.headers, opts.forwardHeaders ?? defaultForwardHeaders),
     caller: opts.caller,
     body_hash: opts.bodyHash,
     body_length: opts.bodyLength,
@@ -187,7 +263,11 @@ function filterHeaders(
   const result: Record<string, string> = {};
   const allowedSet = new Set(allowed.map((h) => h.toLowerCase()));
   for (const [key, value] of Object.entries(headers)) {
-    if (allowedSet.has(key.toLowerCase())) {
+    const normalized = key.toLowerCase();
+    if (
+      allowedSet.has(normalized) &&
+      !CREDENTIAL_HEADER_DENYLIST.has(normalized)
+    ) {
       result[key] = value;
     }
   }
@@ -220,17 +300,39 @@ export async function interceptNodeRequest(
 
   const url = req.url ?? "/";
   const path = extractPath(url);
-  const query = parseQueryString(url);
+  const queryResult = parseQueryString(url);
+  if (queryResult.error != null) {
+    const status = queryResult.status ?? 400;
+    sendJsonResponse(res, status, {
+      error: status === 403
+        ? CHIO_ERROR_CODES.ACCESS_DENIED
+        : CHIO_ERROR_CODES.EVALUATION_FAILED,
+      message: queryResult.error,
+    });
+    return { responseSent: true, result: null, passthrough: null };
+  }
+  const query = queryResult.query;
   const rawHeaders = headersToRecord(req.headers as Record<string, string | string[] | undefined>);
   const caller = resolved.identityExtractor(req.headers as Record<string, string | string[] | undefined>);
   const routePattern = resolved.routePatternResolver(method, path);
 
-  // Read body for hashing and replay it for downstream consumers.
-  const bodyBytes = await getNodeRequestBody(req);
+  let bodyBytes: Buffer;
+  try {
+    bodyBytes = await getNodeRequestBody(req);
+  } catch (error) {
+    sendJsonResponse(res, 400, {
+      error: CHIO_ERROR_CODES.EVALUATION_FAILED,
+      message:
+        error instanceof RequestBodyUnavailableError
+          ? error.message
+          : `request body could not be read: ${error instanceof Error ? error.message : String(error)}`,
+    });
+    return { responseSent: true, result: null, passthrough: null };
+  }
   const bodyHash = bodyBytes.length > 0 ? sha256Hex(bodyBytes) : undefined;
   const bodyLength = bodyBytes.length;
 
-  const capabilityToken = rawHeaders["x-chio-capability"] ?? query["chio_capability"] ?? undefined;
+  const capabilityToken = rawHeaders["x-chio-capability"] ?? queryResult.capabilityToken ?? undefined;
   const capabilityId = capabilityIdFromToken(capabilityToken);
 
   const chioReq = buildChioHttpRequest({
@@ -243,16 +345,17 @@ export async function interceptNodeRequest(
     bodyLength,
     routePattern,
     capabilityId,
+    forwardHeaders: resolved.forwardHeaders,
   });
 
   try {
-    const result = await resolved.client.evaluate(chioReq, rawHeaders["x-chio-capability"] ?? undefined);
+    const result = await resolved.client.evaluate(chioReq, capabilityToken);
 
-    if (!isAllowed(result.verdict) || !isAuthorizedHttpReceipt(result.receipt)) {
+    if (!isAllowed(result.verdict) || result.receipt == null || !isAuthorizedHttpReceipt(result.receipt)) {
       sendJsonResponse(res, verdictStatus(result.verdict), {
         error: CHIO_ERROR_CODES.ACCESS_DENIED,
         message: verdictReason(result.verdict),
-        receipt_id: result.receipt.id,
+        receipt_id: result.receipt?.id,
         suggestion: "provide a valid capability token in the X-Chio-Capability header or chio_capability query parameter",
       });
       return { responseSent: true, result, passthrough: null };
@@ -300,58 +403,64 @@ export async function interceptWebRequest(
     };
   }
 
-  const path = url.pathname;
-  const query: Record<string, string> = {};
-  url.searchParams.forEach((value, key) => {
-    query[key] = value;
-  });
-
-  const rawHeaders: Record<string, string> = {};
-  request.headers.forEach((value, key) => {
-    rawHeaders[key.toLowerCase()] = value;
-  });
-
-  const headerObj: Record<string, string | string[] | undefined> = {};
-  request.headers.forEach((value, key) => {
-    headerObj[key] = value;
-  });
-  const caller = resolved.identityExtractor(headerObj);
-  const routePattern = resolved.routePatternResolver(method, path);
-
-  // Read body for hashing
-  let bodyHash: string | undefined;
-  let bodyLength = 0;
-  if (request.body != null) {
-    const bodyBytes = new Uint8Array(await request.clone().arrayBuffer());
-    bodyLength = bodyBytes.length;
-    if (bodyLength > 0) {
-      bodyHash = sha256Hex(bodyBytes);
-    }
-  }
-
-  const capabilityToken = rawHeaders["x-chio-capability"] ?? query["chio_capability"] ?? undefined;
-  const capabilityId = capabilityIdFromToken(capabilityToken);
-
-  const chioReq = buildChioHttpRequest({
-    method,
-    path,
-    query,
-    headers: rawHeaders,
-    caller,
-    bodyHash,
-    bodyLength,
-    routePattern,
-    capabilityId,
-  });
-
   try {
-    const evalResult = await resolved.client.evaluate(chioReq, rawHeaders["x-chio-capability"] ?? undefined);
+    const capabilityTokens = url.searchParams.getAll("chio_capability");
+    if (capabilityTokens.length > 1) {
+      throw new RequestInputError("duplicate chio_capability query parameters are not allowed");
+    }
 
-    if (!isAllowed(evalResult.verdict) || !isAuthorizedHttpReceipt(evalResult.receipt)) {
+    const path = url.pathname;
+    const query: Record<string, string> = {};
+    url.searchParams.forEach((value, key) => {
+      query[key] = value;
+    });
+
+    const rawHeaders: Record<string, string> = {};
+    request.headers.forEach((value, key) => {
+      rawHeaders[key.toLowerCase()] = value;
+    });
+
+    const headerObj: Record<string, string | string[] | undefined> = {};
+    request.headers.forEach((value, key) => {
+      headerObj[key] = value;
+    });
+    const caller = resolved.identityExtractor(headerObj);
+    const routePattern = resolved.routePatternResolver(method, path);
+
+    // Read body for hashing
+    let bodyHash: string | undefined;
+    let bodyLength = 0;
+    if (request.body != null) {
+      const bodyBytes = new Uint8Array(await request.clone().arrayBuffer());
+      bodyLength = bodyBytes.length;
+      if (bodyLength > 0) {
+        bodyHash = sha256Hex(bodyBytes);
+      }
+    }
+
+    const capabilityToken = rawHeaders["x-chio-capability"] ?? capabilityTokens[0] ?? undefined;
+    const capabilityId = capabilityIdFromToken(capabilityToken);
+
+    const chioReq = buildChioHttpRequest({
+      method,
+      path,
+      query,
+      headers: rawHeaders,
+      caller,
+      bodyHash,
+      bodyLength,
+      routePattern,
+      capabilityId,
+      forwardHeaders: resolved.forwardHeaders,
+    });
+
+    const evalResult = await resolved.client.evaluate(chioReq, capabilityToken);
+
+    if (!isAllowed(evalResult.verdict) || evalResult.receipt == null || !isAuthorizedHttpReceipt(evalResult.receipt)) {
       const resp = jsonResponse(verdictStatus(evalResult.verdict), {
         error: CHIO_ERROR_CODES.ACCESS_DENIED,
         message: verdictReason(evalResult.verdict),
-        receipt_id: evalResult.receipt.id,
+        receipt_id: evalResult.receipt?.id,
         suggestion: "provide a valid capability token in the X-Chio-Capability header or chio_capability query parameter",
       });
       return { response: resp, result: evalResult, passthrough: null };
@@ -376,6 +485,17 @@ export async function interceptWebRequest(
     resp.headers.set("X-Chio-Receipt-Id", evalResult.receipt.id);
     return { response: resp, result: evalResult, passthrough: null };
   } catch (error) {
+    if (error instanceof RequestInputError) {
+      return {
+        response: jsonResponse(error.status, {
+          error: CHIO_ERROR_CODES.ACCESS_DENIED,
+          message: error.message,
+        }),
+        result: null,
+        passthrough: null,
+      };
+    }
+
     const message =
       error instanceof SidecarError
         ? error.message
@@ -501,13 +621,19 @@ export function preserveReadableBody(
 
 async function getNodeRequestBody(req: IncomingMessage): Promise<Buffer> {
   const replayable = req as ReplayableIncomingMessage;
-  const preBuffered =
-    bufferedBodyFromValue(replayable.rawBody) ??
-    bufferedBodyFromValue(replayable.body);
+  const rawBuffered = bufferedBodyFromValue(replayable.rawBody);
+  const bodyBuffered = bufferedBodyFromValue(replayable.body);
+  const preBuffered = rawBuffered ?? bodyBuffered;
   if (preBuffered != null) {
     bufferedNodeBodies.set(req, preBuffered);
     replayable.rawBody = preBuffered;
     return preBuffered;
+  }
+
+  if ((replayable.rawBody != null || replayable.body != null) && hasBodySignal(req)) {
+    throw new RequestBodyUnavailableError(
+      "request body was parsed before Chio evaluation without a hashable raw body",
+    );
   }
 
   const bodyBytes = await readBody(req);
@@ -520,12 +646,47 @@ async function getNodeRequestBody(req: IncomingMessage): Promise<Buffer> {
 }
 
 function readBody(req: IncomingMessage): Promise<Buffer> {
+  if (req.readableEnded) {
+    if (hasBodySignal(req)) {
+      throw new RequestBodyUnavailableError(
+        "request body was consumed before Chio evaluation",
+      );
+    }
+    return Promise.resolve(Buffer.alloc(0));
+  }
+
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     req.on("data", (chunk: Buffer) => chunks.push(chunk));
     req.on("end", () => resolve(Buffer.concat(chunks)));
     req.on("error", reject);
   });
+}
+
+function hasPositiveContentLength(req: IncomingMessage): boolean {
+  const raw = req.headers["content-length"];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (typeof value !== "string") {
+    return false;
+  }
+  const length = Number.parseInt(value, 10);
+  return Number.isFinite(length) && length > 0;
+}
+
+function hasBodySignal(req: IncomingMessage): boolean {
+  return (
+    hasPositiveContentLength(req) ||
+    hasHeaderValue(req, "transfer-encoding") ||
+    req.readableLength > 0
+  );
+}
+
+function hasHeaderValue(req: IncomingMessage, name: string): boolean {
+  const value = req.headers[name];
+  if (Array.isArray(value)) {
+    return value.some((entry) => entry.length > 0);
+  }
+  return typeof value === "string" && value.length > 0;
 }
 
 function sendJsonResponse(res: ServerResponse, status: number, body: ChioErrorResponse): void {

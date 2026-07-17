@@ -6,14 +6,16 @@ use chio_core_types::capability::{
     token::{CapabilityToken, CapabilityTokenBody},
 };
 use chio_core_types::crypto::{Keypair, PublicKey};
+use chio_core_types::receipt::decision::Decision;
 use chio_core_types::receipt::metadata::GuardEvidence;
 use chio_cross_protocol::discovery::{DiscoveryProtocol, TargetProtocolRegistry};
 use chio_cross_protocol::routing::{plan_authoritative_route, route_selection_metadata};
 use chio_kernel::{
     ApprovalStore, ChioKernel, ExecutionNonceConfig, ExecutionNonceStore, Guard, GuardContext,
-    GuardDecision, InMemoryApprovalStore, KernelConfig, KernelError, SignedExecutionNonce,
-    ToolCallRequest, ToolServerConnection, Verdict as KernelVerdict, DEFAULT_CHECKPOINT_BATCH_SIZE,
-    DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
+    GuardDecision, InMemoryApprovalStore, KernelConfig, KernelError, ReceiptStore, RevocationStore,
+    SignedExecutionNonce, ToolCallRequest, ToolCallResponse, ToolServerConnection,
+    Verdict as KernelVerdict, DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,
+    DEFAULT_MAX_STREAM_TOTAL_BYTES,
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
@@ -32,6 +34,24 @@ pub const HTTP_AUTHORITY_SERVER_ID: &str = "chio_http_authority";
 /// Tool name for HTTP-sidecar capability grants.
 pub const HTTP_AUTHORITY_TOOL_NAME: &str = "authorize_http_request";
 const HTTP_AUTHORITY_TTL_SECS: u64 = 60;
+
+/// Guard label the embedded kernel stamps on a deny receipt when it fails a
+/// mediated call closed for missing durable persistence (no receipt store or no
+/// durable revocation state). Kept in step with the kernel's fail-closed deny
+/// builder so the authority can surface a durability failure as an error rather
+/// than fold it into a routine deny receipt.
+const KERNEL_DURABILITY_FAILCLOSED_GUARD: &str = "kernel.receipt_persistence";
+
+/// Whether a kernel response is a fail-closed denial for missing durable
+/// persistence, as opposed to a routine policy or capability denial. The kernel
+/// runs its durability gate ahead of the HTTP projection guard, so this can fire
+/// for a request that is independently projected as denied.
+fn is_durability_failclosed_denial(response: &ToolCallResponse) -> bool {
+    matches!(
+        response.receipt.decision.as_ref(),
+        Some(Decision::Deny { guard, .. }) if guard == KERNEL_DURABILITY_FAILCLOSED_GUARD
+    )
+}
 
 #[must_use]
 pub fn http_authority_tool_grant() -> ToolGrant {
@@ -151,6 +171,16 @@ pub enum HttpAuthorityError {
     ReceiptSign(String),
 }
 
+/// Whether an evaluation error is a genuine mediation-edge dispatch failure that
+/// must feed `chio_dispatch_failure_total` and the error-outcome latency/guard
+/// evaluation series. A [`HttpAuthorityError::PendingApproval`] is NOT a dispatch
+/// failure: it is the normal HITL approval-required flow (surfaced as a 409),
+/// so it is excluded from the paging metric and the error series. Every other
+/// error is a real evaluation failure.
+fn is_dispatch_failure(error: &HttpAuthorityError) -> bool {
+    !matches!(error, HttpAuthorityError::PendingApproval { .. })
+}
+
 #[derive(Debug, Clone)]
 struct PresentedCapabilityState {
     capability_id: Option<String>,
@@ -234,37 +264,223 @@ impl Guard for HttpProjectionGuard {
     }
 }
 
+/// Builder for an [`HttpAuthority`] whose embedded kernel is backed by durable
+/// stores. Unlike the `-> Self` constructors, `build` attaches the receipt and
+/// revocation stores before the kernel is Arc-wrapped, and it is fallible
+/// because attaching a receipt store hydrates checkpoint counters and can fail.
+/// Both ephemeral opt-ins default to `false` (fail-closed).
+#[derive(Default)]
+pub struct HttpAuthorityBuilder {
+    approval_store: Option<Arc<dyn ApprovalStore>>,
+    receipt_store: Option<Arc<dyn ReceiptStore>>,
+    revocation_store: Option<Arc<dyn RevocationStore>>,
+    trusted_capability_issuers: Vec<PublicKey>,
+    allow_ephemeral_receipt_log: bool,
+    allow_ephemeral_revocation_store: bool,
+}
+
+impl HttpAuthorityBuilder {
+    #[must_use]
+    pub fn receipt_store(mut self, store: Arc<dyn ReceiptStore>) -> Self {
+        self.receipt_store = Some(store);
+        self
+    }
+
+    #[must_use]
+    pub fn revocation_store(mut self, store: Arc<dyn RevocationStore>) -> Self {
+        self.revocation_store = Some(store);
+        self
+    }
+
+    #[must_use]
+    pub fn approval_store(mut self, store: Arc<dyn ApprovalStore>) -> Self {
+        self.approval_store = Some(store);
+        self
+    }
+
+    #[must_use]
+    pub fn trusted_capability_issuers(mut self, issuers: Vec<PublicKey>) -> Self {
+        self.trusted_capability_issuers = issuers;
+        self
+    }
+
+    #[must_use]
+    pub fn allow_ephemeral_receipt_log(mut self, allow: bool) -> Self {
+        self.allow_ephemeral_receipt_log = allow;
+        self
+    }
+
+    #[must_use]
+    pub fn allow_ephemeral_revocation_store(mut self, allow: bool) -> Self {
+        self.allow_ephemeral_revocation_store = allow;
+        self
+    }
+
+    pub fn build(
+        self,
+        keypair: Keypair,
+        policy_hash: String,
+    ) -> Result<HttpAuthority, HttpAuthorityError> {
+        let approval_store = self
+            .approval_store
+            .unwrap_or_else(|| Arc::new(InMemoryApprovalStore::new()));
+        let keypair = Arc::new(keypair);
+        let signer_public_key = keypair.public_key();
+        let mut trusted = self.trusted_capability_issuers;
+        if !trusted.contains(&signer_public_key) {
+            trusted.push(signer_public_key.clone());
+        }
+        let kernel_subject = Keypair::generate().public_key();
+        let kernel_agent_id = kernel_subject.to_hex();
+
+        let mut kernel = ChioKernel::new(HttpAuthority::kernel_config(
+            keypair.as_ref().clone(),
+            trusted.clone(),
+            policy_hash.clone(),
+            self.allow_ephemeral_receipt_log,
+            self.allow_ephemeral_revocation_store,
+        ));
+        if let Some(store) = self.receipt_store {
+            kernel
+                .set_receipt_store_handle(store)
+                .map_err(|error| HttpAuthorityError::Kernel(error.to_string()))?;
+        }
+        if let Some(store) = self.revocation_store {
+            kernel.set_revocation_store_handle(store);
+        }
+        kernel.register_tool_server(Box::new(HttpAuthorizationServer));
+        kernel.add_guard(Box::new(HttpProjectionGuard));
+
+        Ok(HttpAuthority {
+            keypair,
+            policy_hash,
+            kernel: Arc::new(kernel),
+            kernel_subject,
+            kernel_agent_id,
+            approval_store,
+            trusted_capability_issuers: trusted,
+        })
+    }
+}
+
 impl HttpAuthority {
+    /// Start building an authority whose embedded kernel is backed by durable
+    /// receipt and revocation stores. Stores must be attached before the kernel
+    /// is wrapped in an [`Arc`], which is what this builder does.
+    #[must_use]
+    pub fn builder() -> HttpAuthorityBuilder {
+        HttpAuthorityBuilder::default()
+    }
+
+    /// Fail-closed constructor: no receipt or revocation store is attached and
+    /// both ephemeral opt-ins are off. Existing callers compile unchanged, but
+    /// the first mediated call now denies with a durable-persistence error
+    /// until a durable store is wired through [`HttpAuthority::builder`]. This
+    /// matches the kernel-backed lanes, which already deny when durable
+    /// persistence is missing.
     #[must_use]
     pub fn new(keypair: Keypair, policy_hash: String) -> Self {
-        Self::new_with_approval_store_and_trusted_issuers(
+        Self::assemble(
             keypair,
             policy_hash,
             Arc::new(InMemoryApprovalStore::new()),
             Vec::new(),
+            false,
+            false,
         )
     }
 
+    /// Explicitly ephemeral constructor (in-memory receipt log and revocation
+    /// store) for local scaffolds and tests that intend ephemerality.
+    #[must_use]
+    pub fn new_ephemeral(keypair: Keypair, policy_hash: String) -> Self {
+        Self::assemble(
+            keypair,
+            policy_hash,
+            Arc::new(InMemoryApprovalStore::new()),
+            Vec::new(),
+            true,
+            true,
+        )
+    }
+
+    /// Fail-closed constructor with a caller-provided approval store. Like
+    /// [`HttpAuthority::new`], no receipt or revocation store is attached and both
+    /// ephemeral opt-ins stay off, so a mediated side-effect call denies with a
+    /// durable-persistence error until durable stores are wired through
+    /// [`HttpAuthority::builder`]. Reach for
+    /// [`HttpAuthority::new_ephemeral_with_approval_store_and_trusted_issuers`]
+    /// when in-memory receipts and revocations are intended.
     #[must_use]
     pub fn new_with_approval_store(
         keypair: Keypair,
         policy_hash: String,
         approval_store: Arc<dyn ApprovalStore>,
     ) -> Self {
-        Self::new_with_approval_store_and_trusted_issuers(
+        Self::assemble(
             keypair,
             policy_hash,
             approval_store,
             Vec::new(),
+            false,
+            false,
         )
     }
 
+    /// Fail-closed constructor with a caller-provided approval store and trusted
+    /// issuers. Side-effect calls deny until durable stores are attached; see
+    /// [`HttpAuthority::new_with_approval_store`].
     #[must_use]
     pub fn new_with_approval_store_and_trusted_issuers(
         keypair: Keypair,
         policy_hash: String,
         approval_store: Arc<dyn ApprovalStore>,
+        trusted_capability_issuers: Vec<PublicKey>,
+    ) -> Self {
+        Self::assemble(
+            keypair,
+            policy_hash,
+            approval_store,
+            trusted_capability_issuers,
+            false,
+            false,
+        )
+    }
+
+    /// Explicitly ephemeral constructor with a caller-provided approval store and
+    /// trusted issuers: the embedded kernel keeps its receipt log and revocation
+    /// state in memory, and both are lost on restart. Ephemerality is opted into
+    /// through the constructor name (unlike the fail-closed
+    /// [`HttpAuthority::new_with_approval_store_and_trusted_issuers`]) for local
+    /// scaffolds and tests that intend it.
+    #[must_use]
+    pub fn new_ephemeral_with_approval_store_and_trusted_issuers(
+        keypair: Keypair,
+        policy_hash: String,
+        approval_store: Arc<dyn ApprovalStore>,
+        trusted_capability_issuers: Vec<PublicKey>,
+    ) -> Self {
+        Self::assemble(
+            keypair,
+            policy_hash,
+            approval_store,
+            trusted_capability_issuers,
+            true,
+            true,
+        )
+    }
+
+    /// Infallible assembly shared by every `-> Self` constructor: build the
+    /// kernel config, register the tool server and projection guard, and
+    /// Arc-wrap. No receipt store is attached here (attaching one is fallible
+    /// and lives in the builder), so these constructors keep their signatures.
+    fn assemble(
+        keypair: Keypair,
+        policy_hash: String,
+        approval_store: Arc<dyn ApprovalStore>,
         mut trusted_capability_issuers: Vec<PublicKey>,
+        allow_ephemeral_receipt_log: bool,
+        allow_ephemeral_revocation_store: bool,
     ) -> Self {
         let keypair = Arc::new(keypair);
         let signer_public_key = keypair.public_key();
@@ -274,21 +490,13 @@ impl HttpAuthority {
         let kernel_subject = Keypair::generate().public_key();
         let kernel_agent_id = kernel_subject.to_hex();
 
-        let mut kernel = ChioKernel::new(KernelConfig {
-            keypair: keypair.as_ref().clone(),
-            ca_public_keys: trusted_capability_issuers.clone(),
-            max_delegation_depth: 8,
-            policy_hash: policy_hash.clone(),
-            allow_sampling: false,
-            allow_sampling_tool_use: false,
-            allow_elicitation: false,
-            max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
-            max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
-            require_web3_evidence: false,
-            allow_ephemeral_receipt_log: true,
-            checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
-            retention_config: None,
-        });
+        let mut kernel = ChioKernel::new(Self::kernel_config(
+            keypair.as_ref().clone(),
+            trusted_capability_issuers.clone(),
+            policy_hash.clone(),
+            allow_ephemeral_receipt_log,
+            allow_ephemeral_revocation_store,
+        ));
         kernel.register_tool_server(Box::new(HttpAuthorizationServer));
         kernel.add_guard(Box::new(HttpProjectionGuard));
 
@@ -300,6 +508,37 @@ impl HttpAuthority {
             kernel_agent_id,
             approval_store,
             trusted_capability_issuers,
+        }
+    }
+
+    /// The embedded kernel configuration for the HTTP mediation lane. The two
+    /// ephemeral flags are the only durability knobs a caller varies; every
+    /// other field is fixed for this lane.
+    fn kernel_config(
+        keypair: Keypair,
+        ca_public_keys: Vec<PublicKey>,
+        policy_hash: String,
+        allow_ephemeral_receipt_log: bool,
+        allow_ephemeral_revocation_store: bool,
+    ) -> KernelConfig {
+        KernelConfig {
+            keypair,
+            ca_public_keys,
+            max_delegation_depth: 8,
+            policy_hash,
+            allow_sampling: false,
+            allow_sampling_tool_use: false,
+            allow_elicitation: false,
+            max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
+            max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
+            require_web3_evidence: false,
+            allow_ephemeral_receipt_log,
+            allow_ephemeral_revocation_store,
+            checkpoint_batch_size: DEFAULT_CHECKPOINT_BATCH_SIZE,
+            retention_config: None,
+            memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
+            deadlines: chio_kernel::HotPathDeadlineConfig::default(),
+            dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
         }
     }
 
@@ -339,6 +578,12 @@ impl HttpAuthority {
         let elapsed_nanos = u64::try_from(started_at.elapsed().as_nanos()).unwrap_or(u64::MAX);
         match result {
             Ok((prepared, receipt)) => {
+                // A policy/capability deny is an expected fail-closed decision,
+                // NOT a dispatch failure: it is tracked by the guard-verdict
+                // metrics only, never on chio_dispatch_failure_total, so a normal
+                // rejected request cannot page the P0 fail-open/dispatch-failure
+                // alert. Only a genuine evaluation error (the Err arm below) feeds
+                // the paging metric.
                 let outcome = if prepared.verdict.is_allowed() {
                     crate::metrics::GUARD_OUTCOME_ALLOW
                 } else {
@@ -354,11 +599,25 @@ impl HttpAuthority {
                 })
             }
             Err(error) => {
-                crate::metrics::observe_decision_latency_nanos_for_outcome(
-                    crate::metrics::GUARD_OUTCOME_ERROR,
-                    elapsed_nanos,
-                );
-                crate::metrics::record_guard_evaluation(crate::metrics::GUARD_OUTCOME_ERROR);
+                // A HITL PendingApproval is the normal approval-required control
+                // flow (the caller turns it into a 409 approval response), NOT a
+                // mediation-edge dispatch failure. Recording it as an error would
+                // feed chio_dispatch_failure_total (paging the P0 fail-open alert
+                // on every governed approval prompt) and skew the error-outcome
+                // latency/guard-eval series, which fold every unknown outcome into
+                // the error bucket. Only a genuine evaluation error feeds these
+                // instruments.
+                if is_dispatch_failure(&error) {
+                    crate::metrics::observe_decision_latency_nanos_for_outcome(
+                        crate::metrics::GUARD_OUTCOME_ERROR,
+                        elapsed_nanos,
+                    );
+                    crate::metrics::record_guard_evaluation(crate::metrics::GUARD_OUTCOME_ERROR);
+                    crate::metrics::record_dispatch_failure(
+                        crate::metrics::GUARD_LABEL_HTTP_AUTHORITY,
+                        "error",
+                    );
+                }
                 Err(error)
             }
         }
@@ -387,6 +646,11 @@ impl HttpAuthority {
                 binding.requested_tool_name.as_deref(),
                 binding.requested_arguments.as_ref(),
                 input.model_metadata,
+                &|capability_id| {
+                    self.kernel
+                        .is_capability_revoked(capability_id)
+                        .map_err(|error| HttpAuthorityError::Kernel(error.to_string()))
+                },
             )
         };
 
@@ -426,6 +690,21 @@ impl HttpAuthority {
             &presented_capability,
             input.execution_nonce,
         )?;
+
+        // A fail-closed durability denial (missing durable receipt store or
+        // revocation state) must surface as an error for every projection, not
+        // only allowed ones. The kernel runs its durability gate before the HTTP
+        // projection guard, so a request independently projected as denied would
+        // otherwise return a signed deny receipt while the misconfigured
+        // authority silently drops the denial audit record. Denial evidence must
+        // be as durable as allow evidence, so propagate it regardless of verdict.
+        if is_durability_failclosed_denial(&kernel_response) {
+            let reason = kernel_response
+                .reason
+                .clone()
+                .unwrap_or_else(|| "kernel denied for missing durable persistence".to_string());
+            return Err(HttpAuthorityError::Kernel(reason));
+        }
 
         let verdict = projected_verdict(binding.policy, &presented_capability);
         let expected_allowed = verdict.is_allowed();
@@ -750,6 +1029,7 @@ fn decision_status(verdict: &Verdict) -> u16 {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn validate_presented_capability(
     capability_id_hint: Option<&str>,
     presented_capability: Option<&str>,
@@ -758,6 +1038,7 @@ fn validate_presented_capability(
     requested_tool_name: Option<&str>,
     requested_arguments: Option<&Value>,
     model_metadata: Option<&ModelMetadata>,
+    is_revoked: &dyn Fn(&str) -> Result<bool, HttpAuthorityError>,
 ) -> PresentedCapabilityState {
     let requested_tool = match (requested_tool_server, requested_tool_name) {
         (Some(server_id), Some(tool_name)) => Some(RequestedToolInvocation {
@@ -800,9 +1081,20 @@ fn validate_presented_capability(
                     };
                 }
             }
-            PresentedCapabilityState {
-                capability_id: Some(token.id),
-                invalid_reason: None,
+            // The kernel's revocation check runs against the internal authority
+            // capability minted per request, never against the caller's token,
+            // so a presented capability that has been revoked (directly or via a
+            // revoked delegation ancestor) must be rejected here before it is
+            // projected as authorized.
+            match presented_capability_revocation(&token, is_revoked) {
+                Ok(None) => PresentedCapabilityState {
+                    capability_id: Some(token.id),
+                    invalid_reason: None,
+                },
+                Ok(Some(reason)) | Err(reason) => PresentedCapabilityState {
+                    capability_id: None,
+                    invalid_reason: Some(reason),
+                },
             }
         }
         Err(reason) => PresentedCapabilityState {
@@ -810,6 +1102,33 @@ fn validate_presented_capability(
             invalid_reason: Some(reason),
         },
     }
+}
+
+/// Reject a presented capability whose id, or any id in its delegation chain,
+/// is revoked. Returns `Ok(None)` when nothing is revoked, `Ok(Some(reason))`
+/// when a revoked id is found, and `Err(reason)` when the revocation store
+/// cannot be consulted, so an unavailable revocation store denies (fail-closed)
+/// rather than silently projecting the capability as valid.
+fn presented_capability_revocation(
+    token: &CapabilityToken,
+    is_revoked: &dyn Fn(&str) -> Result<bool, HttpAuthorityError>,
+) -> Result<Option<String>, String> {
+    let chain_ids = token
+        .delegation_chain
+        .iter()
+        .map(|link| link.capability_id.as_str());
+    for capability_id in std::iter::once(token.id.as_str()).chain(chain_ids) {
+        match is_revoked(capability_id) {
+            Ok(false) => {}
+            Ok(true) => {
+                return Ok(Some(format!(
+                    "presented capability {capability_id} has been revoked"
+                )))
+            }
+            Err(error) => return Err(format!("capability revocation status unavailable: {error}")),
+        }
+    }
+    Ok(None)
 }
 
 fn projected_verdict(

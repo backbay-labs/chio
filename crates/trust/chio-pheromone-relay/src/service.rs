@@ -25,6 +25,10 @@ use axum::Json;
 use axum::Router;
 use chio_core_types::Keypair;
 use chio_federation::pheromone_gossip::PheromoneGossipBatch;
+use chio_http_serve::{
+    apply_server_hygiene, run_until_drained, MaxConnListener, ServeHygieneConfig,
+    ShutdownController,
+};
 use chio_pheromone_runtime::PheromoneReceiveReport;
 use serde::Deserialize;
 use serde::Serialize;
@@ -32,6 +36,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
+use subtle::ConstantTimeEq;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -199,6 +204,23 @@ pub trait RelayBatchReceiver: Send + Sync {
         authenticated_sender_kernel_id: String,
         received_at_unix_ms: u64,
     ) -> Result<PheromoneReceiveReport, PheromoneRelayError>;
+
+    /// Return a previously durably-recorded receive report for `batch_sha256` SCOPED
+    /// to `authenticated_sender_kernel_id`, if the runtime store committed one for that
+    /// (batch, sender) pair. Used to recover the verdict after a crash in the
+    /// commit-to-record window WITHOUT re-running `receive_batch` (which would re-enter
+    /// the replay window and reject already-accepted deposits). The sender scope is
+    /// mandatory: a batch hash is not sender-unique, so an unscoped lookup could return a
+    /// cross-sender verdict and adopt it under the wrong (sender, nonce) inbox key.
+    /// Default: `Ok(None)` (a receiver with no durable report cannot recover; the handler
+    /// then keeps its fail-closed loser path).
+    async fn recorded_report_for_batch(
+        &self,
+        _batch_sha256: &str,
+        _authenticated_sender_kernel_id: &str,
+    ) -> Result<Option<PheromoneReceiveReport>, PheromoneRelayError> {
+        Ok(None)
+    }
 }
 
 /// Optional process-wide metrics hook whose Prometheus output is appended to the
@@ -267,9 +289,29 @@ impl PheromoneRelayService {
             .route(PHEROMONE_RELAY_METRICS_PATH, get(handle_metrics))
             .layer(DefaultBodyLimit::max(max_body_bytes))
             .with_state(Arc::new(self));
-        axum::serve(listener, router)
-            .await
-            .map_err(|error| PheromoneRelayError::Http(error.to_string()))
+
+        // The route-local body limit above is preserved; layer on the request
+        // timeout, concurrency limit, connection cap, and graceful-shutdown
+        // drain that this site lacked.
+        let hygiene = ServeHygieneConfig::default();
+        let router = apply_server_hygiene(router, &hygiene);
+        let controller = ShutdownController::install();
+        let listener =
+            MaxConnListener::new(listener, hygiene.max_connections.unwrap_or(usize::MAX));
+        let server = axum::serve(listener, router).with_graceful_shutdown(controller.signalled());
+
+        // The relay store commits synchronously inside its handlers, so
+        // completing in-flight requests during the drain is the whole fix;
+        // nothing is queued to flush.
+        run_until_drained(
+            server,
+            controller.subscribe(),
+            hygiene.drain_timeout,
+            async { Ok::<(), String>(()) },
+        )
+        .await
+        .map(|_outcome| ())
+        .map_err(|error| PheromoneRelayError::Http(error.to_string()))
     }
 
     fn request_now_unix_ms(&self) -> u64 {
@@ -603,7 +645,8 @@ pub(crate) fn authorize_operator(
     let authorized = headers
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
-        .is_some_and(|value| value == format!("Bearer {token}"));
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .is_some_and(|provided| provided.as_bytes().ct_eq(token.as_bytes()).into());
     if authorized {
         Ok(())
     } else {
@@ -838,4 +881,41 @@ pub(crate) fn sanitize_event_part(value: &str) -> String {
             }
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::unwrap_used, clippy::expect_used)]
+
+    use super::{PheromoneReceiveReport, RelayBatchReceiver};
+    use crate::PheromoneRelayError;
+    use async_trait::async_trait;
+    use chio_federation::pheromone_gossip::PheromoneGossipBatch;
+
+    struct SilentReceiver;
+
+    #[async_trait]
+    impl RelayBatchReceiver for SilentReceiver {
+        async fn receive_batch(
+            &self,
+            _batch: PheromoneGossipBatch,
+            _authenticated_sender_kernel_id: String,
+            _received_at_unix_ms: u64,
+        ) -> Result<PheromoneReceiveReport, PheromoneRelayError> {
+            unreachable!("not exercised by this test")
+        }
+    }
+
+    #[tokio::test]
+    async fn recorded_report_for_batch_defaults_to_none() {
+        let receiver = SilentReceiver;
+        let recovered = receiver
+            .recorded_report_for_batch("any-batch-hash", "did:chio:alice")
+            .await
+            .expect("default recovery method runs");
+        assert!(
+            recovered.is_none(),
+            "a receiver with no durable report cannot recover"
+        );
+    }
 }

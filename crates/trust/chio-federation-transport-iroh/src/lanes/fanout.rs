@@ -256,6 +256,12 @@ pub enum FanoutError {
     /// The underlying iroh-gossip subscribe/join/broadcast/receive failed.
     #[error("gossip transport error: {0}")]
     Gossip(String),
+    /// The gossip receiver fell behind and iroh-gossip dropped messages
+    /// (Event::Lagged). Fieldless: iroh-gossip 0.101 reports no drop count, so
+    /// the number of dropped messages is unknowable at this layer. A dropped
+    /// message is a lost-frame signal, never an accepted frame.
+    #[error("gossip receiver lagged: an unknown number of messages were dropped")]
+    Lagged,
 }
 
 impl FanoutError {
@@ -274,15 +280,15 @@ impl FanoutError {
             Self::Canonical(_) => "canonical-json",
             Self::Frame(_) => "frame-invalid",
             Self::Gossip(_) => "gossip-transport",
+            Self::Lagged => "lagged",
         }
     }
 }
 
-/// OBSERVE-ONLY: count + log a fan-out frame rejection alongside the unchanged
-/// fail-closed drop. The receive path previously delegated logging away ("the
-/// caller can log-and-drop it") and did none itself, so a `TreatyMismatch`
-/// cross-treaty injection campaign or a `DepositSignatureInvalid` flood produced
-/// zero local signal.
+/// Observe-only: count and log a fan-out frame rejection alongside the fail-closed
+/// drop. The receive path drops an invalid frame without emitting any local signal
+/// of its own, so a `TreatyMismatch` cross-treaty injection campaign or a
+/// `DepositSignatureInvalid` flood would otherwise go unobserved.
 fn note_fanout_failure(error: &FanoutError) {
     let reason = error.code();
     crate::metrics::record_verify_failure(crate::metrics::SEAM_FANOUT, reason);
@@ -1069,7 +1075,23 @@ impl FanoutTopic {
         loop {
             match self.receiver.next().await {
                 Some(Ok(Event::Received(message))) => return Some(Ok(message)),
-                // NeighborUp / NeighborDown / Lagged are not payloads.
+                Some(Ok(Event::Lagged)) => {
+                    // The receiver fell behind and iroh-gossip dropped messages.
+                    // Meter, log, and surface it as a dropped-message signal (never
+                    // an accepted frame) so a subscriber that fell behind cannot
+                    // silently lose frames.
+                    crate::metrics::record_lane_frame(
+                        crate::metrics::LANE_FANOUT,
+                        crate::metrics::LANE_OUTCOME_LAGGED,
+                    );
+                    tracing::warn!(
+                        target: crate::observability::TARGET_VERIFY,
+                        treaty = %self.treaty_id,
+                        "fan-out gossip receiver lagged; messages dropped"
+                    );
+                    return Some(Err(FanoutError::Lagged));
+                }
+                // NeighborUp / NeighborDown are not payloads.
                 Some(Ok(_)) => continue,
                 Some(Err(error)) => return Some(Err(FanoutError::Gossip(error.to_string()))),
                 None => return None,
@@ -1218,6 +1240,29 @@ mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]
 
     use super::*;
+
+    #[test]
+    fn lagged_event_is_metered_and_surfaced() {
+        // The variant exists, is fieldless, and has a stable code.
+        assert_eq!(FanoutError::Lagged.code(), "lagged");
+        // The lagged outcome has a real metrics slot that advances (observe-only,
+        // monotone lower bound: other tests only ever add).
+        let before = crate::metrics::lane_total(
+            crate::metrics::LANE_FANOUT,
+            crate::metrics::LANE_OUTCOME_LAGGED,
+        );
+        crate::metrics::record_lane_frame(
+            crate::metrics::LANE_FANOUT,
+            crate::metrics::LANE_OUTCOME_LAGGED,
+        );
+        assert!(
+            crate::metrics::lane_total(
+                crate::metrics::LANE_FANOUT,
+                crate::metrics::LANE_OUTCOME_LAGGED,
+            ) > before,
+            "a lagged event must be counted, never silently dropped"
+        );
+    }
     use chio_core_types::Keypair;
     use chio_federation::pheromone_gossip::PheromoneDepositGossip;
     use chio_federation::pheromone_gossip::PheromoneTransitPolicy;
@@ -1236,6 +1281,20 @@ mod tests {
     use iroh_gossip::api::Message;
     use iroh_gossip::proto::DeliveryScope;
     use std::net::Ipv4Addr;
+
+    // Build a real issuer-signed VerifiedDirectory as the membership oracle to pin
+    // the production treaty-party gate.
+    use crate::identity::transport_endorsement_preimage;
+    use crate::identity::TransportDirectoryBundleBody;
+    use crate::identity::TransportDirectoryBundleDocument;
+    use crate::identity::TransportDirectoryBundleTrust;
+    use crate::identity::TransportDirectoryDocument;
+    use crate::identity::TransportDirectoryEntry;
+    use crate::identity::TransportTreatyEntry;
+    use crate::identity::TrustedTransportDirectoryIssuer;
+    use crate::identity::TRANSPORT_DIRECTORY_BUNDLE_SCHEMA;
+    use chio_core_types::canonical_json_bytes;
+    use chio_core_types::sha256_hex;
 
     const NOW: u64 = 1_700_000_000_000;
     const NAMESPACE: &str = "chio/agents";
@@ -1319,6 +1378,101 @@ mod tests {
             required_action_class_id: "action".to_string(),
             pinned_ladder_refs: Vec::new(),
         }
+    }
+
+    /// An issuer-signed, load-time-verified directory whose treaty `TREATY_ALPHA`
+    /// party set is exactly {did:chio:alice}. This is the PRODUCTION membership
+    /// oracle (a `VerifiedDirectory`), so it pins the real treaty-party gate rather
+    /// than a `StaticTreatyMembership` stand-in.
+    fn party_verified_directory() -> crate::identity::VerifiedDirectory {
+        let passport = Keypair::from_seed(&[50; 32]);
+        let issuer = Keypair::from_seed(&[240; 32]);
+        let transport = endpoint_from_seed(60);
+        let entry = TransportDirectoryEntry {
+            kernel_id: "did:chio:alice".to_string(),
+            passport_public_key: passport.public_key(),
+            transport_endpoint_id: transport,
+            passport_endorsement: passport.sign(&transport_endorsement_preimage(
+                "did:chio:alice",
+                &transport,
+            )),
+            revocation_signers: Vec::new(),
+            removed: false,
+        };
+        let directory = TransportDirectoryDocument {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            local_kernel_id: "did:chio:local".to_string(),
+            peers: vec![entry],
+            treaties: vec![TransportTreatyEntry {
+                treaty_id: TREATY_ALPHA.to_string(),
+                party_kernel_ids: vec!["did:chio:alice".to_string()],
+            }],
+        };
+        let directory_sha256 = sha256_hex(&canonical_json_bytes(&directory).unwrap());
+        let body = TransportDirectoryBundleBody {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            issuer: "did:chio:issuer".to_string(),
+            key_id: "issuer-key-1".to_string(),
+            directory_sha256,
+            version: 1,
+            previous_version_sha256: None,
+            issued_at_unix_ms: NOW - 1,
+            expires_at_unix_ms: NOW + 1,
+        };
+        let (signature, _) = issuer.sign_canonical(&body).unwrap();
+        let bundle = TransportDirectoryBundleDocument {
+            schema: TRANSPORT_DIRECTORY_BUNDLE_SCHEMA.to_string(),
+            body,
+            directory,
+            signature,
+        };
+        let trust = TransportDirectoryBundleTrust {
+            issuers: vec![TrustedTransportDirectoryIssuer {
+                issuer: "did:chio:issuer".to_string(),
+                key_id: "issuer-key-1".to_string(),
+                public_key: issuer.public_key(),
+            }],
+            version_floor: 0,
+            expected_previous_version_sha256: None,
+            now_unix_ms: NOW,
+        };
+        bundle
+            .verify_bundle(&trust)
+            .expect("treaty bundle verifies")
+    }
+
+    #[test]
+    fn fanout_membership_gate_rejects_non_party_at_join_and_receive() {
+        // Regression pin: the per-treaty membership gate is enforced against the
+        // issuer-signed VerifiedDirectory party set.
+        let directory = party_verified_directory();
+
+        // JOIN precondition the swarm-join gate reads: is_treaty_party is fail-closed
+        // for a non-party (and true for a party).
+        assert!(directory.is_treaty_party(TREATY_ALPHA, "did:chio:alice"));
+        assert!(!directory.is_treaty_party(TREATY_ALPHA, "did:chio:eve"));
+
+        // RECEIVE: a validly self-signed frame whose origin (eve) is NOT a party to
+        // TREATY_ALPHA is rejected with TreatyMembershipDenied, using the
+        // VerifiedDirectory as the membership oracle. Eve is not directory-bound, so
+        // her key resolves via the caller resolver; the directory still denies the
+        // treaty membership AFTER the self-signature verifies (fail-closed).
+        let eve = Keypair::from_seed(&[71; 32]);
+        let frame = signed_direct_frame(
+            &eve,
+            "did:chio:eve",
+            "did:chio:hub",
+            TREATY_ALPHA,
+            NAMESPACE,
+        );
+        let keys = StaticOriginKeys::new().with("did:chio:eve", eve.public_key());
+        let policy = live_policy(NAMESPACE);
+        let error = verify_fanout_frame(&frame, &keys, &directory, &policy, NOW)
+            .expect_err("a non-party origin is denied on receive");
+        assert!(
+            matches!(error, FanoutError::TreatyMembershipDenied { .. }),
+            "unexpected: {error:?}"
+        );
     }
 
     #[test]
@@ -1607,7 +1761,7 @@ mod tests {
             .expect("endpoint binds on loopback");
         let local_id = endpoint.id();
         let gossip = Gossip::builder().spawn(endpoint.clone());
-        // The lane DERIVES its local endpoint id from &endpoint (finding 1), so it
+        // The lane derives its local endpoint id from &endpoint, so it
         // must be built before the endpoint is moved into the router.
         let lane = FanoutLane::new(gossip.clone(), &endpoint);
         let _router = Router::builder(endpoint)
@@ -1923,7 +2077,7 @@ mod tests {
             .expect("endpoint binds on loopback");
         let local_id = endpoint.id();
         let gossip = Gossip::builder().spawn(endpoint.clone());
-        // The lane DERIVES its local endpoint id from &endpoint (finding 1), so it
+        // The lane derives its local endpoint id from &endpoint, so it
         // must be built before the endpoint is moved into the router.
         let lane = FanoutLane::new(gossip.clone(), &endpoint);
         let router = Router::builder(endpoint)
@@ -1953,9 +2107,9 @@ mod tests {
         // The gate fires BEFORE any neighbor dial: even with a NON-empty bootstrap
         // (an unreachable fabricated endpoint) and a short join bound, a non-party is
         // still denied with TreatyMembershipDenied rather than attempting the dial and
-        // timing out. This pins finding 1's "before any neighbor is dialed" claim and,
-        // with the raw gossip handle now private (finding 2), leaves no path that
-        // reaches subscribe_and_join without this check.
+        // timing out. This confirms the gate fires before any neighbor is dialed, and
+        // with the raw gossip handle private, no path reaches subscribe_and_join
+        // without this check.
         let denied_with_bootstrap = lane
             .subscribe_treaty_with_timeout(
                 TREATY_ALPHA,
@@ -1991,7 +2145,7 @@ mod tests {
             .expect("endpoint binds on loopback");
         let local_id = endpoint.id();
         let gossip = Gossip::builder().spawn(endpoint.clone());
-        // The lane DERIVES its local endpoint id from &endpoint (finding 1), so it
+        // The lane derives its local endpoint id from &endpoint, so it
         // must be built before the endpoint is moved into the router.
         let lane = FanoutLane::new(gossip.clone(), &endpoint);
         let router = Router::builder(endpoint)
@@ -2021,13 +2175,13 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn subscribe_rejects_a_non_party_spoofing_a_real_party_kernel_id() {
-        // SPOOFING CASE (codex P1 follow-up): the JOIN gate must bind to the node's
-        // AUTHENTICATED endpoint identity, not the caller-supplied `local_kernel_id`
-        // string. A globally-admitted operator that is NOT a party to the treaty
-        // calls subscribe_treaty passing a REAL party's kernel id as the argument;
-        // because that string is a genuine party, the OLD `is_party(treaty, arg)`
-        // check would have admitted it and leaked the treaty's traffic. The gate now
-        // resolves the LOCAL endpoint to its admitted kernel id and rejects the spoof.
+        // The JOIN gate must bind to the node's AUTHENTICATED endpoint identity, not
+        // the caller-supplied `local_kernel_id` string, to prevent spoofing. A
+        // globally-admitted operator that is NOT a party to the treaty calls
+        // subscribe_treaty passing a REAL party's kernel id as the argument; because
+        // that string is a genuine party, binding on `is_party(treaty, arg)` alone
+        // would admit it and leak the treaty's traffic. The gate instead resolves the
+        // LOCAL endpoint to its admitted kernel id and rejects the spoof.
         let endpoint = Endpoint::builder(presets::Minimal)
             .secret_key(SecretKey::from_bytes(&[78u8; 32]))
             .relay_mode(RelayMode::Disabled)
@@ -2038,7 +2192,7 @@ mod tests {
             .expect("endpoint binds on loopback");
         let local_id = endpoint.id();
         let gossip = Gossip::builder().spawn(endpoint.clone());
-        // The lane DERIVES its local endpoint id from &endpoint (finding 1), so it
+        // The lane derives its local endpoint id from &endpoint, so it
         // must be built before the endpoint is moved into the router.
         let lane = FanoutLane::new(gossip.clone(), &endpoint);
         let router = Router::builder(endpoint)
@@ -2097,9 +2251,9 @@ mod tests {
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn new_derives_local_identity_from_the_spawned_endpoint() {
-        // FINDING 1: the constructor DERIVES local_endpoint_id from the passed
-        // Endpoint (endpoint.id()); it no longer accepts a raw caller-supplied
-        // EndpointId. Proof: the directory binds a DIFFERENT (foreign) endpoint to
+        // The constructor DERIVES local_endpoint_id from the passed Endpoint
+        // (endpoint.id()) rather than a raw caller-supplied EndpointId. Proof: the
+        // directory binds a DIFFERENT (foreign) endpoint to
         // the party and admits that party to the treaty, but does NOT bind THIS
         // node's endpoint.id(). Because the JOIN gate resolves the lane's OWN derived
         // endpoint id, it finds it unbound and fails closed - a caller cannot make
@@ -2171,7 +2325,7 @@ mod tests {
 
     #[test]
     fn receive_rejects_a_resolver_key_that_lags_the_directory() {
-        // FINDING 2: origin-key resolution is bound to the SAME verified directory
+        // Origin-key resolution is bound to the SAME verified directory
         // snapshot membership authorizes against. A caller resolver that still lists
         // a rotated-away key (disagreeing with the directory's CURRENT binding) is
         // refused BEFORE any signature work, so a stale key cannot launder a frame

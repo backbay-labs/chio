@@ -1181,7 +1181,7 @@ mod inbox_lookup_tests {
 
     #[test]
     fn clear_at_open_preserves_committed_reservations_but_reclaims_pre_commit() {
-        // Crash-recovery residual (codex round-7): the store's clear-at-open must NOT
+        // Crash-recovery residual: the store's clear-at-open must NOT
         // wipe a reservation whose batch already committed its runtime deposits but
         // whose durable verdict was not yet recorded, or a redelivery would re-win the
         // slot and RE-RECEIVE an already-admitted batch (the runtime replay window then

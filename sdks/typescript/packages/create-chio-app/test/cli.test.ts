@@ -126,6 +126,15 @@ describe("runCli", () => {
     expect(result.message).toContain("template source not found");
   });
 
+  test("rejects destinations outside cwd", () => {
+    const { env, log } = fakeEnv({});
+    const result = runCli(["next-ai-sdk-receipts", "../outside"], env);
+    expect(result.status).toBe("error");
+    expect(result.message).toContain("must stay within");
+    expect(log.mkdirs).toEqual([]);
+    expect(log.copies).toEqual([]);
+  });
+
   test("scaffolds template into destination", () => {
     const { env, log } = fakeEnv({});
     const result = runCli(["next-ai-sdk-receipts", "my-app"], env);

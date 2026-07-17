@@ -7,16 +7,72 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 pub struct SqliteRevocationStore {
     connection: Mutex<Connection>,
+    /// Whether the backing database lives only in process memory and so loses
+    /// every revocation on restart. Computed from the open path, not assumed
+    /// durable: an in-memory SQLite database must not satisfy the durability
+    /// gate the way a real filesystem path does.
+    ephemeral: bool,
 }
+
+/// Whether a SQLite path opens a database that lives only in memory for the life
+/// of the process. rusqlite enables URI filenames, so the bare `:memory:`
+/// sentinel, `file::memory:`, and any `file:...?mode=memory` URI all open a
+/// non-durable database that loses every revocation on restart.
+fn path_opens_in_memory(path: &Path) -> bool {
+    let Some(value) = path.to_str() else {
+        return false;
+    };
+    if value.eq_ignore_ascii_case(":memory:") {
+        return true;
+    }
+    let Some(rest) = value.strip_prefix("file:") else {
+        return false;
+    };
+    let (name, query) = match rest.split_once('?') {
+        Some((name, query)) => (name, Some(query)),
+        None => (rest, None),
+    };
+    if name.eq_ignore_ascii_case(":memory:") {
+        return true;
+    }
+    query.is_some_and(|query| {
+        query
+            .split('&')
+            .any(|param| param.eq_ignore_ascii_case("mode=memory"))
+    })
+}
+
+/// Revocation-store schema revision. Bump on every schema-affecting change.
+const REVOCATION_STORE_SUPPORTED_SCHEMA_VERSION: i32 = 0;
+/// Stable key under which this store records its schema revision in the shared
+/// keyed metadata table, distinct from any co-located store's key.
+const REVOCATION_STORE_SCHEMA_KEY: &str = "revocation";
+/// Tables shipped before schema stamping existed, used to adopt a pre-stamping
+/// revocation database rather than reject it as foreign.
+const REVOCATION_STORE_LEGACY_ANCHOR_TABLES: &[&str] = &["revoked_capabilities"];
 
 impl SqliteRevocationStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, RevocationStoreError> {
         let path = path.as_ref();
-        if let Some(parent) = path.parent() {
-            fs::create_dir_all(parent)?;
+        let ephemeral = path_opens_in_memory(path);
+        if !ephemeral {
+            // Derive the directory from the resolved filesystem path: a `file:`
+            // URI sibling (`file:/var/lib/chio/receipts.db.revocations?mode=rwc`)
+            // has a query and scheme that a raw `parent()` would fold into a
+            // bogus directory, leaving the real one uncreated.
+            if let Some(parent) = crate::sqlite_parent_dir_to_create(path) {
+                fs::create_dir_all(&parent)?;
+            }
         }
 
         let connection = Connection::open(path)?;
+        crate::check_schema_version(
+            &connection,
+            REVOCATION_STORE_SCHEMA_KEY,
+            REVOCATION_STORE_SUPPORTED_SCHEMA_VERSION,
+            REVOCATION_STORE_LEGACY_ANCHOR_TABLES,
+        )
+        .map_err(|error| RevocationStoreError::Sync(error.to_string()))?;
         connection.execute_batch(
             r#"
             PRAGMA journal_mode = WAL;
@@ -32,9 +88,16 @@ impl SqliteRevocationStore {
                 ON revoked_capabilities(revoked_at);
             "#,
         )?;
+        crate::stamp_schema_version(
+            &connection,
+            REVOCATION_STORE_SCHEMA_KEY,
+            REVOCATION_STORE_SUPPORTED_SCHEMA_VERSION,
+        )
+        .map_err(|error| RevocationStoreError::Sync(error.to_string()))?;
 
         Ok(Self {
             connection: Mutex::new(connection),
+            ephemeral,
         })
     }
 
@@ -112,6 +175,22 @@ impl SqliteRevocationStore {
         )?;
         Ok(())
     }
+
+    /// The head of the revocation stream as the pagination cursor tuple
+    /// (revoked_at, capability_id), or None when empty. list_revocations_after
+    /// paginates ascending, so the head is the descending row.
+    pub fn latest_revocation_cursor(&self) -> Result<Option<(i64, String)>, RevocationStoreError> {
+        let connection = self.connection()?;
+        let row = connection
+            .query_row(
+                "SELECT revoked_at, capability_id FROM revoked_capabilities \
+                 ORDER BY revoked_at DESC, capability_id DESC LIMIT 1",
+                [],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+            )
+            .optional()?;
+        Ok(row)
+    }
 }
 
 impl RevocationStore for SqliteRevocationStore {
@@ -140,6 +219,10 @@ impl RevocationStore for SqliteRevocationStore {
             )
             .optional()?;
         Ok(inserted.is_some())
+    }
+
+    fn is_ephemeral(&self) -> bool {
+        self.ephemeral
     }
 }
 
@@ -173,6 +256,81 @@ mod tests {
         assert!(reopened.is_revoked("cap-1").unwrap());
 
         let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn latest_revocation_cursor_returns_head_or_none() -> Result<(), Box<dyn std::error::Error>> {
+        let path = unique_db_path("chio-rev-head");
+        let store = SqliteRevocationStore::open(&path)?;
+        assert_eq!(store.latest_revocation_cursor()?, None);
+        store.upsert_revocation(&RevocationRecord {
+            capability_id: "cap-a".to_string(),
+            revoked_at: 10,
+        })?;
+        store.upsert_revocation(&RevocationRecord {
+            capability_id: "cap-b".to_string(),
+            revoked_at: 25,
+        })?;
+        assert_eq!(
+            store.latest_revocation_cursor()?,
+            Some((25, "cap-b".to_string()))
+        );
+        let _ = fs::remove_file(&path);
+        Ok(())
+    }
+
+    #[test]
+    fn file_backed_revocation_store_reports_durable() {
+        let path = unique_db_path("chio-rev-durable");
+        let store = SqliteRevocationStore::open(&path).unwrap();
+        assert!(
+            !store.is_ephemeral(),
+            "a filesystem-backed revocation store is durable"
+        );
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn in_memory_revocation_store_reports_ephemeral() {
+        for path in [":memory:", "file::memory:", "file:rev?mode=memory"] {
+            let store = SqliteRevocationStore::open(path).unwrap();
+            assert!(
+                store.is_ephemeral(),
+                "in-memory revocation store {path} must report ephemeral so the durability gate refuses it"
+            );
+        }
+    }
+
+    #[test]
+    fn open_creates_parent_dirs_for_a_file_uri_with_query() {
+        let nonce = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("time before epoch")
+            .as_nanos();
+        let base = std::env::temp_dir().join(format!("chio-rev-uri-{nonce}"));
+        let db = base.join("nested").join("receipts.db.revocations");
+        let parent = db.parent().expect("db path has a parent");
+        assert!(
+            !parent.exists(),
+            "precondition: the parent dir must not exist yet"
+        );
+
+        // A `file:` URI sibling path carrying a query. A raw `parent()` would
+        // resolve to `file:.../nested`, create a bogus relative directory, and
+        // leave the real parent uncreated, so SQLite would fail to open it.
+        let uri = format!("file:{}?mode=rwc", db.display());
+        let store = SqliteRevocationStore::open(uri.as_str()).unwrap();
+
+        assert!(
+            !store.is_ephemeral(),
+            "a file: URI to a real filesystem path is durable"
+        );
+        assert!(
+            parent.exists(),
+            "the real parent directory must be created before SQLite opens the URI"
+        );
+
+        let _ = fs::remove_dir_all(&base);
     }
 
     #[test]

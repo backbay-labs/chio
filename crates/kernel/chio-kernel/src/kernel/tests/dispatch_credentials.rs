@@ -14,6 +14,21 @@ struct PanickingDispatchExecutionNonceStore {
     rollback_calls: std::sync::Arc<AtomicU64>,
 }
 
+struct LegacyExecutionNonceStore {
+    consumed: std::sync::Arc<Mutex<std::collections::HashSet<String>>>,
+    reserve_calls: std::sync::Arc<AtomicU64>,
+}
+
+impl ExecutionNonceStore for LegacyExecutionNonceStore {
+    fn reserve(&self, nonce_id: &str) -> Result<bool, KernelError> {
+        self.reserve_calls.fetch_add(1, Ordering::SeqCst);
+        let mut consumed = self.consumed.lock().map_err(|_| {
+            KernelError::Internal("legacy execution nonce store lock poisoned".to_string())
+        })?;
+        Ok(consumed.insert(nonce_id.to_string()))
+    }
+}
+
 struct PanickingDispatchCredentialFixture {
     kernel: ChioKernel,
     capability: CapabilityToken,
@@ -263,6 +278,134 @@ fn request_with_panicking_execution_nonce_store(
         reserve_calls,
         rollback_calls,
     })
+}
+
+fn request_with_legacy_execution_nonce_store(
+    request_id: &str,
+) -> Result<
+    (
+        ChioKernel,
+        CapabilityToken,
+        ToolCallRequest,
+        std::sync::Arc<AtomicU64>,
+    ),
+    KernelError,
+> {
+    let server = "legacy-execution-nonce-server";
+    let tool = "execute";
+    let mut kernel = make_kernel(make_config());
+    kernel.register_tool_server(Box::new(EchoServer::new(server, vec![tool])));
+    let agent = make_keypair();
+    let capability = make_capability(
+        &kernel,
+        &agent,
+        make_scope(vec![make_grant(server, tool)]),
+        300,
+    );
+    let nonce_config = ExecutionNonceConfig {
+        nonce_ttl_secs: 300,
+        nonce_store_capacity: 1024,
+        require_nonce: false,
+    };
+    let reserve_calls = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_execution_nonce_store(
+        nonce_config.clone(),
+        Box::new(LegacyExecutionNonceStore {
+            consumed: std::sync::Arc::new(Mutex::new(std::collections::HashSet::new())),
+            reserve_calls: std::sync::Arc::clone(&reserve_calls),
+        }),
+    );
+
+    let mut request = make_request_with_arguments(
+        request_id,
+        &capability,
+        tool,
+        server,
+        serde_json::json!({"operation": "legacy"}),
+    );
+    let binding = binding_for_request(&capability, &request);
+    request.execution_nonce = Some(mint_execution_nonce(
+        &kernel.config.keypair,
+        binding,
+        &nonce_config,
+        i64::try_from(current_unix_timestamp()).unwrap_or(i64::MAX),
+    )?);
+
+    Ok((kernel, capability, request, reserve_calls))
+}
+
+#[test]
+fn legacy_execution_nonce_is_deferred_until_effect_boundary_and_consumed_once(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (kernel, capability, request, reserve_calls) =
+        request_with_legacy_execution_nonce_store("legacy-deferred")?;
+
+    let reservation = kernel.reserve_dispatch_credentials(
+        &request,
+        &capability,
+        false,
+        current_unix_timestamp(),
+    )?;
+    assert_eq!(reserve_calls.load(Ordering::SeqCst), 0);
+    reservation.rollback_before_dispatch()?;
+    assert_eq!(reserve_calls.load(Ordering::SeqCst), 0);
+
+    let mut reservation = kernel.reserve_dispatch_credentials(
+        &request,
+        &capability,
+        false,
+        current_unix_timestamp(),
+    )?;
+    reservation.reserve_legacy_execution_nonce_at_effect_boundary()?;
+    assert_eq!(reserve_calls.load(Ordering::SeqCst), 1);
+    let disposition = reservation.commit()?;
+    assert_eq!(
+        disposition,
+        PaymentCredentialDisposition::RetainedAfterAuthorization
+    );
+    assert_eq!(reserve_calls.load(Ordering::SeqCst), 1);
+
+    let mut replay = kernel.reserve_dispatch_credentials(
+        &request,
+        &capability,
+        false,
+        current_unix_timestamp(),
+    )?;
+    let error = match replay.reserve_legacy_execution_nonce_at_effect_boundary() {
+        Ok(()) => {
+            return Err(
+                std::io::Error::other("replayed legacy execution nonce was accepted").into(),
+            )
+        }
+        Err(error) => error,
+    };
+    assert!(error
+        .to_string()
+        .contains("execution nonce has already been consumed"));
+    assert_eq!(reserve_calls.load(Ordering::SeqCst), 2);
+    Ok(())
+}
+
+#[test]
+fn legacy_execution_nonce_store_allows_dispatch_and_denies_replay(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (kernel, _capability, request, reserve_calls) =
+        request_with_legacy_execution_nonce_store("legacy-dispatch-first")?;
+
+    let response = kernel.evaluate_tool_call_blocking(&request)?;
+    assert_eq!(response.verdict, Verdict::Allow);
+    assert_eq!(reserve_calls.load(Ordering::SeqCst), 1);
+
+    let mut replay = request;
+    replay.request_id = "legacy-dispatch-replay".to_string();
+    let response = kernel.evaluate_tool_call_blocking(&replay)?;
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert!(response
+        .reason
+        .as_deref()
+        .is_some_and(|reason| reason.contains("execution nonce has already been consumed")));
+    assert_eq!(reserve_calls.load(Ordering::SeqCst), 2);
+    Ok(())
 }
 
 #[test]
@@ -519,9 +662,9 @@ fn committed_approval_retains_signed_horizon_under_capacity_pressure(
 }
 
 #[test]
-fn governed_dispatch_without_replay_store_denies_fail_closed(
+fn default_governed_approval_replay_store_accepts_once_and_denies_replay(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    let server = "unconfigured-approval-replay-server";
+    let server = "default-approval-replay-server";
     let tool = "compute";
     let mut kernel = ChioKernel::new(make_monetary_config());
     kernel.register_tool_server(Box::new(MonetaryCostServer::new(server, 1, "USD")));
@@ -533,12 +676,12 @@ fn governed_dispatch_without_replay_store_denies_fail_closed(
         )]),
         300,
     )?;
-    let request_id = "unconfigured-approval-replay-request";
+    let request_id = "default-approval-replay-request";
     let intent = make_governed_intent(
-        "unconfigured-approval-replay-intent",
+        "default-approval-replay-intent",
         server,
         tool,
-        "prove replay storage is mandatory",
+        "prove the default replay store remains compatible",
         10,
         "USD",
     );
@@ -549,9 +692,9 @@ fn governed_dispatch_without_replay_store_denies_fail_closed(
         request_id,
     );
 
-    let response = kernel.evaluate_tool_call_blocking(&ToolCallRequest {
+    let request = ToolCallRequest {
         request_id: request_id.to_string(),
-        capability,
+        capability: capability.clone(),
         tool_name: tool.to_string(),
         server_id: server.to_string(),
         agent_id: agent.public_key().to_hex(),
@@ -562,73 +705,80 @@ fn governed_dispatch_without_replay_store_denies_fail_closed(
         approval_token: Some(approval_token),
         model_metadata: None,
         federated_origin_kernel_id: None,
-    })?;
+    };
 
-    assert_eq!(response.verdict, Verdict::Deny);
-    assert!(response.reason.as_deref().is_some_and(|reason| {
-        reason.contains("approval replay store not configured") && reason.contains("fail-closed")
-    }));
+    let reservation = kernel.reserve_dispatch_credentials(
+        &request,
+        &capability,
+        false,
+        current_unix_timestamp(),
+    )?;
+    reservation.commit()?;
+    let replay_error = match kernel.reserve_dispatch_credentials(
+        &request,
+        &capability,
+        false,
+        current_unix_timestamp(),
+    ) {
+        Ok(_) => return Err(std::io::Error::other("approval replay was accepted").into()),
+        Err(error) => error,
+    };
+    assert!(replay_error.to_string().contains("replay detected"));
     Ok(())
 }
 
 #[test]
-fn hosted_url_elicitation_commits_credentials_without_rollback(
+fn hosted_url_elicitation_rolls_back_credentials_for_retry(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut fixture = request_with_panicking_execution_nonce_store(
-        "hosted-url-credential-retained",
+        "hosted-url-credential-rollback",
         false,
-        true,
+        false,
     )?;
-    let dispatch_effects = std::sync::Arc::new(AtomicU64::new(0));
+    let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
     fixture
         .kernel
-        .register_tool_server(Box::new(UrlElicitationAfterDispatchServer::new(
+        .register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
             &fixture.request.server_id,
             vec![&fixture.request.tool_name],
-            std::sync::Arc::clone(&dispatch_effects),
+            std::sync::Arc::clone(&stream_attempts),
         )));
 
-    let response = fixture
-        .kernel
-        .evaluate_tool_call_blocking(&fixture.request)?;
+    let result = fixture.kernel.evaluate_tool_call_blocking(&fixture.request);
 
     assert!(matches!(
-        response.terminal_state,
-        OperationTerminalState::Incomplete { .. }
+        result,
+        Err(KernelError::UrlElicitationsRequired { .. })
     ));
-    assert_eq!(dispatch_effects.load(Ordering::SeqCst), 1);
+    assert_eq!(stream_attempts.load(Ordering::SeqCst), 1);
     assert_eq!(fixture.reserve_calls.load(Ordering::SeqCst), 1);
     assert_eq!(
         fixture.rollback_calls.load(Ordering::SeqCst),
-        0,
-        "credentials must remain consumed once server dispatch was polled"
+        1,
+        "credentials must roll back when URL elicitation precedes tool side effects"
     );
-    assert!(
-        fixture
-            .kernel
-            .verify_dpop_for_request(&fixture.request, &fixture.capability)
-            .is_err(),
-        "the DPoP proof must not be reusable after an ambiguous dispatch"
-    );
-    assert_eq!(fixture.kernel.receipt_log().len(), 1);
+    fixture
+        .kernel
+        .verify_dpop_for_request(&fixture.request, &fixture.capability)?;
+    assert_eq!(fixture.kernel.receipt_log().len(), 0);
     Ok(())
 }
 
 #[test]
-fn nested_url_elicitation_commits_credentials_without_rollback(
+fn nested_url_elicitation_rolls_back_credentials_for_retry(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut fixture = request_with_panicking_execution_nonce_store(
-        "nested-url-credential-retained",
+        "nested-url-credential-rollback",
         false,
-        true,
+        false,
     )?;
-    let dispatch_effects = std::sync::Arc::new(AtomicU64::new(0));
+    let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
     fixture
         .kernel
-        .register_tool_server(Box::new(UrlElicitationAfterDispatchServer::new(
+        .register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
             &fixture.request.server_id,
             vec![&fixture.request.tool_name],
-            std::sync::Arc::clone(&dispatch_effects),
+            std::sync::Arc::clone(&stream_attempts),
         )));
     let session_id = fixture.kernel.open_session(
         fixture.request.agent_id.clone(),
@@ -645,32 +795,28 @@ fn nested_url_elicitation_commits_credentials_without_rollback(
         .begin_session_request(&context, OperationKind::ToolCall, true)?;
     let mut client = NoopNestedFlowClient;
 
-    let response = fixture.kernel.evaluate_tool_call_with_nested_flow_client(
+    let result = fixture.kernel.evaluate_tool_call_with_nested_flow_client(
         &context,
         &fixture.request,
         &mut client,
         None,
-    )?;
+    );
 
     assert!(matches!(
-        response.terminal_state,
-        OperationTerminalState::Incomplete { .. }
+        result,
+        Err(KernelError::UrlElicitationsRequired { .. })
     ));
-    assert_eq!(dispatch_effects.load(Ordering::SeqCst), 1);
+    assert_eq!(stream_attempts.load(Ordering::SeqCst), 1);
     assert_eq!(fixture.reserve_calls.load(Ordering::SeqCst), 1);
     assert_eq!(
         fixture.rollback_calls.load(Ordering::SeqCst),
-        0,
-        "nested credentials must remain consumed once server dispatch was polled"
+        1,
+        "nested credentials must roll back when URL elicitation precedes tool side effects"
     );
-    assert!(
-        fixture
-            .kernel
-            .verify_dpop_for_request(&fixture.request, &fixture.capability)
-            .is_err(),
-        "the nested DPoP proof must not be reusable after an ambiguous dispatch"
-    );
-    assert_eq!(fixture.kernel.receipt_log().len(), 1);
+    fixture
+        .kernel
+        .verify_dpop_for_request(&fixture.request, &fixture.capability)?;
+    assert_eq!(fixture.kernel.receipt_log().len(), 0);
     fixture
         .kernel
         .complete_session_request(&session_id, &context.request_id)?;

@@ -678,6 +678,46 @@ mod tests {
     }
 
     #[test]
+    fn store_less_fixture_opts_into_ephemeral_revocation() {
+        // The harness launches `chio mcp serve-http` with no `--revocation-db`,
+        // so the kernel's revocation store is the in-memory default. Durable
+        // persistence is the default posture, so a mediated tool call is denied
+        // by the revocation durability gate unless the policy opts into an
+        // ephemeral revocation store. A fixture that opts into an ephemeral
+        // receipt log (the store-less scaffold posture) must therefore also opt
+        // into an ephemeral revocation store, or the whole suite denies before
+        // it can run.
+        #[derive(serde::Deserialize)]
+        struct KernelSection {
+            #[serde(default)]
+            allow_ephemeral_receipt_log: bool,
+            #[serde(default)]
+            allow_ephemeral_revocation_store: bool,
+        }
+        #[derive(serde::Deserialize)]
+        struct FixturePolicy {
+            kernel: KernelSection,
+        }
+
+        let fixture_root =
+            conformance_fixture_root_from_manifest_dir(Path::new(env!("CARGO_MANIFEST_DIR")));
+        let policy_path = fixture_root.join("tests/conformance/fixtures/mcp_core/policy.yaml");
+        let raw = fs::read_to_string(&policy_path)
+            .unwrap_or_else(|error| panic!("read {}: {error}", policy_path.display()));
+        let policy: FixturePolicy = serde_yaml::from_str(&raw)
+            .unwrap_or_else(|error| panic!("parse {}: {error}", policy_path.display()));
+
+        if policy.kernel.allow_ephemeral_receipt_log {
+            assert!(
+                policy.kernel.allow_ephemeral_revocation_store,
+                "a store-less conformance fixture that allows an ephemeral receipt log must also \
+                 allow an ephemeral revocation store, or mediated tool calls are denied by the \
+                 revocation durability gate"
+            );
+        }
+    }
+
+    #[test]
     fn fixture_root_prefers_workspace_tree_when_present() {
         let root = unique_test_dir("workspace");
         let manifest_dir = root.join("crates/tooling/chio-conformance");

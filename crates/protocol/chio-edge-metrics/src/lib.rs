@@ -26,6 +26,11 @@ pub const RECEIPT_WRITE_OUTCOME_DENY: &str = "deny";
 pub const RECEIPT_WRITE_OUTCOME_PENDING_APPROVAL: &str = "pending_approval";
 pub const RECEIPT_WRITE_OUTCOME_ERROR: &str = "error";
 
+/// Receipt-writer liveness gauges. `healthy` is 0/1; `liveness` is a labeled
+/// series carrying the current writer state.
+pub const CHIO_RECEIPT_WRITER_HEALTHY: &str = "chio_receipt_writer_healthy";
+pub const CHIO_RECEIPT_WRITER_LIVENESS: &str = "chio_receipt_writer_liveness";
+
 /// Stable exporter order for receipt-write outcome samples.
 pub const RECEIPT_WRITE_OUTCOMES: [ReceiptWriteOutcome; 4] = [
     ReceiptWriteOutcome::Allow,
@@ -272,6 +277,29 @@ fn increment_saturating(counter: &AtomicU64) {
     });
 }
 
+/// Render the receipt-writer liveness gauges. The hosting edge passes the
+/// serving kernel's current liveness label and healthy flag, giving the writer
+/// health surface a real Prometheus consumer beyond the local CLI.
+#[must_use]
+pub fn render_receipt_writer_liveness(liveness_label: &str, healthy: bool) -> String {
+    let mut output = String::new();
+    output.push_str("# TYPE ");
+    output.push_str(CHIO_RECEIPT_WRITER_HEALTHY);
+    output.push_str(" gauge\n");
+    output.push_str(CHIO_RECEIPT_WRITER_HEALTHY);
+    output.push(' ');
+    output.push_str(if healthy { "1" } else { "0" });
+    output.push('\n');
+    output.push_str("# TYPE ");
+    output.push_str(CHIO_RECEIPT_WRITER_LIVENESS);
+    output.push_str(" gauge\n");
+    output.push_str(CHIO_RECEIPT_WRITER_LIVENESS);
+    output.push_str("{state=\"");
+    output.push_str(liveness_label);
+    output.push_str("\"} 1\n");
+    output
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -279,6 +307,17 @@ mod tests {
     #[test]
     fn registry_constant_matches_spec() {
         assert_eq!(CHIO_RECEIPT_WRITE_TOTAL, "chio_receipt_write_total");
+    }
+
+    #[test]
+    fn writer_liveness_renders_gauge_and_labeled_series() {
+        let body = render_receipt_writer_liveness("wedged", false);
+        assert!(body.contains("chio_receipt_writer_healthy 0"));
+        assert!(body.contains("chio_receipt_writer_liveness{state=\"wedged\"} 1"));
+
+        let healthy = render_receipt_writer_liveness("healthy", true);
+        assert!(healthy.contains("chio_receipt_writer_healthy 1"));
+        assert!(healthy.contains("chio_receipt_writer_liveness{state=\"healthy\"} 1"));
     }
 
     #[test]

@@ -4,7 +4,9 @@ use std::sync::{Mutex, MutexGuard};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_kernel::budget_store::{
+    AuthorizedBudgetHold, BudgetAuthorizeHoldDecision, BudgetAuthorizeHoldRequest,
     BudgetAuthorizeMutationOutcome, BudgetEventAuthority, BudgetMutationKind, BudgetMutationRecord,
+    DeniedBudgetHold,
 };
 use chio_kernel::{BudgetStore, BudgetStoreError, BudgetUsageRecord};
 use chio_kernel_core::{

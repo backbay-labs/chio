@@ -5,13 +5,16 @@ import unittest
 
 import httpx
 
+from chio.errors import ChioTransportError
 from chio.session import initialize_session
 from chio.transport import parse_rpc_messages, terminal_message
 
 
 class TransportTests(unittest.TestCase):
     def test_parse_rpc_messages_handles_json_and_sse(self) -> None:
-        json_messages = parse_rpc_messages('{"jsonrpc":"2.0","id":1,"result":{"ok":true}}')
+        json_messages = parse_rpc_messages(
+            '{"jsonrpc":"2.0","id":1,"result":{"ok":true}}'
+        )
         self.assertEqual(json_messages[0]["result"], {"ok": True})
 
         sse_messages = parse_rpc_messages(
@@ -53,16 +56,27 @@ class TransportTests(unittest.TestCase):
                             "result": {
                                 "protocolVersion": "2025-11-25",
                                 "capabilities": {},
-                                "serverInfo": {"name": "chio-test", "version": "0.1.0"},
+                                "serverInfo": {
+                                    "name": "chio-test",
+                                    "version": "0.1.0",
+                                },
                             },
                         }
                     ),
                 )
 
-            if request.method == "POST" and body and body.get("method") == "notifications/initialized":
+            if (
+                request.method == "POST"
+                and body
+                and body.get("method") == "notifications/initialized"
+            ):
                 self.assertEqual(headers["mcp-session-id"], "sess-123")
                 self.assertEqual(headers["mcp-protocol-version"], "2025-11-25")
-                return httpx.Response(202, headers={"content-type": "application/json"}, text="")
+                return httpx.Response(
+                    202,
+                    headers={"content-type": "application/json"},
+                    text="",
+                )
 
             if request.method == "POST" and body and body.get("method") == "tools/list":
                 self.assertEqual(headers["mcp-session-id"], "sess-123")
@@ -100,10 +114,119 @@ class TransportTests(unittest.TestCase):
         self.assertEqual(session.handshake.initialized_response.status, 202)
 
         tools_response = session.request("tools/list")
-        terminal = terminal_message(tools_response.messages, tools_response.request["id"])
+        terminal = terminal_message(
+            tools_response.messages, tools_response.request["id"]
+        )
         self.assertEqual(terminal["result"]["tools"][0]["name"], "echo_text")
         self.assertEqual(session.close(), 204)
-        self.assertEqual([call[0] for call in calls], ["POST", "POST", "POST", "DELETE"])
+        self.assertEqual(
+            [call[0] for call in calls], ["POST", "POST", "POST", "DELETE"]
+        )
+
+    def test_initialize_failure_after_session_id_cleans_up_server_session(self) -> None:
+        calls: list[tuple[str, dict[str, str], dict[str, object] | None]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            headers = {key.lower(): value for key, value in request.headers.items()}
+            body = None
+            if request.content:
+                body = json.loads(request.content.decode("utf-8"))
+            calls.append((request.method, headers, body))
+
+            if request.method == "POST" and body and body.get("method") == "initialize":
+                return httpx.Response(
+                    200,
+                    headers={
+                        "content-type": "application/json",
+                        "mcp-session-id": "sess-orphan",
+                    },
+                    text=json.dumps(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": 0,
+                            "result": {
+                                "protocolVersion": "2025-11-25",
+                                "capabilities": {},
+                                "serverInfo": {
+                                    "name": "chio-test",
+                                    "version": "0.1.0",
+                                },
+                            },
+                        }
+                    ),
+                )
+
+            if (
+                request.method == "POST"
+                and body
+                and body.get("method") == "notifications/initialized"
+            ):
+                self.assertEqual(headers["mcp-session-id"], "sess-orphan")
+                return httpx.Response(
+                    204,
+                    headers={"content-type": "application/json"},
+                    text="",
+                )
+
+            if request.method == "DELETE":
+                self.assertEqual(headers["mcp-session-id"], "sess-orphan")
+                return httpx.Response(204)
+
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        with self.assertRaises(ChioTransportError):
+            initialize_session(
+                base_url="http://testserver",
+                auth_token="token",
+                client=client,
+                client_info={"name": "chio-sdk-tests", "version": "1.0.0"},
+            )
+
+        self.assertEqual([call[0] for call in calls], ["POST", "POST", "DELETE"])
+
+    def test_initialize_parse_failure_cleans_up_server_session(self) -> None:
+        calls: list[tuple[str, dict[str, str], dict[str, object] | None]] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            headers = {key.lower(): value for key, value in request.headers.items()}
+            body = None
+            if request.content:
+                body = json.loads(request.content.decode("utf-8"))
+            calls.append((request.method, headers, body))
+
+            if request.method == "POST" and body and body.get("method") == "initialize":
+                return httpx.Response(
+                    200,
+                    headers={
+                        "content-type": "application/json",
+                        "mcp-session-id": "sess-parse-orphan",
+                    },
+                    text=json.dumps(
+                        {
+                            "jsonrpc": "2.0",
+                            "id": 0,
+                            "result": {"capabilities": {}},
+                        }
+                    ),
+                )
+
+            if request.method == "DELETE":
+                self.assertEqual(headers["mcp-session-id"], "sess-parse-orphan")
+                return httpx.Response(204)
+
+            raise AssertionError(f"unexpected request: {request.method} {request.url}")
+
+        client = httpx.Client(transport=httpx.MockTransport(handler))
+        with self.assertRaises(ChioTransportError):
+            initialize_session(
+                base_url="http://testserver",
+                auth_token="token",
+                client=client,
+                client_info={"name": "chio-sdk-tests", "version": "1.0.0"},
+            )
+
+        self.assertEqual([call[0] for call in calls], ["POST", "DELETE"])
 
 
 if __name__ == "__main__":

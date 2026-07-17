@@ -13,6 +13,21 @@ use dashmap::DashMap;
 
 use super::*;
 
+/// Fail-closed kernel build error. Lets deadline config be validated at
+/// construction time without making the infallible `ChioKernel::new` fallible.
+#[derive(Debug, thiserror::Error)]
+pub enum KernelBuildError {
+    #[error("invalid hot-path deadline config: {0}")]
+    InvalidDeadlineConfig(String),
+    #[error(
+        "settlement observer requires a durable settlement retry store: call \
+         set_settlement_retry_store before set_settlement_observer, so every retryable or \
+         permanent settlement outcome lands a settle_attempts or settle_dead_letters row \
+         instead of a warn-only log"
+    )]
+    MissingSettlementRetryStore,
+}
+
 impl ChioKernel {
     pub(crate) fn with_sessions_read<R>(
         &self,
@@ -65,6 +80,85 @@ impl ChioKernel {
         .flatten()
     }
 
+    /// Install the RESOLVED tenant for `request_id`, including a known-none
+    /// entry for a tenantless request. The entry must exist either way:
+    /// readers that miss the map fall back to the thread-local scope, and on
+    /// a worker resuming this request while a sibling task's scope guard is
+    /// alive that fallback would leak the sibling's tenant into this
+    /// request's receipts and journaled dispatch intent.
+    pub(crate) fn scope_receipt_tenant_id_for_request(
+        &self,
+        request_id: &str,
+        tenant_id: Option<String>,
+    ) -> ScopedKernelReceiptTenantId {
+        let previous = self
+            .receipt_tenant_ids
+            .insert(request_id.to_string(), tenant_id);
+        ScopedKernelReceiptTenantId {
+            request_id: request_id.to_string(),
+            tenant_ids: Arc::clone(&self.receipt_tenant_ids),
+            previous,
+        }
+    }
+
+    pub(crate) fn scope_dispatch_intent_for_request(
+        &self,
+        request_id: &str,
+        handle: Option<crate::receipt_store::DispatchIntentHandle>,
+    ) -> ScopedKernelDispatchIntent {
+        let previous = match handle {
+            Some(handle) => self.dispatch_intents.insert(request_id.to_string(), handle),
+            None => self
+                .dispatch_intents
+                .remove(request_id)
+                .map(|(_, previous)| previous),
+        };
+        ScopedKernelDispatchIntent {
+            request_id: request_id.to_string(),
+            intents: Arc::clone(&self.dispatch_intents),
+            previous,
+        }
+    }
+
+    pub(crate) fn dispatch_intent_for_request(
+        &self,
+        request_id: Option<&str>,
+    ) -> Option<crate::receipt_store::DispatchIntentHandle> {
+        request_id.and_then(|request_id| {
+            self.dispatch_intents
+                .get(request_id)
+                .map(|entry| entry.value().clone())
+        })
+    }
+
+    /// Unregister the request-scoped intent handle once a receipt has
+    /// consumed the durable row, or once a timed-out consuming append has
+    /// made the consume uncertain (the queued job may still commit and
+    /// delete the row). A request can legitimately record more than one
+    /// receipt (cleanup fault receipts alongside the terminal outcome); a
+    /// handle retained past the consume would send every later receipt back
+    /// through the consuming append, which rejects against the missing row
+    /// and loses that audit record. With the handle gone, later receipts for
+    /// the request append plainly, and a row an uncertain consume left open
+    /// surfaces at the next boot.
+    pub(crate) fn mark_dispatch_intent_consumed(&self, request_id: &str) {
+        self.dispatch_intents.remove(request_id);
+    }
+
+    /// The tenant resolved for `request_id` by its evaluation scope. The
+    /// outer `Option` is presence of the request-scoped entry; the inner one
+    /// is the resolved tenant itself, so a known tenantless request returns
+    /// `Some(None)` and callers do not fall back to the thread-local scope.
+    pub(crate) fn receipt_tenant_id_for_request(
+        &self,
+        request_id: Option<&str>,
+    ) -> Option<Option<String>> {
+        request_id.and_then(|request_id| {
+            self.receipt_tenant_ids
+                .get(request_id)
+                .map(|entry| entry.value().clone())
+        })
+    }
     pub(crate) fn with_session_mut<R>(
         &self,
         session_id: &SessionId,
@@ -120,6 +214,34 @@ impl ChioKernel {
         f(store.as_ref()).map(Some)
     }
 
+    /// Fallible constructor that runs fail-closed validation of the hot-path
+    /// deadline config before building. This is the documented entrypoint for
+    /// hosts that set `[deadlines]`. `new` stays infallible for existing
+    /// callers; the append bound is additionally floor-clamped at read time so
+    /// even a host that bypasses this path can never run an unbounded append.
+    pub fn try_new(config: KernelConfig) -> Result<Self, KernelBuildError> {
+        config.deadlines.validate()?;
+        Ok(Self::new(config))
+    }
+
+    /// Flush any queued receipt writes to durable storage, bounded by `timeout`.
+    ///
+    /// A shutdown drain calls this to prove the commit-actor queue is empty
+    /// before the process exits. `Ok(None)` means no receipt store is
+    /// configured; a configured store's flush error is surfaced rather than
+    /// swallowed, so a drain can exit non-zero when a receipt might not be
+    /// durable.
+    pub fn flush_receipt_writes_with_timeout(
+        &self,
+        timeout: std::time::Duration,
+    ) -> Result<Option<crate::ReceiptFlushReport>, KernelError> {
+        self.with_receipt_store(|store| {
+            store
+                .flush_receipt_writes_with_timeout(timeout)
+                .map_err(KernelError::from)
+        })
+    }
+
     pub fn new(config: KernelConfig) -> Self {
         info!("initializing Chio kernel");
         let authority_keypair = config.keypair.clone();
@@ -163,9 +285,22 @@ impl ChioKernel {
                 signing_queued_budget,
             ),
         );
-        Self {
+        // Read the memory-budget-driven caps before `config` is moved into the
+        // struct literal.
+        let receipt_mirror_capacity = config.memory_budget_receipt_mirror_capacity();
+        let federation_cache_capacity = config.memory_budget_federation_cache_capacity();
+        let federation_cache_idle_ttl = config.memory_budget_federation_cache_idle_ttl_secs();
+        let rss_soft_limit_bytes = config.memory_budget.rss_soft_limit_bytes;
+        let rss_sample_interval_secs = config.memory_budget.rss_sample_interval_secs;
+        // Build the bounded-structure gauges first so they can be shared between
+        // each structure and the telemetry / registry readers.
+        let receipt_mirror_gauge;
+        let child_receipt_mirror_gauge;
+        let federation_dual_receipts_gauge;
+        let federation_dsse_envelopes_gauge;
+        let mut kernel = Self {
             config,
-            guards: Vec::new(),
+            guards: std::sync::Arc::new(Vec::new()),
             post_invocation_pipeline: crate::post_invocation::PostInvocationPipeline::new(),
             budget_store: Arc::new(InMemoryBudgetStore::new()),
             budget_store_lock: Mutex::new(()),
@@ -175,10 +310,25 @@ impl ChioKernel {
             resource_providers: Vec::new(),
             prompt_providers: Vec::new(),
             sessions: DashMap::new(),
-            receipt_log: Mutex::new(ReceiptLog::new()),
-            child_receipt_log: Mutex::new(ChildReceiptLog::new()),
+            receipt_log: {
+                let gauge = chio_bounded::SizeGauge::new();
+                receipt_mirror_gauge = gauge.clone();
+                Mutex::new(ReceiptLog::with_capacity(receipt_mirror_capacity, gauge))
+            },
+            child_receipt_log: {
+                let gauge = chio_bounded::SizeGauge::new();
+                child_receipt_mirror_gauge = gauge.clone();
+                Mutex::new(ChildReceiptLog::with_capacity(
+                    receipt_mirror_capacity,
+                    gauge,
+                ))
+            },
+            receipt_mirror_gauge,
+            child_receipt_mirror_gauge,
             receipt_store: None,
             receipt_store_write_lock: Mutex::new(()),
+            retention_maintenance: None,
+            dispatch_intent_recovery: None,
             payment_adapter: None,
             price_oracle: None,
             runtime_admission_hook: None,
@@ -197,23 +347,66 @@ impl ChioKernel {
             dpop_config: None,
             execution_nonce_config: None,
             execution_nonce_store: None,
-            approval_replay_store: None,
+            approval_replay_store: Some(Box::new(
+                crate::governed_approval_replay::InMemoryGovernedApprovalReplayStore::default(),
+            )),
             emergency_stopped: AtomicBool::new(false),
             emergency_stopped_since: AtomicU64::new(0),
             emergency_stop_reason: ArcSwap::from_pointee(Option::<String>::None),
+            lock_poison: chio_supervisor::HealthFlag::new(true),
             memory_provenance: None,
             federation_peers: ArcSwap::from_pointee(HashMap::new()),
             capability_trust_roots: ArcSwap::from_pointee(HashMap::new()),
             capability_trust_roots_write_lock: Mutex::new(()),
             federation_cosigner: None,
-            federation_dual_receipts: DashMap::new(),
-            federation_dsse_envelopes: DashMap::new(),
+            federation_dual_receipts: {
+                let gauge = chio_bounded::SizeGauge::new();
+                federation_dual_receipts_gauge = gauge.clone();
+                Mutex::new(chio_bounded::BoundedMap::new(
+                    federation_cache_capacity,
+                    federation_cache_idle_ttl,
+                    gauge,
+                ))
+            },
+            federation_dual_receipts_gauge,
+            federation_dsse_envelopes: {
+                let gauge = chio_bounded::SizeGauge::new();
+                federation_dsse_envelopes_gauge = gauge.clone();
+                Mutex::new(chio_bounded::BoundedMap::new(
+                    federation_cache_capacity,
+                    federation_cache_idle_ttl,
+                    gauge,
+                ))
+            },
+            federation_dsse_envelopes_gauge,
+            federation_artifact_store: None,
+            receipt_tenant_ids: Arc::new(DashMap::new()),
+            dispatch_intents: Arc::new(DashMap::new()),
+            receipt_federation_admissions: Arc::new(DashMap::new()),
             federation_local_kernel_id: ArcSwap::from_pointee(Option::<String>::None),
             signing_task,
             settlement_observer: None,
+            settlement_retry_store: None,
+            settlement_retry_policy: chio_settle::RetryPolicy::default(),
+            budget_hold_sweep: None,
             revocation_view: None,
             budget_registry: Mutex::new(chio_kernel_core::InMemoryBudgetRegistry::new()),
+            rss_shed: Arc::new(AtomicBool::new(false)),
+            rss_sampler: None,
+            receipt_writer_watchdog: std::sync::Arc::new(
+                receipt_writer_watchdog::ReceiptWriterWatchdogHandle::new(),
+            ),
+        };
+        // Start the RSS soft-ceiling sampler only when a limit is configured; with
+        // no limit set, no thread is spawned.
+        if let Some(limit) = rss_soft_limit_bytes {
+            kernel.rss_sampler = Some(kernel_struct::RssSamplerHandle::spawn(
+                Arc::clone(&kernel.rss_shed),
+                limit,
+                rss_sample_interval_secs,
+            ));
         }
+        kernel
     }
 
     pub(crate) fn ensure_federated_receipt_persistence_ready(
@@ -223,22 +416,196 @@ impl ChioKernel {
         if remote_kernel_id.is_none() {
             return Ok(());
         }
-        if self.receipt_store.is_none() {
-            return Err(KernelError::Internal(
+        match &self.receipt_store {
+            None => Err(KernelError::Internal(
                 "federated receipt persistence unavailable: no durable receipt store configured"
                     .to_string(),
+            )),
+            Some(store) if store.writer_serving_closed() => Err(KernelError::Internal(
+                "federated receipt persistence degraded: commit writer is not serving".to_string(),
+            )),
+            Some(_) => Ok(()),
+        }
+    }
+
+    /// Record that a trusted-computing-base lock was found poisoned. A poisoned
+    /// lock means a panic unwound while the lock was held, so the state it guards
+    /// may be half-mutated. Trip the persistent degraded flag so the pre-dispatch
+    /// gate fails subsequent evaluations closed rather than proceeding on the
+    /// recovered state.
+    pub(crate) fn record_tcb_lock_poison(&self, lock: &str) {
+        self.lock_poison.record_failure(
+            format!("{lock} lock poisoned by a prior panic"),
+            chio_supervisor::now_unix_ms(),
+            0,
+        );
+    }
+
+    /// Pre-dispatch gate: deny before dispatch once any TCB lock has been found
+    /// poisoned, so no evaluation proceeds on state a panicking thread may have
+    /// left half-mutated. Recovery is operator-visible only.
+    pub(crate) fn ensure_tcb_locks_healthy(&self) -> Result<(), KernelError> {
+        if self.lock_poison.is_serving_closed() {
+            return Err(KernelError::Internal(
+                "trusted state degraded: a TCB lock was poisoned by a prior panic".to_string(),
             ));
         }
         Ok(())
     }
 
     pub(crate) fn ensure_receipt_persistence_ready(&self) -> Result<(), KernelError> {
-        if self.receipt_store.is_some() || self.config.allow_ephemeral_receipt_log {
+        if let Some(store) = &self.receipt_store {
+            // A known-dead or degraded commit writer denies at the door: the tool
+            // never runs, so no side effect occurs without a durable receipt path.
+            if store.writer_serving_closed() {
+                return Err(KernelError::Internal(
+                    "durable receipt persistence degraded: commit writer is not serving"
+                        .to_string(),
+                ));
+            }
+        }
+        if self.receipt_store.is_none() && !self.config.allow_ephemeral_receipt_log {
+            return Err(KernelError::Internal(
+                "durable receipt persistence unavailable: no receipt store configured".to_string(),
+            ));
+        }
+        // A configured store is not enough: if the commit writer is wedged,
+        // saturated, or dead, dispatching would run a tool side effect that
+        // could never be durably receipted. Deny before that happens.
+        // `receipt_writer_liveness` samples the store directly when no watchdog
+        // has published a verdict, so the gate fails closed on a wedged writer
+        // whether or not the host started the background watchdog.
+        let liveness = self.receipt_writer_liveness();
+        if liveness.healthy() {
+            Ok(())
+        } else {
+            Err(KernelError::ReceiptWriterUnavailable(format!(
+                "receipt commit writer is {liveness:?}; denying before dispatch"
+            )))
+        }
+    }
+
+    /// Receipt-writer liveness verdict the pre-dispatch gate reads. Prefers the
+    /// watchdog's most recent published verdict; when no watchdog is running the
+    /// published verdict stays `Unknown`, which the gate would otherwise treat as
+    /// permissive. Fall back to sampling the installed store directly in that
+    /// case so a durable store with a wedged commit writer is denied regardless
+    /// of whether the host started the watchdog. A store without an async writer
+    /// reports `Unknown` from the sample too, preserving the permissive behavior
+    /// for writer-less stores.
+    pub(crate) fn receipt_writer_liveness(&self) -> crate::receipt_store::ReceiptWriterLiveness {
+        let published = self.receipt_writer_watchdog.current();
+        if published != crate::receipt_store::ReceiptWriterLiveness::Unknown {
+            return published;
+        }
+        self.sample_receipt_writer_liveness()
+    }
+
+    /// Sample the installed store's commit-writer liveness against the configured
+    /// stall threshold. Reads the store's in-memory writer counters, so it is
+    /// cheap enough to run inline on the pre-dispatch path. Returns `Unknown`
+    /// when no store is installed or the store has no async writer.
+    fn sample_receipt_writer_liveness(&self) -> crate::receipt_store::ReceiptWriterLiveness {
+        let stall_threshold =
+            std::time::Duration::from_millis(self.config.deadlines.receipt_writer_stall_ms);
+        match self.with_receipt_store(|store| Ok(store.writer_liveness(stall_threshold))) {
+            Ok(Some(verdict)) => verdict,
+            _ => crate::receipt_store::ReceiptWriterLiveness::Unknown,
+        }
+    }
+
+    /// Sample the installed store's writer liveness once and publish it into the
+    /// gate's cell, without spawning the background poll task. Test-only shim so
+    /// the pre-dispatch gate can be exercised deterministically.
+    #[cfg(test)]
+    pub(crate) fn refresh_receipt_writer_liveness_for_test(&self) {
+        self.receipt_writer_watchdog
+            .publish(self.sample_receipt_writer_liveness());
+    }
+
+    /// Whether the background receipt-writer watchdog poll task is installed.
+    #[cfg(test)]
+    pub(crate) fn receipt_writer_watchdog_is_running(&self) -> bool {
+        self.receipt_writer_watchdog.is_running()
+    }
+
+    /// Start the receipt-writer liveness watchdog. Opt-in: the hosting edge
+    /// calls this in an async context. It polls the store's liveness on the
+    /// configured cadence and publishes the verdict the pre-dispatch gate reads.
+    pub fn spawn_receipt_writer_watchdog(self: &std::sync::Arc<Self>) {
+        // The watchdog polls on a `tokio::time::interval`, which panics in a
+        // runtime built without a time driver. Skip the background poll in that
+        // case rather than crash the host: the pre-dispatch gate already falls
+        // back to sampling the store's writer liveness directly when no verdict
+        // is published, so a timerless host stays fail-closed without the task.
+        if !super::dispatch::dispatch_timer_available() {
+            return;
+        }
+        let poll =
+            std::time::Duration::from_millis(self.config.deadlines.receipt_writer_poll_ms.max(1));
+        // Hold a weak reference between ticks. The kernel owns this task's join
+        // handle, so a strong reference here would form a cycle (kernel -> handle
+        // -> task -> kernel) that keeps the kernel and its receipt store alive
+        // forever when the last external Arc is dropped without calling
+        // shutdown(). Upgrade only to take a sample, then release before awaiting
+        // the next tick, and exit once the kernel is gone.
+        let kernel = std::sync::Arc::downgrade(self);
+        let handle = tokio::spawn(async move {
+            let mut ticker = tokio::time::interval(poll);
+            loop {
+                ticker.tick().await;
+                let Some(kernel) = kernel.upgrade() else {
+                    return;
+                };
+                let verdict = kernel.sample_receipt_writer_liveness();
+                kernel.receipt_writer_watchdog.publish(verdict);
+            }
+        });
+        self.receipt_writer_watchdog.set_join_handle(handle);
+    }
+
+    pub(crate) fn ensure_revocation_durability_ready(&self) -> Result<(), KernelError> {
+        // A remote revocation view (federation/oracle) is consulted on every
+        // delegated dispatch and is re-synced from its source after a restart, so
+        // an installed view is itself a durable revocation source: it satisfies
+        // the gate even when the local per-row store is the default in-memory one.
+        if self.revocation_view.is_some() {
+            return Ok(());
+        }
+        let ephemeral = self.with_revocation_store(|store| Ok(store.is_ephemeral()))?;
+        if !ephemeral || self.config.allow_ephemeral_revocation_store {
             return Ok(());
         }
         Err(KernelError::Internal(
-            "durable receipt persistence unavailable: no receipt store configured".to_string(),
+            "durable revocation state unavailable: no revocation store configured".to_string(),
         ))
+    }
+
+    pub(crate) fn scope_receipt_federation_admission_for_request(
+        &self,
+        request_id: &str,
+        admission: ReceiptFederationAdmission,
+    ) -> ScopedKernelReceiptFederationAdmission {
+        let previous = self
+            .receipt_federation_admissions
+            .insert(request_id.to_string(), admission);
+        ScopedKernelReceiptFederationAdmission {
+            request_id: request_id.to_string(),
+            admissions: Arc::clone(&self.receipt_federation_admissions),
+            previous,
+        }
+    }
+
+    pub(crate) fn receipt_federation_admission_for_request(
+        &self,
+        request_id: &str,
+        remote_kernel_id: Option<&str>,
+    ) -> Option<ReceiptFederationAdmission> {
+        let admission = self
+            .receipt_federation_admissions
+            .get(request_id)
+            .map(|entry| entry.value().clone())?;
+        (admission.remote_kernel_id.as_deref() == remote_kernel_id).then_some(admission)
     }
 
     /// Resolve and snapshot federation receipt admission at the boundary.
@@ -345,6 +712,7 @@ impl ChioKernel {
     /// [`Self::emergency_stop`] in addition.
     pub async fn shutdown(&self) {
         self.signing_task.shutdown().await;
+        self.receipt_writer_watchdog.shutdown().await;
     }
 
     pub fn set_receipt_store(
@@ -365,6 +733,76 @@ impl ChioKernel {
         &mut self,
         receipt_store: Arc<dyn ReceiptStore>,
     ) -> Result<(), KernelError> {
+        // The handle is installed before recovery runs because the money-path
+        // reconcile below emits signed reconciliation receipts through it.
+        // Nothing serves yet (this method owns the kernel mutably), so no new
+        // dispatch can journal an intent that interleaves with the boot pass.
+        // Every fallible attach step follows; if any refuses, the handle and
+        // any worker installed on the way are rolled back so a failed attach
+        // never leaves a store serving (fail-closed), exactly as if the
+        // attach had been refused up front.
+        self.receipt_store = Some(Arc::clone(&receipt_store));
+        if let Err(error) = self.finish_receipt_store_attach(receipt_store) {
+            self.receipt_store = None;
+            self.retention_maintenance = None;
+            self.dispatch_intent_recovery = None;
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    fn finish_receipt_store_attach(
+        &mut self,
+        receipt_store: Arc<dyn ReceiptStore>,
+    ) -> Result<(), KernelError> {
+        // Resolve the money path first: every incomplete payment-journal row
+        // reaches a terminal outcome before the intent pass below runs, so
+        // that pass consults settled journal state instead of racing it. No
+        // priced call is in flight at attach time, so no grace horizon
+        // applies.
+        if self.payment_journal_active() {
+            let journal_report = self.reconcile_payment_journal(0)?;
+            if journal_report.resolved > 0 || journal_report.reconcile_failed > 0 {
+                tracing::warn!(
+                    resolved = journal_report.resolved,
+                    reconcile_failed = journal_report.reconcile_failed,
+                    "payment journal rows survived a restart; reconciled before serving"
+                );
+            }
+        }
+        // Resolve every dispatch intent that survived a restart: each one
+        // marks a call whose effect may have run with no receipt.
+        // Reconciliation runs strictly before any background worker starts,
+        // and a reconcile failure refuses the attach outright (fail-closed)
+        // instead of leaving a store serving with unresolved open intents.
+        // Monetary orphans resolve through the payment journal when it is in
+        // force; everything else dead-letters into durable, health-flipping
+        // incidents (a side effect is never blindly replayed). A store
+        // without the journal reports an empty pass, and a store shared
+        // with a live sibling writer defers that sibling's in-flight
+        // intents to their owner rather than claiming them as orphans.
+        let report = if self.payment_journal_active() {
+            receipt_store.reconcile_dispatch_intents(&crate::MonetaryDispatchIntentReconciler {
+                kernel: self,
+            })?
+        } else {
+            receipt_store.reconcile_dispatch_intents(&crate::DefaultDispatchIntentReconciler)?
+        };
+        if report.dead_lettered > 0 || report.monetary_reconciled > 0 {
+            tracing::warn!(
+                open = report.open,
+                dead_lettered = report.dead_lettered,
+                monetary_reconciled = report.monetary_reconciled,
+                "dispatch intents survived a restart; incidents recorded for operator review"
+            );
+        }
+        if report.deferred_to_live_writer > 0 {
+            tracing::warn!(
+                deferred = report.deferred_to_live_writer,
+                "receipt store is shared with a live sibling writer; leaving its open dispatch \
+                 intents for their owner (a later exclusive attach reconciles any true orphans)"
+            );
+        }
         match receipt_store.load_latest_checkpoint() {
             Ok(Some(checkpoint)) => {
                 self.checkpoint_seq_counter
@@ -382,19 +820,150 @@ impl ChioKernel {
                 )));
             }
         }
-        self.receipt_store = Some(receipt_store);
+        // Honor disabled checkpointing: KernelConfig
+        // documents `checkpoint_batch_size = 0` as DISABLING automatic
+        // checkpointing (non-web3 deployments). Only require a background signer
+        // when checkpointing is enabled (batch_size > 0); with 0 the store
+        // attaches with no checkpoint machinery. Web3-enabled deployments that
+        // MUST checkpoint are separately guarded by
+        // `validate_web3_evidence_prerequisites`, which rejects batch_size == 0.
+        if self.checkpoint_batch_size > 0 && receipt_store.supports_kernel_signed_checkpoints() {
+            let background_enabled = receipt_store
+                .enable_background_checkpoints(
+                    self.config.keypair.clone(),
+                    self.checkpoint_batch_size,
+                )
+                .map_err(|error| {
+                    KernelError::Internal(format!(
+                        "failed to enable background receipt checkpoints: {error}"
+                    ))
+                })?;
+            // Fail-closed: a store that claims checkpoint capability but did
+            // not install a background signer (default hook returns
+            // `Ok(false)`) would append forever without producing kernel-signed
+            // Web3 checkpoints now that the synchronous trigger is gone. Reject
+            // the attach rather than serve silently-checkpointless.
+            if !background_enabled {
+                return Err(KernelError::Internal(
+                    "receipt store reports kernel-signed checkpoint support but did not install a \
+                     background checkpoint signer; refusing to attach a store that would append \
+                     without producing checkpoints"
+                        .to_string(),
+                ));
+            }
+        }
+        // Spawn the retention maintenance worker only when retention is
+        // configured; an unconfigured deployment gets no background thread.
+        if let Some(config) = self.config.retention_config.clone() {
+            // Fail-closed: prefix retention can only archive receipts already
+            // covered by a kernel checkpoint (the archival watermark advances to
+            // checkpoint boundaries). With automatic checkpointing disabled
+            // (`checkpoint_batch_size == 0`) no background signer was installed
+            // above, so the checkpoint chain can never advance past 0 and the
+            // retention worker could never archive anything: the store would
+            // serve forever under a policy it can never honor, silently retaining
+            // every receipt. Reject the attach rather than run a retention policy
+            // that can never advance its watermark.
+            if self.checkpoint_batch_size == 0 {
+                return Err(KernelError::Internal(
+                    "KernelConfig.retention_config is set but automatic checkpointing is disabled \
+                     (checkpoint_batch_size == 0); prefix retention can only archive \
+                     checkpoint-covered receipts, so refusing to attach a store that could never \
+                     advance its retention watermark"
+                        .to_string(),
+                ));
+            }
+            // Fail-closed: configured retention is a storage/compliance control.
+            // A store whose rotate_receipts is the default unsupported stub would
+            // attach and then only log "retention not supported" on every worker
+            // interval, silently never archiving. Reject the attach rather than
+            // serve traffic under a retention policy the store cannot honor.
+            if !receipt_store.supports_retention() {
+                return Err(KernelError::Internal(
+                    "receipt store does not support retention but KernelConfig.retention_config \
+                     is set; refusing to attach a store that cannot honor the configured \
+                     retention policy"
+                        .to_string(),
+                ));
+            }
+            // Fail-closed: a tenant-scoped retention policy cannot be honored by a
+            // prefix-watermark store (rotation archives a contiguous checkpointed
+            // prefix of the whole log, not one tenant's rows), so its rotate call
+            // fails closed and the worker would only log "tenant scope
+            // unsupported" every interval and never archive. Reject the attach
+            // rather than serve traffic under a policy the store cannot honor.
+            if config.tenant_id.is_some() && !receipt_store.supports_tenant_scoped_retention() {
+                return Err(KernelError::Internal(
+                    "KernelConfig.retention_config sets a tenant scope but the receipt store does \
+                     not support tenant-scoped retention; refusing to attach a store that cannot \
+                     honor the configured retention policy"
+                        .to_string(),
+                ));
+            }
+            self.retention_maintenance =
+                Some(crate::receipt_store::RetentionMaintenanceHandle::spawn(
+                    Arc::clone(&receipt_store),
+                    config,
+                ));
+        }
+        // The attach-time reconcile pass above defers rows owned by live
+        // sibling writers, and a sibling that crashes AFTER this attach
+        // leaves rows no attach will ever revisit while this kernel stays
+        // up. For stores that coordinate sibling writers, re-run
+        // reconciliation on a fixed cadence: each pass claims only rows
+        // whose owner is provably gone (never a live writer's, never this
+        // instance's own), so a crashed sibling's orphans surface as
+        // incidents even while other writers stay up. Assigned
+        // unconditionally so replacing the store always retires the
+        // previous store's worker.
+        self.dispatch_intent_recovery =
+            receipt_store.supports_dispatch_intent_recovery().then(|| {
+                crate::receipt_store::DispatchIntentRecoveryHandle::spawn(
+                    Arc::clone(&receipt_store),
+                    crate::receipt_store::DISPATCH_INTENT_RECOVERY_INTERVAL,
+                )
+            });
         Ok(())
     }
 
-    /// Install an external payment adapter.
+    /// Install the payment rail adapter. Fail-closed recovery mirror of the
+    /// store attach: when a receipt store is already attached, the attach-
+    /// time money pass ran while the journal was inert (no adapter), so any
+    /// incomplete payment-journal rows from a prior run are still open.
+    /// Installing the adapter makes them resolvable, so the same
+    /// reconciliation pass runs here; a pass that cannot complete uninstalls
+    /// the adapter and refuses, exactly as a failed attach refuses the
+    /// store, so the kernel never serves priced calls over an unreconciled
+    /// journal.
     ///
-    /// Every rail authorization requires a freshly reserved execution nonce or
-    /// governed approval. DPoP alone is insufficient because its built-in
-    /// replay store is process-scoped. Production hosts must install a durable
-    /// execution-nonce or governed-approval store before enabling external
-    /// payments when restart-safe replay protection is required.
-    pub fn set_payment_adapter(&mut self, payment_adapter: Box<dyn PaymentAdapter>) {
+    /// Every rail authorization also requires a freshly reserved execution
+    /// nonce or governed approval. Production hosts that require restart-safe
+    /// replay protection must replace the default process-scoped approval
+    /// store with a durable implementation before enabling external payments.
+    pub fn set_payment_adapter(
+        &mut self,
+        payment_adapter: Box<dyn PaymentAdapter>,
+    ) -> Result<(), KernelError> {
         self.payment_adapter = Some(payment_adapter);
+        if self.receipt_store.is_some() && self.payment_journal_active() {
+            match self.reconcile_payment_journal(0) {
+                Ok(report) => {
+                    if report.resolved > 0 || report.reconcile_failed > 0 {
+                        tracing::warn!(
+                            resolved = report.resolved,
+                            reconcile_failed = report.reconcile_failed,
+                            "payment journal rows survived a restart; reconciled at adapter \
+                             install"
+                        );
+                    }
+                }
+                Err(error) => {
+                    self.payment_adapter = None;
+                    return Err(error);
+                }
+            }
+        }
+        Ok(())
     }
 
     pub fn set_price_oracle(&mut self, price_oracle: Box<dyn PriceOracle>) {
@@ -406,6 +975,18 @@ impl ChioKernel {
         attestation_trust_policy: AttestationTrustPolicy,
     ) {
         self.attestation_trust_policy = Some(attestation_trust_policy);
+    }
+
+    /// Accept the default in-memory revocation store instead of requiring a
+    /// durable one. A locally-run kernel with no durable or remote revocation
+    /// backend keeps its revocation set in memory, so the durability gate would
+    /// otherwise deny every dispatch. Opting in here relaxes the gate
+    /// only while the store is genuinely ephemeral: installing a durable store
+    /// (or a revocation view) satisfies the gate on its own regardless of this
+    /// flag. Intended for local, interactive runtimes; deployments that must
+    /// survive restart should wire a durable store instead of calling this.
+    pub fn opt_in_ephemeral_revocation_store(&mut self) {
+        self.config.allow_ephemeral_revocation_store = true;
     }
 
     pub fn set_revocation_store(&mut self, revocation_store: Box<dyn RevocationStore>) {
@@ -447,13 +1028,151 @@ impl ChioKernel {
     /// receipt bytes; the hook MUST NOT mutate the receipt store and
     /// MUST NOT block the dispatch path on its own latency. Hook
     /// failures are surfaced through
-    /// [`Self::run_settlement_observer`]'s return value and are routed
-    /// through the retry/dead-letter machinery.
+    /// [`Self::run_settlement_observer`]'s return value and routed through
+    /// the retry/dead-letter machinery.
+    ///
+    /// Fail-closed wiring: a durable settlement retry store MUST already
+    /// be installed (see [`Self::set_settlement_retry_store`]) so every
+    /// retryable or permanent outcome lands a durable `settle_attempts` or
+    /// `settle_dead_letters` row. An observer without one would degrade
+    /// those outcomes to a warn plus a counter, so the install is rejected
+    /// here, at wiring time, never discovered at first use.
     pub fn set_settlement_observer(
         &mut self,
         hook: std::sync::Arc<dyn chio_settle::SettlementHook>,
-    ) {
+    ) -> Result<(), KernelBuildError> {
+        if self.settlement_retry_store.is_none() {
+            return Err(KernelBuildError::MissingSettlementRetryStore);
+        }
         self.settlement_observer = Some(hook);
+        Ok(())
+    }
+
+    /// Install the durable settlement retry/dead-letter sink the observer
+    /// routing consumer writes to. Required before
+    /// [`Self::set_settlement_observer`]: an observer whose outcomes have
+    /// no durable sink is refused at wiring time.
+    pub fn set_settlement_retry_store(
+        &mut self,
+        store: std::sync::Arc<dyn crate::settlement_retry::SettlementRetryStore>,
+    ) {
+        self.settlement_retry_store = Some(store);
+    }
+
+    /// Start the background sweeper for orphaned budget holds: once at
+    /// start, then every `interval_secs`, every open hold older than
+    /// `horizon_secs` is expired and its remaining exposure released (no
+    /// spend recorded), so a crash between a hold and its reconcile no
+    /// longer burns capacity forever. Use
+    /// [`DEFAULT_HOLD_SWEEP_INTERVAL_SECS`] and
+    /// [`DEFAULT_HOLD_EXPIRY_HORIZON_SECS`] unless the deployment has a
+    /// reason to deviate; the horizon must sit far above any legitimate
+    /// in-flight call. Restarting replaces (and joins) a previous sweeper.
+    pub fn start_budget_hold_sweeper(&mut self, interval_secs: u64, horizon_secs: u64) {
+        self.budget_hold_sweep = Some(super::budget_sweep::BudgetHoldSweepHandle::spawn(
+            Arc::clone(&self.budget_store),
+            interval_secs,
+            horizon_secs,
+        ));
+    }
+
+    /// Whether the durable payment journal is in force: a payment adapter is
+    /// installed and the dispatch-intent journal covers the monetary class.
+    pub(crate) fn payment_journal_active(&self) -> bool {
+        self.payment_adapter.is_some()
+            && !matches!(
+                self.config.dispatch_intent_journal,
+                crate::receipt_store::DispatchIntentJournalMode::Off
+            )
+    }
+
+    /// Advance the payment journal for a monetary call. Fail-closed: an
+    /// advance that cannot commit surfaces an error so the caller denies or
+    /// unwinds rather than moving money without a recoverable record. No-op
+    /// when the journal is not in force.
+    pub(crate) fn advance_payment_journal_if_active(
+        &self,
+        request_id: &str,
+        expected: crate::payment::PaymentJournalState,
+        next: crate::payment::PaymentJournalState,
+        authorization_id: Option<&str>,
+        transaction_id: Option<&str>,
+        settle: Option<crate::payment::PaymentSettleIntent>,
+    ) -> Result<(), KernelError> {
+        if !self.payment_journal_active() {
+            return Ok(());
+        }
+        self.with_budget_store(|store| {
+            store
+                .advance_payment_journal(
+                    request_id,
+                    expected,
+                    next,
+                    authorization_id,
+                    transaction_id,
+                    settle,
+                )
+                .map_err(KernelError::from)
+        })
+    }
+
+    /// Close the payment journal after the receipt commits. A crash before
+    /// the close leaves a Settled row that boot reconciliation closes
+    /// against the attested receipt, so a close failure here is warned, not
+    /// fatal.
+    ///
+    /// State-aware: a row still in `Settling` is never closed from here. On
+    /// the success path the settle advance to `Settled` precedes the
+    /// receipt, so a `Settling` row at receipt time means the rail call
+    /// failed or never confirmed AFTER its terminal action was durably
+    /// committed - money may have moved. The failure receipt records
+    /// `settlement_status: failed`, and the row must stay open so boot
+    /// reconciliation can replay the committed action (idempotent by the
+    /// adapter contract) instead of losing its only recovery handle.
+    pub(crate) fn close_payment_journal_best_effort(&self, request_id: &str) {
+        if !self.payment_journal_active() {
+            return;
+        }
+        match self.with_budget_store(|store| {
+            store
+                .get_payment_journal(request_id)
+                .map_err(KernelError::from)
+        }) {
+            Ok(Some(row)) if row.state == crate::payment::PaymentJournalState::Settling => {
+                tracing::warn!(
+                    request_id = %request_id,
+                    rail = %row.rail,
+                    "payment journal row is still Settling at receipt commit; leaving it open \
+                     for boot reconciliation to replay the committed settle action"
+                );
+                return;
+            }
+            Ok(_) => {}
+            Err(error) => {
+                // Unknown state: never destroy a possible recovery handle.
+                // A stray open Settled row at the next boot re-emits an
+                // advisory reconciliation receipt, never a second charge.
+                tracing::warn!(
+                    request_id = %request_id,
+                    reason = %redacted!(&error.to_string()),
+                    "payment journal lookup failed at receipt commit; leaving the row for boot \
+                     reconciliation"
+                );
+                return;
+            }
+        }
+        let closed = self.with_budget_store(|store| {
+            store
+                .close_payment_journal(request_id)
+                .map_err(KernelError::from)
+        });
+        if let Err(error) = closed {
+            tracing::warn!(
+                request_id = %request_id,
+                reason = %redacted!(&error.to_string()),
+                "payment journal close failed; boot reconciliation will close the row"
+            );
+        }
     }
 
     /// Return a clone of the active settlement observer, or `None` when
@@ -479,6 +1198,131 @@ impl ChioKernel {
             receipt,
             &[self.public_key()],
         )
+    }
+
+    /// Route the settlement-observer outcome into the retry/dead-letter
+    /// machinery. Fail-loud and fail-closed: an outcome that cannot be
+    /// persisted is warned and counted, never silently dropped.
+    pub(crate) fn route_settlement_observer_status(
+        &self,
+        receipt: &chio_core::receipt::body::ChioReceipt,
+        status: &settlement_observer::SettlementObserverStatus,
+    ) {
+        use settlement_observer::SettlementObserverStatus as Status;
+        let (reason, retryable) = match status {
+            // Steady state: no hook, or the receipt is outside the
+            // marketplace surface. Nothing is owed downstream.
+            Status::NotRegistered | Status::Skipped { .. } => return,
+            Status::Observed { outcome } => match self.classify_and_persist(receipt, outcome) {
+                Ok(()) => return,
+                Err(error) => (error.to_string(), true),
+            },
+            Status::HookFailed { error } => {
+                // A hook error is a transient settlement failure (an RPC
+                // outage looks exactly like a rail returning Retryable), so
+                // it consumes the same bounded retry/dead-letter envelope:
+                // a durable settle_attempts row that `chio settle drive`
+                // picks up, dead-lettering after the policy's max attempts.
+                // Warn-only routing would leave the outcome undriven and
+                // unbounded.
+                let outcome = chio_settle::SettlementOutcome::retryable(error.clone());
+                match self.classify_and_persist(receipt, &outcome) {
+                    Ok(()) => return,
+                    Err(persist_error) => (persist_error.to_string(), true),
+                }
+            }
+        };
+        tracing::warn!(
+            receipt_id = %receipt.id,
+            retryable,
+            reason = %redacted!(&reason),
+            "settlement outcome unresolved"
+        );
+        chio_metrics_spec::runtime::families::SETTLEMENT_UNRESOLVED.incr(&[]);
+    }
+
+    /// Classify an observed settlement outcome against the retry policy and
+    /// persist the decision: retryable outcomes upsert a bounded attempt row,
+    /// terminal failures land an idempotent dead-letter row, and resolved
+    /// outcomes clear the envelope.
+    pub(crate) fn classify_and_persist(
+        &self,
+        receipt: &chio_core::receipt::body::ChioReceipt,
+        outcome: &chio_settle::SettlementOutcome,
+    ) -> Result<(), crate::settlement_retry::SettlementRetryError> {
+        use crate::settlement_retry::{SettleAttemptRecord, SettlementRetryError};
+        use chio_settle::RetryDecision;
+
+        let store = self.settlement_retry_store.as_deref();
+        let prior_attempts = match store {
+            Some(store) => store
+                .load_attempt(&receipt.id)?
+                .map(|attempt| attempt.attempts)
+                .unwrap_or(0),
+            None => 0,
+        };
+        match chio_settle::classify_attempt(&self.settlement_retry_policy, prior_attempts, outcome)
+        {
+            RetryDecision::Skip { .. } => {
+                // Resolved (accepted or skipped): the receipt owes nothing
+                // downstream, so any bounded envelope for it is cleared.
+                if let Some(store) = store {
+                    store.clear_attempt(&receipt.id)?;
+                }
+                Ok(())
+            }
+            RetryDecision::Retry { attempt, backoff } => {
+                let Some(store) = store else {
+                    return Err(SettlementRetryError::Backend(
+                        "no settlement retry store installed".to_string(),
+                    ));
+                };
+                let reason = match outcome {
+                    chio_settle::SettlementOutcome::Retryable { reason, .. } => reason.clone(),
+                    other => format!("{other:?}"),
+                };
+                let now = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|elapsed| elapsed.as_secs())
+                    .unwrap_or(0);
+                store.upsert_attempt(&SettleAttemptRecord {
+                    receipt_id: receipt.id.clone(),
+                    finalized_at: receipt.timestamp,
+                    attempts: attempt,
+                    next_visible_at: now.saturating_add(backoff.as_secs().max(1)),
+                    last_reason: Some(reason),
+                })
+            }
+            RetryDecision::DeadLetter { reason } => {
+                let Some(store) = store else {
+                    return Err(SettlementRetryError::Backend(
+                        "no settlement retry store installed".to_string(),
+                    ));
+                };
+                let record = chio_settle::DeadLetterRecord::new(
+                    receipt.id.clone(),
+                    receipt.timestamp,
+                    prior_attempts.saturating_add(1),
+                    reason,
+                );
+                match store.insert_dead_letter(&record) {
+                    Ok(_) => store.clear_attempt(&receipt.id),
+                    Err(SettlementRetryError::Conflict(message)) => {
+                        // A divergent dead-letter row already exists. Keep the
+                        // original row (operators clear it explicitly) and
+                        // surface the divergence loud.
+                        tracing::warn!(
+                            receipt_id = %receipt.id,
+                            reason = %redacted!(&message),
+                            "dead-letter insert conflicted with a divergent row"
+                        );
+                        chio_metrics_spec::runtime::families::SETTLEMENT_UNRESOLVED.incr(&[]);
+                        Ok(())
+                    }
+                    Err(other) => Err(other),
+                }
+            }
+        }
     }
 
     /// Install a memory-provenance chain.
@@ -634,6 +1478,30 @@ impl ChioKernel {
         self.federation_cosigner = Some(cosigner);
     }
 
+    /// Install a durable [`crate::federation_artifact_store::FederationArtifactStore`]
+    /// for bilateral co-sign artifacts.
+    ///
+    /// When set, [`Self::apply_federation_cosign`] writes each
+    /// `DualSignedReceipt` / `DsseEnvelope` through to the store BEFORE inserting
+    /// it into the bounded in-memory caches, and [`Self::dual_signed_receipt`] /
+    /// [`Self::federation_dsse_envelope`] fall back to the store on a cache miss.
+    /// This closes the evidence-loss window where a federated deployment
+    /// producing more than `federation_cache_capacity` receipts would drop
+    /// evicted co-sign artifacts while the durable receipt store keeps only the
+    /// base receipt. Without a store installed, evicted co-sign artifacts are
+    /// lossy by policy (the bounded caches drop-oldest at capacity).
+    ///
+    /// A deployment requiring durable bilateral evidence installs a
+    /// database-backed impl; the bundled
+    /// [`crate::federation_artifact_store::InMemoryFederationArtifactStore`] is a
+    /// capped, idle-swept reference impl and test double.
+    pub fn set_federation_artifact_store(
+        &mut self,
+        store: Arc<dyn crate::federation_artifact_store::FederationArtifactStore>,
+    ) {
+        self.federation_artifact_store = Some(store);
+    }
+
     /// Advertise this kernel's stable identifier as seen by
     /// remote federation peers. When unset, the hex encoding of the
     /// signing public key is used. Setting this is recommended in
@@ -675,18 +1543,65 @@ impl ChioKernel {
         &self,
         receipt_id: &str,
     ) -> Option<chio_federation::bilateral::DualSignedReceipt> {
-        self.federation_dual_receipts
-            .get(receipt_id)
-            .map(|entry| entry.value().clone())
+        let now = current_unix_timestamp();
+        {
+            let mut cache = match self.federation_dual_receipts.lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            if let Some(hit) = cache.get(&receipt_id.to_string(), now) {
+                return Some(hit.clone());
+            }
+        }
+        self.federation_artifact_store.as_ref().and_then(|store| {
+            // A store READ error is not an admission gate (writes fail closed via
+            // `?` elsewhere), but collapsing Err to None silently makes a transient
+            // read failure indistinguishable from an absent artifact. Log it so the
+            // read-through fallback is observable.
+            match store.get_dual_signed(receipt_id) {
+                Ok(hit) => hit,
+                Err(error) => {
+                    debug!(
+                        receipt_id = %receipt_id,
+                        reason = %redacted!(&error.to_string()),
+                        "federation artifact-store dual-signed read failed; treating as absent"
+                    );
+                    None
+                }
+            }
+        })
     }
 
     pub fn federation_dsse_envelope(
         &self,
         receipt_id: &str,
     ) -> Option<chio_federation::bilateral_dsse::DsseEnvelope> {
-        self.federation_dsse_envelopes
-            .get(receipt_id)
-            .map(|entry| entry.value().clone())
+        let now = current_unix_timestamp();
+        {
+            let mut cache = match self.federation_dsse_envelopes.lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            if let Some(hit) = cache.get(&receipt_id.to_string(), now) {
+                return Some(hit.clone());
+            }
+        }
+        self.federation_artifact_store.as_ref().and_then(|store| {
+            // As with the dual-signed read above: log a swallowed store read error
+            // so a transient failure is not silently reported as an absent DSSE
+            // envelope.
+            match store.get_dsse(receipt_id) {
+                Ok(hit) => hit,
+                Err(error) => {
+                    debug!(
+                        receipt_id = %receipt_id,
+                        reason = %redacted!(&error.to_string()),
+                        "federation artifact-store DSSE read failed; treating as absent"
+                    );
+                    None
+                }
+            }
+        })
     }
 
     /// Local kernel identifier used in bilateral co-signing. Falls back
@@ -797,10 +1712,52 @@ impl ChioKernel {
             )
             .map_err(|e| KernelError::Internal(format!("bilateral DSSE co-sign failed: {e}")))?;
 
-        self.federation_dual_receipts
-            .insert(receipt.id.clone(), dual);
-        self.federation_dsse_envelopes
-            .insert(receipt.id.clone(), dsse_envelope);
+        // Write through to the artifact store (if one is installed via
+        // set_federation_artifact_store) BEFORE the bounded caches. An entry
+        // evicted from a cache is only guaranteed resolvable when the store
+        // DURABLY retains it: a bounded in-memory store can evict the same id the
+        // caches did, so only a store that reports itself durable suppresses the
+        // evidence-loss signal below.
+        let durable_store_installed = self
+            .federation_artifact_store
+            .as_ref()
+            .is_some_and(|store| store.is_durable());
+        if let Some(store) = self.federation_artifact_store.as_ref() {
+            store.put_dual_signed(&receipt.id, &dual)?;
+            store.put_dsse(&receipt.id, &dsse_envelope)?;
+        }
+        let now = current_unix_timestamp();
+        {
+            let mut cache = match self.federation_dual_receipts.lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            // An evicted entry survives only through a durable store. Without one
+            // the drop is lossy by policy (bounded drop-oldest); log it so the
+            // evidence loss is explicit for operators.
+            if cache.insert(receipt.id.clone(), dual, now).is_some() && !durable_store_installed {
+                debug!(
+                    request_id = %request.request_id,
+                    "dropping an evicted dual-signed co-sign artifact: bounded federation cache is full and no durable FederationArtifactStore is installed"
+                );
+            }
+        }
+        {
+            let mut cache = match self.federation_dsse_envelopes.lock() {
+                Ok(g) => g,
+                Err(poisoned) => poisoned.into_inner(),
+            };
+            if cache
+                .insert(receipt.id.clone(), dsse_envelope, now)
+                .is_some()
+                && !durable_store_installed
+            {
+                debug!(
+                    request_id = %request.request_id,
+                    "dropping an evicted co-sign DSSE envelope: bounded federation cache is full and no durable FederationArtifactStore is installed"
+                );
+            }
+        }
         Ok(())
     }
 
@@ -857,6 +1814,42 @@ impl ChioKernel {
     #[must_use]
     pub fn is_emergency_stopped(&self) -> bool {
         self.emergency_stopped.load(Ordering::SeqCst)
+    }
+
+    /// Return `true` when the RSS soft-ceiling sampler has flagged that process
+    /// RSS crossed `memory_budget.rss_soft_limit_bytes`. A single relaxed atomic
+    /// load on the admission fast path.
+    #[must_use]
+    pub fn is_rss_shedding(&self) -> bool {
+        self.rss_shed.load(Ordering::Relaxed)
+    }
+
+    /// Enumerate each long-lived bounded structure's telemetry label and its
+    /// current live entry count. This is the registry the size-metric convention
+    /// and the soak harness read; adding a
+    /// new long-lived collection without a gauge here fails the registry test.
+    #[must_use]
+    pub fn bounded_structure_gauges(&self) -> Vec<(&'static str, usize)> {
+        vec![
+            ("receipt_mirror", self.receipt_mirror_gauge.get()),
+            (
+                "child_receipt_mirror",
+                self.child_receipt_mirror_gauge.get(),
+            ),
+            (
+                "federation_dual_receipts",
+                self.federation_dual_receipts_gauge.get(),
+            ),
+            (
+                "federation_dsse_envelopes",
+                self.federation_dsse_envelopes_gauge.get(),
+            ),
+        ]
+    }
+
+    #[cfg(test)]
+    pub(crate) fn set_rss_shed_for_test(&self, on: bool) {
+        self.rss_shed.store(on, Ordering::Relaxed);
     }
 
     /// Return the unix timestamp (seconds) at which the kill switch was
@@ -918,10 +1911,10 @@ impl ChioKernel {
 
     /// Install the replay store used to reserve single-use governed approvals.
     ///
-    /// Governed approvals fail closed until an embedding host explicitly
-    /// installs a store. The in-memory implementation is process-scoped; hosts
-    /// that must preserve replay protection across restart must install a
-    /// durable implementation before accepting governed requests.
+    /// The kernel installs a bounded process-scoped store by default so
+    /// governed approvals remain backward-compatible. Hosts that must preserve
+    /// replay protection across restart should replace it with a durable
+    /// implementation before accepting governed requests.
     pub fn set_governed_approval_replay_store(
         &mut self,
         store: Box<dyn crate::governed_approval_replay::GovernedApprovalReplayStore>,
@@ -1098,7 +2091,11 @@ impl ChioKernel {
     /// Register a policy guard. Guards are evaluated in registration order.
     /// If any guard denies, the request is denied.
     pub fn add_guard(&mut self, guard: Box<dyn Guard>) {
-        self.guards.push(guard);
+        // `Box<dyn Guard>` converts directly to `Arc<dyn Guard>`, and
+        // `Vec<Arc<dyn Guard>>` is `Clone`, so `make_mut` copies-on-write only
+        // while guards are still being registered (the kernel is single-owner
+        // at that point).
+        std::sync::Arc::make_mut(&mut self.guards).push(std::sync::Arc::from(guard));
     }
 
     /// Install a product-specific runtime admission hook. The hook runs after
@@ -1159,7 +2156,7 @@ impl ChioKernel {
     pub fn register_tool_server(&mut self, connection: Box<dyn ToolServerConnection>) {
         let id = connection.server_id().to_owned();
         info!(server_id = %id, "registering tool server");
-        self.tool_servers.insert(id, connection);
+        self.tool_servers.insert(id, Arc::from(connection));
     }
 
     /// Register a resource provider.

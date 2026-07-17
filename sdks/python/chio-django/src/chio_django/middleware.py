@@ -88,9 +88,11 @@ class ChioDjangoMiddleware:
     Reads configuration from Django settings:
 
     - ``CHIO_SIDECAR_URL``: sidecar base URL (default ``http://127.0.0.1:9090``)
+    - ``CHIO_FAIL_OPEN``: legacy compatibility setting; outages fail closed
     - ``CHIO_EXCLUDE_PATHS``: list of paths to skip (default ``[]``)
     - ``CHIO_EXCLUDE_METHODS``: list of methods to skip (default ``["OPTIONS"]``)
-    - ``CHIO_RECEIPT_HEADER``: response header for receipt ID (default ``X-Chio-Receipt``)
+    - ``CHIO_RECEIPT_HEADER``: response header for receipt ID
+      (default ``X-Chio-Receipt``)
     - ``CHIO_TIMEOUT``: request timeout in seconds (default 5)
     """
 
@@ -216,7 +218,18 @@ class ChioDjangoMiddleware:
                 status=502,
             )
 
-        evaluation = resp.json()
+        try:
+            evaluation = resp.json()
+        except ValueError:
+            return JsonResponse(
+                {
+                    "error": {
+                        "code": "CHIO_INTERNAL_ERROR",
+                        "message": "Sidecar returned malformed JSON",
+                    }
+                },
+                status=502,
+            )
         verdict = evaluation.get("verdict", {})
         receipt_data = evaluation.get("receipt", {})
 
@@ -225,7 +238,11 @@ class ChioDjangoMiddleware:
         except Exception:
             receipt = None
 
-        if verdict.get("verdict") != "allow" or receipt is None or not receipt.is_allowed:
+        if (
+            verdict.get("verdict") != "allow"
+            or receipt is None
+            or not receipt.is_allowed
+        ):
             status = verdict.get("http_status", 403)
             return JsonResponse(
                 {

@@ -155,7 +155,7 @@ pub(crate) fn extract_receipt_attribution(receipt: &ChioReceipt) -> ReceiptAttri
                 .get("financial")
                 .and_then(|value| value.get("grant_index"))
                 .and_then(serde_json::Value::as_u64)
-                .map(|value| value as u32)
+                .and_then(|value| u32::try_from(value).ok())
         });
 
     ReceiptAttributionColumns {

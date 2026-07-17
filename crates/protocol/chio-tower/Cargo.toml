@@ -16,6 +16,7 @@ async-trait = { workspace = true }
 chio-core-types = { workspace = true }
 chio-http-core = { workspace = true }
 chio-kernel = { workspace = true }
+chio-metrics-spec = { workspace = true }
 serde_json = { workspace = true }
 chrono = { workspace = true }
 sha2 = { workspace = true }
@@ -33,6 +34,8 @@ http-body-util = "0.1"
 bytes = "1"
 
 [dev-dependencies]
+chio-store-sqlite = { workspace = true }
+tempfile = { workspace = true }
 tokio = { workspace = true, features = ["test-util", "macros"] }
 axum = "0.8"
 hyper = { version = "1", features = ["full"] }

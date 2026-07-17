@@ -26,6 +26,8 @@ pub(crate) struct DispatchCredentialReservation<'a> {
     reservation_id: String,
     dpop_key: Option<(String, String)>,
     execution_nonce_id: Option<String>,
+    legacy_execution_nonce: Option<(String, i64)>,
+    execution_nonce_present: bool,
     approval_key: Option<(String, String, String)>,
     credentials_present: bool,
     rollback_on_drop: bool,
@@ -38,6 +40,7 @@ impl DispatchCredentialReservation<'_> {
     pub(crate) fn retain_if_dropped(
         &mut self,
     ) -> Result<PaymentCredentialDisposition, KernelError> {
+        self.reserve_legacy_execution_nonce_at_effect_boundary()?;
         self.rollback_on_drop = false;
         self.commit_approval_marker()?;
         Ok(self.retention_disposition())
@@ -48,13 +51,48 @@ impl DispatchCredentialReservation<'_> {
     }
 
     pub(crate) fn has_payment_authorization_credential(&self) -> bool {
-        self.execution_nonce_id.is_some() || self.approval_key.is_some()
+        self.execution_nonce_present || self.approval_key.is_some()
     }
 
     pub(crate) fn commit(mut self) -> Result<PaymentCredentialDisposition, KernelError> {
+        self.reserve_legacy_execution_nonce_at_effect_boundary()?;
         self.rollback_on_drop = false;
         self.commit_approval_marker()?;
         Ok(self.retention_disposition())
+    }
+
+    /// Consume a nonce held by a legacy store immediately before the first
+    /// external effect. Legacy stores cannot conditionally roll back a marker,
+    /// so consuming earlier would burn a valid nonce when later admission
+    /// checks deny the request.
+    pub(crate) fn reserve_legacy_execution_nonce_at_effect_boundary(
+        &mut self,
+    ) -> Result<(), KernelError> {
+        let Some((nonce_id, nonce_expires_at)) = self.legacy_execution_nonce.take() else {
+            return Ok(());
+        };
+        let store = self
+            .kernel
+            .execution_nonce_store
+            .as_deref()
+            .ok_or_else(|| {
+                KernelError::Internal(
+                    "execution nonce store disappeared before dispatch".to_string(),
+                )
+            })?;
+        match run_credential_store_operation(
+            &self.reservation_id,
+            "legacy execution nonce reservation",
+            || store.reserve_until(&nonce_id, nonce_expires_at),
+        ) {
+            Ok(true) => Ok(()),
+            Ok(false) => Err(KernelError::Internal(
+                "execution nonce has already been consumed".to_string(),
+            )),
+            Err(error) => Err(KernelError::Internal(format!(
+                "legacy execution nonce reservation failed; consumption outcome unknown: {error}"
+            ))),
+        }
     }
 
     fn retention_disposition(&self) -> PaymentCredentialDisposition {
@@ -107,6 +145,11 @@ impl DispatchCredentialReservation<'_> {
 
     fn rollback_entries(&mut self) -> Result<(), KernelError> {
         let mut failures = Vec::new();
+
+        // A pending legacy nonce has not been consumed yet. Once consumed it
+        // is intentionally absent here because the legacy API has no owned
+        // rollback operation.
+        self.legacy_execution_nonce = None;
 
         if let Some((subject_id, request_id, intent_hash)) = self.approval_key.take() {
             let result = match self.kernel.approval_replay_store.as_deref() {
@@ -247,6 +290,8 @@ impl ChioKernel {
             reservation_id: uuid::Uuid::now_v7().as_hyphenated().to_string(),
             dpop_key: None,
             execution_nonce_id: None,
+            legacy_execution_nonce: None,
+            execution_nonce_present: execution_nonce.is_some(),
             approval_key: None,
             credentials_present: dpop_proof.is_some()
                 || execution_nonce.is_some()
@@ -297,26 +342,31 @@ impl ChioKernel {
                 let store = self.execution_nonce_store.as_deref().ok_or_else(|| {
                     KernelError::Internal("execution nonce store is not installed".to_string())
                 })?;
-                reservation.execution_nonce_id = Some(presented.nonce.nonce_id.clone());
-                match run_credential_store_operation(
-                    &reservation.reservation_id,
-                    "execution nonce reservation",
-                    || {
-                        store.reserve_for_dispatch(
-                            &presented.nonce.nonce_id,
-                            presented.nonce.expires_at,
-                            &reservation.reservation_id,
-                        )
-                    },
-                ) {
-                    Ok(true) => {}
-                    Ok(false) => {
-                        reservation.execution_nonce_id = None;
-                        return Err(KernelError::Internal(
-                            "execution nonce has already been consumed".to_string(),
-                        ));
+                if store.supports_dispatch_reservations() {
+                    reservation.execution_nonce_id = Some(presented.nonce.nonce_id.clone());
+                    match run_credential_store_operation(
+                        &reservation.reservation_id,
+                        "execution nonce reservation",
+                        || {
+                            store.reserve_for_dispatch(
+                                &presented.nonce.nonce_id,
+                                presented.nonce.expires_at,
+                                &reservation.reservation_id,
+                            )
+                        },
+                    ) {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            reservation.execution_nonce_id = None;
+                            return Err(KernelError::Internal(
+                                "execution nonce has already been consumed".to_string(),
+                            ));
+                        }
+                        Err(error) => return Err(error),
                     }
-                    Err(error) => return Err(error),
+                } else {
+                    reservation.legacy_execution_nonce =
+                        Some((presented.nonce.nonce_id.clone(), presented.nonce.expires_at));
                 }
             }
 
@@ -387,14 +437,9 @@ impl ChioKernel {
                 "execution nonce required but not presented on tool call".to_string(),
             )
         })?;
-        let store = self.execution_nonce_store.as_deref().ok_or_else(|| {
+        let _store = self.execution_nonce_store.as_deref().ok_or_else(|| {
             KernelError::Internal("execution nonce store is not installed".to_string())
         })?;
-        if !store.supports_dispatch_reservations() {
-            return Err(KernelError::Internal(
-                "execution nonce store does not support dispatch reservations".to_string(),
-            ));
-        }
         let parameter_hash = ToolCallAction::from_parameters(request.arguments.clone())
             .map_err(|error| {
                 KernelError::ReceiptSigningFailed(format!("failed to hash parameters: {error}"))

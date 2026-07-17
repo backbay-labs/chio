@@ -328,10 +328,14 @@ fn canonicalize_f64(v: f64) -> Result<String> {
     Ok(format!("{sign}{mantissa}e{exp_sign}{sci_exp}"))
 }
 
+fn is_integer_valued_f64(value: f64) -> bool {
+    value % 1.0 == 0.0
+}
+
 /// Reject a fractional number token that is not already in shortest canonical form.
 ///
 /// Integer-valued tokens (no fractional part, or a `.0`/exponent that resolves to
-/// a whole number) are handled by `visit_f64`'s whole-number guard, so this
+/// a whole number) are handled by `visit_f64`'s zero-fraction guard, so this
 /// only inspects tokens whose value has a genuine fractional component. Such a
 /// token is canonical only when its significant digits are *exactly* the
 /// significant digits of the shortest decimal that round-trips to its `f64` (the
@@ -350,7 +354,7 @@ fn reject_if_over_precise_fractional(token: &str) -> Result<()> {
     // Integer-valued doubles never reach the canonical float path (visit_f64
     // already refuses them); skip them here so this check is solely about
     // fractional precision.
-    if !value.is_finite() || value % 1.0 == 0.0 {
+    if !value.is_finite() || is_integer_valued_f64(value) {
         return Ok(());
     }
 
@@ -500,10 +504,10 @@ fn trim_decimal(mut s: String) -> String {
 
 /// Escape a string per RFC 8785 / JSON rules.
 ///
-/// Quotes and reverse solidus use their mandatory JSON escapes. C0 controls
-/// use the standard short forms when available and lowercase `\uXXXX`
-/// otherwise. All other scalar values, including U+007F, U+2028, and U+2029,
-/// pass through unescaped.
+/// Quotes and reverse solidus use their mandatory JSON escapes. Control
+/// characters use the standard short forms when available and lowercase
+/// `\uXXXX` otherwise. This preserves the canonical bytes emitted by earlier
+/// Chio versions for U+007F and the C1 control range.
 fn escape_json_string(s: &str) -> String {
     let mut result = String::with_capacity(s.len());
     for c in s.chars() {
@@ -515,8 +519,8 @@ fn escape_json_string(s: &str) -> String {
             '\n' => result.push_str("\\n"),
             '\r' => result.push_str("\\r"),
             '\t' => result.push_str("\\t"),
-            c if c <= '\u{001f}' => {
-                // U+0000..U+001F (excluding the six above) use \uXXXX.
+            c if c.is_control() => {
+                // Controls without a short form use \uXXXX.
                 result.push_str(&format!("\\u{:04x}", c as u32));
             }
             c => result.push(c),
@@ -747,7 +751,7 @@ impl<'de> Visitor<'de> for StrictJsonVisitor {
         // magnitude floor. Rejecting every integer-valued f64 is the only
         // closure that admits no precision-losing input. Callers that need an
         // integer must send an integer token (e.g. `100`, not `100.0`/`1e2`).
-        if v % 1.0 == 0.0 {
+        if is_integer_valued_f64(v) {
             return Err(de::Error::custom(format!(
                 "number {v} cannot be signed: an integer-valued f64 may be a \
                  rounded fractional or out-of-range integer literal; send an \

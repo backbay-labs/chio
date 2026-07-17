@@ -700,9 +700,11 @@ Also implemented on 2026-03-23: `chio-kernel` now ships a concrete
 authorization hop before execution, records receipt-linked payment references
 on successful calls, and denies truthfully when authorization fails. The
 built-in adapter does not synthesize capture, release, or refund
-acknowledgements. Those methods fail until a deployment provides a rail
-endpoint that returns an authoritative transaction identifier and settlement
-status.
+acknowledgements. Without a configured endpoint, those operations remain
+pending with a reconciliation reason. Deployments can install authoritative
+HTTP acknowledgement paths with `with_capture_path`, `with_release_path`, and
+`with_refund_path`; each response must provide a transaction identifier and
+settlement status.
 
 Extended on 2026-03-26: the x402 authorize payload now carries governed
 transaction context when present, including the intent id/hash, target
@@ -714,8 +716,8 @@ seller-scoped shared-payment-token reference bridge. Governed intents can now
 carry typed commerce approval context (`seller`, `shared_payment_token_id`),
 grants can require an exact seller scope, and receipts preserve the commerce
 approval evidence alongside the financial payment block. The built-in ACP-Commerce
-adapter is authorize-only for the same reason: capture, release, and refund
-require an explicit rail acknowledgement endpoint.
+adapter requires the same explicit acknowledgement paths for capture, release,
+and refund.
 
 Also implemented on 2026-03-23: pre-execution monetary denials now release any
 provisional internal budget debit before the kernel signs the deny receipt, so
@@ -732,8 +734,8 @@ cost when the configured payment rail is not prepaid.
 
 | Adapter | Rail | Settlement | Notes |
 |---------|------|-----------|-------|
-| `AcpPaymentAdapter` | ACP-Commerce / Shared Payment Token | Authorize only | Seller-scoped commerce approvals with explicit `max_amount` bounds. Settlement methods fail until an acknowledgement endpoint is supplied. |
-| `X402PaymentAdapter` | x402 HTTP payment protocol | Authorize only | HTTP authorization negotiation. Settlement methods fail rather than fabricating capture, release, or refund evidence. |
+| `AcpPaymentAdapter` | ACP-Commerce / Shared Payment Token | Authorize plus configured HTTP settlement | Seller-scoped commerce approvals with explicit `max_amount` bounds. Missing acknowledgement paths remain pending for reconciliation. |
+| `X402PaymentAdapter` | x402 HTTP payment protocol | Authorize plus configured HTTP settlement | Settlement paths are explicit; the adapter never fabricates capture, release, or refund evidence. |
 | `StablecoinPaymentAdapter` | USDC/USDT on EVM chains | Async (block confirmation) | On-chain transfer or hold model. Receipts may carry `pending` settlement state until confirmations land. |
 
 #### 3.6.3 Integration Point

@@ -15,6 +15,7 @@
     "price_admin_address": "0x9C7BC14e8a4B054e98C6DB99B9f1Ea2797BAee7B",
     "operator_address": "0x8d6d63c22D114C18C2a0dA6Db0A8972Ed9C40343",
     "operator_ed_key_label": "chio-operator-ed25519-key",
+    "operator_key_hash": "0x0791868d8f29ea735f26a17a9aea038cd4255baac26eac5a74e58a07ed2f1975",
     "delegate_address": "0x9567397B445998E7E405D5Fc3d239391bf5d0200",
     "delegate_expiry_seconds": 3600
   },
@@ -57,7 +58,8 @@
       "source": "contracts/src/ChioEscrow.sol",
       "constructor_args": [
         "<root_registry_address>",
-        "<identity_registry_address>"
+        "<identity_registry_address>",
+        "0x9C7BC14e8a4B054e98C6DB99B9f1Ea2797BAee7B"
       ],
       "create2_salt": "chio.escrow.base.v0.1.0"
     },
@@ -67,7 +69,8 @@
       "source": "contracts/src/ChioBondVault.sol",
       "constructor_args": [
         "<root_registry_address>",
-        "<identity_registry_address>"
+        "<identity_registry_address>",
+        "0x9C7BC14e8a4B054e98C6DB99B9f1Ea2797BAee7B"
       ],
       "create2_salt": "chio.bond-vault.base.v0.1.0"
     },

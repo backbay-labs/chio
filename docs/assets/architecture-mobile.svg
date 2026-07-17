@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 480 612" width="480" height="612" role="img" aria-label="Chio system map: an untrusted agent and untrusted tool servers around a single trusted Runtime Kernel that verifies, guards, dispatches, and signs; receipts feed the trust and economy planes">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#130d0a"/>
+      <stop offset="1" stop-color="#1b140d"/>
+    </linearGradient>
+    <radialGradient id="kglow" cx="50%" cy="50%" r="50%">
+      <stop offset="0" stop-color="#8f7ff2" stop-opacity="0.26"/>
+      <stop offset="0.65" stop-color="#8f7ff2" stop-opacity="0.06"/>
+      <stop offset="1" stop-color="#8f7ff2" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="480" height="612" fill="url(#bg)"/>
+
+  <!-- arrows + labels -->
+  <g stroke="#b08d5b" stroke-opacity="0.6" stroke-width="1.3" fill="none" stroke-linecap="round">
+    <path d="M240 82 V112"/>
+    <path d="M240 310 V340"/>
+    <path d="M240 402 V432"/>
+    <path d="M240 494 V510"/>
+    <path d="M240 510 L150 528"/>
+    <path d="M240 510 L330 528"/>
+  </g>
+  <g fill="#b08d5b" fill-opacity="0.85">
+    <path d="M240 112 l-4 -7 h8 z"/>
+    <path d="M240 340 l-4 -7 h8 z"/>
+    <path d="M240 432 l-4 -7 h8 z"/>
+    <path d="M150 528 l7 -1 l-3 -6 z"/>
+    <path d="M330 528 l-7 -1 l3 -6 z"/>
+  </g>
+  <g font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#c8a86f" text-anchor="middle">
+    <rect x="186" y="89" width="108" height="16" rx="3" fill="#130d0a" fill-opacity="0.9"/><text x="240" y="101">capability token</text>
+    <rect x="196" y="317" width="88" height="16" rx="3" fill="#130d0a" fill-opacity="0.9"/><text x="240" y="329">governed call</text>
+    <rect x="196" y="409" width="88" height="16" rx="3" fill="#130d0a" fill-opacity="0.9"/><text x="240" y="421">signs receipt</text>
+    <rect x="120" y="518" width="60" height="15" rx="3" fill="#130d0a" fill-opacity="0.9"/><text x="150" y="530">evidence</text>
+    <rect x="300" y="518" width="70" height="15" rx="3" fill="#130d0a" fill-opacity="0.9"/><text x="335" y="530">settlement</text>
+  </g>
+
+  <!-- agent (untrusted) -->
+  <rect x="130" y="26" width="220" height="56" rx="8" fill="#17110d" stroke="#9a8b76" stroke-opacity="0.55" stroke-dasharray="4 4"/>
+  <text x="240" y="54" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="17" fill="#e7ded0">Agent</text>
+  <text x="240" y="72" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#9a8f7e">LLM process &#183; untrusted</text>
+
+  <!-- kernel (trusted core) -->
+  <circle cx="240" cy="214" r="140" fill="url(#kglow)"/>
+  <rect x="54" y="118" width="372" height="192" rx="12" fill="#191026" stroke="#8f7ff2" stroke-opacity="0.8" stroke-width="1.6"/>
+  <text x="240" y="150" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="20" fill="#f0eadd">Runtime Kernel</text>
+  <text x="240" y="170" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" letter-spacing="0.4" fill="#c3b6ff">the only trusted component &#183; TCB</text>
+  <g font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="12.5" fill="#d7ccf5" text-anchor="middle">
+    <rect x="74" y="186" width="156" height="30" rx="15" fill="#241a3a" stroke="#8f7ff2" stroke-opacity="0.5"/><text x="152" y="205">Verify</text>
+    <rect x="250" y="186" width="156" height="30" rx="15" fill="#241a3a" stroke="#8f7ff2" stroke-opacity="0.5"/><text x="328" y="205">Guard</text>
+    <rect x="74" y="224" width="156" height="30" rx="15" fill="#241a3a" stroke="#8f7ff2" stroke-opacity="0.5"/><text x="152" y="243">Dispatch</text>
+    <rect x="250" y="224" width="156" height="30" rx="15" fill="#241a3a" stroke="#8f7ff2" stroke-opacity="0.5"/><text x="328" y="243">Sign</text>
+  </g>
+  <text x="240" y="286" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#9a8f7e">fed by the Capability Authority and HushSpec policy</text>
+
+  <!-- tool servers (untrusted) -->
+  <rect x="130" y="346" width="220" height="56" rx="8" fill="#17110d" stroke="#9a8b76" stroke-opacity="0.55" stroke-dasharray="4 4"/>
+  <text x="240" y="374" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="17" fill="#e7ded0">Tool Servers</text>
+  <text x="240" y="392" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="11" fill="#9a8f7e">sandboxed &#183; untrusted</text>
+
+  <!-- receipt log -->
+  <rect x="130" y="438" width="220" height="56" rx="8" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.4"/>
+  <text x="240" y="466" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="17" fill="#e7ded0">Receipt Log</text>
+  <text x="240" y="484" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10.5" fill="#9a8f7e">content-addressed &#183; Merkle</text>
+
+  <!-- planes -->
+  <rect x="40" y="530" width="190" height="58" rx="8" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.4"/>
+  <text x="135" y="556" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="15" fill="#e7ded0">Trust plane</text>
+  <text x="135" y="574" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#9a8f7e">identity &#183; federation</text>
+  <rect x="250" y="530" width="190" height="58" rx="8" fill="#1a130d" stroke="#b08d5b" stroke-opacity="0.4"/>
+  <text x="345" y="556" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="15" fill="#e7ded0">Economy plane</text>
+  <text x="345" y="574" text-anchor="middle" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="10" fill="#9a8f7e">metering &#183; settlement</text>
+</svg>

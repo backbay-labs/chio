@@ -136,11 +136,16 @@ fn make_post_payment_mutation_fixture(
         id: "post-payment-server".to_string(),
         invocations: invocations.clone(),
     }));
-    kernel.set_payment_adapter(Box::new(MutatingPaymentAdapter {
-        mutable_state,
-        authorizations,
-        releases,
-    }));
+    assert!(
+        kernel
+            .set_payment_adapter(Box::new(MutatingPaymentAdapter {
+                mutable_state,
+                authorizations,
+                releases,
+            }))
+            .is_ok(),
+        "payment adapter installation must succeed"
+    );
 
     let agent = make_keypair();
     let capability = make_capability(

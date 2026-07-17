@@ -1,5 +1,75 @@
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
+use crate::{KernelError, ReplayClockDirection};
+
+/// Maximum unexplained difference between wall-clock and monotonic progress.
+/// Larger jumps require operator intervention because accepting them could
+/// prematurely prune live replay markers or latch the store after rollback.
+pub(crate) const MAX_REPLAY_CLOCK_SKEW: Duration = Duration::from_secs(300);
+
+pub(crate) fn advance_replay_clock(
+    store: &'static str,
+    wall_clock_high_water: &mut SystemTime,
+    monotonic_high_water: &mut Instant,
+    now_wall: SystemTime,
+    now_monotonic: Instant,
+) -> Result<SystemTime, KernelError> {
+    let monotonic_progress = now_monotonic.saturating_duration_since(*monotonic_high_water);
+    let tolerated_forward = monotonic_progress.saturating_add(MAX_REPLAY_CLOCK_SKEW);
+    if now_wall
+        .duration_since(*wall_clock_high_water)
+        .is_ok_and(|advance| advance > tolerated_forward)
+    {
+        return Err(clock_anomaly(
+            store,
+            ReplayClockDirection::ForwardJump,
+            now_wall,
+            *wall_clock_high_water,
+        ));
+    }
+    if wall_clock_high_water
+        .duration_since(now_wall)
+        .is_ok_and(|rollback| rollback > MAX_REPLAY_CLOCK_SKEW)
+    {
+        return Err(clock_anomaly(
+            store,
+            ReplayClockDirection::Rollback,
+            now_wall,
+            *wall_clock_high_water,
+        ));
+    }
+
+    if now_wall > *wall_clock_high_water {
+        *wall_clock_high_water = now_wall;
+    }
+    if now_monotonic > *monotonic_high_water {
+        *monotonic_high_water = now_monotonic;
+    }
+    Ok(*wall_clock_high_water)
+}
+
+fn clock_anomaly(
+    store: &'static str,
+    direction: ReplayClockDirection,
+    observed: SystemTime,
+    high_water: SystemTime,
+) -> KernelError {
+    KernelError::ReplayClockAnomaly {
+        store,
+        direction,
+        observed_unix_secs: unix_seconds_i64(observed),
+        high_water_unix_secs: unix_seconds_i64(high_water),
+        max_tolerated_skew_secs: MAX_REPLAY_CLOCK_SKEW.as_secs(),
+    }
+}
+
+fn unix_seconds_i64(value: SystemTime) -> i64 {
+    match value.duration_since(UNIX_EPOCH) {
+        Ok(duration) => i64::try_from(duration.as_secs()).unwrap_or(i64::MAX),
+        Err(error) => -i64::try_from(error.duration().as_secs()).unwrap_or(i64::MAX),
+    }
+}
+
 /// Retention deadline for an in-memory replay marker.
 ///
 /// Signed artifacts use both their absolute validity boundary and a monotonic

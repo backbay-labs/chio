@@ -122,7 +122,9 @@ pub fn rederive_verdict(
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod replay_verdict_tests {
     use super::*;
-    use chio_core::receipt::{body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction};
+    use chio_core::receipt::{
+        body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    };
     use chio_core::Keypair;
     use serde_json::json;
 
@@ -259,7 +261,10 @@ mod replay_verdict_tests {
             current: "deny".to_string(),
         };
         let msg = err.to_string();
-        assert!(msg.contains("rcpt-x"), "message must attribute receipt: {msg}");
+        assert!(
+            msg.contains("rcpt-x"),
+            "message must attribute receipt: {msg}"
+        );
         assert!(msg.contains("allow"), "message must show stored: {msg}");
         assert!(msg.contains("deny"), "message must show current: {msg}");
     }

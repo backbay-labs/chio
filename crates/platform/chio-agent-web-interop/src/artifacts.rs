@@ -1,6 +1,9 @@
 use serde::{Deserialize, Serialize};
 
-use chio_core_types::{canonical_json_bytes, sha256_hex, PublicKey, Signature};
+use chio_core_types::{
+    canonical_json_bytes, sha256_hex, PublicKey, Signature,
+    CHIO_AGENT_WEB_PROOF_ENVELOPE_V1_SCHEMA, CHIO_AGENT_WEB_PROOF_ENVELOPE_V2_SCHEMA,
+};
 use chio_transaction_passport::{TransactionPassport, TransactionPassportError};
 
 use super::{
@@ -36,7 +39,8 @@ pub(super) struct AgentWebProofEnvelope {
     schema: String,
     pub(super) envelope_id: String,
     transaction_passport_ref: String,
-    agent_web_passport_scope_sha256: String,
+    #[serde(default)]
+    agent_web_passport_scope_sha256: Option<String>,
     pub(super) source_protocol: String,
     pub(super) source_protocol_version: String,
     external_subject: String,
@@ -52,6 +56,12 @@ pub(super) struct AgentWebProofEnvelope {
     risk_refs: Vec<String>,
     pub(super) limitations: Vec<String>,
     signature: String,
+}
+
+impl AgentWebProofEnvelope {
+    pub(super) fn is_scope_bound_v2(&self) -> bool {
+        self.schema == CHIO_AGENT_WEB_PROOF_ENVELOPE_V2_SCHEMA
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -92,10 +102,6 @@ pub(super) fn validate_envelope(
             "transaction_passport_ref",
             &envelope.transaction_passport_ref,
         ),
-        (
-            "agent_web_passport_scope_sha256",
-            &envelope.agent_web_passport_scope_sha256,
-        ),
         ("source_protocol", &envelope.source_protocol),
         ("source_protocol_version", &envelope.source_protocol_version),
         ("external_subject", &envelope.external_subject),
@@ -113,10 +119,32 @@ pub(super) fn validate_envelope(
     if envelope.transaction_passport_ref != passport.id {
         return Err(claim_failed("Agent Web envelope passport mismatch"));
     }
-    validate_sha256_hex(&envelope.agent_web_passport_scope_sha256)
-        .map_err(|_| claim_failed("invalid Agent Web passport scope digest"))?;
-    if envelope.agent_web_passport_scope_sha256 != passport_scope_sha256 {
-        return Err(claim_failed("Agent Web envelope passport scope mismatch"));
+    match envelope.schema.as_str() {
+        CHIO_AGENT_WEB_PROOF_ENVELOPE_V1_SCHEMA => {
+            if envelope.agent_web_passport_scope_sha256.is_some() {
+                return Err(claim_failed(
+                    "Agent Web v1 envelope must not include passport scope digest",
+                ));
+            }
+        }
+        CHIO_AGENT_WEB_PROOF_ENVELOPE_V2_SCHEMA => {
+            let scope_sha256 = envelope
+                .agent_web_passport_scope_sha256
+                .as_deref()
+                .ok_or_else(|| {
+                    claim_failed("Agent Web v2 envelope missing passport scope digest")
+                })?;
+            validate_sha256_hex(scope_sha256)
+                .map_err(|_| claim_failed("invalid Agent Web passport scope digest"))?;
+            if scope_sha256 != passport_scope_sha256 {
+                return Err(claim_failed("Agent Web envelope passport scope mismatch"));
+            }
+        }
+        schema => {
+            return Err(claim_failed(format!(
+                "unsupported Agent Web proof envelope schema: {schema}"
+            )));
+        }
     }
     validate_content_addressed_envelope_id(envelope)?;
     verify_envelope_signature(envelope, trust)?;
@@ -140,10 +168,15 @@ pub(super) fn validate_envelope(
     for claim in &envelope.chio_claim_refs {
         require_non_empty(claim, "chio_claim_refs")?;
     }
-    let mut unique_receipt_refs = std::collections::BTreeSet::new();
+    let mut unique_receipt_refs = envelope
+        .is_scope_bound_v2()
+        .then(std::collections::BTreeSet::new);
     for receipt_ref in &envelope.receipt_refs {
         require_non_empty(receipt_ref, "receipt_refs")?;
-        if !unique_receipt_refs.insert(receipt_ref) {
+        if unique_receipt_refs
+            .as_mut()
+            .is_some_and(|refs| !refs.insert(receipt_ref))
+        {
             return Err(claim_failed(format!(
                 "duplicate Agent Web receipt ref: {receipt_ref}"
             )));
@@ -170,11 +203,9 @@ pub(super) fn validate_envelope(
 }
 
 #[derive(Serialize)]
-struct AgentWebProofEnvelopeSignaturePayload<'a> {
+struct AgentWebProofEnvelopeIdInputV1<'a> {
     schema: &'a str,
-    envelope_id: &'a str,
     transaction_passport_ref: &'a str,
-    agent_web_passport_scope_sha256: &'a str,
     source_protocol: &'a str,
     source_protocol_version: &'a str,
     external_subject: &'a str,
@@ -192,46 +223,30 @@ struct AgentWebProofEnvelopeSignaturePayload<'a> {
 }
 
 #[derive(Serialize)]
-struct AgentWebProofEnvelopeIdInput<'a> {
-    schema: &'a str,
-    transaction_passport_ref: &'a str,
+struct AgentWebProofEnvelopeIdInputV2<'a> {
+    #[serde(flatten)]
+    v1: AgentWebProofEnvelopeIdInputV1<'a>,
     agent_web_passport_scope_sha256: &'a str,
-    source_protocol: &'a str,
-    source_protocol_version: &'a str,
-    external_subject: &'a str,
-    external_subject_path: &'a str,
-    external_subject_digest: &'a str,
-    external_subject_signature_ref: &'a str,
-    projection_manifest_ref: &'a str,
-    projection_manifest_sha256: &'a str,
-    chio_claim_refs: &'a [String],
-    receipt_refs: &'a [String],
-    disclosure_capsule_refs: &'a [String],
-    settlement_refs: &'a [String],
-    risk_refs: &'a [String],
-    limitations: &'a [String],
 }
 
-fn validate_content_addressed_envelope_id(
-    envelope: &AgentWebProofEnvelope,
-) -> Result<(), TransactionPassportError> {
-    let expected = content_addressed_envelope_id(envelope)
-        .map_err(|_| claim_failed("Agent Web envelope id is not content-addressed"))?;
-    if envelope.envelope_id != expected {
-        return Err(claim_failed(
-            "Agent Web envelope id is not content-addressed",
-        ));
-    }
-    Ok(())
+#[derive(Serialize)]
+struct AgentWebProofEnvelopeSignaturePayloadV1<'a> {
+    envelope_id: &'a str,
+    #[serde(flatten)]
+    id_input: AgentWebProofEnvelopeIdInputV1<'a>,
 }
 
-fn content_addressed_envelope_id(
-    envelope: &AgentWebProofEnvelope,
-) -> Result<String, chio_core_types::Error> {
-    let payload = AgentWebProofEnvelopeIdInput {
+#[derive(Serialize)]
+struct AgentWebProofEnvelopeSignaturePayloadV2<'a> {
+    envelope_id: &'a str,
+    #[serde(flatten)]
+    id_input: AgentWebProofEnvelopeIdInputV2<'a>,
+}
+
+fn envelope_id_input_v1(envelope: &AgentWebProofEnvelope) -> AgentWebProofEnvelopeIdInputV1<'_> {
+    AgentWebProofEnvelopeIdInputV1 {
         schema: &envelope.schema,
         transaction_passport_ref: &envelope.transaction_passport_ref,
-        agent_web_passport_scope_sha256: &envelope.agent_web_passport_scope_sha256,
         source_protocol: &envelope.source_protocol,
         source_protocol_version: &envelope.source_protocol_version,
         external_subject: &envelope.external_subject,
@@ -246,8 +261,80 @@ fn content_addressed_envelope_id(
         settlement_refs: &envelope.settlement_refs,
         risk_refs: &envelope.risk_refs,
         limitations: &envelope.limitations,
-    };
-    let canonical = canonical_json_bytes(&payload)?;
+    }
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+enum AgentWebProofEnvelopeIdInput<'a> {
+    V1(AgentWebProofEnvelopeIdInputV1<'a>),
+    V2(AgentWebProofEnvelopeIdInputV2<'a>),
+}
+
+#[derive(Serialize)]
+#[serde(untagged)]
+enum AgentWebProofEnvelopeSignaturePayload<'a> {
+    V1(AgentWebProofEnvelopeSignaturePayloadV1<'a>),
+    V2(AgentWebProofEnvelopeSignaturePayloadV2<'a>),
+}
+
+fn envelope_id_input(
+    envelope: &AgentWebProofEnvelope,
+) -> Result<AgentWebProofEnvelopeIdInput<'_>, TransactionPassportError> {
+    let v1 = envelope_id_input_v1(envelope);
+    if !envelope.is_scope_bound_v2() {
+        return Ok(AgentWebProofEnvelopeIdInput::V1(v1));
+    }
+    let scope_sha256 = envelope
+        .agent_web_passport_scope_sha256
+        .as_deref()
+        .ok_or_else(|| claim_failed("Agent Web v2 envelope missing passport scope digest"))?;
+    Ok(AgentWebProofEnvelopeIdInput::V2(
+        AgentWebProofEnvelopeIdInputV2 {
+            v1,
+            agent_web_passport_scope_sha256: scope_sha256,
+        },
+    ))
+}
+
+fn envelope_signature_payload(
+    envelope: &AgentWebProofEnvelope,
+) -> Result<AgentWebProofEnvelopeSignaturePayload<'_>, TransactionPassportError> {
+    let id_input = envelope_id_input(envelope)?;
+    Ok(match id_input {
+        AgentWebProofEnvelopeIdInput::V1(id_input) => {
+            AgentWebProofEnvelopeSignaturePayload::V1(AgentWebProofEnvelopeSignaturePayloadV1 {
+                envelope_id: &envelope.envelope_id,
+                id_input,
+            })
+        }
+        AgentWebProofEnvelopeIdInput::V2(id_input) => {
+            AgentWebProofEnvelopeSignaturePayload::V2(AgentWebProofEnvelopeSignaturePayloadV2 {
+                envelope_id: &envelope.envelope_id,
+                id_input,
+            })
+        }
+    })
+}
+
+fn validate_content_addressed_envelope_id(
+    envelope: &AgentWebProofEnvelope,
+) -> Result<(), TransactionPassportError> {
+    let expected = content_addressed_envelope_id(envelope)?;
+    if envelope.envelope_id != expected {
+        return Err(claim_failed(
+            "Agent Web envelope id is not content-addressed",
+        ));
+    }
+    Ok(())
+}
+
+fn content_addressed_envelope_id(
+    envelope: &AgentWebProofEnvelope,
+) -> Result<String, TransactionPassportError> {
+    let payload = envelope_id_input(envelope)?;
+    let canonical = canonical_json_bytes(&payload)
+        .map_err(|_| claim_failed("Agent Web envelope id is not content-addressed"))?;
     Ok(sha256_hex(&canonical))
 }
 
@@ -276,26 +363,7 @@ fn verify_envelope_signature(
     }
     let signature = Signature::from_hex(signature_ref)
         .map_err(|_| claim_failed("Agent Web envelope signature invalid"))?;
-    let payload = AgentWebProofEnvelopeSignaturePayload {
-        schema: &envelope.schema,
-        envelope_id: &envelope.envelope_id,
-        transaction_passport_ref: &envelope.transaction_passport_ref,
-        agent_web_passport_scope_sha256: &envelope.agent_web_passport_scope_sha256,
-        source_protocol: &envelope.source_protocol,
-        source_protocol_version: &envelope.source_protocol_version,
-        external_subject: &envelope.external_subject,
-        external_subject_path: &envelope.external_subject_path,
-        external_subject_digest: &envelope.external_subject_digest,
-        external_subject_signature_ref: &envelope.external_subject_signature_ref,
-        projection_manifest_ref: &envelope.projection_manifest_ref,
-        projection_manifest_sha256: &envelope.projection_manifest_sha256,
-        chio_claim_refs: &envelope.chio_claim_refs,
-        receipt_refs: &envelope.receipt_refs,
-        disclosure_capsule_refs: &envelope.disclosure_capsule_refs,
-        settlement_refs: &envelope.settlement_refs,
-        risk_refs: &envelope.risk_refs,
-        limitations: &envelope.limitations,
-    };
+    let payload = envelope_signature_payload(envelope)?;
     let canonical = chio_core_types::canonical_json_bytes(&payload)
         .map_err(|_| claim_failed("Agent Web envelope signature invalid"))?;
     if !public_key.verify(&canonical, &signature) {

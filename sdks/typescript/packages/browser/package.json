@@ -29,6 +29,7 @@
   "scripts": {
     "build": "npm run build:wasm && tsc -p tsconfig.json",
     "build:wasm": "../../scripts/build-wasm.sh --target web",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
     "prepublishOnly": "npm run build"
   },
   "devDependencies": {

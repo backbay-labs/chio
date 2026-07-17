@@ -1,6 +1,8 @@
 chio_alert_dispatch_latency_seconds|histogram|route,outcome|0.25,0.5,1.0,2.5,5.0,10.0|PagerDuty or OpsGenie alert dispatch latency in seconds.
 chio_alert_dispatch_total|counter|route,outcome||Total PagerDuty or OpsGenie alert dispatch outcomes.
 chio_anchor_round_latency_seconds|histogram|witness,outcome|0.1,0.5,1.0,2.5,5.0,10.0|Anchor round latency in seconds.
+chio_budget_holds_expired_total|counter|||Total capability budget holds swept to disposition=expired by the orphaned-hold sweeper.
+chio_budget_open_holds|gauge|||Capability budget holds currently in disposition=open.
 chio_capability_revocation_lag_seconds|histogram|authority|1,5,15,30,60,120,300|Capability revocation propagation lag in seconds.
 chio_dispatch_failure_total|counter|surface,outcome||Total tool-dispatch failures that did not bypass mediation.
 chio_dlq_depth|gauge|exporter||Dead-letter queue depth by exporter.
@@ -11,8 +13,10 @@ chio_federation_transport_accept_duration_seconds|histogram|lane|0.01,0.025,0.05
 chio_federation_transport_accept_open|gauge|lane||Iroh federation-transport in-flight accept handlers by lane (slowloris gauge).
 chio_federation_transport_admission_total|counter|outcome||Total iroh federation-transport admission-gate outcomes at after_handshake.
 chio_federation_transport_catchup_epoch_gap_total|counter|source||Total iroh federation-transport revocation catch-up epoch gaps detected.
+chio_federation_transport_directory_reload_total|counter|outcome||Total iroh federation-transport directory reload outcomes.
 chio_federation_transport_lane_total|counter|lane,outcome||Total iroh federation-transport per-lane accept outcomes.
 chio_federation_transport_outbox_total|counter|outcome||Total iroh federation-transport pheromone outbox drain outcomes.
+chio_federation_transport_router_alive|gauge|||Iroh federation-transport router liveness (1 alive, 0 the router died).
 chio_federation_transport_verify_failures_total|counter|seam,reason||Total iroh federation-transport verification failures by seam and bounded reason.
 chio_guard_deny_total|counter|guard_id,reason_class||Total WASM guard denies by reason class.
 chio_guard_eval_duration_seconds|histogram|guard_id,verdict|0.0001,0.0005,0.001,0.005,0.01,0.025,0.05,0.1,0.25,0.5,1.0|WASM guard evaluation duration in seconds.
@@ -44,10 +48,13 @@ chio_pheromone_relay_queue_depth|gauge|status||Relay outbox depth by bounded sta
 chio_pheromone_relay_rejections_total|counter|reason||Total live pheromone relay rejections by bounded reason.
 chio_pheromone_relay_stale_directories_total|counter|profile||Total stale peer-directory bundles or documents rejected.
 chio_pheromone_relay_stale_leases|gauge|||Relay scheduler leases past their expiry.
+chio_receipt_seconds_since_last_checkpoint|gauge|||Seconds since the receipt-store checkpoint last advanced while data was pending on the local store.
+chio_receipt_uncheckpointed_seq_range|gauge|||Uncheckpointed receipt entry_seq range (end - start) on the local store.
 chio_receipt_write_latency_seconds|histogram|store,outcome|0.01,0.025,0.05,0.1,0.25,0.5,1.0|Receipt write latency at the local store boundary in seconds.
 chio_receipt_write_total|counter|outcome||Total receipt write outcomes after policy or guard evaluation.
+chio_settlement_unresolved_total|counter|||Total money-bearing receipts whose settlement outcome could not be resolved (routed to retry or dead-letter, or surfaced as a loud incident).
 chio_sidecar_requests_total|counter|outcome||Total sidecar request outcomes at the mediation edge.
-chio_signing_queue_block_total|counter|||Total receipt signing requests blocked by bounded queue capacity.
+chio_signing_queue_block_total|counter|reason||Total receipt signing requests blocked by bounded queue capacity or byte budget.
 chio_soc_export_lag_seconds|histogram|exporter,severity|30,60,120,300,600,1800|SOC export lag in seconds from receipt persistence to sink acknowledgement.
 chio_soc_export_total|counter|exporter,outcome||Total SOC export outcomes for audit rows.
 chio_trust_control_ready|gauge|||Trust-control readiness state, where 1 is ready and 0 is not ready.

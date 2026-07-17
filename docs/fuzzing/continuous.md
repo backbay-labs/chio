@@ -33,11 +33,14 @@ runs (200 min/month headroom for everything else). Enforcement:
 
 - `scripts/check-fuzz-budget.sh` queries the trailing-30d billed-second
   total for `cflite_pr.yml`, `cflite_batch.yml`, `fuzz.yml`,
-  `mutants.yml`, and `mutants-fuzz-cocoverage.yml`, sums them, and exits
-  non-zero when the sum crosses the cap unless a scheduled measurement lane
+  `mutants.yml`, `mutants-fuzz-cocoverage.yml`, and `proof-mutants.yml`, sums
+  them, and exits non-zero when the sum crosses the cap unless a lane
   explicitly opts into `GH_FUZZ_BUDGET_CAP_MODE=warn`.
-- PR-time fuzz and mutation gates hard halt when the cap is crossed. These
-  gates are release qualification signals and must not run warn-only.
+- PR-time CFLite budget checks are advisory when the shared trailing window is
+  already over cap. The PR still runs changed-target sampling, but shared
+  budget exhaustion does not block unrelated merge readiness.
+- PR-time mutation gates hard halt when the cap is crossed. These gates are
+  release qualification signals and must not run warn-only.
 - Scheduled measurement lanes may use `GH_FUZZ_BUDGET_CAP_MODE=warn` to keep
   producing dashboard evidence after the trailing window is already over cap;
   those workflows must document the advisory posture in the step comment.
@@ -58,20 +61,22 @@ The in-tree `fuzz.yml` matrix runs on the GitHub-hosted pool but bills
 against the same free tier; nightly wall-clock is bounded by the longest
 single target rather than the sum because the matrix runs jobs in parallel.
 The cap-check script includes the two ClusterFuzzLite workflows, the in-tree
-fuzz matrix, mutation testing, and mutants-fuzz co-coverage. Keep that
-five-workflow filter aligned with the workflow inventory rather than raising
-the cap when a lane consumes more than expected.
+fuzz matrix, mutation testing, mutants-fuzz co-coverage, and formal proof
+mutation testing. Keep that six-workflow filter aligned with the workflow
+inventory rather than raising the cap when a lane consumes more than expected.
 
 ## Workflow inventory
 
 Current inventory.
 
-| Workflow                                     | Owner | Trigger                                  | Per-run wall-time          |
-|----------------------------------------------|-------|------------------------------------------|----------------------------|
-| `.github/workflows/cflite_pr.yml`            | core  | PR (changed-target sampling)             | 60-120s per selected target|
-| `.github/workflows/cflite_batch.yml`         | core  | nightly cron `17 2 * * *` UTC            | 1 target x 1,800s          |
-| `.github/workflows/fuzz.yml`                 | core  | nightly cron `23 3 * * *` UTC + dispatch | matrix, 1,800s/target ASan |
-| `.github/workflows/mutants.yml`              | core  | nightly + PR diff (advisory)             | 4-hour budget per crate    |
+| Workflow                                     | Owner  | Trigger                                  | Per-run wall-time             |
+|----------------------------------------------|--------|------------------------------------------|-------------------------------|
+| `.github/workflows/cflite_pr.yml`            | core   | PR (changed-target sampling)             | 60-120s per selected target   |
+| `.github/workflows/cflite_batch.yml`         | core   | nightly cron `17 2 * * *` UTC            | 1 target x 1,800s             |
+| `.github/workflows/fuzz.yml`                 | core   | nightly cron `23 3 * * *` UTC + dispatch | matrix, 1,800s/target ASan    |
+| `.github/workflows/mutants.yml`              | core   | nightly + PR diff                        | 45m PR or 4h nightly per crate|
+| `.github/workflows/mutants-fuzz-cocoverage.yml` | core | nightly + dispatch                       | 5-hour matrix                 |
+| `.github/workflows/proof-mutants.yml`        | formal | nightly + dispatch + PR controls         | 20m controls, 2-3h mutation   |
 
 Notes:
 
@@ -128,10 +133,12 @@ window and remains the documented permanent fallback after acceptance lands:
   is the post-acceptance soak path.
 
 PR-time fuzz and mutation workflows invoke `scripts/check-fuzz-budget.sh`
-before any fuzz or mutation step so the 1,800 GHA min/30d cap acts as a hard
-halt rather than a soft warning. Scheduled fuzz, CFLite rotation, mutants
-nightly, and mutants fuzz-cocoverage lanes may stay warning-only when their
-purpose is measurement continuity rather than PR or release qualification.
+before any fuzz or mutation step so the 1,800 GHA min/30d cap is visible in
+the run logs. PR-time CFLite budget checks are advisory because the trailing
+window is shared across unrelated PRs, while PR-time mutation remains a hard
+halt. Scheduled fuzz, CFLite rotation, mutants nightly, and mutants
+fuzz-cocoverage lanes may stay warning-only when their purpose is measurement
+continuity rather than PR or release qualification.
 
 The CFLite builder image lives under `.clusterfuzzlite/`:
 

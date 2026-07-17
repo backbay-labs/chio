@@ -161,16 +161,22 @@ declare -A used_pair_lines=()
 echo "check-regression-tests: deleted regression tests detected; checking for paired issue links"
 while IFS= read -r path; do
     [[ -z "$path" ]] && continue
-    # Each deletion consumes one line containing both its name and a link.
-    # This prevents one general link from authorizing unrelated deletions.
+    # Per-file pairing: a single `closes #N` at the top of the PR body must
+    # not silently approve unrelated regression-test deletions. The contract
+    # is one paired reference per deleted file. Require the issue link and
+    # this deleted file's full path or basename on an unused line.
     base="$(basename "$path")"
     # Escape regex metacharacters in path/basename for safe substring grep.
     path_lit_re="$(printf '%s' "$path" | sed 's/[][\\.^$*+?(){}|/]/\\&/g')"
     base_lit_re="$(printf '%s' "$base" | sed 's/[][\\.^$*+?(){}|/]/\\&/g')"
     matched_line=""
     line_number=0
+    link_seen=0
     while IFS= read -r line; do
         line_number=$((line_number + 1))
+        if printf '%s\n' "$line" | grep -iqE "$PAIR_REGEX"; then
+            link_seen=1
+        fi
         if [[ -n "${used_pair_lines[$line_number]:-}" ]]; then
             continue
         fi
@@ -184,7 +190,11 @@ while IFS= read -r path; do
         used_pair_lines["$matched_line"]=1
         echo "  PAIRED   $path"
     else
-        echo "  UNPAIRED $path (no unused line contains both an issue link and this path or basename)" >&2
+        if (( link_seen == 0 )); then
+            echo "  UNPAIRED $path (no closes/fixes/refs #N or github issue/PR URL)" >&2
+        else
+            echo "  UNPAIRED $path (no unused line contains both an issue link and this path or basename)" >&2
+        fi
         unpaired=$((unpaired + 1))
     fi
 done <<< "$DELETED"

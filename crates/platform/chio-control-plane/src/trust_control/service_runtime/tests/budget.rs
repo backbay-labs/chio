@@ -179,6 +179,7 @@ fn remote_budget_store_preserves_authority_term_and_commit_metadata() {
             hold_id: Some("hold-budget".to_string()),
             event_id: Some("hold-budget:authorize".to_string()),
             authority: None,
+            payment_journal: None,
         })
         .test_expect("authorize remote budget hold");
 
