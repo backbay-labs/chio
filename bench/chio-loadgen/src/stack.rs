@@ -94,14 +94,17 @@ impl StackHarness {
             StoreBacking::Sqlite { path } => {
                 // A durable gate must not advertise persistence that a transient
                 // SQLite path silently voids at exit. Reject, before opening:
-                // `:memory:` / `file:...?mode=memory`, and an empty filename
-                // (which SQLite opens as a private temporary on-disk database
-                // deleted on close). The smoke path may still use one. A non-UTF8
-                // path cannot be an in-memory URI, so it opens.
+                // `:memory:` / `file:...?mode=memory`, an empty filename, and a
+                // `file:` URI whose main-database name is empty (e.g. `file:` or
+                // `file:?mode=rwc`) - all of which SQLite opens as a private
+                // temporary on-disk database deleted on close. The smoke path may
+                // still use one. A non-UTF8 path cannot be a transient URI, so it
+                // opens.
                 let transient = path.as_os_str().is_empty()
-                    || path
-                        .to_str()
-                        .is_some_and(chio_store_sqlite::is_in_memory_sqlite_path);
+                    || path.to_str().is_some_and(|raw| {
+                        chio_store_sqlite::is_in_memory_sqlite_path(raw)
+                            || sqlite_file_uri_names_empty_main_db(raw)
+                    });
                 if !allow_memory && transient {
                     return Err(LoadgenError::MemoryStoreRejectedInGate);
                 }
@@ -349,5 +352,61 @@ impl ToolServerConnection for FixtureToolServer {
             "allowed": true,
             "echo": arguments,
         }))
+    }
+}
+
+/// Whether a SQLite `file:` URI names an empty main database, which SQLite opens
+/// as a private temporary on-disk database (deleted on close) rather than a
+/// durable file. The main-database name is what remains after the `file:`
+/// scheme and an optional `//authority`, taken before the `?query`; when it is
+/// empty the database is transient. A plain filesystem path carries no `file:`
+/// scheme and returns false here (it is handled by the empty and in-memory
+/// checks at the call site).
+fn sqlite_file_uri_names_empty_main_db(raw: &str) -> bool {
+    let Some(after_scheme) = raw
+        .strip_prefix("file:")
+        .or_else(|| raw.strip_prefix("FILE:"))
+    else {
+        return false;
+    };
+    // Drop an optional `//authority`; the path begins at the authority's first
+    // `/`, or is empty when the authority runs to the end of the string.
+    let after_authority = match after_scheme.strip_prefix("//") {
+        Some(rest) => rest.find('/').map_or("", |slash| &rest[slash..]),
+        None => after_scheme,
+    };
+    // The main-database name is everything before the query string.
+    after_authority.split('?').next().unwrap_or("").is_empty()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::sqlite_file_uri_names_empty_main_db;
+
+    #[test]
+    fn empty_main_db_file_uris_are_transient() {
+        for raw in ["file:", "file:?mode=rwc", "file://", "file://localhost"] {
+            assert!(
+                sqlite_file_uri_names_empty_main_db(raw),
+                "{raw} names an empty main database and must read transient"
+            );
+        }
+    }
+
+    #[test]
+    fn named_paths_are_not_transient() {
+        for raw in [
+            "file:receipts.db",
+            "file:/abs/receipts.db",
+            "file:///abs/receipts.db",
+            "file:receipts.db?mode=rwc",
+            "receipts.db",
+            "/abs/receipts.db",
+        ] {
+            assert!(
+                !sqlite_file_uri_names_empty_main_db(raw),
+                "{raw} names a durable database and must not read transient"
+            );
+        }
     }
 }

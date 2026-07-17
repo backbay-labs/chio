@@ -68,6 +68,23 @@ fn boot_rejects_empty_sqlite_path_in_gate_mode() {
 }
 
 #[test]
+fn boot_rejects_empty_main_db_file_uri_in_gate_mode() {
+    // A `file:` URI whose main-database name is empty (here just the scheme) opens
+    // the same private temporary on-disk database as an empty filename, so a
+    // durable gate must refuse it too.
+    let config = base_config(StoreBacking::Sqlite {
+        path: PathBuf::from("file:?mode=rwc"),
+    });
+
+    let error = StackHarness::boot(&config).test_unwrap_err();
+
+    assert!(
+        matches!(error, LoadgenError::MemoryStoreRejectedInGate),
+        "a gating boot must refuse a file: URI with an empty main database, got {error:?}"
+    );
+}
+
+#[test]
 fn boot_reports_store_open_error_on_unwritable_path() {
     let dir = tempfile::tempdir().test_unwrap();
     // A regular file where a directory is required: the store cannot create the
