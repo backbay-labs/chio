@@ -241,9 +241,32 @@ jobs:
             const body = lines.join('\n');
             const { owner, repo } = context.repo;
             const issue_number = context.payload.pull_request.number;
-            const existing = await github.paginate(
-              github.rest.issues.listComments,
-              { owner, repo, issue_number, per_page: 100 },
+            const transientStatuses = new Set([502, 503, 504]);
+            const withRetry = async (label, operation) => {
+              const maxAttempts = 4;
+              for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+                try {
+                  return await operation();
+                } catch (error) {
+                  const status = Number(error.status || error.response?.status || 0);
+                  if (!transientStatuses.has(status) || attempt === maxAttempts) {
+                    throw error;
+                  }
+                  const delayMs = 1000 * (2 ** (attempt - 1));
+                  core.warning(
+                    `${label} returned HTTP ${status}; retrying in ${delayMs}ms ` +
+                    `(attempt ${attempt + 1}/${maxAttempts})`,
+                  );
+                  await new Promise(resolve => setTimeout(resolve, delayMs));
+                }
+              }
+              throw new Error(`${label} exhausted its retry loop`);
+            };
+            const existing = await withRetry('list PR comments', () =>
+              github.paginate(
+                github.rest.issues.listComments,
+                { owner, repo, issue_number, per_page: 100 },
+              ),
             );
             const prior = existing.find(c => c.body && c.body.includes(marker));
             // On a clean run with no prior sticky, do nothing: there is
@@ -253,11 +276,15 @@ jobs:
               return;
             }
             if (prior) {
-              await github.rest.issues.updateComment({
-                owner, repo, comment_id: prior.id, body,
-              });
+              await withRetry('update sticky PR comment', () =>
+                github.rest.issues.updateComment({
+                  owner, repo, comment_id: prior.id, body,
+                }),
+              );
             } else {
-              await github.rest.issues.createComment({
-                owner, repo, issue_number, body,
-              });
+              await withRetry('create sticky PR comment', () =>
+                github.rest.issues.createComment({
+                  owner, repo, issue_number, body,
+                }),
+              );
             }
