@@ -92,15 +92,17 @@ impl StackHarness {
                 None
             }
             StoreBacking::Sqlite { path } => {
-                // A durable gate must not advertise persistence that an in-memory
-                // SQLite path silently voids at exit. Reject `:memory:` and
-                // `file:...?mode=memory` before opening; the smoke path may still
-                // use one. A non-UTF8 path cannot be an in-memory URI, so it opens.
-                if !allow_memory
-                    && path
+                // A durable gate must not advertise persistence that a transient
+                // SQLite path silently voids at exit. Reject, before opening:
+                // `:memory:` / `file:...?mode=memory`, and an empty filename
+                // (which SQLite opens as a private temporary on-disk database
+                // deleted on close). The smoke path may still use one. A non-UTF8
+                // path cannot be an in-memory URI, so it opens.
+                let transient = path.as_os_str().is_empty()
+                    || path
                         .to_str()
-                        .is_some_and(chio_store_sqlite::is_in_memory_sqlite_path)
-                {
+                        .is_some_and(chio_store_sqlite::is_in_memory_sqlite_path);
+                if !allow_memory && transient {
                     return Err(LoadgenError::MemoryStoreRejectedInGate);
                 }
                 let opened = SqliteReceiptStore::open(path)

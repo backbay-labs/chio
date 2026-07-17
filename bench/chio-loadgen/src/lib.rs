@@ -52,7 +52,7 @@ pub enum StoreBacking {
 pub enum LoadgenError {
     #[error("receipt store failed to open: {0}")]
     StoreOpen(String),
-    #[error("in-memory store is not permitted in a gating run")]
+    #[error("a non-durable store (in-memory or transient) is not permitted in a gating run")]
     MemoryStoreRejectedInGate,
     #[error("kernel boot failed: {0}")]
     KernelBoot(String),

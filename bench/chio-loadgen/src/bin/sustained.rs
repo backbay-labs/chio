@@ -74,8 +74,18 @@ fn gated_run(workdir: &Path) -> Result<(), String> {
             "CHIO_LOADGEN_P99_BUDGET_MS",
             DEFAULT_P99_BUDGET_MS,
         )?),
-        rss_growth_budget_bytes: parse_env("CHIO_LOADGEN_RSS_BUDGET_MB", DEFAULT_RSS_BUDGET_MB)?
-            .saturating_mul(BYTES_PER_MEBIBYTE),
+        rss_growth_budget_bytes: {
+            // Fail closed on an unrepresentable budget: a mebibyte value large
+            // enough to overflow u64 bytes would, under saturation, silently
+            // become u64::MAX and disable the RSS growth check entirely, so a
+            // typo with extra digits could let a memory regression pass.
+            let budget_mb = parse_env("CHIO_LOADGEN_RSS_BUDGET_MB", DEFAULT_RSS_BUDGET_MB)?;
+            budget_mb.checked_mul(BYTES_PER_MEBIBYTE).ok_or_else(|| {
+                format!(
+                    "CHIO_LOADGEN_RSS_BUDGET_MB={budget_mb} overflows u64 when converted to bytes"
+                )
+            })?
+        },
     };
 
     // Fail closed before booting the stack: a zero rate would drive an uncapped

@@ -51,6 +51,23 @@ fn boot_rejects_in_memory_sqlite_path_in_gate_mode() {
 }
 
 #[test]
+fn boot_rejects_empty_sqlite_path_in_gate_mode() {
+    // SQLite opens an empty filename as a private temporary on-disk database that
+    // is deleted on close, so a durable gate must refuse it exactly as it refuses
+    // an in-memory path: receipts would vanish when the harness drops.
+    let config = base_config(StoreBacking::Sqlite {
+        path: PathBuf::from(""),
+    });
+
+    let error = StackHarness::boot(&config).test_unwrap_err();
+
+    assert!(
+        matches!(error, LoadgenError::MemoryStoreRejectedInGate),
+        "a gating boot must refuse an empty (transient) SQLite path, got {error:?}"
+    );
+}
+
+#[test]
 fn boot_reports_store_open_error_on_unwritable_path() {
     let dir = tempfile::tempdir().test_unwrap();
     // A regular file where a directory is required: the store cannot create the
