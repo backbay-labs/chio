@@ -34,6 +34,7 @@ use crate::CostAttributionReport;
 mod authorization_context;
 mod behavioral_analysis;
 mod budget_report;
+mod comptroller_surface;
 mod constants;
 mod operator_report_types;
 mod queries;
@@ -61,6 +62,10 @@ pub use behavioral_analysis::{
 pub use budget_report::{
     BudgetDimensionProfile, BudgetDimensionUsage, BudgetUtilizationReport, BudgetUtilizationRow,
     BudgetUtilizationSummary, ComplianceReport,
+};
+pub use comptroller_surface::{
+    ComptrollerDecisionSummary, ComptrollerSurfaceReport, ComptrollerSurfaceSourceRefs,
+    COMPTROLLER_SURFACE_REPORT_SCHEMA,
 };
 pub use constants::{
     BEHAVIORAL_FEED_SCHEMA, CHIO_OAUTH_AUTHORIZATION_COMMERCE_DETAIL_TYPE,

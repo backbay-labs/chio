@@ -2625,7 +2625,9 @@ dependencies = [
 name = "chio-api-protect"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "axum 0.8.8",
+ "chio-control-plane",
  "chio-core-types",
  "chio-http-core",
  "chio-http-serve",
@@ -3670,6 +3672,7 @@ dependencies = [
  "dashmap 6.1.0",
  "dhat",
  "futures",
+ "jsonschema",
  "libc",
  "loom",
  "lru 0.16.3",
@@ -3814,6 +3817,7 @@ dependencies = [
  "chio-credit",
  "chio-underwriting",
  "serde",
+ "serde_json",
  "thiserror 1.0.69",
 ]
 

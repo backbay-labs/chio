@@ -1,4 +1,4 @@
-use super::evaluation_helpers::PreDispatchCleanupDeny;
+use super::evaluation_helpers::{ExecutionNonceReservingResponse, PreDispatchCleanupDeny};
 use super::*;
 
 impl ChioKernel {
@@ -8,6 +8,7 @@ impl ChioKernel {
         session_filesystem_roots: Option<&[String]>,
         extra_metadata: Option<serde_json::Value>,
         session_id: Option<&SessionId>,
+        preflight_disposition: PreflightHoldDisposition,
     ) -> Result<ToolCallResponse, KernelError> {
         // Resolve tenant_id from the session's enterprise identity context
         // (if any) and install it for the remainder of this evaluation so
@@ -292,16 +293,28 @@ impl ChioKernel {
             }
         }
 
-        if let Err(e) = self.ensure_registered_tool_target(request) {
-            let msg = e.to_string();
-            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "tool target not registered");
-            return self.build_deny_response_with_metadata(
-                request,
-                &msg,
-                now,
-                None,
-                extra_metadata.clone(),
-            );
+        // The reserve-for-caller authorization path never dispatches a tool on
+        // this kernel, so it must not require the caller's tool server to be
+        // registered; the sidecar can then avoid registering caller-arbitrary
+        // server ids (unbounded growth). Every other path, including a
+        // ReserveForCaller request that falls through to dispatch because no nonce
+        // preflight is required, still requires registration exactly as before.
+        let reserving_preflight = matches!(
+            preflight_disposition,
+            PreflightHoldDisposition::ReserveForCaller
+        ) && self.execution_nonce_preflight_required(request);
+        if !reserving_preflight {
+            if let Err(e) = self.ensure_registered_tool_target(request) {
+                let msg = e.to_string();
+                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "tool target not registered");
+                return self.build_deny_response_with_metadata(
+                    request,
+                    &msg,
+                    now,
+                    None,
+                    extra_metadata.clone(),
+                );
+            }
         }
 
         // Persistence was confirmed healthy at the pre-dispatch gate above, so the
@@ -380,6 +393,7 @@ impl ChioKernel {
                             self.budget_execution_receipt_metadata(
                                 charge,
                                 Some(("reversed", reverse)),
+                                None,
                             ),
                         ),
                     );
@@ -433,6 +447,7 @@ impl ChioKernel {
                             self.budget_execution_receipt_metadata(
                                 charge,
                                 Some(("reversed", reverse)),
+                                None,
                             ),
                         ),
                     );
@@ -479,6 +494,7 @@ impl ChioKernel {
                                 self.budget_execution_receipt_metadata(
                                     charge,
                                     Some(("reversed", reverse)),
+                                    None,
                                 ),
                             ),
                         )
@@ -529,6 +545,7 @@ impl ChioKernel {
                             self.budget_execution_receipt_metadata(
                                 charge,
                                 Some(("reversed", reverse)),
+                                None,
                             ),
                         ),
                     )
@@ -581,15 +598,88 @@ impl ChioKernel {
 
         if self.execution_nonce_preflight_required(request) {
             return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
-                self.build_execution_nonce_preflight_allow_response_after_cleanup(
-                    request,
-                    now,
-                    matched_grant_index,
-                    cap,
-                    &budget_mutation,
-                    extra_metadata,
-                    budget_lease_acquired,
-                )
+                match preflight_disposition {
+                    PreflightHoldDisposition::ReverseForRetry => self
+                        .build_execution_nonce_preflight_allow_response_after_cleanup(
+                            request,
+                            now,
+                            matched_grant_index,
+                            cap,
+                            &budget_mutation,
+                            extra_metadata,
+                            budget_lease_acquired,
+                        ),
+                    PreflightHoldDisposition::ReserveForCaller => {
+                        // A governed MustPrepay intent must have prepaid before a
+                        // reserved nonce is minted: this kernel never dispatches the
+                        // tool on the reserve path, so there is no later point to
+                        // settle the payment. Deny fail-closed (reversing the hold and
+                        // releasing the admitted share) when the prepayment cannot be
+                        // authorized or settled, so no nonce is handed out unpaid.
+                        let settled_prepayment =
+                            match self.ensure_reserved_mustprepay_prepaid(request) {
+                                Ok(settled_prepayment) => settled_prepayment,
+                                Err(error) => {
+                                    let msg = error.to_string();
+                                    warn!(
+                                        request_id = %request.request_id,
+                                        reason = %redacted!(&msg),
+                                        "reserve-for-caller prepayment gate denied"
+                                    );
+                                    return self.build_pre_dispatch_cleanup_deny_response(
+                                        PreDispatchCleanupDeny {
+                                            request,
+                                            reason: &msg,
+                                            timestamp: now,
+                                            matched_grant_index,
+                                            cap,
+                                            budget_mutation: &budget_mutation,
+                                            payment_authorization: None,
+                                            runtime_admission_metadata: extra_metadata,
+                                            budget_lease_acquired,
+                                        },
+                                    );
+                                }
+                            };
+                        // A settled MustPrepay prepayment is captured before the
+                        // reservation is minted. Carry its rail reference onto the
+                        // reserved hold so the downstream reconcile receipt can name
+                        // the transaction that funded the spend. If minting the nonce,
+                        // stamping the reserved hold, or persisting the reserved
+                        // receipt fails, the hold is reversed but the captured
+                        // prepayment would otherwise stay charged for a reservation the
+                        // caller never received. Refund it on that tear-down so a
+                        // denied reservation leaves the payer net-unbilled; a
+                        // non-MustPrepay reserve has no captured prepayment and nothing
+                        // to carry or refund.
+                        let reserved_payment_reference = settled_prepayment
+                            .as_ref()
+                            .and_then(|prepayment| prepayment.payment_reference.clone());
+                        match self.build_execution_nonce_authorization_reserving_response(
+                            ExecutionNonceReservingResponse {
+                                request,
+                                timestamp: now,
+                                matched_grant_index,
+                                budget_mutation: &budget_mutation,
+                                runtime_admission_metadata: extra_metadata,
+                                reserved_payment_reference,
+                                budget_lease_acquired,
+                            },
+                        ) {
+                            Ok(response) => Ok(response),
+                            Err(error) => {
+                                if let Some(prepayment) = settled_prepayment.as_ref() {
+                                    self.refund_reserved_mustprepay_prepayment(
+                                        request,
+                                        cap,
+                                        &prepayment.authorization,
+                                    );
+                                }
+                                Err(error)
+                            }
+                        }
+                    }
+                }
             });
         }
 
@@ -866,6 +956,7 @@ impl ChioKernel {
                                             self.budget_execution_receipt_metadata(
                                                 charge,
                                                 Some(("reversed", reverse)),
+                                                None,
                                             ),
                                         ),
                                     _ => extra_metadata.clone(),
@@ -910,6 +1001,7 @@ impl ChioKernel {
                                             self.budget_execution_receipt_metadata(
                                                 charge,
                                                 Some(("reversed", reverse)),
+                                                None,
                                             ),
                                         ),
                                     _ => extra_metadata.clone(),
@@ -948,6 +1040,7 @@ impl ChioKernel {
                                             self.budget_execution_receipt_metadata(
                                                 charge,
                                                 Some(("reversed", reverse)),
+                                                None,
                                             ),
                                         ),
                                     _ => extra_metadata.clone(),
@@ -1005,6 +1098,7 @@ impl ChioKernel {
                                 self.budget_execution_receipt_metadata(
                                     charge,
                                     Some(("reversed", reverse)),
+                                    None,
                                 ),
                             ),
                             _ => extra_metadata.clone(),

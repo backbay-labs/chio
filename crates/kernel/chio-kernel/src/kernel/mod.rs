@@ -42,7 +42,9 @@ pub(crate) use kernel_scopes::{
     scope_receipt_tenant_id, ReceiptFederationAdmission, ScopedKernelDispatchIntent,
     ScopedKernelReceiptFederationAdmission, ScopedKernelReceiptTenantId,
 };
-pub(crate) use kernel_struct::{capability_crypto_floor, receipt_crypto_floor};
+pub(crate) use kernel_struct::{
+    capability_crypto_floor, receipt_crypto_floor, ReservedSiblingShare, RestartReservedHoldGate,
+};
 
 pub type AgentId = String;
 
@@ -1097,6 +1099,9 @@ mod evaluation;
 // Capability and budget validation.
 #[path = "validation.rs"]
 mod validation;
+// Reconcile-by-nonce and reserved-hold TTL primitives (mediated spend path).
+#[path = "reconciliation.rs"]
+mod reconciliation;
 // Governed-admission validation and call-chain receipt evidence.
 #[path = "governed_validation.rs"]
 mod governed_validation;

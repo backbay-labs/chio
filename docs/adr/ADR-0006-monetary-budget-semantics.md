@@ -1,5 +1,9 @@
 # ADR-0006: Monetary Budget Semantics
 
+> Superseded in part by ADR-0016: the "monotonic, no-refund" exposure text is
+> replaced by the authorize-then-reconcile hold lifecycle (reverse on deny,
+> reconcile down to realized spend). See ADR-0016 for the normative contract.
+
 - Status: Accepted
 - Decision owner: kernel and capability lanes
 

@@ -121,6 +121,7 @@ pub(crate) const EVIDENCE_IMPORT_PATH: &str = "/v1/evidence/import";
 pub(crate) const FEDERATION_EVIDENCE_SHARES_PATH: &str = "/v1/federation/evidence-shares";
 pub(crate) const COST_ATTRIBUTION_PATH: &str = "/v1/reports/cost-attribution";
 pub(crate) const OPERATOR_REPORT_PATH: &str = "/v1/reports/operator";
+pub(crate) const COMPTROLLER_SURFACE_PATH: &str = "/v1/reports/comptroller-surface";
 pub(crate) const RUNTIME_ATTESTATION_APPRAISAL_PATH: &str =
     "/v1/reports/runtime-attestation-appraisal";
 pub(crate) const RUNTIME_ATTESTATION_APPRAISAL_RESULT_PATH: &str =

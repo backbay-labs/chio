@@ -116,8 +116,12 @@ mod attestation;
 mod manifest;
 #[path = "mcp/emit_config.rs"]
 mod emit_config;
+#[path = "mcp/payment_config.rs"]
+pub mod payment_config;
 #[path = "mcp/wrap.rs"]
 mod wrap;
+#[path = "mcp/governed_sim.rs"]
+mod governed_sim;
 
 pub(crate) use attestation::{attach_chio_verified_header, build_chio_verified_header};
 pub(crate) use emit_config::cmd_mcp_emit_config;
@@ -125,3 +129,4 @@ pub(crate) use manifest::cmd_mcp_print_scopes;
 pub(crate) use wrap::{
     cmd_mcp_wrap_e2e_fixture, cmd_mcp_wrap_run, McpWrapArgs,
 };
+pub(crate) use governed_sim::{cmd_mcp_governed_sim, GovernedSimArgs};

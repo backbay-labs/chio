@@ -1066,23 +1066,22 @@ pub(crate) struct SidecarEvaluateToolCallRequest {
     parameter_hash: Option<String>,
 }
 
-pub(crate) async fn sidecar_removed_evaluate_handler() -> Response {
-    (
-        StatusCode::GONE,
-        axum::Json(serde_json::json!({
-            "error": "chio_route_removed",
-            "message": "use POST /v1/evaluate/advisory for advisory tool-call evaluation",
-            "replacement": "/v1/evaluate/advisory",
-            "authorization": false,
-        })),
-    )
-        .into_response()
-}
-
 pub(crate) async fn sidecar_evaluate_tool_call_handler(
     State(state): State<Arc<ProxyState>>,
     request: Request<Body>,
 ) -> Response {
+    if !state.allow_advisory {
+        return (
+            StatusCode::CONFLICT,
+            axum::Json(serde_json::json!({
+                "error": "chio_advisory_disabled",
+                "authorization": false,
+                "message": "advisory tool-call evaluation is disabled; use the kernel-mediated route",
+                "replacement": "/v1/evaluate",
+            })),
+        )
+            .into_response();
+    }
     let (_parts, body) = request.into_parts();
     let body_bytes = match axum::body::to_bytes(body, 1024 * 1024).await {
         Ok(bytes) => bytes,
@@ -1184,7 +1183,7 @@ pub(crate) async fn sidecar_evaluate_tool_call_handler(
                 "evaluation_kind": "sidecar_tool_call_advisory",
                 "advisory_check_outcome": advisory_check_outcome,
                 "execution_nonce": "not_minted",
-                "limitation": "kernel-driven tool-call evaluation is not yet wired through the sidecar; this receipt records cap-revocation and parameter-hash checks only, does not mint an execution nonce, and must not be treated as kernel-mediated authorization",
+                "limitation": "advisory evaluation is explicitly non-authoritative; kernel-mediated tool-call authorization is available at /v1/evaluate. This receipt records cap-revocation and parameter-hash checks only and must not be treated as kernel-mediated authorization.",
             })),
             trust_level: TrustLevel::Advisory,
             tenant_id: None,

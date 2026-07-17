@@ -75,6 +75,24 @@ impl OperatorReportQuery {
         }
     }
 
+    /// Project the shared operator filters into an exposure-ledger query.
+    ///
+    /// Every field is constructed explicitly so that a newly added `ExposureLedgerQuery`
+    /// field fails to compile here rather than being silently omitted.
+    #[must_use]
+    pub fn to_exposure_ledger_query(&self) -> chio_credit::ExposureLedgerQuery {
+        chio_credit::ExposureLedgerQuery {
+            capability_id: self.capability_id.clone(),
+            agent_subject: self.agent_subject.clone(),
+            tool_server: self.tool_server.clone(),
+            tool_name: self.tool_name.clone(),
+            since: self.since,
+            until: self.until,
+            receipt_limit: None,
+            decision_limit: None,
+        }
+    }
+
     #[must_use]
     pub fn to_cost_attribution_query(&self) -> CostAttributionQuery {
         CostAttributionQuery {
@@ -309,5 +327,32 @@ impl SharedEvidenceQuery {
     #[must_use]
     pub fn limit_or_default(&self) -> usize {
         self.limit.unwrap_or(50).clamp(1, MAX_SHARED_EVIDENCE_LIMIT)
+    }
+}
+
+#[cfg(test)]
+mod exposure_query_tests {
+    use super::*;
+
+    #[test]
+    fn to_exposure_ledger_query_threads_shared_filters() {
+        let query = OperatorReportQuery {
+            capability_id: Some("cap-abc".to_string()),
+            agent_subject: Some("subject-hex".to_string()),
+            tool_server: Some("shell".to_string()),
+            tool_name: Some("bash".to_string()),
+            since: Some(10),
+            until: Some(99),
+            ..OperatorReportQuery::default()
+        };
+        let exposure = query.to_exposure_ledger_query();
+        assert_eq!(exposure.capability_id.as_deref(), Some("cap-abc"));
+        assert_eq!(exposure.agent_subject.as_deref(), Some("subject-hex"));
+        assert_eq!(exposure.tool_server.as_deref(), Some("shell"));
+        assert_eq!(exposure.tool_name.as_deref(), Some("bash"));
+        assert_eq!(exposure.since, Some(10));
+        assert_eq!(exposure.until, Some(99));
+        assert_eq!(exposure.receipt_limit, None);
+        assert_eq!(exposure.decision_limit, None);
     }
 }

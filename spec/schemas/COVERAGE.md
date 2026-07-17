@@ -168,6 +168,7 @@ the per-file schemas live in their respective subtrees.
 | Family                  | Files | Covers |
 |-------------------------|-------|--------|
 | `chio-attest/v1/`       |   10  | Buyer-attestation packets, proof packages, selective-disclosure proofs, and verifier reports. |
+| `chio-comptroller/v1/`  |    1  | `surface-report.schema.json`: unified spend/exposure contract; the signed `ComptrollerSurfaceReport` projection used by the flagship proof demo. |
 | `chio-federation/v1/`   |   22  | Treaty scopes, capability leases, issuance bundles, governance receipts, peer pins, and revocation publication artifacts. |
 | `chio-pheromone/v1/`    |   85  | Pheromone deposits, gossip and catchup envelopes, relay configuration, relay-alert and relay-assurance reports, and observation-cost telemetry. |
 | `chio-runtime/v1/`      |   36  | Admission profiles and reports, orchestration plans and run reports, evidence manifests, proof parity and regeneration reports, and trust-floor state. |

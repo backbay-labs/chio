@@ -1496,6 +1496,117 @@ fn budget_store_zero_cost_invocation_succeeds_and_records_zero_sqlite() {
 }
 
 #[test]
+fn sqlite_store_reports_truthful_single_node_guarantee_level() {
+    use chio_kernel::budget_store::{BudgetGuaranteeLevel, BudgetStore};
+    let dir = std::env::temp_dir().join(format!("chio-glevel-{}", uuid::Uuid::now_v7()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let store = SqliteBudgetStore::open(dir.join("budget.sqlite")).unwrap();
+    assert_eq!(
+        store.budget_guarantee_level(),
+        BudgetGuaranteeLevel::SingleNodeAtomic
+    );
+}
+
+#[test]
+fn reap_orphaned_holds_is_reachable_through_budget_store_trait() {
+    // Verifies that crash-recovery reap is callable via `dyn BudgetStore`,
+    // the type-erased handle that the sidecar startup path holds.
+    use chio_kernel::budget_store::{
+        BudgetAuthorizeHoldDecision, BudgetAuthorizeHoldRequest, BudgetStore,
+    };
+    use std::collections::HashMap;
+    use std::sync::Arc;
+
+    let dir = std::env::temp_dir().join(format!("chio-reap-trait-{}", uuid::Uuid::now_v7()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let store = SqliteBudgetStore::open(dir.join("budget.sqlite")).unwrap();
+
+    // Authorize a hold so there is an open hold to reap.
+    let decision = store
+        .authorize_budget_hold(BudgetAuthorizeHoldRequest {
+            capability_id: "cap-reap-trait".to_string(),
+            grant_index: 0,
+            max_invocations: Some(5),
+            requested_exposure_units: 100,
+            max_cost_per_invocation: Some(100),
+            max_total_cost_units: Some(500),
+            hold_id: Some("hold-orphan-trait".to_string()),
+            event_id: Some("hold-orphan-trait:authorize".to_string()),
+            authority: None,
+            payment_journal: None,
+        })
+        .unwrap();
+    assert!(matches!(
+        decision,
+        BudgetAuthorizeHoldDecision::Authorized(_)
+    ));
+
+    // Type-erase to dyn BudgetStore, simulating the startup path.
+    let dyn_store: Arc<dyn BudgetStore> = Arc::new(store);
+
+    // Reap with an empty arbitration map: the orphaned hold is reversed.
+    let (reconciled, reversed) = dyn_store.reap_orphaned_holds(&HashMap::new()).unwrap();
+    assert_eq!(reconciled, 0, "no holds in the realized map to reconcile");
+    assert_eq!(reversed, 1, "the open orphaned hold must be reversed");
+
+    // After reversal the committed cost for the cap returns to zero.
+    let usage = dyn_store.get_usage("cap-reap-trait", 0).unwrap().unwrap();
+    assert_eq!(
+        usage.committed_cost_units().unwrap(),
+        0,
+        "reversed hold must leave committed cost at zero"
+    );
+}
+
+#[test]
+fn open_hold_stays_reserved_without_reap() {
+    // Fail-closed property: an open hold is not reversed unless
+    // reap_orphaned_holds is called with an arbitration map that contains it.
+    // count_open_holds reports the hold count without modifying state, letting
+    // startup log the warning and leave holds reserved (no double-spend).
+    use chio_kernel::budget_store::{
+        BudgetAuthorizeHoldDecision, BudgetAuthorizeHoldRequest, BudgetStore,
+    };
+    use std::sync::Arc;
+
+    let dir = std::env::temp_dir().join(format!("chio-noreap-{}", uuid::Uuid::now_v7()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let store: Arc<dyn BudgetStore> =
+        Arc::new(SqliteBudgetStore::open(dir.join("budget.sqlite")).unwrap());
+
+    let decision = store
+        .authorize_budget_hold(BudgetAuthorizeHoldRequest {
+            capability_id: "cap-noreap".to_string(),
+            grant_index: 0,
+            max_invocations: Some(5),
+            requested_exposure_units: 100,
+            max_cost_per_invocation: Some(100),
+            max_total_cost_units: Some(500),
+            hold_id: Some("hold-noreap".to_string()),
+            event_id: Some("hold-noreap:authorize".to_string()),
+            authority: None,
+            payment_journal: None,
+        })
+        .unwrap();
+    assert!(matches!(
+        decision,
+        BudgetAuthorizeHoldDecision::Authorized(_)
+    ));
+
+    // count_open_holds reads hold state without modifying it.
+    let count = store.count_open_holds().unwrap();
+    assert_eq!(count, 1, "one open hold must be reported");
+
+    // Without calling reap_orphaned_holds the hold remains reserved.
+    let usage = store.get_usage("cap-noreap", 0).unwrap().unwrap();
+    assert_eq!(
+        usage.committed_cost_units().unwrap(),
+        100,
+        "open hold must remain reserved when startup does not call reap_orphaned_holds"
+    );
+}
+
+#[test]
 fn max_mutation_event_seq_reports_head() -> Result<(), Box<dyn std::error::Error>> {
     let path = unique_db_path("chio-budget-head");
     let store = SqliteBudgetStore::open(&path)?;

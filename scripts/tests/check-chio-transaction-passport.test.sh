@@ -17,17 +17,19 @@ if ! grep -Fq "proof-room" <<<"$output"; then
   exit 1
 fi
 
-if ! grep -Fq "CHIO_ENTERPRISE_TRUSTED_RECEIPT_KERNEL_KEYS" "$script"; then
+lib="$repo_root/scripts/lib/chio-proof-trusted-keys.sh"
+
+if ! grep -Fq "CHIO_ENTERPRISE_TRUSTED_RECEIPT_KERNEL_KEYS" "$script" && ! grep -Fq "CHIO_ENTERPRISE_TRUSTED_RECEIPT_KERNEL_KEYS" "$lib"; then
   echo "check-chio-transaction-passport.test.sh: gate must pin enterprise receipt kernel keys" >&2
   exit 1
 fi
 
-if ! grep -Fq "CHIO_COMMERCE_TRUSTED_EVENT_AUTHORITY_RECEIPT_KERNEL_KEYS" "$script"; then
+if ! grep -Fq "CHIO_COMMERCE_TRUSTED_EVENT_AUTHORITY_RECEIPT_KERNEL_KEYS" "$script" && ! grep -Fq "CHIO_COMMERCE_TRUSTED_EVENT_AUTHORITY_RECEIPT_KERNEL_KEYS" "$lib"; then
   echo "check-chio-transaction-passport.test.sh: gate must pin commerce event authority receipt keys" >&2
   exit 1
 fi
 
-if ! grep -Fq "CHIO_COMMERCE_TRUSTED_PAYMENT_SIGNER_KEYS" "$script"; then
+if ! grep -Fq "CHIO_COMMERCE_TRUSTED_PAYMENT_SIGNER_KEYS" "$script" && ! grep -Fq "CHIO_COMMERCE_TRUSTED_PAYMENT_SIGNER_KEYS" "$lib"; then
   echo "check-chio-transaction-passport.test.sh: gate must pin commerce payment signer keys" >&2
   exit 1
 fi

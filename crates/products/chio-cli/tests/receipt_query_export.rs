@@ -837,3 +837,194 @@ fn test_metered_billing_reconciliation_report_and_action_endpoint() {
 
     let _ = std::fs::remove_dir_all(&dir);
 }
+
+#[test]
+fn test_comptroller_surface_report_endpoint() {
+    skip_when_loopback_denied!(test_comptroller_surface_report_endpoint);
+    let dir = unique_dir("chio-comptroller-surface");
+    std::fs::create_dir_all(&dir).expect("create temp dir");
+    let receipt_db_path = dir.join("receipts.sqlite3");
+    let revocation_db_path = dir.join("revocations.sqlite3");
+    let authority_db_path = dir.join("authority.sqlite3");
+    let budget_db_path = dir.join("budgets.sqlite3");
+
+    let issuer_kp = Keypair::generate();
+    let root_kp = Keypair::generate();
+    let leaf_kp = Keypair::generate();
+    let checkpoint_kp = Keypair::generate();
+    let root_hex = root_kp.public_key().to_hex();
+    let leaf_hex = leaf_kp.public_key().to_hex();
+    let issuer_hex = issuer_kp.public_key().to_hex();
+
+    let scope = ChioScope {
+        grants: vec![ToolGrant {
+            server_id: "shell".to_string(),
+            tool_name: "bash".to_string(),
+            operations: vec![Operation::Invoke],
+            constraints: vec![],
+            max_invocations: Some(5),
+            max_cost_per_invocation: Some(MonetaryAmount {
+                units: 500,
+                currency: "USD".to_string(),
+            }),
+            max_total_cost: Some(MonetaryAmount {
+                units: 1000,
+                currency: "USD".to_string(),
+            }),
+            dpop_required: None,
+        }],
+        resource_grants: vec![],
+        prompt_grants: vec![],
+    };
+    let root = CapabilityToken::sign(
+        CapabilityTokenBody {
+            id: "cap-cs-root".to_string(),
+            issuer: issuer_kp.public_key(),
+            subject: root_kp.public_key(),
+            scope: scope.clone(),
+            issued_at: 1_000,
+            expires_at: 10_000,
+            delegation_chain: vec![],
+        },
+        &issuer_kp,
+    )
+    .expect("sign root capability");
+    let child = CapabilityToken::sign(
+        CapabilityTokenBody {
+            id: "cap-cs-child".to_string(),
+            issuer: issuer_kp.public_key(),
+            subject: leaf_kp.public_key(),
+            scope,
+            issued_at: 1_100,
+            expires_at: 10_000,
+            delegation_chain: vec![],
+        },
+        &issuer_kp,
+    )
+    .expect("sign child capability");
+
+    let rc_cs_1 = make_financial_receipt_signed_by(
+        &checkpoint_kp,
+        "rc-cs-1",
+        "cap-cs-child",
+        Some(&leaf_hex),
+        &issuer_hex,
+        "shell",
+        "bash",
+        Decision::Allow,
+        3_000,
+        850,
+        None,
+        &root_hex,
+        1,
+    );
+    {
+        let store = SqliteReceiptStore::open(&receipt_db_path).expect("open receipt store");
+        store
+            .record_capability_snapshot(&root, None)
+            .expect("record root lineage");
+        store
+            .record_capability_snapshot(&child, Some("cap-cs-root"))
+            .expect("record child lineage");
+
+        let seq = store
+            .append_chio_receipt_returning_seq(&rc_cs_1)
+            .expect("append checkpointed receipt");
+        store
+            .append_chio_receipt(&make_financial_receipt(
+                "rc-cs-2",
+                "cap-cs-child",
+                Some(&leaf_hex),
+                &issuer_hex,
+                "shell",
+                "bash",
+                Decision::Deny {
+                    reason: "budget".to_string(),
+                    guard: "kernel".to_string(),
+                },
+                3_001,
+                0,
+                Some(100),
+                &root_hex,
+                1,
+            ))
+            .expect("append uncheckpointed receipt");
+
+        let bytes = store
+            .receipts_canonical_bytes_range(seq, seq)
+            .expect("load canonical receipt bytes")
+            .into_iter()
+            .map(|(_, bytes)| bytes)
+            .collect::<Vec<_>>();
+        let checkpoint =
+            build_checkpoint(1, seq, seq, &bytes, &checkpoint_kp).expect("build checkpoint");
+        store
+            .store_checkpoint(&checkpoint)
+            .expect("store checkpoint");
+    }
+
+    {
+        let budgets = SqliteBudgetStore::open(&budget_db_path).expect("open budget store");
+        budgets
+            .upsert_usage(&BudgetUsageRecord {
+                capability_id: "cap-cs-child".to_string(),
+                grant_index: 0,
+                invocation_count: 2,
+                updated_at: 3_100,
+                seq: 1,
+                total_cost_exposed: 850,
+                total_cost_realized_spend: 0,
+            })
+            .expect("upsert budget usage");
+    }
+
+    let listen = reserve_listen_addr();
+    let service_token = "comptroller-surface-token";
+    let _service = spawn_trust_service(
+        listen,
+        service_token,
+        &receipt_db_path,
+        &revocation_db_path,
+        &authority_db_path,
+        &budget_db_path,
+    );
+    let client = build_test_client();
+    let base_url = format!("http://{listen}");
+    wait_for_trust_service(&client, &base_url);
+
+    let response = client
+        .get(format!("{base_url}/v1/reports/comptroller-surface"))
+        .query(&[
+            ("agentSubject", leaf_hex.as_str()),
+            ("toolServer", "shell"),
+            ("toolName", "bash"),
+        ])
+        .header(
+            reqwest::header::AUTHORIZATION,
+            format!("Bearer {service_token}"),
+        )
+        .send()
+        .expect("send comptroller surface request");
+
+    assert_eq!(
+        response.status(),
+        reqwest::StatusCode::OK,
+        "expected 200 for comptroller surface"
+    );
+    let body: serde_json::Value = response.json().expect("parse comptroller surface json");
+
+    assert_eq!(
+        body["schema"].as_str(),
+        Some("chio.comptroller.surface-report.v1")
+    );
+    assert_eq!(body["decisionSummary"]["allowCount"].as_u64(), Some(1));
+    assert_eq!(body["decisionSummary"]["denyCount"].as_u64(), Some(1));
+    assert!(
+        body["exposurePositions"].is_array(),
+        "exposurePositions present"
+    );
+    assert!(body.get("executionNonceRef").is_none());
+    assert!(body.get("holdRef").is_none());
+
+    let _ = std::fs::remove_dir_all(&dir);
+}

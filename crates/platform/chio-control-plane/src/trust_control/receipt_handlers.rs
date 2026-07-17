@@ -9,8 +9,11 @@ use super::report_validation::{
     resolve_control_read_principal, validate_metered_billing_reconciliation_request,
     validate_service_auth, ResolvedControlReadPrincipal,
 };
+use chio_kernel::operator_report::ComptrollerSurfaceReport;
+
 use super::reports::{
-    build_economic_completion_flow_report, build_operator_report, build_signed_behavioral_feed,
+    build_comptroller_surface_report, build_economic_completion_flow_report, build_operator_report,
+    build_signed_behavioral_feed,
 };
 use super::*;
 
@@ -491,6 +494,32 @@ pub(crate) async fn handle_operator_report(
 
     match build_operator_report(&receipt_store, &budget_store, &query) {
         Ok(report) => Json::<OperatorReport>(report).into_response(),
+        Err(response) => response,
+    }
+}
+
+pub(crate) async fn handle_comptroller_surface_report(
+    State(state): State<TrustServiceState>,
+    Query(mut query): Query<OperatorReportQuery>,
+    headers: HeaderMap,
+) -> Response {
+    query.read_context =
+        match resolve_admin_report_read_context(&headers, &state.config, "comptroller surface") {
+            Ok(context) => Some(context),
+            Err(response) => return response,
+        };
+
+    let receipt_store = match open_receipt_store(&state.config) {
+        Ok(store) => store,
+        Err(response) => return response,
+    };
+    let budget_store = match open_budget_store(&state.config) {
+        Ok(store) => store,
+        Err(response) => return response,
+    };
+
+    match build_comptroller_surface_report(&receipt_store, &budget_store, &query) {
+        Ok(report) => Json::<ComptrollerSurfaceReport>(report).into_response(),
         Err(response) => response,
     }
 }

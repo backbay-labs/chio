@@ -150,10 +150,11 @@ mod runtime_cli;
 pub(crate) use runtime_cli::{
     cli_normalized_url_authority, cmd_api_protect, cmd_check, cmd_mcp_serve, cmd_mcp_serve_http,
     cmd_run, cmd_start, cmd_trust_revoke, cmd_trust_serve, cmd_trust_status,
-    is_cli_ipv6_unicast_link_local, is_cli_ipv6_unique_local, optional_secret_with_env_fallback,
-    parse_tenant_read_tokens, parse_trusted_capability_issuers_from_env,
-    remote_mcp_auth_egress_contract, require_receipt_db_path, require_revocation_db_path,
-    verdict_label, CHIO_START_NO_UPSTREAM_URL, CHIO_START_SIDECAR_OPENAPI_SPEC,
+    is_cli_ipv6_unicast_link_local, is_cli_ipv6_unique_local, load_roster_policy,
+    optional_secret_with_env_fallback, parse_tenant_read_tokens,
+    parse_trusted_capability_issuers_from_env, remote_mcp_auth_egress_contract,
+    require_receipt_db_path, require_revocation_db_path, verdict_label,
+    CHIO_START_NO_UPSTREAM_URL, CHIO_START_SIDECAR_OPENAPI_SPEC,
 };
 #[path = "cli/runtime/trust_reports.rs"]
 mod runtime_trust_reports;
@@ -245,7 +246,8 @@ pub(crate) use conformance_cli::{
 mod mcp_cli;
 #[allow(unused_imports)]
 pub(crate) use mcp_cli::{
-    cmd_mcp_wrap, cmd_mcp_wrap_e2e_fixture, cmd_mcp_wrap_run, load_tools_fixture, McpWrapArgs,
+    cmd_mcp_governed_sim, cmd_mcp_wrap, cmd_mcp_wrap_e2e_fixture, cmd_mcp_wrap_run,
+    load_tools_fixture, GovernedSimArgs, McpWrapArgs,
 };
 #[path = "cli/replay.rs"]
 mod replay_cli;

@@ -1211,6 +1211,35 @@ Operational guides for current v1 features:
 - [DPOP_INTEGRATION_GUIDE.md](DPOP_INTEGRATION_GUIDE.md): DPoP proof-of-possession setup and verification
 - [RECEIPT_QUERY_API.md](RECEIPT_QUERY_API.md): `GET /v1/receipts/query` filters, pagination, and CLI usage
 
+### Out-of-Repo Consumption Model
+
+External consumers that need the unified spend and exposure surface should poll
+`GET /v1/reports/comptroller-surface` and validate the response against the
+published schema before parsing:
+
+```
+spec/schemas/chio-comptroller/v1/surface-report.schema.json
+```
+
+The response carries `"schema": "chio.comptroller.surface-report.v1"` as the
+top-level identifier. Consumers must reject any response where this field is
+absent or does not match the pinned version -- this is the fail-closed contract.
+
+**Schema-governed HTTP polling** is the primary integration pattern. The
+endpoint is read-only, requires a Bearer token, and returns a snapshot as of
+`generatedAt` (integer Unix seconds). Consumers should not merge or cache across
+multiple snapshots without comparing `generatedAt` values to detect stale reads.
+
+**Optional signed offline export** (`SignedComptrollerSurfaceReport`) is
+available for consumers that need to verify surface state offline or carry it to
+an external system. The signed export wraps the same `chio.comptroller.surface-report.v1`
+body with a kernel Ed25519 signature over canonical bytes. Consumers must verify
+the signature before trusting the body.
+
+Both paths are pinned to the same `spec/schemas/chio-comptroller/v1/surface-report.schema.json`
+schema. The projection is custody-neutral and implies no fund movement; it is a
+read-only snapshot of canonical receipt, settlement, and budget truth.
+
 ### Economic Primitives -- Implemented In Current V1
 
 These deliverables are implemented in the current pre-release v1 branch:

@@ -760,6 +760,8 @@ pub struct LiabilityClaimAdjudicationIssueRequest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub awarded_amount: Option<MonetaryAmount>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision_rule_ref: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
 }
 

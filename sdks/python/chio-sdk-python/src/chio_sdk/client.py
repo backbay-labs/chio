@@ -3,6 +3,20 @@
 The Chio sidecar runs as a local process exposing a localhost HTTP API. This
 client provides a typed Python interface over that API, handling serialization,
 error mapping, and receipt verification.
+
+Authoritative enforcement uses the kernel-mediated ``/v1/evaluate`` route,
+which requires a full signed capability token and an execution nonce. The
+id-only ``evaluate_tool_call`` default holds only a capability id, not a signed
+token, so it cannot obtain an authoritative allow. It therefore fails closed:
+it runs advisory evaluation for its audit receipt and integrity check, then
+raises :class:`ChioDeniedError` because advisory evaluation is not execution
+authorization. This keeps the SDK adapters that gate on "not denied" from
+executing a tool after a non-authoritative observation.
+
+Callers that deliberately want a non-authoritative observation (and will check
+``trust_level`` themselves) use ``evaluate_tool_call_advisory`` directly.
+Callers holding a full signed token drive the authoritative mediated route via
+``evaluate_tool_call_mediated``.
 """
 
 from __future__ import annotations
@@ -11,7 +25,7 @@ import hashlib
 import json
 import time
 from enum import Enum
-from typing import Any
+from typing import Any, NoReturn
 
 import httpx
 from pydantic import BaseModel
@@ -453,27 +467,83 @@ class ChioClient:
         tool_server: str,
         tool_name: str,
         parameters: dict[str, Any],
-    ) -> ChioReceipt:
-        """Require mediated tool-call authorization.
+    ) -> NoReturn:
+        """Evaluate an id-only tool call and fail closed.
 
-        The current sidecar tool-call route emits an audit receipt. This method
-        verifies the advisory receipt's integrity, then fails closed because
-        advisory evaluation is not execution authorization.
+        This is the default the id-only SDK wrappers call. They hold a
+        capability id, not a signed capability token, so they cannot drive the
+        kernel-mediated ``/v1/evaluate`` route (which requires a full signed
+        token and an execution nonce) and cannot obtain an authoritative allow.
+
+        A capability id alone must never authorize execution, so this runs
+        advisory evaluation for its audit receipt and integrity check, then
+        always raises :class:`ChioDeniedError`. It never returns a receipt: the
+        SDK adapters gate execution on "not denied", and returning a permissive
+        advisory receipt (which carries no decision) would let them run the tool
+        after a non-authoritative observation. Raising blocks that path.
+
+        Use ``evaluate_tool_call_advisory`` when a non-authoritative observation
+        is explicitly wanted, or ``evaluate_tool_call_mediated`` when a full
+        signed token is available and authoritative enforcement is required.
+
+        Raises
+        ------
+        ChioDeniedError
+            The default outcome. Raised for a hard deny from the advisory route
+            (surfacing its guard and reason), for a dropped observation, when
+            advisory evaluation is disabled on the sidecar (HTTP 409), and
+            otherwise to report that advisory evaluation is not execution
+            authorization. A capability id alone never authorizes execution.
+        ChioError
+            Only for a genuine infrastructure or transport failure reaching the
+            sidecar (connection error, timeout, 5xx). These stay retryable and
+            are never masked as a policy deny.
         """
-        receipt = await self.evaluate_tool_call_advisory(
-            capability_id=capability_id,
-            tool_server=tool_server,
-            tool_name=tool_name,
-            parameters=parameters,
-        )
-        outcome = getattr(receipt.observation_outcome, "value", receipt.observation_outcome)
+        try:
+            receipt = await self.evaluate_tool_call_advisory(
+                capability_id=capability_id,
+                tool_server=tool_server,
+                tool_name=tool_name,
+                parameters=parameters,
+            )
+        except ChioError as exc:
+            # HTTP 409 on the advisory route is the sidecar's advisory-disabled
+            # signal (the hardened default), not a transport failure. A
+            # capability id can never authorize execution, so this is a policy
+            # deny: fail closed with a non-authoritative reason instead of
+            # leaking a retryable infrastructure error. Any other ChioError
+            # (connection, timeout, 5xx, or a 403 ChioDeniedError) propagates
+            # unchanged so callers keep its retryability and deny context.
+            if exc.code == "HTTP_409":
+                raise ChioDeniedError(
+                    "advisory tool-call evaluation is disabled on the sidecar; "
+                    "a signed capability token and the kernel-mediated route "
+                    "are required to authorize execution",
+                    reason="advisory evaluation is unavailable and is not "
+                    "execution authorization",
+                    reason_code="chio_advisory_evaluation_unavailable",
+                    tool_name=tool_name,
+                    tool_server=tool_server,
+                ) from exc
+            raise
+        outcome = _receipt_field_value(receipt.observation_outcome)
         if outcome == "dropped":
             raise ChioDeniedError(
-                "Chio sidecar advisory evaluation refused the tool call"
+                "Chio sidecar advisory evaluation refused the tool call",
+                reason="advisory evaluation dropped the tool call",
+                reason_code="chio_advisory_evaluation_dropped",
+                tool_name=tool_name,
+                tool_server=tool_server,
+                receipt_id=receipt.id,
             )
         raise ChioDeniedError(
-            "Chio sidecar returned an advisory evaluation, not an "
-            "authoritative authorization decision"
+            "id-only tool-call evaluation is not authoritative; a signed "
+            "capability token is required to authorize execution",
+            reason="advisory evaluation is not execution authorization",
+            reason_code="chio_advisory_evaluation_not_authoritative",
+            tool_name=tool_name,
+            tool_server=tool_server,
+            receipt_id=receipt.id,
         )
 
     async def evaluate_tool_call_advisory(
@@ -517,6 +587,99 @@ class ChioClient:
                 code="INVALID_RECEIPT",
             )
         return receipt
+
+    async def evaluate_tool_call_mediated(
+        self,
+        *,
+        capability: dict,
+        tool_server: str,
+        tool_name: str,
+        parameters: dict,
+        request_id: str | None = None,
+        governed_intent: dict[str, Any] | None = None,
+        approval_token: dict[str, Any] | None = None,
+        dpop_proof: dict[str, Any] | None = None,
+    ) -> dict:
+        """Kernel-mediated pre-execution authorization for a tool call.
+
+        Optional helper for callers that hold a full signed capability token.
+        ``capability`` must be the complete signed ``CapabilityToken`` (not an
+        id-only ``{"id": ...}`` stub); the id-only SDK wrappers cannot drive
+        this route and use ``evaluate_tool_call`` instead. Posts to the
+        kernel-mediated ``/v1/evaluate`` route and returns
+        ``{"status", "receipt", "execution_nonce"}``, where ``status`` is one of
+        ``"authorized"``, ``"deny"``, or ``"pending_approval"``.
+
+        This route is a single-phase authorization gate: it verifies the
+        capability (and any governed intent, approval token, or DPoP proof),
+        RESERVES the budget hold so concurrent authorizations cannot
+        over-subscribe, and MINTS a fresh ``execution_nonce``. It does not
+        execute the tool or settle a spend. The returned receipt is therefore a
+        reserved authorization and is intentionally non-authoritative (the hold
+        is not yet reconciled). The caller presents the minted ``execution_nonce``
+        to the real tool server, which verifies and consumes it, runs the tool,
+        and reconciles the reserved hold. This endpoint only issues nonces:
+        presenting one back here is rejected.
+
+        Parameters
+        ----------
+        request_id:
+            Optional caller-chosen request identifier. Supply it when passing an
+            ``approval_token`` so the token can be bound to this exact request
+            (the kernel requires ``approval_token.request_id == request_id``).
+        governed_intent, approval_token:
+            Forward these for a grant that carries ``GovernedIntentRequired`` or
+            an approval threshold; without them such a grant is denied.
+        dpop_proof:
+            Forward this for a ``dpop_required`` grant; without it the grant is
+            denied.
+        """
+        body: dict[str, Any] = {
+            "capability": capability,
+            "tool_server": tool_server,
+            "tool_name": tool_name,
+            "parameters": parameters,
+        }
+        if request_id is not None:
+            body["request_id"] = request_id
+        if governed_intent is not None:
+            body["governed_intent"] = governed_intent
+        if approval_token is not None:
+            body["approval_token"] = approval_token
+        if dpop_proof is not None:
+            body["dpop_proof"] = dpop_proof
+        return await self._post("/v1/evaluate", body)
+
+    async def reconcile_mediated_authorization(
+        self,
+        *,
+        control_token: str,
+        execution_nonce: dict[str, Any],
+        arguments: dict[str, Any],
+        realized_cost: dict[str, Any],
+    ) -> dict:
+        """Reconcile a reserved mediated authorization at its realized cost.
+
+        Called by the TRUSTED tool server (not the controlled agent) after it
+        executes the tool that ``evaluate_tool_call_mediated`` authorized. The
+        ``/v1/reconcile`` route is gated by the sidecar-control token, so
+        ``control_token`` is sent as an ``Authorization: Bearer`` header;
+        realized cost is tool-server-reported. Present the minted
+        ``execution_nonce`` unchanged, the same ``arguments`` (which must match
+        the nonce's parameter hash), and the ``realized_cost``
+        (``{"units", "currency", "breakdown"}``, whose currency must match the
+        grant). The sidecar settles the exact reserved budget hold at
+        ``min(realized, reserved)``, frees the difference back to the grant, and
+        returns ``{"status", "receipt"}`` with the authoritative reconciled
+        receipt. The nonce is single-use: a second reconcile is rejected.
+        """
+        body = {
+            "execution_nonce": execution_nonce,
+            "arguments": arguments,
+            "realized_cost": realized_cost,
+        }
+        headers = {"Authorization": f"Bearer {control_token}"}
+        return await self._post("/v1/reconcile", body, headers=headers)
 
     async def evaluate_http_request(
         self,

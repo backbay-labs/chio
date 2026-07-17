@@ -9,6 +9,24 @@ use super::{
     ChioKernel, KernelError, PreExecutionBudgetMutation,
 };
 
+/// Builds a pending-reversal marker for a budget hold that could not be
+/// reversed on the spot. The returned value is recorded under the `budget_authority`
+/// key in receipt metadata as a durable audit breadcrumb of the failed on-the-spot
+/// reverse; the reaper locates open holds by scanning `disposition='open'` in the
+/// budget store, not by keying off this marker.
+///
+/// The `terminal.disposition` field is nested consistently with every other
+/// terminal disposition in this codebase ("reversed", "reconciled").
+pub(crate) fn pending_reversal_marker(hold_id: &str, reason: &str) -> serde_json::Value {
+    serde_json::json!({
+        "hold_id": hold_id,
+        "terminal": {
+            "disposition": "pending_reversal",
+            "reason": reason,
+        }
+    })
+}
+
 const POST_ADMISSION_DROP_REASON: &str = "tool evaluation future dropped after admission";
 const PRE_DISPATCH_CLEANUP_FAULT_REASON: &str =
     "tool evaluation future dropped before dispatch with cleanup fault";
@@ -149,30 +167,57 @@ impl<'a> PostAdmissionDropGuard<'a> {
     /// unchanged. Errors are logged; a Drop impl cannot surface them.
     fn unwind_charge_from_drop(&self) -> Option<serde_json::Value> {
         let base = self.receipt_context.extra_metadata.clone();
-        let Some(charge) = self.budget_mutation.charge_result() else {
+        let charge = self.budget_mutation.charge_result();
+        // A no-ceiling MustPrepay hold carries a payment authorization with
+        // charge_result == None and must still be released so the prepaid funds
+        // are not left frozen; return the base metadata only when there is
+        // neither a charge to reverse nor a payment authorization to release.
+        if charge.is_none() && self.payment_authorization.is_none() {
             return base;
-        };
+        }
         let unwind = self.kernel.unwind_aborted_monetary_invocation(
             self.request,
             self.cap,
             self.budget_mutation.charge_result(),
             self.payment_authorization,
         );
-        match &unwind {
-            Ok(Some(reverse)) => self.kernel.merge_budget_receipt_metadata(
+        match (&unwind, charge) {
+            (Ok(Some(reverse)), Some(charge)) => self.kernel.merge_budget_receipt_metadata(
                 base,
-                self.kernel
-                    .budget_execution_receipt_metadata(charge, Some(("reversed", reverse))),
+                self.kernel.budget_execution_receipt_metadata(
+                    charge,
+                    Some(("reversed", reverse)),
+                    None,
+                ),
             ),
-            Ok(None) => base,
-            Err(error) => {
+            (Err(error), Some(charge)) => {
                 warn!(
                     request_id = %self.request.request_id,
                     reason = %redacted!(error),
                     "failed to unwind dropped post-admission monetary invocation"
                 );
+                // Record a durable pending-reversal breadcrumb under
+                // `budget_authority` so the reaper / an operator can later close
+                // the still-open hold this on-drop reversal failed to reverse.
+                self.kernel.merge_budget_receipt_metadata(
+                    base,
+                    serde_json::json!({
+                        "budget_authority": pending_reversal_marker(
+                            &charge.budget_hold_id,
+                            &error.to_string(),
+                        )
+                    }),
+                )
+            }
+            (Err(error), None) => {
+                warn!(
+                    request_id = %self.request.request_id,
+                    reason = %redacted!(error),
+                    "failed to release dropped post-admission payment authorization"
+                );
                 base
             }
+            _ => base,
         }
     }
 
@@ -188,8 +233,11 @@ impl<'a> PostAdmissionDropGuard<'a> {
     fn handle_pre_dispatch_drop(&self) {
         let mut faults: Vec<PreDispatchCleanupFault> = Vec::new();
 
-        // 1. Monetary hold reversal (budget charge + payment release/refund).
-        if self.budget_mutation.charge_result().is_some() {
+        // 1. Monetary hold reversal (budget charge + payment release/refund). A
+        //    no-ceiling MustPrepay hold carries a payment authorization with no
+        //    charge_result, so fire this step on either signal to release the
+        //    prepaid funds and avoid a frozen facilitator hold.
+        if self.budget_mutation.charge_result().is_some() || self.payment_authorization.is_some() {
             if let Err(error) = self.kernel.unwind_aborted_monetary_invocation(
                 self.request,
                 self.cap,
@@ -452,4 +500,17 @@ pub(crate) fn dispatch_error_precedes_tool_side_effect(error: &KernelError) -> b
         error,
         KernelError::ToolNotRegistered(_) | KernelError::UrlElicitationsRequired { .. }
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pending_reversal_marker_nests_disposition_under_terminal() {
+        let marker = pending_reversal_marker("budget-hold:req-x:cap-x:0", "store unavailable");
+        assert_eq!(marker["terminal"]["disposition"], "pending_reversal");
+        assert_eq!(marker["hold_id"], "budget-hold:req-x:cap-x:0");
+        assert_eq!(marker["terminal"]["reason"], "store unavailable");
+    }
 }

@@ -395,7 +395,8 @@ pub use operator_report::{
 pub use payment::{
     AcpPaymentAdapter, CommercePaymentContext, GovernedPaymentContext, PaymentAdapter,
     PaymentAuthorization, PaymentAuthorizeRequest, PaymentError, PaymentResult,
-    RailSettlementState, RailSettlementStatus, ReceiptSettlement, X402PaymentAdapter,
+    RailSettlementState, RailSettlementStatus, ReceiptSettlement, SimPaymentAdapter,
+    X402PaymentAdapter,
 };
 pub use post_invocation::{
     PipelineOutcome, PostInvocationContext, PostInvocationHook, PostInvocationPipeline,

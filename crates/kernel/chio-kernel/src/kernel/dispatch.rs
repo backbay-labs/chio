@@ -416,25 +416,49 @@ impl ChioKernel {
         charge_result: Option<&BudgetChargeResult>,
         payment_authorization: Option<&PaymentAuthorization>,
     ) -> Result<Option<BudgetReverseHoldDecision>, KernelError> {
-        let Some(charge) = charge_result else {
-            return Ok(None);
-        };
-
         if let Some(authorization) = payment_authorization {
             let adapter = self.payment_adapter.as_ref().ok_or_else(|| {
                 KernelError::Internal(
                     "payment authorization present without configured adapter".to_string(),
                 )
             })?;
-            let unwind_result = if authorization.settled {
-                adapter.refund(
-                    &authorization.authorization_id,
-                    charge.cost_charged,
-                    &charge.currency,
-                    &request.request_id,
-                )
-            } else {
-                adapter.release(&authorization.authorization_id, &request.request_id)
+            // A settled hold is refunded the amount that actually funded it; an
+            // unsettled hold is released so the payer's prepaid funds are not left
+            // frozen at the facilitator. The refund amount mirrors the authorize
+            // precedence: a MustPrepay intent funded its authorization from the
+            // quoted cost whenever a quote is present, even alongside a provisional
+            // monetary budget hold, so the refund must return that quote. Refunding
+            // the smaller provisional-hold amount would leave the payer CHARGED for
+            // the difference on a tool that never completed. Only a settled charge
+            // with no MustPrepay quote refunds the charged amount; only genuinely
+            // unsettled holds are released.
+            let unwind_result = match (charge_result, authorization.settled) {
+                (Some(charge), true) => match Self::mustprepay_quoted_amount(request) {
+                    Some((amount_units, currency)) => adapter.refund(
+                        &authorization.authorization_id,
+                        amount_units,
+                        &currency,
+                        &request.request_id,
+                    ),
+                    None => adapter.refund(
+                        &authorization.authorization_id,
+                        charge.cost_charged,
+                        &charge.currency,
+                        &request.request_id,
+                    ),
+                },
+                (None, true) => match Self::mustprepay_quoted_amount(request) {
+                    Some((amount_units, currency)) => adapter.refund(
+                        &authorization.authorization_id,
+                        amount_units,
+                        &currency,
+                        &request.request_id,
+                    ),
+                    None => adapter.release(&authorization.authorization_id, &request.request_id),
+                },
+                (Some(_), false) | (None, false) => {
+                    adapter.release(&authorization.authorization_id, &request.request_id)
+                }
             };
             if let Err(error) = unwind_result {
                 return Err(KernelError::Internal(format!(
@@ -442,6 +466,10 @@ impl ChioKernel {
                 )));
             }
         }
+
+        let Some(charge) = charge_result else {
+            return Ok(None);
+        };
 
         Ok(Some(self.reverse_budget_charge(&cap.id, charge)?))
     }

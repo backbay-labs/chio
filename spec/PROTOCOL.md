@@ -870,7 +870,26 @@ When present, the decision enum is:
 The protocol guarantee is that cancelled and incomplete outcomes are preserved
 explicitly rather than collapsed into an undifferentiated error state.
 
-### 6.2 Child Receipts
+### 6.2 Authoritative Spend (execution nonce, atomic hold, mediated-spend profile)
+
+An authorization receipt for a spend-bearing tool call is authoritative only when
+it satisfies the structural conjunction of the `chio.mediated_spend.v1` profile:
+
+- The receipt is `mediated_decision` + `prevent` + `trust_level = mediated` with
+  `decision = Allow` and no `observation_outcome` (see 6.1).
+- Its `budget_authority` metadata names a `hold_id` that was atomically committed
+  against the agent's cost-bearing capability and reconciled down to realized
+  spend (`authorize` then `terminal.disposition = reconciled`).
+- A `chio.execution_nonce.v1` nonce, signed by the same admitted kernel key, is
+  bound to the same `capability_id`, `tool_server`, `tool_name`, and
+  `parameter_hash`, and the receipt records that nonce id
+  (`budget_authority.execution_nonce_id`).
+
+Advisory (`advisory_evaluation`) records and label-only receipts are never
+authorization. A guarantee level (`single_node_atomic`, `ha_linearizable`,
+`partition_escrowed`, `advisory_posthoc`) must be truthful to the backing store.
+
+### 6.3 Child Receipts
 
 Nested flows such as sampling, elicitation, and resource reads use
 `ChildRequestReceipt`, which records:
@@ -884,7 +903,7 @@ Nested flows such as sampling, elicitation, and resource reads use
 - `policy_hash`
 - optional metadata
 
-### 6.3 Receipt Metadata
+### 6.4 Receipt Metadata
 
 The shipped metadata surface is extensible JSON. Current first-class uses
 include:
@@ -968,7 +987,7 @@ receipt or a signed receipt-lineage statement. If the signed source artifact is
 missing, stale, malformed, or mismatched with the projection, the consumer must
 fail closed and treat the projection as non-authoritative.
 
-### 6.3.1 Provenance Graph Artifacts
+### 6.4.1 Provenance Graph Artifacts
 
 The receipt plane now defines one provenance graph substrate even when different
 surfaces project different slices of it:
@@ -984,7 +1003,7 @@ and continuation tokens prove authenticated linkage between those events. None
 of these artifacts alone prove external real-world side effects beyond Chio's
 observation boundary.
 
-### 6.3.2 Swarm Authority Runtime Admission
+### 6.4.2 Swarm Authority Runtime Admission
 
 Recursive delegation and multi-swarm execution are governed at runtime, not
 only in offline proof reports. A protocol or kernel edge that dispatches
@@ -1048,7 +1067,7 @@ runtime-admission contract. Listing or exporting swarm evidence does not widen
 runtime authority unless the admission verifier accepts the current stored
 bundle and pinned witness keys.
 
-### 6.3.3 Transaction Passport Proof Root
+### 6.4.3 Transaction Passport Proof Root
 
 `chio.transaction-passport.v1` is the canonical launch proof root. A verifier
 MUST treat the passport as a signed RFC 8785 canonical JSON envelope over one
@@ -1095,7 +1114,7 @@ failures: `transaction_passport_schema_unsupported`,
 `transaction_transparency_preview_not_allowed`. A proof surface that collapses
 these failures into a generic success state fails the protocol.
 
-### 6.3.4 Commerce Order And Settlement Family
+### 6.4.4 Commerce Order And Settlement Family
 
 The commerce family is the launch proof lane for autonomous commerce
 coherence. `chio.commerce.order-context.v1` binds one order id to buyer,
@@ -1129,7 +1148,7 @@ mandates, missing authority receipts, PSP status that does not support the
 claimed state, settlement packet mismatch, duplicate completion, or a public
 order passport whose summary digests do not match the private order context.
 
-### 6.3.5 Disclosure And Lineage Family
+### 6.4.5 Disclosure And Lineage Family
 
 The disclosure family is the launch proof lane for constrained reveal.
 `chio.disclosure.capsule.v1` binds a disclosure policy, source artifact
@@ -1153,7 +1172,7 @@ evaluation. They may record what was revealed, when, under which profile, and
 which crypto context or BBS material was used. They do not authorize additional
 fields, silently repair an over-disclosure, or make absent signatures trusted.
 
-### 6.3.6 Agent Web Envelope Family
+### 6.4.6 Agent Web Envelope Family
 
 `chio.agent-web-proof-envelope.v1` is the launch projection envelope for
 external protocol objects. It binds one source protocol and version, one
@@ -1182,7 +1201,7 @@ digest-bound relationship between those objects and Chio receipts; it does not
 claim those protocols natively enforce Chio policy unless the runtime adapter
 path separately verifies authority and emits receipts.
 
-### 6.4 Checkpoints
+### 6.5 Checkpoints
 
 Receipt batches can be committed to a Merkle checkpoint with primary schema:
 
@@ -1225,7 +1244,7 @@ use public append-only or strong non-repudiation language until the published
 surface is claim-complete, child-receipt-complete, anti-equivocation-capable,
 and qualified under the declared verifier policy.
 
-### 6.4.1 Anchor Batch v1
+### 6.5.1 Anchor Batch v1
 
 `chio.anchor_batch.v1` is an additive batch artifact. It builds a Merkle tree
 over receipt or checkpoint IDs, signs the batch root and inclusion proofs, and
@@ -1354,7 +1373,7 @@ The negative tests live as standalone files at
 (plus `anchor_batch_stale_witness_fallback.rs`) and exercise the real
 `verify_anchor_batch` and `verify_anchor_batch_with_witness_policy` paths.
 
-### 6.5 HTTP Receipts
+### 6.6 HTTP Receipts
 
 The HTTP substrate (see [HTTP-SUBSTRATE.md](HTTP-SUBSTRATE.md)) introduces
 `HttpReceipt`, a domain-specific receipt type for HTTP-layer policy evaluations.

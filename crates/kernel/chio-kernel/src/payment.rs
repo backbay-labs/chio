@@ -3,6 +3,9 @@ use std::time::Duration;
 use chio_core::{capability::scope::MonetaryAmount, receipt::economics::SettlementStatus};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
+mod sim;
+pub use sim::SimPaymentAdapter;
+
 /// Result of a payment authorization or settlement hold.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PaymentAuthorization {

@@ -63,6 +63,95 @@ pub(super) fn ensure_budget_hold_authority_columns(
     Ok(())
 }
 
+pub(super) fn ensure_budget_hold_reserved_until_column(
+    connection: &Connection,
+) -> Result<(), BudgetStoreError> {
+    let mut statement = connection.prepare("PRAGMA table_info(budget_authorization_holds)")?;
+    let columns = statement.query_map([], |row| row.get::<_, String>(1))?;
+    let columns = columns.collect::<Result<Vec<_>, _>>()?;
+    if !columns.iter().any(|column| column == "reserved_until") {
+        connection.execute(
+            "ALTER TABLE budget_authorization_holds ADD COLUMN reserved_until INTEGER",
+            [],
+        )?;
+    }
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_budget_authorization_holds_reserved_until \
+         ON budget_authorization_holds(disposition, reserved_until)",
+        [],
+    )?;
+    Ok(())
+}
+
+pub(super) fn ensure_budget_hold_reserved_currency_column(
+    connection: &Connection,
+) -> Result<(), BudgetStoreError> {
+    let mut statement = connection.prepare("PRAGMA table_info(budget_authorization_holds)")?;
+    let columns = statement.query_map([], |row| row.get::<_, String>(1))?;
+    let columns = columns.collect::<Result<Vec<_>, _>>()?;
+    if !columns.iter().any(|column| column == "reserved_currency") {
+        connection.execute(
+            "ALTER TABLE budget_authorization_holds ADD COLUMN reserved_currency TEXT",
+            [],
+        )?;
+    }
+    Ok(())
+}
+
+pub(super) fn ensure_budget_hold_reserved_payment_reference_column(
+    connection: &Connection,
+) -> Result<(), BudgetStoreError> {
+    let mut statement = connection.prepare("PRAGMA table_info(budget_authorization_holds)")?;
+    let columns = statement.query_map([], |row| row.get::<_, String>(1))?;
+    let columns = columns.collect::<Result<Vec<_>, _>>()?;
+    if !columns
+        .iter()
+        .any(|column| column == "reserved_payment_reference")
+    {
+        connection.execute(
+            "ALTER TABLE budget_authorization_holds ADD COLUMN reserved_payment_reference TEXT",
+            [],
+        )?;
+    }
+    Ok(())
+}
+
+pub(super) fn ensure_budget_hold_reserved_envelope_columns(
+    connection: &Connection,
+) -> Result<(), BudgetStoreError> {
+    let mut statement = connection.prepare("PRAGMA table_info(budget_authorization_holds)")?;
+    let columns = statement.query_map([], |row| row.get::<_, String>(1))?;
+    let columns = columns.collect::<Result<Vec<_>, _>>()?;
+    if !columns
+        .iter()
+        .any(|column| column == "reserved_budget_total")
+    {
+        connection.execute(
+            "ALTER TABLE budget_authorization_holds ADD COLUMN reserved_budget_total INTEGER",
+            [],
+        )?;
+    }
+    if !columns
+        .iter()
+        .any(|column| column == "reserved_delegation_depth")
+    {
+        connection.execute(
+            "ALTER TABLE budget_authorization_holds ADD COLUMN reserved_delegation_depth INTEGER",
+            [],
+        )?;
+    }
+    if !columns
+        .iter()
+        .any(|column| column == "reserved_root_budget_holder")
+    {
+        connection.execute(
+            "ALTER TABLE budget_authorization_holds ADD COLUMN reserved_root_budget_holder TEXT",
+            [],
+        )?;
+    }
+    Ok(())
+}
+
 pub(super) fn ensure_budget_mutation_event_authority_columns(
     connection: &Connection,
 ) -> Result<(), BudgetStoreError> {

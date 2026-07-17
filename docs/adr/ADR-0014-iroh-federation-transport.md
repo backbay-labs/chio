@@ -40,14 +40,27 @@ was decided and shipped; it does not revise the original design rationale.
   envelope on the direct-QUIC lane. Three stay open and operational: topic
   eviction latency, the gossip ~4 KiB budget, and ongoing iroh-version
   re-verification (iroh-gossip / iroh-blobs are still pre-1.0).
-- **New open item surfaced by the build:** a passport-endorsement
-  domain-separation gap. The per-entry endorsement signs the bare 32
-  `transport_endpoint_id` bytes with no domain tag (`identity.rs`), and the
-  planned oracle-key endorsement would sign another bare 32-byte ed25519 value
-  with the same passport key. Without domain separation a signature over one could
-  be replayed as the other (cross-protocol signature-confusion). Domain-separate
-  both (commit to a distinct context plus `signer_id`) before the oracle
-  endorsement is added.
+- **Resolved open item surfaced by the build (surfaced and fixed same-day
+  2026-07-03, commit `7f8e156d3`):** a passport-endorsement domain-separation
+  gap. *As originally surfaced (retained for the audit trail):* the per-entry
+  endorsement signed the bare 32 `transport_endpoint_id` bytes with no domain tag
+  (`identity.rs`), and a second endorsement over another bare 32-byte ed25519
+  value (the revocation-signer / oracle key), signed with the same passport key,
+  would have been cross-replayable against the first without domain separation
+  (cross-protocol signature-confusion). **RESOLVED** by commit `7f8e156d3`
+  ("feat(iroh-transport): domain-separate endorsements + anchor revocation
+  signer-binding in the issuer-signed directory", a verified ancestor of HEAD):
+  the two endorsement kinds now sign distinct, length-prefixed, injective
+  preimages under distinct domain-separation context tags -
+  `TRANSPORT_ENDORSEMENT_CONTEXT = b"chio.iroh.transport-endorsement.v1"`
+  (`identity.rs:57`) built by `transport_endorsement_preimage` (`identity.rs:83`),
+  and `REVOCATION_SIGNER_ENDORSEMENT_CONTEXT =
+  b"chio.iroh.revocation-signer-endorsement.v1"` (`identity.rs:65`) built by
+  `revocation_signer_endorsement_preimage` (`identity.rs:101`) - each committing
+  to its tag plus `kernel_id` plus the endorsed field(s), so the two kinds are
+  non-cross-replayable. The peer-directory bundle schema was bumped to
+  `...peer-directory-bundle.v2` (`identity.rs:49`). The revocation-signer (oracle)
+  endorsement is IMPLEMENTED in-tree, not a future item.
 
 ## Context
 

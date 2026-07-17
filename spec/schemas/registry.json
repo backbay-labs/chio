@@ -1504,6 +1504,12 @@
       "artifactKind": "risk_adjudication_jurisdiction_receipt",
       "introducedBy": "trust-market-v1",
       "schemaFile": "spec/schemas/chio-risk/v1/adjudication-jurisdiction-receipt.schema.json"
+    },
+    {
+      "schema": "chio.comptroller.surface-report.v1",
+      "artifactKind": "chio_comptroller_surface_report",
+      "introducedBy": "chio-comptroller-surface/v1",
+      "schemaFile": "spec/schemas/chio-comptroller/v1/surface-report.schema.json"
     }
   ]
 }

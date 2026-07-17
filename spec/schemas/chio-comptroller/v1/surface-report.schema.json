@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-comptroller/v1/surface-report.schema.json",
+  "title": "Chio Comptroller Surface Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "generatedAt",
+    "filters",
+    "exposurePositions",
+    "decisionSummary",
+    "settlementReconciliation",
+    "budgetUtilization",
+    "sourceRefs"
+  ],
+  "properties": {
+    "schema": { "const": "chio.comptroller.surface-report.v1" },
+    "generatedAt": { "type": "integer", "minimum": 0 },
+    "filters": { "type": "object" },
+    "exposurePositions": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/exposurePosition" }
+    },
+    "decisionSummary": { "$ref": "#/$defs/decisionSummary" },
+    "settlementReconciliation": { "type": "object" },
+    "budgetUtilization": { "type": "object" },
+    "sourceRefs": { "$ref": "#/$defs/sourceRefs" },
+    "executionNonceRef": { "type": ["string", "null"], "minLength": 1 },
+    "holdRef": { "type": ["string", "null"], "minLength": 1 }
+  },
+  "$defs": {
+    "exposurePosition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "currency",
+        "governedMaxExposureUnits",
+        "reservedUnits",
+        "settledUnits",
+        "pendingUnits",
+        "failedUnits",
+        "provisionalLossUnits",
+        "recoveredUnits",
+        "quotedPremiumUnits",
+        "activeQuotedPremiumUnits"
+      ],
+      "properties": {
+        "currency": { "type": "string", "minLength": 1 },
+        "governedMaxExposureUnits": { "type": "integer", "minimum": 0 },
+        "reservedUnits": { "type": "integer", "minimum": 0 },
+        "settledUnits": { "type": "integer", "minimum": 0 },
+        "pendingUnits": { "type": "integer", "minimum": 0 },
+        "failedUnits": { "type": "integer", "minimum": 0 },
+        "provisionalLossUnits": { "type": "integer", "minimum": 0 },
+        "recoveredUnits": { "type": "integer", "minimum": 0 },
+        "quotedPremiumUnits": { "type": "integer", "minimum": 0 },
+        "activeQuotedPremiumUnits": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "decisionSummary": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["allowCount", "denyCount", "cancelledCount", "incompleteCount"],
+      "properties": {
+        "allowCount": { "type": "integer", "minimum": 0 },
+        "denyCount": { "type": "integer", "minimum": 0 },
+        "cancelledCount": { "type": "integer", "minimum": 0 },
+        "incompleteCount": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "sourceRefs": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "operatorReportRef": { "type": "string", "minLength": 1 },
+        "exposureLedgerRef": { "type": "string", "minLength": 1 },
+        "riskComptrollerReportRef": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

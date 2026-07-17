@@ -28,6 +28,7 @@ pub mod policy;
 pub mod reputation;
 pub use chio_risk_comptroller as risk_comptroller;
 pub mod scim_lifecycle;
+pub mod seller_rail;
 pub use chio_commerce_order as commerce_order;
 pub use chio_transaction_passport as transaction_passport;
 pub mod transaction_passport_risk;

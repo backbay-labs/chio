@@ -81,6 +81,11 @@ pub(crate) enum TrustCommands {
         /// Public certification metadata TTL in seconds.
         #[arg(long, default_value_t = 3600)]
         certification_public_metadata_ttl_seconds: u64,
+
+        /// JSON file containing the operator roster policy (roster, allowed decision rules,
+        /// roster anchor) for liability adjudication enforcement.
+        #[arg(long)]
+        roster_policy_file: Option<PathBuf>,
     },
 
     /// Manage enterprise federation provider-admin records.
@@ -1160,6 +1165,10 @@ pub(crate) enum TrustLiabilityMarketCommands {
         /// JSON or YAML adjudication input file.
         #[arg(long)]
         input_file: PathBuf,
+        /// JSON file containing the operator roster policy (roster, allowed decision rules,
+        /// roster anchor). Required when --control-url is not set.
+        #[arg(long)]
+        roster_policy_file: Option<PathBuf>,
     },
 
     /// Issue and persist a signed liability claim payout instruction from JSON or YAML input.
@@ -1167,6 +1176,9 @@ pub(crate) enum TrustLiabilityMarketCommands {
         /// JSON or YAML claim payout instruction input file.
         #[arg(long)]
         input_file: PathBuf,
+        /// JSON file containing the operator roster policy. Required when --control-url is not set.
+        #[arg(long)]
+        roster_policy_file: Option<PathBuf>,
     },
 
     /// Issue and persist a signed liability claim payout receipt from JSON or YAML input.
@@ -1181,6 +1193,9 @@ pub(crate) enum TrustLiabilityMarketCommands {
         /// JSON or YAML claim settlement instruction input file.
         #[arg(long)]
         input_file: PathBuf,
+        /// JSON file containing the operator roster policy. Required when --control-url is not set.
+        #[arg(long)]
+        roster_policy_file: Option<PathBuf>,
     },
 
     /// Issue and persist a signed liability claim settlement receipt from JSON or YAML input.

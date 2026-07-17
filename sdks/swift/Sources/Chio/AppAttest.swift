@@ -43,7 +43,12 @@ public protocol AppAttestServicing: Sendable {
     func generateAssertion(_ keyId: String, clientDataHash: Data) async throws -> Data
 }
 
-public final class DeviceCheckAppAttestService: AppAttestServicing {
+// `DCAppAttestService` is a thread-safe system service handle (the framework
+// exposes it as a process-wide singleton); holding it in a `let` on a final
+// class is safe to share across concurrency domains, so the Sendable
+// conformance required by `AppAttestServicing` is unchecked rather than
+// compiler-verified.
+public final class DeviceCheckAppAttestService: AppAttestServicing, @unchecked Sendable {
     private let service: DCAppAttestService
 
     public init(service: DCAppAttestService = .shared) {
