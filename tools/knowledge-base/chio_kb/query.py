@@ -5,7 +5,9 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import pathlib
 import re
+import subprocess
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
@@ -608,7 +610,179 @@ async def close() -> None:
         _pool = None
     if _driver is not None:
         await _driver.close()
-        _driver = None
+    _driver = None
+
+
+def _git_value(root: pathlib.Path, *arguments: str) -> str:
+    try:
+        result = subprocess.run(
+            ["git", *arguments],
+            cwd=root,
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return ""
+    return result.stdout.strip()
+
+
+def _repository_metadata() -> dict[str, str]:
+    root = repo_model.repo_root_from_env()
+    sha = os.environ.get("CHIO_KB_GIT_SHA") or _git_value(root, "rev-parse", "HEAD")
+    ref = os.environ.get("CHIO_KB_GIT_REF") or _git_value(root, "branch", "--show-current") or "HEAD"
+    indexed_at = os.environ.get("CHIO_KB_INDEXED_AT") or _git_value(root, "show", "-s", "--format=%cI", "HEAD")
+    repository = os.environ.get("CHIO_KB_REPOSITORY", "bb-connor/arc")
+    repository_url = os.environ.get(
+        "CHIO_KB_REPOSITORY_URL", f"https://github.com/{repository}"
+    )
+    return {
+        "repository": repository,
+        "repositoryUrl": repository_url,
+        "ref": ref,
+        "sha": sha,
+        "indexedAt": indexed_at,
+        "indexId": os.environ.get("CHIO_KB_INDEX_ID") or sha,
+    }
+
+
+def _evaluation_summary() -> dict[str, Any]:
+    report = repo_model.repo_root_from_env() / "tools" / "knowledge-base" / "DOGFOOD-REVIEW.md"
+    try:
+        text = report.read_text(encoding="utf-8")
+    except OSError:
+        return {"grade": "unavailable"}
+
+    def match(pattern: str) -> str:
+        found = re.search(pattern, text, re.MULTILINE)
+        return found.group(1) if found else ""
+
+    passing = match(r"^- Fixtures:\s*(\d+)\s*/")
+    total = match(r"^- Fixtures:\s*\d+\s*/\s*(\d+)")
+    summary: dict[str, Any] = {
+        "grade": match(r"^- Overall:\s*([^\s]+)") or "unavailable",
+        "fixtures": {
+            "passing": int(passing or 0),
+            "total": int(total or 0),
+        },
+    }
+    metrics = {
+        "precisionAt5": r"^- precision@5:\s*([0-9.]+)",
+        "recallAt10": r"^- recall@10:\s*([0-9.]+)",
+        "mrrAt10": r"^- MRR@10:\s*([0-9.]+)",
+        "p95LatencyMs": r"^- p95 latency:\s*(\d+)",
+    }
+    for key, pattern in metrics.items():
+        value = match(pattern)
+        if value:
+            summary[key] = int(value) if key == "p95LatencyMs" else float(value)
+    return summary
+
+
+async def _postgres_manifest_counts() -> dict[str, Any]:
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        code = await conn.fetchrow(
+            f'''SELECT COUNT(DISTINCT normalized_path) AS files,
+                       COUNT(DISTINCT NULLIF(language, '')) AS languages,
+                       COUNT(DISTINCT NULLIF(crate, '')) AS crates,
+                       COUNT(DISTINCT NULLIF(package, '')) AS packages
+                FROM "{PG_SCHEMA_NAME}"."{CODE_TABLE_NAME}"'''
+        )
+        docs = await conn.fetchval(
+            f'''SELECT COUNT(DISTINCT normalized_path)
+                FROM "{PG_SCHEMA_NAME}"."{DOC_TABLE_NAME}"'''
+        )
+    return {
+        "files": int(code["files"] or 0),
+        "docs": int(docs or 0),
+        "languages": int(code["languages"] or 0),
+        "crates": int(code["crates"] or 0),
+        "packages": int(code["packages"] or 0),
+    }
+
+
+async def _neo4j_manifest_counts() -> dict[str, int]:
+    driver = await _get_driver()
+    async with driver.session(database=NEO4J_DATABASE) as session:
+        result = await session.run(
+            """
+            MATCH (entity:ChioEntity)
+            RETURN count(entity) AS entities,
+                   sum(COUNT { (entity)-[]->() }) AS relations,
+                   count(CASE WHEN entity.kind = 'test' THEN 1 END) AS tests,
+                   count(CASE WHEN entity.kind = 'concept' OR entity.concept_scope = 'scoped' THEN 1 END) AS concepts
+            """
+        )
+        row = await result.single()
+    return {
+        "entities": int(row["entities"] or 0) if row else 0,
+        "relations": int(row["relations"] or 0) if row else 0,
+        "tests": int(row["tests"] or 0) if row else 0,
+        "concepts": int(row["concepts"] or 0) if row else 0,
+    }
+
+
+async def _graphiti_manifest_ready() -> bool:
+    async with httpx.AsyncClient(timeout=2.0) as client:
+        response = await client.get(GRAPHITI_MCP_URL.removesuffix("/mcp") + "/health")
+    return response.is_success
+
+
+async def manifest() -> dict[str, Any]:
+    postgres_result, neo4j_result, graphiti_result = await asyncio.gather(
+        _postgres_manifest_counts(),
+        _neo4j_manifest_counts(),
+        _graphiti_manifest_ready(),
+        return_exceptions=True,
+    )
+    warnings: list[str] = []
+    counts: dict[str, int] = {
+        "files": 0,
+        "docs": 0,
+        "languages": 0,
+        "crates": 0,
+        "packages": 0,
+        "entities": 0,
+        "relations": 0,
+        "tests": 0,
+        "concepts": 0,
+    }
+    if isinstance(postgres_result, Exception):
+        warnings.append("postgres index counts unavailable")
+    else:
+        counts.update(postgres_result)
+    if isinstance(neo4j_result, Exception):
+        warnings.append("graph index counts unavailable")
+    else:
+        counts.update(neo4j_result)
+    if isinstance(graphiti_result, Exception) or not graphiti_result:
+        warnings.append("temporal memory unavailable")
+    semantic_ready = not isinstance(postgres_result, Exception) and bool(
+        os.environ.get("OPENAI_API_KEY")
+    )
+    graph_ready = not isinstance(neo4j_result, Exception)
+    if not semantic_ready:
+        warnings.append("semantic search unavailable")
+    metadata = _repository_metadata()
+    return {
+        "schemaVersion": "chio.kb.manifest.v1",
+        **metadata,
+        "status": "ready" if not warnings else "degraded",
+        "counts": counts,
+        "evaluation": _evaluation_summary(),
+        "capabilities": {
+            "search": semantic_ready,
+            "graph": graph_ready,
+            "impact": graph_ready and semantic_ready,
+            "brief": graph_ready and semantic_ready,
+            "memory": not isinstance(graphiti_result, Exception) and graphiti_result,
+            "signedRetrieval": False,
+        },
+        "receipt": {"state": "unsupported"},
+        "warnings": warnings,
+    }
 
 
 async def _embed(query: str) -> list[float]:
@@ -644,8 +818,12 @@ def _filter_clause(filters: Mapping[str, Any] | None, allowed: set[str]) -> tupl
     for key, raw in filters.items():
         if key not in allowed or raw in (None, ""):
             continue
-        values.append(f"%{raw}%")
-        clauses.append(f"{key} ILIKE ${len(values)}")
+        if key == "is_generated" and isinstance(raw, bool):
+            values.append(raw)
+            clauses.append(f"{key} = ${len(values)}")
+        else:
+            values.append(f"%{raw}%")
+            clauses.append(f"{key} ILIKE ${len(values)}")
     return ("WHERE " + " AND ".join(clauses)) if clauses else "", values
 
 
@@ -899,7 +1077,7 @@ async def search_code(query: str, limit: int = 8, filters: Mapping[str, Any] | N
     query_vector = await _embed(query)
     where_sql, values = _filter_clause(
         filters,
-        {"file_path", "normalized_path", "source_root", "language", "crate", "package", "kind", "symbol_hint", "canonicality"},
+        {"file_path", "normalized_path", "source_root", "language", "crate", "package", "kind", "symbol_hint", "canonicality", "is_generated"},
     )
     vector_param = len(values) + 1
     limit_param = len(values) + 2
@@ -939,7 +1117,7 @@ async def search_docs(query: str, limit: int = 8, filters: Mapping[str, Any] | N
     query_vector = await _embed(query)
     where_sql, values = _filter_clause(
         filters,
-        {"file_path", "normalized_path", "source_root", "doc_type", "title", "section", "canonicality"},
+        {"file_path", "normalized_path", "source_root", "doc_type", "title", "section", "canonicality", "is_generated"},
     )
     vector_param = len(values) + 1
     limit_param = len(values) + 2
@@ -1804,6 +1982,128 @@ async def neighbors(entity: str, depth: int = 2, limit: int = 50) -> list[dict[s
             str(item.get("path") or item.get("name")),
         ),
     )[:limit_value]
+
+
+def _normalize_subgraph(
+    seed: str,
+    rows: Iterable[Mapping[str, Any]],
+    node_limit: int,
+    edge_limit: int,
+) -> dict[str, Any]:
+    nodes: dict[str, dict[str, Any]] = {}
+    edges: dict[tuple[str, str, str], dict[str, str]] = {}
+    saw_more_nodes = False
+    saw_more_edges = False
+    for raw_row in rows:
+        row = _row_dict(raw_row)
+        distance = int(row.get("distance") or 0)
+        for raw_node in row.get("nodes") or []:
+            node = _normalize_graph_entity(raw_node)
+            node_id = str(node.get("id") or "")
+            if not node_id:
+                continue
+            node["canonicality"] = node.get("canonicality") or repo_model.canonicality_for_path(
+                str(node.get("path") or "")
+            )
+            node["distance"] = 0 if node_id == seed else distance
+            existing = nodes.get(node_id)
+            if existing is None:
+                if len(nodes) >= node_limit:
+                    saw_more_nodes = True
+                    continue
+                nodes[node_id] = node
+            else:
+                existing["distance"] = min(int(existing.get("distance") or distance), node["distance"])
+        for raw_edge in row.get("edges") or []:
+            source = str(raw_edge.get("source") or "")
+            target = str(raw_edge.get("target") or "")
+            kind = str(raw_edge.get("kind") or "RELATED_TO")
+            if not source or not target:
+                continue
+            key = (source, target, kind)
+            if key in edges:
+                continue
+            if len(edges) >= edge_limit:
+                saw_more_edges = True
+                continue
+            edges[key] = {"source": source, "target": target, "kind": kind}
+
+    visible_edges = [
+        edge
+        for edge in edges.values()
+        if edge["source"] in nodes and edge["target"] in nodes
+    ]
+    ordered_nodes = sorted(
+        nodes.values(),
+        key=lambda item: (
+            0 if item.get("id") == seed else 1,
+            int(item.get("distance") or 0),
+            str(item.get("kind") or ""),
+            str(item.get("path") or item.get("name") or ""),
+        ),
+    )
+    return {
+        "schemaVersion": "chio.kb.subgraph.v1",
+        "seed": seed,
+        "nodes": ordered_nodes,
+        "edges": visible_edges,
+        "totalNodes": len(ordered_nodes),
+        "totalEdges": len(visible_edges),
+        "truncated": saw_more_nodes or saw_more_edges,
+    }
+
+
+async def subgraph(
+    entity: str,
+    depth: int = 2,
+    node_limit: int = 80,
+    edge_limit: int = 160,
+) -> dict[str, Any]:
+    depth_value = _limit(depth, default=2, maximum=4)
+    node_limit_value = _limit(node_limit, default=80, maximum=200)
+    edge_limit_value = _limit(edge_limit, default=160, maximum=400)
+    driver = await _get_driver()
+    graph_query = f"""
+        MATCH (seed:ChioEntity)
+        WHERE seed.id = $entity OR seed.path = $entity OR seed.name = $entity
+        WITH seed,
+             CASE WHEN seed.id = $entity OR seed.path = $entity THEN 0 ELSE 1 END AS seed_rank
+        ORDER BY seed_rank, size(coalesce(seed.path, '')), seed.name
+        LIMIT 1
+        MATCH path = (seed)-[*0..{depth_value}]-(neighbor:ChioEntity)
+        WITH seed, path
+        WHERE none(node IN nodes(path)[1..-1] WHERE node.id IN $hub_ids)
+        RETURN length(path) AS distance,
+               [node IN nodes(path) | node {{
+                   .id, .name, .kind, .path, .summary, .concept_scope,
+                   .validation_command, .canonicality
+               }}] AS nodes,
+               [rel IN relationships(path) | {{
+                   source: startNode(rel).id,
+                   target: endNode(rel).id,
+                   kind: type(rel)
+               }}] AS edges,
+               [node IN nodes(path) | node.id] AS sort_ids
+        ORDER BY distance, sort_ids
+        LIMIT $path_limit
+    """
+    async with driver.session(database=NEO4J_DATABASE) as session:
+        result = await session.run(
+            graph_query,
+            entity=entity,
+            hub_ids=sorted(GLOBAL_HUB_IDS),
+            path_limit=max(node_limit_value * 8, 200),
+        )
+        rows = [_row_dict(row) async for row in result]
+    resolved_seed = entity
+    if rows and rows[0].get("nodes"):
+        resolved_seed = str(rows[0]["nodes"][0].get("id") or entity)
+    return _normalize_subgraph(
+        resolved_seed,
+        rows,
+        node_limit=node_limit_value,
+        edge_limit=edge_limit_value,
+    )
 
 
 async def context(entity: str, limit: int = 50) -> dict[str, Any]:

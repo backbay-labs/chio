@@ -91,6 +91,8 @@ def test_tools_list_returns_kb_tools() -> None:
     tools = {tool["name"] for tool in body["result"]["tools"]}
 
     assert "kb_search_code" in tools
+    assert "kb_manifest" in tools
+    assert "kb_subgraph" in tools
     assert "kb_add_episode" in tools
 
 
@@ -132,6 +134,47 @@ def test_tools_call_success_path(monkeypatch) -> None:
     assert body["id"] == 5
     assert '"query": "receipt"' in body["result"]["content"][0]["text"]
     assert '"limit": 1' in body["result"]["content"][0]["text"]
+
+
+def test_manifest_tool_success_path(monkeypatch) -> None:
+    async def fake_manifest() -> dict[str, object]:
+        return {"schemaVersion": "chio.kb.manifest.v1", "status": "ready"}
+
+    monkeypatch.setattr("chio_kb.query.manifest", fake_manifest)
+    client = TestClient(app)
+
+    body = _rpc(
+        client,
+        {
+            "jsonrpc": "2.0",
+            "id": "manifest-1",
+            "method": "tools/call",
+            "params": {"name": "kb_manifest", "arguments": {}},
+        },
+    )
+
+    assert '"schemaVersion": "chio.kb.manifest.v1"' in body["result"]["content"][0]["text"]
+
+
+def test_backend_timeout_has_stable_error_kind(monkeypatch) -> None:
+    async def fake_manifest() -> dict[str, object]:
+        raise TimeoutError("manifest timed out")
+
+    monkeypatch.setattr("chio_kb.query.manifest", fake_manifest)
+    client = TestClient(app)
+
+    body = _rpc(
+        client,
+        {
+            "jsonrpc": "2.0",
+            "id": "manifest-timeout",
+            "method": "tools/call",
+            "params": {"name": "kb_manifest", "arguments": {}},
+        },
+    )
+
+    assert body["error"]["code"] == -32002
+    assert body["error"]["data"] == {"kind": "timeout"}
 
 
 def test_kb_add_episode_requires_loopback_or_bearer_token() -> None:
