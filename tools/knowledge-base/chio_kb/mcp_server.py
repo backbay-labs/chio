@@ -8,9 +8,11 @@ import json
 import os
 from typing import Any
 
+import httpx
 import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, Response
+from neo4j.exceptions import ServiceUnavailable, SessionExpired
 
 from chio_kb import query
 
@@ -378,11 +380,13 @@ async def mcp(request: Request) -> Response:
             )
     except KeyError as exc:
         return _rpc_error_or_notification(is_notification, request_id, -32602, f"Missing required argument: {exc}")
-    except TimeoutError as exc:
+    except ValueError as exc:
+        return _rpc_error_or_notification(is_notification, request_id, -32602, str(exc))
+    except (TimeoutError, httpx.TimeoutException) as exc:
         return _rpc_error_or_notification(
             is_notification, request_id, -32002, str(exc), {"kind": "timeout"}
         )
-    except (ConnectionError, OSError) as exc:
+    except (ConnectionError, OSError, httpx.TransportError, ServiceUnavailable, SessionExpired) as exc:
         return _rpc_error_or_notification(
             is_notification, request_id, -32003, str(exc), {"kind": "unavailable"}
         )

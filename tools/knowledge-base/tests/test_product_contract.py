@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import asyncio
 
+import pytest
+
 from chio_kb import query
 
 
@@ -89,6 +91,11 @@ def test_filter_clause_supports_generated_boolean_without_string_coercion() -> N
 
     assert clause == "WHERE source_root ILIKE $1 AND is_generated = $2"
     assert values == ["%crates%", False]
+
+
+def test_filter_clause_rejects_generated_strings() -> None:
+    with pytest.raises(ValueError, match="is_generated must be a boolean"):
+        query._filter_clause({"is_generated": "false"}, {"is_generated"})
 
 
 def test_manifest_does_not_advertise_semantic_tools_without_api_key(monkeypatch) -> None:

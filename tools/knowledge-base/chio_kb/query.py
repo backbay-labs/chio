@@ -49,8 +49,8 @@ QUERY_INTENT_PRIORITY = [
     "capability",
 ]
 
-POSTGRES_URL = os.environ.get(
-    "POSTGRES_URL", "postgres://cocoindex:cocoindex@localhost:55432/chio_kb"
+POSTGRES_URL = os.environ.get("POSTGRES_URL") or os.environ.get("DATABASE_URL") or (
+    "postgres://cocoindex:cocoindex@localhost:55432/chio_kb"
 )
 NEO4J_URI = os.environ.get("NEO4J_URI", "bolt://localhost:7687")
 NEO4J_USER = os.environ.get("NEO4J_USER", "neo4j")
@@ -818,7 +818,9 @@ def _filter_clause(filters: Mapping[str, Any] | None, allowed: set[str]) -> tupl
     for key, raw in filters.items():
         if key not in allowed or raw in (None, ""):
             continue
-        if key == "is_generated" and isinstance(raw, bool):
+        if key == "is_generated":
+            if not isinstance(raw, bool):
+                raise ValueError("is_generated must be a boolean")
             values.append(raw)
             clauses.append(f"{key} = ${len(values)}")
         else:

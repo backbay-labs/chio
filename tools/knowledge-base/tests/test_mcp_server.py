@@ -1,4 +1,7 @@
+import httpx
+import pytest
 from fastapi.testclient import TestClient
+from neo4j.exceptions import ServiceUnavailable
 
 from chio_kb.mcp_server import app
 
@@ -156,9 +159,13 @@ def test_manifest_tool_success_path(monkeypatch) -> None:
     assert '"schemaVersion": "chio.kb.manifest.v1"' in body["result"]["content"][0]["text"]
 
 
-def test_backend_timeout_has_stable_error_kind(monkeypatch) -> None:
+@pytest.mark.parametrize(
+    "backend_error",
+    [TimeoutError("manifest timed out"), httpx.ReadTimeout("manifest timed out")],
+)
+def test_backend_timeout_has_stable_error_kind(monkeypatch, backend_error: Exception) -> None:
     async def fake_manifest() -> dict[str, object]:
-        raise TimeoutError("manifest timed out")
+        raise backend_error
 
     monkeypatch.setattr("chio_kb.query.manifest", fake_manifest)
     client = TestClient(app)
@@ -175,6 +182,29 @@ def test_backend_timeout_has_stable_error_kind(monkeypatch) -> None:
 
     assert body["error"]["code"] == -32002
     assert body["error"]["data"] == {"kind": "timeout"}
+
+
+@pytest.mark.parametrize(
+    "backend_error",
+    [httpx.ConnectError("Graphiti unavailable"), ServiceUnavailable("Neo4j unavailable")],
+)
+def test_backend_transport_failure_has_stable_error_kind(monkeypatch, backend_error: Exception) -> None:
+    async def fake_manifest() -> dict[str, object]:
+        raise backend_error
+
+    monkeypatch.setattr("chio_kb.query.manifest", fake_manifest)
+    body = _rpc(
+        TestClient(app),
+        {
+            "jsonrpc": "2.0",
+            "id": "manifest-unavailable",
+            "method": "tools/call",
+            "params": {"name": "kb_manifest", "arguments": {}},
+        },
+    )
+
+    assert body["error"]["code"] == -32003
+    assert body["error"]["data"] == {"kind": "unavailable"}
 
 
 def test_kb_add_episode_requires_loopback_or_bearer_token() -> None:
