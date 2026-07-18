@@ -202,8 +202,17 @@ fn budget_write_token(
     }
 }
 
-fn requires_budget_quorum_commit(allowed: bool, replayed_event: bool) -> bool {
-    allowed && !replayed_event
+fn requires_budget_quorum_commit(allowed: bool) -> bool {
+    // An allowed replay must prove that the original write reached quorum. A
+    // prior quorum failure may have compensated the local hold while leaving
+    // the idempotency event available for a retry.
+    allowed
+}
+
+fn requires_failed_quorum_compensation(replayed_event: bool) -> bool {
+    // Only the request that created the local exposure owns its rollback. A
+    // replay must fail closed without reversing an earlier committed hold.
+    !replayed_event
 }
 
 pub(crate) async fn handle_try_charge_cost(
@@ -252,7 +261,7 @@ pub(crate) async fn handle_try_charge_cost(
     };
     let allowed = outcome.allowed;
     let replayed_event = outcome.replayed_event;
-    if requires_budget_quorum_commit(allowed, replayed_event) {
+    if requires_budget_quorum_commit(allowed) {
         let write = match budget_write_token(
             &store,
             authority.as_ref(),
@@ -293,7 +302,10 @@ pub(crate) async fn handle_try_charge_cost(
         let commit_index = write.event_seq;
         let budget_commit = match wait_for_budget_write_quorum_commit(&state, write).await {
             Ok(budget_commit) => budget_commit,
-            Err(_) => {
+            Err(response) => {
+                if !requires_failed_quorum_compensation(replayed_event) {
+                    return response;
+                }
                 let rollback_result =
                     rollback_budget_authorize_exposure(&state, &payload, authority.as_ref());
                 return match rollback_result {
@@ -538,7 +550,10 @@ fn resolve_budget_hold_authority(
 
 #[cfg(test)]
 mod budget_handlers_tests {
-    use super::{generated_budget_event_id, requires_budget_quorum_commit};
+    use super::{
+        generated_budget_event_id, requires_budget_quorum_commit,
+        requires_failed_quorum_compensation,
+    };
     use std::collections::HashSet;
 
     #[test]
@@ -557,10 +572,14 @@ mod budget_handlers_tests {
     }
 
     #[test]
-    fn replayed_authorization_never_enters_quorum_or_compensation_path() {
-        assert!(requires_budget_quorum_commit(true, false));
-        assert!(!requires_budget_quorum_commit(true, true));
-        assert!(!requires_budget_quorum_commit(false, false));
-        assert!(!requires_budget_quorum_commit(false, true));
+    fn allowed_authorization_always_requires_quorum_even_when_replayed() {
+        assert!(requires_budget_quorum_commit(true));
+        assert!(!requires_budget_quorum_commit(false));
+    }
+
+    #[test]
+    fn replayed_authorization_never_compensates_on_failed_quorum() {
+        assert!(requires_failed_quorum_compensation(false));
+        assert!(!requires_failed_quorum_compensation(true));
     }
 }

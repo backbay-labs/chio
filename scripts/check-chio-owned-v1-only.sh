@@ -142,6 +142,18 @@ while IFS= read -r line; do
     continue
   fi
 
+  # Agent Web proof envelopes intentionally ship a scope-bound v2 projection
+  # while retaining signed v1 envelope verification for compatibility. Limit
+  # this exemption to the exact schema, its exported constant, and the contract
+  # test diagnostic that names the v2 schema check.
+  if [[ "$text" =~ chio\.agent-web-proof-envelope\.v2|CHIO_AGENT_WEB_PROOF_ENVELOPE_V2_SCHEMA|agent-web\.proof-envelope-schema\.contract-missing:\ scope-bound\ v2\ schema\ test ]]; then
+    continue
+  fi
+  if [[ "$path" == "crates/platform/chio-agent-web-interop/tests/agent_web_interop/core_tests.rs" ]] && \
+     [[ "$text" =~ v1\ proof\ envelope\ with\ a\ v2-only\ passport\ scope\ digest ]]; then
+    continue
+  fi
+
   # Public settlement intentionally publishes v2 dispatch and execution-receipt
   # artifacts while preserving v1 bundle verification.
   if [[ "$text" =~ chio\.web3-settlement-(dispatch|execution-receipt)\.v2|CHIO_WEB3_SETTLEMENT_(DISPATCH|RECEIPT|EXECUTION_RECEIPT)_V2_SCHEMA|WEB3_SETTLEMENT_EXECUTION_RECEIPT_SCHEMA ]]; then

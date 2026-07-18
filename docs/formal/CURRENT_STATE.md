@@ -281,10 +281,10 @@ nightly).
   paired generators built from the same seeds, plus proptest properties
   (reflexivity, transitivity, remove-grant, reduce-budget, wildcard,
   different-server).
-- `tests/canonical_json_diff.rs`: RFC 8785 dual-implementation byte gate with
-  12 named invariants. The U+007F regression pins literal JCS output across
-  production, cross-binding, and Lean fixtures; supplementary-plane cases pin
-  UTF-16 surrogate key ordering.
+- `tests/canonical_json_diff.rs`: canonical JSON dual-implementation byte gate
+  with 12 named invariants. The U+007F regression pins Chio's historical
+  control escape across production, cross-binding, and Lean fixtures;
+  supplementary-plane cases pin UTF-16 surrogate key ordering.
 - `tests/receipt_encoding_diff.rs`: cross-language receipt canonical bytes
   through a triple-blessed frozen corpus
   (`tests/bindings/vectors/receipt/v1.json`) that the Rust, Python, and

@@ -13,6 +13,9 @@ regeneration idempotent and diff-free. Byte-for-byte reproducibility is the
 core design constraint: identical input must render identical output so the
 `--check` drift lanes in CI are meaningful.
 
+Its scope is offline generation and validation of tracked artifacts. It does
+not own runtime behavior or consume network input.
+
 ## Module map
 
 | Path | Responsibility |

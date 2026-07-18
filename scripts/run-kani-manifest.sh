@@ -237,7 +237,8 @@ while IFS=$'\t' read -r crate harness unwind timeout features unwinding_checks; 
   [[ -z "$crate" ]] && continue
   COUNT=$((COUNT + 1))
 
-  CMD=(cargo kani -p "$crate" --lib --harness "$harness" --exact
+  qualified_harness="kani_public_harnesses::${harness}"
+  CMD=(cargo kani -p "$crate" --lib --harness "$qualified_harness" --exact
        --default-unwind "$unwind")
   if [[ "$unwinding_checks" != "true" ]]; then
     CMD+=(--no-unwinding-checks)
@@ -255,7 +256,7 @@ while IFS=$'\t' read -r crate harness unwind timeout features unwinding_checks; 
     continue
   fi
 
-  echo "::group::cargo kani ${crate}::${harness} (unwind=${unwind} timeout=${timeout}s)"
+  echo "::group::cargo kani ${crate}::${qualified_harness} (unwind=${unwind} timeout=${timeout}s)"
   # Capture the harness exit status without negation. After `if ! cmd; then`,
   # `$?` is 0 because `!` inverts the status before the conditional; running
   # the command directly under a temporary `set +e` and stashing `$?`

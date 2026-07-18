@@ -264,7 +264,7 @@
       "claimClass": "bounded_model",
       "status": "proved",
       "mapsTo": ["P4", "P7"],
-      "notes": "A checked decoder proves that RFC 8785 C0 escaping, short escapes, quotes, reverse solidus, and literal Unicode scalar rendering are injective."
+      "notes": "A checked decoder proves that Chio's C0, DEL, and C1 escaping, short escapes, quotes, reverse solidus, and literal Unicode scalar rendering are injective."
     },
     {
       "id": "proof.render_int_inj",

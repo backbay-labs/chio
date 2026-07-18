@@ -54,6 +54,22 @@ grep -Fq "schema parser crashed" "${tmpdir}/report"
 
 grep -Fq "json-schema-diff-validator@0.4.2" "$workflow"
 grep -Fq "scripts/classify-schema-compatibility.sh" "$workflow"
+grep -Fq 'if scripts/classify-schema-compatibility.sh \' "$workflow"
 grep -Fq "tool_error_count" "$workflow"
+
+capture_classifier_status() {
+  local binary="$1"
+  local status
+  if SCHEMA_DIFF_BIN="$binary" \
+    "$classifier" "${tmpdir}/source.json" "${tmpdir}/destination.json" "${tmpdir}/report"; then
+    status=0
+  else
+    status=$?
+  fi
+  printf '%s\n' "$status"
+}
+
+[[ "$(capture_classifier_status "${tmpdir}/breaking")" -eq 10 ]]
+[[ "$(capture_classifier_status "${tmpdir}/tool-error")" -eq 20 ]]
 
 echo "schema-breaking-change-workflow.test.sh: compatibility classification passed"

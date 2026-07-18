@@ -18,14 +18,14 @@ def utf16_key_ordering : JValue := .obj (.cons ([.literal 65536 (by decide)]) (.
 def string_escaping : JValue := .obj (.cons ([.literal 116 (by decide), .literal 101 (by decide), .literal 120 (by decide), .literal 116 (by decide)]) (.str ([.literal 108 (by decide), .literal 105 (by decide), .literal 110 (by decide), .literal 101 (by decide), .lineFeed, .quote, .literal 113 (by decide), .literal 117 (by decide), .literal 111 (by decide), .literal 116 (by decide), .literal 101 (by decide), .literal 100 (by decide), .quote, .reverseSolidus, .literal 112 (by decide), .literal 97 (by decide), .literal 116 (by decide), .literal 104 (by decide)])) (.nil))
 #guard canonical string_escaping == [123, 34, 116, 101, 120, 116, 34, 58, 34, 108, 105, 110, 101, 92, 110, 92, 34, 113, 117, 111, 116, 101, 100, 92, 34, 92, 92, 112, 97, 116, 104, 34, 125]
 
-def u007f_literal : JValue := .str ([.literal 127 (by decide)])
-#guard canonical u007f_literal == [34, 127, 34]
+def u007f_escape : JValue := .str ([.control ({ val := 7, isLt := by decide } : Fin 16) ({ val := 15, isLt := by decide } : Fin 16) (by decide)])
+#guard canonical u007f_escape == [34, 92, 117, 48, 48, 55, 102, 34]
 
 def u001f_escape : JValue := .str ([.control ({ val := 1, isLt := by decide } : Fin 16) ({ val := 15, isLt := by decide } : Fin 16) (by decide)])
 #guard canonical u001f_escape == [34, 92, 117, 48, 48, 49, 102, 34]
 
-def u009f_literal : JValue := .str ([.literal 159 (by decide)])
-#guard canonical u009f_literal == [34, 194, 159, 34]
+def u009f_escape : JValue := .str ([.control ({ val := 9, isLt := by decide } : Fin 16) ({ val := 15, isLt := by decide } : Fin 16) (by decide)])
+#guard canonical u009f_escape == [34, 92, 117, 48, 48, 57, 102, 34]
 
 def empty_object : JValue := .obj (.nil)
 #guard canonical empty_object == [123, 125]

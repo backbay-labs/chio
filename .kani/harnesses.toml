@@ -5,8 +5,12 @@ schema = "chio.kani.multi-crate.v1"
 # Each `[[harness]]` entry pins one (crate, harness) pair the Kani workflows
 # iterate. The runner invokes the harness with:
 #
-#     cargo kani -p <crate> --lib --harness <name> \
+#     cargo kani -p <crate> --lib \
+#       --harness kani_public_harnesses::<name> --exact \
 #       --default-unwind <default_unwind> [--no-unwinding-checks]
+#
+# Manifest values remain leaf names. The runner qualifies them through the
+# standardized crate-local `kani_public_harnesses` module at invocation time.
 #
 # Wrapped under a per-harness wall-clock cap of `timeout_secs`.
 #

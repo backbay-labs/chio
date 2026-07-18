@@ -8,7 +8,8 @@
 //! Implementation follows RFC 8785 (JSON Canonicalization Scheme):
 //! - Object keys sorted by UTF-16 code unit comparison
 //! - Numbers: shortest representation matching ECMAScript `JSON.stringify()`
-//! - Strings: minimal JSON escaping for C0 controls, quotes, and reverse solidus
+//! - Strings: Chio-compatible escaping for C0, DEL, and C1 controls, plus quotes
+//!   and reverse solidus
 //! - No whitespace between tokens
 
 use alloc::collections::BTreeMap;

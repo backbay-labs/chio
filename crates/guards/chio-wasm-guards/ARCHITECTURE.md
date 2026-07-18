@@ -15,6 +15,9 @@ blocklist, metrics, and observability are backend-agnostic); only execution
 itself (`WasmtimeBackend`, `ComponentBackend`, host bindings,
 `chio.yaml`/policy loading) requires it.
 
+This crate owns the sandboxed guest loading and execution boundary. Policy
+authoring and kernel dispatch remain outside its scope.
+
 ## Module map
 
 | Path | Responsibility |

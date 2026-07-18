@@ -113,7 +113,7 @@ assert_eq "$(run_runner "$POPULATED_MANIFEST" --lane pr --list)" 0 \
   "populated manifest + --list exits 0"
 
 dry_run_output="$(KANI_MANIFEST="$POPULATED_MANIFEST" "$RUNNER" --lane pr --dry-run)"
-if ! grep -Eq -- '--harness fake_harness --exact([[:space:]]|$)' <<<"$dry_run_output"; then
+if ! grep -Eq -- '--harness kani_public_harnesses::fake_harness --exact([[:space:]]|$)' <<<"$dry_run_output"; then
   echo "FAIL: populated manifest dry-run did not select the harness exactly" >&2
   printf '%s\n' "$dry_run_output" >&2
   exit 1

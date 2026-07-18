@@ -5,8 +5,8 @@ import Chio.Json.Value
 
 The public renderer emits UTF-8 bytes. A code-point layer makes the lexical
 proofs tractable, and `utf8Encode` is proved injective on Unicode scalar
-sequences. Escaping follows RFC 8785: C0 controls are escaped, with the
-standard short forms preferred, while other scalar values remain literal.
+sequences. The production Chio compatibility profile escapes C0 controls plus
+DEL and C1 controls, with the standard short forms preferred for C0 values.
 -/
 
 set_option autoImplicit false

@@ -24,7 +24,7 @@ def controlValue (high low : HexDigit) : Nat :=
 
 def IsEscapedControl (high low : HexDigit) : Prop :=
   let value := controlValue high low
-  value ≤ 31 ∧
+  (value ≤ 31 ∨ (127 ≤ value ∧ value ≤ 159)) ∧
     value ≠ 8 ∧ value ≠ 9 ∧ value ≠ 10 ∧ value ≠ 12 ∧ value ≠ 13
 
 instance (high low : HexDigit) : Decidable (IsEscapedControl high low) :=
@@ -40,7 +40,8 @@ instance (value : Nat) : Decidable (IsUnicodeScalar value) :=
 def IsLiteralScalar (value : Nat) : Prop :=
   IsUnicodeScalar value ∧
     value ≠ 34 ∧ value ≠ 92 ∧
-    ¬(value ≤ 31)
+    ¬(value ≤ 31) ∧
+    ¬(127 ≤ value ∧ value ≤ 159)
 
 instance (value : Nat) : Decidable (IsLiteralScalar value) :=
   by unfold IsLiteralScalar; infer_instance

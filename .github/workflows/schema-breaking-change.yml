@@ -165,9 +165,12 @@ jobs:
               continue
             fi
             report="${tmpdir}/report-${safe}.txt"
-            scripts/classify-schema-compatibility.sh \
-              "${base_blob}" "${head_path}" "${report}"
-            diff_status=$?
+            if scripts/classify-schema-compatibility.sh \
+              "${base_blob}" "${head_path}" "${report}"; then
+              diff_status=0
+            else
+              diff_status=$?
+            fi
             if [ "${diff_status}" -eq 0 ]; then
               echo "ok ${head_path}: no breaking change"
             elif [ "${diff_status}" -eq 10 ]; then

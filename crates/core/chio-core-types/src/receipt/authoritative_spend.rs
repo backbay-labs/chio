@@ -5,6 +5,8 @@
 //! receipt fails `is_authoritative_spend_receipt`, making advisory-only
 //! consumption a machine-visible conformance failure.
 
+use alloc::string::{String, ToString};
+
 use crate::crypto::PublicKey;
 use crate::receipt::body::ChioReceipt;
 use crate::receipt::kinds::{BoundaryClass, ReceiptKind, TrustLevel};
