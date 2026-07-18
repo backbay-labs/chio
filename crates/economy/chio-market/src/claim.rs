@@ -308,6 +308,16 @@ pub struct LiabilityClaimAdjudicationArtifact {
     pub awarded_amount: Option<MonetaryAmount>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub note: Option<String>,
+    /// Predeclared decision rule or circuit-breaker condition id the
+    /// adjudication applied (ADR-0015 follow-up B). Optional and omitted when
+    /// absent so existing signed fixtures keep byte-stable canonical JSON.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub decision_rule_ref: Option<String>,
+    /// Id or hash of the signed roster artifact the adjudicator was checked
+    /// against (ADR-0015 follow-up B anchoring). Records which ex-ante roster
+    /// was applied so the check is auditable and not per-adjudication fabricable.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub roster_anchor_ref: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub evidence_refs: Vec<LiabilityClaimEvidenceReference>,
 }
@@ -318,6 +328,24 @@ impl LiabilityClaimAdjudicationArtifact {
         self.dispute.body.validate()?;
         if self.adjudicator.trim().is_empty() {
             return Err("claim adjudications require a non-empty adjudicator".to_string());
+        }
+        if self
+            .decision_rule_ref
+            .as_ref()
+            .is_some_and(|rule| rule.trim().is_empty())
+        {
+            return Err(
+                "claim adjudication decision_rule_ref must not be blank when present".to_string(),
+            );
+        }
+        if self
+            .roster_anchor_ref
+            .as_ref()
+            .is_some_and(|anchor| anchor.trim().is_empty())
+        {
+            return Err(
+                "claim adjudication roster_anchor_ref must not be blank when present".to_string(),
+            );
         }
         let claim_amount = &self
             .dispute
@@ -366,6 +394,59 @@ impl LiabilityClaimAdjudicationArtifact {
                     );
                 }
             }
+        }
+        Ok(())
+    }
+
+    /// Fail-closed policy gate for ADR-0015 follow-up B.
+    ///
+    /// Requires the adjudicator to be an exact (trimmed) member of the
+    /// operator-supplied predeclared `roster`, requires `decision_rule_ref` to
+    /// be present and a member of `allowed_decision_rules`, and requires the
+    /// recorded `roster_anchor_ref` to equal `roster_anchor` (the id/hash of the
+    /// signed roster artifact the `roster` was drawn from). Callers pass concrete
+    /// values so `chio-market` needs no dependency on the roster's source crate.
+    pub fn validate_against_roster(
+        &self,
+        roster: &[String],
+        allowed_decision_rules: &[String],
+        roster_anchor: &str,
+    ) -> Result<(), String> {
+        let adjudicator = self.adjudicator.trim();
+        if !roster.iter().any(|entry| entry.trim() == adjudicator) {
+            return Err(format!(
+                "adjudicator \"{adjudicator}\" is not on the predeclared roster"
+            ));
+        }
+        let rule = self
+            .decision_rule_ref
+            .as_ref()
+            .map(|rule| rule.trim())
+            .filter(|rule| !rule.is_empty())
+            .ok_or_else(|| {
+                "adjudication is missing a decision_rule_ref (ADR-0015 follow-up B)".to_string()
+            })?;
+        if !allowed_decision_rules
+            .iter()
+            .any(|allowed| allowed.trim() == rule)
+        {
+            return Err(format!(
+                "decision_rule_ref \"{rule}\" is not an allowed decision rule"
+            ));
+        }
+        let recorded_anchor = self
+            .roster_anchor_ref
+            .as_ref()
+            .map(|anchor| anchor.trim())
+            .filter(|anchor| !anchor.is_empty())
+            .ok_or_else(|| {
+                "adjudication is missing a roster_anchor_ref (ADR-0015 follow-up B)".to_string()
+            })?;
+        if recorded_anchor != roster_anchor.trim() {
+            return Err(format!(
+                "roster_anchor_ref \"{recorded_anchor}\" does not match the applied roster anchor \"{}\"",
+                roster_anchor.trim()
+            ));
         }
         Ok(())
     }

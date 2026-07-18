@@ -3045,7 +3045,70 @@ fn chio_runtime_live_parent_and_vendor_calls_expose_package_valid_receipts(
     Ok(())
 }
 
-// --- Drop-guard unwind tests ---
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn drop_guard_post_dispatch_ambiguity_records_pending_reversal() {
+    let started = std::sync::Arc::new(tokio::sync::Notify::new());
+    let mut kernel = make_kernel(make_monetary_config());
+    kernel.set_budget_store(Box::new(ReverseFailingBudgetStore::new()));
+    kernel.register_tool_server(Box::new(PendingMonetaryServer {
+        id: "cost-srv".to_string(),
+        started: std::sync::Arc::clone(&started),
+    }));
+
+    let agent_kp = Keypair::generate();
+    let grant = make_monetary_grant("cost-srv", "compute", 100, 1000, "USD");
+    let cap = kernel
+        .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
+        .unwrap();
+    let request = ToolCallRequest {
+        request_id: "req-drop-reverse-failure".to_string(),
+        capability: cap,
+        tool_name: "compute".to_string(),
+        server_id: "cost-srv".to_string(),
+        agent_id: agent_kp.public_key().to_hex(),
+        arguments: serde_json::json!({}),
+        dpop_proof: None,
+        execution_nonce: None,
+        governed_intent: None,
+        approval_token: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    };
+
+    let kernel = std::sync::Arc::new(kernel);
+    let eval = {
+        let kernel = std::sync::Arc::clone(&kernel);
+        tokio::spawn(async move { kernel.evaluate_tool_call(&request).await })
+    };
+
+    tokio::time::timeout(Duration::from_secs(1), started.notified())
+        .await
+        .expect("pending monetary tool should be invoked before abort");
+    eval.abort();
+    assert!(
+        eval.await.expect_err("aborted evaluation should not complete").is_cancelled()
+    );
+
+    let receipt_log = kernel.receipt_log();
+    assert_eq!(receipt_log.len(), 1, "drop guard must emit exactly one cancellation receipt");
+    let receipt = receipt_log.get(0).unwrap();
+    assert!(receipt.is_cancelled(), "drop guard receipt must be a cancellation");
+    let metadata = receipt
+        .metadata
+        .as_ref()
+        .expect("cancellation receipt must carry metadata");
+    assert_eq!(
+        metadata["budget_authority"]["terminal"]["disposition"],
+        "pending_reversal",
+        "an unreconciled post-dispatch hold must carry a pending_reversal terminal disposition so recovery can close it"
+    );
+    assert!(
+        metadata["budget_authority"]["hold_id"].is_string(),
+        "pending_reversal receipt must identify the hold"
+    );
+}
+
+// --- RFC-0002 drop-guard unwind tests ---
 
 fn make_fabricated_drop_charge() -> BudgetChargeResult {
     BudgetChargeResult {
@@ -5462,6 +5525,7 @@ fn caller_metadata_cannot_claim_retention_after_final_revocation(
         },
         ToolCallOutput::Value(serde_json::json!({"status": "committed"})),
         None,
+        crate::kernel::responses::AllowResponseNonce::MintForAllow,
     )?;
 
     assert_eq!(response.verdict, Verdict::Deny);
@@ -5634,9 +5698,8 @@ fn nested_server_supplied_tool_not_registered_retains_invocation_budget(
 
 #[test]
 fn url_elicitation_required_releases_full_budget_state() -> Result<(), Box<dyn std::error::Error>> {
-    // UrlElicitationsRequired is classified by
-    // dispatch_error_precedes_tool_side_effect() as a no-side-effect dispatch
-    // error, exactly like ToolNotRegistered. The tool never runs; the client
+    // UrlElicitationsRequired uses a dedicated no-side-effect cleanup path. The
+    // tool never runs; the client
     // completes the URL elicitations and re-sends a FRESH tool call that
     // re-admits from scratch, so ALL pre-dispatch budget state must be reversed.
     // A max_invocations grant consumes an invocation slot at admission, and

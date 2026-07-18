@@ -58,6 +58,16 @@
         "crates/economy/chio-open-market/src/lib.rs",
         "crates/platform/chio-control-plane/src/trust_control/capital_and_liability.rs"
       ]
+    },
+    {
+      "id": "comptroller-surface",
+      "kind": "report",
+      "path": "/v1/reports/comptroller-surface",
+      "schema": "chio.comptroller.surface-report.v1",
+      "witness": {
+        "test_binary": "receipt_query_export",
+        "test": "test_comptroller_surface_report_endpoint"
+      }
     }
   ],
   "constraints": [

@@ -7,6 +7,37 @@ struct FailingMonetaryServer {
     id: String,
 }
 
+/// A monetary tool server that dispatches a pass-through but reports that it
+/// does not measure realized cost, mirroring the sidecar mediated route's
+/// pre-execution authorization gate.
+struct UnmeasuredCostServer {
+    id: String,
+}
+
+#[async_trait::async_trait]
+impl ToolServerConnection for UnmeasuredCostServer {
+    fn server_id(&self) -> &str {
+        &self.id
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        vec!["compute".to_string()]
+    }
+
+    fn measures_realized_cost(&self) -> bool {
+        false
+    }
+
+    async fn invoke(
+        &self,
+        _tool_name: &str,
+        _arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<serde_json::Value, KernelError> {
+        Ok(serde_json::json!({ "upstream": "https://example.test" }))
+    }
+}
+
 struct CountingMonetaryServer {
     id: String,
     invocations: std::sync::Arc<std::sync::atomic::AtomicUsize>,
@@ -1060,6 +1091,7 @@ fn make_governed_approval_token(
 #[derive(Clone)]
 struct TrackingPaymentAdapter {
     authorized: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    captured: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     released: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     refunded: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     settled: bool,
@@ -1166,6 +1198,7 @@ impl TrackingPaymentAdapter {
     fn new() -> Self {
         Self {
             authorized: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            captured: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             released: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             refunded: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             settled: false,
@@ -1202,6 +1235,8 @@ impl PaymentAdapter for TrackingPaymentAdapter {
         _currency: &str,
         _reference: &str,
     ) -> Result<PaymentResult, PaymentError> {
+        self.captured
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(PaymentResult {
             transaction_id: authorization_id.to_string(),
             settlement_status: RailSettlementStatus::Settled,
@@ -1394,8 +1429,27 @@ fn capture_panic_retains_full_authorization_and_budget_exposure() {
     let receipt = receipt_log.get(0).unwrap();
     assert!(receipt.is_allowed());
     assert!(receipt.verify_signature().unwrap());
+    assert_eq!(
+        receipt.trust_level,
+        chio_core::receipt::kinds::TrustLevel::Mediated,
+        "an authorization decision retains the frozen mediated-decision semantics"
+    );
     let metadata = receipt.metadata.as_ref().unwrap();
     assert!(metadata["budget_authority"].get("terminal").is_none());
+    assert!(metadata["budget_authority"]
+        .get("mediated_spend")
+        .is_none());
+    let admitted = [kernel.config.keypair.public_key()];
+    let presented_nonce = request.execution_nonce.as_ref().unwrap();
+    assert!(
+        chio_core_types::receipt::authoritative_spend::is_authoritative_spend_receipt(
+            receipt,
+            &admitted,
+            presented_nonce,
+        )
+        .is_err(),
+        "an unresolved retained exposure must not qualify as authoritative spend"
+    );
     assert_eq!(metadata["financial"]["settlement_status"], "pending");
     assert_eq!(metadata["financial"]["budget_remaining"], 0);
     assert_eq!(
@@ -1537,10 +1591,36 @@ fn malformed_or_failed_settlement_acknowledgements_retain_full_exposure() {
 
         let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
         assert_eq!(response.verdict, Verdict::Allow, "case {case}");
+        assert_eq!(
+            response.receipt.trust_level,
+            chio_core::receipt::kinds::TrustLevel::Mediated,
+            "an authorization decision retains mediated-decision semantics for case {case}"
+        );
         let usage = kernel.budget_store.get_usage(&cap.id, 0).unwrap().unwrap();
         assert_eq!(usage.total_cost_exposed, 100, "case {case}");
         assert_eq!(usage.total_cost_realized_spend, 0, "case {case}");
         let metadata = response.receipt.metadata.as_ref().unwrap();
+        assert!(
+            metadata["budget_authority"].get("terminal").is_none(),
+            "an unresolved payment must not claim a reconciled terminal for case {case}"
+        );
+        assert!(
+            metadata["budget_authority"]
+                .get("mediated_spend")
+                .is_none(),
+            "an unresolved payment must not claim the authoritative spend profile for case {case}"
+        );
+        let admitted = [kernel.config.keypair.public_key()];
+        let presented_nonce = request.execution_nonce.as_ref().unwrap();
+        assert!(
+            chio_core_types::receipt::authoritative_spend::is_authoritative_spend_receipt(
+                &response.receipt,
+                &admitted,
+                presented_nonce,
+            )
+            .is_err(),
+            "an unresolved retained exposure must not qualify as authoritative spend for case {case}"
+        );
         assert_eq!(
             metadata["financial"]["settlement_status"], expected_settlement_status,
             "case {case}"
@@ -1637,4 +1717,101 @@ fn make_dpop_proof(
         agent_key: agent_kp.public_key(),
     };
     dpop::DpopProof::sign(body, agent_kp).expect("DPoP sign failed")
+}
+
+/// A budget store spy that authorizes holds normally but returns `Err` on every
+/// reverse. Used to exercise the drop-guard pending-reversal escalation path.
+struct ReverseFailingBudgetStore {
+    inner: InMemoryBudgetStore,
+}
+
+impl ReverseFailingBudgetStore {
+    fn new() -> Self {
+        Self {
+            inner: InMemoryBudgetStore::new(),
+        }
+    }
+}
+
+impl BudgetStore for ReverseFailingBudgetStore {
+    fn try_increment(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        max_invocations: Option<u32>,
+    ) -> Result<bool, BudgetStoreError> {
+        self.inner
+            .try_increment(capability_id, grant_index, max_invocations)
+    }
+
+    fn try_charge_cost(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        max_invocations: Option<u32>,
+        cost_units: u64,
+        max_cost_per_invocation: Option<u64>,
+        max_total_cost_units: Option<u64>,
+    ) -> Result<bool, BudgetStoreError> {
+        self.inner.try_charge_cost(
+            capability_id,
+            grant_index,
+            max_invocations,
+            cost_units,
+            max_cost_per_invocation,
+            max_total_cost_units,
+        )
+    }
+
+    fn reverse_charge_cost(
+        &self,
+        _capability_id: &str,
+        _grant_index: usize,
+        _cost_units: u64,
+    ) -> Result<(), BudgetStoreError> {
+        Err(BudgetStoreError::Invariant(
+            "reverse store unreachable".to_string(),
+        ))
+    }
+
+    fn reduce_charge_cost(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        cost_units: u64,
+    ) -> Result<(), BudgetStoreError> {
+        self.inner
+            .reduce_charge_cost(capability_id, grant_index, cost_units)
+    }
+
+    fn settle_charge_cost(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        exposed_cost_units: u64,
+        realized_cost_units: u64,
+    ) -> Result<(), BudgetStoreError> {
+        self.inner.settle_charge_cost(
+            capability_id,
+            grant_index,
+            exposed_cost_units,
+            realized_cost_units,
+        )
+    }
+
+    fn list_usages(
+        &self,
+        limit: usize,
+        capability_id: Option<&str>,
+    ) -> Result<Vec<BudgetUsageRecord>, BudgetStoreError> {
+        self.inner.list_usages(limit, capability_id)
+    }
+
+    fn get_usage(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+    ) -> Result<Option<BudgetUsageRecord>, BudgetStoreError> {
+        self.inner.get_usage(capability_id, grant_index)
+    }
 }

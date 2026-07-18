@@ -5,6 +5,9 @@ use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 const MAX_PAYMENT_RAIL_IDENTIFIER_BYTES: usize = 512;
 
+mod sim;
+pub use sim::SimPaymentAdapter;
+
 /// Result of a payment authorization or settlement hold.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PaymentAuthorization {

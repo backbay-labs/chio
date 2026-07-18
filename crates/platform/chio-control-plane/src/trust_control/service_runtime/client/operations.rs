@@ -545,6 +545,16 @@ impl TrustControlClient {
         self.get_json_with_query(OPERATOR_REPORT_PATH, query)
     }
 
+    // Kept for API parity with the trust-control service surface even though
+    // the current CLI command set does not invoke it directly.
+    #[allow(dead_code)]
+    pub fn comptroller_surface(
+        &self,
+        query: &OperatorReportQuery,
+    ) -> Result<ComptrollerSurfaceReport, CliError> {
+        self.get_json_with_query(COMPTROLLER_SURFACE_PATH, query)
+    }
+
     pub fn behavioral_feed(
         &self,
         query: &BehavioralFeedQuery,

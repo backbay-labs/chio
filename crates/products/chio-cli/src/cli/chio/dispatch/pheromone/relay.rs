@@ -1,13 +1,19 @@
 use super::{
-    build_iroh_outbound_endpoint, build_iroh_router, build_peer_directory_bundle_trust,
-    iroh_transport_metrics_prometheus, load_chio_verified_workflow_resolver,
-    load_chio_workflow_verifier_trust_bundle, load_iroh_serve_inputs,
-    load_relay_peer_directory_from_paths, load_relay_signing_key, note_router_liveness,
-    read_json_documents_from_dir, read_utf8_json_file, run_directory_reloader, unix_now_ms,
-    write_json_string, write_pretty_json, DirectoryReloadConfig, IrohServeInputs,
+    build_peer_directory_bundle_trust, load_chio_verified_workflow_resolver,
+    load_chio_workflow_verifier_trust_bundle, load_relay_peer_directory_from_paths,
+    load_relay_signing_key, read_json_documents_from_dir, read_utf8_json_file, unix_now_ms,
+    write_json_string, write_pretty_json,
+};
+#[cfg(feature = "iroh")]
+use super::{
+    build_iroh_outbound_endpoint, build_iroh_router, iroh_transport_metrics_prometheus,
+    load_iroh_serve_inputs, note_router_liveness, run_directory_reloader, DirectoryReloadConfig,
+    IrohServeInputs,
 };
 use crate::CliError;
+#[cfg(feature = "iroh")]
 use std::collections::HashMap;
+#[cfg(feature = "iroh")]
 use std::net::SocketAddr;
 use std::path::Path;
 
@@ -171,10 +177,7 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
     iroh_lanes: &str,
 ) -> Result<(), CliError> {
     let now = unix_now_ms();
-    // DEPLOYABILITY (opt-in, DUAL): load + verify the iroh federation-transport
-    // inputs up front. Fail-closed: with --iroh-enable set, any bad input aborts
-    // serve before the endpoint binds; with it unset this returns None WITHOUT
-    // touching any file, so the serve path below is byte-for-byte unchanged.
+    #[cfg(feature = "iroh")]
     let iroh_inputs = load_iroh_serve_inputs(
         iroh_enable,
         iroh_transport_directory,
@@ -186,6 +189,18 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
         iroh_lanes,
         now,
     )?;
+    #[cfg(not(feature = "iroh"))]
+    {
+        reject_iroh_enable_without_feature(iroh_enable)?;
+        let _ = (
+            iroh_transport_directory,
+            iroh_transport_directory_state,
+            iroh_transport_key,
+            iroh_bind_addr,
+            iroh_relay_url,
+            iroh_lanes,
+        );
+    }
     std::fs::create_dir_all(report_dir).map_err(|error| {
         CliError::cli_other_error(format!(
             "failed to create Chio pheromone relay report directory {}: {error}",
@@ -238,13 +253,10 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
         receiver_config,
         resolver,
     });
-    // Share the SAME receiver + store the HTTP relay uses (one receiver, one store,
-    // two transports) with the optional iroh mount, BEFORE the service takes
-    // ownership of them below. The peer directory is cloned here (also before the
-    // service takes ownership) so the iroh ingress handler enforces the SAME inbound
-    // directory-scope gate the HTTP relay applies. `None` when --iroh-enable is off.
     let relay_limits = relay_service_limits_for_profile(profile);
+    #[cfg(feature = "iroh")]
     let iroh_ingress_max_body_bytes = relay_limits.max_body_bytes;
+    #[cfg(feature = "iroh")]
     let iroh_mount_plan = iroh_inputs.map(|inputs| {
         let receiver: std::sync::Arc<dyn chio_pheromone_relay::RelayBatchReceiver> =
             receiver.clone();
@@ -255,7 +267,7 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
             peer_directory.clone(),
         )
     });
-    let mut service = chio_pheromone_relay::PheromoneRelayService::new(
+    let service = chio_pheromone_relay::PheromoneRelayService::new(
         chio_pheromone_relay::PheromoneRelayConfig {
             local_kernel_id: peer_directory.local_kernel_id().to_string(),
             profile,
@@ -270,18 +282,14 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
         receiver,
         relay_store,
     );
-    // DEPLOYABILITY (opt-in, DUAL): when the iroh transport is mounted, expose its
-    // process-global metric families on the SAME live relay /metrics endpoint for
-    // the whole process lifetime (not just a shutdown-time debug snapshot). The
-    // hook is a plain render function pointer; chio-pheromone-relay never depends
-    // on the iroh transport crate (that would be a dependency cycle) - it only
-    // calls the injected callback. With --iroh-enable off, iroh_mount_plan is None,
-    // so no hook is attached and the /metrics response is byte-for-byte unchanged.
-    if iroh_mount_plan.is_some() {
-        service = service.with_extra_metrics_hook(std::sync::Arc::new(
+    #[cfg(feature = "iroh")]
+    let service = if iroh_mount_plan.is_some() {
+        service.with_extra_metrics_hook(std::sync::Arc::new(
             iroh_transport_metrics_prometheus as fn() -> String,
-        ));
-    }
+        ))
+    } else {
+        service
+    };
     let address = listen.parse::<std::net::SocketAddr>().map_err(|error| {
         CliError::cli_other_error(format!("Chio pheromone relay listen address: {error}"))
     })?;
@@ -290,10 +298,7 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
         .build()
         .map_err(|error| CliError::cli_other_error(format!("Chio relay runtime: {error}")))?;
     runtime.block_on(async move {
-        // Mount the iroh federation-transport lanes ALONGSIDE the axum serve (DUAL:
-        // the HTTP relay always keeps running). `None` when --iroh-enable is off, in
-        // which case this closure behaves exactly as before. Fail-closed: an iroh
-        // setup error aborts startup rather than silently serving HTTP-only.
+        #[cfg(feature = "iroh")]
         let iroh_mount = match iroh_mount_plan {
             Some((inputs, receiver, relay_store, peer_directory)) => {
                 let mount = build_iroh_router(
@@ -304,10 +309,6 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
                     iroh_ingress_max_body_bytes,
                 )
                 .await?;
-                // DEPLOYABILITY: print the ACTUAL bound address(es) + the EndpointId
-                // (short + full) + the enabled lanes so the operator knows exactly
-                // what to configure on peers. With the default ephemeral
-                // --iroh-bind-addr this is the only place the reachable port surfaces.
                 tracing::info!(
                     target: "chio.iroh.transport",
                     endpoint_id = %mount.endpoint_id,
@@ -332,6 +333,7 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
         // Spawn the directory reloader and the router-liveness watchdog alongside the
         // serve when the iroh transport is mounted. Both are dedicated tasks feeding
         // shared state, aborted before the router teardown below.
+        #[cfg(feature = "iroh")]
         let iroh_background = iroh_mount.as_ref().map(|mount| {
             let alive = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
             chio_federation_transport_iroh::metrics::set_router_alive(true);
@@ -386,17 +388,15 @@ pub(crate) fn cmd_chio_pheromone_relay_serve(
             .serve(listener)
             .await
             .map_err(|error| CliError::cli_other_error(format!("Chio pheromone relay: {error}")));
+        #[cfg(feature = "iroh")]
         if let Some((reloader, watchdog)) = iroh_background {
             if let Some(reloader) = reloader {
                 reloader.abort();
             }
             watchdog.abort();
         }
+        #[cfg(feature = "iroh")]
         if let Some(mount) = iroh_mount {
-            // The live iroh federation-transport metrics are scraped on the relay's
-            // own /metrics endpoint for the whole process lifetime (see the
-            // with_extra_metrics_hook wiring above), so teardown just stops the
-            // router; no post-mortem snapshot is needed.
             let _ = mount.router.shutdown().await;
         }
         serve_result
@@ -521,14 +521,7 @@ pub(crate) fn cmd_chio_pheromone_relay_tick(
         chio_pheromone_relay::SqlitePheromoneRelayStore::open(store).map_err(|error| {
             CliError::cli_other_error(format!("Chio pheromone relay store: {error}"))
         })?;
-    // DUAL outbound transport (opt-in, default OFF): with --iroh-enable this tick drains
-    // due batches over the iroh federation transport INSTEAD of HTTP, mirroring how
-    // deliver_due_batches is scheduled (a one-shot operator/cron tick). Fail-closed:
-    // with the flag set, any bad iroh input aborts before draining; with it unset this
-    // returns None WITHOUT touching any file, so the HTTP path below is byte-for-byte
-    // unchanged. Running an iroh tick and an HTTP tick against the SAME store would
-    // both lease the same outbox rows, so a single invocation drains over exactly ONE
-    // transport (the operator picks per tick).
+    #[cfg(feature = "iroh")]
     let iroh_inputs = load_iroh_serve_inputs(
         iroh_enable,
         iroh_transport_directory,
@@ -540,18 +533,21 @@ pub(crate) fn cmd_chio_pheromone_relay_tick(
         iroh_lanes,
         now_unix_ms,
     )?;
+    #[cfg(not(feature = "iroh"))]
+    {
+        reject_iroh_enable_without_feature(iroh_enable)?;
+        let _ = (
+            iroh_transport_directory,
+            iroh_transport_directory_state,
+            iroh_transport_key,
+            iroh_bind_addr,
+            iroh_relay_url,
+            iroh_peer_addr,
+            iroh_lanes,
+        );
+    }
+    #[cfg(feature = "iroh")]
     let tick_report = if let Some(iroh_inputs) = iroh_inputs {
-        // Fail-closed signing/transport identity binding for the iroh drain. The drain
-        // leases + drains outbox rows keyed on `sender_kernel_id` (the relay SIGNING
-        // key's kernelId from load_relay_signing_key), but the outbound iroh endpoint
-        // authenticates as the peer/transport directory's LOCAL identity
-        // (`peer_directory.local_kernel_id()`, which build_iroh_outbound_endpoint pins to
-        // the verified transport directory's localKernelId). Recipients verify pheromone
-        // frames against the AUTHENTICATED transport sender, NOT the signing-key id, so if
-        // these differ the queued rows for the signing key are drained yet
-        // rejected/dead-lettered by recipients. Require the relay's signing identity and
-        // its transport/directory local identity to be the SAME kernel BEFORE leasing or
-        // draining any row.
         if sender_kernel_id.as_str() != peer_directory.local_kernel_id() {
             return Err(CliError::cli_other_error(format!(
                 "Chio relay iroh tick: the relay signing key's kernel id '{}' does not match the \
@@ -563,10 +559,6 @@ pub(crate) fn cmd_chio_pheromone_relay_tick(
                 peer_directory.local_kernel_id()
             )));
         }
-        // Direct-address book (relay-disabled / direct-address deployment): parse the
-        // repeated --iroh-peer-addr entries into kernel_id -> dialable socket(s).
-        // Parsed only on the iroh path so an HTTP-only tick is untouched; fail-closed
-        // on any malformed entry.
         let peer_addr_book = parse_iroh_peer_addr_book(iroh_peer_addr)?;
         drain_due_batches_over_iroh(
             &relay_store,
@@ -578,21 +570,24 @@ pub(crate) fn cmd_chio_pheromone_relay_tick(
             max_batches,
         )?
     } else {
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_all()
-            .build()
-            .map_err(|error| CliError::cli_other_error(format!("Chio relay runtime: {error}")))?;
-        runtime
-            .block_on(chio_pheromone_relay::deliver_due_batches(
-                &relay_store,
-                peer_directory,
-                keypair,
-                &sender_kernel_id,
-                now_unix_ms,
-                max_batches,
-            ))
-            .map_err(|error| CliError::cli_other_error(format!("Chio relay tick: {error}")))?
+        deliver_http_tick(
+            &relay_store,
+            peer_directory,
+            keypair,
+            &sender_kernel_id,
+            now_unix_ms,
+            max_batches,
+        )?
     };
+    #[cfg(not(feature = "iroh"))]
+    let tick_report = deliver_http_tick(
+        &relay_store,
+        peer_directory,
+        keypair,
+        &sender_kernel_id,
+        now_unix_ms,
+        max_batches,
+    )?;
     let json = serde_json::to_string_pretty(&tick_report)
         .map_err(|error| CliError::cli_other_error(format!("Chio relay report: {error}")))?;
     write_json_string(report, &format!("{json}\n"))?;
@@ -607,12 +602,52 @@ pub(crate) fn cmd_chio_pheromone_relay_tick(
     Ok(())
 }
 
+fn deliver_http_tick(
+    relay_store: &chio_pheromone_relay::SqlitePheromoneRelayStore,
+    peer_directory: chio_pheromone_relay::PeerDirectory,
+    keypair: chio_core::crypto::Keypair,
+    sender_kernel_id: &str,
+    now_unix_ms: u64,
+    max_batches: usize,
+) -> Result<chio_pheromone_relay::RelayTickReport, CliError> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .map_err(|error| CliError::cli_other_error(format!("Chio relay runtime: {error}")))?;
+    runtime
+        .block_on(chio_pheromone_relay::deliver_due_batches(
+            relay_store,
+            peer_directory,
+            keypair,
+            sender_kernel_id,
+            now_unix_ms,
+            max_batches,
+        ))
+        .map_err(|error| CliError::cli_other_error(format!("Chio relay tick: {error}")))
+}
+
+/// Fail-closed guard for builds without the `iroh` cargo feature. When the operator
+/// passes `--iroh-enable` but the binary was compiled without `--features iroh`, reject
+/// with a clear, actionable error instead of clap "unknown argument" or a silent no-op.
+#[cfg(not(feature = "iroh"))]
+fn reject_iroh_enable_without_feature(iroh_enable: bool) -> Result<(), CliError> {
+    if iroh_enable {
+        return Err(CliError::cli_other_error(
+            "Chio iroh transport: this `chio` binary was built without the `iroh` feature; \
+             rebuild with `--features iroh` to use --iroh-enable"
+                .to_string(),
+        ));
+    }
+    Ok(())
+}
+
 /// Parse the repeated `--iroh-peer-addr` entries (`KERNEL_ID=HOST:PORT`) into a
 /// `kernel_id -> dialable socket(s)` book for the direct-address deployment.
 ///
 /// Fail-closed: any entry missing the `=` separator, with an empty kernel id, or whose
 /// value is not a parseable socket address aborts the tick. Repeating a `KERNEL_ID`
 /// appends another socket (a multi-homed recipient), de-duplicating identical sockets.
+#[cfg(feature = "iroh")]
 fn parse_iroh_peer_addr_book(
     entries: &[String],
 ) -> Result<HashMap<String, Vec<SocketAddr>>, CliError> {
@@ -651,6 +686,7 @@ fn parse_iroh_peer_addr_book(
 /// the verified directory, and iroh authenticates it at the handshake, so a socket hint
 /// can never redirect delivery to an unauthorized peer. With no book entry the returned
 /// address is id-only (dialable where discovery / `--iroh-relay-url` is configured).
+#[cfg(feature = "iroh")]
 fn resolve_dialable_transport_addr(
     directory: &chio_federation_transport_iroh::identity::VerifiedDirectory,
     peer_addr_book: &HashMap<String, Vec<SocketAddr>>,
@@ -683,6 +719,7 @@ fn resolve_dialable_transport_addr(
 /// verified directory binds only `kernel_id -> transport EndpointId`, so its socket(s)
 /// are threaded onto the resolved EndpointId here. An empty book keeps the id-only
 /// resolution (dialable where discovery / `--iroh-relay-url` is configured).
+#[cfg(feature = "iroh")]
 fn drain_due_batches_over_iroh(
     relay_store: &chio_pheromone_relay::SqlitePheromoneRelayStore,
     peer_directory: chio_pheromone_relay::PeerDirectory,
@@ -1057,6 +1094,24 @@ mod tests {
         assert_eq!(limits.max_body_bytes, 1_048_576);
     }
 
+    #[cfg(not(feature = "iroh"))]
+    #[test]
+    fn iroh_enable_without_feature_is_rejected_fail_closed() {
+        let Err(err) = super::reject_iroh_enable_without_feature(true) else {
+            panic!("--iroh-enable must be rejected on a build without the `iroh` feature");
+        };
+        let msg = err.to_string();
+        assert!(
+            msg.contains("built without the `iroh` feature"),
+            "unexpected error message: {msg}"
+        );
+        // Fail-closed, not a clap parse error.
+        assert!(!msg.contains("unknown argument"), "must not be a clap error: {msg}");
+        // With the flag off, the guard is a no-op.
+        assert!(super::reject_iroh_enable_without_feature(false).is_ok());
+    }
+
+    #[cfg(feature = "iroh")]
     #[test]
     fn parse_iroh_peer_addr_book_parses_and_groups_multi_homed_recipients() {
         let entries = vec![
@@ -1080,11 +1135,13 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "iroh")]
     #[test]
     fn parse_iroh_peer_addr_book_is_empty_for_no_entries() {
         assert!(parse_iroh_peer_addr_book(&[]).unwrap().is_empty());
     }
 
+    #[cfg(feature = "iroh")]
     #[test]
     fn parse_iroh_peer_addr_book_rejects_malformed_entries_fail_closed() {
         // Missing '=' separator.
@@ -1097,6 +1154,7 @@ mod tests {
         assert!(parse_iroh_peer_addr_book(&["did:chio:bob=".to_string()]).is_err());
     }
 
+    #[cfg(feature = "iroh")]
     mod iroh_tick {
         use super::*;
         use chio_core_types::canonical_json_bytes;

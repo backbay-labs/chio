@@ -6,6 +6,7 @@
 
 use super::*;
 use crate::budget_store::BudgetReverseHoldDecision;
+use chio_log_redact::redacted;
 
 pub(crate) struct GuardRunError {
     pub(crate) error: KernelError,
@@ -379,6 +380,11 @@ pub(crate) struct RuntimeReadinessRevalidation<'a> {
     pub(crate) runtime_admission_metadata: Option<&'a serde_json::Value>,
     pub(crate) readiness_waited: bool,
     pub(crate) force_mutable_state_revalidation: bool,
+    /// The strict reserve-for-caller payment preflight has not minted its
+    /// execution nonce yet and intentionally targets a downstream server that
+    /// need not be registered on this kernel. Every other mutable admission
+    /// check still runs before the payment rail is touched.
+    pub(crate) reserve_for_caller_preflight: bool,
     pub(crate) now_unix_secs: u64,
     pub(crate) now_unix_ms: u64,
 }
@@ -730,6 +736,7 @@ impl ChioKernel {
         request: &ToolCallRequest,
         admitted: &ReceiptFederationAdmission,
         now: u64,
+        reserve_for_caller_preflight: bool,
     ) -> Result<(), KernelError> {
         let current = self.kernel_receipt_admission_for_remote(
             request.federated_origin_kernel_id.as_deref(),
@@ -742,7 +749,9 @@ impl ChioKernel {
             ));
         }
         self.validate_web3_evidence_prerequisites()?;
-        self.ensure_registered_tool_target(request)?;
+        if !reserve_for_caller_preflight {
+            self.ensure_registered_tool_target(request)?;
+        }
         self.ensure_federated_receipt_persistence_ready(
             request.federated_origin_kernel_id.as_deref(),
         )?;
@@ -915,15 +924,18 @@ impl ChioKernel {
             revalidation.now_unix_secs,
         )
         .map_err(KernelError::GuardDenied)?;
-        let _ = self.validate_execution_nonce_non_consuming(
-            revalidation.request,
-            &revalidation.request.capability,
-            revalidation.now_unix_secs,
-        )?;
+        if !revalidation.reserve_for_caller_preflight {
+            let _ = self.validate_execution_nonce_non_consuming(
+                revalidation.request,
+                &revalidation.request.capability,
+                revalidation.now_unix_secs,
+            )?;
+        }
         self.revalidate_receipt_boundary_after_runtime_readiness(
             revalidation.request,
             revalidation.receipt_admission,
             revalidation.now_unix_secs,
+            revalidation.reserve_for_caller_preflight,
         )?;
         self.revalidate_governed_transaction_after_runtime_readiness(
             revalidation.request,
@@ -1109,6 +1121,7 @@ impl ChioKernel {
                 self.budget_execution_receipt_metadata(
                     charge,
                     budget_reconcile_decision.map(|decision| ("reconciled", decision)),
+                    None,
                 ),
             );
         }
@@ -1147,7 +1160,7 @@ impl ChioKernel {
     pub(crate) fn unwind_aborted_payment(
         &self,
         request: &ToolCallRequest,
-        charge: &BudgetChargeResult,
+        charge: Option<&BudgetChargeResult>,
         authorization: &PaymentAuthorization,
         credential_disposition: PaymentCredentialDisposition,
     ) -> Result<PreDispatchPaymentUnwindEvidence, KernelError> {
@@ -1160,12 +1173,7 @@ impl ChioKernel {
             let transaction_id = authorization
                 .settlement_transaction_id
                 .as_deref()
-                .ok_or_else(|| {
-                    KernelError::Internal(
-                        "settled authorization is missing its refund transaction identifier"
-                            .to_string(),
-                    )
-                })?;
+                .unwrap_or(&authorization.authorization_id);
             crate::payment::validate_payment_rail_identifier(
                 "settlement transaction identifier",
                 transaction_id,
@@ -1180,6 +1188,11 @@ impl ChioKernel {
                 "payment authorization present without configured adapter".to_string(),
             )
         })?;
+        // MustPrepay authorizes the quote even when a smaller provisional
+        // budget charge also exists. Refund exactly what the rail funded;
+        // otherwise use the ordinary monetary charge.
+        let refund_terms = Self::mustprepay_quoted_amount(request)
+            .or_else(|| charge.map(|charge| (charge.cost_charged, charge.currency.clone())));
         let unwind_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             if authorization.settled {
                 let transaction_id = settled_transaction_id.ok_or_else(|| {
@@ -1188,12 +1201,12 @@ impl ChioKernel {
                             .to_string(),
                     )
                 })?;
-                adapter.refund(
-                    transaction_id,
-                    charge.cost_charged,
-                    &charge.currency,
-                    &request.request_id,
-                )
+                let (amount_units, currency) = refund_terms.as_ref().ok_or_else(|| {
+                    PaymentError::RailError(
+                        "settled authorization is missing its refund amount".to_string(),
+                    )
+                })?;
+                adapter.refund(transaction_id, *amount_units, currency, &request.request_id)
             } else {
                 adapter.release(&authorization.authorization_id, &request.request_id)
             }
@@ -1245,18 +1258,18 @@ impl ChioKernel {
         charge_result: Option<&BudgetChargeResult>,
         payment_authorization: Option<&PaymentAuthorization>,
     ) -> Result<Option<BudgetReverseHoldDecision>, KernelError> {
-        let Some(charge) = charge_result else {
-            return Ok(None);
-        };
-
         if let Some(authorization) = payment_authorization {
             self.unwind_aborted_payment(
                 request,
-                charge,
+                charge_result,
                 authorization,
                 PaymentCredentialDisposition::NonePresent,
             )?;
         }
+
+        let Some(charge) = charge_result else {
+            return Ok(None);
+        };
 
         Ok(Some(self.reverse_budget_charge(&cap.id, charge)?))
     }
@@ -1658,6 +1671,37 @@ impl ChioKernel {
                 "runtime admission hook panicked while releasing reservations".to_string(),
             )
         })?
+    }
+
+    /// Release pre-dispatch runtime reservations while preserving a receipt-safe
+    /// projection of the admission evidence. A release failure is retained in
+    /// metadata instead of short-circuiting after budget admission, so the
+    /// signed response locates the still-held reservation.
+    pub(crate) fn release_runtime_admission_reservations_for_pre_dispatch_denial(
+        &self,
+        metadata: Option<serde_json::Value>,
+    ) -> Option<serde_json::Value> {
+        let projected =
+            project_runtime_admission_receipt_metadata(metadata.as_ref()).unwrap_or(None);
+        match self.release_runtime_admission_reservations(metadata.as_ref()) {
+            Ok(()) => projected,
+            Err(error) => {
+                let reason = redacted!(&error).to_string();
+                warn!(
+                    reason = %redacted!(&reason),
+                    "runtime admission reservation release failed on pre-dispatch denial"
+                );
+                merge_metadata_objects(
+                    projected,
+                    Some(serde_json::json!({
+                        "chio_runtime": {
+                            "reservation_release_failed": true,
+                            "reservation_release_failure_reason": reason,
+                        }
+                    })),
+                )
+            }
+        }
     }
 
     /// Record, in receipt metadata, that runtime-admission reservations

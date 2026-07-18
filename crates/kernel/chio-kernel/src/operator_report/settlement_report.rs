@@ -9,7 +9,7 @@ pub enum SettlementReconciliationState {
     RetryScheduled,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SettlementReconciliationSummary {
     pub matching_receipts: u64,

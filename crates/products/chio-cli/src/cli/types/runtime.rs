@@ -698,6 +698,13 @@ pub(crate) enum McpCommands {
     /// Claude Desktop / Continue / Zed.
     Wrap(McpWrapArgs),
 
+    /// Run a single governed MustPrepay call through an ephemeral kernel.
+    ///
+    /// Builds a local kernel, wires the selected payment adapter (sim or none),
+    /// executes one governed MustPrepay tool call, and writes the signed receipt
+    /// bundle to `--out`. Exits nonzero on denial. Used by the no-key CI lane.
+    GovernedSim(GovernedSimArgs),
+
     /// Wrap an MCP server subprocess and expose a secured MCP edge over stdio.
     Serve {
         /// Path to the policy YAML file. Mutually exclusive with `--preset`.

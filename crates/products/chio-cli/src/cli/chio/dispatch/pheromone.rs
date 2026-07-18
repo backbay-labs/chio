@@ -8,6 +8,7 @@ mod delivery;
 mod directory;
 #[path = "pheromone/io.rs"]
 mod io;
+#[cfg(feature = "iroh")]
 #[path = "pheromone/iroh_mount.rs"]
 mod iroh_mount;
 #[path = "pheromone/relay.rs"]
@@ -52,6 +53,7 @@ pub(crate) use self::directory::{
 pub(crate) use self::io::{
     load_relay_signing_key, read_json_documents_from_dir, read_json_file, unix_now_ms,
 };
+#[cfg(feature = "iroh")]
 pub(crate) use self::iroh_mount::{
     build_iroh_outbound_endpoint, build_iroh_router, iroh_transport_metrics_prometheus,
     load_iroh_serve_inputs, note_router_liveness, run_directory_reloader, DirectoryReloadConfig,

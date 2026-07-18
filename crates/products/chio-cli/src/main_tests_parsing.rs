@@ -75,6 +75,73 @@ fn api_protect_subcommand_parses() {
 }
 
 #[test]
+fn api_protect_budget_db_and_control_url_parse() {
+    // Verify that global --budget-db, --control-url, and --control-token
+    // options are accepted alongside `api protect` and land in the Cli struct
+    // so they can be threaded into ProtectConfig.
+    let cli = parse_cli([
+        "chio",
+        "--budget-db",
+        "budget.sqlite3",
+        "--control-url",
+        "http://control.example:8080",
+        "--control-token",
+        "tok-abc",
+        "api",
+        "protect",
+        "--upstream",
+        "http://127.0.0.1:8080",
+    ])
+    .unwrap();
+
+    assert_eq!(
+        cli.budget_db.as_deref(),
+        Some(std::path::Path::new("budget.sqlite3"))
+    );
+    assert_eq!(
+        cli.control_url.as_deref(),
+        Some("http://control.example:8080")
+    );
+    assert_eq!(cli.control_token.as_deref(), Some("tok-abc"));
+    assert!(matches!(
+        cli.command,
+        Commands::Api {
+            command: ApiCommands::Protect { .. }
+        }
+    ));
+}
+
+#[test]
+fn start_budget_db_and_control_url_parse() {
+    // Verify that global --budget-db, --control-url, and --control-token
+    // options are accepted alongside `start` and land in the Cli struct so
+    // cmd_start can thread them into the sidecar ProtectConfig and advertise
+    // the mediated /v1/evaluate route only when a budget backend is present.
+    let cli = parse_cli([
+        "chio",
+        "--budget-db",
+        "budget.sqlite3",
+        "--control-url",
+        "http://control.example:8080",
+        "--control-token",
+        "tok-abc",
+        "start",
+    ])
+    .unwrap();
+
+    assert_eq!(
+        cli.budget_db.as_deref(),
+        Some(std::path::Path::new("budget.sqlite3"))
+    );
+    assert_eq!(
+        cli.control_url.as_deref(),
+        Some("http://control.example:8080")
+    );
+    assert_eq!(cli.control_token.as_deref(), Some("tok-abc"));
+    assert!(matches!(cli.command, Commands::Start { .. }));
+}
+
+#[test]
 fn receipt_flush_subcommand_parses() {
     let cli = parse_cli([
         "chio",

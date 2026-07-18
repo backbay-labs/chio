@@ -10,10 +10,11 @@ use super::{
     budget_commit_metadata, checked_committed_cost_units, AuthorizedBudgetHold,
     BudgetAuthorizeHoldDecision, BudgetAuthorizeHoldRequest, BudgetAuthorizeMutationOutcome,
     BudgetCaptureHoldDecision, BudgetCaptureHoldRequest, BudgetEventAuthority,
-    BudgetHoldMutationDecision, BudgetMutationKind, BudgetMutationRecord,
-    BudgetReconcileHoldDecision, BudgetReconcileHoldRequest, BudgetReleaseHoldDecision,
-    BudgetReleaseHoldRequest, BudgetReverseHoldDecision, BudgetReverseHoldRequest, BudgetStore,
-    BudgetStoreError, BudgetUsageRecord, DeniedBudgetHold,
+    BudgetHoldDispositionView, BudgetHoldMutationDecision, BudgetHoldSnapshot, BudgetMutationKind,
+    BudgetMutationRecord, BudgetReconcileHoldDecision, BudgetReconcileHoldRequest,
+    BudgetReleaseHoldDecision, BudgetReleaseHoldRequest, BudgetReverseHoldDecision,
+    BudgetReverseHoldRequest, BudgetStore, BudgetStoreError, BudgetUsageRecord, DeniedBudgetHold,
+    ReservedHoldEnvelope,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -22,6 +23,17 @@ enum BudgetHoldDisposition {
     Released,
     Reversed,
     Reconciled,
+}
+
+impl BudgetHoldDisposition {
+    fn view(&self) -> BudgetHoldDispositionView {
+        match self {
+            Self::Open => BudgetHoldDispositionView::Open,
+            Self::Released => BudgetHoldDispositionView::Released,
+            Self::Reversed => BudgetHoldDispositionView::Reversed,
+            Self::Reconciled => BudgetHoldDispositionView::Reconciled,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -33,6 +45,23 @@ struct BudgetHoldState {
     invocation_count_debited: bool,
     disposition: BudgetHoldDisposition,
     authority: Option<BudgetEventAuthority>,
+    /// Set only when the reserving path marks this hold reserved; drives the
+    /// TTL reaper. `None` for normal in-flight holds.
+    reserved_until: Option<i64>,
+    /// Currency the grant was authorized in, recorded alongside `reserved_until`
+    /// by the reserving path. `None` for normal in-flight holds.
+    reserved_currency: Option<String>,
+    /// Rail transaction id that funded a prepaid MustPrepay reservation, recorded
+    /// alongside `reserved_until` by the reserving path. `None` when the reserve
+    /// carried no prepayment.
+    reserved_payment_reference: Option<String>,
+    /// Grant ceiling and delegation lineage recorded alongside `reserved_until` by
+    /// the reserving path, so reconcile-by-nonce reports the grant's budget and
+    /// true lineage rather than the reservation exposure. `None` for holds never
+    /// marked reserved.
+    reserved_budget_total: Option<u64>,
+    reserved_delegation_depth: Option<u32>,
+    reserved_root_budget_holder: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -441,6 +470,12 @@ impl InMemoryBudgetStoreInner {
                         invocation_count_debited: true,
                         disposition: BudgetHoldDisposition::Open,
                         authority: authority.cloned(),
+                        reserved_until: None,
+                        reserved_currency: None,
+                        reserved_payment_reference: None,
+                        reserved_budget_total: None,
+                        reserved_delegation_depth: None,
+                        reserved_root_budget_holder: None,
                     },
                 );
             }
@@ -935,6 +970,159 @@ impl InMemoryBudgetStoreInner {
         events.truncate(limit);
         Ok(events)
     }
+
+    fn get_budget_hold(
+        &self,
+        hold_id: &str,
+    ) -> Result<Option<BudgetHoldSnapshot>, BudgetStoreError> {
+        Ok(self.holds.get(hold_id).map(|hold| BudgetHoldSnapshot {
+            hold_id: hold_id.to_string(),
+            capability_id: hold.capability_id.clone(),
+            grant_index: hold.grant_index,
+            authorized_exposure_units: hold.authorized_exposure_units,
+            remaining_exposure_units: hold.remaining_exposure_units,
+            disposition: hold.disposition.view(),
+            reserved_until: hold.reserved_until,
+            reserved_currency: hold.reserved_currency.clone(),
+            reserved_payment_reference: hold.reserved_payment_reference.clone(),
+            reserved_budget_total: hold.reserved_budget_total,
+            reserved_delegation_depth: hold.reserved_delegation_depth,
+            reserved_root_budget_holder: hold.reserved_root_budget_holder.clone(),
+            authority: hold.authority.clone(),
+        }))
+    }
+
+    fn mark_hold_reserved(
+        &mut self,
+        hold_id: &str,
+        reserved_until_unix_secs: i64,
+        currency: &str,
+        payment_reference: Option<&str>,
+        envelope: &ReservedHoldEnvelope,
+    ) -> Result<(), BudgetStoreError> {
+        let hold = self.holds.get_mut(hold_id).ok_or_else(|| {
+            BudgetStoreError::Invariant(format!("missing budget hold `{hold_id}`"))
+        })?;
+        if hold.disposition != BudgetHoldDisposition::Open {
+            return Err(BudgetStoreError::Invariant(format!(
+                "cannot mark non-open budget hold `{hold_id}` reserved"
+            )));
+        }
+        hold.reserved_until = Some(reserved_until_unix_secs);
+        hold.reserved_currency = Some(currency.to_string());
+        hold.reserved_payment_reference = payment_reference.map(str::to_string);
+        hold.reserved_budget_total = envelope.budget_total;
+        hold.reserved_delegation_depth = Some(envelope.delegation_depth);
+        hold.reserved_root_budget_holder = Some(envelope.root_budget_holder.clone());
+        Ok(())
+    }
+
+    fn reserve_invocation_hold(
+        &mut self,
+        hold_id: &str,
+        capability_id: &str,
+        grant_index: usize,
+        reserved_until_unix_secs: i64,
+        envelope: &ReservedHoldEnvelope,
+    ) -> Result<(), BudgetStoreError> {
+        if self.holds.contains_key(hold_id) {
+            return Err(BudgetStoreError::Invariant(format!(
+                "budget hold `{hold_id}` already exists"
+            )));
+        }
+        self.holds.insert(
+            hold_id.to_string(),
+            BudgetHoldState {
+                capability_id: capability_id.to_string(),
+                grant_index,
+                authorized_exposure_units: 0,
+                remaining_exposure_units: 0,
+                invocation_count_debited: true,
+                disposition: BudgetHoldDisposition::Open,
+                authority: None,
+                reserved_until: Some(reserved_until_unix_secs),
+                reserved_currency: None,
+                reserved_payment_reference: None,
+                reserved_budget_total: envelope.budget_total,
+                reserved_delegation_depth: Some(envelope.delegation_depth),
+                reserved_root_budget_holder: Some(envelope.root_budget_holder.clone()),
+            },
+        );
+        Ok(())
+    }
+
+    fn request_id_has_reserved_hold(&self, request_id: &str) -> bool {
+        // A mediated hold id is `budget-hold:{request_id}:{capability}:{grant}`.
+        // Matching the `budget-hold:{request_id}:` prefix reports the request_id
+        // taken no matter which capability opened the hold; the trailing colon
+        // keeps a request_id that is only a textual prefix of another from
+        // matching.
+        let prefix = format!("budget-hold:{request_id}:");
+        self.holds
+            .keys()
+            .any(|hold_id| hold_id.starts_with(&prefix))
+    }
+
+    fn list_open_delegated_reserved_hold_ids(&self) -> Vec<String> {
+        // A delegated reserve-for-caller hold is open, was marked reserved
+        // (reserved_until is set), and carries a delegation depth of at least
+        // one, so it holds its child's sibling-sum share admitted against the
+        // parent until it closes.
+        self.holds
+            .iter()
+            .filter(|(_, hold)| hold.disposition == BudgetHoldDisposition::Open)
+            .filter(|(_, hold)| hold.reserved_until.is_some())
+            .filter(|(_, hold)| {
+                hold.reserved_delegation_depth
+                    .is_some_and(|depth| depth >= 1)
+            })
+            .map(|(hold_id, _)| hold_id.clone())
+            .collect()
+    }
+
+    fn reap_expired_reserved_holds(
+        &mut self,
+        now_unix_secs: i64,
+    ) -> Result<usize, BudgetStoreError> {
+        // Snapshot the expired-and-still-open reserved holds first so the
+        // settle loop can mutate the map without an aliasing borrow.
+        let expired: Vec<(String, String, usize, u64, Option<BudgetEventAuthority>)> = self
+            .holds
+            .iter()
+            .filter(|(_, hold)| hold.disposition == BudgetHoldDisposition::Open)
+            .filter_map(|(hold_id, hold)| {
+                hold.reserved_until
+                    .filter(|until| *until <= now_unix_secs)
+                    .map(|_| {
+                        (
+                            hold_id.clone(),
+                            hold.capability_id.clone(),
+                            hold.grant_index,
+                            hold.remaining_exposure_units,
+                            hold.authority.clone(),
+                        )
+                    })
+            })
+            .collect();
+
+        let mut settled = 0usize;
+        for (hold_id, capability_id, grant_index, remaining, authority) in expired {
+            // Settle at the reserved worst-case: the abandoning caller forfeits the
+            // full reserved amount to realized spend (fail-closed), rather than
+            // releasing it back (which would under-count a spend that may have run).
+            self.settle_charge_cost_with_ids_and_authority(
+                &capability_id,
+                grant_index,
+                remaining,
+                remaining,
+                Some(&hold_id),
+                Some(&format!("{hold_id}:ttl-reap-settle")),
+                authority.as_ref(),
+            )?;
+            settled += 1;
+        }
+        Ok(settled)
+    }
 }
 
 impl BudgetStore for InMemoryBudgetStore {
@@ -1397,6 +1585,69 @@ impl BudgetStore for InMemoryBudgetStore {
         request: BudgetCaptureHoldRequest,
     ) -> Result<BudgetCaptureHoldDecision, BudgetStoreError> {
         self.reconcile_budget_hold(request)
+    }
+
+    fn get_budget_hold(
+        &self,
+        hold_id: &str,
+    ) -> Result<Option<BudgetHoldSnapshot>, BudgetStoreError> {
+        self.lock_inner()?.get_budget_hold(hold_id)
+    }
+
+    fn mark_hold_reserved(
+        &self,
+        hold_id: &str,
+        reserved_until_unix_secs: i64,
+        currency: &str,
+        payment_reference: Option<&str>,
+        envelope: &ReservedHoldEnvelope,
+    ) -> Result<(), BudgetStoreError> {
+        self.lock_inner()?.mark_hold_reserved(
+            hold_id,
+            reserved_until_unix_secs,
+            currency,
+            payment_reference,
+            envelope,
+        )
+    }
+
+    fn reserve_invocation_hold(
+        &self,
+        hold_id: &str,
+        capability_id: &str,
+        grant_index: usize,
+        reserved_until_unix_secs: i64,
+        envelope: &ReservedHoldEnvelope,
+    ) -> Result<(), BudgetStoreError> {
+        self.lock_inner()?.reserve_invocation_hold(
+            hold_id,
+            capability_id,
+            grant_index,
+            reserved_until_unix_secs,
+            envelope,
+        )
+    }
+
+    fn reap_expired_reserved_holds(&self, now_unix_secs: i64) -> Result<usize, BudgetStoreError> {
+        self.lock_inner()?
+            .reap_expired_reserved_holds(now_unix_secs)
+    }
+
+    fn list_open_delegated_reserved_hold_ids(
+        &self,
+    ) -> Result<Option<Vec<String>>, BudgetStoreError> {
+        Ok(Some(
+            self.lock_inner()?.list_open_delegated_reserved_hold_ids(),
+        ))
+    }
+
+    fn request_id_has_reserved_hold(
+        &self,
+        request_id: &str,
+    ) -> Result<Option<bool>, BudgetStoreError> {
+        Ok(Some(
+            self.lock_inner()?.request_id_has_reserved_hold(request_id),
+        ))
     }
 }
 

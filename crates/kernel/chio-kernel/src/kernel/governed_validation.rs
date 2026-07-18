@@ -305,11 +305,30 @@ impl ChioKernel {
     fn validate_metered_billing_context(
         intent: &chio_core::capability::governance::GovernedTransactionIntent,
         charge_result: Option<&BudgetChargeResult>,
+        payment_adapter_configured: bool,
         now: u64,
     ) -> Result<(), KernelError> {
         let Some(metered) = intent.metered_billing.as_ref() else {
             return Ok(());
         };
+
+        // A governed intent that mandates prepayment must not execute unless a
+        // payment adapter is configured to prepay it. This is the primary
+        // fail-closed denial and fires for every MustPrepay intent regardless of
+        // charge_result. authorize_payment_if_needed independently fail-closes for
+        // MustPrepay (it authorizes the quoted cost through the adapter, or denies
+        // when none is present), so an unpaid MustPrepay execution has no path.
+        // The charge currency is checked below against quote.quoted_cost.currency.
+        if metered.settlement_mode
+            == chio_core::capability::governance::MeteredSettlementMode::MustPrepay
+            && !payment_adapter_configured
+        {
+            return Err(KernelError::GovernedTransactionDenied(
+                "governed intent mandates prepayment (settlement_mode=MustPrepay) but no payment \
+                 adapter is configured; denying fail-closed"
+                    .to_string(),
+            ));
+        }
 
         let quote = &metered.quote;
         if quote.quote_id.trim().is_empty() {
@@ -340,9 +359,16 @@ impl ChioKernel {
                 "metered billing quote expires_at must be after issued_at".to_string(),
             ));
         }
-        if quote.expires_at.is_some() && !quote.is_valid_at(now) {
+        // Enforce the quote's validity window regardless of whether an expiry is
+        // present. `is_valid_at` gates on `now >= issued_at` as well as the
+        // optional expiry, so an open-ended (no-expiry) quote whose `issued_at`
+        // is in the future is rejected here rather than authorizing a prepay
+        // before the quote is valid. Fail-closed on the money path.
+        if !quote.is_valid_at(now) {
             return Err(KernelError::GovernedTransactionDenied(
-                "metered billing quote is missing or expired".to_string(),
+                "metered billing quote is not valid at the current time (issued in the future \
+                 or expired)"
+                    .to_string(),
             ));
         }
         if metered.max_billed_units == Some(0) {
@@ -377,6 +403,23 @@ impl ChioKernel {
         }
 
         Ok(())
+    }
+
+    /// Units that a MustPrepay intent will actually prepay, if the intent mandates
+    /// prepayment. This is `quote.quoted_cost`: the amount that is authorized and
+    /// prepaid regardless of any smaller provisional budget charge, so it gates the
+    /// approval and max-amount checks in both the with-charge and no-charge paths.
+    fn mustprepay_prepaid_units(
+        intent: &chio_core::capability::governance::GovernedTransactionIntent,
+    ) -> Option<u64> {
+        intent
+            .metered_billing
+            .as_ref()
+            .filter(|metered| {
+                metered.settlement_mode
+                    == chio_core::capability::governance::MeteredSettlementMode::MustPrepay
+            })
+            .map(|metered| metered.quote.quoted_cost.units)
     }
 
     fn validate_governed_call_chain_context(
@@ -1060,7 +1103,12 @@ impl ChioKernel {
             now,
         )?;
 
-        Self::validate_metered_billing_context(intent, charge_result, now)?;
+        Self::validate_metered_billing_context(
+            intent,
+            charge_result,
+            self.payment_adapter.is_some(),
+            now,
+        )?;
 
         if let (Some(intent_amount), Some(charge)) = (intent.max_amount.as_ref(), charge_result) {
             if intent_amount.currency != charge.currency {
@@ -1076,10 +1124,37 @@ impl ChioKernel {
             }
         }
 
-        let requested_units = charge_result
-            .map(|charge| charge.cost_charged)
-            .or_else(|| intent.max_amount.as_ref().map(|amount| amount.units))
-            .unwrap_or(0);
+        // A MustPrepay intent authorizes and prepays its quote, so the quote (not a
+        // smaller provisional charge or declared ceiling) is the amount actually
+        // committed. It gates the max_amount and approval checks in both the
+        // with-charge and no-charge paths; a declared max_amount below it under-states
+        // the prepaid cost and is rejected fail-closed. The quote currency is already
+        // reconciled against max_amount in metered validation.
+        let mustprepay_prepaid_units = Self::mustprepay_prepaid_units(intent);
+        if let (Some(intent_amount), Some(prepaid_units)) =
+            (intent.max_amount.as_ref(), mustprepay_prepaid_units)
+        {
+            if intent_amount.units < prepaid_units {
+                return Err(KernelError::GovernedTransactionDenied(
+                    "governed intent amount is lower than the MustPrepay quoted cost".to_string(),
+                ));
+            }
+        }
+
+        let requested_units = {
+            // Base gate amount: the provisional charge when one applies, otherwise the
+            // declared monetary ceiling.
+            let base = charge_result
+                .map(|charge| charge.cost_charged)
+                .or_else(|| intent.max_amount.as_ref().map(|amount| amount.units));
+            // A MustPrepay intent prepays its quote, so the gate must reflect at least
+            // the quoted cost even when a smaller provisional charge or ceiling is
+            // present. Fail-closed: take the larger of the two.
+            match (base, mustprepay_prepaid_units) {
+                (Some(base), Some(prepaid)) => base.max(prepaid),
+                (base, prepaid) => base.or(prepaid).unwrap_or(0),
+            }
+        };
         let approval_required = approval_threshold_units
             .map(|threshold_units| requested_units >= threshold_units)
             .unwrap_or(false);
@@ -1163,7 +1238,12 @@ impl ChioKernel {
             verified_runtime_attestation.as_ref(),
             now,
         )?;
-        Self::validate_metered_billing_context(intent, charge_result, now)?;
+        Self::validate_metered_billing_context(
+            intent,
+            charge_result,
+            self.payment_adapter.is_some(),
+            now,
+        )?;
 
         let requested_units = charge_result
             .map(|charge| charge.cost_charged)
@@ -1308,5 +1388,105 @@ impl ChioKernel {
             continuation_token_id,
             session_anchor_id,
         }))
+    }
+}
+
+#[cfg(test)]
+mod mustprepay_gate_tests {
+    use super::*;
+    use chio_core::capability::governance::{
+        GovernedTransactionIntent, MeteredBillingContext, MeteredBillingQuote,
+        MeteredSettlementMode,
+    };
+    use chio_core::capability::scope::MonetaryAmount;
+
+    fn must_prepay_intent() -> GovernedTransactionIntent {
+        GovernedTransactionIntent {
+            id: "intent-1".to_string(),
+            server_id: "srv-1".to_string(),
+            tool_name: "tool-1".to_string(),
+            purpose: "test".to_string(),
+            max_amount: None,
+            commerce: None,
+            metered_billing: Some(MeteredBillingContext {
+                settlement_mode: MeteredSettlementMode::MustPrepay,
+                quote: MeteredBillingQuote {
+                    quote_id: "q-1".to_string(),
+                    provider: "meter".to_string(),
+                    billing_unit: "1k_tokens".to_string(),
+                    quoted_units: 10,
+                    quoted_cost: MonetaryAmount {
+                        units: 100,
+                        currency: "USD".to_string(),
+                    },
+                    issued_at: 1_000,
+                    expires_at: None,
+                },
+                max_billed_units: None,
+            }),
+            runtime_attestation: None,
+            call_chain: None,
+            autonomy: None,
+            context: None,
+        }
+    }
+
+    #[test]
+    fn mustprepay_without_adapter_and_no_charge_is_denied() {
+        // The uncovered path: MustPrepay + charge_result None + no adapter.
+        let intent = must_prepay_intent();
+        let result = ChioKernel::validate_metered_billing_context(&intent, None, false, 1_500);
+        let error = result.expect_err("MustPrepay with no adapter and no charge must be denied");
+        assert!(matches!(error, KernelError::GovernedTransactionDenied(_)));
+        assert!(error.to_string().contains("MustPrepay"));
+    }
+
+    #[test]
+    fn mustprepay_with_adapter_passes_metered_validation() {
+        let intent = must_prepay_intent();
+        ChioKernel::validate_metered_billing_context(&intent, None, true, 1_500)
+            .expect("MustPrepay with an adapter configured should pass metered validation");
+    }
+
+    #[test]
+    fn non_mustprepay_without_adapter_is_allowed() {
+        let mut intent = must_prepay_intent();
+        if let Some(metered) = intent.metered_billing.as_mut() {
+            metered.settlement_mode = MeteredSettlementMode::AllowThenSettle;
+        }
+        ChioKernel::validate_metered_billing_context(&intent, None, false, 1_500)
+            .expect("non-prepay mode without an adapter must not be gated");
+    }
+
+    #[test]
+    fn future_dated_open_ended_quote_is_rejected() {
+        // An open-ended quote (no expires_at) whose issued_at is in the future
+        // must not authorize a prepay before the quote is valid. The validity
+        // check applies even without an expiry, so a future-dated reserve fails
+        // closed instead of settling early.
+        let mut intent = must_prepay_intent();
+        if let Some(metered) = intent.metered_billing.as_mut() {
+            metered.quote.issued_at = 2_000;
+            metered.quote.expires_at = None;
+        }
+        let result = ChioKernel::validate_metered_billing_context(&intent, None, true, 1_500);
+        let error = result.expect_err("a future-dated open-ended quote must be rejected");
+        assert!(matches!(error, KernelError::GovernedTransactionDenied(_)));
+        assert!(
+            error.to_string().contains("not valid"),
+            "denial must cite the quote validity window: {error}"
+        );
+    }
+
+    #[test]
+    fn open_ended_quote_issued_in_the_past_is_accepted() {
+        // A normal open-ended quote (issued_at <= now, no expiry) still passes.
+        let mut intent = must_prepay_intent();
+        if let Some(metered) = intent.metered_billing.as_mut() {
+            metered.quote.issued_at = 1_000;
+            metered.quote.expires_at = None;
+        }
+        ChioKernel::validate_metered_billing_context(&intent, None, true, 1_500)
+            .expect("an open-ended quote issued in the past must be accepted");
     }
 }

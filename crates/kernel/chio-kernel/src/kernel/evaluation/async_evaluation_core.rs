@@ -1,4 +1,4 @@
-use super::evaluation_helpers::PreDispatchCleanupDeny;
+use super::evaluation_helpers::{ExecutionNonceReservingResponse, PreDispatchCleanupDeny};
 use super::*;
 
 impl ChioKernel {
@@ -8,6 +8,7 @@ impl ChioKernel {
         session_filesystem_roots: Option<&[String]>,
         extra_metadata: Option<serde_json::Value>,
         session_id: Option<&SessionId>,
+        preflight_disposition: PreflightHoldDisposition,
     ) -> Result<ToolCallResponse, KernelError> {
         let tenant_id = self.resolve_tenant_id_for_session(session_id);
         let _tenant_request_scope =
@@ -19,6 +20,7 @@ impl ChioKernel {
             extra_metadata,
             session_id,
             receipt_context,
+            preflight_disposition,
         )
         .await
     }
@@ -30,6 +32,7 @@ impl ChioKernel {
         extra_metadata: Option<serde_json::Value>,
         session_id: Option<&SessionId>,
         mut receipt_context: EvaluationReceiptContext,
+        preflight_disposition: PreflightHoldDisposition,
     ) -> Result<ToolCallResponse, KernelError> {
         let runtime_admission_input_metadata = extra_metadata.clone();
         let sanitized_metadata =
@@ -366,17 +369,29 @@ impl ChioKernel {
             }
         }
 
-        if let Err(e) = self.ensure_registered_tool_target(request) {
-            let msg = e.to_string();
-            warn!(request_id = %request.request_id, reason = %redacted!(&msg), "tool target not registered");
-            return self.build_deny_response_with_metadata(
-                request,
-                &receipt_context,
-                &msg,
-                now,
-                None,
-                extra_metadata.clone(),
-            );
+        // The reserve-for-caller authorization path never dispatches a tool on
+        // this kernel, so it must not require the caller's tool server to be
+        // registered; the sidecar can then avoid registering caller-arbitrary
+        // server ids (unbounded growth). Every other path, including a
+        // ReserveForCaller request that falls through to dispatch because no nonce
+        // preflight is required, still requires registration exactly as before.
+        let reserving_preflight = matches!(
+            preflight_disposition,
+            PreflightHoldDisposition::ReserveForCaller
+        ) && self.execution_nonce_preflight_required(request);
+        if !reserving_preflight {
+            if let Err(e) = self.ensure_registered_tool_target(request) {
+                let msg = e.to_string();
+                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "tool target not registered");
+                return self.build_deny_response_with_metadata(
+                    request,
+                    &receipt_context,
+                    &msg,
+                    now,
+                    None,
+                    extra_metadata.clone(),
+                );
+            }
         }
 
         // Persistence was confirmed healthy at the pre-dispatch gate above, so the
@@ -433,6 +448,11 @@ impl ChioKernel {
             request,
             cap,
             &matching_grants,
+            self.execution_nonce_preflight_required(request)
+                && matches!(
+                    preflight_disposition,
+                    PreflightHoldDisposition::ReverseForRetry
+                ),
         ) {
             Ok(result) => result,
             Err(e) => {
@@ -502,6 +522,7 @@ impl ChioKernel {
                             self.budget_execution_receipt_metadata(
                                 charge,
                                 Some(("reversed", reverse)),
+                                None,
                             ),
                         ),
                     );
@@ -557,6 +578,7 @@ impl ChioKernel {
                             self.budget_execution_receipt_metadata(
                                 charge,
                                 Some(("reversed", reverse)),
+                                None,
                             ),
                         ),
                     );
@@ -615,6 +637,7 @@ impl ChioKernel {
                                 self.budget_execution_receipt_metadata(
                                     charge,
                                     Some(("reversed", reverse)),
+                                    None,
                                 ),
                             ),
                         )
@@ -713,6 +736,7 @@ impl ChioKernel {
                             self.budget_execution_receipt_metadata(
                                 charge,
                                 Some(("reversed", reverse)),
+                                None,
                             ),
                         ),
                     )
@@ -790,17 +814,399 @@ impl ChioKernel {
 
         if self.execution_nonce_preflight_required(request) {
             return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
-                self.build_execution_nonce_preflight_allow_response_after_cleanup(
-                    request,
-                    &receipt_context,
-                    now,
-                    matched_grant_index,
-                    cap,
-                    &budget_mutation,
-                    receipt_metadata.clone(),
-                    runtime_admission_metadata.clone(),
-                    budget_lease_acquired,
-                )
+                match preflight_disposition {
+                    PreflightHoldDisposition::ReverseForRetry => self
+                        .build_execution_nonce_preflight_allow_response_after_cleanup(
+                            request,
+                            &receipt_context,
+                            now,
+                            matched_grant_index,
+                            cap,
+                            &budget_mutation,
+                            receipt_metadata.clone(),
+                            runtime_admission_metadata.clone(),
+                            budget_lease_acquired,
+                        ),
+                    PreflightHoldDisposition::ReserveForCaller => {
+                        // A reserve-for-caller request uses presented DPoP and
+                        // governed approval credentials to authorize minting the
+                        // downstream execution nonce. Reserve them atomically after
+                        // admission, then revalidate mutable state before the
+                        // authorization effect. A denial can roll the owned markers
+                        // back, while concurrent replays remain blocked.
+                        let governed_mustprepay = Self::is_governed_mustprepay_request(request);
+                        let mut payment_credential_disposition =
+                            PaymentCredentialDisposition::NonePresent;
+                        let mut credential_reservation = match self
+                            .reserve_caller_authorization_credentials(
+                                request,
+                                cap,
+                                dpop_required,
+                                now,
+                                governed_mustprepay,
+                            ) {
+                            Ok(reservation) => reservation,
+                            Err(error) => {
+                                let msg = error.to_string();
+                                warn!(
+                                    request_id = %request.request_id,
+                                    reason = %redacted!(&msg),
+                                    "reserve-for-caller credential reservation denied"
+                                );
+                                return self.build_pre_dispatch_cleanup_deny_response(
+                                    PreDispatchCleanupDeny {
+                                        request,
+                                        evaluation_context: &receipt_context,
+                                        reason: &msg,
+                                        timestamp: now,
+                                        matched_grant_index,
+                                        cap,
+                                        budget_mutation: &budget_mutation,
+                                        payment_authorization: None,
+                                        receipt_metadata: receipt_metadata.clone(),
+                                        runtime_admission_metadata:
+                                            runtime_admission_metadata.clone(),
+                                        budget_lease_acquired,
+                                    },
+                                );
+                            }
+                        };
+                        if credential_reservation.requires_post_reservation_revalidation() {
+                            let post_reservation_now_unix_ms = current_unix_timestamp_ms();
+                            let post_reservation_now = post_reservation_now_unix_ms / 1000;
+                            if let Err(error) = self.revalidate_runtime_readiness_boundary(
+                                RuntimeReadinessRevalidation {
+                                    request,
+                                    dpop_required,
+                                    matched_grant,
+                                    matched_grant_index,
+                                    charge_result: budget_mutation.charge_result(),
+                                    parent_context: None,
+                                    session_id,
+                                    session_filesystem_roots,
+                                    receipt_admission: &receipt_admission,
+                                    runtime_admission_metadata:
+                                        runtime_admission_metadata.as_ref(),
+                                    readiness_waited: false,
+                                    force_mutable_state_revalidation: true,
+                                    reserve_for_caller_preflight: true,
+                                    now_unix_secs: post_reservation_now,
+                                    now_unix_ms: post_reservation_now_unix_ms,
+                                },
+                            ) {
+                                let mut msg = dispatch_admission_error_reason(&error);
+                                if let Err(rollback_error) =
+                                    credential_reservation.rollback_before_dispatch()
+                                {
+                                    msg = format!("{msg}; {rollback_error}");
+                                    payment_credential_disposition =
+                                        PaymentCredentialDisposition::RetentionOutcomeUnknown;
+                                }
+                                warn!(
+                                    request_id = %request.request_id,
+                                    reason = %redacted!(&msg),
+                                    "reserve-for-caller post-reservation revalidation denied"
+                                );
+                                let cancelled =
+                                    matches!(error, KernelError::RequestCancelled { .. });
+                                let cleanup = PreDispatchCleanupDeny {
+                                    request,
+                                    evaluation_context: &receipt_context,
+                                    reason: &msg,
+                                    timestamp: post_reservation_now,
+                                    matched_grant_index,
+                                    cap,
+                                    budget_mutation: &budget_mutation,
+                                    payment_authorization: None,
+                                    receipt_metadata: receipt_metadata.clone(),
+                                    runtime_admission_metadata:
+                                        runtime_admission_metadata.clone(),
+                                    budget_lease_acquired,
+                                };
+                                return if cancelled {
+                                    self.build_pre_dispatch_cleanup_cancelled_response_with_credentials(
+                                        cleanup,
+                                        payment_credential_disposition,
+                                    )
+                                } else if payment_credential_disposition
+                                    == PaymentCredentialDisposition::RetentionOutcomeUnknown
+                                {
+                                    self.build_pre_dispatch_cleanup_deny_response_with_credentials(
+                                        cleanup,
+                                        payment_credential_disposition,
+                                    )
+                                } else {
+                                    self.build_pre_dispatch_cleanup_deny_response(cleanup)
+                                };
+                            }
+                        }
+                        let settled_prepayment = if governed_mustprepay {
+                            let payment_authorization_credential_reserved =
+                                credential_reservation.has_payment_authorization_credential();
+                            let authorization = match self.authorize_payment_if_needed(
+                                request,
+                                None,
+                                payment_authorization_credential_reserved,
+                            ) {
+                                Ok(Some(authorization)) => {
+                                    // Once the rail acknowledges authorization, a
+                                    // retry could create a second hold even if later
+                                    // capture or reservation cleanup succeeds. Retain
+                                    // every credential marker before any further rail
+                                    // call.
+                                    match credential_reservation.retain_if_dropped() {
+                                        Ok(disposition) => {
+                                            payment_credential_disposition = disposition;
+                                        }
+                                        Err(error) => {
+                                            payment_credential_disposition =
+                                                PaymentCredentialDisposition::RetentionOutcomeUnknown;
+                                            let msg = format!(
+                                                "reserve-for-caller credential retention failed after payment authorization: {error}"
+                                            );
+                                            warn!(
+                                                request_id = %request.request_id,
+                                                reason = %redacted!(&msg),
+                                                "reserve-for-caller prepayment denied"
+                                            );
+                                            return self
+                                                .build_pre_dispatch_cleanup_deny_response_with_credentials(
+                                                    PreDispatchCleanupDeny {
+                                                        request,
+                                                        evaluation_context: &receipt_context,
+                                                        reason: &msg,
+                                                        timestamp: now,
+                                                        matched_grant_index,
+                                                        cap,
+                                                        budget_mutation: &budget_mutation,
+                                                        payment_authorization: Some(&authorization),
+                                                        receipt_metadata: receipt_metadata.clone(),
+                                                        runtime_admission_metadata:
+                                                            runtime_admission_metadata.clone(),
+                                                        budget_lease_acquired,
+                                                    },
+                                                    payment_credential_disposition,
+                                                );
+                                        }
+                                    }
+                                    authorization
+                                }
+                                Ok(None) => {
+                                    let mut msg = "MustPrepay intent reached the reserve-for-caller path without an authorized prepayment".to_string();
+                                    if let Err(rollback_error) =
+                                        credential_reservation.rollback_before_dispatch()
+                                    {
+                                        msg = format!("{msg}; {rollback_error}");
+                                        payment_credential_disposition =
+                                            PaymentCredentialDisposition::RetentionOutcomeUnknown;
+                                    }
+                                    warn!(
+                                        request_id = %request.request_id,
+                                        reason = %redacted!(&msg),
+                                        "reserve-for-caller prepayment denied"
+                                    );
+                                    let denial = PreDispatchCleanupDeny {
+                                        request,
+                                        evaluation_context: &receipt_context,
+                                        reason: &msg,
+                                        timestamp: now,
+                                        matched_grant_index,
+                                        cap,
+                                        budget_mutation: &budget_mutation,
+                                        payment_authorization: None,
+                                        receipt_metadata: receipt_metadata.clone(),
+                                        runtime_admission_metadata:
+                                            runtime_admission_metadata.clone(),
+                                        budget_lease_acquired,
+                                    };
+                                    return if payment_credential_disposition
+                                        == PaymentCredentialDisposition::RetentionOutcomeUnknown
+                                    {
+                                        self.build_pre_dispatch_cleanup_deny_response_with_credentials(
+                                            denial,
+                                            payment_credential_disposition,
+                                        )
+                                    } else {
+                                        self.build_pre_dispatch_cleanup_deny_response(denial)
+                                    };
+                                }
+                                Err(error) => {
+                                    let outcome_unknown_reason =
+                                        error.outcome_unknown_reason().map(str::to_owned);
+                                    let mut msg = format!(
+                                        "MustPrepay prepayment authorization failed before reserving an execution nonce: {error}"
+                                    );
+                                    if outcome_unknown_reason.is_some() {
+                                        payment_credential_disposition =
+                                            match credential_reservation.commit() {
+                                                Ok(disposition) => disposition,
+                                                Err(retention_error) => {
+                                                    msg = format!("{msg}; {retention_error}");
+                                                    PaymentCredentialDisposition::RetentionOutcomeUnknown
+                                                }
+                                            };
+                                    } else if let Err(rollback_error) =
+                                        credential_reservation.rollback_before_dispatch()
+                                    {
+                                        msg = format!("{msg}; {rollback_error}");
+                                        payment_credential_disposition =
+                                            PaymentCredentialDisposition::RetentionOutcomeUnknown;
+                                    }
+                                    warn!(
+                                        request_id = %request.request_id,
+                                        reason = %redacted!(&msg),
+                                        "reserve-for-caller prepayment authorization denied"
+                                    );
+                                    let denial = PreDispatchCleanupDeny {
+                                        request,
+                                        evaluation_context: &receipt_context,
+                                        reason: &msg,
+                                        timestamp: now,
+                                        matched_grant_index,
+                                        cap,
+                                        budget_mutation: &budget_mutation,
+                                        payment_authorization: None,
+                                        receipt_metadata: receipt_metadata.clone(),
+                                        runtime_admission_metadata:
+                                            runtime_admission_metadata.clone(),
+                                        budget_lease_acquired,
+                                    };
+                                    return if let Some(reason) = outcome_unknown_reason.as_deref() {
+                                        self.build_payment_authorization_outcome_unknown_deny_response(
+                                            denial,
+                                            reason,
+                                            payment_credential_disposition,
+                                        )
+                                    } else if payment_credential_disposition
+                                        == PaymentCredentialDisposition::RetentionOutcomeUnknown
+                                    {
+                                        self.build_pre_dispatch_cleanup_deny_response_with_credentials(
+                                            denial,
+                                            payment_credential_disposition,
+                                        )
+                                    } else {
+                                        self.build_pre_dispatch_cleanup_deny_response(denial)
+                                    };
+                                }
+                            };
+
+                            match self.settle_reserved_mustprepay_prepayment(
+                                request,
+                                &authorization,
+                            ) {
+                                Ok(prepayment) => Some(prepayment),
+                                Err(error) => {
+                                    let msg = error.to_string();
+                                    warn!(
+                                        request_id = %request.request_id,
+                                        reason = %redacted!(&msg),
+                                        "reserve-for-caller prepayment settlement denied"
+                                    );
+                                    return self
+                                        .build_pre_dispatch_cleanup_deny_response_with_credentials(
+                                            PreDispatchCleanupDeny {
+                                                request,
+                                                evaluation_context: &receipt_context,
+                                                reason: &msg,
+                                                timestamp: now,
+                                                matched_grant_index,
+                                                cap,
+                                                budget_mutation: &budget_mutation,
+                                                payment_authorization: Some(&authorization),
+                                                receipt_metadata: receipt_metadata.clone(),
+                                                runtime_admission_metadata:
+                                                    runtime_admission_metadata.clone(),
+                                                budget_lease_acquired,
+                                            },
+                                            payment_credential_disposition,
+                                        );
+                                }
+                            }
+                        } else {
+                            None
+                        };
+                        if payment_credential_disposition
+                            == PaymentCredentialDisposition::NonePresent
+                        {
+                            // The response builder mints the downstream authority
+                            // and may stamp a durable hold. Retain replay markers
+                            // immediately before entering that authorization effect
+                            // boundary, matching normal dispatch credential handling.
+                            match credential_reservation.retain_if_dropped() {
+                                Ok(_) => {}
+                                Err(error) => {
+                                    payment_credential_disposition =
+                                        PaymentCredentialDisposition::RetentionOutcomeUnknown;
+                                    let msg = format!(
+                                        "reserve-for-caller credential retention failed before authorization: {error}"
+                                    );
+                                    warn!(
+                                        request_id = %request.request_id,
+                                        reason = %redacted!(&msg),
+                                        "reserve-for-caller authorization denied"
+                                    );
+                                    return self
+                                        .build_pre_dispatch_cleanup_deny_response_with_credentials(
+                                            PreDispatchCleanupDeny {
+                                                request,
+                                                evaluation_context: &receipt_context,
+                                                reason: &msg,
+                                                timestamp: current_unix_timestamp(),
+                                                matched_grant_index,
+                                                cap,
+                                                budget_mutation: &budget_mutation,
+                                                payment_authorization: None,
+                                                receipt_metadata: receipt_metadata.clone(),
+                                                runtime_admission_metadata:
+                                                    runtime_admission_metadata.clone(),
+                                                budget_lease_acquired,
+                                            },
+                                            payment_credential_disposition,
+                                        );
+                                }
+                            }
+                        }
+                        // A settled MustPrepay prepayment is captured before the
+                        // reservation is minted. Carry its rail reference onto the
+                        // reserved hold so the downstream reconcile receipt can name
+                        // the transaction that funded the spend. If minting the nonce,
+                        // stamping the reserved hold, or persisting the reserved
+                        // receipt fails, the hold is reversed but the captured
+                        // prepayment would otherwise stay charged for a reservation the
+                        // caller never received. Refund it on that tear-down so a
+                        // denied reservation leaves the payer net-unbilled; a
+                        // non-MustPrepay reserve has no captured prepayment and nothing
+                        // to carry or refund.
+                        let reserved_payment_reference = settled_prepayment
+                            .as_ref()
+                            .and_then(|prepayment| prepayment.payment_reference.clone());
+                        match self.build_execution_nonce_authorization_reserving_response(
+                            ExecutionNonceReservingResponse {
+                                request,
+                                evaluation_context: &receipt_context,
+                                timestamp: now,
+                                matched_grant_index,
+                                budget_mutation: &budget_mutation,
+                                receipt_metadata: receipt_metadata.clone(),
+                                runtime_admission_metadata: runtime_admission_metadata.clone(),
+                                reserved_payment_reference,
+                                budget_lease_acquired,
+                            },
+                        ) {
+                            Ok(response) => Ok(response),
+                            Err(error) => {
+                                if let Some(prepayment) = settled_prepayment.as_ref() {
+                                    self.refund_reserved_mustprepay_prepayment(
+                                        request,
+                                        cap,
+                                        &prepayment.authorization,
+                                    );
+                                }
+                                Err(error)
+                            }
+                        }
+                    }
+                }
             });
         }
 
@@ -888,6 +1294,7 @@ impl ChioKernel {
                     runtime_admission_metadata: runtime_admission_metadata.as_ref(),
                     readiness_waited,
                     force_mutable_state_revalidation: false,
+                    reserve_for_caller_preflight: false,
                     now_unix_secs: dispatch_now,
                     now_unix_ms: dispatch_now_unix_ms,
                 })
@@ -975,6 +1382,7 @@ impl ChioKernel {
                     runtime_admission_metadata: runtime_admission_metadata.as_ref(),
                     readiness_waited,
                     force_mutable_state_revalidation: true,
+                    reserve_for_caller_preflight: false,
                     now_unix_secs: post_reservation_now,
                     now_unix_ms: post_reservation_now_unix_ms,
                 })
@@ -1195,6 +1603,7 @@ impl ChioKernel {
                 runtime_admission_metadata: runtime_admission_metadata.as_ref(),
                 readiness_waited,
                 force_mutable_state_revalidation: payment_authorization.is_some(),
+                reserve_for_caller_preflight: false,
                 now_unix_secs: dispatch_now,
                 now_unix_ms: dispatch_now_unix_ms,
             });

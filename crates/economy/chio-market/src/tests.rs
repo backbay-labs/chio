@@ -801,6 +801,8 @@ fn sample_market_fixtures() -> MarketFixtures {
         outcome: LiabilityClaimAdjudicationOutcome::PartialSettlement,
         awarded_amount: Some(usd(6_000)),
         note: Some("partial settlement ordered".to_string()),
+        decision_rule_ref: None,
+        roster_anchor_ref: None,
         evidence_refs: Vec::new(),
     });
     let capital_instruction = sign_export(crate::credit::CapitalExecutionInstructionArtifact {
@@ -1431,4 +1433,112 @@ fn liability_claim_settlement_receipt_rejects_counterparty_match_in_mismatch_sta
         "counterparty mismatch requires differing counterparties",
     );
     assert!(error.contains("require at least one observed counterparty to differ"));
+}
+
+#[test]
+fn adjudication_new_optional_fields_are_omitted_when_none() {
+    let fixtures = sample_market_fixtures();
+    let adjudication = fixtures.claim_adjudication.body.clone();
+    let json = require_ok(
+        serde_json::to_string(&adjudication),
+        "serialize adjudication",
+    );
+    assert!(
+        !json.contains("decisionRuleRef") && !json.contains("decision_rule_ref"),
+        "decision_rule_ref must be omitted when None: {json}"
+    );
+    assert!(
+        !json.contains("rosterAnchorRef") && !json.contains("roster_anchor_ref"),
+        "roster_anchor_ref must be omitted when None: {json}"
+    );
+}
+
+#[test]
+fn adjudication_shape_validate_rejects_blank_decision_rule() {
+    let fixtures = sample_market_fixtures();
+    let mut adjudication = fixtures.claim_adjudication.body.clone();
+    adjudication.decision_rule_ref = Some("   ".to_string());
+    let error = require_err(
+        adjudication.validate(),
+        "blank decision_rule_ref must fail shape validation",
+    );
+    assert!(error.contains("decision_rule_ref"));
+}
+
+#[test]
+fn validate_against_roster_accepts_on_roster_with_rule_and_anchor() {
+    let fixtures = sample_market_fixtures();
+    let mut adjudication = fixtures.claim_adjudication.body.clone();
+    adjudication.decision_rule_ref = Some("rule.partial-settlement.v1".to_string());
+    adjudication.roster_anchor_ref = Some("roster-anchor-abc".to_string());
+    require_ok(
+        adjudication.validate_against_roster(
+            &["arbiter.chio".to_string()],
+            &["rule.partial-settlement.v1".to_string()],
+            "roster-anchor-abc",
+        ),
+        "on-roster adjudicator with valid rule and matching anchor should pass",
+    );
+}
+
+#[test]
+fn validate_against_roster_rejects_off_roster_adjudicator() {
+    let fixtures = sample_market_fixtures();
+    let mut adjudication = fixtures.claim_adjudication.body.clone();
+    adjudication.decision_rule_ref = Some("rule.partial-settlement.v1".to_string());
+    adjudication.roster_anchor_ref = Some("roster-anchor-abc".to_string());
+    let error = require_err(
+        adjudication.validate_against_roster(
+            &["someone.else".to_string()],
+            &["rule.partial-settlement.v1".to_string()],
+            "roster-anchor-abc",
+        ),
+        "off-roster adjudicator must be denied",
+    );
+    assert!(error.contains("not on the predeclared roster"));
+}
+
+#[test]
+fn validate_against_roster_rejects_missing_or_unknown_rule() {
+    let fixtures = sample_market_fixtures();
+    let mut adjudication = fixtures.claim_adjudication.body.clone();
+    adjudication.roster_anchor_ref = Some("roster-anchor-abc".to_string());
+    // missing rule
+    let missing = require_err(
+        adjudication.validate_against_roster(
+            &["arbiter.chio".to_string()],
+            &["rule.partial-settlement.v1".to_string()],
+            "roster-anchor-abc",
+        ),
+        "missing decision_rule_ref must be denied",
+    );
+    assert!(missing.contains("decision_rule_ref"));
+    // present but unknown rule
+    adjudication.decision_rule_ref = Some("rule.unknown".to_string());
+    let unknown = require_err(
+        adjudication.validate_against_roster(
+            &["arbiter.chio".to_string()],
+            &["rule.partial-settlement.v1".to_string()],
+            "roster-anchor-abc",
+        ),
+        "unknown decision_rule_ref must be denied",
+    );
+    assert!(unknown.contains("not an allowed decision rule"));
+}
+
+#[test]
+fn validate_against_roster_rejects_anchor_mismatch() {
+    let fixtures = sample_market_fixtures();
+    let mut adjudication = fixtures.claim_adjudication.body.clone();
+    adjudication.decision_rule_ref = Some("rule.partial-settlement.v1".to_string());
+    adjudication.roster_anchor_ref = Some("roster-anchor-STALE".to_string());
+    let error = require_err(
+        adjudication.validate_against_roster(
+            &["arbiter.chio".to_string()],
+            &["rule.partial-settlement.v1".to_string()],
+            "roster-anchor-abc",
+        ),
+        "recorded anchor not matching the applied roster must be denied",
+    );
+    assert!(error.contains("roster_anchor_ref"));
 }

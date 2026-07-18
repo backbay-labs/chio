@@ -1761,6 +1761,8 @@ pub(super) fn signed_liability_claim_adjudication_fixture(
         outcome: chio_kernel::LiabilityClaimAdjudicationOutcome::PartialSettlement,
         awarded_amount: Some(awarded_amount),
         note: Some("fixture adjudication".to_string()),
+        decision_rule_ref: None,
+        roster_anchor_ref: None,
         evidence_refs: Vec::new(),
     })
 }

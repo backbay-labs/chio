@@ -2,6 +2,40 @@ use super::*;
 use chio_api_protect::DEFAULT_UPSTREAM_REQUEST_TIMEOUT;
 use std::time::Duration;
 
+use crate::mcp_cli::payment_config::PaymentAdapterConfig;
+
+/// Resolve the operator's payment adapter for the kernel-mediated sidecar route
+/// from the environment. Reuses the shared `CHIO_PAYMENT_ADAPTER` selection: an
+/// absent variable or `sim` leaves the sidecar with no adapter (governed
+/// MustPrepay stays denied fail-closed), `http-x402`/`http-acp` install the
+/// configured facilitator rail, and an unrecognized kind fails closed at load.
+pub(crate) fn resolve_sidecar_payment_adapter(
+) -> Result<Option<Box<dyn chio_kernel::PaymentAdapter>>, CliError> {
+    let config = PaymentAdapterConfig::from_env().map_err(|error| {
+        CliError::cli_other_error(format!("invalid payment adapter configuration: {error}"))
+    })?;
+    sidecar_payment_adapter_from_config(config)
+}
+
+/// Build the boxed payment adapter for a resolved adapter selection, validating
+/// its shape at load time (house rule: invalid configuration rejects at load).
+/// `None` yields no adapter, so governed MustPrepay stays denied fail-closed.
+fn sidecar_payment_adapter_from_config(
+    config: Option<PaymentAdapterConfig>,
+) -> Result<Option<Box<dyn chio_kernel::PaymentAdapter>>, CliError> {
+    match config {
+        Some(config) => {
+            config.validate().map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "invalid payment adapter configuration: {error}"
+                ))
+            })?;
+            Ok(Some(config.build_adapter()))
+        }
+        None => Ok(None),
+    }
+}
+
 pub(crate) fn cmd_run(
     policy_path: &Path,
     command: &[String],
@@ -295,12 +329,17 @@ fn durable_receipt_db_path(receipt_store: Option<&Path>) -> Option<&Path> {
     receipt_store.filter(|path| !is_in_memory_sqlite_path(path))
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn cmd_api_protect(
     upstream: &str,
     spec_path: Option<&Path>,
     listen_addr: &str,
     receipt_store: Option<&Path>,
     authority_seed_path: Option<&Path>,
+    budget_db: Option<&Path>,
+    revocation_db: Option<&Path>,
+    control_url: Option<&str>,
+    control_token: Option<&str>,
     allow_ephemeral_receipts: bool,
     upstream_timeout_secs: Option<u64>,
 ) -> Result<(), CliError> {
@@ -327,6 +366,7 @@ pub(crate) fn cmd_api_protect(
             .transpose()?
             .map(|keypair| keypair.seed_hex());
         let trusted_capability_issuers = parse_trusted_capability_issuers_from_env()?;
+        let payment_adapter = resolve_sidecar_payment_adapter()?;
         let config = ProtectConfig {
             upstream: upstream.to_string(),
             spec_content: None,
@@ -341,13 +381,23 @@ pub(crate) fn cmd_api_protect(
             sidecar_control_token,
             signer_seed_hex,
             trusted_capability_issuers,
+            control_url: control_url.map(str::to_string),
+            control_token: control_token.map(str::to_string),
+            budget_db: budget_db.map(|path| path.display().to_string()),
+            revocation_db: revocation_db.map(|path| path.display().to_string()),
+            require_nonce: false,
+            allow_advisory: false,
             upstream_request_timeout: upstream_timeout_secs
                 .map(Duration::from_secs)
                 .unwrap_or(DEFAULT_UPSTREAM_REQUEST_TIMEOUT),
         };
-        ProtectProxy::new(config).run().await.map_err(|error| {
-            CliError::transport_error(format!("failed to start chio api protect: {error}"))
-        })
+        ProtectProxy::new(config)
+            .with_payment_adapter(payment_adapter)
+            .run()
+            .await
+            .map_err(|error| {
+                CliError::transport_error(format!("failed to start chio api protect: {error}"))
+            })
     })
 }
 
@@ -367,10 +417,15 @@ paths: {}
 
 pub(crate) const CHIO_START_NO_UPSTREAM_URL: &str = "http://127.0.0.1:1";
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn cmd_start(
     listen_addr: &str,
     receipt_store: Option<&Path>,
     authority_seed_path: Option<&Path>,
+    budget_db: Option<&Path>,
+    revocation_db: Option<&Path>,
+    control_url: Option<&str>,
+    control_token: Option<&str>,
     allow_ephemeral_receipts: bool,
     print_config: bool,
 ) -> Result<(), CliError> {
@@ -397,6 +452,20 @@ pub(crate) fn cmd_start(
             .transpose()?
             .map(|keypair| keypair.seed_hex());
         let trusted_capability_issuers = parse_trusted_capability_issuers_from_env()?;
+        // The mediated `/v1/evaluate` route reserves a durable budget hold and
+        // mints an execution nonce the trusted tool server settles on
+        // `/v1/reconcile`. That works only when a hold-capable local SQLite
+        // budget store (`--budget-db`) backs it AND a sidecar-control token gates
+        // reconcile: a remote `--control-url` store cannot persist a reserved
+        // hold, and a missing control token rejects every reconcile, so either
+        // alone leaves mediation failing closed. `chio start` keeps other optional
+        // stores in-memory so the first run leaves no on-disk artifacts, and does
+        // not fabricate a default budget store here. Advertise the route only when
+        // both backers are present; otherwise the banner omits it rather than
+        // advertising one that always fails closed.
+        let mediation_available =
+            sidecar_mediation_available(budget_db, sidecar_control_token.as_deref());
+        let payment_adapter = resolve_sidecar_payment_adapter()?;
         let config = ProtectConfig {
             // The chio-start shape never proxies upstream traffic; the
             // catch-all route exists only because the underlying axum
@@ -416,18 +485,25 @@ pub(crate) fn cmd_start(
             sidecar_control_token,
             signer_seed_hex,
             trusted_capability_issuers,
+            control_url: control_url.map(str::to_string),
+            control_token: control_token.map(str::to_string),
+            budget_db: budget_db.map(|path| path.display().to_string()),
+            revocation_db: revocation_db.map(|path| path.display().to_string()),
+            require_nonce: false,
+            allow_advisory: false,
             // The chio-start shape never proxies upstream, so the hop ceiling is
             // moot; keep the default so the serve site's drain window is unchanged.
             upstream_request_timeout: DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
         };
 
         ProtectProxy::new(config)
+            .with_payment_adapter(payment_adapter)
             .run_with_observer(move |bound_addr| {
                 let base_url = format!("http://{bound_addr}");
                 println!("chio sidecar listening on {base_url}");
-                println!(
-                    "  routes: /chio/* (health, evaluate, verify), /v1/capabilities/{{,mint,validate,attenuate,release}}, /v1/evaluate, /v1/receipts{{,/verify}}, /approvals/*"
-                );
+                for line in start_sidecar_route_banner(mediation_available) {
+                    println!("{line}");
+                }
                 if print_config {
                     println!();
                     println!("# chio-hermes quickstart -- copy into your shell:");
@@ -443,6 +519,56 @@ pub(crate) fn cmd_start(
                 CliError::transport_error(format!("failed to start chio sidecar: {error}"))
             })
     })
+}
+
+/// Whether the sidecar can actually serve the mediated `/v1/evaluate` route,
+/// and therefore whether the startup banner advertises it. Mediation reserves a
+/// durable budget hold and mints an execution nonce that the trusted tool server
+/// later settles on `/v1/reconcile`, so it works only when BOTH backing pieces
+/// are present:
+///
+/// - a hold-capable budget store, which only the local SQLite `--budget-db`
+///   provides. A remote `--control-url` store forwards charge/reverse/reconcile
+///   and falls back to the no-op hold APIs, so it cannot persist a reserved hold
+///   and every mediated authorization rejects fail-closed. This mirrors the
+///   proxy's `build_budget_store` hold-capability determination
+///   (hold-capable exactly when `--budget-db` is configured).
+/// - a sidecar-control token, without which every `/v1/reconcile` is rejected by
+///   the reconcile control gate and a minted reservation could only expire and
+///   forfeit budget.
+///
+/// Requiring both keeps the advertised surface matched to what the running
+/// configuration can actually authorize, rather than listing a route that always
+/// denies.
+pub(crate) fn sidecar_mediation_available(
+    budget_db: Option<&Path>,
+    sidecar_control_token: Option<&str>,
+) -> bool {
+    budget_db.is_some() && sidecar_control_token.is_some()
+}
+
+/// Build the `chio start` route banner. The mediated `/v1/evaluate` route is
+/// advertised only when `mediation_available` (see `sidecar_mediation_available`):
+/// a hold-capable local budget store (`--budget-db`) AND a sidecar-control token
+/// must both be configured. When it is absent the banner omits the route and
+/// explains how to enable it, so the advertised surface always matches the
+/// running configuration instead of listing a route that always fails closed.
+pub(crate) fn start_sidecar_route_banner(mediation_available: bool) -> Vec<String> {
+    let evaluate_route = if mediation_available {
+        ", /v1/evaluate"
+    } else {
+        ""
+    };
+    let mut lines = vec![format!(
+        "  routes: /chio/* (health, evaluate, verify), /v1/capabilities/{{,mint,validate,attenuate,release}}{evaluate_route}, /v1/receipts{{,/verify}}, /approvals/*"
+    )];
+    if !mediation_available {
+        lines.push(
+            "  note: mediated /v1/evaluate is disabled without a hold-capable budget store and a sidecar-control token; pass --budget-db <path> and set CHIO_SIDECAR_CONTROL_TOKEN to enable tool-call budget mediation"
+                .to_string(),
+        );
+    }
+    lines
 }
 
 pub(crate) fn parse_trusted_capability_issuers_from_env(
@@ -1129,6 +1255,23 @@ pub(crate) fn require_receipt_db_path(receipt_db_path: Option<&Path>) -> Result<
     })
 }
 
+pub(crate) fn load_roster_policy(
+    path: &Path,
+) -> Result<trust_control::RosterPolicy, CliError> {
+    let bytes = std::fs::read(path).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "failed to read roster policy file `{}`: {error}",
+            path.display()
+        ))
+    })?;
+    serde_json::from_slice(&bytes).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "failed to parse roster policy file `{}`: {error}",
+            path.display()
+        ))
+    })
+}
+
 pub(crate) fn cmd_trust_serve(
     listen: SocketAddr,
     service_token: &str,
@@ -1154,6 +1297,7 @@ pub(crate) fn cmd_trust_serve(
     certification_public_metadata_ttl_seconds: u64,
     peer_urls: &[String],
     cluster_sync_interval_ms: u64,
+    roster_policy_file: Option<&Path>,
 ) -> Result<(), CliError> {
     if service_token.trim().is_empty() {
         return Err(CliError::cli_other_error(
@@ -1174,6 +1318,7 @@ pub(crate) fn cmd_trust_serve(
         .transpose()?
         .map(|loaded| (loaded.issuance_policy, loaded.runtime_assurance_policy))
         .unwrap_or((None, None));
+    let roster_policy = roster_policy_file.map(load_roster_policy).transpose()?;
     trust_control::serve(trust_control::TrustServiceConfig {
         listen,
         service_token: service_token.to_string(),
@@ -1199,6 +1344,7 @@ pub(crate) fn cmd_trust_serve(
         certification_public_metadata_ttl_seconds,
         peer_urls: peer_urls.to_vec(),
         cluster_sync_interval: std::time::Duration::from_millis(cluster_sync_interval_ms.max(50)),
+        roster_policy,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
     })
 }
@@ -1505,5 +1651,103 @@ mod runtime_local_error_domain_tests {
         assert!(contract.allowed_schemes.contains("http"));
         assert!(contract.allowed_authority_set.contains("127.0.0.1:18080"));
         assert!(!contract.deny_loopback);
+    }
+
+    #[test]
+    fn sidecar_payment_adapter_threads_configured_rail_and_fails_closed() {
+        // A configured http facilitator rail resolves to an installable adapter
+        // that cmd_start / cmd_api_protect thread into the sidecar proxy via
+        // `ProtectProxy::with_payment_adapter`.
+        let configured = sidecar_payment_adapter_from_config(Some(PaymentAdapterConfig::HttpX402 {
+            base_url: "https://facilitator.example".to_string(),
+            bearer_token: Some("token".to_string()),
+        }));
+        assert!(
+            matches!(configured, Ok(Some(_))),
+            "a configured http payment rail must thread an installable adapter into the sidecar"
+        );
+
+        // Absent / `sim` selection (from_env yields None) leaves the sidecar with
+        // no adapter, so governed MustPrepay stays denied fail-closed.
+        let default = sidecar_payment_adapter_from_config(None);
+        assert!(
+            matches!(default, Ok(None)),
+            "no configured adapter must leave governed MustPrepay denied fail-closed"
+        );
+
+        // A malformed rail (blank base_url) rejects at load rather than starting a
+        // sidecar whose payment rail can never authorize.
+        let rejected = sidecar_payment_adapter_from_config(Some(PaymentAdapterConfig::HttpAcp {
+            base_url: "   ".to_string(),
+            bearer_token: None,
+        }));
+        assert!(
+            rejected.is_err(),
+            "a malformed payment rail must fail closed at load"
+        );
+    }
+
+    #[test]
+    fn start_banner_advertises_evaluate_only_when_budget_store_present() {
+        let with_store = start_sidecar_route_banner(true);
+        assert_eq!(
+            with_store.len(),
+            1,
+            "banner should be a single routes line when mediation is available"
+        );
+        assert!(
+            with_store[0].contains(", /v1/evaluate,"),
+            "advertised routes must list /v1/evaluate when a budget store backs it: {}",
+            with_store[0]
+        );
+
+        let without_store = start_sidecar_route_banner(false);
+        assert!(
+            !without_store[0].contains("/v1/evaluate"),
+            "routes line must not advertise /v1/evaluate without a budget store: {}",
+            without_store[0]
+        );
+        assert!(
+            without_store
+                .iter()
+                .any(|line| line.contains("mediated /v1/evaluate is disabled")
+                    && line.contains("--budget-db")
+                    && line.contains("CHIO_SIDECAR_CONTROL_TOKEN")),
+            "banner must explain how to enable mediation when it is unavailable: {without_store:?}"
+        );
+    }
+
+    #[test]
+    fn mediation_advertised_only_with_hold_capable_store_and_control_token() {
+        let budget = Path::new("/var/lib/chio/budget.sqlite");
+
+        // Both backers present: a hold-capable local budget store and a
+        // sidecar-control token. Only then can a reservation be reconciled, so
+        // only then is /v1/evaluate advertised.
+        assert!(
+            sidecar_mediation_available(Some(budget), Some("control-token")),
+            "a hold-capable --budget-db with a control token must advertise mediation"
+        );
+
+        // A remote-only `--control-url` store is not hold-capable, so even with a
+        // control token every mediated authorization rejects fail-closed: do not
+        // advertise it.
+        assert!(
+            !sidecar_mediation_available(None, Some("control-token")),
+            "a remote-only store (no --budget-db) must not advertise mediation"
+        );
+
+        // A hold-capable store with no control token cannot settle a reservation
+        // (reconcile is rejected), so do not advertise it either.
+        assert!(
+            !sidecar_mediation_available(Some(budget), None),
+            "a hold-capable store without a control token must not advertise mediation"
+        );
+
+        // Neither backer present.
+        assert!(
+            !sidecar_mediation_available(None, None),
+            "no backing store or token must not advertise mediation"
+        );
     }
 }

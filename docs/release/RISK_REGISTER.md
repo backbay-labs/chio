@@ -11,6 +11,7 @@ This register tracks known risks for the v1-only pre-release candidate.
 | Sidecar bypass: agents can call tools without mediation | HIGH | open | Tool-server auth, network enforcement, honest trust taxonomy |
 | No PyPI/npm packages published; SDKs path-only | CRITICAL | open | CI publishing for Python and TypeScript SDKs |
 | No `MockChioClient` or dry-run testing without live kernel | HIGH | planned | `chio_sdk.testing` fixtures |
+| Fanout lane (lane c) inbound-join confidentiality residual (iroh-gossip 0.101) | LOW (informational) | contained | SCOPE: library-only. The fanout lane is NOT exposed through the shipped `chio` CLI (the `IrohLane` enum has only Pheromone/Revocation/Bilateral; `parse_iroh_lanes` rejects the rest), so the shipped binary does NOT leak treaty traffic today. BOUND: a federation-admitted non-party can PASSIVELY OBSERVE forwarded frames but CANNOT INJECT an accepted frame (receive-side treaty-party gate, fanout.rs:592-597; swarm/treaty binding, fanout.rs:717-727); topic-per-treaty routing keeps other treaties' traffic off the swarm (observe-only). CAUSE: iroh-gossip 0.101 exposes no inbound-admission hook (fanout.rs:59-97). Upstream FR: see the anchor in fanout.rs + ADAPTER-SPEC section 7. RE-RATE TRIGGER: re-rate to HIGH and revisit this wording if lane c (fanout) is ever wired into the `chio` CLI or any shipped product surface, or if any release claim depends on treaty confidentiality against a passive federation-admitted observer. |
 
 ## Release and qualification risks
 

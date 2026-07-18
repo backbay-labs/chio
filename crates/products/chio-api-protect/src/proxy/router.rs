@@ -19,6 +19,17 @@ pub(crate) fn build_app(state: Arc<ProxyState>) -> Router {
             require_sidecar_control_middleware,
         ));
 
+    // Settling a reserved authorization is a money operation reported by the
+    // trusted tool server, never by the controlled agent that called
+    // `/v1/evaluate`. It sits behind the reconcile control gate so only a caller
+    // presenting the sidecar-control token can reconcile.
+    let reconcile_routes = Router::new()
+        .route("/v1/reconcile", post(mediated::sidecar_reconcile_handler))
+        .route_layer(middleware::from_fn_with_state(
+            Arc::clone(&state),
+            require_reconcile_control_middleware,
+        ));
+
     Router::new()
         .route("/chio/evaluate", post(sidecar_evaluate_handler))
         .route("/chio/verify", post(sidecar_verify_handler))
@@ -55,14 +66,21 @@ pub(crate) fn build_app(state: Arc<ProxyState>) -> Router {
         // Advisory tool-call evaluation. The SDK posts a
         // `{capability_id, tool_server, tool_name, parameters,
         // parameter_hash}` body and receives an explicit advisory wrapper
-        // with `authorization: false`. The kernel-driven evaluation that
-        // `/chio/evaluate` performs for HTTP requests is not wired for
-        // tool-call bodies; callers must not treat this as authorization.
+        // with `authorization: false`. Advisory output is non-authoritative;
+        // use /v1/evaluate (kernel-mediated) for tool-call authorization.
         .route(
             "/v1/evaluate/advisory",
             post(sidecar_evaluate_tool_call_handler),
         )
-        .route("/v1/evaluate", post(sidecar_removed_evaluate_handler))
+        .route(
+            "/v1/evaluate",
+            post(mediated::sidecar_evaluate_tool_call_mediated_handler),
+        )
+        // Settle a reserved authorization by the execution nonce that names its
+        // hold, producing an authoritative mediated-spend receipt and freeing the
+        // reserved-minus-realized difference back to the grant. Behind the
+        // reconcile control gate (see `reconcile_routes` above).
+        .merge(reconcile_routes)
         // Admin-gated Prometheus scrape endpoint. Mounted before the catch-all
         // so axum prefers this specific route, and gated by the same
         // sidecar-control posture as the approval routes.
@@ -108,6 +126,37 @@ pub(crate) async fn require_sidecar_control_middleware(
     if let Err(response) =
         require_sidecar_control_request(&request, state.sidecar_control_token.as_deref())
     {
+        return response;
+    }
+
+    next.run(request).await
+}
+
+/// Trusted-caller gate for `POST /v1/reconcile`.
+///
+/// Reconciliation settles a reserved budget hold at a caller-reported realized
+/// cost, so it is restricted to the tool server operating under the
+/// sidecar-control token (the operator/tool-server trust boundary), not the
+/// controlled agent that called `/v1/evaluate`. Unlike the loopback-exempt
+/// operator endpoints, reconcile admits no unauthenticated loopback caller: the
+/// controlled agent is itself typically loopback, and letting it self-reconcile
+/// would settle its own reservation at cost zero and defeat the cumulative spend
+/// cap. A sidecar with no configured control token therefore rejects every
+/// reconcile fail-closed; with one configured, only a caller presenting a
+/// matching bearer token reconciles.
+pub(crate) async fn require_reconcile_control_middleware(
+    State(state): State<Arc<ProxyState>>,
+    request: Request<Body>,
+    next: Next,
+) -> Response {
+    let Some(expected_bearer_token) = state.sidecar_control_token.as_deref() else {
+        warn!(
+            "rejecting /v1/reconcile without a configured sidecar-control token; \
+             reconcile is restricted to the tool server presenting that token"
+        );
+        return sidecar_control_forbidden_response(false);
+    };
+    if let Err(response) = require_sidecar_control_request(&request, Some(expected_bearer_token)) {
         return response;
     }
 

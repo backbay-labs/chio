@@ -62,6 +62,22 @@ Above the receipt table, the dashboard renders a composed operator summary backe
 
 This is the primary operator view for "is this agent/tool slice healthy and exportable right now?" The receipt table and detail panel remain the drill-down surface.
 
+## Comptroller Surface Shapes
+
+The in-repo dashboard consumes the comptroller surface response via the
+generated TypeScript binding at `src/generated/comptroller-surface.ts`. This
+file is generated from the canonical JSON Schema at
+`spec/schemas/chio-comptroller/v1/surface-report.schema.json` and must not be
+hand-edited. There is no separately maintained mirror of these shapes inside the
+dashboard source; any shape change is propagated by re-running codegen from the
+schema.
+
+When the `check-comptroller-contract-no-drift.sh` gate is clean, the generated
+binding and the schema are in sync. Dashboard components import types from
+`src/generated/comptroller-surface.ts` and rely on schema-validated responses
+from `GET /v1/reports/comptroller-surface`; they do not reconstruct surface
+fields from individual receipt or analytics endpoints.
+
 ## Portable Reputation Comparison
 
 When the **Agent Subject** filter is set, the dashboard also exposes a

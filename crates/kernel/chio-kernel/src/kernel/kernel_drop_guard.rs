@@ -18,6 +18,22 @@ const POST_ADMISSION_DROP_REASON: &str = "tool evaluation future dropped after a
 const PRE_DISPATCH_CLEANUP_FAULT_REASON: &str =
     "tool evaluation future dropped before dispatch with cleanup fault";
 
+/// Describe an open hold retained after a dispatched evaluation was dropped.
+///
+/// The drop path cannot safely reverse the hold immediately because the tool
+/// may already have committed its side effect. Recovery locates the open hold
+/// from the budget store; this signed audit breadcrumb makes the retained hold
+/// and its pending terminal action explicit.
+fn pending_reversal_marker(hold_id: &str, reason: &str) -> serde_json::Value {
+    serde_json::json!({
+        "hold_id": hold_id,
+        "terminal": {
+            "disposition": "pending_reversal",
+            "reason": reason,
+        }
+    })
+}
+
 pub(crate) struct PostAdmissionReceiptContext {
     pub(crate) evaluation_context: EvaluationReceiptContext,
     pub(crate) extra_metadata: Option<serde_json::Value>,
@@ -137,19 +153,24 @@ impl ChioKernel {
         let mut budget_reversal_outcome_unknown = false;
         let mut payment_unwind_evidence: Option<PreDispatchPaymentUnwindEvidence> = None;
 
-        if let (Some(charge), Some(reason)) =
-            (charge, cleanup.payment_authorization_outcome_unknown)
-        {
-            retain_budget_exposure = true;
+        if let Some(reason) = cleanup.payment_authorization_outcome_unknown {
+            retain_budget_exposure = charge.is_some();
+            retain_payment_authorization = true;
+            let mut hold_ids = cleanup
+                .payment_authorization
+                .map(|authorization| vec![authorization.authorization_id.clone()])
+                .unwrap_or_default();
+            if let Some(charge) = charge {
+                hold_ids.push(charge.budget_hold_id.clone());
+            }
             faults.push(PreDispatchCleanupFault {
                 step: "payment_authorization",
                 reason: reason.to_string(),
-                hold_ids: vec![charge.budget_hold_id.clone()],
+                hold_ids,
             });
         }
 
-        if let (Some(charge), Some(payment_authorization)) = (charge, cleanup.payment_authorization)
-        {
+        if let Some(payment_authorization) = cleanup.payment_authorization {
             match run_pre_dispatch_cleanup_step(
                 "payment adapter panicked during pre-dispatch unwind",
                 || {
@@ -163,22 +184,24 @@ impl ChioKernel {
             ) {
                 Ok(evidence) => payment_unwind_evidence = Some(evidence),
                 Err(reason) => {
-                    retain_budget_exposure = true;
+                    retain_budget_exposure = charge.is_some();
                     retain_payment_authorization = true;
                     payment_unwind_outcome_unknown = true;
+                    let mut hold_ids = vec![payment_authorization.authorization_id.clone()];
+                    if let Some(charge) = charge {
+                        hold_ids.push(charge.budget_hold_id.clone());
+                    }
                     faults.push(PreDispatchCleanupFault {
                         step: "monetary_unwind",
                         reason,
-                        hold_ids: vec![
-                            payment_authorization.authorization_id.clone(),
-                            charge.budget_hold_id.clone(),
-                        ],
+                        hold_ids,
                     });
                 }
             }
         }
 
-        let reverse = if retain_budget_exposure {
+        let skip_budget_reversal = retain_budget_exposure || retain_payment_authorization;
+        let reverse = if skip_budget_reversal {
             None
         } else {
             match run_pre_dispatch_cleanup_step(
@@ -204,8 +227,13 @@ impl ChioKernel {
                 }
             }
         };
+        // Recompute after the reversal attempt: a failed or panicked reversal
+        // changes `retain_budget_exposure` above. Using the pre-attempt snapshot
+        // here would release delegated headroom and omit retention evidence while
+        // the hold's outcome is still unknown.
+        let retain_budget_mutation = retain_budget_exposure || retain_payment_authorization;
 
-        if cleanup.budget_lease_acquired && !retain_budget_exposure {
+        if cleanup.budget_lease_acquired && !retain_budget_mutation {
             if let Err(reason) =
                 run_pre_dispatch_cleanup_step("admitted capability budget release panicked", || {
                     self.release_admitted_capability_budget(cleanup.cap)
@@ -223,20 +251,22 @@ impl ChioKernel {
             }
         }
 
-        if let Some(charge) = charge.filter(|_| retain_budget_exposure) {
+        if retain_budget_mutation || retain_payment_authorization {
             let mut retained = serde_json::Map::new();
             retained.insert(
                 "pre_dispatch_monetary_outcome_unknown".to_string(),
                 serde_json::Value::Bool(true),
             );
-            retained.insert(
-                "retained_budget_hold_id".to_string(),
-                serde_json::json!(&charge.budget_hold_id),
-            );
-            retained.insert(
-                "retained_budget_exposure_units".to_string(),
-                serde_json::json!(charge.cost_charged),
-            );
+            if let Some(charge) = charge.filter(|_| retain_budget_exposure) {
+                retained.insert(
+                    "retained_budget_hold_id".to_string(),
+                    serde_json::json!(&charge.budget_hold_id),
+                );
+                retained.insert(
+                    "retained_budget_exposure_units".to_string(),
+                    serde_json::json!(charge.cost_charged),
+                );
+            }
             if cleanup.payment_authorization_outcome_unknown.is_some() {
                 retained.insert(
                     "payment_authorization_outcome_unknown".to_string(),
@@ -263,7 +293,7 @@ impl ChioKernel {
                     serde_json::json!(cleanup.payment_credential_disposition),
                 );
             }
-            if cleanup.budget_lease_acquired {
+            if cleanup.budget_lease_acquired && retain_budget_mutation {
                 retained.insert(
                     "retained_capability_budget_lease".to_string(),
                     serde_json::Value::Bool(true),
@@ -349,7 +379,7 @@ impl ChioKernel {
         let metadata = if let Some(charge) = charge.filter(|_| retain_budget_exposure) {
             self.merge_budget_receipt_metadata(
                 metadata,
-                self.budget_execution_receipt_metadata(charge, None),
+                self.budget_execution_receipt_metadata(charge, None, None),
             )
         } else {
             metadata
@@ -511,13 +541,28 @@ impl<'a> PostAdmissionDropGuard<'a> {
     /// Retain every state transition whose outcome became ambiguous after
     /// dispatch and identify the held exposure in the cancellation receipt.
     fn retain_post_dispatch_state(&self) -> Option<serde_json::Value> {
-        let metadata = self.kernel.retain_post_dispatch_state(
+        let mut metadata = self.kernel.retain_post_dispatch_state(
             self.receipt_context.extra_metadata.clone(),
             self.receipt_context.runtime_admission_metadata.clone(),
             self.budget_mutation.charge_result(),
             self.budget_reconcile_decision.get(),
             self.payment_authorization.as_ref(),
         );
+        if let Some(charge) = self
+            .budget_mutation
+            .charge_result()
+            .filter(|_| self.budget_reconcile_decision.get().is_none())
+        {
+            metadata = self.kernel.merge_budget_receipt_metadata(
+                metadata,
+                serde_json::json!({
+                    "budget_authority": pending_reversal_marker(
+                        &charge.budget_hold_id,
+                        POST_ADMISSION_DROP_REASON,
+                    )
+                }),
+            );
+        }
         if self.payment_credential_disposition == PaymentCredentialDisposition::NonePresent {
             return metadata;
         }

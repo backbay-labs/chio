@@ -75,6 +75,7 @@ impl ChioKernel {
                 },
                 ToolCallOutput::Value(value),
                 runtime_admission_metadata,
+                AllowResponseNonce::MintForAllow,
             ),
             ToolServerOutput::Stream(ToolServerStreamResult::Complete(stream)) => self
                 .build_allow_response_with_metadata(
@@ -87,6 +88,7 @@ impl ChioKernel {
                     },
                     ToolCallOutput::Stream(stream),
                     runtime_admission_metadata,
+                    AllowResponseNonce::MintForAllow,
                 ),
             ToolServerOutput::Stream(ToolServerStreamResult::Incomplete { stream, reason }) => self
                 .build_incomplete_response_with_output_and_metadata(

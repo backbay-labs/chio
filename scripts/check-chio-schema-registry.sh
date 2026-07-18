@@ -123,6 +123,7 @@ checked_chio_schema_roots = (
     "spec/schemas/chio-agent-web/",
     "spec/schemas/chio-attest/",
     "spec/schemas/chio-commerce/",
+    "spec/schemas/chio-comptroller/",
     "spec/schemas/chio-crypto/",
     "spec/schemas/chio-disclosure/",
     "spec/schemas/chio-enterprise/",

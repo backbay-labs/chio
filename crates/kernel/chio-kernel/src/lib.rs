@@ -403,7 +403,8 @@ pub use payment::{
     AcpPaymentAdapter, CommercePaymentContext, GovernedPaymentContext, PaymentAdapter,
     PaymentAuthorization, PaymentAuthorizeRequest, PaymentCredentialDisposition, PaymentError,
     PaymentResult, PreDispatchPaymentUnwindEvidence, PreDispatchPaymentUnwindStatus,
-    RailSettlementState, RailSettlementStatus, ReceiptSettlement, X402PaymentAdapter,
+    RailSettlementState, RailSettlementStatus, ReceiptSettlement, SimPaymentAdapter,
+    X402PaymentAdapter,
 };
 pub use post_invocation::{
     PipelineOutcome, PostInvocationContext, PostInvocationHook, PostInvocationPipeline,

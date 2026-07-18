@@ -112,6 +112,18 @@ pub struct ExecutionNonce {
     pub expires_at: i64,
     /// Invocation binding: subject, capability, server, tool, parameter hash.
     pub bound_to: NonceBinding,
+    /// Reserved budget hold this nonce authorizes. Set only by the
+    /// pre-execution authorization-reserving path so the reconcile-by-nonce
+    /// entry point can name the exact hold to settle. Part of the signed body,
+    /// so it is tamper-evident like the rest of the binding. `None` on every
+    /// other mint path, where it is omitted from the serialized form to keep
+    /// non-reserving nonces byte-for-byte backward compatible.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reserved_hold_id: Option<String>,
+    /// Request id of the reserving authorization that minted this nonce. Set
+    /// only alongside `reserved_hold_id`. Signed and tamper-evident.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reserving_request_id: Option<String>,
 }
 
 // ---------------------------------------------------------------------------
@@ -139,6 +151,47 @@ impl SignedExecutionNonce {
     #[must_use]
     pub fn expires_at(&self) -> i64 {
         self.nonce.expires_at
+    }
+
+    /// The reserved budget hold this nonce authorizes, present only when the
+    /// nonce was minted by the pre-execution authorization-reserving path.
+    #[must_use]
+    pub fn reserved_hold_id(&self) -> Option<&str> {
+        self.nonce.reserved_hold_id.as_deref()
+    }
+
+    /// The request id of the reserving authorization that minted this nonce,
+    /// present only alongside [`Self::reserved_hold_id`].
+    #[must_use]
+    pub fn reserving_request_id(&self) -> Option<&str> {
+        self.nonce.reserving_request_id.as_deref()
+    }
+}
+
+impl chio_core_types::receipt::authoritative_spend::PresentedNonceView for SignedExecutionNonce {
+    fn nonce_id(&self) -> &str {
+        &self.nonce.nonce_id
+    }
+    fn bound_capability_id(&self) -> &str {
+        &self.nonce.bound_to.capability_id
+    }
+    fn bound_tool_server(&self) -> &str {
+        &self.nonce.bound_to.tool_server
+    }
+    fn bound_tool_name(&self) -> &str {
+        &self.nonce.bound_to.tool_name
+    }
+    fn bound_parameter_hash(&self) -> &str {
+        &self.nonce.bound_to.parameter_hash
+    }
+    fn bound_reserved_hold_id(&self) -> Option<&str> {
+        self.nonce.reserved_hold_id.as_deref()
+    }
+    fn verify_signed_by(&self, key: &PublicKey) -> bool {
+        match canonical_json_bytes(&self.nonce) {
+            Ok(bytes) => key.verify(&bytes, &self.signature),
+            Err(_) => false,
+        }
     }
 }
 
@@ -265,6 +318,20 @@ pub trait ExecutionNonceStore: Send + Sync {
         Err(KernelError::Internal(
             "execution nonce store does not support dispatch reservation rollback".to_string(),
         ))
+    }
+
+    /// Report whether `nonce_id` has already been consumed, WITHOUT consuming
+    /// it. The two-phase reconcile path uses this to reject an already-settled
+    /// nonce during verification while deferring the single-use mark until after
+    /// the bound hold settles. Fail-closed: a store error propagates as `Err`.
+    ///
+    /// The default returns `Ok(false)` for best-effort stores that cannot peek
+    /// without consuming. Those stores still enforce single-use through the
+    /// atomic `reserve`/`reserve_until` mark taken after settlement, and the
+    /// bound hold's atomic open-to-closed settle independently rejects a replay
+    /// (a second presentation finds the hold already closed).
+    fn is_consumed(&self, _nonce_id: &str) -> Result<bool, KernelError> {
+        Ok(false)
     }
 }
 
@@ -440,6 +507,36 @@ impl ExecutionNonceStore for InMemoryExecutionNonceStore {
             }
         }
         Ok(owned)
+    }
+
+    fn is_consumed(&self, nonce_id: &str) -> Result<bool, KernelError> {
+        let mut state = self.inner.lock().map_err(|_| {
+            error!("execution nonce store mutex poisoned; denying fail-closed");
+            KernelError::Internal("execution nonce store mutex poisoned; fail-closed".to_string())
+        })?;
+        let now_wall = SystemTime::now();
+        let now_monotonic = Instant::now();
+        let mut wall_clock_high_water = state.wall_clock_high_water;
+        let mut monotonic_high_water = state.monotonic_high_water;
+        let mut pending_clock_rebaseline = state.pending_clock_rebaseline;
+        let clock_result = advance_replay_clock(
+            "execution_nonce",
+            &mut wall_clock_high_water,
+            &mut monotonic_high_water,
+            &mut pending_clock_rebaseline,
+            now_wall,
+            now_monotonic,
+        );
+        state.wall_clock_high_water = wall_clock_high_water;
+        state.monotonic_high_water = monotonic_high_water;
+        state.pending_clock_rebaseline = pending_clock_rebaseline;
+        let validated_high_water = clock_result?;
+
+        Ok(state.cache.peek(nonce_id).is_some_and(|entry| {
+            !entry
+                .retention
+                .is_expired_at(validated_high_water, now_monotonic)
+        }))
     }
 }
 
@@ -656,6 +753,26 @@ pub fn mint_execution_nonce(
     config: &ExecutionNonceConfig,
     now: i64,
 ) -> Result<SignedExecutionNonce, KernelError> {
+    mint_execution_nonce_with_reservation(kernel_keypair, binding, None, None, config, now)
+}
+
+/// Mint a nonce that additionally binds a reserved budget hold identity.
+///
+/// The pre-execution authorization-reserving path uses this so the minted
+/// nonce carries the reserved `hold_id` (and the reserving request id) inside
+/// the signed body. The reconcile-by-nonce entry point then reads the hold id
+/// straight from the verified nonce to name the exact hold to settle. Because
+/// both fields are covered by the kernel signature, tampering with them fails
+/// verification. Callers on non-reserving paths pass `None` for both, which
+/// mints a nonce byte-for-byte identical to the pre-reservation format.
+pub fn mint_execution_nonce_with_reservation(
+    kernel_keypair: &Keypair,
+    binding: NonceBinding,
+    reserved_hold_id: Option<String>,
+    reserving_request_id: Option<String>,
+    config: &ExecutionNonceConfig,
+    now: i64,
+) -> Result<SignedExecutionNonce, KernelError> {
     let ttl = i64::try_from(config.nonce_ttl_secs).unwrap_or(i64::MAX);
     let expires_at = now.saturating_add(ttl);
     let nonce = ExecutionNonce {
@@ -664,6 +781,8 @@ pub fn mint_execution_nonce(
         issued_at: now,
         expires_at,
         bound_to: binding,
+        reserved_hold_id,
+        reserving_request_id,
     };
     let (signature, _bytes) = kernel_keypair.sign_canonical(&nonce).map_err(|e| {
         KernelError::ReceiptSigningFailed(format!("failed to sign execution nonce: {e}"))
@@ -728,45 +847,9 @@ impl From<ExecutionNonceError> for KernelError {
     }
 }
 
-/// Verify a signed execution nonce against the expected binding.
-///
-/// Steps, in order:
-/// 1. Schema check.
-/// 2. Expiry check -- `now < nonce.expires_at`.
-/// 3. Binding check -- subject, capability, server, tool, parameter_hash.
-/// 4. Signature check -- canonical JSON under the kernel's pubkey.
-/// 5. Replay check -- `nonce_store.reserve(nonce_id)` must return `true`.
-pub fn verify_execution_nonce(
-    presented: &SignedExecutionNonce,
-    kernel_pubkey: &PublicKey,
-    expected: &NonceBinding,
-    now: i64,
-    nonce_store: &dyn ExecutionNonceStore,
-) -> Result<(), ExecutionNonceError> {
-    verify_execution_nonce_stateless(presented, kernel_pubkey, expected, now)?;
-
-    // Pass the nonce's signed expiry so durable stores retain the
-    // consumed marker for the full validity window - otherwise the row
-    // can be pruned while the nonce is still cryptographically valid,
-    // allowing replay within the remaining window.
-    match nonce_store.reserve_until_for_capability(
-        &presented.nonce.nonce_id,
-        presented.nonce.expires_at,
-        &presented.nonce.bound_to.capability_id,
-    ) {
-        Ok(true) => Ok(()),
-        Ok(false) => {
-            warn!(
-                nonce_id = %presented.nonce.nonce_id,
-                "rejecting replayed execution nonce"
-            );
-            Err(ExecutionNonceError::Replayed)
-        }
-        Err(e) => Err(ExecutionNonceError::Store(e.to_string())),
-    }
-}
-
-/// Verify an execution nonce without mutating its replay store.
+/// Verify a nonce's schema, expiry, binding, and signature without touching the
+/// replay store. Shared by the single-phase verify-and-consume path and the
+/// two-phase reconcile path.
 pub(crate) fn verify_execution_nonce_stateless(
     presented: &SignedExecutionNonce,
     kernel_pubkey: &PublicKey,
@@ -832,6 +915,104 @@ pub(crate) fn verify_execution_nonce_stateless(
     }
 
     Ok(())
+}
+
+/// Verify a signed execution nonce against the expected binding and CONSUME it
+/// in one step (single-phase dispatch gate).
+///
+/// Steps, in order:
+/// 1. Schema check.
+/// 2. Expiry check -- `now < nonce.expires_at`.
+/// 3. Binding check -- subject, capability, server, tool, parameter_hash.
+/// 4. Signature check -- canonical JSON under the kernel's pubkey.
+/// 5. Replay check -- capability-scoped reservation must return `true`, which
+///    also marks the nonce consumed.
+///
+/// A caller that must defer the single-use mark until an authorized action has
+/// committed uses [`verify_execution_nonce_without_consume`] plus
+/// [`consume_execution_nonce`] instead.
+pub fn verify_execution_nonce(
+    presented: &SignedExecutionNonce,
+    kernel_pubkey: &PublicKey,
+    expected: &NonceBinding,
+    now: i64,
+    nonce_store: &dyn ExecutionNonceStore,
+) -> Result<(), ExecutionNonceError> {
+    verify_execution_nonce_stateless(presented, kernel_pubkey, expected, now)?;
+
+    // Pass the nonce's signed expiry so durable stores retain the
+    // consumed marker for the full validity window - otherwise the row
+    // can be pruned while the nonce is still cryptographically valid,
+    // allowing replay within the remaining window.
+    match nonce_store.reserve_until_for_capability(
+        &presented.nonce.nonce_id,
+        presented.nonce.expires_at,
+        &presented.nonce.bound_to.capability_id,
+    ) {
+        Ok(true) => Ok(()),
+        Ok(false) => {
+            warn!(
+                nonce_id = %presented.nonce.nonce_id,
+                "rejecting replayed execution nonce"
+            );
+            Err(ExecutionNonceError::Replayed)
+        }
+        Err(e) => Err(ExecutionNonceError::Store(e.to_string())),
+    }
+}
+
+/// Verify a signed execution nonce (schema, expiry, binding, signature, AND that
+/// it has not already been consumed) WITHOUT marking it consumed.
+///
+/// The single-use mark is deferred to [`consume_execution_nonce`], which the
+/// caller invokes only after the action the nonce authorizes has irreversibly
+/// committed. This lets a caller that hit a transient error after verification
+/// but before commit retry the same signed nonce instead of forfeiting it. A
+/// forged, tampered, expired, or already-consumed nonce is still rejected here,
+/// and no store mark is taken on any path.
+pub fn verify_execution_nonce_without_consume(
+    presented: &SignedExecutionNonce,
+    kernel_pubkey: &PublicKey,
+    expected: &NonceBinding,
+    now: i64,
+    nonce_store: &dyn ExecutionNonceStore,
+) -> Result<(), ExecutionNonceError> {
+    verify_execution_nonce_stateless(presented, kernel_pubkey, expected, now)?;
+
+    // Replay peek only: reject an already-consumed nonce, but do NOT mark it.
+    if nonce_store
+        .is_consumed(&presented.nonce.nonce_id)
+        .map_err(|e| ExecutionNonceError::Store(e.to_string()))?
+    {
+        warn!(
+            nonce_id = %presented.nonce.nonce_id,
+            "rejecting already-consumed execution nonce"
+        );
+        return Err(ExecutionNonceError::Replayed);
+    }
+
+    Ok(())
+}
+
+/// Mark a verified nonce consumed (single-use).
+///
+/// Call ONLY after the settlement the nonce authorizes has succeeded, so a
+/// failure before settlement leaves the nonce replayable for a legitimate
+/// retry. Pairs with [`verify_execution_nonce_without_consume`]. Returns
+/// [`ExecutionNonceError::Replayed`] if a concurrent consumer already claimed
+/// it, and fails closed on any store error.
+pub fn consume_execution_nonce(
+    nonce_store: &dyn ExecutionNonceStore,
+    nonce_id: &str,
+    nonce_expires_at: i64,
+) -> Result<(), ExecutionNonceError> {
+    // Pass the nonce's signed expiry so durable stores retain the consumed
+    // marker for the full validity window.
+    match nonce_store.reserve_until(nonce_id, nonce_expires_at) {
+        Ok(true) => Ok(()),
+        Ok(false) => Err(ExecutionNonceError::Replayed),
+        Err(e) => Err(ExecutionNonceError::Store(e.to_string())),
+    }
 }
 
 #[cfg(test)]
@@ -1331,5 +1512,164 @@ mod tests {
         for h in handles {
             assert!(h.join().unwrap());
         }
+    }
+
+    #[test]
+    fn execution_nonce_schema_is_frozen() {
+        // A rename of any nonce field breaks this frozen-schema test, so downstream
+        // consumers that pinned this schema stay in sync.
+        let kp = Keypair::generate();
+        let signed = mint_execution_nonce(
+            &kp,
+            sample_binding(),
+            &ExecutionNonceConfig::default(),
+            1_000_000,
+        )
+        .unwrap();
+        let value = serde_json::to_value(&signed).unwrap();
+        assert_eq!(value["nonce"]["schema"], "chio.execution_nonce.v1");
+        let nonce_keys: std::collections::BTreeSet<String> = value["nonce"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect();
+        assert_eq!(
+            nonce_keys,
+            ["bound_to", "expires_at", "issued_at", "nonce_id", "schema"]
+                .into_iter()
+                .map(String::from)
+                .collect()
+        );
+        let binding_keys: std::collections::BTreeSet<String> = value["nonce"]["bound_to"]
+            .as_object()
+            .unwrap()
+            .keys()
+            .cloned()
+            .collect();
+        assert_eq!(
+            binding_keys,
+            [
+                "capability_id",
+                "parameter_hash",
+                "subject_id",
+                "tool_name",
+                "tool_server"
+            ]
+            .into_iter()
+            .map(String::from)
+            .collect()
+        );
+        let top_keys: std::collections::BTreeSet<String> =
+            value.as_object().unwrap().keys().cloned().collect();
+        assert_eq!(
+            top_keys,
+            ["nonce", "signature"]
+                .into_iter()
+                .map(String::from)
+                .collect()
+        );
+    }
+
+    #[test]
+    fn default_nonce_omits_reservation_fields() {
+        // A nonce minted on any non-reserving path carries no reserved hold and
+        // serializes without the reservation keys, so it stays byte-for-byte
+        // backward compatible with the pre-reservation nonce format.
+        let kp = Keypair::generate();
+        let signed = mint_execution_nonce(
+            &kp,
+            sample_binding(),
+            &ExecutionNonceConfig::default(),
+            1_000_000,
+        )
+        .unwrap();
+        assert_eq!(signed.reserved_hold_id(), None);
+        assert_eq!(signed.reserving_request_id(), None);
+        let value = serde_json::to_value(&signed).unwrap();
+        assert!(value["nonce"].get("reserved_hold_id").is_none());
+        assert!(value["nonce"].get("reserving_request_id").is_none());
+    }
+
+    #[test]
+    fn reserved_nonce_binds_hold_id_in_signed_body() {
+        let kp = Keypair::generate();
+        let store = InMemoryExecutionNonceStore::default();
+        let cfg = ExecutionNonceConfig::default();
+        let binding = sample_binding();
+        let now = i64::try_from(
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        )
+        .unwrap();
+        let signed = mint_execution_nonce_with_reservation(
+            &kp,
+            binding.clone(),
+            Some("budget-hold:req-1:cap-123:0".to_string()),
+            Some("req-1".to_string()),
+            &cfg,
+            now,
+        )
+        .unwrap();
+        assert_eq!(
+            signed.reserved_hold_id(),
+            Some("budget-hold:req-1:cap-123:0")
+        );
+        assert_eq!(signed.reserving_request_id(), Some("req-1"));
+        // The presented-nonce view surfaces the same signed reserved hold id so
+        // the authoritative-spend predicate can cross-bind it to the receipt.
+        use chio_core_types::receipt::authoritative_spend::PresentedNonceView;
+        assert_eq!(
+            PresentedNonceView::bound_reserved_hold_id(&signed),
+            Some("budget-hold:req-1:cap-123:0")
+        );
+        // The reservation fields ride inside the signed body and verify cleanly.
+        verify_execution_nonce(&signed, &kp.public_key(), &binding, now + 1, &store).unwrap();
+    }
+
+    #[test]
+    fn tampered_reserved_hold_id_breaks_signature() {
+        let kp = Keypair::generate();
+        let store = InMemoryExecutionNonceStore::default();
+        let cfg = ExecutionNonceConfig::default();
+        let binding = sample_binding();
+        let now = 1_000_000;
+        let mut signed = mint_execution_nonce_with_reservation(
+            &kp,
+            binding.clone(),
+            Some("budget-hold:req-1:cap-123:0".to_string()),
+            Some("req-1".to_string()),
+            &cfg,
+            now,
+        )
+        .unwrap();
+        // Repoint the signed hold id at an attacker-chosen hold without
+        // re-signing: the signature no longer covers the mutated body.
+        signed.nonce.reserved_hold_id = Some("budget-hold:attacker:cap-123:0".to_string());
+        let err = verify_execution_nonce(&signed, &kp.public_key(), &binding, now + 1, &store)
+            .unwrap_err();
+        assert!(matches!(err, ExecutionNonceError::InvalidSignature));
+    }
+
+    #[test]
+    fn signed_execution_nonce_implements_presented_nonce_view() {
+        use chio_core_types::receipt::authoritative_spend::PresentedNonceView;
+        let kp = Keypair::generate();
+        let signed = mint_execution_nonce(
+            &kp,
+            sample_binding(),
+            &ExecutionNonceConfig::default(),
+            1_000_000,
+        )
+        .unwrap();
+        assert_eq!(signed.bound_capability_id(), "cap-123");
+        assert_eq!(signed.bound_tool_server(), "fs");
+        assert_eq!(signed.bound_tool_name(), "read_file");
+        // A non-reserving mint names no reserved hold through the view.
+        assert_eq!(signed.bound_reserved_hold_id(), None);
+        assert!(signed.verify_signed_by(&kp.public_key()));
+        assert!(!signed.verify_signed_by(&Keypair::generate().public_key()));
     }
 }

@@ -345,6 +345,7 @@ impl ChioKernel {
             request,
             cap,
             &matching_grants,
+            self.execution_nonce_preflight_required(request),
         ) {
             Ok(result) => result,
             Err(e) => {
@@ -410,6 +411,7 @@ impl ChioKernel {
                             self.budget_execution_receipt_metadata(
                                 charge,
                                 Some(("reversed", reverse)),
+                                None,
                             ),
                         ),
                     );
@@ -465,6 +467,7 @@ impl ChioKernel {
                             self.budget_execution_receipt_metadata(
                                 charge,
                                 Some(("reversed", reverse)),
+                                None,
                             ),
                         ),
                     );
@@ -525,6 +528,7 @@ impl ChioKernel {
                             self.budget_execution_receipt_metadata(
                                 charge,
                                 Some(("reversed", reverse)),
+                                None,
                             ),
                         ),
                     );
@@ -577,6 +581,7 @@ impl ChioKernel {
                                 self.budget_execution_receipt_metadata(
                                     charge,
                                     Some(("reversed", reverse)),
+                                    None,
                                 ),
                             ),
                         )
@@ -675,6 +680,7 @@ impl ChioKernel {
                             self.budget_execution_receipt_metadata(
                                 charge,
                                 Some(("reversed", reverse)),
+                                None,
                             ),
                         ),
                         )
@@ -884,6 +890,7 @@ impl ChioKernel {
                     runtime_admission_metadata: runtime_admission_metadata.as_ref(),
                     readiness_waited,
                     force_mutable_state_revalidation: false,
+                    reserve_for_caller_preflight: false,
                     now_unix_secs: dispatch_now,
                     now_unix_ms: dispatch_now_unix_ms,
                 })
@@ -971,6 +978,7 @@ impl ChioKernel {
                     runtime_admission_metadata: runtime_admission_metadata.as_ref(),
                     readiness_waited,
                     force_mutable_state_revalidation: true,
+                    reserve_for_caller_preflight: false,
                     now_unix_secs: post_reservation_now,
                     now_unix_ms: post_reservation_now_unix_ms,
                 })
@@ -1190,6 +1198,7 @@ impl ChioKernel {
                 runtime_admission_metadata: runtime_admission_metadata.as_ref(),
                 readiness_waited,
                 force_mutable_state_revalidation: payment_authorization.is_some(),
+                reserve_for_caller_preflight: false,
                 now_unix_secs: dispatch_now,
                 now_unix_ms: dispatch_now_unix_ms,
             });

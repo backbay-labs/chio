@@ -5,8 +5,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_kernel::budget_store::{
     AuthorizedBudgetHold, BudgetAuthorizeHoldDecision, BudgetAuthorizeHoldRequest,
-    BudgetAuthorizeMutationOutcome, BudgetEventAuthority, BudgetMutationKind, BudgetMutationRecord,
-    DeniedBudgetHold,
+    BudgetAuthorizeMutationOutcome, BudgetEventAuthority, BudgetHoldDispositionView,
+    BudgetHoldSnapshot, BudgetMutationKind, BudgetMutationRecord, DeniedBudgetHold,
+    ReservedHoldEnvelope,
 };
 use chio_kernel::{BudgetStore, BudgetStoreError, BudgetUsageRecord};
 use chio_kernel_core::{
@@ -15,6 +16,7 @@ use chio_kernel_core::{
 use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 
 mod model;
+mod reaper;
 mod replication;
 mod rows;
 mod schema;
@@ -30,6 +32,8 @@ use model::{HoldDisposition, SqliteBudgetHold};
 use replication::*;
 use rows::*;
 use schema::*;
+
+pub use reaper::ReapSummary;
 
 pub struct SqliteBudgetStore {
     connection: Mutex<Connection>,

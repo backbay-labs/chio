@@ -16,6 +16,8 @@ name = "chio_api_protect"
 public_entrypoint = true
 
 [dependencies]
+async-trait = { workspace = true }
+chio-control-plane = { workspace = true }
 chio-core-types = { workspace = true }
 chio-http-core = { workspace = true, features = ["reqwest-egress"] }
 chio-http-serve = { workspace = true }

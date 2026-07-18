@@ -1,3 +1,5 @@
+use chio_core::receipt::kinds::TrustLevel;
+
 use super::*;
 
 fn require_receipt_body_fields_coupled(
@@ -11,6 +13,140 @@ fn require_receipt_body_fields_coupled(
             "receipt fields diverged from the admitted decision inputs".to_string(),
         ))
     }
+}
+
+/// A cost-bearing receipt may claim `TrustLevel::Mediated` only when it carries a
+/// reconciled budget-authority hold, a settled no-ceiling prepayment, or the
+/// kernel's structurally cross-checked retained-exposure marker. This is the
+/// sign-site fail-closed invariant that distinguishes finalized spend from an
+/// explicitly retained unresolved exposure. A retained receipt remains a
+/// mediated authorization audit record; authoritative spend still requires a
+/// reconciled hold and its full spend predicate.
+pub(crate) fn require_earned_mediated_trust_level(
+    metadata: Option<&serde_json::Value>,
+    trust_level: TrustLevel,
+) -> Result<(), KernelError> {
+    if trust_level != TrustLevel::Mediated {
+        return Ok(());
+    }
+    let Some(metadata) = metadata else {
+        return Ok(());
+    };
+    let cost_bearing = metadata
+        .get("financial")
+        .and_then(|financial| financial.get("cost_charged"))
+        .and_then(serde_json::Value::as_u64)
+        .is_some_and(|cost| cost > 0);
+    if !cost_bearing {
+        return Ok(());
+    }
+    let reconciled = metadata
+        .get("budget_authority")
+        .and_then(|block| block.get("terminal"))
+        .and_then(|terminal| terminal.get("disposition"))
+        .and_then(serde_json::Value::as_str)
+        == Some("reconciled");
+    // A prepaid spend under a grant with no budget ceiling carries no reconciled
+    // budget hold: its cost is earned by an external settlement, not a mediated
+    // hold, and such a receipt carries NO `budget_authority` block (the budget
+    // layer took no charge). A fully settled prepayment (a `settled` status
+    // carrying a payment reference) in that no-hold context is therefore earned
+    // cost-bearing status. When a `budget_authority` (monetary-hold) context IS
+    // present, the cost must be earned by that hold's `reconciled` terminal above,
+    // not two free-form financial strings, so the carve-out is gated on the
+    // absence of the hold context to keep this sign-site a structural proof. The
+    // `financial` block is kernel-constructed, and on every Mediated-signing path
+    // it is the winning side of the metadata merge, so caller- or route-supplied
+    // `extra_metadata` cannot override the `settlement_status`/`payment_reference`
+    // this carve-out reads. Still fail closed when neither a reconciled hold nor a
+    // settled no-ceiling prepayment backs the cost.
+    let settled_prepayment = metadata.get("budget_authority").is_none()
+        && metadata.get("financial").is_some_and(|financial| {
+            financial
+                .get("settlement_status")
+                .and_then(serde_json::Value::as_str)
+                == Some("settled")
+                && financial
+                    .get("payment_reference")
+                    .and_then(serde_json::Value::as_str)
+                    .is_some()
+        });
+    let retained_post_dispatch_exposure = structurally_retained_post_dispatch_exposure(metadata);
+    if reconciled || settled_prepayment || retained_post_dispatch_exposure {
+        Ok(())
+    } else {
+        Err(KernelError::ReceiptSigningFailed(
+            "refusing to sign TrustLevel::Mediated for a cost-bearing receipt without a reconciled budget-authority hold, a settled prepayment, or structurally retained unresolved exposure".to_string(),
+        ))
+    }
+}
+
+/// Recognize only the kernel-owned retained-exposure shape produced after a tool
+/// completed but its payment settlement acknowledgement remained unknown. The
+/// open hold remains non-authoritative: there is deliberately no terminal event,
+/// mediated-spend profile, or nonce link proving a reconciled spend.
+fn structurally_retained_post_dispatch_exposure(metadata: &serde_json::Value) -> bool {
+    let Some(runtime) = metadata.get("chio_runtime") else {
+        return false;
+    };
+    if runtime
+        .get("post_dispatch_outcome_unknown")
+        .and_then(serde_json::Value::as_bool)
+        != Some(true)
+    {
+        return false;
+    }
+    let Some(retained_hold_id) = runtime
+        .get("retained_budget_hold_id")
+        .and_then(serde_json::Value::as_str)
+        .filter(|hold_id| !hold_id.is_empty())
+    else {
+        return false;
+    };
+    let Some(retained_exposure) = runtime
+        .get("retained_budget_exposure_units")
+        .and_then(serde_json::Value::as_u64)
+        .filter(|exposure| *exposure > 0)
+    else {
+        return false;
+    };
+    let Some(retained_payment_authorization_id) = runtime
+        .get("retained_payment_authorization_id")
+        .and_then(serde_json::Value::as_str)
+        .filter(|authorization_id| !authorization_id.is_empty())
+    else {
+        return false;
+    };
+
+    let Some(financial) = metadata.get("financial") else {
+        return false;
+    };
+    let payment_reference_matches = financial
+        .get("payment_reference")
+        .and_then(serde_json::Value::as_str)
+        == Some(retained_payment_authorization_id);
+    let settlement_is_unresolved = matches!(
+        financial
+            .get("settlement_status")
+            .and_then(serde_json::Value::as_str),
+        Some("pending" | "failed")
+    );
+    if !payment_reference_matches || !settlement_is_unresolved {
+        return false;
+    }
+
+    let Some(budget) = metadata.get("budget_authority") else {
+        return false;
+    };
+    budget.get("terminal").is_none()
+        && budget.get("execution_nonce_id").is_none()
+        && budget.get("mediated_spend").is_none()
+        && budget.get("hold_id").and_then(serde_json::Value::as_str) == Some(retained_hold_id)
+        && budget
+            .get("authorize")
+            .and_then(|authorize| authorize.get("exposure_units"))
+            .and_then(serde_json::Value::as_u64)
+            == Some(retained_exposure)
 }
 
 impl ChioKernel {
@@ -52,6 +188,7 @@ impl ChioKernel {
             })
         });
         let metadata = merge_metadata_objects(params.metadata, request_metadata);
+        require_earned_mediated_trust_level(metadata.as_ref(), params.trust_level)?;
 
         let mut evidence = current_pre_invocation_guard_evidence();
         evidence.extend(current_post_invocation_guard_evidence());
@@ -590,5 +727,161 @@ mod coupling_tests {
         assert_body_mutation_refused(|body| {
             body.trust_level = chio_core::receipt::kinds::TrustLevel::Verified;
         });
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used)]
+mod tests {
+    use chio_core::receipt::kinds::TrustLevel;
+
+    use super::*;
+
+    #[test]
+    fn signing_mediated_for_cost_bearing_grant_without_reconciled_hold_fails_closed() {
+        // Refuse to stamp Mediated on a cost-bearing receipt that carries a
+        // financial charge but no reconciled budget-authority hold.
+        let metadata = serde_json::json!({
+            "financial": { "cost_charged": 50, "grant_index": 0, "currency": "USD" }
+            // no budget_authority.terminal.disposition == "reconciled"
+        });
+        let result = require_earned_mediated_trust_level(Some(&metadata), TrustLevel::Mediated);
+        assert!(matches!(result, Err(KernelError::ReceiptSigningFailed(_))));
+    }
+
+    #[test]
+    fn signing_mediated_for_cost_bearing_settled_prepayment_is_allowed() {
+        // A prepaid spend with no budget ceiling carries no reconciled hold, but a
+        // settled prepayment (settled status + payment reference) earns cost-bearing
+        // Mediated status.
+        let metadata = serde_json::json!({
+            "financial": {
+                "cost_charged": 100,
+                "grant_index": 0,
+                "currency": "USD",
+                "settlement_status": "settled",
+                "payment_reference": "sim-abc123"
+            }
+        });
+        assert!(require_earned_mediated_trust_level(Some(&metadata), TrustLevel::Mediated).is_ok());
+    }
+
+    #[test]
+    fn signing_mediated_settled_strings_under_a_hold_context_fails_closed() {
+        // The settled-prepayment carve-out is only for a genuine no-monetary-ceiling
+        // MustPrepay spend, which carries NO budget_authority block. A cost-bearing
+        // receipt that DOES carry a budget-authority (monetary-hold) context must
+        // earn Mediated through that hold's `reconciled` terminal, not two free-form
+        // financial strings; a non-reconciled hold with settled strings fails closed.
+        let metadata = serde_json::json!({
+            "financial": {
+                "cost_charged": 100,
+                "grant_index": 0,
+                "currency": "USD",
+                "settlement_status": "settled",
+                "payment_reference": "sim-abc123"
+            },
+            "budget_authority": { "terminal": { "disposition": "reversed" } }
+        });
+        let result = require_earned_mediated_trust_level(Some(&metadata), TrustLevel::Mediated);
+        assert!(matches!(result, Err(KernelError::ReceiptSigningFailed(_))));
+    }
+
+    #[test]
+    fn signing_mediated_for_cost_bearing_pending_prepayment_fails_closed() {
+        // A cost-bearing Mediated receipt with neither a reconciled hold nor a
+        // settled prepayment still fails closed.
+        let metadata = serde_json::json!({
+            "financial": {
+                "cost_charged": 100,
+                "grant_index": 0,
+                "currency": "USD",
+                "settlement_status": "pending",
+                "payment_reference": "sim-abc123"
+            }
+        });
+        let result = require_earned_mediated_trust_level(Some(&metadata), TrustLevel::Mediated);
+        assert!(matches!(result, Err(KernelError::ReceiptSigningFailed(_))));
+    }
+
+    fn retained_post_dispatch_metadata() -> serde_json::Value {
+        serde_json::json!({
+            "financial": {
+                "cost_charged": 40,
+                "currency": "USD",
+                "settlement_status": "pending",
+                "payment_reference": "auth-retained"
+            },
+            "budget_authority": {
+                "hold_id": "hold-retained",
+                "authorize": { "exposure_units": 100 }
+            },
+            "chio_runtime": {
+                "post_dispatch_outcome_unknown": true,
+                "retained_budget_hold_id": "hold-retained",
+                "retained_budget_exposure_units": 100,
+                "retained_payment_authorization_id": "auth-retained"
+            }
+        })
+    }
+
+    #[test]
+    fn signing_mediated_for_structurally_retained_post_dispatch_exposure_is_allowed() {
+        let metadata = retained_post_dispatch_metadata();
+        assert!(require_earned_mediated_trust_level(Some(&metadata), TrustLevel::Mediated).is_ok());
+    }
+
+    #[test]
+    fn signing_mediated_for_mismatched_retained_post_dispatch_exposure_fails_closed() {
+        let mut hold_mismatch = retained_post_dispatch_metadata();
+        hold_mismatch["chio_runtime"]["retained_budget_hold_id"] = serde_json::json!("other-hold");
+
+        let mut exposure_mismatch = retained_post_dispatch_metadata();
+        exposure_mismatch["chio_runtime"]["retained_budget_exposure_units"] = serde_json::json!(99);
+
+        let mut payment_reference_mismatch = retained_post_dispatch_metadata();
+        payment_reference_mismatch["financial"]["payment_reference"] =
+            serde_json::json!("other-authorization");
+
+        for metadata in [hold_mismatch, exposure_mismatch, payment_reference_mismatch] {
+            let result = require_earned_mediated_trust_level(Some(&metadata), TrustLevel::Mediated);
+            assert!(matches!(result, Err(KernelError::ReceiptSigningFailed(_))));
+        }
+    }
+
+    #[test]
+    fn signing_mediated_for_partial_retained_post_dispatch_marker_fails_closed() {
+        let mut missing_payment = retained_post_dispatch_metadata();
+        missing_payment["chio_runtime"]
+            .as_object_mut()
+            .unwrap()
+            .remove("retained_payment_authorization_id");
+
+        let mut terminal_present = retained_post_dispatch_metadata();
+        terminal_present["budget_authority"]["terminal"] =
+            serde_json::json!({ "disposition": "reversed" });
+
+        let mut profile_present = retained_post_dispatch_metadata();
+        profile_present["budget_authority"]["mediated_spend"] =
+            serde_json::json!({ "profile": "chio.mediated_spend.v1" });
+
+        for metadata in [missing_payment, terminal_present, profile_present] {
+            let result = require_earned_mediated_trust_level(Some(&metadata), TrustLevel::Mediated);
+            assert!(matches!(result, Err(KernelError::ReceiptSigningFailed(_))));
+        }
+    }
+
+    #[test]
+    fn signing_mediated_with_reconciled_hold_is_allowed() {
+        let metadata = serde_json::json!({
+            "financial": { "cost_charged": 50, "grant_index": 0, "currency": "USD" },
+            "budget_authority": { "terminal": { "disposition": "reconciled" } }
+        });
+        assert!(require_earned_mediated_trust_level(Some(&metadata), TrustLevel::Mediated).is_ok());
+    }
+
+    #[test]
+    fn advisory_trust_level_never_requires_a_hold() {
+        assert!(require_earned_mediated_trust_level(None, TrustLevel::Advisory).is_ok());
     }
 }

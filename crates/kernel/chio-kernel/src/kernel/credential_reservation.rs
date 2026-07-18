@@ -259,6 +259,44 @@ impl ChioKernel {
         dpop_required: bool,
         now: u64,
     ) -> Result<DispatchCredentialReservation<'_>, KernelError> {
+        self.reserve_credentials(request, cap, dpop_required, now, true, false)
+    }
+
+    /// Reserve the credentials presented to a reserve-for-caller authorization.
+    ///
+    /// No execution nonce exists yet on this preflight. DPoP and governed
+    /// approval credentials are nevertheless authorizing this request to mint
+    /// one, so they use the same owned commit/rollback lifecycle as normal
+    /// dispatch credentials. This prevents concurrent authorization replays
+    /// without burning a credential when later admission revalidation denies.
+    pub(crate) fn reserve_caller_authorization_credentials(
+        &self,
+        request: &ToolCallRequest,
+        cap: &CapabilityToken,
+        dpop_required: bool,
+        now: u64,
+        require_governed_approval: bool,
+    ) -> Result<DispatchCredentialReservation<'_>, KernelError> {
+        self.reserve_credentials(
+            request,
+            cap,
+            dpop_required,
+            now,
+            false,
+            require_governed_approval,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn reserve_credentials(
+        &self,
+        request: &ToolCallRequest,
+        cap: &CapabilityToken,
+        dpop_required: bool,
+        now: u64,
+        reserve_execution_nonce: bool,
+        require_governed_approval: bool,
+    ) -> Result<DispatchCredentialReservation<'_>, KernelError> {
         let dpop_proof = if dpop_required {
             let proof = request.dpop_proof.as_ref().ok_or_else(|| {
                 KernelError::DpopVerificationFailed(
@@ -277,9 +315,19 @@ impl ChioKernel {
             None
         };
 
-        let execution_nonce = self.validate_execution_nonce_non_consuming(request, cap, now)?;
+        let execution_nonce = if reserve_execution_nonce {
+            self.validate_execution_nonce_non_consuming(request, cap, now)?
+        } else {
+            None
+        };
         let approval_intent_hash =
             self.validate_governed_approval_for_dispatch_non_consuming(request, cap, now)?;
+        if require_governed_approval && approval_intent_hash.is_none() {
+            return Err(KernelError::GovernedTransactionDenied(
+                "strict reserve-for-caller payment authorization requires a governed approval token"
+                    .to_string(),
+            ));
+        }
         if approval_intent_hash.is_some() && self.approval_replay_store.is_none() {
             return Err(KernelError::GovernedTransactionDenied(
                 "approval replay store not configured; denying as fail-closed".to_string(),

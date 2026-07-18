@@ -19,6 +19,7 @@
 //! - [`lanes::revocation`] + [`catchup`]: signed epoch roots over direct QUIC
 //!   plus iroh-blobs content-addressed catch-up.
 //! - [`lanes::fanout`]: cross-operator fan-out over iroh-gossip per-treaty topics.
+//!   EXPERIMENTAL (lane c): library-only, not CLI-wired; passive-observation residual.
 //! - [`lanes::bilateral`]: DSSE co-sign over a bidirectional QUIC RPC.
 
 pub mod admission;

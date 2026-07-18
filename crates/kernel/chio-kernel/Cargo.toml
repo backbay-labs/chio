@@ -89,6 +89,7 @@ chio-store-sqlite = { workspace = true }
 chio-test-support = { workspace = true }
 criterion = { workspace = true }
 dhat = { workspace = true }
+jsonschema = { workspace = true }
 loom = { workspace = true }
 # proptest = "1.10" (via workspace.dependencies). Used by:
 # - tests/property_budget_store.rs

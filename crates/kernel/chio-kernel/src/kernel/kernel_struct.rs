@@ -738,6 +738,26 @@ pub struct ChioKernel {
     /// shape stays feature-flag agnostic.
     pub(super) revocation_view: Option<std::sync::Arc<chio_kernel_core::RevocationView>>,
     pub(super) budget_registry: Mutex<chio_kernel_core::InMemoryBudgetRegistry>,
+    /// Sibling-sum shares held open by reserve-for-caller authorizations.
+    ///
+    /// A mediated authorization keeps its delegated child's admitted share in
+    /// `budget_registry` while the reserved hold is open, so an outstanding
+    /// reservation still counts against the parent and a sibling cannot
+    /// over-subscribe it. Keyed by budget hold id, each entry carries the
+    /// `(parent, child, share)` needed to release that headroom when the hold
+    /// closes (reconciled by nonce or forfeited by the TTL reaper).
+    pub(super) reserved_sibling_shares: Mutex<HashMap<String, ReservedSiblingShare>>,
+    /// Fail-closed gate over delegated reserve-for-caller holds carried across a
+    /// restart. A delegated reservation keeps its child's sibling-sum share
+    /// admitted in `budget_registry` while its durable hold stays open, but that
+    /// admission is in-memory only: a freshly built mediation kernel over a
+    /// populated budget store loses it, and the durable hold record does not
+    /// carry the parent capability id or the shares needed to rebuild it. Until
+    /// every such hold from a prior process closes, this kernel denies delegated
+    /// admission fail-closed so a sibling cannot be admitted against the parent as
+    /// if the still-open reservation consumed nothing. Armed by
+    /// [`ChioKernel::arm_restart_reserved_hold_gate`] at mediation-kernel startup.
+    pub(super) restart_reserved_hold_gate: Mutex<RestartReservedHoldGate>,
     /// RSS soft-ceiling shed flag. Set by the sampler when process RSS exceeds
     /// `memory_budget.rss_soft_limit_bytes`; read on the
     /// admission fast path alongside the emergency stop.
@@ -750,6 +770,37 @@ pub struct ChioKernel {
     /// `Unknown` and the gate behaves as before.
     pub(super) receipt_writer_watchdog:
         std::sync::Arc<receipt_writer_watchdog::ReceiptWriterWatchdogHandle>,
+}
+
+/// The parent/child/share triple a reserve-for-caller hold keeps admitted in
+/// the sibling-sum `budget_registry` while its durable hold stays open. It is
+/// recorded when the reservation is stamped and consumed to release the
+/// parent's headroom once the hold is reconciled or reaped.
+#[derive(Debug, Clone)]
+pub(crate) struct ReservedSiblingShare {
+    pub(crate) parent_token_id: String,
+    pub(crate) child_token_id: String,
+    pub(crate) share_bps: u16,
+}
+
+/// State of the fail-closed gate over delegated reserve-for-caller holds carried
+/// across a restart. See [`super::ChioKernel::restart_reserved_hold_gate`].
+#[derive(Debug, Clone)]
+pub(crate) enum RestartReservedHoldGate {
+    /// No unaccounted reserve holds from a prior process; delegated admission
+    /// proceeds. Every kernel starts here and returns here once the durable open
+    /// holds observed at startup have closed.
+    Clear,
+    /// The listed holds were open delegated reserve-for-caller holds when this
+    /// kernel started and are not tracked in its in-memory sibling-share map.
+    /// Delegated admission denies until each has closed (reconciled or reaped),
+    /// re-queried per admission so the gate clears exactly when they settle.
+    PendingHolds(std::collections::HashSet<String>),
+    /// The budget store could not enumerate its reserved holds yet reported open
+    /// holds at startup. Delegated admission denies until the open-hold count
+    /// drains to zero; while denied this kernel opens no new holds, so the count
+    /// faithfully tracks the prior process's holds draining away.
+    PendingOpaqueCount,
 }
 
 impl ChioKernel {

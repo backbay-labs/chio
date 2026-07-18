@@ -56,6 +56,18 @@ cargo test -p chio-provider-conformance \
 ./scripts/check-chio-py-release.sh
 ./scripts/check-chio-go-release.sh
 
+# Flagship demo + launch-acceptance regression assets (lane wiring).
+cargo build -p chio-cli --bin chio
+CHIO_BIN="$(pwd)/target/debug/chio" bash ./scripts/check-chio-transaction-passport.sh
+CHIO_BIN="$(pwd)/target/debug/chio" cargo xtask verify launch-acceptance --out target/proof-room/public-bundle
+bash ./scripts/tests/check-chio-proof-room-launch-acceptance.test.sh
+CHIO_BIN="$(pwd)/target/debug/chio" bash ./scripts/tests/flagship-wall-stops-money.test.sh
+
+# Unified spend/exposure contract regression (governance + codegen + endpoint).
+bash ./scripts/check-chio-schema-registry.sh
+bash ./scripts/check-comptroller-contract-no-drift.sh
+bash ./scripts/check-no-eip3009-broadcast.sh
+bash ./scripts/qualify-comptroller-operator-surfaces.sh
 read_release_python_peer() {
   python3 - <<'PY'
 import sys

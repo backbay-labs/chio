@@ -1147,6 +1147,85 @@ impl BudgetStore for SqliteBudgetStore {
         )?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
+
+    fn reap_orphaned_holds(
+        &self,
+        realized_by_hold: &std::collections::HashMap<String, u64>,
+    ) -> Result<(usize, usize), BudgetStoreError> {
+        let summary = self.reap_holds_by_map(realized_by_hold)?;
+        Ok((summary.reconciled, summary.reversed))
+    }
+
+    fn count_open_holds(&self) -> Result<usize, BudgetStoreError> {
+        Ok(self.list_open_holds()?.len())
+    }
+
+    fn list_open_delegated_reserved_hold_ids(
+        &self,
+    ) -> Result<Option<Vec<String>>, BudgetStoreError> {
+        // SQLite persists the delegation depth on each reserved hold, so it can
+        // enumerate the open delegated reservations precisely. Returning Some(..)
+        // switches the mediation kernel onto the precise restart gate that drains
+        // only the affected delegated admission, rather than the coarse gate that
+        // denies all mediation until every open hold closes.
+        Ok(Some(self.list_open_delegated_reserved_holds()?))
+    }
+
+    fn request_id_has_reserved_hold(
+        &self,
+        request_id: &str,
+    ) -> Result<Option<bool>, BudgetStoreError> {
+        // SQLite persists every hold under its full id, so it can answer the
+        // durable prefix probe precisely; Some(..) switches the mediation gate
+        // onto the capability-agnostic reuse check instead of the per-capability
+        // exact-id fallback.
+        Ok(Some(self.hold_exists_for_request_id(request_id)?))
+    }
+
+    fn get_budget_hold(
+        &self,
+        hold_id: &str,
+    ) -> Result<Option<BudgetHoldSnapshot>, BudgetStoreError> {
+        self.budget_hold_snapshot(hold_id)
+    }
+
+    fn mark_hold_reserved(
+        &self,
+        hold_id: &str,
+        reserved_until_unix_secs: i64,
+        currency: &str,
+        payment_reference: Option<&str>,
+        envelope: &ReservedHoldEnvelope,
+    ) -> Result<(), BudgetStoreError> {
+        self.mark_hold_reserved_until(
+            hold_id,
+            reserved_until_unix_secs,
+            currency,
+            payment_reference,
+            envelope,
+        )
+    }
+
+    fn reserve_invocation_hold(
+        &self,
+        hold_id: &str,
+        capability_id: &str,
+        grant_index: usize,
+        reserved_until_unix_secs: i64,
+        envelope: &ReservedHoldEnvelope,
+    ) -> Result<(), BudgetStoreError> {
+        self.reserve_invocation_hold(
+            hold_id,
+            capability_id,
+            grant_index,
+            reserved_until_unix_secs,
+            envelope,
+        )
+    }
+
+    fn reap_expired_reserved_holds(&self, now_unix_secs: i64) -> Result<usize, BudgetStoreError> {
+        self.reap_expired_reserved_holds(now_unix_secs)
+    }
 }
 
 impl SqliteBudgetStore {

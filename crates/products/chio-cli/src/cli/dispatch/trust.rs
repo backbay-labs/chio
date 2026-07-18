@@ -51,6 +51,7 @@ pub(crate) fn dispatch_trust(
             certification_registry_file,
             certification_discovery_file,
             certification_public_metadata_ttl_seconds,
+            roster_policy_file,
         } => cmd_trust_serve(
             listen,
             &service_token,
@@ -76,6 +77,7 @@ pub(crate) fn dispatch_trust(
             certification_public_metadata_ttl_seconds,
             &peer_urls,
             cluster_sync_interval_ms,
+            roster_policy_file.as_deref(),
         ),
         TrustCommands::Provider { command } => match command {
             TrustProviderCommands::List {
@@ -992,28 +994,32 @@ pub(crate) fn dispatch_trust(
                     control_token.as_deref(),
                 )
             }
-            TrustLiabilityMarketCommands::AdjudicationIssue { input_file } => {
-                cmd_trust_liability_claim_adjudication_issue(
-                    &input_file,
-                    json_output,
-                    receipt_db.as_deref(),
-                    authority_seed_file.as_deref(),
-                    authority_db.as_deref(),
-                    control_url.as_deref(),
-                    control_token.as_deref(),
-                )
-            }
-            TrustLiabilityMarketCommands::ClaimPayoutInstructionIssue { input_file } => {
-                cmd_trust_liability_claim_payout_instruction_issue(
-                    &input_file,
-                    json_output,
-                    receipt_db.as_deref(),
-                    authority_seed_file.as_deref(),
-                    authority_db.as_deref(),
-                    control_url.as_deref(),
-                    control_token.as_deref(),
-                )
-            }
+            TrustLiabilityMarketCommands::AdjudicationIssue {
+                input_file,
+                roster_policy_file,
+            } => cmd_trust_liability_claim_adjudication_issue(
+                &input_file,
+                json_output,
+                receipt_db.as_deref(),
+                authority_seed_file.as_deref(),
+                authority_db.as_deref(),
+                roster_policy_file.as_deref(),
+                control_url.as_deref(),
+                control_token.as_deref(),
+            ),
+            TrustLiabilityMarketCommands::ClaimPayoutInstructionIssue {
+                input_file,
+                roster_policy_file,
+            } => cmd_trust_liability_claim_payout_instruction_issue(
+                &input_file,
+                json_output,
+                receipt_db.as_deref(),
+                authority_seed_file.as_deref(),
+                authority_db.as_deref(),
+                roster_policy_file.as_deref(),
+                control_url.as_deref(),
+                control_token.as_deref(),
+            ),
             TrustLiabilityMarketCommands::ClaimPayoutReceiptIssue { input_file } => {
                 cmd_trust_liability_claim_payout_receipt_issue(
                     &input_file,
@@ -1025,17 +1031,19 @@ pub(crate) fn dispatch_trust(
                     control_token.as_deref(),
                 )
             }
-            TrustLiabilityMarketCommands::ClaimSettlementInstructionIssue { input_file } => {
-                cmd_trust_liability_claim_settlement_instruction_issue(
-                    &input_file,
-                    json_output,
-                    receipt_db.as_deref(),
-                    authority_seed_file.as_deref(),
-                    authority_db.as_deref(),
-                    control_url.as_deref(),
-                    control_token.as_deref(),
-                )
-            }
+            TrustLiabilityMarketCommands::ClaimSettlementInstructionIssue {
+                input_file,
+                roster_policy_file,
+            } => cmd_trust_liability_claim_settlement_instruction_issue(
+                &input_file,
+                json_output,
+                receipt_db.as_deref(),
+                authority_seed_file.as_deref(),
+                authority_db.as_deref(),
+                roster_policy_file.as_deref(),
+                control_url.as_deref(),
+                control_token.as_deref(),
+            ),
             TrustLiabilityMarketCommands::ClaimSettlementReceiptIssue { input_file } => {
                 cmd_trust_liability_claim_settlement_receipt_issue(
                     &input_file,
