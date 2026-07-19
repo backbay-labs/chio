@@ -1,0 +1,839 @@
+name: enterprise-hardening
+
+on:
+  workflow_call:
+    inputs:
+      source_repository:
+        description: Exact repository containing the source tree under test
+        required: true
+        type: string
+      source_sha:
+        description: Exact commit containing the source tree under test
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      source_repository:
+        description: Exact repository containing the source tree under test
+        required: true
+        type: string
+      source_sha:
+        description: Exact commit containing the source tree under test
+        required: true
+        type: string
+permissions:
+  artifact-metadata: write
+  attestations: write
+  contents: read
+  id-token: write
+
+concurrency:
+  group: enterprise-security-source-${{ github.repository }}-${{ github.event.pull_request.head.sha || github.sha }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_BUILD_JOBS: "1"
+  CARGO_TERM_COLOR: always
+
+jobs:
+  bind-source:
+    name: attest exact pull request merge binding
+    permissions:
+      artifact-metadata: write
+      attestations: write
+      contents: read
+      id-token: write
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    outputs:
+      attestation_bundle_sha256: ${{ steps.package.outputs.attestation_bundle_sha256 }}
+      attestation_id: ${{ steps.attest.outputs.attestation-id }}
+      binding_artifact_digest: ${{ steps.upload.outputs.artifact-digest }}
+      binding_artifact_id: ${{ steps.upload.outputs.artifact-id }}
+      binding_artifact_name: ${{ steps.package.outputs.binding_artifact_name }}
+      binding_sha256: ${{ steps.package.outputs.binding_sha256 }}
+      merge_commit_sha: ${{ steps.bind.outputs.merge_commit_sha }}
+      merge_tree_sha: ${{ steps.bind.outputs.merge_tree_sha }}
+      source_repository: ${{ steps.bind.outputs.source_repository || steps.push.outputs.source_repository }}
+      source_sha: ${{ steps.bind.outputs.source_sha || steps.push.outputs.source_sha }}
+      tested_repository: ${{ steps.bind.outputs.tested_repository || steps.push.outputs.tested_repository }}
+      tested_sha: ${{ steps.bind.outputs.tested_sha || steps.push.outputs.tested_sha }}
+    steps:
+      - name: Checkout exact event merge without credentials
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Build canonical exact merge binding
+        id: bind
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
+          BASE_REPOSITORY_ID: ${{ github.event.pull_request.base.repo.id }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CALLER_WORKFLOW_REF: ${{ github.workflow_ref }}
+          CALLER_WORKFLOW_SHA: ${{ github.workflow_sha }}
+          EVENT_NAME: ${{ github.event_name }}
+          EVENT_PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          EVENT_PR_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          EVENT_PR_HEAD_REPOSITORY_ID: ${{ github.event.pull_request.head.repo.id }}
+          EVENT_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          INPUT_SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+          INPUT_SOURCE_SHA: ${{ inputs.source_sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY_ID: ${{ github.repository_id }}
+          REPOSITORY_OWNER_ID: ${{ github.repository_owner_id }}
+          SECURITY_DEFINITION_SHA: ${{ vars.CHIO_ENTERPRISE_SECURITY_DEFINITION_SHA }}
+          TESTED_REPOSITORY: ${{ github.repository }}
+          TESTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          shopt -s inherit_errexit
+          umask 077
+          commit_pattern='^[0-9a-f]{40}$'
+          [[ "${INPUT_SOURCE_REPOSITORY}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+          [[ "${INPUT_SOURCE_SHA}" =~ ${commit_pattern} ]]
+          [[ "${TESTED_SHA}" =~ ${commit_pattern} ]]
+          [[ "${BASE_SHA}" =~ ${commit_pattern} ]]
+          [[ "${SECURITY_DEFINITION_SHA}" =~ ${commit_pattern} ]]
+          [[ "${CALLER_WORKFLOW_SHA}" =~ ${commit_pattern} ]]
+          [[ "${PR_NUMBER}" =~ ^[1-9][0-9]*$ ]]
+          [[ "${REPOSITORY_ID}" =~ ^[1-9][0-9]*$ ]]
+          [[ "${REPOSITORY_OWNER_ID}" =~ ^[1-9][0-9]*$ ]]
+          [[ "${EVENT_PR_HEAD_REPOSITORY_ID}" =~ ^[1-9][0-9]*$ ]]
+          [[ "${BASE_REPOSITORY_ID}" =~ ^[1-9][0-9]*$ ]]
+          test "${INPUT_SOURCE_REPOSITORY}" = "${TESTED_REPOSITORY}"
+          case "${EVENT_NAME}" in
+            pull_request)
+              test "${INPUT_SOURCE_REPOSITORY}" = "${EVENT_PR_HEAD_REPOSITORY}"
+              test "${INPUT_SOURCE_SHA}" = "${EVENT_PR_HEAD_SHA}"
+              test "${EVENT_PR_HEAD_REPOSITORY}" = "${TESTED_REPOSITORY}"
+              test "${BASE_REPOSITORY}" = "${TESTED_REPOSITORY}"
+              test "${GITHUB_REF}" = "refs/pull/${PR_NUMBER}/merge"
+              test "${CALLER_WORKFLOW_REF}" = "${GITHUB_REPOSITORY}/.github/workflows/ci.yml@${GITHUB_REF}"
+              test "${CALLER_WORKFLOW_SHA}" = "${TESTED_SHA}"
+              ;;
+            *)
+              echo "the attested enterprise lane requires pull_request" >&2
+              exit 1
+              ;;
+          esac
+
+          test "$(git rev-parse HEAD)" = "${TESTED_SHA}"
+          test "$(git cat-file -t "${TESTED_SHA}")" = commit
+          mapfile -t parents < <(git show --no-patch --format='%P' "${TESTED_SHA}" | tr ' ' '\n')
+          test "${#parents[@]}" = 2
+          test "${parents[0]}" = "${BASE_SHA}"
+          test "${parents[1]}" = "${EVENT_PR_HEAD_SHA}"
+          merge_tree_sha="$(git show --no-patch --format='%T' "${TESTED_SHA}")"
+          [[ "${merge_tree_sha}" =~ ${commit_pattern} ]]
+          ci_workflow_id="$({
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2026-03-10" \
+              "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml" \
+              --jq '.id'
+          })"
+          [[ "${ci_workflow_id}" =~ ^[1-9][0-9]*$ ]]
+          test "${GITHUB_WORKFLOW}" = CI
+          expected_run_name="CI N=${PR_NUMBER} E=${EVENT_PR_HEAD_SHA} B=${BASE_SHA} M=${TESTED_SHA}"
+          jq -cS -n \
+            --arg base_ref "${BASE_REF}" \
+            --arg base_repository "${BASE_REPOSITORY}" \
+            --arg base_repository_id "${BASE_REPOSITORY_ID}" \
+            --arg base_sha "${BASE_SHA}" \
+            --arg builder_definition_sha "${SECURITY_DEFINITION_SHA}" \
+            --arg caller_workflow_ref "${CALLER_WORKFLOW_REF}" \
+            --arg caller_workflow_sha "${CALLER_WORKFLOW_SHA}" \
+            --arg ci_workflow_id "${ci_workflow_id}" \
+            --arg head_ref "${EVENT_PR_HEAD_REF}" \
+            --arg head_repository "${EVENT_PR_HEAD_REPOSITORY}" \
+            --arg head_repository_id "${EVENT_PR_HEAD_REPOSITORY_ID}" \
+            --arg head_sha "${EVENT_PR_HEAD_SHA}" \
+            --arg merge_ref "${GITHUB_REF}" \
+            --arg merge_sha "${TESTED_SHA}" \
+            --arg merge_tree_sha "${merge_tree_sha}" \
+            --arg pr_number "${PR_NUMBER}" \
+            --arg repository "${GITHUB_REPOSITORY}" \
+            --arg repository_id "${REPOSITORY_ID}" \
+            --arg repository_owner "${GITHUB_REPOSITORY_OWNER}" \
+            --arg repository_owner_id "${REPOSITORY_OWNER_ID}" \
+            --arg run_attempt "${GITHUB_RUN_ATTEMPT}" \
+            --arg run_id "${GITHUB_RUN_ID}" \
+            --arg run_name "${expected_run_name}" \
+            '{base: {ref: $base_ref, repository: $base_repository, repository_id: $base_repository_id, sha: $base_sha}, builder: {definition_sha: $builder_definition_sha, workflow_path: ".github/workflows/enterprise-hardening.yml"}, caller: {definition_sha: $caller_workflow_sha, workflow_path: ".github/workflows/ci.yml", workflow_ref: $caller_workflow_ref}, ci: {event: "pull_request", run_attempt: $run_attempt, run_id: $run_id, run_name: $run_name, workflow_id: $ci_workflow_id}, head: {ref: $head_ref, repository: $head_repository, repository_id: $head_repository_id, sha: $head_sha}, merge: {parents: [$base_sha, $head_sha], ref: $merge_ref, sha: $merge_sha, tree_sha: $merge_tree_sha}, pull_request_number: $pr_number, repository: {id: $repository_id, name: $repository, owner: $repository_owner, owner_id: $repository_owner_id, visibility: "public"}, schema: "https://github.com/bb-connor/arc/attestations/ci-merge-binding/v1"}' > ci-merge-binding.json
+          test "$(jq -cS . ci-merge-binding.json)" = "$(< ci-merge-binding.json)"
+          test "$(jq -cS 'keys' ci-merge-binding.json)" = '["base","builder","caller","ci","head","merge","pull_request_number","repository","schema"]'
+          test "$(stat --format='%F:%a' ci-merge-binding.json)" = "regular file:600"
+          test "$(stat --format='%s' ci-merge-binding.json)" -gt 0
+          test "$(stat --format='%s' ci-merge-binding.json)" -le 65536
+          {
+            echo "source_repository=${INPUT_SOURCE_REPOSITORY}"
+            echo "source_sha=${INPUT_SOURCE_SHA}"
+            echo "tested_repository=${TESTED_REPOSITORY}"
+            echo "tested_sha=${TESTED_SHA}"
+            echo "merge_commit_sha=${TESTED_SHA}"
+            echo "merge_tree_sha=${merge_tree_sha}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Bind exact pushed commit
+        id: push
+        if: github.event_name != 'pull_request'
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_SOURCE_REPOSITORY: ${{ inputs.source_repository }}
+          INPUT_SOURCE_SHA: ${{ inputs.source_sha }}
+          TESTED_REPOSITORY: ${{ github.repository }}
+          TESTED_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          [[ "${INPUT_SOURCE_REPOSITORY}" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]
+          [[ "${INPUT_SOURCE_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          [[ "${TESTED_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          case "${EVENT_NAME}" in
+            push|workflow_dispatch) ;;
+            *) exit 1 ;;
+          esac
+          test "${INPUT_SOURCE_REPOSITORY}" = "${TESTED_REPOSITORY}"
+          test "${INPUT_SOURCE_SHA}" = "${TESTED_SHA}"
+          test "$(git rev-parse HEAD)" = "${TESTED_SHA}"
+          {
+            echo "source_repository=${INPUT_SOURCE_REPOSITORY}"
+            echo "source_sha=${INPUT_SOURCE_SHA}"
+            echo "tested_repository=${TESTED_REPOSITORY}"
+            echo "tested_sha=${TESTED_SHA}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Attest canonical exact merge binding
+        id: attest
+        if: github.event_name == 'pull_request'
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6
+        with:
+          subject-path: ci-merge-binding.json
+          predicate-type: https://github.com/bb-connor/arc/attestations/ci-merge-binding/v1
+          predicate-path: ci-merge-binding.json
+          show-summary: false
+
+      - name: Package exact binding and attestation bundle
+        id: package
+        if: github.event_name == 'pull_request'
+        env:
+          ATTESTATION_BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -f "${ATTESTATION_BUNDLE_PATH}"
+          test ! -L "${ATTESTATION_BUNDLE_PATH}"
+          test "$(stat --format='%s' "${ATTESTATION_BUNDLE_PATH}")" -gt 0
+          test "$(stat --format='%s' "${ATTESTATION_BUNDLE_PATH}")" -le 8388608
+          mkdir ci-merge-binding-artifact
+          install -m 0444 ci-merge-binding.json ci-merge-binding-artifact/ci-merge-binding.json
+          install -m 0444 "${ATTESTATION_BUNDLE_PATH}" ci-merge-binding-artifact/ci-merge-binding.bundle.jsonl
+          binding_sha256="$(sha256sum ci-merge-binding-artifact/ci-merge-binding.json | cut -d' ' -f1)"
+          attestation_bundle_sha256="$(sha256sum ci-merge-binding-artifact/ci-merge-binding.bundle.jsonl | cut -d' ' -f1)"
+          binding_artifact_name="ci-merge-binding-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          [[ "${binding_sha256}" =~ ^[0-9a-f]{64}$ ]]
+          [[ "${attestation_bundle_sha256}" =~ ^[0-9a-f]{64}$ ]]
+          {
+            echo "attestation_bundle_sha256=${attestation_bundle_sha256}"
+            echo "binding_artifact_name=${binding_artifact_name}"
+            echo "binding_sha256=${binding_sha256}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Upload exact binding and attestation bundle
+        id: upload
+        if: github.event_name == 'pull_request'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: ci-merge-binding-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ci-merge-binding-artifact
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+          overwrite: false
+          include-hidden-files: false
+          archive: true
+
+  portable-contracts:
+    name: enterprise portable contracts
+    needs: [bind-source]
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: ${{ needs.bind-source.outputs.tested_repository }}
+          ref: ${{ needs.bind-source.outputs.tested_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact event test checkout
+        run: |
+          set -euo pipefail
+          [[ "${{ needs.bind-source.outputs.tested_sha }}" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "${{ needs.bind-source.outputs.tested_sha }}"
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install --profile minimal --component clippy --component rustfmt
+          rustup show active-toolchain
+
+      - name: Install native prerequisites
+        uses: ./.github/actions/apt-install
+        with:
+          packages: protobuf-compiler
+
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: "3.12"
+
+      - name: Install uv (Python codegen toolchain runner)
+        uses: astral-sh/setup-uv@caf0cab7a618c569241d31dcd442f54681755d39
+        with:
+          version: "0.5.11"
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "22"
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version: "1.23.0"
+
+      - name: Enable pnpm
+        run: corepack enable
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+
+      - name: Install Python validators
+        run: python -m pip install --disable-pip-version-check jsonschema==4.26.0 PyYAML==6.0.2
+
+      - name: Gate contract self-tests
+        run: |
+          bash scripts/tests/check-flow-security.test.sh
+          bash scripts/tests/check-deception-security.test.sh
+          bash scripts/tests/check-response-recovery.test.sh
+          bash scripts/tests/check-active-defense-conformance.test.sh
+          bash scripts/tests/check-protocol-primitives-concurrency.test.sh
+          bash scripts/tests/check-protocol-primitives-focused.test.sh
+          bash scripts/tests/check-enterprise-cross-mechanism.test.sh
+          bash scripts/tests/check-enterprise-gate-contracts.test.sh
+          python3 scripts/tests/check-exact-cargo-test-inventory.test.py
+          bash scripts/tests/check-protocol-peer-negotiation.test.sh
+          bash scripts/tests/check-cage-enforcement.test.sh
+          python3 scripts/tests/check-security-ci-contract.test.py
+          python3 scripts/tests/check-security-wire-lane.test.py
+          python3 scripts/tests/check-security-wire-vectors.test.py
+
+      - name: Enterprise source provenance
+        run: |
+          python3 scripts/check-enterprise-provenance.py
+          bash scripts/tests/check-enterprise-provenance.test.sh
+
+      - name: Key transparency behavior
+        run: ./scripts/check-keyring-transparency.sh
+
+      - name: Secret broker boundary behavior
+        run: ./scripts/check-secret-broker-boundary.sh
+
+      - name: Schema registry and generated bindings
+        run: |
+          ./scripts/check-chio-schema-registry.sh
+          python3 scripts/check-security-wire-vectors.py
+          make codegen-check
+          cargo xtask freeze-vectors --check
+
+      - name: Native security conformance
+        run: |
+          set -euo pipefail
+          cargo test -p chio-conformance --all-targets
+          ./scripts/check-enterprise-cross-mechanism.sh
+
+          native_suite_list_output="$(mktemp)"
+          native_suite_run_output="$(mktemp)"
+          generated_vector_list_output="$(mktemp)"
+          generated_vector_run_output="$(mktemp)"
+          trap 'rm -f "${native_suite_list_output}" "${native_suite_run_output}" "${generated_vector_list_output}" "${generated_vector_run_output}"' EXIT
+
+          cargo test -p chio-conformance --features enterprise-native --test native_suite \
+            -- --list 2>&1 | tee "${native_suite_list_output}"
+          cargo test -p chio-conformance --features enterprise-native --test native_suite \
+            2>&1 | tee "${native_suite_run_output}"
+          python3 scripts/check-exact-cargo-test-inventory.py \
+            --label "enterprise native suite" \
+            --list-output "${native_suite_list_output}" \
+            --run-output "${native_suite_run_output}" \
+            enterprise_native_runner_executes_exactly_fifteen_behaviors \
+            native_conformance_suite_runs_against_fixture \
+            native_standards_artifacts_cover_required_categories_and_references
+
+          cargo test -p chio-conformance --features enterprise-native --lib \
+            native_suite::tests::enterprise_inventory_gate_rejects_missing_duplicate_extra_skipped_and_zero \
+            -- --exact
+
+          cargo test -p chio-core-types --test security_generated_vectors \
+            -- --list 2>&1 | tee "${generated_vector_list_output}"
+          cargo test -p chio-core-types --test security_generated_vectors \
+            2>&1 | tee "${generated_vector_run_output}"
+          python3 scripts/check-exact-cargo-test-inventory.py \
+            --label "Rust generated security vectors" \
+            --list-output "${generated_vector_list_output}" \
+            --run-output "${generated_vector_run_output}" \
+            authoritative_schema_rejects_both_approval_forms_vector \
+            generated_active_defense_integer_wrappers_fail_closed \
+            generated_active_defense_types_decode_reencode_and_reject \
+            generated_detector_health_type_rejects_invalid_serialization \
+            generated_detector_health_type_rejects_mutation_corpus \
+            generated_protocol_types_preserve_approval_and_aggregate_budget_fields \
+            generated_receipt_types_cover_semantic_mutation_corpus \
+            legacy_response_transition_canonical_digest_is_unchanged \
+            native_receipt_types_reject_unsafe_json_integers \
+            protocol_schema_and_generated_types_cover_exact_negative_corpus
+
+      - name: Python generated security conformance
+        run: |
+          python -m pip install --disable-pip-version-check -e 'sdks/python/chio-sdk-python[dev]'
+          python -m pytest -q sdks/python/chio-sdk-python/tests/test_security_generated_vectors.py
+
+      - name: TypeScript generated security conformance
+        run: |
+          cd sdks/typescript/packages/conformance
+          npm ci
+          npm test -- test/security-generated-vectors.test.ts
+
+      - name: Go generated security conformance
+        working-directory: sdks/go/chio-go-http
+        run: |
+          expected_tests=$'TestBothApprovalFormsVectorTracksAuthoritativeExclusion\nTestDetectorHealthGeneratedEmittersRejectInvalidState\nTestDetectorHealthGeneratedTypeRejectsMutationCorpus\nTestDetectorHealthTaggedKnowledgeRejectsInvalidVariants\nTestGeneratedActiveDefenseTypesDecodeReencodeAndReject\nTestGeneratedProtocolTypesPreserveApprovalAndAggregateBudgetFields\nTestGeneratedReceiptEmittersRejectUnsafePortableIntegers\nTestGeneratedReceiptTypesCoverSemanticMutationCorpus\nTestProtocolSchemaAndGeneratedTypesCoverExactNegativeCorpus'
+          actual_tests="$(
+            go test ./... \
+              -list '^(TestBothApprovalFormsVectorTracksAuthoritativeExclusion|TestDetectorHealthGeneratedEmittersRejectInvalidState|TestDetectorHealthGeneratedTypeRejectsMutationCorpus|TestDetectorHealthTaggedKnowledgeRejectsInvalidVariants|TestGeneratedActiveDefenseTypesDecodeReencodeAndReject|TestGeneratedProtocolTypesPreserveApprovalAndAggregateBudgetFields|TestGeneratedReceiptEmittersRejectUnsafePortableIntegers|TestGeneratedReceiptTypesCoverSemanticMutationCorpus|TestProtocolSchemaAndGeneratedTypesCoverExactNegativeCorpus)$' |
+              awk '/^Test/ { print $1 }' |
+              LC_ALL=C sort
+          )"
+          test -n "${actual_tests}"
+          test "${actual_tests}" = "${expected_tests}"
+          go test ./... \
+            -run '^(TestBothApprovalFormsVectorTracksAuthoritativeExclusion|TestDetectorHealthGeneratedEmittersRejectInvalidState|TestDetectorHealthGeneratedTypeRejectsMutationCorpus|TestDetectorHealthTaggedKnowledgeRejectsInvalidVariants|TestGeneratedActiveDefenseTypesDecodeReencodeAndReject|TestGeneratedProtocolTypesPreserveApprovalAndAggregateBudgetFields|TestGeneratedReceiptEmittersRejectUnsafePortableIntegers|TestGeneratedReceiptTypesCoverSemanticMutationCorpus|TestProtocolSchemaAndGeneratedTypesCoverExactNegativeCorpus)$' \
+            -count=1
+
+      - name: Strict changed-crate lint
+        run: |
+          cargo clippy \
+            -p chio-core-types \
+            -p chio-keyring \
+            -p chio-secret-broker \
+            -p chio-manifest \
+            --all-targets -- -D warnings
+
+  active-defense-security:
+    name: active defense security gates
+    needs: [bind-source]
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: ${{ needs.bind-source.outputs.tested_repository }}
+          ref: ${{ needs.bind-source.outputs.tested_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact event test checkout
+        run: |
+          set -euo pipefail
+          [[ "${{ needs.bind-source.outputs.tested_sha }}" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git rev-parse HEAD)" = "${{ needs.bind-source.outputs.tested_sha }}"
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install --profile minimal --component clippy
+          rustup target add wasm32-unknown-unknown
+          rustup show active-toolchain
+
+      - name: Install native prerequisites
+        uses: ./.github/actions/apt-install
+        with:
+          packages: protobuf-compiler
+
+      - name: Install Java runtime
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32
+
+      - name: Install Apalache
+        run: |
+          ./tools/install-apalache.sh
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Information-flow behavior and formal model
+        run: ./scripts/check-flow-security.sh
+
+      - name: Deception boundary behavior
+        run: ./scripts/check-deception-security.sh
+
+      - name: Response recovery behavior
+        run: ./scripts/check-response-recovery.sh
+
+      - name: Active defense acceptance behavior
+        run: ./scripts/check-active-defense-conformance.sh
+
+      - name: Protocol primitive concurrency
+        run: ./scripts/check-protocol-primitives-concurrency.sh
+
+      - name: Protocol peer negotiation
+        run: ./scripts/check-protocol-peer-negotiation.sh
+
+  adversarial-evidence:
+    name: enterprise adversarial evidence
+    needs: [bind-source]
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - name: Checkout exact candidate source without credentials
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: ${{ needs.bind-source.outputs.tested_repository }}
+          ref: ${{ needs.bind-source.outputs.tested_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: candidate
+
+      - name: Checkout exact authorized security tooling without credentials
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: ${{ needs.bind-source.outputs.tested_repository }}
+          ref: ${{ vars.CHIO_AUTHORIZED_SECURITY_SOURCE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+          path: authorized-security
+
+      - name: Verify exact isolated security execution inputs
+        env:
+          AUTHORIZED_SOURCE_SHA: ${{ vars.CHIO_AUTHORIZED_SECURITY_SOURCE_SHA }}
+          CANDIDATE_SHA: ${{ needs.bind-source.outputs.tested_sha }}
+        run: |
+          set -euo pipefail
+          [[ "${AUTHORIZED_SOURCE_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          [[ "${CANDIDATE_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          test "$(/usr/bin/git -C candidate rev-parse HEAD)" = "${CANDIDATE_SHA}"
+          test "$(/usr/bin/git -C authorized-security rev-parse HEAD)" = "${AUTHORIZED_SOURCE_SHA}"
+          while read -r mode path; do
+            test -f "authorized-security/${path}"
+            test ! -L "authorized-security/${path}"
+            test "$(stat --format='%a' "authorized-security/${path}")" = "${mode}"
+          done <<'TRUSTED_EXECUTION_FILES'
+          644 deploy/docker/Dockerfile.security-evidence-runner
+          644 deploy/docker/security-evidence-apk.lock
+          644 deploy/docker/security-evidence-seccomp.json
+          755 crates/security/chio-cage/scripts/check-linux-enforcement.sh
+          644 scripts/check-cage-all-target-inventory.py
+          755 scripts/check-cage-enforcement.sh
+          755 scripts/check-exact-cargo-test-inventory.py
+          755 scripts/check-keyring-transparency.sh
+          755 scripts/check-linux-enforcement-stack.py
+          755 scripts/check-secret-broker-boundary.sh
+          755 scripts/check-security-adversarial-evidence.py
+          755 scripts/run-security-execution-container.py
+          755 scripts/security-execution-command-client.py
+          755 scripts/security-execution-container-entrypoint.py
+          755 scripts/tests/run-security-execution-container.test.py
+          TRUSTED_EXECUTION_FILES
+
+      - name: Build digest-addressed trusted security execution image
+        id: security-image
+        run: |
+          set -euo pipefail
+          tag="chio-security-execution:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          /usr/bin/docker build \
+            --platform linux/amd64 \
+            --file authorized-security/deploy/docker/Dockerfile.security-evidence-runner \
+            --tag "${tag}" \
+            authorized-security
+          image_id="$(/usr/bin/docker image inspect --format '{{.Id}}' "${tag}")"
+          [[ "${image_id}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          test "$(/usr/bin/docker image inspect --format '{{.Os}}/{{.Architecture}}' "${tag}")" = "linux/amd64"
+          echo "image=${image_id}" >> "${GITHUB_OUTPUT}"
+
+      - name: Verify trusted execution boundary hostile probes
+        env:
+          CHIO_SECURITY_EXECUTION_IMAGE: ${{ steps.security-image.outputs.image }}
+        run: |
+          /usr/bin/python3 \
+            authorized-security/scripts/tests/run-security-execution-container.test.py \
+            --docker \
+            --image "${CHIO_SECURITY_EXECUTION_IMAGE}"
+
+      - name: Verify freshness-bound mutation evidence
+        env:
+          AUTHORIZED_SOURCE_SHA: ${{ vars.CHIO_AUTHORIZED_SECURITY_SOURCE_SHA }}
+          CANDIDATE_SHA: ${{ needs.bind-source.outputs.tested_sha }}
+          SECURITY_EXECUTION_IMAGE: ${{ steps.security-image.outputs.image }}
+        run: |
+          /usr/bin/python3 \
+            authorized-security/scripts/run-security-execution-container.py \
+            --authorized-source-sha "${AUTHORIZED_SOURCE_SHA}" \
+            --candidate candidate \
+            --expected-sha "${CANDIDATE_SHA}" \
+            --image "${SECURITY_EXECUTION_IMAGE}" \
+            --operation adversarial-release \
+            --output-dir "${RUNNER_TEMP}/adversarial-security-execution" \
+            --state-dir "${RUNNER_TEMP}/security-execution-state" \
+            --timeout-seconds 18000
+
+  linux-enforcement:
+    name: enterprise real Linux enforcement
+    needs: [bind-source]
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - name: Checkout exact candidate source without credentials
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: ${{ needs.bind-source.outputs.tested_repository }}
+          ref: ${{ needs.bind-source.outputs.tested_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: candidate
+
+      - name: Checkout exact authorized security tooling without credentials
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: ${{ needs.bind-source.outputs.tested_repository }}
+          ref: ${{ vars.CHIO_AUTHORIZED_SECURITY_SOURCE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+          path: authorized-security
+
+      - name: Verify exact isolated security execution inputs
+        env:
+          AUTHORIZED_SOURCE_SHA: ${{ vars.CHIO_AUTHORIZED_SECURITY_SOURCE_SHA }}
+          CANDIDATE_SHA: ${{ needs.bind-source.outputs.tested_sha }}
+        run: |
+          set -euo pipefail
+          [[ "${AUTHORIZED_SOURCE_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          [[ "${CANDIDATE_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          test "$(/usr/bin/git -C candidate rev-parse HEAD)" = "${CANDIDATE_SHA}"
+          test "$(/usr/bin/git -C authorized-security rev-parse HEAD)" = "${AUTHORIZED_SOURCE_SHA}"
+          while read -r mode path; do
+            test -f "authorized-security/${path}"
+            test ! -L "authorized-security/${path}"
+            test "$(stat --format='%a' "authorized-security/${path}")" = "${mode}"
+          done <<'TRUSTED_EXECUTION_FILES'
+          644 deploy/docker/Dockerfile.security-evidence-runner
+          644 deploy/docker/security-evidence-apk.lock
+          644 deploy/docker/security-evidence-seccomp.json
+          755 crates/security/chio-cage/scripts/check-linux-enforcement.sh
+          644 scripts/check-cage-all-target-inventory.py
+          755 scripts/check-cage-enforcement.sh
+          755 scripts/check-exact-cargo-test-inventory.py
+          755 scripts/check-keyring-transparency.sh
+          755 scripts/check-linux-enforcement-stack.py
+          755 scripts/check-secret-broker-boundary.sh
+          755 scripts/check-security-adversarial-evidence.py
+          755 scripts/run-security-execution-container.py
+          755 scripts/security-execution-command-client.py
+          755 scripts/security-execution-container-entrypoint.py
+          755 scripts/tests/run-security-execution-container.test.py
+          TRUSTED_EXECUTION_FILES
+
+      - name: Build digest-addressed trusted security execution image
+        id: security-image
+        run: |
+          set -euo pipefail
+          tag="chio-security-execution:${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          /usr/bin/docker build \
+            --platform linux/amd64 \
+            --file authorized-security/deploy/docker/Dockerfile.security-evidence-runner \
+            --tag "${tag}" \
+            authorized-security
+          image_id="$(/usr/bin/docker image inspect --format '{{.Id}}' "${tag}")"
+          [[ "${image_id}" =~ ^sha256:[0-9a-f]{64}$ ]]
+          test "$(/usr/bin/docker image inspect --format '{{.Os}}/{{.Architecture}}' "${tag}")" = "linux/amd64"
+          echo "image=${image_id}" >> "${GITHUB_OUTPUT}"
+
+      - name: Run isolated Linux evidence and cage campaigns
+        env:
+          AUTHORIZED_SOURCE_SHA: ${{ vars.CHIO_AUTHORIZED_SECURITY_SOURCE_SHA }}
+          CANDIDATE_SHA: ${{ needs.bind-source.outputs.tested_sha }}
+          SECURITY_EXECUTION_IMAGE: ${{ steps.security-image.outputs.image }}
+        run: |
+          /usr/bin/python3 \
+            authorized-security/scripts/run-security-execution-container.py \
+            --authorized-source-sha "${AUTHORIZED_SOURCE_SHA}" \
+            --candidate candidate \
+            --expected-sha "${CANDIDATE_SHA}" \
+            --image "${SECURITY_EXECUTION_IMAGE}" \
+            --operation linux-enforcement \
+            --output-dir "${RUNNER_TEMP}/linux-security-execution" \
+            --state-dir "${RUNNER_TEMP}/security-execution-state" \
+            --timeout-seconds 9000
+
+  committed-linux-evidence:
+    name: verify committed Linux evidence from trusted checker bytes
+    needs: [bind-source, linux-enforcement]
+    permissions:
+      contents: read
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Bind committed evidence or authorize narrow bootstrap
+        id: evidence
+        env:
+          AUTHORIZED_SOURCE_SHA: ${{ vars.CHIO_AUTHORIZED_SECURITY_SOURCE_SHA }}
+          EVIDENCE_SHA: ${{ vars.CHIO_COMMITTED_LINUX_EVIDENCE_SHA }}
+          SOURCE_REPOSITORY: ${{ needs.bind-source.outputs.source_repository }}
+          SOURCE_SHA: ${{ needs.bind-source.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          [[ "${AUTHORIZED_SOURCE_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          [[ "${SOURCE_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          if test -z "${EVIDENCE_SHA}"; then
+            test "${SOURCE_REPOSITORY}" = "${GITHUB_REPOSITORY}"
+            test "${SOURCE_SHA}" = "${AUTHORIZED_SOURCE_SHA}"
+            echo "verify=false" >> "${GITHUB_OUTPUT}"
+            echo "authorized source bootstrap; committed evidence SHA is not configured yet"
+            exit 0
+          fi
+          [[ "${EVIDENCE_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          test "${EVIDENCE_SHA}" != "${AUTHORIZED_SOURCE_SHA}"
+          echo "verify=true" >> "${GITHUB_OUTPUT}"
+
+      - name: Checkout exact committed evidence without credentials
+        if: steps.evidence.outputs.verify == 'true'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: ${{ needs.bind-source.outputs.tested_repository }}
+          ref: ${{ vars.CHIO_COMMITTED_LINUX_EVIDENCE_SHA }}
+          fetch-depth: 0
+          persist-credentials: false
+          path: committed-evidence
+
+      - name: Checkout exact authorized checker source without credentials
+        if: steps.evidence.outputs.verify == 'true'
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+        with:
+          repository: ${{ needs.bind-source.outputs.tested_repository }}
+          ref: ${{ vars.CHIO_AUTHORIZED_SECURITY_SOURCE_SHA }}
+          fetch-depth: 1
+          persist-credentials: false
+          path: authorized-checker
+
+      - name: Verify exact isolated checkout identities
+        if: steps.evidence.outputs.verify == 'true'
+        env:
+          AUTHORIZED_SOURCE_SHA: ${{ vars.CHIO_AUTHORIZED_SECURITY_SOURCE_SHA }}
+          EVIDENCE_SHA: ${{ vars.CHIO_COMMITTED_LINUX_EVIDENCE_SHA }}
+          TESTED_REPOSITORY: ${{ needs.bind-source.outputs.tested_repository }}
+        run: |
+          set -euo pipefail
+          [[ "${AUTHORIZED_SOURCE_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          [[ "${EVIDENCE_SHA}" =~ ^[0-9a-f]{40}$ ]]
+          test "${TESTED_REPOSITORY}" = "${GITHUB_REPOSITORY}"
+          test "$(git -C committed-evidence rev-parse HEAD)" = "${EVIDENCE_SHA}"
+          test "$(git -C authorized-checker rev-parse HEAD)" = "${AUTHORIZED_SOURCE_SHA}"
+          test -f authorized-checker/scripts/check-committed-linux-evidence.py
+          test ! -L authorized-checker/scripts/check-committed-linux-evidence.py
+
+      - name: Verify committed Linux evidence descendant
+        if: steps.evidence.outputs.verify == 'true'
+        env:
+          AUTHORIZED_SOURCE_SHA: ${{ vars.CHIO_AUTHORIZED_SECURITY_SOURCE_SHA }}
+          CANARY_SIGNER_PUBLIC_KEY: ${{ vars.CHIO_ENTERPRISE_CANARY_SIGNER_PUBLIC_KEY }}
+          EVIDENCE_SHA: ${{ vars.CHIO_COMMITTED_LINUX_EVIDENCE_SHA }}
+          EVIDENCE_POLICY_JSON: ${{ vars.CHIO_ENTERPRISE_EVIDENCE_POLICY_JSON }}
+          VERIFIER_SHA256: ${{ vars.CHIO_ENTERPRISE_EVIDENCE_VERIFIER_SHA256 }}
+          VERIFIER_URL: ${{ vars.CHIO_ENTERPRISE_EVIDENCE_VERIFIER_URL }}
+        run: |
+          set -euo pipefail
+          umask 077
+          [[ "${CANARY_SIGNER_PUBLIC_KEY}" =~ ^[0-9a-f]{64}$ ]]
+          [[ "${VERIFIER_SHA256}" =~ ^[0-9a-f]{64}$ ]]
+          [[ "${VERIFIER_URL}" =~ ^https://github.com/bb-connor/arc/releases/download/[A-Za-z0-9._-]+/chio-enterprise-evidence-linux-x86_64$ ]]
+          policy="$(jq -cS . <<< "${EVIDENCE_POLICY_JSON}")"
+          test "${policy}" = "${EVIDENCE_POLICY_JSON}"
+          test "$(jq -cS 'keys' <<< "${policy}")" = '["binding_digest","broker_boundary_digest","cage_enforcement_digest","committed_adversarial_evidence_digest","configuration_digest","generated_at_not_after_unix_ms","generated_at_not_before_unix_ms","inventory_digest","key_log_transparency_digest","linux_adversarial_controls_digest","migration_state_store_digest","runner_arch","runner_contract_digest","runner_labels_digest","runner_name","runner_os","schema","source_commit"]'
+          test "$(jq -r '.schema' <<< "${policy}")" = "chio.enterprise-committed-evidence-policy.v1"
+          test "$(jq -r '.source_commit' <<< "${policy}")" = "${AUTHORIZED_SOURCE_SHA}"
+          test "$(jq -r '.runner_os' <<< "${policy}")" = "Linux"
+          test "$(jq -r '.runner_arch' <<< "${policy}")" = "X64"
+          [[ "$(jq -r '.runner_name' <<< "${policy}")" =~ ^[[:print:]]{1,128}$ ]]
+          for key in \
+            binding_digest \
+            broker_boundary_digest \
+            cage_enforcement_digest \
+            committed_adversarial_evidence_digest \
+            configuration_digest \
+            inventory_digest \
+            key_log_transparency_digest \
+            linux_adversarial_controls_digest \
+            migration_state_store_digest \
+            runner_contract_digest \
+            runner_labels_digest; do
+            [[ "$(jq -r --arg key "${key}" '.[$key]' <<< "${policy}")" =~ ^[0-9a-f]{64}$ ]]
+          done
+          generated_at_not_before_unix_ms="$(jq -r '.generated_at_not_before_unix_ms' <<< "${policy}")"
+          generated_at_not_after_unix_ms="$(jq -r '.generated_at_not_after_unix_ms' <<< "${policy}")"
+          [[ "${generated_at_not_before_unix_ms}" =~ ^[1-9][0-9]{12}$ ]]
+          [[ "${generated_at_not_after_unix_ms}" =~ ^[1-9][0-9]{12}$ ]]
+          test "${generated_at_not_before_unix_ms}" -lt "${generated_at_not_after_unix_ms}"
+
+          verifier="${RUNNER_TEMP}/chio-enterprise-evidence"
+          partial="${verifier}.partial"
+          trap 'rm -f -- "${partial}" "${verifier}"' EXIT
+          curl \
+            --proto '=https' \
+            --tlsv1.2 \
+            --fail \
+            --location \
+            --silent \
+            --show-error \
+            --max-filesize 268435456 \
+            --output "${partial}" \
+            "${VERIFIER_URL}"
+          test "$(stat --format='%F:%a' "${partial}")" = "regular file:600"
+          test "$(stat --format='%s' "${partial}")" -gt 0
+          test "$(stat --format='%s' "${partial}")" -le 268435456
+          test "$(sha256sum "${partial}" | cut -d' ' -f1)" = "${VERIFIER_SHA256}"
+          chmod 0500 "${partial}"
+          mv -- "${partial}" "${verifier}"
+
+          /usr/bin/python3 authorized-checker/scripts/check-committed-linux-evidence.py \
+            --root committed-evidence \
+            --verifier "${verifier}" \
+            --verifier-sha256 "${VERIFIER_SHA256}" \
+            --source-commit "${AUTHORIZED_SOURCE_SHA}" \
+            --evidence-commit "${EVIDENCE_SHA}" \
+            --runner-public-key "${CANARY_SIGNER_PUBLIC_KEY}" \
+            --expected-runner-name "$(jq -r '.runner_name' <<< "${policy}")" \
+            --expected-runner-os "$(jq -r '.runner_os' <<< "${policy}")" \
+            --expected-runner-arch "$(jq -r '.runner_arch' <<< "${policy}")" \
+            --expected-runner-labels-digest "$(jq -r '.runner_labels_digest' <<< "${policy}")" \
+            --expected-configuration-digest "$(jq -r '.configuration_digest' <<< "${policy}")" \
+            --expected-inventory-digest "$(jq -r '.inventory_digest' <<< "${policy}")" \
+            --expected-runner-contract-digest "$(jq -r '.runner_contract_digest' <<< "${policy}")" \
+            --expected-key-log-transparency-digest "$(jq -r '.key_log_transparency_digest' <<< "${policy}")" \
+            --expected-broker-boundary-digest "$(jq -r '.broker_boundary_digest' <<< "${policy}")" \
+            --expected-cage-enforcement-digest "$(jq -r '.cage_enforcement_digest' <<< "${policy}")" \
+            --expected-committed-adversarial-evidence-digest "$(jq -r '.committed_adversarial_evidence_digest' <<< "${policy}")" \
+            --expected-linux-adversarial-controls-digest "$(jq -r '.linux_adversarial_controls_digest' <<< "${policy}")" \
+            --expected-migration-state-store-digest "$(jq -r '.migration_state_store_digest' <<< "${policy}")" \
+            --expected-binding-digest "0x$(jq -r '.binding_digest' <<< "${policy}")" \
+            --generated-at-not-before-unix-ms "${generated_at_not_before_unix_ms}" \
+            --generated-at-not-after-unix-ms "${generated_at_not_after_unix_ms}"

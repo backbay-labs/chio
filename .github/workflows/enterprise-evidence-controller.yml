@@ -1,0 +1,498 @@
+name: Enterprise evidence controller
+
+on:
+  pull_request_target:
+    branches: [main]
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  actions: write
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: enterprise-security-controller-source-${{ github.event.pull_request.head.sha }}
+  cancel-in-progress: true
+
+jobs:
+  dispatch-isolated-capture:
+    name: dispatch isolated enterprise Linux capture
+    if: >-
+      github.event.sender.type == 'User' &&
+      github.actor == github.repository_owner &&
+      github.event.pull_request.author_association == 'OWNER' &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      AUTHORIZED_SOURCE_SHA: ${{ vars.CHIO_AUTHORIZED_SECURITY_SOURCE_SHA }}
+      ENTERPRISE_SECURITY_DEFINITION_SHA: ${{ vars.CHIO_ENTERPRISE_SECURITY_DEFINITION_SHA }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Authorize exact source and controller context
+        id: authorize
+        env:
+          CONTROLLER_ACTOR: ${{ github.actor }}
+          CONTROLLER_RUN_ATTEMPT: ${{ github.run_attempt }}
+          CONTROLLER_RUN_ID: ${{ github.run_id }}
+          CONTROLLER_SHA: ${{ github.sha }}
+          EVENT_BASE_REF: ${{ github.event.pull_request.base.ref }}
+          EVENT_BASE_REPOSITORY: ${{ github.event.pull_request.base.repo.full_name }}
+          EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          SECURITY_DEFINITION_SHA: ${{ vars.CHIO_ENTERPRISE_SECURITY_DEFINITION_SHA }}
+        run: |
+          set -euo pipefail
+          shopt -s inherit_errexit
+
+          commit_pattern='^[0-9a-f]{40}$'
+          [[ "${AUTHORIZED_SOURCE_SHA}" =~ ${commit_pattern} ]]
+          [[ "${EVENT_HEAD_SHA}" =~ ${commit_pattern} ]]
+          [[ "${EVENT_BASE_SHA}" =~ ${commit_pattern} ]]
+          [[ "${CONTROLLER_SHA}" =~ ${commit_pattern} ]]
+          [[ "${SECURITY_DEFINITION_SHA}" =~ ${commit_pattern} ]]
+          [[ "${ENTERPRISE_SECURITY_DEFINITION_SHA}" =~ ${commit_pattern} ]]
+          [[ "${CONTROLLER_RUN_ID}" =~ ^[1-9][0-9]*$ ]]
+          [[ "${CONTROLLER_RUN_ATTEMPT}" =~ ^[1-9][0-9]*$ ]]
+          test "${CONTROLLER_RUN_ATTEMPT}" = "1"
+          [[ "${PR_NUMBER}" =~ ^[1-9][0-9]*$ ]]
+          test "${EVENT_HEAD_REPOSITORY}" = "${GITHUB_REPOSITORY}"
+          test "${EVENT_BASE_REPOSITORY}" = "${GITHUB_REPOSITORY}"
+          test "${EVENT_BASE_REF}" = "${{ github.event.repository.default_branch }}"
+          test "${CONTROLLER_ACTOR}" = "${GITHUB_REPOSITORY_OWNER}"
+          test "${SECURITY_DEFINITION_SHA}" = "${ENTERPRISE_SECURITY_DEFINITION_SHA}"
+
+          authorized_commit="$({
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/${GITHUB_REPOSITORY}/git/commits/${AUTHORIZED_SOURCE_SHA}"
+          })"
+          authorized_tree_sha="$(jq -r '.tree.sha' <<< "${authorized_commit}")"
+          [[ "${authorized_tree_sha}" =~ ${commit_pattern} ]]
+          authorized_tree="$({
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/${GITHUB_REPOSITORY}/git/trees/${authorized_tree_sha}?recursive=1"
+          })"
+          test "$(jq -r '.truncated' <<< "${authorized_tree}")" = "false"
+          while IFS=':' read -r mode path; do
+            test "$(
+              jq -r \
+                --arg mode "${mode}" \
+                --arg path "${path}" \
+                '[.tree[] | select(.path == $path and .mode == $mode and .type == "blob")] | length' \
+                <<< "${authorized_tree}"
+            )" = "1"
+          done <<'TRUSTED_EXECUTION_FILES'
+          100644:deploy/docker/Dockerfile.security-evidence-runner
+          100644:deploy/docker/security-evidence-apk.lock
+          100644:deploy/docker/security-evidence-seccomp.json
+          100755:crates/security/chio-cage/scripts/check-linux-enforcement.sh
+          100644:scripts/check-cage-all-target-inventory.py
+          100755:scripts/check-cage-enforcement.sh
+          100755:scripts/check-exact-cargo-test-inventory.py
+          100755:scripts/check-keyring-transparency.sh
+          100755:scripts/check-linux-enforcement-stack.py
+          100755:scripts/check-secret-broker-boundary.sh
+          100755:scripts/check-security-adversarial-evidence.py
+          100755:scripts/run-security-execution-container.py
+          100755:scripts/security-execution-command-client.py
+          100755:scripts/security-execution-container-entrypoint.py
+          100755:scripts/tests/run-security-execution-container.test.py
+          TRUSTED_EXECUTION_FILES
+
+          controller_workflow_id="$({
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/${GITHUB_REPOSITORY}/actions/workflows/enterprise-evidence-controller.yml" \
+              --jq '.id'
+          })"
+          controller_run="$({
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/${GITHUB_REPOSITORY}/actions/runs/${CONTROLLER_RUN_ID}"
+          })"
+          test "$(jq -r '.workflow_id' <<< "${controller_run}")" = "${controller_workflow_id}"
+          test "$(jq -r '.path' <<< "${controller_run}")" = ".github/workflows/enterprise-evidence-controller.yml"
+          test "$(jq -r '.event' <<< "${controller_run}")" = "pull_request_target"
+          test "$(jq -r '.status' <<< "${controller_run}")" = "in_progress"
+          test "$(jq -r '.head_sha' <<< "${controller_run}")" = "${CONTROLLER_SHA}"
+          test "$(jq -r '.actor.login' <<< "${controller_run}")" = "${CONTROLLER_ACTOR}"
+          test "$(jq -r '.triggering_actor.login' <<< "${controller_run}")" = "${CONTROLLER_ACTOR}"
+          test "$(jq -r '.run_attempt' <<< "${controller_run}")" = "${CONTROLLER_RUN_ATTEMPT}"
+          controller_created_at="$(jq -r '.created_at' <<< "${controller_run}")"
+          controller_created_epoch="$(date --date="${controller_created_at}" +%s)"
+          now_epoch="$(date +%s)"
+          test "${controller_created_epoch}" -le "${now_epoch}"
+          test "$((now_epoch - controller_created_epoch))" -le 900
+
+          controller_blob_sha="$({
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/${GITHUB_REPOSITORY}/contents/.github/workflows/enterprise-evidence-controller.yml?ref=${SECURITY_DEFINITION_SHA}" \
+              --jq '.sha'
+          })"
+          [[ "${controller_blob_sha}" =~ ^[0-9a-f]{40}$ ]]
+          running_controller_blob_sha="$({
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/${GITHUB_REPOSITORY}/contents/.github/workflows/enterprise-evidence-controller.yml?ref=${CONTROLLER_SHA}" \
+              --jq '.sha'
+          })"
+          test "${running_controller_blob_sha}" = "${controller_blob_sha}"
+
+          live_pr="$({
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}"
+          })"
+          test "$(jq -r '.state' <<< "${live_pr}")" = "open"
+          test "$(jq -r '.user.login' <<< "${live_pr}")" = "${GITHUB_REPOSITORY_OWNER}"
+          test "$(jq -r '.author_association' <<< "${live_pr}")" = "OWNER"
+          test "$(jq -r '.head.repo.full_name' <<< "${live_pr}")" = "${EVENT_HEAD_REPOSITORY}"
+          test "$(jq -r '.head.sha' <<< "${live_pr}")" = "${EVENT_HEAD_SHA}"
+          test "$(jq -r '.base.repo.full_name' <<< "${live_pr}")" = "${EVENT_BASE_REPOSITORY}"
+          test "$(jq -r '.base.ref' <<< "${live_pr}")" = "${EVENT_BASE_REF}"
+          test "$(jq -r '.base.sha' <<< "${live_pr}")" = "${EVENT_BASE_SHA}"
+
+          merge_ref="$({
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2026-03-10" \
+              "repos/${GITHUB_REPOSITORY}/git/ref/pull/${PR_NUMBER}/merge"
+          })"
+          test "$(jq -r '.ref' <<< "${merge_ref}")" = "refs/pull/${PR_NUMBER}/merge"
+          test "$(jq -r '.object.type' <<< "${merge_ref}")" = commit
+          merge_commit_sha="$(jq -r '.object.sha' <<< "${merge_ref}")"
+          [[ "${merge_commit_sha}" =~ ${commit_pattern} ]]
+          merge_commit="$({
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2026-03-10" \
+              "repos/${GITHUB_REPOSITORY}/git/commits/${merge_commit_sha}"
+          })"
+          test "$(jq -r '.parents | length' <<< "${merge_commit}")" = "2"
+          test "$(jq -r '.parents[0].sha' <<< "${merge_commit}")" = "${EVENT_BASE_SHA}"
+          test "$(jq -r '.parents[1].sha' <<< "${merge_commit}")" = "${EVENT_HEAD_SHA}"
+          merge_tree_sha="$(jq -r '.tree.sha' <<< "${merge_commit}")"
+          [[ "${merge_tree_sha}" =~ ${commit_pattern} ]]
+
+          labels_json="$(jq -cS '[.labels[].name] | sort' <<< "${live_pr}")"
+          labels_digest="$(printf '%s' "${labels_json}" | sha256sum | cut -d' ' -f1)"
+          mode=enforcement
+          if jq -e '.labels | any(.name == "refresh-linux-evidence")' <<< "${live_pr}" > /dev/null; then
+            mode=refresh
+          fi
+
+          cursor="${EVENT_HEAD_SHA}"
+          authorized=false
+          for _ in $(seq 0 32); do
+            if test "${cursor}" = "${AUTHORIZED_SOURCE_SHA}"; then
+              authorized=true
+              break
+            fi
+            commit="$({
+              gh api \
+                -H "Accept: application/vnd.github+json" \
+                "repos/${GITHUB_REPOSITORY}/commits/${cursor}?per_page=100"
+            })"
+            test "$(jq -r '.parents | length' <<< "${commit}")" = "1"
+            test "$(jq -r '.files | length > 0 and length <= 3' <<< "${commit}")" = "true"
+            test "$(jq -r '
+              (.files | length) as $file_count |
+              [.files[] |
+                select(
+                  (.status == "added" or .status == "modified") and
+                  (.filename == "audits/evidence/enterprise-linux/enterprise-migration-canary.json" or
+                   .filename == "audits/evidence/enterprise-linux/enterprise-migration-canary.json.sha256" or
+                   .filename == "audits/evidence/enterprise-linux/enterprise-migration-binding-digest.txt")
+                )] | length == $file_count
+            ' <<< "${commit}")" = "true"
+            cursor="$(jq -r '.parents[0].sha' <<< "${commit}")"
+          done
+          test "${authorized}" = true
+          if test "${EVENT_HEAD_SHA}" != "${AUTHORIZED_SOURCE_SHA}"; then
+            evidence_tree_sha="$({
+              gh api \
+                -H "Accept: application/vnd.github+json" \
+                "repos/${GITHUB_REPOSITORY}/git/commits/${EVENT_HEAD_SHA}" \
+                --jq '.tree.sha'
+            })"
+            for component in audits evidence enterprise-linux; do
+              tree="$({
+                gh api \
+                  -H "Accept: application/vnd.github+json" \
+                  "repos/${GITHUB_REPOSITORY}/git/trees/${evidence_tree_sha}"
+              })"
+              test "$(jq -r --arg component "${component}" '[.tree[] | select(.path == $component and .mode == "040000" and .type == "tree")] | length' <<< "${tree}")" = "1"
+              evidence_tree_sha="$(jq -r --arg component "${component}" '.tree[] | select(.path == $component and .mode == "040000" and .type == "tree") | .sha' <<< "${tree}")"
+            done
+            evidence_tree="$({
+              gh api \
+                -H "Accept: application/vnd.github+json" \
+                "repos/${GITHUB_REPOSITORY}/git/trees/${evidence_tree_sha}"
+            })"
+            test "$(jq -r '.truncated' <<< "${evidence_tree}")" = "false"
+            test "$(jq -cS '[.tree[] | select(.mode == "100644" and .type == "blob") | .path] | sort' <<< "${evidence_tree}")" = '["enterprise-migration-binding-digest.txt","enterprise-migration-canary.json","enterprise-migration-canary.json.sha256"]'
+            test "$(jq -r '.tree | length' <<< "${evidence_tree}")" = "3"
+          fi
+
+          stable_pr="$({
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2026-03-10" \
+              "repos/${GITHUB_REPOSITORY}/pulls/${PR_NUMBER}"
+          })"
+          test "$(jq -r '.state' <<< "${stable_pr}")" = open
+          test "$(jq -r '.head.repo.full_name' <<< "${stable_pr}")" = "${EVENT_HEAD_REPOSITORY}"
+          test "$(jq -r '.head.sha' <<< "${stable_pr}")" = "${EVENT_HEAD_SHA}"
+          test "$(jq -r '.base.repo.full_name' <<< "${stable_pr}")" = "${EVENT_BASE_REPOSITORY}"
+          test "$(jq -r '.base.ref' <<< "${stable_pr}")" = "${EVENT_BASE_REF}"
+          test "$(jq -r '.base.sha' <<< "${stable_pr}")" = "${EVENT_BASE_SHA}"
+          stable_merge_ref="$({
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2026-03-10" \
+              "repos/${GITHUB_REPOSITORY}/git/ref/pull/${PR_NUMBER}/merge"
+          })"
+          test "$(jq -r '.ref' <<< "${stable_merge_ref}")" = "refs/pull/${PR_NUMBER}/merge"
+          test "$(jq -r '.object.type' <<< "${stable_merge_ref}")" = commit
+          test "$(jq -r '.object.sha' <<< "${stable_merge_ref}")" = "${merge_commit_sha}"
+          stable_merge_commit="$({
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2026-03-10" \
+              "repos/${GITHUB_REPOSITORY}/git/commits/${merge_commit_sha}"
+          })"
+          test "$(jq -cS '[.parents[].sha]' <<< "${stable_merge_commit}")" = "[\"${EVENT_BASE_SHA}\",\"${EVENT_HEAD_SHA}\"]"
+          test "$(jq -r '.tree.sha' <<< "${stable_merge_commit}")" = "${merge_tree_sha}"
+
+          {
+            echo "authorized_source_sha=${AUTHORIZED_SOURCE_SHA}"
+            echo "base_ref=${EVENT_BASE_REF}"
+            echo "base_repository=${EVENT_BASE_REPOSITORY}"
+            echo "base_sha=${EVENT_BASE_SHA}"
+            echo "controller_actor=${CONTROLLER_ACTOR}"
+            echo "controller_blob_sha=${controller_blob_sha}"
+            echo "controller_issued_at_unix_ms=$((controller_created_epoch * 1000))"
+            echo "controller_run_attempt=${CONTROLLER_RUN_ATTEMPT}"
+            echo "controller_run_id=${CONTROLLER_RUN_ID}"
+            echo "controller_workflow_id=${controller_workflow_id}"
+            echo "head_repository=${EVENT_HEAD_REPOSITORY}"
+            echo "head_sha=${EVENT_HEAD_SHA}"
+            echo "labels_digest=${labels_digest}"
+            echo "merge_commit_sha=${merge_commit_sha}"
+            echo "merge_tree_sha=${merge_tree_sha}"
+            echo "mode=${mode}"
+            echo "pr_number=${PR_NUMBER}"
+            echo "security_definition_sha=${SECURITY_DEFINITION_SHA}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Dispatch exact default-branch capture definition
+        id: dispatch
+        env:
+          AUTHORIZED_SOURCE_SHA: ${{ steps.authorize.outputs.authorized_source_sha }}
+          BASE_REF: ${{ steps.authorize.outputs.base_ref }}
+          BASE_REPOSITORY: ${{ steps.authorize.outputs.base_repository }}
+          BASE_SHA: ${{ steps.authorize.outputs.base_sha }}
+          CONTROLLER_ACTOR: ${{ steps.authorize.outputs.controller_actor }}
+          CONTROLLER_BLOB_SHA: ${{ steps.authorize.outputs.controller_blob_sha }}
+          CONTROLLER_ISSUED_AT_UNIX_MS: ${{ steps.authorize.outputs.controller_issued_at_unix_ms }}
+          CONTROLLER_RUN_ATTEMPT: ${{ steps.authorize.outputs.controller_run_attempt }}
+          CONTROLLER_RUN_ID: ${{ steps.authorize.outputs.controller_run_id }}
+          CONTROLLER_WORKFLOW_ID: ${{ steps.authorize.outputs.controller_workflow_id }}
+          HEAD_REPOSITORY: ${{ steps.authorize.outputs.head_repository }}
+          HEAD_SHA: ${{ steps.authorize.outputs.head_sha }}
+          LABELS_DIGEST: ${{ steps.authorize.outputs.labels_digest }}
+          MERGE_COMMIT_SHA: ${{ steps.authorize.outputs.merge_commit_sha }}
+          MERGE_TREE_SHA: ${{ steps.authorize.outputs.merge_tree_sha }}
+          MODE: ${{ steps.authorize.outputs.mode }}
+          PR_NUMBER: ${{ steps.authorize.outputs.pr_number }}
+          SECURITY_DEFINITION_SHA: ${{ steps.authorize.outputs.security_definition_sha }}
+        run: |
+          set -euo pipefail
+          shopt -s inherit_errexit
+          umask 077
+          default_branch="${{ github.event.repository.default_branch }}"
+          [[ "${default_branch}" =~ ^[A-Za-z0-9._/-]{1,255}$ ]]
+          default_commit_sha="$(gh api -H "Accept: application/vnd.github+json" "repos/${GITHUB_REPOSITORY}/commits/${default_branch}" --jq '.sha')"
+          [[ "${default_commit_sha}" =~ ^[0-9a-f]{40}$ ]]
+          authorized_capture_blob_sha="$(gh api -H "Accept: application/vnd.github+json" "repos/${GITHUB_REPOSITORY}/contents/.github/workflows/enterprise-linux-capture.yml?ref=${SECURITY_DEFINITION_SHA}" --jq '.sha')"
+          default_capture_blob_sha="$(gh api -H "Accept: application/vnd.github+json" "repos/${GITHUB_REPOSITORY}/contents/.github/workflows/enterprise-linux-capture.yml?ref=${default_commit_sha}" --jq '.sha')"
+          [[ "${authorized_capture_blob_sha}" =~ ^[0-9a-f]{40}$ ]]
+          test "${default_capture_blob_sha}" = "${authorized_capture_blob_sha}"
+          capture_workflow="$({
+            gh api \
+              -H "Accept: application/vnd.github+json" \
+              "repos/${GITHUB_REPOSITORY}/actions/workflows/enterprise-linux-capture.yml"
+          })"
+          test "$(jq -r '.path' <<< "${capture_workflow}")" = ".github/workflows/enterprise-linux-capture.yml"
+          test "$(jq -r '.state' <<< "${capture_workflow}")" = "active"
+
+          dispatch_nonce="$(openssl rand -hex 32)"
+          [[ "${dispatch_nonce}" =~ ^[0-9a-f]{64}$ ]]
+          display_title="Enterprise Linux capture N=${PR_NUMBER} E=${HEAD_SHA} M=${MERGE_COMMIT_SHA} S=${AUTHORIZED_SOURCE_SHA} K=${dispatch_nonce}"
+          dispatch_started_at="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
+          payload="$(jq -cS -n \
+            --arg ref "${default_branch}" \
+            --arg authorized_source_sha "${AUTHORIZED_SOURCE_SHA}" \
+            --arg base_ref "${BASE_REF}" \
+            --arg base_repository "${BASE_REPOSITORY}" \
+            --arg base_sha "${BASE_SHA}" \
+            --arg controller_actor "${CONTROLLER_ACTOR}" \
+            --arg controller_blob_sha "${CONTROLLER_BLOB_SHA}" \
+            --arg controller_dispatch_nonce "${dispatch_nonce}" \
+            --arg controller_issued_at_unix_ms "${CONTROLLER_ISSUED_AT_UNIX_MS}" \
+            --arg controller_run_attempt "${CONTROLLER_RUN_ATTEMPT}" \
+            --arg controller_run_id "${CONTROLLER_RUN_ID}" \
+            --arg controller_workflow_id "${CONTROLLER_WORKFLOW_ID}" \
+            --arg labels_digest "${LABELS_DIGEST}" \
+            --arg merge_commit_sha "${MERGE_COMMIT_SHA}" \
+            --arg merge_tree_sha "${MERGE_TREE_SHA}" \
+            --arg mode "${MODE}" \
+            --arg pr_number "${PR_NUMBER}" \
+            --arg security_definition_sha "${SECURITY_DEFINITION_SHA}" \
+            --arg source_repository "${HEAD_REPOSITORY}" \
+            --arg source_sha "${HEAD_SHA}" \
+            '{
+              ref: $ref,
+              inputs: {
+                authorized_source_sha: $authorized_source_sha,
+                base_ref: $base_ref,
+                base_repository: $base_repository,
+                base_sha: $base_sha,
+                controller_actor: $controller_actor,
+                controller_blob_sha: $controller_blob_sha,
+                controller_dispatch_nonce: $controller_dispatch_nonce,
+                controller_issued_at_unix_ms: $controller_issued_at_unix_ms,
+                controller_run_attempt: $controller_run_attempt,
+                controller_run_id: $controller_run_id,
+                controller_workflow_id: $controller_workflow_id,
+                labels_digest: $labels_digest,
+                merge_commit_sha: $merge_commit_sha,
+                merge_tree_sha: $merge_tree_sha,
+                mode: $mode,
+                pr_number: $pr_number,
+                security_definition_sha: $security_definition_sha,
+                source_repository: $source_repository,
+                source_sha: $source_sha
+              }
+            }')"
+          gh api \
+            --method POST \
+            -H "Accept: application/vnd.github+json" \
+            "repos/${GITHUB_REPOSITORY}/actions/workflows/enterprise-linux-capture.yml/dispatches" \
+            --input - <<< "${payload}"
+
+          dispatched_run=''
+          for _ in $(seq 1 120); do
+            workflow_runs="$({
+              gh api \
+                --paginate \
+                -H "Accept: application/vnd.github+json" \
+                "repos/${GITHUB_REPOSITORY}/actions/workflows/enterprise-linux-capture.yml/runs?event=workflow_dispatch&branch=${default_branch}&per_page=100" \
+                --jq '.workflow_runs[]'
+            } | jq -s '.')"
+            matching_runs="$(
+              jq -cS \
+                --arg actor "github-actions[bot]" \
+                --arg display_title "${display_title}" \
+                --arg head_branch "${default_branch}" \
+                --arg head_sha "${default_commit_sha}" \
+                --arg started_at "${dispatch_started_at}" \
+                '[.[] | select(
+                  .name == "Enterprise Linux capture" and
+                  .path == ".github/workflows/enterprise-linux-capture.yml" and
+                  .event == "workflow_dispatch" and
+                  .display_title == $display_title and
+                  .head_branch == $head_branch and
+                  .head_sha == $head_sha and
+                  .actor.login == $actor and
+                  .triggering_actor.login == $actor and
+                  .created_at >= $started_at and
+                  .run_attempt == 1 and
+                  (.status == "queued" or .status == "in_progress" or .status == "completed")
+                )]' <<< "${workflow_runs}"
+            )"
+            match_count="$(jq -r 'length' <<< "${matching_runs}")"
+            test "${match_count}" -le 1
+            if test "${match_count}" = "1"; then
+              candidate_run="$(jq -c '.[0]' <<< "${matching_runs}")"
+              case "$(jq -r '.status' <<< "${candidate_run}")" in
+                in_progress)
+                  dispatched_run="${candidate_run}"
+                  break
+                  ;;
+                queued)
+                  ;;
+                completed)
+                  echo "exact capture completed before in-progress ownership was observed" >&2
+                  exit 1
+                  ;;
+                *)
+                  echo "exact capture entered an unauthorized state" >&2
+                  exit 1
+                  ;;
+              esac
+            fi
+            sleep 2
+          done
+          test -n "${dispatched_run}"
+          capture_run_id="$(jq -r '.id' <<< "${dispatched_run}")"
+          [[ "${capture_run_id}" =~ ^[1-9][0-9]*$ ]]
+          dispatched_run="$(gh api -H "Accept: application/vnd.github+json" "repos/${GITHUB_REPOSITORY}/actions/runs/${capture_run_id}")"
+          test "$(jq -r '.name' <<< "${dispatched_run}")" = "Enterprise Linux capture"
+          test "$(jq -r '.path' <<< "${dispatched_run}")" = ".github/workflows/enterprise-linux-capture.yml"
+          test "$(jq -r '.event' <<< "${dispatched_run}")" = "workflow_dispatch"
+          test "$(jq -r '.display_title' <<< "${dispatched_run}")" = "${display_title}"
+          test "$(jq -r '.head_branch' <<< "${dispatched_run}")" = "${default_branch}"
+          test "$(jq -r '.head_sha' <<< "${dispatched_run}")" = "${default_commit_sha}"
+          test "$(jq -r '.actor.login' <<< "${dispatched_run}")" = "github-actions[bot]"
+          test "$(jq -r '.triggering_actor.login' <<< "${dispatched_run}")" = "github-actions[bot]"
+          test "$(jq -r '.run_attempt' <<< "${dispatched_run}")" = "1"
+          test "$(jq -r '.status' <<< "${dispatched_run}")" = "in_progress"
+
+          intent_directory="${RUNNER_TEMP}/enterprise-capture-intent"
+          intent_path="${intent_directory}/capture-dispatch-intent.json"
+          install -d -m 0700 -- "${intent_directory}"
+          intent="$({
+            jq -cS -n \
+              --arg capture_run_id "${capture_run_id}" \
+              --arg controller_run_attempt "${CONTROLLER_RUN_ATTEMPT}" \
+              --arg controller_run_id "${CONTROLLER_RUN_ID}" \
+              --arg controller_workflow_id "${CONTROLLER_WORKFLOW_ID}" \
+              --arg default_commit_sha "${default_commit_sha}" \
+              --arg dispatch_nonce "${dispatch_nonce}" \
+              --arg repository "${GITHUB_REPOSITORY}" \
+              --argjson inputs "$(jq -cS '.inputs' <<< "${payload}")" \
+              '{
+                capture_run_attempt: "1",
+                capture_run_id: $capture_run_id,
+                controller_run_attempt: $controller_run_attempt,
+                controller_run_id: $controller_run_id,
+                controller_workflow_id: $controller_workflow_id,
+                default_commit_sha: $default_commit_sha,
+                dispatch_nonce: $dispatch_nonce,
+                inputs: $inputs,
+                repository: $repository,
+                schema: "chio.enterprise-capture-dispatch-intent.v1"
+              }'
+          })"
+          test "$(jq -cS . <<< "${intent}")" = "${intent}"
+          printf '%s\n' "${intent}" > "${intent_path}"
+          test "$(stat --format='%F:%a' "${intent_path}")" = "regular file:600"
+          {
+            echo "capture_run_id=${capture_run_id}"
+            echo "intent_path=${intent_path}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Upload exact capture dispatch intent
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: enterprise-capture-intent-${{ github.run_id }}-${{ github.run_attempt }}-${{ steps.dispatch.outputs.capture_run_id }}
+          path: ${{ steps.dispatch.outputs.intent_path }}
+          if-no-files-found: error
+          include-hidden-files: false
+          retention-days: 7
