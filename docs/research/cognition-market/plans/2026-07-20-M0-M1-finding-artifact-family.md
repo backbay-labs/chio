@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Ship the `chio-finding` crate (signed finding, challenge, and status-epoch artifacts with fail-closed validators and golden fixtures) and register the three schema ids in the signed-artifact registry, with zero kernel or market wiring.
+**Goal:** Ship the `chio-finding` crate (the signed `chio.finding.v1` artifact with fail-closed validation, inline signing, and a golden fixture) and register that ONE schema id, with zero kernel or market wiring. Challenge and status-feed artifacts are deliberately deferred to M5/M6 (review finding: registering wire schemas ahead of their owning milestones is speculative public surface, and the status root must carry the oracle's exact `SignedEpochRoot` rather than a divergent copy - `chio-revocation-oracle/src/epoch.rs:12`).
 
 **Architecture:** New leaf crate `crates/economy/chio-finding` mirroring the `chio-listing` style (pure types + validation, no storage, no I/O), plus additive registration rows in `chio-core-types::signed_artifact` and `spec/schemas/`. Field semantics come from `docs/research/cognition-market/ARCHITECTURE.md` section 4; decisions from ADR-0017.
 
@@ -22,14 +22,14 @@
 
 - `crates/economy/chio-finding/Cargo.toml` - crate manifest (deps: chio-core-types, serde, thiserror).
 - `crates/economy/chio-finding/src/lib.rs` - module wiring + re-exports.
-- `crates/economy/chio-finding/src/types.rs` - `Finding`, `FindingDescriptor`, enums, `FindingChallenge`, `FindingStatusEpoch`, schema consts (inline signatures; no envelope aliases).
+- `crates/economy/chio-finding/src/types.rs` - `Finding`, `FindingDescriptor`, enums, the `chio.finding.v1` schema const (inline signature; no envelope alias).
 - `crates/economy/chio-finding/src/validate.rs` - fail-closed validators, `compute_finding_id`, inline signing.
 - `crates/economy/chio-finding/tests/finding.rs` - integration tests + golden-fixture test.
 - `fixtures/proof-room/finding/verified-fix-basic/finding.json` - golden.
 - `Cargo.toml` (workspace root) - members entry.
-- `crates/core/chio-core-types/src/signed_artifact.rs` - 3 consts + 3 SPECS rows.
-- `spec/schemas/chio-finding/v1/{finding,challenge,status-epoch}.schema.json` - validation schemas.
-- `spec/schemas/registry.json` - 3 rows.
+- `crates/core/chio-core-types/src/signed_artifact.rs` - 1 const + 1 SPECS row.
+- `spec/schemas/chio-finding/v1/finding.schema.json` - validation schema.
+- `spec/schemas/registry.json` - 1 row.
 - `docs/adr/ADR-0017-cognition-market-finding-artifacts.md` - amendment (listing decision, audits, intent commitment).
 
 ---
@@ -55,7 +55,7 @@ Expected: rows for all three in `[workspace.dependencies]`. If `thiserror` is ab
 ```toml
 [package]
 name = "chio-finding"
-description = "Chio cognition-market finding, challenge, and status artifacts"
+description = "Chio cognition-market finding artifact"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -80,9 +80,9 @@ workspace = true
 ```rust
 //! Cognition-market finding artifacts for the Chio protocol.
 //!
-//! Signed information-good artifacts (`chio.finding.v1`), bonded challenge
-//! artifacts (`chio.finding.challenge.v1`), and status-feed epoch envelopes
-//! (`chio.finding.status-epoch.v1`), with fail-closed pure validation.
+//! The signed information-good artifact (`chio.finding.v1`) with
+//! fail-closed pure validation and inline signing. Challenge and
+//! status-feed artifacts land with their owning milestones (M5/M6).
 //! Design: docs/research/cognition-market/ARCHITECTURE.md section 4 and
 //! ADR-0017. No storage, no I/O, no kernel wiring.
 
@@ -131,7 +131,7 @@ git commit -m "feat(chio-finding): scaffold cognition-market artifact crate"
   - `enum FindingEvidenceClass { Asserted, Observed, Verified }`
   - `struct FindingDescriptor { topic, context_sha256, outcome_class }`
   - `struct Finding { .. }` with `issuer: PublicKey` (fields exactly as coded below)
-  - `enum FindingError` (ALL variants defined here, including the ones Tasks 3-4 use: `Signing`, `SignatureInvalid`, `ChallengeClassMismatch` - pub enum variants in a lib crate carry no dead-code cost)
+  - `enum FindingError` (all variants defined here, including `Signing` and `SignatureInvalid` used by Task 3)
   - `Finding::validate(&self) -> Result<(), FindingError>` - full structural validation INCLUDING id integrity (empty or stale `finding_id` rejects; review finding: publish paths must not accept a non-content-addressed id)
   - `compute_finding_id(&Finding) -> Result<String, FindingError>` and `Finding::verify_finding_id(&self)`
 
@@ -205,7 +205,7 @@ fn valid_finding_passes_validation() {
 fn wrong_schema_is_rejected() {
     let issuer = Keypair::generate();
     let mut finding = base_finding(&issuer);
-    finding.schema = "chio.finding.v2".to_string();
+    finding.schema = "chio.finding.v999".to_string();
     assert!(matches!(
         finding.validate(),
         Err(FindingError::UnsupportedSchema(_))
@@ -325,10 +325,6 @@ use serde::{Deserialize, Serialize};
 
 /// Signed information-good artifact.
 pub const FINDING_SCHEMA_V1: &str = "chio.finding.v1";
-/// Bonded challenge artifact.
-pub const FINDING_CHALLENGE_SCHEMA_V1: &str = "chio.finding.challenge.v1";
-/// Status-feed epoch envelope.
-pub const FINDING_STATUS_EPOCH_SCHEMA_V1: &str = "chio.finding.status-epoch.v1";
 
 /// What kind of claim is being sold.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -472,8 +468,6 @@ pub enum FindingError {
     Signing,
     #[error("finding signature invalid")]
     SignatureInvalid,
-    #[error("replay challenges require a deterministic_replay finding")]
-    ChallengeClassMismatch,
 }
 
 pub(crate) fn is_hex64(value: &str) -> bool {
@@ -687,258 +681,24 @@ git commit -m "feat(chio-finding): inline artifact signing verified against the 
 
 ---
 
-### Task 4: Challenge and status-epoch artifacts
+### Deferred: challenge and status-epoch artifacts (M5/M6)
 
-**Files:**
-- Modify: `crates/economy/chio-finding/src/types.rs`
-- Modify: `crates/economy/chio-finding/src/validate.rs`
-- Modify: `crates/economy/chio-finding/tests/finding.rs` (append)
-
-**Interfaces:**
-- Produces:
-  - `enum FindingChallengeClass { DigestMismatch, EvidenceInvalid, ReplayContradiction }`
-  - `struct FindingChallenge { .. }` with `challenger: PublicKey` and `validate_against(&self, finding: &Finding)` - replay contradictions additionally require the finding's `guarantee_class` to be `DeterministicReplay` (a weaker class never advertised the replay guarantee, so it must not be slashable under it)
-  - `struct FindingStatusEpoch { .. }` with `issuer: PublicKey` and `validate(&self)`
-  - No envelope aliases (see Task 3's interface note)
-
-- [ ] **Step 1: Append failing tests**
-
-```rust
-use chio_finding::{
-    FindingChallenge, FindingChallengeClass, FindingStatusEpoch,
-    FINDING_CHALLENGE_SCHEMA_V1, FINDING_STATUS_EPOCH_SCHEMA_V1,
-};
-
-fn base_challenge(finding: &Finding, challenger: &Keypair) -> FindingChallenge {
-    FindingChallenge {
-        schema: FINDING_CHALLENGE_SCHEMA_V1.to_string(),
-        challenge_id: "challenge-1".to_string(),
-        finding_id: finding.finding_id.clone(),
-        challenger: challenger.public_key(),
-        challenge_class: FindingChallengeClass::ReplayContradiction,
-        reproduction_receipt_ids: vec!["r-90".to_string()],
-        reproduction_checkpoint_ref: "ckpt-9".to_string(),
-        replay_recipe_sha256: finding.replay_recipe_sha256.clone().unwrap_or_default(),
-        challenge_bond_ref: "bond-dispute-1".to_string(),
-        decision_rule_ref: "rule.finding.replay-contradiction.v1".to_string(),
-        issued_at: 1_785_000_000,
-        signature: String::new(),
-    }
-}
-
-#[test]
-fn replay_challenge_must_match_committed_recipe() {
-    let issuer = Keypair::generate();
-    let challenger = Keypair::generate();
-    let finding = base_finding(&issuer);
-    let ok = base_challenge(&finding, &challenger);
-    assert!(ok.validate_against(&finding).is_ok());
-
-    let mut wrong = base_challenge(&finding, &challenger);
-    wrong.replay_recipe_sha256 = hex64('e');
-    assert!(wrong.validate_against(&finding).is_err());
-}
-
-#[test]
-fn replay_challenge_requires_reproduction_receipts() {
-    let issuer = Keypair::generate();
-    let challenger = Keypair::generate();
-    let finding = base_finding(&issuer);
-    let mut challenge = base_challenge(&finding, &challenger);
-    challenge.reproduction_receipt_ids.clear();
-    assert!(challenge.validate_against(&finding).is_err());
-}
-
-#[test]
-fn replay_challenge_requires_replay_guarantee_class() {
-    let issuer = Keypair::generate();
-    let challenger = Keypair::generate();
-    let mut draft = draft_finding_with_issuer(issuer.public_key());
-    // A metered_attested finding that happens to carry a recipe digest
-    // must still refuse replay challenges: the seller never advertised
-    // the replay guarantee (ADR-0017 D3/D4).
-    draft.guarantee_class = FindingGuaranteeClass::MeteredAttested;
-    draft.finding_id = compute_finding_id(&draft).unwrap_or_default();
-    let challenge = base_challenge(&draft, &challenger);
-    assert!(matches!(
-        challenge.validate_against(&draft),
-        Err(FindingError::ChallengeClassMismatch)
-    ));
-}
-
-#[test]
-fn status_epoch_validates() {
-    let oracle = Keypair::generate();
-    let epoch = FindingStatusEpoch {
-        schema: FINDING_STATUS_EPOCH_SCHEMA_V1.to_string(),
-        feed_id: "finding-status/test".to_string(),
-        epoch: 7,
-        root_hash: hex64('f'),
-        issued_at_unix_ms: 1_785_000_000_000,
-        valid_until_unix_ms: 1_785_000_600_000,
-        anchor_refs: vec![],
-        issuer: oracle.public_key(),
-        signature: String::new(),
-    };
-    assert!(epoch.validate().is_ok());
-    let mut stale = epoch.clone();
-    stale.valid_until_unix_ms = stale.issued_at_unix_ms;
-    assert!(stale.validate().is_err());
-}
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `cargo test -p chio-finding --test finding`
-Expected: FAIL to compile ("cannot find type `FindingChallenge`").
-
-- [ ] **Step 3: Implement the two artifacts**
-
-Append to `types.rs`:
-
-```rust
-/// Only mechanically decidable challenge classes exist (ADR-0017 D4).
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case")]
-pub enum FindingChallengeClass {
-    DigestMismatch,
-    EvidenceInvalid,
-    ReplayContradiction,
-}
-
-/// Bonded challenge against a listed finding.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub struct FindingChallenge {
-    pub schema: String,
-    pub challenge_id: String,
-    pub finding_id: String,
-    /// Challenging agent subject; a real key type so junk challengers
-    /// reject at parse time.
-    pub challenger: PublicKey,
-    pub challenge_class: FindingChallengeClass,
-    /// Mediated re-execution receipts; required for replay contradictions.
-    pub reproduction_receipt_ids: Vec<String>,
-    pub reproduction_checkpoint_ref: String,
-    /// Must equal the finding's committed recipe digest for replay
-    /// contradictions.
-    pub replay_recipe_sha256: String,
-    /// Dispute-class bond posted by the challenger.
-    pub challenge_bond_ref: String,
-    /// Predeclared decision rule this challenge invokes.
-    pub decision_rule_ref: String,
-    pub issued_at: u64,
-    pub signature: String,
-}
-
-/// Signed status-feed epoch envelope wrapping an oracle root.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "snake_case", deny_unknown_fields)]
-pub struct FindingStatusEpoch {
-    pub schema: String,
-    pub feed_id: String,
-    pub epoch: u64,
-    pub root_hash: String,
-    pub issued_at_unix_ms: u64,
-    pub valid_until_unix_ms: u64,
-    /// Anchor lane references for this root, when anchored.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub anchor_refs: Vec<String>,
-    /// Feed-operator subject key.
-    pub issuer: PublicKey,
-    pub signature: String,
-}
-
-// No envelope aliases for this family: signatures are the inline
-// `signature` fields (Task 3 signs the finding; the challenge and epoch
-// signatures are produced/verified by their M5/M6 consumers with the
-// same sign-canonical-with-signature-cleared discipline).
-```
-
-Append to `validate.rs`:
-
-```rust
-use crate::types::{
-    FindingChallenge, FindingChallengeClass, FindingStatusEpoch,
-    FINDING_CHALLENGE_SCHEMA_V1, FINDING_STATUS_EPOCH_SCHEMA_V1,
-};
-
-impl FindingChallenge {
-    /// Structural validation plus the cross-artifact recipe binding.
-    pub fn validate_against(&self, finding: &Finding) -> Result<(), FindingError> {
-        if self.schema != FINDING_CHALLENGE_SCHEMA_V1 {
-            return Err(FindingError::UnsupportedSchema(self.schema.clone()));
-        }
-        require_non_empty(&self.challenge_id, "challenge_id")?;
-        require_non_empty(&self.challenge_bond_ref, "challenge_bond_ref")?;
-        require_non_empty(&self.decision_rule_ref, "decision_rule_ref")?;
-        if self.finding_id != finding.finding_id {
-            return Err(FindingError::MalformedDigest("finding_id"));
-        }
-        if self.challenge_class == FindingChallengeClass::ReplayContradiction {
-            if finding.guarantee_class != FindingGuaranteeClass::DeterministicReplay {
-                return Err(FindingError::ChallengeClassMismatch);
-            }
-            require_non_empty(
-                &self.reproduction_checkpoint_ref,
-                "reproduction_checkpoint_ref",
-            )?;
-            if self.reproduction_receipt_ids.is_empty() {
-                return Err(FindingError::MissingEvidence);
-            }
-            require_hex64(&self.replay_recipe_sha256, "replay_recipe_sha256")?;
-            match &finding.replay_recipe_sha256 {
-                Some(recipe) if *recipe == self.replay_recipe_sha256 => {}
-                _ => return Err(FindingError::MalformedDigest("replay_recipe_sha256")),
-            }
-        }
-        Ok(())
-    }
-}
-
-impl FindingStatusEpoch {
-    pub fn validate(&self) -> Result<(), FindingError> {
-        if self.schema != FINDING_STATUS_EPOCH_SCHEMA_V1 {
-            return Err(FindingError::UnsupportedSchema(self.schema.clone()));
-        }
-        require_non_empty(&self.feed_id, "feed_id")?;
-        require_hex64(&self.root_hash, "root_hash")?;
-        if self.valid_until_unix_ms <= self.issued_at_unix_ms {
-            return Err(FindingError::InvalidValidityWindow);
-        }
-        Ok(())
-    }
-}
-```
-
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `cargo test -p chio-finding --test finding`
-Expected: all tests PASS.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add crates/economy/chio-finding
-git commit -m "feat(chio-finding): challenge and status-epoch artifacts"
-```
+Removed from this milestone on review. When M5 defines `chio.finding.challenge.v1` it carries the `ChallengeClassMismatch` rule (replay contradictions only against `deterministic_replay` findings), `challenger: PublicKey`, and the guarantee-class gate specified in ARCHITECTURE 4.3. When M6 defines the status feed it MUST contain or reference the oracle's exact `SignedEpochRoot { root: EpochRoot, signature: RootSignature }` (`chio-revocation-oracle/src/epoch.rs:12`, `api.rs:86-98`) so existing `EpochRootVerifier` freshness/non-inclusion verification applies unchanged, plus feed metadata - not a partial copy of the root.
 
 ---
 
-### Task 5: Schema registration (M0)
+### Task 4: Schema registration (M0)
 
 **Files:**
 - Modify: `crates/core/chio-core-types/src/signed_artifact.rs`
 - Create: `spec/schemas/chio-finding/v1/finding.schema.json`
-- Create: `spec/schemas/chio-finding/v1/challenge.schema.json`
-- Create: `spec/schemas/chio-finding/v1/status-epoch.schema.json`
 - Modify: `spec/schemas/registry.json`
 - Modify: `scripts/check-chio-schema-registry.sh` (add the new schema root to `checked_chio_schema_roots`)
 - Modify: `spec/schemas/MANIFEST.sha256` (deterministic regeneration, step 5)
 
 **Interfaces:**
 - Consumes: `SIGNED_ARTIFACT_SCHEMA_SPECS` table syntax (rows are `(CONST, Some(("artifact_kind", "introduced-by")))`).
-- Produces: `CHIO_FINDING_V1_SCHEMA`, `CHIO_FINDING_CHALLENGE_V1_SCHEMA`, `CHIO_FINDING_STATUS_EPOCH_V1_SCHEMA` accepted by `validate_signed_artifact_schema`.
+- Produces: `CHIO_FINDING_V1_SCHEMA` accepted by `validate_signed_artifact_schema`.
 
 - [ ] **Step 1: Run the registry cross-check to see it pass first (baseline)**
 
@@ -952,10 +712,6 @@ In `crates/core/chio-core-types/src/signed_artifact.rs`, next to the other schem
 ```rust
 /// Cognition-market finding artifact.
 pub const CHIO_FINDING_V1_SCHEMA: &str = "chio.finding.v1";
-/// Cognition-market challenge artifact.
-pub const CHIO_FINDING_CHALLENGE_V1_SCHEMA: &str = "chio.finding.challenge.v1";
-/// Cognition-market status-feed epoch envelope.
-pub const CHIO_FINDING_STATUS_EPOCH_V1_SCHEMA: &str = "chio.finding.status-epoch.v1";
 ```
 
 and in `SIGNED_ARTIFACT_SCHEMA_SPECS`, in the style of the surrounding rows:
@@ -965,20 +721,12 @@ and in `SIGNED_ARTIFACT_SCHEMA_SPECS`, in the style of the surrounding rows:
         CHIO_FINDING_V1_SCHEMA,
         Some(("finding", "finding-market-v1")),
     ),
-    (
-        CHIO_FINDING_CHALLENGE_V1_SCHEMA,
-        Some(("finding_challenge", "finding-market-v1")),
-    ),
-    (
-        CHIO_FINDING_STATUS_EPOCH_V1_SCHEMA,
-        Some(("finding_status_epoch", "finding-market-v1")),
-    ),
 ```
 
 - [ ] **Step 3: Run the cross-check to see it FAIL (drift detected)**
 
 Run: `cargo test -p chio-core-types --test signed_artifact_schema`
-Expected: FAIL - code lists three schemas missing from `spec/schemas/registry.json`. This failure is the specification of step 4.
+Expected: FAIL - code lists one schema missing from `spec/schemas/registry.json`. This failure is the specification of step 4.
 
 - [ ] **Step 4: Author the three JSON schemas and registry rows**
 
@@ -1050,8 +798,6 @@ Expected: FAIL - code lists three schemas missing from `spec/schemas/registry.js
 }
 ```
 
-Author `challenge.schema.json` and `status-epoch.schema.json` the same way from the Task 4 struct fields (same `$defs/sha256`, same `additionalProperties: false`, `const` schema ids `chio.finding.challenge.v1` / `chio.finding.status-epoch.v1`). Required-field rule: require every field that is neither `Option` nor a default-skipped collection. Key-typed fields (`challenger`, the epoch `issuer`) use the same `^[0-9a-f]{64}$` pattern as the finding `issuer` (PublicKey serializes as 64-hex). Concretely: on the status epoch, `anchor_refs` carries `#[serde(default, skip_serializing_if = "Vec::is_empty")]` and is omitted when empty, so it must NOT appear in `required`; every field of `FindingChallenge` is plain and therefore required.
-
 Also add the new schema root to the registry check script: in `scripts/check-chio-schema-registry.sh`, insert `"spec/schemas/chio-finding/",` into the `checked_chio_schema_roots` tuple in alphabetical position (after `"spec/schemas/chio-federation/",`, before `"spec/schemas/chio-lineage/",`). Without this the script does not require chio-finding schemas to be registered, weakening the gate for the new family.
 
 Add to `spec/schemas/registry.json` `artifacts` array (keep the file's existing ordering convention):
@@ -1062,18 +808,6 @@ Add to `spec/schemas/registry.json` `artifacts` array (keep the file's existing 
   "artifactKind": "finding",
   "introducedBy": "finding-market-v1",
   "schemaFile": "spec/schemas/chio-finding/v1/finding.schema.json"
-},
-{
-  "schema": "chio.finding.challenge.v1",
-  "artifactKind": "finding_challenge",
-  "introducedBy": "finding-market-v1",
-  "schemaFile": "spec/schemas/chio-finding/v1/challenge.schema.json"
-},
-{
-  "schema": "chio.finding.status-epoch.v1",
-  "artifactKind": "finding_status_epoch",
-  "introducedBy": "finding-market-v1",
-  "schemaFile": "spec/schemas/chio-finding/v1/status-epoch.schema.json"
 }
 ```
 
@@ -1119,7 +853,7 @@ git commit -m "feat(chio-core-types): register chio.finding.v1 artifact family"
 
 ---
 
-### Task 6: Golden fixture and schema-conformance test
+### Task 5: Golden fixture and schema-conformance test
 
 **Files:**
 - Create: `fixtures/proof-room/finding/verified-fix-basic/finding.json`
@@ -1188,7 +922,7 @@ Expected: PASS and the file exists.
 
 Run: `cargo run -p chio-spec-validate -- spec/schemas/chio-finding/v1/finding.schema.json fixtures/proof-room/finding/verified-fix-basic/finding.json`
 (If the binary's CLI shape differs, check `crates/tooling/chio-spec-validate/src/main.rs` for the argument order.)
-Expected: validation PASS. If the schema and struct disagree, the schema is wrong - fix the schema, not the struct, and re-run Task 5 step 5's checks.
+Expected: validation PASS. If the schema and struct disagree, the schema is wrong - fix the schema, not the struct, and re-run Task 4 step 5's checks.
 
 - [ ] **Step 5: Run the golden test to verify it passes**
 
@@ -1204,7 +938,7 @@ git commit -m "test(chio-finding): golden verified-fix fixture with schema confo
 
 ---
 
-### Task 7: ADR-0017 amendment
+### Task 6: ADR-0017 amendment
 
 **Files:**
 - Modify: `docs/adr/ADR-0017-cognition-market-finding-artifacts.md`
@@ -1233,7 +967,7 @@ git commit -m "docs(adr): amend ADR-0017 with listing, audit, and intent-commitm
 
 ---
 
-### Task 8: Full verification gate
+### Task 7: Full verification gate
 
 **Files:** none (verification only).
 
@@ -1246,6 +980,11 @@ Expected: all four PASS. Fix anything that fails before proceeding (formatting f
 
 Run: `cargo clippy -p chio-finding --tests -- -D warnings`
 Expected: PASS (the CI gate does not lint test targets, but new code should).
+
+- [ ] **Step 2b: Run the v1-only release-line gate**
+
+Run: `bash scripts/check-chio-owned-v1-only.sh`
+Expected: no output naming any added file (the checker rejects chio-owned `.v2`-style strings outside the permitted `.v9x` negative-fixture convention).
 
 - [ ] **Step 3: Commit any gate fixes**
 

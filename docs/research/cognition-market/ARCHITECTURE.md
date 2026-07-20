@@ -161,11 +161,29 @@ Negative-result profile differences: `outcome_class: null_result`,
 only when the experiment is re-runnable, and the descriptor topic is an
 experiment-space coordinate rather than a repo key.
 
-### 4.2 `chio.finding.delivery.v1` (receipt metadata block)
+### 4.2 Delivery receipt metadata (two blocks, two milestones)
 
-Attached by the kernel to the `read_finding` Allow receipt, following the
-typed-metadata-block pattern (`governed_transaction`, `economic_authorization`;
+Review finding: the kernel must not attach fields it cannot source from
+verified inputs. `OutputDigestSha256` carries only the digest, so at M3
+the kernel can truthfully attest exactly that - the finding-specific
+context arrives at M4, when the bid-mint extension gives it a SIGNED
+carrier. Two blocks, following the typed-metadata-block pattern
+(`governed_transaction`, `economic_authorization`;
 `spec/PROTOCOL.md:906-988`):
+
+**M3, generic: `chio.delivery-contract.v1`** - sourced entirely from
+inputs the kernel itself validated: `expected_output_sha256` (from the
+token constraint) and `digest_check: matched` (its own comparison).
+Nothing else; usable by any output-committed tool call, not only findings.
+
+**M4, finding overlay: `chio.finding.delivery.v1`** - the fields below,
+attached only when the purchase context arrives through verifiable
+artifacts: the buyer presents the signed `AcceptedBid` (and the status
+non-inclusion proof) via the governed-intent context, and the kernel
+verifies them against the presented token (same issuer, same token id,
+ask digest binding) before echoing their identifiers. Caller-asserted
+copies without those signed artifacts are never promoted into this block
+(P10 discipline):
 
 | Field | Semantics |
 |---|---|
@@ -175,15 +193,16 @@ typed-metadata-block pattern (`governed_transaction`, `economic_authorization`;
 | `purchase.bid_digest`, `purchase.ask_digest`, `purchase.accepted_bid_ref` | handshake binding |
 | `status_proof.epoch_root_ref`, `status_proof.non_inclusion_checked_at` | the freshness evidence the buyer presented |
 
-The Allow receipt for `read_finding` with this block, under the
+The Allow receipt for `read_finding` carrying these blocks, under the
 `chio.mediated_spend.v1` conjunction (`receipt/authoritative_spend.rs`), is
-the **delivery proof**: it is what escrow release consumes (F3/F6) and what
+the **reveal proof**: it is what escrow release consumes (F3/F6) and what
 disputes anchor on (F4). Note `content_hash` on the receipt body already
 equals the served bytes' digest by WYSIWYS construction
 (`receipt/signing.rs:273`); `expected_payload_sha256` records what it was
-required to equal.
+required to equal. Per the C2 boundary above, this proves a
+kernel-attested reveal, not buyer retention.
 
-### 4.3 `chio.finding.challenge.v1`
+### 4.3 `chio.finding.challenge.v1` (schema registered at M5, its owning milestone)
 
 | Field | Semantics |
 |---|---|
@@ -211,8 +230,14 @@ oracle keyed by finding id
 `EpochRoot`s, inclusion proofs (retracted) and non-inclusion proofs (still
 good), freshness windows, and optional anchoring of roots through the
 existing anchor lanes. Retraction inserts come from: the seller (voluntary),
-or an enforced challenge outcome (F4). `chio.finding.status-epoch.v1` wraps
-the oracle root with feed identity and the anchoring refs.
+or an enforced challenge outcome (F4). The feed artifact
+(`chio.finding.status-epoch.v1`, registered at M6, its owning milestone)
+MUST contain or reference the oracle's exact
+`SignedEpochRoot { root: EpochRoot, signature: RootSignature }`
+(`chio-revocation-oracle/src/epoch.rs:12`, `api.rs:86-98`) plus feed
+identity and anchoring refs - never a partial copy of the root, so the
+existing `EpochRootVerifier` freshness and (non-)inclusion verification
+applies unchanged.
 
 ### 4.5 The reveal envelope and the exact digest definition (normative)
 
@@ -405,6 +430,37 @@ operator-visibility caveat (threat model O1/T1) applies; TEE-tier kernels
 are the mitigation. Transport-level federation is bounded to what ships
 (ADR-0014 defers the mesh transport to Year-2).
 
+**Whose operator key the escrow trusts (review finding; this was
+unspecified and one choice falsifies a threat-model claim):**
+`ChioEscrow` releases against the operator named in `EscrowTerms`, so the
+choice of operator IS the fair-exchange design:
+
+- The escrow operator MUST be the operator of the kernel that mediates the
+  reveal (the kernel where the finding server is registered - with
+  seller-hosted servers, the seller-side operator). Naming a
+  non-mediating operator (e.g. buyer-side) would let it observe the reveal
+  yet withhold the checkpoint until the refund deadline - refund-while-
+  holding-payload.
+- A mediating operator aligned with the seller creates the converse risk:
+  the minted token is bearer-shaped, so seller plus seller-side kernel
+  could replay it themselves, mint a "delivery" receipt with no buyer
+  involved, and release escrow. Therefore escrowed purchases MUST mint the
+  grant with `dpop_required: true` (the per-invocation
+  proof-of-possession profile, ADR-0007): the reveal then requires the
+  buyer's subject key, and the delivery receipt proves a buyer-initiated
+  reveal, not merely a seller-observed one.
+- With both rules, withholding the checkpoint only hurts the withholder:
+  an unpublished delivery receipt means no release before the deadline,
+  refunding the buyer while the seller side already served the bytes.
+  Deadlines must still exceed the operator's published checkpoint cadence
+  plus anchor finality (timing fine print above).
+- Residual, stated honestly: this yields buyer-initiated,
+  kernel-attested reveal against payment - fair exchange up to the
+  mediating operator's honesty about executing the reveal it attests
+  (T1/O1 territory; TEE tier shrinks it). A mutually trusted or neutral
+  mediating operator is the strong form; picking that model, and the
+  withhold-root adversarial test, are M7 exit requirements.
+
 ## 6. Kernel enforcement points (delivery contract)
 
 The digest gate is the one genuinely new enforcement obligation:
@@ -466,11 +522,32 @@ vocabulary is declared frozen at M3 time; the formal call is ADR-A
 (PLAN section 4), and the addition ships with its PROTOCOL.md update and
 verdict-matrix rotation either way.
 
-**Enforcement point: a delivery-contract check inside the budgeted
-finalizer, before reconciliation.** Concretely: at the top of the charged
-branch of the budgeted finalizer (`kernel/validation.rs`, immediately after
-the `charge_result` destructure and before `reconcile_budget_charge` at
-`:1422`), when the matched grant carries `OutputDigestSha256(expected)`:
+**Enforcement point: two layers, so the invariant holds on EVERY Allow
+path, not only the charged branch.** Review finding: `charge_result ==
+None` (including MustPrepay without a grant monetary ceiling) returns
+through `finalize_tool_output_with_metadata`, and the unmeasured-cost path
+emits a provisional Allow through
+`finalize_unmeasured_cost_provisional_allow` (`validation.rs:1202`) -
+a charged-branch-only check would let those paths Allow unverified.
+
+- **Layer 1 (universal, soundness):** the check lives in
+  `build_allow_response_with_metadata`
+  (`kernel/responses/allow_responses.rs:49`), the single choke point every
+  Allow arm routes through (plain, charged, MustPrepay-settled, and
+  provisional alike). It already holds the request capability and the
+  computed receipt content; a digest mismatch or a `Stream` output under
+  the constraint routes to the deny builder instead. No Allow can be
+  emitted that violates the constraint, on any path.
+- **Layer 2 (charged branch, money-correctness):** at the top of the
+  charged branch of the budgeted finalizer (`kernel/validation.rs`,
+  immediately after the `charge_result` destructure and before
+  `reconcile_budget_charge` at `:1422`), the same check runs BEFORE
+  settlement so the deny arm still has clawback. Layer 1 alone would deny
+  after reconcile on the charged path; layer 2 preserves the refund.
+
+M3 must test each former bypass explicitly: charged, `charge_result ==
+None`, MustPrepay-without-ceiling, unmeasured provisional, and stream
+outputs. When the matched grant carries `OutputDigestSha256(expected)`:
 
 - A `Stream` output is an immediate mismatch (4.5): deny fail-closed.
 - For a `Value` output, compute the digest with the same
@@ -498,12 +575,17 @@ ever enabled on charged paths, the gate must move to compare the
 post-transform value or the two hashes diverge.
 
 Invariant this creates (formalization candidate, see PLAN):
-**delivery-contract soundness** - for any grant carrying
-`OutputDigestSha256(d)`, an Allow receipt implies
-`receipt.content_hash == d`. It composes with WYSIWYS (the signing handle
-re-verifies `content_hash` against the exact preimage,
-`receipt/signing.rs:273`), giving end-to-end: Allow implies the buyer
-received bytes hashing to the seller's commitment.
+**kernel-attested reveal soundness** - for any grant carrying
+`OutputDigestSha256(d)`, an Allow receipt implies the kernel accepted an
+output preimage with `content_hash == d` (WYSIWYS composition,
+`receipt/signing.rs:273`). Stated deliberately inside the kernel
+observation boundary: an Allow does NOT prove the buyer process received
+or durably retained the bytes (the crash window in F3 step 6), and
+payment capture follows the Allow. If the intended product claim is ever
+buyer delivery rather than kernel-attested reveal, the protocol must add
+durable re-read or capture-after-buyer-ack first - that choice is the M4
+delivery-idempotency decision, and until it lands the buyer bears
+post-Allow availability risk.
 
 ### 6.3 Facts that simplify the rest
 

@@ -13,7 +13,10 @@
 
 - A1. Finding content (the sealed payload) - confidentiality until paid
   reveal; integrity against substitution.
-- A2. Buyer funds - no payment without delivery of the committed digest.
+- A2. Buyer funds - no capture without a kernel-attested reveal of the
+  committed digest (an Allow proves kernel acceptance of the preimage,
+  not buyer receipt/retention - ARCHITECTURE 6.2; the post-Allow crash
+  window is F3 step 6).
 - A3. Seller bond - no slash without a predeclared, evidence-gated rule.
 - A4. Market truthfulness - listings, evidence bundles, and status feeds mean
   what they claim (evidence-class discipline).
@@ -128,10 +131,17 @@ Format: attack -> mitigation (mechanism, path) -> residual.
 
 ### Buyer-side
 
-- **B1. Take the reveal, refuse payment.** Structurally impossible: funds are
-  reserved before the capability is minted (reservation receipt gate,
+- **B1. Take the reveal, refuse payment.** Within one operator:
+  structurally prevented - funds are reserved before the capability is
+  minted (reservation receipt gate,
   `crates/economy/chio-open-market/src/bidding.rs:210,439`) and the reveal
-  call settles from the pre-authorized hold. Residual: none.
+  settles from the pre-authorized hold. Cross-org (review correction: the
+  earlier "structurally impossible" claim was false for one operator
+  choice): fairness depends on the escrow naming the MEDIATING operator
+  and on `dpop_required` grants (ARCHITECTURE F6); without those, a
+  buyer-side escrow operator can observe the reveal and withhold the
+  checkpoint into a refund. Residual: the F6 operator model plus the M7
+  withhold-root test.
 - **B2. Resale/republication after reveal.** NOT cryptographically
   preventable (information is copyable). Mitigations are economic and
   forensic only: provenance identifies the original producer (S5 logic);
@@ -207,6 +217,15 @@ Format: attack -> mitigation (mechanism, path) -> residual.
   Mitigated: anchoring makes divergent roots globally detectable; signed
   roots make equivocation attributable and slashable (operator bond).
   Residual: detection lag equal to anchor cadence.
+- **O5. Seller-side mediating operator self-deals the reveal.** The
+  minted token is bearer-shaped; a seller colluding with its own kernel
+  operator could replay it, mint a "delivery" receipt with no buyer
+  involved, and release escrow. Mitigated: escrowed purchases MUST mint
+  `dpop_required: true` grants so the reveal requires the buyer's subject
+  key (ADR-0007 profile) - the delivery receipt then proves a
+  buyer-initiated reveal. Residual: the mediating operator's honesty about
+  executing what it attests (T1/O1; TEE tier shrinks it); M7 owns the
+  operator-model decision. Severity: high if unmitigated, low with DPoP.
 - **O4. Adjudicator compromise** (T3). Mitigated: predeclared rosters +
   decision-rule refs are validated fail-closed
   (`crates/economy/chio-market/src/claim.rs:38-50`), outcome sets and amount
@@ -251,6 +270,7 @@ Format: attack -> mitigation (mechanism, path) -> residual.
 | Reputation purchasable at metering cost (C1) | both | medium | economics tuning; Sybil gates |
 | Descriptor metadata leakage (B3/X1) | R&D | medium | seller topic granularity; leakage budgets |
 | Retraction race window (S4) | both | low-medium | freshness-window tuning |
+| No revenue clawback in v1 (fraud revenue finalizes; MECHANISMS 4) | both | medium | bonds sized for finalized exposure; capture-delay custody is a backlog ADR |
 | Challenge griefing asymmetry (B4) | wedge | low-medium | bond-size tuning (MECHANISMS) |
 | Plagiarism of revealed findings (S5) | both | medium | forensic + reputational only |
 

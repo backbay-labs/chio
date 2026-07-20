@@ -57,10 +57,10 @@ production surface half-wired.
 
 | M | Name | One-line scope | Depends on | Plan status |
 |---|---|---|---|---|
-| M0 | Spec and registration | 3 schema ids registered; ADR-0017 amended | - | plan exists (with M1) |
+| M0 | Spec and registration | `chio.finding.v1` registered (challenge/status schemas deferred to M5/M6 per review); ADR-0017 amended | - | plan exists (with M1) |
 | M1 | `chio-finding` crate | artifact types, validators, goldens | M0 | plan exists |
 | M2 | Publish and discover | descriptor search surface; listing publish path; bond-proof admission gate | M1 | plan after M1 lands |
-| M3 | Kernel delivery contract | `Constraint::OutputDigestSha256` + budgeted-finalizer digest gate + `finding_delivery` receipt block + verdict-matrix rotation | M1 | plan after M1; needs kernel-owner review of ARCHITECTURE 6.2 first |
+| M3 | Kernel delivery contract | `Constraint::OutputDigestSha256` + two-layer digest gate (every Allow path) + generic `chio.delivery-contract.v1` receipt block + verdict-matrix rotation | M1 | plan after M1; needs kernel-owner review of ARCHITECTURE 6.2 first |
 | M4 | Wedge purchase E2E | reference finding server; MustPrepay purchase flow; `chio finding` CLI (publish/search/verify/buy) | M2, M3 | plan after M3 |
 | M5 | Challenge and audit lane | `FabricatedFindingEvidence` abuse class; challenge evaluator; audit-scheduler convention; slash wiring | M4 | plan after M4 |
 | M6 | Status feed and retraction | oracle instance; control-plane root/proof surfaces; purchase-time non-inclusion; quarantine guard rule; ops runbook | M4 | plan after M4 (parallel with M5) |
@@ -73,9 +73,12 @@ production surface half-wired.
 ### M0 + M1 (plan written, executable now)
 
 Deliverables and steps: [plans/2026-07-20-M0-M1-finding-artifact-family.md](plans/2026-07-20-M0-M1-finding-artifact-family.md).
-Exit: workspace gate green; `chio.finding.v1`, `chio.finding.challenge.v1`,
-`chio.finding.status-epoch.v1` accepted by `validate_signed_artifact_schema`;
-golden fixture validates against schema and struct.
+Exit: workspace gate green (including
+`scripts/check-chio-owned-v1-only.sh`); `chio.finding.v1` accepted by
+`validate_signed_artifact_schema`; golden fixture validates against schema
+and struct. Challenge and status-feed schemas are deliberately NOT
+registered here - they land with M5/M6, and the status artifact must carry
+the oracle's exact `SignedEpochRoot` (ARCHITECTURE 4.4).
 
 ### M2 Publish and discover
 
@@ -106,28 +109,42 @@ golden fixture validates against schema and struct.
 - `Constraint::OutputDigestSha256(String)` in
   `chio-core-types/src/capability/scope.rs` with advisory-pass at
   `constraint_matches` (precedent `request_matching.rs:428`).
-- Digest gate in the budgeted finalizer BEFORE `reconcile_budget_charge`
-  (constraints from ARCHITECTURE 6.1: hooks skipped on charged path; the
-  gate must sit where both the expected digest and the canonical output are
-  in scope and the pre-execution reversal is still available). Mismatch:
-  Deny receipt + reversal; match: reconcile + `finding_delivery` metadata
-  block (struct in `chio-core-types/src/receipt/`, key const beside the
-  signing-nonce const).
+- Digest gate placement per ARCHITECTURE 6.2 (two layers: universal in
+  the common Allow builder for soundness; charged-branch pre-reconcile
+  for clawback). Mismatch: Deny receipt + reversal; match: reconcile +
+  the GENERIC `chio.delivery-contract.v1` metadata block (struct in
+  `chio-core-types/src/receipt/`, key const beside the signing-nonce
+  const; the finding-specific overlay is M4).
 - Digest gate semantics per ARCHITECTURE 4.5/6.2: commitment is over the
   canonical reveal envelope; `Stream` outputs deny fail-closed; the
   mismatch arm reverses the charge AND releases/refunds any payment
   authorization (mirroring `unwind_aborted_monetary_invocation`); the
   in-function reversal precedent is the no-measured-cost path
   (`validation.rs:1333-1349`).
+- TWO-LAYER coverage (review P1): the universal check lives in
+  `build_allow_response_with_metadata` so EVERY Allow path is gated
+  (charged, `charge_result == None`, MustPrepay without a monetary
+  ceiling, unmeasured provisional); the charged-branch pre-reconcile
+  check preserves clawback. Explicit bypass tests per path.
+- Receipt metadata at M3 is the GENERIC `chio.delivery-contract.v1`
+  block only (expected digest + digest_check, both kernel-sourced); the
+  finding-specific `chio.finding.delivery.v1` overlay moves to M4 where
+  the signed purchase artifacts give it a trustworthy carrier
+  (ARCHITECTURE 4.2; review P1 on self-attested context).
 - Verdict-matrix rotation: new `delivery_contract` scenario class,
   recomputed `scenario_index_hash` + `corpus_sha256`, doc update
   (ARCHITECTURE 7.4).
 - Formal hooks (see section 3): Kani harness + Lean bounded model for
   delivery-contract soundness.
 - Exit: kernel tests prove "Allow implies content_hash equals constraint
-  digest", "mismatch implies Deny + hold reversed + prepayment refunded +
+  digest" ON EVERY ALLOW PATH (charged, uncharged, MustPrepay-without-
+  ceiling, unmeasured provisional - one bypass test each), "mismatch on
+  the charged path implies Deny + hold reversed + prepayment refunded +
   no realized spend", and "stream output under the constraint implies
-  Deny"; verdict matrix green across required drivers; gate green.
+  Deny"; verdict matrix green across required drivers; gate green. The
+  invariant's formal statement is kernel-attested reveal soundness
+  (ARCHITECTURE 6.2) - it claims kernel acceptance of the preimage, not
+  buyer delivery.
 - Risk gate: this milestone's plan is written only after a kernel-lane
   review of ARCHITECTURE 6.2 (it touches `validation.rs`, the most
   invariant-dense file in the workspace).
@@ -148,10 +165,17 @@ golden fixture validates against schema and struct.
   `payload_sha256`.
 - `chio finding publish|search|verify|buy` CLI following the documented
   family pattern (ARCHITECTURE 8.3).
-- Delivery idempotency decision (ARCHITECTURE F3 step 6): pick and build
+- Delivery idempotency decision (ARCHITECTURE F3 step 6, now
+  load-bearing per review: capture follows the Allow, so until this
+  lands the buyer bears post-Allow availability risk): pick and build
   one paid-but-lost-payload mitigation (a scoped `Operation::ReadResult`
   re-read window on the minted grant, or a receipt-keyed seller re-serve
   policy) and test the buyer-crash-after-Allow path.
+- `chio.finding.delivery.v1` overlay block (moved here from M3): fields
+  sourced from the buyer-presented signed `AcceptedBid` and status
+  non-inclusion proof, verified against the presented token before the
+  kernel echoes them (ARCHITECTURE 4.2); includes registering that
+  metadata block's schema id.
 - Exit: one command-line round trip on a local kernel: publish, search,
   verify offline, buy, reveal, delivery receipt with `finding_delivery`
   block, budget reconciled; failure-path tests (digest mismatch, seller
@@ -160,6 +184,12 @@ golden fixture validates against schema and struct.
 
 ### M5 Challenge and audit lane
 
+- Define and register `chio.finding.challenge.v1` (deferred from M1;
+  carries the `ChallengeClassMismatch` guarantee-class gate,
+  `challenger: PublicKey`, and the plan-file deferral stub's semantics).
+- Bond sizing uses the corrected no-clawback model: bonds cover
+  FINALIZED fraud exposure over the detection horizon (MECHANISMS 4);
+  there is no revenue vesting in v1.
 - `FabricatedFindingEvidence` abuse class + evidence kinds in
   `chio-open-market` (`penalty.rs:21`, `evidence.rs`).
 - Challenge evaluator: pure fail-closed function consuming
@@ -190,6 +220,10 @@ golden fixture validates against schema and struct.
   `chio-revocation-oracle/src/api.rs:70`); control-plane surfaces
   `/v1/findings/status/{feed}/root` and `/proof/{finding_id}`
   (ARCHITECTURE 8.1).
+- Define and register the status-feed artifact (deferred from M1): it
+  contains/references the oracle's exact `SignedEpochRoot` plus feed
+  metadata (`epoch.rs:12`, `api.rs:86-98`), so `EpochRootVerifier`
+  freshness and (non-)inclusion verification applies unchanged.
 - Purchase-time non-inclusion check wired into `chio finding buy` and the
   buyer SDK path; freshness-window enforcement fail-closed.
 - Quarantine guard rule: `MemoryGovernanceGuard` extension denying reads
@@ -210,6 +244,12 @@ golden fixture validates against schema and struct.
   path) and the deadline-refund watchdog descriptor.
 - Bilateral flow doc + test: evidence bundle export/import, escrow
   create/fund, reveal, release, refund-on-timeout.
+- Escrow operator model per ARCHITECTURE F6 (review P1): the escrow
+  names the MEDIATING operator; escrowed purchases mint
+  `dpop_required: true` grants so delivery receipts prove
+  buyer-initiated reveals; exit includes the withhold-root adversarial
+  test (operator delays checkpoint publication; escrow refunds; harms
+  land on the withholding side).
 - Trigger condition: at least one real bilateral seller/buyer pair wants
   it; otherwise stays unbuilt (YAGNI).
 
@@ -270,6 +310,7 @@ golden fixture validates against schema and struct.
 | ADR-D | Auction mechanism (batched uniform-price per topic) | only with M4+ demand data | posted-price holds until data says otherwise (MECHANISMS 3) |
 | ADR-E | Receipt-metadata key registry (repo-wide hygiene found during research) | M3 rider | named consts + PROTOCOL 6.4 table (7.5) |
 | ADR-F | Existence-tier product (paid dead-end check) | M8+ | one-bit reveal priced per MECHANISMS 3/9 |
+| ADR-G | Capture-delay custody profile (revenue vesting) | post-wedge, data-driven | v1 has no clawback (MECHANISMS 4); pursue only if bonds alone underprice finalized fraud |
 
 ## 5. Risk register (program-level)
 
