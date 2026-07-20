@@ -1,0 +1,641 @@
+# Cognition Market Architecture
+
+- Status: research draft (branch `research/cognition-market`)
+- Basis: [spike memo](../agent-cognition-market.md) gap analysis (Q1-Q8) and
+  [ADR-0017](../../adr/ADR-0017-cognition-market-finding-artifacts.md)
+  decisions D1-D5, both grounded in file-level evidence
+- Companions: [THREAT-MODEL.md](THREAT-MODEL.md), [MECHANISMS.md](MECHANISMS.md),
+  [PLAN.md](PLAN.md)
+- Discipline: paths cited for every claim about existing code; new surfaces
+  are sketches and say so; sections 6-8 record the integration facts that
+  determine the final shape, with the chosen option and its rationale
+
+## 1. Purpose and scope
+
+This document turns ADR-0017 into a buildable architecture: the artifact data
+model, the six market flows, the exact kernel enforcement points, the service
+and deployment topology, and a crate-level integration map. It covers both
+instances - coding-agent verified fixes (the wedge) and R&D negative results
+(the vision) - as profiles of one design, and marks every place the profiles
+differ.
+
+Out of scope, by design (memo 6.8): auctions/order books, PSI or zk-SNARK
+machinery, new escrow contracts, finding-content storage inside Chio,
+autonomous adjudication beyond replay-checkable rules, permissionless
+federation.
+
+## 2. Design principles
+
+Inherited from Chio and treated as constraints, not preferences:
+
+- **Fail-closed everywhere**: a verification error is a denial, never a
+  widening (`AGENTS.md` conventions; policy rejection at load).
+- **No discretionary value movement**: every settlement terminal state is
+  predeclared and price-free; slash destinations are constrained (ADR-0015
+  D1-D5, invariants 9/10).
+- **Evidence-class truthfulness**: `asserted` never silently becomes
+  `verified` (P10; `spec/PROTOCOL.md:620-623`); guarantee classes are
+  truthful to their backing (`receipt/authoritative_spend.rs` pattern).
+- **Proof claims inside the verifier boundary**: nothing is listable under a
+  proof capability the buyer verifier rejects (`ChioProofClaims`,
+  `crates/trust/chio-attest-buyer-core/src/claims.rs:12`).
+- **Additive schema evolution**: new fields are optional and
+  signature-safe; new families are new schema ids, not mutations of frozen
+  ones (section 7).
+
+New principles this design adds:
+
+- **Reveal is a governed tool call.** Delivery-versus-payment reduces to the
+  kernel's existing receipt machinery; no new exchange protocol exists.
+- **The meter is the spam filter.** Every credibility signal (evidence,
+  reputation, wash resistance) bottoms out in metered cost.
+- **Price the residual, never fake the proof.** What cannot be verified
+  (semantic truth of a null) is carried by bonds, guarantee-class discounts,
+  and reputation - explicitly, in the artifact fields.
+
+## 3. System overview
+
+```
+ SELLER SIDE                          VENUE / TRUST SERVICES                    BUYER SIDE
+ ------------                         ----------------------                   ----------
+ producer agent                       listing registry (chio-listing)          buyer agent
+   | evidence receipts                  - finding listings + pricing hints       | elicitation ceiling
+   v                                    - search by context digest               v
+ finding assembly ---publish--------->  trust activation (bond-backed)        discovery + offline verify
+   |                                                                            (chio-attest-buyer)
+   | sealed payload                   finding-status oracle                      |
+   v                                  (chio-revocation-oracle instance)          | non-inclusion check
+ finding tool server                    - epoch roots, (non-)inclusion           v
+ (read_finding, seller-run)             - anchored via chio-anchor             bid/ask/accept
+   ^                                                                           (chio-open-market)
+   |  mediated reveal call            penalty + governance lane                  |
+   +----------------------------+     (chio-open-market + chio-governance)       | reserved funds
+                                |       - FabricatedFindingEvidence              v
+ KERNEL(S) - the TCB            |       - sanction -> bond impair            read_finding call
+   capability verify            |     escrow + rails (chio-settle,               |
+   budget hold (MustPrepay)     +---    ChioEscrow/ChioBondVault,            delivery receipt
+   guard pipeline                       x402/ACP adapters)                       |
+   digest-gated delivery check                                               governed memory write
+   receipt signing (content_hash)                                            (provenance chain)
+```
+
+Every arrow that moves value or authority is an existing rail; the three new
+boxes are the finding artifact family, the finding tool server contract, and
+the status-oracle instance.
+
+## 4. Artifact data model
+
+Schema ids proposed (registration path in section 7):
+
+| Schema | Kind | New/reuse |
+|---|---|---|
+| `chio.finding.v1` | signed information-good artifact | new |
+| `chio.finding.listing-subject.v1` | listing integration | new subject kind or parallel artifact (decided in 7.3) |
+| `chio.finding.delivery.v1` | receipt metadata block on the reveal receipt | new |
+| `chio.finding.challenge.v1` | bonded challenge artifact | new |
+| `chio.finding.status-epoch.v1` | status-feed epoch root envelope | new (wraps oracle `EpochRoot`) |
+| `chio.marketplace.bid-request.v1` etc. | purchase handshake | reuse unchanged (`crates/economy/chio-open-market/src/bidding.rs:33-42`) |
+
+### 4.1 `chio.finding.v1`
+
+Field table (types follow the Rust sketch in the memo, section 6.1; all
+structs `deny_unknown_fields`, canonical JSON, Ed25519-signed like every
+signed export envelope in the economy crates):
+
+| Field | Type | Semantics |
+|---|---|---|
+| `schema` | string | `chio.finding.v1` |
+| `finding_id` | string | content-addressed: SHA-256 of the canonical body minus signature |
+| `descriptor.topic` | string | prefix-searchable topic key (org- or repo-scoped) |
+| `descriptor.context_sha256` | hex64 | digest of the full context object (committed test suite + commit, or experiment protocol); the match key |
+| `descriptor.outcome_class` | enum | `null_result` / `verified_fix` / `positive_result` |
+| `guarantee_class` | enum | `deterministic_replay` / `metered_attested` / `asserted` (truthful-to-backing; D3) |
+| `payload_sha256` | hex64 | commitment to the sealed payload served by `read_finding` |
+| `payload_media_type` | string | e.g. `application/json`, `text/x-diff` |
+| `evidence_receipt_ids` | [string] | producing receipts (must verify fail-closed) |
+| `evidence_checkpoint_ref` | string | checkpoint containing the evidence receipts |
+| `evidence_cost` | {units, currency} | metered production cost rollup (the proof-of-burn floor) |
+| `runtime_assurance_tier` | string? | tier from appraisal if the producing runtime was attested |
+| `evidence_class` | enum | `asserted` / `observed` / `verified` linkage class of claim-to-evidence |
+| `replay_recipe_sha256` | hex64? | REQUIRED for `deterministic_replay`: digest of the committed re-execution recipe (tool server id, tool, parameter template, expected verdict predicate) |
+| `intent_commitment_receipt_id` | string? | receipt id of a pre-outcome intent commitment: a mediated call that committed the descriptor/protocol digest BEFORE the producing run completed. Optional but priced: findings with it resist selective fabrication (Registered-Reports logic, MECHANISMS 8.4) and buyers may weight `guarantee_class_bps` up |
+| `bond_ref` | string | open-market bond requirement id with `slashable: true` |
+| `status_feed_ref` | string | oracle feed id where retraction state is published |
+| `license_ref` | string? | out-of-protocol license terms digest (B2 in threat model) |
+| `price_hint_ref` | string? | the signed `ListingPricingHint` id |
+| `issuer` | pubkey | producing agent subject (must be consistent with evidence lineage) |
+| `issued_at` / `expires_at` | u64 | validity window |
+| `signature` | sig | over canonical body |
+
+Example (wedge instance):
+
+```json
+{
+  "schema": "chio.finding.v1",
+  "finding_id": "f3a9...",
+  "descriptor": {
+    "topic": "repo:backbay/chio#test-failure",
+    "context_sha256": "9c41...",
+    "outcome_class": "verified_fix"
+  },
+  "guarantee_class": "deterministic_replay",
+  "payload_sha256": "b7e2...",
+  "payload_media_type": "text/x-diff",
+  "evidence_receipt_ids": ["r-8812...", "r-8813..."],
+  "evidence_checkpoint_ref": "ckpt-2231",
+  "evidence_cost": { "units": 4200, "currency": "USD" },
+  "runtime_assurance_tier": "attested",
+  "evidence_class": "verified",
+  "replay_recipe_sha256": "51d0...",
+  "bond_ref": "bond-req-listing-01",
+  "status_feed_ref": "finding-status/acme-lab",
+  "issuer": "ed25519:6f...",
+  "issued_at": 1784880000,
+  "expires_at": 1792656000,
+  "signature": "..."
+}
+```
+
+Negative-result profile differences: `outcome_class: null_result`,
+`guarantee_class` usually `metered_attested`, `replay_recipe_sha256` present
+only when the experiment is re-runnable, and the descriptor topic is an
+experiment-space coordinate rather than a repo key.
+
+### 4.2 `chio.finding.delivery.v1` (receipt metadata block)
+
+Attached by the kernel to the `read_finding` Allow receipt, following the
+typed-metadata-block pattern (`governed_transaction`, `economic_authorization`;
+`spec/PROTOCOL.md:906-988`):
+
+| Field | Semantics |
+|---|---|
+| `finding_id`, `listing_id` | what was delivered |
+| `expected_payload_sha256` | the commitment the delivery was checked against |
+| `digest_check` | `matched` (the only value on an Allow; a mismatch never produces an Allow) |
+| `purchase.bid_digest`, `purchase.ask_digest`, `purchase.accepted_bid_ref` | handshake binding |
+| `status_proof.epoch_root_ref`, `status_proof.non_inclusion_checked_at` | the freshness evidence the buyer presented |
+
+The Allow receipt for `read_finding` with this block, under the
+`chio.mediated_spend.v1` conjunction (`receipt/authoritative_spend.rs`), is
+the **delivery proof**: it is what escrow release consumes (F3/F6) and what
+disputes anchor on (F4). Note `content_hash` on the receipt body already
+equals the served bytes' digest by WYSIWYS construction
+(`receipt/signing.rs:273`); `expected_payload_sha256` records what it was
+required to equal.
+
+### 4.3 `chio.finding.challenge.v1`
+
+| Field | Semantics |
+|---|---|
+| `challenge_id`, `finding_id`, `challenger` | identity |
+| `challenge_class` | `digest_mismatch` / `evidence_invalid` / `replay_contradiction` (only mechanically decidable classes; D4) |
+| `reproduction_receipt_ids`, `reproduction_checkpoint_ref` | for `replay_contradiction`: the challenger's mediated re-execution of the committed recipe |
+| `replay_recipe_sha256` | must equal the finding's committed recipe digest |
+| `challenge_bond_ref` | Dispute-class bond posted by the challenger (`fee_schedule.rs:14`) |
+| `decision_rule_ref` | the predeclared rule id this challenge invokes (ADR-0015 follow-up B pattern, `crates/economy/chio-market/src/claim.rs:38-50`) |
+
+Evaluation is a pure fail-closed function (repo idiom:
+`evaluate_open_market_penalty`, `crates/economy/chio-open-market/src/evaluation.rs:79`):
+verify signatures; verify the reproduction receipts exactly as claim evidence
+is verified today (`insurance_flow.rs:390-414`); compare verdicts under the
+committed recipe predicate; emit a finding-code result that either feeds a
+governance Sanction case (slash path) or dies. No new adjudication authority
+is created; non-mechanical disputes stay out of scope of this artifact.
+
+### 4.4 Status feed
+
+The feed is a second deployment of the existing sparse-Merkle revocation
+oracle keyed by finding id
+(`RevocationKey { subject_id, epoch_nonce }` generalizes;
+`crates/trust/chio-revocation-oracle/src/api.rs:70`), with signed
+`EpochRoot`s, inclusion proofs (retracted) and non-inclusion proofs (still
+good), freshness windows, and optional anchoring of roots through the
+existing anchor lanes. Retraction inserts come from: the seller (voluntary),
+or an enforced challenge outcome (F4). `chio.finding.status-epoch.v1` wraps
+the oracle root with feed identity and the anchoring refs.
+
+## 5. Market flows
+
+### F1. Publish and admit
+
+0. (Optional, priced-in) Before running the work, the producer commits the
+   experiment/protocol digest via a tiny mediated call; its receipt is the
+   pre-outcome intent commitment later referenced as
+   `intent_commitment_receipt_id` (4.1). Zero new machinery: any governed
+   call binding the digest in its parameter hash works.
+1. Producer agent finishes the work; its receipts and cost metadata already
+   exist as a side effect of mediation.
+2. Assemble `chio.finding.v1`: seal the payload (seller-side storage), digest
+   it, reference the evidence receipts + checkpoint, commit the replay recipe
+   (wedge), sign.
+3. Publish a listing + signed pricing hint through the registry
+   (`chio-listing` discovery shapes, `src/discovery.rs:48,203`).
+4. Trust activation: the finding listing is admissible only `BondBacked`
+   (`crates/economy/chio-listing/src/trust_activation.rs:565` keeps unbacked
+   listings review-only); the bond requirement must be `slashable: true`
+   (`fee_schedule.rs:56`).
+5. Optional discovery hint: a pheromone deposit on the topic class pointing
+   at the listing (free tier; `crates/trust/chio-pheromone/src/lib.rs:341`).
+
+### F2. Discover and verify (buyer, pre-purchase, no payment yet)
+
+1. Buyer hits the same failing context; computes `context_sha256`; searches
+   listings by descriptor (prefix + digest equality;
+   `chio-listing/src/discovery.rs:144,291`).
+2. Offline verification of the finding: signature; evidence receipts verify
+   fail-closed (signatures, checkpoint inclusion, revocation state) via the
+   buyer boundary (`crates/trust/chio-attest-buyer/src/api.rs`); issuer
+   consistency with evidence lineage (anti-plagiarism, threat model S5);
+   guarantee-class claims within `ChioProofClaims` limits.
+3. Fresh non-inclusion proof from the status feed inside the freshness
+   window (`api.rs:116`).
+4. Elicitation ceiling computed (MECHANISMS section 2); if posted price is
+   above the ceiling, walk away (no negotiation in v1).
+
+### F3. Purchase and reveal (single-operator / wedge path)
+
+1. `BidRequest` with ceiling against the finding listing
+   (`bidding.rs:101`); provider `AskResponse` mints the `read_finding`
+   capability: `max_invocations: 1`, `max_total_cost: price`, expiry, and
+   the delivery binding (expected digest) attached per section 6.
+2. `accept()` against the kernel funds-reservation receipt
+   (`bidding.rs:439`, `AcceptedBid.bid_receipt_id`).
+3. Buyer invokes `read_finding` through the kernel: capability verify ->
+   MustPrepay hold funded from the quoted price -> guards -> dispatch to the
+   seller's finding server -> **digest gate** (section 6) -> Allow receipt
+   with `chio.finding.delivery.v1` block; reconcile settles exposed to
+   realized (`kernel/reconciliation.rs:135`).
+4. Failure paths, all existing: digest mismatch or guard deny -> signed
+   Deny/Incomplete receipt + budget reversal
+   (`kernel/validation.rs:1102`); seller unreachable -> hold released or
+   reaped; abort after prepay -> refund (`kernel/dispatch.rs:170`).
+5. Buyer ingests via a governed memory write; provenance chain binds
+   store/key to the purchase capability and delivery receipt
+   (`memory_provenance.rs:63`).
+
+### F4. Challenge, audit, and slash
+
+1. Challenger (any bonded agent; typically a burned buyer, or the venue's
+   audit scheduler - MECHANISMS section 5 requires published-rate random
+   audits of listed findings, funded from participation fees, because
+   buyer-initiated challenges alone cannot deter fabrication of rarely
+   re-checked claims) re-runs the committed replay recipe under mediation,
+   producing reproduction receipts.
+2. Assembles `chio.finding.challenge.v1` with the Dispute-class bond.
+3. Pure evaluator checks it (4.3). `digest_mismatch` cannot occur for a
+   delivered finding (structurally prevented) but covers advertised-payload
+   fraud pre-delivery; `evidence_invalid` and `replay_contradiction` are the
+   live classes.
+4. A passing challenge feeds a governance case: Sanction, enforced
+   (`chio-governance/src/generic.rs:17`); penalty `SlashBond` through the
+   existing gate (`chio-open-market/src/evaluation.rs:356-451`); on-chain
+   impairment with exact-sum distribution to harmed parties
+   (`chio-settle/src/evm/prepare.rs:989-1020`); appeal path intact
+   (`ReverseSlash`).
+5. The enforced outcome also inserts the finding into the status feed
+   (F5) - retraction and slash are one transition.
+
+### F5. Retract and propagate
+
+1. Insert finding id into the status oracle; new signed epoch root; anchor
+   on cadence.
+2. Buyers' subscription (or next purchase attempt) observes the root;
+   holders of the finding get: the quarantine guard rule (opt-in) flips
+   reads of memory keys whose provenance traces to the retracted finding
+   from annotate to deny (`memory_governance.rs` extension; memo 6.5).
+3. Blast radius per buyer via reverse lineage from the delivery receipt
+   (`chio-lineage/src/query.rs:56`). Automatic invalidation of derived data
+   stays out of scope (threat model A5 boundary).
+4. Refunds on retraction are a POLICY choice recorded in the listing terms,
+   not a protocol mechanism: if offered, they ride the existing
+   claim/settlement lane, never a discretionary re-route (ADR-0015).
+
+### F6. Cross-org purchase (escrow path)
+
+Same as F3 with: funds in `ChioEscrow` (beneficiary = seller, deadline)
+instead of only a kernel hold; release gated on Merkle-proven inclusion of
+the delivery receipt under the operator-signed root
+(`releaseWithProofDetailed`; batch `prepare_merkle_release`,
+`chio-settle/src/lib.rs:40-91`); refund after deadline if no delivery.
+Evidence and passport exchange ride the bilateral evidence-share surfaces
+(`chio evidence export/import`, federation policy artifacts). The
+operator-visibility caveat (threat model O1/T1) applies; TEE-tier kernels
+are the mitigation. Transport-level federation is bounded to what ships
+(ADR-0014 defers the mesh transport to Year-2).
+
+## 6. Kernel enforcement points (delivery contract)
+
+The digest gate is the one genuinely new enforcement obligation:
+**no Allow receipt for `read_finding` unless the served bytes hash to the
+committed `payload_sha256`.** The kernel internals dictate the shape; three
+facts from the evaluation pipeline decide it.
+
+### 6.1 The facts that constrain the design
+
+- **F-A. The paid path skips post-invocation hooks.** The post-invocation
+  pipeline (`PostInvocationHook`, `crates/kernel/chio-kernel/src/post_invocation.rs:56`)
+  runs only from `finalize_tool_output_with_metadata`, which the budgeted
+  finalizer invokes only when there is no charge
+  (`kernel/validation.rs:1275,1320`); a monetary invocation (which a paid
+  reveal always is) bypasses hooks entirely, and a hook `Block` cannot claw
+  back a charge anyway (no reversal on the post-dispatch success path).
+  Hooks are therefore NOT a viable home for the gate.
+- **F-B. Constraints are input-side.** `constraint_matches` has no
+  tool-output parameter (`kernel/request_matching.rs:371`); every existing
+  `Constraint` variant evaluates against request arguments/metadata. A
+  constraint alone cannot compare an output hash.
+- **F-C. The one common surface that computes the served-output digest is
+  the receipt-content builder.** `receipt_content_for_output`
+  (`receipt_support/receipt_content.rs:3`,
+  `sha256_hex(canonical_json_bytes(value))`) feeds
+  `build_allow_response_with_metadata` (`kernel/responses/allow_responses.rs:49`),
+  common to monetary and non-monetary allows - but on the monetary path
+  `reconcile_budget_charge` runs BEFORE that builder
+  (`kernel/validation.rs:1422`), so a check there would deny after
+  settlement, losing clawback.
+
+### 6.2 Chosen design
+
+**Carrier: a new `Constraint::OutputDigestSha256(String)` variant, minted by
+the SELLER into the `read_finding` grant of the `AskResponse.token_offer`.**
+Rationale: the committing party must be the seller (the digest is the
+seller's commitment, so a buyer-supplied carrier like
+`governed_intent.context` is the wrong trust direction); the constraint
+mechanism is the established per-grant extension point (recent precedent:
+`MemoryStoreAllowlist`, `MemoryWriteDenyPatterns`,
+`crates/core/chio-core-types/src/capability/scope.rs:284`); and the buyer
+verifies at accept time that the token's constraint equals the finding's
+`payload_sha256` (a pure equality check, no kernel involvement). Wire
+compatibility is fail-closed in the right direction: the enum has no
+`serde(other)` fallback, so an old kernel hard-rejects a token carrying the
+new variant - an unenforceable delivery refuses to parse rather than
+running unprotected.
+
+**Enforcement point: a delivery-contract check inside the budgeted
+finalizer, before reconciliation.** Concretely: in
+`finalize_budgeted_tool_output_with_cost_and_metadata`
+(`kernel/validation.rs`, the pre-reconcile section), when the matched grant
+carries `OutputDigestSha256(expected)`: canonicalize the tool output with
+the same `receipt_content_for_output` function, compare, and on mismatch
+route to the existing deny/incomplete arm so the pre-execution budget
+mutation reverses (`reverse_pre_execution_budget_mutation`,
+`kernel/validation.rs:1102` family) and a signed Deny receipt is emitted.
+On match: proceed to reconcile and attach the `chio.finding.delivery.v1`
+metadata block (4.2) in the allow builder. At the input-matching site the
+new variant is an advisory pass (precedent: the data-layer variants return
+`Ok(true)` pre-dispatch, `request_matching.rs:428`).
+
+Invariant this creates (formalization candidate, see PLAN):
+**delivery-contract soundness** - for any grant carrying
+`OutputDigestSha256(d)`, an Allow receipt implies
+`receipt.content_hash == d`. It composes with WYSIWYS (the signing handle
+re-verifies `content_hash` against the exact preimage,
+`receipt/signing.rs:273`), giving end-to-end: Allow implies the buyer
+received bytes hashing to the seller's commitment.
+
+### 6.3 Facts that simplify the rest
+
+- **Seller servers are dumb and buyer-blind.** `ToolServerConnection::invoke`
+  receives only `(tool_name, arguments, nested_flow_bridge)`
+  (`chio-kernel/src/runtime.rs:342`) - no buyer subject. The capability is
+  the entire access control; the server just serves the sealed bytes for
+  the finding id in `arguments`. Per-buyer payload discrimination is
+  structurally hard, which is anti-fraud by accident and by design.
+- **The kernel ignores manifests.** Registration is
+  `register_tool_server(Box<dyn ToolServerConnection>)`
+  (`kernel/construction.rs:1462`); `chio-manifest` is an edge/platform
+  concern. The finding server needs no manifest change; the signed manifest
+  (with `ToolDefinition.output_schema`, no digest field -
+  `chio-manifest/src/lib.rs:120`) stays advisory listing metadata.
+- **api-protect cannot host the seller side as built**: its receipts bind
+  the request digest and response status, never a response-body hash
+  (`chio-api-protect/src/proxy/router.rs:211,356-372`,
+  `chio-http-core/src/request.rs:119`). Either sellers run a native tool
+  server (v1 answer) or api-protect grows response-hash binding (deferred;
+  decision backlog).
+
+## 7. Artifact governance and schema evolution
+
+### 7.1 Registration obligations (per new schema id)
+
+Every schema in section 4's table must land in four places, cross-checked by
+test (`crates/core/chio-core-types/tests/signed_artifact_schema.rs` asserts
+code and registry agree):
+
+1. A JSON validation schema under `spec/schemas/chio-finding/v1/*.schema.json`
+   (validated by `chio-spec-validate`; note the family types are
+   hand-written Rust - only the `chio-wire` transport types are codegen'd
+   from JSON schema via `chio-spec-codegen`).
+2. A row in `spec/schemas/registry.json` (`{schema, artifactKind,
+   introducedBy, schemaFile}`) plus `spec/schemas/MANIFEST.sha256`.
+3. A `CHIO_FINDING_*_SCHEMA` const and a `SIGNED_ARTIFACT_SCHEMA_SPECS` row
+   in `crates/core/chio-core-types/src/signed_artifact.rs` (the fail-closed
+   accept-list: unknown schemas are rejected at load and at
+   signature-verification time, per the normative registry section,
+   `spec/PROTOCOL.md` "Signed-Artifact Registry").
+4. A PROTOCOL.md section under 6.4.x describing the family.
+
+### 7.2 Family layout and proof-bundle binding
+
+Template = the commerce-order family
+(`crates/platform/chio-commerce-order`: schema ids in `src/ids.rs`, types
+`deny_unknown_fields` in `src/types.rs`, per-concern validators, one
+top-level `verify_*` in `src/lib.rs:47`, goldens under
+`fixtures/proof-room/<family>/<case>/`). The finding family follows it in
+the new `chio-finding` crate with goldens at `fixtures/proof-room/finding/`.
+
+Transaction-passport binding adds NO new evidence-graph role - the role set
+is closed (8 variants, fail-closed custom deserialize,
+`chio-transaction-passport/src/evidence_graph.rs:36,105`). The finding
+verifier binds through the existing `ClaimSet` role by emitting claim ids,
+proposed: `claim.finding.delivery_digest_bound`,
+`claim.finding.evidence_bound`, `claim.finding.status_fresh`,
+`claim.finding.bond_backed` - each carried as a claim-set entry naming the
+verifier module and evidence refs (delivery receipt, checkpoint, oracle
+non-inclusion proof, bond artifact), with digest pins for `payload_sha256`
+and the evidence artifacts.
+
+### 7.3 Schema-evolution posture (and the listing decision)
+
+The repo's rules, now confirmed: verifier-input artifacts are
+`deny_unknown_fields` fail-closed; additive changes are `Option` +
+`#[serde(default, skip_serializing_if)]` ("signature-safe": omitted-when-
+absent keeps existing signed fixtures byte-stable - exemplar:
+`decision_rule_ref` on `LiabilityClaimAdjudicationArtifact`,
+`crates/economy/chio-market/src/claim.rs:305`); **adding an enum variant to
+a frozen wire enum is BREAKING** (no `non_exhaustive`, no `serde(other)`;
+the sanctioned route is a new `.v2` schema).
+
+Consequently the listing integration does NOT extend
+`GenericListingActorKind` (closed 4-variant enum,
+`chio-listing/src/listing.rs:23`). Chosen shape, zero listing changes:
+
+- The listed subject is the seller's finding server under the EXISTING
+  `ToolServer` actor kind (which is literally true - the subject serves
+  `read_finding`), with `GenericListingSubject.metadata_url` /
+  `resolution_url` pointing at the `chio.finding.v1` artifact
+  (`listing.rs:199`).
+- The good's identity rides the pricing hint's `capability_scope`
+  (`finding/<finding_id>` prefix) and the finding artifact itself; the bid
+  flow consumes the listing unchanged (`BidRequest` needs zero new fields,
+  already spec-tested).
+- Descriptor search (by `context_sha256`) is a finding-index service
+  surface (8.1), not a listing-schema change.
+
+This revises ADR-0017 D1's "new subject kind" phrasing; the ADR gets a
+one-line amendment rather than the wire a breaking change (PLAN, M0).
+
+One admission seam is real and must be built: `BondBacked` listings never
+auto-admit today - `require_bond_backing` pushes `BondBackingRequired` and
+returns `admitted = false` ("review-visible only until bond backing is
+proven", `chio-listing/src/trust_activation.rs:558-572`). The finding
+market needs the bond-proof gate that clears this (a signed bond artifact
+check against the fee schedule's requirement), which is generic
+open-market work, not finding-specific.
+
+### 7.4 Conformance obligations
+
+Two layers (different costs):
+
+- **Family goldens** (cheap): `fixtures/proof-room/finding/<case>/` +
+  `chio-finding/tests/` mirroring `commerce_order.rs:22`, plus
+  schema-validation of goldens.
+- **Verdict-matrix corpus rotation** (expensive, gated): the digest gate
+  changes tool-access verdicts, so it needs new scenarios in
+  `crates/tooling/chio-conformance/verdict_matrix/scenarios/` (a new
+  `delivery_contract` class), recomputed `scenario_index_hash` +
+  `corpus_sha256` in `manifest.toml`, an update to
+  `docs/conformance/verdict-matrix.md`, and all required drivers
+  re-emitting the tuples. This lands with the kernel change (PLAN M3), not
+  before.
+
+### 7.5 Receipt-metadata block registration
+
+`finding_delivery` follows the typed-block pattern: struct in
+`crates/core/chio-core-types/src/receipt/` (fields additive per 7.3),
+kernel inserts under the string key `"finding_delivery"` (insertion sites
+pattern: `receipt_support/receipt_metadata.rs:433,543`), read via the
+generic `typed_metadata::<T>(key)` accessor (`receipt/body.rs:563`).
+There is no central metadata-key registry today (only the signing nonce key
+is formally reserved, `receipt/signing.rs:106`); we add a named const
+beside it and document the key in PROTOCOL.md 6.4 - and PLAN flags the
+missing registry as a repo-wide hygiene item worth fixing while we are
+there.
+
+## 8. Services and deployment
+
+### 8.1 Trust-control surfaces (control plane)
+
+`chio trust serve` is one axum router
+(`chio-control-plane/src/service_runtime/router.rs::build_router`), and the
+add-a-surface pattern is three steps: path const in
+`service_types/paths.rs`, route in `router.rs`, handler in
+`trust_control/*_handlers.rs` with request/response types and storage in
+`service_runtime/`. Relevant surfaces already hosted: public listing search
+(`/v1/public/registry/listings/search`, `paths.rs:42`), passport status +
+challenge state, budget-store remote, and a flat capability-revocation list
+(`/v1/revocations` - NOT the sparse-Merkle oracle).
+
+New surfaces (wedge scope, all following the same pattern):
+
+- `POST/GET /v1/findings/search` - descriptor index (topic prefix +
+  `context_sha256` equality) over published finding artifacts; precedent:
+  the generic-listing search handler (`certification_handlers.rs:143`).
+- `GET /v1/findings/status/{feed}/root` and
+  `GET /v1/findings/status/{feed}/proof/{finding_id}` - epoch root and
+  (non-)inclusion proofs from the finding-status oracle instance. The
+  oracle core is domain-generic already (`RevocationKey{ subject_id,
+  epoch_nonce }`, `SubjectId(String)`,
+  `chio-revocation-oracle/src/api.rs:28,70`); a fresh instance keyed by
+  finding id needs NO new oracle types. HTTP is the pragmatic wedge
+  transport; the federation gossip/iroh lanes
+  (`chio-federation/src/revocation_gossip.rs`,
+  `chio-federation-transport-iroh/src/lanes/revocation.rs`) are the
+  cross-org distribution path later.
+- Challenge submission rides the existing open-market penalty surfaces
+  (`OPEN_MARKET_*` routes) once the abuse class exists.
+
+### 8.2 The scheduling gap (explicit)
+
+There is NO in-repo job runtime: `AnchorAutomationJob` and the settle
+watchdogs are cron-descriptor artifacts with `assess_*` verifiers, and
+nothing in the workspace schedules them
+(`chio-anchor/src/automation.rs:37`, `chio-settle/src/automation.rs:36`; no
+scheduler dependency exists). Status-feed epoch ticking
+(`tick_and_broadcast`, `chio-revocation-oracle/src/epoch.rs:116`) and
+root anchoring therefore run under operator cron per runbook, exactly like
+anchoring does today. PLAN carries this as a documented operational
+dependency, not new daemon engineering.
+
+### 8.3 CLI surface
+
+New `Commands::Finding` family following the documented pattern (clap enum
+in `cli/types/`, dispatch module registered in `cli/dispatch/mod.rs:1-60`,
+`cmd_*` fns calling the control-plane client - end-to-end precedent:
+`chio trust liability-market` from `cli/types/trust.rs:1099` through
+`cli/dispatch/trust.rs:897` to `cli/trust/liability.rs:178`):
+
+`chio finding publish` (F1), `search` (F2), `verify` (offline evidence
+verification via `chio-attest-buyer`), `buy` (F3 handshake + reveal),
+`challenge` (F4), `status` (F5 proof fetch).
+
+### 8.4 Release-process obligations (ship-dark first)
+
+The bounded-release machinery gives the wedge a dark-ship path: a Rust
+feature gate keeps the surfaces out of the bounded operational profile
+until qualified, then entries land in the bounded qualification matrix
+(`cargo xtask qualify bounded-chio`,
+`docs/standards/CHIO_BOUNDED_QUALIFICATION_MATRIX.json`;
+`docs/release/QUALIFICATION.md:36`). Before any release-facing claim:
+
+- CLAIM_REGISTRY rows: approved claims for the market wording plus
+  `audited_assumption` rows for the two new trusted roles (finding-status
+  oracle operator; seller tool server) - `docs/reference/CLAIM_REGISTRY.md`.
+- RELEASE_CANDIDATE Supported-Guarantee or Explicit-Non-Goal entries.
+- A `docs/release/CHIO_FINDING_MARKET_RUNBOOK.md` for the hosted surfaces
+  (status feed cadence, challenge operations) per the service-runbook
+  pattern.
+- Conformance evidence in the qualification Evidence Matrix (7.4).
+- ADR-0017 promoted Proposed -> Accepted (with the 7.3 amendment).
+
+Retained non-claims stay retained: no consensus-HA, no distributed
+linearizable budget, no public transparency log - the market design uses
+none of them.
+
+## 9. Crate-level integration map
+
+| Crate | Change class | What |
+|---|---|---|
+| `crates/economy/chio-finding` (NEW) | new leaf crate | artifact types + pure validators for 4.1-4.4 shapes; no storage, mirrors `chio-listing` style |
+| `crates/economy/chio-listing` | extend | finding listing integration per 7.3; descriptor search |
+| `crates/economy/chio-open-market` | extend | `FabricatedFindingEvidence` abuse class; challenge evaluation module; evidence kinds |
+| `crates/core/chio-core-types` | extend (additive) | `chio.finding.delivery.v1` receipt metadata struct; delivery-binding carrier per section 6; schema registry entries |
+| `crates/kernel/chio-kernel` | extend | digest-gate enforcement at the point chosen in section 6; delivery metadata attachment |
+| `crates/guards/chio-guards` | extend | quarantine-on-retraction rule in `MemoryGovernanceGuard`; digest guard if option (a)/(b) in section 6 |
+| `crates/trust/chio-revocation-oracle` | reuse | second instance for the status feed; feed-id envelope |
+| `crates/platform/chio-control-plane` | extend | status-feed + finding search service surfaces per 8.1 |
+| `crates/products/chio-cli` | extend | `chio finding publish/search/verify/buy/challenge/status` per 8.3 |
+| `crates/economy/chio-settle` | extend (thin) | delivery-receipt-driven escrow release preparation (F6) |
+| `crates/trust/chio-attest-buyer` | extend (thin) | finding evidence-bundle verification profile |
+| `crates/tooling/chio-conformance` | extend | scenarios per 7.2/PLAN |
+| `spec/PROTOCOL.md` | extend | finding family section under 6.4.x; explicit-gaps update |
+
+## 10. Instance profiles
+
+| Dimension | Wedge: verified fixes | Vision: R&D negative results |
+|---|---|---|
+| `outcome_class` | `verified_fix` | `null_result` |
+| Guarantee class | `deterministic_replay` (replay recipe mandatory) | mostly `metered_attested`; replay only when re-runnable |
+| Challenge lane | fully mechanical (re-run suite) | `evidence_invalid` only; replication protocols are future work (open problem 2) |
+| Buyer's ceiling input | metered quote for running the failing suite | quote for the experiment, if quotable; else planner prior dominates |
+| Descriptor privacy | low sensitivity (org-internal contexts) | high (existence of a dead end is signal); coarse topics + leakage budgets |
+| Trust span | one operator or bilateral | cross-org from day one; TEE-tier pressure (threat model O1) |
+| Residual risk driver | challenge griefing tuning | honest-cost fabrication (S2) |
+| New machinery needed beyond wedge | - | replication decision rules; richer descriptor taxonomy; cross-org status-feed governance |
+
+## 11. Non-goals (restated)
+
+No auction or order book; no PSI/zk-SNARK machinery; no new escrow contract;
+no finding-content storage inside Chio; no autonomous adjudication beyond
+replay-checkable rules; no permissionless federation semantics
+(`spec/PROTOCOL.md` section 14 posture unchanged).
