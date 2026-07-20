@@ -250,7 +250,7 @@ pub struct Finding {
 }
 ```
 
-Listing integration: publish findings through the existing registry with a new subject kind (extend `GenericListingActorKind`, `crates/economy/chio-listing/src/listing.rs:24`) and price them with the existing signed pricing hint. Discovery = the existing prefix query + descriptor match; a buyer holding the same failing context recomputes `context_sha256` and searches for it. `[speculative]` but mechanical.
+Listing integration - SUPERSEDED DETAIL: the final design does NOT extend `GenericListingActorKind` (it is a closed wire-frozen enum, `crates/economy/chio-listing/src/listing.rs:24`); findings list their seller's server under the existing `ToolServer` actor kind with `metadata_url`/`resolution_url` pointing at the finding artifact, and the pricing hint's `capability_scope` carries `finding:<finding_id>` - see docs/research/cognition-market/ARCHITECTURE.md section 7.3 and the passing `bid()` path test. Price via the existing signed pricing hint. Discovery = the existing prefix query + descriptor match; a buyer holding the same failing context recomputes `context_sha256` and searches for it. `[speculative]` but mechanical.
 
 ### 6.2 The Arrow flow on existing rails: reveal as a governed tool call
 

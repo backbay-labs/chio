@@ -142,10 +142,16 @@ the oracle's exact `SignedEpochRoot` (ARCHITECTURE 4.4).
 - Publication-fee collection: the fee schedule is declarative today
   (MECHANISMS section 6 honesty note); admission settles the publication
   fee as a metered charge so the spam floor is real, not advisory.
+- Liveness at publish/search time: publish rejects
+  `now >= finding.expires_at` fail-closed and search filters expired
+  findings (a correctly signed but expired artifact must not be
+  indexable or pairable with a fresh pricing hint; the M1 validator is
+  clockless by design, so liveness belongs to these surfaces).
 - Exit: an integration test publishes a signed finding, searches it by
   context digest, sees `BondBacked` admission flip from review-only to
-  admitted with a bond artifact, and sees the publication fee settled in
-  a receipt; gate green.
+  admitted with a bond artifact, sees the publication fee settled in a
+  receipt, and sees an expired-but-signed finding rejected at publish;
+  gate green.
 
 ### M3 Kernel delivery contract (the heart; smallest possible diff)
 
@@ -217,14 +223,26 @@ the oracle's exact `SignedEpochRoot` (ARCHITECTURE 4.4).
   re-read window on the minted grant, or a receipt-keyed seller re-serve
   policy) and test the buyer-crash-after-Allow path.
 - `chio.finding.delivery.v1` overlay block (moved here from M3): fields
-  sourced from the buyer-presented provider-signed `SignedAskResponse`
-  PLUS buyer-signed `AcceptedBid`, verified before the kernel echoes them
-  (ask signature against the token issuer;
-  `canonical_digest(ask.body) == accepted.ask_digest`; ask token
-  id/subject/expiry and listing id against the presented token -
-  ARCHITECTURE 4.2); includes registering that metadata block's schema
-  id. The `status_proof` sub-block is NOT in M4 (review: this was an
-  M4-to-M6 cycle) - M6 completes the overlay additively.
+  sourced from three buyer-presented signed artifacts, each verified
+  before the kernel echoes anything (ARCHITECTURE 4.2): the
+  provider-signed `SignedAskResponse` (envelope signature against the
+  token ISSUER; token id/subject/expiry and listing id against the
+  presented token), the buyer-signed `SignedAcceptedBid` (envelope
+  signature against the token SUBJECT;
+  `canonical_digest(ask.body) == accepted.ask_digest`; agent_id,
+  listing_id, quoted_price cross-bound), and the provider-signed
+  `SignedListingPricingHint` (same signer as the token issuer;
+  `pricing.listing_id == ask.listing_id`), whose
+  `capability_scope = finding:<finding_id>` is the AUTHENTICATED source
+  of `finding_id` - request arguments never are (two findings may share
+  a payload digest, and args are caller-controlled). Malformed or
+  missing artifacts on a finding purchase DENY (no silent omission).
+  Includes registering the metadata block's schema id. The
+  `status_proof` sub-block is NOT in M4 (review: this was an M4-to-M6
+  cycle) - M6 completes the overlay additively.
+- Liveness at buy time: the purchase path re-checks
+  `now < finding.expires_at` fail-closed before minting/reveal (the M1
+  validator is pure and clockless; liveness is a caller check).
 - Exit: one command-line round trip on a local kernel: publish, search,
   verify offline, buy, reveal, delivery receipt with `finding_delivery`
   block, budget reconciled; failure-path tests (digest mismatch, seller

@@ -184,15 +184,22 @@ governed-intent context (review finding: `AcceptedBid` alone is
 buyer-signed and carries only an opaque `ask_digest`, so without the ask
 body the kernel can neither authenticate the provider nor bind the token
 to that ask - a token subject could sign arbitrary purchase fields for
-the kernel to echo). The kernel verifies BOTH envelopes (review finding:
+the kernel to echo). The kernel verifies THREE presented artifacts (review findings:
 `SignedExportEnvelope::sign` is public, so prose calling a body
-buyer-signed proves nothing until the signature is checked):
-the ask envelope signature against the presented token's issuer key; the
-accepted-bid envelope signature against the presented token's SUBJECT
-key; `canonical_digest(ask.body) == accepted.ask_digest`; and the
-cross-binding of `agent_id`, `listing_id`, `bid_digest`, `quoted_price`,
-and the ask's token id/subject/expiry against the verified ask and the
-presented token. Failure handling is profile-dependent and fail-closed:
+buyer-signed proves nothing until the signature is checked; and neither
+ask nor accepted-bid carries `finding_id`, so identity needs its own
+signed source): the ask envelope signature against the presented token's
+issuer key; the accepted-bid envelope signature against the presented
+token's SUBJECT key with `canonical_digest(ask.body) ==
+accepted.ask_digest` and the cross-binding of `agent_id`, `listing_id`,
+`bid_digest`, `quoted_price`, and the ask's token id/subject/expiry
+against the verified ask and the presented token; and the
+provider-signed `SignedListingPricingHint` (same signer as the token
+issuer, `pricing.listing_id == ask.listing_id`), whose
+`capability_scope = finding:<finding_id>` is the AUTHENTICATED source of
+the stamped `finding_id` - request arguments never are, since they are
+caller-controlled and two findings may legitimately share one
+`payload_sha256` (4.5). Failure handling is profile-dependent and fail-closed:
 for a finding purchase (the grant was minted under a finding listing and
 purchase context is expected), malformed or missing purchase artifacts
 DENY the call - silent omission would let a caller downgrade out of the

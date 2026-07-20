@@ -528,7 +528,10 @@ fn require_hex64(value: &str, field: &'static str) -> Result<(), FindingError> {
 impl Finding {
     /// Structural validation. Signature and cross-artifact checks (bond
     /// existence, receipt verification, status freshness) live in later
-    /// milestones; this validator is pure over the artifact alone.
+    /// milestones; this validator is pure over the artifact alone. It is
+    /// also CLOCKLESS by design: it checks the window shape
+    /// (expires_at > issued_at) but not liveness - publish/search (M2)
+    /// and buy (M4) must reject `now >= expires_at` themselves.
     pub fn validate(&self) -> Result<(), FindingError> {
         if self.schema != FINDING_SCHEMA_V1 {
             return Err(FindingError::UnsupportedSchema(self.schema.clone()));
@@ -661,6 +664,27 @@ fn tampered_signed_finding_fails_verification() {
 }
 
 #[test]
+fn non_canonical_signature_encodings_are_rejected() {
+    let issuer = Keypair::generate();
+    let signed = match sign_finding(base_finding(&issuer), &issuer) {
+        Ok(signed) => signed,
+        Err(err) => panic!("signing failed: {err}"),
+    };
+    let mut uppercase = signed.clone();
+    uppercase.signature = uppercase.signature.to_uppercase();
+    assert!(matches!(
+        verify_finding_signature(&uppercase),
+        Err(FindingError::SignatureInvalid)
+    ));
+    let mut prefixed = signed;
+    prefixed.signature = format!("0x{}", prefixed.signature);
+    assert!(matches!(
+        verify_finding_signature(&prefixed),
+        Err(FindingError::SignatureInvalid)
+    ));
+}
+
+#[test]
 fn signing_requires_the_issuer_key() {
     let issuer = Keypair::generate();
     let other = Keypair::generate();
@@ -698,8 +722,24 @@ pub fn sign_finding(
     Ok(finding)
 }
 
+pub(crate) fn is_hex128(value: &str) -> bool {
+    value.len() == 128
+        && value
+            .chars()
+            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+}
+
 /// Verify the inline signature against the embedded issuer, fail-closed.
+/// The exact-encoding precheck matters (review finding):
+/// `Signature::from_hex` tolerates `0x` and algorithm prefixes that the
+/// registered JSON schema rejects, and the signature field is cleared
+/// before canonical verification, so without this check an alternate
+/// encoding would verify here while failing the `chio.finding.v1`
+/// schema - publish would accept artifacts the schema refuses.
 pub fn verify_finding_signature(finding: &Finding) -> Result<(), FindingError> {
+    if !is_hex128(&finding.signature) {
+        return Err(FindingError::SignatureInvalid);
+    }
     let signature = Signature::from_hex(&finding.signature)
         .map_err(|_| FindingError::SignatureInvalid)?;
     let mut body = finding.clone();
