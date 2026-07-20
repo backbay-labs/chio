@@ -82,9 +82,13 @@ golden fixture validates against schema and struct.
   a signed bond artifact matching the fee schedule's requirement is
   presented (`chio-listing/src/trust_activation.rs:558-572` seam). This is
   open-market-generic work, reviewed with that lane's owner.
+- Publication-fee collection: the fee schedule is declarative today
+  (MECHANISMS section 6 honesty note); admission settles the publication
+  fee as a metered charge so the spam floor is real, not advisory.
 - Exit: an integration test publishes a signed finding, searches it by
-  context digest, and sees `BondBacked` admission flip from review-only to
-  admitted with a bond artifact; gate green.
+  context digest, sees `BondBacked` admission flip from review-only to
+  admitted with a bond artifact, and sees the publication fee settled in
+  a receipt; gate green.
 
 ### M3 Kernel delivery contract (the heart; smallest possible diff)
 
@@ -98,14 +102,21 @@ golden fixture validates against schema and struct.
   Deny receipt + reversal; match: reconcile + `finding_delivery` metadata
   block (struct in `chio-core-types/src/receipt/`, key const beside the
   signing-nonce const).
+- Digest gate semantics per ARCHITECTURE 4.5/6.2: commitment is over the
+  canonical reveal envelope; `Stream` outputs deny fail-closed; the
+  mismatch arm reverses the charge AND releases/refunds any payment
+  authorization (mirroring `unwind_aborted_monetary_invocation`); the
+  in-function reversal precedent is the no-measured-cost path
+  (`validation.rs:1333-1349`).
 - Verdict-matrix rotation: new `delivery_contract` scenario class,
   recomputed `scenario_index_hash` + `corpus_sha256`, doc update
   (ARCHITECTURE 7.4).
 - Formal hooks (see section 3): Kani harness + Lean bounded model for
   delivery-contract soundness.
-- Exit: kernel test proves "Allow implies content_hash equals constraint
-  digest" and "mismatch implies Deny + hold reversed + no realized spend";
-  verdict matrix green across required drivers; gate green.
+- Exit: kernel tests prove "Allow implies content_hash equals constraint
+  digest", "mismatch implies Deny + hold reversed + prepayment refunded +
+  no realized spend", and "stream output under the constraint implies
+  Deny"; verdict matrix green across required drivers; gate green.
 - Risk gate: this milestone's plan is written only after a kernel-lane
   review of ARCHITECTURE 6.2 (it touches `validation.rs`, the most
   invariant-dense file in the workspace).
@@ -121,10 +132,15 @@ golden fixture validates against schema and struct.
   `max_total_cost`; MustPrepay reveal; refund-on-abort test.
 - `chio finding publish|search|verify|buy` CLI following the documented
   family pattern (ARCHITECTURE 8.3).
+- Delivery idempotency decision (ARCHITECTURE F3 step 6): pick and build
+  one paid-but-lost-payload mitigation (a scoped `Operation::ReadResult`
+  re-read window on the minted grant, or a receipt-keyed seller re-serve
+  policy) and test the buyer-crash-after-Allow path.
 - Exit: one command-line round trip on a local kernel: publish, search,
   verify offline, buy, reveal, delivery receipt with `finding_delivery`
   block, budget reconciled; failure-path tests (digest mismatch, seller
-  down, abort) all refund; gate green.
+  down, abort, buyer crash after Allow) all end with funds and payload in
+  a documented state; gate green.
 
 ### M5 Challenge and audit lane
 
@@ -139,6 +155,13 @@ golden fixture validates against schema and struct.
 - Audit-scheduler convention: a documented venue job (published rate,
   participation-fee funded) that files ordinary challenges; no new
   adjudication authority (MECHANISMS section 5).
+- Dispute-fee collection at challenge submission (the schedule is
+  declarative today; MECHANISMS section 6 honesty note), settled as a
+  metered charge alongside the challenge bond.
+- Cross-kernel receipt trust: the challenge evaluator verifies
+  reproduction receipts against a configured trusted-kernel-key set
+  (single-operator wedge: trivial; the config surface mirrors
+  `chio-reputation`'s `trusted_kernel_keys` gating).
 - `chio finding challenge` CLI.
 - Exit: end-to-end test: fabricated evidence -> challenge -> enforced
   sanction case -> penalty artifact -> bond-impair preparation with

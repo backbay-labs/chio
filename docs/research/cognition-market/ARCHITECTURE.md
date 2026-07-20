@@ -110,7 +110,7 @@ signed export envelope in the economy crates):
 | `descriptor.context_sha256` | hex64 | digest of the full context object (committed test suite + commit, or experiment protocol); the match key |
 | `descriptor.outcome_class` | enum | `null_result` / `verified_fix` / `positive_result` |
 | `guarantee_class` | enum | `deterministic_replay` / `metered_attested` / `asserted` (truthful-to-backing; D3) |
-| `payload_sha256` | hex64 | commitment to the sealed payload served by `read_finding` |
+| `payload_sha256` | hex64 | commitment to the reveal: digest of the canonical reveal ENVELOPE, not raw payload bytes (normative definition in 4.5) |
 | `payload_media_type` | string | e.g. `application/json`, `text/x-diff` |
 | `evidence_receipt_ids` | [string] | producing receipts (must verify fail-closed) |
 | `evidence_checkpoint_ref` | string | checkpoint containing the evidence receipts |
@@ -214,6 +214,40 @@ existing anchor lanes. Retraction inserts come from: the seller (voluntary),
 or an enforced challenge outcome (F4). `chio.finding.status-epoch.v1` wraps
 the oracle root with feed identity and the anchoring refs.
 
+### 4.5 The reveal envelope and the exact digest definition (normative)
+
+A fine detail that decides whether the delivery contract works at all: the
+kernel's `content_hash` for a value output is
+`sha256_hex(canonical_json_bytes(value))` over the WHOLE response value
+(`receipt_content_for_output`,
+`crates/kernel/chio-kernel/src/receipt_support/receipt_content.rs:3-17`).
+The seller's commitment must therefore be over exactly that quantity, not
+over raw payload bytes. Normative definitions for the family:
+
+- The `read_finding` response value MUST be exactly the reveal envelope
+  (snake_case keys; canonical JSON key ordering makes it deterministic):
+
+```json
+{
+  "finding_id": "f3a9...",
+  "media_type": "text/x-diff",
+  "payload_b64": "<base64 of the raw payload bytes>"
+}
+```
+
+- `Finding.payload_sha256 := sha256_hex(canonical_json_bytes(reveal_envelope))`.
+  It is the digest of the canonical envelope, NOT of the decoded payload
+  bytes. Buyers recover raw bytes by base64-decoding `payload_b64` after
+  independently recomputing the envelope digest.
+- Streams are excluded in v1: a streamed output's `content_hash` is a
+  concatenation of per-chunk digests, and stream retention caps can
+  truncate it into an Incomplete receipt (`stream_receipt_content` and
+  `truncate_stream_to_limits`, same file), so a grant carrying the
+  delivery constraint MUST deny a `Stream` output fail-closed. Payload
+  size is therefore bounded by response-value limits; large payloads ship
+  as a small envelope containing a fetch reference plus the digest of the
+  referenced bytes only if a later ADR defines that indirection (not v1).
+
 ## 5. Market flows
 
 ### F1. Publish and admit
@@ -272,6 +306,15 @@ the oracle root with feed identity and the anchoring refs.
 5. Buyer ingests via a governed memory write; provenance chain binds
    store/key to the purchase capability and delivery receipt
    (`memory_provenance.rs:63`).
+6. Paid-but-lost-payload edge (fine detail, M4): with `max_invocations: 1`,
+   a buyer that crashes between the Allow receipt and persisting the
+   payload has paid for bytes it no longer holds. Mitigation options to
+   decide at M4: mint the grant with `Operation::ReadResult` alongside
+   `Invoke` (the operation exists,
+   `chio-core-types/src/capability/scope.rs:219`) scoped to a short
+   re-read window, or a seller re-serve policy keyed on presentation of
+   the delivery receipt. Neither is built; the failure mode is
+   buyer-loses-availability, never seller-double-paid.
 
 ### F4. Challenge, audit, and slash
 
@@ -317,6 +360,13 @@ instead of only a kernel hold; release gated on Merkle-proven inclusion of
 the delivery receipt under the operator-signed root
 (`releaseWithProofDetailed`; batch `prepare_merkle_release`,
 `chio-settle/src/lib.rs:40-91`); refund after deadline if no delivery.
+Timing fine print: the delivery receipt becomes escrow-releasable only
+after it lands in a signed checkpoint (and, per relying-party policy, an
+anchored one), so the escrow `deadline` must exceed delivery time plus
+checkpoint cadence plus anchor finality; a deadline tighter than the
+operator's checkpoint interval can refund a completed delivery. The escrow
+terms should therefore be derived from the operator's published checkpoint
+cadence, not chosen freely.
 Evidence and passport exchange ride the bilateral evidence-share surfaces
 (`chio evidence export/import`, federation policy artifacts). The
 operator-visibility caveat (threat model O1/T1) applies; TEE-tier kernels
@@ -372,18 +422,35 @@ new variant - an unenforceable delivery refuses to parse rather than
 running unprotected.
 
 **Enforcement point: a delivery-contract check inside the budgeted
-finalizer, before reconciliation.** Concretely: in
-`finalize_budgeted_tool_output_with_cost_and_metadata`
-(`kernel/validation.rs`, the pre-reconcile section), when the matched grant
-carries `OutputDigestSha256(expected)`: canonicalize the tool output with
-the same `receipt_content_for_output` function, compare, and on mismatch
-route to the existing deny/incomplete arm so the pre-execution budget
-mutation reverses (`reverse_pre_execution_budget_mutation`,
-`kernel/validation.rs:1102` family) and a signed Deny receipt is emitted.
-On match: proceed to reconcile and attach the `chio.finding.delivery.v1`
-metadata block (4.2) in the allow builder. At the input-matching site the
-new variant is an advisory pass (precedent: the data-layer variants return
-`Ok(true)` pre-dispatch, `request_matching.rs:428`).
+finalizer, before reconciliation.** Concretely: at the top of the charged
+branch of the budgeted finalizer (`kernel/validation.rs`, immediately after
+the `charge_result` destructure and before `reconcile_budget_charge` at
+`:1422`), when the matched grant carries `OutputDigestSha256(expected)`:
+
+- A `Stream` output is an immediate mismatch (4.5): deny fail-closed.
+- For a `Value` output, compute the digest with the same
+  `receipt_content_for_output` canonicalization and compare to `expected`.
+- On mismatch: reverse the charge and emit a signed Deny receipt. This has
+  in-function precedent, which is why the placement is feasible rather
+  than invasive: the finalizer ALREADY reverses a pre-execution hold after
+  dispatch on its no-measured-cost path ("Reverse the pre-execution hold
+  and emit a provisional receipt", the guard block above
+  `finalize_unmeasured_cost_provisional_allow`, `validation.rs:1333-1349`),
+  using the `reverse_pre_execution_budget_mutation` family
+  (`validation.rs:1102`). The mismatch arm must ALSO release or refund any
+  payment authorization (MustPrepay), mirroring
+  `unwind_aborted_monetary_invocation` (`kernel/dispatch.rs:170`) - a
+  mismatch after prepayment is economically an abort.
+- On match: proceed to reconcile and attach the `chio.finding.delivery.v1`
+  metadata block (4.2) in the allow builder.
+
+At the input-matching site the new variant is an advisory pass (precedent:
+the data-layer variants return `Ok(true)` pre-dispatch,
+`request_matching.rs:428`). Redaction interaction: post-invocation
+transforms do not run on the charged path (F-A), so nothing rewrites the
+delivered value between the gate and `content_hash` today; if hooks are
+ever enabled on charged paths, the gate must move to compare the
+post-transform value or the two hashes diverge.
 
 Invariant this creates (formalization candidate, see PLAN):
 **delivery-contract soundness** - for any grant carrying

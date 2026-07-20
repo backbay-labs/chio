@@ -329,7 +329,10 @@ pub struct Finding {
     pub finding_id: String,
     pub descriptor: FindingDescriptor,
     pub guarantee_class: FindingGuaranteeClass,
-    /// Commitment to the sealed payload served by the reveal call.
+    /// Digest of the canonical reveal ENVELOPE, not of raw payload bytes:
+    /// sha256_hex(canonical_json_bytes(&reveal_envelope)) where the
+    /// envelope is {finding_id, media_type, payload_b64}. This must equal
+    /// the kernel's content_hash for the reveal response (ARCHITECTURE 4.5).
     pub payload_sha256: String,
     pub payload_media_type: String,
     pub evidence_receipt_ids: Vec<String>,
@@ -387,6 +390,8 @@ pub enum FindingError {
     MissingEvidence,
     #[error("expires_at must be strictly after issued_at")]
     InvalidValidityWindow,
+    #[error("canonical JSON serialization failed")]
+    Canonicalization,
 }
 
 pub(crate) fn is_hex64(value: &str) -> bool {
@@ -472,7 +477,7 @@ git commit -m "feat(chio-finding): finding artifact type with fail-closed valida
 - Modify: `crates/economy/chio-finding/tests/finding.rs` (append tests)
 
 **Interfaces:**
-- Consumes: `chio_core_types::canonical_json_bytes`, `chio_core_types::crypto::sha256_hex`, `SignedExportEnvelope` (defined at `crates/core/chio-core-types/src/receipt/lineage.rs:407`; find the public re-export path with `rg "SignedExportEnvelope" crates/core/chio-core-types/src/lib.rs crates/economy/chio-open-market/src/bidding.rs` and import from the same path `chio-open-market` uses).
+- Consumes: `chio_core_types::canonical_json_bytes` (returns `Result<Vec<u8>>`, `canonical.rs:119`), `chio_core_types::crypto::sha256_hex` (`fn(&[u8]) -> String`, `crypto.rs:1197`), and `chio_core_types::receipt::lineage::SignedExportEnvelope` (verified path: `chio-open-market/src/bidding.rs:30` imports it as `crate::receipt::lineage::SignedExportEnvelope` through its `receipt` re-export).
 - Produces:
   - `compute_finding_id(&Finding) -> Result<String, FindingError>`
   - `Finding::verify_finding_id(&self) -> Result<(), FindingError>`
@@ -509,7 +514,7 @@ fn signed_finding_roundtrip_verifies() {
 }
 ```
 
-If `Keypair::generate()` does not exist, use the constructor `chio-open-market/tests/bidding.rs` uses for its keypairs (read that file's helper and copy the idiom).
+(`Keypair::generate()` exists: `crates/core/chio-core-types/src/crypto.rs:158`.)
 
 - [ ] **Step 2: Run tests to verify they fail**
 
@@ -530,8 +535,8 @@ pub fn compute_finding_id(finding: &Finding) -> Result<String, FindingError> {
     let mut body = finding.clone();
     body.finding_id = String::new();
     body.signature = String::new();
-    let bytes = canonical_json_bytes(&body)
-        .map_err(|_| FindingError::EmptyField("canonical_body"))?;
+    let bytes =
+        canonical_json_bytes(&body).map_err(|_| FindingError::Canonicalization)?;
     Ok(sha256_hex(&bytes))
 }
 
@@ -557,7 +562,7 @@ pub use chio_core_types::receipt::lineage::SignedExportEnvelope;
 pub type SignedFinding = SignedExportEnvelope<Finding>;
 ```
 
-If `canonical_json_bytes` returns `Vec<u8>` directly rather than `Result`, drop the `map_err` line accordingly (check the signature in `chio-core-types` first; `chio-listing/src/lib.rs` re-exports it, and its call sites show the shape).
+(Signature verified: `canonical_json_bytes<T: Serialize>(&T) -> Result<Vec<u8>>` at `crates/core/chio-core-types/src/canonical.rs:119`; the `map_err` stands.)
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -795,7 +800,8 @@ git commit -m "feat(chio-finding): challenge and status-epoch artifacts"
 - Create: `spec/schemas/chio-finding/v1/challenge.schema.json`
 - Create: `spec/schemas/chio-finding/v1/status-epoch.schema.json`
 - Modify: `spec/schemas/registry.json`
-- Modify: `spec/schemas/MANIFEST.sha256` (via the check script's expected process)
+- Modify: `scripts/check-chio-schema-registry.sh` (add the new schema root to `checked_chio_schema_roots`)
+- Modify: `spec/schemas/MANIFEST.sha256` (deterministic regeneration, step 5)
 
 **Interfaces:**
 - Consumes: `SIGNED_ARTIFACT_SCHEMA_SPECS` table syntax (rows are `(CONST, Some(("artifact_kind", "introduced-by")))`).
@@ -911,7 +917,9 @@ Expected: FAIL - code lists three schemas missing from `spec/schemas/registry.js
 }
 ```
 
-Author `challenge.schema.json` and `status-epoch.schema.json` the same way from the Task 4 struct fields (same `$defs/sha256`, same `additionalProperties: false`, `const` schema ids `chio.finding.challenge.v1` / `chio.finding.status-epoch.v1`; every non-`Option` field required).
+Author `challenge.schema.json` and `status-epoch.schema.json` the same way from the Task 4 struct fields (same `$defs/sha256`, same `additionalProperties: false`, `const` schema ids `chio.finding.challenge.v1` / `chio.finding.status-epoch.v1`). Required-field rule: require every field that is neither `Option` nor a default-skipped collection. Concretely: on the status epoch, `anchor_refs` carries `#[serde(default, skip_serializing_if = "Vec::is_empty")]` and is omitted when empty, so it must NOT appear in `required`; every field of `FindingChallenge` is plain and therefore required.
+
+Also add the new schema root to the registry check script: in `scripts/check-chio-schema-registry.sh`, insert `"spec/schemas/chio-finding/",` into the `checked_chio_schema_roots` tuple in alphabetical position (after `"spec/schemas/chio-federation/",`, before `"spec/schemas/chio-lineage/",`). Without this the script does not require chio-finding schemas to be registered, weakening the gate for the new family.
 
 Add to `spec/schemas/registry.json` `artifacts` array (keep the file's existing ordering convention):
 
@@ -936,17 +944,43 @@ Add to `spec/schemas/registry.json` `artifacts` array (keep the file's existing 
 }
 ```
 
-- [ ] **Step 5: Re-run the cross-checks until green, regenerating the manifest**
+- [ ] **Step 5: Regenerate the manifest deterministically, then re-run the cross-checks**
 
-Run: `bash scripts/check-chio-schema-registry.sh`
-Expected: it reports the MANIFEST drift for the new files; regenerate `spec/schemas/MANIFEST.sha256` the way the script/test expects (the test at `scripts/tests/check-chio-schema-registry.test.sh:73` shows the format: sorted `sha256  path` lines with the manifest's own self-hash line first; if the script offers no regen mode, recompute with `shasum -a 256` over the schema tree in that format).
+The script demands byte-exact deterministic regeneration (its own algorithm, `scripts/check-chio-schema-registry.sh:58-93`): the path set is every git-tracked `spec/schemas/**/*.schema.json` plus `registry.json`, `VERSION`, and the manifest itself, sorted by path; each line is `sha256(file)  path`; the manifest's own line's digest is the sha256 of the concatenation of all OTHER lines. Regenerate with exactly that algorithm:
+
+```bash
+python3 - <<'PY'
+import hashlib, pathlib, subprocess
+root = pathlib.Path('.')
+manifest_rel = 'spec/schemas/MANIFEST.sha256'
+tracked = subprocess.run(
+    ['git', 'ls-files', '-z', '--cached', '--others', '--exclude-standard',
+     '--', 'spec/schemas'],
+    check=True, stdout=subprocess.PIPE).stdout.decode().split('\0')
+keep = sorted(
+    p for p in tracked
+    if p.endswith('.schema.json')
+    or p in {manifest_rel, 'spec/schemas/registry.json', 'spec/schemas/VERSION'})
+without_self = [
+    f"{hashlib.sha256((root / p).read_bytes()).hexdigest()}  {p}\n"
+    for p in keep if p != manifest_rel]
+self_hash = hashlib.sha256(''.join(without_self).encode()).hexdigest()
+content = ''.join(
+    f"{self_hash}  {p}\n" if p == manifest_rel
+    else f"{hashlib.sha256((root / p).read_bytes()).hexdigest()}  {p}\n"
+    for p in keep)
+(root / manifest_rel).write_text(content)
+print('regenerated', manifest_rel, 'entries:', len(keep))
+PY
+```
+
 Then: `cargo test -p chio-core-types --test signed_artifact_schema && bash scripts/check-chio-schema-registry.sh`
-Expected: PASS, PASS.
+Expected: PASS, PASS. (If the script still complains, its stderr names the exact drift; fix and regenerate again - never hand-edit digest lines.)
 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add crates/core/chio-core-types/src/signed_artifact.rs spec/schemas
+git add crates/core/chio-core-types/src/signed_artifact.rs spec/schemas scripts/check-chio-schema-registry.sh
 git commit -m "feat(chio-core-types): register chio.finding.v1 artifact family"
 ```
 
