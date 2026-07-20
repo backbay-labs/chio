@@ -470,6 +470,16 @@ facts from the evaluation pipeline decide it.
 
 ### 6.1 The facts that constrain the design
 
+Scope note (added when PR #974 surfaced): these facts were verified
+against pre-#974 main. PR #974 rewrites large parts of `validation.rs`,
+`budget_store.rs`, and the response builders, adds an explicit
+invocation-capture stage and a pending-approval response kind, and
+replaces `unwind_aborted_monetary_invocation` with the capture lifecycle
+(`reverse_pre_execution_budget_mutation` survives). The three facts below
+held at verification time and the design DIRECTION does not depend on the
+line numbers, but every anchor here must be re-verified against post-#974
+main before the M3 plan is authored (PLAN section 0).
+
 - **F-A. The paid path skips post-invocation hooks.** The post-invocation
   pipeline (`PostInvocationHook`, `crates/kernel/chio-kernel/src/post_invocation.rs:56`)
   runs only from `finalize_tool_output_with_metadata`, which the budgeted
@@ -520,7 +530,10 @@ across version skew, the one failure direction this design refuses. A
 capability `.v2` schema is the heavyweight fallback if the v1 constraint
 vocabulary is declared frozen at M3 time; the formal call is ADR-A
 (PLAN section 4), and the addition ships with its PROTOCOL.md update and
-verdict-matrix rotation either way.
+verdict-matrix rotation either way. Precedent since this was written:
+PR #974 itself adds `Constraint::RequireCumulativeApprovalAbove` in
+place, so in-v1 vocabulary extension is the repo's demonstrated practice,
+not a novelty this program introduces.
 
 **Enforcement point: two layers, so the invariant holds on EVERY Allow
 path, not only the charged branch.** Review finding: `charge_result ==

@@ -185,11 +185,13 @@ market_participation_fee, bond_requirements }`,
   `crates/economy/chio-listing/src/trust_activation.rs:565`).
 - Participation fee: venue sustainability; keep near zero for the wedge.
 
-Honesty note on shipped state: the fee schedule is DECLARATIVE today - the
-artifact carries the amounts and validates their shape
-(`fee_schedule.rs:79-109`), but nothing in the workspace collects a
-publication fee at publish time or a dispute fee at challenge time
-(confirmed by source sweep). Fee COLLECTION is engineering the plan must
+Honesty note on shipped state: as of pre-#974 main the fee schedule is
+DECLARATIVE - the artifact carries the amounts and validates their shape
+(`fee_schedule.rs:79-109`), but nothing collects a publication fee at
+publish time or a dispute fee at challenge time (confirmed by source
+sweep). PR #974 introduces `chio-open-market/src/fiscal_adapter.rs` and a
+`chio_fiscal` resolver that rework this surface; M2 re-verifies whether
+collection exists post-#974 before repeating this claim (PLAN section 0). Fee COLLECTION is engineering the plan must
 carry: settle the publication fee as part of listing admission (M2) and
 the dispute fee as part of challenge submission (M5), both as ordinary
 metered/settled charges so the fee trail is receipts, not bookkeeping.

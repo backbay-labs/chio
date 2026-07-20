@@ -49,6 +49,48 @@ external dependencies anticipated before M7.
 - Proof-claim discipline: nothing listable under capabilities
   `ChioProofClaims` rejects; evidence classes never upgraded.
 
+## 0. Baseline assumption: PR #974 merges first
+
+The program baseline is main AFTER
+[PR #974](https://github.com/bb-connor/arc/pull/974) ("complete the
+agent-economy durability roadmap", 1,242 files) merges. None of this
+design set's research assumed #974 - it was verified against pre-#974
+main - so the dependency is stated here explicitly, with what a targeted
+diff of #974's head (`worktree-chio-economy-research`) established on
+2026-07-20:
+
+- **Verified UNCHANGED by #974** (design rests on these safely): the
+  `Constraint` carrier mechanics in `chio-core-types/src/capability/scope.rs`
+  (one variant added, see below), the reveal-digest definition in
+  `receipt_support/receipt_content.rs` (ARCHITECTURE 4.5 math intact),
+  `chio-listing/src/trust_activation.rs` (the BondBacked seam),
+  `chio-market` claim/settlement lanes, `chio-revocation-oracle`, and
+  `chio-disclosure-lineage`.
+- **Heavily reworked by #974** (facts must be RE-VERIFIED before the M3
+  plan is authored): `kernel/validation.rs` (~1.8k lines changed),
+  `budget_store.rs` (~1.6k), the response builders, plus a new explicit
+  invocation-capture stage (`capture_invocation`,
+  `cancel_captured_monetary_before_dispatch`) and a new pending-approval
+  response kind (`responses/pending_responses.rs`).
+  `reverse_pre_execution_budget_mutation` survives (validation.rs:1851 on
+  the #974 head); `unwind_aborted_monetary_invocation` does NOT (replaced
+  by the capture lifecycle), so ARCHITECTURE 6.2's citation of it is
+  pre-#974 and the mismatch-refund arm must be re-anchored - likely onto
+  the capture-cancellation path, which looks like a BETTER seam for the
+  gate, not a worse one. The "single Allow choke point" topology claim
+  must be reconfirmed against the new pending/capture arms.
+- **Precedent gained**: #974 itself adds
+  `Constraint::RequireCumulativeApprovalAbove` in place - the repo's own
+  practice extends the constraint vocabulary within v1, which settles the
+  ADR-A evolution-model question in favor of the `OutputDigestSha256`
+  variant route (review round 2, comment on the frozen-enum rule).
+- **Sequencing**: M0/M1 executes only after #974 merges and this branch
+  rebases - #974 changes `spec/schemas/registry.json` by ~530 lines, so
+  landing registry edits in parallel guarantees conflicts. M2's
+  fee-collection claim must be re-checked first: #974 introduces
+  `chio-open-market/src/fiscal_adapter.rs` and a `chio_fiscal` resolver,
+  which may supersede the "fees are declarative-only" note (MECHANISMS 6).
+
 ## 1. Milestone ladder
 
 Each milestone is independently shippable and independently stoppable; a
@@ -323,7 +365,7 @@ the oracle's exact `SignedEpochRoot` (ARCHITECTURE 4.4).
 | Demand-side flop (nobody buys) | unknown | program value | M4 exit includes a dogfood loop on this repo's own CI failures; M7+ gated on demand evidence |
 | Cross-org confidentiality objections (operator sees reveals, O1/T1) | medium | limits vision instance | documented posture + TEE-tier deployment guidance; no overclaim in CLAIM_REGISTRY |
 | Post-reveal resale collapses prices (B2) | high by nature | seller participation | priced-in decay/versioning (MECHANISMS 3/7); wedge contexts are org-internal where resale is moot |
-| Registry/schema churn conflicts with parallel work on `feat/roadmap-execution` | medium | rebase pain | M0/M1 touch additive tables only; land soon after PR #966 settles |
+| Registry/schema churn with open PR #974 (~530-line registry.json diff; kernel rework) | certain if parallel | conflicts + stale anchors | section 0 sequencing: merge #974 first, rebase, re-verify M3 pipeline facts |
 
 ## 6. Plan maintenance rules
 
