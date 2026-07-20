@@ -40,8 +40,11 @@ impl DispatchCredentialReservation<'_> {
     pub(crate) fn retain_if_dropped(
         &mut self,
     ) -> Result<PaymentCredentialDisposition, KernelError> {
-        self.reserve_legacy_execution_nonce_at_effect_boundary()?;
+        // Retention is fail-closed. Once requested, a later store failure must
+        // never let Drop roll back markers that may already protect a rail
+        // authorization with an uncertain outcome.
         self.rollback_on_drop = false;
+        self.reserve_legacy_execution_nonce_at_effect_boundary()?;
         self.commit_approval_marker()?;
         Ok(self.retention_disposition())
     }
@@ -55,8 +58,10 @@ impl DispatchCredentialReservation<'_> {
     }
 
     pub(crate) fn commit(mut self) -> Result<PaymentCredentialDisposition, KernelError> {
-        self.reserve_legacy_execution_nonce_at_effect_boundary()?;
+        // Clear rollback before the first fallible retention operation. On an
+        // uncertain failure, keeping every owned marker is the safe direction.
         self.rollback_on_drop = false;
+        self.reserve_legacy_execution_nonce_at_effect_boundary()?;
         self.commit_approval_marker()?;
         Ok(self.retention_disposition())
     }

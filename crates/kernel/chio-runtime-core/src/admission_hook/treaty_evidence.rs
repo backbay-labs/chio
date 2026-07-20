@@ -284,6 +284,7 @@ fn verified_federation_treaty_material(
             local_kernel_id,
             admission: chio_kernel::FederationTreatyAdmissionBinding {
                 accepted: report.accepted,
+                admission_report_sha256: &canonical_sha256(report)?,
                 treaty_id: &report.treaty_id,
                 treaty_scope_sha256: &report.treaty_scope_sha256,
                 ladder_intersection_sha256: &report.ladder_intersection_sha256,

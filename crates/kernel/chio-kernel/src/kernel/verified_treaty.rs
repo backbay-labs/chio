@@ -9,6 +9,7 @@ use crate::{KernelError, ToolCallRequest};
 
 pub struct FederationTreatyAdmissionBinding<'a> {
     pub accepted: bool,
+    pub admission_report_sha256: &'a str,
     pub treaty_id: &'a str,
     pub treaty_scope_sha256: &'a str,
     pub ladder_intersection_sha256: &'a str,
@@ -98,7 +99,7 @@ impl VerifiedFederationTreatyMaterial {
             .tool_args_hash
             .as_ref()
             .map(|hash| hash.value.as_str());
-        let treaty_binding_ref = predicate.treaty_binding_ref.clone().ok_or_else(|| {
+        let mut treaty_binding_ref = predicate.treaty_binding_ref.clone().ok_or_else(|| {
             KernelError::Internal(
                 "federation treaty DSSE is missing treaty binding material".to_string(),
             )
@@ -144,7 +145,7 @@ impl VerifiedFederationTreatyMaterial {
         }
 
         if !input.admission.accepted
-            || !is_sha256_hex(&treaty_binding_ref.admission_report_sha256)
+            || !is_sha256_hex(input.admission.admission_report_sha256)
             || !matches!(
                 input.admission.co_sign,
                 "bilateral_required" | "bilateral_if_cross_org"
@@ -162,6 +163,11 @@ impl VerifiedFederationTreatyMaterial {
                 "federation treaty DSSE does not match the accepted admission report".to_string(),
             ));
         }
+        // Receipt provenance is local evidence. Do not carry the peer-supplied
+        // report hash into a locally signed receipt, even when the bilateral
+        // predicate itself is otherwise valid.
+        treaty_binding_ref.admission_report_sha256 =
+            input.admission.admission_report_sha256.to_string();
 
         let extensions = BilateralPredicateExtensions {
             capability_lease_ref: Some(capability_lease_ref.clone()),

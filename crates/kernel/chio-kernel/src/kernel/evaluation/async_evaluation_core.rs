@@ -1425,12 +1425,14 @@ impl ChioKernel {
         // Defer that irreversible consume until every mutable admission check
         // has passed and immediately before payment authorization can touch an
         // external rail.
-        let legacy_nonce_reservation =
-            if budget_mutation.charge_result().is_some() && self.payment_adapter.is_some() {
-                credential_reservation.reserve_legacy_execution_nonce_at_effect_boundary()
-            } else {
-                Ok(())
-            };
+        let legacy_nonce_reservation = if self.payment_adapter.is_some()
+            && (Self::is_governed_mustprepay_request(request)
+                || budget_mutation.charge_result().is_some())
+        {
+            credential_reservation.reserve_legacy_execution_nonce_at_effect_boundary()
+        } else {
+            Ok(())
+        };
         if let Err(error) = legacy_nonce_reservation {
             post_admission_drop_guard.disarm();
             drop(post_admission_drop_guard);

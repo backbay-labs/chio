@@ -36,12 +36,12 @@ if multi_unwinding_checks != public["unwinding_checks"]:
 PY
 
 dry_run="$(scripts/run-kani-manifest.sh --lane pr --crate chio-kernel-core --dry-run)"
-oracle_line="$(grep -F -- '--harness verify_oracle_inclusion_soundness ' <<<"$dry_run")"
+oracle_line="$(grep -F -- '--harness kani_public_harnesses::verify_oracle_inclusion_walk_parity ' <<<"$dry_run")"
 if grep -Fq -- '--no-unwinding-checks' <<<"$oracle_line"; then
   echo "inclusion-walk proof unexpectedly disables unwinding checks" >&2
   exit 1
 fi
-ordinary_line="$(grep -F -- '--harness verify_revocation_view_freshness ' <<<"$dry_run")"
+ordinary_line="$(grep -F -- '--harness kani_public_harnesses::verify_revocation_view_freshness ' <<<"$dry_run")"
 if ! grep -Fq -- '--no-unwinding-checks' <<<"$ordinary_line"; then
   echo "ordinary public harness unexpectedly changed unwinding posture" >&2
   exit 1

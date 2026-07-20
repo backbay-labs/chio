@@ -3081,9 +3081,18 @@ async fn drop_guard_post_dispatch_ambiguity_records_pending_reversal() {
         tokio::spawn(async move { kernel.evaluate_tool_call(&request).await })
     };
 
-    tokio::time::timeout(Duration::from_secs(1), started.notified())
+    if tokio::time::timeout(Duration::from_secs(1), started.notified())
         .await
-        .expect("pending monetary tool should be invoked before abort");
+        .is_err()
+    {
+        if eval.is_finished() {
+            panic!(
+                "pending monetary evaluation completed before invocation: {:?}",
+                eval.await
+            );
+        }
+        panic!("pending monetary tool should be invoked before abort");
+    }
     eval.abort();
     assert!(
         eval.await.expect_err("aborted evaluation should not complete").is_cancelled()
@@ -6261,6 +6270,31 @@ impl BudgetStore for FailingReverseBudgetStore {
             cost_units,
             max_cost_per_invocation,
             max_total_cost_units,
+        )
+    }
+
+    fn try_charge_cost_with_ids_and_authority_outcome(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        max_invocations: Option<u32>,
+        cost_units: u64,
+        max_cost_per_invocation: Option<u64>,
+        max_total_cost_units: Option<u64>,
+        hold_id: Option<&str>,
+        event_id: Option<&str>,
+        authority: Option<&crate::budget_store::BudgetEventAuthority>,
+    ) -> Result<crate::budget_store::BudgetAuthorizeMutationOutcome, BudgetStoreError> {
+        self.inner.try_charge_cost_with_ids_and_authority_outcome(
+            capability_id,
+            grant_index,
+            max_invocations,
+            cost_units,
+            max_cost_per_invocation,
+            max_total_cost_units,
+            hold_id,
+            event_id,
+            authority,
         )
     }
 

@@ -499,31 +499,20 @@ pub trait BudgetStore: Send + Sync {
     #[allow(clippy::too_many_arguments)]
     fn try_charge_cost_with_ids_and_authority_outcome(
         &self,
-        capability_id: &str,
-        grant_index: usize,
-        max_invocations: Option<u32>,
-        cost_units: u64,
-        max_cost_per_invocation: Option<u64>,
-        max_total_cost_units: Option<u64>,
-        hold_id: Option<&str>,
-        event_id: Option<&str>,
-        authority: Option<&BudgetEventAuthority>,
+        _capability_id: &str,
+        _grant_index: usize,
+        _max_invocations: Option<u32>,
+        _cost_units: u64,
+        _max_cost_per_invocation: Option<u64>,
+        _max_total_cost_units: Option<u64>,
+        _hold_id: Option<&str>,
+        _event_id: Option<&str>,
+        _authority: Option<&BudgetEventAuthority>,
     ) -> Result<BudgetAuthorizeMutationOutcome, BudgetStoreError> {
-        self.try_charge_cost_with_ids_and_authority(
-            capability_id,
-            grant_index,
-            max_invocations,
-            cost_units,
-            max_cost_per_invocation,
-            max_total_cost_units,
-            hold_id,
-            event_id,
-            authority,
-        )
-        .map(|allowed| BudgetAuthorizeMutationOutcome {
-            allowed,
-            replayed_event: false,
-        })
+        Err(BudgetStoreError::Invariant(
+            "budget store does not implement replay-aware authorization outcome; denying fail-closed"
+                .to_string(),
+        ))
     }
 
     /// Reverse a previously applied provisional exposure for a pre-execution denial path.
@@ -1547,6 +1536,24 @@ mod tests {
             _max_total_cost_units: Option<u64>,
         ) -> Result<bool, BudgetStoreError> {
             Ok(self.allow)
+        }
+
+        fn try_charge_cost_with_ids_and_authority_outcome(
+            &self,
+            _capability_id: &str,
+            _grant_index: usize,
+            _max_invocations: Option<u32>,
+            _cost_units: u64,
+            _max_cost_per_invocation: Option<u64>,
+            _max_total_cost_units: Option<u64>,
+            _hold_id: Option<&str>,
+            _event_id: Option<&str>,
+            _authority: Option<&BudgetEventAuthority>,
+        ) -> Result<BudgetAuthorizeMutationOutcome, BudgetStoreError> {
+            Ok(BudgetAuthorizeMutationOutcome {
+                allowed: self.allow,
+                replayed_event: false,
+            })
         }
 
         fn reverse_charge_cost(

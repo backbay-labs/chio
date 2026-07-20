@@ -226,7 +226,7 @@ notes = "Production and extraction-safe inclusion-step equality through the eigh
 
 [[harness]]
 crate = "chio-kernel-core"
-harness = "verify_oracle_inclusion_soundness"
+harness = "verify_oracle_inclusion_walk_parity"
 default_unwind = 8
 timeout_secs = 1800
 lane = "pr"

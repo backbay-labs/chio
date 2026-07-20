@@ -91,3 +91,9 @@ activation_ratio_percent = 100.0
 Until such a table exists, generated coverage marks the target as
 `measurement=pending`. Pending metadata is not a successful mutation result
 and does not support a verification claim.
+
+The registry's `historical_evidence` list preserves older campaign reports for
+audit only. The proof-coverage generator hashes every listed file, but does not
+promote it to a measurement or verification claim. A report becomes current
+evidence only through a validated `latest_full_cycle` table whose complete
+input inventory matches the worktree.

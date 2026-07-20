@@ -143,9 +143,13 @@ fn revalidate_non_consuming_guard(
 ) -> Result<(), chio_kernel::KernelError> {
     match guard.evaluate(ctx)?.verdict {
         chio_kernel::Verdict::Allow => Ok(()),
-        chio_kernel::Verdict::Deny | chio_kernel::Verdict::PendingApproval => Err(
-            chio_kernel::KernelError::GuardDenied("guard dispatch revalidation denied".to_string()),
-        ),
+        // Admission owns approval adjudication. A pure re-evaluation may still
+        // describe the original threshold as pending, but must not turn an
+        // already-adjudicated request into a hard denial at dispatch.
+        chio_kernel::Verdict::PendingApproval => Ok(()),
+        chio_kernel::Verdict::Deny => Err(chio_kernel::KernelError::GuardDenied(
+            "guard dispatch revalidation denied".to_string(),
+        )),
     }
 }
 

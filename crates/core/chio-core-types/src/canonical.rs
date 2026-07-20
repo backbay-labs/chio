@@ -1,11 +1,14 @@
-//! Canonical JSON serialization (RFC 8785 / JCS).
+//! Chio canonical JSON serialization.
 //!
 //! Produces byte-for-byte identical output for the same logical JSON value,
 //! regardless of key insertion order or floating-point formatting quirks.
 //! This is required for deterministic signing: the same value serialized in
 //! Rust, TypeScript, Python, or Go must yield identical bytes.
 //!
-//! Implementation follows RFC 8785 (JSON Canonicalization Scheme):
+//! The format follows RFC 8785 (JSON Canonicalization Scheme) except that it
+//! also escapes DEL and C1 control characters for compatibility with existing
+//! Chio signed artifacts. Every Chio SDK and conformance vector pins this
+//! deliberate deviation.
 //! - Object keys sorted by UTF-16 code unit comparison
 //! - Numbers: shortest representation matching ECMAScript `JSON.stringify()`
 //! - Strings: Chio-compatible escaping for C0, DEL, and C1 controls, plus quotes

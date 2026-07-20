@@ -160,6 +160,7 @@ impl TreatyDsseAdmissionHook {
             local_kernel_id: &context.local_kernel_id,
             admission: FederationTreatyAdmissionBinding {
                 accepted: true,
+                admission_report_sha256: &"3".repeat(64),
                 treaty_id: "treaty-buyer-vendor",
                 treaty_scope_sha256: &"1".repeat(64),
                 ladder_intersection_sha256: &"2".repeat(64),

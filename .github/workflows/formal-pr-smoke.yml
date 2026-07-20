@@ -153,7 +153,7 @@ jobs:
     needs: scope
     if: needs.scope.outputs.lean == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 

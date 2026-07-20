@@ -206,6 +206,8 @@ struct MutationConfig {
 #[serde(deny_unknown_fields)]
 struct FormalMutationRegistry {
     schema: String,
+    #[serde(default)]
+    historical_evidence: Vec<String>,
     target: Vec<FormalMutationTarget>,
 }
 
@@ -592,6 +594,19 @@ fn build_coverage(root: &Path) -> Result<CoverageBuild, String> {
             "unsupported formal mutation registry schema: {}",
             formal_mutations.schema
         ));
+    }
+    let mut historical_evidence = BTreeSet::new();
+    for evidence in &formal_mutations.historical_evidence {
+        let normalized = normalized_repo_path(evidence)?;
+        if normalized != *evidence
+            || !normalized.starts_with("formal/mutation/evidence/")
+            || !historical_evidence.insert(normalized.clone())
+        {
+            return Err(format!(
+                "formal mutation historical evidence path is invalid or repeated: {evidence}"
+            ));
+        }
+        let _ = read_input(root, &normalized, &mut input_hashes)?;
     }
     let workspace_rust_files = workspace_rust_files(root)?;
     input_hashes.insert(

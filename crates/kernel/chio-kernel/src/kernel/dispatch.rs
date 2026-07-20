@@ -1221,6 +1221,12 @@ impl ChioKernel {
                 "failed to unwind payment after aborted tool invocation: {error}"
             ))
         })?;
+        if result.is_local_bookkeeping() {
+            return Err(KernelError::Internal(
+                "payment unwind used local bookkeeping without a remote rail acknowledgement; retaining authorization exposure for reconciliation"
+                    .to_string(),
+            ));
+        }
         let (expected_status, settlement_status) = if authorization.settled {
             (
                 RailSettlementStatus::Refunded,
@@ -1779,8 +1785,24 @@ impl ChioKernel {
         runtime_admission_metadata: Option<serde_json::Value>,
     ) -> Option<serde_json::Value> {
         let projected =
-            project_runtime_admission_receipt_metadata(runtime_admission_metadata.as_ref())
-                .unwrap_or(None);
+            match project_runtime_admission_receipt_metadata(runtime_admission_metadata.as_ref()) {
+                Ok(projected) => projected,
+                Err(error) => {
+                    let reason = redacted!(&error).to_string();
+                    warn!(
+                        reason = %redacted!(&reason),
+                        "runtime admission metadata projection failed while retaining reservations"
+                    );
+                    Some(serde_json::json!({
+                        "chio_runtime": {
+                            "reservations_retained_fail_closed": true,
+                            "projection_failed": true,
+                            "projection_failure_reason": reason,
+                            "raw_runtime_admission_metadata": runtime_admission_metadata,
+                        }
+                    }))
+                }
+            };
         let retained = self.mark_runtime_admission_reservations_retained_fail_closed(projected);
         merge_metadata_objects(receipt_metadata, retained)
     }

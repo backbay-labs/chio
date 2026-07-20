@@ -24,7 +24,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main, chio/autonomous-commerce-brainstorm]
+    branches: [main]
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}

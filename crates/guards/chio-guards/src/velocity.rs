@@ -435,14 +435,6 @@ impl Guard for VelocityGuard {
 
         Ok(GuardDecision::allow())
     }
-
-    fn requires_dispatch_revalidation(&self) -> bool {
-        true
-    }
-
-    fn revalidate_before_dispatch(&self, _ctx: &GuardContext) -> Result<(), KernelError> {
-        Ok(())
-    }
 }
 
 /// Burst ceiling in whole tokens: the steady per-window allowance scaled by the

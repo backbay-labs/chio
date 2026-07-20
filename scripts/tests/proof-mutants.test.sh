@@ -867,7 +867,7 @@ expected_execution_order = [
     b"kani_public_harnesses::verify_reservation_ledger_conservation",
     b"kani_public_harnesses::verify_budget_admission_projection",
     b"kani_public_harnesses::verify_delegate_no_widen",
-    b"kani_public_harnesses::verify_oracle_inclusion_soundness",
+    b"kani_public_harnesses::verify_oracle_inclusion_walk_parity",
 ]
 if len(commands) != len(expected_execution_order) + 2:
     raise SystemExit(
@@ -907,7 +907,7 @@ sound_required = {
     b"chio-kernel-core",
     b"--lib",
     b"--harness",
-    b"verify_oracle_inclusion_soundness",
+    b"verify_oracle_inclusion_walk_parity",
     b"--default-unwind",
     b"8",
 }

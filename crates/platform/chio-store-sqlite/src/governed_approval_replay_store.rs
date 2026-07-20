@@ -103,6 +103,11 @@ pub struct SqliteGovernedApprovalReplayStore {
     clock_anchor_monotonic: Instant,
 }
 
+const GOVERNED_APPROVAL_STORE_SUPPORTED_SCHEMA_VERSION: i32 = 1;
+const GOVERNED_APPROVAL_STORE_SCHEMA_KEY: &str = "governed_approval_replay";
+const GOVERNED_APPROVAL_STORE_LEGACY_ANCHOR_TABLES: &[&str] =
+    &["chio_governed_approval_replay_entries"];
+
 impl SqliteGovernedApprovalReplayStore {
     pub fn open(path: impl AsRef<Path>) -> Result<Self, SqliteGovernedApprovalReplayStoreError> {
         Self::open_with_capacity(path, DEFAULT_GOVERNED_APPROVAL_REPLAY_CAPACITY)
@@ -113,10 +118,8 @@ impl SqliteGovernedApprovalReplayStore {
         capacity: usize,
     ) -> Result<Self, SqliteGovernedApprovalReplayStoreError> {
         let path = path.as_ref();
-        if let Some(parent) = path.parent() {
-            if !parent.as_os_str().is_empty() {
-                fs::create_dir_all(parent)?;
-            }
+        if let Some(parent) = crate::sqlite_parent_dir_to_create(path) {
+            fs::create_dir_all(parent)?;
         }
         let manager = SqliteConnectionManager::file(path).with_init(configure_pooled_connection);
         let pool = Pool::builder().max_size(8).build(manager)?;
@@ -153,6 +156,13 @@ impl SqliteGovernedApprovalReplayStore {
 
     fn run_migrations(&self) -> Result<(), SqliteGovernedApprovalReplayStoreError> {
         let mut conn = self.pool.get()?;
+        crate::check_schema_version(
+            &conn,
+            GOVERNED_APPROVAL_STORE_SCHEMA_KEY,
+            GOVERNED_APPROVAL_STORE_SUPPORTED_SCHEMA_VERSION,
+            GOVERNED_APPROVAL_STORE_LEGACY_ANCHOR_TABLES,
+        )
+        .map_err(|error| SqliteGovernedApprovalReplayStoreError::storage(error.to_string()))?;
         conn.execute_batch(
             r#"
             PRAGMA journal_mode = WAL;
@@ -214,7 +224,8 @@ impl SqliteGovernedApprovalReplayStore {
 
             CREATE TABLE IF NOT EXISTS chio_governed_approval_replay_clock (
                 singleton             INTEGER PRIMARY KEY CHECK (singleton = 1),
-                wall_clock_high_water INTEGER NOT NULL
+                wall_clock_high_water INTEGER NOT NULL,
+                pruned_through        INTEGER NOT NULL DEFAULT -9223372036854775808
             );
 
             CREATE TABLE IF NOT EXISTS chio_governed_approval_replay_limits (
@@ -223,6 +234,25 @@ impl SqliteGovernedApprovalReplayStore {
             );
             "#,
         )?;
+        let has_pruned_through = {
+            let mut statement =
+                tx.prepare("PRAGMA table_info(chio_governed_approval_replay_clock)")?;
+            let columns = statement.query_map([], |row| row.get::<_, String>(1))?;
+            let mut found = false;
+            for column in columns {
+                if column? == "pruned_through" {
+                    found = true;
+                    break;
+                }
+            }
+            found
+        };
+        if !has_pruned_through {
+            tx.execute(
+                "ALTER TABLE chio_governed_approval_replay_clock ADD COLUMN pruned_through INTEGER NOT NULL DEFAULT -9223372036854775808",
+                [],
+            )?;
+        }
         let capacity = i64::try_from(self.capacity).map_err(|_| {
             SqliteGovernedApprovalReplayStoreError::storage(
                 "governed approval replay capacity exceeds SQLite integer range",
@@ -272,6 +302,12 @@ impl SqliteGovernedApprovalReplayStore {
             params![self.expected_wall_now()],
         )?;
         tx.commit()?;
+        crate::stamp_schema_version(
+            &conn,
+            GOVERNED_APPROVAL_STORE_SCHEMA_KEY,
+            GOVERNED_APPROVAL_STORE_SUPPORTED_SCHEMA_VERSION,
+        )
+        .map_err(|error| SqliteGovernedApprovalReplayStoreError::storage(error.to_string()))?;
         Ok(())
     }
 
@@ -284,10 +320,7 @@ impl SqliteGovernedApprovalReplayStore {
             |row| row.get::<_, i64>(0),
         )?;
         self.validate_persisted_clock(high_water)?;
-        tx.execute(
-            "DELETE FROM chio_governed_approval_replay_entries WHERE expires_at <= ?1",
-            params![high_water],
-        )?;
+        record_governed_approval_prune(&tx, high_water)?;
         let retained_rows = tx.query_row(
             "SELECT COUNT(*) FROM chio_governed_approval_replay_entries",
             [],
@@ -427,9 +460,19 @@ impl SqliteGovernedApprovalReplayStore {
             [],
             |row| row.get::<_, i64>(0),
         )?;
+        let pruned_through = transaction.query_row(
+            "SELECT pruned_through FROM chio_governed_approval_replay_clock WHERE singleton = 1",
+            [],
+            |row| row.get::<_, i64>(0),
+        )?;
         if actual_high_water != expected_high_water {
             return Err(SqliteGovernedApprovalReplayStoreError::storage(format!(
                 "clock recovery compare-and-swap failed: expected {expected_high_water}, found {actual_high_water}"
+            )));
+        }
+        if corrected_high_water < pruned_through {
+            return Err(SqliteGovernedApprovalReplayStoreError::storage(format!(
+                "clock recovery cannot lower the high-water below pruned-through {pruned_through}; retained replay markers may already have been deleted"
             )));
         }
         let changed = transaction.execute(
@@ -489,10 +532,7 @@ impl SqliteGovernedApprovalReplayStore {
             return Ok(false);
         }
 
-        tx.execute(
-            "DELETE FROM chio_governed_approval_replay_entries WHERE expires_at <= ?1",
-            params![updated_high_water],
-        )?;
+        record_governed_approval_prune(&tx, updated_high_water)?;
         let already_reserved = tx.query_row(
             r#"
             SELECT EXISTS(
@@ -607,6 +647,21 @@ impl SqliteGovernedApprovalReplayStore {
         )?;
         Ok(deleted > 0)
     }
+}
+
+fn record_governed_approval_prune(
+    transaction: &rusqlite::Transaction<'_>,
+    horizon: i64,
+) -> Result<(), rusqlite::Error> {
+    transaction.execute(
+        "DELETE FROM chio_governed_approval_replay_entries WHERE expires_at <= ?1 AND dispatch_reservation_id IS NULL",
+        params![horizon],
+    )?;
+    transaction.execute(
+        "UPDATE chio_governed_approval_replay_clock SET pruned_through = MAX(pruned_through, ?1) WHERE singleton = 1",
+        params![horizon],
+    )?;
+    Ok(())
 }
 
 impl GovernedApprovalReplayStore for SqliteGovernedApprovalReplayStore {
@@ -946,6 +1001,47 @@ mod tests {
     }
 
     #[test]
+    fn recovery_refuses_to_cross_a_pruned_high_water() {
+        let path = unique_db_path("chio-approval-replay-pruned-through");
+        let base = now_secs();
+        let expiry = base.saturating_add(100);
+        {
+            let store = SqliteGovernedApprovalReplayStore::open(&path).unwrap();
+            assert!(store
+                .try_reserve_at(
+                    "subject",
+                    "request",
+                    "intent",
+                    u64::try_from(expiry).unwrap(),
+                    "owner",
+                    base,
+                )
+                .unwrap());
+            assert!(store
+                .commit_owned("subject", "request", "intent", "owner")
+                .unwrap());
+        }
+
+        let jumped = base.saturating_add(1_000);
+        let manager = SqliteConnectionManager::file(&path).with_init(configure_pooled_connection);
+        let advanced = SqliteGovernedApprovalReplayStore {
+            pool: Pool::builder().max_size(1).build(manager).unwrap(),
+            capacity: DEFAULT_GOVERNED_APPROVAL_REPLAY_CAPACITY,
+            clock_anchor_wall: jumped,
+            clock_anchor_monotonic: Instant::now(),
+        };
+        advanced.run_migrations().unwrap();
+        advanced.validate_retained_row_capacity().unwrap();
+        drop(advanced);
+
+        let error =
+            SqliteGovernedApprovalReplayStore::recover_clock_high_water(&path, jumped, now_secs())
+                .unwrap_err();
+        assert!(error.to_string().contains("below pruned-through"));
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
     fn typed_clock_anomaly_maps_to_typed_kernel_error() {
         let error = SqliteGovernedApprovalReplayStoreError::clock_anomaly(
             ReplayClockDirection::Rollback,
@@ -989,6 +1085,9 @@ mod tests {
                 "other",
                 base,
             )
+            .unwrap());
+        assert!(store
+            .commit_owned("subject", "request-a", "intent-a", "owner-a")
             .unwrap());
         assert!(store
             .try_reserve_at(

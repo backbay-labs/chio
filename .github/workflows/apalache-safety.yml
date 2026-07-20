@@ -261,6 +261,7 @@ jobs:
       - apalache_contracts
       - apalache_safety_shards
       - apalache_scheduled_bounds_and_refinement
+      - apalache-negative
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
@@ -272,10 +273,15 @@ jobs:
           CONTRACT_RESULT: ${{ needs.apalache_contracts.result }}
           SHARD_RESULT: ${{ needs.apalache_safety_shards.result }}
           SCHEDULED_RESULT: ${{ needs.apalache_scheduled_bounds_and_refinement.result }}
+          NEGATIVE_RESULT: ${{ needs.apalache-negative.result }}
         run: |
           set -euo pipefail
           if [[ "${CONTRACT_RESULT}" != "success" || "${SHARD_RESULT}" != "success" ]]; then
             echo "Apalache safety contracts or shards did not succeed" >&2
+            exit 1
+          fi
+          if [[ "${NEGATIVE_RESULT}" != "success" ]]; then
+            echo "Apalache negative safety gate did not succeed" >&2
             exit 1
           fi
           if [[ "${EVENT_NAME}" == "pull_request" ]]; then

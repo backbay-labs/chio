@@ -1099,14 +1099,15 @@ fn verify_signed_bundle_manifest_coverage(
     let mut signed_refs_by_id = BTreeMap::new();
     for record in receipt_records {
         for bundle_ref in &record.metadata.bundle_refs {
-            if signed_refs_by_id
-                .insert(bundle_ref.bundle_id.clone(), bundle_ref)
-                .is_some()
-            {
-                return Err(MercuryContractError::Validation(format!(
-                    "duplicate signed Mercury bundle reference: {}",
-                    bundle_ref.bundle_id
-                )));
+            if let Some(existing) = signed_refs_by_id.get(&bundle_ref.bundle_id) {
+                if *existing != bundle_ref {
+                    return Err(MercuryContractError::Validation(format!(
+                        "conflicting signed Mercury bundle reference: {}",
+                        bundle_ref.bundle_id
+                    )));
+                }
+            } else {
+                signed_refs_by_id.insert(bundle_ref.bundle_id.clone(), bundle_ref);
             }
         }
     }
@@ -2496,13 +2497,24 @@ mod tests {
             vec![manifest.clone()],
         );
         let trusted_keys = trusted_authority_keys(&duplicate_ref_package.chio_bundle);
-        let error = duplicate_ref_package
+        duplicate_ref_package
             .verify_with_trusted_kernel_keys(1_775_137_910, &trusted_keys)
-            .expect_err("duplicate signed refs");
+            .expect("identical signed refs are deduplicated across receipts");
+
+        let mut conflicting_ref = bundle_ref.clone();
+        conflicting_ref.artifact_count = conflicting_ref.artifact_count.saturating_add(1);
+        let conflicting_ref_package = proof_package_with_signed_refs(
+            vec![bundle_ref.clone(), conflicting_ref],
+            vec![manifest.clone()],
+        );
+        let trusted_keys = trusted_authority_keys(&conflicting_ref_package.chio_bundle);
+        let error = conflicting_ref_package
+            .verify_with_trusted_kernel_keys(1_775_137_910, &trusted_keys)
+            .expect_err("conflicting signed refs");
         assert!(
             error
                 .to_string()
-                .contains("duplicate signed Mercury bundle reference"),
+                .contains("conflicting signed Mercury bundle reference"),
             "unexpected error: {error}"
         );
 

@@ -560,21 +560,6 @@ pub fn verify_dpop_proof_stateless(
         )));
     }
 
-    // Proof must not be too far in the past beyond TTL + clock skew.
-    // A valid proof satisfies: issued_at >= now - (proof_ttl_secs + max_clock_skew_secs).
-    // This guards against proofs with timestamps so old they predate any plausible clock skew.
-    let stale_threshold = now_secs.saturating_sub(
-        config
-            .proof_ttl_secs
-            .saturating_add(config.max_clock_skew_secs),
-    );
-    if proof.body.issued_at < stale_threshold {
-        return Err(KernelError::DpopVerificationFailed(format!(
-            "proof issued_at={} is too far in the past (now={}, ttl={}, skew={})",
-            proof.body.issued_at, now_secs, config.proof_ttl_secs, config.max_clock_skew_secs
-        )));
-    }
-
     // Step 5: Signature verification.
     let body_bytes = canonical_json_bytes(&proof.body).map_err(|e| {
         KernelError::DpopVerificationFailed(format!("failed to serialize proof body: {e}"))

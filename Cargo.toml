@@ -241,7 +241,7 @@ expect_used = "deny"
 codegen-units = 1
 lto = "fat"
 strip = "symbols"
-panic = "abort"
+panic = "unwind"
 
 [profile.docker-release]
 inherits = "release"

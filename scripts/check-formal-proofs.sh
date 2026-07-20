@@ -31,8 +31,12 @@ else
     "${formal_root}/Chio.lean")
 fi
 
-if "${placeholder_scan[@]}"; then
+"${placeholder_scan[@]}" && placeholder_rc=0 || placeholder_rc=$?
+if [[ "${placeholder_rc}" -eq 0 ]]; then
   echo "formal proof check failed: found literal sorry in shipped Lean modules" >&2
+  exit 1
+elif [[ "${placeholder_rc}" -ne 1 ]]; then
+  echo "formal proof placeholder scan failed with exit ${placeholder_rc}" >&2
   exit 1
 fi
 

@@ -20,7 +20,8 @@
 //!     ON chio_execution_nonces(expires_at);
 //! CREATE TABLE chio_execution_nonce_clock (
 //!     singleton             INTEGER PRIMARY KEY,
-//!     wall_clock_high_water INTEGER NOT NULL
+//!     wall_clock_high_water INTEGER NOT NULL,
+//!     pruned_through        INTEGER NOT NULL
 //! );
 //! CREATE TABLE chio_execution_nonce_limits (
 //!     singleton INTEGER PRIMARY KEY,
@@ -136,7 +137,7 @@ pub struct SqliteExecutionNonceStore {
 }
 
 /// Execution-nonce-store schema revision. Bump on every schema-affecting change.
-const EXECUTION_NONCE_STORE_SUPPORTED_SCHEMA_VERSION: i32 = 0;
+const EXECUTION_NONCE_STORE_SUPPORTED_SCHEMA_VERSION: i32 = 1;
 /// Stable key under which this store records its schema revision in the shared
 /// keyed metadata table, distinct from any co-located store's key.
 const EXECUTION_NONCE_STORE_SCHEMA_KEY: &str = "execution_nonce";
@@ -246,7 +247,8 @@ impl SqliteExecutionNonceStore {
 
             CREATE TABLE IF NOT EXISTS chio_execution_nonce_clock (
                 singleton             INTEGER PRIMARY KEY CHECK (singleton = 1),
-                wall_clock_high_water INTEGER NOT NULL
+                wall_clock_high_water INTEGER NOT NULL,
+                pruned_through        INTEGER NOT NULL DEFAULT -9223372036854775808
             );
 
             CREATE TABLE IF NOT EXISTS chio_execution_nonce_limits (
@@ -255,6 +257,25 @@ impl SqliteExecutionNonceStore {
             );
             "#,
         )?;
+
+        let has_pruned_through = {
+            let mut statement = tx.prepare("PRAGMA table_info(chio_execution_nonce_clock)")?;
+            let columns = statement.query_map([], |row| row.get::<_, String>(1))?;
+            let mut found = false;
+            for column in columns {
+                if column? == "pruned_through" {
+                    found = true;
+                    break;
+                }
+            }
+            found
+        };
+        if !has_pruned_through {
+            tx.execute(
+                "ALTER TABLE chio_execution_nonce_clock ADD COLUMN pruned_through INTEGER NOT NULL DEFAULT -9223372036854775808",
+                [],
+            )?;
+        }
 
         let capacity = i64::try_from(self.capacity).map_err(|_| {
             SqliteExecutionNonceStoreError::storage(
@@ -323,10 +344,7 @@ impl SqliteExecutionNonceStore {
             |row| row.get::<_, i64>(0),
         )?;
         self.validate_persisted_clock(wall_clock_high_water)?;
-        tx.execute(
-            "DELETE FROM chio_execution_nonces WHERE expires_at <= ?1",
-            params![wall_clock_high_water],
-        )?;
+        record_execution_nonce_prune(&tx, wall_clock_high_water)?;
 
         let retained_rows =
             tx.query_row("SELECT COUNT(*) FROM chio_execution_nonces", [], |row| {
@@ -467,9 +485,19 @@ impl SqliteExecutionNonceStore {
             [],
             |row| row.get::<_, i64>(0),
         )?;
+        let pruned_through = transaction.query_row(
+            "SELECT pruned_through FROM chio_execution_nonce_clock WHERE singleton = 1",
+            [],
+            |row| row.get::<_, i64>(0),
+        )?;
         if actual_high_water != expected_high_water {
             return Err(SqliteExecutionNonceStoreError::storage(format!(
                 "clock recovery compare-and-swap failed: expected {expected_high_water}, found {actual_high_water}"
+            )));
+        }
+        if corrected_high_water < pruned_through {
+            return Err(SqliteExecutionNonceStoreError::storage(format!(
+                "clock recovery cannot lower the high-water below pruned-through {pruned_through}; retained replay markers may already have been deleted"
             )));
         }
         let changed = transaction.execute(
@@ -580,10 +608,7 @@ impl SqliteExecutionNonceStore {
         // Prune local entries against the caller's clock and signed entries
         // against the persisted high-water. The latter can never move
         // backward, so reclamation cannot reopen a replay window.
-        tx.execute(
-            "DELETE FROM chio_execution_nonces WHERE expires_at <= ?1",
-            params![prune_at],
-        )?;
+        record_execution_nonce_prune(&tx, prune_at)?;
 
         let already_reserved = tx.query_row(
             "SELECT EXISTS(SELECT 1 FROM chio_execution_nonces WHERE nonce_id = ?1)",
@@ -631,6 +656,21 @@ impl SqliteExecutionNonceStore {
         tx.commit()?;
         Ok(rows > 0)
     }
+}
+
+fn record_execution_nonce_prune(
+    transaction: &rusqlite::Transaction<'_>,
+    horizon: i64,
+) -> Result<(), rusqlite::Error> {
+    transaction.execute(
+        "DELETE FROM chio_execution_nonces WHERE expires_at <= ?1 AND dispatch_reservation_id IS NULL",
+        params![horizon],
+    )?;
+    transaction.execute(
+        "UPDATE chio_execution_nonce_clock SET pruned_through = MAX(pruned_through, ?1) WHERE singleton = 1",
+        params![horizon],
+    )?;
+    Ok(())
 }
 
 fn now_secs() -> i64 {
@@ -1101,6 +1141,41 @@ mod tests {
         assert!(!reopened
             .try_reserve("legacy-used", now_secs(), now.saturating_add(2_000))
             .unwrap());
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn recovery_refuses_to_cross_a_pruned_high_water() {
+        let path = unique_db_path("chio-exec-nonce-pruned-through");
+        let base = now_secs();
+        {
+            let store = SqliteExecutionNonceStore::open(&path).unwrap();
+            assert!(store
+                .try_reserve_signed_entry(
+                    "used",
+                    base,
+                    base.saturating_add(100),
+                    base.saturating_add(160),
+                    None,
+                )
+                .unwrap());
+        }
+
+        let jumped = base.saturating_add(1_000);
+        let manager = SqliteConnectionManager::file(&path).with_init(configure_pooled_connection);
+        let advanced = SqliteExecutionNonceStore {
+            pool: Pool::builder().max_size(1).build(manager).unwrap(),
+            capacity: DEFAULT_EXECUTION_NONCE_STORE_CAPACITY,
+            clock_anchor_wall: jumped,
+            clock_anchor_monotonic: Instant::now(),
+        };
+        advanced.run_migrations().unwrap();
+        advanced.validate_retained_row_capacity().unwrap();
+        drop(advanced);
+
+        let error = SqliteExecutionNonceStore::recover_clock_high_water(&path, jumped, now_secs())
+            .unwrap_err();
+        assert!(error.to_string().contains("below pruned-through"));
         let _ = fs::remove_file(path);
     }
 

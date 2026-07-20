@@ -211,7 +211,7 @@ the typed, `pub(crate)` facade that performs those kernel projections.
     model with documented rationale for why real ed25519/RFC 8785 is
     intractable under CBMC.
   - `verify_inclusion_step_equivalence` and
-    `verify_oracle_inclusion_soundness`: bind the production scalar step to its
+    `verify_oracle_inclusion_walk_parity`: bind the production scalar step to its
     extraction mirror and compare the real bounded audit-path walk with an
     independent fold while node hashing remains abstract under ASSUME-SHA256.
   - Where a harness is model-only (for example the anchor witness-policy

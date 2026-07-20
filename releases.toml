@@ -76,7 +76,8 @@ max_age_hours = 48
 #   promotion_evidence   : required inline table for required posture; absent
 #                          for advisory posture. run_ids must contain exactly
 #                          required_streak unique post-reset run IDs, and
-#                          report_sha256 binds the reviewed --report output.
+#                          report_sha256 is SHA-256 over those verified run IDs,
+#                          one decimal ID plus newline in listed order.
 #
 # Mutation scoring schema:
 #   [mutants]
@@ -313,9 +314,12 @@ evidence_after_run_id = 29003108285
 max_age_hours = 48
 
 [mutants]
+# The release floor is 80 percent per crate. Proof and specification mutation
+# lanes use rotating samples and remain advisory until a full-inventory
+# coverage ratchet is promoted.
 initial_merge_tag = "v0.0.0-mutation-gate"
 target_catch_ratio_percent = 80
-activation_threshold_percent_per_crate = 65
+activation_threshold_percent_per_crate = 80
 required_consecutive_nightly_successes = 2
 observed_consecutive_nightly_successes = 0
 activation_evidence = """

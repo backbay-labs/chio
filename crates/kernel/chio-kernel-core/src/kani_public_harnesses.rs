@@ -1317,7 +1317,7 @@ pub fn verify_budget_admission_projection() {
 //   * verify_revocation_view_freshness   - RevocationView::install_if_newer
 //     monotone-epoch fail-closed gate (revocation_view.rs).
 //   * verify_inclusion_step_equivalence  - production/extraction step parity.
-//   * verify_oracle_inclusion_soundness  - production inclusion-walk parity.
+//   * verify_oracle_inclusion_walk_parity  - production inclusion-walk parity.
 //
 // Each property uses a bounded input domain.
 // =====================================================================
@@ -1540,7 +1540,7 @@ fn abstract_hash_options_equal(actual: Option<Hash>, model: Option<Hash>) -> boo
 
 #[kani::proof]
 #[kani::unwind(5)]
-pub fn verify_oracle_inclusion_soundness() {
+pub fn verify_oracle_inclusion_walk_parity() {
     let tree_size = usize::from((kani::any::<u8>() & 7) + 1);
     let leaf_index = usize::from(kani::any::<u8>());
     kani::assume(leaf_index < tree_size);

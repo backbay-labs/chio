@@ -14,7 +14,7 @@ Receipts are signed decisions in an append-only Merkle-committed log [v], and th
 
 ## Pre-implementation motivation and evidence
 
-- G2: model-only verified helpers are not wired to production. `verify_oracle_inclusion_soundness` (crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs:1248-1281) asserts `verifier_accepts == leaf_present && chain_hashes_to_root` over free booleans; the real verifier could reverse sibling order on odd indices and this harness would still pass.
+- G2: model-only verified helpers are not wired to production. `verify_oracle_inclusion_walk_parity` (crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs:1248-1281) asserts `verifier_accepts == leaf_present && chain_hashes_to_root` over free booleans; the real verifier could reverse sibling order on odd indices and this harness would still pass.
 - The real walk has real failure modes, and the negative-test surface already knows it: conformance tests exist for forged roots and misordered proofs (crates/tooling/chio-conformance/tests/anchor_batch_forged_root_rejected.rs, anchor_batch_misordered_proof_rejected.rs), and the Rekor witness verifier carries truncated-path and padded-path rejection tests. Those are point tests; the fold deserves a proof.
 - The anchored-root diff-tests already cross-check Rust against TypeScript over the 50-fixture replay corpus with a hardcoded canary leaf hash [v] (formal/diff-tests/tests/anchored_root.rs:18-21). Once the Rust core is verified, it becomes the oracle both language implementations bind to, upgrading that diff test from "two implementations agree" to "both agree with a proved core".
 - Deliverable framing for Theme C: "the verifier you run is the verified one" is a sentence a customer can check, unlike "we have a model of a verifier".
@@ -106,7 +106,7 @@ theorem bounded_stepFold_sound
 1. Lean model of the step: `inclusionStep : Nat -> Nat -> StepDecision` mirroring the Rust semantics, in a new formal/lean4/Chio/Chio/Core/MerkleWalk.lean, with `directedProof` converting `(leaf_index, tree_size, audit_path)` into the direction-tagged `ReceiptProof` the existing model consumes.
 2. Fold equivalence: iterating `inclusionStep` from `(leafIndex, treeSize)` and interpreting decisions as `nodeHash` applications equals `applyProof` (Core/Receipt.lean:66-73) on the direction-tagged proof whose directions are read off the decisions. Proved by induction on the number of levels.
 3. Soundness inheritance: composing (2) with the already-proved `membership_proof_sound` (Proofs/Receipt.lean:27) yields: a proof produced by `membershipProof` on the model tree drives the step-fold to the tree root. Completeness direction (wrong leaf or wrong path fails) is stated over the free `MerkleHash` algebra, where distinct trees have distinct roots by constructor injectivity - and the doc says plainly that transporting that to bytes is exactly ASSUME-SHA256.
-4. Kani rebinding: replace the algebraic interior of `verify_oracle_inclusion_soundness` with a harness that builds small concrete trees (up to 8 leaves, depth 3), takes a symbolic `leaf_index` and two symbolic hash-relevant bytes per path node, and asserts the real `compute_root_from_hash` accepts exactly when the model fold accepts - the `verify_delegation_chain_step` precedent (assert_eq of model vs real on small symbolic instances).
+4. Kani rebinding: replace the algebraic interior of `verify_oracle_inclusion_walk_parity` with a harness that builds small concrete trees (up to 8 leaves, depth 3), takes a symbolic `leaf_index` and two symbolic hash-relevant bytes per path node, and asserts the real `compute_root_from_hash` accepts exactly when the model fold accepts - the `verify_delegation_chain_step` precedent (assert_eq of model vs real on small symbolic instances).
 
 ### Production rewiring (FV-A1 absorption)
 
@@ -136,7 +136,7 @@ theorem bounded_stepFold_sound
 
 - [x] `inclusion_step` exists, is called by `compute_root_from_hash`, and merkle.rs behavior is byte-identical (existing merkle tests plus anchored-root canary pass unchanged).
 - [x] Kani harness proves real-vs-model step equality over symbolic `(index, size)` up to the documented bound, in the PR lane.
-- [x] `verify_oracle_inclusion_soundness` no longer free-floats on two booleans; it exercises the real fold on bounded trees.
+- [x] `verify_oracle_inclusion_walk_parity` no longer free-floats on two booleans; it exercises the real fold on bounded trees.
 - [x] Lean fold-equivalence theorem against `applyProof` is proved, root-imported, sorry-free.
 - [x] The conditional inheritance lemma composes with `membership_proof_sound`; separate root-imported theorems establish all 36 supported carry-last-node geometries without assuming a decoded-proof equality.
 - [x] Aeneas extracts the step mirror into the committed byte-identical snapshot, and the root-imported registered theorem proves the generated machine-integer function against `Chio.Core.inclusionStep` without an external semantic implementation.

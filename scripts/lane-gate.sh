@@ -1975,6 +1975,19 @@ def current_result(lane: Lane) -> tuple[bool, str]:
     return True, "current_job_succeeded"
 
 
+def promotion_evidence_matches(history: History) -> bool:
+    evidence = history.lane.promotion_evidence
+    if evidence is None:
+        return history.lane.posture != "required"
+    expected_run_ids = tuple(
+        run.run_id for run in history.successes[: history.lane.required_streak]
+    )
+    if evidence.run_ids != expected_run_ids:
+        return False
+    report = "".join(f"{run_id}\n" for run_id in expected_run_ids).encode("ascii")
+    return hashlib.sha256(report).hexdigest() == evidence.report_sha256
+
+
 def handle_api_error(lane: Lane, error: ApiError) -> int:
     mode = os.environ.get("LANE_GATE_RATE_LIMIT_MODE", "fail")
     if mode not in {"fail", "warn"}:
@@ -2000,6 +2013,9 @@ def run_lane(repo: str, lane: Lane, *, report_only: bool) -> int:
     if report_only:
         print_history(history, "report")
         return 0
+    if lane.posture == "required" and not promotion_evidence_matches(history):
+        print_history(history, "fail", "promotion_evidence_mismatch")
+        return 1
     current_ok, current = current_result(lane)
     if lane.posture == "advisory":
         print_history(history, "advisory", current)
@@ -2012,8 +2028,8 @@ def run_lane(repo: str, lane: Lane, *, report_only: bool) -> int:
 def run_fleet(lanes: dict[str, Lane]) -> int:
     required = [lane for lane in lanes.values() if lane.posture == "required"]
     if not required:
-        print("lane-gate: fleet required=0 verdict=pass")
-        return 0
+        print("lane-gate: fleet required=0 verdict=fail", file=sys.stderr)
+        return 1
     repo = repository()
     failed = False
     for lane in required:
@@ -2023,9 +2039,10 @@ def run_fleet(lanes: dict[str, Lane]) -> int:
             raise error
         latest_ok = (
             history.latest is not None
-            and bool(history.successes)
+            and len(history.successes) >= lane.required_streak
             and history.successes[0].run_id == history.latest.run_id
             and history.freshness == "fresh"
+            and promotion_evidence_matches(history)
         )
         print_history(history, "pass" if latest_ok else "fail")
         failed = failed or not latest_ok

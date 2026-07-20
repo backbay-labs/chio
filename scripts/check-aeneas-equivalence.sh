@@ -329,8 +329,17 @@ proof_log="${work_dir}/aeneas-generated-equivalence.lean.log"
   lake env lean Chio/Proofs/AeneasGeneratedEquivalence.lean
 ) 2>&1 | tee "${proof_log}"
 
-if rg -n 'sorryAx|declaration uses .sorry.|declaration has metavariables' "${proof_log}"; then
+if command -v rg >/dev/null 2>&1; then
+  scan=(rg -n 'sorryAx|declaration uses .sorry.|declaration has metavariables' "${proof_log}")
+else
+  scan=(grep -nE 'sorryAx|declaration uses .sorry.|declaration has metavariables' "${proof_log}")
+fi
+"${scan[@]}" && scan_rc=0 || scan_rc=$?
+if [[ "${scan_rc}" -eq 0 ]]; then
   echo "Aeneas generated equivalence depends on an incomplete proof" >&2
+  exit 1
+elif [[ "${scan_rc}" -ne 1 ]]; then
+  echo "Aeneas generated equivalence scan failed with exit ${scan_rc}" >&2
   exit 1
 fi
 

@@ -28,14 +28,22 @@ set -euo pipefail
 REPO="${1:-backbay-labs/chio}"
 CAP_MINUTES="${GH_FUZZ_BUDGET_MINUTES:-1800}"
 WINDOW_DAYS=30
-WORKFLOWS=(
-    "cflite_pr.yml"
-    "cflite_batch.yml"
-    "fuzz.yml"
-    "mutants.yml"
-    "mutants-fuzz-cocoverage.yml"
-    "proof-mutants.yml"
-)
+if [[ -n "${GH_FUZZ_BUDGET_WORKFLOWS:-}" ]]; then
+    IFS=',' read -r -a WORKFLOWS <<<"${GH_FUZZ_BUDGET_WORKFLOWS}"
+else
+    WORKFLOWS=(
+        "cflite_pr.yml"
+        "cflite_batch.yml"
+        "fuzz.yml"
+        "mutants.yml"
+        "mutants-fuzz-cocoverage.yml"
+        "proof-mutants.yml"
+    )
+fi
+if [[ "${#WORKFLOWS[@]}" -eq 0 ]]; then
+    err "fuzz-budget: GH_FUZZ_BUDGET_WORKFLOWS selected no workflows"
+    exit 2
+fi
 
 err() { printf '%s\n' "$*" >&2; }
 

@@ -46,7 +46,7 @@ priority_harnesses=(
   "kani_public_harnesses::verify_reservation_ledger_conservation"
   "kani_public_harnesses::verify_budget_admission_projection"
   "kani_public_harnesses::verify_delegate_no_widen"
-  "kani_public_harnesses::verify_oracle_inclusion_soundness"
+  "kani_public_harnesses::verify_oracle_inclusion_walk_parity"
 )
 
 # Kani sorts a multi-harness selection by source location. Run each priority

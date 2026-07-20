@@ -72,20 +72,20 @@ def interpret (host : HostInputs) : GuestOutput -> GuardResult
 
 def evaluateBoundary
     (host : HostInputs)
-    (_visible : GuestVisible)
+    (visible : GuestVisible)
     (before after : List GuardResult)
-    (output : GuestOutput) : Bool :=
+    (decode : GuestVisible → GuestOutput) : Bool :=
   guardPipelineAllows host.coreAuthorized
-    (before ++ [interpret host output] ++ after)
+    (before ++ [interpret host (decode visible)] ++ after)
 
 theorem guest_output_confinement
     (host : HostInputs)
     (visible₁ visible₂ : GuestVisible)
     (before after : List GuardResult)
-    (output₁ output₂ : GuestOutput)
-    (h_output : output₁ = output₂) :
-    evaluateBoundary host visible₁ before after output₁ =
-      evaluateBoundary host visible₂ before after output₂ := by
+    (decode₁ decode₂ : GuestVisible → GuestOutput)
+    (h_output : decode₁ visible₁ = decode₂ visible₂) :
+    evaluateBoundary host visible₁ before after decode₁ =
+      evaluateBoundary host visible₂ before after decode₂ := by
   simp [evaluateBoundary, h_output]
 
 theorem malformed_deny_reason_preserves_decision
@@ -103,10 +103,12 @@ theorem blocking_unknown_verdict_denies
 
 theorem no_allow_amplification
     (host : HostInputs)
+    (visible : GuestVisible)
     (output : GuestOutput)
+    (guestInterpret : HostInputs → GuestVisible → GuestOutput → GuardResult)
     (before after : List GuardResult) :
     guardPipelineAllows false
-      (before ++ [interpret host output] ++ after) = false := by
+      (before ++ [guestInterpret host visible output] ++ after) = false := by
   simp [guardPipelineAllows]
 
 theorem resource_exhaustion_fail_closed

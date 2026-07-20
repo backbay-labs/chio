@@ -1183,7 +1183,7 @@ needle = 'posture = "required"\nrequired_streak = 2'
 evidence = (
     'posture = "required"\n'
     'promotion_evidence = { run_ids = [105, 104], report_sha256 = "'
-    + "a" * 64
+    + "1da3458c2a4afafc01c96388356c169d2334ac385395001cb6fafd6dc5cd33cf"
     + '" }\nrequired_streak = 2'
 )
 if needle not in text:

@@ -15,6 +15,6 @@ cargo kani -p chio-kernel-core --lib --default-unwind 8 --no-unwinding-checks --
 # with CBMC's unwinding assertions enabled so the aggregate cannot silently
 # inherit the legacy no-check posture above.
 cargo kani -p chio-kernel-core --lib \
-  --harness verify_oracle_inclusion_soundness --default-unwind 8
+  --harness verify_oracle_inclusion_walk_parity --default-unwind 8
 
 echo "Kani core harnesses passed"

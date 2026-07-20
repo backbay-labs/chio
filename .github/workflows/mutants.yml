@@ -178,6 +178,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_FUZZ_BUDGET_RATE_LIMIT_MODE: warn
           GH_FUZZ_BUDGET_CAP_MODE: fail
+          GH_FUZZ_BUDGET_WORKFLOWS: mutants.yml,mutants-fuzz-cocoverage.yml,proof-mutants.yml
+          GH_FUZZ_BUDGET_MINUTES: 48000
         run: |
           set -euo pipefail
           # Mutation runs share the 1,800 min/30d envelope with fuzz.

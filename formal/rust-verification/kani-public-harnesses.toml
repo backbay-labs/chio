@@ -2,7 +2,7 @@ schema = "chio.kani-public-harnesses.v1"
 crate = "chio-kernel-core"
 script = "scripts/check-kani-public-core.sh"
 # Named harnesses omit the legacy `--no-unwinding-checks` runner flag.
-unwinding_checks = ["verify_oracle_inclusion_soundness"]
+unwinding_checks = ["verify_oracle_inclusion_walk_parity"]
 
 # `harness_groups` is the flat-array catalog (one entry per logical edge or
 # algebraic property the harnesses exercise). Entries cover scope intersection
@@ -97,7 +97,7 @@ harnesses = [
   "verify_delegation_receipt_canonical",
   "verify_revocation_view_freshness",
   "verify_inclusion_step_equivalence",
-  "verify_oracle_inclusion_soundness",
+  "verify_oracle_inclusion_walk_parity",
 ]
 
 [lanes.nightly_only]

@@ -1,4 +1,10 @@
 schema = "chio.formal-mutation-coverage.v1"
+historical_evidence = [
+  "formal/mutation/evidence/proof-mutants-a871396bffd010500f680c035e7b52c1867f38e2.json",
+  "formal/mutation/evidence/proof-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json",
+  "formal/mutation/evidence/spec-mutants-7b24142e8523fe08e501063dbf3d4f6cea3397be.json",
+  "formal/mutation/evidence/spec-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json",
+]
 
 [[target]]
 name = "spec-kernel-transition-cancel"

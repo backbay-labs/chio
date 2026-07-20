@@ -64,6 +64,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_FUZZ_BUDGET_RATE_LIMIT_MODE: warn
           GH_FUZZ_BUDGET_CAP_MODE: warn
+          GH_FUZZ_BUDGET_WORKFLOWS: cflite_pr.yml,cflite_batch.yml,fuzz.yml
         run: |
           set -euo pipefail
           # PR-time CFLite is an advisory release qualification signal. Report
