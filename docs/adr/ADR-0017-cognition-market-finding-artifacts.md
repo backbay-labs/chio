@@ -80,10 +80,21 @@ an adjudication lane, and no discretionary settlement path is introduced.
 
 ### D5. Retraction is a status feed on the revocation-oracle pattern
 
-Every finding names a status feed keyed by `finding_id` on a sparse-Merkle
-revocation oracle instance (signed epoch roots, inclusion and non-inclusion
-proofs). Buyers MUST obtain a fresh non-inclusion proof at purchase time and
-SHOULD subscribe to epoch roots afterward. Ingestion of purchased payloads
+Every finding names a status feed on a sparse-Merkle revocation oracle
+instance (signed epoch roots, inclusion and non-inclusion proofs). The
+oracle key is `RevocationKey { subject_id, epoch_nonce }`, so the feed
+pins a FIXED domain nonce (`epoch_nonce = "chio.finding.status.v1"`) and
+every insert and proof uses exactly `(finding_id, that nonce)` - otherwise
+a retraction under one nonce coexists with fresh non-inclusion proofs
+under another. Signed-ROOT verification carries over unchanged, but
+today's `NonInclusionProof` carries no path bytes and is checked against
+the verifier's LOCAL oracle state, so it is not a portable absence proof:
+the status feed either extends the oracle with portable sparse-Merkle
+non-inclusion paths verifiable against the signed root, or documents its
+proof endpoint as a trusted-query surface backed by the operator bond (it
+must not label an online answer a signed absence proof). Buyers MUST
+obtain a fresh non-inclusion proof at purchase time and SHOULD subscribe
+to epoch roots afterward. Ingestion of purchased payloads
 goes through governed memory writes so the provenance chain binds store/key to
 the purchase capability and delivery receipt; a policy-selected guard rule MAY
 deny reads whose provenance traces to a retracted finding. Automatic

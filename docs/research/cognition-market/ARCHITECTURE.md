@@ -184,22 +184,32 @@ governed-intent context (review finding: `AcceptedBid` alone is
 buyer-signed and carries only an opaque `ask_digest`, so without the ask
 body the kernel can neither authenticate the provider nor bind the token
 to that ask - a token subject could sign arbitrary purchase fields for
-the kernel to echo). The kernel verifies THREE presented artifacts (review findings:
-`SignedExportEnvelope::sign` is public, so prose calling a body
-buyer-signed proves nothing until the signature is checked; and neither
-ask nor accepted-bid carries `finding_id`, so identity needs its own
-signed source): the ask envelope signature against the presented token's
-issuer key; the accepted-bid envelope signature against the presented
+the kernel to echo). The kernel verifies FOUR presented artifacts, with the signed
+`chio.finding.v1` as the ANCHOR that binds identity to commitment (review
+findings: `SignedExportEnvelope::sign` is public, so prose calling a body
+signed proves nothing until checked; and no ask/bid/pricing artifact
+carries the `finding_id -> payload_sha256` link, so trusting them alone
+lets a provider scope a pricing hint to finding B while minting the token
+digest constraint for payload A - all signatures verify and the receipt
+stamps B with A's digest). The checks:
+(1) the signed `Finding` - its inline issuer signature (`verify_finding`),
+and its `finding_id` recomputed as the content address (`verify_finding_id`);
+(2) the delivery binding - `finding.payload_sha256` equals the token's
+`OutputDigestSha256` constraint (the id-to-digest link is now
+issuer-signed, not inferred);
+(3) the ask - `SignedAskResponse` envelope signature against the token's
+issuer key; token id/subject/expiry and `listing_id` against the token,
+and the provider-signed `SignedListingPricingHint` (same signer as the
+token issuer, `pricing.listing_id == ask.listing_id`) whose
+`capability_scope = finding:<finding.finding_id>` matches the anchor's id;
+(4) the accepted bid - `SignedAcceptedBid` envelope signature against the
 token's SUBJECT key with `canonical_digest(ask.body) ==
-accepted.ask_digest` and the cross-binding of `agent_id`, `listing_id`,
-`bid_digest`, `quoted_price`, and the ask's token id/subject/expiry
-against the verified ask and the presented token; and the
-provider-signed `SignedListingPricingHint` (same signer as the token
-issuer, `pricing.listing_id == ask.listing_id`), whose
-`capability_scope = finding:<finding_id>` is the AUTHENTICATED source of
-the stamped `finding_id` - request arguments never are, since they are
-caller-controlled and two findings may legitimately share one
-`payload_sha256` (4.5). Failure handling is profile-dependent and fail-closed:
+accepted.ask_digest` and the `agent_id`, `listing_id`, `bid_digest`,
+`quoted_price` cross-binding.
+Only after all four does the kernel stamp `finding_id` (from the anchor,
+never from caller-controlled request arguments; two findings may legitimately
+share one `payload_sha256`, 4.5, so the id must come from the signed
+finding, not the digest). Failure handling is profile-dependent and fail-closed:
 for a finding purchase (the grant was minted under a finding listing and
 purchase context is expected), malformed or missing purchase artifacts
 DENY the call - silent omission would let a caller downgrade out of the
@@ -302,6 +312,15 @@ over raw payload bytes. Normative definitions for the family:
   It is the digest of the canonical envelope, NOT of the decoded payload
   bytes. Buyers recover raw bytes by base64-decoding `payload_b64` after
   independently recomputing the envelope digest.
+- The envelope's `media_type` MUST equal the signed artifact's
+  `payload_media_type` (review finding: the digest gate only checks the
+  envelope hash, so without this rule a seller could advertise
+  `text/x-diff` while committing to some other type, and a buyer that
+  auto-applies on the advertised type is misled). It is buyer-checkable on
+  the revealed bytes and a mismatch is a challengeable delivery failure
+  (the `evidence_invalid` class): the reveal server MUST set
+  `envelope.media_type == finding.payload_media_type`, and the buyer
+  rejects the reveal if it does not.
 - The envelope deliberately EXCLUDES `finding_id`. Including it would
   create a hash cycle: `finding_id` is content-addressed over the artifact
   body, which contains `payload_sha256`, so an envelope containing

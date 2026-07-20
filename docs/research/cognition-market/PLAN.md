@@ -223,20 +223,24 @@ the oracle's exact `SignedEpochRoot` (ARCHITECTURE 4.4).
   re-read window on the minted grant, or a receipt-keyed seller re-serve
   policy) and test the buyer-crash-after-Allow path.
 - `chio.finding.delivery.v1` overlay block (moved here from M3): fields
-  sourced from three buyer-presented signed artifacts, each verified
-  before the kernel echoes anything (ARCHITECTURE 4.2): the
-  provider-signed `SignedAskResponse` (envelope signature against the
+  sourced from FOUR buyer-presented signed artifacts, each verified
+  before the kernel echoes anything (ARCHITECTURE 4.2), with the signed
+  `Finding` as the ANCHOR that binds identity to commitment: (1) the
+  signed `Finding` - issuer signature (`verify_finding`) + recomputed
+  content-addressed id - with `finding.payload_sha256 == token
+  OutputDigestSha256` and pricing scope's finding id ==
+  `finding.finding_id` (this id-to-digest binding is the round-6 fix; a
+  provider could otherwise scope a pricing hint to finding B while the
+  token constraint commits to payload A and every signature still
+  verifies); (2) `SignedAskResponse` (envelope signature against the
   token ISSUER; token id/subject/expiry and listing id against the
-  presented token), the buyer-signed `SignedAcceptedBid` (envelope
-  signature against the token SUBJECT;
-  `canonical_digest(ask.body) == accepted.ask_digest`; agent_id,
-  listing_id, quoted_price cross-bound), and the provider-signed
+  token); (3) `SignedAcceptedBid` (envelope signature against the token
+  SUBJECT; `canonical_digest(ask.body) == accepted.ask_digest`;
+  agent_id, listing_id, quoted_price cross-bound); (4)
   `SignedListingPricingHint` (same signer as the token issuer;
-  `pricing.listing_id == ask.listing_id`), whose
-  `capability_scope = finding:<finding_id>` is the AUTHENTICATED source
-  of `finding_id` - request arguments never are (two findings may share
-  a payload digest, and args are caller-controlled). Malformed or
-  missing artifacts on a finding purchase DENY (no silent omission).
+  `pricing.listing_id == ask.listing_id`). `finding_id` is stamped from
+  the anchor, never from caller-controlled request arguments. Malformed
+  or missing artifacts on a finding purchase DENY (no silent omission).
   Includes registering the metadata block's schema id. The
   `status_proof` sub-block is NOT in M4 (review: this was an M4-to-M6
   cycle) - M6 completes the overlay additively.

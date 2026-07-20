@@ -143,6 +143,7 @@ Put in `crates/economy/chio-finding/tests/finding.rs`:
 //! Integration coverage for the finding artifact family.
 
 use chio_core_types::capability::scope::MonetaryAmount;
+use chio_core_types::capability::runtime_attestation::RuntimeAssuranceTier;
 use chio_finding::{
     compute_finding_id,
     crypto::{Keypair, PublicKey},
@@ -296,6 +297,23 @@ fn attested_guarantee_requires_receipts_even_with_asserted_evidence_class() {
     let mut draft = draft_finding_with_issuer(issuer.public_key());
     draft.guarantee_class = FindingGuaranteeClass::MeteredAttested;
     draft.evidence_class = FindingEvidenceClass::Asserted;
+    draft.evidence_receipt_ids.clear();
+    draft.finding_id = compute_finding_id(&draft).unwrap_or_default();
+    assert!(matches!(
+        draft.validate(),
+        Err(FindingError::MissingEvidence)
+    ));
+}
+
+#[test]
+fn non_none_runtime_tier_requires_receipts() {
+    let issuer = Keypair::generate();
+    let mut draft = draft_finding_with_issuer(issuer.public_key());
+    // Fully asserted otherwise, but claiming Verified runtime with no
+    // receipts is an unbacked attestation-quality signal.
+    draft.guarantee_class = FindingGuaranteeClass::Asserted;
+    draft.evidence_class = FindingEvidenceClass::Asserted;
+    draft.runtime_assurance_tier = Some(RuntimeAssuranceTier::Verified);
     draft.evidence_receipt_ids.clear();
     draft.finding_id = compute_finding_id(&draft).unwrap_or_default();
     assert!(matches!(
@@ -472,6 +490,7 @@ use chio_core_types::crypto::PublicKey;
 //! Fail-closed validation for finding-family artifacts.
 
 use chio_core_types::canonical_json_bytes;
+use chio_core_types::capability::runtime_attestation::RuntimeAssuranceTier;
 use chio_core_types::crypto::sha256_hex;
 
 use crate::types::{
@@ -553,10 +572,17 @@ impl Finding {
         } else if let Some(recipe) = &self.replay_recipe_sha256 {
             require_hex64(recipe, "replay_recipe_sha256")?;
         }
-        if (self.guarantee_class != FindingGuaranteeClass::Asserted
-            || self.evidence_class != FindingEvidenceClass::Asserted)
-            && self.evidence_receipt_ids.is_empty()
-        {
+        // Any attestation-quality signal (non-asserted guarantee class,
+        // non-asserted evidence class, or a non-None runtime tier) needs
+        // receipts to verify against; an asserted finding claiming
+        // `Verified` runtime with no receipts is exactly the D3 lie.
+        let claims_attestation = self.guarantee_class != FindingGuaranteeClass::Asserted
+            || self.evidence_class != FindingEvidenceClass::Asserted
+            || matches!(
+                self.runtime_assurance_tier,
+                Some(tier) if tier != RuntimeAssuranceTier::None
+            );
+        if claims_attestation && self.evidence_receipt_ids.is_empty() {
             return Err(FindingError::MissingEvidence);
         }
         for receipt_id in &self.evidence_receipt_ids {
@@ -752,6 +778,17 @@ pub fn verify_finding_signature(finding: &Finding) -> Result<(), FindingError> {
 
 /// The full fail-closed acceptance boundary for a published finding:
 /// structure + content-addressed id (validate) + issuer signature.
+///
+/// IMPORTANT (review finding): this operates on an ALREADY-DESERIALIZED
+/// `Finding` and reserializes canonically to check the signature and id.
+/// It is NOT a substitute for validating the raw request JSON against the
+/// registered `chio.finding.v1` schema: `PublicKey::from_hex` tolerates
+/// `0x`/uppercase and `Option` fields accept explicit `null`, so an
+/// artifact whose only deviation is `issuer: "0x.."` or
+/// `runtime_assurance_tier: null` would pass here (canonicalized to the
+/// accepted form) while failing the schema. The M2 publish boundary MUST
+/// run `chio-spec-validate` against the raw bytes BEFORE deserializing
+/// and calling this.
 pub fn verify_finding(finding: &Finding) -> Result<(), FindingError> {
     finding.validate()?;
     verify_finding_signature(finding)
