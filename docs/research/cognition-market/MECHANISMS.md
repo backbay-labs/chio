@@ -261,8 +261,10 @@ single-source figures are flagged both inline and in section 10.
 - Shapley-style contribution payouts are structurally gameable by
   replication/sybils (Agarwal-Dahleh-Sarkar EC 2019
   robustness-to-replication axiom; Data Shapley manipulation line
-  2019-2026). Adopted: pay per unique committed artifact, first-commit
-  priority by digest timestamp, never similarity-scaled payouts.
+  2019-2026). Adopted: pay per unique committed artifact, never
+  similarity-scaled payouts; duplicate contexts coexist with
+  informational anchored-commitment ordering (section 3 - kernel clocks
+  are not a cross-operator order).
 - Deployed privacy-tech marketplaces (Ocean compute-to-data, iExec, Oasis)
   shipped supply tech but found no demand (one academic count: 6,826 Ocean
   transactions May 2022 - June 2025; single source, flagged). Diagnosis:

@@ -123,11 +123,16 @@ Format: attack -> mitigation (mechanism, path) -> residual.
   (`crates/economy/chio-open-market/src/fee_schedule.rs:71`), plus
   `SpamPublication` penalties (`src/penalty.rs:21`) and namespace-owned
   listings (`crates/economy/chio-listing/src/listing.rs:103`). Residual: low.
-- **S7. Non-delivery after payment.** Mitigated: hold/escrow terminal states
-  are release-on-proof or refund-after-deadline only (ADR-0015 D2;
-  `contracts/src/ChioEscrow.sol`; MustPrepay refund path
-  `crates/kernel/chio-kernel/src/kernel/dispatch.rs:170`). Residual: buyer
-  liquidity is time-locked until the deadline; no loss.
+- **S7. Non-delivery after payment.** Within one operator - mitigated:
+  hold/escrow terminal states are release-on-proof or
+  refund-after-deadline only (ADR-0015 D2; `contracts/src/ChioEscrow.sol`;
+  MustPrepay refund path
+  `crates/kernel/chio-kernel/src/kernel/dispatch.rs:170`); residual is
+  buyer liquidity time-locked until the deadline, no loss. Cross-org
+  (review correction): with a seller-aligned mediating operator the
+  attest-and-withhold attack (O5) makes paid non-delivery a HIGH
+  residual; the escrow profile requires a neutral/mutually trusted
+  mediator or is disallowed (ARCHITECTURE F6).
 
 ### Buyer-side
 
@@ -220,12 +225,17 @@ Format: attack -> mitigation (mechanism, path) -> residual.
 - **O5. Seller-side mediating operator self-deals the reveal.** The
   minted token is bearer-shaped; a seller colluding with its own kernel
   operator could replay it, mint a "delivery" receipt with no buyer
-  involved, and release escrow. Mitigated: escrowed purchases MUST mint
+  involved, and release escrow. Mitigated in part: escrowed purchases MUST mint
   `dpop_required: true` grants so the reveal requires the buyer's subject
-  key (ADR-0007 profile) - the delivery receipt then proves a
-  buyer-initiated reveal. Residual: the mediating operator's honesty about
-  executing what it attests (T1/O1; TEE tier shrinks it); M7 owns the
-  operator-model decision. Severity: high if unmitigated, low with DPoP.
+  key (ADR-0007 profile) - closing the no-buyer replay. NOT closed by
+  DPoP (review correction): attest-and-withhold - the mediator accepts a
+  genuine buyer request, signs and checkpoints the Allow, suppresses the
+  response, and releases escrow; DPoP proves the buyer signed the
+  request, not that the response arrived. Therefore the escrow profile
+  requires a neutral/mutually trusted mediator (ARCHITECTURE F6); with a
+  seller-aligned mediator severity stays HIGH (paid non-delivery), and
+  M7 owns the operator-model decision plus the withhold-response
+  adversarial test.
 - **O4. Adjudicator compromise** (T3). Mitigated: predeclared rosters +
   decision-rule refs are validated fail-closed
   (`crates/economy/chio-market/src/claim.rs:38-50`), outcome sets and amount
@@ -271,6 +281,7 @@ Format: attack -> mitigation (mechanism, path) -> residual.
 | Descriptor metadata leakage (B3/X1) | R&D | medium | seller topic granularity; leakage budgets |
 | Retraction race window (S4) | both | low-medium | freshness-window tuning |
 | No revenue clawback in v1 (fraud revenue finalizes; MECHANISMS 4) | both | medium | bonds sized for finalized exposure; capture-delay custody is a backlog ADR |
+| Paid non-delivery under a seller-aligned cross-org mediator (S7/O5 attest-and-withhold) | cross-org | high | F6 neutral-mediator requirement; M7 withhold-response test; profile disallowed otherwise |
 | Challenge griefing asymmetry (B4) | wedge | low-medium | bond-size tuning (MECHANISMS) |
 | Plagiarism of revealed findings (S5) | both | medium | forensic + reputational only |
 

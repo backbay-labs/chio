@@ -580,12 +580,15 @@ git commit -m "feat(chio-finding): finding artifact type with fail-closed valida
 - Produces:
   - `sign_finding(Finding, &Keypair) -> Result<Finding, FindingError>`
   - `verify_finding_signature(&Finding) -> Result<(), FindingError>`
+  - `verify_finding(&Finding) -> Result<(), FindingError>` - the single
+    fail-closed acceptance boundary (structure + content-addressed id +
+    issuer signature) that M2's publish surface calls
 - Deliberately NOT produced: no `SignedExportEnvelope` alias for this family. The registered `chio.finding.v1` schema validates the artifact exactly as serialized, so the signature is the inline `signature` field (disclosure-family precedent: `SignedLineageSubgraph`, `chio-disclosure-lineage/src/types.rs:140-163`). An envelope wrapper would serialize as `{body, signerKey, signature}` and every signed artifact would fail the registered schema.
 
 - [ ] **Step 1: Append failing tests**
 
 ```rust
-use chio_finding::{sign_finding, verify_finding_signature};
+use chio_finding::{sign_finding, verify_finding, verify_finding_signature};
 
 #[test]
 fn signed_finding_roundtrip_verifies() {
@@ -598,6 +601,7 @@ fn signed_finding_roundtrip_verifies() {
     assert!(!signed.signature.is_empty());
     assert!(verify_finding_signature(&signed).is_ok());
     assert!(signed.validate().is_ok());
+    assert!(verify_finding(&signed).is_ok());
 }
 
 #[test]
@@ -662,6 +666,13 @@ pub fn verify_finding_signature(finding: &Finding) -> Result<(), FindingError> {
         Ok(true) => Ok(()),
         _ => Err(FindingError::SignatureInvalid),
     }
+}
+
+/// The full fail-closed acceptance boundary for a published finding:
+/// structure + content-addressed id (validate) + issuer signature.
+pub fn verify_finding(finding: &Finding) -> Result<(), FindingError> {
+    finding.validate()?;
+    verify_finding_signature(finding)
 }
 ```
 
@@ -790,7 +801,7 @@ Expected: FAIL - code lists one schema missing from `spec/schemas/registry.json`
     "issuer": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "issued_at": { "type": "integer", "minimum": 0 },
     "expires_at": { "type": "integer", "minimum": 0 },
-    "signature": { "type": "string" }
+    "signature": { "type": "string", "pattern": "^[0-9a-f]{128}$" }
   },
   "$defs": {
     "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
@@ -874,8 +885,7 @@ fn golden_verified_fix_fixture_validates() {
         Ok(finding) => finding,
         Err(err) => panic!("golden fixture failed to parse: {err}"),
     };
-    assert!(finding.validate().is_ok());
-    assert!(finding.verify_finding_id().is_ok());
+    assert!(chio_finding::verify_finding(&finding).is_ok());
 }
 ```
 
@@ -892,17 +902,17 @@ Write a small throwaway generator as an ignored test in the same file, run it on
 #[test]
 #[ignore = "regenerates the golden fixture; run manually"]
 fn regenerate_golden_fixture() {
-    // Deterministic issuer key bytes so regeneration is byte-stable
-    // (PublicKey::from_hex decodes 32 bytes without curve validation,
-    // crypto.rs:405; fine for an UNSIGNED golden). The golden stays
-    // unsigned on purpose: a signed golden would need a checked-in
-    // private key, and the signing roundtrip is covered by Task 3 tests.
-    let issuer = match PublicKey::from_hex(&hex64('9')) {
-        Ok(issuer) => issuer,
-        Err(err) => panic!("fixture issuer: {err}"),
-    };
-    let mut finding = draft_finding_with_issuer(issuer);
+    // Deterministic fixture keypair via a fixed seed (review finding: a
+    // test seed is not a production secret, and an unsigned golden would
+    // let M1 pass its signed-artifact exit with a fixture that fails
+    // signature verification). Keypair::from_seed: crypto.rs:164.
+    let issuer = Keypair::from_seed(&[9u8; 32]);
+    let mut finding = draft_finding_with_issuer(issuer.public_key());
     finding.finding_id = compute_finding_id(&finding).unwrap_or_default();
+    let finding = match sign_finding(finding, &issuer) {
+        Ok(finding) => finding,
+        Err(err) => panic!("fixture signing: {err}"),
+    };
     let json = serde_json::to_string_pretty(&finding).unwrap_or_default();
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),

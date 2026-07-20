@@ -90,8 +90,8 @@ Schema ids proposed (registration path in section 7):
 | Schema | Kind | New/reuse |
 |---|---|---|
 | `chio.finding.v1` | signed information-good artifact | new |
-| `chio.finding.listing-subject.v1` | listing integration | new subject kind or parallel artifact (decided in 7.3) |
-| `chio.finding.delivery.v1` | receipt metadata block on the reveal receipt | new |
+| `chio.delivery-contract.v1` | generic receipt metadata block on any output-committed Allow (M3) | new |
+| `chio.finding.delivery.v1` | finding overlay metadata block (M4 purchase binding; optional `status_proof` sub-block added at M6) | new |
 | `chio.finding.challenge.v1` | bonded challenge artifact | new |
 | `chio.finding.status-epoch.v1` | status-feed epoch root envelope | new (wraps oracle `EpochRoot`) |
 | `chio.marketplace.bid-request.v1` etc. | purchase handshake | reuse unchanged (`crates/economy/chio-open-market/src/bidding.rs:33-42`) |
@@ -105,7 +105,7 @@ signed export envelope in the economy crates):
 | Field | Type | Semantics |
 |---|---|---|
 | `schema` | string | `chio.finding.v1` |
-| `finding_id` | string | content-addressed: SHA-256 of the canonical body minus signature |
+| `finding_id` | string | content-addressed: sha256 of the canonical body with `finding_id` AND `signature` both cleared - the single canonical id input, identical to the implementation plan's `compute_finding_id` |
 | `descriptor.topic` | string | prefix-searchable topic key (org- or repo-scoped) |
 | `descriptor.context_sha256` | hex64 | digest of the full context object (committed test suite + commit, or experiment protocol); the match key |
 | `descriptor.outcome_class` | enum | `null_result` / `verified_fix` / `positive_result` |
@@ -114,7 +114,7 @@ signed export envelope in the economy crates):
 | `payload_media_type` | string | e.g. `application/json`, `text/x-diff` |
 | `evidence_receipt_ids` | [string] | producing receipts (must verify fail-closed) |
 | `evidence_checkpoint_ref` | string | checkpoint containing the evidence receipts |
-| `evidence_cost` | {units, currency} | metered production cost rollup (the proof-of-burn floor) |
+| `evidence_cost` | {units, currency} | metered production cost rollup; verifiable against receipts only in full-receipt evidence mode (F2 mode A) or after audit - in projected mode this value is a seller assertion (MECHANISMS 1) |
 | `runtime_assurance_tier` | string? | tier from appraisal if the producing runtime was attested |
 | `evidence_class` | enum | `asserted` / `observed` / `verified` linkage class of claim-to-evidence |
 | `replay_recipe_sha256` | hex64? | REQUIRED for `deterministic_replay`: digest of the committed re-execution recipe (tool server id, tool, parameter template, expected verdict predicate) |
@@ -178,12 +178,23 @@ Nothing else; usable by any output-committed tool call, not only findings.
 
 **M4, finding overlay: `chio.finding.delivery.v1`** - the fields below,
 attached only when the purchase context arrives through verifiable
-artifacts: the buyer presents the signed `AcceptedBid` (and the status
-non-inclusion proof) via the governed-intent context, and the kernel
-verifies them against the presented token (same issuer, same token id,
-ask digest binding) before echoing their identifiers. Caller-asserted
-copies without those signed artifacts are never promoted into this block
-(P10 discipline):
+artifacts. The buyer presents BOTH the provider-signed
+`SignedAskResponse` and the buyer-signed `AcceptedBid` via the
+governed-intent context (review finding: `AcceptedBid` alone is
+buyer-signed and carries only an opaque `ask_digest`, so without the ask
+body the kernel can neither authenticate the provider nor bind the token
+to that ask - a token subject could sign arbitrary purchase fields for
+the kernel to echo). The kernel verifies: the ask envelope signature
+against the presented token's issuer key;
+`canonical_digest(ask.body) == accepted.ask_digest`; the ask's token id,
+subject, and expiry against the presented token; and the listing id
+consistency - otherwise it omits the purchase fields entirely.
+Caller-asserted copies without those signed artifacts are never promoted
+into this block (P10 discipline). The `status_proof` sub-block is NOT
+part of M4: it is an optional, signature-safe addition completed at M6,
+which breaks the former M4-to-M6 dependency cycle (M4 ships the overlay
+without status fields; M6 adds them additively per the 7.3 evolution
+rules):
 
 | Field | Semantics |
 |---|---|
@@ -191,7 +202,7 @@ copies without those signed artifacts are never promoted into this block
 | `expected_payload_sha256` | the commitment the delivery was checked against |
 | `digest_check` | `matched` (the only value on an Allow; a mismatch never produces an Allow) |
 | `purchase.bid_digest`, `purchase.ask_digest`, `purchase.accepted_bid_ref` | handshake binding |
-| `status_proof.epoch_root_ref`, `status_proof.non_inclusion_checked_at` | the freshness evidence the buyer presented |
+| `status_proof.epoch_root_ref`, `status_proof.non_inclusion_checked_at` | (M6, optional-additive) the freshness evidence the buyer presented |
 
 The Allow receipt for `read_finding` carrying these blocks, under the
 `chio.mediated_spend.v1` conjunction (`receipt/authoritative_spend.rs`), is
@@ -441,25 +452,34 @@ choice of operator IS the fair-exchange design:
   non-mediating operator (e.g. buyer-side) would let it observe the reveal
   yet withhold the checkpoint until the refund deadline - refund-while-
   holding-payload.
-- A mediating operator aligned with the seller creates the converse risk:
-  the minted token is bearer-shaped, so seller plus seller-side kernel
-  could replay it themselves, mint a "delivery" receipt with no buyer
-  involved, and release escrow. Therefore escrowed purchases MUST mint the
-  grant with `dpop_required: true` (the per-invocation
-  proof-of-possession profile, ADR-0007): the reveal then requires the
-  buyer's subject key, and the delivery receipt proves a buyer-initiated
-  reveal, not merely a seller-observed one.
+- A mediating operator aligned with the seller creates the converse risk,
+  in two layers. First, the minted token is bearer-shaped, so seller plus
+  seller-side kernel could replay it with no buyer involved; escrowed
+  purchases therefore MUST mint `dpop_required: true` grants (ADR-0007),
+  making the delivery receipt prove a buyer-INITIATED reveal. Second -
+  and DPoP does not close this (review finding) - the same mediator can
+  accept a genuine buyer request, invoke the server, sign and checkpoint
+  the Allow, SUPPRESS the response to the buyer, and still release
+  escrow: attest-and-withhold. An Allow proves kernel-attested reveal
+  (6.2), never response delivery.
 - With both rules, withholding the checkpoint only hurts the withholder:
   an unpublished delivery receipt means no release before the deadline,
   refunding the buyer while the seller side already served the bytes.
   Deadlines must still exceed the operator's published checkpoint cadence
   plus anchor finality (timing fine print above).
-- Residual, stated honestly: this yields buyer-initiated,
-  kernel-attested reveal against payment - fair exchange up to the
-  mediating operator's honesty about executing the reveal it attests
-  (T1/O1 territory; TEE tier shrinks it). A mutually trusted or neutral
-  mediating operator is the strong form; picking that model, and the
-  withhold-root adversarial test, are M7 exit requirements.
+- Consequence (review correction): the v1 cross-org ESCROW profile
+  REQUIRES a mutually trusted or neutral mediating operator - that
+  operator IS the trusted third party fair exchange provably needs
+  (MECHANISMS 8.1). With a seller-aligned mediator, paid non-delivery via
+  attest-and-withhold remains open, the residual is HIGH, and the flow
+  must not be described as fair exchange; the profile is disallowed
+  rather than shipped unfair. Buyer-acknowledgment alternatives
+  (capture-after-ack, durable re-read before release) invert the theft
+  direction (buyer withholds the ack while keeping the payload) and are
+  admissible only with a predeclared ack-vs-refund adjudication rule -
+  an M7 design decision, not assumed here. M7 exit therefore carries the
+  operator-model decision plus BOTH adversarial tests: withhold-root and
+  withhold-response.
 
 ## 6. Kernel enforcement points (delivery contract)
 
@@ -576,8 +596,10 @@ outputs. When the matched grant carries `OutputDigestSha256(expected)`:
   payment authorization (MustPrepay), mirroring
   `unwind_aborted_monetary_invocation` (`kernel/dispatch.rs:170`) - a
   mismatch after prepayment is economically an abort.
-- On match: proceed to reconcile and attach the `chio.finding.delivery.v1`
-  metadata block (4.2) in the allow builder.
+- On match: proceed to reconcile and attach the generic
+  `chio.delivery-contract.v1` block (4.2) in the allow builder; the
+  finding overlay is attached at M4 when its signed purchase context is
+  presented.
 
 At the input-matching site the new variant is an advisory pass (precedent:
 the data-layer variants return `Ok(true)` pre-dispatch,
@@ -723,11 +745,12 @@ Two layers (different costs):
 
 ### 7.5 Receipt-metadata block registration
 
-`finding_delivery` follows the typed-block pattern: struct in
+Both blocks follow the typed-block pattern: structs in
 `crates/core/chio-core-types/src/receipt/` (fields additive per 7.3),
-kernel inserts under the string key `"finding_delivery"` (insertion sites
-pattern: `receipt_support/receipt_metadata.rs:433,543`), read via the
-generic `typed_metadata::<T>(key)` accessor (`receipt/body.rs:563`).
+kernel inserts under the string keys `"delivery_contract"` (M3, generic)
+and `"finding_delivery"` (M4, overlay) (insertion sites pattern:
+`receipt_support/receipt_metadata.rs:433,543`), read via the generic
+`typed_metadata::<T>(key)` accessor (`receipt/body.rs:563`).
 There is no central metadata-key registry today (only the signing nonce key
 is formally reserved, `receipt/signing.rs:106`); we add a named const
 beside it and document the key in PROTOCOL.md 6.4 - and PLAN flags the
@@ -821,7 +844,7 @@ none of them.
 | `crates/economy/chio-finding` (NEW) | new leaf crate | artifact types + pure validators for 4.1-4.4 shapes; no storage, mirrors `chio-listing` style |
 | `crates/economy/chio-listing` | extend | finding listing integration per 7.3; descriptor search |
 | `crates/economy/chio-open-market` | extend | `FabricatedFindingEvidence` abuse class; challenge evaluation module; evidence kinds |
-| `crates/core/chio-core-types` | extend (additive) | `chio.finding.delivery.v1` receipt metadata struct; delivery-binding carrier per section 6; schema registry entries |
+| `crates/core/chio-core-types` | extend (additive) | `chio.delivery-contract.v1` (M3) and `chio.finding.delivery.v1` (M4) receipt metadata structs; delivery-binding carrier per section 6; schema registry entries |
 | `crates/kernel/chio-kernel` | extend | digest-gate enforcement at the point chosen in section 6; delivery metadata attachment |
 | `crates/guards/chio-guards` | extend | quarantine-on-retraction rule in `MemoryGovernanceGuard`; digest guard if option (a)/(b) in section 6 |
 | `crates/trust/chio-revocation-oracle` | reuse | second instance for the status feed; feed-id envelope |

@@ -124,8 +124,9 @@ the oracle's exact `SignedEpochRoot` (ARCHITECTURE 4.4).
 
 ### M2 Publish and discover
 
-- Control-plane `POST /v1/findings/publish` (accepts `SignedFinding`,
-  validates, indexes) and `GET/POST /v1/findings/search` (topic prefix +
+- Control-plane `POST /v1/findings/publish` (accepts a signed `Finding`,
+  runs the fail-closed `verify_finding` boundary - structure +
+  content-addressed id + issuer signature - then indexes) and `GET/POST /v1/findings/search` (topic prefix +
   `context_sha256` equality), following the three-step surface pattern
   (ARCHITECTURE 8.1; precedent
   `chio-control-plane/src/trust_control/certification_handlers.rs:143`).
@@ -214,10 +215,14 @@ the oracle's exact `SignedEpochRoot` (ARCHITECTURE 4.4).
   re-read window on the minted grant, or a receipt-keyed seller re-serve
   policy) and test the buyer-crash-after-Allow path.
 - `chio.finding.delivery.v1` overlay block (moved here from M3): fields
-  sourced from the buyer-presented signed `AcceptedBid` and status
-  non-inclusion proof, verified against the presented token before the
-  kernel echoes them (ARCHITECTURE 4.2); includes registering that
-  metadata block's schema id.
+  sourced from the buyer-presented provider-signed `SignedAskResponse`
+  PLUS buyer-signed `AcceptedBid`, verified before the kernel echoes them
+  (ask signature against the token issuer;
+  `canonical_digest(ask.body) == accepted.ask_digest`; ask token
+  id/subject/expiry and listing id against the presented token -
+  ARCHITECTURE 4.2); includes registering that metadata block's schema
+  id. The `status_proof` sub-block is NOT in M4 (review: this was an
+  M4-to-M6 cycle) - M6 completes the overlay additively.
 - Exit: one command-line round trip on a local kernel: publish, search,
   verify offline, buy, reveal, delivery receipt with `finding_delivery`
   block, budget reconciled; failure-path tests (digest mismatch, seller
@@ -234,8 +239,9 @@ the oracle's exact `SignedEpochRoot` (ARCHITECTURE 4.4).
   there is no revenue vesting in v1.
 - `FabricatedFindingEvidence` abuse class + evidence kinds in
   `chio-open-market` (`penalty.rs:21`, `evidence.rs`).
-- Challenge evaluator: pure fail-closed function consuming
-  `SignedFindingChallenge` + `SignedFinding` + reproduction receipts,
+- Challenge evaluator: pure fail-closed function consuming a signed
+  `FindingChallenge` + a signed `Finding` (inline signatures, the
+  `verify_finding` boundary) + reproduction receipts,
   reusing claim-style receipt re-verification
   (`chio-market/src/insurance_flow.rs:390-414` pattern), emitting a
   finding-code result that feeds the existing Sanction -> SlashBond gate
@@ -268,6 +274,9 @@ the oracle's exact `SignedEpochRoot` (ARCHITECTURE 4.4).
   freshness and (non-)inclusion verification applies unchanged.
 - Purchase-time non-inclusion check wired into `chio finding buy` and the
   buyer SDK path; freshness-window enforcement fail-closed.
+- Completes the `chio.finding.delivery.v1` overlay with the optional,
+  signature-safe `status_proof` sub-block (additive per ARCHITECTURE 7.3;
+  breaks the former M4 dependency on M6 infrastructure).
 - Quarantine guard rule: `MemoryGovernanceGuard` extension denying reads
   whose provenance traces to a retracted finding (opt-in;
   `chio-guards/src/memory_governance.rs:60`).
@@ -286,12 +295,16 @@ the oracle's exact `SignedEpochRoot` (ARCHITECTURE 4.4).
   path) and the deadline-refund watchdog descriptor.
 - Bilateral flow doc + test: evidence bundle export/import, escrow
   create/fund, reveal, release, refund-on-timeout.
-- Escrow operator model per ARCHITECTURE F6 (review P1): the escrow
-  names the MEDIATING operator; escrowed purchases mint
-  `dpop_required: true` grants so delivery receipts prove
-  buyer-initiated reveals; exit includes the withhold-root adversarial
-  test (operator delays checkpoint publication; escrow refunds; harms
-  land on the withholding side).
+- Escrow operator model per ARCHITECTURE F6 (review P1s): the escrow
+  names a MUTUALLY TRUSTED / NEUTRAL mediating operator - DPoP-required
+  grants prove buyer-initiated reveals but cannot prove response
+  delivery, so a seller-aligned mediator leaves attest-and-withhold
+  (paid non-delivery) open and the profile is disallowed rather than
+  shipped unfair. Buyer-ack alternatives need a predeclared
+  ack-vs-refund adjudication rule (M7 decision). Exit includes BOTH
+  adversarial tests: withhold-root (refund lands; harms the withholder)
+  and withhold-response (neutral mediator makes attest-and-suppress
+  non-viable).
 - Trigger condition: at least one real bilateral seller/buyer pair wants
   it; otherwise stays unbuilt (YAGNI).
 
