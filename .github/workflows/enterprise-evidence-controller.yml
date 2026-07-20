@@ -4,6 +4,28 @@ on:
   pull_request_target:
     branches: [main]
     types: [opened, synchronize, reopened, labeled, unlabeled]
+    paths:
+      - '.github/workflows/enterprise-evidence-controller.yml'
+      - '.github/workflows/enterprise-evidence-finalizer.yml'
+      - '.github/workflows/enterprise-hardening.yml'
+      - '.github/workflows/enterprise-linux-capture.yml'
+      - '.github/workflows/security-contract-revocation.yml'
+      - 'audits/evidence/enterprise-linux/**'
+      - 'crates/security/**'
+      - 'deploy/docker/Dockerfile.security-evidence-runner'
+      - 'deploy/docker/security-evidence-apk.lock'
+      - 'deploy/docker/security-evidence-seccomp.json'
+      - 'scripts/check-cage-all-target-inventory.py'
+      - 'scripts/check-cage-enforcement.sh'
+      - 'scripts/check-exact-cargo-test-inventory.py'
+      - 'scripts/check-keyring-transparency.sh'
+      - 'scripts/check-linux-enforcement-stack.py'
+      - 'scripts/check-secret-broker-boundary.sh'
+      - 'scripts/check-security-adversarial-evidence.py'
+      - 'scripts/run-security-execution-container.py'
+      - 'scripts/security-execution-command-client.py'
+      - 'scripts/security-execution-container-entrypoint.py'
+      - 'scripts/tests/run-security-execution-container.test.py'
 
 permissions:
   actions: write
@@ -48,6 +70,14 @@ jobs:
           shopt -s inherit_errexit
 
           commit_pattern='^[0-9a-f]{40}$'
+          if [[ -z "${AUTHORIZED_SOURCE_SHA}" ]]; then
+            echo "::error title=Enterprise security source is not configured::Set the CHIO_AUTHORIZED_SECURITY_SOURCE_SHA repository variable to the reviewed source commit before running this workflow."
+            exit 1
+          fi
+          if [[ -z "${ENTERPRISE_SECURITY_DEFINITION_SHA}" ]]; then
+            echo "::error title=Enterprise security definition is not configured::Set the CHIO_ENTERPRISE_SECURITY_DEFINITION_SHA repository variable to the reviewed workflow definition commit before running this workflow."
+            exit 1
+          fi
           [[ "${AUTHORIZED_SOURCE_SHA}" =~ ${commit_pattern} ]]
           [[ "${EVENT_HEAD_SHA}" =~ ${commit_pattern} ]]
           [[ "${EVENT_BASE_SHA}" =~ ${commit_pattern} ]]
