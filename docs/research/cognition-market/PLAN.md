@@ -202,10 +202,12 @@ the oracle's exact `SignedEpochRoot` (ARCHITECTURE 4.4).
   carrying `OutputDigestSha256` + `max_invocations: 1` +
   `max_total_cost`; MustPrepay reveal; refund-on-abort test. Includes the
   small open-market extension this requires: `bid()` mints grants with
-  `constraints: Vec::new()` hardcoded (`bidding.rs:396`), so
-  `BidMintContext` grows provider-supplied grant constraints, and the
-  buyer's accept path checks the token constraint equals the finding's
-  `payload_sha256`.
+  `constraints: Vec::new()` AND `dpop_required: None` hardcoded
+  (`bidding.rs:396` region), so `BidMintContext` grows BOTH
+  provider-supplied grant constraints and a `dpop_required` flag (review
+  finding: without the flag, M7's DPoP-bound escrow grants cannot be
+  minted and the no-buyer replay stays open); the buyer's accept path
+  checks the token constraint equals the finding's `payload_sha256`.
 - `chio finding publish|search|verify|buy` CLI following the documented
   family pattern (ARCHITECTURE 8.3).
 - Delivery idempotency decision (ARCHITECTURE F3 step 6, now
@@ -270,8 +272,17 @@ the oracle's exact `SignedEpochRoot` (ARCHITECTURE 4.4).
   (ARCHITECTURE 8.1).
 - Define and register the status-feed artifact (deferred from M1): it
   contains/references the oracle's exact `SignedEpochRoot` plus feed
-  metadata (`epoch.rs:12`, `api.rs:86-98`), so `EpochRootVerifier`
-  freshness and (non-)inclusion verification applies unchanged.
+  metadata (`epoch.rs:12`, `api.rs:86-98`); signed-root verification
+  carries over unchanged. The feed contract pins the fixed domain nonce
+  `epoch_nonce = "chio.finding.status.v1"` so inserts and proofs use one
+  key (ARCHITECTURE 4.4).
+- Portable non-inclusion (review finding: today's `NonInclusionProof`
+  carries no path bytes and is checked against local oracle state, so
+  `/proof/{finding_id}` would be a trusted online answer): extend the
+  oracle with sparse-Merkle non-inclusion paths verifiable against the
+  signed root, or explicitly document the endpoint as a trusted-query
+  surface backed by the operator bond. The portable proof is the
+  required default; the trusted-query fallback needs its own risk-row.
 - Purchase-time non-inclusion check wired into `chio finding buy` and the
   buyer SDK path; freshness-window enforcement fail-closed.
 - Completes the `chio.finding.delivery.v1` overlay with the optional,

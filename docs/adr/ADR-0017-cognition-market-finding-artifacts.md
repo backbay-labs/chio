@@ -26,10 +26,14 @@ machine-matchable descriptor (topic, context digest, outcome class), a
 sealed-payload commitment (`payload_sha256`), evidence references (mediated
 receipt ids, checkpoint ref, metered cost rollup, optional runtime assurance
 tier), an evidence class from the normative `asserted`/`observed`/`verified`
-taxonomy, a slashable bond reference, a status-feed reference, and an expiry.
+taxonomy, a slashable bond reference, a status-feed reference, an
+optional pre-outcome intent-commitment receipt reference, and an expiry.
 Negative results are `outcome_class = null_result`, not a separate type.
 Findings are published, discovered, and priced through the existing
-`chio-listing` registry (new subject kind) with the existing signed pricing
+`chio-listing` registry (listed under the existing `ToolServer` actor
+kind: the closed `GenericListingActorKind` enum is wire-frozen, so the
+finding artifact, not a new enum variant, carries the good's identity -
+see ARCHITECTURE 7.3) with the existing signed pricing
 hint. No new registry, venue, or settlement rail is introduced.
 
 ### D2. Reveal is a governed tool call; the receipt is the delivery proof
@@ -67,7 +71,10 @@ the registered community fund (ADR-0015 D4). The predeclared decision rules
 are limited to what is mechanically decidable: delivered-digest mismatch,
 evidence that fails receipt/checkpoint/revocation re-verification, and (for
 `deterministic_replay` findings) a bonded challenger's contradicting mediated
-re-execution. Semantically-wrong-but-honestly-produced findings are priced
+re-execution. Buyer-initiated challenges are complemented by venue-funded
+probabilistic audits at a published rate, sized so audit-rate times slash
+exceeds expected fabrication profit; audit outcomes are ordinary challenge
+artifacts (MECHANISMS section 5). Semantically-wrong-but-honestly-produced findings are priced
 risk carried by bonds, guarantee-class pricing, and reputation; they are not
 an adjudication lane, and no discretionary settlement path is introduced.
 

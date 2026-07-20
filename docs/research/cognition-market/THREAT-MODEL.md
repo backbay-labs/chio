@@ -44,7 +44,7 @@ New trust roles the market introduces, stated explicitly:
   (`crates/core/chio-core-types/src/receipt/signing.rs:273`), so whichever
   kernel mediates the `read_finding` call observes the plaintext payload.
   Within one operator this is the existing trust model. Cross-org, the
-  buyer-side operator learns purchased findings; a TEE-hosted kernel
+  mediating operator learns purchased findings; a TEE-hosted kernel
   (`crates/trust/chio-attest-verify` quote binding, `src/quote.rs:162`)
   reduces but does not eliminate operator exposure. This is a designed-in TTP,
   not an oversight; it is listed here so nobody claims otherwise.

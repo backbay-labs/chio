@@ -30,7 +30,7 @@
 - `crates/core/chio-core-types/src/signed_artifact.rs` - 1 const + 1 SPECS row.
 - `spec/schemas/chio-finding/v1/finding.schema.json` - validation schema.
 - `spec/schemas/registry.json` - 1 row.
-- `docs/adr/ADR-0017-cognition-market-finding-artifacts.md` - amendment (listing decision, audits, intent commitment).
+- `docs/adr/ADR-0017-cognition-market-finding-artifacts.md` - amendment verification only (the amendments were applied during PR #1025 review).
 
 ---
 
@@ -291,6 +291,32 @@ fn blank_evidence_receipt_id_is_rejected() {
 }
 
 #[test]
+fn attested_guarantee_requires_receipts_even_with_asserted_evidence_class() {
+    let issuer = Keypair::generate();
+    let mut draft = draft_finding_with_issuer(issuer.public_key());
+    draft.guarantee_class = FindingGuaranteeClass::MeteredAttested;
+    draft.evidence_class = FindingEvidenceClass::Asserted;
+    draft.evidence_receipt_ids.clear();
+    draft.finding_id = compute_finding_id(&draft).unwrap_or_default();
+    assert!(matches!(
+        draft.validate(),
+        Err(FindingError::MissingEvidence)
+    ));
+}
+
+#[test]
+fn blank_intent_commitment_reference_is_rejected() {
+    let issuer = Keypair::generate();
+    let mut draft = draft_finding_with_issuer(issuer.public_key());
+    draft.intent_commitment_receipt_id = Some(String::new());
+    draft.finding_id = compute_finding_id(&draft).unwrap_or_default();
+    assert!(matches!(
+        draft.validate(),
+        Err(FindingError::EmptyField("intent_commitment_receipt_id"))
+    ));
+}
+
+#[test]
 fn unknown_json_fields_are_rejected() {
     let issuer = Keypair::generate();
     let mut value = serde_json::to_value(base_finding(&issuer)).unwrap_or_default();
@@ -397,8 +423,13 @@ pub struct Finding {
     /// Metered production-cost rollup (bucketed for public descriptors;
     /// see the side-channel note in the threat model).
     pub evidence_cost: MonetaryAmount,
+    /// Attestation-quality tier from appraisal, as the existing CLOSED
+    /// vocabulary so unsupported tier names fail at parse time
+    /// (chio-core-types/src/capability/runtime_attestation.rs:15-23,
+    /// serde snake_case: none/basic/attested/verified). Absent means the
+    /// producing runtime was not attested.
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub runtime_assurance_tier: Option<String>,
+    pub runtime_assurance_tier: Option<RuntimeAssuranceTier>,
     pub evidence_class: FindingEvidenceClass,
     /// Required when `guarantee_class` is `DeterministicReplay`.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -431,6 +462,7 @@ pub struct Finding {
 Also add to the imports at the top of `types.rs`:
 
 ```rust
+use chio_core_types::capability::runtime_attestation::RuntimeAssuranceTier;
 use chio_core_types::crypto::PublicKey;
 ```
 
@@ -518,13 +550,23 @@ impl Finding {
         } else if let Some(recipe) = &self.replay_recipe_sha256 {
             require_hex64(recipe, "replay_recipe_sha256")?;
         }
-        if self.evidence_class != FindingEvidenceClass::Asserted
+        if (self.guarantee_class != FindingGuaranteeClass::Asserted
+            || self.evidence_class != FindingEvidenceClass::Asserted)
             && self.evidence_receipt_ids.is_empty()
         {
             return Err(FindingError::MissingEvidence);
         }
         for receipt_id in &self.evidence_receipt_ids {
             require_non_empty(receipt_id, "evidence_receipt_ids[]")?;
+        }
+        if let Some(receipt_id) = &self.intent_commitment_receipt_id {
+            require_non_empty(receipt_id, "intent_commitment_receipt_id")?;
+        }
+        if let Some(license_ref) = &self.license_ref {
+            require_non_empty(license_ref, "license_ref")?;
+        }
+        if let Some(price_hint_ref) = &self.price_hint_ref {
+            require_non_empty(price_hint_ref, "price_hint_ref")?;
         }
         if self.expires_at <= self.issued_at {
             return Err(FindingError::InvalidValidityWindow);
@@ -694,7 +736,7 @@ git commit -m "feat(chio-finding): inline artifact signing verified against the 
 
 ### Deferred: challenge and status-epoch artifacts (M5/M6)
 
-Removed from this milestone on review. When M5 defines `chio.finding.challenge.v1` it carries the `ChallengeClassMismatch` rule (replay contradictions only against `deterministic_replay` findings), `challenger: PublicKey`, and the guarantee-class gate specified in ARCHITECTURE 4.3. When M6 defines the status feed it MUST contain or reference the oracle's exact `SignedEpochRoot { root: EpochRoot, signature: RootSignature }` (`chio-revocation-oracle/src/epoch.rs:12`, `api.rs:86-98`) so existing `EpochRootVerifier` freshness/non-inclusion verification applies unchanged, plus feed metadata - not a partial copy of the root.
+Removed from this milestone on review. When M5 defines `chio.finding.challenge.v1` it carries the `ChallengeClassMismatch` rule (replay contradictions only against `deterministic_replay` findings), `challenger: PublicKey`, and the guarantee-class gate specified in ARCHITECTURE 4.3. When M6 defines the status feed it MUST contain or reference the oracle's exact `SignedEpochRoot { root: EpochRoot, signature: RootSignature }` (`chio-revocation-oracle/src/epoch.rs:12`, `api.rs:86-98`) plus feed metadata - not a partial copy of the root. Signed-ROOT verification carries over; portable NON-inclusion does not (today's `NonInclusionProof` has no path bytes and is checked against local oracle state, `api.rs:110-114`, `sparse_merkle.rs:77-79`), so M6 adds portable sparse paths or documents a trusted-query surface, and pins the fixed domain nonce `epoch_nonce = "chio.finding.status.v1"` (ARCHITECTURE 4.4).
 
 ---
 
@@ -790,7 +832,7 @@ Expected: FAIL - code lists one schema missing from `spec/schemas/registry.json`
         "currency": { "type": "string", "minLength": 1 }
       }
     },
-    "runtime_assurance_tier": { "type": "string", "minLength": 1 },
+    "runtime_assurance_tier": { "enum": ["none", "basic", "attested", "verified"] },
     "evidence_class": { "enum": ["asserted", "observed", "verified"] },
     "replay_recipe_sha256": { "$ref": "#/$defs/sha256" },
     "intent_commitment_receipt_id": { "type": "string", "minLength": 1 },
@@ -948,32 +990,31 @@ git commit -m "test(chio-finding): golden verified-fix fixture with schema confo
 
 ---
 
-### Task 6: ADR-0017 amendment
+### Task 6: ADR-0017 amendment verification
 
 **Files:**
-- Modify: `docs/adr/ADR-0017-cognition-market-finding-artifacts.md`
+- Read: `docs/adr/ADR-0017-cognition-market-finding-artifacts.md`
 
 **Interfaces:** none (docs).
 
-- [ ] **Step 1: Apply the three amendments**
+The three amendments this task originally specified were applied directly
+during PR #1025 review (D1 lists findings under the existing `ToolServer`
+actor kind instead of a new subject kind; D1's artifact list includes the
+optional pre-outcome intent-commitment receipt reference; D4 carries the
+published-rate probabilistic-audit sentence). This task is now
+verification-only.
 
-In D1, replace the phrase "(new subject kind)" with "(listed under the existing `ToolServer` actor kind; the closed `GenericListingActorKind` enum is wire-frozen, so the finding artifact, not a new enum variant, carries the good's identity - see ARCHITECTURE 7.3)".
+- [ ] **Step 1: Verify the amendments are present**
 
-In D4, append: "Buyer-initiated challenges are complemented by venue-funded probabilistic audits at a published rate, sized so audit_rate x slash exceeds expected fabrication profit; audit outcomes are ordinary challenge artifacts (MECHANISMS section 5)."
+Run: `grep -c "ToolServer actor" docs/adr/ADR-0017-cognition-market-finding-artifacts.md && grep -c "intent-commitment receipt" docs/adr/ADR-0017-cognition-market-finding-artifacts.md && grep -c "probabilistic audits" docs/adr/ADR-0017-cognition-market-finding-artifacts.md`
+Expected: three non-zero counts. If any is zero the branch predates the
+review fixes; stop and rebase before continuing.
 
-In D1's artifact field list, after "expiry", insert ", an optional pre-outcome intent-commitment receipt reference".
-
-- [ ] **Step 2: Check the docs for em dashes**
+- [ ] **Step 2: Check the ADR for em dashes**
 
 Run: `grep -c $'\u2014' docs/adr/ADR-0017-cognition-market-finding-artifacts.md`
-Expected: `0`.
-
-- [ ] **Step 3: Commit**
-
-```bash
-git add docs/adr/ADR-0017-cognition-market-finding-artifacts.md
-git commit -m "docs(adr): amend ADR-0017 with listing, audit, and intent-commitment decisions"
-```
+Expected: `0` (non-zero exit from grep on zero matches is the pass signal
+here).
 
 ---
 

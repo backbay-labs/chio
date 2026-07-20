@@ -115,7 +115,7 @@ signed export envelope in the economy crates):
 | `evidence_receipt_ids` | [string] | producing receipts (must verify fail-closed) |
 | `evidence_checkpoint_ref` | string | checkpoint containing the evidence receipts |
 | `evidence_cost` | {units, currency} | metered production cost rollup; verifiable against receipts only in full-receipt evidence mode (F2 mode A) or after audit - in projected mode this value is a seller assertion (MECHANISMS 1) |
-| `runtime_assurance_tier` | string? | tier from appraisal if the producing runtime was attested |
+| `runtime_assurance_tier` | enum? | tier from appraisal if the producing runtime was attested; the existing CLOSED vocabulary `none`/`basic`/`attested`/`verified` (`chio-core-types/src/capability/runtime_attestation.rs:15-23`) so unsupported tier names fail at parse time |
 | `evidence_class` | enum | `asserted` / `observed` / `verified` linkage class of claim-to-evidence |
 | `replay_recipe_sha256` | hex64? | REQUIRED for `deterministic_replay`: digest of the committed re-execution recipe (tool server id, tool, parameter template, expected verdict predicate) |
 | `intent_commitment_receipt_id` | string? | receipt id of a pre-outcome intent commitment: a mediated call that committed the descriptor/protocol digest BEFORE the producing run completed. Optional but priced: findings with it resist selective fabrication (Registered-Reports logic, MECHANISMS 8.4) and buyers may weight `guarantee_class_bps` up |
@@ -184,11 +184,20 @@ governed-intent context (review finding: `AcceptedBid` alone is
 buyer-signed and carries only an opaque `ask_digest`, so without the ask
 body the kernel can neither authenticate the provider nor bind the token
 to that ask - a token subject could sign arbitrary purchase fields for
-the kernel to echo). The kernel verifies: the ask envelope signature
-against the presented token's issuer key;
-`canonical_digest(ask.body) == accepted.ask_digest`; the ask's token id,
-subject, and expiry against the presented token; and the listing id
-consistency - otherwise it omits the purchase fields entirely.
+the kernel to echo). The kernel verifies BOTH envelopes (review finding:
+`SignedExportEnvelope::sign` is public, so prose calling a body
+buyer-signed proves nothing until the signature is checked):
+the ask envelope signature against the presented token's issuer key; the
+accepted-bid envelope signature against the presented token's SUBJECT
+key; `canonical_digest(ask.body) == accepted.ask_digest`; and the
+cross-binding of `agent_id`, `listing_id`, `bid_digest`, `quoted_price`,
+and the ask's token id/subject/expiry against the verified ask and the
+presented token. Failure handling is profile-dependent and fail-closed:
+for a finding purchase (the grant was minted under a finding listing and
+purchase context is expected), malformed or missing purchase artifacts
+DENY the call - silent omission would let a caller downgrade out of the
+finding-specific proof; omission of the overlay is legitimate only for
+generic output-committed calls that never claimed a finding purchase.
 Caller-asserted copies without those signed artifacts are never promoted
 into this block (P10 discipline). The `status_proof` sub-block is NOT
 part of M4: it is an optional, signature-safe addition completed at M6,
@@ -246,9 +255,21 @@ or an enforced challenge outcome (F4). The feed artifact
 MUST contain or reference the oracle's exact
 `SignedEpochRoot { root: EpochRoot, signature: RootSignature }`
 (`chio-revocation-oracle/src/epoch.rs:12`, `api.rs:86-98`) plus feed
-identity and anchoring refs - never a partial copy of the root, so the
-existing `EpochRootVerifier` freshness and (non-)inclusion verification
-applies unchanged.
+identity and anchoring refs - never a partial copy of the root. Two
+precision points from review: (1) the oracle key is
+`RevocationKey { subject_id, epoch_nonce }`, so the feed contract pins a
+FIXED domain nonce (`epoch_nonce = "chio.finding.status.v1"`) and every
+insert and proof uses exactly `(finding_id, that nonce)` - otherwise a
+retraction under one nonce coexists with fresh non-inclusion proofs
+under another. (2) Signed-ROOT verification carries over unchanged, but
+today's `NonInclusionProof { key, epoch_root, checked_at }` carries no
+path bytes and `verify_non_inclusion` consults the verifier's LOCAL
+oracle state (`api.rs:110-114`, `sparse_merkle.rs:77-79`) - it is not a
+portable absence proof. M6 therefore either extends the oracle with
+portable sparse-Merkle non-inclusion paths verifiable against the signed
+root (the required default), or explicitly documents the proof endpoint
+as a trusted-query surface backed by the operator bond - it must not
+label the online answer a proof.
 
 ### 4.5 The reveal envelope and the exact digest definition (normative)
 
@@ -446,12 +467,15 @@ unspecified and one choice falsifies a threat-model claim):**
 `ChioEscrow` releases against the operator named in `EscrowTerms`, so the
 choice of operator IS the fair-exchange design:
 
-- The escrow operator MUST be the operator of the kernel that mediates the
-  reveal (the kernel where the finding server is registered - with
-  seller-hosted servers, the seller-side operator). Naming a
-  non-mediating operator (e.g. buyer-side) would let it observe the reveal
-  yet withhold the checkpoint until the refund deadline - refund-while-
-  holding-payload.
+- One topology is allowed in the v1 escrow profile (review finding: an
+  earlier bullet said "seller-side operator" while the consequence below
+  disallows seller-aligned mediation; this states it once): the finding
+  server MUST be registered with the NEUTRAL / MUTUALLY TRUSTED mediating
+  kernel whose operator is named in `EscrowTerms`. Seller-side mediation
+  is the explicitly disallowed case (attest-and-withhold, below).
+  Naming a NON-mediating operator (e.g. buyer-side while the seller
+  mediates) is also disallowed: it could observe nothing yet withhold the
+  checkpoint until the refund deadline - refund-while-holding-payload.
 - A mediating operator aligned with the seller creates the converse risk,
   in two layers. First, the minted token is bearer-shaped, so seller plus
   seller-side kernel could replay it with no buyer involved; escrowed
