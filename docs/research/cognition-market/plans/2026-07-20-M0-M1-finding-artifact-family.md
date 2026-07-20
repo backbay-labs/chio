@@ -22,8 +22,8 @@
 
 - `crates/economy/chio-finding/Cargo.toml` - crate manifest (deps: chio-core-types, serde, thiserror).
 - `crates/economy/chio-finding/src/lib.rs` - module wiring + re-exports.
-- `crates/economy/chio-finding/src/types.rs` - `Finding`, `FindingDescriptor`, enums, `FindingChallenge`, `FindingStatusEpoch`, schema consts, signed aliases.
-- `crates/economy/chio-finding/src/validate.rs` - fail-closed validators + `compute_finding_id`.
+- `crates/economy/chio-finding/src/types.rs` - `Finding`, `FindingDescriptor`, enums, `FindingChallenge`, `FindingStatusEpoch`, schema consts (inline signatures; no envelope aliases).
+- `crates/economy/chio-finding/src/validate.rs` - fail-closed validators, `compute_finding_id`, inline signing.
 - `crates/economy/chio-finding/tests/finding.rs` - integration tests + golden-fixture test.
 - `fixtures/proof-room/finding/verified-fix-basic/finding.json` - golden.
 - `Cargo.toml` (workspace root) - members entry.
@@ -123,15 +123,17 @@ git commit -m "feat(chio-finding): scaffold cognition-market artifact crate"
 - Create: `crates/economy/chio-finding/tests/finding.rs`
 
 **Interfaces:**
-- Consumes: `chio_core_types::capability::scope::MonetaryAmount` (`{ units: u64, currency: String }`).
+- Consumes: `chio_core_types::capability::scope::MonetaryAmount` (`{ units: u64, currency: String }`); `chio_core_types::crypto::{Keypair, PublicKey}` (PublicKey serializes as a 64-hex string, `crypto.rs:313-319`, and derives Eq); `canonical_json_bytes` (`Result<Vec<u8>>`, `canonical.rs:119`); `sha256_hex` (`crypto.rs:1197`).
 - Produces (later tasks and milestones rely on these exact names):
   - `FINDING_SCHEMA_V1: &str = "chio.finding.v1"`
   - `enum FindingOutcomeClass { NullResult, VerifiedFix, PositiveResult }`
   - `enum FindingGuaranteeClass { DeterministicReplay, MeteredAttested, Asserted }`
   - `enum FindingEvidenceClass { Asserted, Observed, Verified }`
   - `struct FindingDescriptor { topic, context_sha256, outcome_class }`
-  - `struct Finding { .. }` (fields exactly as coded below)
-  - `enum FindingError` and `Finding::validate(&self) -> Result<(), FindingError>`
+  - `struct Finding { .. }` with `issuer: PublicKey` (fields exactly as coded below)
+  - `enum FindingError` (ALL variants defined here, including the ones Tasks 3-4 use: `Signing`, `SignatureInvalid`, `ChallengeClassMismatch` - pub enum variants in a lib crate carry no dead-code cost)
+  - `Finding::validate(&self) -> Result<(), FindingError>` - full structural validation INCLUDING id integrity (empty or stale `finding_id` rejects; review finding: publish paths must not accept a non-content-addressed id)
+  - `compute_finding_id(&Finding) -> Result<String, FindingError>` and `Finding::verify_finding_id(&self)`
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -142,6 +144,8 @@ Put in `crates/economy/chio-finding/tests/finding.rs`:
 
 use chio_core_types::capability::scope::MonetaryAmount;
 use chio_finding::{
+    compute_finding_id,
+    crypto::{Keypair, PublicKey},
     Finding, FindingDescriptor, FindingError, FindingEvidenceClass, FindingGuaranteeClass,
     FindingOutcomeClass, FINDING_SCHEMA_V1,
 };
@@ -150,7 +154,8 @@ fn hex64(fill: char) -> String {
     std::iter::repeat(fill).take(64).collect()
 }
 
-fn base_finding() -> Finding {
+/// Draft with an EMPTY finding_id; not yet valid.
+fn draft_finding_with_issuer(issuer: PublicKey) -> Finding {
     Finding {
         schema: FINDING_SCHEMA_V1.to_string(),
         finding_id: String::new(),
@@ -176,21 +181,30 @@ fn base_finding() -> Finding {
         status_feed_ref: "finding-status/test".to_string(),
         license_ref: None,
         price_hint_ref: None,
-        issuer: "ed25519-test-issuer".to_string(),
+        issuer,
         issued_at: 1_784_880_000,
         expires_at: 1_792_656_000,
         signature: String::new(),
     }
 }
 
+/// Fully constructed finding: draft plus its content-addressed id.
+fn base_finding(issuer: &Keypair) -> Finding {
+    let mut finding = draft_finding_with_issuer(issuer.public_key());
+    finding.finding_id = compute_finding_id(&finding).unwrap_or_default();
+    finding
+}
+
 #[test]
 fn valid_finding_passes_validation() {
-    assert!(base_finding().validate().is_ok());
+    let issuer = Keypair::generate();
+    assert!(base_finding(&issuer).validate().is_ok());
 }
 
 #[test]
 fn wrong_schema_is_rejected() {
-    let mut finding = base_finding();
+    let issuer = Keypair::generate();
+    let mut finding = base_finding(&issuer);
     finding.schema = "chio.finding.v2".to_string();
     assert!(matches!(
         finding.validate(),
@@ -199,42 +213,87 @@ fn wrong_schema_is_rejected() {
 }
 
 #[test]
+fn empty_finding_id_is_rejected() {
+    let issuer = Keypair::generate();
+    let draft = draft_finding_with_issuer(issuer.public_key());
+    assert!(matches!(
+        draft.validate(),
+        Err(FindingError::MalformedDigest("finding_id"))
+    ));
+}
+
+#[test]
+fn stale_finding_id_is_rejected() {
+    let issuer = Keypair::generate();
+    let mut finding = base_finding(&issuer);
+    finding.descriptor.topic = "repo:backbay/chio#other-topic".to_string();
+    assert!(matches!(
+        finding.validate(),
+        Err(FindingError::MalformedDigest("finding_id"))
+    ));
+}
+
+#[test]
 fn malformed_payload_digest_is_rejected() {
-    let mut finding = base_finding();
-    finding.payload_sha256 = "not-hex".to_string();
-    assert!(finding.validate().is_err());
+    let issuer = Keypair::generate();
+    let mut draft = draft_finding_with_issuer(issuer.public_key());
+    draft.payload_sha256 = "not-hex".to_string();
+    draft.finding_id = compute_finding_id(&draft).unwrap_or_default();
+    assert!(matches!(
+        draft.validate(),
+        Err(FindingError::MalformedDigest("payload_sha256"))
+    ));
 }
 
 #[test]
 fn deterministic_replay_requires_recipe() {
-    let mut finding = base_finding();
-    finding.replay_recipe_sha256 = None;
+    let issuer = Keypair::generate();
+    let mut draft = draft_finding_with_issuer(issuer.public_key());
+    draft.replay_recipe_sha256 = None;
+    draft.finding_id = compute_finding_id(&draft).unwrap_or_default();
     assert!(matches!(
-        finding.validate(),
+        draft.validate(),
         Err(FindingError::MissingReplayRecipe)
     ));
 }
 
 #[test]
 fn expiry_must_follow_issuance() {
-    let mut finding = base_finding();
-    finding.expires_at = finding.issued_at;
-    assert!(finding.validate().is_err());
+    let issuer = Keypair::generate();
+    let mut draft = draft_finding_with_issuer(issuer.public_key());
+    draft.expires_at = draft.issued_at;
+    draft.finding_id = compute_finding_id(&draft).unwrap_or_default();
+    assert!(draft.validate().is_err());
 }
 
 #[test]
 fn non_asserted_evidence_requires_receipts() {
-    let mut finding = base_finding();
-    finding.evidence_receipt_ids.clear();
+    let issuer = Keypair::generate();
+    let mut draft = draft_finding_with_issuer(issuer.public_key());
+    draft.evidence_receipt_ids.clear();
+    draft.finding_id = compute_finding_id(&draft).unwrap_or_default();
     assert!(matches!(
-        finding.validate(),
+        draft.validate(),
         Err(FindingError::MissingEvidence)
     ));
 }
 
 #[test]
+fn blank_evidence_receipt_id_is_rejected() {
+    let issuer = Keypair::generate();
+    let mut draft = draft_finding_with_issuer(issuer.public_key());
+    draft.evidence_receipt_ids = vec![String::new()];
+    draft.finding_id = compute_finding_id(&draft).unwrap_or_default();
+    assert!(matches!(
+        draft.validate(),
+        Err(FindingError::EmptyField("evidence_receipt_ids[]"))
+    ));
+}
+
+#[test]
 fn unknown_json_fields_are_rejected() {
-    let mut value = serde_json::to_value(base_finding()).unwrap_or_default();
+    let issuer = Keypair::generate();
+    let mut value = serde_json::to_value(base_finding(&issuer)).unwrap_or_default();
     if let Some(map) = value.as_object_mut() {
         map.insert("surprise".to_string(), serde_json::Value::Bool(true));
     }
@@ -331,8 +390,10 @@ pub struct Finding {
     pub guarantee_class: FindingGuaranteeClass,
     /// Digest of the canonical reveal ENVELOPE, not of raw payload bytes:
     /// sha256_hex(canonical_json_bytes(&reveal_envelope)) where the
-    /// envelope is {finding_id, media_type, payload_b64}. This must equal
-    /// the kernel's content_hash for the reveal response (ARCHITECTURE 4.5).
+    /// envelope is {media_type, payload_b64}. The envelope excludes
+    /// finding_id so this commitment and the content-addressed id do not
+    /// form a hash cycle. Must equal the kernel's content_hash for the
+    /// reveal response (ARCHITECTURE 4.5).
     pub payload_sha256: String,
     pub payload_media_type: String,
     pub evidence_receipt_ids: Vec<String>,
@@ -355,20 +416,35 @@ pub struct Finding {
     pub license_ref: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub price_hint_ref: Option<String>,
-    pub issuer: String,
+    /// Producing agent subject. A real key type, so junk issuers reject
+    /// at parse time (PublicKey deserializes from 64-hex,
+    /// chio-core-types/src/crypto.rs:313-319).
+    pub issuer: PublicKey,
     pub issued_at: u64,
     pub expires_at: u64,
-    /// Signature over the canonical body with `signature` empty; empty
-    /// string means unsigned (validation of the signature itself is the
-    /// envelope layer's job).
+    /// Lowercase-hex Ed25519 signature over the canonical body with
+    /// `signature` cleared, verifiable against `issuer` (Task 3). Empty
+    /// string = unsigned draft; published artifacts are signed. Inline
+    /// signature (disclosure-family precedent, SignedLineageSubgraph)
+    /// so the registered JSON schema validates the artifact as-serialized;
+    /// no SignedExportEnvelope wrapper is used for this family.
     pub signature: String,
 }
+```
+
+Also add to the imports at the top of `types.rs`:
+
+```rust
+use chio_core_types::crypto::PublicKey;
 ```
 
 - [ ] **Step 4: Implement validate.rs**
 
 ```rust
 //! Fail-closed validation for finding-family artifacts.
+
+use chio_core_types::canonical_json_bytes;
+use chio_core_types::crypto::sha256_hex;
 
 use crate::types::{
     Finding, FindingEvidenceClass, FindingGuaranteeClass, FINDING_SCHEMA_V1,
@@ -392,6 +468,12 @@ pub enum FindingError {
     InvalidValidityWindow,
     #[error("canonical JSON serialization failed")]
     Canonicalization,
+    #[error("finding signing failed")]
+    Signing,
+    #[error("finding signature invalid")]
+    SignatureInvalid,
+    #[error("replay challenges require a deterministic_replay finding")]
+    ChallengeClassMismatch,
 }
 
 pub(crate) fn is_hex64(value: &str) -> bool {
@@ -425,6 +507,7 @@ impl Finding {
         if self.schema != FINDING_SCHEMA_V1 {
             return Err(FindingError::UnsupportedSchema(self.schema.clone()));
         }
+        require_hex64(&self.finding_id, "finding_id")?;
         require_non_empty(&self.descriptor.topic, "descriptor.topic")?;
         require_hex64(&self.descriptor.context_sha256, "descriptor.context_sha256")?;
         require_hex64(&self.payload_sha256, "payload_sha256")?;
@@ -433,7 +516,6 @@ impl Finding {
         require_non_empty(&self.evidence_cost.currency, "evidence_cost.currency")?;
         require_non_empty(&self.bond_ref, "bond_ref")?;
         require_non_empty(&self.status_feed_ref, "status_feed_ref")?;
-        require_non_empty(&self.issuer, "issuer")?;
         if self.guarantee_class == FindingGuaranteeClass::DeterministicReplay {
             match &self.replay_recipe_sha256 {
                 Some(recipe) => require_hex64(recipe, "replay_recipe_sha256")?,
@@ -447,11 +529,35 @@ impl Finding {
         {
             return Err(FindingError::MissingEvidence);
         }
+        for receipt_id in &self.evidence_receipt_ids {
+            require_non_empty(receipt_id, "evidence_receipt_ids[]")?;
+        }
         if self.expires_at <= self.issued_at {
             return Err(FindingError::InvalidValidityWindow);
         }
-        Ok(())
+        self.verify_finding_id()
     }
+
+    /// Recompute and compare the content-addressed id, fail-closed.
+    pub fn verify_finding_id(&self) -> Result<(), FindingError> {
+        let expected = compute_finding_id(self)?;
+        if expected == self.finding_id {
+            Ok(())
+        } else {
+            Err(FindingError::MalformedDigest("finding_id"))
+        }
+    }
+}
+
+/// Compute the content-addressed finding id: sha256 over the canonical
+/// JSON of the body with `finding_id` and `signature` cleared.
+pub fn compute_finding_id(finding: &Finding) -> Result<String, FindingError> {
+    let mut body = finding.clone();
+    body.finding_id = String::new();
+    body.signature = String::new();
+    let bytes =
+        canonical_json_bytes(&body).map_err(|_| FindingError::Canonicalization)?;
+    Ok(sha256_hex(&bytes))
 }
 ```
 
@@ -469,100 +575,103 @@ git commit -m "feat(chio-finding): finding artifact type with fail-closed valida
 
 ---
 
-### Task 3: Content-addressed finding id and signed envelope
+### Task 3: Inline artifact signing
 
 **Files:**
 - Modify: `crates/economy/chio-finding/src/validate.rs`
-- Modify: `crates/economy/chio-finding/src/types.rs` (one alias line)
 - Modify: `crates/economy/chio-finding/tests/finding.rs` (append tests)
 
 **Interfaces:**
-- Consumes: `chio_core_types::canonical_json_bytes` (returns `Result<Vec<u8>>`, `canonical.rs:119`), `chio_core_types::crypto::sha256_hex` (`fn(&[u8]) -> String`, `crypto.rs:1197`), and `chio_core_types::receipt::lineage::SignedExportEnvelope` (verified path: `chio-open-market/src/bidding.rs:30` imports it as `crate::receipt::lineage::SignedExportEnvelope` through its `receipt` re-export).
+- Consumes: `chio_core_types::crypto::{Keypair, Signature}` - `Keypair::sign_canonical(&T) -> Result<(Signature, _)>` and `PublicKey::verify_canonical(&T, &Signature) -> Result<bool>` (the same pair `SignedExportEnvelope` uses, `receipt/lineage.rs:420-434`), plus `Signature::from_hex` (`crypto.rs:692`) and `Signature::to_hex` (`crypto.rs:726`).
 - Produces:
-  - `compute_finding_id(&Finding) -> Result<String, FindingError>`
-  - `Finding::verify_finding_id(&self) -> Result<(), FindingError>`
-  - `type SignedFinding = SignedExportEnvelope<Finding>`
+  - `sign_finding(Finding, &Keypair) -> Result<Finding, FindingError>`
+  - `verify_finding_signature(&Finding) -> Result<(), FindingError>`
+- Deliberately NOT produced: no `SignedExportEnvelope` alias for this family. The registered `chio.finding.v1` schema validates the artifact exactly as serialized, so the signature is the inline `signature` field (disclosure-family precedent: `SignedLineageSubgraph`, `chio-disclosure-lineage/src/types.rs:140-163`). An envelope wrapper would serialize as `{body, signerKey, signature}` and every signed artifact would fail the registered schema.
 
 - [ ] **Step 1: Append failing tests**
 
 ```rust
-use chio_finding::SignedFinding;
-
-#[test]
-fn finding_id_is_content_addressed_and_tamper_evident() {
-    let mut finding = base_finding();
-    let id = chio_finding::compute_finding_id(&finding).unwrap_or_default();
-    assert_eq!(id.len(), 64);
-    finding.finding_id = id;
-    assert!(finding.verify_finding_id().is_ok());
-
-    finding.payload_sha256 = hex64('d');
-    assert!(finding.verify_finding_id().is_err());
-}
+use chio_finding::{sign_finding, verify_finding_signature};
 
 #[test]
 fn signed_finding_roundtrip_verifies() {
-    let keypair = chio_finding::crypto::Keypair::generate();
-    let mut finding = base_finding();
-    finding.finding_id = chio_finding::compute_finding_id(&finding).unwrap_or_default();
-    let signed = SignedFinding::sign(finding, &keypair).ok();
-    let signed = match signed {
-        Some(signed) => signed,
-        None => panic!("signing failed"),
+    let issuer = Keypair::generate();
+    let finding = base_finding(&issuer);
+    let signed = match sign_finding(finding, &issuer) {
+        Ok(signed) => signed,
+        Err(err) => panic!("signing failed: {err}"),
     };
-    assert_eq!(signed.verify_signature().ok(), Some(true));
+    assert!(!signed.signature.is_empty());
+    assert!(verify_finding_signature(&signed).is_ok());
+    assert!(signed.validate().is_ok());
+}
+
+#[test]
+fn tampered_signed_finding_fails_verification() {
+    let issuer = Keypair::generate();
+    let mut signed = match sign_finding(base_finding(&issuer), &issuer) {
+        Ok(signed) => signed,
+        Err(err) => panic!("signing failed: {err}"),
+    };
+    signed.expires_at += 1;
+    assert!(matches!(
+        verify_finding_signature(&signed),
+        Err(FindingError::SignatureInvalid)
+    ));
+}
+
+#[test]
+fn signing_requires_the_issuer_key() {
+    let issuer = Keypair::generate();
+    let other = Keypair::generate();
+    assert!(matches!(
+        sign_finding(base_finding(&issuer), &other),
+        Err(FindingError::Signing)
+    ));
 }
 ```
-
-(`Keypair::generate()` exists: `crates/core/chio-core-types/src/crypto.rs:158`.)
 
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `cargo test -p chio-finding --test finding`
-Expected: FAIL to compile ("cannot find function `compute_finding_id`").
+Expected: FAIL to compile ("cannot find function `sign_finding`").
 
-- [ ] **Step 3: Implement id computation and alias**
+- [ ] **Step 3: Implement inline signing**
 
-Append to `validate.rs`:
+Append to `validate.rs` (extend the existing crypto import to `use chio_core_types::crypto::{sha256_hex, Signature};` and add `use chio_core_types::crypto::Keypair;`):
 
 ```rust
-use chio_core_types::canonical_json_bytes;
-use chio_core_types::crypto::sha256_hex;
-
-/// Compute the content-addressed finding id: sha256 over the canonical
-/// JSON of the body with `finding_id` and `signature` cleared.
-pub fn compute_finding_id(finding: &Finding) -> Result<String, FindingError> {
-    let mut body = finding.clone();
-    body.finding_id = String::new();
-    body.signature = String::new();
-    let bytes =
-        canonical_json_bytes(&body).map_err(|_| FindingError::Canonicalization)?;
-    Ok(sha256_hex(&bytes))
+/// Sign the finding inline: signature is over the canonical body with
+/// `signature` cleared. The signer must be the artifact's issuer.
+pub fn sign_finding(
+    mut finding: Finding,
+    keypair: &Keypair,
+) -> Result<Finding, FindingError> {
+    if finding.issuer != keypair.public_key() {
+        return Err(FindingError::Signing);
+    }
+    finding.signature = String::new();
+    let (signature, _) = keypair
+        .sign_canonical(&finding)
+        .map_err(|_| FindingError::Signing)?;
+    finding.signature = signature.to_hex();
+    Ok(finding)
 }
 
-impl Finding {
-    /// Recompute and compare the content-addressed id, fail-closed.
-    pub fn verify_finding_id(&self) -> Result<(), FindingError> {
-        let expected = compute_finding_id(self)?;
-        if expected == self.finding_id {
-            Ok(())
-        } else {
-            Err(FindingError::MalformedDigest("finding_id"))
-        }
+/// Verify the inline signature against the embedded issuer, fail-closed.
+pub fn verify_finding_signature(finding: &Finding) -> Result<(), FindingError> {
+    let signature = Signature::from_hex(&finding.signature)
+        .map_err(|_| FindingError::SignatureInvalid)?;
+    let mut body = finding.clone();
+    body.signature = String::new();
+    match finding.issuer.verify_canonical(&body, &signature) {
+        Ok(true) => Ok(()),
+        _ => Err(FindingError::SignatureInvalid),
     }
 }
 ```
 
-Append to `types.rs` (adjust the import path per the Interfaces note):
-
-```rust
-pub use chio_core_types::receipt::lineage::SignedExportEnvelope;
-
-/// Seller-signed finding envelope.
-pub type SignedFinding = SignedExportEnvelope<Finding>;
-```
-
-(Signature verified: `canonical_json_bytes<T: Serialize>(&T) -> Result<Vec<u8>>` at `crates/core/chio-core-types/src/canonical.rs:119`; the `map_err` stands.)
+(If `sign_canonical`'s tuple/`to_hex` shapes differ at implementation time, mirror exactly what `SignedExportEnvelope::sign`/`verify_signature` do at `receipt/lineage.rs:420-434`; that pair is the source of truth for canonical signing.)
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -573,7 +682,7 @@ Expected: all tests PASS.
 
 ```bash
 git add crates/economy/chio-finding
-git commit -m "feat(chio-finding): content-addressed ids and signed envelopes"
+git commit -m "feat(chio-finding): inline artifact signing verified against the issuer"
 ```
 
 ---
@@ -588,9 +697,9 @@ git commit -m "feat(chio-finding): content-addressed ids and signed envelopes"
 **Interfaces:**
 - Produces:
   - `enum FindingChallengeClass { DigestMismatch, EvidenceInvalid, ReplayContradiction }`
-  - `struct FindingChallenge { .. }` with `validate_against(&self, finding: &Finding)`
-  - `struct FindingStatusEpoch { .. }` with `validate(&self)`
-  - `type SignedFindingChallenge`, `type SignedFindingStatusEpoch`
+  - `struct FindingChallenge { .. }` with `challenger: PublicKey` and `validate_against(&self, finding: &Finding)` - replay contradictions additionally require the finding's `guarantee_class` to be `DeterministicReplay` (a weaker class never advertised the replay guarantee, so it must not be slashable under it)
+  - `struct FindingStatusEpoch { .. }` with `issuer: PublicKey` and `validate(&self)`
+  - No envelope aliases (see Task 3's interface note)
 
 - [ ] **Step 1: Append failing tests**
 
@@ -600,12 +709,12 @@ use chio_finding::{
     FINDING_CHALLENGE_SCHEMA_V1, FINDING_STATUS_EPOCH_SCHEMA_V1,
 };
 
-fn base_challenge(finding: &Finding) -> FindingChallenge {
+fn base_challenge(finding: &Finding, challenger: &Keypair) -> FindingChallenge {
     FindingChallenge {
         schema: FINDING_CHALLENGE_SCHEMA_V1.to_string(),
         challenge_id: "challenge-1".to_string(),
         finding_id: finding.finding_id.clone(),
-        challenger: "ed25519-test-challenger".to_string(),
+        challenger: challenger.public_key(),
         challenge_class: FindingChallengeClass::ReplayContradiction,
         reproduction_receipt_ids: vec!["r-90".to_string()],
         reproduction_checkpoint_ref: "ckpt-9".to_string(),
@@ -619,27 +728,47 @@ fn base_challenge(finding: &Finding) -> FindingChallenge {
 
 #[test]
 fn replay_challenge_must_match_committed_recipe() {
-    let mut finding = base_finding();
-    finding.finding_id = chio_finding::compute_finding_id(&finding).unwrap_or_default();
-    let ok = base_challenge(&finding);
+    let issuer = Keypair::generate();
+    let challenger = Keypair::generate();
+    let finding = base_finding(&issuer);
+    let ok = base_challenge(&finding, &challenger);
     assert!(ok.validate_against(&finding).is_ok());
 
-    let mut wrong = base_challenge(&finding);
+    let mut wrong = base_challenge(&finding, &challenger);
     wrong.replay_recipe_sha256 = hex64('e');
     assert!(wrong.validate_against(&finding).is_err());
 }
 
 #[test]
 fn replay_challenge_requires_reproduction_receipts() {
-    let mut finding = base_finding();
-    finding.finding_id = chio_finding::compute_finding_id(&finding).unwrap_or_default();
-    let mut challenge = base_challenge(&finding);
+    let issuer = Keypair::generate();
+    let challenger = Keypair::generate();
+    let finding = base_finding(&issuer);
+    let mut challenge = base_challenge(&finding, &challenger);
     challenge.reproduction_receipt_ids.clear();
     assert!(challenge.validate_against(&finding).is_err());
 }
 
 #[test]
+fn replay_challenge_requires_replay_guarantee_class() {
+    let issuer = Keypair::generate();
+    let challenger = Keypair::generate();
+    let mut draft = draft_finding_with_issuer(issuer.public_key());
+    // A metered_attested finding that happens to carry a recipe digest
+    // must still refuse replay challenges: the seller never advertised
+    // the replay guarantee (ADR-0017 D3/D4).
+    draft.guarantee_class = FindingGuaranteeClass::MeteredAttested;
+    draft.finding_id = compute_finding_id(&draft).unwrap_or_default();
+    let challenge = base_challenge(&draft, &challenger);
+    assert!(matches!(
+        challenge.validate_against(&draft),
+        Err(FindingError::ChallengeClassMismatch)
+    ));
+}
+
+#[test]
 fn status_epoch_validates() {
+    let oracle = Keypair::generate();
     let epoch = FindingStatusEpoch {
         schema: FINDING_STATUS_EPOCH_SCHEMA_V1.to_string(),
         feed_id: "finding-status/test".to_string(),
@@ -648,7 +777,7 @@ fn status_epoch_validates() {
         issued_at_unix_ms: 1_785_000_000_000,
         valid_until_unix_ms: 1_785_000_600_000,
         anchor_refs: vec![],
-        issuer: "ed25519-test-oracle".to_string(),
+        issuer: oracle.public_key(),
         signature: String::new(),
     };
     assert!(epoch.validate().is_ok());
@@ -684,7 +813,9 @@ pub struct FindingChallenge {
     pub schema: String,
     pub challenge_id: String,
     pub finding_id: String,
-    pub challenger: String,
+    /// Challenging agent subject; a real key type so junk challengers
+    /// reject at parse time.
+    pub challenger: PublicKey,
     pub challenge_class: FindingChallengeClass,
     /// Mediated re-execution receipts; required for replay contradictions.
     pub reproduction_receipt_ids: Vec<String>,
@@ -713,14 +844,15 @@ pub struct FindingStatusEpoch {
     /// Anchor lane references for this root, when anchored.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub anchor_refs: Vec<String>,
-    pub issuer: String,
+    /// Feed-operator subject key.
+    pub issuer: PublicKey,
     pub signature: String,
 }
 
-/// Challenger-signed challenge envelope.
-pub type SignedFindingChallenge = SignedExportEnvelope<FindingChallenge>;
-/// Oracle-signed status-epoch envelope.
-pub type SignedFindingStatusEpoch = SignedExportEnvelope<FindingStatusEpoch>;
+// No envelope aliases for this family: signatures are the inline
+// `signature` fields (Task 3 signs the finding; the challenge and epoch
+// signatures are produced/verified by their M5/M6 consumers with the
+// same sign-canonical-with-signature-cleared discipline).
 ```
 
 Append to `validate.rs`:
@@ -738,13 +870,15 @@ impl FindingChallenge {
             return Err(FindingError::UnsupportedSchema(self.schema.clone()));
         }
         require_non_empty(&self.challenge_id, "challenge_id")?;
-        require_non_empty(&self.challenger, "challenger")?;
         require_non_empty(&self.challenge_bond_ref, "challenge_bond_ref")?;
         require_non_empty(&self.decision_rule_ref, "decision_rule_ref")?;
         if self.finding_id != finding.finding_id {
             return Err(FindingError::MalformedDigest("finding_id"));
         }
         if self.challenge_class == FindingChallengeClass::ReplayContradiction {
+            if finding.guarantee_class != FindingGuaranteeClass::DeterministicReplay {
+                return Err(FindingError::ChallengeClassMismatch);
+            }
             require_non_empty(
                 &self.reproduction_checkpoint_ref,
                 "reproduction_checkpoint_ref",
@@ -769,7 +903,6 @@ impl FindingStatusEpoch {
         }
         require_non_empty(&self.feed_id, "feed_id")?;
         require_hex64(&self.root_hash, "root_hash")?;
-        require_non_empty(&self.issuer, "issuer")?;
         if self.valid_until_unix_ms <= self.issued_at_unix_ms {
             return Err(FindingError::InvalidValidityWindow);
         }
@@ -906,7 +1039,7 @@ Expected: FAIL - code lists three schemas missing from `spec/schemas/registry.js
     "status_feed_ref": { "type": "string", "minLength": 1 },
     "license_ref": { "type": "string", "minLength": 1 },
     "price_hint_ref": { "type": "string", "minLength": 1 },
-    "issuer": { "type": "string", "minLength": 1 },
+    "issuer": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "issued_at": { "type": "integer", "minimum": 0 },
     "expires_at": { "type": "integer", "minimum": 0 },
     "signature": { "type": "string" }
@@ -917,7 +1050,7 @@ Expected: FAIL - code lists three schemas missing from `spec/schemas/registry.js
 }
 ```
 
-Author `challenge.schema.json` and `status-epoch.schema.json` the same way from the Task 4 struct fields (same `$defs/sha256`, same `additionalProperties: false`, `const` schema ids `chio.finding.challenge.v1` / `chio.finding.status-epoch.v1`). Required-field rule: require every field that is neither `Option` nor a default-skipped collection. Concretely: on the status epoch, `anchor_refs` carries `#[serde(default, skip_serializing_if = "Vec::is_empty")]` and is omitted when empty, so it must NOT appear in `required`; every field of `FindingChallenge` is plain and therefore required.
+Author `challenge.schema.json` and `status-epoch.schema.json` the same way from the Task 4 struct fields (same `$defs/sha256`, same `additionalProperties: false`, `const` schema ids `chio.finding.challenge.v1` / `chio.finding.status-epoch.v1`). Required-field rule: require every field that is neither `Option` nor a default-skipped collection. Key-typed fields (`challenger`, the epoch `issuer`) use the same `^[0-9a-f]{64}$` pattern as the finding `issuer` (PublicKey serializes as 64-hex). Concretely: on the status epoch, `anchor_refs` carries `#[serde(default, skip_serializing_if = "Vec::is_empty")]` and is omitted when empty, so it must NOT appear in `required`; every field of `FindingChallenge` is plain and therefore required.
 
 Also add the new schema root to the registry check script: in `scripts/check-chio-schema-registry.sh`, insert `"spec/schemas/chio-finding/",` into the `checked_chio_schema_roots` tuple in alphabetical position (after `"spec/schemas/chio-federation/",`, before `"spec/schemas/chio-lineage/",`). Without this the script does not require chio-finding schemas to be registered, weakening the gate for the new family.
 
@@ -1025,8 +1158,17 @@ Write a small throwaway generator as an ignored test in the same file, run it on
 #[test]
 #[ignore = "regenerates the golden fixture; run manually"]
 fn regenerate_golden_fixture() {
-    let mut finding = base_finding();
-    finding.finding_id = chio_finding::compute_finding_id(&finding).unwrap_or_default();
+    // Deterministic issuer key bytes so regeneration is byte-stable
+    // (PublicKey::from_hex decodes 32 bytes without curve validation,
+    // crypto.rs:405; fine for an UNSIGNED golden). The golden stays
+    // unsigned on purpose: a signed golden would need a checked-in
+    // private key, and the signing roundtrip is covered by Task 3 tests.
+    let issuer = match PublicKey::from_hex(&hex64('9')) {
+        Ok(issuer) => issuer,
+        Err(err) => panic!("fixture issuer: {err}"),
+    };
+    let mut finding = draft_finding_with_issuer(issuer);
+    finding.finding_id = compute_finding_id(&finding).unwrap_or_default();
     let json = serde_json::to_string_pretty(&finding).unwrap_or_default();
     let path = concat!(
         env!("CARGO_MANIFEST_DIR"),

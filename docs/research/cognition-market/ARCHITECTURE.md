@@ -229,7 +229,6 @@ over raw payload bytes. Normative definitions for the family:
 
 ```json
 {
-  "finding_id": "f3a9...",
   "media_type": "text/x-diff",
   "payload_b64": "<base64 of the raw payload bytes>"
 }
@@ -239,6 +238,18 @@ over raw payload bytes. Normative definitions for the family:
   It is the digest of the canonical envelope, NOT of the decoded payload
   bytes. Buyers recover raw bytes by base64-decoding `payload_b64` after
   independently recomputing the envelope digest.
+- The envelope deliberately EXCLUDES `finding_id`. Including it would
+  create a hash cycle: `finding_id` is content-addressed over the artifact
+  body, which contains `payload_sha256`, so an envelope containing
+  `finding_id` would make each digest depend on the other and no artifact
+  could be constructed deterministically. Nothing is lost by the
+  exclusion: which finding was served is already bound three ways - the
+  token constraint equals that finding's commitment, the receipt's
+  `action.parameter_hash` covers the request arguments naming the finding,
+  and the `chio.finding.delivery.v1` block records `finding_id`
+  explicitly. Identical payload bytes across two findings yield the same
+  envelope digest, which is semantically correct (identical bytes are the
+  identical good).
 - Streams are excluded in v1: a streamed output's `content_hash` is a
   concatenation of per-chunk digests, and stream retention caps can
   truncate it into an Incomplete receipt (`stream_receipt_content` and
@@ -412,9 +423,9 @@ facts from the evaluation pipeline decide it.
   back a charge anyway (no reversal on the post-dispatch success path).
   Hooks are therefore NOT a viable home for the gate.
 - **F-B. Constraints are input-side.** `constraint_matches` has no
-  tool-output parameter (`kernel/request_matching.rs:371`); every existing
-  `Constraint` variant evaluates against request arguments/metadata. A
-  constraint alone cannot compare an output hash.
+  tool-output parameter (`chio-kernel/src/request_matching.rs:371`); every
+  existing `Constraint` variant evaluates against request
+  arguments/metadata. A constraint alone cannot compare an output hash.
 - **F-C. The one common surface that computes the served-output digest is
   the receipt-content builder.** `receipt_content_for_output`
   (`receipt_support/receipt_content.rs:3`,
@@ -441,6 +452,19 @@ compatibility is fail-closed in the right direction: the enum has no
 `serde(other)` fallback, so an old kernel hard-rejects a token carrying the
 new variant - an unenforceable delivery refuses to parse rather than
 running unprotected.
+
+Why not the existing `Constraint::Custom(String, String)` (the obvious
+no-new-variant alternative): `Custom` is evaluated input-side as an
+argument-containment check
+(`Constraint::Custom(key, expected) => Ok(argument_contains_custom(...))`,
+`chio-kernel/src/request_matching.rs:420`) - it never sees the output, and
+an old kernel would parse a Custom-carrying token and dispatch WITHOUT any
+digest gate. For a payment-bearing delivery contract that is fail-OPEN
+across version skew, the one failure direction this design refuses. A
+capability `.v2` schema is the heavyweight fallback if the v1 constraint
+vocabulary is declared frozen at M3 time; the formal call is ADR-A
+(PLAN section 4), and the addition ships with its PROTOCOL.md update and
+verdict-matrix rotation either way.
 
 **Enforcement point: a delivery-contract check inside the budgeted
 finalizer, before reconciliation.** Concretely: at the top of the charged
@@ -563,10 +587,15 @@ Consequently the listing integration does NOT extend
   `read_finding`), with `GenericListingSubject.metadata_url` /
   `resolution_url` pointing at the `chio.finding.v1` artifact
   (`listing.rs:199`).
-- The good's identity rides the pricing hint's `capability_scope`
-  (`finding/<finding_id>` prefix) and the finding artifact itself; the bid
-  flow consumes the listing unchanged (`BidRequest` needs zero new fields,
-  already spec-tested).
+- The good's identity rides the pricing hint's `capability_scope` and the
+  finding artifact itself; the bid flow consumes the listing unchanged.
+  Scope strings follow the marketplace's actual colon-segment semantics
+  (`capability_scope_covers` splits on `:` and requires the advertised
+  scope to be a segment-prefix of the requested one,
+  `chio-open-market/src/bidding.rs:534`), so the convention is
+  `finding:<finding_id>` advertised and requested exactly - verified
+  end-to-end through the real `bid()` path by
+  `finding_purchase_clears_the_real_bid_path` in the spec test.
 - Descriptor search (by `context_sha256`) is a finding-index service
   surface (8.1), not a listing-schema change.
 

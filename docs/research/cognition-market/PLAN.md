@@ -29,10 +29,19 @@ external dependencies anticipated before M7.
   --workspace && cargo clippy --workspace -- -D warnings && cargo fmt --all
   -- --check`.
 - Schema evolution: additive optional fields only; new enum variants on
-  frozen wire enums are forbidden (new `.v2` schemas instead); every new
-  schema id registers in `signed_artifact.rs` + `spec/schemas/registry.json`
-  (cross-checked by `cargo test -p chio-core-types --test
-  signed_artifact_schema` and `scripts/check-chio-schema-registry.sh`).
+  frozen `deny_unknown_fields`-style wire enums are forbidden (new `.v2`
+  schemas instead). The `Constraint` vocabulary is the one deliberate
+  exception this program proposes: it is adjacently tagged with
+  hard-reject-on-unknown, so adding `OutputDigestSha256` is a fail-closed
+  vocabulary extension (old kernels refuse the token rather than running
+  the delivery unprotected), gated on ADR-A plus a PROTOCOL.md update and
+  verdict-matrix rotation at M3. `Constraint::Custom` is rejected as the
+  carrier because it is input-side and semantically ignored by old
+  kernels (fail-open; `chio-kernel/src/request_matching.rs:420`). Every
+  new schema id registers in `signed_artifact.rs` +
+  `spec/schemas/registry.json` (cross-checked by `cargo test -p
+  chio-core-types --test signed_artifact_schema` and
+  `scripts/check-chio-schema-registry.sh`).
 - Ship dark until qualified: new surfaces sit behind a cargo feature and
   outside the bounded operational profile until the M9 qualification work
   (`docs/release/QUALIFICATION.md`, bounded gate `cargo xtask qualify
@@ -77,7 +86,9 @@ golden fixture validates against schema and struct.
   `chio-control-plane/src/trust_control/certification_handlers.rs:143`).
 - Listing publish path: finding server listed under `ToolServer` actor kind
   with `metadata_url` pointing at the finding artifact (ARCHITECTURE 7.3);
-  pricing hint carries `capability_scope` prefix `finding/<finding_id>`.
+  pricing hint carries `capability_scope` = `finding:<finding_id>` (colon
+  segments per `capability_scope_covers`, `bidding.rs:534`; verified
+  end-to-end in the spec test).
 - The generic bond-proof admission gate: clear `require_bond_backing` when
   a signed bond artifact matching the fee schedule's requirement is
   presented (`chio-listing/src/trust_activation.rs:558-572` seam). This is
@@ -253,7 +264,7 @@ golden fixture validates against schema and struct.
 
 | ADR | Decision | Milestone | Current lean (from ARCHITECTURE) |
 |---|---|---|---|
-| ADR-A | Constraint variant name + gate placement in the finalizer | M3 | `OutputDigestSha256`, pre-reconcile gate (6.2) |
+| ADR-A | Delivery-binding carrier (Constraint variant vs capability .v2) + gate placement in the finalizer | M3 | `OutputDigestSha256` variant, pre-reconcile gate (6.2); `Custom` rejected as fail-open; `.v2` is the fallback if v1 constraint vocabulary is declared frozen |
 | ADR-B | Status-feed governance: who operates feeds, epoch cadence, anchor lanes, equivocation slashing | M6 | venue-operated, anchored, operator-bonded (threat model O2/O3) |
 | ADR-C | api-protect response-hash binding (zero-code seller hosting) | post-M7 | deferred; native tool server first (6.3) |
 | ADR-D | Auction mechanism (batched uniform-price per topic) | only with M4+ demand data | posted-price holds until data says otherwise (MECHANISMS 3) |
