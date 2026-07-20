@@ -281,6 +281,20 @@ over raw payload bytes. Normative definitions for the family:
    buyer boundary (`crates/trust/chio-attest-buyer/src/api.rs`); issuer
    consistency with evidence lineage (anti-plagiarism, threat model S5);
    guarantee-class claims within `ChioProofClaims` limits.
+   Evidence-sharing modes (the X2 side-channel trade-off made explicit):
+   pre-purchase verification needs receipt bytes, and full receipts carry
+   exact `cost_charged` in their financial metadata, re-leaking what a
+   bucketed `evidence_cost` hides. Sellers therefore choose per listing:
+   (A) full-receipt evidence - everything verifiable pre-purchase, exact
+   cost profile leaks; the wedge default for org-internal contexts; or
+   (B) projected evidence - BBS-projected receipts revealing only the
+   slots verification needs while hiding the `metadata` slot
+   (`chio-selective-disclosure` 14-slot projection), so cost claims
+   verify only at audit or post-purchase. Correspondingly,
+   `evidence_cost` granularity in the artifact is seller-chosen
+   (bucketing is legitimate); no validator requires it to equal the
+   receipt sum pre-purchase, and a wildly false rollup is
+   `evidence_invalid` challenge material once receipts are examined.
 3. Fresh non-inclusion proof from the status feed inside the freshness
    window (`api.rs:116`).
 4. Elicitation ceiling computed (MECHANISMS section 2); if posted price is
@@ -291,7 +305,14 @@ over raw payload bytes. Normative definitions for the family:
 1. `BidRequest` with ceiling against the finding listing
    (`bidding.rs:101`); provider `AskResponse` mints the `read_finding`
    capability: `max_invocations: 1`, `max_total_cost: price`, expiry, and
-   the delivery binding (expected digest) attached per section 6.
+   the delivery binding (expected digest) attached per section 6. Fine
+   print: `bid()` currently mints the grant with `constraints:
+   Vec::new()` hardcoded (`bidding.rs:396`), so the flow needs a small
+   open-market extension - provider-supplied grant constraints on
+   `BidMintContext` - before the seller can inject
+   `OutputDigestSha256(finding.payload_sha256)` at mint time. The buyer's
+   accept-time check (token constraint equals the finding's commitment)
+   is what makes the injection trustworthy.
 2. `accept()` against the kernel funds-reservation receipt
    (`bidding.rs:439`, `AcceptedBid.bid_receipt_id`).
 3. Buyer invokes `read_finding` through the kernel: capability verify ->

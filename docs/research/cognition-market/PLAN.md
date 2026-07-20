@@ -129,7 +129,12 @@ golden fixture validates against schema and struct.
   `register_tool_server`.
 - Purchase flow glue: bid/ask/accept with the seller minting the token
   carrying `OutputDigestSha256` + `max_invocations: 1` +
-  `max_total_cost`; MustPrepay reveal; refund-on-abort test.
+  `max_total_cost`; MustPrepay reveal; refund-on-abort test. Includes the
+  small open-market extension this requires: `bid()` mints grants with
+  `constraints: Vec::new()` hardcoded (`bidding.rs:396`), so
+  `BidMintContext` grows provider-supplied grant constraints, and the
+  buyer's accept path checks the token constraint equals the finding's
+  `payload_sha256`.
 - `chio finding publish|search|verify|buy` CLI following the documented
   family pattern (ARCHITECTURE 8.3).
 - Delivery idempotency decision (ARCHITECTURE F3 step 6): pick and build

@@ -233,6 +233,10 @@ Format: attack -> mitigation (mechanism, path) -> residual.
   (exact values only inside the paid reveal), coarse timestamps, and
   leakage-ledger accounting for every descriptor field
   (`crates/trust/chio-disclosure-lineage/src/types.rs:205` vocabulary).
+  Coupling caveat: full evidence receipts re-leak exact costs through
+  their financial metadata, so sellers choose per listing between
+  full-receipt and BBS-projected evidence modes (ARCHITECTURE F2 step 2);
+  bucketing without projection is self-defeating.
   Residual: the existence of a listing is itself one bit that cannot be
   hidden; the existence tier (MECHANISMS section 3) prices that bit
   instead of denying it. Medium (higher for R&D).
