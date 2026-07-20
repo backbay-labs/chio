@@ -124,10 +124,17 @@ the oracle's exact `SignedEpochRoot` (ARCHITECTURE 4.4).
 
 ### M2 Publish and discover
 
-- Control-plane `POST /v1/findings/publish` (accepts a signed `Finding`,
-  runs the fail-closed `verify_finding` boundary - structure +
-  content-addressed id + issuer signature - then indexes) and `GET/POST /v1/findings/search` (topic prefix +
-  `context_sha256` equality), following the three-step surface pattern
+- Control-plane `POST /v1/findings/publish`: the REUSABLE `Finding`-ingress
+  invariant (review finding) - FIRST schema-validate the raw request JSON
+  against the registered `chio.finding.v1` schema (`chio-spec-validate`),
+  THEN deserialize and run `verify_finding` (structure + content-addressed
+  id + issuer signature), then index. Schema-first is load-bearing:
+  `verify_finding` reserializes canonically, so `PublicKey::from_hex`
+  tolerating `0x`/uppercase and `Option` fields accepting explicit `null`
+  would otherwise pass `verify_finding` while failing the schema. This
+  same ingress invariant applies at M4 (buyer-presented overlay `Finding`)
+  and M5 (challenge-evaluator `Finding`), each with rejection coverage.
+  `GET/POST /v1/findings/search` (topic prefix + `context_sha256` equality), following the three-step surface pattern
   (ARCHITECTURE 8.1; precedent
   `chio-control-plane/src/trust_control/certification_handlers.rs:143`).
 - Listing publish path: finding server listed under `ToolServer` actor kind
@@ -142,11 +149,13 @@ the oracle's exact `SignedEpochRoot` (ARCHITECTURE 4.4).
 - Publication-fee collection: the fee schedule is declarative today
   (MECHANISMS section 6 honesty note); admission settles the publication
   fee as a metered charge so the spam floor is real, not advisory.
-- Liveness at publish/search time: publish rejects
-  `now >= finding.expires_at` fail-closed and search filters expired
-  findings (a correctly signed but expired artifact must not be
-  indexable or pairable with a fresh pricing hint; the M1 validator is
-  clockless by design, so liveness belongs to these surfaces).
+- Liveness at publish/search time, BOTH bounds
+  (`finding.issued_at <= now && now < finding.expires_at`, matching the
+  marketplace helpers): publish rejects future-issued AND expired findings
+  fail-closed and search filters them (a correctly signed but expired OR
+  not-yet-live artifact must not be indexable or pairable with a fresh
+  pricing hint; the M1 validator is clockless by design, so liveness
+  belongs to these surfaces). Future-issued rejection test included.
 - Exit: an integration test publishes a signed finding, searches it by
   context digest, sees `BondBacked` admission flip from review-only to
   admitted with a bond artifact, sees the publication fee settled in a
@@ -170,11 +179,18 @@ the oracle's exact `SignedEpochRoot` (ARCHITECTURE 4.4).
   authorization (mirroring `unwind_aborted_monetary_invocation`); the
   in-function reversal precedent is the no-measured-cost path
   (`validation.rs:1333-1349`).
-- TWO-LAYER coverage (review P1): the universal check lives in
-  `build_allow_response_with_metadata` so EVERY Allow path is gated
-  (charged, `charge_result == None`, MustPrepay without a monetary
-  ceiling, unmeasured provisional); the charged-branch pre-reconcile
-  check preserves clawback. Explicit bypass tests per path.
+- LAYERED coverage (review P1s): the universal check in
+  `build_allow_response_with_metadata` gates EVERY Allow path for
+  soundness, PLUS a money-correctness check before each irreversible
+  settlement so the deny arm keeps its refund handle - before
+  `reconcile_budget_charge` on the charged branch, AND before
+  `settle_prepaid_authorization_without_charge` on the no-ceiling
+  MustPrepay branch (`charge_result == None` with a payment
+  authorization; it settles before `finalize_tool_output_with_metadata`,
+  `validation.rs:~1290`, so a builder-only check would run post-capture
+  with no handle to refund). On mismatch the no-ceiling branch RELEASES
+  the authorization rather than captures. Explicit per-path bypass tests,
+  each asserting the correct refund.
 - Receipt metadata at M3 is the GENERIC `chio.delivery-contract.v1`
   block only (expected digest + digest_check, both kernel-sourced); the
   finding-specific `chio.finding.delivery.v1` overlay moves to M4 where
@@ -188,9 +204,11 @@ the oracle's exact `SignedEpochRoot` (ARCHITECTURE 4.4).
 - Exit: kernel tests prove "Allow implies content_hash equals constraint
   digest" ON EVERY ALLOW PATH (charged, uncharged, MustPrepay-without-
   ceiling, unmeasured provisional - one bypass test each), "mismatch on
-  the charged path implies Deny + hold reversed + prepayment refunded +
-  no realized spend", and "stream output under the constraint implies
-  Deny"; verdict matrix green across required drivers; gate green. The
+  the charged path implies Deny + hold reversed + no realized spend",
+  "mismatch on the no-ceiling MustPrepay branch implies Deny +
+  authorization RELEASED (refund) + not captured", and "stream output
+  under the constraint implies Deny"; verdict matrix green across
+  required drivers; gate green. The
   invariant's formal statement is kernel-attested reveal soundness
   (ARCHITECTURE 6.2) - it claims kernel acceptance of the preimage, not
   buyer delivery.
@@ -216,12 +234,14 @@ the oracle's exact `SignedEpochRoot` (ARCHITECTURE 4.4).
   checks the token constraint equals the finding's `payload_sha256`.
 - `chio finding publish|search|verify|buy` CLI following the documented
   family pattern (ARCHITECTURE 8.3).
-- Delivery idempotency decision (ARCHITECTURE F3 step 6, now
-  load-bearing per review: capture follows the Allow, so until this
-  lands the buyer bears post-Allow availability risk): pick and build
-  one paid-but-lost-payload mitigation (a scoped `Operation::ReadResult`
-  re-read window on the minted grant, or a receipt-keyed seller re-serve
-  policy) and test the buyer-crash-after-Allow path.
+- Delivery idempotency (ARCHITECTURE F3 step 6, load-bearing per review):
+  the M4 DEFAULT is the seller re-serve policy keyed on the delivery
+  receipt (no kernel change) - the `Operation::ReadResult`-on-the-grant
+  option does NOT work today (`grant_matches_request` matches
+  `Invoke`-only, `request_matching.rs:337-347`; no kernel ReadResult
+  path), and a kernel-native receipt-keyed read-result matcher is a
+  deferred kernel change. Test the buyer-crash-after-Allow path against
+  the re-serve policy.
 - `chio.finding.delivery.v1` overlay block (moved here from M3): fields
   sourced from FOUR buyer-presented signed artifacts, each verified
   before the kernel echoes anything (ARCHITECTURE 4.2), with the signed
@@ -238,15 +258,30 @@ the oracle's exact `SignedEpochRoot` (ARCHITECTURE 4.4).
   SUBJECT; `canonical_digest(ask.body) == accepted.ask_digest`;
   agent_id, listing_id, quoted_price cross-bound); (4)
   `SignedListingPricingHint` (same signer as the token issuer;
-  `pricing.listing_id == ask.listing_id`). `finding_id` is stamped from
+  `pricing.listing_id == ask.listing_id`); (5) the funds RESERVATION -
+  the accepted bid's `bid_receipt_id` is buyer-supplied text
+  (`SignedAcceptedBid::sign` is public), NOT reservation-backed until
+  checked, so the mediating kernel proves it from its OWN verified
+  reservation state keyed by `bid_receipt_id` (single-operator wedge),
+  and cross-org additionally presents a `SignedReservationReceipt`
+  cross-bound on receipt id / ask digest / agent / listing / amount
+  (ARCHITECTURE 4.2). `finding_id` is stamped from
   the anchor, never from caller-controlled request arguments. Malformed
   or missing artifacts on a finding purchase DENY (no silent omission).
   Includes registering the metadata block's schema id. The
   `status_proof` sub-block is NOT in M4 (review: this was an M4-to-M6
   cycle) - M6 completes the overlay additively.
-- Liveness at buy time: the purchase path re-checks
-  `now < finding.expires_at` fail-closed before minting/reveal (the M1
-  validator is pure and clockless; liveness is a caller check).
+- Liveness at buy time: the purchase path re-checks BOTH bounds
+  (`finding.issued_at <= now && now < finding.expires_at`) fail-closed
+  before minting/reveal (the M1 validator is pure and clockless; liveness
+  is a caller check), with a future-issued rejection test.
+- Media-type check (ARCHITECTURE 4.5): the buyer/CLI rejects the reveal
+  when `envelope.media_type != finding.payload_media_type`, with a
+  mismatch rejection test (a digest-valid reveal under a misleading
+  advertised type must not auto-apply).
+- Buyer ingress of the overlay `Finding` uses the schema-first invariant
+  (schema-validate raw bytes then `verify_finding`), not `verify_finding`
+  alone.
 - Exit: one command-line round trip on a local kernel: publish, search,
   verify offline, buy, reveal, delivery receipt with `finding_delivery`
   block, budget reconciled; failure-path tests (digest mismatch, seller
@@ -264,8 +299,8 @@ the oracle's exact `SignedEpochRoot` (ARCHITECTURE 4.4).
 - `FabricatedFindingEvidence` abuse class + evidence kinds in
   `chio-open-market` (`penalty.rs:21`, `evidence.rs`).
 - Challenge evaluator: pure fail-closed function consuming a signed
-  `FindingChallenge` + a signed `Finding` (inline signatures, the
-  `verify_finding` boundary) + reproduction receipts,
+  `FindingChallenge` + a signed `Finding` (via the schema-first ingress
+  invariant, not `verify_finding` alone) + reproduction receipts,
   reusing claim-style receipt re-verification
   (`chio-market/src/insurance_flow.rs:390-414` pattern), emitting a
   finding-code result that feeds the existing Sanction -> SlashBond gate

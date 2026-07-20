@@ -118,7 +118,7 @@ signed export envelope in the economy crates):
 | `runtime_assurance_tier` | enum? | tier from appraisal if the producing runtime was attested; the existing CLOSED vocabulary `none`/`basic`/`attested`/`verified` (`chio-core-types/src/capability/runtime_attestation.rs:15-23`) so unsupported tier names fail at parse time |
 | `evidence_class` | enum | `asserted` / `observed` / `verified` linkage class of claim-to-evidence |
 | `replay_recipe_sha256` | hex64? | REQUIRED for `deterministic_replay`: digest of the committed re-execution recipe (tool server id, tool, parameter template, expected verdict predicate) |
-| `intent_commitment_receipt_id` | string? | receipt id of a pre-outcome intent commitment: a mediated call that committed the descriptor/protocol digest BEFORE the producing run completed. Optional but priced: findings with it resist selective fabrication (Registered-Reports logic, MECHANISMS 8.4) and buyers may weight `guarantee_class_bps` up |
+| `intent_commitment_receipt_id` | string? | receipt id of a pre-outcome intent commitment: a mediated call that committed the descriptor/protocol digest BEFORE the producing run completed. Optional but priced, so it earns the `guarantee_class_bps` uplift ONLY when the buyer/publisher SEMANTICALLY verifies it (review finding; the M1 validator only checks non-empty, which is not enough for a priced field): the referenced receipt must resolve, its `timestamp` must precede every `evidence_receipt_ids` receipt, and its `action.parameter_hash` must commit to this finding's `descriptor.context_sha256`. An unverified id earns no uplift (Registered-Reports logic, MECHANISMS 8.4) |
 | `bond_ref` | string | open-market bond requirement id with `slashable: true` |
 | `status_feed_ref` | string | oracle feed id where retraction state is published |
 | `license_ref` | string? | out-of-protocol license terms digest (B2 in threat model) |
@@ -206,10 +206,23 @@ token issuer, `pricing.listing_id == ask.listing_id`) whose
 token's SUBJECT key with `canonical_digest(ask.body) ==
 accepted.ask_digest` and the `agent_id`, `listing_id`, `bid_digest`,
 `quoted_price` cross-binding.
-Only after all four does the kernel stamp `finding_id` (from the anchor,
+(5) the funds reservation - the `bid_receipt_id` inside the accepted bid
+is buyer-supplied text (`SignedAcceptedBid::sign` is public and the buyer
+owns the subject key), so it is NOT reservation-backed until checked
+against real reservation state (review finding; this mirrors what the
+shipped `accept()` does via `VerifiedReservationReceipt`). Single-operator
+(the M4 wedge): the mediating kernel consults its OWN verified reservation
+/ budget-hold state keyed by `bid_receipt_id` - authoritative, no presented
+artifact needed. Cross-org (M7): the buyer additionally presents the
+`SignedReservationReceipt`, and the kernel verifies its signature against
+the settlement reservation authority and cross-binds `receipt_id ==
+accepted.bid_receipt_id`, `ask_digest == accepted.ask_digest`, `agent_id`,
+`listing_id`, and `reserved_amount >= quoted_price`.
+Only after all five does the kernel stamp `finding_id` (from the anchor,
 never from caller-controlled request arguments; two findings may legitimately
 share one `payload_sha256`, 4.5, so the id must come from the signed
-finding, not the digest). Failure handling is profile-dependent and fail-closed:
+finding, not the digest). `accepted_bid_ref` is recorded as
+reservation-backed only because (5) proved it. Failure handling is profile-dependent and fail-closed:
 for a finding purchase (the grant was minted under a finding listing and
 purchase context is expected), malformed or missing purchase artifacts
 DENY the call - silent omission would let a caller downgrade out of the
@@ -423,13 +436,19 @@ over raw payload bytes. Normative definitions for the family:
    (`memory_provenance.rs:63`).
 6. Paid-but-lost-payload edge (fine detail, M4): with `max_invocations: 1`,
    a buyer that crashes between the Allow receipt and persisting the
-   payload has paid for bytes it no longer holds. Mitigation options to
-   decide at M4: mint the grant with `Operation::ReadResult` alongside
-   `Invoke` (the operation exists,
-   `chio-core-types/src/capability/scope.rs:219`) scoped to a short
-   re-read window, or a seller re-serve policy keyed on presentation of
-   the delivery receipt. Neither is built; the failure mode is
-   buyer-loses-availability, never seller-double-paid.
+   payload has paid for bytes it no longer holds. Correction (review
+   finding): the `Operation::ReadResult`-on-the-grant option does NOT
+   work today - `grant_matches_request` matches only grants containing
+   `Operation::Invoke` (`request_matching.rs:337-347`) and there is no
+   kernel `ReadResult` request path, so such a grant authorizes no
+   re-read. The M4 DEFAULT is therefore the seller re-serve policy keyed
+   on presentation of the delivery receipt (no kernel change: the buyer
+   re-invokes `read_finding` and the seller server, seeing a valid
+   delivery receipt for that finding, serves the same bytes; the digest
+   gate still binds them). A kernel-native receipt-keyed read-result
+   matcher is the alternative and is a real kernel change, deferred. The
+   failure mode remains buyer-loses-availability, never
+   seller-double-paid.
 
 ### F4. Challenge, audit, and slash
 
@@ -621,16 +640,27 @@ a charged-branch-only check would let those paths Allow unverified.
   computed receipt content; a digest mismatch or a `Stream` output under
   the constraint routes to the deny builder instead. No Allow can be
   emitted that violates the constraint, on any path.
-- **Layer 2 (charged branch, money-correctness):** at the top of the
-  charged branch of the budgeted finalizer (`kernel/validation.rs`,
-  immediately after the `charge_result` destructure and before
-  `reconcile_budget_charge` at `:1422`), the same check runs BEFORE
-  settlement so the deny arm still has clawback. Layer 1 alone would deny
-  after reconcile on the charged path; layer 2 preserves the refund.
+- **Layer 2 (money-correctness, BEFORE every irreversible settlement):**
+  Layer 1 keeps soundness but on some branches it would deny AFTER the
+  money already moved, losing the refund handle. The gate must therefore
+  also run before each settlement/capture point (review finding: the
+  no-ceiling MustPrepay branch was the missed one):
+  - charged branch: before `reconcile_budget_charge`
+    (`kernel/validation.rs:1422`); on mismatch reverse the charge.
+  - no-ceiling MustPrepay branch (`charge_result == None` with a payment
+    authorization present): before
+    `settle_prepaid_authorization_without_charge`
+    (`validation.rs:~1290`, which runs before
+    `finalize_tool_output_with_metadata`); on mismatch RELEASE the
+    authorization (refund) rather than capture. Without a pre-settlement
+    gate here the prepaid quote is already captured by the time Layer 1
+    denies, and there is no authorization handle left to refund.
+  Both are the same rule - gate before the irreversible money move on that
+  branch - and Layer 1 is the backstop for genuinely-unpaid paths.
 
-M3 must test each former bypass explicitly: charged, `charge_result ==
-None`, MustPrepay-without-ceiling, unmeasured provisional, and stream
-outputs. When the matched grant carries `OutputDigestSha256(expected)`:
+M3 must test each former bypass explicitly WITH its refund: charged
+(hold reversed), no-ceiling MustPrepay (authorization released, not
+captured), unmeasured provisional, and stream outputs. When the matched grant carries `OutputDigestSha256(expected)`:
 
 - A `Stream` output is an immediate mismatch (4.5): deny fail-closed.
 - For a `Value` output, compute the digest with the same
