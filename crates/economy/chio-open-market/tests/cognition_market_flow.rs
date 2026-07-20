@@ -37,7 +37,7 @@ const FINDING_SERVER_ID: &str = "finding-server.seller.example";
 const FINDING_LISTING_ID: &str = "listing-finding-dead-end-0001";
 
 fn hex64(fill: char) -> String {
-    std::iter::repeat(fill).take(64).collect()
+    std::iter::repeat_n(fill, 64).collect()
 }
 
 /// Colon-segment scope for one finding, per the real marketplace

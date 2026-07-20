@@ -151,7 +151,7 @@ use chio_finding::{
 };
 
 fn hex64(fill: char) -> String {
-    std::iter::repeat(fill).take(64).collect()
+    std::iter::repeat_n(fill, 64).collect()
 }
 
 /// Draft with an EMPTY finding_id; not yet valid.
