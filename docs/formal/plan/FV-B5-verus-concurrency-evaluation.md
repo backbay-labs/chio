@@ -1,6 +1,6 @@
 # FV-B5: Verus evaluation for unbounded concurrency conservation
 
-Status: Proposed (2026-07-23; time-boxed evaluation, not a lane)
+Status: Executed (2026-07-23; evaluation complete, no lane created; the FV-E5 enforcement precondition is the sole blocker)
 Theme: B - Aim the formal tools at the actual bug generator
 Effort: M (hard-capped at two weeks; the decision rule below fires at the cap regardless of progress)
 Depends on: [FV-B3](FV-B3-budget-conservation-law.md) (the law and its four lanes), [FV-B4](FV-B4-loom-registry-and-dst.md) (the bounded evidence this evaluation aims to exceed); sequencing: no lane decision until at least one existing lane has completed the [FV-E5](FV-E5-lane-ratchets.md) promotion runbook
@@ -209,16 +209,66 @@ and `releases.toml` entries in its own reviewed change, per the runbook.
 
 ## Acceptance criteria
 
-- [ ] Pinned toolchain with recorded versions, hashes, and cold-install time.
-- [ ] Sequential `ledger_apply` port verified; effort and absorption cost
+- [x] Pinned toolchain with recorded versions, hashes, and cold-install time.
+- [x] Sequential `ledger_apply` port verified; effort and absorption cost
   recorded.
-- [ ] `ReservationLedgerSync` proves partition, terminal uniqueness, and
+- [x] `ReservationLedgerSync` proves partition, terminal uniqueness, and
   fail-closed arithmetic with no bound on schedules or amounts.
-- [ ] Both broken variants fail verification with captured output.
-- [ ] Wall-time measurements for full verification recorded.
-- [ ] The decision rule is applied at or before the two-week cap and the
+- [x] Both broken variants fail verification with captured output.
+- [x] Wall-time measurements for full verification recorded.
+- [x] The decision rule is applied at or before the two-week cap and the
   outcome is recorded in this file, including a negative one.
-- [ ] No manifest, registry, claim, or workflow change lands with the spike.
+- [x] No manifest, registry, claim, or workflow change lands with the spike.
+
+## Outcome (2026-07-23)
+
+The spike executed in a single day, well inside the cap. Artifacts and the
+append-only measurement log live in `formal/experiments/verus-eval/`.
+
+Technical result: the ledger crate verifies 19 items in 1.7 seconds
+(sequential calibration 8, concurrent machine 11) against the pinned
+`release/0.2026.07.18.3a4d30b` toolchain, whose vstd verified locally
+(2055 items, 79.5 seconds). `ReservationLedgerSync` proves the partition
+equation and the u64 fail-closed bound as state invariants and terminal
+uniqueness by token consumption plus id non-reuse, for every interleaving
+with no schedule, actor, or amount bound and no `assume`, `admit`, or
+trusted escape. Both falsification variants are rejected on exactly the
+invariant they attack. One design fact worth keeping: the partition
+equation alone does not catch the terminal mutation (a double disposition
+moves amounts between buckets and rebalances); only the
+outstanding-equals-hold-sum coupling invariant kills it. The falsification
+pass is what forces that stronger invariant to exist.
+
+Decision rule, criterion by criterion:
+
+1. Proofs and falsification: holds.
+2. Toolchain pinning and CI budget: holds for the hosted execution
+   platform. The x86-linux binary asset installs behind the recorded
+   sha256 in seconds and full verification is about 2 seconds. Caveat for
+   aarch64-linux development hosts: upstream ships no arm64-linux binary
+   asset, and the upstream z3 4.12.5 arm64-glibc zip contains an x86-64
+   binary (caught by the installer's architecture gate), so both build
+   from pinned source; the measured one-time cold build is 16 minutes
+   25 seconds, just over the 15-minute line. Both upstream defects are
+   recorded in the experiment's measurement log.
+3. Enforcement precondition: fails, and it is the sole blocker. All
+   fifteen registered lanes are advisory and six are frozen; no lane has
+   completed the FV-E5 promotion runbook. A later revisit does not need a
+   new spike; it needs a promoted lane.
+4. Concurrency-only charter: holds (this spec and the experiment README).
+
+Decision: no lane is created. The artifacts stay archived in place under
+`formal/experiments/verus-eval/` per the archive rule above.
+
+Outcome (b), Creusot retention: negative, as expected. Lane 3's value is
+contracts over an unconditional include of unmodified production code,
+which Verus cannot reproduce; replacing it means absorbing all nine
+contract twins through the `verus!` dialect, which the Phase 1 estimate
+prices at weeks of restructuring across the inputs of all four consuming
+lanes plus vstd entering the production build graph. The warm-up shows
+the contract algebra itself ports in hours, so the obstacle is the input
+contract, not the proofs. Reopen only if the Why3find and four-solver
+chain becomes a measured maintenance problem.
 
 ## Risks and mitigations
 

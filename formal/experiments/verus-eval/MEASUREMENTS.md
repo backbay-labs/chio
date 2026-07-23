@@ -13,6 +13,18 @@ measurement is a red acceptance gate.
 | 2026-07-23 | 1 | `ledger_apply` transcription, step and fold lemmas (8 items) | 2.1 s verify |
 | 2026-07-23 | 2 | Sum lemmas plus `ReservationLedgerSync` (11 items) | 1.8 s verify |
 | 2026-07-23 | 3 | Both mutations rejected on their target invariants | ~4 s each |
+| 2026-07-23 | 0 | Scripted clean-prefix cold install (z3 and Verus source builds, vstd verified) | 16 m 25.65 s |
+| 2026-07-23 | 0 | Second installer run on the existing install (relink path) | 0.016 s |
+| 2026-07-23 | 0 | Corrupted-pin refusal test in an isolated prefix | refused, exit 2 |
+| 2026-07-23 | 4 | Decision rule applied; outcome recorded in the spec | - |
+
+## Phase 0 acceptance notes
+
+- The x86 sha256 gate cannot execute on this host (the platform switch
+  takes the source-build path); the pinned digest was computed directly
+  from the downloaded release asset. A hosted x86 run exercises that gate.
+- The full ledger crate re-verified (19 items, 1.7 s) and the
+  falsification runner passed against the freshly installed toolchain.
 
 ## Phase 1 findings
 

@@ -10,10 +10,12 @@ hygiene pass. All fifteen hygiene items and 22 plan specs are implemented.
 The economy collection proof remains blocked because its required netting
 surface is not present on this branch; scalar conservation helpers and Kani
 groundwork are implemented without claiming the absent collection behavior.
-One further spec, [FV-B5](plan/FV-B5-verus-concurrency-evaluation.md), is
-proposed and not executed: a time-boxed Verus evaluation for unbounded
-concurrency conservation, sequenced behind the FV-E5 promotion runbook. It
-appears in the portfolio table with wave Proposed and claims nothing.
+One further spec, [FV-B5](plan/FV-B5-verus-concurrency-evaluation.md), was
+executed on 2026-07-23 as a time-boxed evaluation: the concurrent
+conservation artifact and both falsification variants verified as
+specified, and no lane was created because the FV-E5 enforcement
+precondition (one promoted lane) is unmet. The spec records the outcome
+and the experiment claims nothing.
 
 Local toolchain-backed evidence is complete. Hosted history is a separate
 advisory signal: ten scheduled gates and five pull-request gates are
@@ -73,7 +75,7 @@ the rationale used during execution.
 | [FV-D1](plan/FV-D1-distributed-revocation-model.md) | Distributed revocation model | D | L | - | 5 |
 | [FV-D4](plan/FV-D4-wasm-noninterference.md) | Wasm boundary non-interference | D | M-L | - | 5 |
 | [FV-C4](plan/FV-C4-policy-smt-analyzer.md) | Policy analyzer feature | C | L | - | 5 |
-| [FV-B5](plan/FV-B5-verus-concurrency-evaluation.md) | Verus concurrency evaluation | B | M | G3 | Proposed |
+| [FV-B5](plan/FV-B5-verus-concurrency-evaluation.md) | Verus concurrency evaluation | B | M | G3 | Evaluated |
 
 ## Dependency sketch
 
