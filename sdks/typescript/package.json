@@ -32,7 +32,8 @@
     "test": "node ./scripts/run-publishable-workspaces.mjs test"
   },
   "overrides": {
-    "postcss": "8.5.16",
+    "fast-uri": "3.1.4",
+    "postcss": "8.5.23",
     "uuid": "11.1.1"
   }
 }

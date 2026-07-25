@@ -4,7 +4,11 @@ use alloc::vec::Vec;
 use serde::{Deserialize, Serialize};
 
 use crate::capability::token::CapabilityToken;
-use crate::capability::{governance::GovernedTransactionIntent, scope::ModelMetadata};
+use crate::capability::{
+    governance::{GovernedApprovalToken, GovernedTransactionIntent, ThresholdApprovalProposal},
+    scope::ModelMetadata,
+    supplemental_authorization::OpaqueSupplementalAuthorization,
+};
 use crate::ServerId;
 
 /// Normalized tool call payload. This is transport-agnostic and suitable for
@@ -17,6 +21,14 @@ pub struct ToolCallOperation {
     pub arguments: serde_json::Value,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub governed_intent: Option<GovernedTransactionIntent>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval_token: Option<GovernedApprovalToken>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub approval_tokens: Vec<GovernedApprovalToken>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threshold_approval_proposal: Option<ThresholdApprovalProposal>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub supplemental_authorization: Option<OpaqueSupplementalAuthorization>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub execution_nonce: Option<serde_json::Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

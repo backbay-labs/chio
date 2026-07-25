@@ -553,19 +553,30 @@ evidence in one receipt document.
 
 #### 3.5.3 Receipt Store Indexing
 
-Add columns to `chio_tool_receipts` in `crates/kernel/chio-kernel/src/receipt_store.rs`:
+The SQLite receipt store derives an order-preserving cost projection from the
+signed financial metadata:
 
 ```sql
 ALTER TABLE chio_tool_receipts
-    ADD COLUMN cost_charged INTEGER;
-ALTER TABLE chio_tool_receipts
     ADD COLUMN cost_currency TEXT;
+ALTER TABLE chio_tool_receipts
+    ADD COLUMN cost_charged_be BLOB;
 
 CREATE INDEX IF NOT EXISTS idx_chio_tool_receipts_cost
-    ON chio_tool_receipts(cost_currency, cost_charged);
+    ON chio_tool_receipts(tenant_id, cost_currency, cost_charged_be, seq);
+
+CREATE INDEX IF NOT EXISTS idx_chio_tool_receipts_cost_global
+    ON chio_tool_receipts(cost_currency, cost_charged_be, seq);
 ```
 
-The `SqliteReceiptStore::append_chio_receipt` method extracts `financial.cost_charged` and `financial.currency` from the receipt metadata at insert time. This enables efficient billing queries without full-JSON scanning.
+`cost_charged_be` is exactly eight big-endian bytes, so lexicographic BLOB order
+matches the complete `u64` numeric domain. Append compares the projection on
+duplicate receipt IDs. Migration reconciles every row transactionally; current
+schema opens verify only the fixed columns, indexes, and immutability-guard
+manifest. `chio receipt audit` performs the explicit full row reconciliation.
+Cost-range queries require an exact three-letter uppercase currency and execute
+their page and count in one reader transaction. Tenant-scoped queries use the
+tenant-leading index; admin-all queries use the global index.
 
 ### 3.6 Payment Rail Integration
 
@@ -1253,7 +1264,7 @@ These deliverables are implemented in the current pre-release v1 branch:
 - `ToolInvocationCost` struct and `invoke_with_cost` default method on `ToolServerConnection`.
 - Kernel cost verification in `evaluate_tool_call_with_session_roots`.
 - `FinancialReceiptMetadata` populated into receipt `metadata` field, including `grant_index`, `cost_charged`, `currency`, `budget_remaining`, `budget_total`, `delegation_depth`, `root_budget_holder`, and `settlement_status`.
-- Receipt store cost indexing columns (`cost_charged`, `cost_currency`).
+- Receipt store cost indexing columns (`cost_charged_be`, `cost_currency`).
 - `VelocityGuard` token-bucket rate limiting in `crates/guards/chio-guards/src/velocity.rs`.
 - Unit and integration tests for all of the above.
 

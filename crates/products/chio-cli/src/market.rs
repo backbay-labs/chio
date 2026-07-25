@@ -29,12 +29,12 @@ use std::path::{Path, PathBuf};
 use chio_appraisal::{
     MarketplaceBasePrice, MarketplaceInvocationPrice, MarketplacePricingContext,
     MarketplacePricingError, MarketplaceReputationTier,
-    compute_checked_marketplace_invocation_price,
 };
+use chio_control_plane::trust_control::TrustControlClient;
 use chio_guard_registry::{GuardPrice, MARKETPLACE_BLOCK_KEY};
 use chio_reputation::{ReputationTier, satisfies_floor};
 use chio_underwriting::{
-    MarketplaceCreditLimitRequest, MarketplaceLimitTier, compute_marketplace_credit_limit,
+    MarketplaceCreditLimitDecision, MarketplaceCreditLimitRequest, MarketplaceLimitTier,
 };
 use serde::{Deserialize, Serialize};
 
@@ -131,6 +131,40 @@ pub enum MarketError {
     InstallDenied(String),
     #[error("marketplace pricing failed: {0}")]
     Pricing(String),
+    #[error("fiscal marketplace evaluation failed: {0}")]
+    Fiscal(String),
+}
+
+trait FiscalMarketplaceRuntime {
+    fn invocation_price(
+        &self,
+        base: &MarketplaceBasePrice,
+        context: &MarketplacePricingContext,
+    ) -> Result<MarketplaceInvocationPrice, MarketError>;
+
+    fn credit_limit(
+        &self,
+        request: &MarketplaceCreditLimitRequest,
+    ) -> Result<MarketplaceCreditLimitDecision, MarketError>;
+}
+
+impl FiscalMarketplaceRuntime for TrustControlClient {
+    fn invocation_price(
+        &self,
+        base: &MarketplaceBasePrice,
+        context: &MarketplacePricingContext,
+    ) -> Result<MarketplaceInvocationPrice, MarketError> {
+        self.fiscal_marketplace_price(base, context)
+            .map_err(|error| MarketError::Fiscal(error.to_string()))
+    }
+
+    fn credit_limit(
+        &self,
+        request: &MarketplaceCreditLimitRequest,
+    ) -> Result<MarketplaceCreditLimitDecision, MarketError> {
+        self.fiscal_marketplace_credit_limit(request)
+            .map_err(|error| MarketError::Fiscal(error.to_string()))
+    }
 }
 
 fn read_catalog(path: &Path) -> Result<Vec<MarketCatalogEntry>, MarketError> {
@@ -161,13 +195,12 @@ fn tier_to_limit(tier: ReputationTier) -> MarketplaceLimitTier {
 fn marketplace_price_for_tenant(
     price: &GuardPrice,
     tenant: &MarketTenantContext,
+    fiscal: &dyn FiscalMarketplaceRuntime,
 ) -> Result<MarketplaceInvocationPrice, MarketError> {
     let base = MarketplaceBasePrice::try_new(price.units, price.currency.clone())?;
     let context =
         MarketplacePricingContext::try_new(&tenant.tenant_id, tier_to_pricing(tenant.tier))?;
-    Ok(compute_checked_marketplace_invocation_price(
-        &base, &context,
-    )?)
+    fiscal.invocation_price(&base, &context)
 }
 
 impl From<MarketplacePricingError> for MarketError {
@@ -201,13 +234,22 @@ pub struct MarketListEntry {
 pub fn market_list(
     catalog_path: &Path,
     tenant: &MarketTenantContext,
+    fiscal: &TrustControlClient,
+) -> Result<MarketListReport, MarketError> {
+    market_list_with_fiscal(catalog_path, tenant, fiscal)
+}
+
+fn market_list_with_fiscal(
+    catalog_path: &Path,
+    tenant: &MarketTenantContext,
+    fiscal: &dyn FiscalMarketplaceRuntime,
 ) -> Result<MarketListReport, MarketError> {
     let entries = read_catalog(catalog_path)?;
     let mut visible: Vec<MarketListEntry> = entries
         .into_iter()
         .filter(|entry| satisfies_floor(tenant.tier, entry.reputation_floor))
         .map(|entry| {
-            let price = marketplace_price_for_tenant(&entry.price, tenant)?;
+            let price = marketplace_price_for_tenant(&entry.price, tenant, fiscal)?;
             Ok(MarketListEntry {
                 reference: entry.reference,
                 name: entry.name,
@@ -257,6 +299,17 @@ pub fn market_info(
     tenant: &MarketTenantContext,
     reference: &str,
     publisher_revoked: bool,
+    fiscal: &TrustControlClient,
+) -> Result<MarketInfoReport, MarketError> {
+    market_info_with_fiscal(catalog_path, tenant, reference, publisher_revoked, fiscal)
+}
+
+fn market_info_with_fiscal(
+    catalog_path: &Path,
+    tenant: &MarketTenantContext,
+    reference: &str,
+    publisher_revoked: bool,
+    fiscal: &dyn FiscalMarketplaceRuntime,
 ) -> Result<MarketInfoReport, MarketError> {
     let entries = read_catalog(catalog_path)?;
     let entry = entries
@@ -266,14 +319,14 @@ pub fn market_info(
         })
         .ok_or_else(|| MarketError::UnknownReference(reference.to_owned()))?;
 
-    let price = marketplace_price_for_tenant(&entry.price, tenant)?;
+    let price = marketplace_price_for_tenant(&entry.price, tenant, fiscal)?;
 
-    let limit = compute_marketplace_credit_limit(&MarketplaceCreditLimitRequest {
+    let limit = fiscal.credit_limit(&MarketplaceCreditLimitRequest {
         tenant_id: tenant.tenant_id.clone(),
         reputation_tier: tier_to_limit(tenant.tier),
         currency: tenant.currency.clone(),
         publisher_revoked,
-    });
+    })?;
 
     Ok(MarketInfoReport {
         schema: MARKET_INFO_REPORT_SCHEMA.to_owned(),
@@ -300,6 +353,25 @@ pub fn market_install(
     tenant: &MarketTenantContext,
     reference: &str,
     publisher_revoked: bool,
+    fiscal: &TrustControlClient,
+) -> Result<MarketInstallRecord, MarketError> {
+    market_install_with_fiscal(
+        catalog_path,
+        bundle_dir,
+        tenant,
+        reference,
+        publisher_revoked,
+        fiscal,
+    )
+}
+
+fn market_install_with_fiscal(
+    catalog_path: &Path,
+    bundle_dir: &Path,
+    tenant: &MarketTenantContext,
+    reference: &str,
+    publisher_revoked: bool,
+    fiscal: &dyn FiscalMarketplaceRuntime,
 ) -> Result<MarketInstallRecord, MarketError> {
     let entries = read_catalog(catalog_path)?;
     let entry = entries
@@ -314,14 +386,14 @@ pub fn market_install(
         )));
     }
 
-    let price = marketplace_price_for_tenant(&entry.price, tenant)?;
+    let price = marketplace_price_for_tenant(&entry.price, tenant, fiscal)?;
 
-    let limit = compute_marketplace_credit_limit(&MarketplaceCreditLimitRequest {
+    let limit = fiscal.credit_limit(&MarketplaceCreditLimitRequest {
         tenant_id: tenant.tenant_id.clone(),
         reputation_tier: tier_to_limit(tenant.tier),
         currency: tenant.currency.clone(),
         publisher_revoked,
-    });
+    })?;
     if limit.limit_units == 0 {
         return Err(MarketError::InstallDenied(format!(
             "credit limit denied: {}",
@@ -534,6 +606,26 @@ mod tests {
     use super::*;
     use tempfile::tempdir;
 
+    struct BootstrapFiscal;
+
+    impl FiscalMarketplaceRuntime for BootstrapFiscal {
+        fn invocation_price(
+            &self,
+            base: &MarketplaceBasePrice,
+            context: &MarketplacePricingContext,
+        ) -> Result<MarketplaceInvocationPrice, MarketError> {
+            chio_appraisal::compute_checked_marketplace_invocation_price(base, context)
+                .map_err(MarketError::from)
+        }
+
+        fn credit_limit(
+            &self,
+            request: &MarketplaceCreditLimitRequest,
+        ) -> Result<MarketplaceCreditLimitDecision, MarketError> {
+            Ok(chio_underwriting::compute_marketplace_credit_limit(request))
+        }
+    }
+
     fn write_catalog(dir: &Path, entries: &[MarketCatalogEntry]) -> PathBuf {
         let path = dir.join("catalog.json");
         let bytes = serde_json::to_vec_pretty(entries).expect("serialize catalog");
@@ -578,7 +670,12 @@ mod tests {
     fn list_filters_by_reputation_tier() {
         let dir = tempdir().expect("tmpdir");
         let path = write_catalog(dir.path(), &fixture_entries());
-        let report = market_list(&path, &tenant_ctx(ReputationTier::Tier0)).expect("list runs");
+        let report = market_list_with_fiscal(
+            &path,
+            &tenant_ctx(ReputationTier::Tier0),
+            &BootstrapFiscal,
+        )
+        .expect("list runs");
         assert_eq!(report.entries.len(), 1);
         assert_eq!(report.entries[0].name, "pii-mask");
     }
@@ -587,7 +684,12 @@ mod tests {
     fn list_includes_higher_floor_for_higher_tier() {
         let dir = tempdir().expect("tmpdir");
         let path = write_catalog(dir.path(), &fixture_entries());
-        let report = market_list(&path, &tenant_ctx(ReputationTier::Tier3)).expect("list runs");
+        let report = market_list_with_fiscal(
+            &path,
+            &tenant_ctx(ReputationTier::Tier3),
+            &BootstrapFiscal,
+        )
+        .expect("list runs");
         assert_eq!(report.entries.len(), 2);
         // Sorted lexically by reference.
         assert!(report.entries[0].reference < report.entries[1].reference);
@@ -597,11 +699,12 @@ mod tests {
     fn info_emits_effective_price_and_credit_limit() {
         let dir = tempdir().expect("tmpdir");
         let path = write_catalog(dir.path(), &fixture_entries());
-        let report = market_info(
+        let report = market_info_with_fiscal(
             &path,
             &tenant_ctx(ReputationTier::Tier1),
             "oci://ghcr.io/chio/pii-mask@sha256:1111111111111111111111111111111111111111111111111111111111111111",
             false,
+            &BootstrapFiscal,
         )
         .expect("info runs");
         // Tier1 -> 5% discount, 1000 -> 950.
@@ -614,11 +717,12 @@ mod tests {
     fn info_unknown_reference_errors() {
         let dir = tempdir().expect("tmpdir");
         let path = write_catalog(dir.path(), &fixture_entries());
-        let result = market_info(
+        let result = market_info_with_fiscal(
             &path,
             &tenant_ctx(ReputationTier::Tier1),
             "oci://ghcr.io/chio/missing@sha256:0000000000000000000000000000000000000000000000000000000000000000",
             false,
+            &BootstrapFiscal,
         );
         assert!(matches!(result, Err(MarketError::UnknownReference(_))));
     }
@@ -633,10 +737,17 @@ mod tests {
         let tenant = tenant_ctx(ReputationTier::Tier1);
         let reference = entries[0].reference.clone();
 
-        let list_result = market_list(&path, &tenant);
+        let list_result = market_list_with_fiscal(&path, &tenant, &BootstrapFiscal);
         assert!(matches!(list_result, Err(MarketError::Pricing(_))));
 
-        let install_result = market_install(&path, &bundle, &tenant, &reference, false);
+        let install_result = market_install_with_fiscal(
+            &path,
+            &bundle,
+            &tenant,
+            &reference,
+            false,
+            &BootstrapFiscal,
+        );
         assert!(matches!(install_result, Err(MarketError::Pricing(_))));
         assert!(
             !bundle.exists(),
@@ -652,14 +763,28 @@ mod tests {
         let tenant = tenant_ctx(ReputationTier::Tier1);
         let reference = "oci://ghcr.io/chio/pii-mask@sha256:1111111111111111111111111111111111111111111111111111111111111111";
 
-        let first =
-            market_install(&catalog, &bundle, &tenant, reference, false).expect("install runs");
+        let first = market_install_with_fiscal(
+            &catalog,
+            &bundle,
+            &tenant,
+            reference,
+            false,
+            &BootstrapFiscal,
+        )
+        .expect("install runs");
         assert!(!first.idempotent_replay);
         assert_eq!(first.registered_price_units, 950);
         assert_eq!(first.credit_limit_units, 50_000);
 
-        let second =
-            market_install(&catalog, &bundle, &tenant, reference, false).expect("re-install runs");
+        let second = market_install_with_fiscal(
+            &catalog,
+            &bundle,
+            &tenant,
+            reference,
+            false,
+            &BootstrapFiscal,
+        )
+        .expect("re-install runs");
         assert!(second.idempotent_replay);
         assert_eq!(second.registered_price_units, first.registered_price_units);
     }
@@ -672,14 +797,28 @@ mod tests {
         let tenant = tenant_ctx(ReputationTier::Tier1);
         let reference = "oci://ghcr.io/chio/pii-mask@sha256:1111111111111111111111111111111111111111111111111111111111111111";
 
-        let first =
-            market_install(&catalog, &bundle, &tenant, reference, false).expect("install runs");
+        let first = market_install_with_fiscal(
+            &catalog,
+            &bundle,
+            &tenant,
+            reference,
+            false,
+            &BootstrapFiscal,
+        )
+        .expect("install runs");
         assert!(!first.idempotent_replay);
         let path = install_record_path(&bundle, &tenant.tenant_id, reference);
         let original_bytes = fs::read(&path).expect("read install record");
 
-        let second =
-            market_install(&catalog, &bundle, &tenant, reference, false).expect("re-install runs");
+        let second = market_install_with_fiscal(
+            &catalog,
+            &bundle,
+            &tenant,
+            reference,
+            false,
+            &BootstrapFiscal,
+        )
+        .expect("re-install runs");
         assert!(second.idempotent_replay);
         let replay_bytes = fs::read(&path).expect("read replayed install record");
         assert_eq!(
@@ -696,7 +835,14 @@ mod tests {
         let tenant = tenant_ctx(ReputationTier::Tier0);
         let reference = "oci://ghcr.io/chio/exfil-blocker@sha256:2222222222222222222222222222222222222222222222222222222222222222";
 
-        let result = market_install(&catalog, &bundle, &tenant, reference, false);
+        let result = market_install_with_fiscal(
+            &catalog,
+            &bundle,
+            &tenant,
+            reference,
+            false,
+            &BootstrapFiscal,
+        );
         assert!(matches!(result, Err(MarketError::InstallDenied(_))));
     }
 
@@ -708,7 +854,14 @@ mod tests {
         let tenant = tenant_ctx(ReputationTier::Tier3);
         let reference = "oci://ghcr.io/chio/exfil-blocker@sha256:2222222222222222222222222222222222222222222222222222222222222222";
 
-        let result = market_install(&catalog, &bundle, &tenant, reference, true);
+        let result = market_install_with_fiscal(
+            &catalog,
+            &bundle,
+            &tenant,
+            reference,
+            true,
+            &BootstrapFiscal,
+        );
         assert!(matches!(result, Err(MarketError::InstallDenied(_))));
     }
 
@@ -720,11 +873,12 @@ mod tests {
         // the entry is undiscoverable for this tenant.
         let dir = tempdir().expect("tmpdir");
         let path = write_catalog(dir.path(), &fixture_entries());
-        let result = market_info(
+        let result = market_info_with_fiscal(
             &path,
             &tenant_ctx(ReputationTier::Tier0),
             "oci://ghcr.io/chio/exfil-blocker@sha256:2222222222222222222222222222222222222222222222222222222222222222",
             false,
+            &BootstrapFiscal,
         );
         assert!(matches!(result, Err(MarketError::UnknownReference(_))));
     }

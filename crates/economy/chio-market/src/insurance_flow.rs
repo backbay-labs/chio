@@ -2,7 +2,7 @@
 //!
 //! This module connects the three shipped economic primitives:
 //!
-//! 1. `chio-underwriting::price_premium` -- risk-based premium quote.
+//! 1. `chio-underwriting::price_fiscal_premium` -- governed risk-based premium quote.
 //! 2. `chio-market` -- binds the quote into a [`BoundPolicy`].
 //! 3. `chio-settle` -- receives a [`ClaimSettlementRequest`] (field-compatible
 //!    with `chio_settle::SettlementCommitment`) after a claim is approved
@@ -39,7 +39,8 @@ use serde::{Deserialize, Serialize};
 use chio_core_types::canonical::canonical_json_bytes;
 use chio_core_types::capability::scope::MonetaryAmount;
 use chio_core_types::crypto::{sha256_hex, PublicKey, Signature};
-use chio_underwriting::{price_premium, LookbackWindow, PremiumInputs, PremiumQuote};
+use chio_fiscal::FiscalResolver;
+use chio_underwriting::{price_fiscal_premium, LookbackWindow, PremiumInputs, PremiumQuote};
 
 use crate::validate_positive_money;
 
@@ -640,9 +641,9 @@ pub struct ClaimSettlement {
     pub settlement_reference: String,
 }
 
-/// Quote a premium for `agent_id`+`scope` using `premium_source`, and
-/// bind the quote into a [`BoundPolicy`] with the provided effective
-/// window.
+/// Quote a premium for `agent_id`+`scope` using `premium_source` and the
+/// verified fiscal `resolver`, then bind the quote into a [`BoundPolicy`]
+/// with the provided effective window.
 ///
 /// Returns `Err(InsuranceFlowError::PremiumDeclined)` if the premium
 /// source is unavailable or the underwriter declines the quote. This
@@ -653,6 +654,7 @@ pub fn quote_and_bind(
     scope: &str,
     lookback_window: LookbackWindow,
     premium_source: &dyn PremiumSource,
+    resolver: &FiscalResolver<'_>,
     effective_at: u64,
     policy_duration_secs: u64,
 ) -> Result<BoundPolicy, InsuranceFlowError> {
@@ -680,7 +682,13 @@ pub fn quote_and_bind(
             ))
         })?;
 
-    let quote = price_premium(agent_id, scope, lookback_window, &inputs);
+    let quote = price_fiscal_premium(agent_id, scope, lookback_window, &inputs, resolver).map_err(
+        |reason| {
+            InsuranceFlowError::PremiumDeclined(format!(
+                "fiscal premium resolution denied: {reason:?}"
+            ))
+        },
+    )?;
     let (quoted_cents, currency) = match &quote {
         PremiumQuote::Quoted {
             quoted_cents,
@@ -757,6 +765,119 @@ mod tests {
     use super::*;
     use chio_core_types::canonical::canonical_json_bytes;
     use chio_core_types::crypto::Keypair;
+    use chio_fiscal::{
+        FiscalActivationHistory, FiscalAuthorityState, FiscalBootstrapState, FiscalCharterRegistry,
+        FiscalContinuitySnapshot, FiscalGenesisPolicy, FiscalRuntimeAdapter,
+        FiscalRuntimeAdapterRegistry, SignedFiscalCharter, SignedFiscalContinuityCheckpoint,
+        SignedFiscalRuntimeReadiness, SignedFiscalSchedule, VerifiedFiscalCharter,
+        VerifiedFiscalContinuityCheckpoint, VerifiedFiscalRuntimeReadiness,
+        FISCAL_RUNTIME_ADAPTER_COUNT,
+    };
+
+    struct FiscalTestState {
+        policy: FiscalGenesisPolicy,
+        readiness: VerifiedFiscalRuntimeReadiness,
+        checkpoint: VerifiedFiscalContinuityCheckpoint,
+        activation_history: FiscalActivationHistory,
+        authority: FiscalAuthorityState,
+        charters: FiscalCharterRegistry,
+        schedules: Vec<SignedFiscalSchedule>,
+    }
+
+    impl FiscalTestState {
+        fn new() -> Self {
+            let fixture = |name: &str| {
+                let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(format!(
+                    "../../../spec/schemas/chio-fiscal/v1/fixtures/{name}.positive.json"
+                ));
+                std::fs::read(path).unwrap()
+            };
+            let policy: FiscalGenesisPolicy =
+                serde_json::from_slice(&fixture("genesis-policy")).unwrap();
+            let charter = VerifiedFiscalCharter::verify(
+                serde_json::from_slice::<SignedFiscalCharter>(&fixture("charter")).unwrap(),
+            )
+            .unwrap();
+            let charters = FiscalCharterRegistry::new(vec![charter.signed().clone()]).unwrap();
+            let registry = FiscalRuntimeAdapterRegistry::new(
+                "build-1".to_owned(),
+                "chio.fiscal.runtime.v1".to_owned(),
+                (0..FISCAL_RUNTIME_ADAPTER_COUNT)
+                    .map(|index| {
+                        FiscalRuntimeAdapter::new(format!("adapter-{index}"), format!("1.{index}"))
+                            .unwrap()
+                    })
+                    .collect(),
+            )
+            .unwrap();
+            let readiness = VerifiedFiscalRuntimeReadiness::verify(
+                serde_json::from_slice::<SignedFiscalRuntimeReadiness>(&fixture(
+                    "consumer-readiness",
+                ))
+                .unwrap(),
+                &policy,
+                registry,
+            )
+            .unwrap();
+            let checkpoint = VerifiedFiscalContinuityCheckpoint::verify(
+                serde_json::from_slice::<SignedFiscalContinuityCheckpoint>(&fixture(
+                    "continuity-checkpoint",
+                ))
+                .unwrap(),
+                &policy,
+                &charters,
+            )
+            .unwrap();
+            let authority = FiscalAuthorityState::from_checkpoint(
+                &policy,
+                &checkpoint,
+                FiscalBootstrapState::CharterPinned,
+            )
+            .unwrap();
+            Self {
+                policy,
+                readiness,
+                checkpoint,
+                activation_history: FiscalActivationHistory::new(Vec::new()).unwrap(),
+                authority,
+                charters,
+                schedules: Vec::new(),
+            }
+        }
+
+        fn resolver(&self) -> FiscalResolver<'_> {
+            FiscalResolver {
+                continuity: FiscalContinuitySnapshot::Verified(&self.checkpoint),
+                policy: &self.policy,
+                readiness: &self.readiness,
+                activation_history: &self.activation_history,
+                authority: &self.authority,
+                charters: &self.charters,
+                schedules: &self.schedules,
+                verify_at: self.checkpoint.body().trusted_clock_high_water,
+            }
+        }
+    }
+
+    fn test_quote_and_bind(
+        agent_id: &str,
+        scope: &str,
+        lookback_window: LookbackWindow,
+        premium_source: &dyn PremiumSource,
+        effective_at: u64,
+        policy_duration_secs: u64,
+    ) -> Result<BoundPolicy, InsuranceFlowError> {
+        let fiscal = FiscalTestState::new();
+        quote_and_bind(
+            agent_id,
+            scope,
+            lookback_window,
+            premium_source,
+            &fiscal.resolver(),
+            effective_at,
+            policy_duration_secs,
+        )
+    }
 
     fn window() -> LookbackWindow {
         LookbackWindow::new(1_000_000, 1_000_600).unwrap()
@@ -846,7 +967,7 @@ mod tests {
 
     #[test]
     fn clean_agent_binds_policy_with_quoted_premium() {
-        let policy = quote_and_bind(
+        let policy = test_quote_and_bind(
             "agent-clean",
             "tool:exec",
             window(),
@@ -865,7 +986,7 @@ mod tests {
 
     #[test]
     fn denial_below_floor_returns_premium_declined() {
-        let error = quote_and_bind(
+        let error = test_quote_and_bind(
             "agent-bad",
             "tool:exec",
             window(),
@@ -879,7 +1000,7 @@ mod tests {
 
     #[test]
     fn rejecting_source_surfaces_fail_closed_decline() {
-        let error = quote_and_bind(
+        let error = test_quote_and_bind(
             "agent",
             "tool:exec",
             window(),
@@ -899,7 +1020,7 @@ mod tests {
     #[test]
     fn file_claim_with_verified_receipt_is_approved_and_submits_settlement() {
         let keypair = Keypair::generate();
-        let policy = quote_and_bind(
+        let policy = test_quote_and_bind(
             "agent-clean",
             "tool:exec",
             window(),
@@ -978,7 +1099,7 @@ mod tests {
     #[test]
     fn file_claim_rejects_malformed_evidence_before_settlement_sink() {
         let keypair = Keypair::generate();
-        let policy = quote_and_bind(
+        let policy = test_quote_and_bind(
             "agent-clean",
             "tool:exec",
             window(),
@@ -1057,7 +1178,7 @@ mod tests {
     #[test]
     fn file_claim_denies_when_receipt_cannot_be_resolved() {
         let keypair = Keypair::generate();
-        let policy = quote_and_bind(
+        let policy = test_quote_and_bind(
             "agent-clean",
             "tool:exec",
             window(),
@@ -1098,7 +1219,7 @@ mod tests {
     fn file_claim_denies_when_receipt_signature_is_tampered() {
         let real = Keypair::generate();
         let imposter = Keypair::generate();
-        let policy = quote_and_bind(
+        let policy = test_quote_and_bind(
             "agent-clean",
             "tool:exec",
             window(),
@@ -1141,7 +1262,7 @@ mod tests {
     #[test]
     fn file_claim_caps_payout_at_coverage_limit() {
         let keypair = Keypair::generate();
-        let policy = quote_and_bind(
+        let policy = test_quote_and_bind(
             "agent-clean",
             "tool:exec",
             window(),
@@ -1183,7 +1304,7 @@ mod tests {
     #[test]
     fn file_claim_denies_after_policy_expires() {
         let keypair = Keypair::generate();
-        let policy = quote_and_bind(
+        let policy = test_quote_and_bind(
             "agent-clean",
             "tool:exec",
             window(),

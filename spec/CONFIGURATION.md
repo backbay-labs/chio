@@ -122,18 +122,10 @@ how long they are retained.
 | `store` | string | No | `"sqlite:///var/chio/receipts.db"` | Store URI |
 | `checkpoint_interval` | u64 | No | `100` | Number of receipts between Merkle checkpoints |
 | `retention_days` | u64 | No | `90` | Days to retain receipts before expiry |
-| `dispatch_intent_journal` | string | No | `"off"` | Which call classes durably journal a dispatch intent before dispatch: `"off"`, `"side_effecting"`, or `"all"` |
 
 The `checkpoint_interval` controls how frequently the runtime computes and
 stores Merkle tree checkpoints over the receipt log. A value of `0` disables
 automatic checkpointing.
-
-The `dispatch_intent_journal` key enables the durable dispatch-intent journal
-(see RFC-0003) so an effect that crashes between dispatch and receipt commit
-leaves a recoverable trace instead of a silent gap. `"off"` writes no intent
-rows; `"side_effecting"` journals side-effecting and monetary calls;
-`"all"` additionally journals read-only calls. An absent key keeps `"off"`.
-An unrecognized value MUST be rejected at config load time.
 
 ---
 

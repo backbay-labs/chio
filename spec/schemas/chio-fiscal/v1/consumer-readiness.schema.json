@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-fiscal/v1/consumer-readiness.schema.json",
+  "title": "Chio Fiscal Consumer Readiness",
+  "$ref": "https://chio.world/schemas/fiscal-defs/v1.schema.json#/$defs/signedFiscalConsumerReadiness"
+}

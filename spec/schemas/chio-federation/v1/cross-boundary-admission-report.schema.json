@@ -11,6 +11,14 @@
         "required": ["accepted"]
       },
       "then": { "required": ["failureCode"] }
+    },
+    {
+      "if": {
+        "properties": { "coSign": { "const": "n_of_m" } },
+        "required": ["coSign"]
+      },
+      "then": { "required": ["coSignQuorum"] },
+      "else": { "not": { "required": ["coSignQuorum"] } }
     }
   ],
   "required": [
@@ -34,9 +42,10 @@
     "actionClassId": { "type": "string", "minLength": 1 },
     "accepted": { "type": "boolean" },
     "failureCode": { "type": "string", "minLength": 1 },
-    "mode": { "type": "string", "minLength": 1 },
-    "consistencyModel": { "type": "string", "minLength": 1 },
-    "coSign": { "type": "string", "minLength": 1 },
+    "mode": { "$ref": "#/$defs/mode" },
+    "consistencyModel": { "$ref": "#/$defs/consistencyModel" },
+    "coSign": { "$ref": "#/$defs/coSign" },
+    "coSignQuorum": { "$ref": "#/$defs/coSignQuorum" },
     "requiredEvidence": {
       "type": "array",
       "items": { "type": "string", "minLength": 1 },
@@ -61,6 +70,25 @@
   },
   "$defs": {
     "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "mode": {
+      "enum": ["observation", "guarded", "receipt_backed", "partition_contingency", "maintenance"]
+    },
+    "consistencyModel": {
+      "enum": ["crdt-commutative", "totally-ordered", "single-kernel", "quorum-required"]
+    },
+    "coSign": {
+      "enum": ["none", "bilateral_if_cross_org", "bilateral_required", "n_of_m"]
+    },
+    "coSignQuorum": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["n", "m", "scope"],
+      "properties": {
+        "n": { "type": "integer", "minimum": 2 },
+        "m": { "type": "integer", "minimum": 2 },
+        "scope": { "enum": ["treaty", "kernel", "operator"] }
+      }
+    },
     "evidenceRef": {
       "type": "object",
       "additionalProperties": false,

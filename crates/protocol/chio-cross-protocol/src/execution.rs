@@ -1,6 +1,7 @@
 use chio_core::capability::{
-    governance::{GovernedApprovalToken, GovernedTransactionIntent},
+    governance::{GovernedApprovalToken, GovernedTransactionIntent, ThresholdApprovalProposal},
     scope::ModelMetadata,
+    supplemental_authorization::OpaqueSupplementalAuthorization,
     token::CapabilityToken,
 };
 use chio_kernel::dpop;
@@ -28,7 +29,35 @@ pub struct CrossProtocolExecutionRequest {
     pub execution_nonce: Option<SignedExecutionNonce>,
     pub governed_intent: Option<GovernedTransactionIntent>,
     pub approval_token: Option<GovernedApprovalToken>,
+    pub approval_tokens: Vec<GovernedApprovalToken>,
+    pub threshold_approval_proposal: Option<ThresholdApprovalProposal>,
+    pub supplemental_authorization: Option<OpaqueSupplementalAuthorization>,
     pub model_metadata: Option<ModelMetadata>,
+}
+
+/// Build the exact kernel request for a bridged execution.
+///
+/// Keeping this projection in one place prevents protocol executors from
+/// selecting one approval, dropping the rest, or reconstructing signed
+/// capability fields.
+pub fn kernel_tool_call_request(request: &CrossProtocolExecutionRequest) -> ToolCallRequest {
+    ToolCallRequest {
+        request_id: request.kernel_request_id.clone(),
+        capability: request.capability.clone(),
+        tool_name: request.target_tool_name.clone(),
+        server_id: request.target_server_id.clone(),
+        agent_id: request.agent_id.clone(),
+        arguments: request.arguments.clone(),
+        dpop_proof: request.dpop_proof.clone(),
+        execution_nonce: request.execution_nonce.clone(),
+        governed_intent: request.governed_intent.clone(),
+        approval_token: request.approval_token.clone(),
+        approval_tokens: request.approval_tokens.clone(),
+        threshold_approval_proposal: request.threshold_approval_proposal.clone(),
+        supplemental_authorization: request.supplemental_authorization.clone(),
+        model_metadata: request.model_metadata.clone(),
+        federated_origin_kernel_id: None,
+    }
 }
 
 /// Fully prepared target-protocol request handed to a protocol-specific executor.
@@ -90,20 +119,7 @@ impl TargetProtocolExecutor for OpenAiTargetExecutor {
         let response = request
             .kernel
             .evaluate_tool_call_blocking_with_metadata(
-                &ToolCallRequest {
-                    request_id: request.execution.kernel_request_id.clone(),
-                    capability: request.execution.capability.clone(),
-                    tool_name: request.execution.target_tool_name.clone(),
-                    server_id: request.execution.target_server_id.clone(),
-                    agent_id: request.execution.agent_id.clone(),
-                    arguments: request.execution.arguments.clone(),
-                    dpop_proof: request.execution.dpop_proof.clone(),
-                    execution_nonce: request.execution.execution_nonce.clone(),
-                    governed_intent: request.execution.governed_intent.clone(),
-                    approval_token: request.execution.approval_token.clone(),
-                    model_metadata: request.execution.model_metadata.clone(),
-                    federated_origin_kernel_id: None,
-                },
+                &kernel_tool_call_request(request.execution),
                 Some(route_metadata),
             )
             .map_err(BridgeError::Kernel)?;

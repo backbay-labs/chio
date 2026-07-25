@@ -109,6 +109,8 @@ that pretends to be the Chio kernel or hosted edge.
 Existing controls:
 
 - capabilities and receipts are signed artifacts rather than unsigned JSON
+- threshold approval proposals are signed by an explicitly trusted active
+  policy authority and bind the complete approval window and eligible set
 - version negotiation is explicit on the hosted edge and exact-match on the
   native lane
 - production tool-server transport is modeled as authenticated transport rather
@@ -121,6 +123,9 @@ Required mitigations:
   the remote peer before authority is treated as valid
 - operator distributions **SHOULD** pin or otherwise securely provision Chio
   verifier keys, service certificates, or equivalent trust anchors
+- approval collectors **MUST** reject stale policy hashes, mutated proposals,
+  ineligible or duplicate signer keys, replayed token IDs or digests, and tokens
+  outside the signed proposal window
 
 Residual risk:
 
@@ -224,12 +229,20 @@ Existing controls:
 
 - trust-control delegated issuance already checks a signed delegation policy
   ceiling when one is supplied
+- delegation-family aggregate budgets derive their owner and immutable maximum
+  from a verified CA-signed direct-root binding
+- descendants preserve the root binding and maximum, and combined quota
+  capture mutates every applicable quota or none
 - core helpers exist for delegation-chain validation and attenuation checks
 - revocation state exists for capability identifiers
 
 Required mitigations:
 
 - delegated issuance **MUST NOT** exceed the signed delegation-policy ceiling
+- family-scoped invocation limits **MUST NOT** derive authority from presented
+  delegation-chain identifiers without the authenticated direct-root token
+- kernels **MUST** reject any changed root commitment field, root-binding
+  signature, descendant binding digest, or immutable family maximum
 - runtime admission **SHOULD** resolve and validate complete parent lineage for
   high-trust delegated flows rather than trust presented metadata alone
 - operators **SHOULD** revoke parent capabilities or delegation branches when
@@ -242,6 +255,8 @@ Residual risk:
   system at every entry point
 - revocation completeness is only as strong as the resolved lineage available
   to the runtime
+- cross-node correctness depends on every admission node sharing the same
+  durable quota and revocation authority
 
 ### 2.7 SSRF via HTTP Substrate
 

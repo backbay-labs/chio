@@ -43,7 +43,12 @@ use std::path::Path;
 use crate::models::HushSpec;
 
 use chio_core::capability::scope::ChioScope;
+use chio_core::capability::threshold_approval::{
+    ThresholdApprovalRequirement, ThresholdApproverIdentity,
+    DEFAULT_THRESHOLD_APPROVAL_TIMEOUT_SECONDS,
+};
 use chio_guards::{GuardPipeline, PostInvocationPipeline};
+use chio_kernel::threshold_approval::ApproverDirectory;
 use chio_kernel::MemoryBudgetConfig;
 
 use budgets::compile_budget_guards;
@@ -66,6 +71,8 @@ pub struct CompiledPolicy {
     pub post_invocation: PostInvocationPipeline,
     /// A default capability scope derived from the policy's tool_access rules.
     pub default_scope: ChioScope,
+    /// Canonical policy-owned threshold approval requirement, when configured.
+    pub threshold_approval: Option<ThresholdApprovalRequirement>,
     /// Ordered list of guard names emitted by compilation.
     ///
     /// The compiler is required to emit a
@@ -111,6 +118,40 @@ pub fn compile_policy_with_memory_budget(
     source_path: Option<&Path>,
     budget: &MemoryBudgetConfig,
 ) -> Result<CompiledPolicy, CompileError> {
+    compile_policy_with_options(policy, source_path, budget, None)
+}
+
+pub fn compile_policy_with_approver_directory(
+    policy: &HushSpec,
+    directory: &dyn ApproverDirectory,
+) -> Result<CompiledPolicy, CompileError> {
+    compile_policy_with_options(
+        policy,
+        None,
+        &MemoryBudgetConfig::defaults(),
+        Some(directory),
+    )
+}
+
+pub fn compile_policy_with_source_and_approver_directory(
+    policy: &HushSpec,
+    source_path: Option<&Path>,
+    directory: &dyn ApproverDirectory,
+) -> Result<CompiledPolicy, CompileError> {
+    compile_policy_with_options(
+        policy,
+        source_path,
+        &MemoryBudgetConfig::defaults(),
+        Some(directory),
+    )
+}
+
+fn compile_policy_with_options(
+    policy: &HushSpec,
+    source_path: Option<&Path>,
+    budget: &MemoryBudgetConfig,
+    approver_directory: Option<&dyn ApproverDirectory>,
+) -> Result<CompiledPolicy, CompileError> {
     ensure_compilable_policy(policy)?;
 
     let mut builder = PipelineBuilder::new();
@@ -120,13 +161,75 @@ pub fn compile_policy_with_memory_budget(
     compile_detection_guards(policy, &mut builder, source_dir)?;
     compile_budget_guards(policy, &mut builder, budget)?;
     let default_scope = compile_scope(policy)?;
+    let threshold_approval = compile_threshold_approval_requirement(policy, approver_directory)?;
     let (guards, guard_names) = builder.finish();
     Ok(CompiledPolicy {
         guards,
         post_invocation,
         default_scope,
+        threshold_approval,
         guard_names,
     })
+}
+
+fn compile_threshold_approval_requirement(
+    policy: &HushSpec,
+    directory: Option<&dyn ApproverDirectory>,
+) -> Result<Option<ThresholdApprovalRequirement>, CompileError> {
+    let Some(approvers) = policy
+        .extensions
+        .as_ref()
+        .and_then(|extensions| extensions.chio.as_ref())
+        .and_then(|chio| chio.human_in_loop.as_ref())
+        .and_then(|human_in_loop| human_in_loop.approvers.as_ref())
+    else {
+        return Ok(None);
+    };
+    let directory = directory.ok_or_else(|| {
+        CompileError::Invalid(
+            "threshold approvers require an authenticated approver directory".to_string(),
+        )
+    })?;
+    let mut resolved = Vec::with_capacity(approvers.of.len());
+    let mut directory_version = None;
+    for identifier in &approvers.of {
+        let identity = directory.resolve_approver(identifier).map_err(|error| {
+            CompileError::Invalid(format!(
+                "threshold approver `{identifier}` could not be resolved: {error}"
+            ))
+        })?;
+        if identity.identifier != *identifier {
+            return Err(CompileError::Invalid(format!(
+                "threshold approver directory changed identifier `{identifier}`"
+            )));
+        }
+        if identity.directory_version.is_empty()
+            || directory_version
+                .as_ref()
+                .is_some_and(|version| version != &identity.directory_version)
+        {
+            return Err(CompileError::Invalid(
+                "threshold approvers did not resolve from one versioned directory".to_string(),
+            ));
+        }
+        directory_version.get_or_insert(identity.directory_version);
+        resolved.push(ThresholdApproverIdentity {
+            identifier: identity.identifier,
+            public_key: identity.public_key,
+        });
+    }
+    let timeout_seconds = approvers
+        .timeout_seconds
+        .unwrap_or(DEFAULT_THRESHOLD_APPROVAL_TIMEOUT_SECONDS);
+    ThresholdApprovalRequirement::new(
+        crate::receipt::compute_policy_hash(policy),
+        approvers.n,
+        resolved,
+        directory_version.unwrap_or_default(),
+        timeout_seconds,
+    )
+    .map(Some)
+    .map_err(CompileError::Invalid)
 }
 
 fn ensure_compilable_policy(policy: &HushSpec) -> Result<(), CompileError> {

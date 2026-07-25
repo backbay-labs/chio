@@ -1,0 +1,19 @@
+[package]
+name = "chio-fincred"
+description = "Wire-neutral financial credential contract types"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_fincred"
+
+[dependencies]
+chio-core-types = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
+
+[lints]
+workspace = true

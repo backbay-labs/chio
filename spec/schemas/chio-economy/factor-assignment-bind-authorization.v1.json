@@ -1,0 +1,61 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-economy/factor-assignment-bind-authorization/v1",
+  "title": "Signed Chio Factor Assignment Bind Authorization V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signerKey", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "action",
+        "operationId",
+        "normalizedRequestDigest",
+        "obligationAtomDigest",
+        "sellerId",
+        "buyerId",
+        "agreementId",
+        "buyerSettlementDestinationRef",
+        "effectiveAtUnixMs",
+        "actionNonce",
+        "issuedAtUnixMs",
+        "expiresAtUnixMs",
+        "authorityId",
+        "authorityKeyEpoch"
+      ],
+      "properties": {
+        "schema": { "const": "chio.factor.assignment-bind-authorization.v1" },
+        "action": { "const": "factor.assignment_bind" },
+        "operationId": { "$ref": "#/$defs/digest" },
+        "normalizedRequestDigest": { "$ref": "#/$defs/digest" },
+        "obligationAtomDigest": { "$ref": "#/$defs/digest" },
+        "sellerId": { "$ref": "#/$defs/text" },
+        "buyerId": { "$ref": "#/$defs/text" },
+        "agreementId": { "$ref": "#/$defs/text" },
+        "buyerSettlementDestinationRef": { "$ref": "#/$defs/text" },
+        "effectiveAtUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "actionNonce": { "$ref": "#/$defs/text" },
+        "issuedAtUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "expiresAtUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "authorityId": { "$ref": "#/$defs/text" },
+        "authorityKeyEpoch": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "signerKey": { "$ref": "#/$defs/cryptoMaterial" },
+    "signature": { "$ref": "#/$defs/cryptoMaterial" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "^[^\\s\\u0000-\\u001F\\u007F-\\u009F](?:[^\\u0000-\\u001F\\u007F-\\u009F]*[^\\s\\u0000-\\u001F\\u007F-\\u009F])?$"
+    },
+    "positiveInteger": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "cryptoMaterial": { "type": "string", "minLength": 1, "maxLength": 16384 }
+  }
+}

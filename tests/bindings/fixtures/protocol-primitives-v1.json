@@ -1,0 +1,244 @@
+{
+  "cases": [
+    {
+      "name": "capability-with-aggregate-budget",
+      "schema_file": "capability/token.schema.json",
+      "valid": true,
+      "instance": {
+        "schema": "chio.capability.v1",
+        "id": "aggregate-capability-1",
+        "issuer": "0101010101010101010101010101010101010101010101010101010101010101",
+        "subject": "0202020202020202020202020202020202020202020202020202020202020202",
+        "scope": {},
+        "issued_at": 100,
+        "expires_at": 200,
+        "aggregate_invocation_budget": {
+          "scope": "capability",
+          "max_invocations": 3
+        },
+        "signature": "03030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303"
+      }
+    },
+    {
+      "name": "capability-with-direct-cumulative-approval",
+      "schema_file": "capability/token.schema.json",
+      "valid": true,
+      "instance": {
+        "schema": "chio.capability.v1",
+        "id": "cumulative-capability-1",
+        "issuer": "0101010101010101010101010101010101010101010101010101010101010101",
+        "subject": "0202020202020202020202020202020202020202020202020202020202020202",
+        "scope": {
+          "grants": [
+            {
+              "server_id": "server-1",
+              "tool_name": "tool-1",
+              "operations": ["invoke"],
+              "constraints": [
+                {
+                  "type": "require_cumulative_approval_above",
+                  "value": {
+                    "threshold": { "units": 100, "currency": "USD" },
+                    "approval_budget_id": "budget-1",
+                    "approval_budget_epoch": 7
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        "issued_at": 100,
+        "expires_at": 200,
+        "signature": "03030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303030303"
+      }
+    },
+    {
+      "name": "aggregate-capability-budget",
+      "schema_file": "capability/aggregate-invocation-budget.schema.json",
+      "valid": true,
+      "instance": {
+        "scope": "capability",
+        "max_invocations": 3
+      }
+    },
+    {
+      "name": "aggregate-budget-with-noninteger-maximum",
+      "schema_file": "capability/aggregate-invocation-budget.schema.json",
+      "valid": false,
+      "instance": {
+        "scope": "capability",
+        "max_invocations": "three"
+      }
+    },
+    {
+      "name": "threshold-proposal",
+      "schema_file": "capability/threshold-approval-proposal.schema.json",
+      "valid": true,
+      "instance": {
+        "schema": "chio.threshold-approval-proposal.v1",
+        "proposal_id": "proposal-1",
+        "request_id": "request-1",
+        "governed_intent_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+        "subject": "2222222222222222222222222222222222222222222222222222222222222222",
+        "authorizing_capability_digest": "3333333333333333333333333333333333333333333333333333333333333333",
+        "policy_hash": "4444444444444444444444444444444444444444444444444444444444444444",
+        "threshold": 2,
+        "eligible_set_digest": "5555555555555555555555555555555555555555555555555555555555555555",
+        "proposal_created_at": 100,
+        "proposal_deadline": 200,
+        "policy_authority": "6666666666666666666666666666666666666666666666666666666666666666",
+        "signature": "77777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777"
+      }
+    },
+    {
+      "name": "threshold-proposal-with-nonstring-capability-binding",
+      "schema_file": "capability/threshold-approval-proposal.schema.json",
+      "valid": false,
+      "instance": {
+        "schema": "chio.threshold-approval-proposal.v1",
+        "proposal_id": "proposal-1",
+        "request_id": "request-1",
+        "governed_intent_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+        "subject": "2222222222222222222222222222222222222222222222222222222222222222",
+        "authorizing_capability_digest": 333,
+        "policy_hash": "4444444444444444444444444444444444444444444444444444444444444444",
+        "threshold": 2,
+        "eligible_set_digest": "5555555555555555555555555555555555555555555555555555555555555555",
+        "proposal_created_at": 100,
+        "proposal_deadline": 200,
+        "policy_authority": "6666666666666666666666666666666666666666666666666666666666666666",
+        "signature": "77777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777777"
+      }
+    },
+    {
+      "name": "governed-approval-token",
+      "schema_file": "capability/governed-approval-token.schema.json",
+      "valid": true,
+      "instance": {
+        "id": "approval-1",
+        "approver": "8888888888888888888888888888888888888888888888888888888888888888",
+        "subject": "2222222222222222222222222222222222222222222222222222222222222222",
+        "governed_intent_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+        "request_id": "request-1",
+        "threshold_proposal_hash": "9999999999999999999999999999999999999999999999999999999999999999",
+        "issued_at": 110,
+        "expires_at": 190,
+        "decision": "approved",
+        "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    {
+      "name": "governed-approval-token-with-nonstring-decision",
+      "schema_file": "capability/governed-approval-token.schema.json",
+      "valid": false,
+      "instance": {
+        "id": "approval-1",
+        "approver": "8888888888888888888888888888888888888888888888888888888888888888",
+        "subject": "2222222222222222222222222222222222222222222222222222222222222222",
+        "governed_intent_hash": "1111111111111111111111111111111111111111111111111111111111111111",
+        "request_id": "request-1",
+        "issued_at": 110,
+        "expires_at": 190,
+        "decision": 7,
+        "signature": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    },
+    {
+      "name": "active-response-intent",
+      "schema_file": "agent/active-response-governed-intent.schema.json",
+      "valid": true,
+      "instance": {
+        "plan_schema": "chio.governed-response-plan.v1",
+        "plan_id": "plan-1",
+        "operator_capability_id": "operator-cap-1",
+        "operator_capability_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "operator_capability_expires_at": 300,
+        "executor_subject": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "canonical_plan_body": { "action": "throttle" },
+        "plan_body_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "target_binding": { "session_id": "session-1" },
+        "ordered_effects": ["throttle_session"],
+        "expires_at": 250,
+        "rollback_binding": { "mode": "automatic" }
+      }
+    },
+    {
+      "name": "active-response-intent-with-nonstring-effect",
+      "schema_file": "agent/active-response-governed-intent.schema.json",
+      "valid": false,
+      "instance": {
+        "plan_schema": "chio.governed-response-plan.v1",
+        "plan_id": "plan-1",
+        "operator_capability_id": "operator-cap-1",
+        "operator_capability_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "operator_capability_expires_at": 300,
+        "executor_subject": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "canonical_plan_body": { "action": "delete" },
+        "plan_body_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "target_binding": { "session_id": "session-1" },
+        "ordered_effects": [7],
+        "expires_at": 250,
+        "rollback_binding": { "mode": "automatic" }
+      }
+    },
+    {
+      "name": "combined-capture-metadata",
+      "schema_file": "kernel/combined-capture-metadata.schema.json",
+      "valid": true,
+      "instance": {
+        "schema": "chio.admission-capture-metadata.v1",
+        "operation_id": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "hold_id": "hold-1",
+        "quota_keys": [
+          {
+            "profile": "chio.grant-invocation.v1",
+            "owner_id": "capability-1",
+            "grant_index": 0
+          }
+        ],
+        "revocation_set_digest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "budget_commit_index": 41,
+        "revocation_commit_index": 41,
+        "leader_epoch": 7
+      }
+    },
+    {
+      "name": "combined-capture-with-noninteger-revocation-commit",
+      "schema_file": "kernel/combined-capture-metadata.schema.json",
+      "valid": false,
+      "instance": {
+        "schema": "chio.admission-capture-metadata.v1",
+        "operation_id": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "hold_id": "hold-1",
+        "quota_keys": [
+          {
+            "profile": "chio.grant-invocation.v1",
+            "owner_id": "capability-1",
+            "grant_index": 0
+          }
+        ],
+        "revocation_set_digest": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "budget_commit_index": 41,
+        "revocation_commit_index": "missing",
+        "leader_epoch": 7
+      }
+    },
+    {
+      "name": "opaque-supplemental-authorization",
+      "schema_file": "capability/supplemental-authorization.schema.json",
+      "valid": true,
+      "instance": {
+        "signed_extension": "AQID"
+      }
+    },
+    {
+      "name": "supplemental-authorization-with-caller-claim",
+      "schema_file": "capability/supplemental-authorization.schema.json",
+      "valid": false,
+      "instance": {
+        "signed_extension": "AQID",
+        "max_invocations": 1000000
+      }
+    }
+  ]
+}

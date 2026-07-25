@@ -25,6 +25,7 @@ pub mod bidding;
 pub mod evaluation;
 pub mod evidence;
 pub mod fee_schedule;
+pub mod fiscal_adapter;
 pub mod penalty;
 pub(crate) mod validation;
 

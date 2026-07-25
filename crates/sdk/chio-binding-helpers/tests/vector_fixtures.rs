@@ -784,6 +784,8 @@ fn signed_delegation_link(
             attenuations: vec![],
             timestamp,
             scope_hash: None,
+            aggregate_budget: None,
+            cumulative_approval: None,
         },
         delegator,
     )
@@ -806,6 +808,7 @@ fn base_capability_body(
         issued_at,
         expires_at,
         delegation_chain,
+        aggregate_invocation_budget: None,
     }
 }
 

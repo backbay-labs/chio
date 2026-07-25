@@ -22,6 +22,8 @@ pub struct GovernedApprovalReceiptMetadata {
     pub token_id: String,
     /// Hex-encoded approver public key.
     pub approver_key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval_artifact_digest: Option<String>,
     /// Whether the token represented a positive approval.
     pub approved: bool,
 }
@@ -53,6 +55,8 @@ pub struct GovernedCommerceReceiptMetadata {
     pub seller: String,
     /// Shared payment token or equivalent external commerce approval reference.
     pub shared_payment_token_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settlement_destination_ref: Option<String>,
 }
 
 /// Optional post-execution usage evidence attached to metered-billing receipts.

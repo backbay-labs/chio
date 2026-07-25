@@ -1,3 +1,4 @@
+use chio_runtime_core::GovernanceLadderQuorum;
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -51,6 +52,8 @@ pub struct CrossBoundaryAdmissionReport {
     pub mode: String,
     pub consistency_model: String,
     pub co_sign: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub co_sign_quorum: Option<GovernanceLadderQuorum>,
     pub required_evidence: Vec<String>,
     pub present_evidence: Vec<String>,
     #[serde(default)]

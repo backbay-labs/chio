@@ -13,7 +13,7 @@ settlement --require risk --require trust-market` and then narrates:
    commerce-mandate-occurrence-limit, commerce-expired-mandate,
    commerce-payment-amount-mismatch) that the verifier REJECTS.
 3. ALLOWED - a kernel-signed terminal receipt (terminal_status `allowed_executed`),
-   authorized via the x402/AP2/ACP verify-only protocol projections.
+   authorized via the x402/AP2/ACP-Commerce verify-only protocol projections.
 4. SETTLED - the offline settlement-packet (status `settled`).
 
 ## Honesty boundary (non-claims)
@@ -21,6 +21,6 @@ settlement --require risk --require trust-market` and then narrates:
 This is a verifier-level proof over an OFFLINE projection. The DENIED and ALLOWED
 receipts are two independent kernel-signed terminal receipts; they carry no amount
 and no mandate reference, so this walkthrough does NOT claim they are two occurrences
-of one mandate. Settlement is a verify-only x402/AP2/ACP projection over an offline
+of one mandate. Settlement is a verify-only x402/AP2/ACP-Commerce projection over an offline
 PSP (stripe-shaped-offline). No funds are held, no live money-stop is claimed, and no
 public availability is asserted. See docs/start-here/PROOF_ROOM_QUICKSTART.md.

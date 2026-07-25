@@ -115,6 +115,15 @@ impl TargetProtocolExecutor for MockMcpExecutor {
                     execution_nonce: request.execution.execution_nonce.clone(),
                     governed_intent: request.execution.governed_intent.clone(),
                     approval_token: request.execution.approval_token.clone(),
+                    approval_tokens: request.execution.approval_tokens.clone(),
+                    threshold_approval_proposal: request
+                        .execution
+                        .threshold_approval_proposal
+                        .clone(),
+                    supplemental_authorization: request
+                        .execution
+                        .supplemental_authorization
+                        .clone(),
                     model_metadata: request.execution.model_metadata.clone(),
                     federated_origin_kernel_id: None,
                 },
@@ -190,7 +199,6 @@ fn test_kernel() -> (Keypair, ChioKernel) {
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     };
     let mut kernel = ChioKernel::new(config);
     kernel.register_tool_server(Box::new(MockToolServer));
@@ -236,6 +244,7 @@ fn capability_for_tool_with_constraints(
             issued_at: now.saturating_sub(30),
             expires_at: now + 300,
             delegation_chain: vec![],
+            aggregate_invocation_budget: None,
         },
         issuer,
     )
@@ -435,6 +444,9 @@ fn orchestrator_rejects_empty_origin_request_id_before_signed_lineage() {
                 execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: None,
             },
         )
@@ -480,6 +492,9 @@ fn orchestrator_rejects_padded_or_control_execution_identity_before_signed_linea
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -540,6 +555,9 @@ fn orchestrator_rejects_forged_capability_ref_parent_hash() {
                 execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: None,
             },
         )
@@ -589,6 +607,9 @@ fn orchestrator_rejects_capability_ref_origin_protocol_drift() {
                 execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: None,
             },
         )
@@ -626,6 +647,9 @@ fn orchestrator_executes_and_preserves_bridge_lineage() {
                 execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: None,
             },
         )
@@ -705,6 +729,9 @@ fn orchestrator_fail_closes_with_empty_attenuation_on_out_of_scope_target() {
                 execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: None,
             },
         )
@@ -749,6 +776,9 @@ fn pending_approval_metadata_is_not_labeled_allow() {
                 execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: None,
             },
         )
@@ -794,6 +824,9 @@ fn orchestrator_dispatches_to_registered_target_executor() {
                 execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: None,
             },
         )
@@ -859,6 +892,9 @@ fn orchestrator_capability_envelope_uses_selected_native_fallback_target() {
                     "allowNativeFallback": true
                 }))),
                 approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: None,
             },
         )
@@ -917,6 +953,9 @@ fn orchestrator_preserves_model_metadata_for_model_constrained_grant() {
                 execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: Some(ModelMetadata {
                     model_id: "gpt-5".to_string(),
                     safety_tier: Some(ModelSafetyTier::High),
@@ -957,6 +996,9 @@ fn orchestrator_denies_unregistered_non_native_target_with_signed_route_selectio
                 execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: None,
             },
         )
@@ -1000,6 +1042,9 @@ fn orchestrator_dispatches_to_registered_openai_target_executor() {
                 execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: None,
             },
         )
@@ -1043,6 +1088,7 @@ fn governed_intent_with_control_plane(control_plane: Value) -> GovernedTransacti
         call_chain: None,
         autonomy: None,
         context: Some(json!({ "chioControlPlane": control_plane })),
+        body: Default::default(),
     }
 }
 

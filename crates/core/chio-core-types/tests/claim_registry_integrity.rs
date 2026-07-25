@@ -162,6 +162,49 @@ fn transaction_passport_required_claim_rows_are_registered() {
 }
 
 #[test]
+fn financial_credential_required_claim_rows_are_registered() {
+    let root = workspace_root();
+    let claim_registry = read_json(&root.join("spec/registries/claim-registry.v1.json"));
+    let proof_manifest = read_json(&root.join("spec/registries/proof-manifest.v1.json"));
+    let claim_ids = claim_registry["claims"]
+        .as_array()
+        .test_expect("claim registry has claims array")
+        .iter()
+        .filter_map(|claim| claim.get("id").and_then(serde_json::Value::as_str))
+        .collect::<BTreeSet<_>>();
+    let manifest_claim_refs = proof_manifest["manifests"]
+        .as_array()
+        .test_expect("proof manifest has manifests array")
+        .iter()
+        .filter_map(|manifest| {
+            manifest
+                .get("claim_ref")
+                .and_then(serde_json::Value::as_str)
+        })
+        .collect::<BTreeSet<_>>();
+    let required_claims = [
+        "claim.fincred.credit_scorecard.verified_projection_bound",
+        "claim.fincred.exposure_history.complete_window_bound",
+        "claim.fincred.premium_history.complete_window_bound",
+        "claim.fincred.loss_history.complete_window_bound",
+        "claim.fincred.settlement_reliability.fail_closed",
+        "claim.fincred.source_manifest.credential_set_bound",
+        "claim.fincred.presentation_challenge.signed_exact",
+    ];
+
+    for claim in required_claims {
+        assert!(
+            claim_ids.contains(claim),
+            "missing claim registry row: {claim}"
+        );
+        assert!(
+            manifest_claim_refs.contains(claim),
+            "missing proof manifest row for claim: {claim}"
+        );
+    }
+}
+
+#[test]
 fn commerce_order_emitted_claim_rows_are_registered() {
     let root = workspace_root();
     let claim_registry = read_json(&root.join("spec/registries/claim-registry.v1.json"));

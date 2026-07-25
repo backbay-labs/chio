@@ -1,0 +1,153 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/receipt/admission-metadata.schema.json",
+  "title": "Chio Durable Admission Receipt Metadata",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "operation_id",
+    "request_id",
+    "request_namespace_digest",
+    "request_binding_hash",
+    "projected_operation_version",
+    "projected_state",
+    "projected_dispatch_state",
+    "trusted_time_unix_ms",
+    "coordinator_lease_id",
+    "coordinator_lease_epoch",
+    "store_fence",
+    "retained_dispatch_commit",
+    "compensation_status",
+    "tool_outcome_id",
+    "tool_outcome_version"
+  ],
+  "properties": {
+    "schema": { "const": "chio.admission-receipt.v1" },
+    "operation_id": { "$ref": "#/$defs/digest" },
+    "request_id": { "$ref": "#/$defs/identifier" },
+    "request_namespace_digest": { "$ref": "#/$defs/digest" },
+    "request_binding_hash": { "$ref": "#/$defs/digest" },
+    "projected_operation_version": { "$ref": "#/$defs/positiveIJsonInteger" },
+    "projected_state": {
+      "enum": [
+        "prepared",
+        "broker_attempt_registered",
+        "approval_required",
+        "budget_authorized",
+        "approval_reserved",
+        "ready_to_dispatch",
+        "capture_pending",
+        "dispatch_committed",
+        "finalizing",
+        "completed",
+        "compensated_before_dispatch",
+        "not_accepted_after_dispatch_commit",
+        "outcome_unknown_after_dispatch",
+        "mutation_ready",
+        "mutation_submitted",
+        "economic_mutation_applied",
+        "economic_mutation_not_applied"
+      ]
+    },
+    "projected_dispatch_state": {
+      "enum": [
+        "not_committed",
+        "capture_pending",
+        "committed",
+        "finalizing",
+        "terminal",
+        "not_applicable"
+      ]
+    },
+    "trusted_time_unix_ms": { "$ref": "#/$defs/positiveIJsonInteger" },
+    "coordinator_lease_id": { "$ref": "#/$defs/identifier" },
+    "coordinator_lease_epoch": { "$ref": "#/$defs/positiveIJsonInteger" },
+    "store_fence": { "$ref": "#/$defs/storeFence" },
+    "retained_dispatch_commit": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/dispatchCommit" }
+      ]
+    },
+    "compensation_status": {
+      "enum": [
+        "not_compensated",
+        "compensated_before_dispatch",
+        "not_accepted_after_dispatch_commit"
+      ]
+    },
+    "tool_outcome_id": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/digest" }
+      ]
+    },
+    "tool_outcome_version": {
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/positiveIJsonInteger" }
+      ]
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512
+    },
+    "positiveIJsonInteger": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "storeFence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["store_uuid", "lease_id", "owner_epoch"],
+      "properties": {
+        "store_uuid": { "$ref": "#/$defs/identifier" },
+        "lease_id": { "$ref": "#/$defs/identifier" },
+        "owner_epoch": { "$ref": "#/$defs/positiveIJsonInteger" }
+      }
+    },
+    "providerAttempt": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["operation_id", "attempt_id", "transport_id", "transport_key_epoch"],
+      "properties": {
+        "operation_id": { "$ref": "#/$defs/digest" },
+        "attempt_id": { "$ref": "#/$defs/identifier" },
+        "transport_id": { "$ref": "#/$defs/identifier" },
+        "transport_key_epoch": { "$ref": "#/$defs/positiveIJsonInteger" }
+      }
+    },
+    "dispatchCommit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "committed_version",
+        "coordinator_lease_id",
+        "coordinator_lease_epoch",
+        "store_fence",
+        "provider_attempt"
+      ],
+      "properties": {
+        "committed_version": { "$ref": "#/$defs/positiveIJsonInteger" },
+        "coordinator_lease_id": { "$ref": "#/$defs/identifier" },
+        "coordinator_lease_epoch": { "$ref": "#/$defs/positiveIJsonInteger" },
+        "store_fence": { "$ref": "#/$defs/storeFence" },
+        "provider_attempt": {
+          "oneOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/providerAttempt" }
+          ]
+        }
+      }
+    }
+  }
+}

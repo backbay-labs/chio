@@ -28,26 +28,29 @@ canonical `chio_spec_codegen::GENERATED_HEADER`; it is not exported from
 
 ## Wire schemas: `chio-wire/v1/`
 
-The native Chio message families defined in `spec/WIRE_PROTOCOL.md`. Forty
+The native Chio message families defined in `spec/WIRE_PROTOCOL.md`. Fifty-one
 schema files across eleven subtrees.
 
-### agent (3)
+### agent (5)
 
-| File                                  | Lines |
-|---------------------------------------|-------|
-| `agent/heartbeat.schema.json`         |    12 |
-| `agent/list_capabilities.schema.json` |    12 |
-| `agent/tool_call_request.schema.json` |   363 |
+| File                                                 | Lines |
+|------------------------------------------------------|-------|
+| `agent/active-response-governed-intent.schema.json`  |    51 |
+| `agent/governed-transaction-intent.schema.json`      |    48 |
+| `agent/heartbeat.schema.json`                        |    12 |
+| `agent/list_capabilities.schema.json`                |    12 |
+| `agent/tool_call_request.schema.json`                |    50 |
 
-### kernel (5)
+### kernel (6)
 
-| File                                    | Lines |
-|-----------------------------------------|-------|
-| `kernel/capability_list.schema.json`    |   345 |
-| `kernel/capability_revoked.schema.json` |    16 |
-| `kernel/heartbeat.schema.json`          |    12 |
-| `kernel/tool_call_chunk.schema.json`    |    21 |
-| `kernel/tool_call_response.schema.json` |   185 |
+| File                                           | Lines |
+|------------------------------------------------|-------|
+| `kernel/capability_list.schema.json`           |    15 |
+| `kernel/capability_revoked.schema.json`        |    16 |
+| `kernel/combined-capture-metadata.schema.json` |    42 |
+| `kernel/heartbeat.schema.json`                 |    12 |
+| `kernel/tool_call_chunk.schema.json`           |    21 |
+| `kernel/tool_call_response.schema.json`        |   185 |
 
 ### result (5)
 
@@ -70,28 +73,36 @@ schema files across eleven subtrees.
 | `error/policy_denied.schema.json`     |    27 |
 | `error/tool_server_error.schema.json` |    16 |
 
-### capability (4)
+### capability (11)
 
 Capability tokens, grants, revocation envelopes, and the capability list
 projection. See `capability/README.md`.
 
-| File                                  | Lines |
-|---------------------------------------|-------|
-| `capability/capabilities.schema.json` |    28 |
-| `capability/grant.schema.json`        |   140 |
-| `capability/revocation.schema.json`   |    20 |
-| `capability/token.schema.json`        |   427 |
+| File                                                   | Lines |
+|--------------------------------------------------------|-------|
+| `capability/aggregate-budget-root.schema.json`         |    47 |
+| `capability/aggregate-invocation-budget.schema.json`   |    27 |
+| `capability/capabilities.schema.json`                  |    28 |
+| `capability/cumulative-approval-root.schema.json`      |    64 |
+| `capability/governed-approval-token.schema.json`       |    41 |
+| `capability/grant.schema.json`                         |   140 |
+| `capability/revocation.schema.json`                    |    20 |
+| `capability/supplemental-authorization.schema.json`    |    17 |
+| `capability/threshold-approval-proposal.schema.json`   |    48 |
+| `capability/token.schema.json`                         |   604 |
+| `capability/verified-approval-set.schema.json`         |    44 |
 
-### receipt (3)
+### receipt (4)
 
 Signed receipts produced after tool calls complete, plus lineage and
 inclusion-proof shapes. See `receipt/README.md`.
 
-| File                                | Lines |
-|-------------------------------------|-------|
-| `receipt/inclusion-proof.schema.json` |  30 |
-| `receipt/lineage_statement.schema.json` | 97 |
-| `receipt/record.schema.json`        |   448 |
+| File                                           | Lines |
+|------------------------------------------------|-------|
+| `receipt/admission-metadata.schema.json`       |   153 |
+| `receipt/inclusion-proof.schema.json`          |    30 |
+| `receipt/lineage_statement.schema.json`        |    97 |
+| `receipt/record.schema.json`                   |   448 |
 
 ### jsonrpc (3)
 
@@ -103,14 +114,15 @@ JSON-RPC framing used by the hosted MCP HTTP edge. See `jsonrpc/README.md`.
 | `jsonrpc/request.schema.json`     |    46 |
 | `jsonrpc/response.schema.json`    |    67 |
 
-### trust-control (4)
+### trust-control (5)
 
-Trust-control plane messages: lease, heartbeat, terminate, and attestation.
+Trust-control plane messages: lease, heartbeat, terminate, attestation, and budget snapshot anchor provenance.
 See `trust-control/README.md`.
 
 | File                                  | Lines |
 |---------------------------------------|-------|
 | `trust-control/attestation.schema.json` |  88 |
+| `trust-control/budget-snapshot-anchor-provenance.schema.json` |  62 |
 | `trust-control/heartbeat.schema.json` |    41 |
 | `trust-control/lease.schema.json`     |    64 |
 | `trust-control/terminate.schema.json` |    52 |
@@ -170,6 +182,7 @@ the per-file schemas live in their respective subtrees.
 | `chio-attest/v1/`       |   10  | Buyer-attestation packets, proof packages, selective-disclosure proofs, and verifier reports. |
 | `chio-comptroller/v1/`  |    1  | `surface-report.schema.json`: unified spend/exposure contract; the signed `ComptrollerSurfaceReport` projection used by the flagship proof demo. |
 | `chio-federation/v1/`   |   22  | Treaty scopes, capability leases, issuance bundles, governance receipts, peer pins, and revocation publication artifacts. |
+| `chio-frost/v1/`        |    4  | Signed rosters, rollback-independent epoch and authorization-slot checkpoints, and threshold authorizations. |
 | `chio-pheromone/v1/`    |   85  | Pheromone deposits, gossip and catchup envelopes, relay configuration, relay-alert and relay-assurance reports, and observation-cost telemetry. |
 | `chio-runtime/v1/`      |   36  | Admission profiles and reports, orchestration plans and run reports, evidence manifests, proof parity and regeneration reports, and trust-floor state. |
 | `chio-replay-report/`   |    1  | `chio-replay-report/v1.schema.json`: the stable JSON report shape emitted by `chio replay --json`. |
@@ -184,7 +197,7 @@ Loose schema files at the root of `spec/schemas/`.
 | `model-card.v1.json`          |    68 | Signed declaration binding a model's loaded weights to an allowed capability set, banned tools, and training-data class. |
 | `receipt-provenance-v1.json`  |    29 | Receipt-provenance record shape. |
 | `chio-tee-frame-v1.json`      |   151 | Capture frame emitted by the chio-tee shadow runner per kernel evaluation. |
-| `registry.json`               |   963 | Verifier-facing registry of signed artifact schema IDs and their schema files. |
+| `registry.json`               |  1533 | Verifier-facing registry of signed artifact schema IDs and their schema files. |
 
 ## Conformance and vector coverage
 

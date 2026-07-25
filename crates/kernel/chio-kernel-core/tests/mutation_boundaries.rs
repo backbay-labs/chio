@@ -1,4 +1,6 @@
-use chio_core_types::capability::scope::{ChioScope, Constraint, Operation, ToolGrant};
+use chio_core_types::capability::scope::{
+    ChioScope, Constraint, MonetaryAmount, Operation, ToolGrant,
+};
 use chio_kernel_core::normalized::{
     NormalizedConstraint, NormalizedMonetaryAmount, NormalizedOperation, NormalizedPromptGrant,
     NormalizedResourceGrant, NormalizedScope, NormalizedToolGrant,
@@ -405,4 +407,37 @@ fn resolve_matching_grants_fails_closed_on_unsupported_constraints() {
         resolve_matching_grants(&scope, "send", "web", &args),
         Err(ScopeMatchError::ConstraintError(_))
     ));
+}
+
+#[test]
+fn resolve_matching_grants_rejects_cumulative_approval_until_enforced() {
+    let scope = ChioScope {
+        grants: vec![grant(
+            "web",
+            "send",
+            vec![Operation::Invoke],
+            vec![Constraint::RequireCumulativeApprovalAbove {
+                threshold: MonetaryAmount {
+                    units: 10,
+                    currency: "USD".to_string(),
+                },
+                approval_budget_id: "budget-1".to_string(),
+                approval_budget_epoch: 1,
+                cumulative_approval_root_binding: None,
+            }],
+        )],
+        ..ChioScope::default()
+    };
+
+    let error =
+        match resolve_matching_grants(&scope, "send", "web", &serde_json::json!({"amount": 10})) {
+            Err(error) => error,
+            Ok(_) => panic!("cumulative approval requires atomic enforcement"),
+        };
+    assert_eq!(
+        error,
+        ScopeMatchError::ConstraintError(
+            "portable kernel cannot safely evaluate require_cumulative_approval_above".to_string()
+        )
+    );
 }

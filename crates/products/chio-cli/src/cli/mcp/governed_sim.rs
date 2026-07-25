@@ -117,19 +117,15 @@ pub(crate) fn cmd_mcp_governed_sim(args: &GovernedSimArgs) -> Result<(), CliErro
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     });
+    // This command is an explicit local payment simulation. Production kernels
+    // keep the safe default and require durable admission before financial dispatch.
+    kernel.enable_unsafe_ephemeral_financial_dispatch_for_development();
     kernel.register_tool_server(Box::new(SimFlatCostServer));
 
     match args.payment_adapter.as_str() {
         "sim" => {
-            kernel
-                .set_payment_adapter(PaymentAdapterConfig::Sim.build_adapter())
-                .map_err(|error| {
-                    CliError::cli_other_error(format!(
-                        "failed to install payment adapter: {error}"
-                    ))
-                })?;
+            kernel.set_payment_adapter(PaymentAdapterConfig::Sim.build_adapter());
         }
         "none" => {}
         other => {
@@ -199,11 +195,13 @@ pub(crate) fn cmd_mcp_governed_sim(args: &GovernedSimArgs) -> Result<(), CliErro
                 expires_at: Some(now + SIM_TTL_SECS),
             },
             max_billed_units: Some(2),
+            verified_outcome: None,
         }),
         runtime_attestation: None,
         call_chain: None,
         autonomy: None,
         context: None,
+        body: Default::default(),
     };
 
     let intent_hash = intent
@@ -217,6 +215,7 @@ pub(crate) fn cmd_mcp_governed_sim(args: &GovernedSimArgs) -> Result<(), CliErro
             subject: agent_kp.public_key(),
             governed_intent_hash: intent_hash,
             request_id: "governed-sim-req-1".to_string(),
+            threshold_proposal_hash: None,
             issued_at: now.saturating_sub(1),
             expires_at: now + SIM_TTL_SECS,
             decision: GovernedApprovalDecision::Approved,
@@ -236,6 +235,9 @@ pub(crate) fn cmd_mcp_governed_sim(args: &GovernedSimArgs) -> Result<(), CliErro
         execution_nonce: None,
         governed_intent: Some(intent),
         approval_token: Some(approval_token),
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };

@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 use alloc::string::String;
 use alloc::vec::Vec;
 
@@ -17,6 +18,17 @@ use crate::signer_binding::{
 
 use super::runtime_attestation::{RuntimeAssuranceTier, RuntimeAttestationEvidence};
 use super::scope::MonetaryAmount;
+
+const GOVERNED_APPROVAL_TOKEN_DIGEST_DOMAIN: &[u8] = b"chio.governed-approval-token.v1\0";
+pub const THRESHOLD_APPROVAL_PROPOSAL_SCHEMA: &str = "chio.threshold-approval-proposal.v1";
+
+const THRESHOLD_APPROVAL_PROPOSAL_DIGEST_DOMAIN: &[u8] = b"chio.threshold-approval-proposal.v1\0";
+const VERIFIED_APPROVAL_SET_DIGEST_DOMAIN: &[u8] = b"chio.verified-approval-set.v1\0";
+const GOVERNED_RESPONSE_PLAN_BODY_DIGEST_DOMAIN: &[u8] = b"chio:response-plan:v1\0";
+
+pub const GOVERNED_RESPONSE_PLAN_SCHEMA: &str = "chio.response-plan.v1";
+pub const ACTIVE_RESPONSE_SERVER_ID: &str = "chio.control-plane.active-response";
+pub const ACTIVE_RESPONSE_PLAN_TOOL_NAME: &str = "apply_plan";
 
 /// Explicit governed autonomy tier requested for one economically sensitive action.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Default)]
@@ -89,6 +101,68 @@ impl MeteredBillingQuote {
     }
 }
 
+pub const VERIFIED_OUTCOME_REQUEST_SCHEMA: &str = "chio.outcome.request.v1";
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct VerifiedOutcomeRequestV1 {
+    pub schema: String,
+    pub listing_id: String,
+    pub listing_digest: String,
+    pub provider_binding_digest: String,
+    pub pricing_id: String,
+    pub pricing_digest: String,
+    pub predicate_id: String,
+    pub predicate_digest: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sla_digest: Option<String>,
+    pub receiver_binding_digest: String,
+}
+
+impl VerifiedOutcomeRequestV1 {
+    pub fn validate(&self) -> Result<()> {
+        if self.schema != VERIFIED_OUTCOME_REQUEST_SCHEMA
+            || self.listing_id.is_empty()
+            || self.listing_id.trim() != self.listing_id
+            || self.listing_id.chars().count() > 2_048
+            || self.listing_id.chars().any(char::is_control)
+        {
+            return Err(Error::CanonicalJson(
+                "invalid verified outcome request identity".into(),
+            ));
+        }
+        let digests = [
+            self.listing_digest.as_str(),
+            self.provider_binding_digest.as_str(),
+            self.pricing_id.as_str(),
+            self.pricing_digest.as_str(),
+            self.predicate_id.as_str(),
+            self.predicate_digest.as_str(),
+            self.receiver_binding_digest.as_str(),
+        ];
+        if digests
+            .into_iter()
+            .chain(self.sla_digest.as_deref())
+            .any(|value| {
+                value.len() != 64
+                    || !value
+                        .bytes()
+                        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            })
+        {
+            return Err(Error::CanonicalJson(
+                "invalid verified outcome request digest".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    pub fn digest(&self) -> Result<String> {
+        self.validate()?;
+        canonical_json_bytes(self).map(|bytes| sha256_hex(&bytes))
+    }
+}
+
 /// Generic metered-billing context attached to a governed request.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -100,6 +174,8 @@ pub struct MeteredBillingContext {
     /// Optional explicit upper bound on billable units for the request.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub max_billed_units: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub verified_outcome: Option<VerifiedOutcomeRequestV1>,
 }
 
 /// Delegated call-chain context bound into a governed request.
@@ -677,6 +753,118 @@ pub struct GovernedAutonomyContext {
     pub delegation_bond_id: Option<String>,
 }
 
+/// Closed response effects that an operator capability may authorize.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GovernedResponseEffect {
+    ThrottleSession,
+    RestrictEgress,
+    SuspendSession,
+    SuspendCapabilitySet,
+    FreezeIssuance,
+}
+
+impl GovernedResponseEffect {
+    #[must_use]
+    pub const fn tool_name(self) -> &'static str {
+        match self {
+            Self::ThrottleSession => "throttle_session",
+            Self::RestrictEgress => "restrict_egress",
+            Self::SuspendSession => "suspend_session",
+            Self::SuspendCapabilitySet => "suspend_capability_set",
+            Self::FreezeIssuance => "freeze_issuance",
+        }
+    }
+}
+
+/// Protocol-owned binding for a governed active-response plan.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GovernedResponsePlanIntentBody {
+    pub plan_schema: String,
+    pub plan_id: String,
+    pub operator_capability_id: String,
+    pub operator_capability_hash: String,
+    pub operator_capability_expires_at: u64,
+    pub executor_subject: PublicKey,
+    pub canonical_plan_body: serde_json::Value,
+    pub plan_body_hash: String,
+    pub target_binding: serde_json::Value,
+    pub ordered_effects: Vec<GovernedResponseEffect>,
+    pub expires_at: u64,
+    pub rollback_binding: serde_json::Value,
+}
+
+impl GovernedResponsePlanIntentBody {
+    pub fn plan_body_hash(canonical_plan_body: &serde_json::Value) -> Result<String> {
+        let canonical = canonical_json_bytes(canonical_plan_body)?;
+        let mut preimage =
+            Vec::with_capacity(GOVERNED_RESPONSE_PLAN_BODY_DIGEST_DOMAIN.len() + canonical.len());
+        preimage.extend_from_slice(GOVERNED_RESPONSE_PLAN_BODY_DIGEST_DOMAIN);
+        preimage.extend_from_slice(&canonical);
+        Ok(sha256_hex(&preimage))
+    }
+
+    pub fn validate(&self) -> Result<()> {
+        if self.plan_schema != GOVERNED_RESPONSE_PLAN_SCHEMA {
+            return Err(Error::CanonicalJson(
+                "governed response plan schema is unsupported".into(),
+            ));
+        }
+        if self.plan_id.is_empty()
+            || self.plan_id.trim() != self.plan_id
+            || self.operator_capability_id.is_empty()
+            || self.operator_capability_id.trim() != self.operator_capability_id
+        {
+            return Err(Error::CanonicalJson(
+                "governed response plan identifiers must be canonical text".into(),
+            ));
+        }
+        if self.ordered_effects.is_empty() || self.ordered_effects.len() > 32 {
+            return Err(Error::CanonicalJson(
+                "governed response plan must contain between 1 and 32 effects".into(),
+            ));
+        }
+        if self.expires_at == 0
+            || self.operator_capability_expires_at == 0
+            || self.expires_at > self.operator_capability_expires_at
+        {
+            return Err(Error::CanonicalJson(
+                "governed response plan expiry exceeds operator capability expiry".into(),
+            ));
+        }
+        if !self.canonical_plan_body.is_object()
+            || !self.target_binding.is_object()
+            || !self.rollback_binding.is_object()
+        {
+            return Err(Error::CanonicalJson(
+                "governed response plan bindings must be canonical objects".into(),
+            ));
+        }
+        if self.plan_body_hash != Self::plan_body_hash(&self.canonical_plan_body)? {
+            return Err(Error::CanonicalJson(
+                "governed response plan body hash does not match its canonical body".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Typed extension carried by a governed transaction intent.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", content = "value", rename_all = "snake_case")]
+pub enum GovernedTransactionIntentBody {
+    #[default]
+    ToolInvocation,
+    ActiveResponsePlan(Box<GovernedResponsePlanIntentBody>),
+}
+
+impl GovernedTransactionIntentBody {
+    fn is_tool_invocation(&self) -> bool {
+        matches!(self, Self::ToolInvocation)
+    }
+}
+
 /// Canonical intent attached to a governed transaction request.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct GovernedTransactionIntent {
@@ -709,13 +897,30 @@ pub struct GovernedTransactionIntent {
     /// Optional structured context for downstream policy or operator inspection.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub context: Option<serde_json::Value>,
+    /// Typed governed-action body. Tool invocation remains the wire-compatible default.
+    #[serde(
+        default,
+        skip_serializing_if = "GovernedTransactionIntentBody::is_tool_invocation"
+    )]
+    pub body: GovernedTransactionIntentBody,
 }
 
 impl GovernedTransactionIntent {
     /// Compute a stable canonical hash for approval-token binding and receipts.
     pub fn binding_hash(&self) -> Result<String> {
+        if let GovernedTransactionIntentBody::ActiveResponsePlan(plan) = &self.body {
+            plan.validate()?;
+        }
         let canonical = canonical_json_bytes(self)?;
         Ok(sha256_hex(&canonical))
+    }
+
+    #[must_use]
+    pub const fn governed_operation_expires_at(&self) -> Option<u64> {
+        match &self.body {
+            GovernedTransactionIntentBody::ToolInvocation => None,
+            GovernedTransactionIntentBody::ActiveResponsePlan(plan) => Some(plan.expires_at),
+        }
     }
 
     /// Extract the reserved upstream call-chain proof from the optional context object.
@@ -768,6 +973,8 @@ pub struct GovernedCommerceContext {
     pub seller: String,
     /// Shared payment token or equivalent external commerce approval reference.
     pub shared_payment_token_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub settlement_destination_ref: Option<String>,
 }
 
 /// Decision encoded by a governed approval token.
@@ -786,6 +993,8 @@ pub struct GovernedApprovalTokenBody {
     pub subject: PublicKey,
     pub governed_intent_hash: String,
     pub request_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threshold_proposal_hash: Option<String>,
     pub issued_at: u64,
     pub expires_at: u64,
     pub decision: GovernedApprovalDecision,
@@ -799,6 +1008,8 @@ pub struct GovernedApprovalToken {
     pub subject: PublicKey,
     pub governed_intent_hash: String,
     pub request_id: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub threshold_proposal_hash: Option<String>,
     pub issued_at: u64,
     pub expires_at: u64,
     pub decision: GovernedApprovalDecision,
@@ -820,6 +1031,7 @@ impl GovernedApprovalToken {
             subject: self.subject.clone(),
             governed_intent_hash: self.governed_intent_hash.clone(),
             request_id: self.request_id.clone(),
+            threshold_proposal_hash: self.threshold_proposal_hash.clone(),
             issued_at: self.issued_at,
             expires_at: self.expires_at,
             decision: self.decision,
@@ -841,6 +1053,7 @@ impl GovernedApprovalToken {
             subject: body.subject,
             governed_intent_hash: body.governed_intent_hash,
             request_id: body.request_id,
+            threshold_proposal_hash: body.threshold_proposal_hash,
             issued_at: body.issued_at,
             expires_at: body.expires_at,
             decision: body.decision,
@@ -869,6 +1082,7 @@ impl GovernedApprovalToken {
             subject: body.subject,
             governed_intent_hash: body.governed_intent_hash,
             request_id: body.request_id,
+            threshold_proposal_hash: body.threshold_proposal_hash,
             issued_at: body.issued_at,
             expires_at: body.expires_at,
             decision: body.decision,
@@ -880,6 +1094,15 @@ impl GovernedApprovalToken {
     pub fn verify_signature(&self) -> Result<bool> {
         let body = self.body();
         self.approver.verify_canonical(&body, &self.signature)
+    }
+
+    pub fn artifact_digest(&self) -> Result<String> {
+        let canonical = canonical_json_bytes(self)?;
+        let mut preimage =
+            Vec::with_capacity(GOVERNED_APPROVAL_TOKEN_DIGEST_DOMAIN.len() + canonical.len());
+        preimage.extend_from_slice(GOVERNED_APPROVAL_TOKEN_DIGEST_DOMAIN);
+        preimage.extend_from_slice(&canonical);
+        Ok(sha256_hex(&preimage))
     }
 
     /// Verify the signature AND enforce the approval-token validity window in
@@ -921,4 +1144,277 @@ impl GovernedApprovalToken {
         }
         Ok(())
     }
+}
+
+/// Canonical policy-authority statement that opens one threshold approval window.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ThresholdApprovalProposalBody {
+    pub schema: String,
+    pub proposal_id: String,
+    pub request_id: String,
+    pub governed_intent_hash: String,
+    pub subject: PublicKey,
+    pub authorizing_capability_digest: String,
+    pub policy_hash: String,
+    pub threshold: u32,
+    pub eligible_set_digest: String,
+    pub proposal_created_at: u64,
+    pub proposal_deadline: u64,
+    pub policy_authority: PublicKey,
+}
+
+impl ThresholdApprovalProposalBody {
+    pub fn proposal_deadline(
+        proposal_created_at: u64,
+        timeout_seconds: u64,
+        authorizing_capability_expiry: u64,
+        governed_operation_expiry: Option<u64>,
+    ) -> Result<u64> {
+        let timeout_deadline = proposal_created_at
+            .checked_add(timeout_seconds)
+            .ok_or_else(|| Error::CanonicalJson("threshold proposal deadline overflow".into()))?;
+        Ok(timeout_deadline
+            .min(authorizing_capability_expiry)
+            .min(governed_operation_expiry.unwrap_or(u64::MAX)))
+    }
+
+    pub fn validate(&self) -> Result<()> {
+        if self.schema != THRESHOLD_APPROVAL_PROPOSAL_SCHEMA {
+            return Err(Error::CanonicalJson(
+                "threshold approval proposal schema is unsupported".into(),
+            ));
+        }
+        if self.proposal_id.is_empty()
+            || self.proposal_id.trim() != self.proposal_id
+            || self.request_id.is_empty()
+            || self.request_id.trim() != self.request_id
+        {
+            return Err(Error::CanonicalJson(
+                "threshold proposal identifiers must be canonical text".into(),
+            ));
+        }
+        for (field, value) in [
+            ("governed intent hash", self.governed_intent_hash.as_str()),
+            (
+                "authorizing capability digest",
+                self.authorizing_capability_digest.as_str(),
+            ),
+            ("policy hash", self.policy_hash.as_str()),
+            ("eligible set digest", self.eligible_set_digest.as_str()),
+        ] {
+            if !is_sha256_hex(value) {
+                return Err(Error::CanonicalJson(alloc::format!(
+                    "threshold proposal {field} must be lowercase SHA-256 hex"
+                )));
+            }
+        }
+        if self.threshold == 0 {
+            return Err(Error::CanonicalJson(
+                "threshold proposal quorum must be non-zero".into(),
+            ));
+        }
+        if self.proposal_created_at >= self.proposal_deadline {
+            return Err(Error::CanonicalJson(
+                "threshold proposal deadline must follow creation time".into(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Signed threshold proposal issued by the active policy authority.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ThresholdApprovalProposal {
+    #[serde(flatten)]
+    pub body: ThresholdApprovalProposalBody,
+    #[serde(default, skip_serializing_if = "is_default_optional_algorithm")]
+    pub algorithm: Option<SigningAlgorithm>,
+    pub signature: Signature,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ThresholdApprovalProposalWire {
+    schema: String,
+    proposal_id: String,
+    request_id: String,
+    governed_intent_hash: String,
+    subject: PublicKey,
+    authorizing_capability_digest: String,
+    policy_hash: String,
+    threshold: u32,
+    eligible_set_digest: String,
+    proposal_created_at: u64,
+    proposal_deadline: u64,
+    policy_authority: PublicKey,
+    #[serde(default)]
+    algorithm: Option<SigningAlgorithm>,
+    signature: Signature,
+}
+
+impl<'de> Deserialize<'de> for ThresholdApprovalProposal {
+    fn deserialize<D>(deserializer: D) -> core::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let wire = ThresholdApprovalProposalWire::deserialize(deserializer)?;
+        Ok(Self {
+            body: ThresholdApprovalProposalBody {
+                schema: wire.schema,
+                proposal_id: wire.proposal_id,
+                request_id: wire.request_id,
+                governed_intent_hash: wire.governed_intent_hash,
+                subject: wire.subject,
+                authorizing_capability_digest: wire.authorizing_capability_digest,
+                policy_hash: wire.policy_hash,
+                threshold: wire.threshold,
+                eligible_set_digest: wire.eligible_set_digest,
+                proposal_created_at: wire.proposal_created_at,
+                proposal_deadline: wire.proposal_deadline,
+                policy_authority: wire.policy_authority,
+            },
+            algorithm: wire.algorithm,
+            signature: wire.signature,
+        })
+    }
+}
+
+impl ThresholdApprovalProposal {
+    pub fn sign(body: ThresholdApprovalProposalBody, keypair: &Keypair) -> Result<Self> {
+        body.validate()?;
+        ensure_keypair_matches_embedded_key(
+            &body.policy_authority,
+            keypair,
+            "threshold approval proposal",
+            "policy_authority",
+        )?;
+        let (signature, _) = keypair.sign_canonical(&body)?;
+        Ok(Self {
+            body,
+            algorithm: None,
+            signature,
+        })
+    }
+
+    pub fn sign_with_backend(
+        body: ThresholdApprovalProposalBody,
+        backend: &dyn SigningBackend,
+    ) -> Result<Self> {
+        body.validate()?;
+        ensure_backend_matches_embedded_key(
+            &body.policy_authority,
+            backend,
+            "threshold approval proposal",
+            "policy_authority",
+        )?;
+        let (signature, _) = sign_canonical_with_backend(backend, &body)?;
+        Ok(Self {
+            body,
+            algorithm: Some(backend.algorithm()),
+            signature,
+        })
+    }
+
+    pub fn verify_signature(&self) -> Result<bool> {
+        self.body.validate()?;
+        self.body
+            .policy_authority
+            .verify_canonical(&self.body, &self.signature)
+    }
+
+    pub fn validate_at(&self, now: u64) -> Result<()> {
+        self.body.validate()?;
+        if now < self.body.proposal_created_at {
+            return Err(Error::CapabilityNotYetValid {
+                not_before: self.body.proposal_created_at,
+            });
+        }
+        if now >= self.body.proposal_deadline {
+            return Err(Error::CapabilityExpired {
+                expires_at: self.body.proposal_deadline,
+            });
+        }
+        Ok(())
+    }
+
+    pub fn artifact_digest(&self) -> Result<String> {
+        domain_separated_digest(THRESHOLD_APPROVAL_PROPOSAL_DIGEST_DOMAIN, self)
+    }
+}
+
+/// Canonical evidence emitted after a complete threshold set verifies.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct VerifiedApprovalSetBody {
+    pub token_digests: Vec<String>,
+    pub policy_hash: String,
+    pub threshold: u32,
+    pub eligible_set_digest: String,
+    pub request_id: String,
+    pub governed_intent_hash: String,
+    pub subject: PublicKey,
+    pub authorizing_capability_digest: String,
+    pub threshold_proposal_hash: String,
+    pub proposal_id: String,
+    pub proposal_created_at: u64,
+    pub proposal_deadline: u64,
+}
+
+impl VerifiedApprovalSetBody {
+    pub fn new(
+        mut token_digests: Vec<String>,
+        proposal: &ThresholdApprovalProposal,
+    ) -> Result<Self> {
+        token_digests.sort();
+        if token_digests.is_empty()
+            || token_digests.iter().any(|digest| !is_sha256_hex(digest))
+            || token_digests.windows(2).any(|pair| pair[0] == pair[1])
+        {
+            return Err(Error::CanonicalJson(
+                "verified approval token digests must be distinct SHA-256 values".into(),
+            ));
+        }
+        if u32::try_from(token_digests.len())
+            .map_or(true, |digest_count| digest_count < proposal.body.threshold)
+        {
+            return Err(Error::CanonicalJson(
+                "verified approval token digests do not satisfy the proposal threshold".into(),
+            ));
+        }
+        let body = &proposal.body;
+        Ok(Self {
+            token_digests,
+            policy_hash: body.policy_hash.clone(),
+            threshold: body.threshold,
+            eligible_set_digest: body.eligible_set_digest.clone(),
+            request_id: body.request_id.clone(),
+            governed_intent_hash: body.governed_intent_hash.clone(),
+            subject: body.subject.clone(),
+            authorizing_capability_digest: body.authorizing_capability_digest.clone(),
+            threshold_proposal_hash: proposal.artifact_digest()?,
+            proposal_id: body.proposal_id.clone(),
+            proposal_created_at: body.proposal_created_at,
+            proposal_deadline: body.proposal_deadline,
+        })
+    }
+
+    pub fn approval_set_hash(&self) -> Result<String> {
+        domain_separated_digest(VERIFIED_APPROVAL_SET_DIGEST_DOMAIN, self)
+    }
+}
+
+fn domain_separated_digest(domain: &[u8], value: &impl Serialize) -> Result<String> {
+    let canonical = canonical_json_bytes(value)?;
+    let mut preimage = Vec::with_capacity(domain.len() + canonical.len());
+    preimage.extend_from_slice(domain);
+    preimage.extend_from_slice(&canonical);
+    Ok(sha256_hex(&preimage))
+}
+
+fn is_sha256_hex(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }

@@ -1109,6 +1109,7 @@ pub fn issue_signed_underwriting_decision(
         query,
         supersedes_decision_id,
         chio_kernel::ReceiptReadContext::local_operator_admin_all(),
+        None,
     )
     .map_err(CliError::from)
 }
@@ -1122,6 +1123,7 @@ pub(crate) fn issue_signed_underwriting_decision_detailed(
     query: &UnderwritingPolicyInputQuery,
     supersedes_decision_id: Option<&str>,
     read_context: chio_kernel::ReceiptReadContext,
+    fiscal_runtime: Option<&TrustFiscalRuntime>,
 ) -> Result<SignedUnderwritingDecision, TrustHttpError> {
     let mut receipt_store = SqliteReceiptStore::open(receipt_db_path)?;
     // Load the signing keypair first so its public key anchors the reputation
@@ -1140,13 +1142,29 @@ pub(crate) fn issue_signed_underwriting_decision_detailed(
         &trusted_kernel_keys,
     )?;
     let quoted_exposure = build_underwriting_quoted_exposure(&receipt_store, query, read_context)?;
-    let mut artifact = chio_kernel::build_underwriting_decision_artifact(
-        report,
-        unix_timestamp_now(),
-        supersedes_decision_id.map(ToOwned::to_owned),
-        quoted_exposure.amount_for_pricing(),
-    )
-    .map_err(TrustHttpError::bad_request)?;
+    let issued_at = unix_timestamp_now();
+    let mut artifact = if let Some(runtime) = fiscal_runtime {
+        runtime
+            .with_resolver(|resolver| {
+                chio_underwriting::build_fiscal_underwriting_decision_artifact(
+                    report,
+                    issued_at,
+                    supersedes_decision_id.map(ToOwned::to_owned),
+                    quoted_exposure.amount_for_pricing(),
+                    resolver,
+                )
+            })
+            .map_err(|error| TrustHttpError::internal(error.to_string()))?
+            .map_err(|error| TrustHttpError::bad_request(error.to_string()))?
+    } else {
+        chio_kernel::build_underwriting_decision_artifact(
+            report,
+            issued_at,
+            supersedes_decision_id.map(ToOwned::to_owned),
+            quoted_exposure.amount_for_pricing(),
+        )
+        .map_err(TrustHttpError::bad_request)?
+    };
     quoted_exposure.apply_to_artifact(&mut artifact);
     let signed = SignedUnderwritingDecision::sign(artifact, &keypair)
         .map_err(|error| TrustHttpError::internal(error.to_string()))?;
@@ -1551,6 +1569,8 @@ mod underwriting_and_support_tests {
             authority_seed_path: None,
             authority_db_path: None,
             budget_db_path: None,
+            joint_authority_db_path: None,
+            fiscal_runtime: None,
             enterprise_providers_file: None,
             federation_policies_file: None,
             scim_lifecycle_file: None,

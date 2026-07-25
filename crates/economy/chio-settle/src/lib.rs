@@ -10,11 +10,13 @@
 
 mod automation;
 mod ccip;
+pub mod channel;
 mod config;
 mod evm;
 mod hook;
 mod observe;
 mod ops;
+mod outcome_store;
 mod payments;
 mod retry;
 mod solana;
@@ -39,21 +41,26 @@ pub use config::{
 };
 pub use evm::{
     build_failure_receipt, build_reversal_receipt, confirm_transaction, estimate_call_gas,
-    finalize_bond_lock, finalize_escrow_dispatch, prepare_bond_expiry, prepare_bond_impair,
-    prepare_bond_lock, prepare_bond_proof_root_publication, prepare_bond_release,
-    prepare_dual_sign_release, prepare_erc20_approval, prepare_escrow_refund,
-    prepare_merkle_release, prepare_merkle_release_root_publication, prepare_web3_escrow_dispatch,
-    read_bond_snapshot, read_escrow_snapshot, scale_chio_amount_to_token_minor_units,
-    static_validate_call, submit_call, BondLockRequest, DualSignReleaseInput,
-    EscrowDispatchRequest, EscrowExecutionAmount, EscrowSnapshot, EvmBondSnapshot, EvmLogEntry,
-    EvmSignature, EvmTransactionReceipt, PreparedBondExpiry, PreparedBondImpair, PreparedBondLock,
-    PreparedBondProofRoot, PreparedBondRelease, PreparedDualSignRelease, PreparedErc20Approval,
-    PreparedEscrowCreate, PreparedEscrowRefund, PreparedEvmCall, PreparedMerkleRelease,
+    finalize_bond_lock, finalize_escrow_dispatch, prepare_authorized_channel_merkle_release,
+    prepare_bond_expiry, prepare_bond_impair, prepare_bond_lock,
+    prepare_bond_proof_root_publication, prepare_bond_release, prepare_dual_sign_release,
+    prepare_erc20_approval, prepare_escrow_refund, prepare_merkle_release,
+    prepare_merkle_release_root_publication, prepare_web3_escrow_dispatch, read_bond_snapshot,
+    read_escrow_snapshot, scale_chio_amount_to_token_minor_units,
+    scale_token_minor_units_to_chio_amount, static_validate_call, submit_call, BondLockRequest,
+    DualSignReleaseInput, EscrowDispatchRequest, EscrowExecutionAmount, EscrowSnapshot,
+    EvmBondSnapshot, EvmLogEntry, EvmSignature, EvmTransactionReceipt,
+    PreparedAuthorizedChannelMerkleReleaseV1, PreparedBondExpiry, PreparedBondImpair,
+    PreparedBondLock, PreparedBondProofRoot, PreparedBondRelease, PreparedDualSignRelease,
+    PreparedErc20Approval, PreparedEscrowCreate, PreparedEscrowRefund, PreparedEvmCall,
+    PreparedEvmSubmission, PreparedMerkleRelease, PreparedRootPublication,
     SettlementAnchorContentBinding,
 };
 pub use hook::{
-    SettlementHook, SettlementHookError, SettlementObservation, SettlementOutcome,
-    SETTLEMENT_OBSERVATION_SCHEMA, SETTLEMENT_OUTCOME_SCHEMA,
+    SettlementFailureClass, SettlementFailureCode, SettlementFailureCodeParseError,
+    SettlementFailureReason, SettlementHook, SettlementHookError, SettlementIdempotencyKey,
+    SettlementObservation, SettlementOutcome, SettlementSkipReason, SETTLEMENT_OBSERVATION_SCHEMA,
+    SETTLEMENT_OUTCOME_SCHEMA,
 };
 pub use observe::{
     inspect_finality, inspect_finality_for_receipt, observe_bond, project_escrow_execution_receipt,
@@ -62,13 +69,18 @@ pub use observe::{
     SettlementFinalityStatus, SettlementRecoveryAction,
 };
 pub use ops::{
-    classify_settlement_lane, ensure_settlement_operation_allowed, OpsSettlementHook,
-    SettlementAlertSeverity, SettlementControlChangeRecord, SettlementControlState,
-    SettlementDriveStep, SettlementEmergencyControls, SettlementEmergencyMode,
-    SettlementIncidentAlert, SettlementIndexerCursor, SettlementIndexerCursorInput,
-    SettlementIndexerStatus, SettlementLaneRuntimeStatus, SettlementLaneRuntimeStatusInput,
-    SettlementOperationKind, SettlementRecoveryRecord, SettlementRuntime, SettlementRuntimeReport,
-    SettlementRuntimeStatus, CHIO_SETTLE_RUNTIME_REPORT_SCHEMA,
+    classify_settlement_lane, ensure_settlement_operation_allowed, SettlementAlertSeverity,
+    SettlementControlChangeRecord, SettlementControlState, SettlementEmergencyControls,
+    SettlementEmergencyMode, SettlementIncidentAlert, SettlementIndexerCursor,
+    SettlementIndexerCursorInput, SettlementIndexerStatus, SettlementLaneRuntimeStatus,
+    SettlementLaneRuntimeStatusInput, SettlementOperationKind, SettlementRecoveryRecord,
+    SettlementRuntimeReport, SettlementRuntimeStatus, CHIO_SETTLE_RUNTIME_REPORT_SCHEMA,
+};
+pub use outcome_store::{
+    validate_settlement_claim, SettlementAttemptClaim, SettlementClaimValidationError,
+    SettlementOutcomeStore, SettlementRoute, SettlementRouteError, SettlementRouteErrorClass,
+    SettlementRoutingInput, SettlementStoreBinding, MAX_SETTLEMENT_CLAIM_BATCH,
+    MAX_SETTLEMENT_LEASE_MS, MAX_SETTLEMENT_WORKER_ID_BYTES,
 };
 pub use payments::{
     approval_binding_from_governed, build_x402_payment_requirements, evaluate_circle_nanopayment,

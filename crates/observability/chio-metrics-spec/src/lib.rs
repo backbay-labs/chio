@@ -116,9 +116,9 @@ macro_rules! describe {
 
 pub const CHIO_ALERT_DISPATCH_TOTAL: &str = "chio_alert_dispatch_total";
 pub const CHIO_ALERT_DISPATCH_LATENCY_SECONDS: &str = "chio_alert_dispatch_latency_seconds";
+pub const CHIO_AMBIGUOUS_DISPATCH_RETAINED_HOLD_TOTAL: &str =
+    "chio_ambiguous_dispatch_retained_hold_total";
 pub const CHIO_ANCHOR_ROUND_LATENCY_SECONDS: &str = "chio_anchor_round_latency_seconds";
-pub const CHIO_BUDGET_HOLDS_EXPIRED_TOTAL: &str = "chio_budget_holds_expired_total";
-pub const CHIO_BUDGET_OPEN_HOLDS: &str = "chio_budget_open_holds";
 pub const CHIO_CAPABILITY_REVOCATION_LAG_SECONDS: &str = "chio_capability_revocation_lag_seconds";
 pub const CHIO_DISPATCH_FAILURE_TOTAL: &str = "chio_dispatch_failure_total";
 pub const CHIO_DLQ_DEPTH: &str = "chio_dlq_depth";
@@ -226,23 +226,17 @@ pub const REGISTRY: &[MetricDescriptor] = &[
         labels = ["route", "outcome"]
     ),
     describe!(
+        name = CHIO_AMBIGUOUS_DISPATCH_RETAINED_HOLD_TOTAL,
+        help = "Total budget or payment holds retained after an ambiguous post-dispatch outcome, labeled by whether durable reconciliation is available.",
+        kind = Counter,
+        labels = ["reconciliation"]
+    ),
+    describe!(
         name = CHIO_ANCHOR_ROUND_LATENCY_SECONDS,
         help = "Anchor round latency in seconds.",
         kind = Histogram,
         labels = ["witness", "outcome"],
         buckets = ["0.1", "0.5", "1.0", "2.5", "5.0", "10.0"]
-    ),
-    describe!(
-        name = CHIO_BUDGET_HOLDS_EXPIRED_TOTAL,
-        help = "Total capability budget holds swept to disposition=expired by the orphaned-hold sweeper.",
-        kind = Counter,
-        labels = []
-    ),
-    describe!(
-        name = CHIO_BUDGET_OPEN_HOLDS,
-        help = "Capability budget holds currently in disposition=open.",
-        kind = Gauge,
-        labels = []
     ),
     describe!(
         name = CHIO_CAPABILITY_REVOCATION_LAG_SECONDS,
@@ -553,7 +547,7 @@ pub const REGISTRY: &[MetricDescriptor] = &[
     ),
     describe!(
         name = CHIO_SETTLEMENT_UNRESOLVED_TOTAL,
-        help = "Total money-bearing receipts whose settlement outcome could not be resolved (routed to retry or dead-letter, or surfaced as a loud incident).",
+        help = "Total settlement observer routing invocations with an unresolved outcome.",
         kind = Counter,
         labels = []
     ),
@@ -769,20 +763,6 @@ mod tests {
                 descriptor.name
             );
             previous = descriptor.name;
-        }
-    }
-
-    #[test]
-    fn money_path_descriptors_are_registered() {
-        for name in [
-            CHIO_SETTLEMENT_UNRESOLVED_TOTAL,
-            CHIO_BUDGET_OPEN_HOLDS,
-            CHIO_BUDGET_HOLDS_EXPIRED_TOTAL,
-        ] {
-            assert!(
-                REGISTRY.iter().any(|d| d.name == name),
-                "descriptor {name} missing from REGISTRY"
-            );
         }
     }
 

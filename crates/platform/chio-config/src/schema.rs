@@ -55,16 +55,16 @@ impl ChioConfig {
     /// [`KernelDeadlinesFileConfig::to_hot_path_deadline_config`] into the
     /// constructed kernel's `deadlines`, `kernel.signing_key` becomes the
     /// receipt-signing keypair, and the `[receipts]` section governs the
-    /// checkpoint cadence (`checkpoint_interval`), retention window
-    /// (`retention_days`), and dispatch-intent journal mode
-    /// (`dispatch_intent_journal`) rather than silently defaulting them.
+    /// checkpoint cadence (`checkpoint_interval`) and retention window
+    /// (`retention_days`) rather than silently defaulting them.
     ///
     /// Fields the file schema does not yet express take the kernel's own
     /// defaults, chosen fail-closed: nested sampling and elicitation stay
     /// disabled, no external capability authorities are trusted, and ephemeral
-    /// receipt logs are refused so successful dispatch requires durable receipt
-    /// persistence. Deployments that need those knobs configure them on the
-    /// returned value before construction.
+    /// receipt logs and revocation stores are refused so successful dispatch
+    /// requires durable receipt persistence and revocation state. Deployments
+    /// that need those knobs configure them on the returned value before
+    /// construction.
     pub fn to_kernel_config(&self) -> Result<chio_kernel::KernelConfig, crate::ConfigError> {
         let keypair = self.kernel.signing_keypair()?;
         Ok(chio_kernel::KernelConfig {
@@ -97,10 +97,6 @@ impl ChioConfig {
             }),
             memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
             deadlines: self.kernel.deadlines.to_hot_path_deadline_config(),
-            // Honor the operator's `[receipts].dispatch_intent_journal`: absent
-            // means the pre-journal write path (`Off`), matching the staged
-            // rollout default, not the enum's own compiled default.
-            dispatch_intent_journal: self.receipts.dispatch_intent_journal,
         })
     }
 }
@@ -249,17 +245,6 @@ pub struct ReceiptsConfig {
     /// How many days to retain receipts.
     #[serde(default = "default_retention_days")]
     pub retention_days: u64,
-
-    /// Which call classes must durably journal a dispatch intent before
-    /// dispatch: `"off"`, `"side_effecting"`, or `"all"`. Absent keeps the
-    /// pre-journal write path (`off`), matching the staged rollout; this is
-    /// deliberately not the enum's own compiled default (`side_effecting`),
-    /// so an existing deployment's file does not silently change behavior
-    /// when it upgrades to a binary that understands this key. An
-    /// unrecognized value is rejected at config load time rather than
-    /// falling back to a default.
-    #[serde(default = "default_dispatch_intent_journal")]
-    pub dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode,
 }
 
 impl Default for ReceiptsConfig {
@@ -268,7 +253,6 @@ impl Default for ReceiptsConfig {
             store: default_receipt_store(),
             checkpoint_interval: default_checkpoint_interval(),
             retention_days: default_retention_days(),
-            dispatch_intent_journal: default_dispatch_intent_journal(),
         }
     }
 }
@@ -418,10 +402,6 @@ fn default_retention_days() -> u64 {
     90
 }
 
-fn default_dispatch_intent_journal() -> chio_kernel::DispatchIntentJournalMode {
-    chio_kernel::DispatchIntentJournalMode::Off
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -432,10 +412,6 @@ mod tests {
         assert_eq!(r.store, "sqlite:///var/chio/receipts.db");
         assert_eq!(r.checkpoint_interval, 100);
         assert_eq!(r.retention_days, 90);
-        assert_eq!(
-            r.dispatch_intent_journal,
-            chio_kernel::DispatchIntentJournalMode::Off
-        );
     }
 
     #[test]
@@ -607,99 +583,5 @@ adapters:
 
         chio_kernel::ChioKernel::try_new(kernel_config)
             .unwrap_or_else(|e| panic!("kernel should construct from config receipts: {e}"));
-    }
-
-    #[test]
-    fn absent_dispatch_intent_journal_key_lowers_to_off() {
-        // No `[receipts].dispatch_intent_journal` key at all: the pre-journal
-        // write path must be preserved, not the enum's own compiled default
-        // (`SideEffecting`), so upgrading a binary never silently starts
-        // journaling for an existing deployment's file.
-        let yaml = r#"
-kernel:
-  signing_key: "generate"
-
-adapters:
-  - id: "petstore"
-    protocol: "openapi"
-    upstream: "http://localhost:8000"
-"#;
-        let config =
-            crate::load_from_str(yaml).unwrap_or_else(|e| panic!("config should load: {e}"));
-        assert_eq!(
-            config.receipts.dispatch_intent_journal,
-            chio_kernel::DispatchIntentJournalMode::Off
-        );
-
-        let kernel_config = config
-            .to_kernel_config()
-            .unwrap_or_else(|e| panic!("kernel config should build: {e}"));
-        assert_eq!(
-            kernel_config.dispatch_intent_journal,
-            chio_kernel::DispatchIntentJournalMode::Off
-        );
-    }
-
-    #[test]
-    fn explicit_dispatch_intent_journal_values_reach_the_constructed_kernel_config() {
-        for (value, expected) in [
-            ("off", chio_kernel::DispatchIntentJournalMode::Off),
-            (
-                "side_effecting",
-                chio_kernel::DispatchIntentJournalMode::SideEffecting,
-            ),
-            ("all", chio_kernel::DispatchIntentJournalMode::All),
-        ] {
-            let yaml = format!(
-                r#"
-kernel:
-  signing_key: "generate"
-
-receipts:
-  dispatch_intent_journal: "{value}"
-
-adapters:
-  - id: "petstore"
-    protocol: "openapi"
-    upstream: "http://localhost:8000"
-"#
-            );
-            let config = crate::load_from_str(&yaml)
-                .unwrap_or_else(|e| panic!("config should load for {value:?}: {e}"));
-            assert_eq!(config.receipts.dispatch_intent_journal, expected);
-
-            let kernel_config = config
-                .to_kernel_config()
-                .unwrap_or_else(|e| panic!("kernel config should build for {value:?}: {e}"));
-            assert_eq!(kernel_config.dispatch_intent_journal, expected);
-
-            chio_kernel::ChioKernel::try_new(kernel_config).unwrap_or_else(|e| {
-                panic!("kernel should construct with dispatch_intent_journal {value:?}: {e}")
-            });
-        }
-    }
-
-    #[test]
-    fn unrecognized_dispatch_intent_journal_value_rejects_at_load() {
-        // Fail-closed: an unrecognized value must reject the config at load
-        // time, not silently fall back to a default the operator did not ask
-        // for.
-        let yaml = r#"
-kernel:
-  signing_key: "generate"
-
-receipts:
-  dispatch_intent_journal: "sometimes"
-
-adapters:
-  - id: "petstore"
-    protocol: "openapi"
-    upstream: "http://localhost:8000"
-"#;
-        let result = crate::load_from_str(yaml);
-        assert!(
-            result.is_err(),
-            "an unrecognized dispatch_intent_journal value must reject at load, got {result:?}"
-        );
     }
 }

@@ -1,13 +1,15 @@
 use super::*;
 
 impl ChioKernel {
-    pub(crate) fn build_cancelled_response_with_metadata(
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn build_cancelled_response_with_metadata_and_payee_binding(
         &self,
         request: &ToolCallRequest,
         reason: &str,
         timestamp: u64,
         matched_grant_index: Option<usize>,
         extra_metadata: Option<serde_json::Value>,
+        verified_payee_binding: Option<&VerifiedGovernedPayeeBinding>,
     ) -> Result<ToolCallResponse, KernelError> {
         let cap = &request.capability;
         let receipt_content = receipt_content_for_output(None, None)?;
@@ -15,11 +17,12 @@ impl ChioKernel {
         let action = ToolCallAction::from_parameters(request.arguments.clone()).map_err(|e| {
             KernelError::ReceiptSigningFailed(format!("failed to hash parameters: {e}"))
         })?;
-        let request_metadata = request_receipt_metadata(
+        let request_metadata = request_receipt_metadata_with_payee_binding(
             request,
             self.attestation_trust_policy.as_ref(),
             timestamp,
             extra_metadata.as_ref(),
+            verified_payee_binding,
         )?;
 
         let receipt = self.build_and_sign_receipt(ReceiptParams {
@@ -60,7 +63,8 @@ impl ChioKernel {
         })
     }
 
-    pub(crate) fn build_incomplete_response_with_output_and_metadata(
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn build_incomplete_response_with_output_metadata_and_payee_binding(
         &self,
         request: &ToolCallRequest,
         output: Option<ToolCallOutput>,
@@ -68,6 +72,7 @@ impl ChioKernel {
         timestamp: u64,
         matched_grant_index: Option<usize>,
         extra_metadata: Option<serde_json::Value>,
+        verified_payee_binding: Option<&VerifiedGovernedPayeeBinding>,
     ) -> Result<ToolCallResponse, KernelError> {
         let cap = &request.capability;
         let receipt_content = receipt_content_for_output(output.as_ref(), None)?;
@@ -75,11 +80,12 @@ impl ChioKernel {
         let action = ToolCallAction::from_parameters(request.arguments.clone()).map_err(|e| {
             KernelError::ReceiptSigningFailed(format!("failed to hash parameters: {e}"))
         })?;
-        let request_metadata = request_receipt_metadata(
+        let request_metadata = request_receipt_metadata_with_payee_binding(
             request,
             self.attestation_trust_policy.as_ref(),
             timestamp,
             extra_metadata.as_ref(),
+            verified_payee_binding,
         )?;
 
         let receipt = self.build_and_sign_receipt(ReceiptParams {

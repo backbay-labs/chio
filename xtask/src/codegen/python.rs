@@ -135,7 +135,20 @@ fn harden_python_generated_models(root_dir: &Path) -> Result<(), XtaskError> {
     harden_python_capability_negotiation(
         &root_dir.join("capability").join("capabilities_schema.py"),
     )?;
+    harden_python_capability_token(&root_dir.join("capability").join("token_schema.py"))?;
     Ok(())
+}
+
+fn harden_python_capability_token(path: &Path) -> Result<(), XtaskError> {
+    let mut body =
+        fs::read_to_string(path).map_err(|err| XtaskError::Io(display_path(path), err))?;
+    replace_python_codegen_snippet(
+        path,
+        &mut body,
+        "    root: (\n        GenericConstraint\n        | LegacyApprovalConstraint\n        | CumulativeApprovalDirectConstraint\n        | CumulativeApprovalDelegableConstraint\n    )\n\n\nclass AttenuationProof(BaseModel):",
+        "    root: (\n        GenericConstraint\n        | LegacyApprovalConstraint\n        | CumulativeApprovalDirectConstraint\n        | CumulativeApprovalDelegableConstraint\n    )\n\n    @property\n    def type(self) -> str:\n        return self.root.type\n\n    @property\n    def value(self) -> Any:\n        return self.root.value\n\n\nclass AttenuationProof(BaseModel):",
+    )?;
+    fs::write(path, body).map_err(|err| XtaskError::Io(display_path(path), err))
 }
 
 /// Enforce receipt schema constraints that datamodel-code-generator does not
@@ -330,6 +343,17 @@ fn build_python_top_init(schema_digest: &str, subpackages: &PythonSubpackageExpo
     if has_capability_v1 {
         imports.push_str("\nCapabilityToken = ChioCapabilitytoken\n");
         all_names.push("CapabilityToken".to_string());
+    }
+    if all_names.iter().any(|name| name == "ReceiptDecision") {
+        imports.push_str("Decision = ReceiptDecision\n");
+        all_names.push("Decision".to_string());
+    }
+    for name in ["Constraint", "Operation", "PromptGrant", "ResourceGrant"] {
+        if all_names.iter().any(|candidate| candidate == name) {
+            let alias = format!("Capability{name}");
+            imports.push_str(&format!("{alias} = {name}\n"));
+            all_names.push(alias);
+        }
     }
     all_names.sort();
     all_names.dedup();

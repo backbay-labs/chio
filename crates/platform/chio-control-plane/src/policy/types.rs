@@ -95,6 +95,8 @@ pub struct LoadedPolicy {
     pub post_invocation_pipeline: PostInvocationPipeline,
     pub issuance_policy: Option<ReputationIssuancePolicy>,
     pub runtime_assurance_policy: Option<RuntimeAssuranceIssuancePolicy>,
+    pub threshold_approval:
+        Option<chio_core::capability::threshold_approval::ThresholdApprovalRequirement>,
 }
 
 impl LoadedPolicy {
@@ -183,19 +185,15 @@ pub struct KernelPolicyConfig {
     #[serde(default)]
     pub allow_ephemeral_revocation_store: bool,
 
+    #[serde(default)]
+    pub durable_admission_mode: chio_kernel::admission_operation::DurableAdmissionMode,
+
+    #[serde(default)]
+    pub allow_unsafe_durable_admission_off: bool,
+
     /// Number of receipts between Merkle checkpoint snapshots.
     #[serde(default = "default_checkpoint_batch_size")]
     pub checkpoint_batch_size: u64,
-
-    /// Which call classes must durably journal a dispatch intent before
-    /// dispatch: `off`, `side_effecting`, or `all`. Absent keeps the
-    /// pre-journal write path (`off`), matching the staged rollout; this is
-    /// deliberately not the enum's own compiled default (`side_effecting`),
-    /// so an existing policy file does not silently change behavior when it
-    /// loads on a binary that understands this key. An unrecognized value is
-    /// rejected when the policy loads rather than falling back to a default.
-    #[serde(default = "default_dispatch_intent_journal")]
-    pub dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode,
 }
 
 impl Default for KernelPolicyConfig {
@@ -209,9 +207,36 @@ impl Default for KernelPolicyConfig {
             require_web3_evidence: false,
             allow_ephemeral_receipt_log: false,
             allow_ephemeral_revocation_store: false,
+            durable_admission_mode: chio_kernel::admission_operation::DurableAdmissionMode::default(
+            ),
+            allow_unsafe_durable_admission_off: false,
             checkpoint_batch_size: default_checkpoint_batch_size(),
-            dispatch_intent_journal: default_dispatch_intent_journal(),
         }
+    }
+}
+
+impl KernelPolicyConfig {
+    pub(super) fn validate(&self) -> Result<(), PolicyError> {
+        use chio_kernel::admission_operation::{AdmissionReceiptPersistence, DurableAdmissionMode};
+
+        let receipts = if self.allow_ephemeral_receipt_log {
+            AdmissionReceiptPersistence::Ephemeral
+        } else {
+            AdmissionReceiptPersistence::Durable
+        };
+        self.durable_admission_mode
+            .validate_configuration(self.allow_unsafe_durable_admission_off, receipts)
+            .map(|_| ())
+            .map_err(|error| PolicyError::Invalid(error.to_string()))?;
+        if self.allow_unsafe_durable_admission_off
+            && self.durable_admission_mode != DurableAdmissionMode::Off
+        {
+            return Err(PolicyError::Invalid(
+                "allow_unsafe_durable_admission_off requires durable_admission_mode: off"
+                    .to_string(),
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -225,8 +250,4 @@ fn default_delegation_depth_limit() -> u32 {
 
 fn default_checkpoint_batch_size() -> u64 {
     chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE
-}
-
-fn default_dispatch_intent_journal() -> chio_kernel::DispatchIntentJournalMode {
-    chio_kernel::DispatchIntentJournalMode::Off
 }

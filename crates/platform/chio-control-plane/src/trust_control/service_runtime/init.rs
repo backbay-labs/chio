@@ -10,14 +10,51 @@ use std::time::{Duration, Instant};
 
 pub(crate) async fn serve_async(config: TrustServiceConfig) -> Result<(), CliError> {
     config.validate()?;
-    let listener = tokio::net::TcpListener::bind(config.listen).await?;
-    let local_addr = listener.local_addr()?;
     let enterprise_provider_registry = load_enterprise_provider_registry(
         config.enterprise_providers_file.as_deref(),
         "trust_control",
     )?;
     let verifier_policy_registry =
         load_verifier_policy_registry(config.verifier_policies_file.as_deref(), "trust_control")?;
+    let joint_authority_store = match config.joint_authority_db_path.as_deref() {
+        Some(path) => {
+            let lock_root = crate::durable_admission_lock_root(path)?;
+            std::fs::create_dir_all(&lock_root)?;
+            SqliteAuthorityStore::provision(path, &lock_root)?;
+            Some(Arc::new(SqliteAuthorityStore::open_serving(
+                path, &lock_root,
+            )?))
+        }
+        None => None,
+    };
+    let fiscal_runtime = compose_trust_fiscal_runtime(
+        joint_authority_store.as_ref(),
+        config.fiscal_runtime.as_ref(),
+    )?;
+    let listener = tokio::net::TcpListener::bind(config.listen).await?;
+    let local_addr = listener.local_addr()?;
+    let budget_store = config
+        .budget_db_path
+        .as_deref()
+        .map(SqliteBudgetStore::open)
+        .transpose()
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "failed to open trust-control budget store: {error}"
+            ))
+        })?
+        .map(Arc::new);
+    let revocation_store = config
+        .revocation_db_path
+        .as_deref()
+        .map(SqliteRevocationStore::open)
+        .transpose()
+        .map_err(|error| {
+            CliError::cli_other_error(format!(
+                "failed to open trust-control revocation store: {error}"
+            ))
+        })?
+        .map(Arc::new);
     let cluster = build_cluster_state(&config, local_addr)?;
     // Thread the operator-configured memory budget into the admission guard so a
     // lowered `admission_key_cap` actually tightens it. Read the cap before
@@ -28,6 +65,10 @@ pub(crate) async fn serve_async(config: TrustServiceConfig) -> Result<(), CliErr
     let cluster_progress = cluster.as_ref().map(|_| Arc::new(ClusterProgress::new()));
     let state = TrustServiceState {
         config,
+        joint_authority_store,
+        fiscal_runtime,
+        budget_store,
+        revocation_store,
         enterprise_provider_registry,
         verifier_policy_registry,
         federation_admission_rate_limiter,

@@ -2,6 +2,7 @@
 //! the public certification discovery/marketplace network, and the generic
 //! trust-activation, governance, and open-market artifact endpoints.
 
+use super::report_rendering::forward_post_to_leader;
 use super::report_validation::validate_service_auth;
 use super::*;
 
@@ -235,8 +236,21 @@ pub(crate) async fn handle_issue_open_market_fee_schedule(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    match service_runtime::issuance::issue_signed_open_market_fee_schedule(&state.config, &request)
-    {
+    // Governed issuance binds the legacy schedule under the local fiscal fence, so
+    // it has to run on the leader. Ungoverned issuance stays local and keeps signing
+    // with this node's authority key.
+    if state.fiscal_runtime.is_some() {
+        match forward_post_to_leader(&state, OPEN_MARKET_FEE_SCHEDULE_ISSUE_PATH, &request).await {
+            Ok(Some(response)) => return response,
+            Ok(None) => {}
+            Err(response) => return response,
+        }
+    }
+    match service_runtime::issuance::issue_signed_open_market_fee_schedule(
+        &state.config,
+        &request,
+        state.fiscal_runtime.as_deref(),
+    ) {
         Ok(artifact) => Json(artifact).into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
@@ -250,7 +264,21 @@ pub(crate) async fn handle_issue_open_market_penalty(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    match service_runtime::issuance::issue_signed_open_market_penalty(&state.config, &request) {
+    // A fiscal penalty is authoritative against the active fee-schedule binding.
+    // Followers can hold a stale resolver or still be in fallback, so governed
+    // issuance must run on the leader before any validation or signing occurs.
+    if state.fiscal_runtime.is_some() {
+        match forward_post_to_leader(&state, OPEN_MARKET_PENALTY_ISSUE_PATH, &request).await {
+            Ok(Some(response)) => return response,
+            Ok(None) => {}
+            Err(response) => return response,
+        }
+    }
+    match service_runtime::issuance::issue_signed_open_market_penalty(
+        &state.config,
+        &request,
+        state.fiscal_runtime.as_deref(),
+    ) {
         Ok(artifact) => Json(artifact).into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }
@@ -264,7 +292,11 @@ pub(crate) async fn handle_evaluate_open_market_penalty(
     if let Err(response) = validate_service_auth(&headers, &state.config.service_token) {
         return response;
     }
-    match service_runtime::issuance::evaluate_open_market_penalty_request(&state.config, &request) {
+    match service_runtime::issuance::evaluate_open_market_penalty_request(
+        &state.config,
+        &request,
+        state.fiscal_runtime.as_deref(),
+    ) {
         Ok(report) => Json(report).into_response(),
         Err(error) => plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     }

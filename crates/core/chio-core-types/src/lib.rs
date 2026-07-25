@@ -26,6 +26,7 @@ pub mod canonical;
 pub mod capability;
 pub mod crypto;
 pub mod delegation_receipt;
+pub mod economic_continuity;
 pub mod error;
 pub mod hashing;
 pub mod loaded_weights;
@@ -36,12 +37,21 @@ pub mod oracle;
 pub mod plan;
 #[cfg(feature = "pq")]
 pub mod pq;
+pub mod provider_attempt;
 pub mod receipt;
 pub mod runtime_attestation;
 mod schema_binding;
 pub mod session;
 pub mod signed_artifact;
 mod signer_binding;
+mod store_fence;
+
+#[cfg(test)]
+#[path = "economic_continuity_anchor_tests.rs"]
+mod economic_continuity_anchor_tests;
+#[cfg(test)]
+#[path = "economic_continuity_tests.rs"]
+mod economic_continuity_tests;
 
 pub use canonical::{
     canonical_json_bytes, canonical_json_bytes_from_str, canonical_json_string,
@@ -55,6 +65,10 @@ pub use crypto::{HybridBackend, MlDsa65Backend};
 #[cfg(feature = "fips")]
 pub use crypto::{P256Backend, P384Backend};
 pub use delegation_receipt::{DelegationReceipt, ScopeAttenuation};
+pub use economic_continuity::{
+    CHIO_ECONOMIC_EFFECT_SLOT_SCHEMA, CHIO_ECONOMIC_RESOURCE_HEAD_SCHEMA,
+    CHIO_ECONOMIC_STATE_BATCH_SCHEMA,
+};
 pub use error::{Error, Result};
 pub use hashing::{sha256, Hash};
 pub use loaded_weights::{
@@ -93,9 +107,20 @@ pub use signed_artifact::{
     built_in_signed_artifact_registry, is_supported_signed_artifact_schema,
     validate_signed_artifact_schema, SignedArtifactSchemaEntry, CHIO_ANCHOR_BATCH_V1_SCHEMA,
     CHIO_ANCHOR_INCLUSION_PROOF_V1_SCHEMA, CHIO_ANCHOR_PROOF_BUNDLE_V1_SCHEMA,
-    CHIO_COMPTROLLER_SURFACE_REPORT_V1_SCHEMA, CHIO_TRANSACTION_CLAIM_SET_V1_SCHEMA,
+    CHIO_COMPTROLLER_SURFACE_REPORT_V1_SCHEMA, CHIO_CREDIT_FACILITY_BIND_V1_SCHEMA,
+    CHIO_FACTOR_ASSIGNMENT_ACKNOWLEDGEMENT_V1_SCHEMA, CHIO_FACTOR_ASSIGNMENT_AGREEMENT_V1_SCHEMA,
+    CHIO_FACTOR_ASSIGNMENT_BIND_AUTHORIZATION_V1_SCHEMA,
+    CHIO_FACTOR_ASSIGNMENT_NOT_APPLIED_V1_SCHEMA,
+    CHIO_FROST_AUTHORIZATION_SLOT_CHECKPOINT_V1_SCHEMA, CHIO_FROST_AUTHORIZATION_V1_SCHEMA,
+    CHIO_FROST_EPOCH_CHECKPOINT_V1_SCHEMA, CHIO_FROST_ROSTER_V1_SCHEMA,
+    CHIO_OUTCOME_CONTRACTUAL_ZERO_V1_SCHEMA, CHIO_OUTCOME_DELIVERY_ACKNOWLEDGEMENT_V1_SCHEMA,
+    CHIO_OUTCOME_DELIVERY_CHECKPOINT_V1_SCHEMA, CHIO_OUTCOME_DELIVERY_NONACCEPTANCE_V1_SCHEMA,
+    CHIO_OUTCOME_ELIGIBILITY_V1_SCHEMA, CHIO_OUTCOME_OUTPUT_PROVENANCE_V1_SCHEMA,
+    CHIO_OUTCOME_PREDICATE_V1_SCHEMA, CHIO_OUTCOME_PRICING_V1_SCHEMA, CHIO_OUTCOME_SLA_V1_SCHEMA,
+    CHIO_RECEIVABLE_IOU_ENVELOPE_V1_SCHEMA, CHIO_TRANSACTION_CLAIM_SET_V1_SCHEMA,
     KNOWN_SIGNED_ARTIFACT_SCHEMAS,
 };
+pub use store_fence::StoreMutationFence;
 
 /// Opaque agent identifier: hex-encoded Ed25519 public key or SPIFFE URI
 /// accepted; the core performs no structural validation.

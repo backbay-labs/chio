@@ -255,6 +255,11 @@ pub(super) fn verify_lineage(
 ) -> Result<BTreeMap<String, &CapabilitySnapshot>, CliError> {
     let mut by_capability = BTreeMap::new();
     for snapshot in capability_lineage {
+        snapshot.validate_for_transport().map_err(|error| {
+            CliError::attest_error(format!(
+                "invalid capability lineage snapshot in evidence package: {error}"
+            ))
+        })?;
         if by_capability
             .insert(snapshot.capability_id.clone(), snapshot)
             .is_some()

@@ -45,6 +45,7 @@ fn make_body(issuer: &chio_core_types::crypto::PublicKey) -> CapabilityTokenBody
         issued_at: 1_700_000_000,
         expires_at: 1_700_003_600,
         delegation_chain: Vec::new(),
+        aggregate_invocation_budget: None,
     }
 }
 

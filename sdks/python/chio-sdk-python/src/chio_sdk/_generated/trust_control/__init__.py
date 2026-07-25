@@ -2,7 +2,7 @@
 #
 # Source: spec/schemas/chio-wire/v1/**/*.schema.json
 # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
-# Schema sha256: 9d7b17b15b33f7dcc9d52da37c9fb906c57911cdfd78424c344f5ce58b160468
+# Schema sha256: 63696e53010dca489dd90f0f71166c42511e6e9734e364a6e3cd564e8d04693b
 #
 # Manual edits will be overwritten by the next regeneration; the
 # spec-drift CI lane enforces this header on every file
@@ -11,18 +11,23 @@
 from __future__ import annotations
 
 from .attestation_schema import ChioTrustControlRuntimeAttestationEvidence, CredentialKind, Scheme, Tier, WorkloadIdentity
+from .budget_snapshot_anchor_provenance_schema import BudgetSnapshotAnchorProvenance, Commitment, Digest, SignedCommitment
 from .heartbeat_schema import ChioTrustControlLeaseHeartbeat
 from .lease_schema import ChioTrustControlAuthorityLease
 from .terminate_schema import ChioTrustControlLeaseTermination, Reason
 
 __all__ = [
+    "BudgetSnapshotAnchorProvenance",
     "ChioTrustControlAuthorityLease",
     "ChioTrustControlLeaseHeartbeat",
     "ChioTrustControlLeaseTermination",
     "ChioTrustControlRuntimeAttestationEvidence",
+    "Commitment",
     "CredentialKind",
+    "Digest",
     "Reason",
     "Scheme",
+    "SignedCommitment",
     "Tier",
     "WorkloadIdentity",
 ]

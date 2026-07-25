@@ -2,6 +2,7 @@ use super::receipt_scopes::{
     current_governed_call_chain_receipt_evidence, current_governed_runtime_attestation_record,
 };
 use crate::evidence_export::EvidenceLineageReferences;
+use crate::kernel::VerifiedGovernedPayeeBinding;
 use crate::operator_report::GovernedTransactionDiagnostics;
 use crate::*;
 use chio_appraisal::{verify_runtime_attestation_record, VerifiedRuntimeAttestationRecord};
@@ -249,11 +250,47 @@ fn governed_runtime_assurance_receipt_metadata(
 fn governed_economic_authorization_metadata(
     request: &ToolCallRequest,
     financial: &FinancialReceiptMetadata,
+    payee_binding: Option<&VerifiedGovernedPayeeBinding>,
 ) -> Result<Option<chio_core::receipt::economics::EconomicAuthorizationReceiptMetadata>, KernelError>
 {
     let Some(intent) = request.governed_intent.as_ref() else {
         return Ok(None);
     };
+    let Some(payee_binding) = payee_binding else {
+        return Ok(None);
+    };
+    let commerce = intent.commerce.as_ref().ok_or_else(|| {
+        KernelError::ReceiptSigningFailed(
+            "verified governed payee binding has no commerce context".to_string(),
+        )
+    })?;
+    let intent_digest = intent.binding_hash().map_err(|error| {
+        KernelError::ReceiptSigningFailed(format!(
+            "failed to hash governed transaction intent for payee binding: {error}"
+        ))
+    })?;
+    let approval_artifact_digest = request
+        .approval_artifact_digest()
+        .map_err(|error| {
+            KernelError::ReceiptSigningFailed(format!(
+                "failed to hash governed approval for payee binding: {error}"
+            ))
+        })?
+        .ok_or_else(|| {
+            KernelError::ReceiptSigningFailed(
+                "verified governed payee binding has no approval artifact".to_string(),
+            )
+        })?;
+    if payee_binding.economic_intent_digest() != intent_digest.as_str()
+        || payee_binding.beneficiary_id() != commerce.seller
+        || commerce.settlement_destination_ref.as_deref()
+            != Some(payee_binding.settlement_destination_ref())
+        || payee_binding.pre_action_authority_digest() != approval_artifact_digest.as_str()
+    {
+        return Err(KernelError::ReceiptSigningFailed(
+            "verified governed payee binding does not match the request".to_string(),
+        ));
+    }
 
     let approved_max =
         intent
@@ -270,7 +307,6 @@ fn governed_economic_authorization_metadata(
             .map(|_| financial.cost_charged)
     });
     let settlement_cap_units = financial.attempted_cost.unwrap_or(financial.cost_charged);
-    let commerce = intent.commerce.as_ref();
     let metered = intent.metered_billing.as_ref();
 
     let pricing_basis = metered
@@ -339,48 +375,37 @@ fn governed_economic_authorization_metadata(
     Ok(Some(
         chio_core::receipt::economics::EconomicAuthorizationReceiptMetadata {
             version: chio_core::receipt::economics::EconomicAuthorizationReceiptMetadataVersion::V1,
+            economic_intent_digest: Some(payee_binding.economic_intent_digest().to_owned()),
+            payee_binding_digest: Some(payee_binding.payee_binding_digest().to_owned()),
+            pre_action_authority_digest: Some(
+                payee_binding.pre_action_authority_digest().to_owned(),
+            ),
+            credit_authority_digest: None,
             economic_mode,
             payer: chio_core::receipt::economics::EconomicPayerReceiptMetadata {
                 party_id: request.agent_id.clone(),
-                funding_source_ref: commerce
-                    .map(|commerce| commerce.shared_payment_token_id.clone())
-                    .or_else(|| financial.payment_reference.clone())
-                    .unwrap_or_else(|| request.capability.id.clone()),
+                funding_source_ref: commerce.shared_payment_token_id.clone(),
                 custody_provider: None,
                 obligor_ref: None,
             },
             merchant: chio_core::receipt::economics::EconomicMerchantReceiptMetadata {
-                merchant_id: commerce
-                    .map(|commerce| commerce.seller.clone())
-                    .unwrap_or_else(|| request.server_id.clone()),
+                merchant_id: commerce.seller.clone(),
                 merchant_of_record: None,
                 order_ref: Some(request.request_id.clone()),
             },
             payee: chio_core::receipt::economics::EconomicPayeeReceiptMetadata {
-                beneficiary_id: request.server_id.clone(),
-                settlement_destination_ref: financial
-                    .payment_reference
-                    .clone()
-                    .or_else(|| commerce.map(|commerce| commerce.shared_payment_token_id.clone()))
-                    .unwrap_or_else(|| request.server_id.clone()),
+                beneficiary_id: payee_binding.beneficiary_id().to_string(),
+                settlement_destination_ref: payee_binding.settlement_destination_ref().to_string(),
             },
             rail: chio_core::receipt::economics::EconomicRailReceiptMetadata {
-                kind: if commerce.is_some() {
-                    "shared_payment_token".to_string()
-                } else if metered.is_some() {
-                    "metered_billing".to_string()
-                } else if financial.payment_reference.is_some() {
-                    "payment_adapter".to_string()
-                } else {
-                    "kernel_budget".to_string()
-                },
+                kind: "shared_payment_token".to_string(),
                 asset: financial.currency.clone(),
                 network: None,
                 facilitator: metered.map(|metered| metered.quote.provider.clone()),
                 contract_or_account_ref: financial
                     .payment_reference
                     .clone()
-                    .or_else(|| commerce.map(|commerce| commerce.shared_payment_token_id.clone())),
+                    .or_else(|| Some(commerce.shared_payment_token_id.clone())),
             },
             amount_bounds: chio_core::receipt::economics::EconomicAmountBoundsReceiptMetadata {
                 approved_max,
@@ -461,21 +486,38 @@ pub(crate) fn governed_request_metadata(
         return Ok(None);
     };
 
-    let approval =
-        request
-            .approval_token
-            .as_ref()
-            .map(|approval_token| GovernedApprovalReceiptMetadata {
-                token_id: approval_token.id.clone(),
-                approver_key: approval_token.approver.to_hex(),
-                approved: approval_token.decision == GovernedApprovalDecision::Approved,
-            });
+    let approval = if let Some(approval_token) = request.approval_token.as_ref() {
+        Some(GovernedApprovalReceiptMetadata {
+            token_id: approval_token.id.clone(),
+            approver_key: approval_token.approver.to_hex(),
+            approval_artifact_digest: request.approval_artifact_digest().map_err(|error| {
+                KernelError::ReceiptSigningFailed(format!(
+                    "failed to hash governed approval for receipt metadata: {error}"
+                ))
+            })?,
+            approved: approval_token.decision == GovernedApprovalDecision::Approved,
+        })
+    } else if let Some(proposal) = request.threshold_approval_proposal.as_ref() {
+        Some(GovernedApprovalReceiptMetadata {
+            token_id: proposal.body.proposal_id.clone(),
+            approver_key: proposal.body.policy_authority.to_hex(),
+            approval_artifact_digest: request.approval_artifact_digest().map_err(|error| {
+                KernelError::ReceiptSigningFailed(format!(
+                    "failed to hash threshold approval set for receipt metadata: {error}"
+                ))
+            })?,
+            approved: true,
+        })
+    } else {
+        None
+    };
     let commerce = intent
         .commerce
         .as_ref()
         .map(|commerce| GovernedCommerceReceiptMetadata {
             seller: commerce.seller.clone(),
             shared_payment_token_id: commerce.shared_payment_token_id.clone(),
+            settlement_destination_ref: commerce.settlement_destination_ref.clone(),
         });
     let metered_billing =
         intent
@@ -567,6 +609,22 @@ pub(crate) fn request_receipt_metadata(
     now: u64,
     extra_metadata: Option<&serde_json::Value>,
 ) -> Result<Option<serde_json::Value>, KernelError> {
+    request_receipt_metadata_with_payee_binding(
+        request,
+        attestation_trust_policy,
+        now,
+        extra_metadata,
+        None,
+    )
+}
+
+pub(crate) fn request_receipt_metadata_with_payee_binding(
+    request: &ToolCallRequest,
+    attestation_trust_policy: Option<&AttestationTrustPolicy>,
+    now: u64,
+    extra_metadata: Option<&serde_json::Value>,
+    payee_binding: Option<&VerifiedGovernedPayeeBinding>,
+) -> Result<Option<serde_json::Value>, KernelError> {
     let governed_metadata = governed_request_metadata(request, attestation_trust_policy, now)?;
     let financial = extra_metadata
         .and_then(serde_json::Value::as_object)
@@ -577,7 +635,9 @@ pub(crate) fn request_receipt_metadata(
         governed_metadata,
         financial
             .as_ref()
-            .map(|financial| governed_economic_authorization_metadata(request, financial))
+            .map(|financial| {
+                governed_economic_authorization_metadata(request, financial, payee_binding)
+            })
             .transpose()?
             .flatten(),
     )?;

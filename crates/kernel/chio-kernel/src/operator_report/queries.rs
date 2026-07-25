@@ -271,6 +271,7 @@ impl BehavioralFeedQuery {
             until: self.until,
             min_cost: None,
             max_cost: None,
+            cost_currency: None,
             cursor: None,
             limit: self.receipt_limit_or_default(),
             agent_subject: self.agent_subject.clone(),

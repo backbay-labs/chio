@@ -1,13 +1,90 @@
 mod support;
 
 use chio_runtime_core::{
-    compute_ladder_intersection, evaluate_cross_boundary_admission,
+    bilateral_dsse_consistency_model, compute_ladder_intersection,
+    evaluate_cross_boundary_admission, ladder_co_sign_mode,
     validate_cross_boundary_admission_report, validate_governance_ladder_manifest,
     validate_ladder_intersection, CrossBoundaryAdmissionInput, CrossBoundaryAdmissionReport,
-    CrossBoundaryEvidenceRef,
+    CrossBoundaryEvidenceRef, GovernanceLadderQuorum,
 };
 use std::io;
 use support::treaty::{treaty_action_class, treaty_manifest, treaty_scope};
+
+#[test]
+fn bilateral_dsse_consistency_models_use_wire_vocabulary() {
+    for (runtime, wire) in [
+        ("crdt_commutative", "crdt-commutative"),
+        ("totally_ordered", "totally-ordered"),
+        ("single_kernel", "single-kernel"),
+        ("quorum_required", "quorum-required"),
+        ("crdt-commutative", "crdt-commutative"),
+        ("totally-ordered", "totally-ordered"),
+        ("single-kernel", "single-kernel"),
+        ("quorum-required", "quorum-required"),
+    ] {
+        let actual = match bilateral_dsse_consistency_model(runtime) {
+            Ok(actual) => actual,
+            Err(error) => panic!("{runtime} failed to map to DSSE: {error}"),
+        };
+        assert_eq!(actual, wire);
+    }
+    assert!(bilateral_dsse_consistency_model("unsupported").is_err());
+}
+
+#[test]
+fn ladder_co_sign_modes_use_wire_vocabulary() {
+    for (runtime, wire) in [
+        ("none", "none"),
+        ("bilateral_if_cross_org", "bilateral_if_cross_org"),
+        ("bilateral_required", "bilateral_required"),
+        ("n_of_m", "n_of_m"),
+        ("quorum_required", "n_of_m"),
+    ] {
+        let actual = match ladder_co_sign_mode(runtime) {
+            Ok(actual) => actual,
+            Err(error) => panic!("{runtime} failed to map to a co-sign mode: {error}"),
+        };
+        assert_eq!(actual, wire);
+    }
+    assert!(ladder_co_sign_mode("unsupported").is_err());
+}
+
+#[test]
+fn governance_ladder_manifest_round_trips_n_of_m_quorum() -> Result<(), Box<dyn std::error::Error>>
+{
+    let mut action = treaty_action_class(
+        "receipt_backed",
+        true,
+        "totally-ordered",
+        vec!["governance_receipt", "quorum_signature"],
+    );
+    action.co_sign = "n_of_m".to_string();
+    action.co_sign_quorum = Some(GovernanceLadderQuorum {
+        n: 2,
+        m: 3,
+        scope: "treaty".to_string(),
+    });
+    let manifest = treaty_manifest("kernel.buyer", action);
+    validate_governance_ladder_manifest(&manifest)?;
+
+    let encoded = serde_json::to_string(&manifest)?;
+    assert!(encoded.contains("\"coSignQuorum\""));
+    let decoded = chio_runtime_core::governance_ladder_manifest_from_json(&encoded)?;
+    assert_eq!(decoded, manifest);
+
+    let mut without_quorum = manifest.clone();
+    without_quorum.action_classes[0].co_sign_quorum = None;
+    assert!(validate_governance_ladder_manifest(&without_quorum).is_err());
+
+    let mut misdeclared = manifest;
+    misdeclared.action_classes[0].co_sign_quorum = Some(GovernanceLadderQuorum {
+        n: 4,
+        m: 3,
+        scope: "treaty".to_string(),
+    });
+    assert!(validate_governance_ladder_manifest(&misdeclared).is_err());
+    Ok(())
+}
 
 fn accepted_admission_report() -> CrossBoundaryAdmissionReport {
     CrossBoundaryAdmissionReport {
@@ -19,6 +96,7 @@ fn accepted_admission_report() -> CrossBoundaryAdmissionReport {
         mode: "receipt_backed".to_string(),
         consistency_model: "totally_ordered".to_string(),
         co_sign: "bilateral_required".to_string(),
+        co_sign_quorum: None,
         required_evidence: vec!["governance_receipt".to_string()],
         present_evidence: vec![
             "governance_receipt".to_string(),
@@ -143,7 +221,7 @@ fn treaty_cross_boundary_admission_requires_intersection_and_evidence(
     })?;
     assert!(accepted.accepted);
     assert_eq!(accepted.mode, "receipt_backed");
-    assert_eq!(accepted.consistency_model, "totally_ordered");
+    assert_eq!(accepted.consistency_model, "totally-ordered");
     Ok(())
 }
 
@@ -269,6 +347,7 @@ fn treaty_cross_boundary_admission_rejects_accepted_failure_code(
         mode: "receipt_backed".to_string(),
         consistency_model: "totally_ordered".to_string(),
         co_sign: "bilateral_required".to_string(),
+        co_sign_quorum: None,
         required_evidence: vec!["governance_receipt".to_string()],
         present_evidence: vec!["governance_receipt".to_string()],
         verified_evidence: vec![CrossBoundaryEvidenceRef {
@@ -471,6 +550,11 @@ fn treaty_cross_boundary_admission_requires_quorum_evidence_for_quorum_cosign(
         vec!["governance_receipt"],
     );
     buyer_action.co_sign = "quorum_required".to_string();
+    buyer_action.co_sign_quorum = Some(GovernanceLadderQuorum {
+        n: 2,
+        m: 3,
+        scope: "treaty".to_string(),
+    });
     let mut vendor_action = treaty_action_class(
         "receipt_backed",
         true,
@@ -478,6 +562,11 @@ fn treaty_cross_boundary_admission_requires_quorum_evidence_for_quorum_cosign(
         vec!["governance_receipt"],
     );
     vendor_action.co_sign = "quorum_required".to_string();
+    vendor_action.co_sign_quorum = Some(GovernanceLadderQuorum {
+        n: 2,
+        m: 3,
+        scope: "treaty".to_string(),
+    });
     let buyer = treaty_manifest("kernel.buyer", buyer_action);
     let vendor = treaty_manifest("kernel.vendor-b", vendor_action);
     let mut treaty = treaty_scope();
@@ -486,7 +575,7 @@ fn treaty_cross_boundary_admission_requires_quorum_evidence_for_quorum_cosign(
         chio_runtime_core::governance_ladder_manifest_sha256(&vendor)?,
     ];
     let intersection = compute_ladder_intersection(&treaty, &[buyer, vendor], 1_800_000_010_000)?;
-    assert_eq!(intersection.action_classes[0].co_sign, "quorum_required");
+    assert_eq!(intersection.action_classes[0].co_sign, "n_of_m");
     let expected_intersection_sha256 =
         chio_runtime_core::ladder_intersection_sha256(&intersection)?;
 

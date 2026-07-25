@@ -1,4 +1,4 @@
-use chio_core::Keypair;
+use chio_core_types::Keypair;
 use chio_did::{resolve_did_arc, DidChio, DidService, ResolveOptions, RECEIPT_LOG_SERVICE_TYPE};
 
 #[test]

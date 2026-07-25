@@ -1,0 +1,80 @@
+# Advisory economic qualification gate. The runner rejects unknown, duplicate,
+# or missing classes and signs only when every named production target holds.
+
+profile_id = "econsim-v1"
+advisory = true
+corpus_manifest = "fixtures/econsim/corpus-manifest.json"
+
+[[scenario]]
+class = "sybil-pricing-ring"
+seed = 104729
+requirement_ids = ["AE-SYBIL-TIER-1", "AE-MARKET-LIMIT-1"]
+assertion_scope = "repeated evidence from one feed cannot establish tier 3 marketplace authority"
+explicit_limits = ["does not detect coordinated identities", "does not cap aggregate ring credit", "internal qualification only"]
+finding_severity = "high"
+cargo_tests = [
+  ["-p", "chio-reputation", "one_strong_feed_alone_cannot_reach_tier_3"],
+  ["-p", "chio-reputation", "multiple_deltas_same_feed_cannot_reach_tier_3"],
+]
+
+[[scenario]]
+class = "collusion-bid-ring"
+seed = 130363
+requirement_ids = ["AE-BID-AUTHORITY-1", "AE-BID-LIABILITY-1"]
+assertion_scope = "bid and acceptance validators reject malformed authority, scope, price, and reservation liability"
+explicit_limits = ["does not detect market-wide collusion", "qualifies transaction integrity only", "internal qualification only"]
+finding_severity = "high"
+cargo_tests = [
+  ["-p", "chio-open-market", "bid_rejects_unbound_token_issuer"],
+  ["-p", "chio-open-market", "reservation_receipt_verification_rejects_wrong_authority"],
+  ["-p", "chio-open-market", "accept_rejects_underfunded_reservation_receipt"],
+]
+
+[[scenario]]
+class = "credit-exhaustion"
+seed = 155921
+requirement_ids = ["AE-CREDIT-ADMISSION-1"]
+assertion_scope = "durable admission counts cumulative reserved exposure and rejects the first request above the complete authority-set ceiling"
+explicit_limits = ["qualifies one durable SQLite admission boundary", "does not predict debtor behavior", "internal qualification only"]
+finding_severity = "critical"
+cargo_tests = [
+  ["-p", "chio-credit", "configured_resolver_rejects_incomplete_conflicting_expired_and_tampered_sets"],
+  ["-p", "chio-store-sqlite", "cumulative_credit_exposure_rejects_the_first_request_above_the_effective_ceiling"],
+]
+
+[[scenario]]
+class = "oracle-divergence"
+seed = 180749
+requirement_ids = ["AE-ORACLE-DIVERGENCE-1", "AE-ORACLE-FRESHNESS-1"]
+assertion_scope = "over-threshold divergence and future or stale exchange-rate evidence fail closed"
+explicit_limits = ["does not establish oracle availability", "does not establish source independence", "internal qualification only"]
+finding_severity = "critical"
+cargo_tests = [
+  ["-p", "chio-link", "divergence_trips_fail_closed_policy"],
+  ["-p", "chio-link", "future_rate_updates_fail_closed"],
+  ["-p", "chio-link", "exchange_rates_fail_when_the_quote_is_stale"],
+]
+
+[[scenario]]
+class = "fee-structuring"
+seed = 205759
+requirement_ids = ["AE-CUMULATIVE-APPROVAL-1"]
+assertion_scope = "concurrent sub-threshold requests share one authority-bound accumulator and exactly one crosses into pending approval"
+explicit_limits = ["qualifies the named cumulative account boundary", "does not detect unrelated fee evasion", "internal qualification only"]
+finding_severity = "critical"
+cargo_tests = [
+  ["-p", "chio-kernel", "--test", "composite_budget_store", "real_threads_serialize_cumulative_sixty_plus_sixty"],
+  ["-p", "chio-kernel", "cumulative_approval_resumes_the_same_hold_and_dispatches_once"],
+]
+
+[[scenario]]
+class = "settlement-dos"
+seed = 230761
+requirement_ids = ["AE-SETTLEMENT-RETRY-1"]
+assertion_scope = "one retryable settlement sequence reaches dead letter at the configured bound with capped backoff"
+explicit_limits = ["does not bound queue size or worker throughput", "does not model network denial of service", "internal qualification only"]
+finding_severity = "high"
+cargo_tests = [
+  ["-p", "chio-settle", "retryable_outcomes_consume_the_envelope_then_dead_letter"],
+  ["-p", "chio-settle", "backoff_grows_exponentially_until_cap"],
+]

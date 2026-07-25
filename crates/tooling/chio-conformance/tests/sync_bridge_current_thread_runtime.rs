@@ -87,7 +87,6 @@ fn make_kernel(receipt_store_path: &std::path::Path) -> ChioKernel {
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     };
     let mut kernel = ChioKernel::new(config);
     let store = SqliteReceiptStore::open(receipt_store_path).unwrap();
@@ -135,6 +134,9 @@ fn current_thread_runtime_returns_typed_error_instead_of_deadlocking() {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -210,6 +212,9 @@ fn no_runtime_attached_drives_future_to_completion() {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };

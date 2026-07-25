@@ -1299,6 +1299,8 @@ mod config_and_public_tests {
             authority_seed_path: None,
             authority_db_path: None,
             budget_db_path: None,
+            joint_authority_db_path: None,
+            fiscal_runtime: None,
             enterprise_providers_file: None,
             federation_policies_file: None,
             scim_lifecycle_file: None,

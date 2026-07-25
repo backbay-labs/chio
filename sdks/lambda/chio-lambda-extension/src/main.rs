@@ -606,6 +606,7 @@ mod tests {
                 issued_at: 1,
                 expires_at: u64::MAX,
                 delegation_chain: Vec::new(),
+                aggregate_invocation_budget: None,
             },
             &issuer,
         )
@@ -682,6 +683,7 @@ mod tests {
                 issued_at: 1,
                 expires_at: u64::MAX,
                 delegation_chain: Vec::new(),
+                aggregate_invocation_budget: None,
             },
             &issuer,
         )
@@ -740,6 +742,7 @@ mod tests {
                 issued_at: 1,
                 expires_at: u64::MAX,
                 delegation_chain: Vec::new(),
+                aggregate_invocation_budget: None,
             },
             &issuer,
         )
@@ -798,6 +801,7 @@ mod tests {
                 issued_at: 1,
                 expires_at: u64::MAX,
                 delegation_chain: Vec::new(),
+                aggregate_invocation_budget: None,
             },
             &untrusted_issuer,
         )
@@ -882,6 +886,7 @@ mod tests {
                 issued_at: 1,
                 expires_at: u64::MAX,
                 delegation_chain: Vec::new(),
+                aggregate_invocation_budget: None,
             },
             &issuer,
         )
@@ -934,6 +939,7 @@ mod tests {
                 issued_at: 1,
                 expires_at: u64::MAX,
                 delegation_chain: Vec::new(),
+                aggregate_invocation_budget: None,
             },
             &issuer,
         )

@@ -194,12 +194,14 @@ fn test_lineage_get_delegation_chain() {
     let budget_db_path = dir.join("budgets.sqlite3");
 
     let issuer_kp = Keypair::generate();
-    let subj_kp = Keypair::generate();
+    let root_kp = Keypair::generate();
+    let parent_kp = Keypair::generate();
+    let child_kp = Keypair::generate();
 
     // 3-level chain: root -> parent -> child
-    let root = make_capability_token("chain-root", &subj_kp, &issuer_kp);
-    let parent = make_capability_token("chain-parent", &subj_kp, &issuer_kp);
-    let child = make_capability_token("chain-child", &subj_kp, &issuer_kp);
+    let root = make_capability_token("chain-root", &root_kp, &issuer_kp);
+    let parent = make_delegated_capability_token("chain-parent", &parent_kp, &root_kp, &root);
+    let child = make_delegated_capability_token("chain-child", &child_kp, &parent_kp, &parent);
 
     prepopulate_lineage(
         &receipt_db_path,
@@ -323,7 +325,7 @@ fn test_cost_attribution_report_endpoint() {
     let issuer_hex = issuer_kp.public_key().to_hex();
 
     let root = make_capability_token("cap-cost-root", &root_kp, &issuer_kp);
-    let child = make_capability_token("cap-cost-child", &leaf_kp, &issuer_kp);
+    let child = make_delegated_capability_token("cap-cost-child", &leaf_kp, &root_kp, &root);
 
     {
         let store = SqliteReceiptStore::open(&receipt_db_path).expect("open store");

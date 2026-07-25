@@ -56,7 +56,6 @@ fn test_kernel_config() -> KernelConfig {
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     }
 }
 
@@ -112,6 +111,7 @@ fn capability_for_tool(
             issued_at: now.saturating_sub(30),
             expires_at: now + 300,
             delegation_chain: vec![],
+            aggregate_invocation_budget: None,
         },
         issuer,
     )
@@ -132,7 +132,7 @@ fn text_message(text: &str) -> SendMessageRequest {
 }
 
 #[test]
-fn send_message_strict_nonce_preflight_returns_working_retry_metadata() {
+fn strict_nonce_retries_require_and_accept_stable_request_ids() {
     let mut edge = ChioA2aEdge::new(A2aEdgeConfig::default(), vec![test_manifest()]).test_unwrap();
     let config = test_kernel_config();
     let kernel_issuer = config.keypair.clone();
@@ -155,11 +155,16 @@ fn send_message_strict_nonce_preflight_returns_working_retry_metadata() {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
     };
 
+    let request_id = "a2a-strict-nonce-retry";
+    let request = text_message("hello");
     let response = edge
-        .handle_send_message("echo", &text_message("hello"), &kernel, &execution)
+        .handle_send_message_with_request_id(request_id, "echo", &request, &kernel, &execution)
         .test_unwrap();
 
     assert_eq!(response.status, TaskStatus::Working);
@@ -180,4 +185,36 @@ fn send_message_strict_nonce_preflight_returns_working_retry_metadata() {
     assert!(metadata["chio"]["executionNonce"]["nonce"]["nonce_id"]
         .as_str()
         .is_some());
+    let execution_nonce = serde_json::from_value(metadata["chio"]["executionNonce"].clone())
+        .test_expect("preflight metadata should contain a signed execution nonce");
+    let retry_execution = A2aKernelExecutionContext {
+        execution_nonce: Some(execution_nonce),
+        ..execution.clone()
+    };
+
+    let send_error = edge
+        .handle_send_message("echo", &request, &kernel, &retry_execution)
+        .test_expect_err("generated send IDs must reject execution nonces");
+    assert!(send_error
+        .to_string()
+        .contains("handle_send_message_with_request_id"));
+    let stream_error = edge
+        .handle_stream_message("echo", &request, &retry_execution)
+        .test_expect_err("generated stream IDs must reject execution nonces");
+    assert!(stream_error
+        .to_string()
+        .contains("handle_stream_message_with_request_id"));
+
+    edge.handle_stream_message_with_request_id(request_id, "echo", &request, &retry_execution)
+        .test_expect("stable stream IDs should accept execution nonces");
+    let retry = edge
+        .handle_send_message_with_request_id(
+            request_id,
+            "echo",
+            &request,
+            &kernel,
+            &retry_execution,
+        )
+        .test_expect("stable send retry should execute");
+    assert_eq!(retry.status, TaskStatus::Completed);
 }

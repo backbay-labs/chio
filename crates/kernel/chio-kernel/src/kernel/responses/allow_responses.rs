@@ -1,26 +1,14 @@
 use super::*;
 
-/// The reserve-for-caller hold threaded into a preflight allow response: the
-/// authorized reservation to keep open, plus the accounting needed to reverse it
-/// if the reservation stamp fails. The TTL reaper deadline is derived from the
-/// minted nonce's exact expiry inside the response builder so a hold never
-/// expires before its own nonce.
 pub(crate) enum ReservedHoldStamp<'a> {
-    /// A monetary reserve: the durable hold was already authorized during
-    /// `check_and_increment_budget` and is kept open; the builder marks it
-    /// reserved with the grant currency and reverses the charge on stamp failure.
-    /// `payment_reference` carries the rail transaction id of a prepaid MustPrepay
-    /// reservation so reconcile-by-nonce can stamp it onto the authoritative
-    /// receipt; `None` for a mediated reserve with no prepayment.
     Monetary {
         charge: &'a BudgetChargeResult,
         payment_reference: Option<String>,
     },
-    /// An invocation-only reserve: the invocation was already debited by
-    /// `try_increment`. The builder adopts it into a durable zero-exposure
-    /// reserved hold so the TTL reaper and reconcile-by-nonce can settle it, and
-    /// reverse-by-nonce or a stamp failure can return the invocation.
-    Invocation { hold_id: String, grant_index: usize },
+    Invocation {
+        hold_id: String,
+        grant_index: usize,
+    },
 }
 
 impl ReservedHoldStamp<'_> {
@@ -32,27 +20,22 @@ impl ReservedHoldStamp<'_> {
     }
 }
 
-/// How `build_allow_response_with_metadata` populates the response execution nonce.
 pub(crate) enum AllowResponseNonce {
-    /// Use a nonce the caller already minted (cost-bearing reserving paths that
-    /// need the nonce id in the receipt metadata before signing).
     Preminted(Box<crate::execution_nonce::SignedExecutionNonce>),
-    /// Mint a fresh allow nonce after signing (the standard measured-cost path).
     MintForAllow,
-    /// Emit no execution nonce. For provisional allow paths that reversed the
-    /// budget hold and did not execute the tool at the kernel: there is no
-    /// reserved hold to reconcile and nothing to authorize downstream.
     Suppressed,
 }
 
 impl ChioKernel {
-    pub(crate) fn build_allow_response_with_metadata(
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn build_allow_response_with_metadata_and_payee_binding(
         &self,
         request: &ToolCallRequest,
         output: ToolCallOutput,
         timestamp: u64,
         matched_grant_index: Option<usize>,
         extra_metadata: Option<serde_json::Value>,
+        verified_payee_binding: Option<&VerifiedGovernedPayeeBinding>,
         nonce: AllowResponseNonce,
     ) -> Result<ToolCallResponse, KernelError> {
         let cap = &request.capability;
@@ -77,11 +60,12 @@ impl ChioKernel {
             }
             _ => None,
         };
-        let request_metadata = request_receipt_metadata(
+        let request_metadata = request_receipt_metadata_with_payee_binding(
             request,
             self.attestation_trust_policy.as_ref(),
             timestamp,
             extra_metadata.as_ref(),
+            verified_payee_binding,
         )?;
 
         // Merge extra_metadata (e.g. "financial") into receipt_content.metadata.
@@ -140,11 +124,9 @@ impl ChioKernel {
             )?;
         }
 
-        // Populate the response execution nonce per the caller's disposition:
-        // reuse a pre-minted nonce (cost-bearing paths that recorded the nonce id
-        // in the receipt metadata before signing), mint a fresh allow nonce after
-        // signing (the standard measured path), or emit none for a provisional
-        // path that reversed its hold and authorizes nothing downstream.
+        // Mint a short-lived, single-use execution nonce for allow responses
+        // that did not already present one. A request that consumed a nonce
+        // to execute must not chain-mint a replacement for the same call.
         let execution_nonce = match nonce {
             AllowResponseNonce::Preminted(nonce) => Some(nonce),
             AllowResponseNonce::MintForAllow => {
@@ -210,11 +192,6 @@ impl ChioKernel {
             tenant_id: None,
         })?;
 
-        // Mint the nonce and stamp the reserved hold BEFORE persisting the
-        // receipt. A failed stamp reverses the hold, so the receipt must not
-        // already be recorded: a persisted `hold_disposition: reserved` receipt
-        // with no terminal event standing over a reversed hold is a corrupted
-        // audit view.
         let execution_nonce = self.mint_execution_nonce_for_allow_reserving(
             request,
             cap,
@@ -222,11 +199,6 @@ impl ChioKernel {
             reserved_hold.as_ref().map(ReservedHoldStamp::hold_id),
         )?;
 
-        // Stamp the reserved hold's TTL deadline from the minted nonce's exact
-        // `expires_at` (not a separately sampled evaluation clock), so an
-        // unreconciled reserved hold can never expire before its own nonce. Only
-        // the reserve-for-caller path supplies a stamp; the reverse-for-retry
-        // preflight passes `None` and marks nothing.
         if let (Some(stamp), Some(nonce)) = (reserved_hold.as_ref(), execution_nonce.as_ref()) {
             let reserved_until = nonce.expires_at();
             match stamp {
@@ -234,9 +206,6 @@ impl ChioKernel {
                     charge,
                     payment_reference,
                 } => {
-                    // Record the grant ceiling and delegation lineage on the hold
-                    // so reconcile-by-nonce stamps the grant's budget total/remaining
-                    // and the true depth/root, not the reservation's own exposure.
                     let envelope = crate::budget_store::ReservedHoldEnvelope {
                         budget_total: Some(charge.budget_total),
                         delegation_depth: cap.delegation_chain.len() as u32,
@@ -251,32 +220,17 @@ impl ChioKernel {
                             &envelope,
                         )?)
                     }) {
-                        // The hold was authorized but the reservation stamp did not
-                        // land. The TTL reaper only settles stamped holds, so an
-                        // unstamped open hold would stay reserved forever, blocking
-                        // later authorizations on the grant. Reverse the hold and
-                        // release the sibling-sum headroom it was holding before
-                        // surfacing the error, leaving no committed exposure and no
-                        // stranded parent budget. The receipt is not yet persisted,
-                        // so a reversed hold leaves no orphaned receipt.
                         self.reverse_budget_charge(&cap.id, charge)?;
                         self.release_admitted_capability_budget(cap)
                             .map_err(KernelError::DelegationInvalid)?;
                         return Err(error);
                     }
-                    // The stamp landed: keep the delegated child's sibling-sum share
-                    // admitted and remember it against the reserved hold so
-                    // reconcile-by-nonce or the TTL reaper releases the parent's
-                    // headroom when it closes.
                     self.record_reserved_sibling_share(charge.budget_hold_id.as_str(), cap);
                 }
                 ReservedHoldStamp::Invocation {
                     hold_id,
                     grant_index,
                 } => {
-                    // An invocation reserve carries no monetary ceiling, but its
-                    // delegation lineage is still recorded so reconcile-by-nonce
-                    // stamps the true depth/root rather than zero.
                     let envelope = crate::budget_store::ReservedHoldEnvelope {
                         budget_total: None,
                         delegation_depth: cap.delegation_chain.len() as u32,
@@ -284,21 +238,13 @@ impl ChioKernel {
                     };
                     if let Err(error) = self.with_budget_store(|store| {
                         Ok(store.reserve_invocation_hold(
-                            hold_id.as_str(),
+                            hold_id,
                             &cap.id,
                             *grant_index,
                             reserved_until,
                             &envelope,
                         )?)
                     }) {
-                        // The invocation was already debited by `try_increment`;
-                        // adopting it into a durable reserved hold failed, so no hold
-                        // exists to reap or reconcile. Reverse the bare invocation
-                        // debit (no hold id) so the grant is not left permanently
-                        // short an invocation, and release the delegated child's
-                        // sibling-sum share this reservation was holding, before
-                        // surfacing the error. The receipt is not yet persisted, so
-                        // no orphaned receipt stands over the released state.
                         self.with_budget_store(|store| {
                             Ok(store.reverse_charge_cost(&cap.id, *grant_index, 0)?)
                         })?;
@@ -306,32 +252,18 @@ impl ChioKernel {
                             .map_err(KernelError::DelegationInvalid)?;
                         return Err(error);
                     }
-                    // The invocation hold is durable: keep the delegated child's
-                    // sibling-sum share admitted and record it against the hold so
-                    // reconcile-by-nonce or the TTL reaper releases the parent's
-                    // headroom when the hold closes, matching the monetary reserve.
-                    self.record_reserved_sibling_share(hold_id.as_str(), cap);
+                    self.record_reserved_sibling_share(hold_id, cap);
                 }
             }
         }
 
-        // Persist the receipt only after the hold is successfully stamped. The
-        // reservation is now durable in the budget store and the minted nonce binds
-        // it, so a durable-receipt (or federation co-signature) failure here is
-        // NON-FATAL: reversing the stamped hold would strand the receipt persist's
-        // partial state and void a valid reservation the caller could otherwise
-        // reconcile downstream with the nonce. Log the failure and return the
-        // response with the nonce instead; the reservation stands, and if the caller
-        // never reconciles the TTL reaper forfeits it. A stamp failure above (no
-        // durable hold, no returned nonce) still reverses, fail-closed.
         if let Err(error) = self.record_chio_receipt_with_federation(request, &receipt) {
             warn!(
                 request_id = %request.request_id,
                 hold_id = reserved_hold.as_ref().map(ReservedHoldStamp::hold_id),
                 receipt_id = %receipt.id,
                 reason = %redacted!(&error),
-                "durable receipt persistence failed for a stamped reservation; returning the \
-                 minted nonce so the caller can reconcile the durable reservation"
+                "durable receipt persistence failed for a stamped reservation"
             );
         }
 
@@ -357,7 +289,7 @@ impl ChioKernel {
     /// entry OR the chain is tampered / unavailable. This is the
     /// fail-closed signal: the receipt explicitly records that the
     /// memory read was not backed by a provenance record.
-    fn resolve_memory_read_provenance_metadata(
+    pub(crate) fn resolve_memory_read_provenance_metadata(
         &self,
         store: &str,
         key: &str,
@@ -433,7 +365,7 @@ impl ChioKernel {
 
     /// Append a provenance entry for a governed memory write once the allow
     /// receipt is signed. Fails closed on chain-store errors.
-    fn append_memory_provenance_for_write(
+    pub(crate) fn append_memory_provenance_for_write(
         &self,
         store: &str,
         key: &str,

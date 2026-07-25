@@ -9,6 +9,7 @@ use super::*;
 mod allow_responses;
 mod deny_responses;
 mod finalization;
+mod pending_responses;
 mod receipt_persistence;
 mod terminal_responses;
 

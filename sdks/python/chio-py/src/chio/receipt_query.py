@@ -18,6 +18,7 @@ class ReceiptQueryParams(TypedDict, total=False):
     until: int
     minCost: int
     maxCost: int
+    costCurrency: str
     agentSubject: str
     cursor: int
     limit: int

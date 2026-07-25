@@ -25,6 +25,7 @@ fn test_capability() -> CapabilityToken {
             issued_at: 100,
             expires_at: 200,
             delegation_chain: Vec::new(),
+            aggregate_invocation_budget: None,
         },
         &keypair,
     )
@@ -143,8 +144,12 @@ fn governed_request_metadata_preserves_asserted_call_chain_and_diagnostics() {
             call_chain: Some(call_chain.clone()),
             autonomy: None,
             context: None,
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -218,8 +223,12 @@ fn governed_request_metadata_marks_matching_local_call_chain_evidence_as_observe
             call_chain: Some(call_chain.clone()),
             autonomy: None,
             context: None,
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -308,8 +317,12 @@ fn governed_request_metadata_marks_validated_upstream_call_chain_proof_as_verifi
             call_chain: Some(call_chain.clone()),
             autonomy: None,
             context: None,
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -382,8 +395,12 @@ fn governed_request_metadata_omits_unverified_runtime_assurance() {
             call_chain: None,
             autonomy: None,
             context: None,
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -424,8 +441,12 @@ fn governed_request_metadata_uses_verified_runtime_assurance_boundary() {
             call_chain: None,
             autonomy: None,
             context: None,
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -486,8 +507,12 @@ fn governed_request_metadata_prefers_scoped_nitro_verified_record() {
             call_chain: None,
             autonomy: None,
             context: None,
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -548,8 +573,12 @@ fn governed_request_metadata_rejects_mismatched_scoped_runtime_attestation_recor
             call_chain: None,
             autonomy: None,
             context: None,
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -567,7 +596,7 @@ fn governed_request_metadata_rejects_mismatched_scoped_runtime_attestation_recor
 }
 
 #[test]
-fn request_receipt_metadata_projects_economic_authorization_from_financial_metadata() {
+fn request_receipt_metadata_omits_economic_authorization_without_verified_payee_binding() {
     let request = ToolCallRequest {
         request_id: "req-economic-1".to_string(),
         capability: test_capability(),
@@ -589,6 +618,7 @@ fn request_receipt_metadata_projects_economic_authorization_from_financial_metad
             commerce: Some(chio_core::capability::governance::GovernedCommerceContext {
                 seller: "seller-1".to_string(),
                 shared_payment_token_id: "shared-token-1".to_string(),
+                settlement_destination_ref: Some("acct:seller-1".to_string()),
             }),
             metered_billing: Some(chio_core::capability::governance::MeteredBillingContext {
                 settlement_mode:
@@ -606,13 +636,18 @@ fn request_receipt_metadata_projects_economic_authorization_from_financial_metad
                     expires_at: Some(200),
                 },
                 max_billed_units: Some(100),
+                verified_outcome: None,
             }),
             runtime_attestation: None,
             call_chain: None,
             autonomy: None,
             context: None,
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -639,32 +674,7 @@ fn request_receipt_metadata_projects_economic_authorization_from_financial_metad
     let governed: GovernedTransactionReceiptMetadata =
         serde_json::from_value(metadata["governed_transaction"].clone())
             .expect("governed metadata should deserialize");
-    let economic = governed
-        .economic_authorization
-        .expect("economic authorization should be present");
-
-    assert_eq!(
-        economic.economic_mode,
-        chio_core::receipt::economics::EconomicAuthorizationMode::MeteredHoldCapture
-    );
-    assert_eq!(economic.budget.currency, "USD");
-    assert_eq!(economic.budget.cost_charged, 230);
-    assert_eq!(economic.rail.kind, "shared_payment_token");
-    assert_eq!(
-        economic.rail.contract_or_account_ref.as_deref(),
-        Some("payref-1")
-    );
-    assert_eq!(
-        economic.settlement.settlement_status,
-        SettlementStatus::Pending
-    );
-    assert_eq!(
-        economic
-            .metering
-            .expect("metering projection should be present")
-            .provider,
-        "meterd"
-    );
+    assert!(governed.economic_authorization.is_none());
 }
 
 #[test]
@@ -690,8 +700,12 @@ fn request_receipt_metadata_treats_untyped_financial_extra_metadata_as_pass_thro
             call_chain: None,
             autonomy: None,
             context: None,
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };

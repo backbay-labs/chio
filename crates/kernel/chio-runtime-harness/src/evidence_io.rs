@@ -111,25 +111,12 @@ pub(crate) fn write_json_string(path: &Path, json: &str) -> Result<(), RuntimeLo
     })
 }
 
-pub(crate) fn unix_now_ms() -> u64 {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| {
-            let millis = duration.as_millis();
-            u64::try_from(millis).unwrap_or(u64::MAX)
-        })
-        .unwrap_or(0)
-}
-
 /// Derive second-denominated capability bounds from a millisecond scenario clock.
 pub fn runtime_loopback_capability_window(now_unix_ms: u64) -> (u64, u64) {
     let scenario_now_secs = now_unix_ms / 1000;
-    let wall_now_secs = unix_now_ms() / 1000;
     (
-        scenario_now_secs.min(wall_now_secs).saturating_sub(60),
-        scenario_now_secs
-            .max(wall_now_secs)
-            .saturating_add(157_680_000),
+        scenario_now_secs.saturating_sub(60),
+        scenario_now_secs.saturating_add(157_680_000),
     )
 }
 

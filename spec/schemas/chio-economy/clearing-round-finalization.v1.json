@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-economy/clearing-round-finalization/v1",
+  "title": "Chio Clearing Round Finalization V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signerKey", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "roundId",
+        "governanceScopeId",
+        "roundCoreDigest",
+        "outputManifestDigest",
+        "participantAcceptanceRoot",
+        "participantAcceptanceCount",
+        "sourceLifecycleHeadDigest",
+        "sourceLifecycleVersion",
+        "sourceLifecycleFence",
+        "clearingAuthorityId",
+        "clearingAuthorityKeyEpoch",
+        "finalizedAtUnixMs"
+      ],
+      "properties": {
+        "schema": { "const": "chio.clearing.round-finalization.v1" },
+        "roundId": { "$ref": "#/$defs/text" },
+        "governanceScopeId": { "$ref": "#/$defs/text" },
+        "roundCoreDigest": { "$ref": "#/$defs/digest" },
+        "outputManifestDigest": { "$ref": "#/$defs/digest" },
+        "participantAcceptanceRoot": { "$ref": "#/$defs/digest" },
+        "participantAcceptanceCount": { "type": "integer", "minimum": 1, "maximum": 1024 },
+        "sourceLifecycleHeadDigest": { "$ref": "#/$defs/digest" },
+        "sourceLifecycleVersion": { "$ref": "#/$defs/positiveInteger" },
+        "sourceLifecycleFence": { "$ref": "#/$defs/positiveInteger" },
+        "clearingAuthorityId": { "$ref": "#/$defs/text" },
+        "clearingAuthorityKeyEpoch": { "$ref": "#/$defs/positiveInteger" },
+        "finalizedAtUnixMs": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "signerKey": { "$ref": "#/$defs/cryptoMaterial" },
+    "signature": { "$ref": "#/$defs/cryptoMaterial" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "text": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "positiveInteger": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "cryptoMaterial": { "type": "string", "minLength": 1, "maxLength": 16384 }
+  }
+}

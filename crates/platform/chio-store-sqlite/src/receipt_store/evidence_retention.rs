@@ -5,6 +5,59 @@ use super::support::{
 };
 use super::*;
 
+pub(crate) fn receipt_query_sql(
+    query: &ReceiptQuery,
+    tenant_fragment: &str,
+) -> Result<(String, String), ReceiptStoreError> {
+    let currency = query
+        .validated_cost_currency()
+        .map_err(ReceiptStoreError::ReadBoundary)?;
+    let cost_fragment = match (
+        query.min_cost.is_some(),
+        query.max_cost.is_some(),
+        currency.is_some(),
+    ) {
+        (false, false, false) => "AND ?13 IS NULL",
+        (false, false, true) => "AND r.cost_currency = ?13",
+        (true, false, true) => "AND r.cost_currency = ?13 AND r.cost_charged_be >= ?7",
+        (false, true, true) => "AND r.cost_currency = ?13 AND r.cost_charged_be <= ?8",
+        (true, true, true) => {
+            "AND r.cost_currency = ?13 AND r.cost_charged_be >= ?7 AND r.cost_charged_be <= ?8"
+        }
+        _ => {
+            return Err(ReceiptStoreError::ReadBoundary(
+                "receipt query cost bounds require a currency".to_string(),
+            ))
+        }
+    };
+    let from_where = format!(
+        r#"
+        FROM chio_tool_receipts r
+        LEFT JOIN capability_lineage cl ON r.capability_id = cl.capability_id
+        WHERE (?1 IS NULL OR r.capability_id = ?1)
+          AND (?2 IS NULL OR r.tool_server = ?2)
+          AND (?3 IS NULL OR r.tool_name = ?3)
+          AND (?4 IS NULL OR r.decision_kind = ?4)
+          AND (?5 IS NULL OR r.timestamp >= ?5)
+          AND (?6 IS NULL OR r.timestamp <= ?6)
+          {cost_fragment}
+          AND (?9 IS NULL OR COALESCE(r.subject_key, cl.subject_key) = ?9)
+          AND {tenant_fragment}
+    "#
+    );
+    let data_sql = format!(
+        r#"
+        SELECT r.seq, r.raw_json
+        {from_where}
+          AND (?10 IS NULL OR r.seq > ?10)
+        ORDER BY r.seq ASC
+        LIMIT ?11
+    "#
+    );
+    let count_sql = format!("SELECT COUNT(*) {from_where}");
+    Ok((data_sql, count_sql))
+}
+
 impl SqliteReceiptStore {
     pub fn append_chio_receipt_returning_seq(
         &self,
@@ -218,64 +271,7 @@ impl SqliteReceiptStore {
             (Some(_), false) => "(r.tenant_id = ?12)",
         };
 
-        // Both queries share the same filter parameters.
-        // Parameters:
-        //   ?1  capability_id
-        //   ?2  tool_server
-        //   ?3  tool_name
-        //   ?4  outcome (decision_kind)
-        //   ?5  since (timestamp >=, inclusive)
-        //   ?6  until (timestamp <=, inclusive)
-        //   ?7  min_cost (json_extract cost_charged >=)
-        //   ?8  max_cost (json_extract cost_charged <=)
-        //   ?9  agent_subject (receipt subject_key, falling back to capability_lineage)
-        //   ?12 tenant_filter (tenant_id exact match or NULL fallback)
-        // Data query also uses:
-        //   ?10 cursor (seq >, exclusive)
-        //   ?11 limit
-        //
-        // When agent_subject is None, the LEFT JOIN produces NULL for cl.subject_key,
-        // and the (?9 IS NULL OR ...) guard passes -- no rows are filtered out.
-        let data_sql = format!(
-            r#"
-            SELECT r.seq, r.raw_json
-            FROM chio_tool_receipts r
-            LEFT JOIN capability_lineage cl ON r.capability_id = cl.capability_id
-            WHERE (?1 IS NULL OR r.capability_id = ?1)
-              AND (?2 IS NULL OR r.tool_server = ?2)
-              AND (?3 IS NULL OR r.tool_name = ?3)
-              AND (?4 IS NULL OR r.decision_kind = ?4)
-              AND (?5 IS NULL OR r.timestamp >= ?5)
-              AND (?6 IS NULL OR r.timestamp <= ?6)
-              AND (?7 IS NULL OR CAST(json_extract(r.raw_json, '$.metadata.financial.cost_charged') AS INTEGER) >= ?7)
-              AND (?8 IS NULL OR CAST(json_extract(r.raw_json, '$.metadata.financial.cost_charged') AS INTEGER) <= ?8)
-              AND (?9 IS NULL OR COALESCE(r.subject_key, cl.subject_key) = ?9)
-              AND {tenant_fragment}
-              AND (?10 IS NULL OR r.seq > ?10)
-            ORDER BY r.seq ASC
-            LIMIT ?11
-        "#
-        );
-
-        // Count query uses identical WHERE clause but no cursor and no LIMIT.
-        // total_count reflects the full filtered set regardless of pagination.
-        let count_sql = format!(
-            r#"
-            SELECT COUNT(*)
-            FROM chio_tool_receipts r
-            LEFT JOIN capability_lineage cl ON r.capability_id = cl.capability_id
-            WHERE (?1 IS NULL OR r.capability_id = ?1)
-              AND (?2 IS NULL OR r.tool_server = ?2)
-              AND (?3 IS NULL OR r.tool_name = ?3)
-              AND (?4 IS NULL OR r.decision_kind = ?4)
-              AND (?5 IS NULL OR r.timestamp >= ?5)
-              AND (?6 IS NULL OR r.timestamp <= ?6)
-              AND (?7 IS NULL OR CAST(json_extract(r.raw_json, '$.metadata.financial.cost_charged') AS INTEGER) >= ?7)
-              AND (?8 IS NULL OR CAST(json_extract(r.raw_json, '$.metadata.financial.cost_charged') AS INTEGER) <= ?8)
-              AND (?9 IS NULL OR COALESCE(r.subject_key, cl.subject_key) = ?9)
-              AND {tenant_fragment}
-        "#
-        );
+        let (data_sql, count_sql) = receipt_query_sql(query, tenant_fragment)?;
 
         let cap_id = query.capability_id.as_deref();
         let tool_srv = query.tool_server.as_deref();
@@ -283,10 +279,14 @@ impl SqliteReceiptStore {
         let outcome = query.outcome.as_deref();
         let since = query.since.map(|v| v as i64);
         let until = query.until.map(|v| v as i64);
-        let min_cost = query.min_cost.map(|v| v as i64);
-        let max_cost = query.max_cost.map(|v| v as i64);
+        let min_cost = query.min_cost.map(|value| value.to_be_bytes().to_vec());
+        let max_cost = query.max_cost.map(|value| value.to_be_bytes().to_vec());
         let agent_sub = query.agent_subject.as_deref();
         let tenant = read_scope.tenant.as_deref();
+        let cost_currency = query.cost_currency.as_deref();
+        let mut connection = self.connection()?;
+        let transaction =
+            connection.transaction_with_behavior(rusqlite::TransactionBehavior::Deferred)?;
         // Convert cursor to signed i64 for SQLite. SQLite AUTOINCREMENT seq
         // values are bounded by i64::MAX; a cursor above that can never be
         // exceeded. Convert with a checked cast: on overflow return an empty
@@ -303,8 +303,7 @@ impl SqliteReceiptStore {
                     // but must still bind placeholders if we reuse `params!`;
                     // the count SQL uses only ?1..=?9 and ?12, so we need to
                     // bind ?10 and ?11 as NULL / 0 to keep indexes stable.
-                    let total_count: u64 = self
-                        .connection()?
+                    let total_count: u64 = transaction
                         .query_row(
                             &count_sql,
                             params![
@@ -322,10 +321,12 @@ impl SqliteReceiptStore {
                                 None::<i64>,
                                 0i64,
                                 tenant,
+                                cost_currency,
                             ],
                             |row| row.get::<_, i64>(0),
                         )
                         .map(|n| n.max(0) as u64)?;
+                    transaction.commit()?;
                     return Ok(ReceiptQueryResult {
                         receipts: Vec::new(),
                         total_count,
@@ -335,39 +336,39 @@ impl SqliteReceiptStore {
             },
         };
 
-        // Execute data query.
-        let connection = self.connection()?;
-        let mut stmt = connection.prepare(&data_sql)?;
-        let rows = stmt.query_map(
-            params![
-                cap_id,
-                tool_srv,
-                tool_nm,
-                outcome,
-                since,
-                until,
-                min_cost,
-                max_cost,
-                agent_sub,
-                cursor_i64,
-                limit as i64,
-                tenant,
-            ],
-            |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
-        )?;
+        let receipts = {
+            let mut statement = transaction.prepare(&data_sql)?;
+            let rows = statement.query_map(
+                params![
+                    cap_id,
+                    tool_srv,
+                    tool_nm,
+                    outcome,
+                    since,
+                    until,
+                    min_cost,
+                    max_cost,
+                    agent_sub,
+                    cursor_i64,
+                    limit as i64,
+                    tenant,
+                    cost_currency,
+                ],
+                |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+            )?;
 
-        let mut receipts = Vec::new();
-        for row in rows {
-            let (seq, raw_json) = row?;
-            let seq = seq.max(0) as u64;
-            let receipt =
-                decode_verified_chio_receipt(&raw_json, "persisted tool receipt", Some(seq))?;
-            receipts.push(StoredToolReceipt { seq, receipt });
-        }
+            let mut receipts = Vec::new();
+            for row in rows {
+                let (seq, raw_json) = row?;
+                let seq = seq.max(0) as u64;
+                let receipt =
+                    decode_verified_chio_receipt(&raw_json, "persisted tool receipt", Some(seq))?;
+                receipts.push(StoredToolReceipt { seq, receipt });
+            }
+            receipts
+        };
 
-        // Execute count query (same filters, no cursor, no limit).
-        let total_count: u64 = self
-            .connection()?
+        let total_count: u64 = transaction
             .query_row(
                 &count_sql,
                 params![
@@ -384,6 +385,7 @@ impl SqliteReceiptStore {
                     None::<i64>,
                     0i64,
                     tenant,
+                    cost_currency,
                 ],
                 |row| row.get::<_, i64>(0),
             )
@@ -395,6 +397,7 @@ impl SqliteReceiptStore {
         } else {
             None
         };
+        transaction.commit()?;
 
         Ok(ReceiptQueryResult {
             receipts,
@@ -443,12 +446,34 @@ impl SqliteReceiptStore {
 /// nonterminal reconciliation row; that receipt and its reconciliation archive
 /// together on a later rotation once the reconciliation reaches a terminal state
 /// (`reconciled` or `ignored`).
+///
+/// Settlement attempts are likewise live work. Every row in `settle_attempts`
+/// is pending or retryable, so its receipt remains in the live store until the
+/// attempt is resolved and removed. Legacy stores may not have that projection;
+/// they retain the pre-settlement retention behavior.
 fn compute_archival_watermark(
     connection: &rusqlite::Connection,
     cutoff_unix_secs: u64,
 ) -> Result<u64, ReceiptStoreError> {
     let cutoff = sqlite_i64(cutoff_unix_secs, "retention cutoff")?;
-    let watermark: i64 = connection.query_row(
+    let settlement_attempts_installed: bool = connection.query_row(
+        "SELECT EXISTS(SELECT 1 FROM main.sqlite_master \
+         WHERE type = 'table' AND name = 'settle_attempts')",
+        [],
+        |row| row.get(0),
+    )?;
+    let active_settlement_guard = if settlement_attempts_installed {
+        r#"
+        AND NOT EXISTS (
+            SELECT 1 FROM settle_attempts sa
+            JOIN claim_receipt_log_entries e ON e.receipt_id = sa.receipt_id
+            WHERE e.entry_seq <= kc.batch_end_seq
+        )
+        "#
+    } else {
+        ""
+    };
+    let query = format!(
         r#"
         SELECT COALESCE(MAX(kc.batch_end_seq), 0)
         FROM kernel_checkpoints kc
@@ -483,10 +508,10 @@ fn compute_archival_watermark(
             WHERE e.entry_seq <= kc.batch_end_seq
               AND mbr.reconciliation_state IN ('open', 'retry_scheduled')
         )
-        "#,
-        params![cutoff],
-        |row| row.get(0),
-    )?;
+        {active_settlement_guard}
+        "#
+    );
+    let watermark: i64 = connection.query_row(&query, params![cutoff], |row| row.get(0))?;
     sqlite_u64(watermark, "retention watermark")
 }
 
@@ -920,9 +945,41 @@ fn archive_range(
 /// a write-once evidence copy, not a live database enforcing FK-cascade
 /// invariants.
 pub(super) fn create_archive_schema(
-    connection: &rusqlite::Connection,
+    connection: &mut rusqlite::Connection,
 ) -> Result<(), ReceiptStoreError> {
-    connection.execute_batch(
+    let transaction =
+        connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    let application_id: i32 =
+        transaction.query_row("PRAGMA archive.application_id", [], |row| row.get(0))?;
+    if application_id != 0 && application_id != crate::CHIO_SQLITE_APPLICATION_ID {
+        return Err(ReceiptStoreError::Conflict(format!(
+            "retention archive application_id {application_id:#x} is not a Chio store"
+        )));
+    }
+    let version_table_exists: bool = transaction.query_row(
+        "SELECT EXISTS(SELECT 1 FROM archive.sqlite_master WHERE type = 'table' AND name = 'chio_store_schema_versions')",
+        [],
+        |row| row.get(0),
+    )?;
+    let archive_schema_version = if version_table_exists {
+        transaction
+            .query_row(
+                "SELECT version FROM archive.chio_store_schema_versions WHERE store_key = ?1",
+                [RECEIPT_STORE_SCHEMA_KEY],
+                |row| row.get::<_, i32>(0),
+            )
+            .optional()?
+            .unwrap_or(0)
+    } else {
+        0
+    };
+    if archive_schema_version > RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION {
+        return Err(ReceiptStoreError::Conflict(format!(
+            "retention archive schema version {archive_schema_version} is newer than this binary supports ({RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION})"
+        )));
+    }
+
+    transaction.execute_batch(
         r#"
         CREATE TABLE IF NOT EXISTS archive.chio_tool_receipts (
             seq INTEGER PRIMARY KEY,
@@ -930,7 +987,22 @@ pub(super) fn create_archive_schema(
             capability_id TEXT NOT NULL, subject_key TEXT, issuer_key TEXT,
             grant_index INTEGER, tool_server TEXT NOT NULL, tool_name TEXT NOT NULL,
             decision_kind TEXT NOT NULL, policy_hash TEXT NOT NULL,
-            content_hash TEXT NOT NULL, raw_json TEXT NOT NULL, tenant_id TEXT
+            content_hash TEXT NOT NULL, raw_json TEXT NOT NULL, tenant_id TEXT,
+            cost_currency TEXT CHECK (
+                cost_currency IS NULL OR (
+                    typeof(cost_currency) = 'text' AND
+                    length(cost_currency) = 3 AND
+                    cost_currency NOT GLOB '*[^A-Z]*'
+                )
+            ),
+            cost_charged_be BLOB CHECK (
+                (cost_currency IS NULL AND cost_charged_be IS NULL) OR
+                (
+                    cost_currency IS NOT NULL AND
+                    typeof(cost_charged_be) = 'blob' AND
+                    length(cost_charged_be) = 8
+                )
+            )
         );
         CREATE TABLE IF NOT EXISTS archive.chio_child_receipts (
             seq INTEGER PRIMARY KEY,
@@ -951,7 +1023,11 @@ pub(super) fn create_archive_schema(
             capability_id TEXT PRIMARY KEY, subject_key TEXT NOT NULL,
             issuer_key TEXT NOT NULL, issued_at INTEGER NOT NULL,
             expires_at INTEGER NOT NULL, grants_json TEXT NOT NULL,
-            delegation_depth INTEGER NOT NULL DEFAULT 0, parent_capability_id TEXT
+            delegation_depth INTEGER NOT NULL DEFAULT 0, parent_capability_id TEXT,
+            federated_parent_capability_id TEXT,
+            provenance TEXT NOT NULL DEFAULT 'legacy_projection'
+                CHECK (provenance IN ('signed_token', 'synthetic_anchor', 'legacy_projection')),
+            signed_capability_json TEXT
         );
         CREATE TABLE IF NOT EXISTS archive.claim_receipt_log_entries (
             entry_seq INTEGER PRIMARY KEY,
@@ -1011,6 +1087,64 @@ pub(super) fn create_archive_schema(
         );
         "#,
     )?;
+    if archive_schema_version < RECEIPT_COST_PROJECTION_SCHEMA_VERSION {
+        migrate_archive_receipt_cost_projection(&transaction)?;
+    }
+    verify_archive_receipt_cost_projection(&transaction)?;
+    for (column, definition) in [
+        ("signed_capability_json", "signed_capability_json TEXT"),
+        (
+            "federated_parent_capability_id",
+            "federated_parent_capability_id TEXT",
+        ),
+        (
+            "provenance",
+            "provenance TEXT NOT NULL DEFAULT 'legacy_projection' CHECK (provenance IN \
+             ('signed_token', 'synthetic_anchor', 'legacy_projection'))",
+        ),
+    ] {
+        let has_column = {
+            let mut statement =
+                transaction.prepare("PRAGMA archive.table_info(capability_lineage)")?;
+            let mut rows = statement.query([])?;
+            let mut found = false;
+            while let Some(row) = rows.next()? {
+                if row.get::<_, String>(1)? == column {
+                    found = true;
+                    break;
+                }
+            }
+            found
+        };
+        if !has_column {
+            transaction.execute(
+                &format!("ALTER TABLE archive.capability_lineage ADD COLUMN {definition}"),
+                [],
+            )?;
+        }
+    }
+    transaction.execute(
+        "UPDATE archive.capability_lineage SET provenance = 'signed_token' \
+         WHERE provenance = 'legacy_projection' \
+           AND signed_capability_json IS NOT NULL",
+        [],
+    )?;
+    transaction.execute_batch(&format!(
+        "PRAGMA archive.application_id = {}; \
+         CREATE TABLE IF NOT EXISTS archive.chio_store_schema_versions (\
+             store_key TEXT PRIMARY KEY, version INTEGER NOT NULL\
+         );",
+        crate::CHIO_SQLITE_APPLICATION_ID
+    ))?;
+    transaction.execute(
+        "INSERT INTO archive.chio_store_schema_versions (store_key, version) VALUES (?1, ?2) \
+         ON CONFLICT(store_key) DO UPDATE SET version = excluded.version",
+        params![
+            RECEIPT_STORE_SCHEMA_KEY,
+            RECEIPT_STORE_SUPPORTED_SCHEMA_VERSION
+        ],
+    )?;
+    transaction.commit()?;
     Ok(())
 }
 
@@ -1049,10 +1183,10 @@ pub(super) fn copy_archived_prefix(
         INSERT OR IGNORE INTO archive.chio_tool_receipts
             (seq, receipt_id, timestamp, capability_id, subject_key, issuer_key,
              grant_index, tool_server, tool_name, decision_kind, policy_hash,
-             content_hash, raw_json, tenant_id)
+             content_hash, raw_json, tenant_id, cost_currency, cost_charged_be)
             SELECT seq, receipt_id, timestamp, capability_id, subject_key, issuer_key,
                    grant_index, tool_server, tool_name, decision_kind, policy_hash,
-                   content_hash, raw_json, tenant_id
+                   content_hash, raw_json, tenant_id, cost_currency, cost_charged_be
             FROM main.chio_tool_receipts WHERE seq IN (
                 SELECT source_seq FROM main.claim_receipt_log_entries
                 WHERE entry_seq <= {w} AND receipt_kind = 'tool_receipt');
@@ -1067,7 +1201,15 @@ pub(super) fn copy_archived_prefix(
         INSERT OR IGNORE INTO archive.kernel_checkpoints
             SELECT * FROM main.kernel_checkpoints WHERE batch_end_seq <= {w};
         INSERT OR IGNORE INTO archive.capability_lineage
-            SELECT DISTINCT cl.* FROM main.capability_lineage cl
+            (capability_id, subject_key, issuer_key, issued_at, expires_at,
+             grants_json, delegation_depth, parent_capability_id,
+             federated_parent_capability_id, provenance, signed_capability_json)
+            SELECT DISTINCT cl.capability_id, cl.subject_key, cl.issuer_key,
+                   cl.issued_at, cl.expires_at, cl.grants_json,
+                   cl.delegation_depth, cl.parent_capability_id,
+                   cl.federated_parent_capability_id, cl.provenance,
+                   cl.signed_capability_json
+            FROM main.capability_lineage cl
             INNER JOIN main.chio_tool_receipts r ON r.capability_id = cl.capability_id
             WHERE r.seq IN (
                 SELECT source_seq FROM main.claim_receipt_log_entries
@@ -1166,7 +1308,9 @@ fn verify_co_archival_complete(
                  AND a.tool_server IS m.tool_server AND a.tool_name IS m.tool_name \
                  AND a.decision_kind IS m.decision_kind AND a.policy_hash IS m.policy_hash \
                  AND a.content_hash IS m.content_hash AND a.raw_json IS m.raw_json \
-                 AND a.tenant_id IS m.tenant_id)"
+                 AND a.tenant_id IS m.tenant_id \
+                 AND a.cost_currency IS m.cost_currency \
+                 AND a.cost_charged_be IS m.cost_charged_be)"
             ),
         ),
         (
@@ -1303,7 +1447,10 @@ fn verify_co_archival_complete(
                  AND a.subject_key IS m.subject_key AND a.issuer_key IS m.issuer_key \
                  AND a.issued_at IS m.issued_at AND a.expires_at IS m.expires_at \
                  AND a.grants_json IS m.grants_json AND a.delegation_depth IS m.delegation_depth \
-                 AND a.parent_capability_id IS m.parent_capability_id)"
+                 AND a.parent_capability_id IS m.parent_capability_id \
+                 AND a.federated_parent_capability_id IS m.federated_parent_capability_id \
+                 AND a.provenance IS m.provenance \
+                 AND a.signed_capability_json IS m.signed_capability_json)"
             ),
         ),
         (

@@ -1900,14 +1900,14 @@ mod roster_enforcement {
     fn stub_capital_instruction() -> SignedCapitalExecutionInstruction {
         sign_export(CapitalExecutionInstructionArtifact {
             schema: CAPITAL_EXECUTION_INSTRUCTION_ARTIFACT_SCHEMA.to_string(),
-            instruction_id: "cei-stub-t1".to_string(),
+            instruction_id: "cei-fixture-t1".to_string(),
             issued_at: 1_700_010_850,
             query: CapitalBookQuery {
                 agent_subject: Some("subject-1".to_string()),
                 ..CapitalBookQuery::default()
             },
             subject_key: "subject-1".to_string(),
-            source_id: "src-stub-1".to_string(),
+            source_id: "src-fixture-1".to_string(),
             source_kind: CapitalBookSourceKind::FacilityCommitment,
             governed_receipt_id: None,
             completion_flow_row_id: None,
@@ -1923,8 +1923,8 @@ mod roster_enforcement {
             },
             rail: CapitalExecutionRail {
                 kind: CapitalExecutionRailKind::Api,
-                rail_id: "rail-stub-1".to_string(),
-                custody_provider_id: "custody-stub-1".to_string(),
+                rail_id: "rail-fixture-1".to_string(),
+                custody_provider_id: "custody-fixture-1".to_string(),
                 source_account_ref: None,
                 destination_account_ref: None,
                 jurisdiction: None,
@@ -1935,7 +1935,7 @@ mod roster_enforcement {
             observed_execution: None,
             support_boundary: CapitalExecutionInstructionSupportBoundary::default(),
             evidence_refs: Vec::new(),
-            description: "stub transfer".to_string(),
+            description: "fixture transfer".to_string(),
         })
     }
 
@@ -1956,7 +1956,7 @@ mod roster_enforcement {
     ) -> SignedLiabilityClaimPayoutReceipt {
         let payout_instruction = sign_export(LiabilityClaimPayoutInstructionArtifact {
             schema: LIABILITY_CLAIM_PAYOUT_INSTRUCTION_ARTIFACT_SCHEMA.to_string(),
-            payout_instruction_id: "lpi-stub-t1".to_string(),
+            payout_instruction_id: "lpi-fixture-t1".to_string(),
             issued_at: 1_700_010_900,
             adjudication: adjudication.clone(),
             capital_instruction: stub_capital_instruction(),
@@ -1965,14 +1965,14 @@ mod roster_enforcement {
         });
         sign_export(LiabilityClaimPayoutReceiptArtifact {
             schema: LIABILITY_CLAIM_PAYOUT_RECEIPT_ARTIFACT_SCHEMA.to_string(),
-            payout_receipt_id: "lprc-stub-t1".to_string(),
+            payout_receipt_id: "lprc-fixture-t1".to_string(),
             issued_at: 1_700_011_000,
             payout_instruction,
-            payout_receipt_ref: "receipt-stub-t1".to_string(),
+            payout_receipt_ref: "receipt-fixture-t1".to_string(),
             reconciliation_state: LiabilityClaimPayoutReconciliationState::Matched,
             observed_execution: CapitalExecutionObservation {
                 observed_at: 1_700_011_000,
-                external_reference_id: "exec-stub-t1".to_string(),
+                external_reference_id: "exec-fixture-t1".to_string(),
                 amount: usd(5_000),
             },
             note: None,
@@ -2051,8 +2051,8 @@ mod roster_enforcement {
             },
             rail: CapitalExecutionRail {
                 kind: CapitalExecutionRailKind::Api,
-                rail_id: "rail-settle-stub-t1".to_string(),
-                custody_provider_id: "custody-stub-1".to_string(),
+                rail_id: "rail-settle-fixture-t1".to_string(),
+                custody_provider_id: "custody-fixture-1".to_string(),
                 source_account_ref: None,
                 destination_account_ref: None,
                 jurisdiction: None,

@@ -44,6 +44,13 @@ pub struct RequestEvaluator {
     revocation_backend: &'static str,
 }
 
+#[derive(Clone)]
+pub(crate) struct DurableAdmissionStores {
+    pub(crate) store: Arc<dyn chio_kernel::QualifiedAdmissionProjectionStore>,
+    pub(crate) outcome_store: Arc<dyn chio_kernel::tool_outcome::QualifiedToolOutcomeStore>,
+    pub(crate) fence: chio_kernel::admission_operation::StoreMutationFence,
+}
+
 impl RequestEvaluator {
     /// Compatibility shim for the pre-rename constructor name. Renamed to
     /// [`RequestEvaluator::new_ephemeral`] so an embedder never gets in-memory
@@ -200,6 +207,31 @@ impl RequestEvaluator {
         revocation_store: Option<Arc<dyn RevocationStore>>,
         allow_ephemeral: bool,
     ) -> Result<Self, HttpAuthorityError> {
+        Self::new_with_durable_stores_and_admission(
+            routes,
+            keypair,
+            policy_hash,
+            approval_store,
+            trusted_capability_issuers,
+            receipt_store,
+            revocation_store,
+            None,
+            allow_ephemeral,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn new_with_durable_stores_and_admission(
+        routes: Vec<RouteEntry>,
+        keypair: Keypair,
+        policy_hash: String,
+        approval_store: Arc<dyn ApprovalStore>,
+        trusted_capability_issuers: Vec<PublicKey>,
+        receipt_store: Option<Arc<dyn ReceiptStore>>,
+        revocation_store: Option<Arc<dyn RevocationStore>>,
+        durable_admission: Option<DurableAdmissionStores>,
+        allow_ephemeral: bool,
+    ) -> Result<Self, HttpAuthorityError> {
         let receipt_backend = if receipt_store.is_some() {
             BACKEND_DURABLE
         } else {
@@ -235,6 +267,13 @@ impl RequestEvaluator {
         }
         if let Some(store) = revocation_store {
             builder = builder.revocation_store(store);
+        }
+        if let Some(durable) = durable_admission {
+            builder = builder.durable_admission_stores(
+                durable.store,
+                durable.outcome_store,
+                durable.fence,
+            );
         }
         let authority = builder.build(keypair, policy_hash)?;
 
@@ -308,7 +347,11 @@ impl RequestEvaluator {
         body_length: u64,
         execution_nonce: Option<&SignedExecutionNonce>,
     ) -> Result<EvaluationResult, crate::error::ProtectError> {
-        let request_id = uuid::Uuid::now_v7().to_string();
+        // A nonce retry is the same request; retain its signed idempotency identity.
+        let request_id = execution_nonce.map_or_else(
+            || uuid::Uuid::now_v7().to_string(),
+            |nonce| nonce.nonce.bound_to.request_id.clone(),
+        );
         let caller = caller_identity_from_headers(headers);
         let (route_pattern, matched_policy) = self.match_route(method, path);
         let result = self.authority.evaluate(HttpAuthorityInput {
@@ -328,6 +371,7 @@ impl RequestEvaluator {
             requested_arguments: None,
             execution_nonce,
             model_metadata: None,
+            unsupported_authorization_extension: None,
             policy: policy_mode(matched_policy),
         })?;
         Ok(result.into())
@@ -339,6 +383,7 @@ impl RequestEvaluator {
         request: ChioHttpRequest,
         presented_capability: Option<&str>,
     ) -> Result<EvaluationResult, crate::error::ProtectError> {
+        let unsupported_authorization_extension = request.unsupported_authorization_extension();
         let ChioHttpRequest {
             request_id,
             method,
@@ -379,6 +424,7 @@ impl RequestEvaluator {
             requested_arguments: Some(&arguments),
             execution_nonce: execution_nonce.as_ref(),
             model_metadata: model_metadata.as_ref(),
+            unsupported_authorization_extension,
             policy: policy_mode(matched_policy),
         })?;
         Ok(result.into())
@@ -562,24 +608,57 @@ mod tests {
     #[test]
     fn durable_evaluator_reports_durable_backends() -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempfile::tempdir()?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700))?;
+        }
         let receipt_store: Arc<dyn chio_kernel::ReceiptStore> = Arc::new(
             chio_store_sqlite::SqliteReceiptStore::open(dir.path().join("receipts.db"))?,
         );
         let revocation_store: Arc<dyn chio_kernel::RevocationStore> = Arc::new(
             chio_store_sqlite::SqliteRevocationStore::open(dir.path().join("revocations.db"))?,
         );
-        let evaluator = RequestEvaluator::new_with_durable_stores(
+        let authority_database = dir.path().join("authority.db");
+        let authority_locks = dir.path().join("authority-locks");
+        let mut lock_root_builder = std::fs::DirBuilder::new();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            lock_root_builder.mode(0o700);
+        }
+        lock_root_builder.create(&authority_locks)?;
+        chio_store_sqlite::SqliteAuthorityStore::provision(&authority_database, &authority_locks)?;
+        let authority = chio_store_sqlite::SqliteAuthorityStore::open_serving(
+            &authority_database,
+            &authority_locks,
+        )?;
+        let evaluator = RequestEvaluator::new_with_durable_stores_and_admission(
             Vec::new(),
             Keypair::generate(),
-            "test-policy".to_string(),
+            chio_core_types::sha256_hex(b"test-policy"),
             Arc::new(chio_kernel::InMemoryApprovalStore::new()),
             Vec::new(),
             Some(receipt_store),
             Some(revocation_store),
+            Some(DurableAdmissionStores {
+                store: Arc::new(authority.admission_operation_store()),
+                outcome_store: Arc::new(authority.tool_outcome_store()),
+                fence: authority.mutation_fence(),
+            }),
             false,
         )?;
         assert_eq!(evaluator.receipt_backend(), "durable");
         assert_eq!(evaluator.revocation_backend(), "durable");
+        let evaluated = evaluator.evaluate(
+            HttpMethod::Get,
+            "/pets",
+            &HashMap::new(),
+            &HashMap::new(),
+            None,
+            0,
+        )?;
+        assert!(evaluated.verdict.is_allowed());
         Ok(())
     }
 
@@ -735,6 +814,7 @@ mod tests {
                 issued_at: now.saturating_sub(60),
                 expires_at: now + 3600,
                 delegation_chain: Vec::new(),
+                aggregate_invocation_budget: None,
             },
             issuer,
         )
@@ -814,6 +894,40 @@ mod tests {
             http_status_scope(result.receipt.metadata.as_ref()),
             Some(CHIO_HTTP_STATUS_SCOPE_DECISION)
         );
+    }
+
+    #[test]
+    fn evaluate_chio_request_signed_denies_unsupported_approval_sets() {
+        let keypair = Keypair::generate();
+        let routes = vec![RouteEntry {
+            pattern: "/pets".to_string(),
+            method: HttpMethod::Get,
+            operation_id: Some("listPets".to_string()),
+            policy: PolicyDecision::SessionAllow,
+        }];
+        let evaluator = RequestEvaluator::new_ephemeral(routes, keypair, "test-policy".to_string());
+        let mut request = ChioHttpRequest::new(
+            "req-unsupported-approvals".to_string(),
+            HttpMethod::Get,
+            "/pets".to_string(),
+            "/pets".to_string(),
+            CallerIdentity::anonymous(),
+        );
+        request.approval_tokens = Some(serde_json::json!([
+            { "id": "approval-a" },
+            { "id": "approval-b" }
+        ]));
+
+        let result = evaluator.evaluate_chio_request(request, None).test_unwrap();
+
+        assert!(result.verdict.is_denied());
+        assert!(result.receipt.verify_signature().test_unwrap());
+        assert!(result.receipt.evidence[0]
+            .details
+            .as_deref()
+            .is_some_and(|details| details.contains(
+                "HTTP authority projection does not support authorization field approval_tokens"
+            )));
     }
 
     #[test]

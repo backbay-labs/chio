@@ -1,10 +1,109 @@
 package chio
 
 import (
+	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 )
+
+type protocolPrimitiveFixtureCase struct {
+	Name       string          `json:"name"`
+	SchemaFile string          `json:"schema_file"`
+	Valid      bool            `json:"valid"`
+	Instance   json.RawMessage `json:"instance"`
+}
+
+func decodeProtocolPrimitive(schemaFile string, payload []byte) (any, error) {
+	var target any
+	switch schemaFile {
+	case "capability/token.schema.json":
+		target = &CapabilityToken{}
+	case "capability/aggregate-invocation-budget.schema.json":
+		var discriminator struct {
+			Scope string `json:"scope"`
+		}
+		if err := json.Unmarshal(payload, &discriminator); err != nil {
+			return nil, err
+		}
+		switch discriminator.Scope {
+		case "capability":
+			target = &CapabilityAggregateInvocationBudget0{}
+		case "delegation_family":
+			target = &CapabilityAggregateInvocationBudget1{}
+		default:
+			return nil, fmt.Errorf("unknown aggregate budget scope %q", discriminator.Scope)
+		}
+	case "capability/threshold-approval-proposal.schema.json":
+		target = &CapabilityThresholdApprovalProposal{}
+	case "capability/governed-approval-token.schema.json":
+		target = &CapabilityGovernedApprovalToken{}
+	case "agent/active-response-governed-intent.schema.json":
+		target = &AgentActiveResponseGovernedIntent{}
+	case "kernel/combined-capture-metadata.schema.json":
+		target = &KernelCombinedCaptureMetadata{}
+	case "capability/supplemental-authorization.schema.json":
+		target = &CapabilitySupplementalAuthorization{}
+	default:
+		return nil, fmt.Errorf("unmapped protocol-primitives fixture schema %q", schemaFile)
+	}
+
+	decoder := json.NewDecoder(bytes.NewReader(payload))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return nil, err
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return nil, fmt.Errorf("trailing JSON after protocol primitive: %w", err)
+	}
+	return target, nil
+}
+
+func TestGeneratedProtocolPrimitivesConsumeSharedFixtures(t *testing.T) {
+	corpusPath := filepath.Join("..", "..", "..", "tests", "bindings", "fixtures", "protocol-primitives-v1.json")
+	corpusBytes, err := os.ReadFile(corpusPath)
+	if err != nil {
+		t.Fatalf("read protocol-primitives fixture corpus: %v", err)
+	}
+	var corpus struct {
+		Cases []protocolPrimitiveFixtureCase `json:"cases"`
+	}
+	if err := json.Unmarshal(corpusBytes, &corpus); err != nil {
+		t.Fatalf("parse protocol-primitives fixture corpus: %v", err)
+	}
+
+	for _, fixture := range corpus.Cases {
+		fixture := fixture
+		t.Run(fixture.Name, func(t *testing.T) {
+			parsed, err := decodeProtocolPrimitive(fixture.SchemaFile, fixture.Instance)
+			if (err == nil) != fixture.Valid {
+				t.Fatalf("generated Go fixture result mismatch: %v", err)
+			}
+			if !fixture.Valid {
+				return
+			}
+			roundTrip, err := json.Marshal(parsed)
+			if err != nil {
+				t.Fatalf("marshal generated Go primitive: %v", err)
+			}
+			var want, got any
+			if err := json.Unmarshal(fixture.Instance, &want); err != nil {
+				t.Fatalf("parse expected fixture: %v", err)
+			}
+			if err := json.Unmarshal(roundTrip, &got); err != nil {
+				t.Fatalf("parse round-trip fixture: %v", err)
+			}
+			if !reflect.DeepEqual(got, want) {
+				t.Fatalf("generated Go round trip changed fixture\nwant: %#v\ngot:  %#v", want, got)
+			}
+		})
+	}
+}
 
 func TestGeneratedCapabilityTokenUsesFixedWidthIntegers(t *testing.T) {
 	maxInvocations := int64(1 << 40)
@@ -61,6 +160,13 @@ func TestGeneratedCapabilityTokenUsesFixedWidthIntegers(t *testing.T) {
 
 func TestGeneratedCapabilityConstraintsPreserveValuePayload(t *testing.T) {
 	value := interface{}("/safe")
+	var constraint CapabilityTokenConstraint
+	if err := constraint.FromCapabilityTokenGenericConstraint(CapabilityTokenGenericConstraint{
+		Type:  "path_prefix",
+		Value: &value,
+	}); err != nil {
+		t.Fatalf("construct generic constraint: %v", err)
+	}
 	token := CapabilityToken{
 		Id:        "tok-constraint",
 		Issuer:    "issuer",
@@ -74,7 +180,7 @@ func TestGeneratedCapabilityConstraintsPreserveValuePayload(t *testing.T) {
 					ToolName:   "tool",
 					Operations: []CapabilityTokenOperation{CapabilityTokenOperationInvoke},
 					Constraints: &[]CapabilityTokenConstraint{
-						{Type: "path_prefix", Value: &value},
+						constraint,
 					},
 				},
 			},
@@ -99,11 +205,15 @@ func TestGeneratedCapabilityConstraintsPreserveValuePayload(t *testing.T) {
 		t.Fatalf("expected decoded constraints")
 	}
 	constraints := *grants[0].Constraints
-	if len(constraints) != 1 || constraints[0].Value == nil {
+	if len(constraints) != 1 {
 		t.Fatalf("expected one value-carrying constraint")
 	}
-	if got, ok := (*constraints[0].Value).(string); !ok || got != "/safe" {
-		t.Fatalf("constraint value round-trip mismatch: %#v", *constraints[0].Value)
+	generic, err := constraints[0].AsCapabilityTokenGenericConstraint()
+	if err != nil || generic.Value == nil {
+		t.Fatalf("decode generic constraint: %v", err)
+	}
+	if got, ok := (*generic.Value).(string); !ok || got != "/safe" {
+		t.Fatalf("constraint value round-trip mismatch: %#v", *generic.Value)
 	}
 }
 

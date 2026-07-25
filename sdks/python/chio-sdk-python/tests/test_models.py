@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import time
+from pathlib import Path
+from typing import Any
 
 import pytest
 from pydantic import TypeAdapter, ValidationError
@@ -15,6 +17,24 @@ from chio_sdk._generated import (
 from chio_sdk._generated.capability import Constraint as GeneratedConstraint
 from chio_sdk._generated.jsonrpc import ChioJsonRpc20Response
 from chio_sdk._generated.provenance import ChioProvenanceVerdictLink
+from chio_sdk._generated.agent.active_response_governed_intent_schema import (
+    ChioGovernedActiveResponseIntentBody,
+)
+from chio_sdk._generated.capability.aggregate_invocation_budget_schema import (
+    ChioAggregateInvocationBudget,
+)
+from chio_sdk._generated.capability.governed_approval_token_schema import (
+    ChioGovernedApprovalToken,
+)
+from chio_sdk._generated.capability.supplemental_authorization_schema import (
+    ChioOpaqueSupplementalAuthorization,
+)
+from chio_sdk._generated.capability.threshold_approval_proposal_schema import (
+    ChioThresholdApprovalProposal,
+)
+from chio_sdk._generated.kernel.combined_capture_metadata_schema import (
+    ChioCombinedAdmissionCaptureMetadata,
+)
 from chio_sdk.models import (
     ChioReceipt,
     ChioScope,
@@ -97,6 +117,36 @@ class TestOperation:
 
 
 class TestGeneratedWireModels:
+    def test_protocol_primitives_shared_fixtures_parse_reject_and_round_trip(
+        self,
+    ) -> None:
+        models: dict[str, type[Any]] = {
+            "capability/token.schema.json": ChioCapabilitytoken,
+            "capability/aggregate-invocation-budget.schema.json": ChioAggregateInvocationBudget,
+            "capability/threshold-approval-proposal.schema.json": ChioThresholdApprovalProposal,
+            "capability/governed-approval-token.schema.json": ChioGovernedApprovalToken,
+            "agent/active-response-governed-intent.schema.json": ChioGovernedActiveResponseIntentBody,
+            "kernel/combined-capture-metadata.schema.json": ChioCombinedAdmissionCaptureMetadata,
+            "capability/supplemental-authorization.schema.json": ChioOpaqueSupplementalAuthorization,
+        }
+        corpus = json.loads(
+            (
+                Path(__file__).resolve().parents[4]
+                / "tests/bindings/fixtures/protocol-primitives-v1.json"
+            ).read_text(encoding="utf-8")
+        )
+
+        for case in corpus["cases"]:
+            model = models[case["schema_file"]]
+            if case["valid"]:
+                parsed = model.model_validate(case["instance"])
+                assert parsed.model_dump(mode="json", by_alias=True, exclude_none=True) == case[
+                    "instance"
+                ]
+            else:
+                with pytest.raises(ValidationError):
+                    model.model_validate(case["instance"])
+
     def test_top_level_capability_token_alias_is_canonical(self) -> None:
         token = GeneratedCapabilityToken.model_validate(_generated_v1_token())
         assert isinstance(token, ChioCapabilitytoken)

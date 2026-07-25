@@ -503,10 +503,10 @@ mod tests {
         let static_value = predicate_binding();
         let mut runtime_value = static_value.clone();
         runtime_value.has_treaty_binding = true;
-        runtime_value.consistency_model = "totally_ordered".to_string();
+        runtime_value.consistency_model = "totally-ordered".to_string();
         let expected = ExpectedBuyerClosureParity {
             step_index: 0,
-            consistency_model: "totally_ordered".to_string(),
+            consistency_model: "totally-ordered".to_string(),
         };
         let mut mismatches = Vec::new();
 
@@ -528,11 +528,11 @@ mod tests {
         let static_value = predicate_binding();
         let mut runtime_value = static_value.clone();
         runtime_value.has_treaty_binding = true;
-        runtime_value.consistency_model = "totally_ordered".to_string();
+        runtime_value.consistency_model = "totally-ordered".to_string();
         runtime_value.tool_name = "vendor.other".to_string();
         let expected = ExpectedBuyerClosureParity {
             step_index: 0,
-            consistency_model: "totally_ordered".to_string(),
+            consistency_model: "totally-ordered".to_string(),
         };
         let mut mismatches = Vec::new();
 

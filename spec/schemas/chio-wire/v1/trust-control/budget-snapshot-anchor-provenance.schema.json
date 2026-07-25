@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/trust-control/budget-snapshot-anchor-provenance/v1",
+  "title": "Budget Snapshot Anchor Provenance",
+  "description": "Leader-signed inclusion chain authenticating the exact immutable migration-anchor set carried by a trust-control cluster budget snapshot.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "chain", "clusterAuthenticator"],
+  "properties": {
+    "schema": { "const": "chio.budget-snapshot-anchor-provenance.v1" },
+    "chain": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/signedCommitment" }
+    },
+    "clusterAuthenticator": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "signedCommitment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["body", "signature"],
+      "properties": {
+        "body": { "$ref": "#/$defs/commitment" },
+        "signature": { "type": "string", "minLength": 1 }
+      }
+    },
+    "commitment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "commitSequence",
+        "previousChainDigest",
+        "chainDigest",
+        "anchorSetDigest",
+        "leaderUrl",
+        "electionTerm",
+        "committedAt",
+        "signerPublicKey"
+      ],
+      "properties": {
+        "schema": { "const": "chio.budget-snapshot-anchor-commitment.v1" },
+        "commitSequence": { "type": "integer", "minimum": 1 },
+        "previousChainDigest": { "$ref": "#/$defs/digest" },
+        "chainDigest": { "$ref": "#/$defs/digest" },
+        "anchorSetDigest": { "$ref": "#/$defs/digest" },
+        "leaderUrl": { "type": "string", "format": "uri", "minLength": 1 },
+        "electionTerm": { "type": "integer", "minimum": 1 },
+        "committedAt": { "type": "integer", "minimum": 0 },
+        "signerPublicKey": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

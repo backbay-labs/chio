@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-outcome/predicate/v1",
+  "title": "Chio Outcome Predicate V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signerKey", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "predicateId",
+        "assertions",
+        "providerId",
+        "issuedAtUnixMs",
+        "expiresAtUnixMs"
+      ],
+      "properties": {
+        "schema": { "const": "chio.outcome.predicate.v1" },
+        "predicateId": { "$ref": "#/$defs/digest" },
+        "assertions": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/assertion" }
+        },
+        "providerId": { "$ref": "#/$defs/text" },
+        "issuedAtUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "expiresAtUnixMs": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "signerKey": { "$ref": "#/$defs/cryptoMaterial" },
+    "signature": { "$ref": "#/$defs/cryptoMaterial" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "^[^\\s\\u0000-\\u001F\\u007F-\\u009F](?:[^\\u0000-\\u001F\\u007F-\\u009F]*[^\\s\\u0000-\\u001F\\u007F-\\u009F])?$"
+    },
+    "positiveInteger": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "cryptoMaterial": { "type": "string", "minLength": 1, "maxLength": 16384 },
+    "assertion": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pointer", "comparator"],
+      "properties": {
+        "pointer": {
+          "type": "string",
+          "maxLength": 2048,
+          "pattern": "^(?:/(?:[^~/\\u0000-\\u001F\\u007F-\\u009F]|~[01])*)*$"
+        },
+        "comparator": { "$ref": "#/$defs/comparator" }
+      }
+    },
+    "comparator": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "const": "exists" } }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": { "kind": { "enum": ["eq", "ne"] }, "value": true }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "value"],
+          "properties": {
+            "kind": { "enum": ["lt", "lte", "gt", "gte"] },
+            "value": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            }
+          }
+        }
+      ]
+    }
+  }
+}

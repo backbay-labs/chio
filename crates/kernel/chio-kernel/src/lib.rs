@@ -21,6 +21,7 @@
 
 #![cfg_attr(test, allow(clippy::expect_used, clippy::unwrap_used))]
 
+pub mod admission_operation;
 pub mod approval;
 pub mod approval_channels;
 pub mod authority;
@@ -32,10 +33,12 @@ pub mod compliance_certificate;
 pub mod compliance_score;
 pub mod cost_attribution;
 pub mod custody;
+pub mod dispatch_status;
 pub mod dpop;
 pub mod evidence_export;
 pub mod execution_nonce;
 pub mod federation_artifact_store;
+pub mod governed_active_response;
 pub mod memory_provenance;
 pub mod observability;
 pub mod operator_report;
@@ -53,7 +56,10 @@ pub mod revocation_runtime;
 pub mod revocation_store;
 pub mod runtime;
 pub mod session;
-pub mod settlement_retry;
+mod settlement_routing;
+pub mod supplemental_quota;
+pub mod threshold_approval;
+pub mod tool_outcome;
 pub mod transport;
 pub mod weights_binding;
 
@@ -99,9 +105,10 @@ pub(crate) use receipt_support::*;
 // remains byte-identical across classical and hybrid paths under
 // `crypto_floor=allow_classical`.
 pub use receipt_support::{
-    kernel_signing_backend, scope_fixed_runtime_for_current_thread,
-    sign_receipt_body_hybrid_canonical, sign_receipt_body_with_backend, FixedRuntimeScope,
-    KernelCryptoFloor, KernelSigningBackendError, SignedHybridReceipt,
+    fixed_runtime_unix_secs_for_current_thread, kernel_signing_backend,
+    scope_fixed_runtime_for_current_thread, sign_receipt_body_hybrid_canonical,
+    sign_receipt_body_with_backend, FixedRuntimeScope, KernelCryptoFloor,
+    KernelSigningBackendError, SignedHybridReceipt,
 };
 pub(crate) use request_matching::{
     begin_child_request_in_sessions, begin_session_request_in_sessions, check_subject_binding,
@@ -115,6 +122,12 @@ pub use request_matching::{
     capability_matches_resource_request, capability_matches_resource_subscription,
     capability_request_requires_dpop, capability_request_requires_dpop_with_model_metadata,
 };
+pub use threshold_approval::{
+    CollectedThresholdApprovalSet, InMemoryThresholdApprovalCollectorStore,
+    ThresholdApprovalCollector, ThresholdApprovalCollectorProposal,
+    ThresholdApprovalCollectorState, ThresholdApprovalCollectorStore,
+    ThresholdApprovalCollectorStoreError,
+};
 
 pub use approval::{
     compute_parameter_hash, resume_with_decision, ApprovalChannel, ApprovalContext,
@@ -125,12 +138,15 @@ pub use approval::{
 };
 pub use approval_channels::{RecordingChannel, WebhookChannel, WebhookPayload};
 pub use authority::{
-    AuthoritySnapshot, AuthorityStatus, AuthorityStoreError, AuthorityTrustedKeySnapshot,
-    CapabilityAuthority, LocalCapabilityAuthority,
+    ensure_capability_issuance_supported, validate_issued_capability_response,
+    validate_issued_capability_response_at, AuthoritySnapshot, AuthorityStatus,
+    AuthorityStoreError, AuthorityTrustedKeySnapshot, CapabilityAuthority,
+    LocalCapabilityAuthority,
 };
 pub use budget_store::{BudgetStore, BudgetStoreError, BudgetUsageRecord, InMemoryBudgetStore};
 pub use capability_lineage::{
-    CapabilityLineageError, CapabilitySnapshot, StoredCapabilitySnapshot,
+    CapabilityLineageError, CapabilitySnapshot, CapabilitySnapshotProvenance,
+    StoredCapabilitySnapshot,
 };
 pub use checkpoint::{
     build_checkpoint, build_checkpoint_with_previous, build_inclusion_proof,
@@ -312,6 +328,7 @@ pub use chio_core::underwriting::{
     UNDERWRITING_POLICY_INPUT_SCHEMA, UNDERWRITING_RISK_TAXONOMY_VERSION,
     UNDERWRITING_SIMULATION_REPORT_SCHEMA,
 };
+pub use chio_credit::obligation::CreditExposureReservationRequest;
 pub use compliance_score::{
     compliance_factor_breakdown, compliance_score, ComplianceFactor, ComplianceFactorBreakdown,
     ComplianceScore, ComplianceScoreConfig, ComplianceScoreInputs, COMPLIANCE_SCORE_MAX,
@@ -394,13 +411,15 @@ pub use operator_report::{
 };
 pub use payment::{
     AcpPaymentAdapter, CommercePaymentContext, GovernedPaymentContext, PaymentAdapter,
-    PaymentAuthorization, PaymentAuthorizeRequest, PaymentError, PaymentResult,
-    RailSettlementState, RailSettlementStatus, ReceiptSettlement, SimPaymentAdapter,
+    PaymentAuthorization, PaymentAuthorizationState, PaymentAuthorizeRequest, PaymentError,
+    PaymentJournalError, PaymentJournalRecord, PaymentJournalState, PaymentJournalTransition,
+    PaymentRailMode, PaymentReleaseAuthorityBinding, PaymentReleaseAuthorityKind, PaymentResult,
+    PaymentSettleAction, RailSettlementState, RailSettlementStatus, ReceiptSettlement,
     X402PaymentAdapter,
 };
 pub use post_invocation::{
-    PipelineOutcome, PostInvocationContext, PostInvocationHook, PostInvocationPipeline,
-    PostInvocationVerdict,
+    PipelineOutcome, PostInvocationContext, PostInvocationHook, PostInvocationHookIdentity,
+    PostInvocationPipeline, PostInvocationVerdict,
 };
 pub use provider_verdict::{
     build_tool_call_request, canonical_invocation_bytes, verdict_result_from_response,
@@ -415,15 +434,17 @@ pub use receipt_query::{
     ReceiptReadContext, ReceiptReadContextSource, MAX_QUERY_LIMIT,
 };
 pub use receipt_store::{
-    AuthorizationReceiptConsumption, DispatchIntentJournalMode, DispatchIntentKey,
-    DispatchIntentReconcileReport, DispatchIntentReconciler, DispatchIntentRecord,
-    DispatchIntentResolution, FederatedEvidenceShareImport, FederatedEvidenceShareSummary,
-    ReceiptCheckpointCreateReport, ReceiptCheckpointRange, ReceiptCheckpointStatusReport,
-    ReceiptFlushReport, ReceiptStore, ReceiptStoreError, ReceiptStoreHealthReport,
-    ReceiptWalCheckpointReport, ReceiptWriterCounters, ReceiptWriterLiveness, RetentionConfig,
-    SideEffectClass, StoredChildReceipt, StoredToolReceipt,
+    AdmissionBudgetAuthorization, AdmissionBudgetAuthorizationError, AdmissionBudgetCapture,
+    AdmissionPaymentJournalAdvance, AdmissionPaymentJournalError, AdmissionPaymentSettlement,
+    AdmissionPaymentSettlementBegin, AtomicReceiptProjection, AuthorizationReceiptConsumption,
+    FederatedEvidenceShareImport, FederatedEvidenceShareSummary, PendingSettlementObservation,
+    QualifiedAdmissionProjectionStore, ReceiptCheckpointCreateReport, ReceiptCheckpointRange,
+    ReceiptCheckpointStatusReport, ReceiptFlushReport, ReceiptStore, ReceiptStoreError,
+    ReceiptStoreHealthReport, ReceiptWalCheckpointReport, ReceiptWriterCounters,
+    ReceiptWriterLiveness, RetentionConfig, StoredChildReceipt, StoredToolReceipt,
+    ThresholdApprovalReplayReservationV1, ADMISSION_TERMINAL_PROJECTION_DESCRIPTOR_KIND,
 };
-pub use revocation_runtime::{InMemoryRevocationStore, RevocationStore};
+pub use revocation_runtime::{InMemoryRevocationStore, RevocationObservation, RevocationStore};
 pub use revocation_store::{RevocationRecord, RevocationStoreError};
 pub use runtime::{
     NestedFlowBridge, NestedFlowClient, ToolCallChunk, ToolCallOutput, ToolCallRequest,
@@ -435,6 +456,16 @@ pub use session::{
     SessionOperationResponse, SessionPersistError, SessionState, SubscriptionRegistry,
     TerminalRegistry,
 };
+pub use supplemental_quota::{
+    supplemental_authorization_artifact_digest, supplemental_request_binding_hash,
+    CanonicalRevocationSet, SupplementalQuotaError, SupplementalQuotaVerificationContext,
+    SupplementalQuotaVerifier, SupplementalQuotaVerifierBinding, SupplementalQuotaVerifierError,
+    VerifiedSupplementalQuotaClaim, BROKER_CAPABILITY_EXECUTION_PROFILE,
+    MAX_ADMISSION_REVOCATION_IDS, MAX_SUPPLEMENTAL_AUTHORIZATION_BYTES,
+    MAX_SUPPLEMENTAL_CLAIM_FIELD_BYTES, MAX_SUPPLEMENTAL_CONTEXT_FIELD_BYTES,
+    MAX_SUPPLEMENTAL_NEGOTIATED_FEATURES, MAX_SUPPLEMENTAL_REVOCATION_IDS,
+    MAX_SUPPLEMENTAL_REVOCATION_ID_BYTES,
+};
 pub use weights_binding::{evaluate_weights_binding, WeightsBindingError, WeightsBindingRequest};
 
 /// A string-typed agent identifier.
@@ -444,17 +475,15 @@ mod kernel;
 pub(crate) use kernel::{current_unix_timestamp, MatchingGrant, ReceiptContent};
 
 pub use kernel::{
-    AgentId, BudgetHoldSweepHandle, CapabilityId, ChildReceiptLog, ChioKernel,
-    DefaultDispatchIntentReconciler, Guard, GuardContext, GuardDecision, HotPathDeadlineConfig,
-    HotPathStage, HybridSigningConfig, KernelBuildError, KernelConfig, KernelError,
-    MemoryBudgetConfig, MonetaryDispatchIntentReconciler, OverloadResource,
-    PaymentReconcileOutcome, PaymentReconcileReport, PromptProvider, ReceiptLog, ResourceProvider,
-    RuntimeAdmissionContext, RuntimeAdmissionDecision, RuntimeAdmissionHook, ServerId,
-    StructuredErrorReport, DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_HOLD_EXPIRY_HORIZON_SECS,
-    DEFAULT_HOLD_SWEEP_INTERVAL_SECS, DEFAULT_MAX_SIZE_BYTES, DEFAULT_MAX_STREAM_DURATION_SECS,
-    DEFAULT_MAX_STREAM_TOTAL_BYTES, DEFAULT_RECEIPT_APPEND_BUDGET_MS,
-    DEFAULT_RECEIPT_WRITER_POLL_MS, DEFAULT_RECEIPT_WRITER_STALL_MS, DEFAULT_RETENTION_DAYS,
-    EMERGENCY_STOP_DENY_REASON, MIN_RECEIPT_APPEND_BUDGET_MS,
+    AgentId, CapabilityId, ChildReceiptLog, ChioKernel, Guard, GuardContext, GuardDecision,
+    HotPathDeadlineConfig, HotPathStage, HybridSigningConfig, KernelBuildError, KernelConfig,
+    KernelError, MemoryBudgetConfig, OverloadResource, PromptProvider, ReceiptLog,
+    ResourceProvider, RuntimeAdmissionContext, RuntimeAdmissionDecision, RuntimeAdmissionHook,
+    ServerId, SettlementRuntimeConfigError, StructuredErrorReport, DEFAULT_CHECKPOINT_BATCH_SIZE,
+    DEFAULT_MAX_SIZE_BYTES, DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
+    DEFAULT_RECEIPT_APPEND_BUDGET_MS, DEFAULT_RECEIPT_WRITER_POLL_MS,
+    DEFAULT_RECEIPT_WRITER_STALL_MS, DEFAULT_RETENTION_DAYS, EMERGENCY_STOP_DENY_REASON,
+    MIN_RECEIPT_APPEND_BUDGET_MS,
 };
 
 pub use kernel::evaluator::ToolEvaluator;
@@ -464,7 +493,7 @@ pub use kernel::evaluator::ToolEvaluator;
 /// without reaching into crate-private module paths.
 pub mod settlement_observer {
     pub use crate::kernel::settlement_observer::{
-        build_observation, run_observer, SettlementObserverStatus,
+        build_observation, run_observer, SettlementObservationBuild, SettlementObserverStatus,
         SETTLEMENT_OBSERVER_STATUS_SCHEMA,
     };
 }

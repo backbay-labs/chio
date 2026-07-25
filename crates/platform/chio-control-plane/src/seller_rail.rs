@@ -99,6 +99,7 @@ mod tests {
                 subject: kp.public_key(),
                 governed_intent_hash: "test-intent-hash".to_string(),
                 request_id: "req-seller-rail-1".to_string(),
+                threshold_proposal_hash: None,
                 issued_at: TEST_ISSUED_AT,
                 expires_at: TEST_EXPIRES_AT,
                 decision: GovernedApprovalDecision::Approved,

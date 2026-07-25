@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-outcome/contractual-zero/v1",
+  "title": "Chio Outcome Contractual Zero V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signerKey", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "contractualZeroId",
+        "requestId",
+        "eligibilityDigest",
+        "providerAcceptanceDigest",
+        "reason",
+        "terminalToolOutcomeDigest",
+        "noDeliverySlotProofDigest",
+        "postGuardPolicyDigest",
+        "postGuardEvidenceDigest",
+        "authorityId",
+        "authorityKeyEpoch",
+        "issuedAtUnixMs",
+        "expiresAtUnixMs"
+      ],
+      "properties": {
+        "schema": { "const": "chio.outcome.contractual-zero.v1" },
+        "contractualZeroId": { "$ref": "#/$defs/digest" },
+        "requestId": { "$ref": "#/$defs/text" },
+        "eligibilityDigest": { "$ref": "#/$defs/digest" },
+        "providerAcceptanceDigest": { "$ref": "#/$defs/digest" },
+        "reason": {
+          "enum": ["output_blocked", "output_mutation_after_evaluation"]
+        },
+        "terminalToolOutcomeDigest": { "$ref": "#/$defs/digest" },
+        "noDeliverySlotProofDigest": { "$ref": "#/$defs/digest" },
+        "postGuardPolicyDigest": { "$ref": "#/$defs/digest" },
+        "postGuardEvidenceDigest": { "$ref": "#/$defs/digest" },
+        "authorityId": { "$ref": "#/$defs/text" },
+        "authorityKeyEpoch": { "$ref": "#/$defs/positiveInteger" },
+        "issuedAtUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "expiresAtUnixMs": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "signerKey": { "$ref": "#/$defs/cryptoMaterial" },
+    "signature": { "$ref": "#/$defs/cryptoMaterial" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "^[^\\s\\u0000-\\u001F\\u007F-\\u009F](?:[^\\u0000-\\u001F\\u007F-\\u009F]*[^\\s\\u0000-\\u001F\\u007F-\\u009F])?$"
+    },
+    "positiveInteger": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "cryptoMaterial": { "type": "string", "minLength": 1, "maxLength": 16384 }
+  }
+}

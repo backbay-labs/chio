@@ -163,7 +163,8 @@
 
 - **Receipt query API** (`chio-cli`): New `GET /v1/receipts/query` endpoint
   with 9 filter dimensions: `capabilityId`, `toolServer`, `toolName`,
-  `outcome`, `since`, `until`, `minCost`, `maxCost`, `agentSubject`. Supports
+  `outcome`, `since`, `until`, `minCost`, `maxCost`, `costCurrency`,
+  `agentSubject`. Cost bounds require a three-letter uppercase currency. Supports
   cursor-based pagination (`cursor` + `limit`). Maximum page size: 200
   receipts. Response includes `totalCount` (full filtered set), `nextCursor`,
   and `receipts` ordered by `seq` ascending.

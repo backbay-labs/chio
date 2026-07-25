@@ -24,11 +24,17 @@ All parameters are optional. Omitting a parameter disables that filter.
 | `until` | u64 | Include only receipts with `timestamp <= until` (Unix seconds, inclusive) |
 | `minCost` | u64 | Include only receipts with `cost_charged >= minCost` (minor units). Receipts without financial metadata are excluded when this filter is set. |
 | `maxCost` | u64 | Include only receipts with `cost_charged <= maxCost` (minor units). Receipts without financial metadata are excluded when this filter is set. |
+| `costCurrency` | string | Exact three-letter uppercase currency for cost filtering. Required with `minCost` or `maxCost`. |
 | `agentSubject` | string | Filter by agent subject public key (hex-encoded Ed25519). Resolved from receipt attribution metadata when present and otherwise through the capability lineage table. |
 | `cursor` | u64 | Pagination cursor: return only receipts with `seq > cursor` (exclusive). |
 | `limit` | usize | Maximum results per page. Capped server-side at `MAX_QUERY_LIMIT` (200). Default: 50. |
 
 The parameter names follow `camelCase` in the HTTP query string (matching the `ReceiptQueryHttpQuery` struct's `serde(rename_all = "camelCase")` attribute).
+
+`minCost` and `maxCost` span the full unsigned 64-bit domain and are interpreted
+as minor units in `costCurrency`. Supplying a bound without `costCurrency`, a
+currency other than three uppercase ASCII letters, or `minCost > maxCost`
+returns `400 Bad Request`.
 
 ### Response Body
 
@@ -415,6 +421,7 @@ Options:
   --until <UNIX_SECS>    Filter by maximum timestamp (inclusive)
   --min-cost <UNITS>     Minimum cost in minor currency units
   --max-cost <UNITS>     Maximum cost in minor currency units
+  --cost-currency <CODE> Three-letter uppercase currency for cost filters
   --limit <N>            Page size (default: 50)
   --cursor <SEQ>         Pagination cursor (seq value)
   --tenant <ID>          Strict tenant read boundary (local mode);
@@ -432,6 +439,7 @@ not silently default to admin-all reads across all tenants. Pass either
 `--tenant <id>` to scope output to a single tenant or `--admin-all` to
 read across tenants as a documented operator action. Remote
 `--control-url` reads derive the read boundary from the control token.
+`--min-cost` and `--max-cost` require `--cost-currency`.
 
 Each matching receipt is printed as a JSON object on its own line (NDJSON). Example:
 

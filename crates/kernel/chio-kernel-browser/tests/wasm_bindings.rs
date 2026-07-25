@@ -61,6 +61,7 @@ fn make_capability(subject: &Keypair, issuer: &Keypair) -> CapabilityToken {
         issued_at: ISSUED_AT,
         expires_at: EXPIRES_AT,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     CapabilityToken::sign(body, issuer).unwrap()
 }

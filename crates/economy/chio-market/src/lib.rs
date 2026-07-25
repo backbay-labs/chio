@@ -21,12 +21,14 @@ pub use chio_credit as credit;
 pub use chio_underwriting as underwriting;
 
 pub mod insurance_flow;
+pub mod parametric;
 pub use insurance_flow::{
     quote_and_bind, BoundPolicy, ClaimDecision, ClaimDenialReason, ClaimEvidence, ClaimSettlement,
     ClaimSettlementRequest, ClaimSettlementSink, CoverageLimit, InsuranceFlowError, PolicyStatus,
     PremiumSource, ReceiptEvidenceSource, ReceiptFingerprint, ResolvedReceiptEvidence,
     StaticPremiumSource,
 };
+pub use parametric::*;
 
 use serde::Serialize;
 

@@ -10,6 +10,17 @@ mod cluster_and_reports_tests {
 
     use chio_test_support::prelude::*;
 
+    #[path = "budget_compensation.rs"]
+    mod budget_compensation;
+    #[path = "budget_delta_authority.rs"]
+    mod budget_delta_authority;
+    #[path = "cluster_fence.rs"]
+    mod cluster_fence;
+    #[path = "snapshot_budget_authority.rs"]
+    mod snapshot_budget_authority;
+    #[path = "structured_authority.rs"]
+    mod structured_authority;
+
     fn base_config() -> TrustServiceConfig {
         TrustServiceConfig {
             listen: "127.0.0.1:0".parse().test_unwrap(),
@@ -20,6 +31,8 @@ mod cluster_and_reports_tests {
             authority_seed_path: None,
             authority_db_path: None,
             budget_db_path: None,
+            joint_authority_db_path: None,
+            fiscal_runtime: None,
             enterprise_providers_file: None,
             federation_policies_file: None,
             scim_lifecycle_file: None,
@@ -56,8 +69,26 @@ mod cluster_and_reports_tests {
         config.budget_db_path = budget_db_path;
         let cluster = build_cluster_state(&config, config.listen).test_unwrap();
         let cluster_progress = cluster.as_ref().map(|_| Arc::new(ClusterProgress::new()));
+        let budget_store = config
+            .budget_db_path
+            .as_deref()
+            .map(SqliteBudgetStore::open)
+            .transpose()
+            .test_unwrap()
+            .map(Arc::new);
+        let revocation_store = config
+            .revocation_db_path
+            .as_deref()
+            .map(SqliteRevocationStore::open)
+            .transpose()
+            .test_unwrap()
+            .map(Arc::new);
         let state = TrustServiceState {
             config,
+            joint_authority_store: None,
+            fiscal_runtime: None,
+            budget_store,
+            revocation_store,
             enterprise_provider_registry: None,
             verifier_policy_registry: None,
             federation_admission_rate_limiter: Arc::new(Mutex::new(
@@ -149,6 +180,7 @@ mod cluster_and_reports_tests {
                 issued_at: 1_000,
                 expires_at: 9_000,
                 delegation_chain: vec![],
+                aggregate_invocation_budget: None,
             },
             &issuer,
         )
@@ -656,10 +688,11 @@ mod cluster_and_reports_tests {
         let event = |seq: u64, origin: &str| BudgetMutationEventView {
             event_id: format!("evt-{origin}-{seq}"),
             hold_id: None,
-            capability_id: "cap-x".to_string(),
+            capability_id: format!("cap-x-{seq}"),
             grant_index: 0,
             kind: "authorize_exposure".to_string(),
             allowed: Some(true),
+            lifecycle: BudgetMutationLifecycleView::default(),
             recorded_at: seq as i64,
             event_seq: seq,
             usage_seq: Some(seq),
@@ -673,8 +706,8 @@ mod cluster_and_reports_tests {
             total_cost_realized_spend_after: 0,
             authority: Some(BudgetMutationAuthorityView {
                 authority_id: origin.to_string(),
-                lease_id: format!("{origin}#term-1"),
-                lease_epoch: 1,
+                lease_id: format!("{origin}#term-{}", if origin == origin_a { 1 } else { 2 }),
+                lease_epoch: if origin == origin_a { 1 } else { 2 },
             }),
         };
         let import = |store: &SqliteBudgetStore, events: &[BudgetMutationEventView]| {
@@ -1982,6 +2015,7 @@ mod cluster_and_reports_tests {
             grant_index: 0,
             kind: "authorize_exposure".to_string(),
             allowed: Some(true),
+            lifecycle: BudgetMutationLifecycleView::default(),
             recorded_at: seq as i64,
             event_seq: seq,
             usage_seq: Some(seq),
@@ -1990,8 +2024,8 @@ mod cluster_and_reports_tests {
             max_invocations: None,
             max_cost_per_invocation: None,
             max_total_cost_units: None,
-            invocation_count_after: 1,
-            total_cost_exposed_after: 1,
+            invocation_count_after: if seq == 1 { 1 } else { 2 },
+            total_cost_exposed_after: if seq == 1 { 1 } else { 2 },
             total_cost_realized_spend_after: 0,
             authority: Some(BudgetMutationAuthorityView {
                 authority_id: "http://node-a".to_string(),
@@ -2067,7 +2101,7 @@ mod cluster_and_reports_tests {
     }
 
     #[test]
-    fn cluster_snapshot_round_trip_preserves_budget_usage_rows_without_mutation_events() {
+    fn cluster_snapshot_rejects_untrusted_usage_anchor_without_mutation_events() {
         let source_budget_db = unique_temp_path("cluster-source-budget-usage-only", "sqlite3");
         let target_budget_db = unique_temp_path("cluster-target-budget-usage-only", "sqlite3");
 
@@ -2086,25 +2120,6 @@ mod cluster_and_reports_tests {
             Some(target_budget_db.clone()),
         );
 
-        {
-            let budget_store = SqliteBudgetStore::open(&source_budget_db).test_unwrap();
-            budget_store
-                .upsert_usage(&chio_kernel::BudgetUsageRecord {
-                    capability_id: "cap-usage-only".to_string(),
-                    grant_index: 0,
-                    invocation_count: 7,
-                    updated_at: 1_717_171_717,
-                    seq: 42,
-                    total_cost_exposed: 550,
-                    total_cost_realized_spend: 375,
-                })
-                .test_unwrap();
-            assert!(budget_store
-                .list_mutation_events(10, Some("cap-usage-only"), Some(0))
-                .test_unwrap()
-                .is_empty());
-        }
-
         update_peer_budget_cursor(
             &target_state,
             "http://node-a",
@@ -2116,34 +2131,40 @@ mod cluster_and_reports_tests {
             },
         );
 
-        let snapshot = build_cluster_state_snapshot(&source_state).test_unwrap();
-        assert_eq!(snapshot.replication.budget_seq, 0);
-        assert_eq!(snapshot.budgets.len(), 1);
-        assert!(snapshot.budget_mutation_events.is_empty());
-        assert_eq!(snapshot.budgets[0].capability_id, "cap-usage-only");
-        assert_eq!(snapshot.budgets[0].seq, Some(42));
+        let usage = || BudgetUsageView {
+            capability_id: "cap-usage-only".to_string(),
+            grant_index: 0,
+            invocation_count: 7,
+            total_cost_exposed: 550,
+            total_cost_realized_spend: 375,
+            updated_at: 1_717_171_717,
+            seq: Some(42),
+        };
+        let mut snapshot = build_cluster_state_snapshot(&source_state).test_unwrap();
+        snapshot.replication.budget_seq = 42;
+        snapshot.budgets = vec![usage()];
+        snapshot.budget_usage_history_anchors = vec![usage()];
 
-        apply_cluster_snapshot(&target_state, "http://node-a", snapshot).test_unwrap();
+        let _error =
+            apply_cluster_snapshot(&target_state, "http://node-a", snapshot).test_unwrap_err();
 
         let target_store = SqliteBudgetStore::open(&target_budget_db).test_unwrap();
-        let usages = target_store
+        assert!(target_store
             .list_usages_after(MAX_LIST_LIMIT, None)
-            .test_unwrap();
-        assert_eq!(usages.len(), 1);
-        assert_eq!(usages[0].capability_id, "cap-usage-only");
-        assert_eq!(usages[0].invocation_count, 7);
-        assert_eq!(usages[0].seq, 42);
-        assert_eq!(usages[0].total_cost_exposed, 550);
-        assert_eq!(usages[0].total_cost_realized_spend, 375);
+            .test_unwrap()
+            .is_empty());
         assert!(target_store
             .list_mutation_events(10, Some("cap-usage-only"), Some(0))
             .test_unwrap()
             .is_empty());
         drop(target_store);
 
-        assert!(
-            peer_budget_cursor(&target_state, "http://node-a").is_none(),
-            "usage-only snapshots should clear any stale mutation cursor"
+        assert_eq!(
+            peer_budget_cursor(&target_state, "http://node-a")
+                .test_unwrap()
+                .seq,
+            99,
+            "a rejected snapshot must not replace the peer cursor"
         );
     }
 
@@ -2156,6 +2177,7 @@ mod cluster_and_reports_tests {
             grant_index: 2,
             kind: "authorize_exposure".to_string(),
             allowed: Some(true),
+            lifecycle: BudgetMutationLifecycleView::default(),
             recorded_at: 1_717_171_717,
             event_seq: 4,
             usage_seq: Some(9),
@@ -2182,7 +2204,7 @@ mod cluster_and_reports_tests {
         // would pin the global cursor past unimported events, so it must be a
         // protocol violation (demote), NOT an accepted cursor advance.
         let budget_db = unique_temp_path("cluster-records-only-budget-delta", "sqlite3");
-        let mut store = SqliteBudgetStore::open(&budget_db).test_unwrap();
+        let store = SqliteBudgetStore::open(&budget_db).test_unwrap();
         let response = BudgetDeltaResponse {
             records: vec![BudgetUsageView {
                 capability_id: "cap-records-only".to_string(),
@@ -2198,7 +2220,7 @@ mod cluster_and_reports_tests {
         };
 
         let result =
-            import_budget_delta_response(&mut store, &response, None, &mut PullRoundBudget::new());
+            import_budget_delta_response(&store, &response, None, &mut PullRoundBudget::new());
         assert!(
             matches!(
                 result,
@@ -2225,7 +2247,7 @@ mod cluster_and_reports_tests {
         // route_pull turns it into a force_snapshot flag
         // (see oversized_budget_delta_routes_peer_to_force_snapshot_not_wedge).
         let budget_db = unique_temp_path("cluster-oversized-budget-delta", "sqlite3");
-        let mut store = SqliteBudgetStore::open(&budget_db).test_unwrap();
+        let store = SqliteBudgetStore::open(&budget_db).test_unwrap();
         let event = |seq: u64| BudgetMutationEventView {
             event_id: format!("evt-{seq}"),
             hold_id: None,
@@ -2233,6 +2255,7 @@ mod cluster_and_reports_tests {
             grant_index: 0,
             kind: "authorize_exposure".to_string(),
             allowed: Some(true),
+            lifecycle: BudgetMutationLifecycleView::default(),
             recorded_at: seq as i64,
             event_seq: seq,
             usage_seq: Some(seq),
@@ -2250,17 +2273,15 @@ mod cluster_and_reports_tests {
                 lease_epoch: 1,
             }),
         };
-        // MAX_LIST_LIMIT live events interspersed with a dense burst of abandoned
-        // (rolled-back-then-retried) seqs: events + abandoned exceeds
-        // BUDGET_DELTA_MAX_RECORDS for the covered range, so no smaller
-        // cursor-anchored page makes forward progress.
-        let live_events = MAX_LIST_LIMIT as u64;
-        let abandoned_start = live_events + 1;
+        // One live tail event after a dense burst of abandoned
+        // (rolled-back-then-retried) seqs: event + abandoned exceeds
+        // BUDGET_DELTA_MAX_RECORDS, so no smaller cursor-anchored page can make
+        // forward progress.
         let abandoned_end = BUDGET_DELTA_MAX_RECORDS as u64 + 1;
         let response = BudgetDeltaResponse {
             records: Vec::new(),
-            mutation_events: (1..=live_events).map(event).collect(),
-            abandoned_seqs: (abandoned_start..=abandoned_end).collect(),
+            mutation_events: vec![event(abandoned_end + 1)],
+            abandoned_seqs: (1..=abandoned_end).collect(),
         };
         let record_count = response.mutation_events.len() + response.abandoned_seqs.len();
         assert!(
@@ -2269,7 +2290,7 @@ mod cluster_and_reports_tests {
         );
 
         let result =
-            import_budget_delta_response(&mut store, &response, None, &mut PullRoundBudget::new());
+            import_budget_delta_response(&store, &response, None, &mut PullRoundBudget::new());
         let Err(PullError::ForceSnapshot(error)) = result else {
             panic!(
                 "an oversized budget page must route to snapshot recovery, not stall as Transient: {result:?}"
@@ -2344,7 +2365,7 @@ mod cluster_and_reports_tests {
     #[test]
     fn budget_puller_rejects_non_advancing_page() {
         let budget_db = unique_temp_path("cluster-non-advancing-budget-delta", "sqlite3");
-        let mut store = SqliteBudgetStore::open(&budget_db).test_unwrap();
+        let store = SqliteBudgetStore::open(&budget_db).test_unwrap();
         // A non-empty page whose cursor does not advance past the caller's
         // current cursor is a peer protocol violation, not a continuation.
         let cursor = BudgetCursor {
@@ -2362,6 +2383,7 @@ mod cluster_and_reports_tests {
                 grant_index: 0,
                 kind: "authorize_exposure".to_string(),
                 allowed: Some(true),
+                lifecycle: BudgetMutationLifecycleView::default(),
                 recorded_at: 11,
                 event_seq: 40, // equal to the cursor: does not advance
                 usage_seq: Some(40),
@@ -2378,7 +2400,7 @@ mod cluster_and_reports_tests {
             abandoned_seqs: Vec::new(),
         };
         let mut round = PullRoundBudget::new();
-        let result = import_budget_delta_response(&mut store, &response, Some(cursor), &mut round);
+        let result = import_budget_delta_response(&store, &response, Some(cursor), &mut round);
         // event_seq 40 equals the cursor, so it is neither advancing nor
         // cursor-anchored at the expected next seq (41): a protocol violation
         // that demotes the peer. The contiguity guard now surfaces this as a
@@ -2398,7 +2420,7 @@ mod cluster_and_reports_tests {
     #[test]
     fn budget_puller_enforces_strict_global_contiguity() {
         let budget_db = unique_temp_path("cluster-budget-cursor-jump", "sqlite3");
-        let mut store = SqliteBudgetStore::open(&budget_db).test_unwrap();
+        let store = SqliteBudgetStore::open(&budget_db).test_unwrap();
 
         // A mutation-event view at event_seq S under a single origin.
         let event = |seq: u64| BudgetMutationEventView {
@@ -2408,6 +2430,7 @@ mod cluster_and_reports_tests {
             grant_index: 0,
             kind: "authorize_exposure".to_string(),
             allowed: Some(true),
+            lifecycle: BudgetMutationLifecycleView::default(),
             recorded_at: seq as i64,
             event_seq: seq,
             usage_seq: Some(seq),
@@ -2416,8 +2439,8 @@ mod cluster_and_reports_tests {
             max_invocations: None,
             max_cost_per_invocation: None,
             max_total_cost_units: None,
-            invocation_count_after: 1,
-            total_cost_exposed_after: 1,
+            invocation_count_after: u32::try_from(seq).test_unwrap(),
+            total_cost_exposed_after: seq,
             total_cost_realized_spend_after: 0,
             authority: Some(BudgetMutationAuthorityView {
                 authority_id: "http://origin-j".to_string(),
@@ -2435,8 +2458,7 @@ mod cluster_and_reports_tests {
             mutation_events: vec![event(5), event(6)],
             abandoned_seqs: Vec::new(),
         };
-        let result =
-            import_budget_delta_response(&mut store, &jump, None, &mut PullRoundBudget::new());
+        let result = import_budget_delta_response(&store, &jump, None, &mut PullRoundBudget::new());
         assert!(
             matches!(
                 result,
@@ -2460,13 +2482,9 @@ mod cluster_and_reports_tests {
             mutation_events: vec![event(1), event(2), event(3)],
             abandoned_seqs: Vec::new(),
         };
-        let outcome = import_budget_delta_response(
-            &mut store,
-            &contiguous,
-            None,
-            &mut PullRoundBudget::new(),
-        )
-        .test_unwrap();
+        let outcome =
+            import_budget_delta_response(&store, &contiguous, None, &mut PullRoundBudget::new())
+                .test_unwrap();
         assert!(outcome.should_continue);
         assert_eq!(outcome.next_cursor.test_unwrap().seq, 3);
 
@@ -2498,7 +2516,7 @@ mod cluster_and_reports_tests {
             abandoned_seqs: Vec::new(),
         };
         let result = import_budget_delta_response(
-            &mut store,
+            &store,
             &compacted,
             Some(cursor),
             &mut PullRoundBudget::new(),
@@ -2629,116 +2647,5 @@ mod cluster_and_reports_tests {
         let seeded_lease = cluster_authority_lease_view(&target_state).test_unwrap();
         assert_eq!(seeded_lease.authority_id, "http://node-0");
         assert_eq!(seeded_lease.lease_epoch, 2);
-    }
-
-    #[test]
-    fn build_cluster_state_seeds_persisted_authority_fence_term() {
-        let authority_db_path = unique_temp_path("cluster-authority-fence", "sqlite3");
-        let authority = SqliteCapabilityAuthority::open(&authority_db_path).test_unwrap();
-        authority
-            .seed_cluster_fence(Some("http://node-b"), 7)
-            .test_unwrap();
-
-        let mut config = base_config();
-        config.advertise_url = Some("http://node-a".to_string());
-        config.peer_urls = vec!["http://node-b".to_string()];
-        config.authority_db_path = Some(authority_db_path.clone());
-
-        let cluster = build_cluster_state(&config, config.listen)
-            .test_unwrap()
-            .test_unwrap();
-        let guard = cluster.lock().test_unwrap();
-        assert_eq!(guard.election_term, 7);
-        assert_eq!(guard.last_leader_url.as_deref(), Some("http://node-b"));
-
-        let _ = std::fs::remove_file(authority_db_path);
-    }
-
-    #[test]
-    fn build_cluster_state_discards_persisted_authority_fence_for_unknown_leader() {
-        let authority_db_path =
-            unique_temp_path("cluster-authority-fence-unknown-leader", "sqlite3");
-        let authority = SqliteCapabilityAuthority::open(&authority_db_path).test_unwrap();
-        authority
-            .seed_cluster_fence(Some("http://node-z"), 7)
-            .test_unwrap();
-
-        let mut config = base_config();
-        config.advertise_url = Some("http://node-a".to_string());
-        config.peer_urls = vec!["http://node-b".to_string()];
-        config.authority_db_path = Some(authority_db_path.clone());
-
-        let cluster = build_cluster_state(&config, config.listen)
-            .test_unwrap()
-            .test_unwrap();
-        let guard = cluster.lock().test_unwrap();
-        assert_eq!(guard.election_term, 7);
-        assert!(
-            guard.last_leader_url.is_none(),
-            "unknown persisted leader should be cleared"
-        );
-
-        let _ = std::fs::remove_file(authority_db_path);
-    }
-
-    #[test]
-    fn build_cluster_state_discards_persisted_authority_fence_after_rotation() {
-        let authority_db_path =
-            unique_temp_path("cluster-authority-fence-stale-generation", "sqlite3");
-        let authority = SqliteCapabilityAuthority::open(&authority_db_path).test_unwrap();
-        authority
-            .seed_cluster_fence(Some("http://node-b"), 7)
-            .test_unwrap();
-        authority.rotate().test_unwrap();
-
-        let mut config = base_config();
-        config.advertise_url = Some("http://node-a".to_string());
-        config.peer_urls = vec!["http://node-b".to_string()];
-        config.authority_db_path = Some(authority_db_path.clone());
-
-        let cluster = build_cluster_state(&config, config.listen)
-            .test_unwrap()
-            .test_unwrap();
-        let guard = cluster.lock().test_unwrap();
-        assert_eq!(guard.election_term, 0);
-        assert!(guard.last_leader_url.is_none());
-
-        let _ = std::fs::remove_file(authority_db_path);
-    }
-
-    #[test]
-    fn apply_cluster_snapshot_fails_when_authority_fence_persistence_fails() {
-        let authority_db_path = unique_temp_path("cluster-authority-fence-dir", "d");
-        std::fs::create_dir_all(&authority_db_path).test_unwrap();
-
-        let source_state =
-            state_with_cluster("http://node-a", &["http://node-b"], None, None, None);
-        let target_state = state_with_cluster(
-            "http://node-b",
-            &["http://node-a"],
-            Some(authority_db_path.clone()),
-            None,
-            None,
-        );
-
-        for state in [&source_state, &target_state] {
-            let cluster = state.cluster.as_ref().test_unwrap();
-            let mut guard = cluster.lock().test_unwrap();
-            for peer in guard.peers.values_mut() {
-                peer.health = PeerHealth::Healthy;
-                peer.last_contact_at = Some(unix_timestamp_now());
-            }
-        }
-
-        let snapshot = build_cluster_state_snapshot(&source_state).test_unwrap();
-        let error =
-            apply_cluster_snapshot(&target_state, "http://node-a", snapshot).test_unwrap_err();
-        let error_text = error.to_string();
-        assert!(
-            error_text.contains("directory") || error_text.contains("open database file"),
-            "unexpected error: {error_text}"
-        );
-
-        let _ = std::fs::remove_dir_all(authority_db_path);
     }
 }

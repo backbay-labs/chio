@@ -114,6 +114,7 @@ pub struct InflightRequest {
     pub progress_token: Option<ProgressToken>,
     pub cancellation_requested: bool,
     pub cancellable: bool,
+    pub pending_execution_nonce_id: Option<String>,
 }
 
 impl InflightRequest {
@@ -182,6 +183,7 @@ impl InflightRegistry {
                 progress_token: context.progress_token.clone(),
                 cancellation_requested: false,
                 cancellable,
+                pending_execution_nonce_id: None,
             },
         );
         self.active_count.fetch_add(1, Ordering::AcqRel);
@@ -213,6 +215,7 @@ impl InflightRegistry {
                 progress_token: context.progress_token.clone(),
                 cancellation_requested: false,
                 cancellable,
+                pending_execution_nonce_id: None,
             },
         );
         self.active_count.fetch_add(1, Ordering::AcqRel);
@@ -261,6 +264,26 @@ impl InflightRegistry {
 
     pub fn get(&self, request_id: &RequestId) -> Option<InflightRequest> {
         self.read_requests().get(request_id).cloned()
+    }
+
+    pub fn mark_execution_nonce_pending(
+        &self,
+        request_id: &RequestId,
+        nonce_id: &str,
+    ) -> Result<(), SessionError> {
+        let mut requests = self.write_requests();
+        let request = requests.get_mut(request_id).ok_or_else(|| {
+            SessionError::ExecutionNonceRetryMismatch {
+                request_id: request_id.clone(),
+            }
+        })?;
+        if request.pending_execution_nonce_id.is_some() {
+            return Err(SessionError::ExecutionNonceRetryMismatch {
+                request_id: request_id.clone(),
+            });
+        }
+        request.pending_execution_nonce_id = Some(nonce_id.to_string());
+        Ok(())
     }
 
     pub fn len(&self) -> usize {
@@ -482,6 +505,11 @@ pub enum SessionError {
 
     #[error("request {request_id} is not in flight")]
     RequestNotInflight { request_id: RequestId },
+
+    #[error(
+        "execution nonce retry for request {request_id} does not match a pending session preflight"
+    )]
+    ExecutionNonceRetryMismatch { request_id: RequestId },
 
     #[error("request {request_id} is not cancellable")]
     RequestNotCancellable { request_id: RequestId },
@@ -821,6 +849,42 @@ impl Session {
 
     pub fn inflight(&self) -> &InflightRegistry {
         &self.inflight
+    }
+
+    pub fn mark_execution_nonce_pending(
+        &self,
+        request_id: &RequestId,
+        nonce_id: &str,
+    ) -> Result<(), SessionError> {
+        self.inflight
+            .mark_execution_nonce_pending(request_id, nonce_id)
+    }
+
+    pub fn validate_execution_nonce_retry(
+        &self,
+        context: &OperationContext,
+        operation_kind: OperationKind,
+        nonce_id: &str,
+    ) -> Result<(), SessionError> {
+        self.validate_context(context)?;
+        self.ensure_operation_allowed(operation_kind)?;
+        let current_anchor = self.session_anchor();
+        let request = self.inflight.get(&context.request_id).ok_or_else(|| {
+            SessionError::ExecutionNonceRetryMismatch {
+                request_id: context.request_id.clone(),
+            }
+        })?;
+        if request.operation_kind != operation_kind
+            || request.session_anchor_id != current_anchor.id()
+            || request.parent_request_id != context.parent_request_id
+            || request.progress_token != context.progress_token
+            || request.pending_execution_nonce_id.as_deref() != Some(nonce_id)
+        {
+            return Err(SessionError::ExecutionNonceRetryMismatch {
+                request_id: context.request_id.clone(),
+            });
+        }
+        Ok(())
     }
 
     pub fn subscriptions(&self) -> &SubscriptionRegistry {

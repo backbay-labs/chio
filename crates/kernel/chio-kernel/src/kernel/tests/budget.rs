@@ -135,6 +135,9 @@ fn monetary_denial_exceeds_per_invocation_cap() {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -184,6 +187,9 @@ fn monetary_denial_receipt_contains_financial_metadata() {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -219,7 +225,8 @@ fn monetary_denial_receipt_contains_financial_metadata() {
 }
 
 #[test]
-fn monetary_guard_denial_releases_budget_and_records_attempted_cost() {
+fn monetary_guard_denial_consumes_no_budget_and_records_attempted_cost(
+) -> Result<(), Box<dyn std::error::Error>> {
     use std::sync::{Arc, Mutex};
 
     struct DenyOnceGuard {
@@ -249,7 +256,8 @@ fn monetary_guard_denial_releases_budget_and_records_attempted_cost() {
     kernel.register_tool_server(Box::new(MonetaryCostServer::no_cost("cost-srv")));
 
     let agent_kp = Keypair::generate();
-    let grant = make_monetary_grant("cost-srv", "compute", 100, 100, "USD");
+    let mut grant = make_monetary_grant("cost-srv", "compute", 100, 100, "USD");
+    grant.max_invocations = Some(1);
     let cap = kernel
         .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
         .unwrap();
@@ -265,6 +273,9 @@ fn monetary_guard_denial_releases_budget_and_records_attempted_cost() {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -285,6 +296,7 @@ fn monetary_guard_denial_releases_budget_and_records_attempted_cost() {
     assert_eq!(denied_financial["attempted_cost"].as_u64(), Some(100));
     assert_eq!(denied_financial["budget_remaining"].as_u64(), Some(100));
     assert_eq!(denied_financial["settlement_status"], "not_applicable");
+    assert!(kernel.budget_store.get_usage(&cap.id, 0)?.is_none());
 
     let allowed_response = kernel
         .evaluate_tool_call_blocking(&request("req-allow"))
@@ -300,6 +312,7 @@ fn monetary_guard_denial_releases_budget_and_records_attempted_cost() {
         .expect("should have financial metadata");
     assert_eq!(allowed_financial["cost_charged"].as_u64(), Some(100));
     assert_eq!(allowed_financial["budget_remaining"].as_u64(), Some(0));
+    Ok(())
 }
 
 #[test]
@@ -307,7 +320,7 @@ fn kernel_accepts_optional_payment_adapter_installation() {
     let mut kernel = make_kernel(make_monetary_config());
     assert!(kernel.payment_adapter.is_none());
 
-    kernel.set_payment_adapter(Box::new(StubPaymentAdapter)).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(StubPaymentAdapter));
 
     assert!(kernel.payment_adapter.is_some());
 }
@@ -316,7 +329,7 @@ fn kernel_accepts_optional_payment_adapter_installation() {
 fn monetary_payment_authorization_denial_releases_budget_and_skips_tool_invocation() {
     let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(DecliningPaymentAdapter)).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(DecliningPaymentAdapter));
     kernel.register_tool_server(Box::new(CountingMonetaryServer {
         id: "cost-srv".to_string(),
         invocations: invocations.clone(),
@@ -340,6 +353,9 @@ fn monetary_payment_authorization_denial_releases_budget_and_skips_tool_invocati
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -359,12 +375,7 @@ fn monetary_payment_authorization_denial_releases_budget_and_skips_tool_invocati
         .expect("deny receipt should carry financial metadata");
     assert_eq!(financial["attempted_cost"].as_u64(), Some(100));
     assert_eq!(financial["budget_remaining"].as_u64(), Some(1000));
-    let usage = kernel
-
-        .budget_store
-        .get_usage(&cap.id, 0)
-        .unwrap()
-        .unwrap();
+    let usage = kernel.budget_store.get_usage(&cap.id, 0).unwrap().unwrap();
     assert_eq!(usage.invocation_count, 0);
     assert_eq!(usage.committed_cost_units().unwrap(), 0);
 }
@@ -372,7 +383,7 @@ fn monetary_payment_authorization_denial_releases_budget_and_skips_tool_invocati
 #[test]
 fn monetary_prepaid_adapter_sets_payment_reference_on_allow_receipt() {
     let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(PrepaidSettledPaymentAdapter)).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(PrepaidSettledPaymentAdapter));
     kernel.register_tool_server(Box::new(MonetaryCostServer::no_cost("cost-srv")));
 
     let agent_kp = Keypair::generate();
@@ -393,6 +404,9 @@ fn monetary_prepaid_adapter_sets_payment_reference_on_allow_receipt() {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -409,12 +423,7 @@ fn monetary_prepaid_adapter_sets_payment_reference_on_allow_receipt() {
     assert_eq!(financial["settlement_status"], "settled");
     assert_eq!(financial["cost_charged"].as_u64(), Some(100));
     assert_eq!(financial["budget_remaining"].as_u64(), Some(900));
-    let usage = kernel
-
-        .budget_store
-        .get_usage(&cap.id, 0)
-        .unwrap()
-        .unwrap();
+    let usage = kernel.budget_store.get_usage(&cap.id, 0).unwrap().unwrap();
     assert_eq!(usage.committed_cost_units().unwrap(), 100);
 }
 
@@ -442,6 +451,9 @@ fn monetary_allow_receipt_contains_financial_metadata() {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -467,12 +479,87 @@ fn monetary_allow_receipt_contains_financial_metadata() {
         .expect("should have 'attribution' key");
     assert_eq!(attribution["grant_index"].as_u64(), Some(0));
 
-    let usage = kernel
+    let usage = kernel.budget_store.get_usage(&cap.id, 0).unwrap().unwrap();
+    assert_eq!(usage.invocation_count, 1);
+    assert_eq!(usage.committed_cost_units().unwrap(), 75);
+}
 
-        .budget_store
-        .get_usage(&cap.id, 0)
-        .unwrap()
+fn ambiguous_retained_hold_none_sample() -> u64 {
+    let mut out = String::new();
+    chio_metrics_spec::runtime::families::AMBIGUOUS_DISPATCH_RETAINED_HOLD.render(&mut out);
+    out.lines()
+        .find_map(|line| {
+            line.strip_prefix(
+                "chio_ambiguous_dispatch_retained_hold_total{reconciliation=\"none\"} ",
+            )
+        })
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .unwrap_or(0)
+}
+
+#[path = "budget/non_durable_financial_dispatch.rs"]
+mod non_durable_financial_dispatch;
+
+#[test]
+fn nested_monetary_allow_uses_reported_cost() {
+    let mut kernel = make_kernel(make_monetary_config());
+    let agent_kp = Keypair::generate();
+    kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
+
+    let grant = make_monetary_grant("cost-srv", "compute", 100, 1000, "USD");
+    let cap = kernel
+        .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
         .unwrap();
+    let session_id = kernel
+        .open_session("nested-parent-agent".to_string(), Vec::new())
+        .unwrap();
+    kernel.activate_session(&session_id).unwrap();
+    let parent_context = make_operation_context(
+        &session_id,
+        "req-nested-reported-cost-parent",
+        "nested-parent-agent",
+    );
+    kernel
+        .begin_session_request(&parent_context, OperationKind::ToolCall, true)
+        .unwrap();
+    let mut client = NoopNestedFlowClient;
+
+    let response = kernel
+        .evaluate_tool_call_with_nested_flow_client(
+            &parent_context,
+            &ToolCallRequest {
+                request_id: "req-nested-reported-cost".to_string(),
+                capability: cap.clone(),
+                tool_name: "compute".to_string(),
+                server_id: "cost-srv".to_string(),
+                agent_id: agent_kp.public_key().to_hex(),
+                arguments: serde_json::json!({}),
+                dpop_proof: None,
+                execution_nonce: None,
+                governed_intent: None,
+                approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
+                model_metadata: None,
+                federated_origin_kernel_id: None,
+            },
+            &mut client,
+            None,
+        )
+        .unwrap();
+
+    assert_eq!(response.verdict, Verdict::Allow);
+    let financial = response
+        .receipt
+        .metadata
+        .as_ref()
+        .and_then(|metadata| metadata.get("financial"))
+        .expect("allow receipt should carry financial metadata");
+    assert_eq!(financial["cost_charged"].as_u64(), Some(75));
+    assert_eq!(financial["budget_remaining"].as_u64(), Some(925));
+
+    let usage = kernel.budget_store.get_usage(&cap.id, 0).unwrap().unwrap();
     assert_eq!(usage.invocation_count, 1);
     assert_eq!(usage.committed_cost_units().unwrap(), 75);
 }
@@ -501,6 +588,9 @@ fn monetary_allow_records_budget_hold_and_append_only_events() {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -512,21 +602,36 @@ fn monetary_allow_records_budget_hold_and_append_only_events() {
     let authorize_event_id = format!("{hold_id}:authorize");
     let reconcile_event_id = format!("{hold_id}:reconcile");
     let events = kernel
-
         .budget_store
         .list_mutation_events(10, Some(&cap.id), Some(0))
         .unwrap();
 
-    assert_eq!(events.len(), 2);
+    assert_eq!(events.len(), 3);
     assert_eq!(events[0].event_id, authorize_event_id);
     assert_eq!(events[0].hold_id.as_deref(), Some(hold_id.as_str()));
     assert_eq!(events[0].allowed, Some(true));
     assert_eq!(events[0].exposure_units, 100);
-    assert_eq!(events[1].event_id, reconcile_event_id);
+    let capture_event_id = format!("{hold_id}:capture-invocation:{}", events[0].event_seq);
+    assert_eq!(events[1].event_id, capture_event_id);
     assert_eq!(events[1].hold_id.as_deref(), Some(hold_id.as_str()));
-    assert_eq!(events[1].realized_spend_units, 75);
-    assert_eq!(events[1].total_cost_exposed_after, 0);
-    assert_eq!(events[1].total_cost_realized_spend_after, 75);
+    assert_eq!(events[1].kind, BudgetMutationKind::CaptureInvocation);
+    assert_eq!(events[1].invocation_count_after, 1);
+    assert_eq!(events[1].total_cost_exposed_after, 100);
+    assert_eq!(events[2].event_id, reconcile_event_id);
+    assert_eq!(events[2].hold_id.as_deref(), Some(hold_id.as_str()));
+    assert_eq!(events[2].realized_spend_units, 75);
+    assert_eq!(events[2].total_cost_exposed_after, 0);
+    assert_eq!(events[2].total_cost_realized_spend_after, 75);
+    assert_eq!(
+        response
+            .receipt
+            .metadata
+            .as_ref()
+            .and_then(
+                |metadata| metadata["budget_authority"]["invocation_capture"]["event_id"].as_str()
+            ),
+        Some(capture_event_id.as_str())
+    );
 }
 
 #[test]
@@ -546,12 +651,16 @@ fn sibling_sum_denial_reverses_pre_execution_monetary_charge() {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
         .unwrap();
     assert_eq!(
-        allow_response.verdict, Verdict::Allow,
+        allow_response.verdict,
+        Verdict::Allow,
         "unexpected deny reason: {:?}",
         allow_response.reason
     );
@@ -568,6 +677,9 @@ fn sibling_sum_denial_reverses_pre_execution_monetary_charge() {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -617,12 +729,16 @@ fn sibling_sum_denial_reverses_pre_execution_invocation_increment() {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
         .unwrap();
     assert_eq!(
-        allow_response.verdict, Verdict::Allow,
+        allow_response.verdict,
+        Verdict::Allow,
         "unexpected deny reason: {:?}",
         allow_response.reason
     );
@@ -639,6 +755,9 @@ fn sibling_sum_denial_reverses_pre_execution_invocation_increment() {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -648,7 +767,10 @@ fn sibling_sum_denial_reverses_pre_execution_invocation_increment() {
         reason.contains("sibling-sum") || reason.contains("sibling sum")
     }));
 
-    let usage = kernel.budget_store.get_usage(&fixture.child_b.id, 0).unwrap();
+    let usage = kernel
+        .budget_store
+        .get_usage(&fixture.child_b.id, 0)
+        .unwrap();
     assert_eq!(usage.as_ref().map_or(0, |usage| usage.invocation_count), 0);
     assert_eq!(
         usage
@@ -667,7 +789,9 @@ fn sibling_sum_denial_reverses_pre_execution_invocation_increment() {
 fn nested_hosted_sibling_sum_denial_reverses_pre_execution_monetary_charge() {
     let fixture = make_sibling_sum_monetary_fixture("nested-sibling-sum-rollback");
     let kernel = fixture.kernel;
-    let session_id = kernel.open_session("nested-parent-agent".to_string(), Vec::new()).unwrap();
+    let session_id = kernel
+        .open_session("nested-parent-agent".to_string(), Vec::new())
+        .unwrap();
     kernel.activate_session(&session_id).unwrap();
     let parent_context = make_operation_context(
         &session_id,
@@ -707,6 +831,9 @@ fn nested_hosted_sibling_sum_denial_reverses_pre_execution_monetary_charge() {
                 execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             },
@@ -715,7 +842,8 @@ fn nested_hosted_sibling_sum_denial_reverses_pre_execution_monetary_charge() {
         )
         .unwrap();
     assert_eq!(
-        allow_response.verdict, Verdict::Allow,
+        allow_response.verdict,
+        Verdict::Allow,
         "unexpected deny reason: {:?}",
         allow_response.reason
     );
@@ -734,6 +862,9 @@ fn nested_hosted_sibling_sum_denial_reverses_pre_execution_monetary_charge() {
                 execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             },
@@ -773,7 +904,7 @@ fn nested_hosted_sibling_sum_denial_reverses_pre_execution_monetary_charge() {
 fn payment_authorization_denial_releases_delegated_sibling_budget() {
     let fixture = make_sibling_sum_monetary_fixture("delegated-payment-deny-budget");
     let mut kernel = fixture.kernel;
-    kernel.set_payment_adapter(Box::new(DecliningPaymentAdapter)).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(DecliningPaymentAdapter));
 
     let denied_response = kernel
         .evaluate_tool_call_blocking(&ToolCallRequest {
@@ -787,6 +918,9 @@ fn payment_authorization_denial_releases_delegated_sibling_budget() {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -797,7 +931,7 @@ fn payment_authorization_denial_releases_delegated_sibling_budget() {
         .as_deref()
         .is_some_and(|reason| reason.contains("payment authorization failed")));
 
-    kernel.set_payment_adapter(Box::new(StubPaymentAdapter)).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(StubPaymentAdapter));
     let allowed_sibling = kernel
         .evaluate_tool_call_blocking(&ToolCallRequest {
             request_id: "req-delegated-payment-deny-b".to_string(),
@@ -810,6 +944,9 @@ fn payment_authorization_denial_releases_delegated_sibling_budget() {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -828,8 +965,10 @@ fn payment_authorization_denial_releases_delegated_sibling_budget() {
 fn nested_payment_authorization_denial_releases_delegated_sibling_budget() {
     let fixture = make_sibling_sum_monetary_fixture("nested-delegated-payment-deny-budget");
     let mut kernel = fixture.kernel;
-    kernel.set_payment_adapter(Box::new(DecliningPaymentAdapter)).expect("install payment adapter");
-    let session_id = kernel.open_session("nested-parent-agent".to_string(), Vec::new()).unwrap();
+    kernel.set_payment_adapter(Box::new(DecliningPaymentAdapter));
+    let session_id = kernel
+        .open_session("nested-parent-agent".to_string(), Vec::new())
+        .unwrap();
     kernel.activate_session(&session_id).unwrap();
     let parent_context = make_operation_context(
         &session_id,
@@ -869,6 +1008,9 @@ fn nested_payment_authorization_denial_releases_delegated_sibling_budget() {
                 execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             },
@@ -882,7 +1024,7 @@ fn nested_payment_authorization_denial_releases_delegated_sibling_budget() {
         .as_deref()
         .is_some_and(|reason| reason.contains("payment authorization failed")));
 
-    kernel.set_payment_adapter(Box::new(StubPaymentAdapter)).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(StubPaymentAdapter));
     let allowed_sibling = kernel
         .evaluate_tool_call_with_nested_flow_client(
             &parent_context,
@@ -897,6 +1039,9 @@ fn nested_payment_authorization_denial_releases_delegated_sibling_budget() {
                 execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: None,
                 federated_origin_kernel_id: None,
             },
@@ -931,6 +1076,9 @@ fn hosted_named_remote_without_fresh_peer_fails_before_dispatch() {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: Some("stale-or-missing-peer".to_string()),
         })
@@ -944,8 +1092,7 @@ fn hosted_named_remote_without_fresh_peer_fails_before_dispatch() {
     assert_eq!(response.verdict, Verdict::Deny);
     let reason = response.reason.unwrap_or_default();
     assert!(
-        reason.contains("receipt negotiation downgrade")
-            || reason.contains("not pinned fresh"),
+        reason.contains("receipt negotiation downgrade") || reason.contains("not pinned fresh"),
         "unexpected deny reason: {reason}"
     );
 
@@ -966,13 +1113,8 @@ fn portable_subject_denial_does_not_consume_sibling_budget() {
         agent_id: fixture.child_b_kp.public_key().to_hex(),
         arguments: serde_json::json!({}),
     };
-    let denied = kernel.evaluate_portable_verdict(
-        &fixture.child_a,
-        &wrong_subject,
-        &guards,
-        &clock,
-        None,
-    );
+    let denied =
+        kernel.evaluate_portable_verdict(&fixture.child_a, &wrong_subject, &guards, &clock, None);
     assert_eq!(denied.verdict, chio_kernel_core::Verdict::Deny);
 
     let valid_sibling = chio_kernel_core::PortableToolCallRequest {
@@ -982,13 +1124,8 @@ fn portable_subject_denial_does_not_consume_sibling_budget() {
         agent_id: fixture.child_b_kp.public_key().to_hex(),
         arguments: serde_json::json!({}),
     };
-    let allowed = kernel.evaluate_portable_verdict(
-        &fixture.child_b,
-        &valid_sibling,
-        &guards,
-        &clock,
-        None,
-    );
+    let allowed =
+        kernel.evaluate_portable_verdict(&fixture.child_b, &valid_sibling, &guards, &clock, None);
     assert_eq!(allowed.verdict, chio_kernel_core::Verdict::Allow);
 
     let _ = std::fs::remove_file(fixture.path);
@@ -1017,6 +1154,9 @@ fn monetary_allow_receipt_marks_failed_settlement_when_reported_cost_exceeds_cha
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -1060,6 +1200,9 @@ fn monetary_server_not_reporting_cost_charges_max_cost_per_invocation() {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -1079,150 +1222,312 @@ fn monetary_server_not_reporting_cost_charges_max_cost_per_invocation() {
 }
 
 #[test]
-fn unmeasured_cost_server_reverses_hold_and_signs_provisional_receipt() {
-    // A tool server that does not measure realized cost (a pre-execution
-    // authorization gate that dispatches a pass-through while the real tool
-    // runs elsewhere) must not yield a settled, reconciled authoritative spend.
-    // The kernel reverses the pre-execution hold and signs a provisional,
-    // unreconciled receipt: settlement is pending, the terminal disposition is
-    // "reversed", and no committed cost is moved.
-    let mut kernel = make_kernel(make_monetary_config());
-    let agent_kp = Keypair::generate();
-    kernel.register_tool_server(Box::new(UnmeasuredCostServer {
-        id: "gate-srv".to_string(),
-    }));
-
-    let grant = make_monetary_grant("gate-srv", "compute", 100, 1000, "USD");
-    let cap = kernel
-        .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
-        .unwrap();
-
-    let resp = kernel
-        .evaluate_tool_call_blocking(&ToolCallRequest {
-            request_id: "req-unmeasured".to_string(),
-            capability: cap.clone(),
-            tool_name: "compute".to_string(),
-            server_id: "gate-srv".to_string(),
-            agent_id: agent_kp.public_key().to_hex(),
-            arguments: serde_json::json!({}),
-            dpop_proof: None,
-            execution_nonce: None,
-            governed_intent: None,
-            approval_token: None,
-            model_metadata: None,
-            federated_origin_kernel_id: None,
-        })
-        .unwrap();
-
-    assert_eq!(resp.verdict, Verdict::Allow);
-    let metadata = resp
-        .receipt
-        .metadata
-        .as_ref()
-        .expect("should have metadata");
-    let financial = metadata
-        .get("financial")
-        .expect("should have 'financial' key");
-    // No realized cost measured: nothing charged and settlement stays pending.
-    assert_eq!(financial["cost_charged"].as_u64().unwrap(), 0);
-    assert_eq!(financial["settlement_status"], "pending");
-
-    let budget_authority = metadata
-        .get("budget_authority")
-        .expect("should have 'budget_authority' key");
-    assert_eq!(budget_authority["terminal"]["disposition"], "reversed");
-    assert_ne!(budget_authority["terminal"]["disposition"], "reconciled");
-
-    // The hold is reversed, so no committed cost is moved.
-    let usage = kernel.budget_store.get_usage(&cap.id, 0).unwrap().unwrap();
-    assert_eq!(usage.committed_cost_units().unwrap(), 0);
-}
-
-#[test]
-fn unmeasured_cost_provisional_allow_emits_no_execution_nonce() {
-    // The provisional unmeasured-cost allow path reverses the pre-execution
-    // budget hold and does not execute the target tool at the kernel. On a
-    // nonce-enabled kernel it must emit no execution nonce: there is no reserved
-    // hold to reconcile and nothing to authorize downstream. A minted nonce here
-    // would carry no reserved hold, so a gate deployment could execute against a
-    // hold that was already refunded, spending outside the cumulative cap and
-    // leaving the spend unreconcilable. The measured-cost allow path on the same
-    // kernel must still mint a nonce, guarding against over-suppression.
+fn unmeasured_cost_is_provisional_and_emits_no_nonce() {
     let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(UnmeasuredCostServer {
         id: "gate-srv".to_string(),
     }));
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 50, "USD")));
-
-    let cfg = ExecutionNonceConfig {
+    let nonce_config = ExecutionNonceConfig {
         nonce_ttl_secs: 30,
         nonce_store_capacity: 1024,
         require_nonce: false,
     };
     kernel.set_execution_nonce_store(
-        cfg.clone(),
-        Box::new(InMemoryExecutionNonceStore::from_config(&cfg)),
+        nonce_config.clone(),
+        Box::new(InMemoryExecutionNonceStore::from_config(&nonce_config)),
     );
-
-    let scope = make_scope(vec![
-        make_monetary_grant("gate-srv", "compute", 100, 1000, "USD"),
-        make_monetary_grant("cost-srv", "compute", 100, 1000, "USD"),
-    ]);
     let cap = kernel
-        .issue_capability(&agent_kp.public_key(), scope, 3600)
+        .issue_capability(
+            &agent_kp.public_key(),
+            make_scope(vec![
+                make_monetary_grant("gate-srv", "compute", 100, 1000, "USD"),
+                make_monetary_grant("cost-srv", "compute", 100, 1000, "USD"),
+            ]),
+            3600,
+        )
         .unwrap();
+    let request = |request_id: &str, server_id: &str| ToolCallRequest {
+        request_id: request_id.to_string(),
+        capability: cap.clone(),
+        tool_name: "compute".to_string(),
+        server_id: server_id.to_string(),
+        agent_id: agent_kp.public_key().to_hex(),
+        arguments: serde_json::json!({}),
+        dpop_proof: None,
+        execution_nonce: None,
+        governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    };
 
-    // Provisional unmeasured-cost Value path: allow, but no execution nonce.
     let provisional = kernel
-        .evaluate_tool_call_blocking(&ToolCallRequest {
-            request_id: "req-unmeasured-nonce".to_string(),
-            capability: cap.clone(),
-            tool_name: "compute".to_string(),
-            server_id: "gate-srv".to_string(),
-            agent_id: agent_kp.public_key().to_hex(),
-            arguments: serde_json::json!({}),
-            dpop_proof: None,
-            execution_nonce: None,
-            governed_intent: None,
-            approval_token: None,
-            model_metadata: None,
-            federated_origin_kernel_id: None,
-        })
+        .evaluate_tool_call_blocking(&request("req-unmeasured", "gate-srv"))
         .unwrap();
     assert_eq!(provisional.verdict, Verdict::Allow);
-    assert!(
-        provisional.execution_nonce.is_none(),
-        "provisional unmeasured allow reversed its hold; it must not mint a spendable nonce"
+    assert!(provisional.execution_nonce.is_none());
+    let metadata = provisional.receipt.metadata.as_ref().unwrap();
+    assert_eq!(metadata["financial"]["cost_charged"], 0);
+    assert_eq!(metadata["financial"]["settlement_status"], "pending");
+    assert_eq!(
+        metadata["budget_authority"]["terminal"]["disposition"],
+        "reversed"
+    );
+    assert_eq!(
+        kernel
+            .budget_store
+            .get_usage(&cap.id, 0)
+            .unwrap()
+            .unwrap()
+            .committed_cost_units()
+            .unwrap(),
+        0
     );
 
-    // Measured-cost Value path on the same nonce-enabled kernel: allow, and a
-    // nonce is minted so a real reserved spend can be authorized downstream.
     let measured = kernel
-        .evaluate_tool_call_blocking(&ToolCallRequest {
-            request_id: "req-measured-nonce".to_string(),
-            capability: cap.clone(),
-            tool_name: "compute".to_string(),
-            server_id: "cost-srv".to_string(),
-            agent_id: agent_kp.public_key().to_hex(),
-            arguments: serde_json::json!({}),
-            dpop_proof: None,
-            execution_nonce: None,
-            governed_intent: None,
-            approval_token: None,
-            model_metadata: None,
-            federated_origin_kernel_id: None,
-        })
+        .evaluate_tool_call_blocking(&request("req-measured", "cost-srv"))
         .unwrap();
     assert_eq!(measured.verdict, Verdict::Allow);
-    assert!(
-        measured.execution_nonce.is_some(),
-        "measured-cost allow must still mint an execution nonce"
-    );
+    assert!(measured.execution_nonce.is_some());
 }
 
 #[test]
-fn monetary_tool_server_error_releases_precharged_budget() {
+fn captured_monetary_invocation_only_explicit_predispatch_cancel_can_release(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let store = InMemoryBudgetStore::new();
+    let hold_id = "hold-captured-no-effect";
+    let authorized = store.authorize_budget_hold(BudgetAuthorizeHoldRequest {
+        capability_id: "cap-captured-no-effect".to_string(),
+        grant_index: 0,
+        max_invocations: Some(1),
+        invocation_quotas: Vec::new(),
+        cumulative_approval: None,
+        admission_binding: None,
+        requested_exposure_units: 100,
+        max_cost_per_invocation: Some(100),
+        max_total_cost_units: Some(100),
+        hold_id: Some(hold_id.to_string()),
+        event_id: Some(format!("{hold_id}:authorize")),
+        authority: None,
+    })?;
+    assert!(matches!(
+        authorized,
+        BudgetAuthorizeHoldDecision::Authorized(_)
+    ));
+    let capture = store.capture_invocation_reservations(BudgetCaptureInvocationRequest {
+        capability_id: "cap-captured-no-effect".to_string(),
+        grant_index: 0,
+        hold_id: hold_id.to_string(),
+        event_id: format!("{hold_id}:capture-invocation"),
+        trusted_time: None,
+        authority: None,
+    })?;
+    assert!(matches!(
+        capture,
+        BudgetInvocationCaptureDecision::Captured(_)
+    ));
+    assert!(matches!(
+        store.capture_invocation_reservations(BudgetCaptureInvocationRequest {
+            capability_id: "cap-captured-no-effect".to_string(),
+            grant_index: 0,
+            hold_id: hold_id.to_string(),
+            event_id: format!("{hold_id}:different-capture-event"),
+            trusted_time: None,
+            authority: None,
+        }),
+        Err(BudgetStoreError::Invariant(_))
+    ));
+
+    assert!(store
+        .reverse_budget_hold(BudgetReverseHoldRequest {
+            capability_id: "cap-captured-no-effect".to_string(),
+            grant_index: 0,
+            reversed_exposure_units: 100,
+            hold_id: Some(hold_id.to_string()),
+            event_id: Some(format!("{hold_id}:reverse")),
+            expected_cumulative_approval_state: None,
+            authority: None,
+        })
+        .is_err());
+    assert!(store
+        .release_budget_hold(BudgetReleaseHoldRequest {
+            capability_id: "cap-captured-no-effect".to_string(),
+            grant_index: 0,
+            released_exposure_units: 100,
+            hold_id: Some(hold_id.to_string()),
+            event_id: Some(format!("{hold_id}:release")),
+            authority: None,
+        })
+        .is_err());
+    assert!(store
+        .reverse_charge_cost("cap-captured-no-effect", 0, 100)
+        .is_err());
+    assert!(store
+        .reduce_charge_cost("cap-captured-no-effect", 0, 100)
+        .is_err());
+    let retained = store
+        .get_usage("cap-captured-no-effect", 0)?
+        .ok_or_else(|| std::io::Error::other("captured usage missing"))?;
+    assert_eq!(retained.invocation_count, 1);
+    assert_eq!(retained.committed_cost_units()?, 100);
+
+    let cancellation_request = BudgetCancelCapturedBeforeDispatchRequest {
+        capability_id: "cap-captured-no-effect".to_string(),
+        grant_index: 0,
+        hold_id: hold_id.to_string(),
+        event_id: format!("{hold_id}:cancel-captured-before-dispatch"),
+        authority: None,
+    };
+    assert!(matches!(
+        store.cancel_captured_before_dispatch(cancellation_request.clone())?,
+        BudgetCapturedBeforeDispatchCancellationDecision::Cancelled(_)
+    ));
+    assert!(matches!(
+        store.cancel_captured_before_dispatch(cancellation_request)?,
+        BudgetCapturedBeforeDispatchCancellationDecision::AlreadyCancelled(_)
+    ));
+    assert!(matches!(
+        store.capture_invocation_reservations(BudgetCaptureInvocationRequest {
+            capability_id: "cap-captured-no-effect".to_string(),
+            grant_index: 0,
+            hold_id: hold_id.to_string(),
+            event_id: format!("{hold_id}:capture-invocation"),
+            trusted_time: None,
+            authority: None,
+        }),
+        Err(BudgetStoreError::Invariant(_))
+    ));
+    let cancelled = store
+        .get_usage("cap-captured-no-effect", 0)?
+        .ok_or_else(|| std::io::Error::other("cancelled usage missing"))?;
+    assert_eq!(cancelled.invocation_count, 0);
+    assert_eq!(cancelled.committed_cost_units()?, 0);
+    assert!(store
+        .list_mutation_events(10, Some("cap-captured-no-effect"), Some(0))?
+        .iter()
+        .any(|event| event.kind == BudgetMutationKind::CancelCapturedBeforeDispatch));
+    Ok(())
+}
+
+#[test]
+fn in_memory_capture_replay_preserves_historical_mutation_values(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let store = InMemoryBudgetStore::new();
+    for hold_id in ["hold-capture-history-1", "hold-capture-history-2"] {
+        assert!(matches!(
+            store.authorize_budget_hold(BudgetAuthorizeHoldRequest {
+                capability_id: "cap-capture-history".to_string(),
+                grant_index: 0,
+                max_invocations: Some(2),
+                invocation_quotas: Vec::new(),
+                cumulative_approval: None,
+                admission_binding: None,
+                requested_exposure_units: 100,
+                max_cost_per_invocation: Some(100),
+                max_total_cost_units: Some(200),
+                hold_id: Some(hold_id.to_string()),
+                event_id: Some(format!("{hold_id}:authorize")),
+                authority: None,
+            })?,
+            BudgetAuthorizeHoldDecision::Authorized(_)
+        ));
+        if hold_id.ends_with('1') {
+            store.capture_invocation_reservations(BudgetCaptureInvocationRequest {
+                capability_id: "cap-capture-history".to_string(),
+                grant_index: 0,
+                hold_id: hold_id.to_string(),
+                event_id: format!("{hold_id}:capture-invocation"),
+                trusted_time: None,
+                authority: None,
+            })?;
+        }
+    }
+
+    let replay = store.capture_invocation_reservations(BudgetCaptureInvocationRequest {
+        capability_id: "cap-capture-history".to_string(),
+        grant_index: 0,
+        hold_id: "hold-capture-history-1".to_string(),
+        event_id: "hold-capture-history-1:capture-invocation".to_string(),
+        trusted_time: None,
+        authority: None,
+    })?;
+    let BudgetInvocationCaptureDecision::AlreadyCaptured(mutation) = replay else {
+        return Err(std::io::Error::other("capture replay was not recognized").into());
+    };
+    assert_eq!(mutation.invocation_count_after, 1);
+    assert_eq!(mutation.committed_cost_units_after, 100);
+    assert_eq!(
+        mutation.metadata.event_id.as_deref(),
+        Some("hold-capture-history-1:capture-invocation")
+    );
+    Ok(())
+}
+
+#[test]
+fn captured_reconciled_hold_rejects_legacy_reverse_without_hold_id(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let store = InMemoryBudgetStore::new();
+    let hold_id = "hold-captured-reconciled";
+    assert!(matches!(
+        store.authorize_budget_hold(BudgetAuthorizeHoldRequest {
+            capability_id: "cap-captured-reconciled".to_string(),
+            grant_index: 0,
+            max_invocations: Some(1),
+            invocation_quotas: Vec::new(),
+            cumulative_approval: None,
+            admission_binding: None,
+            requested_exposure_units: 100,
+            max_cost_per_invocation: Some(100),
+            max_total_cost_units: Some(100),
+            hold_id: Some(hold_id.to_string()),
+            event_id: Some(format!("{hold_id}:authorize")),
+            authority: None,
+        })?,
+        BudgetAuthorizeHoldDecision::Authorized(_)
+    ));
+    assert!(matches!(
+        store.capture_invocation_reservations(BudgetCaptureInvocationRequest {
+            capability_id: "cap-captured-reconciled".to_string(),
+            grant_index: 0,
+            hold_id: hold_id.to_string(),
+            event_id: format!("{hold_id}:capture-invocation"),
+            trusted_time: None,
+            authority: None,
+        })?,
+        BudgetInvocationCaptureDecision::Captured(_)
+    ));
+    store.reconcile_budget_hold(BudgetReconcileHoldRequest {
+        capability_id: "cap-captured-reconciled".to_string(),
+        grant_index: 0,
+        exposed_cost_units: 100,
+        realized_spend_units: 100,
+        hold_id: Some(hold_id.to_string()),
+        event_id: Some(format!("{hold_id}:reconcile")),
+        authority: None,
+    })?;
+
+    assert!(store
+        .reverse_charge_cost("cap-captured-reconciled", 0, 0)
+        .is_err());
+    assert!(store
+        .reduce_charge_cost("cap-captured-reconciled", 0, 0)
+        .is_err());
+    let usage = store
+        .get_usage("cap-captured-reconciled", 0)?
+        .ok_or_else(|| std::io::Error::other("reconciled usage missing"))?;
+    assert_eq!(usage.invocation_count, 1);
+    assert_eq!(usage.committed_cost_units()?, 100);
+    Ok(())
+}
+
+#[test]
+fn monetary_tool_server_error_retains_precharged_budget() -> Result<(), Box<dyn std::error::Error>>
+{
     let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(FailingMonetaryServer {
@@ -1230,36 +1535,34 @@ fn monetary_tool_server_error_releases_precharged_budget() {
     }));
 
     let grant = make_monetary_grant("cost-srv", "compute", 100, 1000, "USD");
-    let cap = kernel
-        .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
-        .unwrap();
+    let cap = kernel.issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)?;
 
-    let response = kernel
-        .evaluate_tool_call_blocking(&ToolCallRequest {
-            request_id: "req-tool-error".to_string(),
-            capability: cap.clone(),
-            tool_name: "compute".to_string(),
-            server_id: "cost-srv".to_string(),
-            agent_id: agent_kp.public_key().to_hex(),
-            arguments: serde_json::json!({}),
-            dpop_proof: None,
-            execution_nonce: None,
-            governed_intent: None,
-            approval_token: None,
-            model_metadata: None,
-            federated_origin_kernel_id: None,
-        })
-        .unwrap();
+    let response = kernel.evaluate_tool_call_blocking(&ToolCallRequest {
+        request_id: "req-tool-error".to_string(),
+        capability: cap.clone(),
+        tool_name: "compute".to_string(),
+        server_id: "cost-srv".to_string(),
+        agent_id: agent_kp.public_key().to_hex(),
+        arguments: serde_json::json!({}),
+        dpop_proof: None,
+        execution_nonce: None,
+        governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    })?;
 
     assert_eq!(response.verdict, Verdict::Deny);
     let usage = kernel
-
         .budget_store
-        .get_usage(&cap.id, 0)
-        .unwrap()
-        .unwrap();
-    assert_eq!(usage.invocation_count, 0);
-    assert_eq!(usage.committed_cost_units().unwrap(), 0);
+        .get_usage(&cap.id, 0)?
+        .ok_or_else(|| std::io::Error::other("monetary usage missing after tool error"))?;
+    assert_eq!(usage.invocation_count, 1);
+    assert_eq!(usage.committed_cost_units()?, 100);
+    Ok(())
 }
 
 #[test]
@@ -1288,6 +1591,9 @@ fn monetary_full_pipeline_three_invocations_third_denied() {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -1343,6 +1649,9 @@ fn multi_grant_budget_remaining_uses_matched_grant_total() {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -1452,6 +1761,9 @@ async fn async_evaluate_tool_call_supports_shared_kernel_concurrency() {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -1570,6 +1882,9 @@ fn cross_currency_reported_cost_attaches_oracle_evidence_and_converted_units() {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })
@@ -1620,6 +1935,9 @@ fn cross_currency_without_oracle_keeps_provisional_charge_and_marks_failed_settl
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         })

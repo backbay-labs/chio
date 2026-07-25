@@ -256,7 +256,7 @@ human_in_loop: { enabled: true, approve_above: 15000, approve_above_currency: US
 Every metered call records its cost in the receipt. Inspect spend and settlement:
 
 ```sh
-chio --receipt-db ./chio.db receipt list --admin-all --min-cost 1   # metered receipts, by cost
+chio --receipt-db ./chio.db receipt list --admin-all --min-cost 1 --cost-currency USD
 chio settle status --store ./chio.db                                # pending, settled, dead-lettered
 ```
 

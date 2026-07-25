@@ -58,6 +58,7 @@ fn signed_root_cap(
         issued_at,
         expires_at,
         delegation_chain: Vec::new(),
+        aggregate_invocation_budget: None,
     };
     match CapabilityToken::sign(body, issuer) {
         Ok(token) => token,
@@ -81,6 +82,8 @@ fn signed_delegated_cap(
             attenuations: Vec::new(),
             timestamp: issued_at,
             scope_hash: None,
+            aggregate_budget: None,
+            cumulative_approval: None,
         },
         issuer,
     ) {
@@ -95,6 +98,7 @@ fn signed_delegated_cap(
         issued_at,
         expires_at,
         delegation_chain: vec![parent_link],
+        aggregate_invocation_budget: None,
     };
     match CapabilityToken::sign(body, issuer) {
         Ok(token) => token,

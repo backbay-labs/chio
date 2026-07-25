@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-economy/anchor-view/v1",
+  "title": "Chio Economic State Anchor View V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "anchorId",
+    "namespace",
+    "checkpointSequence",
+    "checkpointDigest",
+    "headsRoot",
+    "heads",
+    "absentResourceKeys",
+    "requestReplaysRoot",
+    "requestReplays",
+    "absentRequestKeys",
+    "observedAt",
+    "signerKeyId",
+    "signerKeyEpoch",
+    "anchorSignature"
+  ],
+  "properties": {
+    "schema": { "const": "chio.economy.anchor-view.v1" },
+    "anchorId": { "$ref": "#/$defs/identifier" },
+    "namespace": { "$ref": "#/$defs/identifier" },
+    "checkpointSequence": { "$ref": "#/$defs/positiveInteger" },
+    "checkpointDigest": { "$ref": "#/$defs/digest" },
+    "headsRoot": { "$ref": "#/$defs/digest" },
+    "heads": {
+      "type": "array",
+      "maxItems": 128,
+      "items": {
+        "$ref": "https://chio-protocol.dev/schemas/chio-economy/resource-head/v1"
+      }
+    },
+    "absentResourceKeys": {
+      "type": "array",
+      "maxItems": 128,
+      "items": { "$ref": "#/$defs/resourceKey" }
+    },
+    "requestReplaysRoot": { "$ref": "#/$defs/digest" },
+    "requestReplays": {
+      "type": "array",
+      "maxItems": 128,
+      "items": { "$ref": "#/$defs/requestReplay" }
+    },
+    "absentRequestKeys": {
+      "type": "array",
+      "maxItems": 128,
+      "items": { "$ref": "#/$defs/requestKey" }
+    },
+    "observedAt": { "$ref": "#/$defs/positiveInteger" },
+    "signerKeyId": { "$ref": "#/$defs/identifier" },
+    "signerKeyEpoch": { "$ref": "#/$defs/positiveInteger" },
+    "anchorSignature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[A-Za-z0-9._:/-]+$"
+    },
+    "positiveInteger": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "resourceKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceFamily", "scopeId", "resourceId"],
+      "properties": {
+        "resourceFamily": { "$ref": "#/$defs/identifier" },
+        "scopeId": { "$ref": "#/$defs/identifier" },
+        "resourceId": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "requestKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requestNamespaceDigest", "requestId"],
+      "properties": {
+        "requestNamespaceDigest": { "$ref": "#/$defs/digest" },
+        "requestId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        }
+      }
+    },
+    "requestBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["requestNamespaceDigest", "requestId", "requestBindingDigest"],
+      "properties": {
+        "requestNamespaceDigest": { "$ref": "#/$defs/digest" },
+        "requestId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "requestBindingDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "requestReplay": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["request", "operationId", "effectSlotIds"],
+      "properties": {
+        "request": { "$ref": "#/$defs/requestBinding" },
+        "operationId": { "$ref": "#/$defs/digest" },
+        "effectSlotIds": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 128,
+          "items": { "$ref": "#/$defs/digest" }
+        }
+      }
+    }
+  }
+}

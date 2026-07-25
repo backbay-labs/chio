@@ -377,9 +377,14 @@ Supported query parameters:
 - `until`
 - `minCost`
 - `maxCost`
+- `costCurrency`
 - `cursor`
 - `limit`
 - `agentSubject`
+
+`minCost` and `maxCost` are unsigned 64-bit minor-unit values. Supplying either
+requires `costCurrency` as exactly three uppercase ASCII letters. When both
+bounds are present, `minCost` must not exceed `maxCost`.
 
 Response body:
 

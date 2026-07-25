@@ -19,9 +19,10 @@
 
 use chio_core::receipt::metadata::GuardEvidence;
 pub use chio_kernel::{
-    PipelineOutcome, PostInvocationContext, PostInvocationHook, PostInvocationPipeline,
-    PostInvocationVerdict,
+    PipelineOutcome, PostInvocationContext, PostInvocationHook, PostInvocationHookIdentity,
+    PostInvocationPipeline, PostInvocationVerdict,
 };
+use serde::Serialize;
 use serde_json::Value;
 
 use crate::response_sanitization::{
@@ -123,6 +124,30 @@ impl PostInvocationHook for SanitizerHook {
             details: Some(details),
         });
         PostInvocationVerdict::Redact(sanitized.value)
+    }
+
+    fn durable_identity(&self) -> Result<Option<PostInvocationHookIdentity>, String> {
+        if self.sanitizer.uses_tokenization().map_err(str::to_owned)? {
+            return Err(
+                "output sanitizer tokenize redaction strategy is not deterministic".to_string(),
+            );
+        }
+        #[derive(Serialize)]
+        struct SanitizerIdentityConfig<'a> {
+            hook_name: &'a str,
+            sanitizer: &'a OutputSanitizerConfig,
+        }
+
+        PostInvocationHookIdentity::from_canonical_config(
+            "chio.output-sanitizer",
+            "1",
+            "chio-guards.output-sanitizer.v1",
+            &SanitizerIdentityConfig {
+                hook_name: &self.hook_name,
+                sanitizer: self.sanitizer.config(),
+            },
+        )
+        .map(Some)
     }
 
     fn take_evidence(&self) -> Option<GuardEvidence> {
@@ -355,5 +380,21 @@ mod tests {
         assert!(ev.verdict, "verdict field marks successful redaction");
         let details = ev.details.as_deref().unwrap_or("");
         assert!(details.contains("secret_github_token"), "got {details}");
+    }
+
+    #[test]
+    fn sanitizer_tokenization_has_no_durable_identity() {
+        let mut config = OutputSanitizerConfig::default();
+        config.redaction_strategies.insert(
+            crate::response_sanitization::SensitiveCategory::Pii,
+            crate::response_sanitization::RedactionStrategy::Tokenize,
+        );
+        let sanitizer = OutputSanitizer::with_config(config).expect("tokenizing sanitizer");
+        let hook = SanitizerHook::from_sanitizer(sanitizer);
+
+        let error = hook
+            .durable_identity()
+            .expect_err("counter-backed tokenization must not be durable");
+        assert!(error.contains("tokenize redaction strategy is not deterministic"));
     }
 }

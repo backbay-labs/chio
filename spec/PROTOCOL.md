@@ -293,6 +293,7 @@ The v1 signed body is:
 | `issued_at` | Unix timestamp seconds |
 | `expires_at` | Unix timestamp seconds |
 | `delegation_chain` | Ordered chain of delegation links |
+| `aggregate_invocation_budget` | Optional capability-wide or delegation-family invocation ceiling |
 | `algorithm` | Optional envelope hint: `ed25519`, `p256`, `p384`, or `hybrid` |
 
 Capability public-key fields and signatures use the same self-describing
@@ -328,6 +329,112 @@ Every signed artifact schema ID that a verifier accepts must be listed there.
 Verifier builds also expose the same IDs through
 `KNOWN_SIGNED_ARTIFACT_SCHEMAS`. Unknown signed-artifact schemas are rejected at
 load time and again at signature verification time.
+
+The FROST quorum substrate registers four signed artifact schemas:
+
+- `chio.frost.roster.v1`
+- `chio.frost.epoch-checkpoint.v1`
+- `chio.frost.authorization-slot-checkpoint.v1`
+- `chio.frost.authorization.v1`
+
+The parametric-insurance contract registers one signed artifact schema:
+
+- `chio.parametric.policy.v1`
+
+Its registry kind is `parametric_policy`, introduced by
+`parametric-insurance-v1`, with the envelope schema at
+`spec/schemas/chio-parametric/v1/policy.schema.json`. Trigger-instance keys and
+evidence-corpus manifests are canonical policy inputs, not signed-artifact
+schemas.
+
+The credit-admission contract registers one signed artifact schema:
+
+- `chio.credit.facility-bind.v1`
+
+Its registry kind is `credit_facility_bind`, introduced by
+`credit-admission-v1`, with the envelope schema at
+`spec/schemas/chio-economy/credit-facility-bind.v1.json`. The configured
+facility authority, debtor, and original creditor sign the same canonical body.
+That body binds the admission operation and request, economic intent, facility
+artifact and authority set, exposure version and fence, parties and payee,
+tool scope, amount and effective ceiling, due date, nonce, and validity window.
+An admission verifier MUST reject every unknown facility-bind version before
+signature verification and MUST NOT mint credit without the matching online
+authoritative exposure reservation.
+
+The receivables-factoring contract registers six signed artifact schemas:
+
+- `chio.obligation.status-proof.v1`
+- `chio.credit.receivable-iou-envelope.v1`
+- `chio.factor.assignment-bind-authorization.v1`
+- `chio.factor.assignment-agreement.v1`
+- `chio.factor.assignment-acknowledgement.v1`
+- `chio.factor.assignment-not-applied.v1`
+
+Their registry kinds are `obligation_status_proof`, `credit_iou_envelope`,
+`factor_assignment_bind_authorization`, `factor_assignment_agreement`,
+`factor_assignment_acknowledgement`, and `factor_assignment_not_applied`, all
+introduced by `receivables-factoring-v1`. Their envelope schemas are published
+under `spec/schemas/chio-economy/`.
+
+The v2 IOU envelope embeds the exact signed facility bind. Its
+`creditAuthorityDigest` MUST equal the SHA-256 digest of the canonical embedded
+bind and MUST match the credit authority digest in the source receipt and
+obligation atom. A receipt, audit log, anchor, or partition lease does not
+replace the facility signatures or the authoritative exposure compare-and-swap.
+
+The following factoring schemas are unsigned canonical projections:
+
+- `chio.factor.normalized-assignment-request.v1`
+- `chio.factor.receivable-claim.v1`
+- `chio.factor.assignment-offer.v1`
+- `chio.factor.discount-quote.v1`
+
+They become evidence only through an exact digest bound by the signed artifacts
+above. They are not independently authenticated and MUST NOT be accepted as a
+substitute for the status proof, IOU envelope, bilateral agreement, bind
+authorization, or terminal result.
+
+The six signed schema IDs above are exhaustive for this contract version. A
+receivables verifier MUST reject every unknown schema version before signature
+verification, including an older IOU envelope or a future factoring version,
+and MUST NOT downgrade, reinterpret, or fall back to a known version.
+
+Verified-outcome pricing registers nine independently signed artifact schemas:
+
+- `chio.outcome.predicate.v1`
+- `chio.outcome.pricing.v1`
+- `chio.outcome.sla.v1`
+- `chio.outcome.eligibility.v1`
+- `chio.outcome.delivery-checkpoint.v1`
+- `chio.outcome.delivery-acknowledgement.v1`
+- `chio.outcome.delivery-nonacceptance.v1`
+- `chio.outcome.output-provenance.v1`
+- `chio.outcome.contractual-zero.v1`
+
+Their registry kinds use the `outcome_` prefix and are introduced by
+`verified-outcome-pricing-v1`. Their envelope schemas are published under
+`spec/schemas/chio-outcome/v1/`. `chio.outcome.request.v1` and
+`chio.outcome.verdict.v1` are unsigned projections and are not signed-artifact
+schemas.
+
+Roster, epoch-checkpoint, and authorization-slot signatures MUST verify against
+separately configured Ed25519 trust roots for their exact authority role and
+key id. Those artifacts carry key ids, never authority public keys. A verifier
+MUST reject an embedded-key field, an unknown key id, a key trusted for another
+role, or a signature that does not verify over the artifact's domain-separated
+RFC 8785 preimage. The corresponding prefixes are
+`CHIO-FROST-ROSTER-V1\0`, `CHIO-FROST-EPOCH-CHECKPOINT-V1\0`, and
+`CHIO-FROST-AUTHORIZATION-SLOT-CHECKPOINT-V1\0`.
+
+Checkpoint digests commit the signed checkpoint, including its authority
+signature. Sequence one has no predecessor; every later sequence names the
+previous checkpoint digest. An active authorization verifier MUST reread and
+authenticate the rollback-independent epoch checkpoint immediately before
+execution, even when it already holds a previously verified roster. It MUST
+also authenticate the exact permanently completed authorization-slot
+checkpoint and compare its canonical authorization blob byte-for-byte. Schema
+validity alone is never signature or trust-root validity.
 
 ### 5.1 Scope
 
@@ -497,6 +604,49 @@ theorem `theorem.budget.sibling_sum_soundness` in
 admit check, and the Rust shell is exercised by
 `crates/tooling/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs`
 and `crates/tooling/chio-conformance/tests/budget_split_cross_hop_rejects_amplification.rs`.
+
+#### Aggregate Invocation Budgets And Threshold Approval
+
+An `aggregate_invocation_budget` bounds invocations across every grant in one
+capability or across every descendant in one delegation family. Capability
+scope uses the capability ID as the quota owner. Delegation-family scope uses
+the owner derived from a verified, CA-signed `chio.aggregate-budget-root.v1`
+binding. A family descendant MUST carry the identical root binding and signed
+maximum from its direct root. It MUST NOT lower, raise, omit, replace, or create
+that family budget. A maximum of zero is valid and denies every capture.
+
+The verifier MUST authenticate the direct root token and bind the root
+capability ID, root commitment hash, issuer, subject, scope hash, expiry,
+maximum, root-binding signature, and descendant binding digest. Presented
+delegation metadata is not authority for a family owner. An untrusted root,
+forged field, changed digest, or missing direct-root token is a denial.
+
+When a request is covered by grant, aggregate, or supplemental invocation
+quotas, the durable authority authorizes and captures the complete sorted quota
+set atomically. Exhaustion or an immutable-maximum mismatch on any member
+leaves every member unchanged. Supplemental authorization is opaque caller
+input until an installed verifier returns a bound claim. The verifier binds the
+claim to the subject, request, destination, validity window, and authority
+state; callers cannot construct a quota claim directly.
+
+A governed operation that requires threshold approval uses a signed
+`chio.threshold-approval-proposal.v1` from the active policy authority. The
+proposal fixes the request, governed intent, subject, authorizing capability,
+policy hash, distinct eligible-key set digest, exact threshold, creation time,
+and deadline. Approval tokens count only once per distinct eligible public key
+and MUST fall inside the proposal window. The complete verified set sorts
+distinct token digests before applying the `chio.verified-approval-set.v1`
+domain-separated hash. Token order therefore cannot change the set hash or the
+decision.
+
+Unsupported negotiation denies these features instead of downgrading them.
+Portable binding vectors are maintained in
+`crates/core/chio-adversarial-suite/cases/authority_binding_mutation/` and are
+executed by
+`crates/tooling/chio-conformance/tests/protocol_primitives_authority_bindings.rs`.
+Durable quota, saga, broker, restart, HA, and receipt/store parity cases remain
+in the kernel integration suites so they exercise the production authority and
+not a parallel conformance model.
 
 ### 5.2 Governed Transaction Extensions
 
@@ -881,9 +1031,13 @@ it satisfies the structural conjunction of the `chio.mediated_spend.v1` profile:
   against the agent's cost-bearing capability and reconciled down to realized
   spend (`authorize` then `terminal.disposition = reconciled`).
 - A `chio.execution_nonce.v1` nonce, signed by the same admitted kernel key, is
-  bound to the same `capability_id`, `tool_server`, `tool_name`, and
-  `parameter_hash`, and the receipt records that nonce id
-  (`budget_authority.execution_nonce_id`).
+  bound to the same `subject_id`, `request_id`, `capability_id`, `tool_server`,
+  `tool_name`, and `parameter_hash`, and the receipt records that nonce id
+  (`budget_authority.execution_nonce_id`). The `request_id` binding is required.
+  A binding that omits it (a v1 body minted before request binding) still
+  decodes, so a rolling upgrade does not fail at parse time, but it is denied at
+  verification. That prevents a nonce from being presented for a different
+  request that shares the other five fields.
 
 Advisory (`advisory_evaluation`) records and label-only receipts are never
 authorization. A guarantee level (`single_node_atomic`, `ha_linearizable`,
@@ -916,6 +1070,14 @@ include:
 - subject and issuer attribution
 - streamed-output chunk metadata
 - portable-trust and federation provenance
+
+Durable tool calls carry an `admission_operation` block whose schema is
+`chio.admission-receipt.v1`. It binds the signed receipt to the admission
+operation and request namespace, terminal projection and dispatch state,
+trusted time, coordinator lease and store fence, retained dispatch commit, and
+optional tool outcome. The machine-readable contract is registered at
+`spec/schemas/chio-wire/v1/receipt/admission-metadata.schema.json`; unknown
+fields and unsupported schema versions fail closed.
 
 Governed receipt metadata now also admits a versioned
 `economic_authorization` envelope with `version`, `economic_mode`, `payer`,
@@ -1686,6 +1848,16 @@ explicit multi-dimensional budget profiles. Budget utilization rows expose
 named `dimensions.invocations` and `dimensions.money` usage blocks, while
 settlement backlog rows pair signed `financial.settlement_status` with mutable
 sidecar reconciliation state keyed by `receipt_id`.
+
+Cluster snapshots that carry immutable pre-upgrade budget usage anchors MUST
+also carry `chio.budget-snapshot-anchor-provenance.v1`. The provenance binds the
+canonical anchor-set digest into an append-only authority commitment chain,
+signs every chain entry with the serving leader's authority key, and
+authenticates the complete inclusion chain with the configured cluster service
+trust root. A follower MUST accept a previously absent wire anchor only from its
+locally elected leader, at the exact local election term, after verifying the
+chain from its genesis digest and preserving any previously accepted head.
+Ordinary snapshot imports remain unable to create migration anchors.
 `/v1/reports/metered-billing` and `/v1/metered-billing/reconcile` apply the
 same pattern to post-execution metered-cost evidence for governed
 non-payment-rail tools.
@@ -3422,6 +3594,22 @@ The current generic registry claim is intentionally bounded:
   invalid mirror signatures, divergent freshness, and forged remote
   activation authority remain visible as evidence but fail closed for
   admission, governance, and market-penalty evaluation
+
+### 12.1 Economic simulation qualification artifacts
+
+The `chio.econsim.scenario-result.v1` and
+`chio.econsim.qualification-matrix.v1` schemas describe deterministic,
+synthetic campaigns against named production economy validators. The v1 matrix
+enumerates sybil pricing, bid integrity, credit exposure, oracle divergence,
+cumulative approval, and settlement retry classes. Each result binds its seed,
+corpus digest, exact assertion scope, and explicit limits.
+
+An econsim matrix is self-signed internal qualification. Its signature binds
+the runner's assertion and recorded provenance, but does not independently
+prove what executed. Econsim artifacts are not runtime wire messages, external
+evidence, underwriting inputs, insurance facts, or capability claims. A
+missing production target or unresolved High or Critical finding prevents the
+runner from emitting a signed matrix.
 
 ## 13. Observability Contract
 

@@ -5,6 +5,50 @@ use serde::{Deserialize, Serialize};
 use crate::capability::scope::MonetaryAmount;
 use crate::oracle::OracleConversionEvidence;
 
+pub const CHIO_CHANNEL_RECEIPT_METADATA_SCHEMA: &str = "chio.channel.receipt-metadata.v1";
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum ChannelSettlementModeV1 {
+    Channelized,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ChannelReceiptMetadataV1 {
+    pub schema: String,
+    pub channel_id: String,
+    pub open_digest: String,
+    pub reservation_id: String,
+    pub reservation_digest: String,
+    pub sequence: u64,
+    pub settlement_mode: ChannelSettlementModeV1,
+}
+
+impl ChannelReceiptMetadataV1 {
+    #[must_use]
+    pub fn is_valid(&self) -> bool {
+        const I_JSON_MAX_SAFE_INTEGER: u64 = (1_u64 << 53) - 1;
+
+        self.schema == CHIO_CHANNEL_RECEIPT_METADATA_SCHEMA
+            && [
+                &self.channel_id,
+                &self.open_digest,
+                &self.reservation_id,
+                &self.reservation_digest,
+            ]
+            .into_iter()
+            .all(|value| {
+                value.len() == 64
+                    && value
+                        .bytes()
+                        .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            })
+            && self.sequence > 0
+            && self.sequence <= I_JSON_MAX_SAFE_INTEGER
+    }
+}
+
 /// Financial metadata attached to receipts for monetary grant invocations.
 ///
 /// For allow receipts under a monetary grant, this struct is serialized under
@@ -261,6 +305,14 @@ pub struct EconomicLiabilityReceiptMetadata {
 #[serde(rename_all = "snake_case")]
 pub struct EconomicAuthorizationReceiptMetadata {
     pub version: EconomicAuthorizationReceiptMetadataVersion,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub economic_intent_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub payee_binding_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pre_action_authority_digest: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub credit_authority_digest: Option<String>,
     pub economic_mode: EconomicAuthorizationMode,
     pub payer: EconomicPayerReceiptMetadata,
     pub merchant: EconomicMerchantReceiptMetadata,

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/capability/token/v1",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/capability/token.schema.json",
   "title": "Chio CapabilityToken",
   "description": "A Chio capability token with typed caveats, attenuation fields, attenuation proof, budget share, and hybrid signing support folded into the unreleased v1 wire shape.",
   "type": "object",
@@ -48,6 +48,9 @@
       "items": {
         "$ref": "#/$defs/delegationLink"
       }
+    },
+    "aggregate_invocation_budget": {
+      "$ref": "aggregate-invocation-budget.schema.json"
     },
     "algorithm": {
       "type": "string",
@@ -240,7 +243,16 @@
       }
     },
     "constraint": {
+      "oneOf": [
+        { "$ref": "#/$defs/genericConstraint" },
+        { "$ref": "#/$defs/legacyApprovalConstraint" },
+        { "$ref": "#/$defs/cumulativeApprovalDirectConstraint" },
+        { "$ref": "#/$defs/cumulativeApprovalDelegableConstraint" }
+      ]
+    },
+    "genericConstraint": {
       "type": "object",
+      "additionalProperties": false,
       "required": [
         "type"
       ],
@@ -248,9 +260,76 @@
       "properties": {
         "type": {
           "type": "string",
-          "minLength": 1
+          "minLength": 1,
+          "not": {
+            "enum": [
+              "require_approval_above",
+              "require_cumulative_approval_above"
+            ]
+          }
         },
         "value": true
+      }
+    },
+    "legacyApprovalConstraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "value"],
+      "properties": {
+        "type": { "const": "require_approval_above" },
+        "value": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["threshold_units"],
+          "properties": {
+            "threshold_units": { "type": "integer", "minimum": 0 }
+          }
+        }
+      }
+    },
+    "cumulativeApprovalDirectConstraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "value"],
+      "properties": {
+        "type": { "const": "require_cumulative_approval_above" },
+        "value": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["threshold", "approval_budget_id", "approval_budget_epoch"],
+          "properties": {
+            "threshold": { "$ref": "#/$defs/monetaryAmount" },
+            "approval_budget_id": { "type": "string", "minLength": 1 },
+            "approval_budget_epoch": { "type": "integer", "minimum": 0 },
+            "cumulative_approval_root_binding": false
+          }
+        }
+      }
+    },
+    "cumulativeApprovalDelegableConstraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "value"],
+      "properties": {
+        "type": { "const": "require_cumulative_approval_above" },
+        "value": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "threshold",
+            "approval_budget_id",
+            "approval_budget_epoch",
+            "cumulative_approval_root_binding"
+          ],
+          "properties": {
+            "threshold": { "$ref": "#/$defs/monetaryAmount" },
+            "approval_budget_id": { "type": "string", "minLength": 1 },
+            "approval_budget_epoch": { "type": "integer", "minimum": 0 },
+            "cumulative_approval_root_binding": {
+              "$ref": "cumulative-approval-root.schema.json"
+            }
+          }
+        }
       }
     },
     "caveat": {
@@ -423,5 +502,103 @@
         }
       }
     }
-  }
+  },
+  "allOf": [
+    {
+      "if": {
+        "anyOf": [
+          {
+            "required": ["delegation_chain"],
+            "properties": { "delegation_chain": { "minItems": 1 } }
+          },
+          {
+            "properties": {
+              "scope": {
+                "anyOf": [
+                  {
+                    "properties": {
+                      "grants": {
+                        "contains": {
+                          "properties": {
+                            "operations": { "contains": { "const": "delegate" } }
+                          },
+                          "required": ["operations"]
+                        }
+                      }
+                    },
+                    "required": ["grants"]
+                  },
+                  {
+                    "properties": {
+                      "resource_grants": {
+                        "contains": {
+                          "properties": {
+                            "operations": { "contains": { "const": "delegate" } }
+                          },
+                          "required": ["operations"]
+                        }
+                      }
+                    },
+                    "required": ["resource_grants"]
+                  },
+                  {
+                    "properties": {
+                      "prompt_grants": {
+                        "contains": {
+                          "properties": {
+                            "operations": { "contains": { "const": "delegate" } }
+                          },
+                          "required": ["operations"]
+                        }
+                      }
+                    },
+                    "required": ["prompt_grants"]
+                  }
+                ]
+              }
+            },
+            "required": ["scope"]
+          }
+        ]
+      },
+      "then": {
+        "properties": {
+          "scope": {
+            "properties": {
+              "grants": {
+                "items": {
+                  "properties": {
+                    "constraints": {
+                      "items": {
+                        "not": { "$ref": "#/$defs/cumulativeApprovalDirectConstraint" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "else": {
+        "properties": {
+          "scope": {
+            "properties": {
+              "grants": {
+                "items": {
+                  "properties": {
+                    "constraints": {
+                      "items": {
+                        "not": { "$ref": "#/$defs/cumulativeApprovalDelegableConstraint" }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }

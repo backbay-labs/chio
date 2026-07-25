@@ -1,0 +1,248 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-economy/effect-slot/v1",
+  "title": "Chio Economic Effect Slot V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "slotId",
+    "anchorId",
+    "namespace",
+    "resourceKey",
+    "operationId",
+    "effectKind",
+    "request",
+    "admissionHandoff",
+    "target",
+    "actionDigest",
+    "parametersDigest",
+    "resourceHeadDigest",
+    "idempotencyKey",
+    "state"
+  ],
+  "properties": {
+    "schema": { "const": "chio.economy.effect-slot.v1" },
+    "slotId": { "$ref": "#/$defs/digest" },
+    "anchorId": { "$ref": "#/$defs/identifier" },
+    "namespace": { "$ref": "#/$defs/identifier" },
+    "resourceKey": { "$ref": "#/$defs/resourceKey" },
+    "operationId": { "$ref": "#/$defs/digest" },
+    "effectKind": { "$ref": "#/$defs/identifier" },
+    "request": { "$ref": "#/$defs/request" },
+    "admissionHandoff": { "$ref": "#/$defs/admissionHandoff" },
+    "target": { "$ref": "#/$defs/target" },
+    "actionDigest": { "$ref": "#/$defs/digest" },
+    "parametersDigest": { "$ref": "#/$defs/digest" },
+    "resourceHeadDigest": { "$ref": "#/$defs/digest" },
+    "frost": { "$ref": "#/$defs/frost" },
+    "idempotencyKey": { "$ref": "#/$defs/digest" },
+    "state": {
+      "enum": ["ready", "dispatch_committed", "completed", "no_effect", "unknown"]
+    },
+    "terminal": { "$ref": "#/$defs/terminal" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "state": { "enum": ["ready", "dispatch_committed", "unknown"] }
+        },
+        "required": ["state"]
+      },
+      "then": { "not": { "required": ["terminal"] } }
+    },
+    {
+      "if": {
+        "properties": { "state": { "const": "completed" } },
+        "required": ["state"]
+      },
+      "then": {
+        "required": ["terminal"],
+        "properties": {
+          "terminal": {
+            "properties": { "outcome": { "const": "completed" } },
+            "required": ["outcome"]
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "state": { "const": "no_effect" } },
+        "required": ["state"]
+      },
+      "then": {
+        "required": ["terminal"],
+        "properties": {
+          "terminal": {
+            "properties": { "outcome": { "const": "no_effect" } },
+            "required": ["outcome"]
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[A-Za-z0-9._:/-]+$"
+    },
+    "positiveInteger": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "resourceKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceFamily", "scopeId", "resourceId"],
+      "properties": {
+        "resourceFamily": { "$ref": "#/$defs/identifier" },
+        "scopeId": { "$ref": "#/$defs/identifier" },
+        "resourceId": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "requestNamespaceDigest",
+        "requestId",
+        "requestBindingDigest"
+      ],
+      "properties": {
+        "requestNamespaceDigest": { "$ref": "#/$defs/digest" },
+        "requestId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2048
+        },
+        "requestBindingDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "admissionHandoff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["state", "operationVersion", "lifecycleFence", "storeFence"],
+      "properties": {
+        "state": { "enum": ["dispatch_committed", "mutation_submitted"] },
+        "operationVersion": { "$ref": "#/$defs/positiveInteger" },
+        "lifecycleFence": { "$ref": "#/$defs/positiveInteger" },
+        "storeFence": { "$ref": "#/$defs/storeFence" }
+      }
+    },
+    "storeFence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["store_uuid", "lease_id", "owner_epoch"],
+      "properties": {
+        "store_uuid": { "$ref": "#/$defs/identifier" },
+        "lease_id": { "$ref": "#/$defs/identifier" },
+        "owner_epoch": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "target": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targetId", "targetKeyEpoch", "qualificationDigest"],
+      "properties": {
+        "targetId": { "$ref": "#/$defs/identifier" },
+        "targetKeyEpoch": { "$ref": "#/$defs/positiveInteger" },
+        "qualificationDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "frost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authorizationSlotId",
+        "authorizationId",
+        "actionDigest",
+        "signedEnvelopeDigest"
+      ],
+      "properties": {
+        "authorizationSlotId": { "$ref": "#/$defs/digest" },
+        "authorizationId": { "$ref": "#/$defs/digest" },
+        "actionDigest": { "$ref": "#/$defs/digest" },
+        "signedEnvelopeDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "content": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["storage", "value"],
+          "properties": {
+            "storage": { "const": "inline" },
+            "value": true
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "storage",
+            "contentRef",
+            "contentSha256",
+            "contentSizeBytes",
+            "availabilityReceipt",
+            "availabilityReceiptSha256"
+          ],
+          "properties": {
+            "storage": { "const": "available" },
+            "contentRef": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "contentSha256": { "$ref": "#/$defs/digest" },
+            "contentSizeBytes": { "$ref": "#/$defs/positiveInteger" },
+            "availabilityReceipt": true,
+            "availabilityReceiptSha256": { "$ref": "#/$defs/digest" }
+          }
+        }
+      ]
+    },
+    "terminal": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["outcome", "resultId", "resultDigest", "result"],
+          "properties": {
+            "outcome": { "const": "completed" },
+            "resultId": { "$ref": "#/$defs/identifier" },
+            "resultDigest": { "$ref": "#/$defs/digest" },
+            "result": { "$ref": "#/$defs/content" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["outcome", "kind", "proofId", "proofDigest", "proof"],
+          "properties": {
+            "outcome": { "const": "no_effect" },
+            "kind": {
+              "enum": [
+                "pre_dispatch",
+                "verified_transport_not_accepted",
+                "permanently_not_applied"
+              ]
+            },
+            "proofId": { "$ref": "#/$defs/identifier" },
+            "proofDigest": { "$ref": "#/$defs/digest" },
+            "proof": { "$ref": "#/$defs/content" }
+          }
+        }
+      ]
+    }
+  }
+}

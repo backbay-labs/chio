@@ -48,6 +48,7 @@ Coverage states:
   - `sigstore-bundle-payload-mismatch-002` (class `sigstore_bundle_payload_mismatch`, reason `sigstore_bundle_payload_mismatch`, path `cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-002.json`)
   - `sigstore-bundle-payload-mismatch-003` (class `sigstore_bundle_payload_mismatch`, reason `sigstore_bundle_payload_mismatch`, path `cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-003.json`)
   - `sigstore-bundle-payload-mismatch-005` (class `sigstore_bundle_payload_mismatch`, reason `sigstore_bundle_payload_mismatch`, path `cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-005.json`)
+  - `threshold-proposal-mutations-001` (class `authority_binding_mutation`, reason `threshold_proposal_binding_mutated`, path `cases/authority_binding_mutation/threshold-proposal-mutations-001.json`)
 
 ## Threat: tool_server_escape
 
@@ -94,6 +95,7 @@ Coverage states:
 - **Surfaces:** trust_control, native_chio, hosted_mcp
 - **Test stub:** `crates/tooling/chio-conformance/tests/threats/delegation_chain_abuse.rs`
 - **Corpus cases:**
+  - `aggregate-root-binding-mutations-001` (class `authority_binding_mutation`, reason `aggregate_root_binding_mutated`, path `cases/authority_binding_mutation/aggregate-root-binding-mutations-001.json`)
   - `future-dated-004` (class `future_dated`, reason `future_dated_delegation_chain`, path `cases/future_dated/future-dated-004.json`)
   - `partial-signature-004` (class `partial_signature`, reason `partial_signature_missing_parent_link`, path `cases/partial_signature/partial-signature-004.json`)
   - `replayed-nonce-004` (class `replayed_nonce`, reason `nonce_replayed_with_scope_change`, path `cases/replayed_nonce/replayed-nonce-004.json`)

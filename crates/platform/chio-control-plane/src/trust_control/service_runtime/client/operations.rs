@@ -5,6 +5,30 @@ use super::{
 };
 
 impl TrustControlClient {
+    pub fn fiscal_marketplace_price(
+        &self,
+        base: &chio_appraisal::MarketplaceBasePrice,
+        context: &chio_appraisal::MarketplacePricingContext,
+    ) -> Result<chio_appraisal::MarketplaceInvocationPrice, CliError> {
+        self.post_json(
+            FISCAL_MARKETPLACE_PRICE_PATH,
+            &json!({"base": base, "context": context}),
+        )
+    }
+
+    pub fn fiscal_marketplace_credit_limit(
+        &self,
+        request: &chio_underwriting::MarketplaceCreditLimitRequest,
+    ) -> Result<chio_underwriting::MarketplaceCreditLimitDecision, CliError> {
+        self.post_json(
+            FISCAL_MARKETPLACE_CREDIT_LIMIT_PATH,
+            &json!({
+                "tenant_id": request.tenant_id,
+                "currency": request.currency,
+            }),
+        )
+    }
+
     pub fn authority_status(&self) -> Result<TrustAuthorityStatus, CliError> {
         self.get_json(AUTHORITY_PATH)
     }

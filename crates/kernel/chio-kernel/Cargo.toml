@@ -23,6 +23,7 @@ name = "chio_kernel"
 default = ["delegation"]
 dhat-heap = []
 sustained-p99-nightly = []
+admission-test-support = []
 otel = ["dep:opentelemetry-semantic-conventions"]
 tokio-console-smoke = ["tokio/tracing"]
 # Hybrid signing path: pulls the pq cargo feature on chio-core-types so
@@ -91,6 +92,7 @@ criterion = { workspace = true }
 dhat = { workspace = true }
 jsonschema = { workspace = true }
 loom = { workspace = true }
+tempfile = { workspace = true }
 # proptest = "1.10" (via workspace.dependencies). Used by:
 # - tests/property_budget_store.rs
 # - tests/replay_proptest.rs (replay-invariance suite)

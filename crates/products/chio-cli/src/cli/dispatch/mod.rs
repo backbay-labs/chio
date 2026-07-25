@@ -2,7 +2,6 @@ use super::*;
 
 mod api_mcp;
 mod attest;
-mod budget;
 mod certify_cert;
 mod did_passport;
 mod federation;
@@ -22,7 +21,6 @@ mod trust_cmd;
 mod workflow;
 
 use api_mcp::{dispatch_api, dispatch_mcp};
-use budget::dispatch_budget;
 #[allow(unused_imports)]
 pub(crate) use self::attest::{
     cmd_chio_attest_runtime_quote_verify, cmd_chio_attest_supply_chain_verify, decode_fixed_hex,
@@ -230,7 +228,9 @@ pub(crate) fn run() {
         Commands::Workflow { command } => dispatch_workflow(command, json_output),
         Commands::Cert { command } => dispatch_cert(command, json_output, authority_seed_file),
         Commands::Reputation { command } => dispatch_reputation(command, json_output, receipt_db, budget_db, authority_seed_file, control_url, control_token),
-        Commands::Guard { command } => dispatch_guard(command, json_output),
+        Commands::Guard { command } => {
+            dispatch_guard(command, json_output, control_url, control_token)
+        }
         Commands::Conformance { command } => dispatch_conformance(command),
         Commands::Federation { command } => dispatch_chio_federation_command(command),
         Commands::Attest { command } => dispatch_chio_attest_command(command),
@@ -238,10 +238,7 @@ pub(crate) fn run() {
         Commands::Pheromone { command } => dispatch_chio_pheromone_command(command),
         Commands::Replay(args) => cmd_replay(&args),
         Commands::Lineage { command } => dispatch_lineage(command, json_output),
-        Commands::Settle { command } => {
-            dispatch_settle(command, json_output, receipt_db, &cli.settlement_driver)
-        }
-        Commands::Budget { command } => dispatch_budget(command, json_output, budget_db.clone()),
+        Commands::Settle { command } => dispatch_settle(command, json_output, receipt_db),
         Commands::Doctor(args) => cmd_doctor(&args, json_output),
         Commands::Arena { command } => dispatch_arena(command, json_output),
         Commands::Bind {

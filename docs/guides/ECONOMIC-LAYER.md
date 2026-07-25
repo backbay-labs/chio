@@ -117,7 +117,7 @@ cross-tenant operator read):
 
 ```
 chio receipt list --tenant <tenant-id> --capability <cap-id> --tool-server <server-id> \
-  --since <unix-ts> --until <unix-ts> --min-cost <minor-units>
+  --since <unix-ts> --until <unix-ts> --min-cost <minor-units> --cost-currency USD
 ```
 
 See `crates/products/chio-cli/src/cli/types.rs:1883` for the full filter list.
@@ -496,7 +496,7 @@ to underwriters.
    `--admin-all`):
 
 ```
-chio receipt list --tenant <tenant-id> --capability <cap-id> --min-cost 0
+chio receipt list --tenant <tenant-id> --capability <cap-id> --min-cost 0 --cost-currency USD
 ```
 
 Pipe the JSON-Lines output into any analytics pipeline.

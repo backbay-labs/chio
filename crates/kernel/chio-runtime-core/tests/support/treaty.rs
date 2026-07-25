@@ -16,6 +16,7 @@ pub fn treaty_action_class(
         destructive,
         consistency_model: consistency_model.to_string(),
         co_sign: "bilateral_required".to_string(),
+        co_sign_quorum: None,
         evidence_required: evidence_required
             .into_iter()
             .map(std::string::ToString::to_string)

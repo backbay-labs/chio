@@ -1,7 +1,13 @@
 use std::collections::HashSet;
 use std::sync::{Mutex, MutexGuard};
 
-use crate::RevocationStoreError;
+use crate::{budget_store::RevocationCommitMetadata, RevocationStoreError};
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RevocationObservation {
+    pub revoked: bool,
+    pub commit: Option<RevocationCommitMetadata>,
+}
 
 /// Trait for checking whether a capability has been revoked.
 ///
@@ -13,6 +19,16 @@ pub trait RevocationStore: Send + Sync {
 
     /// Revoke a capability. Returns `true` if it was newly revoked.
     fn revoke(&self, capability_id: &str) -> Result<bool, RevocationStoreError>;
+
+    fn observe_revocation(
+        &self,
+        capability_id: &str,
+    ) -> Result<RevocationObservation, RevocationStoreError> {
+        Ok(RevocationObservation {
+            revoked: self.is_revoked(capability_id)?,
+            commit: None,
+        })
+    }
 
     /// Whether this store loses its revocation set on process restart. The
     /// default is the safe (loud) assumption so an unknown store is treated as

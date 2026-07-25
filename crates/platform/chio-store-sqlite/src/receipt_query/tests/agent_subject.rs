@@ -42,6 +42,7 @@ fn test_query_agent_subject_filter() {
             issued_at: 1000,
             expires_at: 9000,
             delegation_chain: vec![],
+            aggregate_invocation_budget: None,
         };
         CapabilityToken::sign(body, issuer_kp).expect("sign failed")
     };
@@ -147,6 +148,7 @@ fn test_query_agent_subject_none_returns_all() {
             issued_at: 1000,
             expires_at: 9000,
             delegation_chain: vec![],
+            aggregate_invocation_budget: None,
         };
         CapabilityToken::sign(body, issuer_kp).expect("sign failed")
     };
@@ -279,6 +281,7 @@ fn test_query_agent_subject_with_outcome_filter() {
         issued_at: 1000,
         expires_at: 9000,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let token = CapabilityToken::sign(body, &kp_issuer).expect("sign failed");
     store.record_capability_snapshot(&token, None).unwrap();
@@ -368,6 +371,7 @@ fn test_query_agent_subject_cursor_pagination() {
         issued_at: 1000,
         expires_at: 9000,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let token = CapabilityToken::sign(body, &kp_issuer).expect("sign failed");
     store.record_capability_snapshot(&token, None).unwrap();

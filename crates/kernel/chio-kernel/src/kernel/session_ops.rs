@@ -403,6 +403,63 @@ impl ChioKernel {
         Ok(())
     }
 
+    fn begin_or_resume_execution_nonce_request(
+        &self,
+        context: &OperationContext,
+        operation_kind: OperationKind,
+        execution_nonce: Option<&crate::execution_nonce::SignedExecutionNonce>,
+    ) -> Result<(), KernelError> {
+        if let Some(nonce) = execution_nonce
+            .filter(|nonce| nonce.nonce.bound_to.request_id == context.request_id.as_str())
+        {
+            let resumed = self.with_sessions_read(|sessions| {
+                let session = session_from_map(sessions, &context.session_id)?;
+                if session.inflight().get(&context.request_id).is_some() {
+                    session.validate_execution_nonce_retry(
+                        context,
+                        operation_kind,
+                        nonce.nonce_id(),
+                    )?;
+                    return Ok(true);
+                }
+                if session.terminal().get(&context.request_id).is_some() {
+                    return Err(crate::session::SessionError::ExecutionNonceRetryMismatch {
+                        request_id: context.request_id.clone(),
+                    }
+                    .into());
+                }
+                Ok(false)
+            })?;
+            if resumed {
+                return Ok(());
+            }
+        }
+        self.begin_session_request(context, operation_kind, true)
+    }
+
+    fn finish_execution_nonce_request(
+        &self,
+        context: &OperationContext,
+        response: Option<&ToolCallResponse>,
+        terminal_state: OperationTerminalState,
+    ) -> Result<(), KernelError> {
+        if let Some(nonce) = response
+            .filter(|response| response.output.is_none())
+            .and_then(|response| response.execution_nonce.as_deref())
+        {
+            return self.with_sessions_write(|sessions| {
+                session_from_map(sessions, &context.session_id)?
+                    .mark_execution_nonce_pending(&context.request_id, nonce.nonce_id())?;
+                Ok(())
+            });
+        }
+        self.complete_session_request_with_terminal_state(
+            &context.session_id,
+            &context.request_id,
+            terminal_state,
+        )
+    }
+
     /// Construct and register a child request under an existing parent request.
     pub fn begin_child_request(
         &self,
@@ -613,7 +670,11 @@ impl ChioKernel {
     ) -> Result<ToolCallResponse, KernelError> {
         self.validate_web3_evidence_prerequisites()?;
         let execution_nonce = parse_tool_call_operation_execution_nonce(operation)?;
-        self.begin_session_request(context, OperationKind::ToolCall, true)?;
+        self.begin_or_resume_execution_nonce_request(
+            context,
+            OperationKind::ToolCall,
+            execution_nonce.as_ref(),
+        )?;
 
         let request = ToolCallRequest {
             request_id: context.request_id.to_string(),
@@ -625,7 +686,10 @@ impl ChioKernel {
             dpop_proof: None,
             execution_nonce,
             governed_intent: operation.governed_intent.clone(),
-            approval_token: None,
+            approval_token: operation.approval_token.clone(),
+            approval_tokens: operation.approval_tokens.clone(),
+            threshold_approval_proposal: operation.threshold_approval_proposal.clone(),
+            supplemental_authorization: operation.supplemental_authorization.clone(),
             model_metadata: operation.model_metadata.clone(),
             federated_origin_kernel_id: None,
         };
@@ -651,11 +715,7 @@ impl ChioKernel {
             }
             _ => OperationTerminalState::Completed,
         };
-        self.complete_session_request_with_terminal_state(
-            &context.session_id,
-            &context.request_id,
-            terminal_state,
-        )?;
+        self.finish_execution_nonce_request(context, result.as_ref().ok(), terminal_state)?;
         result
     }
 
@@ -673,7 +733,11 @@ impl ChioKernel {
     ) -> Result<ToolCallResponse, KernelError> {
         self.validate_web3_evidence_prerequisites()?;
         let execution_nonce = parse_tool_call_operation_execution_nonce(operation)?;
-        self.begin_session_request(context, OperationKind::ToolCall, true)?;
+        self.begin_or_resume_execution_nonce_request(
+            context,
+            OperationKind::ToolCall,
+            execution_nonce.as_ref(),
+        )?;
 
         let request = ToolCallRequest {
             request_id: context.request_id.to_string(),
@@ -685,7 +749,10 @@ impl ChioKernel {
             dpop_proof: None,
             execution_nonce,
             governed_intent: operation.governed_intent.clone(),
-            approval_token: None,
+            approval_token: operation.approval_token.clone(),
+            approval_tokens: operation.approval_tokens.clone(),
+            threshold_approval_proposal: operation.threshold_approval_proposal.clone(),
+            supplemental_authorization: operation.supplemental_authorization.clone(),
             model_metadata: operation.model_metadata.clone(),
             federated_origin_kernel_id: None,
         };
@@ -713,11 +780,7 @@ impl ChioKernel {
             }
             _ => OperationTerminalState::Completed,
         };
-        self.complete_session_request_with_terminal_state(
-            &context.session_id,
-            &context.request_id,
-            terminal_state,
-        )?;
+        self.finish_execution_nonce_request(context, result.as_ref().ok(), terminal_state)?;
         result
     }
 
@@ -760,7 +823,15 @@ impl ChioKernel {
         };
 
         if should_track_inflight {
-            self.begin_session_request(context, operation_kind, true)?;
+            if matches!(operation, SessionOperation::ToolCall(_)) {
+                self.begin_or_resume_execution_nonce_request(
+                    context,
+                    operation_kind,
+                    parsed_tool_call_execution_nonce.as_ref(),
+                )?;
+            } else {
+                self.begin_session_request(context, operation_kind, true)?;
+            }
         } else {
             self.with_session_mut(&context.session_id, |session| {
                 session.validate_context(context)?;
@@ -781,7 +852,10 @@ impl ChioKernel {
                     dpop_proof: None,
                     execution_nonce: parsed_tool_call_execution_nonce,
                     governed_intent: tool_call.governed_intent.clone(),
-                    approval_token: None,
+                    approval_token: tool_call.approval_token.clone(),
+                    approval_tokens: tool_call.approval_tokens.clone(),
+                    threshold_approval_proposal: tool_call.threshold_approval_proposal.clone(),
+                    supplemental_authorization: tool_call.supplemental_authorization.clone(),
                     model_metadata: tool_call.model_metadata.clone(),
                     federated_origin_kernel_id: None,
                 };
@@ -855,11 +929,11 @@ impl ChioKernel {
                 Ok(SessionOperationResponse::ToolCall(response)) => response.terminal_state.clone(),
                 _ => OperationTerminalState::Completed,
             };
-            self.complete_session_request_with_terminal_state(
-                &context.session_id,
-                &context.request_id,
-                terminal_state,
-            )?;
+            let response = match &evaluation {
+                Ok(SessionOperationResponse::ToolCall(response)) => Some(response),
+                _ => None,
+            };
+            self.finish_execution_nonce_request(context, response, terminal_state)?;
         }
 
         evaluation

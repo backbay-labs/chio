@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-frost/v1/authorization-slot-checkpoint.schema.json",
+  "title": "Chio FROST Authorization Slot Checkpoint",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "anchorId",
+    "checkpointDigest",
+    "scopeId",
+    "slotId",
+    "slotVersion",
+    "domain",
+    "ladderActionClass",
+    "resourceId",
+    "resourceVersion",
+    "resourceFence",
+    "authorizationId",
+    "signingMessageDigest",
+    "actionDigest",
+    "rosterDigest",
+    "keyEpoch",
+    "sessionId",
+    "state",
+    "clockHighWater",
+    "anchorKeyId",
+    "anchorSignature"
+  ],
+  "properties": {
+    "schema": { "const": "chio.frost.authorization-slot-checkpoint.v1" },
+    "anchorId": { "$ref": "#/$defs/identifier" },
+    "checkpointDigest": { "$ref": "#/$defs/digest" },
+    "scopeId": { "$ref": "#/$defs/identifier" },
+    "slotId": { "$ref": "#/$defs/digest" },
+    "slotVersion": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "predecessorDigest": { "$ref": "#/$defs/digest" },
+    "domain": { "$ref": "#/$defs/domain" },
+    "ladderActionClass": { "$ref": "#/$defs/identifier" },
+    "resourceId": { "$ref": "#/$defs/identifier" },
+    "resourceVersion": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "resourceFence": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "authorizationId": { "$ref": "#/$defs/digest" },
+    "signingMessageDigest": { "$ref": "#/$defs/digest" },
+    "actionDigest": { "$ref": "#/$defs/digest" },
+    "rosterDigest": { "$ref": "#/$defs/digest" },
+    "keyEpoch": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "sessionId": { "$ref": "#/$defs/digest" },
+    "state": { "type": "string", "enum": ["bound", "completed", "burned"] },
+    "aggregateSignatureDigest": { "$ref": "#/$defs/digest" },
+    "authorizationBlobDigest": { "$ref": "#/$defs/digest" },
+    "availabilityReceipt": { "$ref": "#/$defs/identifier" },
+    "clockHighWater": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "anchorKeyId": { "$ref": "#/$defs/identifier" },
+    "anchorSignature": { "$ref": "#/$defs/signature" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "slotVersion": { "const": 1 } }, "required": ["slotVersion"] },
+      "then": { "not": { "required": ["predecessorDigest"] } },
+      "else": { "required": ["predecessorDigest"] }
+    },
+    {
+      "if": { "properties": { "state": { "const": "completed" } }, "required": ["state"] },
+      "then": {
+        "required": [
+          "aggregateSignatureDigest",
+          "authorizationBlobDigest",
+          "availabilityReceipt"
+        ]
+      },
+      "else": {
+        "not": {
+          "anyOf": [
+            { "required": ["aggregateSignatureDigest"] },
+            { "required": ["authorizationBlobDigest"] },
+            { "required": ["availabilityReceipt"] }
+          ]
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "signature": { "type": "string", "pattern": "^[0-9a-f]{128}$" },
+    "identifier": { "type": "string", "pattern": "^[!-~]+$" },
+    "domain": {
+      "type": "string",
+      "enum": [
+        "chio.frost.channel-close.v1",
+        "chio.frost.clearing-round-finalize.v1",
+        "chio.frost.credentials-passport-revoke.v1",
+        "chio.frost.governance-case-enforce-sanction.v1",
+        "chio.frost.pouncer-revoke-credential.v1",
+        "chio.frost.roster-rotate.v1",
+        "chio.frost.settle-commitment.v1"
+      ]
+    }
+  }
+}

@@ -106,14 +106,86 @@ pub(in crate::runtime) fn parse_cursor(id: &Value, params: &Value) -> Result<usi
 pub(in crate::runtime) fn build_operation_context(
     id: &Value,
     session_id: SessionId,
-    request_id: String,
     agent_id: &str,
+    method: &str,
     params: &Value,
 ) -> Result<OperationContext, Value> {
-    let mut context =
-        OperationContext::new(session_id, RequestId::new(request_id), agent_id.to_string());
+    build_operation_context_for_retry(id, session_id, agent_id, method, params, None)
+}
+
+pub(in crate::runtime) fn build_operation_context_for_retry(
+    id: &Value,
+    session_id: SessionId,
+    agent_id: &str,
+    _method: &str,
+    params: &Value,
+    nonce_bound_request_id: Option<&str>,
+) -> Result<OperationContext, Value> {
+    let request_id = if let Some(request_id) = parse_request_stable_request_id(id, params)? {
+        request_id
+    } else if let Some(request_id) = nonce_bound_request_id {
+        let request_id = parse_protocol_identifier(request_id, "execution nonce request id")
+            .map_err(|message| {
+                jsonrpc_error(id.clone(), JSONRPC_INVALID_PARAMS, message.as_str())
+            })?;
+        if request_id.len() > 2_048 {
+            return Err(jsonrpc_error(
+                id.clone(),
+                JSONRPC_INVALID_PARAMS,
+                "execution nonce request id must be at most 2048 bytes",
+            ));
+        }
+        RequestId::new(request_id)
+    } else {
+        // JSON-RPC only requires an id to be unique while a request is in
+        // flight, so a client may legally reuse the same id, method, and params
+        // after a response. Give every ordinary fallback request a fresh
+        // kernel identity. Strict-nonce retries take the branch above and reuse
+        // the request identity cryptographically bound into the presented
+        // nonce.
+        RequestId::new(format!("mcp-edge-req-{}", Uuid::new_v4().simple()))
+    };
+    let mut context = OperationContext::new(session_id, request_id, agent_id.to_string());
     context.progress_token = parse_progress_token(id, params)?;
     Ok(context)
+}
+
+pub(in crate::runtime) fn parse_request_stable_request_id(
+    id: &Value,
+    params: &Value,
+) -> Result<Option<RequestId>, Value> {
+    const MAX_REQUEST_ID_BYTES: usize = 2_048;
+
+    let Some(meta) = params.get("_meta") else {
+        return Ok(None);
+    };
+    let Some(meta) = meta.as_object() else {
+        return Err(jsonrpc_error(
+            id.clone(),
+            JSONRPC_INVALID_PARAMS,
+            "_meta must be an object",
+        ));
+    };
+    let Some(request_id) = meta.get("chioRequestId") else {
+        return Ok(None);
+    };
+    let Some(request_id) = request_id.as_str() else {
+        return Err(jsonrpc_error(
+            id.clone(),
+            JSONRPC_INVALID_PARAMS,
+            "_meta.chioRequestId must be a string",
+        ));
+    };
+    let request_id = parse_protocol_identifier(request_id, "_meta.chioRequestId")
+        .map_err(|message| jsonrpc_error(id.clone(), JSONRPC_INVALID_PARAMS, message.as_str()))?;
+    if request_id.len() > MAX_REQUEST_ID_BYTES {
+        return Err(jsonrpc_error(
+            id.clone(),
+            JSONRPC_INVALID_PARAMS,
+            "_meta.chioRequestId must be at most 2048 bytes",
+        ));
+    }
+    Ok(Some(RequestId::new(request_id)))
 }
 
 pub(in crate::runtime) fn parse_request_model_metadata(
@@ -153,7 +225,7 @@ pub(in crate::runtime) fn parse_request_model_metadata(
 pub(in crate::runtime) fn parse_request_execution_nonce(
     id: &Value,
     params: &Value,
-) -> Result<Option<Value>, Value> {
+) -> Result<Option<SignedExecutionNonce>, Value> {
     let Some(meta) = params.get("_meta") else {
         return Ok(None);
     };
@@ -171,14 +243,15 @@ pub(in crate::runtime) fn parse_request_execution_nonce(
         return Ok(None);
     };
 
-    serde_json::from_value::<SignedExecutionNonce>(execution_nonce.clone()).map_err(|_| {
-        jsonrpc_error(
-            id.clone(),
-            JSONRPC_INVALID_PARAMS,
-            "executionNonce must be a signed Chio execution nonce object",
-        )
-    })?;
-    Ok(Some(execution_nonce.clone()))
+    serde_json::from_value(execution_nonce.clone())
+        .map(Some)
+        .map_err(|_| {
+            jsonrpc_error(
+                id.clone(),
+                JSONRPC_INVALID_PARAMS,
+                "executionNonce must be a signed Chio execution nonce object",
+            )
+        })
 }
 
 pub(in crate::runtime) fn parse_request_governed_intent(
@@ -209,6 +282,119 @@ pub(in crate::runtime) fn parse_request_governed_intent(
                 id.clone(),
                 JSONRPC_INVALID_PARAMS,
                 "governedIntent must be a Chio governed transaction intent object",
+            )
+        })
+}
+
+type ParsedApprovalArtifacts = (
+    Option<GovernedApprovalToken>,
+    Vec<GovernedApprovalToken>,
+    Option<ThresholdApprovalProposal>,
+);
+
+pub(in crate::runtime) fn parse_request_approval_artifacts(
+    id: &Value,
+    params: &Value,
+) -> Result<ParsedApprovalArtifacts, Value> {
+    let Some(meta) = params.get("_meta") else {
+        return Ok((None, Vec::new(), None));
+    };
+    let Some(meta) = meta.as_object() else {
+        return Err(jsonrpc_error(
+            id.clone(),
+            JSONRPC_INVALID_PARAMS,
+            "_meta must be an object",
+        ));
+    };
+    let approval_token = meta
+        .get("approvalToken")
+        .or_else(|| meta.get("chioApprovalToken"))
+        .map(|value| serde_json::from_value(value.clone()))
+        .transpose()
+        .map_err(|_| {
+            jsonrpc_error(
+                id.clone(),
+                JSONRPC_INVALID_PARAMS,
+                "approvalToken must be a Chio governed approval token",
+            )
+        })?;
+    let approval_tokens: Vec<GovernedApprovalToken> = meta
+        .get("approvalTokens")
+        .or_else(|| meta.get("chioApprovalTokens"))
+        .map(|value| serde_json::from_value(value.clone()))
+        .transpose()
+        .map_err(|_| {
+            jsonrpc_error(
+                id.clone(),
+                JSONRPC_INVALID_PARAMS,
+                "approvalTokens must be an array of Chio governed approval tokens",
+            )
+        })?
+        .unwrap_or_default();
+    let threshold_approval_proposal = meta
+        .get("thresholdApprovalProposal")
+        .or_else(|| meta.get("chioThresholdApprovalProposal"))
+        .map(|value| serde_json::from_value(value.clone()))
+        .transpose()
+        .map_err(|_| {
+            jsonrpc_error(
+                id.clone(),
+                JSONRPC_INVALID_PARAMS,
+                "thresholdApprovalProposal must be a Chio threshold approval proposal",
+            )
+        })?;
+    if approval_token.is_some() && !approval_tokens.is_empty() {
+        return Err(jsonrpc_error(
+            id.clone(),
+            JSONRPC_INVALID_PARAMS,
+            "singular and threshold approval tokens must not be mixed",
+        ));
+    }
+    if approval_tokens.len() > 32 {
+        return Err(jsonrpc_error(
+            id.clone(),
+            JSONRPC_INVALID_PARAMS,
+            "threshold approval set exceeds 32 tokens",
+        ));
+    }
+    if approval_tokens.is_empty() != threshold_approval_proposal.is_none() {
+        return Err(jsonrpc_error(
+            id.clone(),
+            JSONRPC_INVALID_PARAMS,
+            "threshold approval tokens and proposal must be supplied together",
+        ));
+    }
+    Ok((approval_token, approval_tokens, threshold_approval_proposal))
+}
+
+pub(in crate::runtime) fn parse_request_supplemental_authorization(
+    id: &Value,
+    params: &Value,
+) -> Result<Option<OpaqueSupplementalAuthorization>, Value> {
+    let Some(meta) = params.get("_meta") else {
+        return Ok(None);
+    };
+    let Some(meta) = meta.as_object() else {
+        return Err(jsonrpc_error(
+            id.clone(),
+            JSONRPC_INVALID_PARAMS,
+            "_meta must be an object",
+        ));
+    };
+    let Some(authorization) = meta
+        .get("supplementalAuthorization")
+        .or_else(|| meta.get("chioSupplementalAuthorization"))
+    else {
+        return Ok(None);
+    };
+
+    serde_json::from_value(authorization.clone())
+        .map(Some)
+        .map_err(|_| {
+            jsonrpc_error(
+                id.clone(),
+                JSONRPC_INVALID_PARAMS,
+                "supplementalAuthorization must contain only opaque signed_extension text",
             )
         })
 }

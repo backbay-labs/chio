@@ -113,7 +113,7 @@ fn treaty_bound_extensions(
             },
         }),
         consistency_anchor: Some("anchor-live".to_string()),
-        consistency_model: Some("totally_ordered".to_string()),
+        consistency_model: Some("totally-ordered".to_string()),
         cross_org_visibility: Some("treaty_only".to_string()),
         treaty_binding_ref: Some(TreatyBindingRef {
             treaty_id: "treaty-buyer-vendor".to_string(),
@@ -123,7 +123,7 @@ fn treaty_bound_extensions(
             continuation_sha256: "4".repeat(64),
             lineage_bundle_sha256: "5".repeat(64),
             action_class_id: "workflow.destructive.vendor_call".to_string(),
-            consistency_model: "totally_ordered".to_string(),
+            consistency_model: "totally-ordered".to_string(),
             request_sha256: receipt.action.parameter_hash.clone(),
             outcome_sha256: receipt.content_hash.clone(),
             local_receipt_sha256: "8".repeat(64),
@@ -705,6 +705,23 @@ fn strict_chio_verifier_binds_treaty_outcome_hash_to_resolved_receipt() {
 }
 
 #[test]
+fn strict_chio_verifier_rejects_n_of_m_without_verified_frost_authorization() {
+    let err = strict_chio_verifier_rejects_treaty_mutation(|statement| {
+        statement.predicate.co_sign = "n_of_m".to_string();
+        statement.predicate.consistency_model = "quorum-required".to_string();
+        statement.predicate.consistency_anchor = Some("frost-quorum".to_string());
+        statement
+            .predicate
+            .treaty_binding_ref
+            .as_mut()
+            .unwrap()
+            .consistency_model = "quorum-required".to_string();
+    });
+    assert_eq!(err.code(), "predicate.schema_invalid");
+    assert!(err.to_string().contains("n_of_m"));
+}
+
+#[test]
 fn strict_chio_verifier_binds_treaty_remote_receipt_hash_to_resolved_receipt() {
     let err = strict_chio_verifier_rejects_treaty_mutation(|statement| {
         statement
@@ -763,7 +780,7 @@ fn strict_chio_verifier_accepts_treaty_ordered_consistency() {
     assert_eq!(verified.resolved_receipt.id, receipt.id);
     assert_eq!(
         verified.statement.predicate.consistency_model,
-        "totally_ordered"
+        "totally-ordered"
     );
     assert!(verified.statement.predicate.treaty_binding_ref.is_some());
 }

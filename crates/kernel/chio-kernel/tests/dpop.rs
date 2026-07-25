@@ -31,6 +31,7 @@ fn make_capability(agent_kp: &Keypair) -> CapabilityToken {
         issued_at: now,
         expires_at: now + 3600,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     CapabilityToken::sign(body, &issuer_kp).expect("sign capability")
 }

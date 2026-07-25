@@ -89,11 +89,10 @@ pub fn mediation_kernel(
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-        // Reserve-only mediation kernel: money-path durability is the reserved-hold
-        // reaper plus reconcile-by-nonce, so the in-process payment journal is off,
-        // matching `build_mediation_kernel`.
-        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     });
+    // These conformance fixtures isolate authoritative in-memory budget and
+    // nonce semantics. Production financial dispatch requires durable admission.
+    kernel.enable_unsafe_ephemeral_financial_dispatch_for_development();
     kernel.set_budget_store_handle(budget);
     let nonce_cfg = ExecutionNonceConfig {
         require_nonce,

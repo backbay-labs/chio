@@ -5,8 +5,9 @@ use std::time::Duration;
 
 use crate::{AdapterError, McpTransport};
 use chio_core::capability::{
-    governance::GovernedTransactionIntent,
+    governance::{GovernedApprovalToken, GovernedTransactionIntent, ThresholdApprovalProposal},
     scope::{ModelMetadata, Operation},
+    supplemental_authorization::OpaqueSupplementalAuthorization,
     token::CapabilityToken,
 };
 use chio_core::receipt::decision::Decision;
@@ -18,11 +19,12 @@ use chio_core::session::{
     ResourceTemplateDefinition, RootDefinition, SessionAuthContext, SessionId, SessionOperation,
     SessionTransport, TaskOwnershipSnapshot, ToolCallOperation,
 };
+use chio_core::{canonical_json_bytes, sha256_hex};
 use chio_cross_protocol::discovery::DiscoveryProtocol;
 use chio_cross_protocol::error::BridgeError;
 use chio_cross_protocol::execution::{
-    metadata_with_source_receipt_context, CrossProtocolTargetExecution, CrossProtocolTargetRequest,
-    TargetExecutionHop, TargetProtocolExecutor,
+    kernel_tool_call_request, metadata_with_source_receipt_context, CrossProtocolTargetExecution,
+    CrossProtocolTargetRequest, TargetExecutionHop, TargetProtocolExecutor,
 };
 use chio_cross_protocol::routing::route_selection_metadata;
 use chio_kernel::{
@@ -36,6 +38,7 @@ use chio_manifest::{LatencyHint, ToolDefinition};
 use chrono::{SecondsFormat, Utc};
 use serde::Serialize;
 use serde_json::{json, Value};
+use uuid::Uuid;
 
 #[path = "runtime/discovery.rs"]
 mod discovery;
@@ -135,7 +138,8 @@ pub struct ChioMcpEdge {
     capabilities: Vec<CapabilityToken>,
     tools: Vec<ExposedToolBinding>,
     tool_index: BTreeMap<String, usize>,
-    request_counter: u64,
+    initial_session_id: Option<SessionId>,
+    child_request_counter: u64,
     client_request_counter: u64,
     state: EdgeState,
     minimum_log_level: LogLevel,
@@ -166,7 +170,8 @@ impl ChioMcpEdge {
             capabilities,
             tools,
             tool_index,
-            request_counter: 0,
+            initial_session_id: None,
+            child_request_counter: 0,
             client_request_counter: 0,
             state: EdgeState::Uninitialized,
             minimum_log_level: LogLevel::Info,
@@ -182,6 +187,16 @@ impl ChioMcpEdge {
 
     pub fn attach_upstream_transport(&mut self, transport: Arc<dyn McpTransport>) {
         self.upstream_transport = Some(transport);
+    }
+
+    pub fn set_initial_session_id(&mut self, session_id: SessionId) -> Result<(), AdapterError> {
+        if !matches!(self.state, EdgeState::Uninitialized) {
+            return Err(AdapterError::ParseError(
+                "initial session id must be configured before MCP initialization".to_string(),
+            ));
+        }
+        self.initial_session_id = Some(session_id);
+        Ok(())
     }
 
     pub fn set_session_auth_context(&mut self, auth_context: SessionAuthContext) {

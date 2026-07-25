@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-frost/v1/epoch-checkpoint.schema.json",
+  "title": "Chio FROST Epoch Checkpoint",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "anchorId",
+    "checkpointDigest",
+    "scopeId",
+    "checkpointSequence",
+    "activeRosterId",
+    "activeRosterDigest",
+    "keyEpoch",
+    "groupPublicKeyDigest",
+    "activationFence",
+    "clockHighWater",
+    "anchorKeyId",
+    "anchorSignature"
+  ],
+  "properties": {
+    "schema": { "const": "chio.frost.epoch-checkpoint.v1" },
+    "anchorId": { "$ref": "#/$defs/identifier" },
+    "checkpointDigest": { "$ref": "#/$defs/digest" },
+    "scopeId": { "$ref": "#/$defs/identifier" },
+    "checkpointSequence": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "predecessorDigest": { "$ref": "#/$defs/digest" },
+    "activeRosterId": { "$ref": "#/$defs/digest" },
+    "activeRosterDigest": { "$ref": "#/$defs/digest" },
+    "keyEpoch": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "groupPublicKeyDigest": { "$ref": "#/$defs/digest" },
+    "rotationAuthorizationDigest": { "$ref": "#/$defs/digest" },
+    "activationFence": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "clockHighWater": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "anchorKeyId": { "$ref": "#/$defs/identifier" },
+    "anchorSignature": { "$ref": "#/$defs/signature" }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "checkpointSequence": { "const": 1 } },
+        "required": ["checkpointSequence"]
+      },
+      "then": { "not": { "required": ["predecessorDigest"] } },
+      "else": { "required": ["predecessorDigest"] }
+    },
+    {
+      "if": { "properties": { "keyEpoch": { "const": 1 } }, "required": ["keyEpoch"] },
+      "then": { "not": { "required": ["rotationAuthorizationDigest"] } },
+      "else": { "required": ["rotationAuthorizationDigest"] }
+    }
+  ],
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "signature": { "type": "string", "pattern": "^[0-9a-f]{128}$" },
+    "identifier": { "type": "string", "pattern": "^[!-~]+$" }
+  }
+}

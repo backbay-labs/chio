@@ -121,6 +121,7 @@ proptest! {
             issued_at,
             expires_at: issued_at + ttl,
             delegation_chain: Vec::new(),
+            aggregate_invocation_budget: None,
         };
 
         let token = CapabilityToken::sign(body, &issuer).unwrap();
@@ -162,6 +163,7 @@ proptest! {
                 issued_at,
                 expires_at: issued_at + ttl,
                 delegation_chain: Vec::new(),
+                aggregate_invocation_budget: None,
             },
             &issuer,
         ).unwrap();

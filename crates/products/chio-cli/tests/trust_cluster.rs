@@ -756,6 +756,7 @@ fn sample_capability(id: &str, subject_kp: &Keypair, issuer_kp: &Keypair) -> Cap
             issued_at: 1_000,
             expires_at: 9_000,
             delegation_chain: vec![],
+            aggregate_invocation_budget: None,
         },
         issuer_kp,
     )
@@ -2811,6 +2812,23 @@ fn trust_control_cluster_snapshot_replays_holds_and_mutation_events() {
     );
     assert_eq!(release["releasedExposureUnits"].as_u64(), Some(30));
     assert_expected_write_visibility_metadata(&release, &warm_leader_url);
+
+    let capture = post_json(
+        &client,
+        &format!("{url_b}/v1/budgets/capture-invocation"),
+        service_token,
+        &json!({
+            "capabilityId": "cap-snapshot-hold",
+            "grantIndex": 0,
+            "holdId": "cap-snapshot-hold-1",
+            "eventId": "cap-snapshot-hold-1:capture-invocation"
+        }),
+    );
+    assert!(matches!(
+        capture["decision"].as_str(),
+        Some("captured" | "already_captured")
+    ));
+    assert_expected_write_visibility_metadata(&capture, &warm_leader_url);
     assert_budget_invocation_count(
         &client,
         &warm_leader_url,
@@ -2887,6 +2905,7 @@ fn trust_control_cluster_snapshot_replays_holds_and_mutation_events() {
         vec![
             "cap-snapshot-hold-1:authorize",
             "cap-snapshot-hold-1:release",
+            "cap-snapshot-hold-1:capture-invocation",
         ]
     );
     drop(late_store);
@@ -2936,6 +2955,7 @@ fn trust_control_cluster_snapshot_replays_holds_and_mutation_events() {
         vec![
             "cap-snapshot-hold-1:authorize".to_string(),
             "cap-snapshot-hold-1:release".to_string(),
+            "cap-snapshot-hold-1:capture-invocation".to_string(),
             "cap-snapshot-hold-1:reconcile".to_string(),
         ]
     );

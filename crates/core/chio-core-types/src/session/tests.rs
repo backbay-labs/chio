@@ -2,6 +2,11 @@ use std::collections::BTreeMap;
 
 use super::*;
 use crate::capability::{
+    governance::{
+        GovernedApprovalDecision, GovernedApprovalToken, GovernedApprovalTokenBody,
+        ThresholdApprovalProposal, ThresholdApprovalProposalBody,
+        THRESHOLD_APPROVAL_PROPOSAL_SCHEMA,
+    },
     scope::{ChioScope, Operation, ToolGrant},
     token::CapabilityTokenBody,
 };
@@ -29,6 +34,7 @@ fn make_token(kp: &Keypair) -> CapabilityToken {
             issued_at: 100,
             expires_at: 200,
             delegation_chain: vec![],
+            aggregate_invocation_budget: None,
         },
         kp,
     )
@@ -92,12 +98,59 @@ fn progress_token_accepts_integer_or_string() {
 #[test]
 fn session_operation_roundtrip_preserves_tool_call_payload() {
     let kp = Keypair::generate();
+    let approver_a = Keypair::generate();
+    let approver_b = Keypair::generate();
+    let intent_hash = "a".repeat(64);
+    let proposal = ThresholdApprovalProposal::sign(
+        ThresholdApprovalProposalBody {
+            schema: THRESHOLD_APPROVAL_PROPOSAL_SCHEMA.to_string(),
+            proposal_id: "proposal-session-001".to_string(),
+            request_id: "req-session-001".to_string(),
+            governed_intent_hash: intent_hash.clone(),
+            subject: kp.public_key(),
+            authorizing_capability_digest: "b".repeat(64),
+            policy_hash: "c".repeat(64),
+            threshold: 2,
+            eligible_set_digest: "d".repeat(64),
+            proposal_created_at: 100,
+            proposal_deadline: 200,
+            policy_authority: kp.public_key(),
+        },
+        &kp,
+    )
+    .unwrap();
+    let proposal_hash = proposal.artifact_digest().unwrap();
+    let approval_tokens = [&approver_a, &approver_b]
+        .into_iter()
+        .enumerate()
+        .map(|(index, approver)| {
+            GovernedApprovalToken::sign(
+                GovernedApprovalTokenBody {
+                    id: format!("approval-session-{index}"),
+                    approver: approver.public_key(),
+                    subject: kp.public_key(),
+                    governed_intent_hash: intent_hash.clone(),
+                    request_id: "req-session-001".to_string(),
+                    threshold_proposal_hash: Some(proposal_hash.clone()),
+                    issued_at: 100,
+                    expires_at: 200,
+                    decision: GovernedApprovalDecision::Approved,
+                },
+                approver,
+            )
+            .unwrap()
+        })
+        .collect::<Vec<_>>();
     let op = SessionOperation::ToolCall(Box::new(ToolCallOperation {
         capability: make_token(&kp),
         server_id: "srv-a".to_string(),
         tool_name: "read_file".to_string(),
         arguments: serde_json::json!({"path": "/app/src/lib.rs"}),
         governed_intent: None,
+        approval_token: None,
+        approval_tokens: approval_tokens.clone(),
+        threshold_approval_proposal: Some(proposal.clone()),
+        supplemental_authorization: None,
         execution_nonce: None,
         model_metadata: Some(ModelMetadata {
             model_id: "gpt-5".to_string(),
@@ -120,6 +173,8 @@ fn session_operation_roundtrip_preserves_tool_call_payload() {
             assert_eq!(payload.server_id, "srv-a");
             assert_eq!(payload.tool_name, "read_file");
             assert_eq!(payload.arguments["path"], "/app/src/lib.rs");
+            assert_eq!(payload.approval_tokens, approval_tokens);
+            assert_eq!(payload.threshold_approval_proposal, Some(proposal));
             assert_eq!(
                 payload
                     .model_metadata

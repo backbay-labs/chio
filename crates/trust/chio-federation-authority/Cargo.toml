@@ -16,12 +16,17 @@ chio-attest-buyer-core = { workspace = true }
 chio-core-types = { workspace = true }
 chio-federation = { workspace = true }
 chio-governance = { workspace = true }
+frost-ed25519 = { workspace = true }
+frost-core = { workspace = true }
+hex = { workspace = true }
+rand_core = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
+zeroize = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
-hex = { workspace = true }
+rand_chacha = { workspace = true }
 
 [lints]
 workspace = true

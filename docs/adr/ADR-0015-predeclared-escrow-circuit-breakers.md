@@ -1,8 +1,9 @@
-# ADR-0015: Predeclared Non-Discretionary Escrow Circuit Breakers
+# ADR-0015: Predeclared Settlement Outcomes and Admitted Operational Pause
 
 - Status: Accepted for follow-up B (Rust roster + decision-rule constraints); follow-up A (Solidity impairBondDetailed allowlist) and follow-up C remain deferred
 - Decision owner: economy and settlement lane
-- Related invariant: invariant 10 (no discretionary emergency intervention; circuit breakers are predeclared)
+- Related invariant: invariant 10 (no discretionary repricing or self-dealing;
+  circuit-breaker effects are declared honestly)
 - Related plan items: M4 slashing/adjudication gate; also touches invariant 9 (penalty proceeds never accrue to insiders)
 
 ## Context
@@ -35,25 +36,36 @@ policy)" (invariant 10; the related invariant 9 requires that slash, tax, or tra
 house fail-closed rule a violation is a design rejection, not a trade-off.
 
 This ADR is the anti-JELLY policy that invariant 10 points at. It records the
-circuit-breaker posture for Chio's escrow, bond, and claim settlement paths, and
-maps each existing function to that posture so future changes cannot silently
-re-open a JELLY-shaped lane.
+circuit-breaker posture for Chio's escrow, bond, and claim settlement paths and
+maps each existing function to that posture. The live contracts now have
+transferable admins, token allowlists, and pause controls. This revision removes
+the earlier false claim that those surfaces do not exist and narrows the
+guarantee to what the code enforces: no admin-selected price, payee, or direct
+fund transfer, with an admitted admin-controlled liveness and outcome risk.
 
 ## Decision
 
 Chio adopts the following posture for any forced or contested closure of an
-escrow, bond, or liability-claim settlement. It is a posture of subtraction: the
-default is that no discretionary closure exists, and the only terminal states are
-the ones already committed at open time.
+escrow, bond, or liability-claim settlement. Release/refund and
+release/impair/expiry outcomes are committed at open time, and no privileged
+actor may choose a new price, payee, or direct transfer. The current admin can,
+however, pause release and impairment, which can affect which predeclared outcome
+eventually occurs. That limitation is part of the devnet trust model.
 
-### D1. No discretionary emergency intervention on the value-movement path
+### D1. Admit and freeze the current operational-admin boundary
 
-The value-movement contracts (`ChioEscrow`, `ChioBondVault`) carry no owner,
-no admin, no guardian, no pause, and no upgrade or emergency lane, and they must
-not acquire one. There is no address that can move, freeze, re-route, or
-re-price escrowed or bonded funds outside the functions enumerated at open time.
-This property exists today and is now normative: adding a privileged override to
-these contracts is a rejected design.
+The value-movement contracts (`ChioEscrow`, `ChioBondVault`) each carry a
+transferable admin, token allowlist, and pause flag. The admin cannot directly
+transfer escrowed or bonded funds, choose a settlement amount, change a payee,
+or upgrade the contracts. Pause does block escrow creation and release and bond
+lock, release, and impairment, while post-deadline escrow refund and bond expiry
+remain callable. The admin can therefore delay a beneficiary or slash path and
+may cause the predeclared refund/expiry branch to win. This is a material
+discretionary liveness and outcome surface. It is allowed only in the current
+devnet-qualified family, must be disclosed, and blocks any non-discretionary or
+production-custody claim. No new privileged capability may be added under this
+ADR. Promotion requires external assurance and an explicit successor decision on
+removal or constrained governance of the admin controls.
 
 ### D2. Terminal states are predeclared and price-free
 
@@ -111,15 +123,13 @@ follow-up B); the amount ceiling is already enforced.
 
 ## Rationale
 
-The cheapest way to be un-JELLY-able is to have nowhere for discretion to live.
-Chio's escrow and bond contracts already have that shape: they hold only the
-depositor's own funds, pay out only to parties named at open time, cap every
-release at the deposit, and expose no privileged function. There is no "disputed
-market" object for a quorum to seize, because the only contested dimension on
-chain is release-versus-refund, and both branches are predeclared and
-price-free. Encoding that as policy (rather than leaving it an accident of the
-current code) means a future PR that adds a pause or an admin-settled path is
-visibly a violation of this ADR and of invariant 10, not a judgement call.
+The strongest anti-JELLY property the current contracts enforce is narrower than
+the original ADR claimed. They hold only deposited funds, cap release at the
+deposit, and do not let an admin select a price, payee, or direct transfer. The
+terminal branches are predeclared and price-free. The pause remains meaningful:
+blocking release until a deadline can make refund or expiry win. Encoding both
+the enforced price/payee constraints and that residual discretion prevents a
+future review from mistaking devnet controls for an admin-free settlement path.
 
 Keeping settlement amounts evidenced and monotone non-increasing closes the
 re-pricing vector directly. JELLY's harm was choosing a price; Chio never
@@ -138,13 +148,14 @@ by the good behavior of whoever signs.
 
 ### Positive
 
-- The escrow and bond settlement path is provably free of discretionary
-  intervention: there is no address that can force a close or pick a price.
+- No privileged address can select a settlement price, substitute a payee, or
+  directly transfer escrowed or bonded funds through an admin function.
 - Every payout amount is traceable to a signed artifact and is bounded above by
   the deposit or coverage, so no closure can mint protocol profit from a
   counterparty loss.
-- Invariants 9 and 10 gain a concrete, testable home; a reviewer can reject a
-  pause, an admin re-route, or a treasury-payee path by pointing at this ADR.
+- Invariants 9 and 10 gain a concrete, testable home; a reviewer can reject an
+  admin re-route, admin-selected amount, treasury-payee path, or any expansion of
+  the existing pause/allowlist boundary by pointing at this ADR.
 - The policy is legible to counterparties: depositors know at open time that the
   only outcomes are proven-release and post-deadline-refund.
 
@@ -154,9 +165,11 @@ by the good behavior of whoever signs.
   is harmed by something outside the predeclared breakers, the remedy is a future
   predeclared breaker plus off-chain restitution, not an emergency on-chain
   re-route. This is the intended cost of being un-JELLY-able.
-- Adjacent admin surfaces (see the mapping below) still exist and must be watched;
-  the no-discretion property is only as strong as the constraints on operator
-  deactivation and price-feed administration.
+- The escrow and bond admins can pause release/impairment and rotate their admin
+  keys. This is a direct value-path liveness and outcome trust assumption, not an
+  adjacent surface, and it blocks a non-discretionary custody claim.
+- Adjacent registry and price-feed admin surfaces still exist and must also be
+  watched.
 - Two follow-ups (A, B) are needed before the destination and adjudicator
   constraints are fully structural rather than partly trusted.
 
@@ -183,13 +196,17 @@ not implemented here).
   entrypoints revert `ProofMetadataRequired`, which is fail-closed.
 - **`ChioEscrow.refund`**: Complies. Callable only after the committed `deadline`;
   returns `deposited - released` to the depositor. Predeclared and price-free.
-- **`ChioEscrow`** overall: Complies with D1. No owner, admin, pause, guardian,
-  upgrade, `selfdestruct`, or `delegatecall`; the constructor only wires two
-  immutable registries.
+- **`ChioEscrow`** overall: Matches the admitted devnet boundary in D1, not the
+  stronger original claim. It has a transferable `admin`, `setPaused`, and
+  `setTokenAllowed`. Pause gates creation and every release entrypoint but not
+  post-deadline `refund`, so it can affect release-versus-refund liveness. There
+  is no admin transfer-of-funds, upgrade, `selfdestruct`, or `delegatecall` lane.
 - **`ChioBondVault.lockBond` / `releaseBondDetailed` / `expireRelease`**
   ([../../contracts/src/ChioBondVault.sol](../../contracts/src/ChioBondVault.sol)):
-  Comply. Collateral is self-locked by the principal; release and expiry return
-  `lockedAmount - slashedAmount` to the principal only; no admin lane exists.
+  Preserve the predeclared amount/payee rules. Collateral is self-locked by the
+  principal; release and expiry return `lockedAmount - slashedAmount` to the
+  principal only. The vault does have a transferable admin, token allowlist, and
+  pause; pause gates lock and release but not expiry.
 - **`ChioBondVault.impairBondDetailed`**: Partial. It is evidence-gated (Merkle
   proof against an operator-signed root), operator-only, bounded by the remaining
   locked amount, and requires `sum(shares) == slashAmount` exactly. But the
@@ -232,7 +249,7 @@ not implemented here).
   (or the coverage `subject`), never the protocol. This is the reference
   implementation of D4 that follow-up A should mirror on chain.
 
-### Adjacent admin surfaces (watch list, not part of the settlement path)
+### Additional admin surfaces (watch list)
 
 - **`ChioIdentityRegistry`**
   ([../../contracts/src/ChioIdentityRegistry.sol](../../contracts/src/ChioIdentityRegistry.sol))
@@ -282,6 +299,12 @@ or upgrade lane (D1), so the on-chain allowlist requires a new deployment.
   constrain `ChioIdentityRegistry` operator deactivation and `ChioPriceResolver`
   price administration so neither can be used to indirectly force or mis-value a
   settlement in a way D1-D4 would otherwise forbid on the value path.
+- **D. Resolve the value-contract admin model before promotion.** External
+  assurance must assess the escrow and bond pause, token-allowlist, and admin
+  rotation controls. Any removal, timelock, quorum, emergency-expiry, or other
+  governance change is a separately reviewed successor contract/family decision.
+  Until then, keep deployments on local devnet and make no admin-free,
+  non-discretionary, or production-custody claim.
 
 ## Non-goals
 

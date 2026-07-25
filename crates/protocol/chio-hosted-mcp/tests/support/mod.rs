@@ -553,7 +553,7 @@ pub fn base_remote_config(dir: &Path, listen: SocketAddr) -> RemoteServeHttpConf
         auth_code_ttl_secs: 300,
         auth_access_token_ttl_secs: 600,
         receipt_db_path: Some(dir.join("remote-receipts.sqlite3")),
-        revocation_db_path: Some(dir.join("remote-revocations.sqlite3")),
+        revocation_db_path: None,
         authority_seed_path: Some(dir.join("remote-authority.seed")),
         authority_db_path: None,
         budget_db_path: None,

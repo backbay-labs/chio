@@ -1181,6 +1181,7 @@ mod tests {
             subject: subject.public_key(),
             governed_intent_hash: parameter_hash.to_string(),
             request_id: approval_id.to_string(),
+            threshold_proposal_hash: None,
             issued_at: 10,
             expires_at: 100,
             decision,

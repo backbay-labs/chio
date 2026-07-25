@@ -76,12 +76,10 @@ pub enum BudgetViolation {
 /// Thread-safe usage requires external synchronization (the kernel already
 /// serializes guard evaluation per-request).
 ///
-/// WARNING: counters are process-local and reset to zero on restart. This
-/// type does NOT persist cumulative spend; a restart re-opens the full
-/// budget. For durable enforcement use the kernel `BudgetStore`
-/// (crates/kernel/chio-kernel/src/budget_store.rs). Callers requiring
-/// cross-restart continuity MUST snapshot and restore explicitly via
-/// [`BudgetEnforcer::snapshot`] and [`BudgetEnforcer::from_snapshot`].
+/// WARNING: counters are process-local and reset to zero on restart, reopening
+/// the full budget. Use the kernel's durable `BudgetStore` for cross-restart
+/// continuity.
+#[deprecated(note = "process-local counters reset on restart; use chio-kernel BudgetStore")]
 #[derive(Debug, Clone)]
 pub struct BudgetEnforcer {
     policy: BudgetPolicy,
@@ -95,45 +93,8 @@ pub struct BudgetEnforcer {
     tool_spent: HashMap<String, u64>,
 }
 
-/// Serializable point-in-time copy of a [`BudgetEnforcer`]'s counters, so an
-/// adopter can persist and restore cumulative spend instead of silently
-/// losing it on restart.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct BudgetEnforcerSnapshot {
-    /// Total spending tracked.
-    pub total_spent: u64,
-    /// Per-session spending.
-    pub session_spent: HashMap<String, u64>,
-    /// Per-agent spending.
-    pub agent_spent: HashMap<String, u64>,
-    /// Per-tool spending.
-    pub tool_spent: HashMap<String, u64>,
-}
-
+#[allow(deprecated)]
 impl BudgetEnforcer {
-    /// Snapshot the current counters for durable persistence.
-    #[must_use]
-    pub fn snapshot(&self) -> BudgetEnforcerSnapshot {
-        BudgetEnforcerSnapshot {
-            total_spent: self.total_spent,
-            session_spent: self.session_spent.clone(),
-            agent_spent: self.agent_spent.clone(),
-            tool_spent: self.tool_spent.clone(),
-        }
-    }
-
-    /// Rebuild an enforcer from a persisted snapshot under `policy`.
-    #[must_use]
-    pub fn from_snapshot(policy: BudgetPolicy, snapshot: BudgetEnforcerSnapshot) -> Self {
-        Self {
-            policy,
-            total_spent: snapshot.total_spent,
-            session_spent: snapshot.session_spent,
-            agent_spent: snapshot.agent_spent,
-            tool_spent: snapshot.tool_spent,
-        }
-    }
-
     /// Create a new budget enforcer with the given policy.
     pub fn new(policy: BudgetPolicy) -> Self {
         Self {
@@ -245,6 +206,7 @@ impl BudgetEnforcer {
 }
 
 #[cfg(test)]
+#[allow(deprecated)]
 mod tests {
     use super::*;
     use crate::cost::CostMetadata;
@@ -287,31 +249,6 @@ mod tests {
         );
         m.session_id = Some("sess-1".to_string());
         m
-    }
-
-    #[test]
-    fn budget_enforcer_snapshot_roundtrip() -> Result<(), Box<dyn std::error::Error>> {
-        let policy = make_policy();
-        let mut enforcer = BudgetEnforcer::new(policy.clone());
-        enforcer.record(&make_meta("agent-1", "s1", "tool-1"), 250);
-        let snapshot = enforcer.snapshot();
-        assert_eq!(snapshot.total_spent, 250);
-
-        // The snapshot serializes and restores, so an adopter can persist
-        // cumulative spend across restarts instead of silently losing it.
-        let bytes = serde_json::to_vec(&snapshot)?;
-        let restored_snapshot: BudgetEnforcerSnapshot = serde_json::from_slice(&bytes)?;
-        let restored = BudgetEnforcer::from_snapshot(policy, restored_snapshot);
-        assert_eq!(restored.total_spent(), 250);
-        assert_eq!(
-            restored.snapshot().session_spent.get("sess-1").copied(),
-            Some(250)
-        );
-        assert_eq!(
-            restored.snapshot().agent_spent.get("agent-1").copied(),
-            Some(250)
-        );
-        Ok(())
     }
 
     #[test]

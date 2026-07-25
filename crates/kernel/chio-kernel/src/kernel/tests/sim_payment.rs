@@ -41,11 +41,13 @@ fn make_mustprepay_intent(
                 expires_at: Some(now + 300),
             },
             max_billed_units: Some(15),
+            verified_outcome: None,
         }),
         runtime_attestation: None,
         call_chain: None,
         autonomy: None,
         context: None,
+        body: Default::default(),
     }
 }
 
@@ -90,6 +92,9 @@ fn mustprepay_tool_call(
         execution_nonce: None,
         governed_intent: Some(intent),
         approval_token: Some(approval_token),
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     }
@@ -108,7 +113,7 @@ fn expect_financial_meta(response: &ToolCallResponse) -> &serde_json::Value {
 #[test]
 fn sim_adapter_settles_governed_mustprepay_onto_receipt() {
     let MustPrepayFixture { mut kernel, cap, agent_kp } = build_mustprepay_fixture(75);
-    kernel.set_payment_adapter(Box::new(crate::payment::SimPaymentAdapter::new())).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(crate::payment::SimPaymentAdapter::new()));
 
     let intent =
         make_mustprepay_intent("intent-sim-settle", "cost-srv", "compute", 100, "USD");
@@ -152,14 +157,101 @@ fn governed_mustprepay_without_adapter_is_denied_end_to_end() {
     );
 }
 
-// sim authorize -> zero actual cost -> release path; receipt carries sim- reference.
-//
-// The server reports cost=0. The pre-authorized hold is released rather than
-// captured. RailSettlementStatus::Released maps to SettlementStatus::Settled.
+// A quote above the grant's per-invocation ceiling must deny before the rail is
+// touched: the pre-execution hold debits that ceiling, so a larger prepayment
+// would move more money than the budget layer ever accounts for.
 #[test]
-fn sim_adapter_zero_cost_releases_cleanly() {
+fn governed_mustprepay_quote_above_per_invocation_ceiling_is_denied() {
+    let mut kernel = make_kernel(make_monetary_config());
+    kernel.set_payment_adapter(Box::new(crate::payment::SimPaymentAdapter::new()));
+    kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
+
+    let agent_kp = Keypair::generate();
+    let grant = make_governed_monetary_grant("cost-srv", "compute", 100, 1000, "USD", 50);
+    let cap = kernel
+        .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
+        .unwrap();
+
+    let intent =
+        make_mustprepay_intent("intent-over-per-call", "cost-srv", "compute", 500, "USD");
+    let request = mustprepay_tool_call("req-over-per-call", &cap, &agent_kp, intent, &kernel);
+
+    let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    let reason = response.reason.as_deref().unwrap_or("");
+    assert!(
+        reason.contains("exceeds the grant per-invocation cost limit"),
+        "denial must name the per-invocation ceiling; got: {reason}"
+    );
+}
+
+// The cumulative ceiling bounds the quote too, even where the per-invocation
+// ceiling admits it.
+#[test]
+fn governed_mustprepay_quote_above_cumulative_ceiling_is_denied() {
+    let mut kernel = make_kernel(make_monetary_config());
+    kernel.set_payment_adapter(Box::new(crate::payment::SimPaymentAdapter::new()));
+    kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
+
+    let agent_kp = Keypair::generate();
+    // The quote matches the per-invocation ceiling exactly, so only the
+    // cumulative ceiling can reject it.
+    let grant = make_governed_monetary_grant("cost-srv", "compute", 500, 100, "USD", 50);
+    let cap = kernel
+        .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
+        .unwrap();
+
+    let intent =
+        make_mustprepay_intent("intent-over-total", "cost-srv", "compute", 500, "USD");
+    let request = mustprepay_tool_call("req-over-total", &cap, &agent_kp, intent, &kernel);
+
+    let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    let reason = response.reason.as_deref().unwrap_or("");
+    assert!(
+        reason.contains("exceeds the grant cumulative cost limit"),
+        "denial must name the cumulative ceiling; got: {reason}"
+    );
+}
+
+// A grant declaring only a cumulative ceiling debits nothing per call, so its
+// stated total authority would never bind across repeated prepayments.
+#[test]
+fn governed_mustprepay_against_cumulative_only_grant_is_denied() {
+    let mut kernel = make_kernel(make_monetary_config());
+    kernel.set_payment_adapter(Box::new(crate::payment::SimPaymentAdapter::new()));
+    kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
+
+    let agent_kp = Keypair::generate();
+    let mut grant = make_no_ceiling_mustprepay_grant();
+    grant.max_total_cost = Some(MonetaryAmount { units: 1000, currency: "USD".to_string() });
+    let cap = kernel
+        .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
+        .unwrap();
+
+    let intent =
+        make_mustprepay_intent("intent-total-only", "cost-srv", "compute", 100, "USD");
+    let request = mustprepay_tool_call("req-total-only", &cap, &agent_kp, intent, &kernel);
+
+    let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    let reason = response.reason.as_deref().unwrap_or("");
+    assert!(
+        reason.contains("cumulative-only grant cannot be accounted"),
+        "denial must name the unaccountable cumulative-only shape; got: {reason}"
+    );
+}
+
+// The server reports zero actual cost after MustPrepay captured the quoted amount.
+// The receipt retains that final prepayment rather than claiming a release after
+// dispatch may already have occurred.
+#[test]
+fn sim_adapter_zero_actual_cost_retains_prepaid_charge() {
     let MustPrepayFixture { mut kernel, cap, agent_kp } = build_mustprepay_fixture(0);
-    kernel.set_payment_adapter(Box::new(crate::payment::SimPaymentAdapter::new())).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(crate::payment::SimPaymentAdapter::new()));
 
     let intent =
         make_mustprepay_intent("intent-sim-zero", "cost-srv", "compute", 100, "USD");
@@ -184,26 +276,24 @@ fn sim_adapter_zero_cost_releases_cleanly() {
     );
     assert_eq!(
         financial["cost_charged"].as_u64().unwrap_or(u64::MAX),
-        0,
-        "zero-cost call must record cost_charged=0"
+        100,
+        "MustPrepay records the quoted amount captured before dispatch"
     );
 }
 
-// Abort after monetary admission unwinds the authorization via release.
-//
-// A MustPrepay request admitted past the payment authorization point is
-// aborted mid-tool-execution. unwind_aborted_monetary_invocation must call
-// adapter.release() (authorization not yet settled) and reverse the budget hold.
+// A cancellation after dispatch retains the payment authorization and budget
+// hold: the tool may have acted, so releasing or reversing would fail open.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn sim_adapter_abort_unwinds_authorization() {
+async fn sim_adapter_abort_after_dispatch_retains_authorization() {
     let started = std::sync::Arc::new(tokio::sync::Notify::new());
     let payment = TrackingPaymentAdapter::new();
 
     let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(payment.clone())).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(payment.clone()));
     kernel.register_tool_server(Box::new(PendingMonetaryServer {
         id: "cost-srv".to_string(),
         started: std::sync::Arc::clone(&started),
+        invocations: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
     }));
 
     let agent_kp = Keypair::generate();
@@ -231,6 +321,9 @@ async fn sim_adapter_abort_unwinds_authorization() {
         execution_nonce: None,
         governed_intent: Some(intent),
         approval_token: Some(approval_token),
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -248,12 +341,13 @@ async fn sim_adapter_abort_unwinds_authorization() {
     let join = eval.await.expect_err("aborted evaluation should not complete");
     assert!(join.is_cancelled());
 
-    // Budget hold reversed after abort.
+    // Dispatch began, so the committed budget remains consumed.
     let usage = kernel.budget_store.get_usage(&cap.id, 0).unwrap().unwrap();
-    assert_eq!(usage.invocation_count, 0);
-    assert_eq!(usage.committed_cost_units().unwrap(), 0);
+    assert_eq!(usage.invocation_count, 1);
+    assert_eq!(usage.committed_cost_units().unwrap(), 100);
 
-    // authorize was called once; the unsettled hold was released, not refunded.
+    // Post-dispatch abort does not settle, release, or refund an outcome that may
+    // have taken effect.
     assert_eq!(
         payment.authorized.load(std::sync::atomic::Ordering::SeqCst),
         1,
@@ -261,13 +355,18 @@ async fn sim_adapter_abort_unwinds_authorization() {
     );
     assert_eq!(
         payment.released.load(std::sync::atomic::Ordering::SeqCst),
-        1,
-        "adapter.release() must have been called to unwind the unsettled authorization"
+        0,
+        "post-dispatch abort must retain the payment authorization"
     );
     assert_eq!(
         payment.refunded.load(std::sync::atomic::Ordering::SeqCst),
         0,
-        "adapter.refund() must not be called for an unsettled authorization"
+        "post-dispatch abort must not refund an ambiguous outcome"
+    );
+    assert_eq!(
+        payment.captured.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "an unfinished tool call has no post-execution capture"
     );
 }
 
@@ -297,7 +396,7 @@ fn make_no_ceiling_mustprepay_grant() -> ToolGrant {
 #[test]
 fn mustprepay_no_budget_charge_authorizes_payment_and_stamps_receipt() {
     let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(crate::payment::SimPaymentAdapter::new())).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(crate::payment::SimPaymentAdapter::new()));
     // Server reports a cost; the grant has no monetary ceiling so charge_result is None.
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
 
@@ -341,7 +440,7 @@ fn mustprepay_no_budget_charge_authorizes_payment_and_stamps_receipt() {
 fn mustprepay_no_budget_charge_captures_unsettled_authorization() {
     let payment = TrackingPaymentAdapter::new();
     let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(payment.clone())).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(payment.clone()));
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
 
     let agent_kp = Keypair::generate();
@@ -392,7 +491,7 @@ fn mustprepay_no_budget_charge_captures_unsettled_authorization() {
 #[test]
 fn mustprepay_no_budget_charge_receipt_financial_deserializes_with_quote() {
     let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(crate::payment::SimPaymentAdapter::new())).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(crate::payment::SimPaymentAdapter::new()));
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
 
     let agent_kp = Keypair::generate();
@@ -434,7 +533,7 @@ fn mustprepay_no_budget_charge_receipt_financial_deserializes_with_quote() {
 fn mustprepay_no_budget_charge_uncapturable_authorization_denies() {
     let payment = UncapturablePaymentAdapter::default();
     let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(payment.clone())).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(payment.clone()));
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
 
     let agent_kp = Keypair::generate();
@@ -464,16 +563,13 @@ fn mustprepay_no_budget_charge_uncapturable_authorization_denies() {
     );
 }
 
-// An aborted dispatch after a no-ceiling MustPrepay authorization must release the
-// unsettled hold. The grant carries no monetary ceiling so charge_result is None;
-// the tool then fails after the hold is authorized, driving the abort cleanup path
-// through unwind_aborted_monetary_invocation with charge_result == None and a live
-// payment_authorization. Fail-closed: the payer's funds must not be left frozen.
+// A dispatch error is ambiguous because the tool may already have applied its
+// side effect. The payment authorization stays retained for operator recovery.
 #[test]
-fn mustprepay_no_budget_charge_releases_hold_on_aborted_dispatch() {
+fn mustprepay_no_budget_charge_retains_hold_after_ambiguous_dispatch() {
     let payment = TrackingPaymentAdapter::new();
     let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(payment.clone())).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(payment.clone()));
     kernel.register_tool_server(Box::new(FailingMonetaryServer {
         id: "cost-srv".to_string(),
     }));
@@ -501,8 +597,8 @@ fn mustprepay_no_budget_charge_releases_hold_on_aborted_dispatch() {
     );
     assert_eq!(
         payment.released.load(std::sync::atomic::Ordering::SeqCst),
-        1,
-        "aborted no-ceiling MustPrepay must release the unsettled prepaid hold"
+        0,
+        "a post-dispatch error must not release a possibly consumed authorization"
     );
     assert_eq!(
         payment.captured.load(std::sync::atomic::Ordering::SeqCst),
@@ -536,7 +632,7 @@ fn make_no_ceiling_mustprepay_intent_over_threshold(
 #[test]
 fn governed_mustprepay_quote_above_threshold_requires_approval() {
     let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(crate::payment::SimPaymentAdapter::new())).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(crate::payment::SimPaymentAdapter::new()));
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
 
     let agent_kp = Keypair::generate();
@@ -563,6 +659,9 @@ fn governed_mustprepay_quote_above_threshold_requires_approval() {
         execution_nonce: None,
         governed_intent: Some(intent.clone()),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -609,30 +708,29 @@ fn mustprepay_request_without_token(
         execution_nonce: None,
         governed_intent: Some(intent),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     }
 }
 
-// The amount actually authorized and prepaid for a MustPrepay intent is the
-// quote, so a small provisional budget charge must not understate the approval
-// gate: a quote above RequireApprovalAbove is denied without an approval token
-// even when a charge is present, and admitted with one.
+// A MustPrepay quote is an actual spend boundary, so it must not exceed the
+// grant's per-invocation ceiling even when an approval token could authorize the
+// governed action.
 #[test]
-fn governed_mustprepay_with_charge_gates_on_quote_not_charge() {
+fn governed_mustprepay_rejects_quote_above_grant_ceiling() {
     let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(crate::payment::SimPaymentAdapter::new())).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(crate::payment::SimPaymentAdapter::new()));
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 5, "USD")));
 
     let agent_kp = Keypair::generate();
-    // Provisional charge = max_cost_per_invocation = 10, below the 50 threshold.
     let grant = make_governed_monetary_grant("cost-srv", "compute", 10, 1000, "USD", 50);
     let cap = kernel
         .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
         .unwrap();
 
-    // Quote 100 > threshold 50, no declared ceiling: only the prepaid quote can
-    // raise the gate above the 10-unit provisional charge.
     let mut intent =
         make_mustprepay_intent("intent-charge-quote-gate", "cost-srv", "compute", 100, "USD");
     intent.max_amount = None;
@@ -643,22 +741,12 @@ fn governed_mustprepay_with_charge_gates_on_quote_not_charge() {
     assert_eq!(
         denied.verdict,
         Verdict::Deny,
-        "a MustPrepay quote above the approval threshold must be denied without an approval token, \
-         even when a smaller provisional charge is present"
+        "a MustPrepay quote above the grant ceiling must be denied"
     );
     let reason = denied.reason.as_deref().unwrap_or("");
     assert!(
-        reason.contains("approval token required"),
-        "denial must cite the missing approval token; got: {reason}"
-    );
-
-    let with_token =
-        mustprepay_tool_call("req-charge-quote-allow", &cap, &agent_kp, intent, &kernel);
-    let allowed = kernel.evaluate_tool_call_blocking(&with_token).unwrap();
-    assert_eq!(
-        allowed.verdict,
-        Verdict::Allow,
-        "a valid approval token must admit the prepaid MustPrepay quote with a charge present"
+        reason.contains("grant per-invocation cost limit"),
+        "denial must cite the grant ceiling; got: {reason}"
     );
 }
 
@@ -667,11 +755,11 @@ fn governed_mustprepay_with_charge_gates_on_quote_not_charge() {
 #[test]
 fn governed_mustprepay_with_charge_below_threshold_passes_without_token() {
     let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(crate::payment::SimPaymentAdapter::new())).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(crate::payment::SimPaymentAdapter::new()));
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 5, "USD")));
 
     let agent_kp = Keypair::generate();
-    let grant = make_governed_monetary_grant("cost-srv", "compute", 10, 1000, "USD", 50);
+    let grant = make_governed_monetary_grant("cost-srv", "compute", 40, 1000, "USD", 50);
     let cap = kernel
         .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
         .unwrap();
@@ -705,7 +793,7 @@ impl PaymentAdapter for UncapturablePaymentAdapter {
     ) -> Result<PaymentAuthorization, PaymentError> {
         Ok(PaymentAuthorization {
             authorization_id: "sim-uncapturable".to_string(),
-            settled: false,
+            state: crate::payment::PaymentAuthorizationState::Held,
             metadata: serde_json::json!({ "adapter": "uncapturable" }),
         })
     }
@@ -768,7 +856,7 @@ impl PaymentAdapter for SettledAtAuthorizeTrackingAdapter {
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(PaymentAuthorization {
             authorization_id: "sim-settled-authorize".to_string(),
-            settled: true,
+            state: crate::payment::PaymentAuthorizationState::PrepaidFinal,
             metadata: serde_json::json!({ "adapter": "settled-at-authorize" }),
         })
     }
@@ -820,15 +908,13 @@ impl PaymentAdapter for SettledAtAuthorizeTrackingAdapter {
     }
 }
 
-// A no-ceiling MustPrepay captured at authorize time (settled == true) whose tool
-// then aborts drives unwind_aborted_monetary_invocation with charge_result == None
-// and a SETTLED authorization. Releasing would leave the payer charged for a tool
-// that never completed, so the prepaid quote must be refunded instead.
+// A final prepayment is also retained after an ambiguous dispatch error because
+// refunding could pay back a tool action that actually completed.
 #[test]
-fn settled_no_charge_mustprepay_abort_refunds_prepaid_quote() {
+fn settled_no_charge_mustprepay_ambiguous_dispatch_retains_payment() {
     let payment = SettledAtAuthorizeTrackingAdapter::default();
     let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(payment.clone())).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(payment.clone()));
     kernel.register_tool_server(Box::new(FailingMonetaryServer {
         id: "cost-srv".to_string(),
     }));
@@ -856,8 +942,8 @@ fn settled_no_charge_mustprepay_abort_refunds_prepaid_quote() {
     );
     assert_eq!(
         payment.refunded.load(std::sync::atomic::Ordering::SeqCst),
-        1,
-        "a settled no-charge authorization aborted mid-tool must be refunded"
+        0,
+        "a post-dispatch error must not refund a possibly completed prepayment"
     );
     assert_eq!(
         payment.released.load(std::sync::atomic::Ordering::SeqCst),
@@ -882,7 +968,7 @@ fn settled_no_charge_mustprepay_abort_refunds_prepaid_quote() {
 fn reserving_authorization_denies_governed_mustprepay_without_settled_prepayment() {
     let MustPrepayFixture { mut kernel, cap, agent_kp } = build_mustprepay_fixture(75);
     let payment = UncapturablePaymentAdapter::default();
-    kernel.set_payment_adapter(Box::new(payment.clone())).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(payment.clone()));
     install_strict_nonce_store(&mut kernel);
 
     let intent = make_mustprepay_intent("intent-reserve-deny", "cost-srv", "compute", 100, "USD");
@@ -926,7 +1012,7 @@ fn reserving_authorization_denies_governed_mustprepay_without_settled_prepayment
 fn reserving_authorization_admits_governed_mustprepay_with_settled_prepayment() {
     let MustPrepayFixture { mut kernel, cap, agent_kp } = build_mustprepay_fixture(75);
     let payment = TrackingPaymentAdapter::new();
-    kernel.set_payment_adapter(Box::new(payment.clone())).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(payment.clone()));
     install_strict_nonce_store(&mut kernel);
 
     let intent = make_mustprepay_intent("intent-reserve-allow", "cost-srv", "compute", 100, "USD");
@@ -980,7 +1066,7 @@ fn reserving_mustprepay_stamp_failure_refunds_captured_prepayment() {
     let mut kernel = make_kernel(make_monetary_config());
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
     let payment = TrackingPaymentAdapter::new();
-    kernel.set_payment_adapter(Box::new(payment.clone())).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(payment.clone()));
     let fail_mark = std::sync::Arc::new(AtomicBool::new(true));
     kernel.set_budget_store(Box::new(StampFailingBudgetStore {
         inner: InMemoryBudgetStore::new(),
@@ -1090,7 +1176,7 @@ fn reserving_authorization_leaves_non_mustprepay_path_unchanged() {
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
     let payment = TrackingPaymentAdapter::new();
-    kernel.set_payment_adapter(Box::new(payment.clone())).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(payment.clone()));
     install_strict_nonce_store(&mut kernel);
 
     let grant = make_monetary_grant("cost-srv", "compute", 100, 100, "USD");
@@ -1146,7 +1232,7 @@ impl PaymentAdapter for DistinctCapturePaymentAdapter {
     ) -> Result<PaymentAuthorization, PaymentError> {
         Ok(PaymentAuthorization {
             authorization_id: "auth_hold_ref".to_string(),
-            settled: false,
+            state: crate::payment::PaymentAuthorizationState::Held,
             metadata: serde_json::json!({ "adapter": "distinct" }),
         })
     }
@@ -1199,7 +1285,7 @@ impl PaymentAdapter for DistinctCapturePaymentAdapter {
 #[test]
 fn reconcile_stamps_mustprepay_prepayment_rail_reference() {
     let MustPrepayFixture { mut kernel, cap, agent_kp } = build_mustprepay_fixture(75);
-    kernel.set_payment_adapter(Box::new(DistinctCapturePaymentAdapter)).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(DistinctCapturePaymentAdapter));
     install_strict_nonce_store(&mut kernel);
 
     let intent = make_mustprepay_intent("intent-reserve-recon", "cost-srv", "compute", 100, "USD");
@@ -1262,7 +1348,7 @@ impl PaymentAdapter for AmountRecordingPaymentAdapter {
         *self.authorized_currency.lock().unwrap() = request.currency.clone();
         Ok(PaymentAuthorization {
             authorization_id: "sim-amount-recording".to_string(),
-            settled: false,
+            state: crate::payment::PaymentAuthorizationState::Held,
             metadata: serde_json::json!({ "adapter": "amount-recording" }),
         })
     }
@@ -1336,7 +1422,9 @@ fn authorize_provisional_hold(
                     hold_id: Some("hold-provisional".to_string()),
                     event_id: Some("hold-provisional:authorize".to_string()),
                     authority: None,
-                    payment_journal: None,
+                    invocation_quotas: Vec::new(),
+                    cumulative_approval: None,
+                    admission_binding: None,
                 })?;
             assert!(
                 matches!(
@@ -1367,7 +1455,7 @@ fn aborted_settled_mustprepay_charge_refunds_the_quoted_amount(
     let refunded_amount = adapter.refunded_amount.clone();
     let refunded_currency = adapter.refunded_currency.clone();
     let refund_calls = adapter.refund_calls.clone();
-    kernel.set_payment_adapter(Box::new(adapter)).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(adapter));
 
     let agent_kp = Keypair::generate();
     let grant = make_governed_monetary_grant("cost-srv", "compute", 10, 1000, "USD", 50);
@@ -1384,11 +1472,11 @@ fn aborted_settled_mustprepay_charge_refunds_the_quoted_amount(
     let charge = make_provisional_charge(10, "EUR");
     let authorization = PaymentAuthorization {
         authorization_id: "auth-settled-abort".to_string(),
-        settled: true,
+        state: crate::payment::PaymentAuthorizationState::PrepaidFinal,
         metadata: serde_json::json!({ "adapter": "amount-recording" }),
     };
 
-    kernel.unwind_aborted_monetary_invocation(
+    kernel.unwind_pre_dispatch_monetary_invocation(
         &request,
         &cap,
         Some(&charge),
@@ -1424,7 +1512,7 @@ fn aborted_settled_non_mustprepay_charge_refunds_the_charged_amount(
     let refunded_amount = adapter.refunded_amount.clone();
     let refunded_currency = adapter.refunded_currency.clone();
     let refund_calls = adapter.refund_calls.clone();
-    kernel.set_payment_adapter(Box::new(adapter)).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(adapter));
 
     let agent_kp = Keypair::generate();
     let grant = make_governed_monetary_grant("cost-srv", "compute", 10, 1000, "USD", 50);
@@ -1445,17 +1533,20 @@ fn aborted_settled_non_mustprepay_charge_refunds_the_charged_amount(
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
     let charge = make_provisional_charge(10, "USD");
     let authorization = PaymentAuthorization {
         authorization_id: "auth-settled-metered".to_string(),
-        settled: true,
+        state: crate::payment::PaymentAuthorizationState::PrepaidFinal,
         metadata: serde_json::json!({ "adapter": "amount-recording" }),
     };
 
-    kernel.unwind_aborted_monetary_invocation(
+    kernel.unwind_pre_dispatch_monetary_invocation(
         &request,
         &cap,
         Some(&charge),
@@ -1489,7 +1580,7 @@ fn aborted_unsettled_mustprepay_charge_releases_not_refunds(
     let adapter = AmountRecordingPaymentAdapter::default();
     let refund_calls = adapter.refund_calls.clone();
     let release_calls = adapter.release_calls.clone();
-    kernel.set_payment_adapter(Box::new(adapter)).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(adapter));
 
     let agent_kp = Keypair::generate();
     let grant = make_governed_monetary_grant("cost-srv", "compute", 10, 1000, "USD", 50);
@@ -1504,11 +1595,11 @@ fn aborted_unsettled_mustprepay_charge_releases_not_refunds(
     let charge = make_provisional_charge(10, "USD");
     let authorization = PaymentAuthorization {
         authorization_id: "auth-unsettled-abort".to_string(),
-        settled: false,
+        state: crate::payment::PaymentAuthorizationState::Held,
         metadata: serde_json::json!({ "adapter": "amount-recording" }),
     };
 
-    kernel.unwind_aborted_monetary_invocation(
+    kernel.unwind_pre_dispatch_monetary_invocation(
         &request,
         &cap,
         Some(&charge),
@@ -1547,7 +1638,9 @@ fn make_provisional_charge(cost_charged: u64, currency: &str) -> BudgetChargeRes
                 crate::budget_store::BudgetMeteringProfile::MaxCostPreauthorizeThenReconcileActual,
             budget_commit_index: None,
             event_id: None,
+            recorded_at_unix_seconds: None,
         },
+        invocation_capture: None,
     }
 }
 
@@ -1563,7 +1656,7 @@ fn governed_mustprepay_with_charge_funds_the_quoted_cost_not_the_hold() {
     let adapter = AmountRecordingPaymentAdapter::default();
     let authorized_amount = adapter.authorized_amount.clone();
     let authorized_currency = adapter.authorized_currency.clone();
-    kernel.set_payment_adapter(Box::new(adapter)).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(adapter));
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 5, "USD")));
 
     let agent_kp = Keypair::generate();
@@ -1579,11 +1672,11 @@ fn governed_mustprepay_with_charge_funds_the_quoted_cost_not_the_hold() {
     let charge = make_provisional_charge(10, "EUR");
 
     let authorization = kernel
-        .authorize_payment_if_needed(&request, Some(&charge))
+        .authorize_payment_if_needed(&request, Some(&charge), None, 0, None)
         .expect("MustPrepay-with-charge authorization must succeed")
         .expect("MustPrepay-with-charge must authorize a prepayment");
     assert!(
-        !authorization.settled,
+        !authorization.state.is_final(),
         "the recording adapter holds the authorization unsettled"
     );
     assert_eq!(
@@ -1607,12 +1700,9 @@ fn governed_mustprepay_with_charge_funds_the_quoted_cost_not_the_hold() {
 // money loss. The authorization must succeed journal-free.
 #[test]
 fn no_ceiling_mustprepay_authorizes_with_the_payment_journal_active() {
-    let mut config = make_monetary_config();
-    config.dispatch_intent_journal = crate::DispatchIntentJournalMode::SideEffecting;
-    let mut kernel = make_kernel(config);
+    let mut kernel = make_kernel(make_monetary_config());
     kernel
-        .set_payment_adapter(Box::new(crate::payment::SimPaymentAdapter::new()))
-        .expect("install payment adapter");
+        .set_payment_adapter(Box::new(crate::payment::SimPaymentAdapter::new()));
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 5, "USD")));
 
     let agent_kp = Keypair::generate();
@@ -1626,12 +1716,12 @@ fn no_ceiling_mustprepay_authorizes_with_the_payment_journal_active() {
     // `None` models the no-ceiling admission outcome: no monetary charge, hence no
     // HoldPlaced row. This must not deny; the prepayment is journal-free by design.
     let authorization = kernel
-        .authorize_payment_if_needed(&request, None)
+        .authorize_payment_if_needed(&request, None, None, 0, None)
         .expect("a no-ceiling MustPrepay must authorize with the journal active, not deny")
         .expect("a no-ceiling MustPrepay must authorize a prepayment");
     assert!(
-        !authorization.settled,
-        "the sim adapter holds the prepayment unsettled (prepaid, no broadcast)"
+        authorization.state.is_final(),
+        "the sim adapter completes a prepaid no-broadcast authorization"
     );
 }
 
@@ -1644,7 +1734,7 @@ fn non_mustprepay_charge_authorizes_the_charged_amount() {
     let adapter = AmountRecordingPaymentAdapter::default();
     let authorized_amount = adapter.authorized_amount.clone();
     let authorized_currency = adapter.authorized_currency.clone();
-    kernel.set_payment_adapter(Box::new(adapter)).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(adapter));
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 5, "USD")));
 
     let agent_kp = Keypair::generate();
@@ -1665,13 +1755,16 @@ fn non_mustprepay_charge_authorizes_the_charged_amount() {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
     let charge = make_provisional_charge(10, "USD");
 
     kernel
-        .authorize_payment_if_needed(&request, Some(&charge))
+        .authorize_payment_if_needed(&request, Some(&charge), None, 0, None)
         .expect("metered charge authorization must succeed")
         .expect("a metered charge must authorize a payment");
     assert_eq!(

@@ -53,7 +53,6 @@ fn make_kernel() -> ChioKernel {
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     };
     ChioKernel::new(config)
 }
@@ -90,6 +89,7 @@ fn make_execution() -> Option<AcpKernelExecutionContext> {
         issued_at,
         expires_at,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let capability: CapabilityToken = CapabilityToken::sign(body, &issuer).ok()?;
     Some(AcpKernelExecutionContext {
@@ -99,6 +99,9 @@ fn make_execution() -> Option<AcpKernelExecutionContext> {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
     })
 }

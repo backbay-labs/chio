@@ -152,6 +152,25 @@ pub(super) fn ensure_budget_hold_reserved_envelope_columns(
     Ok(())
 }
 
+pub(super) fn ensure_budget_hold_invocation_captured_column(
+    connection: &Connection,
+) -> Result<bool, BudgetStoreError> {
+    let mut statement = connection.prepare("PRAGMA table_info(budget_authorization_holds)")?;
+    let columns = statement.query_map([], |row| row.get::<_, String>(1))?;
+    if !columns
+        .collect::<Result<Vec<_>, _>>()?
+        .iter()
+        .any(|column| column == "invocation_captured")
+    {
+        connection.execute(
+            "ALTER TABLE budget_authorization_holds ADD COLUMN invocation_captured INTEGER NOT NULL DEFAULT 0",
+            [],
+        )?;
+        return Ok(true);
+    }
+    Ok(false)
+}
+
 pub(super) fn ensure_budget_mutation_event_authority_columns(
     connection: &Connection,
 ) -> Result<(), BudgetStoreError> {

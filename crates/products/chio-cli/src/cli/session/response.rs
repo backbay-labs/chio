@@ -4,6 +4,7 @@ pub(crate) fn tool_response_messages(
     request_id: String,
     response: chio_kernel::ToolCallResponse,
 ) -> Vec<KernelMessage> {
+    let execution_nonce = response.execution_nonce.clone();
     let mut messages = match response.output.as_ref() {
         Some(ToolCallOutput::Stream(ToolCallStream { chunks })) => chunks
             .iter()
@@ -75,6 +76,7 @@ pub(crate) fn tool_response_messages(
         id: request_id,
         result,
         receipt: Box::new(response.receipt),
+        execution_nonce,
     });
     messages
 }

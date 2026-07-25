@@ -58,6 +58,7 @@ impl SettlementHook for RecordingHook {
     fn observe(
         &self,
         observation: &SettlementObservation,
+        _idempotency_key: &chio_settle::SettlementIdempotencyKey,
     ) -> Result<SettlementOutcome, SettlementHookError> {
         self.observations
             .lock()
@@ -141,6 +142,10 @@ fn ten_receipts_produce_ten_settlements_with_byte_identical_receipts() {
             Some(&hook_handle),
             receipt,
             std::slice::from_ref(&receipt.kernel_key),
+            &chio_settle::SettlementIdempotencyKey {
+                receipt_id: receipt.id.clone(),
+                row_version: 1,
+            },
         ));
     }
 
@@ -212,6 +217,10 @@ fn no_settlement_baseline_matches_with_settlement_canonical_bytes() {
             Some(&hook),
             receipt,
             std::slice::from_ref(&receipt.kernel_key),
+            &chio_settle::SettlementIdempotencyKey {
+                receipt_id: receipt.id.clone(),
+                row_version: 1,
+            },
         );
     }
 

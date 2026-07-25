@@ -54,6 +54,7 @@ fn capability(capability_id: &str) -> Result<CapabilityToken, Box<dyn std::error
             issued_at: 1_800_000_000,
             expires_at: 1_800_003_600,
             delegation_chain: Vec::new(),
+            aggregate_invocation_budget: None,
         },
         &issuer,
     )?)
@@ -254,6 +255,9 @@ fn kernel_hook_accepts_governed_context_reference_and_returns_receipt_metadata(
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -274,6 +278,7 @@ fn kernel_hook_accepts_governed_context_reference_and_returns_receipt_metadata(
                 "bundleSha256": bundle_hash
             }
         })),
+        body: Default::default(),
     });
 
     let hook = allowing_policy_hook(store)?;
@@ -317,6 +322,9 @@ fn kernel_hook_preserves_millisecond_admission_time() -> Result<(), Box<dyn std:
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -337,6 +345,7 @@ fn kernel_hook_preserves_millisecond_admission_time() -> Result<(), Box<dyn std:
                 "bundleSha256": bundle_hash
             }
         })),
+        body: Default::default(),
     });
 
     let (signed_trust, trusted, advisory, signed_policy, signed_weights) =
@@ -389,8 +398,12 @@ fn kernel_hook_bypasses_non_chio_request() -> Result<(), Box<dyn std::error::Err
             call_chain: None,
             autonomy: None,
             context: Some(serde_json::json!({"legacyTraceId": "trace-1"})),
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -426,6 +439,9 @@ fn kernel_hook_denies_federated_origin_without_any_runtime_context(
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: Some("kernel.buyer".to_string()),
     };
@@ -474,6 +490,9 @@ fn kernel_hook_denies_federated_runtime_request_without_treaty_context(
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: Some("kernel.buyer".to_string()),
     };
@@ -494,6 +513,7 @@ fn kernel_hook_denies_federated_runtime_request_without_treaty_context(
                 "bundleSha256": bundle_hash
             }
         })),
+        body: Default::default(),
     });
 
     let hook = allowing_policy_hook(store)?;
@@ -542,6 +562,9 @@ fn kernel_hook_denies_cross_boundary_request_when_treaty_store_evidence_missing(
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: Some("kernel.buyer".to_string()),
     };
@@ -569,6 +592,7 @@ fn kernel_hook_denies_cross_boundary_request_when_treaty_store_evidence_missing(
                 "actionClassId": "workflow.destructive.vendor_call"
             }
         })),
+        body: Default::default(),
     });
 
     let hook = allowing_policy_hook(store)?;

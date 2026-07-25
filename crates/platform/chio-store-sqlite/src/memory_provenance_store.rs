@@ -209,6 +209,35 @@ impl MemoryProvenanceStore for SqliteMemoryProvenanceStore {
             .transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)
             .map_err(|error| MemoryProvenanceError::Backend(error.to_string()))?;
 
+        let existing = tx
+            .query_row(
+                r#"
+                SELECT entry_id, store, entry_key, capability_id, receipt_id,
+                       written_at, prev_hash, hash
+                FROM chio_memory_provenance
+                WHERE receipt_id = ?1
+                LIMIT 1
+                "#,
+                params![input.receipt_id.as_str()],
+                map_row,
+            )
+            .optional()
+            .map_err(|error| MemoryProvenanceError::Backend(error.to_string()))?;
+        if let Some(existing) = existing {
+            if existing.store != input.store
+                || existing.key != input.key
+                || existing.capability_id != input.capability_id
+                || existing.written_at != input.written_at
+            {
+                return Err(MemoryProvenanceError::Backend(
+                    "memory provenance receipt id was reused with different fields".to_string(),
+                ));
+            }
+            tx.commit()
+                .map_err(|error| MemoryProvenanceError::Backend(error.to_string()))?;
+            return Ok(existing);
+        }
+
         let prev_hash: String = tx
             .query_row(
                 "SELECT hash FROM chio_memory_provenance ORDER BY seq DESC LIMIT 1",

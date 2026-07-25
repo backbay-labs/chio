@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-outcome/delivery-acknowledgement/v1",
+  "title": "Chio Outcome Delivery Acknowledgement V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signerKey", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "acknowledgementId",
+        "requestId",
+        "eligibilityDigest",
+        "providerAcceptanceDigest",
+        "finalOutputDigest",
+        "receiverBindingDigest",
+        "deliveryId",
+        "idempotencyKey",
+        "receiverQueueId",
+        "deliveryAcceptedAtUnixMs",
+        "receiverKeyId",
+        "receiverKeyEpoch",
+        "deliveryCheckpointSequence",
+        "deliveryCheckpointDigest",
+        "durableBlobReference",
+        "durableBlobDigest"
+      ],
+      "properties": {
+        "schema": { "const": "chio.outcome.delivery-acknowledgement.v1" },
+        "acknowledgementId": { "$ref": "#/$defs/digest" },
+        "requestId": { "$ref": "#/$defs/text" },
+        "eligibilityDigest": { "$ref": "#/$defs/digest" },
+        "providerAcceptanceDigest": { "$ref": "#/$defs/digest" },
+        "finalOutputDigest": { "$ref": "#/$defs/digest" },
+        "receiverBindingDigest": { "$ref": "#/$defs/digest" },
+        "deliveryId": { "$ref": "#/$defs/text" },
+        "idempotencyKey": { "$ref": "#/$defs/text" },
+        "receiverQueueId": { "$ref": "#/$defs/text" },
+        "deliveryAcceptedAtUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "receiverKeyId": { "$ref": "#/$defs/text" },
+        "receiverKeyEpoch": { "$ref": "#/$defs/positiveInteger" },
+        "deliveryCheckpointSequence": { "$ref": "#/$defs/positiveInteger" },
+        "deliveryCheckpointDigest": { "$ref": "#/$defs/digest" },
+        "durableBlobReference": { "$ref": "#/$defs/text" },
+        "durableBlobDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "signerKey": { "$ref": "#/$defs/cryptoMaterial" },
+    "signature": { "$ref": "#/$defs/cryptoMaterial" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "^[^\\s\\u0000-\\u001F\\u007F-\\u009F](?:[^\\u0000-\\u001F\\u007F-\\u009F]*[^\\s\\u0000-\\u001F\\u007F-\\u009F])?$"
+    },
+    "positiveInteger": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "cryptoMaterial": { "type": "string", "minLength": 1, "maxLength": 16384 }
+  }
+}

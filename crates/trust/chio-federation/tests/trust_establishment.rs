@@ -2,7 +2,9 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use chio_core_types::capability::features::CapabilityNegotiation;
+use chio_core_types::capability::features::{
+    CapabilityNegotiation, AGGREGATE_INVOCATION_BUDGET, CUMULATIVE_APPROVAL_BUDGET,
+};
 use chio_core_types::crypto::Keypair;
 use chio_federation::{
     trust_establishment::ConformanceEvidence, trust_establishment::ConformanceTier,
@@ -116,6 +118,66 @@ fn explicit_t1_capabilities_are_signed_when_requested() {
 
     assert!(challenge.get("capabilities").is_some());
     envelope.verify_signature().unwrap();
+}
+
+fn assert_feature_negotiation(
+    feature: &str,
+    nonce: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let kp_a = Keypair::generate();
+    let kp_b = Keypair::generate();
+    let now: u64 = 1_800_000_000;
+    let mut enabled = CapabilityNegotiation::v1_default();
+    enabled.features.insert(feature.to_string(), true);
+    let exchange = KernelTrustExchange::new("kernel.org-a", kp_a)
+        .with_trusted_peer("kernel.org-b", kp_b.public_key())
+        .with_capabilities(enabled.clone());
+
+    let enabled_envelope = PeerHandshakeEnvelope::sign_with_capabilities(
+        "kernel.org-b",
+        "kernel.org-a",
+        &format!("nonce-{nonce}-enabled"),
+        now,
+        &kp_b,
+        enabled,
+    )?;
+    let enabled_peer = exchange.accept_envelope(&enabled_envelope, "kernel.org-b", now)?;
+    assert!(enabled_peer.capabilities.supports(feature));
+
+    let missing_envelope = PeerHandshakeEnvelope::sign_with_capabilities(
+        "kernel.org-b",
+        "kernel.org-a",
+        &format!("nonce-{nonce}-missing"),
+        now,
+        &kp_b,
+        CapabilityNegotiation::v1_default(),
+    )?;
+    let missing_peer = exchange.accept_envelope(&missing_envelope, "kernel.org-b", now)?;
+    assert!(!missing_peer.capabilities.supports(feature));
+
+    let mut disabled = CapabilityNegotiation::v1_default();
+    disabled.features.insert(feature.to_string(), false);
+    let disabled_envelope = PeerHandshakeEnvelope::sign_with_capabilities(
+        "kernel.org-b",
+        "kernel.org-a",
+        &format!("nonce-{nonce}-disabled"),
+        now,
+        &kp_b,
+        disabled,
+    )?;
+    let disabled_peer = exchange.accept_envelope(&disabled_envelope, "kernel.org-b", now)?;
+    assert!(!disabled_peer.capabilities.supports(feature));
+    Ok(())
+}
+
+#[test]
+fn aggregate_budget_negotiation_requires_both_peers() -> Result<(), Box<dyn std::error::Error>> {
+    assert_feature_negotiation(AGGREGATE_INVOCATION_BUDGET, "aggregate")
+}
+
+#[test]
+fn cumulative_approval_negotiation_requires_both_peers() -> Result<(), Box<dyn std::error::Error>> {
+    assert_feature_negotiation(CUMULATIVE_APPROVAL_BUDGET, "cumulative")
 }
 
 #[test]

@@ -135,6 +135,10 @@ fn parse_example_policy() {
     assert!(!policy.kernel.allow_elicitation);
     assert!(!policy.kernel.require_web3_evidence);
     assert_eq!(
+        policy.kernel.durable_admission_mode,
+        chio_kernel::admission_operation::DurableAdmissionMode::SideEffecting
+    );
+    assert_eq!(
         policy.kernel.checkpoint_batch_size,
         chio_kernel::DEFAULT_CHECKPOINT_BATCH_SIZE
     );
@@ -159,45 +163,50 @@ kernel:
 }
 
 #[test]
-fn parse_policy_dispatch_intent_journal_defaults_to_off() {
-    // No `kernel.dispatch_intent_journal` key at all: the pre-journal write
-    // path must be preserved, not the enum's own compiled default
-    // (`SideEffecting`), so loading an existing policy file on a binary that
-    // understands this key never silently starts journaling.
-    let policy = parse_policy(EXAMPLE_POLICY).test_unwrap();
+fn durable_admission_policy_supports_qualification_modes_and_rejects_unsafe_off() {
+    use chio_kernel::admission_operation::DurableAdmissionMode;
+
+    let monetary = parse_policy(
+        r#"
+kernel:
+  durable_admission_mode: monetary
+"#,
+    )
+    .test_unwrap();
     assert_eq!(
-        policy.kernel.dispatch_intent_journal,
-        chio_kernel::DispatchIntentJournalMode::Off
+        monetary.kernel.durable_admission_mode,
+        DurableAdmissionMode::Monetary
     );
-}
 
-#[test]
-fn parse_policy_dispatch_intent_journal_accepts_side_effecting_and_all() {
-    for (value, expected) in [
-        ("off", chio_kernel::DispatchIntentJournalMode::Off),
-        (
-            "side_effecting",
-            chio_kernel::DispatchIntentJournalMode::SideEffecting,
-        ),
-        ("all", chio_kernel::DispatchIntentJournalMode::All),
+    for yaml in [
+        r#"
+kernel:
+  durable_admission_mode: off
+"#,
+        r#"
+kernel:
+  durable_admission_mode: off
+  allow_unsafe_durable_admission_off: true
+"#,
+        r#"
+kernel:
+  allow_ephemeral_receipt_log: true
+  allow_unsafe_durable_admission_off: true
+"#,
     ] {
-        let yaml = format!("kernel:\n  dispatch_intent_journal: \"{value}\"\n");
-        let policy = parse_policy(&yaml)
-            .unwrap_or_else(|e| panic!("policy should parse for {value:?}: {e}"));
-        assert_eq!(policy.kernel.dispatch_intent_journal, expected);
+        assert!(parse_policy(yaml).is_err());
     }
-}
 
-#[test]
-fn parse_policy_rejects_unrecognized_dispatch_intent_journal_value() {
-    // Fail-closed: an unrecognized value must reject the policy at parse
-    // time, not silently fall back to a default the operator did not ask for.
-    let yaml = "kernel:\n  dispatch_intent_journal: \"sometimes\"\n";
-    let result = parse_policy(yaml);
-    assert!(
-        result.is_err(),
-        "an unrecognized dispatch_intent_journal value must reject at parse, got {result:?}"
-    );
+    let off = parse_policy(
+        r#"
+kernel:
+  durable_admission_mode: off
+  allow_ephemeral_receipt_log: true
+  allow_unsafe_durable_admission_off: true
+"#,
+    )
+    .test_unwrap();
+    assert_eq!(off.kernel.durable_admission_mode, DurableAdmissionMode::Off);
 }
 
 #[test]
@@ -1095,6 +1104,7 @@ guards:
         issued_at: 0,
         expires_at: u64::MAX,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let cap = chio_core::capability::token::CapabilityToken::sign(cap_body, &kp).test_unwrap();
     let request = chio_kernel::ToolCallRequest {
@@ -1108,6 +1118,9 @@ guards:
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -1276,6 +1289,59 @@ fn load_hushspec_policy_materializes_runtime_state() {
         "read_file"
     );
     assert_ne!(loaded.identity.source_hash, loaded.identity.runtime_hash);
+}
+
+#[test]
+fn load_hushspec_materializes_threshold_approval_against_runtime_policy_hash() {
+    let approver_a = chio_core::Keypair::generate().public_key().to_hex();
+    let approver_b = chio_core::Keypair::generate().public_key().to_hex();
+    let policy_dir = std::env::temp_dir().join(format!(
+        "chio-threshold-policy-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .test_unwrap()
+            .as_nanos()
+    ));
+    std::fs::create_dir_all(&policy_dir).test_unwrap();
+    let policy_path = policy_dir.join("policy.yaml");
+    std::fs::write(
+        &policy_path,
+        format!(
+            r#"
+hushspec: "0.1.0"
+name: threshold-runtime
+rules:
+  tool_access:
+    enabled: true
+    allow: ["payments.charge"]
+extensions:
+  chio:
+    human_in_loop:
+      approvers:
+        n: 2
+        of: ["{approver_a}", "{approver_b}"]
+        timeout_seconds: 600
+"#
+        ),
+    )
+    .test_unwrap();
+
+    let loaded = load_policy(&policy_path).test_unwrap();
+    let requirement = loaded
+        .threshold_approval
+        .as_ref()
+        .test_expect("threshold requirement");
+    assert_eq!(requirement.policy_hash, loaded.identity.runtime_hash);
+    assert_eq!(requirement.threshold, 2);
+    assert_eq!(requirement.timeout_seconds, 600);
+    assert_eq!(
+        requirement.directory_version,
+        "self-authenticating-public-key-v1"
+    );
+    requirement.validate().test_unwrap();
+
+    std::fs::remove_dir_all(policy_dir).test_unwrap();
 }
 
 #[test]

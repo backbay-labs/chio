@@ -1,6 +1,9 @@
 use super::*;
 use chio_core::capability::{
-    governance::GovernedTransactionIntent,
+    governance::{
+        GovernedApprovalDecision, GovernedApprovalToken, GovernedApprovalTokenBody,
+        GovernedTransactionIntent,
+    },
     scope::{ChioScope, Constraint, ModelSafetyTier, MonetaryAmount, Operation, ToolGrant},
 };
 use chio_core::crypto::Keypair;
@@ -214,7 +217,6 @@ fn test_kernel_config() -> KernelConfig {
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     }
 }
 
@@ -251,6 +253,9 @@ fn test_execution_context(
         execution_nonces: BTreeMap::new(),
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
     }
 }
@@ -428,6 +433,9 @@ fn execute_tool_call_preserves_model_metadata_for_model_constrained_grant() {
         execution_nonces: BTreeMap::new(),
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: Some(ModelMetadata {
             model_id: "gpt-5".to_string(),
             safety_tier: Some(ModelSafetyTier::High),
@@ -489,8 +497,12 @@ fn execute_tool_call_treats_pending_approval_as_denied() {
             call_chain: None,
             autonomy: None,
             context: None,
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
     };
 
@@ -652,6 +664,128 @@ fn execute_tool_calls_batch() {
 }
 
 #[test]
+fn execute_tool_calls_rejects_shared_threshold_approvals() {
+    let adapter = ChioOpenAiAdapter::new(test_config(), vec![test_manifest()]).unwrap();
+    let kernel = ChioKernel::new(test_kernel_config());
+    let agent = Keypair::generate();
+    let approver = Keypair::generate();
+    let mut execution = test_execution_context(&kernel, &agent, "test-srv", "*");
+    execution.approval_tokens.push(
+        GovernedApprovalToken::sign(
+            GovernedApprovalTokenBody {
+                id: "approval-openai-batch".to_string(),
+                approver: approver.public_key(),
+                subject: agent.public_key(),
+                governed_intent_hash: "a".repeat(64),
+                request_id: "openai-call-weather".to_string(),
+                threshold_proposal_hash: Some("b".repeat(64)),
+                issued_at: 1,
+                expires_at: 2,
+                decision: GovernedApprovalDecision::Approved,
+            },
+            &approver,
+        )
+        .unwrap(),
+    );
+    let calls = vec![
+        weather_tool_call(),
+        OpenAiToolCall {
+            id: "call_search".to_string(),
+            call_type: "function".to_string(),
+            function: OpenAiFunctionCall {
+                name: "search".to_string(),
+                arguments: r#"{"query": "test"}"#.to_string(),
+            },
+        },
+    ];
+
+    let results = adapter.execute_tool_calls(&calls, &kernel, &execution);
+
+    assert!(results.iter().all(|result| result.denied));
+    assert!(results
+        .iter()
+        .all(|result| result.content.contains("single OpenAI tool call")));
+}
+
+#[test]
+fn execute_tool_calls_rejects_shared_supplemental_authorization() {
+    let adapter = ChioOpenAiAdapter::new(test_config(), vec![test_manifest()]).unwrap();
+    let kernel = ChioKernel::new(test_kernel_config());
+    let agent = Keypair::generate();
+    let mut execution = test_execution_context(&kernel, &agent, "test-srv", "*");
+    execution.supplemental_authorization = Some(
+        chio_core::capability::supplemental_authorization::OpaqueSupplementalAuthorization {
+            signed_extension: "opaque-batch-extension".to_string(),
+        },
+    );
+    let calls = vec![
+        weather_tool_call(),
+        OpenAiToolCall {
+            id: "call_search".to_string(),
+            call_type: "function".to_string(),
+            function: OpenAiFunctionCall {
+                name: "search".to_string(),
+                arguments: r#"{"query": "test"}"#.to_string(),
+            },
+        },
+    ];
+
+    let results = adapter.execute_tool_calls(&calls, &kernel, &execution);
+
+    assert!(results.iter().all(|result| result.denied));
+    assert!(results
+        .iter()
+        .all(|result| result.content.contains("single OpenAI tool call")));
+}
+
+#[test]
+fn execute_tool_calls_rejects_shared_legacy_approval_token() {
+    let adapter = ChioOpenAiAdapter::new(test_config(), vec![test_manifest()]).unwrap();
+    let kernel = ChioKernel::new(test_kernel_config());
+    let agent = Keypair::generate();
+    let approver = Keypair::generate();
+    let mut execution = test_execution_context(&kernel, &agent, "test-srv", "*");
+    // The legacy single approval token is request-bound: `execute_tool_call`
+    // clones it into every call while stamping each a distinct per-call
+    // request_id, so a shared token cannot satisfy more than one call.
+    execution.approval_token = Some(
+        GovernedApprovalToken::sign(
+            GovernedApprovalTokenBody {
+                id: "approval-openai-legacy-batch".to_string(),
+                approver: approver.public_key(),
+                subject: agent.public_key(),
+                governed_intent_hash: "a".repeat(64),
+                request_id: "openai-call-weather".to_string(),
+                threshold_proposal_hash: None,
+                issued_at: 1,
+                expires_at: 2,
+                decision: GovernedApprovalDecision::Approved,
+            },
+            &approver,
+        )
+        .unwrap(),
+    );
+    let calls = vec![
+        weather_tool_call(),
+        OpenAiToolCall {
+            id: "call_search".to_string(),
+            call_type: "function".to_string(),
+            function: OpenAiFunctionCall {
+                name: "search".to_string(),
+                arguments: r#"{"query": "test"}"#.to_string(),
+            },
+        },
+    ];
+
+    let results = adapter.execute_tool_calls(&calls, &kernel, &execution);
+
+    assert!(results.iter().all(|result| result.denied));
+    assert!(results
+        .iter()
+        .all(|result| result.content.contains("single OpenAI tool call")));
+}
+
+#[test]
 fn execute_tool_calls_uses_per_call_execution_nonces() {
     let adapter = ChioOpenAiAdapter::new(test_config(), vec![test_manifest()]).unwrap();
     let mut kernel = ChioKernel::new(test_kernel_config());
@@ -695,6 +829,9 @@ fn execute_tool_calls_uses_per_call_execution_nonces() {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         };

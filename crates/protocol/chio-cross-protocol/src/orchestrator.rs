@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::{canonical_json_bytes, sha256_hex};
-use chio_kernel::{ChioKernel, ToolCallRequest, ToolCallResponse, Verdict as KernelVerdict};
+use chio_kernel::{ChioKernel, ToolCallResponse, Verdict as KernelVerdict};
 use serde_json::{json, Value};
 
 use crate::capability_bridge::{
@@ -13,7 +13,7 @@ use crate::capability_bridge::{
 use crate::discovery::{DiscoveryProtocol, TargetProtocolRegistry};
 use crate::error::BridgeError;
 use crate::execution::{
-    metadata_with_source_receipt_context, CrossProtocolExecutionRequest,
+    kernel_tool_call_request, metadata_with_source_receipt_context, CrossProtocolExecutionRequest,
     CrossProtocolTargetExecution, CrossProtocolTargetRequest, TargetExecutionHop,
     TargetProtocolExecutor,
 };
@@ -191,20 +191,7 @@ impl<'a> CrossProtocolOrchestrator<'a> {
             let response = self
                 .kernel
                 .sign_planned_deny_response(
-                    &ToolCallRequest {
-                        request_id: request.kernel_request_id.clone(),
-                        capability: request.capability.clone(),
-                        tool_name: request.target_tool_name.clone(),
-                        server_id: request.target_server_id.clone(),
-                        agent_id: request.agent_id.clone(),
-                        arguments: request.arguments.clone(),
-                        dpop_proof: request.dpop_proof.clone(),
-                        execution_nonce: request.execution_nonce.clone(),
-                        governed_intent: request.governed_intent.clone(),
-                        approval_token: request.approval_token.clone(),
-                        model_metadata: request.model_metadata.clone(),
-                        federated_origin_kernel_id: None,
-                    },
+                    &kernel_tool_call_request(&request),
                     &deny_reason,
                     Some(route_selection_metadata(&planning.evidence)?),
                 )
@@ -317,20 +304,7 @@ impl<'a> CrossProtocolOrchestrator<'a> {
             let response = self
                 .kernel
                 .evaluate_tool_call_blocking_with_metadata(
-                    &ToolCallRequest {
-                        request_id: request.kernel_request_id.clone(),
-                        capability: request.capability.clone(),
-                        tool_name: request.target_tool_name.clone(),
-                        server_id: request.target_server_id.clone(),
-                        agent_id: request.agent_id.clone(),
-                        arguments: request.arguments.clone(),
-                        dpop_proof: request.dpop_proof.clone(),
-                        execution_nonce: request.execution_nonce.clone(),
-                        governed_intent: request.governed_intent.clone(),
-                        approval_token: request.approval_token.clone(),
-                        model_metadata: request.model_metadata.clone(),
-                        federated_origin_kernel_id: None,
-                    },
+                    &kernel_tool_call_request(request),
                     Some(route_metadata),
                 )
                 .map_err(BridgeError::Kernel)?;

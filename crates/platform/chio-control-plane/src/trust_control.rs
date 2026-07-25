@@ -1,5 +1,11 @@
 #![allow(clippy::result_large_err)]
 
+#[path = "trust_control/fiscal_handlers.rs"]
+mod fiscal_handlers;
+#[path = "trust_control/fiscal_runtime.rs"]
+mod fiscal_runtime;
+#[path = "trust_control/frost.rs"]
+pub mod frost;
 #[path = "trust_control/health.rs"]
 mod trust_control_health;
 
@@ -80,12 +86,22 @@ use chio_credentials::{
 };
 use chio_did::DidChio;
 use chio_kernel::budget_store::{
-    AuthorizedBudgetHold, BudgetAuthorizeHoldDecision, BudgetAuthorizeHoldRequest,
-    BudgetCommitMetadata, BudgetEventAuthority, BudgetGuaranteeLevel, BudgetHoldMutationDecision,
-    BudgetMutationKind, BudgetMutationRecord, BudgetReconcileHoldRequest, BudgetReleaseHoldRequest,
-    BudgetReverseHoldRequest, DeniedBudgetHold,
+    ApprovalRequiredBudgetHold, AuthorizedBudgetHold, BudgetAdmissionBinding,
+    BudgetAuthorizationOutcome, BudgetAuthorizeCumulativeApprovalRequest,
+    BudgetAuthorizeHoldDecision, BudgetAuthorizeHoldRequest,
+    BudgetCancelCapturedBeforeDispatchRequest, BudgetCaptureHoldRequest,
+    BudgetCaptureInvocationRequest, BudgetCapturedBeforeDispatchCancellationDecision,
+    BudgetCommitMetadata, BudgetCumulativeApprovalAccountKey,
+    BudgetCumulativeApprovalAuthorizationDecision, BudgetCumulativeApprovalRequest,
+    BudgetCumulativeApprovalState, BudgetCumulativeApprovalUsage, BudgetEventAuthority,
+    BudgetGuaranteeLevel, BudgetHoldMutationDecision, BudgetInvocationCaptureDecision,
+    BudgetInvocationQuota, BudgetInvocationQuotaUsage, BudgetInvocationState, BudgetMonetaryState,
+    BudgetMutationKind, BudgetMutationRecord, BudgetQuotaKey, BudgetQuotaProfile,
+    BudgetReconcileHoldRequest, BudgetReleaseHoldRequest, BudgetReverseHoldRequest,
+    DeniedBudgetHold, RevocationCommitMetadata,
 };
 use chio_kernel::operator_report::ComptrollerSurfaceReport;
+use chio_kernel::supplemental_quota::CanonicalRevocationSet;
 use chio_kernel::{
     build_generic_governance_case_artifact, build_generic_governance_charter_artifact,
     build_generic_trust_activation_artifact, build_open_market_fee_schedule_artifact,
@@ -212,8 +228,13 @@ use chio_kernel::{
     MAX_CREDIT_LOSS_LIFECYCLE_LIST_LIMIT, UNDERWRITING_POLICY_INPUT_SCHEMA,
     UNDERWRITING_SIMULATION_REPORT_SCHEMA,
 };
+use chio_store_sqlite::budget_store::{
+    budget_snapshot_anchor_authenticator, budget_snapshot_anchor_set_digest,
+    BudgetSnapshotAnchorProvenance, BudgetStoreSnapshot,
+};
 use chio_store_sqlite::{
-    SqliteBudgetStore, SqliteCapabilityAuthority, SqliteReceiptStore, SqliteRevocationStore,
+    SqliteAuthorityStore, SqliteBudgetStore, SqliteCapabilityAuthority, SqliteReceiptStore,
+    SqliteRevocationStore,
 };
 use percent_encoding::{utf8_percent_encode, NON_ALPHANUMERIC};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -314,6 +335,8 @@ pub(crate) use self::budget_handlers::*;
 pub use self::capital_and_liability::*;
 pub(crate) use self::certification_handlers::*;
 pub(crate) use self::credit_and_loss::*;
+pub(crate) use self::fiscal_handlers::*;
+pub(crate) use self::fiscal_runtime::*;
 pub(crate) use self::passport_handlers::*;
 pub(crate) use self::receipt_handlers::*;
 pub(crate) use self::risk_finance_handlers::*;

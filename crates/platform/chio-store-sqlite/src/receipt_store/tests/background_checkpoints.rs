@@ -8,6 +8,46 @@ fn signer(keypair: &Keypair, max_batch: u64) -> BackgroundCheckpointSigner {
     }
 }
 
+#[test]
+fn checkpoint_signer_survives_supervisor_restart() -> Result<(), Box<dyn std::error::Error>> {
+    let (temp_dir, path) = temp_db("chio-bg-signer-restart")?;
+    let keypair = receipt_test_keypair();
+    let store = SqliteReceiptStore::open(&path)?;
+    store.enable_background_checkpoints(signer(&keypair, 2))?;
+    store
+        .receipt_commit_actor
+        .sender
+        .try_send(ReceiptCommitCommand::RestartSupervisor)?;
+
+    for i in 0..2 {
+        store.append_chio_receipt_returning_seq(&sample_receipt_with_keypair(
+            &format!("rcpt-bg-signer-restart-{i}"),
+            i + 1,
+            &keypair,
+        ))?;
+    }
+    store.flush_receipt_writes()?;
+
+    assert!(
+        store.load_checkpoint_by_seq(1)?.is_some(),
+        "the restarted writer must retain the installed checkpoint signer"
+    );
+    assert_eq!(
+        store
+            .receipt_commit_actor
+            .worker
+            .health()
+            .ok_or("missing supervisor health")?
+            .snapshot()
+            .restart_total,
+        1
+    );
+
+    drop(store);
+    temp_dir.close()?;
+    Ok(())
+}
+
 /// A panic mid checkpoint-build (Merkle build, Ed25519 sign, serde) must not
 /// kill the writer thread and must not leave `head.latest_checkpoint` pointing
 /// at a half-built checkpoint. Uses the
@@ -24,7 +64,7 @@ fn signer(keypair: &Keypair, max_batch: u64) -> BackgroundCheckpointSigner {
 /// cannot be hit by this test's injected panic.
 #[test]
 fn background_build_panic_is_isolated() -> Result<(), Box<dyn std::error::Error>> {
-    let path = unique_db_path("chio-bg-panic-isolated");
+    let (temp_dir, path) = temp_db("chio-bg-panic-isolated")?;
     let keypair = receipt_test_keypair();
     let store = SqliteReceiptStore::open(&path)?;
     let max_batch = test_hooks::PANIC_DURING_CHECKPOINT_BUILD_MARKER_MAX_BATCH;
@@ -82,7 +122,8 @@ fn background_build_panic_is_isolated() -> Result<(), Box<dyn std::error::Error>
         "a successful batch after the panic must clear last_error: {recovered_health:?}"
     );
 
-    let _ = fs::remove_file(path);
+    drop(store);
+    temp_dir.close()?;
     Ok(())
 }
 

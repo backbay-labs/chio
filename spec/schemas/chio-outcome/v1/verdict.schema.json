@@ -1,0 +1,220 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-outcome/verdict/v1",
+  "title": "Chio Outcome Verdict V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "requestId",
+    "listingId",
+    "listingDigest",
+    "providerId",
+    "providerBindingDigest",
+    "pricingId",
+    "pricingDigest",
+    "predicateId",
+    "predicateDigest",
+    "quoteDigest",
+    "eligibilityDigest",
+    "providerAcceptanceDigest",
+    "deliveryDisposition",
+    "verdict",
+    "slaAttribution",
+    "chargedAmount",
+    "railAuthorizationRef"
+  ],
+  "properties": {
+    "schema": { "const": "chio.outcome.verdict.v1" },
+    "requestId": { "$ref": "#/$defs/text" },
+    "listingId": { "$ref": "#/$defs/text" },
+    "listingDigest": { "$ref": "#/$defs/digest" },
+    "providerId": { "$ref": "#/$defs/text" },
+    "providerBindingDigest": { "$ref": "#/$defs/digest" },
+    "pricingId": { "$ref": "#/$defs/digest" },
+    "pricingDigest": { "$ref": "#/$defs/digest" },
+    "predicateId": { "$ref": "#/$defs/digest" },
+    "predicateDigest": { "$ref": "#/$defs/digest" },
+    "quoteDigest": { "$ref": "#/$defs/digest" },
+    "eligibilityDigest": { "$ref": "#/$defs/digest" },
+    "providerAcceptanceDigest": { "$ref": "#/$defs/digest" },
+    "deliveryDisposition": { "enum": ["acknowledged", "cancelled", "not_attempted"] },
+    "deliveryAcknowledgementDigest": { "$ref": "#/$defs/digest" },
+    "deliveryNonacceptanceDigest": { "$ref": "#/$defs/digest" },
+    "contractualZeroChargeDigest": { "$ref": "#/$defs/digest" },
+    "deliveredOutputDigest": { "$ref": "#/$defs/digest" },
+    "verdict": { "enum": ["passed", "failed", "unevaluable"] },
+    "reasonCode": {
+      "enum": [
+        "assertion_mismatch",
+        "missing_target",
+        "target_not_integer",
+        "invalid_output_json",
+        "delivery_cancelled",
+        "output_blocked",
+        "output_mutation_after_evaluation"
+      ]
+    },
+    "assertionIndex": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+    "slaAttribution": { "enum": ["provider", "caller_policy", "platform"] },
+    "attributionEvidenceDigest": { "$ref": "#/$defs/digest" },
+    "chargedAmount": { "$ref": "#/$defs/money" },
+    "railAuthorizationRef": { "$ref": "#/$defs/text" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "verdict": { "const": "passed" } } },
+      "then": {
+        "properties": {
+          "chargedAmount": {
+            "properties": { "units": { "minimum": 1 } }
+          }
+        },
+        "not": {
+          "anyOf": [
+            { "required": ["reasonCode"] },
+            { "required": ["assertionIndex"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": { "properties": { "verdict": { "const": "failed" } } },
+      "then": {
+        "required": ["reasonCode", "assertionIndex"],
+        "properties": {
+          "reasonCode": { "enum": ["assertion_mismatch", "missing_target"] },
+          "chargedAmount": { "properties": { "units": { "const": 0 } } }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "verdict": { "const": "unevaluable" } } },
+      "then": {
+        "required": ["reasonCode"],
+        "properties": {
+          "reasonCode": {
+            "enum": [
+              "target_not_integer",
+              "invalid_output_json",
+              "delivery_cancelled",
+              "output_blocked",
+              "output_mutation_after_evaluation"
+            ]
+          },
+          "chargedAmount": { "properties": { "units": { "const": 0 } } }
+        },
+        "not": { "required": ["assertionIndex"] }
+      }
+    },
+    {
+      "if": { "properties": { "deliveryDisposition": { "const": "acknowledged" } } },
+      "then": {
+        "required": [
+          "deliveryAcknowledgementDigest",
+          "deliveredOutputDigest",
+          "attributionEvidenceDigest"
+        ],
+        "properties": { "slaAttribution": { "enum": ["provider", "caller_policy"] } },
+        "allOf": [
+          {
+            "if": { "properties": { "verdict": { "const": "unevaluable" } } },
+            "then": {
+              "properties": {
+                "reasonCode": { "enum": ["target_not_integer", "invalid_output_json"] }
+              }
+            }
+          }
+        ],
+        "not": {
+          "anyOf": [
+            { "required": ["deliveryNonacceptanceDigest"] },
+            { "required": ["contractualZeroChargeDigest"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": { "properties": { "deliveryDisposition": { "const": "cancelled" } } },
+      "then": {
+        "required": ["deliveryNonacceptanceDigest", "reasonCode"],
+        "properties": {
+          "verdict": { "const": "unevaluable" },
+          "reasonCode": { "const": "delivery_cancelled" },
+          "slaAttribution": { "const": "platform" }
+        },
+        "not": {
+          "anyOf": [
+            { "required": ["deliveryAcknowledgementDigest"] },
+            { "required": ["contractualZeroChargeDigest"] },
+            { "required": ["deliveredOutputDigest"] },
+            { "required": ["attributionEvidenceDigest"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": { "properties": { "deliveryDisposition": { "const": "not_attempted" } } },
+      "then": {
+        "required": ["contractualZeroChargeDigest", "reasonCode"],
+        "properties": {
+          "verdict": { "const": "unevaluable" },
+          "reasonCode": {
+            "enum": ["output_blocked", "output_mutation_after_evaluation"]
+          }
+        },
+        "not": {
+          "anyOf": [
+            { "required": ["deliveryAcknowledgementDigest"] },
+            { "required": ["deliveryNonacceptanceDigest"] },
+            { "required": ["deliveredOutputDigest"] },
+            { "required": ["attributionEvidenceDigest"] }
+          ]
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "deliveryDisposition": { "const": "not_attempted" },
+          "reasonCode": { "const": "output_blocked" }
+        },
+        "required": ["deliveryDisposition", "reasonCode"]
+      },
+      "then": { "properties": { "slaAttribution": { "const": "caller_policy" } } }
+    },
+    {
+      "if": {
+        "properties": {
+          "deliveryDisposition": { "const": "not_attempted" },
+          "reasonCode": { "const": "output_mutation_after_evaluation" }
+        },
+        "required": ["deliveryDisposition", "reasonCode"]
+      },
+      "then": { "properties": { "slaAttribution": { "const": "platform" } } }
+    }
+  ],
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "^[^\\s\\u0000-\\u001F\\u007F-\\u009F](?:[^\\u0000-\\u001F\\u007F-\\u009F]*[^\\s\\u0000-\\u001F\\u007F-\\u009F])?$"
+    },
+    "iJsonInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "money": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["currency", "units"],
+      "properties": {
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+        "units": { "$ref": "#/$defs/iJsonInteger" }
+      }
+    }
+  }
+}

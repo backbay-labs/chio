@@ -1,8 +1,5 @@
-use std::sync::atomic::{AtomicU64, Ordering};
-
 use chio_kernel::{ChioKernel, ToolCallRequest as KernelToolCallRequest};
 
-use crate::evidence_io::unix_now_ms;
 use crate::runtime_loopback_capability_window;
 use crate::scenario::RuntimeLoopbackStep;
 use crate::treaty::{insert_runtime_loopback_treaty_context, RuntimeLoopbackTreatyContext};
@@ -12,8 +9,6 @@ pub(crate) struct RuntimeLoopbackExecution {
     pub(crate) receipt: chio_core::receipt::body::ChioReceipt,
     pub(crate) treaty: Option<RuntimeLoopbackTreatyContext>,
 }
-
-static RUNTIME_LOOPBACK_RECEIPT_STORE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 struct RuntimeLoopbackToolServer {
     id: String,
@@ -83,6 +78,7 @@ fn runtime_loopback_capability(
         issued_at,
         expires_at,
         delegation_chain: Vec::new(),
+        aggregate_invocation_budget: None,
     };
     chio_core::capability::token::CapabilityToken::sign(body, issuer).map_err(|error| {
         RuntimeLoopbackError::message(format!("Chio runtime loopback capability signing: {error}"))
@@ -270,6 +266,8 @@ pub(crate) fn execute_runtime_loopback_step(
     step_index: usize,
     step: &RuntimeLoopbackStep,
     arguments: serde_json::Value,
+    authority: &chio_store_sqlite::SqliteAuthorityStore,
+    receipt_store: &std::sync::Arc<chio_store_sqlite::SqliteReceiptStore>,
     now_unix_ms: u64,
 ) -> Result<RuntimeLoopbackExecution, RuntimeLoopbackError> {
     let (expected_kernel_id, expected_server_id, expected_tool_name) =
@@ -334,45 +332,35 @@ pub(crate) fn execute_runtime_loopback_step(
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
         allow_ephemeral_receipt_log: false,
         allow_ephemeral_revocation_store: false,
     });
     kernel.set_federation_local_kernel_id(step.request.host_kernel_id.clone());
-    let receipt_store_nonce =
-        RUNTIME_LOOPBACK_RECEIPT_STORE_COUNTER.fetch_add(1, Ordering::Relaxed);
-    let receipt_store_path = std::env::temp_dir().join(format!(
-        "chio-runtime-loopback-{}-{}-{}-{}.sqlite3",
-        std::process::id(),
-        unix_now_ms(),
-        step_index,
-        receipt_store_nonce
-    ));
-    let receipt_store =
-        chio_store_sqlite::SqliteReceiptStore::open(&receipt_store_path).map_err(|error| {
-            RuntimeLoopbackError::message(format!(
-                "Chio runtime loopback receipt store open: {error}"
-            ))
-        })?;
+    let fence = authority.mutation_fence();
+    let admission_store = std::sync::Arc::new(authority.admission_operation_store());
+    let outcome_store = std::sync::Arc::new(authority.tool_outcome_store());
     kernel
-        .set_receipt_store(Box::new(receipt_store))
+        .set_receipt_store_handle(receipt_store.clone())
         .map_err(|error| {
             RuntimeLoopbackError::message(format!(
                 "Chio runtime loopback receipt store install: {error}"
             ))
         })?;
-    // The kernel dispatches fail-closed against ephemeral revocation state, so
-    // this isolated proof-regeneration kernel needs a durable revocation store
-    // of its own. Give it a temp sibling of the receipt store; the revocation
-    // set is empty and never survives the run.
-    let revocation_store_path = receipt_store_path.with_extension("revocations.sqlite3");
-    let revocation_store = chio_store_sqlite::SqliteRevocationStore::open(&revocation_store_path)
+    kernel
+        .set_durable_admission_store(admission_store, outcome_store, fence)
         .map_err(|error| {
-        RuntimeLoopbackError::message(format!(
-            "Chio runtime loopback revocation store open: {error}"
-        ))
-    })?;
-    kernel.set_revocation_store(Box::new(revocation_store));
+            RuntimeLoopbackError::message(format!(
+                "Chio runtime loopback admission store install: {error}"
+            ))
+        })?;
+    kernel
+        .reconcile_durable_admission_receipt_projections()
+        .map_err(|error| {
+            RuntimeLoopbackError::message(format!(
+                "Chio runtime loopback admission receipt reconciliation: {error}"
+            ))
+        })?;
+    kernel.set_revocation_store(Box::new(authority.revocation_store()));
     let peer_pin_now_unix_ms = now_unix_ms;
     if let Some(origin_kernel_id) = step.request.origin_kernel_id.as_deref() {
         let origin_key = chio_attest_loopback::runtime_buyer_keypair();
@@ -480,6 +468,7 @@ pub(crate) fn execute_runtime_loopback_step(
                 }
             })
         }),
+        body: Default::default(),
     };
     let request = KernelToolCallRequest {
         request_id: step.request.request_id.clone(),
@@ -492,6 +481,9 @@ pub(crate) fn execute_runtime_loopback_step(
         execution_nonce: None,
         governed_intent: Some(governed_intent),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: step.request.origin_kernel_id.clone(),
     };

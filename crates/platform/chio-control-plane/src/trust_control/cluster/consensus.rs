@@ -81,21 +81,23 @@ pub(crate) async fn handle_internal_cluster_status(
             .collect::<Vec<_>>(),
     };
 
-    let budget_ack_heads = match state.config.budget_db_path.as_deref() {
-        Some(path) => {
-            match SqliteBudgetStore::open(path).and_then(|store| store.budget_ack_heads()) {
-                Ok(heads) => heads
-                    .into_iter()
-                    .map(|(origin_id, event_seq)| BudgetOriginAck {
-                        origin_id,
-                        event_seq,
-                    })
-                    .collect(),
-                Err(error) => {
-                    return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
-                }
+    let budget_store = match state.optional_budget_store() {
+        Ok(store) => store,
+        Err(error) => return plain_http_error(StatusCode::SERVICE_UNAVAILABLE, error),
+    };
+    let budget_ack_heads = match budget_store.as_ref() {
+        Some(store) => match store.budget_ack_heads() {
+            Ok(heads) => heads
+                .into_iter()
+                .map(|(origin_id, event_seq)| BudgetOriginAck {
+                    origin_id,
+                    event_seq,
+                })
+                .collect(),
+            Err(error) => {
+                return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
             }
-        }
+        },
         None => Vec::new(),
     };
 
@@ -290,14 +292,10 @@ pub(crate) fn budget_authority_metadata_view(
 
 pub(crate) fn budget_authority_guarantee_level(
     state: &TrustServiceState,
-    budget_commit_index: Option<u64>,
+    _budget_commit_index: Option<u64>,
 ) -> &'static str {
     if state.cluster.is_some() {
-        if budget_commit_index.is_some() {
-            "ha_quorum_commit"
-        } else {
-            "ha_leader_visible"
-        }
+        "advisory_posthoc"
     } else {
         "single_node_atomic"
     }

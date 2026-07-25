@@ -41,8 +41,8 @@ use chio_core_types::crypto::PublicKey;
 
 use crate::budget_split::{BudgetRegistry, NoopBudgetRegistry};
 use crate::capability_verify::{
-    admit_delegated_budget, verify_capability_full, verify_capability_with_floor, CapabilityError,
-    TrustRootResolver, VerifiedCapability,
+    admit_delegated_budget, verify_capability_with_floor, CapabilityError, TrustRootResolver,
+    VerifiedCapability,
 };
 use crate::clock::Clock;
 use crate::guard::{Guard, GuardContext, PortableToolCallRequest};
@@ -126,6 +126,8 @@ pub enum KernelCoreError {
     OutOfScope { tool: String, server: String },
     /// Portable scope matching failed closed on an unsupported constraint.
     ConstraintError { reason: String },
+    /// The capability requires stateful enforcement unavailable in this runtime.
+    UnsupportedCapabilityFeature { feature: String },
     /// A guard returned a fail-closed error.
     GuardError { guard: String, reason: String },
     /// A guard denied the request outright.
@@ -185,6 +187,11 @@ impl KernelCoreError {
             KernelCoreError::ConstraintError { reason } => {
                 let mut out = String::from("constraint evaluation failed: ");
                 out.push_str(reason);
+                out
+            }
+            KernelCoreError::UnsupportedCapabilityFeature { feature } => {
+                let mut out = String::from("capability feature unsupported on this runtime: ");
+                out.push_str(feature);
                 out
             }
             KernelCoreError::GuardError { guard, reason } => {
@@ -329,18 +336,30 @@ pub fn evaluate_with_full_floor(
     trust_root: &dyn TrustRootResolver,
     budgets: &mut dyn BudgetRegistry,
 ) -> EvaluationVerdict {
+    evaluate_with_full_floor_and_root(input, crypto_floor, peer, None, trust_root, budgets)
+}
+
+/// Full evaluation with authenticated optional-family root evidence.
+pub fn evaluate_with_full_floor_and_root(
+    input: EvaluateInput<'_>,
+    crypto_floor: CapabilityCryptoFloor,
+    peer: &CapabilityNegotiation,
+    direct_root: Option<&CapabilityToken>,
+    trust_root: &dyn TrustRootResolver,
+    budgets: &mut dyn BudgetRegistry,
+) -> EvaluationVerdict {
     // Step 1: capability verification with all defenses except
     // persistent sibling-sum admission. Admission mutates the supplied
     // registry, so defer it until subject, scope, and guard checks have
     // passed. Otherwise a validly signed token for the wrong request can
     // consume sibling share and starve later valid siblings.
     let mut verify_only_budgets = NoopBudgetRegistry;
-    let verified = match verify_capability_full(
+    let verified = match crate::capability_verify::verify_capability_full_with_root(
         input.capability,
         input.trusted_issuers,
         input.clock,
         crypto_floor,
-        peer,
+        crate::capability_verify::CapabilityFeatureContext { peer, direct_root },
         trust_root,
         &mut verify_only_budgets,
     ) {
@@ -350,6 +369,24 @@ pub fn evaluate_with_full_floor(
             return deny(core_err, None, None);
         }
     };
+    if input.capability.aggregate_invocation_budget.is_some() {
+        return deny(
+            KernelCoreError::UnsupportedCapabilityFeature {
+                feature: "aggregate invocation enforcement".to_string(),
+            },
+            None,
+            Some(verified),
+        );
+    }
+    if input.capability.scope.has_cumulative_approval() {
+        return deny(
+            KernelCoreError::UnsupportedCapabilityFeature {
+                feature: "cumulative approval enforcement".to_string(),
+            },
+            None,
+            Some(verified),
+        );
+    }
 
     finish_verified_evaluation(input, verified, budgets)
 }
@@ -440,7 +477,9 @@ mod tests {
     use crate::{BudgetRegistry, InMemoryBudgetRegistry, MAX_BUDGET_SHARE_BPS};
     use alloc::vec;
     use chio_core_types::capability::{
+        aggregate_invocation::{AggregateInvocationBudget, AggregateInvocationScope},
         attenuation::{DelegationLink, DelegationLinkBody},
+        features::AGGREGATE_INVOCATION_BUDGET,
         scope::{ChioScope, Operation, ToolGrant},
         token::{CapabilityToken, CapabilityTokenBody},
     };
@@ -482,6 +521,8 @@ mod tests {
                 attenuations: vec![],
                 timestamp: 100,
                 scope_hash: None,
+                aggregate_budget: None,
+                cumulative_approval: None,
             },
             issuer,
         ) {
@@ -502,6 +543,7 @@ mod tests {
                 issued_at: 100,
                 expires_at: 200,
                 delegation_chain: vec![parent_link],
+                aggregate_invocation_budget: None,
             },
             issuer,
         ) {
@@ -626,5 +668,63 @@ mod tests {
         };
         assert_eq!(split.current_total_child_bps(), 0);
         assert!(split.children.is_empty());
+    }
+
+    #[test]
+    fn full_floor_denies_aggregate_budget_until_enforcement_is_available() {
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let capability = match CapabilityToken::sign(
+            CapabilityTokenBody {
+                id: "aggregate-not-enforced".to_string(),
+                issuer: issuer.public_key(),
+                subject: subject.public_key(),
+                scope: ChioScope {
+                    grants: vec![grant("srv-a", "echo")],
+                    ..ChioScope::default()
+                },
+                issued_at: 100,
+                expires_at: 200,
+                delegation_chain: vec![],
+                aggregate_invocation_budget: Some(AggregateInvocationBudget {
+                    scope: AggregateInvocationScope::Capability,
+                    max_invocations: 1,
+                    root_binding: None,
+                }),
+            },
+            &issuer,
+        ) {
+            Ok(capability) => capability,
+            Err(error) => panic!("failed to sign aggregate capability: {error}"),
+        };
+        let mut request = request();
+        request.agent_id = subject.public_key().to_hex();
+        let trusted = [issuer.public_key()];
+        let clock = crate::FixedClock::new(150);
+        let guards: [&dyn Guard; 0] = [];
+        let mut peer = CapabilityNegotiation::v1_default();
+        peer.features
+            .insert(AGGREGATE_INVOCATION_BUDGET.to_string(), true);
+        let trust_roots = |_issuer: &chio_core_types::crypto::PublicKey| None;
+        let mut budgets = InMemoryBudgetRegistry::new();
+
+        let verdict = evaluate_with_full_floor(
+            EvaluateInput {
+                request: &request,
+                capability: &capability,
+                trusted_issuers: &trusted,
+                clock: &clock,
+                guards: &guards,
+                session_filesystem_roots: None,
+            },
+            CapabilityCryptoFloor::AllowClassical,
+            &peer,
+            &trust_roots,
+            &mut budgets,
+        );
+
+        assert!(verdict.is_deny());
+        assert!(verdict.reason.as_deref().is_some_and(|reason| reason
+            .contains("unsupported on this runtime: aggregate invocation enforcement")));
     }
 }

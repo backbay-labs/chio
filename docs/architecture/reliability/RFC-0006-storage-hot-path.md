@@ -23,6 +23,8 @@ through one writer connection so the reader pool is strictly read-only. Full
 verification is demoted to an explicit `chio receipt audit` CLI and a
 one-time startup verification that seeds the verified head. The append path
 stays fail-closed and durable-before-allow, preserving ADR-0013.
+"Single writer" means one mutable serving owner for the database file, not one
+actor per independently opened store object.
 
 ## Motivation
 
@@ -634,12 +636,92 @@ IOU store: `SqliteIouEnvelopeStore::open_alongside` (iou_store.rs:65) takes
 the shared `WriterHandle` instead of cloning `store.pool`, and its writes go
 through `run_write`. It keeps a reader-pool clone for its read queries only.
 
+### 4. Shared exclusive serving owner and epoch fencing
+
+Every mutable store open over one file can otherwise start an independent actor
+or reconciler. SQLite serializes transactions, but that does not serialize
+recovery ownership or fence stale workers. `chio-store-sqlite` therefore owns one
+shared `SqliteServingOwner` primitive used by receipt, budget/payment,
+obligation, outcome, FROST, and later mutable store modules.
+
+The small `StoreMutationFence` value lives in `chio-core-types`; the SQLite crate
+constructs it, and backend-neutral store traits require it without depending on
+the SQLite implementation.
+
+```sql
+CREATE TABLE IF NOT EXISTS chio_serving_owner (
+    singleton       INTEGER PRIMARY KEY CHECK (singleton = 1),
+    store_uuid      TEXT UNIQUE NOT NULL,
+    owner_epoch     INTEGER NOT NULL CHECK (owner_epoch > 0),
+    lease_id        TEXT NOT NULL,
+    opened_at_ms    INTEGER NOT NULL
+);
+```
+
+This database-scoped owner amendment is implemented under
+`crates/platform/chio-store-sqlite/src/serving_owner/` (path identity, lease
+history, global commit chain and rollback anchor) and is an entry gate for
+corrected RFC-0003 and WS1 Phase 2.
+
+Production databases have an explicit privileged provisioning step. `chio store
+provision`, running through the configured trusted lock broker, creates the
+database UUID in an exclusive transaction and creates exactly one
+`<store_uuid>.lock` inode in the operator-configured canonical lock root using
+exclusive no-follow creation. It verifies a regular file, configured privileged
+owner/group and mode, link count one, records its device/inode in provisioning
+metadata, and fsyncs the file, database, and both parent directories. The root is
+local-machine unique and not writable or replaceable by serving processes.
+Provisioning is idempotent only when UUID and inode metadata match exactly; a
+partially created or conflicting pair fails closed. A trusted lock-broker API may
+perform the same operation for managed deployments. Serving code never creates a
+new lock inode in the protected root.
+
+`open_serving` opens an already provisioned database, reads its UUID without
+creating one, and asks the trusted broker to open the existing UUID lock with
+no-follow semantics. It rechecks owner, group, mode, regular-file type, link count,
+device/inode, then holds `std::fs::File::try_lock` for the database-serving
+lifetime. After locking, it re-reads the database UUID and underlying file
+identity before incrementing `owner_epoch` and recording a random lease id in one
+`BEGIN IMMEDIATE` transaction. Missing provisioning fails as
+`ServingNotProvisioned`; pathname, symlink, hardlink, rename, or a copied database
+carrying the same UUID reaches the same lock. Lock-root/inode replacement, UUID
+change, and database file-identity change fail readiness before any actor starts.
+
+The returned `SqliteServingOwner` contains the shared writer handle and
+backend-neutral `StoreMutationFence { store_uuid, lease_id, owner_epoch }` used
+by store traits without importing the SQLite crate. Logical stores over
+that database receive clones through `open_alongside`; they never reopen the file
+or start another actor. A separately configured budget or obligation database is
+separately provisioned and gets its own owner/fence.
+
+Every writer command and recovery claim in every mutable store carries
+`StoreMutationFence` and verifies all three fields in the mutation transaction.
+A stale command
+returns `Fenced` before changing rows. A second mutable process open returns
+`AlreadyServing`. An explicit `open_read_only` is available to CLI audit and
+verifier clients; it cannot enqueue writes, install signers, or start workers.
+
+Tests that intentionally opened the same file twice as mutable state are changed
+to cloned-handle or read-only observer tests. Multi-process serving requires a
+remote linearizable store with leader epochs and is not claimed by this SQLite
+profile.
+
+Ownership tests cover privileged provision/reprovision and partial-provision
+crashes, missing lock inode, wrong owner/mode/link count, relative and absolute
+aliases, symlink and hardlink aliases, a renamed path, a copied database with the
+same UUID, lock-root and lock-inode replacement, and a stale external recovery
+owner. Receipt, budget/payment, obligation, and FROST mutation fixtures all reject
+a stale or cross-database fence. Exactly one mutable owner may start per database;
+every other open fails before a writer or reconciler exists.
+
 ### Error taxonomy (typed, fail-closed)
 
-No new `ReceiptStoreError` variants are required; the existing enum
-(`chio-kernel/src/receipt_store.rs:152`) already carries `Conflict(String)`,
-`Pool(String)`, `Timeout { operation, timeout_ms }`, `Sqlite`, `Canonical`,
-and `NotFound`. Mapping:
+The writer changes reuse the existing `Conflict(String)`, `Pool(String)`,
+`Timeout { operation, timeout_ms }`, `Sqlite`, `Canonical`, and `NotFound`
+variants. Exclusive serving adds typed `ServingNotProvisioned { path }`,
+`InvalidServingLock { reason }`, `AlreadyServing { path }` and
+`Fenced { expected_epoch, actual_epoch }` variants so callers cannot confuse
+ownership loss with a data conflict. Mapping:
 
 - verified-head divergence (append predecessor or projection cross-check
   fails): `Conflict`, deny the batch, message points to `chio receipt audit`.
@@ -647,6 +729,8 @@ and `NotFound`. Mapping:
   new writes, matching ADR-0013 queue-saturation semantics).
 - seeding failure at open: recorded in `ReceiptCommitWriterHealth.last_error`;
   every append returns `Conflict` until audit-repair clears it.
+- OS lock contention: `AlreadyServing`; no actor starts.
+- stale lease or owner epoch: `Fenced`; no row changes.
 
 Every proposed function returns `Result` and uses `?` or explicit `match`;
 none use `.unwrap()` or `.expect()`, satisfying the workspace clippy denies.
@@ -666,7 +750,8 @@ request path. At N = 1M, b = 100 the per-append verification count drops from
 
 ## Wire, schema, and receipt impact
 
-None. `KernelCheckpoint`, its canonical body, `previous_checkpoint_sha256`
+Receipt wire formats are unchanged. SQLite adds `chio_serving_owner`.
+`KernelCheckpoint`, its canonical body, `previous_checkpoint_sha256`
 linkage, receipt kinds, and all on-disk schemas are unchanged. Checkpoints
 are still built by `build_checkpoint_with_previous` and digested with
 `checkpoint_body_sha256` over RFC 8785 canonical JSON, so existing checkpoints
@@ -675,8 +760,10 @@ reconstructed deterministically at startup; it is never serialized.
 
 ## Migration and compatibility
 
-- Backward compatible on disk. An existing database opens, seeds the head via
-  one full verification, and then runs incrementally. No data migration.
+- Backward compatible receipt data. On first exclusive serving open, an existing
+  database creates `chio_serving_owner`, generates its durable store UUID, and
+  starts at owner epoch one while holding the OS lock. A read-only open never
+  initializes or changes ownership state.
 - Staged rollout behind a store construction flag
   `SqliteReceiptStore` gains `incremental_verification: bool` (default
   `true`); when `false` it keeps the current per-append full verification so
@@ -718,6 +805,9 @@ Tie into the wave-3 load-chaos program and the formal-methods plan.
   and `Flush`; assert single-writer serialization and no lost `inflight`
   accounting (the existing pre-send increment invariant at receipt_store.rs:177
   must hold for `Write` too).
+- Ownership: two processes race `open_serving` and exactly one succeeds; cloned
+  in-process handles share one actor; a stale epoch cannot append, checkpoint,
+  or recover; `open_read_only` cannot start a writer.
 - Soak: 10M appends at batch 100 with periodic checkpoints; assert per-append
   p99 latency is flat across the run (no growth with N) and RSS is bounded.
   Name: `soak_flat_append_latency_10m`.
@@ -740,6 +830,8 @@ Tie into the wave-3 load-chaos program and the formal-methods plan.
   produced by the writer actor.
 - Every write transaction executes on the writer connection; a test asserts
   the reader pool never begins a write transaction.
+- Every database file has at most one mutable serving owner. A stale lease or
+  epoch is fenced in SQL, and operator read-only opens start no background task.
 - Receipt and lineage commit in one transaction; the atomicity test passes.
 - Out-of-band tampering is caught fail-closed on the next append and localized
   by `chio receipt audit`.
@@ -777,7 +869,8 @@ Tie into the wave-3 load-chaos program and the formal-methods plan.
 ## Rollout and sequencing
 
 1. Single-writer routing and the folded receipt+lineage transaction (F29).
-   Correctness-preserving, no verification change; ship first.
+   Add the exclusive serving owner and epoch fencing in the same phase so
+   "single writer" is database-scoped. No verification change; ship first.
 2. Verified-head cache and incremental append fast path (F22), behind
    `incremental_verification` default `true` with the full-path fallback.
 3. `chio receipt audit` CLI: promote the existing full verification. The verb

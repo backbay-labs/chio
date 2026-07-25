@@ -47,6 +47,19 @@ fn append_assigns_genesis_prev_hash_for_first_entry() {
 }
 
 #[test]
+fn append_is_idempotent_by_receipt_id() {
+    let store = SqliteMemoryProvenanceStore::open_in_memory().test_expect("open in-memory store");
+    let input = sample_append("doc-1", "rcpt-1", 100);
+    let first = store
+        .append(input.clone())
+        .test_expect("first append succeeds");
+    let replay = store.append(input).test_expect("replay succeeds");
+
+    assert_eq!(replay, first);
+    assert!(store.append(sample_append("doc-2", "rcpt-1", 100)).is_err());
+}
+
+#[test]
 fn append_links_successive_entries_via_prev_hash() {
     let store = SqliteMemoryProvenanceStore::open_in_memory().test_expect("open in-memory store");
     let first = store

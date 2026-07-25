@@ -1,0 +1,23 @@
+{
+  "body": {
+    "attestedAt": 55,
+    "genesisPolicyDigest": "7d6c9a8d34ef5ce9e662043fb168e4dd824f41763b82558ec68aa6e4b3e4d30e",
+    "genesisPolicyId": "4b98f64e78f6ec56310ad17a180d36d5a9f3d8a8c621d1a9cc45449c173cd9b7",
+    "governingOperatorId": "operator.example",
+    "readinessId": "7b6f45816ec3741050a76b2f773b981bc8c8dc68ff172120dde72745f2054d73",
+    "readinessSequence": 1,
+    "readyDomains": [
+      "tier_limits",
+      "marketplace_discount_per_hundred",
+      "decision_premium_basis_points",
+      "insurance_premium_schedule",
+      "open_market_fee_and_bond_schedule"
+    ],
+    "runtimeRegistryDigest": "d4f3fc0ebe9e4aeececfbf29c3df1fae0b807bb06de6d80b474e8e2c0070da31",
+    "schema": "chio.fiscal.consumer-readiness.v1",
+    "signerKeyEpoch": 1,
+    "signerKeyId": "5c29b78f10a35a49a6231d08ee840a04bcc3a37a4f9d46df327dec56b8a9b7c9"
+  },
+  "signature": "74692ccfd03cd286d8e889c0cd39e2176a6a628bf9d01ed2a5f848dc785f99296d8a180ff7bb00d8f17d072f3a26b713f7c332214f18195d8769403512ea7002",
+  "signerKey": "1398f62c6d1a457c51ba6a4b5f3dbd2f69fca93216218dc8997e416bd17d93ca"
+}

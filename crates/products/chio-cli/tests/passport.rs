@@ -403,6 +403,7 @@ fn capability_with_id(id: &str, subject: &Keypair, issuer: &Keypair) -> Capabili
             issued_at: 100,
             expires_at: 100_000,
             delegation_chain: vec![],
+            aggregate_invocation_budget: None,
         },
         issuer,
     )
@@ -1798,20 +1799,22 @@ fn passport_cli_supports_multi_issuer_verify_evaluate_and_present() {
     let subject_public_key = Keypair::from_seed(&[7u8; 32]).public_key();
     let subject_key = subject_public_key.to_hex();
     let subject_did = did_from_public_key(subject_public_key);
+    let issued_at = current_unix_secs().saturating_sub(60);
+    let expires_at = issued_at.saturating_add(86_400);
     let credential_a = issue_reputation_credential(
         &Keypair::from_seed(&[1u8; 32]),
         sample_scorecard(&subject_key),
         sample_evidence(),
-        1_900_000_000,
-        1_900_086_400,
+        issued_at,
+        expires_at,
     )
     .expect("credential a");
     let credential_b = issue_reputation_credential(
         &Keypair::from_seed(&[2u8; 32]),
         sample_scorecard(&subject_key),
         sample_evidence(),
-        1_900_000_000,
-        1_900_086_400,
+        issued_at,
+        expires_at,
     )
     .expect("credential b");
     let issuer_a = credential_a.unsigned.issuer.clone();

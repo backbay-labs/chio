@@ -78,9 +78,13 @@ Supported query parameters:
 - `until`
 - `minCost`
 - `maxCost`
+- `costCurrency`
 - `agentSubject`
 - `cursor`
 - `limit`
+
+Python integers preserve the full unsigned 64-bit cost domain. Either cost
+bound requires `costCurrency` as a three-letter uppercase string.
 
 Response shape:
 

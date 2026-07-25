@@ -14,7 +14,9 @@ name = "chio_underwriting"
 [dependencies]
 chio-appraisal = { workspace = true }
 chio-core-types = { workspace = true }
+chio-fiscal = { workspace = true }
 serde = { workspace = true }
+thiserror = { workspace = true }
 
 [lints]
 workspace = true

@@ -1,0 +1,21 @@
+{
+  "anchorAuthorityKey": "1398f62c6d1a457c51ba6a4b5f3dbd2f69fca93216218dc8997e416bd17d93ca",
+  "anchorId": "fiscal-anchor",
+  "anchorNamespace": "fiscal-main",
+  "anchorSignerKeyEpoch": 1,
+  "anchorSignerKeyId": "5c29b78f10a35a49a6231d08ee840a04bcc3a37a4f9d46df327dec56b8a9b7c9",
+  "bootstrapAuthorityKey": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618",
+  "bootstrapTierLimits": {
+    "USD": [
+      100,
+      200,
+      300,
+      400
+    ]
+  },
+  "genesisCharterDigest": "a79930cdbd1c5d68208e437f8b8851dcd0f66114b5d34c25cb48a670bf2a22fa",
+  "genesisCharterId": "8e486b91278e696d27603e62e2192af0667d5417891379a354b4113be30bb375",
+  "governingOperatorId": "operator.example",
+  "policyId": "4b98f64e78f6ec56310ad17a180d36d5a9f3d8a8c621d1a9cc45449c173cd9b7",
+  "schema": "chio.fiscal.genesis-policy.v1"
+}

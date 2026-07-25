@@ -29,9 +29,14 @@ chio-data-guards = { workspace = true }
 chio-errors = { workspace = true }
 chio-enterprise-export = { workspace = true }
 chio-did = { workspace = true }
+chio-egress-contract = { workspace = true }
 chio-external-guards = { workspace = true }
+chio-federation = { workspace = true }
+chio-fiscal = { workspace = true }
 chio-http-serve = { workspace = true }
 chio-kernel = { workspace = true }
+chio-log-redact = { workspace = true }
+chio-open-market = { workspace = true }
 chio-metrics-spec = { workspace = true }
 chio-guards = { workspace = true }
 chio-policy = { workspace = true }
@@ -43,6 +48,7 @@ chio-risk-comptroller = { workspace = true }
 chio-settle = { workspace = true }
 chio-transaction-passport = { workspace = true }
 chio-trust-market-context = { workspace = true }
+chio-underwriting = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yml = { workspace = true }
@@ -67,6 +73,7 @@ rsa = { version = "0.9", features = ["sha2"] }
 p384 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
 x509-cert = "0.2"
 url = "2"
+uuid = { workspace = true }
 
 [dev-dependencies]
 chio-anchor = { workspace = true }
@@ -74,6 +81,7 @@ chio-link = { workspace = true }
 chio-test-support = { workspace = true }
 proptest = { workspace = true }
 rcgen = "0.13"
+tempfile = { workspace = true }
 tower = { workspace = true }
 
 [lints]

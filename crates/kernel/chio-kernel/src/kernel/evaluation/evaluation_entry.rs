@@ -317,6 +317,9 @@ impl ChioKernel {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: step.model_metadata.clone(),
             federated_origin_kernel_id: None,
         };

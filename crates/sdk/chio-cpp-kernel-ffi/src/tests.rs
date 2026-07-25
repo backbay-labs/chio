@@ -46,6 +46,7 @@ fn make_capability_at(
         issued_at,
         expires_at,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     CapabilityToken::sign(body, issuer).unwrap()
 }
@@ -66,6 +67,8 @@ fn make_delegated_capability(
             attenuations: vec![],
             timestamp: ISSUED_AT,
             scope_hash: None,
+            aggregate_budget: None,
+            cumulative_approval: None,
         },
         issuer,
     )
@@ -173,6 +176,21 @@ fn evaluate_allows_matching_capability() {
     let value: serde_json::Value = serde_json::from_str(&output).unwrap();
     assert_eq!(value["verdict"], "allow");
     assert_eq!(value["matched_grant_index"], 0);
+}
+
+#[test]
+fn evaluate_rejects_unsupported_authorization_extensions() {
+    let mut envelope: serde_json::Value = serde_json::from_str(&evaluate_envelope("echo")).unwrap();
+    envelope["request"]["threshold_approval_proposal"] = json!({"opaque": true});
+
+    let error = evaluate_json_str(&envelope.to_string())
+        .expect_err("unsupported authorization extension must fail closed");
+
+    assert!(matches!(
+        error,
+        KernelFfiError::InvalidCapability(message)
+            if message.contains("cannot authenticate governed approvals")
+    ));
 }
 
 #[test]

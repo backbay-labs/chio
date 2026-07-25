@@ -80,6 +80,9 @@ jobs:
       - name: Proptest invariant coverage
         run: ./scripts/check-proptest-coverage.sh
 
+      - name: Protocol primitive concurrency
+        run: bash ./scripts/check-protocol-primitives-concurrency.sh
+
       - name: Workspace structural gates
         env:
           CARGO_BUILD_JOBS: "1"

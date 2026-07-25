@@ -116,10 +116,14 @@ async fn handle_admin_health(State(state): State<RemoteAppState>, request: Reque
         },
         "stores": {
             "receiptsConfigured": state.factory.config.receipt_db_path.is_some(),
-            "revocationsConfigured": state.factory.config.revocation_db_path.is_some(),
+            "revocationsConfigured": state.factory.config.control_url.is_some()
+                || state.factory.config.revocation_db_path.is_some()
+                || state.factory.durable_admission.is_some(),
             "authorityDbConfigured": state.factory.config.authority_db_path.is_some(),
             "authoritySeedConfigured": state.factory.config.authority_seed_path.is_some(),
-            "budgetsConfigured": state.factory.config.budget_db_path.is_some(),
+            "budgetsConfigured": state.factory.config.control_url.is_some()
+                || state.factory.config.budget_db_path.is_some()
+                || state.factory.durable_admission.is_some(),
             "sessionTombstonesConfigured": state.factory.config.session_db_path.is_some(),
         },
         "sessions": {
@@ -787,10 +791,15 @@ fn open_receipt_store(
 fn open_revocation_store(
     state: &RemoteAppState,
 ) -> Result<chio_store_sqlite::SqliteRevocationStore, Response> {
+    if let Some(runtime) = state.factory.durable_admission.as_ref() {
+        if let Some(store) = runtime.local_revocation_store() {
+            return Ok(store);
+        }
+    }
     let Some(path) = state.factory.config.revocation_db_path.as_deref() else {
         return Err(plain_http_error(
             StatusCode::CONFLICT,
-            "remote trust admin requires --revocation-db",
+            "remote trust admin requires durable revocation state",
         ));
     };
     chio_store_sqlite::SqliteRevocationStore::open(path)
@@ -800,10 +809,15 @@ fn open_revocation_store(
 fn open_budget_store(
     state: &RemoteAppState,
 ) -> Result<chio_store_sqlite::SqliteBudgetStore, Response> {
+    if let Some(runtime) = state.factory.durable_admission.as_ref() {
+        if let Some(store) = runtime.local_budget_store() {
+            return Ok(store);
+        }
+    }
     let Some(path) = state.factory.config.budget_db_path.as_deref() else {
         return Err(plain_http_error(
             StatusCode::CONFLICT,
-            "remote budget admin requires --budget-db",
+            "remote budget admin requires durable budget state",
         ));
     };
     chio_store_sqlite::SqliteBudgetStore::open(path)

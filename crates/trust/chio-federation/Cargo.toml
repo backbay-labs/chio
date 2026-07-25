@@ -22,6 +22,7 @@ chio-metrics-spec = { workspace = true }
 chio-open-market = { workspace = true }
 chio-pheromone = { workspace = true }
 chio-revocation-oracle = { workspace = true }
+frost-ed25519 = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
@@ -42,6 +43,9 @@ hex = { workspace = true }
 # the verifier-side surface so that crate is pulled in here as a dev
 # dependency only.
 chio-kernel-core = { workspace = true }
+chio-spec-validate = { workspace = true }
+rand_chacha = { workspace = true }
+rand_core = { workspace = true }
 
 [lints]
 workspace = true

@@ -74,6 +74,32 @@ class ReceiptQueryClientTests(unittest.TestCase):
         self.assertEqual(params["limit"], ["10"])
         self.assertEqual(params["cursor"], ["5"])
 
+    def test_query_preserves_u64_cost_bounds_and_currency(self) -> None:
+        requests: list[httpx.Request] = []
+
+        def handler(request: httpx.Request) -> httpx.Response:
+            requests.append(request)
+            return httpx.Response(200, json={"totalCount": 0, "receipts": []})
+
+        client = ReceiptQueryClient(
+            "http://localhost:8080",
+            "tok",
+            client=httpx.Client(transport=httpx.MockTransport(handler)),
+        )
+
+        client.query(
+            {
+                "minCost": 18446744073709551615,
+                "maxCost": 18446744073709551615,
+                "costCurrency": "USD",
+            }
+        )
+
+        params = parse_qs(urlparse(str(requests[0].url)).query)
+        self.assertEqual(params["minCost"], ["18446744073709551615"])
+        self.assertEqual(params["maxCost"], ["18446744073709551615"])
+        self.assertEqual(params["costCurrency"], ["USD"])
+
     def test_query_returns_typed_response(self) -> None:
         def handler(_request: httpx.Request) -> httpx.Response:
             return httpx.Response(

@@ -1,9 +1,25 @@
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chio_reputation::{LocalReputationScorecard, MetricValue};
     use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use chio_reputation::{LocalReputationScorecard, MetricValue};
     use serde_json::{json, Value};
+
+    trait TestResultExt<T, E> {
+        fn test_ok(self, context: &str) -> T;
+    }
+
+    impl<T, E> TestResultExt<T, E> for Result<T, E>
+    where
+        E: std::fmt::Display,
+    {
+        fn test_ok(self, context: &str) -> T {
+            match self {
+                Ok(value) => value,
+                Err(error) => panic!("{context}: {error}"),
+            }
+        }
+    }
 
     fn did_from_public_key(public_key: chio_core::PublicKey) -> DidChio {
         DidChio::from_public_key(public_key).expect("ed25519 key")
@@ -122,31 +138,6 @@ mod tests {
         build_agent_passport(&subject_did.to_string(), vec![credential]).expect("passport")
     }
 
-    fn active_lifecycle_resolution(
-        passport: &AgentPassport,
-        now: u64,
-    ) -> PassportLifecycleResolution {
-        let verification = verify_agent_passport(passport, now).expect("passport verification");
-        PassportLifecycleResolution {
-            passport_id: verification.passport_id,
-            subject: verification.subject,
-            issuers: verification.issuers,
-            issuer_count: verification.issuer_count,
-            state: PassportLifecycleState::Active,
-            published_at: Some(1_710_000_000),
-            updated_at: Some(1_710_000_100),
-            superseded_by: None,
-            revoked_at: None,
-            revoked_reason: None,
-            distribution: PassportStatusDistribution {
-                resolve_urls: vec!["https://status.example.com/passports".to_string()],
-                cache_ttl_secs: Some(300),
-            },
-            valid_until: passport.valid_until.clone(),
-            source: Some("https://status.example.com".to_string()),
-        }
-    }
-
     fn rewrite_portable_compact(
         compact: &str,
         issuer: &Keypair,
@@ -166,13 +157,12 @@ mod tests {
             .decode(jwt_parts[1].as_bytes())
             .expect("decode payload");
         let payload_value: Value = serde_json::from_slice(&payload_bytes).expect("payload json");
-        let mut payload_object = payload_value
-            .as_object()
-            .cloned()
-            .expect("payload object");
+        let Some(mut payload_object) = payload_value.as_object().cloned() else {
+            panic!("payload object");
+        };
         mutate(&mut payload_object, &mut disclosures);
         let payload_b64 = URL_SAFE_NO_PAD.encode(
-            serde_json::to_vec(&Value::Object(payload_object)).expect("serialize payload"),
+            serde_json::to_vec(&Value::Object(payload_object)).test_ok("serialize payload"),
         );
         let signing_input = format!("{header_b64}.{payload_b64}");
         let signature_b64 =
@@ -184,8 +174,7 @@ mod tests {
     #[test]
     fn enterprise_provenance_field_helper_rejects_blank_values() {
         require_enterprise_identity_provenance_field("provider", "providerId").unwrap();
-        let err =
-            require_enterprise_identity_provenance_field(" \t\n", "subjectKey").unwrap_err();
+        let err = require_enterprise_identity_provenance_field(" \t\n", "subjectKey").unwrap_err();
         assert!(matches!(
             err,
             CredentialError::MissingEnterpriseIdentityProvenanceField {
@@ -276,8 +265,7 @@ mod tests {
             body: policy_body,
             signature: policy_signature,
         };
-        verify_signed_passport_verifier_policy(&signed_policy)
-            .expect("verifier policy verify");
+        verify_signed_passport_verifier_policy(&signed_policy).test_ok("verifier policy verify");
 
         let mut challenge = create_passport_presentation_challenge(
             "https://rp.example.com",
@@ -305,9 +293,7 @@ mod tests {
             challenge: response.challenge.clone(),
             passport: response.passport.clone(),
         };
-        let (response_signature, _) = holder
-            .sign_canonical(&unsigned)
-            .expect("sign response");
+        let (response_signature, _) = holder.sign_canonical(&unsigned).test_ok("sign response");
         response.proof.proof_value = response_signature.to_hex();
         verify_passport_presentation_response(&response, Some(&challenge), 1_710_000_120)
             .expect("response verify");
@@ -361,190 +347,28 @@ mod tests {
     }
 
     #[test]
-    fn cross_issuer_portfolio_visibility_does_not_imply_activation() {
-        let native_passport = sample_passport(7, 1);
-        let imported_passport = sample_passport(7, 2);
-        let subject = native_passport.subject.clone();
-        let native_issuer = native_passport.credentials[0].unsigned.issuer.clone();
-
+    fn legacy_cross_issuer_portfolio_evaluation_is_unsupported() {
         let portfolio = CrossIssuerPortfolio {
             schema: CROSS_ISSUER_PORTFOLIO_SCHEMA.to_string(),
-            portfolio_id: "portfolio-1".to_string(),
-            subject,
-            entries: vec![
-                CrossIssuerPortfolioEntry {
-                    entry_id: "native".to_string(),
-                    profile_family: PASSPORT_SCHEMA.to_string(),
-                    source_kind: CrossIssuerPortfolioEntryKind::Native,
-                    source: None,
-                    passport: native_passport.clone(),
-                    lifecycle: Some(active_lifecycle_resolution(&native_passport, 1_710_000_200)),
-                    certification_refs: vec!["cert-alpha".to_string()],
-                    migration_id: None,
-                },
-                CrossIssuerPortfolioEntry {
-                    entry_id: "imported".to_string(),
-                    profile_family: PASSPORT_SCHEMA.to_string(),
-                    source_kind: CrossIssuerPortfolioEntryKind::Imported,
-                    source: Some("https://issuer-b.example/portfolio.json".to_string()),
-                    passport: imported_passport.clone(),
-                    lifecycle: Some(active_lifecycle_resolution(&imported_passport, 1_710_000_200)),
-                    certification_refs: vec!["cert-beta".to_string()],
-                    migration_id: None,
-                },
-            ],
+            portfolio_id: "legacy-portfolio".to_string(),
+            subject: "did:chio:legacy".to_string(),
+            entries: Vec::new(),
             migrations: Vec::new(),
         };
         let trust_pack = create_signed_cross_issuer_trust_pack(
             &Keypair::from_seed(&[9u8; 32]),
-            "pack-1",
+            "legacy-pack",
             "https://rp.example.com",
             1_710_000_000,
             1_710_086_400,
-            CrossIssuerTrustPackPolicy {
-                allowed_issuers: [native_issuer].into_iter().collect(),
-                allowed_profile_families: [PASSPORT_SCHEMA.to_string()].into_iter().collect(),
-                allowed_entry_kinds: [
-                    CrossIssuerPortfolioEntryKind::Native,
-                    CrossIssuerPortfolioEntryKind::Imported,
-                ]
-                .into_iter()
-                .collect(),
-                require_active_lifecycle: true,
-                ..CrossIssuerTrustPackPolicy::default()
-            },
+            CrossIssuerTrustPackPolicy::default(),
         )
-        .expect("trust pack");
+        .test_ok("legacy trust pack");
 
-        let evaluation =
-            evaluate_cross_issuer_portfolio(&portfolio, 1_710_000_200, &trust_pack).expect("evaluation");
-
-        assert!(evaluation.accepted);
-        assert_eq!(evaluation.activated_entry_ids, vec!["native".to_string()]);
-        assert_eq!(evaluation.entry_results.len(), 2);
-        assert!(evaluation.entry_results[0].accepted);
-        assert!(!evaluation.entry_results[1].accepted);
-        assert!(evaluation.entry_results[1]
-            .reasons
-            .iter()
-            .any(|reason| reason.contains("outside the trust pack allowlist")));
-    }
-
-    #[test]
-    fn cross_issuer_portfolio_requires_explicit_migration_for_subject_rebinding() {
-        let imported_passport = sample_passport(6, 1);
-        let target_subject =
-            did_from_public_key(Keypair::from_seed(&[8u8; 32]).public_key()).to_string();
-        let issuer = imported_passport.credentials[0].unsigned.issuer.clone();
-        let portfolio = CrossIssuerPortfolio {
-            schema: CROSS_ISSUER_PORTFOLIO_SCHEMA.to_string(),
-            portfolio_id: "portfolio-2".to_string(),
-            subject: target_subject,
-            entries: vec![CrossIssuerPortfolioEntry {
-                entry_id: "imported".to_string(),
-                profile_family: PASSPORT_SCHEMA.to_string(),
-                source_kind: CrossIssuerPortfolioEntryKind::Imported,
-                source: Some("https://issuer-a.example/import".to_string()),
-                passport: imported_passport,
-                lifecycle: None,
-                certification_refs: vec!["cert-alpha".to_string()],
-                migration_id: None,
-            }],
-            migrations: Vec::new(),
-        };
-        let trust_pack = create_signed_cross_issuer_trust_pack(
-            &Keypair::from_seed(&[9u8; 32]),
-            "pack-2",
-            "https://rp.example.com",
-            1_710_000_000,
-            1_710_086_400,
-            CrossIssuerTrustPackPolicy {
-                allowed_issuers: [issuer].into_iter().collect(),
-                allowed_profile_families: [PASSPORT_SCHEMA.to_string()].into_iter().collect(),
-                allowed_entry_kinds: [CrossIssuerPortfolioEntryKind::Imported]
-                    .into_iter()
-                    .collect(),
-                ..CrossIssuerTrustPackPolicy::default()
-            },
-        )
-        .expect("trust pack");
-
-        let evaluation =
-            evaluate_cross_issuer_portfolio(&portfolio, 1_710_000_200, &trust_pack).expect("evaluation");
-
-        assert!(!evaluation.accepted);
-        assert!(evaluation
-            .entry_results[0]
-            .reasons
-            .iter()
-            .any(|reason| reason.contains("without an explicit migration")));
-    }
-
-    #[test]
-    fn cross_issuer_portfolio_accepts_explicit_migration_link() {
-        let migrated_passport = sample_passport(5, 1);
-        let old_subject = migrated_passport.subject.clone();
-        let target_subject =
-            did_from_public_key(Keypair::from_seed(&[8u8; 32]).public_key()).to_string();
-        let issuer = migrated_passport.credentials[0].unsigned.issuer.clone();
-        let passport_id = passport_artifact_id(&migrated_passport).expect("passport id");
-        let migration = create_signed_cross_issuer_migration(
-            &Keypair::from_seed(&[9u8; 32]),
-            CreateSignedCrossIssuerMigrationArgs {
-                migration_id: "migration-1".to_string(),
-                attester: "https://rp.example.com/migrations/1".to_string(),
-                from_issuer: issuer.clone(),
-                to_issuer: issuer.clone(),
-                from_subject: old_subject,
-                to_subject: target_subject.clone(),
-                prior_passport_ids: vec![passport_id],
-                reason: "issuer migration".to_string(),
-                continuity_ref: "ledger://continuity/1".to_string(),
-                issued_at: 1_710_000_000,
-                expires_at: Some(1_710_086_400),
-            },
-        )
-        .expect("migration");
-        let portfolio = CrossIssuerPortfolio {
-            schema: CROSS_ISSUER_PORTFOLIO_SCHEMA.to_string(),
-            portfolio_id: "portfolio-3".to_string(),
-            subject: target_subject,
-            entries: vec![CrossIssuerPortfolioEntry {
-                entry_id: "migrated".to_string(),
-                profile_family: PASSPORT_SCHEMA.to_string(),
-                source_kind: CrossIssuerPortfolioEntryKind::Migrated,
-                source: Some("https://issuer-a.example/migration".to_string()),
-                passport: migrated_passport,
-                lifecycle: None,
-                certification_refs: vec!["cert-alpha".to_string()],
-                migration_id: Some("migration-1".to_string()),
-            }],
-            migrations: vec![migration],
-        };
-        let trust_pack = create_signed_cross_issuer_trust_pack(
-            &Keypair::from_seed(&[10u8; 32]),
-            "pack-3",
-            "https://rp.example.com",
-            1_710_000_000,
-            1_710_086_400,
-            CrossIssuerTrustPackPolicy {
-                allowed_issuers: [issuer].into_iter().collect(),
-                allowed_profile_families: [PASSPORT_SCHEMA.to_string()].into_iter().collect(),
-                allowed_entry_kinds: [CrossIssuerPortfolioEntryKind::Migrated]
-                    .into_iter()
-                    .collect(),
-                allowed_migration_ids: ["migration-1".to_string()].into_iter().collect(),
-                ..CrossIssuerTrustPackPolicy::default()
-            },
-        )
-        .expect("trust pack");
-
-        let evaluation =
-            evaluate_cross_issuer_portfolio(&portfolio, 1_710_000_200, &trust_pack).expect("evaluation");
-
-        assert!(evaluation.accepted);
-        assert_eq!(evaluation.activated_entry_ids, vec!["migrated".to_string()]);
-        assert!(evaluation.entry_results[0].accepted);
+        assert!(matches!(
+            evaluate_cross_issuer_portfolio(&portfolio, 1_710_000_200, &trust_pack),
+            Err(CredentialError::UnsupportedLegacyCrossIssuerV1)
+        ));
     }
 
     #[test]
@@ -606,8 +430,8 @@ mod tests {
             migrations: vec![migration_a, migration_b],
         };
 
-        let error =
-            verify_cross_issuer_portfolio(&portfolio, 1_710_000_200).expect_err("duplicate migration ids");
+        let error = verify_cross_issuer_portfolio(&portfolio, 1_710_000_200)
+            .expect_err("duplicate migration ids");
         assert!(matches!(
             error,
             CredentialError::InvalidCrossIssuerPortfolio(_)
@@ -631,7 +455,18 @@ mod tests {
         .expect("trust pack");
         trust_pack.body.verifier = "https://tampered.example.com".to_string();
 
-        let error = verify_signed_cross_issuer_trust_pack(&trust_pack, 1_710_000_200)
+        let trust = CrossIssuerTrustRegistryV2::new(CrossIssuerTrustRegistryConfigV2 {
+            verifier_keys: vec![VerifierTrustKeyV2 {
+                verifier_id: "https://rp.example.com".to_string(),
+                signer_key_id: "legacy-verifier".to_string(),
+                signer_key_epoch: 1,
+                public_key: signer.public_key(),
+                status: TrustedKeyStatusV2::Active,
+            }],
+            ..CrossIssuerTrustRegistryConfigV2::default()
+        })
+        .test_ok("legacy verifier trust");
+        let error = verify_signed_cross_issuer_trust_pack(&trust_pack, 1_710_000_200, &trust)
             .expect_err("tampered trust pack");
         assert!(matches!(
             error,
@@ -693,7 +528,8 @@ mod tests {
     fn passport_verification_surfaces_enterprise_identity_provenance() {
         let subject = Keypair::from_seed(&[7u8; 32]).public_key().to_hex();
         let issuer = Keypair::from_seed(&[1u8; 32]);
-        let enterprise_identity = EnterpriseIdentityProvenance::from(&sample_enterprise_identity_context());
+        let enterprise_identity =
+            EnterpriseIdentityProvenance::from(&sample_enterprise_identity_context());
         let credential = issue_reputation_credential_with_enterprise_identity(
             &issuer,
             sample_scorecard(&subject),
@@ -743,8 +579,7 @@ mod tests {
             build_agent_passport(&subject_did.to_string(), vec![credential]).expect("passport");
         passport.enterprise_identity_provenance.clear();
 
-        let error =
-            verify_agent_passport(&passport, 1_710_010_000).expect_err("tampered passport");
+        let error = verify_agent_passport(&passport, 1_710_010_000).expect_err("tampered passport");
         assert!(matches!(
             error,
             CredentialError::PassportEnterpriseIdentityProvenanceMismatch
@@ -781,12 +616,10 @@ mod tests {
 
         assert!(!evaluation.accepted);
         assert!(!evaluation.credential_results[0].enterprise_identity_present);
-        assert!(
-            evaluation.credential_results[0]
-                .reasons
-                .iter()
-                .any(|reason| reason.contains("enterprise identity provenance"))
-        );
+        assert!(evaluation.credential_results[0]
+            .reasons
+            .iter()
+            .any(|reason| reason.contains("enterprise identity provenance")));
     }
 
     #[test]
@@ -1460,8 +1293,9 @@ mod tests {
         let passport_id = passport_artifact_id(&passport).expect("passport id");
 
         let distribution = PassportStatusDistribution {
-            resolve_urls: vec!["https://trust.example.com/v1/public/passport/statuses/resolve"
-                .to_string()],
+            resolve_urls: vec![
+                "https://trust.example.com/v1/public/passport/statuses/resolve".to_string(),
+            ],
             cache_ttl_secs: Some(300),
         };
         let metadata = default_oid4vci_passport_issuer_metadata_with_status_distribution(
@@ -1516,7 +1350,10 @@ mod tests {
             .credential_configurations_supported
             .get(CHIO_PASSPORT_SD_JWT_VC_CREDENTIAL_CONFIGURATION_ID)
             .expect("portable credential configuration");
-        assert_eq!(portable_configuration.format, CHIO_PASSPORT_SD_JWT_VC_FORMAT);
+        assert_eq!(
+            portable_configuration.format,
+            CHIO_PASSPORT_SD_JWT_VC_FORMAT
+        );
         let portable_profile = portable_configuration
             .portable_profile
             .as_ref()
@@ -1534,7 +1371,9 @@ mod tests {
             portable_profile.issuer_identity
         );
         assert_eq!(
-            portable_profile.portable_identity_binding.chio_provenance_anchor,
+            portable_profile
+                .portable_identity_binding
+                .chio_provenance_anchor,
             "did:chio"
         );
         assert!(portable_profile
@@ -1549,7 +1388,10 @@ mod tests {
             .credential_configurations_supported
             .get(CHIO_PASSPORT_JWT_VC_JSON_CREDENTIAL_CONFIGURATION_ID)
             .expect("jwt vc credential configuration");
-        assert_eq!(jwt_vc_configuration.format, CHIO_PASSPORT_JWT_VC_JSON_FORMAT);
+        assert_eq!(
+            jwt_vc_configuration.format,
+            CHIO_PASSPORT_JWT_VC_JSON_FORMAT
+        );
         let jwt_vc_profile = jwt_vc_configuration
             .portable_profile
             .as_ref()
@@ -1566,9 +1408,8 @@ mod tests {
             .iter()
             .any(|claim| claim == "vc.credentialSubject.chioPassportId"));
 
-        let type_metadata =
-            build_chio_passport_sd_jwt_type_metadata("https://trust.example.com")
-                .expect("type metadata");
+        let type_metadata = build_chio_passport_sd_jwt_type_metadata("https://trust.example.com")
+            .test_ok("type metadata");
         assert_eq!(type_metadata.format, CHIO_PASSPORT_SD_JWT_VC_FORMAT);
         assert_eq!(
             type_metadata.jwks_url,
@@ -1591,7 +1432,10 @@ mod tests {
         let jwt_vc_type_metadata =
             build_chio_passport_jwt_vc_json_type_metadata("https://trust.example.com")
                 .expect("jwt vc type metadata");
-        assert_eq!(jwt_vc_type_metadata.format, CHIO_PASSPORT_JWT_VC_JSON_FORMAT);
+        assert_eq!(
+            jwt_vc_type_metadata.format,
+            CHIO_PASSPORT_JWT_VC_JSON_FORMAT
+        );
         assert_eq!(
             jwt_vc_type_metadata.jwks_url,
             "https://trust.example.com/.well-known/jwks.json"
@@ -1635,12 +1479,9 @@ mod tests {
             None,
         )
         .expect("portable envelope");
-        let verification = verify_chio_passport_sd_jwt_vc(
-            &envelope.compact,
-            &issuer.public_key(),
-            1_710_000_200,
-        )
-        .expect("portable verification");
+        let verification =
+            verify_chio_passport_sd_jwt_vc(&envelope.compact, &issuer.public_key(), 1_710_000_200)
+                .test_ok("portable verification");
         assert_eq!(verification.passport_id, passport_id);
         assert_eq!(verification.subject_did, passport.subject);
         assert_eq!(verification.issuer, "https://trust.example.com");
@@ -1835,22 +1676,23 @@ mod tests {
             None,
         )
         .expect("portable envelope");
-        let compact = rewrite_portable_compact(&envelope.compact, &issuer, |payload, disclosures| {
-            let (salt, _, value) =
-                parse_sd_jwt_disclosure(&disclosures[0]).expect("parse disclosure");
-            let replacement = json!([salt, "chio_unknown_claim", value]);
-            disclosures[0] =
-                URL_SAFE_NO_PAD.encode(serde_json::to_vec(&replacement).expect("encode disclosure"));
-            payload.insert(
-                "_sd".to_string(),
-                Value::Array(
-                    disclosures
-                        .iter()
-                        .map(|disclosure| Value::String(sd_jwt_disclosure_digest(disclosure)))
-                        .collect(),
-                ),
-            );
-        });
+        let compact =
+            rewrite_portable_compact(&envelope.compact, &issuer, |payload, disclosures| {
+                let (salt, _, value) =
+                    parse_sd_jwt_disclosure(&disclosures[0]).test_ok("parse disclosure");
+                let replacement = json!([salt, "chio_unknown_claim", value]);
+                disclosures[0] = URL_SAFE_NO_PAD
+                    .encode(serde_json::to_vec(&replacement).test_ok("encode disclosure"));
+                payload.insert(
+                    "_sd".to_string(),
+                    Value::Array(
+                        disclosures
+                            .iter()
+                            .map(|disclosure| Value::String(sd_jwt_disclosure_digest(disclosure)))
+                            .collect(),
+                    ),
+                );
+            });
 
         let error = verify_chio_passport_sd_jwt_vc(&compact, &issuer.public_key(), 1_710_000_200)
             .expect_err("unknown disclosure claim should fail");
@@ -1887,8 +1729,9 @@ mod tests {
         .expect("portable envelope");
         let segments = envelope.compact.split('~').collect::<Vec<_>>();
         let filtered = format!("{}~{}~", segments[0], segments[1]);
-        let verification = verify_chio_passport_sd_jwt_vc(&filtered, &issuer.public_key(), 1_710_000_200)
-            .expect("subset disclosure verification");
+        let verification =
+            verify_chio_passport_sd_jwt_vc(&filtered, &issuer.public_key(), 1_710_000_200)
+                .test_ok("subset disclosure verification");
         assert_eq!(verification.disclosure_claims, vec!["chio_issuer_dids"]);
     }
 
@@ -1942,9 +1785,12 @@ mod tests {
             identity_assertion: None,
         };
         let request_jwt = sign_oid4vp_request_object(&request, &authority).expect("request jwt");
-        let verified_request =
-            verify_signed_oid4vp_request_object(&request_jwt, &authority.public_key(), 1_710_000_200)
-                .expect("verify request jwt");
+        let verified_request = verify_signed_oid4vp_request_object(
+            &request_jwt,
+            &authority.public_key(),
+            1_710_000_200,
+        )
+        .test_ok("verify request jwt");
         assert_eq!(verified_request, request);
         let transport =
             build_oid4vp_request_transport(&request, &authority).expect("request transport");
@@ -2065,7 +1911,10 @@ mod tests {
         let error = invalid_record
             .validate()
             .expect_err("contradictory active lifecycle should fail");
-        assert!(matches!(error, CredentialError::InvalidPassportLifecycle(_)));
+        assert!(matches!(
+            error,
+            CredentialError::InvalidPassportLifecycle(_)
+        ));
 
         let invalid_resolution = PassportLifecycleResolution {
             passport_id: "sha256:test".to_string(),
@@ -2079,8 +1928,9 @@ mod tests {
             revoked_at: None,
             revoked_reason: None,
             distribution: PassportStatusDistribution {
-                resolve_urls: vec!["https://trust.example.com/v1/public/passport/statuses/resolve"
-                    .to_string()],
+                resolve_urls: vec![
+                    "https://trust.example.com/v1/public/passport/statuses/resolve".to_string(),
+                ],
                 cache_ttl_secs: Some(300),
             },
             valid_until: String::new(),
@@ -2089,17 +1939,24 @@ mod tests {
         let error = invalid_resolution
             .validate()
             .expect_err("not-found lifecycle with distribution should fail");
-        assert!(matches!(error, CredentialError::InvalidPassportLifecycle(_)));
+        assert!(matches!(
+            error,
+            CredentialError::InvalidPassportLifecycle(_)
+        ));
 
         let invalid_distribution = PassportStatusDistribution {
-            resolve_urls: vec!["https://trust.example.com/v1/public/passport/statuses/resolve"
-                .to_string()],
+            resolve_urls: vec![
+                "https://trust.example.com/v1/public/passport/statuses/resolve".to_string(),
+            ],
             cache_ttl_secs: None,
         };
         let error = invalid_distribution
             .validate()
             .expect_err("distribution without ttl should fail");
-        assert!(matches!(error, CredentialError::InvalidPassportLifecycle(_)));
+        assert!(matches!(
+            error,
+            CredentialError::InvalidPassportLifecycle(_)
+        ));
     }
 
     /// Passport revocation bridge: a Revoked PassportLifecycleRecord
