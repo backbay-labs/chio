@@ -43,28 +43,28 @@
       "results": [
         {
           "path": "docs/papers/programmable-sovereignty/bench/results/bilateral-admission-raw.csv",
-          "sha256": "bff2eecdcab3c88ad95ac192b63d6b68679961d2e0111126f5ff53647cb50f06"
+          "sha256": "81a8d721cc2c112725fe36c5697292c123287de39ba7f6683f3f57b2fb201c78"
         },
         {
           "path": "docs/papers/programmable-sovereignty/bench/results/bilateral-admission-components.csv",
-          "sha256": "5a599729c3b173a6eae53a550d46d8d8817796b494cba4d0d92b0d07219b4f27"
+          "sha256": "8f5cea7cde22767492b30b74cd9c5c70f741af0cf312048590dca7de0aef27cb"
         },
         {
           "path": "docs/papers/programmable-sovereignty/bench/results/bilateral-admission.json",
-          "sha256": "2ecda7727df18659ac5903b2834730c71bfdfd07f4856ff52dbe131b3511ccff"
+          "sha256": "05202ada051ccb7dd91401699cdc4b4dc6461d1929bc8021d433bdecdc9c91b5"
         },
         {
           "path": "docs/papers/programmable-sovereignty/bench/results/bilateral-admission-inline.tex",
-          "sha256": "1d162151ea04b1f8b0b60fb5a3a5f9cbe7b75d325db970e0026b21c7cb8ba9d1"
+          "sha256": "430b9dc0a2eb66663b8019fa0c3fd1ffb80d1b08ce984fd90ef43aaf109985a8"
         },
         {
           "path": "docs/papers/programmable-sovereignty/bench/results/bilateral-admission-environment.txt",
-          "sha256": "684f06aeacfb1e5d07070c6e75256b6e99579cb5d2948a9dc7262e54f611f5cf"
+          "sha256": "2d00736b15b3a181695c9383e37d3e24d7030d81f39eda61f9756c85f7717000"
         }
       ],
       "script": {
         "path": "docs/papers/programmable-sovereignty/bench/run-bilateral-admission.sh",
-        "sha256": "c094a4374fd696657fb03bb7f1bf43f3ff78479695ce152dab82839b253c933d"
+        "sha256": "105995e0af0680a46b59fc7fa5014a87f328d60e64fa69d339564eba71e62ba2"
       }
     },
     {
@@ -73,20 +73,20 @@
       "results": [
         {
           "path": "docs/papers/programmable-sovereignty/bench/results/replay-corpus.csv",
-          "sha256": "abdaaadf0b80dd9e45a2df8c86cdf4a7b618753cd8dde071e66662ef49d60928"
+          "sha256": "628aa17d7c7b8dadeb1a563bc61e57f20d63dd6c2ef4a007bd3f5583645252b3"
         },
         {
           "path": "docs/papers/programmable-sovereignty/bench/results/replay-corpus.json",
-          "sha256": "72b72ce09e92acc113fb0b56cf0558a0ef82b7ce94c8b781b5b7029e36778f2a"
+          "sha256": "c5ae9c10b5e7c65de2a51cd39626d8a6c1b9fbcf7ed309c0d94186f907be6673"
         },
         {
           "path": "docs/papers/programmable-sovereignty/bench/results/replay-corpus-inline.tex",
-          "sha256": "9138e46943a98381edf5db19fab02bddb1d2b53b5c7617db944f5ce367465a04"
+          "sha256": "1226bf0b8cf9d041b03c7dd2a163db24fee5a33011e2da9cf7684faabba572c7"
         }
       ],
       "script": {
         "path": "docs/papers/programmable-sovereignty/bench/run-replay-corpus.sh",
-        "sha256": "35c659777bf81e3cc70c770069b102e64147f0cbd6e44c3ca2fd5aa126c303b3"
+        "sha256": "46065f6b4f95949ee415ddf4ac75ad7dc0495fd64d36f018f49d2929b051f224"
       }
     }
   ],
@@ -209,8 +209,8 @@
   "rebuildCommand": "bash scripts/check-programmable-sovereignty-artifact.sh --full",
   "schema": "chio.programmable-sovereignty.artifact-manifest.v1",
   "source": {
-    "commit": "741f1db8c10120029f06bedb3e04c100498f8be1",
-    "contentSetSha256": "243341b8542a42a06d64c23dd74495e9c6c7326f9545dea532858eb3847bd0c4",
+    "commit": "f0346d22267801b00b90f6d9dad1f5690cb62de3",
+    "contentSetSha256": "b6d4a7526217abb96920d223ec9363ea03426ac1a93b275ccbff1ad325fcef58",
     "snapshotMode": "recorded source commit plus self-contained content-addressed snapshot"
   },
   "sourceFiles": [
@@ -224,7 +224,7 @@
     },
     {
       "path": "docs/papers/programmable-sovereignty/CLAIM_LEDGER.md",
-      "sha256": "707ff8dfc98cb4e80b19cc87b18f797f84af6297ade73c4274ee674a8b9f2f83"
+      "sha256": "cc0dff80ebbf97c3e1751775d9637b881d2efa93aa38ee49381857b89149310e"
     },
     {
       "path": "docs/papers/programmable-sovereignty/README.md",
@@ -236,7 +236,7 @@
     },
     {
       "path": "docs/papers/programmable-sovereignty/paper-usenix.pdf",
-      "sha256": "dd9ef207f1adc107d26f4c85fdbc9e39b4a5196ce94c9331db35872f7a446981"
+      "sha256": "4214e472c713738f9090b7a81a4365f1b1e4202a2ea8421e6c804b97f56d7e33"
     },
     {
       "path": "docs/papers/programmable-sovereignty/paper.tex",
@@ -332,7 +332,7 @@
     },
     {
       "path": "crates/kernel/chio-runtime-core/src/treaty/predicate.rs",
-      "sha256": "9b5bff8851a4fab6b90edb1c29bc9397ffa0cf98d4c7abc0de5ebdb809b51ad2"
+      "sha256": "8737048cc2480b68699355a5cf00a815e7d7dc7992fd8eb16165c88aace524bb"
     },
     {
       "path": "crates/kernel/chio-runtime-core/src/types.rs",
@@ -340,7 +340,7 @@
     },
     {
       "path": "crates/trust/chio-federation/src/bilateral.rs",
-      "sha256": "f875d459da4b1c4e8d8e5627fa62b3d51506e18dbd2efe9a33a64e91dad3dfde"
+      "sha256": "a172af074a4194c7f26b51ca48f90f902b154d59fd21d0efa89eb70662a9f283"
     },
     {
       "path": "crates/trust/chio-federation/src/bilateral_verifier/cosign.rs",
@@ -368,7 +368,7 @@
     },
     {
       "path": "scripts/generate-programmable-sovereignty-artifact.py",
-      "sha256": "017467c3d3556a3788956a5abff7da541de14d04a6cf7af1afeebd477463c0d7"
+      "sha256": "73b2df1e6433ec5b0ef63e1debad8f3051a8dceb62cf10613ffa1cb1d1437cb9"
     },
     {
       "path": "docs/papers/programmable-sovereignty/supplementary/README.md",
@@ -382,7 +382,7 @@
   "supplementaryFiles": [
     {
       "path": "docs/papers/programmable-sovereignty/supplementary/source-commit.txt",
-      "sha256": "9c45ca1c1a44e346d5a5f364d4eefe89c5cde08b5c507c09a49b83773272d84d"
+      "sha256": "787a84a8075b07e9263287f2c943f4b75a001a4b6f7c1ab991d44bbde1db73c8"
     },
     {
       "path": "docs/papers/programmable-sovereignty/supplementary/proof-manifest.toml",
