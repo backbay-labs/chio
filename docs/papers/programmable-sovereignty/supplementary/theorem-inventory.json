@@ -62,12 +62,12 @@
         "propext"
       ],
       "claimClass": "bounded_theorem",
-      "declaration": "Chio.Treaty.BridgeEquivalence.Legacy.treaty_admission_agrees",
+      "declaration": "Chio.Treaty.BridgeEquivalence.Resolved.treaty_admission_agrees",
       "id": "PS-F05",
       "module": "Chio.Treaty.BridgeEquivalence",
       "name": "treaty_admission_agrees",
       "path": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
-      "scope": "Syntactic and legacy treaty admission agree pointwise."
+      "scope": "Syntactic and identifier-indexed treaty admission agree pointwise."
     },
     {
       "axioms": [
@@ -75,7 +75,7 @@
         "Quot.sound"
       ],
       "claimClass": "bounded_theorem",
-      "declaration": "Chio.Treaty.BridgeEquivalence.Legacy.bounded_amendment_sound",
+      "declaration": "Chio.Treaty.BridgeEquivalence.Resolved.bounded_amendment_sound",
       "id": "PS-F06",
       "module": "Chio.Treaty.BridgeEquivalence",
       "name": "bounded_amendment_sound",
