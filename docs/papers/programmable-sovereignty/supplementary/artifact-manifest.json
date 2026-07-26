@@ -43,23 +43,23 @@
       "results": [
         {
           "path": "docs/papers/programmable-sovereignty/bench/results/bilateral-admission-raw.csv",
-          "sha256": "10ad209be2468fe9cf2b24d4bec9f3b0986743abec4246bd014ba98e8234e9b9"
+          "sha256": "e0261b4d90eb81ce3e8edc3d87538646c753b59766771a931004b8d207aaaa48"
         },
         {
           "path": "docs/papers/programmable-sovereignty/bench/results/bilateral-admission-components.csv",
-          "sha256": "27089ba7adc559091018902cc9c38ca92444a08503942b1e5593ce7ff72a353b"
+          "sha256": "8f879b7d1121a7ce1e59fa4f69d1a0974b44c2ef1037d8dd424febb9ac7b658a"
         },
         {
           "path": "docs/papers/programmable-sovereignty/bench/results/bilateral-admission.json",
-          "sha256": "c5a9017cf1484bd32702c602a0aa8a948ec86c2e69f546ec3ee215c6c17b6a7b"
+          "sha256": "290e6c5abcdc43d94209e317777aab8fff2a71ed896debef26c8ffbb4e6affd6"
         },
         {
           "path": "docs/papers/programmable-sovereignty/bench/results/bilateral-admission-inline.tex",
-          "sha256": "e4ca8e3e4c2bb1bebeab1a2a344b481f479dcac836677764ce1c90049a04330b"
+          "sha256": "f683bc48482526111226fb8027db38295f4c59a99899793224d9447f3f125efa"
         },
         {
           "path": "docs/papers/programmable-sovereignty/bench/results/bilateral-admission-environment.txt",
-          "sha256": "ab4761c095546a8a1d18478ad1f3e8fec22a4c1ae78530d6deddc3ba5bb766de"
+          "sha256": "b85e4bc5d33dfbd6ef255d88800a089e160db668e94a7b7488dff7f2b03000ce"
         }
       ],
       "script": {
@@ -73,15 +73,15 @@
       "results": [
         {
           "path": "docs/papers/programmable-sovereignty/bench/results/replay-corpus.csv",
-          "sha256": "03b3fc28a8b5f1ac553bde2caa0e866f5fda70eaa4bcf1d89dba6c582c8973b7"
+          "sha256": "6b0fd56255d1ec366274a4065b53bb27c24ad32ed3b18ebea4c3afdc5fd0a62e"
         },
         {
           "path": "docs/papers/programmable-sovereignty/bench/results/replay-corpus.json",
-          "sha256": "eb9e70ad871337020524e0e6af9bcbd14708775eab2d58a34c0e0c784c3c6503"
+          "sha256": "5aa20c1dfc34abb1ed1979793ed08925d3e31716d5c85cf055271020ae8ff679"
         },
         {
           "path": "docs/papers/programmable-sovereignty/bench/results/replay-corpus-inline.tex",
-          "sha256": "25c3610db998c62e4d908f37db7b0a594ac4723f9a863323e1cdd1cefa4ec636"
+          "sha256": "e9b8221267174745e91461ede9bbd0e80f11ea0ebeb1aa93d499c22d61ac249a"
         }
       ],
       "script": {
@@ -209,14 +209,14 @@
   "rebuildCommand": "bash scripts/check-programmable-sovereignty-artifact.sh --full",
   "schema": "chio.programmable-sovereignty.artifact-manifest.v1",
   "source": {
-    "commit": "14aa1a341f093d68b42d83061e0704373bf33e8e",
-    "contentSetSha256": "ca070d94cfff764f09c09d45ad673ab6971596a78abfdead1b201c5db63831fc",
+    "commit": "25ca64e7db6d4f30cc7d536eb957c8f2a5e42fe5",
+    "contentSetSha256": "cfb7b5870a7fdd3608592ac12ade8f3ade5b90c91357e3cce120dcf65055bb81",
     "snapshotMode": "recorded source commit plus self-contained content-addressed snapshot"
   },
   "sourceFiles": [
     {
       "path": "Cargo.lock",
-      "sha256": "703aff0a4696093b2db1d69da0b8d799483573adc38709b23278efdf30c9b0db"
+      "sha256": "45ca7103e4d0e7ca9ebfd2d3ae63e5079fb24d85cddaa97691d3962e3456f89f"
     },
     {
       "path": "rust-toolchain.toml",
@@ -292,19 +292,19 @@
     },
     {
       "path": "formal/lean4/Chio/Chio.lean",
-      "sha256": "b2b5e146f651e8461099f3cd343523b66fee9a8e79c888c6c5780779867269ea"
+      "sha256": "4b6f9bc79e95fa544fa260227c9b4e8adabcee505db18d1af2f5c58769003dbd"
     },
     {
       "path": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
-      "sha256": "6dd8cd8b94dd7d35fc104c13493f44b8353ff14b405571a2dcbbcaa72bcc68b0"
+      "sha256": "e0a26fd73aadd52a4308bca5a18763fb6012442d26e356d29029cc2b45014c9c"
     },
     {
       "path": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
-      "sha256": "d24947c3e47741a21176542cd574f5ef279088f6da9d80efbf3d5a4c1e6c3248"
+      "sha256": "dc71423296cc2af9cb3d91bb8298542d5688c1416ca703bb609fdb5285c71dc4"
     },
     {
       "path": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
-      "sha256": "8ea2504afa3de1860397b821a7d108fa6460f8758cbe01d1dd964bb8b3d97d1a"
+      "sha256": "05c8b8e7496a59fb8551c78863043a562f2005071123943e8ea9d7a534d532ff"
     },
     {
       "path": "formal/diff-tests/src/spec.rs",
@@ -316,7 +316,7 @@
     },
     {
       "path": "formal/diff-tests/Cargo.toml",
-      "sha256": "3f2fe0c2c4498066473215badd5f0c8298d8f988f87012d33e3297bc3f54512d"
+      "sha256": "a37bfd4eeb8386bcff62e6ef3cc34964f9133a614a023307d491d02087da00dd"
     },
     {
       "path": "formal/diff-tests/tests/treaty_predicate_diff.rs",
@@ -324,7 +324,7 @@
     },
     {
       "path": "crates/kernel/chio-runtime-core/src/admission_hook.rs",
-      "sha256": "153b0a28a7f44edb1cce13060bc7a869789b56e30dd3cd629c2578be0a759a2e"
+      "sha256": "4046cb2f530113aea43f028c494db1a4a15f143ab562c55a3fa78760d4c2d4ab"
     },
     {
       "path": "crates/kernel/chio-runtime-core/src/treaty.rs",
@@ -352,7 +352,7 @@
     },
     {
       "path": "crates/kernel/chio-runtime-harness/src/lib.rs",
-      "sha256": "cdbeaebfffe420b12bfd70aa80b3221a1ca23e1957c483875f29d5c1074add50"
+      "sha256": "0c45a8aff5a3b9c4abca78a71e94e7b9b5b8d27c4b7d689c898331ed1b348d7c"
     },
     {
       "path": "scripts/check-chio-live-treaty-buyer-closure.sh",
@@ -368,7 +368,7 @@
     },
     {
       "path": "scripts/generate-programmable-sovereignty-artifact.py",
-      "sha256": "73b2df1e6433ec5b0ef63e1debad8f3051a8dceb62cf10613ffa1cb1d1437cb9"
+      "sha256": "131fdc94ee21992ddf8a3ff3b505fb3db63b0d149ed1af70a030bcf813349343"
     },
     {
       "path": "docs/papers/programmable-sovereignty/supplementary/README.md",
@@ -382,19 +382,19 @@
   "supplementaryFiles": [
     {
       "path": "docs/papers/programmable-sovereignty/supplementary/source-commit.txt",
-      "sha256": "eb6234d41aac4e9183cb7826ca209be7bdd9097015b4564cac5781ceeb9cba1d"
+      "sha256": "bcae22a0bd61d74151a122da626359eb5341a718ef771f6f66a451b04b2b5bbf"
     },
     {
       "path": "docs/papers/programmable-sovereignty/supplementary/proof-manifest.toml",
-      "sha256": "b2137a2c9a4eae4de7789e789da23939f841329f75a847787de9290aad5ef6de"
+      "sha256": "3e83369a5cee99cb9831504bf0baf497733a5143831da2ebc4edd8e0895e3540"
     },
     {
       "path": "docs/papers/programmable-sovereignty/supplementary/theorem-inventory.json",
-      "sha256": "46261be13ffdfc75eeab1853ebea6816b03957a7565e4b165c51945ee5e02c10"
+      "sha256": "383bea9620a53cadeffe175fd5feee9fa39f763577014b0936b3a7a2295ef99c"
     },
     {
       "path": "docs/papers/programmable-sovereignty/supplementary/lean-source.tar.gz",
-      "sha256": "194ddb217af1d4df76fc6115842aaf061f2af3403c99c69268da4c68fd248138"
+      "sha256": "68b0d2ae8301592b46e48c09927d1565ffaf4382f5f95eac6b686a55cb1c43a1"
     }
   ],
   "theorems": [
@@ -445,7 +445,7 @@
       "id": "PS-F04",
       "module": "Chio.Treaty.PredicateLang",
       "name": "bridge_decidable_soundness",
-      "path": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "path": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
       "scope": "A positive finite check implies semantic no-widening on-domain."
     },
     {
@@ -475,7 +475,7 @@
     }
   ],
   "toolchains": {
-    "lean": "leanprover/lean4:v4.28.0-rc1",
+    "lean": "leanprover/lean4:v4.28.0",
     "rust": "1.93.0",
     "tex": "TeX Live 2023 or compatible pdflatex and BibTeX"
   }
