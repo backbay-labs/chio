@@ -54,7 +54,7 @@
       "id": "PS-F04",
       "module": "Chio.Treaty.PredicateLang",
       "name": "bridge_decidable_soundness",
-      "path": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "path": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
       "scope": "A positive finite check implies semantic no-widening on-domain."
     },
     {
