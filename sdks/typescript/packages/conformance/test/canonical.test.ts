@@ -57,10 +57,10 @@ describe("canonical JSON (RFC 8785 conformance)", () => {
     expect(canonicalJsonString("line\nbreak")).toBe('"line\\nbreak"');
   });
 
-  it("preserves Chio control escapes in values and object keys", () => {
-    expect(canonicalJsonString("\u007f\u009f")).toBe('"\\u007f\\u009f"');
+  it("emits DEL and C1 controls without non-RFC escapes", () => {
+    expect(canonicalJsonString("\u007f\u009f")).toBe('"\u007f\u009f"');
     expect(canonicalJsonString({ "\u007f\u009f": "\u007f\u009f" })).toBe(
-      '{"\\u007f\\u009f":"\\u007f\\u009f"}',
+      '{"\u007f\u009f":"\u007f\u009f"}',
     );
   });
 

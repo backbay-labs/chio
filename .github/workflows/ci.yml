@@ -88,11 +88,15 @@ jobs:
         env:
           CARGO_BUILD_JOBS: "1"
           RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+          PR_BODY: ${{ github.event.pull_request.body }}
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
         run: |
           ./scripts/check-release-inputs.sh
           ./scripts/check-web3-contract-parity.sh
           ./scripts/check-workspace-layering.sh
           python3 scripts/check-review-slices.py
+          bash ./scripts/check-regression-tests.sh
+          bash ./scripts/tests/check-regression-tests.test.sh
           python3 scripts/check-mutants-examine-globs.py
           bash scripts/tests/check-mutants-examine-globs.test.sh
           python3 scripts/check-rust-public-surface.py
