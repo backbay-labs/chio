@@ -23,4 +23,3 @@ error: could not show invariant `inv_outstanding_is_hold_sum` on the `post` stat
 
 verification results:: 22 verified, 1 errors
 error: aborting due to 1 previous error; 1 warning emitted
-

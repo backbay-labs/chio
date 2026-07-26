@@ -22,4 +22,3 @@ error: could not show invariant `inv_u64_bound` on the `post` state
 
 verification results:: 22 verified, 1 errors
 error: aborting due to 1 previous error; 1 warning emitted
-
