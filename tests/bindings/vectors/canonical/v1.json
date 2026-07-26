@@ -31,8 +31,8 @@
       "input_json": "{\"text\":\"line\\n\\\"quoted\\\"\\\\path\"}"
     },
     {
-      "canonical_json": "\"\\u007f\"",
-      "description": "Chio preserves its established escaped canonical bytes for U+007F.",
+      "canonical_json": "\"\u007f\"",
+      "description": "RFC 8785 emits U+007F directly as UTF-8.",
       "id": "u007f_escape",
       "input_json": "\"\\u007f\""
     },
@@ -43,8 +43,8 @@
       "input_json": "\"\\u001f\""
     },
     {
-      "canonical_json": "\"\\u009f\"",
-      "description": "Chio preserves its established escaped canonical bytes for the C1 range.",
+      "canonical_json": "\"\u009f\"",
+      "description": "RFC 8785 emits C1 controls directly as UTF-8.",
       "id": "u009f_escape",
       "input_json": "\"\\u009f\""
     },

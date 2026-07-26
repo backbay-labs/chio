@@ -22,9 +22,7 @@ function compareUtf16(a: string, b: string): number {
 }
 
 function canonicalizeString(value: string): string {
-  return JSON.stringify(value).replace(/[\u007f-\u009f]/g, (control) =>
-    `\\u${control.charCodeAt(0).toString(16).padStart(4, "0")}`
-  );
+  return JSON.stringify(value);
 }
 
 function canonicalizeRawNumber(raw: string): string {

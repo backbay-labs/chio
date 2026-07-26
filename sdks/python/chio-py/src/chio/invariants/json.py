@@ -9,15 +9,10 @@ from typing import Any
 from ..errors import ChioInvariantError, parse_json_text
 
 _EXPONENT_RE = re.compile(r"e([+-])0+(\d+)$")
-_DEL_C1_RE = re.compile(r"[\u007f-\u009f]")
 
 
 def _canonical_json_string(value: str) -> str:
-    encoded = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
-    return _DEL_C1_RE.sub(
-        lambda match: f"\\u{ord(match.group(0)):04x}",
-        encoded,
-    )
+    return json.dumps(value, ensure_ascii=False, separators=(",", ":"))
 
 
 def _canonicalize_float(value: float) -> str:

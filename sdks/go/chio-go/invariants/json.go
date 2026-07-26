@@ -141,20 +141,7 @@ func marshalJSONString(input string) string {
 	encoder.SetEscapeHTML(false)
 	_ = encoder.Encode(input)
 	encoded := strings.TrimSuffix(buffer.String(), "\n")
-
-	var canonical strings.Builder
-	canonical.Grow(len(encoded))
-	const hexDigits = "0123456789abcdef"
-	for _, character := range encoded {
-		if character >= '\u007f' && character <= '\u009f' {
-			canonical.WriteString("\\u00")
-			canonical.WriteByte(hexDigits[(character>>4)&0x0f])
-			canonical.WriteByte(hexDigits[character&0x0f])
-			continue
-		}
-		canonical.WriteString(string(character))
-	}
-	return canonical.String()
+	return encoded
 }
 
 func sortUTF16(values []string) {

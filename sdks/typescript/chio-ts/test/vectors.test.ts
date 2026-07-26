@@ -53,12 +53,13 @@ test("canonical vectors round-trip through the TS invariant helper", async () =>
   }
 });
 
-test("canonical strings preserve Chio control escapes in values and object keys", () => {
-  assert.equal(canonicalizeJson("\u007f\u009f"), '"\\u007f\\u009f"');
-  assert.equal(canonicalizeJson({ "\u007f\u009f": "\u007f\u009f" }), '{"\\u007f\\u009f":"\\u007f\\u009f"}');
+test("canonical strings pass DEL and C1 controls through per RFC 8785", () => {
+  const controls = "\u007f\u009f";
+  assert.equal(canonicalizeJson(controls), `"${controls}"`);
+  assert.equal(canonicalizeJson({ [controls]: controls }), `{"${controls}":"${controls}"}`);
   assert.equal(
     canonicalizeJsonString('{"\\u007f\\u009f":"\\u007f\\u009f"}'),
-    '{"\\u007f\\u009f":"\\u007f\\u009f"}',
+    `{"${controls}":"${controls}"}`,
   );
 });
 
