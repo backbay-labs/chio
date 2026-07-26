@@ -1,0 +1,84 @@
+{
+  "anchorInclusion": "withheld_outside_core_claim",
+  "benchmarkInputTreeSha256": "8f50e32b4f8825e1521093f33c172e7bdff53e166423b63cabe8db5d60234f01",
+  "commit": "3c62eaab04177ff411b7747b6ed6b61bf566217c",
+  "components": [
+    {
+      "component": "receipt_sign",
+      "note": "buyer-closure-shaped Ed25519 receipt",
+      "p50_us": 242.4222769230769,
+      "p99_us": 309.3176282051282,
+      "samples": 30
+    },
+    {
+      "component": "receipt_verify",
+      "note": "buyer-closure-shaped Ed25519 receipt",
+      "p50_us": 370.16291570881225,
+      "p99_us": 476.4909572649573,
+      "samples": 30
+    },
+    {
+      "component": "receipt_append_sqlite",
+      "note": "production SQLite receipt store",
+      "p50_us": 7011.802384615385,
+      "p99_us": 10477.08875,
+      "samples": 30
+    },
+    {
+      "component": "treaty_predispatch_deny",
+      "note": "full kernel path; real hook, SQLite denial receipt, invocation counter",
+      "p50_us": 13405.539388888888,
+      "p99_us": 22826.18775,
+      "samples": 30
+    },
+    {
+      "component": "strict_bilateral_dsse_verify",
+      "note": "two signatures, embedded receipt, treaty bindings",
+      "p50_us": 340.22457192982455,
+      "p99_us": 366.79492712550604,
+      "samples": 30
+    },
+    {
+      "component": "cross_boundary_admission_allow",
+      "note": "receiver treaty scope and verified evidence",
+      "p50_us": 22.069837606837606,
+      "p99_us": 28.07685756141537,
+      "samples": 30
+    },
+    {
+      "component": "buyer_proof_package_verify",
+      "note": "offline three-vendor receiver verification",
+      "p50_us": 49875.059,
+      "p99_us": 52293.6525,
+      "samples": 30
+    }
+  ],
+  "criterionSamples": 30,
+  "negativeMatrix": {
+    "cases": 20,
+    "elapsedMs": 159456.39808,
+    "explicitNonTestableAssumptions": 1
+  },
+  "paths": {
+    "full_receiver_admission": {
+      "p50_ms": 2288.145,
+      "p99_ms": 2428.387185,
+      "samples": 20
+    },
+    "producer_without_buyer_review": {
+      "p50_ms": 1983.824498,
+      "p99_ms": 2054.601054,
+      "samples": 20
+    }
+  },
+  "profile": "release",
+  "proofPackageBytes": 51843,
+  "samples": 20,
+  "schema": "chio.programmable-sovereignty.bilateral-admission-results.v1",
+  "stores": {
+    "endToEnd": "SQLite",
+    "receiptAppend": "SQLite"
+  },
+  "warmups": 2,
+  "worktreeDirty": false
+}

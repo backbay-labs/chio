@@ -7,6 +7,7 @@
 The crate intentionally contains two kinds of logic:
 
 - an independent reference model in `src/spec.rs` for scope attenuation
+- an independent reference model for the bounded treaty predicate fragment
 - test harnesses that compare that model, production `chio-core` behavior, normalized `chio-kernel-core` behavior, and frozen cross-language vector corpora
 
 ## Boundaries
@@ -16,6 +17,14 @@ This crate does not own production authorization, receipt signing, canonical JSO
 The reference model must stay small and separate from production implementation helpers. If a test needs a production value, build it from the same reference fixture data and compare outputs instead of sharing the production subset function with the reference model.
 
 The normalized proof-facing AST is treated as a third implementation surface, not as the oracle. A passing test should mean the reference model, production runtime type, and normalized type agree on the current bounded semantics.
+
+The treaty predicate oracle covers the production-shaped fields and
+constructors represented by `PredicateLang.AdmissionView` and
+`PredicateLang.Predicate`. It compares that bounded model with
+`chio-runtime-core` but does not replace the production admission hook,
+signature verification, continuation validation, evidence resolution, or
+storage checks. Property tests use bounded trees that remain below the
+production evaluator's depth and node limits.
 
 ## Counterexample Regressions
 
@@ -54,6 +63,8 @@ issue reference.
 - Anchored-root tests verify tuple compatibility and tamper rejection only. Production anchoring logic remains in `chio-anchor` and `chio-core`.
 - Generated counterexample tests are never ignored. A new replay family must
   provide native production mapping code before the converter will emit a test.
+- Treaty predicate refinement is evidence only for the supplied finite receipt
+  domain. Empty or incomplete domains do not establish universal refinement.
 
 ## Review Rules
 

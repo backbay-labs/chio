@@ -130,7 +130,7 @@ check-pages:
 	refs_page=0; \
 	for p in $$(seq 1 $$total); do \
 	  if $(PDFTOTEXT) -layout -f $$p -l $$p $(TARGET).pdf - 2>/dev/null \
-	      | grep -qE '^[[:space:]]*References([[:space:]]|$$)'; then \
+	      | grep -qE '(^|[[:space:]]{2,})References([[:space:]]|$$)'; then \
 	    refs_page=$$p; break; \
 	  fi; \
 	done; \

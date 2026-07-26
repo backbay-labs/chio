@@ -197,6 +197,8 @@ allowed_open_modules = [
   "Chio.Json",
   "Chio.Proofs",
   "Chio.Spec",
+  "Chio.Treaty.IntersectionSyntactic",
+  "Chio.Treaty.PredicateLang",
   "Aeneas",
   "Aeneas.Std",
   "Result",

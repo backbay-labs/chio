@@ -132,6 +132,14 @@ name = "receipt_sign"
 harness = false
 
 [[bench]]
+name = "paper_security_components"
+harness = false
+
+[[bench]]
+name = "receipt_verify"
+harness = false
+
+[[bench]]
 name = "receipt_append"
 harness = false
 

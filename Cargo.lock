@@ -2694,6 +2694,7 @@ dependencies = [
  "chio-governance",
  "chio-selective-disclosure",
  "chio-workflow",
+ "criterion",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
@@ -3433,6 +3434,7 @@ dependencies = [
  "chio-pheromone",
  "chio-revocation-oracle",
  "chio-spec-validate",
+ "criterion",
  "frost-ed25519",
  "hex",
  "rand_chacha 0.3.1",
@@ -3520,6 +3522,7 @@ dependencies = [
  "chio-core-types",
  "chio-kernel",
  "chio-kernel-core",
+ "chio-runtime-core",
  "getrandom 0.3.4",
  "proptest",
  "serde",
@@ -4344,6 +4347,7 @@ dependencies = [
 name = "chio-runtime-core"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "base64 0.22.1",
  "chio-attest-buyer-core",
  "chio-attest-loopback",
@@ -4351,14 +4355,17 @@ dependencies = [
  "chio-federation",
  "chio-kernel",
  "chio-runtime-proof-parity",
+ "chio-store-sqlite",
  "chio-swarm-authority",
  "chio-weights",
  "chrono",
+ "criterion",
  "rusqlite",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror 1.0.69",
+ "tokio",
 ]
 
 [[package]]

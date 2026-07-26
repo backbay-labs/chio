@@ -127,7 +127,10 @@ pub use store::{
 };
 pub use treaty::{
     bilateral_dsse_consistency_model, bilateral_invocation_binding_sha256,
+    bounded_treaty_constitution_refines_on, bounded_treaty_receipt_view_from_verified_artifacts,
     compute_ladder_intersection, cross_boundary_admission_report_json,
+    evaluate_bounded_treaty_constitution, evaluate_bounded_treaty_predicate,
+    evaluate_bounded_treaty_predicate_document, evaluate_bounded_treaty_predicate_json,
     evaluate_cross_boundary_admission, governance_ladder_manifest_from_json,
     governance_ladder_manifest_sha256, ladder_co_sign_mode, ladder_intersection_from_json,
     ladder_intersection_json, ladder_intersection_semantic_sha256, ladder_intersection_sha256,
@@ -135,7 +138,10 @@ pub use treaty::{
     receipt_lineage_statement_sha256, treaty_scope_from_json,
     treaty_scope_semantic_intersection_sha256, treaty_scope_sha256,
     validate_cross_boundary_admission_report, validate_governance_ladder_manifest,
-    validate_ladder_intersection, validate_treaty_scope,
+    validate_ladder_intersection, validate_treaty_scope, BoundedAdmissionDecision,
+    BoundedEvidenceDigest, BoundedTreatyConstitution, BoundedTreatyPredicate,
+    BoundedTreatyPredicateAtom, BoundedTreatyPredicateDocument, BoundedTreatyReceiptView,
+    CHIO_BOUNDED_TREATY_PREDICATE_SCHEMA,
 };
 pub use types::{
     BilateralInvocation, BuyerAttestationPacket, BuyerAttestationReviewArtifactRef,

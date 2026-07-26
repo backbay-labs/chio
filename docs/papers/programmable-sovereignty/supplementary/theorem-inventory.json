@@ -1,36 +1,86 @@
 {
-  "generated_at": "2026-05-18",
-  "paper": "Programmable Sovereignty: Lean-Attestable Constitutions Over Capability-Bounded Federated Receipts",
-  "target_venue": "USENIX Security 2027 Cycle 1",
-  "lean_toolchain": "leanprover/lean4:v4.28.0-rc1",
+  "generatedAt": "2026-07-25",
+  "implementationRelation": "differential alignment, not extraction or refinement",
+  "leanToolchain": "leanprover/lean4:v4.28.0-rc1",
+  "modelBoundary": "bounded ReceiptView and explicit finite domains",
+  "paper": "Proof-Carrying Bilateral Admission for Cross-Organization Agent Tool Calls",
+  "schema": "chio.programmable-sovereignty.theorem-inventory.v1",
+  "targetVenue": "USENIX Security 2027 Cycle 1",
   "theorems": [
     {
+      "axioms": [
+        "propext"
+      ],
+      "claimClass": "bounded_theorem",
+      "declaration": "Chio.Treaty.IntersectionSyntactic.treaty_admission_iff_predicate_intersection",
+      "id": "PS-F01",
+      "module": "Chio.Treaty.IntersectionSyntactic",
       "name": "treaty_admission_iff_predicate_intersection",
-      "module": "Chio.Treaty.Intersection",
-      "declaration": "Chio.Treaty.treaty_admission_iff_predicate_intersection",
-      "paper_section": "Section 4 (Formal Model), treaty intersection",
-      "axioms": ["propext"]
+      "path": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
+      "scope": "Structural six-conjunct treaty intersection over ReceiptView."
     },
     {
+      "axioms": [
+        "propext"
+      ],
+      "claimClass": "bounded_theorem",
+      "declaration": "Chio.Treaty.IntersectionSyntactic.treaty_admission_stable_under_ladder_floor",
+      "id": "PS-F02",
+      "module": "Chio.Treaty.IntersectionSyntactic",
       "name": "treaty_admission_stable_under_ladder_floor",
-      "module": "Chio.Treaty.Intersection",
-      "declaration": "Chio.Treaty.treaty_admission_stable_under_ladder_floor",
-      "paper_section": "Section 4 (Formal Model), ladder-floor stability",
-      "axioms": ["propext"]
+      "path": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
+      "scope": "Satisfied finite ladder floor reduces to treaty admission."
     },
     {
-      "name": "amendment_admissible_iff_backward_refinement",
-      "module": "Chio.Treaty.Intersection",
-      "declaration": "Chio.Treaty.amendment_admissible_iff_backward_refinement",
-      "paper_section": "Section 4 (Formal Model), amendment refinement",
-      "axioms": []
+      "axioms": [
+        "propext",
+        "Quot.sound"
+      ],
+      "claimClass": "bounded_theorem",
+      "declaration": "Chio.Treaty.PredicateLang.refinesOnConstitution_iff",
+      "id": "PS-F03",
+      "module": "Chio.Treaty.PredicateLang",
+      "name": "refinesOnConstitution_iff",
+      "path": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "scope": "Boolean no-widening is exact on the declared finite domain."
     },
     {
-      "name": "amendment_without_refinement_rejected",
-      "module": "Chio.Treaty.Intersection",
-      "declaration": "Chio.Treaty.amendment_without_refinement_rejected",
-      "paper_section": "Section 4 (Formal Model), amendment refinement",
-      "axioms": []
+      "axioms": [
+        "propext",
+        "Quot.sound"
+      ],
+      "claimClass": "bounded_theorem",
+      "declaration": "Chio.Treaty.PredicateLang.bridge_decidable_soundness",
+      "id": "PS-F04",
+      "module": "Chio.Treaty.PredicateLang",
+      "name": "bridge_decidable_soundness",
+      "path": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "scope": "A positive finite check implies semantic no-widening on-domain."
+    },
+    {
+      "axioms": [
+        "propext"
+      ],
+      "claimClass": "bounded_theorem",
+      "declaration": "Chio.Treaty.BridgeEquivalence.Legacy.treaty_admission_agrees",
+      "id": "PS-F05",
+      "module": "Chio.Treaty.BridgeEquivalence",
+      "name": "treaty_admission_agrees",
+      "path": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+      "scope": "Syntactic and legacy treaty admission agree pointwise."
+    },
+    {
+      "axioms": [
+        "propext",
+        "Quot.sound"
+      ],
+      "claimClass": "bounded_theorem",
+      "declaration": "Chio.Treaty.BridgeEquivalence.Legacy.bounded_amendment_sound",
+      "id": "PS-F06",
+      "module": "Chio.Treaty.BridgeEquivalence",
+      "name": "bounded_amendment_sound",
+      "path": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+      "scope": "A ConstitutionalDelta is sound only on its carried domain."
     }
   ]
 }

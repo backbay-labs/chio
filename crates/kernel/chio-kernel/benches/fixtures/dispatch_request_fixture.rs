@@ -156,8 +156,15 @@ impl DispatchAllowFixture {
             "five-guard fixture must allow request"
         );
         assert!(
-            fixture.receipt_sign_once(),
-            "receipt signing fixture must verify"
+            fixture
+                .receipt_sign_once()
+                .verify_signature()
+                .unwrap_or(false),
+            "newly signed receipt fixture must verify"
+        );
+        assert!(
+            fixture.receipt_verify_once(),
+            "receipt verification fixture must accept the signed receipt"
         );
         assert!(
             fixture.receipt_append_once() > 0,
@@ -262,10 +269,18 @@ impl DispatchAllowFixture {
             .all(|guard| self.evaluate_guard(guard))
     }
 
-    pub fn receipt_sign_once(&self) -> bool {
+    pub fn receipt_sign_once(&self) -> ChioReceipt {
         sign_receipt(&self.receipt_body, &self.receipt_keypair)
-            .verify_signature()
-            .unwrap_or(false)
+    }
+
+    pub fn receipt_verify_once(&self) -> bool {
+        self.signed_receipt.verify_signature().unwrap_or(false)
+    }
+
+    pub fn signed_receipt_with_id(&self, id: String) -> ChioReceipt {
+        let mut body = self.receipt_body.clone();
+        body.id = id;
+        sign_receipt(&body, &self.receipt_keypair)
     }
 
     pub fn receipt_append_once(&self) -> usize {
@@ -446,11 +461,33 @@ fn make_receipt_body(keypair: &Keypair, capability: &CapabilityToken) -> ChioRec
             verdict: true,
             details: None,
         }],
-        metadata: None,
+        // This metadata is taken from the buyer-closure receipt shape. Keeping
+        // the treaty, lineage, admission, and retained-dispatch bindings in the
+        // signing preimage prevents the microbenchmark from measuring a
+        // materially smaller synthetic receipt.
+        metadata: Some(buyer_closure_metadata()),
         trust_level: chio_core::receipt::kinds::TrustLevel::default(),
         tenant_id: None,
         kernel_key: keypair.public_key(),
         bbs_projection_version: None,
+    }
+}
+
+fn buyer_closure_metadata() -> serde_json::Value {
+    let package: serde_json::Value = match serde_json::from_str(include_str!(
+        "../../../../../examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json"
+    )) {
+        Ok(package) => package,
+        Err(error) => panic!("failed to parse buyer-closure proof package fixture: {error}"),
+    };
+    match package
+        .get("toolReceipts")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|receipts| receipts.first())
+        .and_then(|receipt| receipt.get("metadata"))
+    {
+        Some(metadata) => metadata.clone(),
+        None => panic!("buyer-closure proof package fixture has no receipt metadata"),
     }
 }
 

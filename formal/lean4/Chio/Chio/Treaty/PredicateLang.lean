@@ -368,6 +368,16 @@ theorem refinesOnConstitution_complete_on_fragment
     · have hOld := hRefines view hMember hNew
       simp [hOld]
 
+/--
+  Compatibility name used by the programmable-sovereignty artifact. The
+  decision is exact only on the explicit production-shaped admission domain.
+-/
+theorem refinesOnConstitution_iff
+    (new old : SyntacticConstitution) (domain : List AdmissionView) :
+    refinesOnConstitution new old domain = true ↔
+      SynBackwardRefines new old domain :=
+  refinesOnConstitution_complete_on_fragment new old domain
+
 /-- Exact gate list corresponding to the modeled runtime conjunction. -/
 def runtimeAdmissionAtoms : List AtomTag := [
   .schemasCurrent,

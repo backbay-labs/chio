@@ -128,3 +128,44 @@ theorem toClosure_amendmentVerdict_agrees
       enactAmendmentSyn, hCheck]
 
 end Chio.Treaty.PredicateLang
+
+namespace Chio.Treaty.BridgeEquivalence.Legacy
+
+open Chio.Treaty.PredicateLang
+
+/-- Paper-facing pointwise polity equivalence over an `AdmissionView`. -/
+theorem polity_admission_agrees
+    (polity : SyntacticPolity) (view : AdmissionView) :
+    Chio.Treaty.Legacy.polityAdmits (toClosurePolity polity) view =
+      synPolityAdmits polity view :=
+  toClosure_polityAdmits_agrees polity view
+
+/-- Paper-facing pointwise treaty equivalence over an `AdmissionView`. -/
+theorem treaty_admission_agrees
+    (treaty : SyntacticBilateralTreaty) (view : AdmissionView) :
+    Chio.Treaty.Legacy.treatyAdmits (toClosureTreaty treaty) view =
+      synTreatyAdmits treaty view :=
+  toClosure_treatyAdmits_agrees treaty view
+
+/-- The syntactic and closure treaty models use the same mode-floor gate. -/
+theorem treaty_admission_under_mode_agrees
+    (treaty : SyntacticBilateralTreaty)
+    (mode : Chio.Treaty.TrustMode)
+    (view : AdmissionView) :
+    Chio.Treaty.Legacy.treatyAdmitsUnderMode
+        (toClosureTreaty treaty) mode view =
+      synTreatyAdmitsUnderMode treaty mode view := by
+  unfold Chio.Treaty.Legacy.treatyAdmitsUnderMode
+    synTreatyAdmitsUnderMode
+  rw [toClosure_treatyAdmits_agrees]
+  rfl
+
+/-- A proof-carrying delta is sound exactly on its carried finite domain. -/
+theorem bounded_amendment_sound
+    (delta : ConstitutionalDeltaSyn) :
+    Chio.Treaty.Legacy.BackwardRefinesOn
+      (toClosure delta.new) (toClosure delta.old) delta.domain :=
+  (bridge_refinement_on_iff delta.new delta.old delta.domain).mp
+    delta.proofTerm
+
+end Chio.Treaty.BridgeEquivalence.Legacy

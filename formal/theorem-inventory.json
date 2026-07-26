@@ -1562,6 +1562,105 @@
       "status": "proved",
       "mapsTo": ["P3"],
       "notes": "The syntactic finite decision and the lifted closure candidate produce the same amendment verdict."
+    },
+    {
+      "id": "treaty.predicate.constitution_domain_exact",
+      "leanName": "Chio.Treaty.PredicateLang.refinesOnConstitution_iff",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Paper-facing compatibility declaration for exact constitution refinement on the explicit production-shaped admission domain."
+    },
+    {
+      "id": "treaty.paper.admission_iff_intersection",
+      "leanName": "Chio.Treaty.IntersectionSyntactic.treaty_admission_iff_predicate_intersection",
+      "file": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Paper-facing theorem preserving the six-conjunct treaty intersection over the production-shaped admission projection."
+    },
+    {
+      "id": "treaty.paper.ladder_floor_stable",
+      "leanName": "Chio.Treaty.IntersectionSyntactic.treaty_admission_stable_under_ladder_floor",
+      "file": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Paper-facing theorem showing that a satisfied governance-mode floor reduces to the bounded treaty decision."
+    },
+    {
+      "id": "treaty.paper.amendment_iff_refinement",
+      "leanName": "Chio.Treaty.IntersectionSyntactic.amendment_admissible_iff_bounded_refinement",
+      "file": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Paper-facing theorem tying amendment admissibility to exact no-widening on the carried finite domain."
+    },
+    {
+      "id": "treaty.paper.failed_amendment_rejected",
+      "leanName": "Chio.Treaty.IntersectionSyntactic.amendment_without_refinement_rejected",
+      "file": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Paper-facing theorem preserving fail-closed amendment rejection after a failed finite refinement decision."
+    },
+    {
+      "id": "treaty.paper.polity_admission_agrees",
+      "leanName": "Chio.Treaty.BridgeEquivalence.Legacy.polity_admission_agrees",
+      "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Paper-facing pointwise equivalence between syntactic polity admission and the comparison-only closure model."
+    },
+    {
+      "id": "treaty.paper.treaty_admission_agrees",
+      "leanName": "Chio.Treaty.BridgeEquivalence.Legacy.treaty_admission_agrees",
+      "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Paper-facing pointwise equivalence between syntactic treaty admission and the comparison-only closure model."
+    },
+    {
+      "id": "treaty.paper.mode_admission_agrees",
+      "leanName": "Chio.Treaty.BridgeEquivalence.Legacy.treaty_admission_under_mode_agrees",
+      "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Paper-facing pointwise equivalence after composing both treaty models with the same governance-mode floor."
+    },
+    {
+      "id": "treaty.paper.bounded_amendment_sound",
+      "leanName": "Chio.Treaty.BridgeEquivalence.Legacy.bounded_amendment_sound",
+      "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "A proof-carrying syntactic delta transports to closure refinement only on the exact domain carried by the delta."
     }
   ]
 }
