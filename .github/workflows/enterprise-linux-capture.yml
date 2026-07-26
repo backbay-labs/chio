@@ -78,8 +78,8 @@ jobs:
       ENTERPRISE_SECURITY_DEFINITION_SHA: ${{ vars.CHIO_ENTERPRISE_SECURITY_DEFINITION_SHA }}
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Revalidate controller source and merge authorization
-        id: authorize
+      - name: Authenticate capture dispatch and controller intent
+        id: authenticate
         env:
           CAPTURE_ACTOR: ${{ github.actor }}
           CAPTURE_RUN_ATTEMPT: ${{ github.run_attempt }}
@@ -441,6 +441,71 @@ jobs:
               --jq '.sha'
           })"
           test "${running_capture_blob_sha}" = "${capture_blob_sha}"
+
+          {
+            echo "authorized_source_sha=${AUTHORIZED_SOURCE_SHA}"
+            echo "base_ref=${INPUT_BASE_REF}"
+            echo "base_repository=${INPUT_BASE_REPOSITORY}"
+            echo "base_sha=${INPUT_BASE_SHA}"
+            echo "capture_actor=${CAPTURE_ACTOR}"
+            echo "capture_blob_sha=${capture_blob_sha}"
+            echo "capture_created_epoch=${capture_created_epoch}"
+            echo "capture_run_attempt=${CAPTURE_RUN_ATTEMPT}"
+            echo "capture_run_id=${CAPTURE_RUN_ID}"
+            echo "capture_workflow_id=${capture_workflow_id}"
+            echo "controller_actor=${INPUT_CONTROLLER_ACTOR}"
+            echo "controller_blob_sha=${INPUT_CONTROLLER_BLOB_SHA}"
+            echo "controller_issued_at_unix_ms=${INPUT_CONTROLLER_ISSUED_AT_UNIX_MS}"
+            echo "controller_run_attempt=${INPUT_CONTROLLER_RUN_ATTEMPT}"
+            echo "controller_run_id=${INPUT_CONTROLLER_RUN_ID}"
+            echo "controller_workflow_id=${INPUT_CONTROLLER_WORKFLOW_ID}"
+            echo "labels_digest=${INPUT_LABELS_DIGEST}"
+            echo "merge_commit_sha=${INPUT_MERGE_COMMIT_SHA}"
+            echo "merge_tree_sha=${INPUT_MERGE_TREE_SHA}"
+            echo "mode=${INPUT_MODE}"
+            echo "pr_number=${INPUT_PR_NUMBER}"
+            echo "security_definition_sha=${INPUT_SECURITY_DEFINITION_SHA}"
+            echo "source_repository=${INPUT_SOURCE_REPOSITORY}"
+            echo "source_sha=${INPUT_SOURCE_SHA}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Revalidate live merge authorization
+        id: authorize
+        env:
+          CAPTURE_ACTOR: ${{ steps.authenticate.outputs.capture_actor }}
+          CAPTURE_BLOB_SHA: ${{ steps.authenticate.outputs.capture_blob_sha }}
+          CAPTURE_CREATED_EPOCH: ${{ steps.authenticate.outputs.capture_created_epoch }}
+          CAPTURE_RUN_ATTEMPT: ${{ steps.authenticate.outputs.capture_run_attempt }}
+          CAPTURE_RUN_ID: ${{ steps.authenticate.outputs.capture_run_id }}
+          CAPTURE_WORKFLOW_ID: ${{ steps.authenticate.outputs.capture_workflow_id }}
+          INPUT_BASE_REF: ${{ steps.authenticate.outputs.base_ref }}
+          INPUT_BASE_REPOSITORY: ${{ steps.authenticate.outputs.base_repository }}
+          INPUT_BASE_SHA: ${{ steps.authenticate.outputs.base_sha }}
+          INPUT_CONTROLLER_ACTOR: ${{ steps.authenticate.outputs.controller_actor }}
+          INPUT_CONTROLLER_BLOB_SHA: ${{ steps.authenticate.outputs.controller_blob_sha }}
+          INPUT_CONTROLLER_ISSUED_AT_UNIX_MS: ${{ steps.authenticate.outputs.controller_issued_at_unix_ms }}
+          INPUT_CONTROLLER_RUN_ATTEMPT: ${{ steps.authenticate.outputs.controller_run_attempt }}
+          INPUT_CONTROLLER_RUN_ID: ${{ steps.authenticate.outputs.controller_run_id }}
+          INPUT_CONTROLLER_WORKFLOW_ID: ${{ steps.authenticate.outputs.controller_workflow_id }}
+          INPUT_LABELS_DIGEST: ${{ steps.authenticate.outputs.labels_digest }}
+          INPUT_MERGE_COMMIT_SHA: ${{ steps.authenticate.outputs.merge_commit_sha }}
+          INPUT_MERGE_TREE_SHA: ${{ steps.authenticate.outputs.merge_tree_sha }}
+          INPUT_MODE: ${{ steps.authenticate.outputs.mode }}
+          INPUT_PR_NUMBER: ${{ steps.authenticate.outputs.pr_number }}
+          INPUT_SECURITY_DEFINITION_SHA: ${{ steps.authenticate.outputs.security_definition_sha }}
+          INPUT_SOURCE_REPOSITORY: ${{ steps.authenticate.outputs.source_repository }}
+          INPUT_SOURCE_SHA: ${{ steps.authenticate.outputs.source_sha }}
+        run: |
+          set -euo pipefail
+          shopt -s inherit_errexit
+          umask 077
+
+          # shellcheck disable=SC2153
+          capture_blob_sha="${CAPTURE_BLOB_SHA}"
+          # shellcheck disable=SC2153
+          capture_created_epoch="${CAPTURE_CREATED_EPOCH}"
+          # shellcheck disable=SC2153
+          capture_workflow_id="${CAPTURE_WORKFLOW_ID}"
 
           live_pr="$({
             gh api \
