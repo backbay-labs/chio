@@ -2,7 +2,7 @@
 
 use std::fs;
 use std::path::Path;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_kernel::{
     GovernedApprovalReplayStore, KernelError, ReplayClockDirection,
@@ -11,6 +11,8 @@ use chio_kernel::{
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, Connection, TransactionBehavior};
+
+use crate::replay_clock::{ReplayClockValidationError, StableReplayClock};
 
 const LEGACY_UNSCOPED_SUBJECT_ID: &str = "__chio_legacy_unscoped_subject__";
 
@@ -95,12 +97,26 @@ impl From<r2d2::Error> for SqliteGovernedApprovalReplayStoreError {
     }
 }
 
+fn map_replay_clock_error(
+    error: ReplayClockValidationError,
+) -> SqliteGovernedApprovalReplayStoreError {
+    match error {
+        ReplayClockValidationError::Poisoned => {
+            SqliteGovernedApprovalReplayStoreError::storage("replay clock mutex poisoned")
+        }
+        ReplayClockValidationError::Anomaly {
+            direction,
+            observed,
+            high_water,
+        } => SqliteGovernedApprovalReplayStoreError::clock_anomaly(direction, observed, high_water),
+    }
+}
+
 /// SQLite-backed governed approval replay store.
 pub struct SqliteGovernedApprovalReplayStore {
     pool: Pool<SqliteConnectionManager>,
     capacity: usize,
-    clock_anchor_wall: i64,
-    clock_anchor_monotonic: Instant,
+    clock: StableReplayClock,
 }
 
 const GOVERNED_APPROVAL_STORE_SUPPORTED_SCHEMA_VERSION: i32 = 1;
@@ -126,8 +142,7 @@ impl SqliteGovernedApprovalReplayStore {
         let store = Self {
             pool,
             capacity: validate_capacity(capacity)?,
-            clock_anchor_wall: now_secs(),
-            clock_anchor_monotonic: Instant::now(),
+            clock: StableReplayClock::new(now_secs(), MAX_GOVERNED_APPROVAL_CLOCK_SKEW_I64),
         };
         store.run_migrations()?;
         store.validate_retained_row_capacity()?;
@@ -146,8 +161,7 @@ impl SqliteGovernedApprovalReplayStore {
         let store = Self {
             pool,
             capacity: validate_capacity(capacity)?,
-            clock_anchor_wall: now_secs(),
-            clock_anchor_monotonic: Instant::now(),
+            clock: StableReplayClock::new(now_secs(), MAX_GOVERNED_APPROVAL_CLOCK_SKEW_I64),
         };
         store.run_migrations()?;
         store.validate_retained_row_capacity()?;
@@ -299,7 +313,10 @@ impl SqliteGovernedApprovalReplayStore {
             SET wall_clock_high_water = MAX(wall_clock_high_water, ?1)
             WHERE singleton = 1
             "#,
-            params![self.expected_wall_now()],
+            params![self
+                .clock
+                .expected_wall_now()
+                .map_err(map_replay_clock_error)?],
         )?;
         tx.commit()?;
         crate::stamp_schema_version(
@@ -367,25 +384,13 @@ impl SqliteGovernedApprovalReplayStore {
         Ok(())
     }
 
-    fn expected_wall_now(&self) -> i64 {
-        let elapsed =
-            i64::try_from(self.clock_anchor_monotonic.elapsed().as_secs()).unwrap_or(i64::MAX);
-        self.clock_anchor_wall.saturating_add(elapsed)
-    }
-
     fn validate_persisted_clock(
         &self,
         high_water: i64,
     ) -> Result<(), SqliteGovernedApprovalReplayStoreError> {
-        let expected = self.expected_wall_now();
-        if high_water > expected.saturating_add(MAX_GOVERNED_APPROVAL_CLOCK_SKEW_I64) {
-            return Err(SqliteGovernedApprovalReplayStoreError::clock_anomaly(
-                ReplayClockDirection::Rollback,
-                expected,
-                high_water,
-            ));
-        }
-        Ok(())
+        self.clock
+            .validate_persisted(high_water)
+            .map_err(map_replay_clock_error)
     }
 
     fn validate_observed_clock(
@@ -393,29 +398,9 @@ impl SqliteGovernedApprovalReplayStore {
         observed: i64,
         high_water: i64,
     ) -> Result<(), SqliteGovernedApprovalReplayStoreError> {
-        let expected = self.expected_wall_now();
-        if observed > expected.saturating_add(MAX_GOVERNED_APPROVAL_CLOCK_SKEW_I64) {
-            return Err(SqliteGovernedApprovalReplayStoreError::clock_anomaly(
-                ReplayClockDirection::ForwardJump,
-                observed,
-                expected,
-            ));
-        }
-        if observed < expected.saturating_sub(MAX_GOVERNED_APPROVAL_CLOCK_SKEW_I64) {
-            return Err(SqliteGovernedApprovalReplayStoreError::clock_anomaly(
-                ReplayClockDirection::Rollback,
-                observed,
-                expected,
-            ));
-        }
-        if observed < high_water.saturating_sub(MAX_GOVERNED_APPROVAL_CLOCK_SKEW_I64) {
-            return Err(SqliteGovernedApprovalReplayStoreError::clock_anomaly(
-                ReplayClockDirection::Rollback,
-                observed,
-                high_water,
-            ));
-        }
-        Ok(())
+        self.clock
+            .validate_observed(observed, high_water)
+            .map_err(map_replay_clock_error)
     }
 
     /// Deliberately lower a latched clock high-water after the host clock has
@@ -1027,8 +1012,7 @@ mod tests {
         let advanced = SqliteGovernedApprovalReplayStore {
             pool: Pool::builder().max_size(1).build(manager).unwrap(),
             capacity: DEFAULT_GOVERNED_APPROVAL_REPLAY_CAPACITY,
-            clock_anchor_wall: jumped,
-            clock_anchor_monotonic: Instant::now(),
+            clock: StableReplayClock::new(jumped, MAX_GOVERNED_APPROVAL_CLOCK_SKEW_I64),
         };
         advanced.run_migrations().unwrap();
         advanced.validate_retained_row_capacity().unwrap();

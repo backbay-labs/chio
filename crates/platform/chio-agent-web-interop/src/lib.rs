@@ -37,8 +37,9 @@ use claims::{
     CLAIM_SIDECAR_NOT_NATIVE_AUTHORITY, CLAIM_UNSUPPORTED_CLAIMS_LIMITED,
 };
 use evidence::{
-    find_node_by_path, find_receipt_node, graph_has_edge, parse_artifact, parse_graph,
-    raw_artifact_bytes, AgentWebEvidenceRole, AgentWebReceiptRef,
+    find_legacy_receipt_node, find_node_by_path, find_receipt_node, graph_has_edge, parse_artifact,
+    parse_graph, raw_artifact_bytes, receipt_node_ref_matches, AgentWebEvidenceRole,
+    AgentWebReceiptRef,
 };
 use policy::parse_policy;
 
@@ -877,13 +878,13 @@ fn validate_receipt_refs(
     passport_scope_sha256: &str,
 ) -> Result<(), TransactionPassportError> {
     for receipt_ref in &envelope.receipt_refs {
-        let receipt_ref = AgentWebReceiptRef::parse(receipt_ref)?;
-        let receipt_node = find_receipt_node(graph, &receipt_ref).ok_or_else(|| {
-            claim_failed(format!(
-                "missing Agent Web receipt ref: {}",
-                receipt_ref.as_str()
-            ))
-        })?;
+        let receipt_node = if envelope.is_scope_bound_v2() {
+            let canonical_ref = AgentWebReceiptRef::parse(receipt_ref)?;
+            find_receipt_node(graph, &canonical_ref)
+        } else {
+            find_legacy_receipt_node(graph, receipt_ref)
+        }
+        .ok_or_else(|| claim_failed(format!("missing Agent Web receipt ref: {}", receipt_ref)))?;
         validate_required_edge(
             graph,
             envelope_node_id,
@@ -895,7 +896,8 @@ fn validate_receipt_refs(
         let receipt_bytes = raw_artifact_bytes(bundle, receipt_node)?;
         validate_agent_web_receipt(
             receipt_bytes,
-            receipt_ref.as_str(),
+            receipt_ref,
+            receipt_node,
             &bundle.passport,
             passport_scope_sha256,
             envelope,
@@ -908,6 +910,7 @@ fn validate_receipt_refs(
 fn validate_agent_web_receipt(
     receipt_bytes: &[u8],
     receipt_ref: &str,
+    receipt_node: &evidence::AgentWebEvidenceNode,
     passport: &TransactionPassport,
     passport_scope_sha256: &str,
     envelope: &AgentWebProofEnvelope,
@@ -957,7 +960,12 @@ fn validate_agent_web_receipt(
             .and_then(|metadata| metadata.get("agent_web_receipt_ref"))
             .and_then(serde_json::Value::as_str)
             .ok_or_else(|| claim_failed("Agent Web receipt ref mismatch"))?;
-        if bound_ref != receipt_ref {
+        let bound_ref_matches = if envelope.is_scope_bound_v2() {
+            bound_ref == receipt_ref
+        } else {
+            receipt_node_ref_matches(receipt_node, bound_ref)
+        };
+        if !bound_ref_matches {
             return Err(claim_failed("Agent Web receipt ref mismatch"));
         }
     }

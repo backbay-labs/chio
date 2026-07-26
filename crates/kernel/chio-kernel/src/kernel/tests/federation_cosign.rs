@@ -20,6 +20,52 @@ use chio_federation::{
     trust_establishment::PeerHandshakeEnvelope,
 };
 
+#[tokio::test(flavor = "current_thread")]
+async fn concurrent_duplicate_request_ids_keep_federation_scopes_isolated(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let kernel = ChioKernel::new(make_config());
+    let barrier = std::sync::Arc::new(tokio::sync::Barrier::new(2));
+
+    let first = RECEIPT_EVALUATION_SCOPE_KEY.scope("evaluation-a".to_string(), async {
+        let _scope = kernel.scope_receipt_federation_admission_for_request(
+            "shared-request",
+            ReceiptFederationAdmission {
+                remote_kernel_id: Some("remote-a".to_string()),
+                peer: None,
+                verified_treaty_material: None,
+            },
+        );
+        barrier.wait().await;
+        let admission = kernel
+            .receipt_federation_admission_for_request("shared-request", Some("remote-a"))
+            .ok_or_else(|| std::io::Error::other("first evaluation lost its admission"))?;
+        assert_eq!(admission.remote_kernel_id.as_deref(), Some("remote-a"));
+        Ok::<(), std::io::Error>(())
+    });
+    let second = RECEIPT_EVALUATION_SCOPE_KEY.scope("evaluation-b".to_string(), async {
+        let _scope = kernel.scope_receipt_federation_admission_for_request(
+            "shared-request",
+            ReceiptFederationAdmission {
+                remote_kernel_id: Some("remote-b".to_string()),
+                peer: None,
+                verified_treaty_material: None,
+            },
+        );
+        barrier.wait().await;
+        let admission = kernel
+            .receipt_federation_admission_for_request("shared-request", Some("remote-b"))
+            .ok_or_else(|| std::io::Error::other("second evaluation lost its admission"))?;
+        assert_eq!(admission.remote_kernel_id.as_deref(), Some("remote-b"));
+        Ok::<(), std::io::Error>(())
+    });
+
+    let (first_result, second_result) = tokio::join!(first, second);
+    first_result?;
+    second_result?;
+    assert!(kernel.receipt_federation_admissions.is_empty());
+    Ok(())
+}
+
 struct CountingRejectingCosigner {
     calls: std::sync::Arc<AtomicU64>,
 }

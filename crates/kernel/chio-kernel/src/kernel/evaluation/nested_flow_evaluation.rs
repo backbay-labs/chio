@@ -27,6 +27,27 @@ impl ChioKernel {
         client: &mut C,
         extra_metadata: Option<serde_json::Value>,
     ) -> Result<ToolCallResponse, KernelError> {
+        let evaluation_id = uuid::Uuid::now_v7().to_string();
+        RECEIPT_EVALUATION_SCOPE_KEY
+            .scope(
+                evaluation_id,
+                self.evaluate_tool_call_with_nested_flow_client_async_scoped(
+                    parent_context,
+                    request,
+                    client,
+                    extra_metadata,
+                ),
+            )
+            .await
+    }
+
+    async fn evaluate_tool_call_with_nested_flow_client_async_scoped<C: NestedFlowClient>(
+        &self,
+        parent_context: &OperationContext,
+        request: &ToolCallRequest,
+        client: &mut C,
+        extra_metadata: Option<serde_json::Value>,
+    ) -> Result<ToolCallResponse, KernelError> {
         // Install the parent session's tenant_id so every
         // receipt signed while this nested-flow evaluation is in flight
         // carries the correct tenant tag.

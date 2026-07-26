@@ -13,6 +13,13 @@ use dashmap::DashMap;
 
 use super::*;
 
+fn receipt_evaluation_map_key(request_id: &str) -> String {
+    current_receipt_evaluation_scope_key().map_or_else(
+        || format!("request:{request_id}"),
+        |evaluation_id| format!("evaluation:{evaluation_id}"),
+    )
+}
+
 /// Fail-closed kernel build error. Lets deadline config be validated at
 /// construction time without making the infallible `ChioKernel::new` fallible.
 #[derive(Debug, thiserror::Error)]
@@ -78,17 +85,16 @@ impl ChioKernel {
         request_id: &str,
         tenant_id: Option<String>,
     ) -> ScopedKernelReceiptTenantId {
+        let scope_key = receipt_evaluation_map_key(request_id);
         let previous = match tenant_id {
-            Some(tenant_id) => self
-                .receipt_tenant_ids
-                .insert(request_id.to_string(), tenant_id),
+            Some(tenant_id) => self.receipt_tenant_ids.insert(scope_key.clone(), tenant_id),
             None => self
                 .receipt_tenant_ids
-                .remove(request_id)
+                .remove(&scope_key)
                 .map(|(_, previous)| previous),
         };
         ScopedKernelReceiptTenantId {
-            request_id: request_id.to_string(),
+            scope_key,
             tenant_ids: Arc::clone(&self.receipt_tenant_ids),
             previous,
         }
@@ -96,8 +102,9 @@ impl ChioKernel {
 
     pub(crate) fn receipt_tenant_id_for_request(&self, request_id: Option<&str>) -> Option<String> {
         request_id.and_then(|request_id| {
+            let scope_key = receipt_evaluation_map_key(request_id);
             self.receipt_tenant_ids
-                .get(request_id)
+                .get(&scope_key)
                 .map(|entry| entry.value().clone())
         })
     }
@@ -536,11 +543,12 @@ impl ChioKernel {
         request_id: &str,
         admission: ReceiptFederationAdmission,
     ) -> ScopedKernelReceiptFederationAdmission {
+        let scope_key = receipt_evaluation_map_key(request_id);
         let previous = self
             .receipt_federation_admissions
-            .insert(request_id.to_string(), admission);
+            .insert(scope_key.clone(), admission);
         ScopedKernelReceiptFederationAdmission {
-            request_id: request_id.to_string(),
+            scope_key,
             admissions: Arc::clone(&self.receipt_federation_admissions),
             previous,
         }
@@ -551,9 +559,10 @@ impl ChioKernel {
         request_id: &str,
         remote_kernel_id: Option<&str>,
     ) -> Option<ReceiptFederationAdmission> {
+        let scope_key = receipt_evaluation_map_key(request_id);
         let admission = self
             .receipt_federation_admissions
-            .get(request_id)
+            .get(&scope_key)
             .map(|entry| entry.value().clone())?;
         if admission.remote_kernel_id.as_deref() == remote_kernel_id {
             Some(admission)
@@ -567,9 +576,10 @@ impl ChioKernel {
         request_id: &str,
         material: VerifiedFederationTreatyMaterial,
     ) -> Result<(), KernelError> {
+        let scope_key = receipt_evaluation_map_key(request_id);
         let mut admission = self
             .receipt_federation_admissions
-            .get_mut(request_id)
+            .get_mut(&scope_key)
             .ok_or_else(|| {
                 KernelError::Internal(
                     "federation admission snapshot missing while installing verified treaty material"

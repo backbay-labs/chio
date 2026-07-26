@@ -678,14 +678,15 @@ pub struct ChioKernel {
     /// accessors fall through to it on a cache miss.
     pub(super) federation_artifact_store:
         Option<std::sync::Arc<dyn crate::federation_artifact_store::FederationArtifactStore>>,
-    /// Request-keyed tenant scope for receipts. Async evaluate futures
+    /// Evaluation-keyed tenant scope for receipts. Async evaluate futures
     /// can resume on a different worker after dispatch, so the scope is
-    /// stored in this map rather than a thread-local.
+    /// stored in this map and selected through a task-local evaluation key.
+    /// Non-tool session operations use a namespaced request-key fallback.
     pub(super) receipt_tenant_ids: Arc<DashMap<String, String>>,
-    /// Request-keyed copy of the receipt-version admission snapshot.
+    /// Evaluation-keyed copy of the receipt-version admission snapshot.
     /// Async evaluate futures may resume on a different Tokio worker
     /// after dispatch. This map keeps the admitted version and peer state
-    /// available until the evaluation future finishes.
+    /// isolated until that specific evaluation future finishes.
     pub(super) receipt_federation_admissions: Arc<DashMap<String, ReceiptFederationAdmission>>,
     /// Operator-declared kernel identifier used as the
     /// `org_b_kernel_id` in bilateral co-signing. Defaults to the hex

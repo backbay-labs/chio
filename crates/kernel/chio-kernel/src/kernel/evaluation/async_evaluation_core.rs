@@ -13,6 +13,29 @@ impl ChioKernel {
         session_id: Option<&SessionId>,
         preflight_disposition: PreflightHoldDisposition,
     ) -> Result<ToolCallResponse, KernelError> {
+        let evaluation_id = uuid::Uuid::now_v7().to_string();
+        RECEIPT_EVALUATION_SCOPE_KEY
+            .scope(
+                evaluation_id,
+                self.evaluate_tool_call_async_with_session_context_scoped(
+                    request,
+                    session_filesystem_roots,
+                    extra_metadata,
+                    session_id,
+                    preflight_disposition,
+                ),
+            )
+            .await
+    }
+
+    async fn evaluate_tool_call_async_with_session_context_scoped(
+        &self,
+        request: &ToolCallRequest,
+        session_filesystem_roots: Option<&[String]>,
+        extra_metadata: Option<serde_json::Value>,
+        session_id: Option<&SessionId>,
+        preflight_disposition: PreflightHoldDisposition,
+    ) -> Result<ToolCallResponse, KernelError> {
         // Resolve tenant_id from the session's enterprise identity context
         // (if any) and install it for the remainder of this evaluation so
         // every receipt `build_and_sign_receipt` signs picks up the tag.

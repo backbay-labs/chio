@@ -980,6 +980,9 @@ fn derived_completeness_mode(bundle: &EvidenceExportBundle) -> &'static str {
         let Some(checkpoint) = checkpoints_by_seq.get(&proof.checkpoint_seq) else {
             return COMPLETENESS_BEST_EFFORT;
         };
+        if proof.leaf_index != proof.proof.leaf_index {
+            return COMPLETENESS_BEST_EFFORT;
+        }
         let Ok(leaf_offset) = u64::try_from(proof.leaf_index) else {
             return COMPLETENESS_BEST_EFFORT;
         };
@@ -1154,6 +1157,12 @@ fn validate_checkpoint_receipt_sequence_bindings(
                     proof.checkpoint_seq
                 ))
             })?;
+        if proof.leaf_index != proof.proof.leaf_index {
+            return Err(MercuryContractError::Validation(format!(
+                "inclusion proof outer leaf index {} does not match embedded leaf index {} for receipt seq {}",
+                proof.leaf_index, proof.proof.leaf_index, proof.receipt_seq
+            )));
+        }
         let leaf_offset = u64::try_from(proof.leaf_index).map_err(|_| {
             MercuryContractError::Validation(format!(
                 "inclusion proof leaf index is out of range for receipt seq {}",
@@ -1312,6 +1321,12 @@ fn verify_chio_bundle(
             return Err(MercuryContractError::Validation(format!(
                 "inclusion proof root mismatch for receipt seq {}",
                 proof.receipt_seq
+            )));
+        }
+        if proof.leaf_index != proof.proof.leaf_index {
+            return Err(MercuryContractError::Validation(format!(
+                "inclusion proof outer leaf index {} does not match embedded leaf index {} for receipt seq {}",
+                proof.leaf_index, proof.proof.leaf_index, proof.receipt_seq
             )));
         }
         let leaf_offset = u64::try_from(proof.leaf_index).map_err(|_| {
@@ -2059,6 +2074,25 @@ mod tests {
             error
                 .to_string()
                 .contains("completeness_mode must be best_effort"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn proof_package_rejects_mismatched_outer_and_embedded_leaf_indexes() {
+        let mut bundle = sample_bundle();
+        let embedded_leaf_index = bundle.inclusion_proofs[0].proof.leaf_index;
+        bundle.inclusion_proofs[0].leaf_index = embedded_leaf_index.saturating_add(1);
+
+        assert_eq!(derived_completeness_mode(&bundle), COMPLETENESS_BEST_EFFORT);
+        let error = match validate_checkpoint_receipt_sequence_bindings(&bundle) {
+            Ok(()) => panic!("outer and embedded proof indexes must match"),
+            Err(error) => error,
+        };
+        assert!(
+            error
+                .to_string()
+                .contains("does not match embedded leaf index"),
             "unexpected error: {error}"
         );
     }

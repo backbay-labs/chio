@@ -50,6 +50,7 @@ pub mod lineage_cte;
 pub mod memory_provenance_store;
 pub mod receipt_query;
 pub mod receipt_store;
+mod replay_clock;
 pub mod revocation_store;
 pub mod schema_version;
 pub mod serving_owner;

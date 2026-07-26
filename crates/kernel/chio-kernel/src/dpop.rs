@@ -55,8 +55,6 @@ pub const DPOP_SCHEMA: &str = "chio.dpop_proof.v1";
 /// proof lifetime, with headroom for short bursts.
 pub const DEFAULT_DPOP_NONCE_STORE_CAPACITY: usize = 65_536;
 
-const DPOP_CAPABILITY_FAIR_SHARE_DIVISOR: usize = 8;
-
 #[must_use]
 pub fn is_supported_dpop_schema(schema: &str) -> bool {
     schema == DPOP_SCHEMA
@@ -214,15 +212,38 @@ impl DpopNonceStore {
     ///
     /// Panics when `capacity` is zero.
     pub fn new(capacity: usize, ttl: Duration) -> Self {
+        Self::new_with_per_capability_capacity(capacity, capacity, ttl)
+    }
+
+    /// Create a nonce store with an explicit per-capability live-entry limit.
+    ///
+    /// This optional fairness boundary must be configured independently from
+    /// the store-wide capacity. [`Self::new`] lets one capability use the full
+    /// configured store capacity.
+    ///
+    /// # Panics
+    ///
+    /// Panics when either capacity is zero or when the per-capability capacity
+    /// exceeds the store-wide capacity.
+    pub fn new_with_per_capability_capacity(
+        capacity: usize,
+        per_capability_capacity: usize,
+        ttl: Duration,
+    ) -> Self {
         let nz = match NonZeroUsize::new(capacity) {
             Some(capacity) => capacity,
             None => panic!("DPoP nonce store capacity must be greater than zero"),
         };
+        if per_capability_capacity == 0 || per_capability_capacity > capacity {
+            panic!(
+                "DPoP nonce store per-capability capacity must be between one and the store capacity"
+            );
+        }
         Self {
             inner: Mutex::new(DpopNonceState {
                 cache: LruCache::new(nz),
                 capability_counts: HashMap::new(),
-                per_capability_capacity: dpop_capability_capacity(capacity),
+                per_capability_capacity,
                 wall_clock_high_water: SystemTime::now(),
                 monotonic_high_water: Instant::now(),
                 pending_clock_rebaseline: None,
@@ -459,10 +480,6 @@ impl DpopNonceStore {
         }
         Ok(owned)
     }
-}
-
-fn dpop_capability_capacity(capacity: usize) -> usize {
-    capacity.div_ceil(DPOP_CAPABILITY_FAIR_SHARE_DIVISOR)
 }
 
 fn decrement_capability_count(counts: &mut HashMap<String, usize>, capability_id: &str) {
@@ -720,9 +737,10 @@ mod backend_tests {
     #[test]
     fn per_capability_quota_preserves_capacity_for_other_capabilities(
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let store = DpopNonceStore::new(512, Duration::from_secs(60));
+        let store =
+            DpopNonceStore::new_with_per_capability_capacity(512, 64, Duration::from_secs(60));
         let per_capability_capacity = store.inner.lock().unwrap().per_capability_capacity;
-        assert!(per_capability_capacity < 512);
+        assert_eq!(per_capability_capacity, 64);
 
         for index in 0..per_capability_capacity {
             assert!(store.check_and_insert(&format!("attacker-{index}"), "capability-a")?);
@@ -737,13 +755,26 @@ mod backend_tests {
 
     #[test]
     fn small_store_capability_quota_reserves_a_fair_share() -> Result<(), KernelError> {
-        let store = DpopNonceStore::new(8, Duration::from_secs(60));
+        let store = DpopNonceStore::new_with_per_capability_capacity(8, 1, Duration::from_secs(60));
         assert_eq!(store.inner.lock().unwrap().per_capability_capacity, 1);
         assert!(store.check_and_insert("capability-a-first", "capability-a")?);
         assert!(store
             .check_and_insert("capability-a-second", "capability-a")
             .is_err());
         assert!(store.check_and_insert("capability-b-first", "capability-b")?);
+        Ok(())
+    }
+
+    #[test]
+    fn default_store_allows_one_capability_to_use_configured_capacity() -> Result<(), KernelError> {
+        let store = DpopNonceStore::new(8, Duration::from_secs(60));
+        assert_eq!(store.inner.lock().unwrap().per_capability_capacity, 8);
+        for index in 0..8 {
+            assert!(store.check_and_insert(&format!("nonce-{index}"), "capability")?);
+        }
+        assert!(store
+            .check_and_insert("nonce-over-capacity", "capability")
+            .is_err());
         Ok(())
     }
 

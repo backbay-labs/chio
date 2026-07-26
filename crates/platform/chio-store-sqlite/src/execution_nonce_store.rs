@@ -31,7 +31,7 @@
 
 use std::fs;
 use std::path::Path;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_kernel::{
     ExecutionNonceStore, KernelError, ReplayClockDirection, DEFAULT_EXECUTION_NONCE_STORE_CAPACITY,
@@ -39,6 +39,8 @@ use chio_kernel::{
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
 use rusqlite::{params, Connection, TransactionBehavior};
+
+use crate::replay_clock::{ReplayClockValidationError, StableReplayClock};
 
 /// Default number of seconds a consumed marker persists after the signed
 /// artifact's `expires_at` before the garbage collector reclaims the row. Keeps the
@@ -128,12 +130,24 @@ impl From<r2d2::Error> for SqliteExecutionNonceStoreError {
     }
 }
 
+fn map_replay_clock_error(error: ReplayClockValidationError) -> SqliteExecutionNonceStoreError {
+    match error {
+        ReplayClockValidationError::Poisoned => {
+            SqliteExecutionNonceStoreError::storage("replay clock mutex poisoned")
+        }
+        ReplayClockValidationError::Anomaly {
+            direction,
+            observed,
+            high_water,
+        } => SqliteExecutionNonceStoreError::clock_anomaly(direction, observed, high_water),
+    }
+}
+
 /// SQLite-backed replay-prevention store for execution nonces.
 pub struct SqliteExecutionNonceStore {
     pool: Pool<SqliteConnectionManager>,
     capacity: usize,
-    clock_anchor_wall: i64,
-    clock_anchor_monotonic: Instant,
+    clock: StableReplayClock,
 }
 
 /// Execution-nonce-store schema revision. Bump on every schema-affecting change.
@@ -173,8 +187,7 @@ impl SqliteExecutionNonceStore {
         let store = Self {
             pool,
             capacity,
-            clock_anchor_wall: now_secs(),
-            clock_anchor_monotonic: Instant::now(),
+            clock: StableReplayClock::new(now_secs(), MAX_EXECUTION_NONCE_CLOCK_SKEW_I64),
         };
         store.run_migrations()?;
         store.validate_retained_row_capacity()?;
@@ -196,8 +209,7 @@ impl SqliteExecutionNonceStore {
         let store = Self {
             pool,
             capacity,
-            clock_anchor_wall: now_secs(),
-            clock_anchor_monotonic: Instant::now(),
+            clock: StableReplayClock::new(now_secs(), MAX_EXECUTION_NONCE_CLOCK_SKEW_I64),
         };
         store.run_migrations()?;
         store.validate_retained_row_capacity()?;
@@ -287,7 +299,10 @@ impl SqliteExecutionNonceStore {
             params![capacity],
         )?;
 
-        let migration_now = self.expected_wall_now();
+        let migration_now = self
+            .clock
+            .expected_wall_now()
+            .map_err(map_replay_clock_error)?;
         let maximum_seed = migration_now.saturating_add(MAX_EXECUTION_NONCE_CLOCK_SKEW_I64);
         tx.execute(
             r#"
@@ -392,25 +407,13 @@ impl SqliteExecutionNonceStore {
         Ok(())
     }
 
-    fn expected_wall_now(&self) -> i64 {
-        let elapsed =
-            i64::try_from(self.clock_anchor_monotonic.elapsed().as_secs()).unwrap_or(i64::MAX);
-        self.clock_anchor_wall.saturating_add(elapsed)
-    }
-
     fn validate_persisted_clock(
         &self,
         wall_clock_high_water: i64,
     ) -> Result<(), SqliteExecutionNonceStoreError> {
-        let expected = self.expected_wall_now();
-        if wall_clock_high_water > expected.saturating_add(MAX_EXECUTION_NONCE_CLOCK_SKEW_I64) {
-            return Err(SqliteExecutionNonceStoreError::clock_anomaly(
-                ReplayClockDirection::Rollback,
-                expected,
-                wall_clock_high_water,
-            ));
-        }
-        Ok(())
+        self.clock
+            .validate_persisted(wall_clock_high_water)
+            .map_err(map_replay_clock_error)
     }
 
     fn validate_observed_clock(
@@ -418,29 +421,9 @@ impl SqliteExecutionNonceStore {
         observed: i64,
         wall_clock_high_water: i64,
     ) -> Result<(), SqliteExecutionNonceStoreError> {
-        let expected = self.expected_wall_now();
-        if observed > expected.saturating_add(MAX_EXECUTION_NONCE_CLOCK_SKEW_I64) {
-            return Err(SqliteExecutionNonceStoreError::clock_anomaly(
-                ReplayClockDirection::ForwardJump,
-                observed,
-                expected,
-            ));
-        }
-        if observed < expected.saturating_sub(MAX_EXECUTION_NONCE_CLOCK_SKEW_I64) {
-            return Err(SqliteExecutionNonceStoreError::clock_anomaly(
-                ReplayClockDirection::Rollback,
-                observed,
-                expected,
-            ));
-        }
-        if observed < wall_clock_high_water.saturating_sub(MAX_EXECUTION_NONCE_CLOCK_SKEW_I64) {
-            return Err(SqliteExecutionNonceStoreError::clock_anomaly(
-                ReplayClockDirection::Rollback,
-                observed,
-                wall_clock_high_water,
-            ));
-        }
-        Ok(())
+        self.clock
+            .validate_observed(observed, wall_clock_high_water)
+            .map_err(map_replay_clock_error)
     }
 
     /// Deliberately lower a latched clock high-water after the host clock has
@@ -1229,8 +1212,7 @@ mod tests {
         let advanced = SqliteExecutionNonceStore {
             pool: Pool::builder().max_size(1).build(manager).unwrap(),
             capacity: DEFAULT_EXECUTION_NONCE_STORE_CAPACITY,
-            clock_anchor_wall: jumped,
-            clock_anchor_monotonic: Instant::now(),
+            clock: StableReplayClock::new(jumped, MAX_EXECUTION_NONCE_CLOCK_SKEW_I64),
         };
         advanced.run_migrations().unwrap();
         advanced.validate_retained_row_capacity().unwrap();

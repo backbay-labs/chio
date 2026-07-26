@@ -220,6 +220,38 @@ fn verifier_accepts_signed_legacy_v1_envelope() {
 }
 
 #[test]
+fn verifier_accepts_legacy_v1_receipt_node_aliases() {
+    for alias_field in ["id", "sha256", "path"] {
+        let mut bundle = agent_web_bundle(AgentWebCase::Valid);
+        downgrade_agent_web_bundle_to_signed_v1(&mut bundle);
+        let graph: serde_json::Value = serde_json::from_slice(&bundle.evidence_graph_bytes)
+            .test_expect("legacy Agent Web evidence graph parses");
+        let receipt_node = graph["nodes"]
+            .as_array()
+            .test_expect("legacy Agent Web evidence graph has nodes")
+            .iter()
+            .find(|node| {
+                node["path"].as_str() == Some("receipts/receipt-agent-web-webhook-allow.json")
+            })
+            .test_expect("legacy Agent Web receipt node exists");
+        let alias = receipt_node[alias_field]
+            .as_str()
+            .test_expect("legacy Agent Web receipt alias exists")
+            .to_string();
+
+        replace_agent_web_envelope_artifact(
+            &mut bundle,
+            "standard-webhooks-envelope.json",
+            |envelope| envelope["receipt_refs"] = json!([alias]),
+        );
+
+        verify_agent_web_interop(&bundle).test_expect(
+            "v1 receipt references retain node id, digest, and artifact path compatibility",
+        );
+    }
+}
+
+#[test]
 fn published_agent_web_report_schema_accepts_verifier_output() {
     let report_schema =
         read_workspace_json("spec/schemas/chio-agent-web/v1/interop-verifier-report.schema.json");

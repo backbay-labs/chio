@@ -504,8 +504,9 @@ evaluate(request_ptr: i32, request_len: i32) -> i32
 
 1. The host serializes a `GuardRequest` as JSON.
 2. If the guest exports `chio_alloc(size: i32) -> i32`, the host requests a
-   buffer and validates that the returned range is inside guest memory. An
-   absent, failed, or out-of-bounds allocator falls back to offset 0.
+   buffer and validates that the returned range is inside guest memory. A
+   trapped, negative, or out-of-bounds allocator is a guard error. If the
+   export is absent, the host uses offset 0.
 3. The host writes the JSON bytes into guest linear memory at the selected
    offset.
 4. The host calls `evaluate(request_offset, json_length)`.

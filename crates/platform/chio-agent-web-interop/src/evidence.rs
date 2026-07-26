@@ -186,6 +186,22 @@ pub(super) fn find_receipt_node<'a>(
     })
 }
 
+pub(super) fn find_legacy_receipt_node<'a>(
+    graph: &'a AgentWebEvidenceGraph,
+    reference: &str,
+) -> Option<&'a AgentWebEvidenceNode> {
+    graph.nodes.iter().find(|node| {
+        node.role == AgentWebEvidenceRole::Receipt && receipt_node_ref_matches(node, reference)
+    })
+}
+
+pub(super) fn receipt_node_ref_matches(node: &AgentWebEvidenceNode, reference: &str) -> bool {
+    node.id == reference
+        || node.sha256 == reference
+        || node.path == reference
+        || graph_node_file_stem(node) == Some(reference)
+}
+
 fn graph_node_file_stem(node: &AgentWebEvidenceNode) -> Option<&str> {
     std::path::Path::new(&node.path)
         .file_stem()
