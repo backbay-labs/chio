@@ -16,6 +16,11 @@ if [[ -n "$(git -C "$SOURCE" status --short)" ]]; then
 else
   SOURCE_DIRTY=false
 fi
+BENCHMARK_INPUT_TREE_SHA256="$(
+  python3 "$SOURCE/scripts/generate-programmable-sovereignty-artifact.py" \
+    --source-commit "$SOURCE_COMMIT" \
+    --benchmark-input-digest PS-B01
+)"
 
 RESULT_DIR="${CHIO_PAPER_RESULT_DIR:-$SCRIPT_DIR/results}"
 TARGET_DIR="${CHIO_TARGET_DIR:-${TMPDIR:-/tmp}/chio-programmable-sovereignty-bilateral-target}"
@@ -165,7 +170,7 @@ negative_elapsed_ns=$((negative_end_ns - negative_start_ns))
 
 python - "$TARGET_DIR" "$RAW_CSV" "$COMPONENT_CSV" "$RESULT_JSON" "$INLINE" \
   "$SOURCE" "$SAMPLES" "$WARMUPS" "$CRITERION_SAMPLES" "$negative_elapsed_ns" \
-  "$SOURCE_COMMIT" "$SOURCE_DIRTY" <<'PY'
+  "$SOURCE_COMMIT" "$SOURCE_DIRTY" "$BENCHMARK_INPUT_TREE_SHA256" <<'PY'
 import csv
 import json
 import math
@@ -185,6 +190,7 @@ import sys
     negative_elapsed_ns,
     source_commit,
     source_dirty,
+    benchmark_input_tree_sha256,
 ) = sys.argv[1:]
 target = pathlib.Path(target_dir)
 
@@ -298,6 +304,7 @@ document = {
     "schema": "chio.programmable-sovereignty.bilateral-admission-results.v1",
     "commit": source_commit,
     "worktreeDirty": source_dirty == "true",
+    "benchmarkInputTreeSha256": benchmark_input_tree_sha256,
     "profile": "release",
     "warmups": int(warmups),
     "samples": int(samples),

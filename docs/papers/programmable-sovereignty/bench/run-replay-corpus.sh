@@ -14,6 +14,11 @@ if [[ -n "$(git -C "$SOURCE" status --short)" ]]; then
 else
   SOURCE_DIRTY=false
 fi
+BENCHMARK_INPUT_TREE_SHA256="$(
+  python3 "$SOURCE/scripts/generate-programmable-sovereignty-artifact.py" \
+    --source-commit "$SOURCE_COMMIT" \
+    --benchmark-input-digest PS-B02
+)"
 
 RESULT_DIR="${CHIO_PAPER_RESULT_DIR:-$SCRIPT_DIR/results}"
 TARGET_DIR="${CHIO_TARGET_DIR:-${TMPDIR:-/tmp}/chio-programmable-sovereignty-replay-target}"
@@ -101,6 +106,7 @@ bilateral_seconds=$((bilateral_end - bilateral_start))
 } > "$CSV"
 
 python - "$JSON" "$INLINE" "$SOURCE_COMMIT" "$SOURCE_DIRTY" \
+  "$BENCHMARK_INPUT_TREE_SHA256" \
   "$generic_count" "$generic_seconds" "$bilateral_count" \
   "$bilateral_seconds" "$assumption_count" <<'PY'
 import json
@@ -111,6 +117,7 @@ import sys
     inline,
     source_commit,
     source_dirty,
+    benchmark_input_tree_sha256,
     generic_count,
     generic_seconds,
     bilateral_count,
@@ -121,6 +128,7 @@ document = {
     "schema": "chio.programmable-sovereignty.replay-results.v1",
     "commit": source_commit,
     "worktreeDirty": source_dirty == "true",
+    "benchmarkInputTreeSha256": benchmark_input_tree_sha256,
     "genericReplay": {
         "cases": int(generic_count),
         "elapsedSeconds": int(generic_seconds),

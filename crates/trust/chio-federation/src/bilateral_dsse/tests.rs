@@ -559,6 +559,29 @@ fn round_trip_preserves_pae_bytes() {
 }
 
 #[test]
+fn payload_decode_failures_report_the_protocol_stage() {
+    let invalid_base64 = DsseEnvelope {
+        payload_type: PAYLOAD_TYPE_IN_TOTO.to_string(),
+        payload: "%%%".to_string(),
+        signatures: Vec::new(),
+    };
+    let error = invalid_base64
+        .decode_statement()
+        .expect_err("invalid payload base64 must fail");
+    assert_eq!(error.code(), "dsse.malformed");
+
+    let invalid_statement = DsseEnvelope {
+        payload_type: PAYLOAD_TYPE_IN_TOTO.to_string(),
+        payload: BASE64_STANDARD.encode(b"{"),
+        signatures: Vec::new(),
+    };
+    let error = invalid_statement
+        .decode_statement()
+        .expect_err("malformed statement JSON must fail");
+    assert_eq!(error.code(), "statement.malformed");
+}
+
+#[test]
 fn keyid_is_sha256_of_raw_ed25519_public_key_bytes() {
     // Key-identifier invariant: the spec's keyid contract is
     // SHA-256 of RAW key material (Ed25519 = 32 verifying-key

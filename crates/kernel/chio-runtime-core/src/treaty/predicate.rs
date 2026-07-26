@@ -421,9 +421,8 @@ fn count_predicate_nodes(
     }
     *nodes += 1;
     match predicate {
-        BoundedTreatyPredicate::Atom { .. }
-        | BoundedTreatyPredicate::Top
-        | BoundedTreatyPredicate::Bot => true,
+        BoundedTreatyPredicate::Atom { atom } => atom_within_limits(atom),
+        BoundedTreatyPredicate::Top | BoundedTreatyPredicate::Bot => true,
         BoundedTreatyPredicate::Conj { left, right }
         | BoundedTreatyPredicate::Disj { left, right } => {
             count_predicate_nodes(left, depth + 1, nodes)

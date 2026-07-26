@@ -322,7 +322,13 @@ impl BilateralCoSigningError {
             Self::CanonicalJson(message) if message.starts_with("dsse.malformed:") => {
                 "dsse.malformed"
             }
+            Self::CanonicalJson(message) if message.starts_with("payload base64:") => {
+                "dsse.malformed"
+            }
             Self::CanonicalJson(message) if message.starts_with("statement.malformed:") => {
+                "statement.malformed"
+            }
+            Self::CanonicalJson(message) if message.starts_with("payload json:") => {
                 "statement.malformed"
             }
             Self::CanonicalJson(message) if message.starts_with("statement.schema_invalid:") => {

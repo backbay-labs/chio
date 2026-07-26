@@ -233,6 +233,10 @@ BENCHMARKS = [
             "docs/papers/programmable-sovereignty/bench/results/"
             "bilateral-admission-environment.txt",
         ],
+        "summary": (
+            "docs/papers/programmable-sovereignty/bench/results/"
+            "bilateral-admission.json"
+        ),
     },
     {
         "id": "PS-B02",
@@ -248,7 +252,24 @@ BENCHMARKS = [
             "docs/papers/programmable-sovereignty/bench/results/"
             "replay-corpus-inline.tex",
         ],
+        "summary": (
+            "docs/papers/programmable-sovereignty/bench/results/"
+            "replay-corpus.json"
+        ),
     },
+]
+
+BENCHMARK_INPUT_ROOTS = [
+    ".cargo",
+    "Cargo.lock",
+    "Cargo.toml",
+    "crates",
+    "examples",
+    "formal",
+    "rust-toolchain.toml",
+    "scripts",
+    "sdks",
+    "spec",
 ]
 
 CORPORA = {
@@ -380,6 +401,112 @@ def git_output(*args: str) -> str:
     return result.stdout.strip()
 
 
+def git_commit_available(commit: str) -> bool:
+    return subprocess.run(
+        [
+            "git",
+            "-C",
+            str(REPO),
+            "cat-file",
+            "-e",
+            f"{commit}^{{commit}}",
+        ],
+        check=False,
+        capture_output=True,
+    ).returncode == 0
+
+
+def benchmark_input_tree_sha256(benchmark_id: str, commit: str) -> str:
+    benchmark = next(
+        (item for item in BENCHMARKS if item["id"] == benchmark_id),
+        None,
+    )
+    if benchmark is None:
+        fail(f"unknown benchmark ID: {benchmark_id}")
+    try:
+        tree = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(REPO),
+                "ls-tree",
+                "-r",
+                "--full-tree",
+                commit,
+                "--",
+                *BENCHMARK_INPUT_ROOTS,
+                benchmark["script"],
+            ],
+            check=True,
+            capture_output=True,
+        ).stdout
+    except subprocess.CalledProcessError:
+        fail(f"benchmark input commit is unavailable: {commit}")
+    if not tree:
+        fail(f"benchmark input tree is empty for {benchmark_id}")
+    return sha256_bytes(tree)
+
+
+def validate_benchmark_result_provenance(
+    benchmark: dict[str, Any],
+    result: dict[str, Any],
+    source_commit: str,
+    *,
+    require_local_source_object: bool,
+) -> None:
+    if result.get("worktreeDirty") is not False:
+        fail(f"{benchmark['id']} result was not produced from a clean worktree")
+    producer_commit = result.get("commit")
+    if (
+        not isinstance(producer_commit, str)
+        or re.fullmatch(r"[0-9a-f]{40}", producer_commit) is None
+    ):
+        fail(f"{benchmark['id']} result commit is not a full SHA")
+    recorded_digest = result.get("benchmarkInputTreeSha256")
+    if (
+        not isinstance(recorded_digest, str)
+        or re.fullmatch(r"[0-9a-f]{64}", recorded_digest) is None
+    ):
+        fail(f"{benchmark['id']} result lacks a benchmark input tree digest")
+
+    producer_available = git_commit_available(producer_commit)
+    source_available = git_commit_available(source_commit)
+    if require_local_source_object and (
+        not producer_available or not source_available
+    ):
+        fail(f"{benchmark['id']} provenance commit is unavailable")
+
+    if producer_available:
+        producer_digest = benchmark_input_tree_sha256(
+            benchmark["id"],
+            producer_commit,
+        )
+        if producer_digest != recorded_digest:
+            fail(f"{benchmark['id']} result input digest does not match its producer")
+    if producer_available and source_available:
+        if subprocess.run(
+            [
+                "git",
+                "-C",
+                str(REPO),
+                "merge-base",
+                "--is-ancestor",
+                producer_commit,
+                source_commit,
+            ],
+            check=False,
+        ).returncode != 0:
+            fail(f"{benchmark['id']} producer is not an ancestor of pinned source")
+
+    comparison_commit = source_commit if source_available else "HEAD"
+    source_digest = benchmark_input_tree_sha256(
+        benchmark["id"],
+        comparison_commit,
+    )
+    if source_digest != recorded_digest:
+        fail(f"{benchmark['id']} result inputs differ from pinned source")
+
+
 def resolve_source_commit(
     explicit: str | None,
     *,
@@ -499,6 +626,13 @@ def validate_inputs(
         file_bytes(benchmark["script"])
         for result in benchmark["results"]:
             file_bytes(result)
+        summary = json.loads(file_bytes(benchmark["summary"]))
+        validate_benchmark_result_provenance(
+            benchmark,
+            summary,
+            source_commit,
+            require_local_source_object=require_local_source_object,
+        )
     for paths in CORPORA.values():
         for path in paths:
             file_bytes(path)
@@ -822,12 +956,25 @@ def main() -> int:
             "supplementary/source-commit.txt"
         ),
     )
+    parser.add_argument(
+        "--benchmark-input-digest",
+        choices=[benchmark["id"] for benchmark in BENCHMARKS],
+        help="print the input-tree digest for one retained benchmark",
+    )
     args = parser.parse_args()
 
     source_commit = resolve_source_commit(
         args.source_commit,
-        require_local_object=not args.check,
+        require_local_object=not args.check or args.benchmark_input_digest is not None,
     )
+    if args.benchmark_input_digest is not None:
+        print(
+            benchmark_input_tree_sha256(
+                args.benchmark_input_digest,
+                source_commit,
+            )
+        )
+        return 0
     source_commit_bytes = f"{source_commit}\n".encode()
     validate_inputs(
         source_commit,

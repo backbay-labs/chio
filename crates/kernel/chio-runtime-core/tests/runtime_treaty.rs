@@ -316,6 +316,21 @@ fn bounded_treaty_constitution_matches_finite_domain_refinement() {
             ..receipt
         }]
     ));
+    let oversized = BoundedTreatyConstitution {
+        predicates: vec![atom(BoundedTreatyPredicateAtom::ScopeContains {
+            target: "x".repeat(1_025),
+        })],
+    };
+    assert!(!bounded_treaty_constitution_refines_on(
+        &oversized,
+        &old,
+        &[]
+    ));
+    assert!(!bounded_treaty_constitution_refines_on(
+        &old,
+        &oversized,
+        &[]
+    ));
 }
 
 #[test]
