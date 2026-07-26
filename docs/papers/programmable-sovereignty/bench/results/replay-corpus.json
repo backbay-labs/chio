@@ -1,14 +1,14 @@
 {
-  "benchmarkInputTreeSha256": "917e007d2a555c3aad78d51707ea56d63c4282d80c8e09f0179d139da723a993",
+  "benchmarkInputTreeSha256": "d0559767c34bcff09569e109e253202321e5462f18ddacc1e79521afdc0929ef",
   "bilateralThreatMatrix": {
     "cases": 20,
-    "elapsedSeconds": 202,
+    "elapsedSeconds": 93,
     "explicitNonTestableAssumptions": 1
   },
-  "commit": "91921f891c8213d46ac33fa106fc6aeef0ff6717",
+  "commit": "171307a37ee517a95469e95c9a9aaa7bbcd36ed6",
   "genericReplay": {
     "cases": 50,
-    "elapsedSeconds": 29
+    "elapsedSeconds": 12
   },
   "schema": "chio.programmable-sovereignty.replay-results.v1",
   "worktreeDirty": false
