@@ -209,9 +209,9 @@
   "rebuildCommand": "bash scripts/check-programmable-sovereignty-artifact.sh --full",
   "schema": "chio.programmable-sovereignty.artifact-manifest.v1",
   "source": {
-    "commit": "6a1dbe8dd05e24878e392485aac2af119dfe62d6",
-    "contentSetSha256": "4579775a46c4170bfc3a528ba11193be6de2110f40e6246042eea1d88342c91d",
-    "snapshotMode": "pinned source commit plus content-addressed artifact"
+    "commit": "526d2fe8df01804e4a1d4679f6cadbcc85277e1d",
+    "contentSetSha256": "7da9c7305569c4c8981a58e42e071c6077117ac6407a43fe155f3bc207818f71",
+    "snapshotMode": "recorded source commit plus self-contained content-addressed snapshot"
   },
   "sourceFiles": [
     {
@@ -236,7 +236,7 @@
     },
     {
       "path": "docs/papers/programmable-sovereignty/paper-usenix.pdf",
-      "sha256": "2fdd916a811e417da6d8e04731dd0a2554c7b41372c6f7327418c2610c21aabe"
+      "sha256": "58b54e0037a674539f91f01db489db33a47f7f0df401e0e0f91dbf0e537ba68f"
     },
     {
       "path": "docs/papers/programmable-sovereignty/paper.tex",
@@ -260,11 +260,11 @@
     },
     {
       "path": "docs/papers/programmable-sovereignty/sections/05-implementation.tex",
-      "sha256": "d152f9ea1717fd4de8261d5dfb1c99f480335d2549df988c47dd7d5a3a6b72f1"
+      "sha256": "96951a406b29963fc1eb2cd6aeb9668db120497cd96fdc3b04f126637491407d"
     },
     {
       "path": "docs/papers/programmable-sovereignty/sections/06-evaluation.tex",
-      "sha256": "db736f9fd46c09354ced17908d5a725b81aa248acc22874e3826a56854ec59fd"
+      "sha256": "f068493f74fc3e1bf7e85468697ef068c2533fd23bf3b1da76782f587bf3d535"
     },
     {
       "path": "docs/papers/programmable-sovereignty/sections/07-discussion.tex",
@@ -332,7 +332,7 @@
     },
     {
       "path": "crates/kernel/chio-runtime-core/src/treaty/predicate.rs",
-      "sha256": "c3877b3e0d4ad63ce13b7ebb358f0ac5abae9cf9ef84b213935360606b69fd68"
+      "sha256": "e9b4bb7b8cdfd49fe3e1196ccb70daa8f4e673916583abf3c210994b9c76ed9e"
     },
     {
       "path": "crates/kernel/chio-runtime-core/src/types.rs",
@@ -356,7 +356,7 @@
     },
     {
       "path": "scripts/check-chio-live-treaty-buyer-closure.sh",
-      "sha256": "efeaa7b08d1a75ea16b525f5136540d97ffb320fe149d5316a7e039fefac4dbe"
+      "sha256": "ed0d6ce50e718cea943dc7874dedc41d7a65107a05d84a08bcb869b975d3fd75"
     },
     {
       "path": "scripts/check-chio-treaty-buyer-hero-loop.sh",
@@ -368,11 +368,11 @@
     },
     {
       "path": "scripts/generate-programmable-sovereignty-artifact.py",
-      "sha256": "aebdb01389a5d37d0ccb23d711d720b80b0d3a30e5820841deadd7b99ccabce6"
+      "sha256": "017467c3d3556a3788956a5abff7da541de14d04a6cf7af1afeebd477463c0d7"
     },
     {
       "path": "docs/papers/programmable-sovereignty/supplementary/README.md",
-      "sha256": "5ace002a4127af6df116f665cc0d25eac3086ce81bfbe7f9ec250f09965d7d9f"
+      "sha256": "f21f0d818f2da5a3cea767ff4d60ce988c17c2914e8c2ffaedd56639d310414b"
     },
     {
       "path": "spec/schemas/chio-federation/v1/treaty-runtime-negative-fixture-corpus.schema.json",
@@ -382,7 +382,7 @@
   "supplementaryFiles": [
     {
       "path": "docs/papers/programmable-sovereignty/supplementary/source-commit.txt",
-      "sha256": "6c6f8568afa476bf42847fbbcc445c24f8b30a9e267208b4898a7d7bcde69428"
+      "sha256": "ab093510ef5acc911240dc745422ab2a935c96ede27da86dc16e3f907fac3ee2"
     },
     {
       "path": "docs/papers/programmable-sovereignty/supplementary/proof-manifest.toml",
