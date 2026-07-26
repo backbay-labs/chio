@@ -116,6 +116,11 @@ pub struct TransparencyInclusionProof {
     pub checkpoint: String,
     pub inclusion_path: Vec<String>,
     pub verified_at: u64,
+    /// Signed checkpoint statement anchoring `root_hash`, when the producer
+    /// can supply one. Verifiers that promote transparency state require it;
+    /// without it the proof supports preview claims only.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub checkpoint_statement: Option<serde_json::Value>,
 }
 
 /// Message indices to disclose to a buyer or auditor.

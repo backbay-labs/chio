@@ -2,7 +2,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path};
 
 use chio_core_types::{
+    canonical::canonical_json_bytes,
     crypto::{Keypair, Signature},
+    hashing::Hash,
+    merkle::{leaf_hash, MerkleProof},
     PublicKey,
 };
 use chrono::{DateTime, Utc};
@@ -308,6 +311,27 @@ pub fn verify_minimal_passport_artifacts(
     evidence_graph_bytes: &[u8],
     verifier_policy_bytes: &[u8],
 ) -> Result<TransactionVerifierReport, TransactionPassportError> {
+    // No artifact bytes or pinned checkpoint keys are available on this
+    // surface, so the anchored transparency tier is unreachable here by
+    // construction.
+    verify_minimal_passport_artifacts_with_anchor_inputs(
+        passport,
+        passport_path,
+        evidence_graph_bytes,
+        verifier_policy_bytes,
+        &BTreeMap::new(),
+        &[],
+    )
+}
+
+fn verify_minimal_passport_artifacts_with_anchor_inputs(
+    passport: &TransactionPassport,
+    passport_path: String,
+    evidence_graph_bytes: &[u8],
+    verifier_policy_bytes: &[u8],
+    artifacts: &BTreeMap<String, Vec<u8>>,
+    trusted_checkpoint_signer_keys: &[PublicKey],
+) -> Result<TransactionVerifierReport, TransactionPassportError> {
     verify_minimal_passport_schema(passport)?;
 
     let evidence_graph_sha256 = super::sha256_hex(evidence_graph_bytes);
@@ -347,9 +371,18 @@ pub fn verify_minimal_passport_artifacts(
         })?;
     validate_verifier_policy(&verifier_policy)?;
     validate_passport_omission_policy(passport, &verifier_policy)?;
-    enforce_verifier_policy_gates(passport, &verifier_policy, &evidence_graph_value)?;
-    let transparency_state =
-        evidence_graph_transparency_state(evidence_graph_nodes(&evidence_graph_value)?);
+    enforce_verifier_policy_gates(
+        passport,
+        &verifier_policy,
+        &evidence_graph_value,
+        artifacts,
+        trusted_checkpoint_signer_keys,
+    )?;
+    let transparency_state = evidence_graph_transparency_state(
+        evidence_graph_nodes(&evidence_graph_value)?,
+        artifacts,
+        trusted_checkpoint_signer_keys,
+    );
 
     Ok(TransactionVerifierReport::verified(passport, passport_path)
         .with_transparency_state(transparency_state))
@@ -384,12 +417,76 @@ pub fn verify_passport_root_and_claim_set_artifacts_with_external_claims(
     externally_verified_claims: &[String],
 ) -> Result<TransactionVerifierReport, TransactionPassportError> {
     verify_transaction_passport_signature(passport, trusted_root_signer_keys)?;
+    // Passport root signers are not checkpoint signers: the issuer's own key
+    // is necessarily in `trusted_root_signer_keys`, so reusing that set would
+    // reduce the anchored tier to issuer self-assertion. Callers that pin log
+    // kernel keys use the `_with_transparency_anchors` entry point.
     verify_passport_root_and_claim_set_artifacts_bound(
         passport,
         passport_path,
         evidence_graph_bytes,
         verifier_policy_bytes,
         artifacts,
+        &[],
+        externally_verified_claims,
+    )
+}
+
+/// Keys a verifier pins out of band for one verification.
+///
+/// The two roles are deliberately separate. A passport issuer is always in
+/// `passport_root_signers` (that is what makes its passport verifiable), so
+/// reusing that set for checkpoints would reduce the `trust_anchored` tier to
+/// issuer self-assertion.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TransactionTrustAnchors<'a> {
+    /// Keys accepted as passport root signers.
+    pub passport_root_signers: &'a [PublicKey],
+    /// Transparency log kernel keys whose signed checkpoints may promote
+    /// evidence to the `trust_anchored` tier. Empty means the anchored tier
+    /// is unreachable and verification settles at the preview tier.
+    pub checkpoint_signers: &'a [PublicKey],
+}
+
+impl TransactionTrustAnchors<'_> {
+    /// Reject a checkpoint signer set that overlaps the passport root signers,
+    /// so a verifier cannot configure the anchored tier into self-attestation.
+    fn validate(&self) -> Result<(), TransactionPassportError> {
+        if self
+            .checkpoint_signers
+            .iter()
+            .any(|checkpoint_key| self.passport_root_signers.contains(checkpoint_key))
+        {
+            return Err(TransactionPassportError::InvalidVerifierPolicyArtifact(
+                "trusted checkpoint signer keys must be disjoint from passport root signer keys"
+                    .to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Verify a root passport and additionally allow promotion to the
+/// `trust_anchored` transparency tier using the pinned checkpoint keys in
+/// `trust_anchors`.
+pub fn verify_passport_root_and_claim_set_artifacts_with_transparency_anchors(
+    passport: &TransactionPassport,
+    passport_path: String,
+    evidence_graph_bytes: &[u8],
+    verifier_policy_bytes: &[u8],
+    artifacts: &BTreeMap<String, Vec<u8>>,
+    trust_anchors: TransactionTrustAnchors<'_>,
+    externally_verified_claims: &[String],
+) -> Result<TransactionVerifierReport, TransactionPassportError> {
+    verify_transaction_passport_signature(passport, trust_anchors.passport_root_signers)?;
+    trust_anchors.validate()?;
+    verify_passport_root_and_claim_set_artifacts_bound(
+        passport,
+        passport_path,
+        evidence_graph_bytes,
+        verifier_policy_bytes,
+        artifacts,
+        trust_anchors.checkpoint_signers,
         externally_verified_claims,
     )
 }
@@ -402,22 +499,27 @@ pub fn verify_passport_root_and_claim_set_artifacts_unchecked_signature_with_ext
     artifacts: &BTreeMap<String, Vec<u8>>,
     externally_verified_claims: &[String],
 ) -> Result<TransactionVerifierReport, TransactionPassportError> {
+    // No pinned checkpoint keys on this surface, so the anchored transparency
+    // tier is unreachable.
     verify_passport_root_and_claim_set_artifacts_bound(
         passport,
         passport_path,
         evidence_graph_bytes,
         verifier_policy_bytes,
         artifacts,
+        &[],
         externally_verified_claims,
     )
 }
 
+#[allow(clippy::too_many_arguments)]
 fn verify_passport_root_and_claim_set_artifacts_bound(
     passport: &TransactionPassport,
     passport_path: String,
     evidence_graph_bytes: &[u8],
     verifier_policy_bytes: &[u8],
     artifacts: &BTreeMap<String, Vec<u8>>,
+    trusted_checkpoint_signer_keys: &[PublicKey],
     externally_verified_claims: &[String],
 ) -> Result<TransactionVerifierReport, TransactionPassportError> {
     let claim_results = verify_signed_root_graph_binding(
@@ -425,21 +527,39 @@ fn verify_passport_root_and_claim_set_artifacts_bound(
         evidence_graph_bytes,
         verifier_policy_bytes,
         artifacts,
+        trusted_checkpoint_signer_keys,
         externally_verified_claims,
     )?;
-    let transparency_state = transaction_evidence_graph_transparency_state(evidence_graph_bytes)?;
+    let evidence_graph: Value = serde_json::from_slice(evidence_graph_bytes).map_err(|error| {
+        TransactionPassportError::InvalidEvidenceGraphArtifact(error.to_string())
+    })?;
+    let transparency_state = evidence_graph_transparency_state(
+        evidence_graph_nodes(&evidence_graph)?,
+        artifacts,
+        trusted_checkpoint_signer_keys,
+    );
     Ok(TransactionVerifierReport::verified(passport, passport_path)
-        .with_transparency_state(transparency_state)
+        .with_transparency_state(transparency_state.to_string())
         .with_claim_results(claim_results))
 }
 
+/// Transparency state derived from evidence-graph bytes alone.
+///
+/// Anchor verification needs artifact bytes and pinned checkpoint signer
+/// keys, so this surface can report `transparency_preview` or `not_present`
+/// but never `trust_anchored`.
 pub fn transaction_evidence_graph_transparency_state(
     evidence_graph_bytes: &[u8],
 ) -> Result<String, TransactionPassportError> {
     let evidence_graph: Value = serde_json::from_slice(evidence_graph_bytes).map_err(|error| {
         TransactionPassportError::InvalidEvidenceGraphArtifact(error.to_string())
     })?;
-    Ok(evidence_graph_transparency_state(evidence_graph_nodes(&evidence_graph)?).to_string())
+    Ok(evidence_graph_transparency_state(
+        evidence_graph_nodes(&evidence_graph)?,
+        &BTreeMap::new(),
+        &[],
+    )
+    .to_string())
 }
 
 fn verify_signed_root_graph_binding(
@@ -447,6 +567,7 @@ fn verify_signed_root_graph_binding(
     evidence_graph_bytes: &[u8],
     verifier_policy_bytes: &[u8],
     artifacts: &BTreeMap<String, Vec<u8>>,
+    trusted_checkpoint_signer_keys: &[PublicKey],
     externally_verified_claims: &[String],
 ) -> Result<Vec<TransactionClaimResult>, TransactionPassportError> {
     let evidence_graph_sha256 = super::sha256_hex(evidence_graph_bytes);
@@ -475,7 +596,13 @@ fn verify_signed_root_graph_binding(
         TransactionPassportError::InvalidEvidenceGraphArtifact(error.to_string())
     })?;
     validate_root_graph_schema(&evidence_graph)?;
-    enforce_verifier_policy_gates(passport, &verifier_policy, &evidence_graph)?;
+    enforce_verifier_policy_gates(
+        passport,
+        &verifier_policy,
+        &evidence_graph,
+        artifacts,
+        trusted_checkpoint_signer_keys,
+    )?;
     let effective_required_claims = verifier_policy.effective_required_claims();
     let nodes = evidence_graph_nodes(&evidence_graph)?;
     let claim_set_path = validate_root_graph_node_binding(
@@ -589,6 +716,8 @@ fn enforce_verifier_policy_gates(
     passport: &TransactionPassport,
     policy: &TransactionVerifierPolicy,
     evidence_graph: &Value,
+    artifacts: &BTreeMap<String, Vec<u8>>,
+    trusted_checkpoint_signer_keys: &[PublicKey],
 ) -> Result<(), TransactionPassportError> {
     if !policy.accepted_passport_issuers().is_empty()
         && !policy
@@ -614,7 +743,8 @@ fn enforce_verifier_policy_gates(
         }
     }
 
-    let transparency_state = evidence_graph_transparency_state(nodes);
+    let transparency_state =
+        evidence_graph_transparency_state(nodes, artifacts, trusted_checkpoint_signer_keys);
     if !policy.accepted_transparency_states().is_empty()
         && !policy
             .accepted_transparency_states()
@@ -638,7 +768,49 @@ fn issuer_key_part(issuer: &str) -> &str {
     issuer.strip_prefix("did:chio:").unwrap_or(issuer)
 }
 
-fn evidence_graph_transparency_state(nodes: &[Value]) -> &'static str {
+const TRANSPARENCY_INCLUSION_PROOF_SCHEMA_ID: &str = "chio.transparency.inclusion-proof.v1";
+const CHECKPOINT_STATEMENT_SCHEMA_ID: &str = "chio.checkpoint_statement.v1";
+const RECEIPT_EVIDENCE_ROLE: &str = "receipt";
+
+/// Payload of a `chio.transparency.inclusion-proof.v1` artifact as consumed
+/// for transparency-state promotion. Unknown fields are tolerated; promotion
+/// depends only on what verifies.
+#[derive(Debug, Deserialize)]
+struct TransparencyInclusionProofArtifact {
+    schema: String,
+    artifact_ref: String,
+    root_hash: String,
+    leaf_hash: String,
+    tree_size: u64,
+    leaf_index: u64,
+    inclusion_path: Vec<String>,
+    #[serde(default)]
+    checkpoint_statement: Option<CheckpointStatementArtifact>,
+}
+
+/// Signed checkpoint statement embedded in an inclusion-proof artifact. The
+/// body is kept as raw JSON so the signature verifies over exactly the bytes
+/// the signer canonicalized.
+#[derive(Debug, Deserialize)]
+struct CheckpointStatementArtifact {
+    body: Value,
+    signature: String,
+}
+
+/// Transparency state of an evidence graph, promoted to `trust_anchored` only
+/// after cryptographic verification.
+///
+/// A node labeled as an inclusion proof is a promotion candidate, never a
+/// promotion: the anchored tier requires the digest-bound artifact to carry a
+/// Merkle inclusion proof whose root is committed by a checkpoint statement
+/// signed by one of `trusted_checkpoint_signer_keys`, with the proven leaf
+/// bound to an artifact in this graph. On any failure the candidate counts
+/// toward the preview tier, never the anchored tier.
+fn evidence_graph_transparency_state(
+    nodes: &[Value],
+    artifacts: &BTreeMap<String, Vec<u8>>,
+    trusted_checkpoint_signer_keys: &[PublicKey],
+) -> &'static str {
     let mut has_transparency_preview = false;
     for node in nodes {
         let role = node.get("role").and_then(Value::as_str).unwrap_or_default();
@@ -647,9 +819,14 @@ fn evidence_graph_transparency_state(nodes: &[Value]) -> &'static str {
             .and_then(Value::as_str)
             .unwrap_or_default();
         if role == "transparency-inclusion-proof"
-            || schema == "chio.transparency.inclusion-proof.v1"
+            || schema == TRANSPARENCY_INCLUSION_PROOF_SCHEMA_ID
         {
-            return "trust_anchored";
+            if transparency_anchor_verifies(node, nodes, artifacts, trusted_checkpoint_signer_keys)
+            {
+                return "trust_anchored";
+            }
+            has_transparency_preview = true;
+            continue;
         }
         if role.contains("transparency") || schema.contains("transparency") {
             has_transparency_preview = true;
@@ -660,6 +837,138 @@ fn evidence_graph_transparency_state(nodes: &[Value]) -> &'static str {
     } else {
         "not_present"
     }
+}
+
+/// Cryptographic gate for `trust_anchored`. Every check fails closed.
+fn transparency_anchor_verifies(
+    node: &Value,
+    nodes: &[Value],
+    artifacts: &BTreeMap<String, Vec<u8>>,
+    trusted_checkpoint_signer_keys: &[PublicKey],
+) -> bool {
+    if trusted_checkpoint_signer_keys.is_empty() {
+        return false;
+    }
+    let Some(path) = node.get("path").and_then(Value::as_str) else {
+        return false;
+    };
+    let Some(node_sha256) = node.get("sha256").and_then(Value::as_str) else {
+        return false;
+    };
+    let Some(bytes) = artifacts.get(path) else {
+        return false;
+    };
+    if super::sha256_hex(bytes) != node_sha256 {
+        return false;
+    }
+    let Ok(artifact) = serde_json::from_slice::<TransparencyInclusionProofArtifact>(bytes) else {
+        return false;
+    };
+    if artifact.schema != TRANSPARENCY_INCLUSION_PROOF_SCHEMA_ID {
+        return false;
+    }
+    let Some(statement) = artifact.checkpoint_statement else {
+        return false;
+    };
+
+    // The checkpoint statement must be signed by a pinned key over its
+    // canonical body, and must commit the root the proof targets.
+    let Some(body) = statement.body.as_object() else {
+        return false;
+    };
+    if body.get("schema").and_then(Value::as_str) != Some(CHECKPOINT_STATEMENT_SCHEMA_ID) {
+        return false;
+    }
+    let Some(kernel_key_hex) = body.get("kernel_key").and_then(Value::as_str) else {
+        return false;
+    };
+    let Ok(kernel_key) = PublicKey::from_hex(kernel_key_hex) else {
+        return false;
+    };
+    if !trusted_checkpoint_signer_keys.contains(&kernel_key) {
+        return false;
+    }
+    let Ok(signature) = Signature::from_hex(&statement.signature) else {
+        return false;
+    };
+    let Ok(body_bytes) = canonical_json_bytes(&statement.body) else {
+        return false;
+    };
+    if !kernel_key.verify(&body_bytes, &signature) {
+        return false;
+    }
+    let Some(committed_root) = body
+        .get("merkle_root")
+        .and_then(Value::as_str)
+        .and_then(|hex| Hash::from_hex(hex).ok())
+    else {
+        return false;
+    };
+    let Some(committed_tree_size) = body.get("tree_size").and_then(Value::as_u64) else {
+        return false;
+    };
+
+    // The proof must target exactly the committed tree, and its audit path
+    // must recompute the committed root from the leaf.
+    let Ok(root_hash) = Hash::from_hex(&artifact.root_hash) else {
+        return false;
+    };
+    if root_hash != committed_root || artifact.tree_size != committed_tree_size {
+        return false;
+    }
+    let Ok(leaf) = Hash::from_hex(&artifact.leaf_hash) else {
+        return false;
+    };
+    let (Ok(tree_size), Ok(leaf_index)) = (
+        usize::try_from(artifact.tree_size),
+        usize::try_from(artifact.leaf_index),
+    ) else {
+        return false;
+    };
+    let Ok(audit_path) = artifact
+        .inclusion_path
+        .iter()
+        .map(|hex| Hash::from_hex(hex))
+        .collect::<Result<Vec<_>, _>>()
+    else {
+        return false;
+    };
+    let proof = MerkleProof {
+        tree_size,
+        leaf_index,
+        audit_path,
+    };
+    if !proof.verify_hash(leaf, &root_hash) {
+        return false;
+    }
+
+    // The proven leaf must be the RFC 6962 leaf hash of THIS transaction's
+    // receipt. Accepting any digest-bound artifact would let a published
+    // (receipt, proof, checkpoint) triple from an unrelated transaction be
+    // grafted into this graph as an extra node and carry the anchored tier
+    // with it, so the subject is pinned to the single `receipt` role.
+    let mut receipt_nodes = nodes.iter().filter(|candidate| {
+        candidate.get("role").and_then(Value::as_str) == Some(RECEIPT_EVIDENCE_ROLE)
+    });
+    let (Some(receipt_node), None) = (receipt_nodes.next(), receipt_nodes.next()) else {
+        return false;
+    };
+    let Some(receipt_sha256) = receipt_node.get("sha256").and_then(Value::as_str) else {
+        return false;
+    };
+    if receipt_sha256 != artifact.artifact_ref {
+        return false;
+    }
+    let Some(receipt_path) = receipt_node.get("path").and_then(Value::as_str) else {
+        return false;
+    };
+    let Some(subject_bytes) = artifacts.get(receipt_path) else {
+        return false;
+    };
+    if super::sha256_hex(subject_bytes) != artifact.artifact_ref {
+        return false;
+    }
+    leaf == leaf_hash(subject_bytes)
 }
 
 fn validate_claim_set_bytes(
@@ -922,6 +1231,8 @@ pub fn verify_standalone_minimal_passport_artifacts(
     trusted_root_signer_keys: &[PublicKey],
 ) -> Result<TransactionVerifierReport, TransactionPassportError> {
     verify_transaction_passport_signature(passport, trusted_root_signer_keys)?;
+    // Root signers are not checkpoint signers; see
+    // `verify_standalone_minimal_passport_artifacts_with_transparency_anchors`.
     verify_standalone_minimal_passport_artifacts_bound(
         passport,
         passport_path,
@@ -929,6 +1240,7 @@ pub fn verify_standalone_minimal_passport_artifacts(
         verifier_policy_bytes,
         artifacts,
         trusted_root_signer_keys,
+        &[],
     )
 }
 
@@ -947,6 +1259,31 @@ pub fn verify_standalone_minimal_passport_artifacts_unchecked_signature(
         verifier_policy_bytes,
         artifacts,
         trusted_root_signer_keys,
+        &[],
+    )
+}
+
+/// Verify a standalone governed-action passport and additionally allow
+/// promotion to the `trust_anchored` transparency tier using the pinned
+/// checkpoint keys in `trust_anchors`.
+pub fn verify_standalone_minimal_passport_artifacts_with_transparency_anchors(
+    passport: &TransactionPassport,
+    passport_path: String,
+    evidence_graph_bytes: &[u8],
+    verifier_policy_bytes: &[u8],
+    artifacts: &BTreeMap<String, Vec<u8>>,
+    trust_anchors: TransactionTrustAnchors<'_>,
+) -> Result<TransactionVerifierReport, TransactionPassportError> {
+    verify_transaction_passport_signature(passport, trust_anchors.passport_root_signers)?;
+    trust_anchors.validate()?;
+    verify_standalone_minimal_passport_artifacts_bound(
+        passport,
+        passport_path,
+        evidence_graph_bytes,
+        verifier_policy_bytes,
+        artifacts,
+        trust_anchors.passport_root_signers,
+        trust_anchors.checkpoint_signers,
     )
 }
 
@@ -957,12 +1294,15 @@ fn verify_standalone_minimal_passport_artifacts_bound(
     verifier_policy_bytes: &[u8],
     artifacts: &BTreeMap<String, Vec<u8>>,
     trusted_root_signer_keys: &[PublicKey],
+    trusted_checkpoint_signer_keys: &[PublicKey],
 ) -> Result<TransactionVerifierReport, TransactionPassportError> {
-    let report = verify_minimal_passport_artifacts(
+    let report = verify_minimal_passport_artifacts_with_anchor_inputs(
         passport,
         passport_path,
         evidence_graph_bytes,
         verifier_policy_bytes,
+        artifacts,
+        trusted_checkpoint_signer_keys,
     )?;
     let verifier_policy: TransactionVerifierPolicy = serde_json::from_slice(verifier_policy_bytes)
         .map_err(|error| {

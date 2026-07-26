@@ -2443,3 +2443,302 @@ fn standalone_minimal_passport_rejects_detached_verifier_policy_node() {
         .to_string()
         .contains("verifier policy evidence graph digest mismatch"));
 }
+
+fn transparency_anchored_fixture(
+    mutate_artifact: impl FnOnce(&mut Value),
+) -> (BTreeMap<String, Vec<u8>>, Vec<u8>, Vec<u8>) {
+    let mut artifacts = governed_action_artifacts();
+    let verifier_policy_bytes = verifier_policy_with_rich_gates(json!({
+        "accepted_transparency_states": ["trust_anchored"]
+    }));
+    artifacts.insert(
+        "verifier-policy.json".to_string(),
+        verifier_policy_bytes.clone(),
+    );
+
+    let subject_bytes = artifacts
+        .get("kernel-receipt.json")
+        .test_expect("receipt artifact exists")
+        .clone();
+    let subject_sha256 = sha256_hex(&subject_bytes);
+    let leaf = chio_core_types::merkle::leaf_hash(&subject_bytes);
+    let leaf_hex = format!("0x{}", leaf.to_hex());
+
+    // The log kernel key is deliberately NOT the passport root key: an issuer
+    // that signs the checkpoints anchoring its own evidence is self-attesting.
+    let root_key = transparency_checkpoint_keypair();
+    let statement_body = json!({
+        "schema": "chio.checkpoint_statement.v1",
+        "checkpoint_seq": 1,
+        "batch_start_seq": 1,
+        "batch_end_seq": 1,
+        "tree_size": 1,
+        "merkle_root": leaf_hex,
+        "issued_at": 1_749_000_000u64,
+        "kernel_key": root_key.public_key().to_hex()
+    });
+    let statement_signature = root_key
+        .sign(
+            &chio_core_types::canonical_json_bytes(&statement_body)
+                .test_expect("canonical statement body"),
+        )
+        .to_hex();
+
+    let mut inclusion_artifact = json!({
+        "schema": "chio.transparency.inclusion-proof.v1",
+        "proof_id": "transparency-proof-governed-action",
+        "log_id": "local-log-governed-action",
+        "artifact_ref": subject_sha256,
+        "root_hash": leaf_hex,
+        "leaf_hash": leaf_hex,
+        "tree_size": 1,
+        "leaf_index": 0,
+        "checkpoint": "local-log-governed-action:1",
+        "inclusion_path": [],
+        "verified_at": 1_749_000_000u64,
+        "checkpoint_statement": {
+            "body": statement_body,
+            "signature": statement_signature
+        }
+    });
+    mutate_artifact(&mut inclusion_artifact);
+    artifacts.insert(
+        "transparency-inclusion-proof.json".to_string(),
+        serde_json::to_vec(&inclusion_artifact).test_expect("inclusion artifact serializes"),
+    );
+
+    let base_graph_bytes = governed_action_evidence_graph_bytes(&artifacts);
+    let mut graph: Value =
+        serde_json::from_slice(&base_graph_bytes).test_expect("governed action graph parses");
+    let inclusion_digest = sha256_hex(
+        artifacts
+            .get("transparency-inclusion-proof.json")
+            .test_expect("inclusion artifact exists"),
+    );
+    graph["nodes"]
+        .as_array_mut()
+        .test_expect("graph nodes are an array")
+        .push(json!({
+            "id": inclusion_digest,
+            "schema": "chio.transparency.inclusion-proof.v1",
+            "path": "transparency-inclusion-proof.json",
+            "sha256": inclusion_digest,
+            "role": "transparency-inclusion-proof"
+        }));
+    let evidence_graph_bytes =
+        serde_json::to_vec(&graph).test_expect("anchored evidence graph serializes");
+    (artifacts, evidence_graph_bytes, verifier_policy_bytes)
+}
+
+fn transparency_checkpoint_keypair() -> Keypair {
+    Keypair::from_seed(&[71u8; 32])
+}
+
+fn transparency_checkpoint_keys() -> Vec<chio_core_types::PublicKey> {
+    vec![transparency_checkpoint_keypair().public_key()]
+}
+
+fn verify_standalone_anchored(
+    artifacts: &BTreeMap<String, Vec<u8>>,
+    evidence_graph_bytes: &[u8],
+    verifier_policy_bytes: &[u8],
+) -> Result<
+    chio_transaction_passport::TransactionVerifierReport,
+    chio_transaction_passport::TransactionPassportError,
+> {
+    verify_standalone_anchored_with_checkpoint_keys(
+        artifacts,
+        evidence_graph_bytes,
+        verifier_policy_bytes,
+        &transparency_checkpoint_keys(),
+    )
+}
+
+fn verify_standalone_anchored_with_checkpoint_keys(
+    artifacts: &BTreeMap<String, Vec<u8>>,
+    evidence_graph_bytes: &[u8],
+    verifier_policy_bytes: &[u8],
+    trusted_checkpoint_signer_keys: &[chio_core_types::PublicKey],
+) -> Result<
+    chio_transaction_passport::TransactionVerifierReport,
+    chio_transaction_passport::TransactionPassportError,
+> {
+    let passport =
+        standalone_passport_for_artifact_bytes(evidence_graph_bytes, verifier_policy_bytes);
+    chio_transaction_passport::verify_standalone_minimal_passport_artifacts_with_transparency_anchors(
+        &passport,
+        "transaction-passport.json".to_string(),
+        evidence_graph_bytes,
+        verifier_policy_bytes,
+        artifacts,
+        chio_transaction_passport::TransactionTrustAnchors {
+            passport_root_signers: &governed_action_trusted_root_keys(),
+            checkpoint_signers: trusted_checkpoint_signer_keys,
+        },
+    )
+}
+
+#[test]
+fn standalone_minimal_passport_promotes_verified_transparency_anchor() {
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|_| {});
+
+    let report =
+        verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+            .test_expect("verified transparency anchor promotes");
+
+    assert_eq!(report.transparency_state, "trust_anchored");
+}
+
+#[test]
+fn standalone_minimal_passport_rejects_unverified_transparency_anchor_label() {
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|artifact| {
+            let object = artifact
+                .as_object_mut()
+                .test_expect("inclusion artifact is an object");
+            object.remove("checkpoint_statement");
+        });
+
+    let error =
+        verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+            .test_expect_err("an inclusion-proof label without a signed anchor must not promote");
+
+    assert!(
+        error
+            .to_string()
+            .contains("transparency state not accepted by verifier policy: transparency_preview"),
+        "{error}"
+    );
+}
+
+#[test]
+fn standalone_minimal_passport_rejects_transparency_anchor_from_untrusted_signer() {
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|artifact| {
+            let rogue = Keypair::from_seed(&[99u8; 32]);
+            let mut body = artifact["checkpoint_statement"]["body"].clone();
+            body["kernel_key"] = json!(rogue.public_key().to_hex());
+            let signature = rogue
+                .sign(
+                    &chio_core_types::canonical_json_bytes(&body)
+                        .test_expect("canonical rogue statement body"),
+                )
+                .to_hex();
+            artifact["checkpoint_statement"] = json!({
+                "body": body,
+                "signature": signature
+            });
+        });
+
+    let error =
+        verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+            .test_expect_err("a checkpoint signed outside the pinned key set must not promote");
+
+    assert!(
+        error
+            .to_string()
+            .contains("transparency state not accepted by verifier policy: transparency_preview"),
+        "{error}"
+    );
+}
+
+#[test]
+fn standalone_minimal_passport_rejects_transparency_anchor_with_tampered_root() {
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|artifact| {
+            artifact["root_hash"] = json!(format!("0x{}", "0".repeat(64)));
+        });
+
+    let error =
+        verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+            .test_expect_err("a root the checkpoint does not commit must not promote");
+
+    assert!(
+        error
+            .to_string()
+            .contains("transparency state not accepted by verifier policy: transparency_preview"),
+        "{error}"
+    );
+}
+
+#[test]
+fn standalone_minimal_passport_rejects_transparency_anchor_with_unbound_subject() {
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|artifact| {
+            artifact["artifact_ref"] = json!("b".repeat(64));
+        });
+
+    let error =
+        verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+            .test_expect_err("an anchor not bound to a graph artifact must not promote");
+
+    assert!(
+        error
+            .to_string()
+            .contains("transparency state not accepted by verifier policy: transparency_preview"),
+        "{error}"
+    );
+}
+
+#[test]
+fn standalone_minimal_passport_rejects_checkpoint_keys_shared_with_passport_roots() {
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|_| {});
+
+    let error = verify_standalone_anchored_with_checkpoint_keys(
+        &artifacts,
+        &evidence_graph_bytes,
+        &verifier_policy_bytes,
+        &governed_action_trusted_root_keys(),
+    )
+    .test_expect_err("a passport root key must not double as a checkpoint signer");
+
+    assert!(
+        error.to_string().contains(
+            "trusted checkpoint signer keys must be disjoint from passport root signer keys"
+        ),
+        "{error}"
+    );
+}
+
+#[test]
+fn standalone_minimal_passport_rejects_anchor_over_a_non_receipt_artifact() {
+    // A genuine, pinned-key-signed anchor over some other digest-bound
+    // artifact must not carry the anchored tier: otherwise a published
+    // (artifact, proof, checkpoint) triple grafts into any graph.
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) = transparency_anchored_fixture(
+        |artifact| {
+            let policy_bytes = br#"{"schema":"chio.policy.bundle.v1","id":"policy","version":"2026-06-10","rules":[{"id":"allow-demo-echo","effect":"allow","scope":"tool:demo.echo"}]}"#.to_vec();
+            let leaf = chio_core_types::merkle::leaf_hash(&policy_bytes);
+            let leaf_hex = format!("0x{}", leaf.to_hex());
+            let kernel = transparency_checkpoint_keypair();
+            let mut body = artifact["checkpoint_statement"]["body"].clone();
+            body["merkle_root"] = json!(leaf_hex);
+            let signature = kernel
+                .sign(
+                    &chio_core_types::canonical_json_bytes(&body)
+                        .test_expect("canonical policy-anchor statement body"),
+                )
+                .to_hex();
+            artifact["artifact_ref"] = json!(sha256_hex(&policy_bytes));
+            artifact["root_hash"] = json!(leaf_hex);
+            artifact["leaf_hash"] = json!(leaf_hex);
+            artifact["checkpoint_statement"] = json!({
+                "body": body,
+                "signature": signature
+            });
+        },
+    );
+
+    let error =
+        verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+            .test_expect_err("an anchor over a non-receipt artifact must not promote");
+
+    assert!(
+        error
+            .to_string()
+            .contains("transparency state not accepted by verifier policy: transparency_preview"),
+        "{error}"
+    );
+}

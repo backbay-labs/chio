@@ -69,8 +69,11 @@ Standalone verification (the crate re-derives every binding itself):
   trust-root chain, restricted to the six `claim.transaction.*` structural claims.
 - `validate_transaction_evidence_graph` - structural validation of evidence-graph
   bytes alone.
-- `transaction_evidence_graph_transparency_state` - derive `trust_anchored` /
-  `transparency_preview` / `not_present` from evidence-graph bytes.
+- `transaction_evidence_graph_transparency_state` - derive
+  `transparency_preview` / `not_present` from evidence-graph bytes. The
+  `trust_anchored` tier requires cryptographic verification of an inclusion
+  proof against a checkpoint signed by a pinned key, so it is only reachable
+  through the artifact-carrying verification surfaces.
 - `validate_verifier_policy_artifact` - standalone verifier-policy shape validation.
 
 Runtime security:

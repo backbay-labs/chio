@@ -22,10 +22,12 @@ pub use minimal::{
     verify_minimal_passport_schema_at, verify_passport_root_and_claim_set_artifacts,
     verify_passport_root_and_claim_set_artifacts_unchecked_signature_with_external_claims,
     verify_passport_root_and_claim_set_artifacts_with_external_claims,
+    verify_passport_root_and_claim_set_artifacts_with_transparency_anchors,
     verify_standalone_minimal_passport_artifacts,
     verify_standalone_minimal_passport_artifacts_unchecked_signature,
+    verify_standalone_minimal_passport_artifacts_with_transparency_anchors,
     verify_transaction_passport_signature,
-    verify_transaction_passport_signature_with_evidence_graph,
+    verify_transaction_passport_signature_with_evidence_graph, TransactionTrustAnchors,
 };
 pub use runtime_security::{
     verify_runtime_security_claims, verify_runtime_security_claims_with_trust,
