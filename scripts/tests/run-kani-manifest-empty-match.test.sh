@@ -48,6 +48,19 @@ timeout_secs = 60
 lane = "pr"
 EOF
 
+INVALID_UNWINDING_MANIFEST="$work/invalid-unwinding.toml"
+cat > "$INVALID_UNWINDING_MANIFEST" <<'EOF'
+schema = "chio.kani.multi-crate.v1"
+
+[[harness]]
+crate = "fake-crate"
+harness = "fake_harness"
+default_unwind = 1
+timeout_secs = 60
+lane = "pr"
+unwinding_checks = "yes"
+EOF
+
 run_runner() {
   # Print the runner's exit code on stdout; suppress the runner's own
   # stderr so the test output stays focused on the assertion record.
@@ -99,9 +112,20 @@ assert_eq "$(run_runner "$POPULATED_MANIFEST" --lane nightlee --allow-empty)" 2 
 assert_eq "$(run_runner "$POPULATED_MANIFEST" --lane pr --list)" 0 \
   "populated manifest + --list exits 0"
 
+dry_run_output="$(KANI_MANIFEST="$POPULATED_MANIFEST" "$RUNNER" --lane pr --dry-run)"
+if ! grep -Eq -- '--harness kani_public_harnesses::fake_harness --exact([[:space:]]|$)' <<<"$dry_run_output"; then
+  echo "FAIL: populated manifest dry-run did not select the harness exactly" >&2
+  printf '%s\n' "$dry_run_output" >&2
+  exit 1
+fi
+echo "ok: populated manifest dry-run uses --exact"
+
 # Case 6: --exclude-crate that removes every entry is also a silent-
 # skip scenario the audit calls out.
 assert_eq "$(run_runner "$POPULATED_MANIFEST" --lane pr --exclude-crate fake-crate)" 1 \
   "exclude-crate that empties match set exits 1"
+
+assert_eq "$(run_runner "$INVALID_UNWINDING_MANIFEST" --lane pr --dry-run)" 2 \
+  "non-boolean unwinding-check posture exits 2"
 
 echo "run-kani-manifest-empty-match.test.sh: all assertions passed"

@@ -93,6 +93,7 @@ dhat = { workspace = true }
 jsonschema = { workspace = true }
 loom = { workspace = true }
 tempfile = { workspace = true }
+toml = { workspace = true }
 # proptest = "1.10" (via workspace.dependencies). Used by:
 # - tests/property_budget_store.rs
 # - tests/replay_proptest.rs (replay-invariance suite)

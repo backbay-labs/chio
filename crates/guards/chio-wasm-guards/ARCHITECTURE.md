@@ -15,6 +15,9 @@ blocklist, metrics, and observability are backend-agnostic); only execution
 itself (`WasmtimeBackend`, `ComponentBackend`, host bindings,
 `chio.yaml`/policy loading) requires it.
 
+This crate owns the sandboxed guest loading and execution boundary. Policy
+authoring and kernel dispatch remain outside its scope.
+
 ## Module map
 
 | Path | Responsibility |
@@ -59,6 +62,11 @@ itself (`WasmtimeBackend`, `ComponentBackend`, host bindings,
 5. Record fuel/epoch/hash evidence, emit verdict/duration/fuel metrics, and
    fail closed: a backend error denies unless the guard is advisory.
 
+`WasmGuard` does not opt into dispatch revalidation. Its admission verdict and
+evidence are authoritative for that dispatch, and the readiness revalidation
+hook is a non-consuming no-op. This prevents stateful guests and fuel accounting
+from running twice for one admitted call.
+
 `hot_reload::Engine::reload_with_canary` / `reload_with_watchdog`:
 
 1. Reject the replacement digest if it is in the `GuardDigestBlocklist`.
@@ -99,6 +107,12 @@ itself (`WasmtimeBackend`, `ComponentBackend`, host bindings,
   `Engine::reload`'s module swap is modeled under `loom`
   (`tests/loom_instance_pre_reload_vs_checkout.rs`); production modules are
   `cfg(not(loom))` and absent from that build.
+- Runtime splitting must not change guard verdict semantics, fuel accounting,
+  manifest hash evidence, epoch assignment, signature verification, WIT world
+  validation, import allowlisting, memory limits, or blocking-guard fail-closed
+  behavior. Any backend load, trap, malformed action extraction, module-size
+  violation, import violation, signature failure, or unsupported format denies
+  or rejects before guest code can silently allow.
 
 ## Dependencies
 

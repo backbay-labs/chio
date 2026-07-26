@@ -1,0 +1,60 @@
+schema = "chio.lean-mutants-allowlist.v1"
+sample_size = 5
+timeout_secs = 300
+baseline_timeout_secs = 1800
+
+[[definition]]
+name = "CapabilityToken.isValidAt"
+path = "formal/lean4/Chio/Chio/Core/Capability.lean"
+
+[[definition]]
+name = "ToolGrant.isSubsetOf"
+path = "formal/lean4/Chio/Chio/Core/Scope.lean"
+
+[[definition]]
+name = "verifyReceipt"
+path = "formal/lean4/Chio/Chio/Core/Receipt.lean"
+
+[[definition]]
+name = "checkTimeBounds"
+path = "formal/lean4/Chio/Chio/Core/Revocation.lean"
+
+[[definition]]
+name = "budgetPrecheck"
+path = "formal/lean4/Chio/Chio/Core/Protocol.lean"
+
+[[definition]]
+name = "revocationSnapshotDenies"
+path = "formal/lean4/Chio/Chio/Core/Protocol.lean"
+
+[[definition]]
+name = "inclusionStep"
+path = "formal/lean4/Chio/Chio/Core/MerkleWalk.lean"
+
+[[definition]]
+name = "supported"
+path = "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean"
+
+[[definition]]
+name = "defined"
+path = "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean"
+
+[[definition]]
+name = "denote"
+path = "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean"
+
+[[definition]]
+name = "refinesOnConstitution"
+path = "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean"
+
+[[definition]]
+name = "ofDecide"
+path = "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean"
+
+[[definition]]
+name = "IsLiteralScalar"
+path = "formal/lean4/Chio/Chio/Json/Value.lean"
+
+[[definition]]
+name = "CanonicalInteger"
+path = "formal/lean4/Chio/Chio/Json/Value.lean"

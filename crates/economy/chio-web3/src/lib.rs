@@ -22,6 +22,9 @@ pub mod settlement_proof;
 pub mod trust_profile;
 pub(crate) mod validation;
 
+#[cfg(kani)]
+mod kani_public_harnesses;
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod review_thread_tests;

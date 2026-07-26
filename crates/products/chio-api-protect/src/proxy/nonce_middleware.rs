@@ -96,9 +96,15 @@ mod tests {
     fn valid_nonce_passes_then_replay_is_rejected() {
         let kp = Keypair::generate();
         let store = InMemoryExecutionNonceStore::default();
+        let now = i64::try_from(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_secs(),
+        )
+        .unwrap();
         let signed =
-            mint_execution_nonce(&kp, binding(), &ExecutionNonceConfig::default(), 1_000_000)
-                .unwrap();
+            mint_execution_nonce(&kp, binding(), &ExecutionNonceConfig::default(), now).unwrap();
         let encoded = serde_json::to_string(&signed).unwrap();
         let mut headers = HeaderMap::new();
         headers.insert("x-chio-execution-nonce", encoded.parse().unwrap());
@@ -106,7 +112,7 @@ mod tests {
             &headers,
             &kp.public_key(),
             &binding(),
-            1_000_001,
+            now + 1,
             &store,
             false,
         )
@@ -117,7 +123,7 @@ mod tests {
                 &headers,
                 &kp.public_key(),
                 &binding(),
-                1_000_002,
+                now + 2,
                 &store,
                 false
             ),

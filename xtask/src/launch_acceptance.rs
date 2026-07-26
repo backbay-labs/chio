@@ -148,7 +148,7 @@ pub(crate) fn run(args: &LaunchAcceptanceArgs) -> Result<(), XtaskError> {
 
     let stages = copy_and_validate_stages(&root, &out)?;
     copy_roots_from_stage_zero(&root, &out)?;
-    copy_claim_registry(&root, &out)?;
+    copy_claim_registries(&root, &out)?;
     write_homepage_copy_map(&out)?;
     write_non_claims(&out)?;
     write_negative_catalog(&root, &out, &stages)?;
@@ -156,6 +156,7 @@ pub(crate) fn run(args: &LaunchAcceptanceArgs) -> Result<(), XtaskError> {
     copy_static_ui(&root, &out)?;
 
     let git_commit = required_stdout(&root, "git", &["rev-parse", "HEAD"])?;
+    copy_proof_coverage(&root, &out, &git_commit)?;
     let tool_versions = tool_versions(&root, &git_commit)?;
     write_json(&out.join("verifier/tool-versions.json"), &tool_versions)?;
 
@@ -464,11 +465,41 @@ fn copy_roots_from_stage_zero(root: &Path, out: &Path) -> Result<(), XtaskError>
     crate::copy_dir_recursive(&roots, &out.join("roots"))
 }
 
-fn copy_claim_registry(root: &Path, out: &Path) -> Result<(), XtaskError> {
+fn copy_claim_registries(root: &Path, out: &Path) -> Result<(), XtaskError> {
     copy_file(
         &root.join("spec/registries/claim-registry.v1.json"),
         &out.join("claims/claim-registry.json"),
+    )?;
+    copy_file(
+        &root.join("docs/reference/CLAIM_REGISTRY.md"),
+        &out.join("claims/formal-claim-registry.md"),
     )
+}
+
+fn copy_proof_coverage(root: &Path, out: &Path, git_commit: &str) -> Result<(), XtaskError> {
+    const REPOSITORY_CLAIM_REGISTRY_LINK: &str = "../reference/CLAIM_REGISTRY.md";
+    const BUNDLE_CLAIM_REGISTRY_LINK: &str = "formal-claim-registry.md";
+
+    let source = root.join("docs/formal/COVERAGE.md");
+    let body = crate::proof_coverage::checked_committed_markdown(root)?;
+    if body.matches("@GIT_COMMIT@").count() != 1 {
+        return Err(XtaskError::Validation(format!(
+            "{} must contain exactly one git commit token",
+            crate::display_path(&source)
+        )));
+    }
+    if body.matches(REPOSITORY_CLAIM_REGISTRY_LINK).count() != 1 {
+        return Err(XtaskError::Validation(format!(
+            "{} must contain exactly one claim registry link",
+            crate::display_path(&source)
+        )));
+    }
+    let resolved = body
+        .replace("@GIT_COMMIT@", git_commit)
+        .replace(REPOSITORY_CLAIM_REGISTRY_LINK, BUNDLE_CLAIM_REGISTRY_LINK);
+    let destination = out.join("claims/proof-coverage.md");
+    fs::write(&destination, resolved)
+        .map_err(|err| XtaskError::Io(crate::display_path(&destination), err))
 }
 
 fn write_homepage_copy_map(out: &Path) -> Result<(), XtaskError> {
@@ -860,11 +891,17 @@ fn acceptance_manifest(git_commit: &str, stages: &[StageEvidence], report_sha256
             "claim_registry": {
                 "path": "claims/claim-registry.json",
             },
+            "formal_claim_registry": {
+                "path": "claims/formal-claim-registry.md",
+            },
             "homepage_copy_map": {
                 "path": "claims/homepage-copy-map.json",
             },
             "non_claims": {
                 "path": "claims/non-claims.json",
+            },
+            "proof_coverage": {
+                "path": "claims/proof-coverage.md",
             }
         },
         "roots": {
@@ -1285,6 +1322,28 @@ mod tests {
                 Some(VERDICT_VERIFIED)
             );
         }
+    }
+
+    #[test]
+    fn acceptance_manifest_includes_proof_coverage_page() {
+        let manifest = acceptance_manifest("abc123", &verified_stages(), &"0".repeat(64));
+
+        assert_eq!(
+            manifest
+                .get("claims")
+                .and_then(|claims| claims.get("proof_coverage"))
+                .and_then(|coverage| coverage.get("path"))
+                .and_then(Value::as_str),
+            Some("claims/proof-coverage.md")
+        );
+        assert_eq!(
+            manifest
+                .get("claims")
+                .and_then(|claims| claims.get("formal_claim_registry"))
+                .and_then(|registry| registry.get("path"))
+                .and_then(Value::as_str),
+            Some("claims/formal-claim-registry.md")
+        );
     }
 
     #[test]

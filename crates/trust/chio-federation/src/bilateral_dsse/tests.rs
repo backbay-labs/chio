@@ -93,6 +93,61 @@ fn strict_treaty_extensions(receipt: &ChioReceipt) -> BilateralPredicateExtensio
 }
 
 #[test]
+fn strict_cosigner_pipeline_returns_a_verified_envelope() {
+    let origin = Keypair::generate();
+    let host = Keypair::generate();
+    let receipt = sample_receipt(&host);
+    let cosigner =
+        crate::bilateral::InProcessCoSigner::new("kernel.org-a", origin.clone(), host.public_key());
+    let envelope = sign_chio_bilateral_dsse_envelope_with_cosigner(
+        &receipt,
+        &origin.public_key(),
+        &host,
+        "kernel.org-a",
+        "kernel.org-b",
+        "file_read",
+        1_734_000_000_000,
+        strict_treaty_extensions(&receipt),
+        &cosigner,
+    )
+    .expect("strict co-signing producer succeeds");
+    verify_chio_bilateral_dsse_envelope(&envelope, &origin.public_key(), &host.public_key())
+        .expect("producer returns a verified envelope");
+}
+
+#[cfg(feature = "typestate")]
+#[test]
+fn generated_typestate_calls_the_crypto_handlers_in_order() {
+    let origin = Keypair::generate();
+    let host = Keypair::generate();
+    let origin_public_key = origin.public_key();
+    let receipt = sample_receipt(&host);
+    let cosigner =
+        crate::bilateral::InProcessCoSigner::new("kernel.org-a", origin.clone(), host.public_key());
+    let drafted = typestate_handlers::draft(
+        &receipt,
+        &origin_public_key,
+        &host,
+        "kernel.org-a",
+        "kernel.org-b",
+        "file_read",
+        1_734_000_000_000,
+        strict_treaty_extensions(&receipt),
+        &cosigner,
+    )
+    .expect("strict statement is drafted");
+    let envelope = typestate::Drafted::from_data(drafted)
+        .sign_host()
+        .expect("host signature is created")
+        .request_cosignature()
+        .expect("origin co-signature is accepted")
+        .verify_envelope()
+        .expect("strict envelope verifies")
+        .into_envelope();
+    assert_eq!(envelope.signatures.len(), 2);
+}
+
+#[test]
 fn pae_matches_dsse_v1_format_known_vector() {
     // Sanity: the leading bytes are literally "DSSEv1 ".
     let bytes = pae("application/x", b"hello");

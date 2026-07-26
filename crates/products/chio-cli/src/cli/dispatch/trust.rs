@@ -17,6 +17,7 @@ use crate::runtime_trust_reports::{
     cmd_trust_credit_facility_list, cmd_trust_credit_scorecard_export,
     cmd_trust_evidence_share_list, cmd_trust_exposure_ledger_export,
 };
+use crate::trust_commands_cli::cmd_trust_trace_verify;
 
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn dispatch_trust(
@@ -1329,6 +1330,24 @@ pub(crate) fn dispatch_trust(
                     },
                 ),
             },
+            TrustCommands::TraceVerify {
+                log,
+                trusted_keys,
+                spec,
+                apalache_bin,
+                timeout_secs,
+                itf_output,
+                report_output,
+            } => cmd_trust_trace_verify(
+                &log,
+                &trusted_keys,
+                spec,
+                &apalache_bin,
+                timeout_secs,
+                itf_output.as_deref(),
+                report_output.as_deref(),
+                json_output,
+            ),
             TrustCommands::Revoke { capability_id } => cmd_trust_revoke(
                 &capability_id,
                 json_output,

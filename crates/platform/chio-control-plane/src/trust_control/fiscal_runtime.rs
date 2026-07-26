@@ -961,10 +961,10 @@ mod tests {
             &checkpoint,
             FiscalBootstrapState::CharterPinned,
         )?;
-        let temp = tempfile::tempdir()?;
+        let temp = crate::durable_admission::private_tempdir()?;
         let database = temp.path().join("authority.db");
         let lock_root = temp.path().join("locks");
-        std::fs::create_dir(&lock_root)?;
+        crate::durable_admission::create_private_directory(&lock_root)?;
         SqliteAuthorityStore::provision(&database, &lock_root)?;
         let authority = SqliteAuthorityStore::open_serving(&database, &lock_root)?;
         authority.fiscal_store().initialize_genesis(

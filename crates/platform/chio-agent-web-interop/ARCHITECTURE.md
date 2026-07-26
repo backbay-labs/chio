@@ -20,7 +20,7 @@ that protocol.
 
 | Path | Responsibility |
 |------|----------------|
-| `src/lib.rs` | `AgentWebInteropBundle`, `AgentWebVerifierTrust`, and the report types; `verify_agent_web_interop(_with_trust)` orchestration; receipt re-verification, commerce order-context binding, claim-mapping enforcement. |
+| `src/lib.rs` | `AgentWebInteropBundle`, `AgentWebVerifierTrust`, replay store types, and report types; read-only and replay-consuming verification orchestration; receipt re-verification, commerce order-context binding, and claim-mapping enforcement. |
 | `src/evidence.rs` | Evidence graph model (`AgentWebEvidenceGraph`/`Node`/`Edge`/`Role`) and parsing: schema check, node/edge shape, duplicate-id and dangling-reference rejection, safe relative-path validation, digest-checked artifact byte lookup. |
 | `src/policy.rs` | Verifier policy model (`AgentWebVerifierPolicy`) and parsing: schema check, non-empty required claims. |
 | `src/protocols.rs` | Static registry of the 30 supported source protocols: external-subject schema id, required "unsupported" external-authority claim(s), supported source versions, per-protocol error message. |
@@ -56,6 +56,53 @@ that protocol.
    projection, reject any policy that requires a `claim.external.*` claim,
    and require every policy-required `claim.agent_web.*` claim to have
    verified.
+8. In a consuming verification mode, atomically reserve every validated
+   Standard Webhooks replay entry only after the complete report passes, and
+   only after reproducing the expected read-only report when one is supplied.
+
+## Standard Webhooks replay modes
+
+Agent Web verification separates read-only and consuming operations.
+`verify_agent_web_interop_with_trust` validates the timestamp window, HMAC,
+graph, envelope, receipt, and claims without reading or writing replay state,
+so offline verification is idempotent.
+`verify_agent_web_interop_with_trust_and_consume_replays` performs the same
+validation and then atomically reserves every Standard Webhooks identifier.
+`verify_agent_web_interop_with_trust_and_consume_replays_if_report_matches`
+also requires the consuming pass to reproduce an expected read-only report
+before it reserves identifiers. Failed validation or a report mismatch
+reserves nothing.
+
+The CLI uses read-only verification for `chio proof verify`. `chio proof
+collect` consumes replay entries only after proof-family, root-claim, parity,
+and required-claim checks pass and the consuming report matches the initial
+read-only report. When consuming Standard Webhooks replay protection is
+configured, `CHIO_AGENT_WEB_REPLAY_STORE_PATH` must name an available durable
+SQLite database. A missing or unavailable store fails closed.
+
+Replay keys are `(replay_scope, webhook_id)`. After the delivery HMAC
+succeeds, the verifier derives the opaque scope with a domain-separated HMAC
+over the verifier secret identity and signed endpoint digest. Stores receive
+the lowercase-hex scope but never the raw verifier secret. Independent
+authenticated senders or endpoints can therefore reuse a webhook identifier
+without sharing replay state. During SQLite migration, legacy rows without a
+scope receive a reserved unscoped marker and conservatively block that
+identifier in every scope until the row expires.
+
+The in-memory and SQLite stores require positive global and per-scope live
+entry capacities. Exhaustion denies fail closed and never evicts a live
+marker. Expired markers are reclaimed only after complete batch validation
+and capacity checks succeed. SQLite serializes count and insert with an
+immediate transaction, and reopening a database with limits below retained
+live rows fails instead of deleting them. Default constructors use bounded
+constants; `new_with_capacity` and `open_with_capacity` let hosts set explicit
+limits.
+
+A shared store remains a global availability boundary. Hosts should size
+per-scope limits for expected sender rates, size the global limit for available
+memory or disk, and use separate stores when tenants need independent
+availability guarantees. Every process that opens one SQLite replay database
+must use the same capacity policy.
 
 ## Invariants and failure modes
 
@@ -78,9 +125,9 @@ that protocol.
   prefix.
 - Standard Webhooks is the only protocol with an independent cryptographic
   check inside this crate (HMAC-SHA256 over
-  `id.timestamp.body_digest.endpoint_digest`, plus a caller-supplied replay
-  window and seen-id set); every other protocol's authenticity rests on the
-  bound `ChioReceipt`.
+  `id.timestamp.body_digest.endpoint_digest`). Read-only callers may supply a
+  replay window and seen-id set; consuming callers use an atomic scoped replay
+  store. Every other protocol's authenticity rests on the bound `ChioReceipt`.
 - This crate defines no error type of its own; every failure is a
   `chio_transaction_passport::TransactionPassportError` variant
   (`AgentWebClaimFailed`, `InvalidAgentWebArtifact`, `MissingAgentWebArtifact`,

@@ -5,7 +5,26 @@
 use crate::merge::merge;
 use crate::models::HushSpec;
 use std::fs;
+use std::io::Read;
 use std::path::{Path, PathBuf};
+
+pub const DEFAULT_MAX_POLICY_DOCUMENT_BYTES: usize = 4 * 1024 * 1024;
+pub const DEFAULT_MAX_EXTENDS_DEPTH: usize = 32;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ResolveLimits {
+    pub max_document_bytes: usize,
+    pub max_extends_depth: usize,
+}
+
+impl Default for ResolveLimits {
+    fn default() -> Self {
+        Self {
+            max_document_bytes: DEFAULT_MAX_POLICY_DOCUMENT_BYTES,
+            max_extends_depth: DEFAULT_MAX_EXTENDS_DEPTH,
+        }
+    }
+}
 
 /// A loaded HushSpec document plus its canonical source identifier.
 #[derive(Clone, Debug)]
@@ -27,6 +46,8 @@ pub enum ResolveError {
     Http { message: String },
     #[error("could not resolve reference '{reference}': {message}")]
     NotFound { reference: String, message: String },
+    #[error("policy resolution limit exceeded: {message}")]
+    Limit { message: String },
 }
 
 /// Create a composite loader that chains: builtin -> file.
@@ -39,7 +60,7 @@ pub fn create_composite_loader() -> impl Fn(&str, Option<&str>) -> Result<Loaded
             });
         }
 
-        load_from_filesystem(reference, from)
+        load_from_filesystem(reference, from, ResolveLimits::default().max_document_bytes)
     }
 }
 
@@ -56,14 +77,43 @@ where
     if let Some(source) = source {
         stack.push(source.to_string());
     }
-    resolve_inner(spec, source, loader, &mut stack)
+    resolve_inner(
+        spec,
+        source,
+        loader,
+        &mut stack,
+        ResolveLimits::default().max_extends_depth,
+    )
 }
 
 /// Resolve a HushSpec from a filesystem path, following `extends` chains.
 pub fn resolve_from_path(path: impl AsRef<Path>) -> Result<HushSpec, ResolveError> {
+    resolve_from_path_with_limits(path, ResolveLimits::default())
+}
+
+/// Resolve a HushSpec with hard document-size and inheritance-depth limits.
+pub fn resolve_from_path_with_limits(
+    path: impl AsRef<Path>,
+    limits: ResolveLimits,
+) -> Result<HushSpec, ResolveError> {
+    if limits.max_document_bytes == 0 || limits.max_extends_depth == 0 {
+        return Err(ResolveError::Limit {
+            message: "resolution limits must be positive".to_string(),
+        });
+    }
     let path = canonical_path(path.as_ref())?;
-    let spec = load_spec_from_file(&path)?;
-    resolve_with_loader(&spec, Some(&path.to_string_lossy()), &load_from_filesystem)
+    let spec = load_spec_from_file(&path, limits.max_document_bytes)?;
+    let loader = |reference: &str, from: Option<&str>| {
+        load_from_filesystem(reference, from, limits.max_document_bytes)
+    };
+    let mut stack = vec![path.to_string_lossy().into_owned()];
+    resolve_inner(
+        &spec,
+        Some(&path.to_string_lossy()),
+        &loader,
+        &mut stack,
+        limits.max_extends_depth,
+    )
 }
 
 fn resolve_inner<F>(
@@ -71,6 +121,7 @@ fn resolve_inner<F>(
     source: Option<&str>,
     loader: &F,
     stack: &mut Vec<String>,
+    max_extends_depth: usize,
 ) -> Result<HushSpec, ResolveError>
 where
     F: Fn(&str, Option<&str>) -> Result<LoadedSpec, ResolveError>,
@@ -78,6 +129,11 @@ where
     let Some(reference) = spec.extends.as_deref() else {
         return Ok(spec.clone());
     };
+    if stack.len() >= max_extends_depth {
+        return Err(ResolveError::Limit {
+            message: format!("extends chain exceeds maximum depth {max_extends_depth}"),
+        });
+    }
 
     let loaded = loader(reference, source)?;
     if let Some(index) = stack.iter().position(|entry| entry == &loaded.source) {
@@ -89,15 +145,25 @@ where
     }
 
     stack.push(loaded.source.clone());
-    let resolved_parent = resolve_inner(&loaded.spec, Some(&loaded.source), loader, stack)?;
+    let resolved_parent = resolve_inner(
+        &loaded.spec,
+        Some(&loaded.source),
+        loader,
+        stack,
+        max_extends_depth,
+    )?;
     stack.pop();
     Ok(merge(&resolved_parent, spec))
 }
 
-fn load_from_filesystem(reference: &str, from: Option<&str>) -> Result<LoadedSpec, ResolveError> {
+fn load_from_filesystem(
+    reference: &str,
+    from: Option<&str>,
+    max_document_bytes: usize,
+) -> Result<LoadedSpec, ResolveError> {
     let path = resolve_reference_path(reference, from);
     let canonical = canonical_path(&path)?;
-    let spec = load_spec_from_file(&canonical)?;
+    let spec = load_spec_from_file(&canonical, max_document_bytes)?;
     Ok(LoadedSpec {
         source: canonical.to_string_lossy().into_owned(),
         spec,
@@ -126,8 +192,43 @@ fn canonical_path(path: &Path) -> Result<PathBuf, ResolveError> {
     })
 }
 
-fn load_spec_from_file(path: &Path) -> Result<HushSpec, ResolveError> {
-    let content = fs::read_to_string(path).map_err(|error| ResolveError::Read {
+fn load_spec_from_file(path: &Path, max_document_bytes: usize) -> Result<HushSpec, ResolveError> {
+    let metadata = fs::metadata(path).map_err(|error| ResolveError::Read {
+        path: path.display().to_string(),
+        message: error.to_string(),
+    })?;
+    let max_document_bytes_u64 = u64::try_from(max_document_bytes).unwrap_or(u64::MAX);
+    if metadata.len() > max_document_bytes_u64 {
+        return Err(ResolveError::Limit {
+            message: format!(
+                "{} is {} bytes, exceeding maximum document size {}",
+                path.display(),
+                metadata.len(),
+                max_document_bytes
+            ),
+        });
+    }
+    let file = fs::File::open(path).map_err(|error| ResolveError::Read {
+        path: path.display().to_string(),
+        message: error.to_string(),
+    })?;
+    let mut content = Vec::new();
+    file.take(max_document_bytes_u64.saturating_add(1))
+        .read_to_end(&mut content)
+        .map_err(|error| ResolveError::Read {
+            path: path.display().to_string(),
+            message: error.to_string(),
+        })?;
+    if content.len() > max_document_bytes {
+        return Err(ResolveError::Limit {
+            message: format!(
+                "{} grew beyond maximum document size {} while being read",
+                path.display(),
+                max_document_bytes
+            ),
+        });
+    }
+    let content = String::from_utf8(content).map_err(|error| ResolveError::Read {
         path: path.display().to_string(),
         message: error.to_string(),
     })?;
@@ -275,7 +376,9 @@ mod tests {
         let invalid_path = dir.join("invalid.yaml");
         fs::write(&invalid_path, "hushspec: [").expect("write invalid yaml");
 
-        match load_spec_from_file(&invalid_path).expect_err("parse error") {
+        match load_spec_from_file(&invalid_path, DEFAULT_MAX_POLICY_DOCUMENT_BYTES)
+            .expect_err("parse error")
+        {
             ResolveError::Parse { path, .. } => {
                 assert!(path.ends_with("invalid.yaml"));
             }
@@ -294,6 +397,38 @@ mod tests {
             }
             other => panic!("unexpected http error: {other:?}"),
         }
+
+        let _ = fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn bounded_resolution_rejects_large_documents_and_deep_inheritance() {
+        let dir = temp_dir("resolve-limits");
+        let oversized = dir.join("oversized.yaml");
+        fs::write(&oversized, "hushspec: '0.1.0'\n").expect("write oversized fixture");
+        let size_error = resolve_from_path_with_limits(
+            &oversized,
+            ResolveLimits {
+                max_document_bytes: 4,
+                max_extends_depth: 2,
+            },
+        )
+        .expect_err("document limit");
+        assert!(matches!(size_error, ResolveError::Limit { .. }));
+
+        let parent = dir.join("parent.yaml");
+        let child = dir.join("child.yaml");
+        fs::write(&parent, "hushspec: '0.1.0'\n").expect("write parent");
+        fs::write(&child, "hushspec: '0.1.0'\nextends: parent.yaml\n").expect("write child");
+        let depth_error = resolve_from_path_with_limits(
+            &child,
+            ResolveLimits {
+                max_document_bytes: DEFAULT_MAX_POLICY_DOCUMENT_BYTES,
+                max_extends_depth: 1,
+            },
+        )
+        .expect_err("extends depth limit");
+        assert!(matches!(depth_error, ResolveError::Limit { .. }));
 
         let _ = fs::remove_dir_all(dir);
     }

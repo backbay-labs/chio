@@ -20,35 +20,39 @@
 use std::fs;
 use std::path::PathBuf;
 
+const MINIMUM_SEED_COUNT: usize = 3;
+
 const CORPUS_SMOKE_TARGETS: &[&str] = &[
     "a2a_envelope_decode",
     "acp_envelope_decode",
     "anchor_bundle_verify",
     "chio_yaml_parse",
     "did_resolve",
+    "eval_receipt_bundle",
+    "federation_trust_establishment",
     "jwt_vc_verify",
     "mcp_envelope_decode",
     "oid4vp_presentation",
     "openapi_ingest",
     "receipt_log_replay",
+    "underwriting_policy_input",
     "wasm_guard_escape",
+    "wasm_guard_smith",
     "wasm_preinstantiate_validate",
     "wit_host_call_boundary",
 ];
 
-const NO_CORPUS_SMOKE_TARGETS: &[&str] = &[
+const NO_IN_PROCESS_SMOKE_TARGETS: &[&str] = &[
     "attest_verify",
     "canonical_json",
     "capability_receipt",
-    "eval_receipt_bundle",
-    "federation_trust_establishment",
     "fuzz_merkle_checkpoint",
     "fuzz_policy_parse_compile",
+    "policy_analyze",
     "fuzz_sql_parser",
     "fuzz_tool_action",
     "manifest_roundtrip",
     "revocation_oracle_merkle",
-    "underwriting_policy_input",
 ];
 
 /// Resolve a seed-corpus directory by target name. Lives under
@@ -89,8 +93,8 @@ fn each_seed<F: FnMut(&[u8])>(target: &str, mut f: F) -> usize {
 fn assert_seed_floor<F: FnMut(&[u8])>(target: &str, f: F) {
     let processed = each_seed(target, f);
     assert!(
-        processed > 0,
-        "smoke test for {target} processed zero seed files; corpus dir is empty (expected at least one .bin under fuzz/corpus/{target}/)"
+        processed >= MINIMUM_SEED_COUNT,
+        "smoke test for {target} processed {processed} seed files; expected at least {MINIMUM_SEED_COUNT} under fuzz/corpus/{target}/"
     );
 }
 
@@ -148,6 +152,19 @@ fn workflow_fuzz_targets() -> Vec<String> {
     targets
 }
 
+fn owners_toml_targets() -> Vec<String> {
+    let owners = fs::read_to_string(repo_file("fuzz/owners.toml")).unwrap();
+    owners
+        .lines()
+        .filter_map(|line| {
+            line.trim()
+                .strip_prefix("[targets.")
+                .and_then(|rest| rest.strip_suffix(']'))
+                .map(str::to_owned)
+        })
+        .collect()
+}
+
 fn sorted(mut values: Vec<String>) -> Vec<String> {
     values.sort();
     values
@@ -159,10 +176,29 @@ fn fuzz_workflow_matrix_matches_cargo_bins() {
 }
 
 #[test]
+fn owners_toml_covers_all_matrix_targets() {
+    assert_eq!(
+        sorted(owners_toml_targets()),
+        sorted(workflow_fuzz_targets())
+    );
+}
+
+#[test]
+fn all_matrix_targets_meet_seed_floor() {
+    for target in workflow_fuzz_targets() {
+        let count = each_seed(&target, |_| {});
+        assert!(
+            count >= MINIMUM_SEED_COUNT,
+            "target {target} has {count} seeds; expected at least {MINIMUM_SEED_COUNT}"
+        );
+    }
+}
+
+#[test]
 fn all_matrix_targets_have_declared_smoke_posture() {
     let mut declared: Vec<String> = CORPUS_SMOKE_TARGETS
         .iter()
-        .chain(NO_CORPUS_SMOKE_TARGETS.iter())
+        .chain(NO_IN_PROCESS_SMOKE_TARGETS.iter())
         .map(|target| (*target).to_owned())
         .collect();
     declared.sort();
@@ -173,8 +209,8 @@ fn all_matrix_targets_have_declared_smoke_posture() {
     for target in CORPUS_SMOKE_TARGETS {
         let processed = each_seed(target, |_| {});
         assert!(
-            processed > 0,
-            "corpus-smoked target {target} has no seed files"
+            processed >= MINIMUM_SEED_COUNT,
+            "corpus-smoked target {target} has {processed} seeds; expected at least {MINIMUM_SEED_COUNT}"
         );
     }
 }
@@ -237,6 +273,12 @@ fn wasm_guard_escape_smoke() {
 }
 
 #[test]
+fn wasm_guard_smith_smoke() {
+    use chio_wasm_guards::fuzz::fuzz_wasm_guard_smith;
+    assert_seed_floor("wasm_guard_smith", fuzz_wasm_guard_smith);
+}
+
+#[test]
 fn wit_host_call_boundary_smoke() {
     use chio_wasm_guards::fuzz::fuzz_wit_host_call_boundary;
     assert_seed_floor("wit_host_call_boundary", fuzz_wit_host_call_boundary);
@@ -258,4 +300,25 @@ fn openapi_ingest_smoke() {
 fn receipt_log_replay_smoke() {
     use chio_kernel_core::fuzz::fuzz_receipt_log_replay;
     assert_seed_floor("receipt_log_replay", fuzz_receipt_log_replay);
+}
+
+#[test]
+fn eval_receipt_bundle_smoke() {
+    use chio_fuzz::entries::eval_receipt_bundle;
+    assert_seed_floor("eval_receipt_bundle", eval_receipt_bundle);
+}
+
+#[test]
+fn federation_trust_establishment_smoke() {
+    use chio_fuzz::entries::federation_trust_establishment;
+    assert_seed_floor(
+        "federation_trust_establishment",
+        federation_trust_establishment,
+    );
+}
+
+#[test]
+fn underwriting_policy_input_smoke() {
+    use chio_fuzz::entries::underwriting_policy_input;
+    assert_seed_floor("underwriting_policy_input", underwriting_policy_input);
 }

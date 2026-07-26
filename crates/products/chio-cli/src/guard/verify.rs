@@ -214,7 +214,11 @@ pub(super) enum FixtureResult {
     Fail(String),
 }
 
-pub(super) fn check_verdict(_name: &str, verdict: &GuardVerdict, fixture: &TestFixture) -> FixtureResult {
+pub(super) fn check_verdict(
+    _name: &str,
+    verdict: &GuardVerdict,
+    fixture: &TestFixture,
+) -> FixtureResult {
     match fixture.expected_verdict.as_str() {
         "allow" => {
             if verdict.is_allow() {

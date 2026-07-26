@@ -35,7 +35,7 @@ impl DurableAdmissionRuntime {
         }
 
         let lock_root = durable_admission_lock_root(path)?;
-        fs::create_dir_all(&lock_root)?;
+        create_private_directory(&lock_root)?;
         SqliteAuthorityStore::provision(path, &lock_root)?;
         let authority = SqliteAuthorityStore::open_serving(path, &lock_root)?;
         let budget = authority.budget_store();
@@ -188,6 +188,29 @@ pub fn validate_distinct_database_paths(paths: &[(&str, &Path)]) -> Result<(), C
 
 pub(crate) fn durable_admission_lock_root(path: &Path) -> Result<PathBuf, CliError> {
     sibling_path(path, ".locks", "durable admission database")
+}
+
+pub(crate) fn create_private_directory(path: &Path) -> Result<(), CliError> {
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(path)?;
+    Ok(())
+}
+
+#[cfg(test)]
+pub(crate) fn private_tempdir() -> Result<tempfile::TempDir, CliError> {
+    let directory = tempfile::tempdir()?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(directory)
 }
 
 pub(super) fn write_private_file_atomically(path: &Path, contents: &[u8]) -> Result<(), CliError> {
@@ -432,7 +455,7 @@ mod tests {
 
     #[test]
     fn database_path_validation_rejects_hard_link_aliases() -> Result<(), CliError> {
-        let directory = tempfile::tempdir()?;
+        let directory = private_tempdir()?;
         let first = directory.path().join("first.sqlite3");
         let second = directory.path().join("second.sqlite3");
         fs::write(&first, [])?;
@@ -456,7 +479,7 @@ mod tests {
     fn database_path_validation_rejects_dangling_symlink_aliases() -> Result<(), CliError> {
         use std::os::unix::fs::symlink;
 
-        let directory = tempfile::tempdir()?;
+        let directory = private_tempdir()?;
         let target = directory.path().join("target.sqlite3");
         let alias = directory.path().join("alias.sqlite3");
         symlink(&target, &alias)?;
@@ -479,7 +502,7 @@ mod tests {
     fn database_path_validation_rejects_dangling_parent_symlink_aliases() -> Result<(), CliError> {
         use std::os::unix::fs::symlink;
 
-        let directory = tempfile::tempdir()?;
+        let directory = private_tempdir()?;
         let target_directory = directory.path().join("target");
         let alias_directory = directory.path().join("alias");
         symlink(&target_directory, &alias_directory)?;

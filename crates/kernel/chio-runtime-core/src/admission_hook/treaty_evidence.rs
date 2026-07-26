@@ -3,19 +3,20 @@ use std::collections::BTreeSet;
 use crate::treaty::{validate_bilateral_invocation, validate_cross_kernel_continuation};
 use crate::*;
 
-use super::dsse::verify_treaty_dsse_evidence;
+use super::dsse::{treaty_participant_public_key, verify_treaty_dsse_evidence};
 use super::store_artifacts::{load_bilateral_invocation_artifact, load_treaty_artifact};
 use super::treaty_ref::TreatyReference;
 
 pub(super) struct VerifiedTreatyReference {
     pub(super) continuation_id: Option<String>,
-    pub(super) federation_treaty_dsse: Option<serde_json::Value>,
+    pub(super) federation_treaty_material: Option<chio_kernel::VerifiedFederationTreatyMaterial>,
 }
 
 pub(super) fn verify_treaty_reference_from_store<S: RuntimeAdmissionStore>(
     store: &S,
     admission_id: &str,
     treaty_ref: &TreatyReference,
+    request: &chio_kernel::ToolCallRequest,
     now_unix_ms: u64,
 ) -> Result<VerifiedTreatyReference, ChioRuntimeError> {
     let Some(bundle) = store.bundle(admission_id)? else {
@@ -231,15 +232,23 @@ pub(super) fn verify_treaty_reference_from_store<S: RuntimeAdmissionStore>(
         now_unix_ms,
     })?;
     if report.accepted {
-        let federation_treaty_dsse = bilateral_dsse
+        let federation_treaty_material = bilateral_dsse
             .as_ref()
-            .map(|(envelope, _)| federation_treaty_dsse_metadata(envelope, &report))
+            .map(|(envelope, _)| {
+                verified_federation_treaty_material(
+                    envelope,
+                    &treaty_scope,
+                    request,
+                    &report,
+                    now_unix_ms,
+                )
+            })
             .transpose()?;
         Ok(VerifiedTreatyReference {
             continuation_id: continuation
                 .as_ref()
                 .map(|(continuation, _)| continuation.continuation_id.clone()),
-            federation_treaty_dsse,
+            federation_treaty_material,
         })
     } else {
         rejected(
@@ -249,49 +258,47 @@ pub(super) fn verify_treaty_reference_from_store<S: RuntimeAdmissionStore>(
     }
 }
 
-fn federation_treaty_dsse_metadata(
+fn verified_federation_treaty_material(
     envelope: &chio_federation::bilateral_dsse::DsseEnvelope,
+    treaty_scope: &TreatyScope,
+    request: &chio_kernel::ToolCallRequest,
     report: &CrossBoundaryAdmissionReport,
-) -> Result<serde_json::Value, ChioRuntimeError> {
+    now_unix_ms: u64,
+) -> Result<chio_kernel::VerifiedFederationTreatyMaterial, ChioRuntimeError> {
     let (statement, _) = envelope
         .decode_statement()
         .map_err(|_| ChioRuntimeError::Rejected {
             code: "chio_treaty_unverified_required_evidence",
             detail: "bilateral DSSE evidence could not be decoded".to_string(),
         })?;
-    let predicate = statement.predicate;
-    let capability_lease_ref =
-        predicate
-            .capability_lease_ref
-            .ok_or_else(|| ChioRuntimeError::Rejected {
-                code: "chio_treaty_unverified_required_evidence",
-                detail: "bilateral DSSE evidence is missing a capability lease ref".to_string(),
-            })?;
-    let policy_evaluation_summary =
-        predicate
-            .policy_evaluation_summary
-            .ok_or_else(|| ChioRuntimeError::Rejected {
-                code: "chio_treaty_unverified_required_evidence",
-                detail: "bilateral DSSE evidence is missing a policy summary".to_string(),
-            })?;
-    let mut treaty_binding_ref =
-        predicate
-            .treaty_binding_ref
-            .ok_or_else(|| ChioRuntimeError::Rejected {
-                code: "chio_treaty_unverified_required_evidence",
-                detail: "bilateral DSSE evidence is missing treaty binding refs".to_string(),
-            })?;
-    treaty_binding_ref.admission_report_sha256 = canonical_sha256(report)?;
-    serde_json::to_value(serde_json::json!({
-        "capability_lease_ref": capability_lease_ref,
-        "policy_evaluation_summary": policy_evaluation_summary,
-        "governance_receipt_ref": predicate.governance_receipt_ref,
-        "consistency_anchor": predicate.consistency_anchor,
-        "consistency_model": predicate.consistency_model,
-        "cross_org_visibility": predicate.cross_org_visibility,
-        "treaty_binding_ref": treaty_binding_ref
-    }))
-    .map_err(|error| ChioRuntimeError::Json(error.to_string()))
+    let origin_kernel_id = statement.predicate.tool_server_a.kernel_id.as_str();
+    let local_kernel_id = statement.predicate.tool_server_b.kernel_id.as_str();
+    let origin_public_key = treaty_participant_public_key(treaty_scope, origin_kernel_id)?;
+    let local_public_key = treaty_participant_public_key(treaty_scope, local_kernel_id)?;
+    chio_kernel::VerifiedFederationTreatyMaterial::verify(
+        chio_kernel::FederationTreatyVerification {
+            envelope,
+            participant_kernel_ids: [origin_kernel_id, local_kernel_id],
+            participant_public_keys: [origin_public_key, local_public_key],
+            request,
+            local_kernel_id,
+            admission: chio_kernel::FederationTreatyAdmissionBinding {
+                accepted: report.accepted,
+                admission_report_sha256: &canonical_sha256(report)?,
+                treaty_id: &report.treaty_id,
+                treaty_scope_sha256: &report.treaty_scope_sha256,
+                ladder_intersection_sha256: &report.ladder_intersection_sha256,
+                action_class_id: &report.action_class_id,
+                consistency_model: &report.consistency_model,
+                co_sign: &report.co_sign,
+            },
+            now_unix_ms,
+        },
+    )
+    .map_err(|error| ChioRuntimeError::Rejected {
+        code: "chio_treaty_unverified_required_evidence",
+        detail: error.to_string(),
+    })
 }
 
 fn verify_continuation_evidence(

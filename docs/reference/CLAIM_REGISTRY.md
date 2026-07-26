@@ -13,6 +13,10 @@ The source-of-truth inputs are:
 - `spec/PROTOCOL.md`
 - `docs/release/RELEASE_AUDIT.md`
 
+`docs/formal/COVERAGE.md` is derived navigation generated from these registries.
+It attributes declared artifacts and review links but is not an evidence class
+and does not license claim wording.
+
 ## Evidence Classes
 
 | Class | Meaning |
@@ -22,49 +26,56 @@ The source-of-truth inputs are:
 | `audited_axiom` | an explicit Lean `axiom` is allowed only because it is listed in `formal/theorem-inventory.json` and `formal/proof-manifest.toml` |
 | `audited_assumption` | an external primitive or platform service is named in `formal/assumptions.toml` with the properties Chio relies on |
 | `aeneas_pilot` | safe Rust extraction through Charon/Aeneas has generated Lean for the current proof-facing pilot source |
-| `aeneas_production` | safe Rust extraction through Charon/Aeneas has generated Lean for the production-linked pure core in `chio-kernel-core` |
+| `aeneas_production` | safe Rust extraction through Charon/Aeneas has generated Lean for the manifest-registered kernel and economy production sources |
 | `rust_refinement_gate` | Creusot/Kani linkage is declared for strict CI and must pass before claiming concrete Rust refinement beyond the current pure core |
 | `claim_gate` | release-facing language is constrained by this registry and the proof manifest |
 | `differential_test` | executable spec or diff test is the release gate |
 | `runtime_qualification` | property is backed by Rust tests, conformance, or release-qualification lanes rather than Lean |
+| `distributed_apalache` | named distributed revocation properties hold only at the registered finite bounds and assumptions |
+| `rust_trace_projection` | deterministic production schedules emit exact scalar traces whose states and adjacent actions are checked; this is not full-state refinement |
 
 ## Approved Assumptions
 
 | Assumption ID | Status | Allowed wording | Evidence |
 | --- | --- | --- | --- |
-| `ASSUME-SIG-CHECK` | approved_with_scope | The bounded Lean revocation or evaluation model assumes a trusted capability-signature check oracle. | `audited_axiom` |
 | `ASSUME-ED25519` | approved_with_scope | Concrete signature soundness depends on the audited Ed25519 implementation contract. | `audited_assumption` |
 | `ASSUME-SHA256` | approved_with_scope | Concrete receipt/checkpoint collision resistance depends on the audited SHA-256 contract. | `audited_assumption` |
-| `ASSUME-CANONICAL-JSON` | approved_with_scope | Signed payload stability depends on deterministic RFC 8785 canonical JSON behavior. | `audited_assumption` |
+| `ASSUME-CANONICAL-JSON` | approved_with_scope | Signed payload stability depends on byte-for-byte production agreement with the mechanized UTF-8 projection; float rendering and float-bearing compound receipt fields remain outside the modeled domain. | `audited_assumption` |
 | `ASSUME-OS-CLOCK` | approved_with_scope | Time-window proofs rely on the injected deployment clock meeting the operator's accepted tolerance. | `audited_assumption` |
 | `ASSUME-SQLITE-ATOMICITY` | approved_with_scope | Store-backed revocation, budget, receipt, and registry transitions rely on atomic SQLite commits. | `audited_assumption` |
 | `ASSUME-TLS` | approved_with_scope | Remote session and control-plane evidence relies on configured TLS endpoint authentication. | `audited_assumption` |
 | `ASSUME-NETWORK-TRANSPORT` | approved_with_scope | Chio proves fail-closed handling of received messages, not arbitrary network reliability. | `audited_assumption` |
+| `ASSUME-GOSSIP-FAIRNESS-PARTITION-BOUND` | approved_with_scope | Distributed revocation liveness requires weak-fair recurring connected delivery or catch-up opportunities, bounded clock skew, and operator-bounded partition healing; it does not promise a finite delivery-step or evaluation-count bound. | `audited_assumption`, `distributed_apalache`, `rust_trace_projection` |
 | `ASSUME-EXTERNAL-REGISTRIES` | approved_with_scope | Hosted registry and DID state is trusted only under its published fail-closed contract. | `audited_assumption` |
 | `ASSUME-SUBPROCESS-ISOLATION` | approved_with_scope | Tool effects after an allow verdict rely on OS process and sandbox boundaries. | `audited_assumption` |
 | `ASSUME-CHAIN-FINALITY` | approved_with_scope | Chain evidence is accepted only after the configured finality policy. | `audited_assumption` |
+| `ASSUME-TRACE-OBSERVER` | approved_with_scope | Runtime trace claims depend on synchronous exactly-once callback delivery, unmodified kernel-assigned fields, and mutation-free recorder operation; detectable omissions, duplicates, or inconsistent joins fail closed. | `audited_assumption`, `rust_trace_projection` |
+| `ASSUME-WASM-ENGINE` | approved_with_scope | Wasm boundary proofs rely on wasmtime enforcing its documented verdict, trap, fuel, memory-limiter, and in-process sandbox semantics. | `audited_assumption` |
 
-That assumption is machine-readably enumerated as
-`Chio.Core.verifyCapabilitySignature` in `formal/theorem-inventory.json` and
-must remain allowlisted in `formal/proof-manifest.toml`. External assumptions
-are machine-readably enumerated in `formal/assumptions.toml`.
+The sole explicit root-imported Lean axiom is machine-readably enumerated as
+`Chio.Json.hash_collision_resistant` in `formal/theorem-inventory.json` and
+allowlisted in `formal/proof-manifest.toml`. External assumptions are
+machine-readably enumerated in `formal/assumptions.toml`.
 
 ## Approved Claims
 
 | Claim ID | Status | Allowed wording | Evidence |
 | --- | --- | --- | --- |
 | `FORM-BOUNDARY` | approved | Chio has an implementation-linked verified core defined in `formal/proof-manifest.toml`. | `lean_root_imported`, `differential_test`, `runtime_qualification` |
-| `FORM-IMPLEMENTATION-LINKED` | approved_with_scope | Chio's security-critical protocol semantics are formally verified and implementation-linked, subject to the published audited assumptions and strict Rust verification gates. | `lean_root_imported`, `audited_assumption`, `aeneas_production`, `aeneas_equivalence`, `public_kani`, `adapter_no_bypass`, `runtime_projection_tests`, `target/formal/proof-report.json` |
+| `FORM-IMPLEMENTATION-LINKED` | approved_with_scope | Chio's bounded budget, DPoP, nonce replay, guard, revocation, and receipt-coupling runtime paths project their admission inputs into verified pure helpers, and helper approval is required before continuation or signing. Caller-side projection, storage, clocks, cryptography, error attribution, and orchestration remain covered by runtime tests, audited assumptions, and strict Rust verification gates rather than by the pure-helper proofs alone. | `lean_root_imported`, `audited_assumption`, `aeneas_production`, `aeneas_equivalence`, `public_kani`, `adapter_no_bypass`, `runtime_projection_tests`, `target/formal/proof-report.json` |
+| `TRACE-VALIDATED` | approved_with_scope | Chio captures real kernel revocation commits, revocation admissions, and receipt appends into callback-accounted, canonical, signed traces, then checks the full-state ITF against `RevocationPropagation` on the nightly qualification lane. The observer key is supplied out of band, receipt signatures are reverified, each invariant requires a non-vacuous witness and a registered real-runtime negative calibration, and the claim covers only the observed `Revoke` and `Evaluate` actions. Callback delivery and field integrity before recorder observation and mutation-free recorder mode remain the audited `ASSUME-TRACE-OBSERVER` boundary. | `runtime_qualification`, `differential_test`, `target/formal/trace-validation.json`, `target/formal/receipt-trace/bindings.json`, `formal/tla/trace/negative-registry.toml` |
+| `FORM-NO-SOFTWARE-AXIOMS` | approved_with_scope | Every explicit axiom in Chio's root-imported Lean development is a named cryptographic idealization registered in `formal/assumptions.toml`; no serializer, protocol, or kernel behavior is axiomatized in Lean. Production Rust refinement and float-bearing compound receipt values remain audited external assumptions. | `lean_root_imported`, `audited_axiom`, `audited_assumption` |
 | `P1` | approved_with_scope | Chio has bounded Lean mechanization and executable tests for capability attenuation over the current verified-core model. | `lean_root_imported`, `differential_test` |
 | `P2` | approved_with_scope | Chio has bounded Lean proofs that revoked tokens and revoked presented ancestors cannot pass the pure revocation/evaluation model. | `lean_root_imported` |
 | `P3` | approved_with_scope | Chio has bounded Lean proofs that the pure evaluator is total and fail-closed for invalid signature, time-window, revocation, and out-of-scope paths. | `lean_root_imported` |
-| `P4` | approved_with_scope | Chio has symbolic Lean proofs for receipt and checkpoint properties plus runtime receipt-signing checks in Rust. | `symbolic_crypto`, `runtime_qualification` |
+| `P4` | approved_with_scope | Within the published eight-leaf verification bound, the inclusion-proof walk executed by Rust relying parties refines the proved index-directed model, with hash collision resistance under ASSUME-SHA256. Receipt signing and concrete hashing remain runtime-qualified rather than proved here. | `lean_root_imported`, `symbolic_crypto`, `aeneas_production`, `aeneas_equivalence`, `public_kani`, `differential_test`, `runtime_qualification` |
 | `P5` | approved_with_scope | Chio has bounded structural delegation-chain theorems for the presented-chain model. | `lean_root_imported` |
 | `P6` | approved_with_scope | Chio has bounded Lean proofs that observed local parent edges imply a parent request existed in the same authenticated session. | `lean_root_imported`, `audited_assumption` |
 | `P7` | approved_with_scope | Chio has bounded Lean proofs that verified receipt lineage requires verified receipts, trusted kernel signature, and signed linkage. | `lean_root_imported`, `symbolic_crypto`, `audited_assumption` |
 | `P8` | approved_with_scope | Chio has bounded Lean proofs that verified session continuity requires a valid session anchor and continuation artifact. | `lean_root_imported`, `audited_assumption` |
 | `P9` | approved_with_scope | Chio has bounded Lean proofs that verified call-chain consistency requires consistent subjects and parent capability references. | `lean_root_imported`, `audited_assumption` |
 | `P10` | approved_with_scope | Chio has bounded Lean proofs that report/export labels cannot upgrade asserted or observed evidence to verified evidence. | `lean_root_imported`, `claim_gate` |
+| `POLICY-ANALYZE` | approved_with_scope | Chio ships bounded static policy analysis for rule relations and supported policy-refinement checks, with production-evaluator confirmation for every reported widening witness. Changed semantics outside the bounded fragment produce an inconclusive verdict. | `differential_test`, `runtime_qualification` |
 
 ## Downgraded Or Disallowed Claims
 
@@ -74,8 +85,9 @@ are machine-readably enumerated in `formal/assumptions.toml`.
 | `LEAN-4-VERIFIED` | disallowed | "Lean 4 verified" without boundary text | name the proof manifest and theorem inventory explicitly |
 | `P2-END-TO-END` | disallowed | "runtime revocation is formally verified end to end" | say P2 has bounded Lean coverage for the pure model and runtime revocation-store behavior is separately qualified |
 | `P3-END-TO-END` | disallowed | "all kernel fail-closed behavior is formally verified end to end" | say P3 has bounded Lean coverage for the pure evaluator and shell/runtime behavior is separately qualified |
-| `P4-END-TO-END` | disallowed | "Ed25519 receipts and Merkle log semantics are formally verified end to end" | say receipt proofs are symbolic/model-level and runtime signing is separately tested |
+| `P4-END-TO-END` | disallowed | "Ed25519 receipts and Merkle log semantics are formally verified end to end" | say the Rust inclusion-proof walk has bounded refinement evidence under ASSUME-SHA256, while concrete hashing and receipt signatures are separately runtime-qualified |
 | `P5-ACYCLICITY` | downgraded | "delegation graph acyclicity is proven" | say presented delegation-chain structure is proven in the bounded model |
+| `P2-DISTRIBUTED-END-TO-END` | disallowed | "distributed revocation propagation is formally verified end to end" or "every revoke is observed within a finite number of evaluations" | say the bounded model covers named channel and partition behavior, while one-origin scalar production schedules separately exercise signer rejection, queueing, view installation, freshness denial, and catch-up; raw evaluation throughput is unbounded and ASSUME-NETWORK-TRANSPORT remains required |
 
 ## Current Source Notes
 
@@ -87,11 +99,16 @@ are machine-readably enumerated in `formal/assumptions.toml`.
   and P1-P10 audited; any new Lean `axiom` must be added there and allowlisted
   in the proof manifest before the formal lane should pass.
 - `formal/assumptions.toml` is the external-system assumption registry.
-- `scripts/check-aeneas-production.sh` extracts the production-linked pure
-  core from `crates/kernel/chio-kernel-core/src/formal_aeneas.rs`, and
-  `scripts/check-aeneas-equivalence.sh` builds the tracked Lean equivalence
-  module before the Aeneas lane can pass; the older pilot remains as
-  compatibility evidence for `formal/aeneas/pilot.toml`.
+- `scripts/check-aeneas-production.sh` extracts the manifest-registered kernel
+  and `chio-credit` production sources, and
+  `scripts/check-aeneas-equivalence.sh` requires byte-identical committed
+  `FormalAeneas` and `FormalEconomy` output and builds generated-to-model Lean
+  equivalence theorems before the Aeneas lane can pass. Extraction uses
+  architecture-specific archive and binary hashes from
+  `formal/aeneas/production.toml`, while
+  `formal/aeneas/negative-tests.toml` registers drift, proof, and tool-binding
+  mutations. The older pilot remains as compatibility evidence for
+  `formal/aeneas/pilot.toml`.
 - `scripts/check-kani-public-core.sh` requires bounded Kani harnesses over
   the public kernel-core functions named in the proof manifest.
 - `scripts/check-adapter-no-bypass.sh` is the static adapter gate for MCP,

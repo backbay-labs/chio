@@ -13,6 +13,13 @@ use dashmap::DashMap;
 
 use super::*;
 
+fn receipt_evaluation_map_key(request_id: &str) -> String {
+    current_receipt_evaluation_scope_key().map_or_else(
+        || format!("request:{request_id}"),
+        |evaluation_id| format!("evaluation:{evaluation_id}"),
+    )
+}
+
 /// Fail-closed kernel build error. Lets deadline config be validated at
 /// construction time without making the infallible `ChioKernel::new` fallible.
 #[derive(Debug, thiserror::Error)]
@@ -78,17 +85,16 @@ impl ChioKernel {
         request_id: &str,
         tenant_id: Option<String>,
     ) -> ScopedKernelReceiptTenantId {
+        let scope_key = receipt_evaluation_map_key(request_id);
         let previous = match tenant_id {
-            Some(tenant_id) => self
-                .receipt_tenant_ids
-                .insert(request_id.to_string(), tenant_id),
+            Some(tenant_id) => self.receipt_tenant_ids.insert(scope_key.clone(), tenant_id),
             None => self
                 .receipt_tenant_ids
-                .remove(request_id)
+                .remove(&scope_key)
                 .map(|(_, previous)| previous),
         };
         ScopedKernelReceiptTenantId {
-            request_id: request_id.to_string(),
+            scope_key,
             tenant_ids: Arc::clone(&self.receipt_tenant_ids),
             previous,
         }
@@ -96,8 +102,9 @@ impl ChioKernel {
 
     pub(crate) fn receipt_tenant_id_for_request(&self, request_id: Option<&str>) -> Option<String> {
         request_id.and_then(|request_id| {
+            let scope_key = receipt_evaluation_map_key(request_id);
             self.receipt_tenant_ids
-                .get(request_id)
+                .get(&scope_key)
                 .map(|entry| entry.value().clone())
         })
     }
@@ -126,6 +133,30 @@ impl ChioKernel {
         f: impl FnOnce(&dyn RevocationStore) -> Result<R, KernelError>,
     ) -> Result<R, KernelError> {
         f(self.revocation_store.as_ref())
+    }
+
+    pub(crate) fn lock_runtime_trace_transition(
+        &self,
+    ) -> Result<std::sync::MutexGuard<'_, ()>, KernelError> {
+        Ok(match self.runtime_trace_transition_lock.lock() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                warn!("runtime trace transition lock was poisoned; recovering trace ordering");
+                self.runtime_trace_transition_lock.clear_poison();
+                poisoned.into_inner()
+            }
+        })
+    }
+
+    pub(crate) fn allocate_runtime_trace_source_sequence(&self) -> Result<u64, KernelError> {
+        self.runtime_trace_sequence
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |current| {
+                current.checked_add(1)
+            })
+            .map(|previous| previous + 1)
+            .map_err(|_| {
+                KernelError::Internal("runtime trace source sequence overflow".to_string())
+            })
     }
 
     pub(crate) fn with_receipt_store<R>(
@@ -258,6 +289,12 @@ impl ChioKernel {
             payment_adapter: None,
             price_oracle: None,
             runtime_admission_hook: None,
+            runtime_admission_readiness_timeout: Duration::from_millis(
+                DEFAULT_RUNTIME_ADMISSION_READINESS_TIMEOUT_MS,
+            ),
+            runtime_trace_observer: None,
+            runtime_trace_transition_lock: Mutex::new(()),
+            runtime_trace_sequence: AtomicU64::new(0),
             attestation_trust_policy: None,
             capability_crypto_floor: KernelCryptoFloor::AllowClassical,
             checkpoint_batch_size,
@@ -267,9 +304,8 @@ impl ChioKernel {
             dpop_config: None,
             execution_nonce_config: None,
             execution_nonce_store: None,
-            approval_replay_store: Some(dpop::DpopNonceStore::new(
-                8192,
-                std::time::Duration::from_secs(3600),
+            approval_replay_store: Some(Box::new(
+                crate::governed_approval_replay::InMemoryGovernedApprovalReplayStore::default(),
             )),
             threshold_approval_requirement_resolver: None,
             supplemental_quota_verifier: None,
@@ -507,11 +543,12 @@ impl ChioKernel {
         request_id: &str,
         admission: ReceiptFederationAdmission,
     ) -> ScopedKernelReceiptFederationAdmission {
+        let scope_key = receipt_evaluation_map_key(request_id);
         let previous = self
             .receipt_federation_admissions
-            .insert(request_id.to_string(), admission);
+            .insert(scope_key.clone(), admission);
         ScopedKernelReceiptFederationAdmission {
-            request_id: request_id.to_string(),
+            scope_key,
             admissions: Arc::clone(&self.receipt_federation_admissions),
             previous,
         }
@@ -522,15 +559,35 @@ impl ChioKernel {
         request_id: &str,
         remote_kernel_id: Option<&str>,
     ) -> Option<ReceiptFederationAdmission> {
+        let scope_key = receipt_evaluation_map_key(request_id);
         let admission = self
             .receipt_federation_admissions
-            .get(request_id)
+            .get(&scope_key)
             .map(|entry| entry.value().clone())?;
         if admission.remote_kernel_id.as_deref() == remote_kernel_id {
             Some(admission)
         } else {
             None
         }
+    }
+
+    pub(crate) fn install_verified_treaty_material_for_request(
+        &self,
+        request_id: &str,
+        material: VerifiedFederationTreatyMaterial,
+    ) -> Result<(), KernelError> {
+        let scope_key = receipt_evaluation_map_key(request_id);
+        let mut admission = self
+            .receipt_federation_admissions
+            .get_mut(&scope_key)
+            .ok_or_else(|| {
+                KernelError::Internal(
+                    "federation admission snapshot missing while installing verified treaty material"
+                        .to_string(),
+                )
+            })?;
+        admission.verified_treaty_material = Some(material);
+        Ok(())
     }
 
     /// Resolve and snapshot federation receipt admission at the boundary.
@@ -547,6 +604,7 @@ impl ChioKernel {
                 return Ok(ReceiptFederationAdmission {
                     remote_kernel_id: Some(remote.to_string()),
                     peer: Some(peer),
+                    verified_treaty_material: None,
                 });
             }
             return Err(KernelError::Internal(format!(
@@ -556,6 +614,7 @@ impl ChioKernel {
         Ok(ReceiptFederationAdmission {
             remote_kernel_id: None,
             peer: None,
+            verified_treaty_material: None,
         })
     }
 
@@ -1262,66 +1321,6 @@ impl ChioKernel {
         self.config.keypair.public_key().to_hex()
     }
 
-    fn treaty_dsse_extensions_from_receipt_metadata(
-        &self,
-        receipt: &chio_core::receipt::body::ChioReceipt,
-    ) -> Result<Option<chio_federation::bilateral_dsse::BilateralPredicateExtensions>, KernelError>
-    {
-        let Some(metadata) = receipt.metadata.as_ref() else {
-            return Ok(None);
-        };
-        let Some(value) = metadata
-            .get("chio_runtime")
-            .and_then(|runtime| runtime.get("federation_treaty_dsse"))
-        else {
-            return Ok(None);
-        };
-        let material: KernelFederationTreatyDsseMetadata = serde_json::from_value(value.clone())
-            .map_err(|error| {
-                KernelError::Internal(format!(
-                    "federation treaty DSSE metadata is invalid: {error}"
-                ))
-            })?;
-        let consistency_model = material.consistency_model.clone().ok_or_else(|| {
-            KernelError::Internal(
-                "federation treaty DSSE consistency model is missing from runtime material"
-                    .to_string(),
-            )
-        })?;
-        if consistency_model != material.treaty_binding_ref.consistency_model {
-            return Err(KernelError::Internal(
-                "federation treaty DSSE consistency model does not match treaty binding"
-                    .to_string(),
-            ));
-        }
-        let mut treaty_binding_ref = material.treaty_binding_ref;
-        if treaty_binding_ref.request_sha256 != receipt.action.parameter_hash {
-            return Err(KernelError::Internal(
-                "federation treaty DSSE request hash does not match receipt action hash"
-                    .to_string(),
-            ));
-        }
-        treaty_binding_ref.outcome_sha256 = receipt.content_hash.clone();
-        treaty_binding_ref.remote_receipt_sha256 = chio_core::crypto::sha256_hex(
-            &chio_core::canonical::canonical_json_bytes(receipt).map_err(|error| {
-                KernelError::Internal(format!(
-                    "federation treaty DSSE receipt canonicalization failed: {error}"
-                ))
-            })?,
-        );
-        Ok(Some(
-            chio_federation::bilateral_dsse::BilateralPredicateExtensions {
-                capability_lease_ref: Some(material.capability_lease_ref),
-                policy_evaluation_summary: Some(material.policy_evaluation_summary),
-                governance_receipt_ref: material.governance_receipt_ref,
-                consistency_anchor: material.consistency_anchor,
-                consistency_model: Some(consistency_model),
-                cross_org_visibility: material.cross_org_visibility,
-                treaty_binding_ref: Some(treaty_binding_ref),
-            },
-        ))
-    }
-
     /// Post-sign hook. Invoked immediately after
     /// [`Self::build_and_sign_receipt`] so the local (tool-host)
     /// signature has already landed in the `ChioReceipt`. When
@@ -1330,18 +1329,17 @@ impl ChioKernel {
     /// cosigner, assembles a [`chio_federation::bilateral::DualSignedReceipt`],
     /// and stashes it for retrieval via [`Self::dual_signed_receipt`].
     ///
-    /// Fail-closed: any error from peer resolution or the cosigner is
+    /// Fail-closed: any error from the admitted peer snapshot, verified
+    /// treaty material, or cosigner is
     /// surfaced as a [`KernelError::Internal`] so operators see the
     /// federation drift rather than silently shipping a receipt without
-    /// the remote signature. Production evaluate paths pass the
-    /// admission-time snapshot; direct record callers still get a
-    /// fresh-peer fallback. Non-federated requests (`None` origin) are a
+    /// the remote signature. Non-federated requests (`None` origin) are a
     /// no-op.
     pub(crate) fn apply_federation_cosign(
         &self,
         request: &crate::runtime::ToolCallRequest,
         receipt: &chio_core::receipt::body::ChioReceipt,
-        admitted_peer: Option<&chio_federation::trust_establishment::FederationPeer>,
+        admission: Option<&ReceiptFederationAdmission>,
     ) -> Result<(), KernelError> {
         let Some(origin_kernel_id) = request.federated_origin_kernel_id.as_ref() else {
             return Ok(());
@@ -1352,21 +1350,25 @@ impl ChioKernel {
                 request_id = request.request_id,
             )));
         };
-        let peer = match admitted_peer {
-            Some(peer) if peer.kernel_id == *origin_kernel_id => peer.clone(),
-            _ => {
-                let now = current_unix_timestamp();
-                self.federation_peer(origin_kernel_id, now).ok_or_else(|| {
-                    KernelError::Internal(format!(
-                        "federation peer {origin_kernel_id} is not pinned fresh and no admission-time peer snapshot is in scope"
-                    ))
-                })?
-            }
-        };
+        let admission = admission.ok_or_else(|| {
+            KernelError::Internal(format!(
+                "federation admission snapshot missing for origin kernel {origin_kernel_id}"
+            ))
+        })?;
+        if admission.remote_kernel_id.as_deref() != Some(origin_kernel_id.as_str()) {
+            return Err(KernelError::Internal(format!(
+                "federation admission snapshot does not match origin kernel {origin_kernel_id}"
+            )));
+        }
+        let peer = admission.peer.as_ref().ok_or_else(|| {
+            KernelError::Internal(format!(
+                "federation admission snapshot has no admitted peer for origin kernel {origin_kernel_id}"
+            ))
+        })?;
 
         let local_kernel_id = self.federation_local_kernel_id();
-        let extensions = match self.treaty_dsse_extensions_from_receipt_metadata(receipt)? {
-            Some(extensions) => extensions,
+        let treaty_material = match admission.verified_treaty_material.as_ref() {
+            Some(material) => material,
             None => {
                 // A federated request rejected before runtime treaty admission
                 // ran (capability verification, time bounds, revocation, subject
@@ -1389,6 +1391,13 @@ impl ChioKernel {
                 ));
             }
         };
+        treaty_material.validate_cosign_participants(
+            origin_kernel_id,
+            &peer.public_key,
+            &local_kernel_id,
+            &self.config.keypair.public_key(),
+        )?;
+        let extensions = treaty_material.extensions_for_receipt(request, receipt)?;
         let dual = chio_federation::bilateral::co_sign_with_origin(
             origin_kernel_id,
             &peer.public_key,
@@ -1842,6 +1851,37 @@ impl ChioKernel {
         self.runtime_admission_hook = Some(hook);
     }
 
+    /// Set the maximum pre-dispatch wait for runtime-admission readiness.
+    /// Values must be whole milliseconds, nonzero, and fit the monotonic clock.
+    pub fn set_runtime_admission_readiness_timeout(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<(), KernelError> {
+        let timeout_ms = u64::try_from(timeout.as_millis()).map_err(|_| {
+            KernelError::InvalidConstraint(
+                "runtime admission readiness timeout exceeds u64 milliseconds".to_string(),
+            )
+        })?;
+        if timeout_ms == 0 {
+            return Err(KernelError::InvalidConstraint(
+                "runtime admission readiness timeout must be at least one millisecond".to_string(),
+            ));
+        }
+        let aligned_timeout = Duration::from_millis(timeout_ms);
+        if aligned_timeout != timeout {
+            return Err(KernelError::InvalidConstraint(
+                "runtime admission readiness timeout must use whole milliseconds".to_string(),
+            ));
+        }
+        if Instant::now().checked_add(aligned_timeout).is_none() {
+            return Err(KernelError::InvalidConstraint(
+                "runtime admission readiness timeout exceeds the monotonic clock range".to_string(),
+            ));
+        }
+        self.runtime_admission_readiness_timeout = aligned_timeout;
+        Ok(())
+    }
+
     pub fn set_threshold_approval_requirement_resolver(
         &mut self,
         resolver: Arc<dyn crate::threshold_approval::ThresholdApprovalRequirementResolver>,
@@ -1865,6 +1905,30 @@ impl ChioKernel {
     /// Remove the product-specific runtime admission hook.
     pub fn clear_runtime_admission_hook(&mut self) {
         self.runtime_admission_hook = None;
+    }
+
+    /// Install the replay store used to reserve single-use governed approvals.
+    ///
+    /// A bounded process-scoped store is installed by default. Hosts that must
+    /// preserve replay protection across restart should replace it with a
+    /// durable implementation before accepting governed requests.
+    pub fn set_governed_approval_replay_store(
+        &mut self,
+        store: Box<dyn crate::governed_approval_replay::GovernedApprovalReplayStore>,
+    ) {
+        self.approval_replay_store = Some(store);
+    }
+
+    /// Install an observer for implementation-trace evidence.
+    pub fn set_runtime_trace_observer(&mut self, observer: Arc<dyn RuntimeTraceObserver>) {
+        self.runtime_trace_sequence.store(0, Ordering::SeqCst);
+        self.runtime_trace_observer = Some(observer);
+    }
+
+    /// Remove the implementation-trace observer.
+    pub fn clear_runtime_trace_observer(&mut self) {
+        self.runtime_trace_observer = None;
+        self.runtime_trace_sequence.store(0, Ordering::SeqCst);
     }
 
     /// Register a tool server connection.

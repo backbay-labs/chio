@@ -10,35 +10,35 @@ required_assumption_ids = [
   "ASSUME-SQLITE-ATOMICITY",
   "ASSUME-TLS",
   "ASSUME-NETWORK-TRANSPORT",
+  "ASSUME-GOSSIP-FAIRNESS-PARTITION-BOUND",
   "ASSUME-EXTERNAL-REGISTRIES",
   "ASSUME-SUBPROCESS-ISOLATION",
   "ASSUME-CHAIN-FINALITY",
+  "ASSUME-TRACE-OBSERVER",
+  "ASSUME-WASM-ENGINE",
 ]
 
 assumptions = [
   "ASSUME-ED25519|audited_crypto|Ed25519 verification and signing are assumed to satisfy standard unforgeability for trusted public keys.|P2,P3,P4",
   "ASSUME-SHA256|audited_crypto|SHA-256 and Merkle hash collision resistance are assumed for concrete receipt and checkpoint evidence.|P4,P7",
-  "ASSUME-CANONICAL-JSON|audited_serialization|RFC 8785 canonical JSON serialization is assumed to be deterministic and byte-stable for signed Chio payloads.|P4,P7,P10",
+  "ASSUME-CANONICAL-JSON|audited_serialization|The production canonicalizer is assumed to agree byte-for-byte with the mechanized UTF-8 renderer on Unicode scalar strings, normalized bounded integers, arbitrary finite arrays, and UTF-16-ordered objects. Float rendering and float-bearing compound receipt fields outside that domain remain assumed deterministic and byte-stable.|P4,P7,P10",
   "ASSUME-OS-CLOCK|audited_platform|The injected clock is assumed to report operator-accepted Unix time within the deployment tolerance.|P2,P3,P8",
-  "ASSUME-SQLITE-ATOMICITY|audited_storage|SQLite transactions are assumed to provide atomic committed updates for revocation, budget, receipt, and registry state per single-row write. Cross-row atomicity is NOT assumed: see retired_assumptions RETIRED-SQLITE-CROSS-ROW for the discharge.|P2,P4,P6,P7",
+  "ASSUME-SQLITE-ATOMICITY|audited_storage|SQLite transactions are assumed to provide atomic committed updates for revocation, budget, receipt, and registry state per single-row write. Cross-row crash recovery, ordering, and conservation are not assumed or discharged and remain outside the current formal claim boundary.|P2,P4,P6,P7",
   "ASSUME-TLS|audited_transport|TLS endpoint authentication and channel confidentiality are assumed for configured remote control and hosted HTTP surfaces.|P8,P9",
-  "ASSUME-NETWORK-TRANSPORT|audited_transport|Network delivery is not assumed reliable, but authenticated messages received by Chio are assumed not to be silently rewritten below TLS or signature checks.|P8,P9",
+  "ASSUME-NETWORK-TRANSPORT|audited_transport|Network delivery is not assumed reliable, but authenticated messages received by Chio are assumed not to be silently rewritten below TLS or signature checks.|P2,P8,P9",
+  "ASSUME-GOSSIP-FAIRNESS-PARTITION-BOUND|audited_transport|For a configured bilateral revocation peer set, correct connected peers are assumed to have recurring push or catch-up opportunities governed by weak fairness, local clocks remain within the declared skew bound, and declared partitions heal within the operator-declared partition bound. Loss, duplication, reordering, and invalid frames are modeled rather than assumed away. No finite delivery-step or raw-evaluation bound is assumed.|P2",
   "ASSUME-EXTERNAL-REGISTRIES|audited_service|Hosted package, certification, DID, and registry services are assumed to return state they have durably accepted or else fail closed.|P9,P10",
   "ASSUME-SUBPROCESS-ISOLATION|audited_platform|Tool-server subprocess isolation and OS process boundaries are assumed for effects outside the pure kernel decision core.|P3,P6",
   "ASSUME-CHAIN-FINALITY|audited_external|External chain and oracle finality are assumed only after the configured confirmation/finality policy accepts the evidence.|P4,P7",
+  "ASSUME-TRACE-OBSERVER|audited_observability|An installed synchronous runtime trace observer is assumed to receive exactly once before finalization every successful revocation commit, completed tool-call revocation admission, and receipt append. Kernel-assigned source sequences, checked revocation subject identities, exact revocation-source identities, and other callback fields are not rewritten before recording, and the recorder runs without calibration mutations. Delivery reordering is reconciled from source sequences; detectable omissions, duplicates, inconsistent kernel depth limits, ambiguous admission-to-receipt joins, unmatched revocation sources, and relevant revocations between admission and receipt append fail closed. This assumption does not assert that any observed kernel decision is safe.|P2,P4,P10",
+  "ASSUME-WASM-ENGINE|audited_platform|Wasmtime is assumed to enforce its documented i32 return, trap, fuel-metering, memory-limiter, and in-process sandbox semantics for untrusted guest code.|P3",
 ]
 
-# Retired assumptions are prior audited assumptions that have been formally
-# discharged by a property in the proof-manifest. They are kept in this file
-# (rather than deleted) so that historical claims, MAPPING.md rows, and audit
-# trails remain resolvable. A retired assumption MUST NOT appear in
-# `required_assumption_ids` and MUST cite the discharging artifact in
-# `discharged_by`. New retirements land via a P3 ticket and are mirrored in
-# `formal/proof-manifest.toml` `discharged_assumptions`.
-retired_assumption_ids = [
-  "RETIRED-SQLITE-CROSS-ROW",
-]
+# Retiring an assumption requires named model evidence and a concrete
+# implementation-refinement gate over the affected production boundary.
+# Abstract invariants and manual mirror hashes are not sufficient by themselves.
+retired_assumption_ids = []
+retired_assumptions = []
 
-retired_assumptions = [
-  "RETIRED-SQLITE-CROSS-ROW|prior_audited_storage|Prior assumption: cross-row SQLite atomicity was assumed for the kernel audit-log append plus the budget-state update happening as a single atomic pair across the receipt-log row and the budget row. This is RETIRED. The kernel relies only on per single-row write atomicity (the surviving ASSUME-SQLITE-ATOMICITY scope) plus the ReceiptBeforeAllow Apalache invariant, which states that an allow decision can be recorded only after an allow receipt for the same authority and capability exists in the log. This single invariant replaces the prior joint MonotoneLog plus budget-per-row discharge for the cross-row ordering claim while the budget row remains protected by per-row atomicity.|ReceiptBeforeAllow|P2,P4,P6,P7",
-]
+# The distributed model scopes authentication, weak fairness, skew, and
+# partition-heal obligations, but does not retire either transport assumption.

@@ -1,6 +1,8 @@
 /-
   Scope subsumption logic: ToolGrant.isSubsetOf, ChioScope.isSubsetOf.
-  Mirrors: chio-kernel-core/src/capability.rs (ToolGrant::is_subset_of, ChioScope::is_subset_of)
+  Mirrors: crates/core/chio-core-types/src/capability/scope.rs and
+  crates/kernel/chio-kernel-core/src/normalized.rs.
+  Enforced by the matching [[mirror]] entries in formal/proof-manifest.toml.
 
   This is the core of Chio's capability monotonicity guarantee.
 -/
@@ -24,7 +26,7 @@ private theorem any_eq_true_of_mem {α : Type} [BEq α] [LawfulBEq α]
     xs.any (fun y => x == y) = true := by
   exact List.any_eq_true.mpr ⟨x, h_mem, by simp⟩
 
-/-- Mirrors: ToolGrant::is_subset_of in capability.rs.
+/-- Mirrors: ToolGrant::is_subset_of in crates/core/chio-core-types/src/capability/scope.rs.
 
     A child grant is a subset when:
     - It targets the same server.
@@ -49,7 +51,7 @@ def ToolGrant.isSubsetOf (child parent : ToolGrant) : Bool :=
   -- Constraints: parent's constraints must all appear in child
   && parent.constraints.isSubsetOf child.constraints
 
-/-- Mirrors: ChioScope::is_subset_of in capability.rs.
+/-- Mirrors: ChioScope::is_subset_of in crates/core/chio-core-types/src/capability/scope.rs.
 
     Returns true if every grant in `child` is covered by some grant in `parent`. -/
 def ChioScope.isSubsetOf (child parent : ChioScope) : Bool :=

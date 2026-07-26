@@ -1,7 +1,7 @@
-use super::reports::{read_archive_restore_package_reports, read_relay_report_documents};
 use super::super::{
     load_relay_signing_key, read_json_file, read_utf8_json_file, write_pretty_json,
 };
+use super::reports::{read_archive_restore_package_reports, read_relay_report_documents};
 use super::support::{
     archive_package_limits, read_relay_alert_assurance_archive_candidates,
     trusted_archive_packagers_from_signing_key, ARCHIVE_PACKAGE_MANIFEST_PATH,
@@ -43,9 +43,7 @@ pub(crate) fn cmd_chio_pheromone_relay_alert_assurance_archive_plan(
         },
     )
     .map_err(|error| {
-        CliError::cli_other_error(format!(
-            "Chio relay alert assurance archive plan: {error}"
-        ))
+        CliError::cli_other_error(format!("Chio relay alert assurance archive plan: {error}"))
     })?;
     write_pretty_json(
         report,
@@ -121,11 +119,10 @@ pub(crate) fn cmd_chio_pheromone_relay_alert_assurance_archive_package_create(
         )?;
     let archive_report: chio_pheromone_relay::RelayAlertAssuranceArchiveReport =
         read_json_file(archive_report, "Chio relay alert assurance archive report")?;
-    let closeout_report: chio_pheromone_relay::RelayAlertAssuranceCloseoutReport =
-        read_json_file(
-            closeout_report,
-            "Chio relay alert assurance closeout report",
-        )?;
+    let closeout_report: chio_pheromone_relay::RelayAlertAssuranceCloseoutReport = read_json_file(
+        closeout_report,
+        "Chio relay alert assurance closeout report",
+    )?;
     let previous_package_report: Option<
         chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport,
     > = previous_package_report
@@ -258,35 +255,35 @@ pub(crate) fn cmd_chio_pheromone_relay_alert_assurance_physical_drill_review(
     report: &Path,
 ) -> Result<(), CliError> {
     let evidence: chio_pheromone_relay::RelayAlertAssurancePhysicalArchiveEvidence =
-        read_json_file(evidence, "Chio relay alert assurance physical archive evidence")?;
+        read_json_file(
+            evidence,
+            "Chio relay alert assurance physical archive evidence",
+        )?;
     let package_report: chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport =
         read_json_file(
             package_report,
             "Chio relay alert assurance archive package report",
         )?;
-    let drill =
-        chio_pheromone_relay::generate_relay_alert_assurance_physical_archive_drill_report(
-            chio_pheromone_relay::RelayAlertAssurancePhysicalArchiveDrillInput {
-                evidence: &evidence,
-                expected_package_id: &package_report.package_id,
-                expected_package_report_sha256: &chio_core::crypto::sha256_hex(
-                    &chio_core::canonical::canonical_json_bytes(&package_report).map_err(
-                        |error| {
-                            CliError::cli_other_error(format!(
-                                "Chio relay alert assurance archive package report: {error}"
-                            ))
-                        },
-                    )?,
-                ),
-                expected_package_manifest_sha256: &package_report.package_manifest_sha256,
-                now_unix_ms,
-            },
-        )
-        .map_err(|error| {
-            CliError::cli_other_error(format!(
-                "Chio relay alert assurance physical drill review: {error}"
-            ))
-        })?;
+    let drill = chio_pheromone_relay::generate_relay_alert_assurance_physical_archive_drill_report(
+        chio_pheromone_relay::RelayAlertAssurancePhysicalArchiveDrillInput {
+            evidence: &evidence,
+            expected_package_id: &package_report.package_id,
+            expected_package_report_sha256: &chio_core::crypto::sha256_hex(
+                &chio_core::canonical::canonical_json_bytes(&package_report).map_err(|error| {
+                    CliError::cli_other_error(format!(
+                        "Chio relay alert assurance archive package report: {error}"
+                    ))
+                })?,
+            ),
+            expected_package_manifest_sha256: &package_report.package_manifest_sha256,
+            now_unix_ms,
+        },
+    )
+    .map_err(|error| {
+        CliError::cli_other_error(format!(
+            "Chio relay alert assurance physical drill review: {error}"
+        ))
+    })?;
     write_pretty_json(
         report,
         &drill,
@@ -359,9 +356,15 @@ pub(crate) fn cmd_chio_pheromone_relay_alert_assurance_retention_handoff_review(
     report: &Path,
 ) -> Result<(), CliError> {
     let evidence: chio_pheromone_relay::RelayAlertAssuranceRetentionHandoffEvidence =
-        read_json_file(evidence, "Chio relay alert assurance retention handoff evidence")?;
+        read_json_file(
+            evidence,
+            "Chio relay alert assurance retention handoff evidence",
+        )?;
     let profile: chio_pheromone_relay::RelayAlertAssuranceRetentionHandoffProfileDocument =
-        read_json_file(profile, "Chio relay alert assurance retention handoff profile")?;
+        read_json_file(
+            profile,
+            "Chio relay alert assurance retention handoff profile",
+        )?;
     let package_report: chio_pheromone_relay::RelayAlertAssuranceArchivePackageReport =
         read_json_file(
             package_report,
@@ -472,7 +475,6 @@ pub(crate) fn cmd_chio_pheromone_relay_alert_assurance_retention_external_review
     )
 }
 
-
 fn verify_relay_alert_assurance_archive_package_from_inputs(
     package: &chio_pheromone_relay::RelayAlertAssuranceArchivePackage,
     trusted_packagers: &Path,
@@ -493,11 +495,10 @@ fn verify_relay_alert_assurance_archive_package_from_inputs(
         )?;
     let archive_report: chio_pheromone_relay::RelayAlertAssuranceArchiveReport =
         read_json_file(archive_report, "Chio relay alert assurance archive report")?;
-    let closeout_report: chio_pheromone_relay::RelayAlertAssuranceCloseoutReport =
-        read_json_file(
-            closeout_report,
-            "Chio relay alert assurance closeout report",
-        )?;
+    let closeout_report: chio_pheromone_relay::RelayAlertAssuranceCloseoutReport = read_json_file(
+        closeout_report,
+        "Chio relay alert assurance closeout report",
+    )?;
     chio_pheromone_relay::verify_relay_alert_assurance_archive_package(
         chio_pheromone_relay::RelayAlertAssuranceArchivePackageVerifyInput {
             package,
@@ -564,10 +565,12 @@ pub(super) fn read_relay_alert_assurance_archive_package(
                 })?;
             manifest = Some(parsed);
         } else {
-            files.push(chio_pheromone_relay::RelayAlertAssuranceArchivePackageFile {
-                path: entry.path,
-                bytes: entry.bytes,
-            });
+            files.push(
+                chio_pheromone_relay::RelayAlertAssuranceArchivePackageFile {
+                    path: entry.path,
+                    bytes: entry.bytes,
+                },
+            );
         }
     }
     let manifest = manifest.ok_or_else(|| {
@@ -581,11 +584,7 @@ fn write_verified_relay_alert_assurance_archive_package(
     package: &chio_pheromone_relay::RelayAlertAssuranceArchivePackage,
 ) -> Result<u64, CliError> {
     let entries = archive_package_entries(package)?;
-    crate::archive::write_entries_to_fresh_dir(
-        out_dir,
-        "Chio archive extraction",
-        &entries,
-    )?;
+    crate::archive::write_entries_to_fresh_dir(out_dir, "Chio archive extraction", &entries)?;
     u64::try_from(package.files.len()).map_err(|_| {
         CliError::cli_other_error("Chio archive package member count overflow".to_string())
     })

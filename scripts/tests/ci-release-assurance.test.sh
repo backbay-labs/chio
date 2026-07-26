@@ -68,7 +68,7 @@ def check_fuzz_matrix_and_smoke_inventory() -> None:
         "fuzz_workflow_matrix_matches_cargo_bins",
         "all_matrix_targets_have_declared_smoke_posture",
         "CORPUS_SMOKE_TARGETS",
-        "NO_CORPUS_SMOKE_TARGETS",
+        "NO_IN_PROCESS_SMOKE_TARGETS",
     ]
     missing_markers = [marker for marker in required_markers if marker not in smoke]
     require(

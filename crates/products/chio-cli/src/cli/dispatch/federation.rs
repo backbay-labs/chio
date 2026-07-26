@@ -1,13 +1,17 @@
 use super::*;
 
-pub(crate) fn dispatch_chio_federation_command(command: ChioFederationCommands) -> Result<(), CliError> {
+pub(crate) fn dispatch_chio_federation_command(
+    command: ChioFederationCommands,
+) -> Result<(), CliError> {
     match command {
         ChioFederationCommands::Authority { command } => dispatch_chio_authority_command(command),
         ChioFederationCommands::Treaty { command } => dispatch_chio_treaty_command(command),
     }
 }
 
-pub(crate) fn dispatch_chio_authority_command(command: ChioAuthorityCommands) -> Result<(), CliError> {
+pub(crate) fn dispatch_chio_authority_command(
+    command: ChioAuthorityCommands,
+) -> Result<(), CliError> {
     match command {
         ChioAuthorityCommands::Issue {
             profile,

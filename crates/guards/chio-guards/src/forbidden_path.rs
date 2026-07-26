@@ -210,11 +210,67 @@ impl chio_kernel::Guard for ForbiddenPathGuard {
             Ok(GuardDecision::allow())
         }
     }
+
+    fn requires_dispatch_revalidation(&self) -> bool {
+        true
+    }
+
+    fn revalidate_before_dispatch(&self, ctx: &GuardContext) -> Result<(), KernelError> {
+        crate::revalidate_non_consuming_guard(self, ctx)
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use chio_core::capability::{
+        scope::ChioScope,
+        token::{CapabilityToken, CapabilityTokenBody},
+    };
+    use chio_core::crypto::Keypair;
+    use chio_kernel::Guard;
+
     use super::*;
+
+    fn revalidation_context_parts(
+        path: &str,
+    ) -> (chio_kernel::ToolCallRequest, ChioScope, String, String) {
+        let keypair = Keypair::generate();
+        let scope = ChioScope::default();
+        let capability = CapabilityToken::sign(
+            CapabilityTokenBody {
+                id: format!("cap-{path}"),
+                issuer: keypair.public_key(),
+                subject: keypair.public_key(),
+                scope: scope.clone(),
+                issued_at: 0,
+                expires_at: u64::MAX,
+                delegation_chain: Vec::new(),
+                aggregate_invocation_budget: None,
+            },
+            &keypair,
+        )
+        .expect("test capability should sign");
+        let agent_id = keypair.public_key().to_hex();
+        let server_id = "srv-files".to_string();
+        let request = chio_kernel::ToolCallRequest {
+            request_id: format!("req-{path}"),
+            capability,
+            tool_name: "read_file".to_string(),
+            server_id: server_id.clone(),
+            agent_id: agent_id.clone(),
+            arguments: serde_json::json!({"path": path}),
+            dpop_proof: None,
+            execution_nonce: None,
+            governed_intent: None,
+            approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
+            model_metadata: None,
+            federated_origin_kernel_id: None,
+        };
+        (request, scope, agent_id, server_id)
+    }
 
     #[test]
     fn blocks_ssh_keys() {
@@ -248,6 +304,39 @@ mod tests {
         assert!(!guard.is_forbidden("/home/user/project/src/main.rs"));
         assert!(!guard.is_forbidden("/home/user/project/README.md"));
         assert!(!guard.is_forbidden("/app/src/main.rs"));
+    }
+
+    #[test]
+    fn dispatch_revalidation_repeats_pure_path_evaluation() {
+        let guard = ForbiddenPathGuard::new();
+        let (allowed_request, allowed_scope, allowed_agent, allowed_server) =
+            revalidation_context_parts("/app/src/main.rs");
+        let allowed_context = GuardContext {
+            request: &allowed_request,
+            scope: &allowed_scope,
+            agent_id: &allowed_agent,
+            server_id: &allowed_server,
+            session_filesystem_roots: None,
+            matched_grant_index: None,
+        };
+        guard
+            .revalidate_before_dispatch(&allowed_context)
+            .expect("normal path should revalidate");
+
+        let (blocked_request, blocked_scope, blocked_agent, blocked_server) =
+            revalidation_context_parts("/etc/shadow");
+        let blocked_context = GuardContext {
+            request: &blocked_request,
+            scope: &blocked_scope,
+            agent_id: &blocked_agent,
+            server_id: &blocked_server,
+            session_filesystem_roots: None,
+            matched_grant_index: None,
+        };
+        let error = guard
+            .revalidate_before_dispatch(&blocked_context)
+            .expect_err("forbidden path must fail dispatch revalidation");
+        assert!(matches!(error, KernelError::GuardDenied(_)));
     }
 
     #[test]

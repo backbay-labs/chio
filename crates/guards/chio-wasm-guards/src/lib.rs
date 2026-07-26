@@ -31,10 +31,11 @@
 //!
 //! - `0` = Allow
 //! - `1` = Deny (guard-specific reason returned through shared memory)
-//! - any negative value = error (fail-closed)
+//! - any other value = error (deny for blocking guards)
 //!
 //! Fuel metering limits CPU consumption. When fuel runs out the guard is
-//! treated as denied (fail-closed).
+//! denied in blocking mode. Advisory guards log the error and remain
+//! non-blocking by design.
 //!
 //! # Feature flags
 //!

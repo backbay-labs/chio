@@ -37,6 +37,16 @@ pub enum Verdict {
     PendingApproval,
 }
 
+impl From<Verdict> for chio_kernel_core::GuardStep {
+    fn from(verdict: Verdict) -> Self {
+        match verdict {
+            Verdict::Allow => Self::Allow,
+            Verdict::Deny => Self::Deny,
+            Verdict::PendingApproval => Self::Error,
+        }
+    }
+}
+
 /// A tool call request as seen by the kernel.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ToolCallRequest {

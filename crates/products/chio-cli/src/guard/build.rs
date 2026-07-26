@@ -3,8 +3,8 @@ use std::path::Path;
 use std::process::Command;
 
 use chio_wasm_guards::manifest::GuardManifest;
-use flate2::Compression;
 use flate2::write::GzEncoder;
+use flate2::Compression;
 
 use crate::CliError;
 

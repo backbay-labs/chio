@@ -121,6 +121,36 @@ pub trait ExecutionNonceStore: Send + Sync {
         self.reserve(nonce_id)
     }
 
+    /// Whether this store can create and conditionally roll back an owned
+    /// reservation before tool dispatch begins.
+    fn supports_dispatch_reservations(&self) -> bool {
+        false
+    }
+
+    /// Reserve a nonce for one dispatch attempt. Stores advertising dispatch
+    /// reservation support must retain the owner and permit only that owner to
+    /// roll the reservation back.
+    fn reserve_for_dispatch(
+        &self,
+        nonce_id: &str,
+        nonce_expires_at: i64,
+        _reservation_id: &str,
+    ) -> Result<bool, KernelError> {
+        self.reserve_until(nonce_id, nonce_expires_at)
+    }
+
+    /// Remove an owned reservation after a failure known to precede any tool
+    /// side effect.
+    fn rollback_dispatch_reservation(
+        &self,
+        _nonce_id: &str,
+        _reservation_id: &str,
+    ) -> Result<bool, KernelError> {
+        Err(KernelError::Internal(
+            "execution nonce store does not support dispatch reservation rollback".to_string(),
+        ))
+    }
+
     fn is_consumed(&self, _nonce_id: &str) -> Result<bool, KernelError> {
         Ok(false)
     }
@@ -136,8 +166,13 @@ pub trait ExecutionNonceStore: Send + Sync {
 /// alone because the full binding lives inside the signed body and is
 /// checked separately by `verify_execution_nonce`.
 pub struct InMemoryExecutionNonceStore {
-    inner: Mutex<LruCache<String, Instant>>,
+    inner: Mutex<LruCache<String, InMemoryExecutionNonceEntry>>,
     ttl: Duration,
+}
+
+struct InMemoryExecutionNonceEntry {
+    retain_until: Instant,
+    reservation_id: Option<String>,
 }
 
 impl InMemoryExecutionNonceStore {
@@ -179,13 +214,46 @@ impl Default for InMemoryExecutionNonceStore {
 
 impl ExecutionNonceStore for InMemoryExecutionNonceStore {
     fn reserve(&self, nonce_id: &str) -> Result<bool, KernelError> {
-        self.reserve_with_retention(nonce_id, self.ttl)
+        self.reserve_with_retention(nonce_id, self.ttl, None)
     }
 
     fn reserve_until(&self, nonce_id: &str, nonce_expires_at: i64) -> Result<bool, KernelError> {
         let retention = duration_until_unix_secs(nonce_expires_at)
             .map_or(self.ttl, |remaining| remaining.max(self.ttl));
-        self.reserve_with_retention(nonce_id, retention)
+        self.reserve_with_retention(nonce_id, retention, None)
+    }
+
+    fn supports_dispatch_reservations(&self) -> bool {
+        true
+    }
+
+    fn reserve_for_dispatch(
+        &self,
+        nonce_id: &str,
+        nonce_expires_at: i64,
+        reservation_id: &str,
+    ) -> Result<bool, KernelError> {
+        let retention = duration_until_unix_secs(nonce_expires_at)
+            .map_or(self.ttl, |remaining| remaining.max(self.ttl));
+        self.reserve_with_retention(nonce_id, retention, Some(reservation_id))
+    }
+
+    fn rollback_dispatch_reservation(
+        &self,
+        nonce_id: &str,
+        reservation_id: &str,
+    ) -> Result<bool, KernelError> {
+        let mut cache = self.inner.lock().map_err(|_| {
+            error!("execution nonce store mutex poisoned; denying fail-closed");
+            KernelError::Internal("execution nonce store mutex poisoned; fail-closed".to_string())
+        })?;
+        let owned = cache
+            .peek(nonce_id)
+            .is_some_and(|entry| entry.reservation_id.as_deref() == Some(reservation_id));
+        if owned {
+            cache.pop(nonce_id);
+        }
+        Ok(owned)
     }
 
     fn is_consumed(&self, nonce_id: &str) -> Result<bool, KernelError> {
@@ -196,7 +264,7 @@ impl ExecutionNonceStore for InMemoryExecutionNonceStore {
         let now = Instant::now();
         Ok(cache
             .peek(nonce_id)
-            .is_some_and(|retain_until| *retain_until > now))
+            .is_some_and(|entry| entry.retain_until > now))
     }
 }
 
@@ -205,6 +273,7 @@ impl InMemoryExecutionNonceStore {
         &self,
         nonce_id: &str,
         retention: Duration,
+        reservation_id: Option<&str>,
     ) -> Result<bool, KernelError> {
         let mut cache = self.inner.lock().map_err(|_| {
             error!("execution nonce store mutex poisoned; denying fail-closed");
@@ -213,15 +282,15 @@ impl InMemoryExecutionNonceStore {
 
         let key = nonce_id.to_string();
         let now = Instant::now();
-        if let Some(retain_until) = cache.peek(&key) {
-            if *retain_until > now {
+        if let Some(entry) = cache.peek(&key) {
+            if entry.retain_until > now {
                 return Ok(false);
             }
             cache.pop(&key);
         }
         let expired: Vec<String> = cache
             .iter()
-            .filter(|(_, retain_until)| **retain_until <= now)
+            .filter(|(_, entry)| entry.retain_until <= now)
             .map(|(nonce_id, _)| nonce_id.clone())
             .collect();
         for nonce_id in expired {
@@ -239,7 +308,13 @@ impl InMemoryExecutionNonceStore {
                 "execution nonce retention overflow; fail-closed".to_string(),
             ));
         };
-        cache.put(key, retain_until);
+        cache.put(
+            key,
+            InMemoryExecutionNonceEntry {
+                retain_until,
+                reservation_id: reservation_id.map(str::to_owned),
+            },
+        );
         Ok(true)
     }
 }
@@ -695,7 +770,7 @@ mod tests {
     fn reserve_with_retention_fails_closed_on_overflow() {
         let store = InMemoryExecutionNonceStore::default();
         let err = store
-            .reserve_with_retention("overflow", Duration::MAX)
+            .reserve_with_retention("overflow", Duration::MAX, None)
             .unwrap_err();
 
         assert!(matches!(

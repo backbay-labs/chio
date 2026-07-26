@@ -41,10 +41,6 @@ ignore = [
     # private-key signing is confined to tests. No upstream fix yet (tracked
     # in rsa#19).
     "RUSTSEC-2023-0071",
-    # last-checked = 2026-07-10; atomic-polyfill 1.0.3 is unmaintained (superseded by portable-atomic).
-    # It is pulled only transitively through heapless and ships no code Chio calls directly. Clears when
-    # the heapless chain migrates to portable-atomic.
-    "RUSTSEC-2023-0089",
     # last-checked = 2026-05-02; ansi_term is pulled only by dudect-bencher's legacy clap 2 harness for
     # local timing experiments. It is not linked into production binaries.
     "RUSTSEC-2021-0139",
@@ -66,6 +62,10 @@ ignore = [
     # crate versions. Clears when the iroh/plist chain updates quick-xml upstream.
     "RUSTSEC-2026-0194",
     "RUSTSEC-2026-0195",
+    # last-checked = 2026-07-16; atomic-polyfill is unmaintained (RUSTSEC-2023-0089). Postcard 1.1.3
+    # still requires heapless 0.7, whose cas feature depends on atomic-polyfill. No compatible postcard release
+    # permits heapless 0.8 or portable-atomic yet. Clear this exception when the postcard/heapless chain updates.
+    "RUSTSEC-2023-0089",
 ]
 
 # cargo-deny 0.16 enforces an explicit allow-list only: unlisted licenses are
@@ -222,9 +222,9 @@ name = "sized-chunks"
 allow = ["MPL-2.0"]
 
 [[licenses.exceptions]]
-# last-checked = 2026-07-10. These Unlicense crates are pulled only through
-# the iroh relay websocket stack. Keep the approval pinned to exact crate names
-# instead of widening the workspace allow-list.
+# last-checked = 2026-07-16. These Unlicense crates implement the browser
+# WebSocket transport pulled by iroh-relay. Keep the approval local to the
+# three transitive crates instead of widening the workspace allow-list.
 name = "async_io_stream"
 allow = ["Unlicense"]
 
@@ -368,14 +368,6 @@ name = "toml_edit"
 name = "wasm-streams"
 
 [[bans.skip]]
-# last-checked = 2026-07-10. Legacy proc-macro-error remains in transitive
-# codegen paths while proc-macro-error 1.x is pulled by newer stacks.
-name = "proc-macro-error"
-
-[[bans.skip]]
-name = "proc-macro-error-attr"
-
-[[bans.skip]]
 # last-checked = 2026-05-03. `syn` 1.x is a known proc-macro
 # lingerer; lockfile currently pins both 1.0.x and 2.0.x. Force-bump
 # audit when `darling` and `serde_derive` align on `syn` 2.x.
@@ -390,65 +382,19 @@ name = "bitflags"
 version = "1"
 
 [[bans.skip]]
-# last-checked = 2026-05-02. Alloy 1.8.x and older alloy-core
-# transitives keep two alloy-primitives majors until the web3 stack unifies.
-name = "alloy-primitives"
-
-[[bans.skip]]
-name = "alloy-sol-macro"
-
-[[bans.skip]]
-name = "alloy-sol-macro-expander"
-
-[[bans.skip]]
-name = "alloy-sol-macro-input"
-
-[[bans.skip]]
-name = "alloy-sol-types"
-
-[[bans.skip]]
-# last-checked = 2026-05-02. ASN.1 parser splits come from
-# sigstore, webauthn, and DCAP quote parsing stacks.
-name = "asn1-rs"
-
-[[bans.skip]]
-name = "asn1-rs-derive"
-
-[[bans.skip]]
-name = "asn1-rs-impl"
-
-[[bans.skip]]
 name = "dashmap"
-
-[[bans.skip]]
-name = "der-parser"
 
 [[bans.skip]]
 name = "half"
 
 [[bans.skip]]
-name = "oid-registry"
-
-[[bans.skip]]
 name = "redox_users"
-
-[[bans.skip]]
-name = "syn-solidity"
-
-[[bans.skip]]
-name = "synstructure"
 
 [[bans.skip]]
 name = "wit-bindgen"
 
 [[bans.skip]]
 name = "wit-parser"
-
-[[bans.skip]]
-name = "x509-parser"
-
-[[bans.skip]]
-name = "ahash"
 
 [[bans.skip]]
 name = "axum"
@@ -647,6 +593,61 @@ name = "toml"
 
 [[bans.skip]]
 name = "toml_datetime"
+
+[[bans.skip]]
+# last-checked = 2026-07-16. Apple platform bindings still split across
+# security-framework 2.x and 3.x consumers.
+name = "core-foundation"
+
+[[bans.skip]]
+# last-checked = 2026-07-16. The credential and Iroh stacks are migrating
+# between the stable and release-candidate RustCrypto signature families.
+name = "curve25519-dalek"
+
+[[bans.skip]]
+name = "ed25519"
+
+[[bans.skip]]
+name = "ed25519-dalek"
+
+[[bans.skip]]
+name = "fiat-crypto"
+
+[[bans.skip]]
+# last-checked = 2026-07-16. Iroh and the existing cache users require
+# different lru majors until their upstream dependency ranges converge.
+name = "lru"
+
+[[bans.skip]]
+# last-checked = 2026-07-16. RustCrypto 0.10 and 0.11 release families
+# currently require different PEM and PKCS dependency generations.
+name = "pem-rfc7468"
+
+[[bans.skip]]
+# last-checked = 2026-07-16. Iroh and direct TLS consumers have not yet
+# converged on one rustls-platform-verifier release.
+name = "rustls-platform-verifier"
+
+[[bans.skip]]
+# last-checked = 2026-07-16. futures-buffered requires spin 0.10 while
+# lazy_static's no-std feature remains on spin 0.9.
+name = "spin"
+
+[[bans.skip]]
+# last-checked = 2026-07-16. Cargo tooling and runtime dependencies still
+# span adjacent strum and toml_edit release families.
+name = "strum"
+
+[[bans.skip]]
+name = "strum_macros"
+
+[[bans.skip]]
+name = "toml_edit"
+
+[[bans.skip]]
+# last-checked = 2026-07-16. Browser transport dependencies require adjacent
+# wasm-streams releases until the Iroh WebAssembly graph converges.
+name = "wasm-streams"
 
 [[bans.skip]]
 name = "tower"

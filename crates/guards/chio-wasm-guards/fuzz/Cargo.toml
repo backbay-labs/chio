@@ -1,0 +1,22 @@
+[package]
+name = "chio-wasm-guard-world-fixture"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+wit-bindgen-rt = { version = "0.44.0", features = ["bitflags"] }
+
+[lib]
+path = "src/lib.rs"
+crate-type = ["cdylib"]
+
+[package.metadata.component]
+package = "component:chio-wasm-guard-world-fixture"
+
+[package.metadata.component.target]
+path = "guard_world.wit"
+world = "guard"
+
+[package.metadata.component.dependencies]
+
+[workspace]

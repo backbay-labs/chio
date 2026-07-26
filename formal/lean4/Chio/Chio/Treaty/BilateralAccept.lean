@@ -12,7 +12,7 @@
   `freestanding_accept_set_theorem`: a bilateral envelope is
   accepted by a verifier iff three independent conjuncts hold (issuer
   key in trust store, kernel key in trust store, scope predicate
-  denotes on the receipt). The bi-conditional is the named claim that
+  denotes on the admission projection). The bi-conditional is the named claim that
   no hidden side channel can sneak admission past these three gates.
 -/
 
@@ -42,11 +42,11 @@ structure KernelSig where
   sig : SignatureBytes
   deriving Repr, BEq, DecidableEq, Inhabited
 
-/-- A bilateral DSSE envelope: a bounded receipt view, a scope predicate, and
+/-- A bilateral DSSE envelope: an admission projection, a scope predicate, and
     two signature slices (one issuer-side, one kernel-side). The
-    model treats `scope` as the policy that gates this envelope. -/
+    `scope` as the policy that gates this envelope. -/
 structure BilateralEnvelope where
-  receipt : PredicateLang.ReceiptView
+  admission : PredicateLang.AdmissionView
   scope : PredicateLang.Predicate
   issuerSig : IssuerSig
   kernelSig : KernelSig
@@ -64,7 +64,7 @@ structure TrustStore where
       allowlist,
   (ii) the envelope's kernel key id is in the trust store's kernel
        allowlist, and
-    (iii) the scope predicate denotes true on the bounded receipt view.
+  (iii) the scope predicate denotes true on the admission projection.
 
   Signature byte validity is abstracted away: the trust-store membership
   conjuncts encode "we have a valid signature under a key we recognize",
@@ -75,7 +75,7 @@ def accept
     (store : TrustStore) (env : BilateralEnvelope) : Bool :=
   decide (env.issuerSig.keyId ∈ store.issuerKeys) &&
   decide (env.kernelSig.keyId ∈ store.kernelKeys) &&
-  PredicateLang.denote env.scope env.receipt
+  PredicateLang.denote env.scope env.admission
 
 /--
   Freestanding accept-set theorem (short-paper §4): a bilateral
@@ -89,7 +89,7 @@ theorem freestanding_accept_set_theorem
     accept store env = true ↔
     (env.issuerSig.keyId ∈ store.issuerKeys ∧
      env.kernelSig.keyId ∈ store.kernelKeys ∧
-     PredicateLang.denote env.scope env.receipt = true) := by
+     PredicateLang.denote env.scope env.admission = true) := by
   unfold accept
   simp [Bool.and_eq_true, and_assoc]
 
@@ -114,7 +114,7 @@ theorem accept_monotone_in_issuer_store
   Corollary 2: accept-set conjunction over scope predicates. If an
   envelope with a scope of `conj p q` is accepted, then the issuer
   and kernel key conjuncts hold and both scope predicates denote true
-  for the same receipt view. This states the freestanding predicate
+  for the same admission projection. This states the freestanding predicate
   decomposition without pretending the original signatures can be
   reused for a byte-distinct rebound envelope.
 -/
@@ -125,15 +125,22 @@ theorem accept_conj_scope_decompose
     (hAccept : accept store env = true) :
     env.issuerSig.keyId ∈ store.issuerKeys ∧
     env.kernelSig.keyId ∈ store.kernelKeys ∧
-    PredicateLang.denote p env.receipt = true ∧
-    PredicateLang.denote q env.receipt = true := by
+    PredicateLang.denote p env.admission = true ∧
+    PredicateLang.denote q env.admission = true := by
   rw [freestanding_accept_set_theorem] at hAccept
   have hIssuer : env.issuerSig.keyId ∈ store.issuerKeys := hAccept.1
   have hKernel : env.kernelSig.keyId ∈ store.kernelKeys := hAccept.2.1
   rw [hScope] at hAccept
-  have hConj : PredicateLang.denote (.conj p q) env.receipt = true := hAccept.2.2
-  simp [PredicateLang.denote] at hConj
-  exact ⟨hIssuer, hKernel, hConj.1, hConj.2⟩
+  have hConj : PredicateLang.denote (.conj p q) env.admission = true := hAccept.2.2
+  simp [PredicateLang.denote, PredicateLang.supported,
+    PredicateLang.defined, PredicateLang.eval] at hConj
+  have hP : PredicateLang.denote p env.admission = true := by
+    simp [PredicateLang.denote, hConj.1.1.1, hConj.1.2.1,
+      hConj.2.1]
+  have hQ : PredicateLang.denote q env.admission = true := by
+    simp [PredicateLang.denote, hConj.1.1.2, hConj.1.2.2,
+      hConj.2.2]
+  exact ⟨hIssuer, hKernel, hP, hQ⟩
 
 /--
   Corollary 3: rejection on missing issuer key. An envelope whose

@@ -6,6 +6,12 @@
 - Depends on: RFC-0002 (unconditional post-admission unwind)
 - Closes findings: F01, F07, F14 (see ./README.md and the readiness review); implements deep-dive D1 (pre-dispatch readiness gate checks config presence, not writer liveness)
 
+> **Security correction (2026-07-14):** This draft predates the enforced
+> dispatch trust boundary. A timeout or error after any `invoke*` future is
+> polled is outcome-unknown: the kernel records a signed terminal receipt and
+> preserves credentials, admission state, child budget, budget exposure, and
+> payment authorization. Full reversal is permitted only before dispatch.
+
 ## Summary
 
 Every await on the Chio mediation path is today unbounded: a guard doing blocking

@@ -494,19 +494,23 @@ the Chio kernel at runtime.
 
 ### 6.1 Host-Guest ABI
 
-Each `.wasm` guard module **MUST** export a single function:
+Each raw core-module guard **MUST** export a single function:
 
 ```
 evaluate(request_ptr: i32, request_len: i32) -> i32
 ```
 
-**Invocation protocol:**
+**Core-module invocation protocol:**
 
 1. The host serializes a `GuardRequest` as JSON.
-2. The host writes the JSON bytes into guest linear memory starting at
-   offset 0.
-3. The host calls `evaluate(0, json_length)`.
-4. The guest reads the request from memory, evaluates it, and returns a
+2. If the guest exports `chio_alloc(size: i32) -> i32`, the host requests a
+   buffer and validates that the returned range is inside guest memory. A
+   trapped, negative, or out-of-bounds allocator is a guard error. If the
+   export is absent, the host uses offset 0.
+3. The host writes the JSON bytes into guest linear memory at the selected
+   offset.
+4. The host calls `evaluate(request_offset, json_length)`.
+5. The guest reads the request from memory, evaluates it, and returns a
    verdict code.
 
 **Return codes:**
@@ -515,12 +519,15 @@ evaluate(request_ptr: i32, request_len: i32) -> i32
 | --- | --- |
 | `0` | Allow |
 | `1` | Deny |
-| Any negative value | Error (fail-closed) |
+| Any other `i32` | Error (denied for blocking guards) |
 
-**Deny reason protocol:** The guest **MAY** write a NUL-terminated UTF-8
-string starting at offset 65536 (64 KiB) in linear memory. The host reads
-up to 4096 bytes from this region. If the region is absent, empty, or
-malformed, the host uses a generic denial message.
+**Deny reason protocol:** A denying core module **MAY** export
+`chio_deny_reason(buffer_ptr: i32, buffer_len: i32) -> i32`. The host supplies
+a 4096-byte region at offset 65536 and first parses the returned bytes as a
+JSON `GuestDenyResponse`. For compatibility, non-JSON UTF-8 is accepted as a
+plain reason. If the export is absent, the host reads a legacy NUL-terminated
+UTF-8 reason from offset 65536. An absent, empty, malformed, or failed reason
+read preserves the deny verdict and omits the optional reason.
 
 ### 6.2 GuardRequest
 
@@ -533,7 +540,11 @@ The JSON payload written into guest memory:
 | `agent_id` | `string` | Agent making the request |
 | `arguments` | `object` | Tool arguments (opaque JSON) |
 | `scopes` | `string[]` | Granted scope names (formatted as `"server_id:tool_name"`) |
-| `session_metadata` | `object` or `null` | Optional session context for stateful guards |
+| `action_type` | `string` or absent | Host-extracted action class |
+| `extracted_path` | `string` or absent | Normalized filesystem path for filesystem actions |
+| `extracted_target` | `string` or absent | Target domain for network egress actions |
+| `filesystem_roots` | `string[]` or absent | Session-scoped filesystem roots |
+| `matched_grant_index` | `integer` or absent | Index of the capability grant selected by the kernel |
 
 ### 6.3 Fuel Metering
 
@@ -546,12 +557,13 @@ when the budget is exhausted.
 | `fuel_limit` | `10,000,000` | Maximum fuel units per invocation |
 
 **Fail-closed on exhaustion:** When fuel runs out, the runtime **MUST**
-terminate the guest and treat the invocation as denied. A
-`WasmGuardError::FuelExhausted` error is returned, which the kernel treats
-as a denial verdict.
+terminate the guest and return `WasmGuardError::FuelExhausted`. Blocking
+guards treat that error as a denial. Explicitly advisory guards remain
+non-blocking as described in Section 6.4.
 
 **Fail-closed on trap:** Any WASM trap (memory access violation, stack
-overflow, unreachable instruction) **MUST** result in denial.
+overflow, unreachable instruction) **MUST** result in denial for a blocking
+guard. Explicitly advisory guards record the error and remain non-blocking.
 
 **Fail-closed on missing export:** If the module does not export the required
 `evaluate` function or `memory`, the load **MUST** fail and the guard
@@ -584,13 +596,15 @@ guards in production without blocking traffic.
 
 ### 6.5 Security Properties
 
-- **Sandboxed execution:** WASM guards execute in an isolated linear memory
-  space with no access to the host filesystem, network, or kernel state.
-- **Deterministic termination:** Fuel metering guarantees that guards
-  terminate within a bounded time.
-- **No host callbacks:** The current ABI does not provide any host functions
-  to the guest. The guest can only read the provided request and return a
-  verdict.
+- **Sandboxed execution:** Subject to `ASSUME-WASM-ENGINE`, WASM guards execute
+  in isolated linear memory with no direct host filesystem, network, or kernel
+  access. Guest code can call only the declared `chio` host imports.
+- **Bounded guest execution:** Subject to `ASSUME-WASM-ENGINE`, fuel metering
+  bounds guest instruction execution. Overall wall-clock latency also includes
+  the declared host imports.
+- **Allowlisted host callbacks:** Core modules may import `chio.log`,
+  `chio.get_config`, and `chio.get_time_unix_secs`; Component Model guards use
+  the declared WIT host interface. Any undeclared import rejects the module.
 - **Fail-closed on all errors:** Compilation failure, missing exports, fuel
   exhaustion, traps, and unexpected return values all result in denial (for
   non-advisory guards).

@@ -26,6 +26,7 @@ TARGETS=(
     acp_envelope_decode
     wasm_preinstantiate_validate
     wasm_guard_escape
+    wasm_guard_smith
     wit_host_call_boundary
     chio_yaml_parse
     openapi_ingest
@@ -37,6 +38,7 @@ TARGETS=(
     federation_trust_establishment
     underwriting_policy_input
     fuzz_policy_parse_compile
+    policy_analyze
     fuzz_sql_parser
     fuzz_merkle_checkpoint
     revocation_oracle_merkle

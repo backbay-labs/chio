@@ -90,5 +90,9 @@ regress = "0.10.5"
 # only its first line.
 chio-spec-codegen = { workspace = true }
 
-[lints]
-workspace = true
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }

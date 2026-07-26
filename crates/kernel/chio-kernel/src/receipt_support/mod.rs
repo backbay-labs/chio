@@ -1,3 +1,4 @@
+mod coupling;
 mod receipt_building;
 mod receipt_content;
 mod receipt_metadata;
@@ -7,6 +8,7 @@ mod signing;
 #[cfg(test)]
 mod tests;
 
+pub use coupling::{receipt_body_fields_coupled, ReceiptCouplingExpectation};
 pub(crate) use receipt_building::{
     build_child_request_receipt, child_outcome_payload, child_terminal_state, next_receipt_id,
 };

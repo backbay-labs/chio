@@ -31,6 +31,24 @@
       "input_json": "{\"text\":\"line\\n\\\"quoted\\\"\\\\path\"}"
     },
     {
+      "canonical_json": "\"\u007f\"",
+      "description": "RFC 8785 emits U+007F directly as UTF-8.",
+      "id": "u007f_escape",
+      "input_json": "\"\\u007f\""
+    },
+    {
+      "canonical_json": "\"\\u001f\"",
+      "description": "RFC 8785 escapes the upper C0 boundary using lowercase hexadecimal.",
+      "id": "u001f_escape",
+      "input_json": "\"\\u001f\""
+    },
+    {
+      "canonical_json": "\"\u009f\"",
+      "description": "RFC 8785 emits C1 controls directly as UTF-8.",
+      "id": "u009f_escape",
+      "input_json": "\"\\u009f\""
+    },
+    {
       "canonical_json": "{}",
       "description": "An empty object renders to the two-character literal {}.",
       "id": "empty_object",

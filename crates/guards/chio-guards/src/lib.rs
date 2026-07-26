@@ -137,6 +137,22 @@ pub use external::{
     GuardCallContext, RateLimitedVerdict, RetryConfig, TokenBucket, TtlCache,
 };
 
+fn revalidate_non_consuming_guard(
+    guard: &(impl chio_kernel::Guard + ?Sized),
+    ctx: &chio_kernel::GuardContext<'_>,
+) -> Result<(), chio_kernel::KernelError> {
+    match guard.evaluate(ctx)?.verdict {
+        chio_kernel::Verdict::Allow => Ok(()),
+        // Admission owns approval adjudication. A pure re-evaluation may still
+        // describe the original threshold as pending, but must not turn an
+        // already-adjudicated request into a hard denial at dispatch.
+        chio_kernel::Verdict::PendingApproval => Ok(()),
+        chio_kernel::Verdict::Deny => Err(chio_kernel::KernelError::GuardDenied(
+            "guard dispatch revalidation denied".to_string(),
+        )),
+    }
+}
+
 /// Default guard material installed by the control-plane runtime profile.
 pub struct RuntimeGuardProfile {
     pub pre_invocation_guards: Vec<Box<dyn chio_kernel::Guard>>,

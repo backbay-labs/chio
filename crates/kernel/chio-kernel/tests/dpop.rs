@@ -354,16 +354,16 @@ fn dpop_nonce_replay_within_ttl_rejected() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 6: Nonce reuse after TTL expiry is accepted
+// Test 6: Signed proof validity retains a nonce beyond the local store TTL
 // ---------------------------------------------------------------------------
 
 #[test]
-fn dpop_nonce_replay_after_ttl_accepted() {
+fn dpop_nonce_replay_after_local_ttl_is_rejected() {
     let agent_kp = Keypair::generate();
     let cap = make_capability(&agent_kp);
 
     let config = default_config();
-    // TTL = 0 means nonces expire immediately.
+    // A zero local TTL must not shorten the signed proof-validity horizon.
     let store = DpopNonceStore::new(config.nonce_store_capacity, Duration::from_secs(0));
 
     let now = SystemTime::now()
@@ -395,7 +395,7 @@ fn dpop_nonce_replay_after_ttl_accepted() {
     );
     assert!(result1.is_ok(), "first use should succeed: {result1:?}");
 
-    // Second use with TTL=0: the nonce expired instantly, so it should be accepted.
+    // The second use remains a replay while the signed proof is valid.
     let body2 = DpopProofBody {
         schema: DPOP_SCHEMA.to_string(),
         capability_id: cap.id.clone(),
@@ -416,9 +416,12 @@ fn dpop_nonce_replay_after_ttl_accepted() {
         &store,
         &config,
     );
+    let err_msg = result2
+        .expect_err("nonce reuse during the proof-validity horizon must fail closed")
+        .to_string();
     assert!(
-        result2.is_ok(),
-        "nonce reuse after TTL=0 expiry should succeed: {result2:?}"
+        err_msg.contains("nonce replayed"),
+        "unexpected error message: {err_msg}"
     );
 }
 

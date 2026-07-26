@@ -23,6 +23,7 @@ typify = "=0.4.3"
 schemars = "0.8"
 serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true }
+toml = { workspace = true }
 prettyplease = "0.2"
 syn = { version = "2", features = ["full"] }
 jsonschema = { workspace = true }

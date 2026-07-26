@@ -97,6 +97,46 @@ fn kernel_receipt_signer_propagates_capability_metadata_into_receipts() {
             .and_then(serde_json::Value::as_str),
         Some(test_authorization_parameter_hash().as_str())
     );
+    assert_eq!(
+        authorization_receipt
+            .action
+            .parameters
+            .get("session_id")
+            .and_then(serde_json::Value::as_str),
+        Some("session-enforced")
+    );
+    assert_eq!(
+        authorization_receipt
+            .action
+            .parameters
+            .get("tool_call_id")
+            .and_then(serde_json::Value::as_str),
+        Some("call-enforced")
+    );
+    assert_eq!(
+        authorization_receipt
+            .action
+            .parameters
+            .get("authorization_correlation_id")
+            .and_then(serde_json::Value::as_str),
+        Some(test_authorization_correlation_id("session-enforced", "call-enforced").as_str())
+    );
+    assert_eq!(
+        authorization_receipt
+            .action
+            .parameters
+            .get("operation")
+            .and_then(serde_json::Value::as_str),
+        Some("fs_read")
+    );
+    assert_eq!(
+        authorization_receipt
+            .action
+            .parameters
+            .get("resource")
+            .and_then(serde_json::Value::as_str),
+        Some("resource:call-enforced")
+    );
     assert_eq!(enforced.capability_id, "cap-377");
     assert_eq!(
         enforced.metadata.as_ref().and_then(|metadata| {
@@ -319,7 +359,9 @@ fn kernel_receipt_signer_rejects_stale_authorization_reuse_for_other_tool_call()
         })
         .expect_err("stale authorization receipt should fail closed");
     assert!(
-        error.to_string().contains("authorization receipt session id mismatch")
+        error
+            .to_string()
+            .contains("authorization receipt session id mismatch")
             || error
                 .to_string()
                 .contains("authorization receipt correlation id mismatch"),
@@ -340,19 +382,24 @@ fn kernel_receipt_signer_rejects_same_session_authorization_tool_call_id_mismatc
         "fs/read_text_file",
         Some("tenant-tool-call-mismatch"),
     );
-    let mut body = authorization_receipt.body();
-    let receipt_context = body
-        .metadata
-        .as_mut()
-        .and_then(|metadata| metadata.get_mut("receipt_context"))
-        .and_then(serde_json::Value::as_object_mut)
-        .expect("authorization receipt context should be an object");
-    receipt_context.insert(
-        "tool_call_id".to_string(),
-        serde_json::Value::String("call-authorized".to_string()),
-    );
     let authorization_receipt =
-        ChioReceipt::sign(body, &keypair).expect("mismatched tool id receipt should sign");
+        rewrite_authorization_action_parameters(&authorization_receipt, &keypair, |parameters| {
+            parameters.insert(
+                "tool_call_id".to_string(),
+                serde_json::Value::String("call-authorized".to_string()),
+            );
+        });
+    let mut body = authorization_receipt.body();
+    body.metadata
+        .as_mut()
+        .and_then(serde_json::Value::as_object_mut)
+        .expect("authorization receipt metadata should be an object")
+        .insert(
+            "source_receipt_context".to_string(),
+            json!({"tool_call_id": "call-presented"}),
+        );
+    let authorization_receipt = ChioReceipt::sign(body, &keypair)
+        .expect("receipt with non-authoritative source context should sign");
     shared
         .lock()
         .expect("shared state should lock")
@@ -389,11 +436,75 @@ fn kernel_receipt_signer_rejects_same_session_authorization_tool_call_id_mismatc
 }
 
 #[test]
+fn kernel_receipt_signer_rejects_missing_or_non_string_authorization_tool_call_id() {
+    for (case, malformed_value) in [
+        ("missing", None),
+        ("non-string", Some(json!({ "unexpected": true }))),
+    ] {
+        let keypair = Keypair::generate();
+        let shared = Arc::new(Mutex::new(MockStoreState::default()));
+        let authorization_receipt = make_authorization_receipt_with_tenant(
+            &keypair,
+            &format!("cap-malformed-tool-call-{case}"),
+            &format!("auth-malformed-tool-call-{case}"),
+            "session-malformed-tool-call",
+            "call-malformed-tool-call",
+            "fs/read_text_file",
+            Some("tenant-malformed-tool-call"),
+        );
+        let authorization_receipt = rewrite_authorization_action_parameters(
+            &authorization_receipt,
+            &keypair,
+            |parameters| match malformed_value {
+                Some(value) => {
+                    parameters.insert("tool_call_id".to_string(), value);
+                }
+                None => {
+                    parameters.remove("tool_call_id");
+                }
+            },
+        );
+        shared
+            .lock()
+            .expect("shared state should lock")
+            .appended_receipts
+            .push(authorization_receipt.clone());
+        let store = MockReceiptStore {
+            state: Arc::clone(&shared),
+            supports_checkpoints: false,
+        };
+        let signer = KernelReceiptSigner::new(keypair, "proxy-server", Box::new(store), 0);
+
+        let mut enforced_entry =
+            make_audit_entry("call-malformed-tool-call", "session-malformed-tool-call");
+        mark_entry_cryptographically_enforced(
+            &mut enforced_entry,
+            &format!("cap-malformed-tool-call-{case}"),
+            &authorization_receipt.id,
+            &format!("auth-malformed-tool-call-{case}"),
+            "fs/read_text_file",
+        );
+
+        let error = signer
+            .sign_acp_receipt(&AcpReceiptRequest {
+                audit_entry: enforced_entry,
+                tool_server: "proxy-server".to_string(),
+                tool_name: "fs/read_text_file".to_string(),
+            })
+            .expect_err("malformed signed tool call id should fail closed");
+        assert!(
+            error.to_string().contains("tool call id"),
+            "unexpected {case} tool call id error: {error}"
+        );
+    }
+}
+
+#[test]
 fn verify_live_authorization_receipt_accepts_deferred_bind_for_fs_operations() {
     // ACP fs/read_text_file, fs/write_text_file, and terminal/create
     // requests do not carry a `toolCallId` at the capability gate.
-    // `KernelCapabilityChecker` stores the receipt context with
-    // `tool_call_id = ""`. The agent later assigns the real tool call
+    // `KernelCapabilityChecker` signs the action with `tool_call_id = ""`.
+    // The agent later assigns the real tool call
     // id on a `session/update` notification, at which point the proxy
     // resolves the binding via the per-session-operation FIFO and
     // `bind_pending_capability_context`. The signer's
@@ -409,7 +520,7 @@ fn verify_live_authorization_receipt_accepts_deferred_bind_for_fs_operations() {
         "auth-deferred-bind",
         "session-deferred-bind",
         // The fixture initially writes the supplied tool_call_id into
-        // the receipt context; we override it to empty below to
+        // the signed action; we override it to empty below to
         // simulate the deferred-bind shape produced by
         // `KernelCapabilityChecker` for fs and terminal-create
         // operations.
@@ -417,36 +528,28 @@ fn verify_live_authorization_receipt_accepts_deferred_bind_for_fs_operations() {
         "fs/read_text_file",
         Some("tenant-deferred-bind"),
     );
-    let mut body = authorization_receipt.body();
-    let receipt_context = body
-        .metadata
-        .as_mut()
-        .and_then(|metadata| metadata.get_mut("receipt_context"))
-        .and_then(serde_json::Value::as_object_mut)
-        .expect("authorization receipt context should be an object");
-    receipt_context.insert(
-        "tool_call_id".to_string(),
-        serde_json::Value::String(String::new()),
-    );
     // The correlation id is derived from the placeholder tool call id
     // in the fixture. Realign it with the resolved tool call id we
     // simulate the agent later assigning, so the only field that
     // tests the deferred-bind acceptance is `tool_call_id` itself.
     let resolved_tool_call_id = "call-resolved-by-agent";
-    let resolved_correlation_id = test_authorization_correlation_id(
-        "session-deferred-bind",
-        resolved_tool_call_id,
-    );
-    receipt_context.insert(
-        "authorization_correlation_id".to_string(),
-        serde_json::Value::String(resolved_correlation_id.clone()),
-    );
-    receipt_context.insert(
-        "resource".to_string(),
-        serde_json::Value::String(test_authorization_resource(resolved_tool_call_id)),
-    );
+    let resolved_correlation_id =
+        test_authorization_correlation_id("session-deferred-bind", resolved_tool_call_id);
     let authorization_receipt =
-        ChioReceipt::sign(body, &keypair).expect("deferred-bind receipt should sign");
+        rewrite_authorization_action_parameters(&authorization_receipt, &keypair, |parameters| {
+            parameters.insert(
+                "tool_call_id".to_string(),
+                serde_json::Value::String(String::new()),
+            );
+            parameters.insert(
+                "authorization_correlation_id".to_string(),
+                serde_json::Value::String(resolved_correlation_id),
+            );
+            parameters.insert(
+                "resource".to_string(),
+                serde_json::Value::String(test_authorization_resource(resolved_tool_call_id)),
+            );
+        });
     shared
         .lock()
         .expect("shared state should lock")
@@ -458,8 +561,7 @@ fn verify_live_authorization_receipt_accepts_deferred_bind_for_fs_operations() {
     };
     let signer = KernelReceiptSigner::new(keypair, "proxy-server", Box::new(store), 0);
 
-    let mut enforced_entry =
-        make_audit_entry(resolved_tool_call_id, "session-deferred-bind");
+    let mut enforced_entry = make_audit_entry(resolved_tool_call_id, "session-deferred-bind");
     mark_entry_cryptographically_enforced(
         &mut enforced_entry,
         "cap-deferred-bind",
@@ -476,7 +578,10 @@ fn verify_live_authorization_receipt_accepts_deferred_bind_for_fs_operations() {
         })
         .expect("deferred-bind authorization should be accepted by the verifier");
     assert_eq!(consumer_receipt.tool_name, "fs/read_text_file");
-    assert_eq!(consumer_receipt.tenant_id.as_deref(), Some("tenant-deferred-bind"));
+    assert_eq!(
+        consumer_receipt.tenant_id.as_deref(),
+        Some("tenant-deferred-bind")
+    );
 }
 
 #[test]
@@ -958,13 +1063,13 @@ fn tool_call_running_and_terminal_update_produce_distinct_receipt_ids() {
     assert!(ids.contains(&completed_receipt.id));
 }
 
-/// Regression: the `request_id` from the live capability check must round-trip
-/// from the source envelope on the authorization receipt all the way to
-/// the consumer receipt's metadata, so downstream verifiers can stitch
-/// the audit log together. Both receipts expose the same
+/// Regression: the kernel-generated `request_id` from the live capability
+/// check must round-trip from the authorization receipt to the consumer
+/// receipt's metadata, so downstream verifiers can stitch the audit log
+/// together. Both receipts expose the same
 /// `metadata.receipt_context.request_id` value.
 #[test]
-fn live_authorization_request_id_round_trips_through_source_envelope() {
+fn live_authorization_request_id_uses_kernel_receipt_linkage() {
     let keypair = Keypair::generate();
     let authorization_receipt = make_authorization_receipt(
         &keypair,
@@ -975,9 +1080,8 @@ fn live_authorization_request_id_round_trips_through_source_envelope() {
         "fs/read_text_file",
     );
 
-    // The authorization receipt (written by the kernel) carries
-    // `request_id` in its receipt_context, populated from the source
-    // envelope the proxy built. This is what
+    // The authorization receipt written by the kernel carries its trusted
+    // request linkage in receipt_context. This is what
     // `verify_live_authorization_receipt` checks at kernel_signer.rs.
     let auth_request_id_in_metadata = authorization_receipt
         .metadata
@@ -1129,8 +1233,7 @@ fn kernel_receipt_signer_decouples_checkpoint_errors_from_message_flow() {
         state: Arc::clone(&empty_state),
         supports_checkpoints: true,
     };
-    let empty_signer =
-        KernelReceiptSigner::new(keypair, "proxy-server", Box::new(empty_store), 1);
+    let empty_signer = KernelReceiptSigner::new(keypair, "proxy-server", Box::new(empty_store), 1);
     let receipt = empty_signer
         .sign_acp_receipt(&AcpReceiptRequest {
             audit_entry: make_audit_entry("empty", "session-empty"),

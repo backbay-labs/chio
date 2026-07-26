@@ -1,5 +1,5 @@
 use super::*;
-use std::sync::Arc;
+use std::sync::{Arc, Barrier};
 
 fn make_context(request_id: &str) -> OperationContext {
     OperationContext {
@@ -239,6 +239,221 @@ fn cancellation_marks_cancellable_request() {
 
     let inflight = session.inflight().get(&context.request_id).unwrap();
     assert!(inflight.cancellation_requested);
+    assert_eq!(inflight.cancellation_reason, None);
+}
+
+#[test]
+fn cancellation_preserves_first_supplied_reason() {
+    let registry = InflightRegistry::default();
+    let context = make_context("req-cancel-reason-first");
+    registry
+        .track(&context, OperationKind::ToolCall, "anchor-1", true)
+        .unwrap();
+
+    registry
+        .mark_cancellation_requested_with_reason(&context.request_id, Some("first reason"))
+        .unwrap();
+    registry
+        .mark_cancellation_requested_with_reason(&context.request_id, Some("later reason"))
+        .unwrap();
+
+    let inflight = registry.get(&context.request_id).unwrap();
+    assert!(inflight.cancellation_requested);
+    assert_eq!(
+        inflight.cancellation_reason.as_deref(),
+        Some("first reason")
+    );
+    assert_eq!(
+        registry.try_mark_dispatch_started(&context.request_id, "anchor-1"),
+        Err(DispatchStartFailure::CancellationRequested {
+            reason: Some("first reason".to_string())
+        })
+    );
+}
+
+#[test]
+fn reasonless_cancellation_accepts_first_later_reason() {
+    let registry = InflightRegistry::default();
+    let context = make_context("req-cancel-reason-later");
+    registry
+        .track(&context, OperationKind::ToolCall, "anchor-1", true)
+        .unwrap();
+
+    registry
+        .mark_cancellation_requested(&context.request_id)
+        .unwrap();
+    registry
+        .mark_cancellation_requested_with_reason(&context.request_id, Some("available reason"))
+        .unwrap();
+
+    let inflight = registry.get(&context.request_id).unwrap();
+    assert!(inflight.cancellation_requested);
+    assert_eq!(
+        inflight.cancellation_reason.as_deref(),
+        Some("available reason")
+    );
+}
+
+#[test]
+fn cancellation_before_dispatch_prevents_dispatch_start() {
+    let registry = InflightRegistry::default();
+    let context = make_context("req-cancel-wins");
+    registry
+        .track(&context, OperationKind::ToolCall, "anchor-1", true)
+        .unwrap();
+
+    registry
+        .mark_cancellation_requested(&context.request_id)
+        .unwrap();
+    assert_eq!(
+        registry.try_mark_dispatch_started(&context.request_id, "anchor-1"),
+        Err(DispatchStartFailure::CancellationRequested { reason: None })
+    );
+}
+
+#[test]
+fn dispatch_start_allows_late_cancellation_to_latch() {
+    let registry = InflightRegistry::default();
+    let context = make_context("req-dispatch-wins");
+    registry
+        .track(&context, OperationKind::ToolCall, "anchor-1", true)
+        .unwrap();
+
+    registry
+        .try_mark_dispatch_started(&context.request_id, "anchor-1")
+        .unwrap();
+    registry
+        .mark_cancellation_requested(&context.request_id)
+        .unwrap();
+    assert!(registry
+        .get(&context.request_id)
+        .is_some_and(|request| request.cancellation_requested));
+    assert_eq!(
+        registry.try_mark_dispatch_started(&context.request_id, "anchor-1"),
+        Err(DispatchStartFailure::CancellationRequested { reason: None })
+    );
+}
+
+#[test]
+fn dispatch_scope_clears_active_marker_without_clearing_cancellation() {
+    let registry = InflightRegistry::default();
+    let context = make_context("req-dispatch-scope");
+    registry
+        .track(&context, OperationKind::ToolCall, "anchor-1", true)
+        .unwrap();
+
+    registry
+        .try_mark_dispatch_started(&context.request_id, "anchor-1")
+        .unwrap();
+    assert!(registry.is_dispatch_active(&context.request_id));
+    registry
+        .mark_cancellation_requested(&context.request_id)
+        .unwrap();
+
+    registry.mark_dispatch_finished(&context.request_id);
+
+    assert!(!registry.is_dispatch_active(&context.request_id));
+    assert!(registry
+        .get(&context.request_id)
+        .is_some_and(|request| request.cancellation_requested));
+}
+
+#[test]
+fn completing_dispatch_clears_private_dispatch_state_for_reuse() {
+    let registry = InflightRegistry::default();
+    let context = make_context("req-dispatch-reuse");
+    registry
+        .track(&context, OperationKind::ToolCall, "anchor-1", true)
+        .unwrap();
+    registry
+        .try_mark_dispatch_started(&context.request_id, "anchor-1")
+        .unwrap();
+    registry.complete(&context.request_id).unwrap();
+
+    registry
+        .track(&context, OperationKind::ToolCall, "anchor-2", true)
+        .unwrap();
+    registry
+        .mark_cancellation_requested(&context.request_id)
+        .unwrap();
+}
+
+#[test]
+fn cancellation_and_dispatch_start_preserve_atomic_pre_dispatch_boundary() {
+    let registry = InflightRegistry::default();
+    let context = make_context("req-dispatch-race");
+    registry
+        .track(&context, OperationKind::ToolCall, "anchor-1", true)
+        .unwrap();
+    let barrier = Barrier::new(3);
+
+    let (cancellation, dispatch) = std::thread::scope(|scope| {
+        let cancellation = scope.spawn(|| {
+            barrier.wait();
+            registry.mark_cancellation_requested(&context.request_id)
+        });
+        let dispatch = scope.spawn(|| {
+            barrier.wait();
+            registry.try_mark_dispatch_started(&context.request_id, "anchor-1")
+        });
+        barrier.wait();
+        (
+            cancellation
+                .join()
+                .unwrap_or_else(|payload| std::panic::resume_unwind(payload)),
+            dispatch
+                .join()
+                .unwrap_or_else(|payload| std::panic::resume_unwind(payload)),
+        )
+    });
+
+    match (cancellation, dispatch) {
+        (Ok(()), Err(DispatchStartFailure::CancellationRequested { .. })) | (Ok(()), Ok(())) => {}
+        outcome => panic!("invalid cancellation and dispatch race outcome: {outcome:?}"),
+    }
+    assert!(registry
+        .get(&context.request_id)
+        .is_some_and(|request| request.cancellation_requested));
+
+    registry.complete(&context.request_id).unwrap();
+    registry
+        .track(&context, OperationKind::ToolCall, "anchor-2", true)
+        .unwrap();
+    registry
+        .mark_cancellation_requested(&context.request_id)
+        .unwrap();
+}
+
+#[test]
+fn cancelled_dispatching_parent_cannot_start_another_child() {
+    let session = Session::new(SessionId::new("sess-1"), "agent-1".to_string(), Vec::new());
+    let parent_context = make_context("req-parent-cancelled");
+    let mut child_context = make_context("req-child-after-cancel");
+    child_context.parent_request_id = Some(parent_context.request_id.clone());
+
+    session.activate().unwrap();
+    session
+        .track_request(&parent_context, OperationKind::ToolCall, true)
+        .unwrap();
+    session
+        .try_mark_request_dispatch_started(&parent_context.request_id)
+        .unwrap();
+    session
+        .request_cancellation(&parent_context.request_id)
+        .unwrap();
+
+    let error = session
+        .track_request(&child_context, OperationKind::CreateMessage, true)
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        SessionError::ParentRequestCancelled {
+            request_id,
+            parent_request_id,
+            ..
+        } if request_id == child_context.request_id
+            && parent_request_id == parent_context.request_id
+    ));
 }
 
 #[test]

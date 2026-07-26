@@ -27,6 +27,7 @@
 use std::path::{Path, PathBuf};
 
 pub mod admission_operation_store;
+mod agent_web_replay_store;
 pub mod approval_store;
 pub mod authority;
 pub mod batch_approval_store;
@@ -42,12 +43,14 @@ pub mod evidence_export;
 pub mod execution_nonce_store;
 pub mod fiscal_store;
 pub mod frost_store;
+mod governed_approval_replay_store;
 pub mod iou_store;
 #[cfg(feature = "lineage")]
 pub mod lineage_cte;
 pub mod memory_provenance_store;
 pub mod receipt_query;
 pub mod receipt_store;
+mod replay_clock;
 pub mod revocation_store;
 pub mod schema_version;
 pub mod serving_owner;
@@ -191,6 +194,7 @@ pub fn sqlite_filesystem_path(text: &str) -> PathBuf {
 pub use admission_operation_store::{
     CreditExposureAccountSnapshot, DurableObligationV1, SqliteAdmissionOperationStore,
 };
+pub use agent_web_replay_store::{SqliteAgentWebReplayStore, SqliteAgentWebReplayStoreError};
 pub use approval_store::SqliteApprovalStore;
 pub use authority::SqliteCapabilityAuthority;
 pub use batch_approval_store::SqliteBatchApprovalStore;
@@ -224,6 +228,9 @@ pub use frost_store::{
     FrostSignerCommitment, FrostSignerSessionRecord, FrostSignerSessionRequest,
     FrostSignerSessionState, FrostSignerShare, FrostStoreError, SqliteFrostStore,
     StagedFrostRotation, StoredFrostCeremonyCompletion,
+};
+pub use governed_approval_replay_store::{
+    SqliteGovernedApprovalReplayStore, SqliteGovernedApprovalReplayStoreError,
 };
 pub use iou_store::{SqliteIouEnvelopeStore, IOU_ENVELOPE_MIGRATION};
 pub use memory_provenance_store::{SqliteMemoryProvenanceStore, SqliteMemoryProvenanceStoreError};

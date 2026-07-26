@@ -1,8 +1,9 @@
 # chio-policy
 
 `chio-policy` is Chio's native HushSpec policy engine: it parses, validates,
-merges, evaluates, and compiles the HushSpec YAML policy format that governs
-AI-agent tool access, egress, filesystem, shell, and computer-use actions.
+merges, evaluates, analyzes, and compiles the HushSpec YAML policy format that
+governs AI-agent tool access, egress, filesystem, shell, and computer-use
+actions.
 
 Invalid HushSpec documents reject at validation and compile time rather than
 silently compiling to a permissive default. The crate is a pure translator:
@@ -25,6 +26,8 @@ belong to `chio-kernel`.
 - Evaluate an action against a policy to an allow/warn/deny `Decision`
   (`evaluate`, `evaluate_with_context`), including origin-profile selection,
   posture transitions, and `when`-style conditional rule activation.
+- Analyze bounded rule relations and policy refinement, with explicit coverage
+  notices for semantics that cannot be compared soundly (`analyze`).
 - Compile a validated policy into a `chio_guards` `GuardPipeline`, a
   `PostInvocationPipeline`, and a default `chio_core` capability scope
   (`compiler::compile_policy`).
@@ -56,6 +59,9 @@ belong to `chio-kernel`.
   HushSpec-to-guard-pipeline compiler.
 - `evaluate_audited`, `AuditConfig`, `DecisionReceipt` - timed, hashed
   evaluation receipts.
+- `analyze`, `analyze_against`, `AnalysisOptions`, `AnalysisReport`,
+  `RefinementStatus`, `Finding`, `Witness` - bounded static analysis and policy
+  refinement checks.
 - `builtin_yaml`, `load_builtin`, `list_builtin_names`, `BUILTIN_RULESETS`,
   `RulesetError` - the embedded rulesets.
 - `CryptoFloor`, `CryptoFloorLoadError`, `WeightsCardConfig`,
@@ -95,6 +101,8 @@ Mutation coverage runs against a focused module set:
 
 ## See also
 
+- [Policy Analysis](../../../docs/reference/POLICY_ANALYSIS.md) - operator
+  workflow and interpretation for `chio policy analyze`.
 - `chio-guards` - supplies `GuardPipeline`, `PostInvocationPipeline`, and
   every guard type the compiler emits.
 - `chio-kernel` - supplies `MemoryBudgetConfig` and the `Guard` trait the

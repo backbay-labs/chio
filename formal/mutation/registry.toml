@@ -1,0 +1,113 @@
+schema = "chio.formal-mutation-coverage.v1"
+historical_evidence = [
+  "formal/mutation/evidence/proof-mutants-a871396bffd010500f680c035e7b52c1867f38e2.json",
+  "formal/mutation/evidence/proof-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json",
+  "formal/mutation/evidence/spec-mutants-7b24142e8523fe08e501063dbf3d4f6cea3397be.json",
+  "formal/mutation/evidence/spec-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json",
+]
+
+[[target]]
+name = "spec-kernel-transition-cancel"
+lane = "spec-mutants"
+source = "formal/apalache/KernelTransitionCancelSafe.tla"
+report = "target/formal/spec-mutants-report.json"
+activation_target_percent = 90.0
+inventory_sha256 = "da4cbb247ecb3bb76056ba0453674ad39e8e3ba787f9543bb9a063d2b2532cb8"
+rust_paths = [
+  "crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs",
+  "crates/kernel/chio-kernel/src/kernel/validation.rs",
+]
+
+[[target]]
+name = "spec-monotone-log"
+lane = "spec-mutants"
+source = "formal/apalache/MonotoneLogApalache.tla"
+report = "target/formal/spec-mutants-report.json"
+activation_target_percent = 90.0
+inventory_sha256 = "da4cbb247ecb3bb76056ba0453674ad39e8e3ba787f9543bb9a063d2b2532cb8"
+rust_paths = [
+  "crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs",
+  "crates/platform/chio-store-sqlite/src/receipt_store/evidence_retention.rs",
+]
+
+[[target]]
+name = "spec-post-admission-drop"
+lane = "spec-mutants"
+source = "formal/apalache/PostAdmissionDropGuard.tla"
+report = "target/formal/spec-mutants-report.json"
+activation_target_percent = 90.0
+inventory_sha256 = "da4cbb247ecb3bb76056ba0453674ad39e8e3ba787f9543bb9a063d2b2532cb8"
+rust_paths = [
+  "crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs",
+  "crates/kernel/chio-kernel/src/kernel/dispatch.rs",
+  "crates/kernel/chio-kernel/src/kernel/responses/finalization.rs",
+]
+
+[[target]]
+name = "spec-receipt-before-allow"
+lane = "spec-mutants"
+source = "formal/apalache/ReceiptBeforeAllow.tla"
+report = "target/formal/spec-mutants-report.json"
+activation_target_percent = 90.0
+inventory_sha256 = "da4cbb247ecb3bb76056ba0453674ad39e8e3ba787f9543bb9a063d2b2532cb8"
+rust_paths = [
+  "crates/kernel/chio-kernel/src/kernel/responses/allow_responses.rs",
+  "crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs",
+]
+
+[[target]]
+name = "spec-revocation-cut"
+lane = "spec-mutants"
+source = "formal/apalache/RevocationCutCompleteness.tla"
+report = "target/formal/spec-mutants-report.json"
+activation_target_percent = 90.0
+inventory_sha256 = "da4cbb247ecb3bb76056ba0453674ad39e8e3ba787f9543bb9a063d2b2532cb8"
+rust_paths = [
+  "crates/kernel/chio-kernel/src/kernel/validation.rs",
+  "crates/kernel/chio-kernel-core/src/revocation_view.rs",
+]
+
+[[target]]
+name = "spec-delegation-depth"
+lane = "spec-mutants"
+source = "formal/tla/DelegationDepthBound.tla"
+report = "target/formal/spec-mutants-report.json"
+activation_target_percent = 90.0
+inventory_sha256 = "da4cbb247ecb3bb76056ba0453674ad39e8e3ba787f9543bb9a063d2b2532cb8"
+rust_paths = [
+  "crates/core/chio-core-types/src/capability/attenuation.rs",
+  "crates/kernel/chio-kernel-core/src/revocation_view.rs",
+  "crates/trust/chio-revocation-oracle/src/api.rs",
+]
+
+[[target]]
+name = "spec-revocation-propagation"
+lane = "spec-mutants"
+source = "formal/tla/RevocationPropagation.tla"
+report = "target/formal/spec-mutants-report.json"
+activation_target_percent = 90.0
+inventory_sha256 = "da4cbb247ecb3bb76056ba0453674ad39e8e3ba787f9543bb9a063d2b2532cb8"
+rust_paths = [
+  "crates/kernel/chio-kernel/src/kernel/validation.rs",
+  "crates/kernel/chio-kernel-core/src/revocation_view.rs",
+  "crates/trust/chio-federation/src/revocation_gossip.rs",
+  "crates/trust/chio-revocation-oracle/src/freshness.rs",
+]
+
+[[target]]
+name = "proof-formal-core"
+lane = "proof-mutants"
+source = "crates/kernel/chio-kernel-core/src/formal_core.rs"
+report = "target/formal/proof-mutants/outcomes.json"
+activation_target_percent = 90.0
+inventory_sha256 = "b21e6ef43ec0def5eaaec41e3d963d16708da61d3be5d1c7a6535fbd40e81d45"
+rust_paths = ["crates/kernel/chio-kernel-core/src/formal_core.rs"]
+
+[[target]]
+name = "proof-formal-aeneas"
+lane = "proof-mutants"
+source = "crates/kernel/chio-kernel-core/src/formal_aeneas.rs"
+report = "target/formal/proof-mutants/outcomes.json"
+activation_target_percent = 90.0
+inventory_sha256 = "b21e6ef43ec0def5eaaec41e3d963d16708da61d3be5d1c7a6535fbd40e81d45"
+rust_paths = ["crates/kernel/chio-kernel-core/src/formal_aeneas.rs"]

@@ -12,14 +12,15 @@ use std::collections::{BTreeMap, BTreeSet};
 #[path = "proof/env.rs"]
 mod proof_env;
 use proof_env::{
-    agent_web_verifier_trust_from_env, commerce_trusted_event_authority_receipt_kernel_keys_from_env,
+    agent_web_verifier_trust_from_env,
+    commerce_trusted_event_authority_receipt_kernel_keys_from_env,
     commerce_trusted_payment_signer_keys_from_env, commerce_trusted_provider_keys_from_env,
-    disclosure_lineage_verifier_trust_from_env,
-    enterprise_trusted_approval_signer_keys_from_env,
+    disclosure_lineage_verifier_trust_from_env, enterprise_trusted_approval_signer_keys_from_env,
     enterprise_trusted_receipt_kernel_keys_from_env,
-    enterprise_trusted_risk_comptroller_signer_keys_from_env, public_settlement_verifier_trust_from_env,
-    runtime_trust_from_env, swarm_trusted_witness_keys_for_bundle,
-    transaction_trusted_root_keys_from_env, trust_market_trusted_authority_keys_from_env,
+    enterprise_trusted_risk_comptroller_signer_keys_from_env,
+    public_settlement_verifier_trust_from_env, runtime_trust_from_env,
+    swarm_trusted_witness_keys_for_bundle, transaction_trusted_root_keys_from_env,
+    trust_market_trusted_authority_keys_from_env, AgentWebReplayMode,
 };
 
 const REQUIRED_RUNTIME_AUTHORITY_CLAIMS: [&str; 6] = [
@@ -849,6 +850,48 @@ fn verify_proof_room_bundle_if_present(input_path: &Path) -> Result<(), CliError
 }
 
 pub(super) fn verify_transaction_passport_file(path: &Path) -> Result<serde_json::Value, CliError> {
+    verify_transaction_passport_file_with_mode(path, TransactionPassportVerificationMode::ReadOnly)
+}
+
+pub(super) fn verify_transaction_passport_file_and_consume_agent_web_replays(
+    path: &Path,
+    expected_read_only_report: &serde_json::Value,
+) -> Result<serde_json::Value, CliError> {
+    verify_transaction_passport_file_with_mode(
+        path,
+        TransactionPassportVerificationMode::ConsumeAgentWebReplays {
+            expected_read_only_report,
+        },
+    )
+}
+
+#[derive(Clone, Copy)]
+enum TransactionPassportVerificationMode<'a> {
+    ReadOnly,
+    ConsumeAgentWebReplays {
+        expected_read_only_report: &'a serde_json::Value,
+    },
+}
+
+impl TransactionPassportVerificationMode<'_> {
+    fn agent_web_replay_mode(self) -> AgentWebReplayMode {
+        match self {
+            Self::ReadOnly => AgentWebReplayMode::ReadOnly,
+            Self::ConsumeAgentWebReplays { .. } => AgentWebReplayMode::Consume,
+        }
+    }
+}
+
+struct DeferredAgentWebReplayReservation {
+    bundle: chio_control_plane::agent_web::AgentWebInteropBundle,
+    trust: chio_control_plane::agent_web::AgentWebVerifierTrust,
+    read_only_report: chio_control_plane::agent_web::AgentWebInteropReport,
+}
+
+fn verify_transaction_passport_file_with_mode(
+    path: &Path,
+    verification_mode: TransactionPassportVerificationMode<'_>,
+) -> Result<serde_json::Value, CliError> {
     let passport_bytes = fs::read(path)?;
     let passport: chio_control_plane::transaction_passport::TransactionPassport =
         serde_json::from_slice(&passport_bytes)?;
@@ -926,6 +969,7 @@ pub(super) fn verify_transaction_passport_file(path: &Path) -> Result<serde_json
     let disclosure_evidence_present =
         evidence_graph_contains_disclosure_artifacts(&evidence_graph_bytes)?;
     let mut family_reports = Vec::new();
+    let mut deferred_agent_web_replay_reservation = None;
     let mut expected_public_settlement_trust_market_context = None;
     let mut expected_commerce_trust_market_context = None;
     if claim_requirements.requires(CLAIM_PREFIX_TRUST_MARKET)
@@ -955,8 +999,9 @@ pub(super) fn verify_transaction_passport_file(path: &Path) -> Result<serde_json
         .map_err(map_proof_error)?;
         expected_public_settlement_trust_market_context =
             Some(public_settlement_trust_market_context_from_trust_market_report(&report));
-        expected_commerce_trust_market_context =
-            Some(commerce_trust_market_context_from_trust_market_report(&report));
+        expected_commerce_trust_market_context = Some(
+            commerce_trust_market_context_from_trust_market_report(&report),
+        );
         push_family_report(&mut family_reports, report)?;
     }
     for spec in LOCAL_PROOF_FAMILY_SPECS {
@@ -986,25 +1031,37 @@ pub(super) fn verify_transaction_passport_file(path: &Path) -> Result<serde_json
         )?);
     }
     if claim_requirements.requires(CLAIM_PREFIX_AGENT_WEB) {
-        let agent_web_trust = agent_web_verifier_trust_from_env()?
-            .with_trusted_passport_signer_keys(trusted_transaction_root_keys.clone());
+        let agent_web_trust =
+            agent_web_verifier_trust_from_env(verification_mode.agent_web_replay_mode())?
+                .with_trusted_passport_signer_keys(trusted_transaction_root_keys.clone());
         let artifacts = load_agent_web_artifacts_from_graph(bundle_dir, &evidence_graph_bytes)?;
         let agent_web_evidence_graph_bytes =
             scoped_evidence_graph_bytes(&evidence_graph_bytes, is_agent_web_evidence_graph_node)?;
         let agent_web_passport =
             passport_for_evidence_graph(&passport, &agent_web_evidence_graph_bytes);
+        let agent_web_bundle = chio_control_plane::agent_web::AgentWebInteropBundle {
+            passport: agent_web_passport,
+            evidence_graph_bytes: agent_web_evidence_graph_bytes,
+            root_evidence_graph_bytes: Some(evidence_graph_bytes.clone()),
+            verifier_policy_bytes: verifier_policy_bytes.clone(),
+            artifacts,
+        };
         let report = chio_control_plane::agent_web::verify_agent_web_interop_with_trust(
-            &chio_control_plane::agent_web::AgentWebInteropBundle {
-                passport: agent_web_passport,
-                evidence_graph_bytes: agent_web_evidence_graph_bytes,
-                root_evidence_graph_bytes: Some(evidence_graph_bytes.clone()),
-                verifier_policy_bytes: verifier_policy_bytes.clone(),
-                artifacts,
-            },
+            &agent_web_bundle,
             &agent_web_trust,
         )
         .map_err(map_proof_error)?;
-        push_family_report(&mut family_reports, report)?;
+        push_family_report(&mut family_reports, &report)?;
+        if matches!(
+            verification_mode,
+            TransactionPassportVerificationMode::ConsumeAgentWebReplays { .. }
+        ) {
+            deferred_agent_web_replay_reservation = Some(DeferredAgentWebReplayReservation {
+                bundle: agent_web_bundle,
+                trust: agent_web_trust,
+                read_only_report: report,
+            });
+        }
     }
     if claim_requirements.requires(CLAIM_PREFIX_ENTERPRISE) || risk_route.through_enterprise {
         let enterprise_evidence_graph_bytes =
@@ -1084,6 +1141,25 @@ pub(super) fn verify_transaction_passport_file(path: &Path) -> Result<serde_json
     }?;
     attach_runtime_proof_parity_report(bundle_dir, &evidence_graph_bytes, &mut report)?;
     ensure_policy_required_claims_verified(&claim_requirements, &report)?;
+
+    if let TransactionPassportVerificationMode::ConsumeAgentWebReplays {
+        expected_read_only_report,
+    } = verification_mode
+    {
+        if &report != expected_read_only_report {
+            return Err(CliError::cli_other_error(
+                "proof collect: consuming verification snapshot does not match the read-only verifier report",
+            ));
+        }
+        if let Some(reservation) = deferred_agent_web_replay_reservation {
+            chio_control_plane::agent_web::verify_agent_web_interop_with_trust_and_consume_replays_if_report_matches(
+                &reservation.bundle,
+                &reservation.trust,
+                &reservation.read_only_report,
+            )
+            .map_err(map_proof_error)?;
+        }
+    }
     Ok(report)
 }
 
@@ -1148,11 +1224,10 @@ fn push_local_proof_family_report(
                 claim_requirements.requires_claim(CLAIM_DISCLOSURE_CRYPTO_CONTEXT_BOUND),
             )?;
             let trust = disclosure_lineage_verifier_trust_from_env()?;
-            let report =
-                chio_selective_disclosure::verify_disclosure_lineage_bundle_with_trust(
-                    &bundle, &trust,
-                )
-                .map_err(|error| CliError::cli_other_error(format!("proof verify: {error}")))?;
+            let report = chio_selective_disclosure::verify_disclosure_lineage_bundle_with_trust(
+                &bundle, &trust,
+            )
+            .map_err(|error| CliError::cli_other_error(format!("proof verify: {error}")))?;
             push_checked_local_family_report(family_reports, claim_requirements, spec, report)
         }
         LocalProofFamilyRoute::Swarm => {
@@ -1230,23 +1305,14 @@ fn commerce_trust_market_context_from_trust_market_report(
             .provider_selection_report_ref
             .clone(),
         trust_scorecard_ref: report.trust_market_sections.trust_scorecard_ref.clone(),
-        reputation_import_ref: report
-            .trust_market_sections
-            .reputation_import_ref
-            .clone(),
+        reputation_import_ref: report.trust_market_sections.reputation_import_ref.clone(),
         sla_commitment_ref: report.trust_market_sections.sla_commitment_ref.clone(),
         risk_comptroller_report_ref: report
             .trust_market_sections
             .risk_comptroller_report_ref
             .clone(),
-        collateral_position_ref: report
-            .trust_market_sections
-            .collateral_position_ref
-            .clone(),
-        guarantee_decision_ref: report
-            .trust_market_sections
-            .guarantee_decision_ref
-            .clone(),
+        collateral_position_ref: report.trust_market_sections.collateral_position_ref.clone(),
+        guarantee_decision_ref: report.trust_market_sections.guarantee_decision_ref.clone(),
         adjudication_jurisdiction_ref: report
             .trust_market_sections
             .adjudication_jurisdiction_ref
@@ -2191,8 +2257,8 @@ fn load_commerce_order_bundle_from_graph(
         mandate_protocol_payloads,
         risk_comptroller_report_bytes,
         verified_trust_market_context: verified_trust_market_context.cloned(),
-        trusted_event_authority_receipt_kernel_keys:
-            trusted_event_authority_receipt_kernel_keys.to_vec(),
+        trusted_event_authority_receipt_kernel_keys: trusted_event_authority_receipt_kernel_keys
+            .to_vec(),
         trusted_payment_signer_keys: trusted_payment_signer_keys.to_vec(),
         trusted_provider_trust_signer_keys: trusted_provider_trust_signer_keys.to_vec(),
         trusted_risk_comptroller_signer_keys:
@@ -3030,11 +3096,7 @@ fn load_agent_web_artifacts_from_graph(
     evidence_graph_bytes: &[u8],
 ) -> Result<BTreeMap<String, Vec<u8>>, CliError> {
     load_graph_artifacts_matching(bundle_dir, evidence_graph_bytes, |node| {
-        is_agent_web_evidence_graph_node_parts(
-            &node.role,
-            &node.path,
-            node.schema.as_deref(),
-        )
+        is_agent_web_evidence_graph_node_parts(&node.role, &node.path, node.schema.as_deref())
     })
 }
 

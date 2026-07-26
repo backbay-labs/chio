@@ -9,16 +9,17 @@ pub(crate) fn make_error_receipt(
     _kernel: &mut ChioKernel,
     request: &KernelToolCallRequest,
 ) -> Result<chio_core::receipt::body::ChioReceipt, chio_core::error::Error> {
-    let action = chio_core::receipt::decision::ToolCallAction::from_parameters(request.arguments.clone());
+    let action =
+        chio_core::receipt::decision::ToolCallAction::from_parameters(request.arguments.clone());
     let action = match action {
         Ok(a) => a,
-        Err(_) => chio_core::receipt::decision::ToolCallAction::from_parameters(serde_json::json!({}))
-            .unwrap_or_else(|_| {
-                chio_core::receipt::decision::ToolCallAction {
+        Err(_) => {
+            chio_core::receipt::decision::ToolCallAction::from_parameters(serde_json::json!({}))
+                .unwrap_or_else(|_| chio_core::receipt::decision::ToolCallAction {
                     parameter_hash: "error".to_string(),
                     parameters: serde_json::json!({}),
-                }
-        }),
+                })
+        }
     };
 
     // Kernel failures still need a signed deny receipt for audit continuity.

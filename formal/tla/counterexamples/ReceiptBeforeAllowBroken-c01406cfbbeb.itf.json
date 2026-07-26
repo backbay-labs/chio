@@ -1,0 +1,410 @@
+{
+  "#meta": {
+    "format": "ITF",
+    "varTypes": {
+      "budget_checked": "(Int -> Set(Int))",
+      "allowed": "(Int -> Set(Int))",
+      "receipt_log": "(Int -> Seq({ cap: Int, seen_epoch: Int, t: Int, verdict: Str }))",
+      "clock": "Int"
+    },
+    "format-description": "https://apalache-mc.org/docs/adr/015adr-trace.html",
+    "description": "Created by Apalache on Thu Jul 09 21:49:03 EDT 2026"
+  },
+  "params": [
+    "EpochMax",
+    "CapSet",
+    "Authorities"
+  ],
+  "vars": [
+    "budget_checked",
+    "allowed",
+    "receipt_log",
+    "clock"
+  ],
+  "states": [
+    {
+      "#meta": {
+        "index": 0
+      },
+      "Authorities": {
+        "#set": [
+          {
+            "#bigint": "1"
+          },
+          {
+            "#bigint": "2"
+          },
+          {
+            "#bigint": "3"
+          }
+        ]
+      },
+      "CapSet": {
+        "#set": [
+          {
+            "#bigint": "1"
+          },
+          {
+            "#bigint": "2"
+          },
+          {
+            "#bigint": "3"
+          },
+          {
+            "#bigint": "4"
+          },
+          {
+            "#bigint": "5"
+          },
+          {
+            "#bigint": "6"
+          }
+        ]
+      },
+      "EpochMax": {
+        "#bigint": "4"
+      },
+      "allowed": {
+        "#map": [
+          [
+            {
+              "#bigint": "1"
+            },
+            {
+              "#set": []
+            }
+          ],
+          [
+            {
+              "#bigint": "2"
+            },
+            {
+              "#set": []
+            }
+          ],
+          [
+            {
+              "#bigint": "3"
+            },
+            {
+              "#set": []
+            }
+          ]
+        ]
+      },
+      "budget_checked": {
+        "#map": [
+          [
+            {
+              "#bigint": "1"
+            },
+            {
+              "#set": []
+            }
+          ],
+          [
+            {
+              "#bigint": "2"
+            },
+            {
+              "#set": []
+            }
+          ],
+          [
+            {
+              "#bigint": "3"
+            },
+            {
+              "#set": []
+            }
+          ]
+        ]
+      },
+      "clock": {
+        "#bigint": "1"
+      },
+      "receipt_log": {
+        "#map": [
+          [
+            {
+              "#bigint": "1"
+            },
+            []
+          ],
+          [
+            {
+              "#bigint": "2"
+            },
+            []
+          ],
+          [
+            {
+              "#bigint": "3"
+            },
+            []
+          ]
+        ]
+      }
+    },
+    {
+      "#meta": {
+        "index": 1
+      },
+      "Authorities": {
+        "#set": [
+          {
+            "#bigint": "1"
+          },
+          {
+            "#bigint": "2"
+          },
+          {
+            "#bigint": "3"
+          }
+        ]
+      },
+      "CapSet": {
+        "#set": [
+          {
+            "#bigint": "1"
+          },
+          {
+            "#bigint": "2"
+          },
+          {
+            "#bigint": "3"
+          },
+          {
+            "#bigint": "4"
+          },
+          {
+            "#bigint": "5"
+          },
+          {
+            "#bigint": "6"
+          }
+        ]
+      },
+      "EpochMax": {
+        "#bigint": "4"
+      },
+      "allowed": {
+        "#map": [
+          [
+            {
+              "#bigint": "1"
+            },
+            {
+              "#set": []
+            }
+          ],
+          [
+            {
+              "#bigint": "2"
+            },
+            {
+              "#set": []
+            }
+          ],
+          [
+            {
+              "#bigint": "3"
+            },
+            {
+              "#set": []
+            }
+          ]
+        ]
+      },
+      "budget_checked": {
+        "#map": [
+          [
+            {
+              "#bigint": "1"
+            },
+            {
+              "#set": []
+            }
+          ],
+          [
+            {
+              "#bigint": "2"
+            },
+            {
+              "#set": []
+            }
+          ],
+          [
+            {
+              "#bigint": "3"
+            },
+            {
+              "#set": [
+                {
+                  "#bigint": "3"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      "clock": {
+        "#bigint": "1"
+      },
+      "receipt_log": {
+        "#map": [
+          [
+            {
+              "#bigint": "1"
+            },
+            []
+          ],
+          [
+            {
+              "#bigint": "2"
+            },
+            []
+          ],
+          [
+            {
+              "#bigint": "3"
+            },
+            []
+          ]
+        ]
+      }
+    },
+    {
+      "#meta": {
+        "index": 2
+      },
+      "Authorities": {
+        "#set": [
+          {
+            "#bigint": "1"
+          },
+          {
+            "#bigint": "2"
+          },
+          {
+            "#bigint": "3"
+          }
+        ]
+      },
+      "CapSet": {
+        "#set": [
+          {
+            "#bigint": "1"
+          },
+          {
+            "#bigint": "2"
+          },
+          {
+            "#bigint": "3"
+          },
+          {
+            "#bigint": "4"
+          },
+          {
+            "#bigint": "5"
+          },
+          {
+            "#bigint": "6"
+          }
+        ]
+      },
+      "EpochMax": {
+        "#bigint": "4"
+      },
+      "allowed": {
+        "#map": [
+          [
+            {
+              "#bigint": "1"
+            },
+            {
+              "#set": []
+            }
+          ],
+          [
+            {
+              "#bigint": "2"
+            },
+            {
+              "#set": []
+            }
+          ],
+          [
+            {
+              "#bigint": "3"
+            },
+            {
+              "#set": [
+                {
+                  "#bigint": "3"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      "budget_checked": {
+        "#map": [
+          [
+            {
+              "#bigint": "1"
+            },
+            {
+              "#set": []
+            }
+          ],
+          [
+            {
+              "#bigint": "2"
+            },
+            {
+              "#set": []
+            }
+          ],
+          [
+            {
+              "#bigint": "3"
+            },
+            {
+              "#set": [
+                {
+                  "#bigint": "3"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      "clock": {
+        "#bigint": "1"
+      },
+      "receipt_log": {
+        "#map": [
+          [
+            {
+              "#bigint": "1"
+            },
+            []
+          ],
+          [
+            {
+              "#bigint": "2"
+            },
+            []
+          ],
+          [
+            {
+              "#bigint": "3"
+            },
+            []
+          ]
+        ]
+      }
+    }
+  ]
+}

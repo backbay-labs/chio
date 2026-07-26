@@ -10,7 +10,8 @@ the new epoch.
 Each accepted reload can attach a post-swap watchdog. The default policy rolls
 back after 5 consecutive error-class verdicts within 60 seconds. Error
 classes include traps, fuel exhaustion, serialization failures, and other
-fail-closed backend errors.
+blocking-mode fail-closed backend errors. Advisory guards remain non-blocking
+at the decision layer, but their error classes still count toward rollback.
 
 When the threshold trips, the watchdog restores the prior loaded module,
 emits `chio.guard.reload.rolled_back`, and writes an incident directory:

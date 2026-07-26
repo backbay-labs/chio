@@ -151,6 +151,14 @@ impl<E: ExternalGuard> Guard for ScopedAsyncGuard<E> {
         self.block_on(self.adapter.evaluate(&call_ctx))
             .map(GuardDecision::from_verdict)
     }
+
+    fn revalidate_before_dispatch(&self, _ctx: &GuardContext) -> Result<(), KernelError> {
+        // External evaluation can consume rate-limit, cache, retry, and
+        // circuit-breaker state. The admission verdict is authoritative for
+        // this dispatch, so readiness revalidation must not call the adapter a
+        // second time.
+        Ok(())
+    }
 }
 
 fn wildcard_matches(pattern: &str, target: &str) -> bool {
@@ -203,7 +211,10 @@ mod tests {
         Keypair,
     };
     use chio_kernel::Verdict;
-    use std::sync::Arc;
+    use std::sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc,
+    };
 
     struct AllowExternalGuard;
 
@@ -237,6 +248,67 @@ mod tests {
         async fn eval(&self, _ctx: &GuardCallContext) -> Result<Verdict, ExternalGuardError> {
             Ok(Verdict::Deny)
         }
+    }
+
+    struct CountingExternalGuard {
+        calls: Arc<AtomicU64>,
+    }
+
+    #[async_trait]
+    impl ExternalGuard for CountingExternalGuard {
+        fn name(&self) -> &str {
+            "counting-external"
+        }
+
+        fn cache_key(&self, _ctx: &GuardCallContext) -> Option<String> {
+            None
+        }
+
+        async fn eval(&self, _ctx: &GuardCallContext) -> Result<Verdict, ExternalGuardError> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(Verdict::Allow)
+        }
+    }
+
+    fn revalidation_context_parts(
+        tool_name: &str,
+    ) -> (chio_kernel::ToolCallRequest, ChioScope, String, String) {
+        let keypair = Keypair::generate();
+        let scope = ChioScope::default();
+        let agent_id = keypair.public_key().to_hex();
+        let server_id = "srv-test".to_string();
+        let capability = CapabilityToken::sign(
+            CapabilityTokenBody {
+                id: format!("cap-{tool_name}"),
+                issuer: keypair.public_key(),
+                subject: keypair.public_key(),
+                scope: scope.clone(),
+                issued_at: 0,
+                expires_at: u64::MAX,
+                delegation_chain: Vec::new(),
+                aggregate_invocation_budget: None,
+            },
+            &keypair,
+        )
+        .expect("test capability should sign");
+        let request = chio_kernel::ToolCallRequest {
+            request_id: format!("req-{tool_name}"),
+            capability,
+            tool_name: tool_name.to_string(),
+            server_id: server_id.clone(),
+            agent_id: agent_id.clone(),
+            arguments: serde_json::json!({}),
+            dpop_proof: None,
+            execution_nonce: None,
+            governed_intent: None,
+            approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
+            model_metadata: None,
+            federated_origin_kernel_id: None,
+        };
+        (request, scope, agent_id, server_id)
     }
 
     #[tokio::test(flavor = "current_thread")]
@@ -311,5 +383,54 @@ mod tests {
             .expect("scoped guard should evaluate");
 
         assert_eq!(verdict, Verdict::Deny);
+    }
+
+    #[test]
+    fn scoped_external_guard_dispatch_revalidation_does_not_consume_adapter_twice() {
+        let calls = Arc::new(AtomicU64::new(0));
+        let adapter = AsyncGuardAdapter::builder(Arc::new(CountingExternalGuard {
+            calls: Arc::clone(&calls),
+        }))
+        .build();
+        let guard = ScopedAsyncGuard::new(adapter, vec!["send_*".to_string()]);
+        assert!(!guard.requires_dispatch_revalidation());
+
+        let (out_request, out_scope, out_agent, out_server) =
+            revalidation_context_parts("read_file");
+        let out_context = GuardContext {
+            request: &out_request,
+            scope: &out_scope,
+            agent_id: &out_agent,
+            server_id: &out_server,
+            session_filesystem_roots: None,
+            matched_grant_index: None,
+        };
+        guard
+            .revalidate_before_dispatch(&out_context)
+            .expect("out-of-scope external guard should not block dispatch");
+        assert_eq!(calls.load(Ordering::SeqCst), 0);
+
+        let (in_request, in_scope, in_agent, in_server) = revalidation_context_parts("send_email");
+        let in_context = GuardContext {
+            request: &in_request,
+            scope: &in_scope,
+            agent_id: &in_agent,
+            server_id: &in_server,
+            session_filesystem_roots: None,
+            matched_grant_index: None,
+        };
+        let decision = guard
+            .evaluate(&in_context)
+            .expect("in-scope external guard should evaluate once at admission");
+        assert_eq!(decision.verdict, Verdict::Allow);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+
+        guard
+            .revalidate_before_dispatch(&in_context)
+            .expect("readiness revalidation should preserve the admission verdict");
+        guard
+            .revalidate_required_before_dispatch(&in_context)
+            .expect("non-opted-in dispatch revalidation should be a no-op");
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
     }
 }

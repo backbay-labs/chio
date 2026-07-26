@@ -1,4 +1,4 @@
-use super::{RelayTrustedIssuersDocument, read_utf8_json_file, unix_now_ms, write_json_string};
+use super::{read_utf8_json_file, unix_now_ms, write_json_string, RelayTrustedIssuersDocument};
 use crate::CliError;
 use std::path::Path;
 
@@ -252,9 +252,8 @@ pub(crate) fn load_relay_peer_directory_bundle(
     path: &Path,
 ) -> Result<chio_pheromone_relay::PeerDirectoryBundleDocument, CliError> {
     let json = read_utf8_json_file(path, "Chio peer-directory bundle")?;
-    serde_json::from_str(&json).map_err(|error| {
-        CliError::cli_other_error(format!("Chio peer-directory bundle: {error}"))
-    })
+    serde_json::from_str(&json)
+        .map_err(|error| CliError::cli_other_error(format!("Chio peer-directory bundle: {error}")))
 }
 
 pub(crate) fn load_or_create_peer_directory_state(

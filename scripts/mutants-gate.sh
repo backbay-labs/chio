@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# Pass/fail workflow posture is governed separately by scripts/lane-gate.sh.
 # mutants-gate.sh - Decide advisory or blocking posture for cargo-mutants.
 #
 # Reads releases.toml at the repository root:

@@ -1,0 +1,2656 @@
+{
+  "aggregate": {
+    "activation_met": true,
+    "activation_ratio_percent": 96.97,
+    "activation_target_percent": 90.0,
+    "completion_ratio_percent": 96.97,
+    "global_activation_met": true,
+    "killed": 32,
+    "sampled": 33,
+    "score_denominator": 33,
+    "source_activation_met": true,
+    "survived": 0,
+    "timeout": 1,
+    "timeout_policy": "timeouts count as not killed",
+    "unviable": 0
+  },
+  "bounds": {
+    "per_mutant_timeout_secs": 300,
+    "positive_baseline_timeout_secs": 10800,
+    "specs": [
+      {
+        "invariant": "SafetyInv",
+        "length": 6,
+        "spec": "KernelTransitionCancelSafe"
+      },
+      {
+        "invariant": "SafetyInv",
+        "length": 6,
+        "spec": "MonotoneLogApalache"
+      },
+      {
+        "invariant": "SafetyInv",
+        "length": 8,
+        "spec": "PostAdmissionDropGuard"
+      },
+      {
+        "invariant": "SafetyInv",
+        "length": 6,
+        "spec": "ReceiptBeforeAllow"
+      },
+      {
+        "invariant": "SafetyInv",
+        "length": 6,
+        "spec": "RevocationCutCompleteness"
+      },
+      {
+        "invariant": "SafetyInv",
+        "length": 6,
+        "spec": "DelegationDepthBound"
+      },
+      {
+        "invariant": "SafetyInv",
+        "length": 6,
+        "spec": "RevocationPropagation"
+      }
+    ]
+  },
+  "ci_run": null,
+  "commands": [
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/positive-baselines/KernelTransitionCancelSafe/out",
+        "--run-dir=target/formal/spec-mutants/positive-baselines/KernelTransitionCancelSafe/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/positive-baselines/KernelTransitionCancelSafe/input/MCKernelTransitionCancelSafe.cfg",
+        "target/formal/spec-mutants/positive-baselines/KernelTransitionCancelSafe/input/KernelTransitionCancelSafe.tla"
+      ],
+      "exit_code": 0,
+      "kind": "clean-baseline",
+      "log_sha256": "aaba68447cbab8c1ff9a4e35c0148b5d75cb94865d6218a5ddb02a00a464e863",
+      "spec": "KernelTransitionCancelSafe",
+      "wall_secs": 58.678
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/positive-baselines/MonotoneLogApalache/out",
+        "--run-dir=target/formal/spec-mutants/positive-baselines/MonotoneLogApalache/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/positive-baselines/MonotoneLogApalache/input/MCMonotoneLogApalache.cfg",
+        "target/formal/spec-mutants/positive-baselines/MonotoneLogApalache/input/MonotoneLogApalache.tla"
+      ],
+      "exit_code": 0,
+      "kind": "clean-baseline",
+      "log_sha256": "951f0d7f4e6cbfa881726fa4e7503dab0c2a1113512f7f942c6799de5e9a98b8",
+      "spec": "MonotoneLogApalache",
+      "wall_secs": 5.817
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/positive-baselines/PostAdmissionDropGuard/out",
+        "--run-dir=target/formal/spec-mutants/positive-baselines/PostAdmissionDropGuard/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=8",
+        "--config=target/formal/spec-mutants/positive-baselines/PostAdmissionDropGuard/input/MCPostAdmissionDropGuard.cfg",
+        "target/formal/spec-mutants/positive-baselines/PostAdmissionDropGuard/input/PostAdmissionDropGuard.tla"
+      ],
+      "exit_code": 0,
+      "kind": "clean-baseline",
+      "log_sha256": "d2313bea2528136623d544ff2c65ff615652f69908ae708a585aeb2f1fa9b056",
+      "spec": "PostAdmissionDropGuard",
+      "wall_secs": 2644.538
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/positive-baselines/ReceiptBeforeAllow/out",
+        "--run-dir=target/formal/spec-mutants/positive-baselines/ReceiptBeforeAllow/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/positive-baselines/ReceiptBeforeAllow/input/MCReceiptBeforeAllow.cfg",
+        "target/formal/spec-mutants/positive-baselines/ReceiptBeforeAllow/input/ReceiptBeforeAllow.tla"
+      ],
+      "exit_code": 0,
+      "kind": "clean-baseline",
+      "log_sha256": "36f4b28f2d9a97eeea55c2efcdca909e4d64162108c82028845e59bcddf358f0",
+      "spec": "ReceiptBeforeAllow",
+      "wall_secs": 139.245
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/positive-baselines/RevocationCutCompleteness/out",
+        "--run-dir=target/formal/spec-mutants/positive-baselines/RevocationCutCompleteness/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/positive-baselines/RevocationCutCompleteness/input/MCRevocationCutCompleteness.cfg",
+        "target/formal/spec-mutants/positive-baselines/RevocationCutCompleteness/input/RevocationCutCompleteness.tla"
+      ],
+      "exit_code": 0,
+      "kind": "clean-baseline",
+      "log_sha256": "f0d0e0d8c03e37f3cf40d1d42b451b4359bed51302d97287029b236d2be913a3",
+      "spec": "RevocationCutCompleteness",
+      "wall_secs": 91.659
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/positive-baselines/DelegationDepthBound/out",
+        "--run-dir=target/formal/spec-mutants/positive-baselines/DelegationDepthBound/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/positive-baselines/DelegationDepthBound/input/MCDelegationDepthBound.cfg",
+        "target/formal/spec-mutants/positive-baselines/DelegationDepthBound/input/DelegationDepthBound.tla"
+      ],
+      "exit_code": 0,
+      "kind": "clean-baseline",
+      "log_sha256": "559f7f21e32dcf70cffcabf6b2efc94114fe6aa3aa697a69c6dbe250455b6559",
+      "spec": "DelegationDepthBound",
+      "wall_secs": 122.339
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/positive-baselines/RevocationPropagation/out",
+        "--run-dir=target/formal/spec-mutants/positive-baselines/RevocationPropagation/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/positive-baselines/RevocationPropagation/input/MCRevocationPropagation.cfg",
+        "target/formal/spec-mutants/positive-baselines/RevocationPropagation/input/RevocationPropagation.tla"
+      ],
+      "exit_code": 0,
+      "kind": "clean-baseline",
+      "log_sha256": "46533a2e85433e199fb8f4c1359f2ba88c994087c45dab13793389923211c4d6",
+      "spec": "RevocationPropagation",
+      "wall_secs": 6672.861
+    },
+    {
+      "argv": [
+        "bash",
+        "scripts/check-apalache-negative.sh"
+      ],
+      "exit_code": 0,
+      "log": "target/formal/spec-mutants/registered-negative.log",
+      "log_sha256": "d273af4002e7d68b83119c3e47427bc3d6c29f54cbe9c563acd4cbd7b6427022",
+      "wall_secs": 189.11
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/ce41607e01b0b0ef475b/out",
+        "--run-dir=target/formal/spec-mutants/generated/ce41607e01b0b0ef475b/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/generated/ce41607e01b0b0ef475b/input/MCKernelTransitionCancelSafe.cfg",
+        "target/formal/spec-mutants/generated/ce41607e01b0b0ef475b/input/KernelTransitionCancelSafe.tla"
+      ],
+      "mutant_id": "ce41607e01b0b0ef475b"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/9ebea0de55d3f520e674/out",
+        "--run-dir=target/formal/spec-mutants/generated/9ebea0de55d3f520e674/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/generated/9ebea0de55d3f520e674/input/MCKernelTransitionCancelSafe.cfg",
+        "target/formal/spec-mutants/generated/9ebea0de55d3f520e674/input/KernelTransitionCancelSafe.tla"
+      ],
+      "mutant_id": "9ebea0de55d3f520e674"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/0d2d53ec1ad297b3d1a1/out",
+        "--run-dir=target/formal/spec-mutants/generated/0d2d53ec1ad297b3d1a1/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/generated/0d2d53ec1ad297b3d1a1/input/MCKernelTransitionCancelSafe.cfg",
+        "target/formal/spec-mutants/generated/0d2d53ec1ad297b3d1a1/input/KernelTransitionCancelSafe.tla"
+      ],
+      "mutant_id": "0d2d53ec1ad297b3d1a1"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/c9686d655fb3c35cf935/out",
+        "--run-dir=target/formal/spec-mutants/generated/c9686d655fb3c35cf935/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/generated/c9686d655fb3c35cf935/input/MCMonotoneLogApalache.cfg",
+        "target/formal/spec-mutants/generated/c9686d655fb3c35cf935/input/MonotoneLogApalache.tla"
+      ],
+      "mutant_id": "c9686d655fb3c35cf935"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/bee96ca7485b230a5199/out",
+        "--run-dir=target/formal/spec-mutants/generated/bee96ca7485b230a5199/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/generated/bee96ca7485b230a5199/input/MCMonotoneLogApalache.cfg",
+        "target/formal/spec-mutants/generated/bee96ca7485b230a5199/input/MonotoneLogApalache.tla"
+      ],
+      "mutant_id": "bee96ca7485b230a5199"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/071ccc2a3ce528fa4e5b/out",
+        "--run-dir=target/formal/spec-mutants/generated/071ccc2a3ce528fa4e5b/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=8",
+        "--config=target/formal/spec-mutants/generated/071ccc2a3ce528fa4e5b/input/MCPostAdmissionDropGuard.cfg",
+        "target/formal/spec-mutants/generated/071ccc2a3ce528fa4e5b/input/PostAdmissionDropGuard.tla"
+      ],
+      "mutant_id": "071ccc2a3ce528fa4e5b"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/69f531719289b479b504/out",
+        "--run-dir=target/formal/spec-mutants/generated/69f531719289b479b504/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=8",
+        "--config=target/formal/spec-mutants/generated/69f531719289b479b504/input/MCPostAdmissionDropGuard.cfg",
+        "target/formal/spec-mutants/generated/69f531719289b479b504/input/PostAdmissionDropGuard.tla"
+      ],
+      "mutant_id": "69f531719289b479b504"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/b0a50f2b672556b1d05d/out",
+        "--run-dir=target/formal/spec-mutants/generated/b0a50f2b672556b1d05d/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=8",
+        "--config=target/formal/spec-mutants/generated/b0a50f2b672556b1d05d/input/MCPostAdmissionDropGuard.cfg",
+        "target/formal/spec-mutants/generated/b0a50f2b672556b1d05d/input/PostAdmissionDropGuard.tla"
+      ],
+      "mutant_id": "b0a50f2b672556b1d05d"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/5687c6dee5c2612fdfa4/out",
+        "--run-dir=target/formal/spec-mutants/generated/5687c6dee5c2612fdfa4/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=8",
+        "--config=target/formal/spec-mutants/generated/5687c6dee5c2612fdfa4/input/MCPostAdmissionDropGuard.cfg",
+        "target/formal/spec-mutants/generated/5687c6dee5c2612fdfa4/input/PostAdmissionDropGuard.tla"
+      ],
+      "mutant_id": "5687c6dee5c2612fdfa4"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/dff3bb365a98b3038124/out",
+        "--run-dir=target/formal/spec-mutants/generated/dff3bb365a98b3038124/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=8",
+        "--config=target/formal/spec-mutants/generated/dff3bb365a98b3038124/input/MCPostAdmissionDropGuard.cfg",
+        "target/formal/spec-mutants/generated/dff3bb365a98b3038124/input/PostAdmissionDropGuard.tla"
+      ],
+      "mutant_id": "dff3bb365a98b3038124"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/c33df45fcb89fbef4f78/out",
+        "--run-dir=target/formal/spec-mutants/generated/c33df45fcb89fbef4f78/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=8",
+        "--config=target/formal/spec-mutants/generated/c33df45fcb89fbef4f78/input/MCPostAdmissionDropGuard.cfg",
+        "target/formal/spec-mutants/generated/c33df45fcb89fbef4f78/input/PostAdmissionDropGuard.tla"
+      ],
+      "mutant_id": "c33df45fcb89fbef4f78"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/d6e4c13fc47b4959bec1/out",
+        "--run-dir=target/formal/spec-mutants/generated/d6e4c13fc47b4959bec1/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=8",
+        "--config=target/formal/spec-mutants/generated/d6e4c13fc47b4959bec1/input/MCPostAdmissionDropGuard.cfg",
+        "target/formal/spec-mutants/generated/d6e4c13fc47b4959bec1/input/PostAdmissionDropGuard.tla"
+      ],
+      "mutant_id": "d6e4c13fc47b4959bec1"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/7053657f639909b06876/out",
+        "--run-dir=target/formal/spec-mutants/generated/7053657f639909b06876/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=8",
+        "--config=target/formal/spec-mutants/generated/7053657f639909b06876/input/MCPostAdmissionDropGuard.cfg",
+        "target/formal/spec-mutants/generated/7053657f639909b06876/input/PostAdmissionDropGuard.tla"
+      ],
+      "mutant_id": "7053657f639909b06876"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/016c9b1d3d190e44c1e4/out",
+        "--run-dir=target/formal/spec-mutants/generated/016c9b1d3d190e44c1e4/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=8",
+        "--config=target/formal/spec-mutants/generated/016c9b1d3d190e44c1e4/input/MCPostAdmissionDropGuard.cfg",
+        "target/formal/spec-mutants/generated/016c9b1d3d190e44c1e4/input/PostAdmissionDropGuard.tla"
+      ],
+      "mutant_id": "016c9b1d3d190e44c1e4"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/9b4847a2e4b6ca117b29/out",
+        "--run-dir=target/formal/spec-mutants/generated/9b4847a2e4b6ca117b29/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=8",
+        "--config=target/formal/spec-mutants/generated/9b4847a2e4b6ca117b29/input/MCPostAdmissionDropGuard.cfg",
+        "target/formal/spec-mutants/generated/9b4847a2e4b6ca117b29/input/PostAdmissionDropGuard.tla"
+      ],
+      "mutant_id": "9b4847a2e4b6ca117b29"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/f2568c260c87b6dbcf8e/out",
+        "--run-dir=target/formal/spec-mutants/generated/f2568c260c87b6dbcf8e/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/generated/f2568c260c87b6dbcf8e/input/MCReceiptBeforeAllow.cfg",
+        "target/formal/spec-mutants/generated/f2568c260c87b6dbcf8e/input/ReceiptBeforeAllow.tla"
+      ],
+      "mutant_id": "f2568c260c87b6dbcf8e"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/4c6b8140da250108717a/out",
+        "--run-dir=target/formal/spec-mutants/generated/4c6b8140da250108717a/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/generated/4c6b8140da250108717a/input/MCReceiptBeforeAllow.cfg",
+        "target/formal/spec-mutants/generated/4c6b8140da250108717a/input/ReceiptBeforeAllow.tla"
+      ],
+      "mutant_id": "4c6b8140da250108717a"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/5388693e338f37b7da3a/out",
+        "--run-dir=target/formal/spec-mutants/generated/5388693e338f37b7da3a/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/generated/5388693e338f37b7da3a/input/MCReceiptBeforeAllow.cfg",
+        "target/formal/spec-mutants/generated/5388693e338f37b7da3a/input/ReceiptBeforeAllow.tla"
+      ],
+      "mutant_id": "5388693e338f37b7da3a"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/b283cf5dbb28192cdaa8/out",
+        "--run-dir=target/formal/spec-mutants/generated/b283cf5dbb28192cdaa8/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/generated/b283cf5dbb28192cdaa8/input/MCRevocationCutCompleteness.cfg",
+        "target/formal/spec-mutants/generated/b283cf5dbb28192cdaa8/input/RevocationCutCompleteness.tla"
+      ],
+      "mutant_id": "b283cf5dbb28192cdaa8"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/9e551d4220d9aa53deaa/out",
+        "--run-dir=target/formal/spec-mutants/generated/9e551d4220d9aa53deaa/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/generated/9e551d4220d9aa53deaa/input/MCRevocationCutCompleteness.cfg",
+        "target/formal/spec-mutants/generated/9e551d4220d9aa53deaa/input/RevocationCutCompleteness.tla"
+      ],
+      "mutant_id": "9e551d4220d9aa53deaa"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/74c5064d22fabd5af671/out",
+        "--run-dir=target/formal/spec-mutants/generated/74c5064d22fabd5af671/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/generated/74c5064d22fabd5af671/input/MCRevocationCutCompleteness.cfg",
+        "target/formal/spec-mutants/generated/74c5064d22fabd5af671/input/RevocationCutCompleteness.tla"
+      ],
+      "mutant_id": "74c5064d22fabd5af671"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/eaa9dadefb75e9d339e4/out",
+        "--run-dir=target/formal/spec-mutants/generated/eaa9dadefb75e9d339e4/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/generated/eaa9dadefb75e9d339e4/input/MCDelegationDepthBound.cfg",
+        "target/formal/spec-mutants/generated/eaa9dadefb75e9d339e4/input/DelegationDepthBound.tla"
+      ],
+      "mutant_id": "eaa9dadefb75e9d339e4"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/b613ba87bfb2225967f3/out",
+        "--run-dir=target/formal/spec-mutants/generated/b613ba87bfb2225967f3/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/generated/b613ba87bfb2225967f3/input/MCDelegationDepthBound.cfg",
+        "target/formal/spec-mutants/generated/b613ba87bfb2225967f3/input/DelegationDepthBound.tla"
+      ],
+      "mutant_id": "b613ba87bfb2225967f3"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/738cd1597dd6878ab98a/out",
+        "--run-dir=target/formal/spec-mutants/generated/738cd1597dd6878ab98a/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/generated/738cd1597dd6878ab98a/input/MCDelegationDepthBound.cfg",
+        "target/formal/spec-mutants/generated/738cd1597dd6878ab98a/input/DelegationDepthBound.tla"
+      ],
+      "mutant_id": "738cd1597dd6878ab98a"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/ffe0e44014b33abc872a/out",
+        "--run-dir=target/formal/spec-mutants/generated/ffe0e44014b33abc872a/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/generated/ffe0e44014b33abc872a/input/MCDelegationDepthBound.cfg",
+        "target/formal/spec-mutants/generated/ffe0e44014b33abc872a/input/DelegationDepthBound.tla"
+      ],
+      "mutant_id": "ffe0e44014b33abc872a"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/9fa18afb3adf02964aa9/out",
+        "--run-dir=target/formal/spec-mutants/generated/9fa18afb3adf02964aa9/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/generated/9fa18afb3adf02964aa9/input/MCDelegationDepthBound.cfg",
+        "target/formal/spec-mutants/generated/9fa18afb3adf02964aa9/input/DelegationDepthBound.tla"
+      ],
+      "mutant_id": "9fa18afb3adf02964aa9"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/97df4f528cd2a2780ba0/out",
+        "--run-dir=target/formal/spec-mutants/generated/97df4f528cd2a2780ba0/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/generated/97df4f528cd2a2780ba0/input/MCRevocationPropagation.cfg",
+        "target/formal/spec-mutants/generated/97df4f528cd2a2780ba0/input/RevocationPropagation.tla"
+      ],
+      "mutant_id": "97df4f528cd2a2780ba0"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/989f13d2e24e76f3ef58/out",
+        "--run-dir=target/formal/spec-mutants/generated/989f13d2e24e76f3ef58/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/generated/989f13d2e24e76f3ef58/input/MCRevocationPropagation.cfg",
+        "target/formal/spec-mutants/generated/989f13d2e24e76f3ef58/input/RevocationPropagation.tla"
+      ],
+      "mutant_id": "989f13d2e24e76f3ef58"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/10a4426cd3ce2230021a/out",
+        "--run-dir=target/formal/spec-mutants/generated/10a4426cd3ce2230021a/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/generated/10a4426cd3ce2230021a/input/MCRevocationPropagation.cfg",
+        "target/formal/spec-mutants/generated/10a4426cd3ce2230021a/input/RevocationPropagation.tla"
+      ],
+      "mutant_id": "10a4426cd3ce2230021a"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/715532b6a06805a98b93/out",
+        "--run-dir=target/formal/spec-mutants/generated/715532b6a06805a98b93/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/generated/715532b6a06805a98b93/input/MCRevocationPropagation.cfg",
+        "target/formal/spec-mutants/generated/715532b6a06805a98b93/input/RevocationPropagation.tla"
+      ],
+      "mutant_id": "715532b6a06805a98b93"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/45a048d221bb5663a5b0/out",
+        "--run-dir=target/formal/spec-mutants/generated/45a048d221bb5663a5b0/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/generated/45a048d221bb5663a5b0/input/MCRevocationPropagation.cfg",
+        "target/formal/spec-mutants/generated/45a048d221bb5663a5b0/input/RevocationPropagation.tla"
+      ],
+      "mutant_id": "45a048d221bb5663a5b0"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/11ae50b041e7ab094bd8/out",
+        "--run-dir=target/formal/spec-mutants/generated/11ae50b041e7ab094bd8/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/generated/11ae50b041e7ab094bd8/input/MCRevocationPropagation.cfg",
+        "target/formal/spec-mutants/generated/11ae50b041e7ab094bd8/input/RevocationPropagation.tla"
+      ],
+      "mutant_id": "11ae50b041e7ab094bd8"
+    },
+    {
+      "argv": [
+        "/home/connor/.local/bin/apalache-mc",
+        "--out-dir=target/formal/spec-mutants/generated/06882d6be46449025864/out",
+        "--run-dir=target/formal/spec-mutants/generated/06882d6be46449025864/run",
+        "check",
+        "--no-deadlock",
+        "--output-traces",
+        "--length=6",
+        "--config=target/formal/spec-mutants/generated/06882d6be46449025864/input/MCRevocationPropagation.cfg",
+        "target/formal/spec-mutants/generated/06882d6be46449025864/input/RevocationPropagation.tla"
+      ],
+      "mutant_id": "06882d6be46449025864"
+    }
+  ],
+  "commit": "d292f14df1c493873199f4f9d969ade00472ff28",
+  "enumerated": 33,
+  "full_cycle": true,
+  "inputs": [
+    {
+      "path": "crates/kernel/chio-kernel/src/kernel/delegation.rs",
+      "sha256": "198816972f2c2c687720c6dc70aadc211c1c49286ff996447dc8001f248b6b7f"
+    },
+    {
+      "path": "crates/kernel/chio-kernel/src/kernel/tests/budget.rs",
+      "sha256": "0f3959ade881ac345da61a4d6e7af57467634310b961ce40f059166f69c70612"
+    },
+    {
+      "path": "crates/kernel/chio-kernel/src/kernel/tests/chio_runtime.rs",
+      "sha256": "3de6ff7e48329dfe8469eef775e12038b24f9d6765029794683537bd99c265de"
+    },
+    {
+      "path": "crates/tooling/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs",
+      "sha256": "0572f40fa21468e603a88b767ab3a8225a4cfd7a88d6f841422b6037e6dfd719"
+    },
+    {
+      "path": "crates/trust/chio-federation/tests/distributed_revocation_refinement.rs",
+      "sha256": "59da3e7b78e64fc67ce2195f2dff4cad92b9b4ecac9e576a0b2d57a688899f0c"
+    },
+    {
+      "path": "formal/MAPPING.md",
+      "sha256": "b0bfcdb595e1ac71da431b2c16b36dd5bd8625100e085f560074ed86045eb881"
+    },
+    {
+      "path": "formal/apalache/Common.tla",
+      "sha256": "4a82138d298b02577c8d17759939a97e173c0b483a52ce497636e1647de20ae4"
+    },
+    {
+      "path": "formal/apalache/KernelTransitionCancelSafe.tla",
+      "sha256": "8386a2e468e1d8407909e1da1778a80436477f223f8962881dfb6338877cd0ad"
+    },
+    {
+      "path": "formal/apalache/MCKernelTransitionCancelSafe.cfg",
+      "sha256": "51a0e07e246317382f2922ccf560d1e5ebe0c14f002a6220e2eb1b88d79677fc"
+    },
+    {
+      "path": "formal/apalache/MCMonotoneLogApalache.cfg",
+      "sha256": "51a0e07e246317382f2922ccf560d1e5ebe0c14f002a6220e2eb1b88d79677fc"
+    },
+    {
+      "path": "formal/apalache/MCPostAdmissionDropGuard.cfg",
+      "sha256": "cf63fd3bfae577be5a99f70a741c084ef628a5418da65f96a70221050d638963"
+    },
+    {
+      "path": "formal/apalache/MCReceiptBeforeAllow.cfg",
+      "sha256": "71fb93fb3263978fb8568ba2ab3cc6211edf453fc640386acbd205c1467a86e7"
+    },
+    {
+      "path": "formal/apalache/MCRevocationCutCompleteness.cfg",
+      "sha256": "51a0e07e246317382f2922ccf560d1e5ebe0c14f002a6220e2eb1b88d79677fc"
+    },
+    {
+      "path": "formal/apalache/MonotoneLogApalache.tla",
+      "sha256": "b77d34434a091b8a991841500daf6a42ca3f1817f440c9e86f8769fadf074759"
+    },
+    {
+      "path": "formal/apalache/PostAdmissionDropGuard.tla",
+      "sha256": "1a56b327fa2c6a444722b8810a03c0d33e4af93ca96e032c5c9553bafcb5ace7"
+    },
+    {
+      "path": "formal/apalache/ReceiptBeforeAllow.tla",
+      "sha256": "24e009c411eee6746cb9b7c30e430bddd5e6ae7f8f3ed0996e0793981cd36d2a"
+    },
+    {
+      "path": "formal/apalache/RevocationCutCompleteness.tla",
+      "sha256": "0cfb9ccdc7fe7d9daf7cab2f73fa39b423d86a0f6793c75d4d332e40f4f602a9"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/Common.tla",
+      "sha256": "4a82138d298b02577c8d17759939a97e173c0b483a52ce497636e1647de20ae4"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/DistributedRevocationEvaluationCountWitness.tla",
+      "sha256": "e1dc31f58adaf4293e4c3b3846f5c5a3ee0284012f03fa91368476f1321fbf66"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/DistributedRevocationFreshnessBroken.tla",
+      "sha256": "b61a9c85afcd59765544738ce3162e11232fcf41cad214897f889cce255808cf"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/DistributedRevocationPartitionBroken.tla",
+      "sha256": "e8a2f230cf967a38eef7cf1f72843d0447671f09645ec63a24e1161fb085d1c8"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/DistributedRevocationRevocationGateBroken.tla",
+      "sha256": "f1477ae9c2d85fa96c6b4a491024ed39dcb771f59d66f94e86a283cfb9eb7132"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/DistributedRevocationSignerPinBroken.tla",
+      "sha256": "ef281937ebe8ee20dd03a62a81efb152255a8216dab40715f15f97dafdf44e49"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/DistributedRevocationSkewBroken.tla",
+      "sha256": "ea8bb876c07c5608b7aefb0478c2a2445f0c0f40f734070f8ad2d6cc5fe5a7f5"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/DropGuardChildOversubscriptionBroken.tla",
+      "sha256": "1bbc571fde078c8491e85751cf7c9f5409133ee6ecfe0b21ef9b806d2762dd87"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/DropGuardDiscardChildBufferBroken.tla",
+      "sha256": "be5a2cbfafccf9954c303ead89a022601caf007b0b5ed4e3f0934163b7688151"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/DropGuardNoFaultReceiptBroken.tla",
+      "sha256": "ba62f8bb653bac6629585dac98b53e46147d2f9bf91ea8e12bac6d9826636265"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/DropGuardNoRetainOnPostInvocationDenyBroken.tla",
+      "sha256": "e9875663b0a8d00177afb2623f2b87d66c0e5b1c1e6ef632582b80f89d49ffa3"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/DropGuardReleaseOnIncompleteStreamBroken.tla",
+      "sha256": "d04fa8ee2c29687874c18b2d949254236f8aff0a9d0a45e77758d78bc4bc99b1"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/DropGuardReleaseOnPostDispatchAbortBroken.tla",
+      "sha256": "df0903741860ed6f24397c79df3fa0753c5e81a5cc77086c471fd5d23f6f6e8d"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/DropGuardSkipChildBudgetReleaseBroken.tla",
+      "sha256": "8a4dac0e5aee07e362cd96dec4c97d20f323c6d14fa24eca5077d1ef4838b627"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/DropGuardSkipInvocationReversalBroken.tla",
+      "sha256": "92d32f4f948c6a8b5b770cf06b701f8c018e8b650ad41771ccfea10d02eb70fc"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/MCDistributedRevocationEvaluationCountWitness.cfg",
+      "sha256": "8db3dd39ebb645f2ba5e751fea2d9839dcf37129b5683fdcc8c949fd20ffd558"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/MCDistributedRevocationFreshnessBroken.cfg",
+      "sha256": "e6f40b6b01932aadb0eea08e834e5cd227aed78df092e8102d3dab21a02a4096"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/MCDistributedRevocationPartitionBroken.cfg",
+      "sha256": "bfe5f89facd248a511dc46f22d3a61dd65f9fd8bf567365bca4fef06399c51e4"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/MCDistributedRevocationRevocationGateBroken.cfg",
+      "sha256": "a949f880ed5b63c98aaf416881f55ed45dd79777432fed51171217d22d87ee50"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/MCDistributedRevocationSignerPinBroken.cfg",
+      "sha256": "55f4667886543fc7d816dfab2268f55b4e550517bab94960da73a58303666305"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/MCDistributedRevocationSkewBroken.cfg",
+      "sha256": "efbd116af9ddb7c96351dcd75ce61045a77c4a2022cdb9442fc7febd9019f2bf"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/MCDropGuardChildOversubscriptionBroken.cfg",
+      "sha256": "5d1f48d1af4ba8c649049c565a5be09b1b63bfea9f41f998c0eee0e8bf82f720"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/MCDropGuardDiscardChildBufferBroken.cfg",
+      "sha256": "badceaebf0d59fa71b5cf6d2bb59d8ba9506a1c88e39650b2d025fcd38f534bf"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/MCDropGuardNoFaultReceiptBroken.cfg",
+      "sha256": "78c1f34ff7d8a2c308cd8e0723cc39284753995b1915b4c5df1fb4557751d5ca"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/MCDropGuardNoRetainOnPostInvocationDenyBroken.cfg",
+      "sha256": "1de2dcc3f7eebe89d27cc60fde9d82d80b715c509461f4e8b4a117f08134f1ec"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/MCDropGuardReleaseOnIncompleteStreamBroken.cfg",
+      "sha256": "ab9e0f7e8a163932c5419c0bba6d48b3b2080d66c8294a343dc1a0f2a3c25b92"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/MCDropGuardReleaseOnPostDispatchAbortBroken.cfg",
+      "sha256": "cad378ed9be343ac65d2f59be61ff92e8aad8baa70d9e5f4817512be9dea5abc"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/MCDropGuardSkipChildBudgetReleaseBroken.cfg",
+      "sha256": "04336598bebfa5c1a961584ded1b22c0735ba70a943250f62b20150cc4813fc4"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/MCDropGuardSkipInvocationReversalBroken.cfg",
+      "sha256": "ebcbd674fb0697fd0c3926386f7f813c12101598fc9a3183cbc1585423f8fa32"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/MCReceiptBeforeAllowBroken.cfg",
+      "sha256": "3e23a139ce2fdae0376cb62c35c98350125d673d8da2e8dfdaa82bfe959854a4"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/MCRevocationCutCompletenessBroken.cfg",
+      "sha256": "83d51064e2a31aab461c5f47e78ad924e65d6c450884f01c48071ae72d09a717"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/REGISTRY.toml",
+      "sha256": "c91b8d60a13a69244492d2b9005bc18cf0e030999699205f5cf163e55bdbb81f"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/ReceiptBeforeAllowBroken.tla",
+      "sha256": "b7e376d87e4190165778cc15907414d9ab68485637a47a3d049ec4400fc48381"
+    },
+    {
+      "path": "formal/apalache/_negative_tests/RevocationCutCompletenessBroken.tla",
+      "sha256": "c44beb693e3e91cf16978ebcdfeb5ae6e4114cc1bc03400934ed0a567198e67c"
+    },
+    {
+      "path": "formal/apalache/spec-mutants-allowlist.toml",
+      "sha256": "508f200c245c2debad876795d8e9a9f0803433853f15027516f260b54e33ed6e"
+    },
+    {
+      "path": "formal/tla/DelegationDepthBound.tla",
+      "sha256": "69c28ca6b16ef3b2174235347d8bb2aab40fce4cbb79123e4512f363b9717be9"
+    },
+    {
+      "path": "formal/tla/DistributedRevocation.tla",
+      "sha256": "59110faa37eeeaac45b9b206594ae5ef39f94404323a377967012431489b8aa7"
+    },
+    {
+      "path": "formal/tla/DistributedRevocationTemporal.tla",
+      "sha256": "604bdcd34f505b11c6aa9819cc73193f4e455b4d77227d22d6e79e07b48cc2e1"
+    },
+    {
+      "path": "formal/tla/DistributedRevocationTemporalRefinement.tla",
+      "sha256": "c5e1219daa9949723f99d2f6945a5ae8319f6daa0e1cfc21f334bce26afeb0d9"
+    },
+    {
+      "path": "formal/tla/DistributedRevocationTemporalWitness.tla",
+      "sha256": "dc137710d74f8e7280061d31f129437cc3b2947857de45da7f688158f376128e"
+    },
+    {
+      "path": "formal/tla/MCDelegationDepthBound.cfg",
+      "sha256": "147ac36dc8b9a6804e64ff78cae40f09ec8cdf225347de4e0adb059f2074f099"
+    },
+    {
+      "path": "formal/tla/MCRevocationPropagation.cfg",
+      "sha256": "c71faf1f2d8f5646890b5a7cc2e4264f4aae9518d953fc3393b78a7335a74355"
+    },
+    {
+      "path": "formal/tla/RevocationPropagation.tla",
+      "sha256": "fe07c01f27ac7a76b657e3a1a56d4028545677c4458e34c9daecadbb64ead24d"
+    },
+    {
+      "path": "scripts/check-apalache-negative.sh",
+      "sha256": "9441ad16cab3d4edf8c92d542920a60691217f09b65b9be70793b5fbcf24e4a5"
+    },
+    {
+      "path": "scripts/lib/apalache_evidence.py",
+      "sha256": "30e037d7b6d3fc3ae8a274a22bad1fb11ff10ebe8875221c65a4d4be734cba6a"
+    },
+    {
+      "path": "scripts/spec-mutants.py",
+      "sha256": "cf60e8f94709210eb0c8995e63dc524d4d5d173eda5954ea52fe763bff5edeed"
+    },
+    {
+      "path": "tools/install-apalache.sh",
+      "sha256": "3f50745f56521685d30d18669bddb64a4bff060b40c121b30cdbf61fe26f4cc5"
+    }
+  ],
+  "inventory": [
+    {
+      "action": "BeginCancel",
+      "cfg": "formal/apalache/MCKernelTransitionCancelSafe.cfg",
+      "classification": "post-state-corruption",
+      "column": 8,
+      "id": "ce41607e01b0b0ef475b",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 82,
+      "operator": "replace_expression",
+      "original": "snapshot_budget' = budget_used",
+      "path": "formal/apalache/KernelTransitionCancelSafe.tla",
+      "rationale": "A cancellation snapshot must retain nonzero committed budget state.",
+      "replacement": "snapshot_budget' = [a \\in Authorities |-> [c \\in CapSet |-> 0]]",
+      "source_sha256": "8386a2e468e1d8407909e1da1778a80436477f223f8962881dfb6338877cd0ad",
+      "spec": "KernelTransitionCancelSafe"
+    },
+    {
+      "action": "BeginCancel",
+      "cfg": "formal/apalache/MCKernelTransitionCancelSafe.cfg",
+      "classification": "post-state-corruption",
+      "column": 8,
+      "id": "9ebea0de55d3f520e674",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 83,
+      "operator": "replace_expression",
+      "original": "snapshot_receipts' = receipt_count",
+      "path": "formal/apalache/KernelTransitionCancelSafe.tla",
+      "rationale": "A cancellation snapshot must retain nonzero receipt state.",
+      "replacement": "snapshot_receipts' = [a \\in Authorities |-> 0]",
+      "source_sha256": "8386a2e468e1d8407909e1da1778a80436477f223f8962881dfb6338877cd0ad",
+      "spec": "KernelTransitionCancelSafe"
+    },
+    {
+      "action": "Commit",
+      "cfg": "formal/apalache/MCKernelTransitionCancelSafe.cfg",
+      "classification": "guard-weakening",
+      "column": 1,
+      "id": "0d2d53ec1ad297b3d1a1",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 95,
+      "operator": "delete_conjunct",
+      "original": "/\\ cancel_pending = FALSE",
+      "path": "formal/apalache/KernelTransitionCancelSafe.tla",
+      "rationale": "A commit must not mutate budget or receipts while cancellation is pending.",
+      "replacement": "",
+      "source_sha256": "8386a2e468e1d8407909e1da1778a80436477f223f8962881dfb6338877cd0ad",
+      "spec": "KernelTransitionCancelSafe"
+    },
+    {
+      "action": "Evaluate",
+      "cfg": "formal/apalache/MCMonotoneLogApalache.cfg",
+      "classification": "post-state-corruption",
+      "column": 22,
+      "id": "c9686d655fb3c35cf935",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 54,
+      "operator": "replace_expression",
+      "original": "t |-> clock",
+      "path": "formal/apalache/MonotoneLogApalache.tla",
+      "rationale": "Repeated receipts must not reuse a fixed timestamp.",
+      "replacement": "t |-> 1",
+      "source_sha256": "b77d34434a091b8a991841500daf6a42ca3f1817f440c9e86f8769fadf074759",
+      "spec": "MonotoneLogApalache"
+    },
+    {
+      "action": "Evaluate",
+      "cfg": "formal/apalache/MCMonotoneLogApalache.cfg",
+      "classification": "post-state-corruption",
+      "column": 8,
+      "id": "bee96ca7485b230a5199",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 56,
+      "operator": "replace_expression",
+      "original": "clock' = clock + 1",
+      "path": "formal/apalache/MonotoneLogApalache.tla",
+      "rationale": "Receipt creation must advance the logical clock.",
+      "replacement": "clock' = clock",
+      "source_sha256": "b77d34434a091b8a991841500daf6a42ca3f1817f440c9e86f8769fadf074759",
+      "spec": "MonotoneLogApalache"
+    },
+    {
+      "action": "Admit",
+      "cfg": "formal/apalache/MCPostAdmissionDropGuard.cfg",
+      "classification": "guard-weakening",
+      "column": 20,
+      "id": "071ccc2a3ce528fa4e5b",
+      "invariant": "SafetyInv",
+      "length": 8,
+      "line": 365,
+      "operator": "replace_expression",
+      "original": "ActiveChildShares < ChildMax",
+      "path": "formal/apalache/PostAdmissionDropGuard.tla",
+      "rationale": "Admitting a child at capacity oversubscribes the parent reservation.",
+      "replacement": "ActiveChildShares <= ChildMax",
+      "source_sha256": "1a56b327fa2c6a444722b8810a03c0d33e4af93ca96e032c5c9553bafcb5ace7",
+      "spec": "PostAdmissionDropGuard"
+    },
+    {
+      "action": "CompleteOk",
+      "cfg": "formal/apalache/MCPostAdmissionDropGuard.cfg",
+      "classification": "guard-weakening",
+      "column": 1,
+      "id": "69f531719289b479b504",
+      "invariant": "SafetyInv",
+      "length": 8,
+      "line": 414,
+      "operator": "delete_conjunct",
+      "original": "/\\ phase[i] \\in {\"dispatch_started\", \"streaming\"}",
+      "path": "formal/apalache/PostAdmissionDropGuard.tla",
+      "rationale": "Successful completion requires a started dispatch.",
+      "replacement": "",
+      "source_sha256": "1a56b327fa2c6a444722b8810a03c0d33e4af93ca96e032c5c9553bafcb5ace7",
+      "spec": "PostAdmissionDropGuard"
+    },
+    {
+      "action": "DropPostDispatch",
+      "cfg": "formal/apalache/MCPostAdmissionDropGuard.cfg",
+      "classification": "guard-weakening",
+      "column": 1,
+      "id": "b0a50f2b672556b1d05d",
+      "invariant": "SafetyInv",
+      "length": 8,
+      "line": 559,
+      "operator": "delete_conjunct",
+      "original": "/\\ phase[i] \\in {\"dispatch_started\", \"streaming\"}",
+      "path": "formal/apalache/PostAdmissionDropGuard.tla",
+      "rationale": "Post-dispatch cleanup requires a started dispatch.",
+      "replacement": "",
+      "source_sha256": "1a56b327fa2c6a444722b8810a03c0d33e4af93ca96e032c5c9553bafcb5ace7",
+      "spec": "PostAdmissionDropGuard"
+    },
+    {
+      "action": "DropPostDispatch",
+      "cfg": "formal/apalache/MCPostAdmissionDropGuard.cfg",
+      "classification": "post-state-corruption",
+      "column": 17,
+      "id": "5687c6dee5c2612fdfa4",
+      "invariant": "SafetyInv",
+      "length": 8,
+      "line": 579,
+      "operator": "replace_expression",
+      "original": "flushed_count = child_total[i]",
+      "path": "formal/apalache/PostAdmissionDropGuard.tla",
+      "rationale": "The parent receipt may be written only after every child receipt is flushed.",
+      "replacement": "flushed_count /= child_total[i]",
+      "source_sha256": "1a56b327fa2c6a444722b8810a03c0d33e4af93ca96e032c5c9553bafcb5ace7",
+      "spec": "PostAdmissionDropGuard"
+    },
+    {
+      "action": "DropPreDispatch",
+      "cfg": "formal/apalache/MCPostAdmissionDropGuard.cfg",
+      "classification": "guard-weakening",
+      "column": 1,
+      "id": "dff3bb365a98b3038124",
+      "invariant": "SafetyInv",
+      "length": 8,
+      "line": 526,
+      "operator": "delete_conjunct",
+      "original": "/\\ phase[i] = \"admitted\"",
+      "path": "formal/apalache/PostAdmissionDropGuard.tla",
+      "rationale": "Pre-dispatch cleanup may unwind only an admitted invocation.",
+      "replacement": "",
+      "source_sha256": "1a56b327fa2c6a444722b8810a03c0d33e4af93ca96e032c5c9553bafcb5ace7",
+      "spec": "PostAdmissionDropGuard"
+    },
+    {
+      "action": "DropPreDispatch",
+      "cfg": "formal/apalache/MCPostAdmissionDropGuard.cfg",
+      "classification": "guard-weakening",
+      "column": 1,
+      "id": "c33df45fcb89fbef4f78",
+      "invariant": "SafetyInv",
+      "length": 8,
+      "line": 528,
+      "operator": "delete_conjunct",
+      "original": "/\\ failed \\subseteq admitted_resources[i]",
+      "path": "formal/apalache/PostAdmissionDropGuard.tla",
+      "rationale": "Cleanup failures must be limited to resources admitted for the invocation.",
+      "replacement": "",
+      "source_sha256": "1a56b327fa2c6a444722b8810a03c0d33e4af93ca96e032c5c9553bafcb5ace7",
+      "spec": "PostAdmissionDropGuard"
+    },
+    {
+      "action": "IncompleteStream",
+      "cfg": "formal/apalache/MCPostAdmissionDropGuard.cfg",
+      "classification": "guard-weakening",
+      "column": 1,
+      "id": "d6e4c13fc47b4959bec1",
+      "invariant": "SafetyInv",
+      "length": 8,
+      "line": 461,
+      "operator": "delete_conjunct",
+      "original": "/\\ phase[i] \\in {\"dispatch_started\", \"streaming\"}",
+      "path": "formal/apalache/PostAdmissionDropGuard.tla",
+      "rationale": "Incomplete-stream cleanup requires a started dispatch.",
+      "replacement": "",
+      "source_sha256": "1a56b327fa2c6a444722b8810a03c0d33e4af93ca96e032c5c9553bafcb5ace7",
+      "spec": "PostAdmissionDropGuard"
+    },
+    {
+      "action": "ServerErrorPostDispatch",
+      "cfg": "formal/apalache/MCPostAdmissionDropGuard.cfg",
+      "classification": "post-state-corruption",
+      "column": 56,
+      "id": "7053657f639909b06876",
+      "invariant": "SafetyInv",
+      "length": 8,
+      "line": 497,
+      "operator": "replace_expression",
+      "original": "ResolvePostDispatch(@)",
+      "path": "formal/apalache/PostAdmissionDropGuard.tla",
+      "rationale": "An outcome-unknown server error must retain its monetary hold.",
+      "replacement": "ResolveReturnedOutput(@, error_kind)",
+      "source_sha256": "1a56b327fa2c6a444722b8810a03c0d33e4af93ca96e032c5c9553bafcb5ace7",
+      "spec": "PostAdmissionDropGuard"
+    },
+    {
+      "action": "StartDispatch",
+      "cfg": "formal/apalache/MCPostAdmissionDropGuard.cfg",
+      "classification": "guard-weakening",
+      "column": 1,
+      "id": "016c9b1d3d190e44c1e4",
+      "invariant": "SafetyInv",
+      "length": 8,
+      "line": 390,
+      "operator": "delete_conjunct",
+      "original": "/\\ phase[i] = \"admitted\"",
+      "path": "formal/apalache/PostAdmissionDropGuard.tla",
+      "rationale": "Dispatch may start only from an admitted invocation.",
+      "replacement": "",
+      "source_sha256": "1a56b327fa2c6a444722b8810a03c0d33e4af93ca96e032c5c9553bafcb5ace7",
+      "spec": "PostAdmissionDropGuard"
+    },
+    {
+      "action": "StreamChunk",
+      "cfg": "formal/apalache/MCPostAdmissionDropGuard.cfg",
+      "classification": "guard-weakening",
+      "column": 8,
+      "id": "9b4847a2e4b6ca117b29",
+      "invariant": "SafetyInv",
+      "length": 8,
+      "line": 401,
+      "operator": "replace_expression",
+      "original": "child_buf[i] < ChildMax",
+      "path": "formal/apalache/PostAdmissionDropGuard.tla",
+      "rationale": "A buffered child count may not exceed the configured capacity.",
+      "replacement": "child_buf[i] <= ChildMax",
+      "source_sha256": "1a56b327fa2c6a444722b8810a03c0d33e4af93ca96e032c5c9553bafcb5ace7",
+      "spec": "PostAdmissionDropGuard"
+    },
+    {
+      "action": "PersistAllowReceipt",
+      "cfg": "formal/apalache/MCReceiptBeforeAllow.cfg",
+      "classification": "guard-weakening",
+      "column": 1,
+      "id": "f2568c260c87b6dbcf8e",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 110,
+      "operator": "delete_conjunct",
+      "original": "/\\ CallDecision(r, c) \\in budget_checked[a]",
+      "path": "formal/apalache/ReceiptBeforeAllow.tla",
+      "rationale": "An allow receipt must be backed by the matching call budget check.",
+      "replacement": "",
+      "source_sha256": "24e009c411eee6746cb9b7c30e430bddd5e6ae7f8f3ed0996e0793981cd36d2a",
+      "spec": "ReceiptBeforeAllow"
+    },
+    {
+      "action": "PublishAllow",
+      "cfg": "formal/apalache/MCReceiptBeforeAllow.cfg",
+      "classification": "historical-regression",
+      "column": 1,
+      "id": "4c6b8140da250108717a",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 126,
+      "operator": "delete_conjunct",
+      "original": "/\\ HasAllowReceipt(a, c, r)",
+      "path": "formal/apalache/ReceiptBeforeAllow.tla",
+      "rationale": "Reproduces registered negative variant receipt-before-allow-guard.",
+      "registered_seed": "receipt-before-allow-guard",
+      "replacement": "",
+      "source_sha256": "24e009c411eee6746cb9b7c30e430bddd5e6ae7f8f3ed0996e0793981cd36d2a",
+      "spec": "ReceiptBeforeAllow"
+    },
+    {
+      "action": "PublishAllow",
+      "cfg": "formal/apalache/MCReceiptBeforeAllow.cfg",
+      "classification": "post-state-corruption",
+      "column": 11,
+      "id": "5388693e338f37b7da3a",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 128,
+      "operator": "replace_expression",
+      "original": "@ \\cup {CallDecision(r, c)}",
+      "path": "formal/apalache/ReceiptBeforeAllow.tla",
+      "rationale": "Publishing one allow must not authorize unrelated calls or capabilities.",
+      "replacement": "@ \\cup CallDecisions",
+      "source_sha256": "24e009c411eee6746cb9b7c30e430bddd5e6ae7f8f3ed0996e0793981cd36d2a",
+      "spec": "ReceiptBeforeAllow"
+    },
+    {
+      "action": "Delegate",
+      "cfg": "formal/apalache/MCRevocationCutCompleteness.cfg",
+      "classification": "post-state-corruption",
+      "column": 13,
+      "id": "b283cf5dbb28192cdaa8",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 109,
+      "operator": "replace_expression",
+      "original": "THEN descendants[ancestor] \\cup {child}",
+      "path": "formal/apalache/RevocationCutCompleteness.tla",
+      "rationale": "Every direct parent edge must appear in the descendant closure.",
+      "replacement": "THEN descendants[ancestor]",
+      "source_sha256": "0cfb9ccdc7fe7d9daf7cab2f73fa39b423d86a0f6793c75d4d332e40f4f602a9",
+      "spec": "RevocationCutCompleteness"
+    },
+    {
+      "action": "Revoke",
+      "cfg": "formal/apalache/MCRevocationCutCompleteness.cfg",
+      "classification": "historical-regression",
+      "column": 20,
+      "id": "9e551d4220d9aa53deaa",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 121,
+      "operator": "replace_expression",
+      "original": "DescendsFrom(c, root)",
+      "path": "formal/apalache/RevocationCutCompleteness.tla",
+      "rationale": "Reproduces registered negative variant revocation-transitive-cut.",
+      "registered_seed": "revocation-transitive-cut",
+      "replacement": "c = root",
+      "source_sha256": "0cfb9ccdc7fe7d9daf7cab2f73fa39b423d86a0f6793c75d4d332e40f4f602a9",
+      "spec": "RevocationCutCompleteness"
+    },
+    {
+      "action": "Revoke",
+      "cfg": "formal/apalache/MCRevocationCutCompleteness.cfg",
+      "classification": "post-state-corruption",
+      "column": 17,
+      "id": "74c5064d22fabd5af671",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 122,
+      "operator": "replace_expression",
+      "original": "THEN FALSE",
+      "path": "formal/apalache/RevocationCutCompleteness.tla",
+      "rationale": "Revocation must clear allow eligibility throughout the descendant closure.",
+      "replacement": "THEN TRUE",
+      "source_sha256": "0cfb9ccdc7fe7d9daf7cab2f73fa39b423d86a0f6793c75d4d332e40f4f602a9",
+      "spec": "RevocationCutCompleteness"
+    },
+    {
+      "action": "Delegate",
+      "cfg": "formal/tla/MCDelegationDepthBound.cfg",
+      "classification": "post-state-corruption",
+      "column": 21,
+      "id": "eaa9dadefb75e9d339e4",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 136,
+      "operator": "replace_expression",
+      "original": "parent     |-> parentId",
+      "path": "formal/tla/DelegationDepthBound.tla",
+      "rationale": "A delegated link must retain the parent used to derive its depth.",
+      "replacement": "parent     |-> 0",
+      "source_sha256": "69c28ca6b16ef3b2174235347d8bb2aab40fce4cbb79123e4512f363b9717be9",
+      "spec": "DelegationDepthBound"
+    },
+    {
+      "action": "Delegate",
+      "cfg": "formal/tla/MCDelegationDepthBound.cfg",
+      "classification": "post-state-corruption",
+      "column": 21,
+      "id": "b613ba87bfb2225967f3",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 138,
+      "operator": "replace_expression",
+      "original": "depth      |-> links[parentId].depth + 1",
+      "path": "formal/tla/DelegationDepthBound.tla",
+      "rationale": "Every delegation edge must increase depth by exactly one.",
+      "replacement": "depth      |-> links[parentId].depth",
+      "source_sha256": "69c28ca6b16ef3b2174235347d8bb2aab40fce4cbb79123e4512f363b9717be9",
+      "spec": "DelegationDepthBound"
+    },
+    {
+      "action": "Delegate",
+      "cfg": "formal/tla/MCDelegationDepthBound.cfg",
+      "classification": "post-state-corruption",
+      "column": 21,
+      "id": "738cd1597dd6878ab98a",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 139,
+      "operator": "replace_expression",
+      "original": "attenuated |-> atten",
+      "path": "formal/tla/DelegationDepthBound.tla",
+      "rationale": "Every minted child must preserve its attenuation witness.",
+      "replacement": "attenuated |-> FALSE",
+      "source_sha256": "69c28ca6b16ef3b2174235347d8bb2aab40fce4cbb79123e4512f363b9717be9",
+      "spec": "DelegationDepthBound"
+    },
+    {
+      "action": "MintRoot",
+      "cfg": "formal/tla/MCDelegationDepthBound.cfg",
+      "classification": "post-state-corruption",
+      "column": 21,
+      "id": "ffe0e44014b33abc872a",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 113,
+      "operator": "replace_expression",
+      "original": "depth      |-> 0",
+      "path": "formal/tla/DelegationDepthBound.tla",
+      "rationale": "A newly minted root must start at depth zero.",
+      "replacement": "depth      |-> 1",
+      "source_sha256": "69c28ca6b16ef3b2174235347d8bb2aab40fce4cbb79123e4512f363b9717be9",
+      "spec": "DelegationDepthBound"
+    },
+    {
+      "action": "Propagate",
+      "cfg": "formal/tla/MCDelegationDepthBound.cfg",
+      "classification": "post-state-corruption",
+      "column": 44,
+      "id": "9fa18afb3adf02964aa9",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 163,
+      "operator": "replace_expression",
+      "original": "@ \\cup {id}",
+      "path": "formal/tla/DelegationDepthBound.tla",
+      "rationale": "A peer may observe only the specific revocation that was issued.",
+      "replacement": "LinkIdSet",
+      "source_sha256": "69c28ca6b16ef3b2174235347d8bb2aab40fce4cbb79123e4512f363b9717be9",
+      "spec": "DelegationDepthBound"
+    },
+    {
+      "action": "Attenuate",
+      "cfg": "formal/tla/MCRevocationPropagation.cfg",
+      "classification": "post-state-corruption",
+      "column": 8,
+      "id": "97df4f528cd2a2780ba0",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 187,
+      "operator": "replace_expression",
+      "original": "depth' = [depth EXCEPT ![a][c] = @ + 1]",
+      "path": "formal/tla/RevocationPropagation.tla",
+      "rationale": "Attenuation may not install a depth beyond the configured ceiling.",
+      "replacement": "depth' = [depth EXCEPT ![a][c] = DEPTH_MAX + 1]",
+      "source_sha256": "fe07c01f27ac7a76b657e3a1a56d4028545677c4458e34c9daecadbb64ead24d",
+      "spec": "RevocationPropagation"
+    },
+    {
+      "action": "Evaluate",
+      "cfg": "formal/tla/MCRevocationPropagation.cfg",
+      "classification": "guard-weakening",
+      "column": 17,
+      "id": "989f13d2e24e76f3ef58",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 229,
+      "operator": "replace_expression",
+      "original": "rev_epoch[a][c] = 0",
+      "path": "formal/tla/RevocationPropagation.tla",
+      "rationale": "Evaluation must never issue allow after observing a revocation epoch.",
+      "replacement": "rev_epoch[a][c] /= 0",
+      "source_sha256": "fe07c01f27ac7a76b657e3a1a56d4028545677c4458e34c9daecadbb64ead24d",
+      "spec": "RevocationPropagation"
+    },
+    {
+      "action": "Propagate",
+      "cfg": "formal/tla/MCRevocationPropagation.cfg",
+      "classification": "post-state-corruption",
+      "column": 47,
+      "id": "10a4426cd3ce2230021a",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 216,
+      "operator": "replace_expression",
+      "original": "![m.to][m.cap] = m.epoch",
+      "path": "formal/tla/RevocationPropagation.tla",
+      "rationale": "Propagation must install the signed nonzero revocation epoch.",
+      "replacement": "![m.to][m.cap] = 0",
+      "source_sha256": "fe07c01f27ac7a76b657e3a1a56d4028545677c4458e34c9daecadbb64ead24d",
+      "spec": "RevocationPropagation"
+    },
+    {
+      "action": "Propagate",
+      "cfg": "formal/tla/MCRevocationPropagation.cfg",
+      "classification": "post-state-corruption",
+      "column": 47,
+      "id": "715532b6a06805a98b93",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 217,
+      "operator": "replace_expression",
+      "original": "![m.to][m.cap] = \"revoked\"",
+      "path": "formal/tla/RevocationPropagation.tla",
+      "rationale": "Installing a revocation epoch must also mark the capability revoked.",
+      "replacement": "![m.to][m.cap] = \"active\"",
+      "source_sha256": "fe07c01f27ac7a76b657e3a1a56d4028545677c4458e34c9daecadbb64ead24d",
+      "spec": "RevocationPropagation"
+    },
+    {
+      "action": "Revoke",
+      "cfg": "formal/tla/MCRevocationPropagation.cfg",
+      "classification": "post-state-corruption",
+      "column": 39,
+      "id": "45a048d221bb5663a5b0",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 199,
+      "operator": "replace_expression",
+      "original": "![a][c] = \"revoked\"",
+      "path": "formal/tla/RevocationPropagation.tla",
+      "rationale": "A locally revoked capability must enter the revoked state.",
+      "replacement": "![a][c] = \"attenuated\"",
+      "source_sha256": "fe07c01f27ac7a76b657e3a1a56d4028545677c4458e34c9daecadbb64ead24d",
+      "spec": "RevocationPropagation"
+    },
+    {
+      "action": "Revoke",
+      "cfg": "formal/tla/MCRevocationPropagation.cfg",
+      "classification": "post-state-corruption",
+      "column": 39,
+      "id": "11ae50b041e7ab094bd8",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 200,
+      "operator": "replace_expression",
+      "original": "![a][c] = clock",
+      "path": "formal/tla/RevocationPropagation.tla",
+      "rationale": "A local revocation must record a nonzero observation epoch.",
+      "replacement": "![a][c] = 0",
+      "source_sha256": "fe07c01f27ac7a76b657e3a1a56d4028545677c4458e34c9daecadbb64ead24d",
+      "spec": "RevocationPropagation"
+    },
+    {
+      "action": "Revoke",
+      "cfg": "formal/tla/MCRevocationPropagation.cfg",
+      "classification": "post-state-corruption",
+      "column": 8,
+      "id": "06882d6be46449025864",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 203,
+      "operator": "replace_expression",
+      "original": "clock'     = clock + 1",
+      "path": "formal/tla/RevocationPropagation.tla",
+      "rationale": "The revocation epoch must be strictly earlier than the next clock value.",
+      "replacement": "clock'     = clock",
+      "source_sha256": "fe07c01f27ac7a76b657e3a1a56d4028545677c4458e34c9daecadbb64ead24d",
+      "spec": "RevocationPropagation"
+    }
+  ],
+  "inventory_sha256": "da4cbb247ecb3bb76056ba0453674ad39e8e3ba787f9543bb9a063d2b2532cb8",
+  "measured_at": "2026-07-15T21:36:34Z",
+  "mutants": [
+    {
+      "action": "BeginCancel",
+      "apalache_exit": 12,
+      "cfg": "formal/apalache/MCKernelTransitionCancelSafe.cfg",
+      "classification": "post-state-corruption",
+      "column": 8,
+      "id": "ce41607e01b0b0ef475b",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 82,
+      "log_sha256": "a7a37c9eb8d94cb35b8695b9bed9f02732b893712e4c50f1f14a0703d5158574",
+      "mutated_sha256": "ccd22a396c7d8451a6689717b5eb996c9b94c3517f55bfe48f8c821d3a62e6f3",
+      "operator": "replace_expression",
+      "original": "snapshot_budget' = budget_used",
+      "path": "formal/apalache/KernelTransitionCancelSafe.tla",
+      "rationale": "A cancellation snapshot must retain nonzero committed budget state.",
+      "replacement": "snapshot_budget' = [a \\in Authorities |-> [c \\in CapSet |-> 0]]",
+      "source_sha256": "8386a2e468e1d8407909e1da1778a80436477f223f8962881dfb6338877cd0ad",
+      "spec": "KernelTransitionCancelSafe",
+      "trace": "target/formal/spec-mutants/generated/ce41607e01b0b0ef475b/run/violation1.itf.json",
+      "trace_sha256": "7ceca11d5871c2aa007b335d1ae66c84013a8ed65657c08bcc38589c65303e6b",
+      "verdict": "killed",
+      "wall_secs": 5.988
+    },
+    {
+      "action": "BeginCancel",
+      "apalache_exit": 12,
+      "cfg": "formal/apalache/MCKernelTransitionCancelSafe.cfg",
+      "classification": "post-state-corruption",
+      "column": 8,
+      "id": "9ebea0de55d3f520e674",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 83,
+      "log_sha256": "aa7d11209e312f9f6dc08cf5015ef4e250fc7ee237987696c87bec7e79acdcb4",
+      "mutated_sha256": "f0ba1c548a13e6eb2ad5098ae5fd98c2d03ef8af3beedaee0c8a5fad6417fd72",
+      "operator": "replace_expression",
+      "original": "snapshot_receipts' = receipt_count",
+      "path": "formal/apalache/KernelTransitionCancelSafe.tla",
+      "rationale": "A cancellation snapshot must retain nonzero receipt state.",
+      "replacement": "snapshot_receipts' = [a \\in Authorities |-> 0]",
+      "source_sha256": "8386a2e468e1d8407909e1da1778a80436477f223f8962881dfb6338877cd0ad",
+      "spec": "KernelTransitionCancelSafe",
+      "trace": "target/formal/spec-mutants/generated/9ebea0de55d3f520e674/run/violation1.itf.json",
+      "trace_sha256": "891ede28a6702ac3e2825cd9a7d2f76dd7b2c28802d0a747306c894410a1221c",
+      "verdict": "killed",
+      "wall_secs": 5.828
+    },
+    {
+      "action": "Commit",
+      "apalache_exit": 12,
+      "cfg": "formal/apalache/MCKernelTransitionCancelSafe.cfg",
+      "classification": "guard-weakening",
+      "column": 1,
+      "id": "0d2d53ec1ad297b3d1a1",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 95,
+      "log_sha256": "1e80d3ba8211f3236a521c940b167a21b6da8ac72e007ba03eb2fdfbafa4eb3c",
+      "mutated_sha256": "f374400911bb063b3aa5d66eb7b22d160ea82504278515f914b10796f74637df",
+      "operator": "delete_conjunct",
+      "original": "/\\ cancel_pending = FALSE",
+      "path": "formal/apalache/KernelTransitionCancelSafe.tla",
+      "rationale": "A commit must not mutate budget or receipts while cancellation is pending.",
+      "replacement": "",
+      "source_sha256": "8386a2e468e1d8407909e1da1778a80436477f223f8962881dfb6338877cd0ad",
+      "spec": "KernelTransitionCancelSafe",
+      "trace": "target/formal/spec-mutants/generated/0d2d53ec1ad297b3d1a1/run/violation1.itf.json",
+      "trace_sha256": "0cbac2447756c27a3cac50847809656a749b392745ed296fab433ac75f3dc85f",
+      "verdict": "killed",
+      "wall_secs": 6.187
+    },
+    {
+      "action": "Evaluate",
+      "apalache_exit": 12,
+      "cfg": "formal/apalache/MCMonotoneLogApalache.cfg",
+      "classification": "post-state-corruption",
+      "column": 22,
+      "id": "c9686d655fb3c35cf935",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 54,
+      "log_sha256": "6afba0bba6b7a09d02ce603556076f8b2a90c6280d43b6eddc9bed6caff87ec8",
+      "mutated_sha256": "cc1fb8173af01d9c0bb11e0e955fc2c03d167fd537988b11a4b45f55bc4f4aaf",
+      "operator": "replace_expression",
+      "original": "t |-> clock",
+      "path": "formal/apalache/MonotoneLogApalache.tla",
+      "rationale": "Repeated receipts must not reuse a fixed timestamp.",
+      "replacement": "t |-> 1",
+      "source_sha256": "b77d34434a091b8a991841500daf6a42ca3f1817f440c9e86f8769fadf074759",
+      "spec": "MonotoneLogApalache",
+      "trace": "target/formal/spec-mutants/generated/c9686d655fb3c35cf935/run/violation1.itf.json",
+      "trace_sha256": "b458a251f86857d105014db28e4c51b33b3022040c2dc82825641057c02106eb",
+      "verdict": "killed",
+      "wall_secs": 4.905
+    },
+    {
+      "action": "Evaluate",
+      "apalache_exit": 12,
+      "cfg": "formal/apalache/MCMonotoneLogApalache.cfg",
+      "classification": "post-state-corruption",
+      "column": 8,
+      "id": "bee96ca7485b230a5199",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 56,
+      "log_sha256": "8fdf18688dd3e43bb667ca232ae956870f59f65893aa151d69977bd89958e587",
+      "mutated_sha256": "56b52f79cf4ee81c0fc6dc77ebff40c009e07c58343b4707a1b8c9c44992927b",
+      "operator": "replace_expression",
+      "original": "clock' = clock + 1",
+      "path": "formal/apalache/MonotoneLogApalache.tla",
+      "rationale": "Receipt creation must advance the logical clock.",
+      "replacement": "clock' = clock",
+      "source_sha256": "b77d34434a091b8a991841500daf6a42ca3f1817f440c9e86f8769fadf074759",
+      "spec": "MonotoneLogApalache",
+      "trace": "target/formal/spec-mutants/generated/bee96ca7485b230a5199/run/violation1.itf.json",
+      "trace_sha256": "2b1ff1fd805468be1626b2ec85efadc33de9a76da5a8aa4e87b252c12e66f1e9",
+      "verdict": "killed",
+      "wall_secs": 4.849
+    },
+    {
+      "action": "Admit",
+      "apalache_exit": 12,
+      "cfg": "formal/apalache/MCPostAdmissionDropGuard.cfg",
+      "classification": "guard-weakening",
+      "column": 20,
+      "id": "071ccc2a3ce528fa4e5b",
+      "invariant": "SafetyInv",
+      "length": 8,
+      "line": 365,
+      "log_sha256": "3541291681617432f3027b20bd74ee1e6af1f59a7fdff2387891d5d58a81fff0",
+      "mutated_sha256": "b952e57374781f6a6728367181f7a2fa7a0a6c2b8dc3786a5545c536d9e70fa9",
+      "operator": "replace_expression",
+      "original": "ActiveChildShares < ChildMax",
+      "path": "formal/apalache/PostAdmissionDropGuard.tla",
+      "rationale": "Admitting a child at capacity oversubscribes the parent reservation.",
+      "replacement": "ActiveChildShares <= ChildMax",
+      "source_sha256": "1a56b327fa2c6a444722b8810a03c0d33e4af93ca96e032c5c9553bafcb5ace7",
+      "spec": "PostAdmissionDropGuard",
+      "trace": "target/formal/spec-mutants/generated/071ccc2a3ce528fa4e5b/run/violation1.itf.json",
+      "trace_sha256": "85c4d44ad4d18abb6e266fa1ad239bff9c4f8fc28f64deb3807204d680eeb857",
+      "verdict": "killed",
+      "wall_secs": 9.05
+    },
+    {
+      "action": "CompleteOk",
+      "apalache_exit": null,
+      "cfg": "formal/apalache/MCPostAdmissionDropGuard.cfg",
+      "classification": "guard-weakening",
+      "column": 1,
+      "id": "69f531719289b479b504",
+      "invariant": "SafetyInv",
+      "length": 8,
+      "line": 414,
+      "log_sha256": "20fde62de869e2e67a489a1329f02ba9f8eacc6ecb8d3b9c7283a6c951f45f3b",
+      "mutated_sha256": "698ca5bfc4e28c31022b54396145c79977d71d1772345d5062c76d4686eac859",
+      "operator": "delete_conjunct",
+      "original": "/\\ phase[i] \\in {\"dispatch_started\", \"streaming\"}",
+      "path": "formal/apalache/PostAdmissionDropGuard.tla",
+      "rationale": "Successful completion requires a started dispatch.",
+      "replacement": "",
+      "source_sha256": "1a56b327fa2c6a444722b8810a03c0d33e4af93ca96e032c5c9553bafcb5ace7",
+      "spec": "PostAdmissionDropGuard",
+      "verdict": "timeout",
+      "wall_secs": 300.071
+    },
+    {
+      "action": "DropPostDispatch",
+      "apalache_exit": 12,
+      "cfg": "formal/apalache/MCPostAdmissionDropGuard.cfg",
+      "classification": "guard-weakening",
+      "column": 1,
+      "id": "b0a50f2b672556b1d05d",
+      "invariant": "SafetyInv",
+      "length": 8,
+      "line": 559,
+      "log_sha256": "f6cdbf608606806913136c4e41fe6363e272f724431b047a58a458f8bd6d4b87",
+      "mutated_sha256": "affc1171de0c6da527fd8d736b451979ae901f66c48a892545868fc85313519d",
+      "operator": "delete_conjunct",
+      "original": "/\\ phase[i] \\in {\"dispatch_started\", \"streaming\"}",
+      "path": "formal/apalache/PostAdmissionDropGuard.tla",
+      "rationale": "Post-dispatch cleanup requires a started dispatch.",
+      "replacement": "",
+      "source_sha256": "1a56b327fa2c6a444722b8810a03c0d33e4af93ca96e032c5c9553bafcb5ace7",
+      "spec": "PostAdmissionDropGuard",
+      "trace": "target/formal/spec-mutants/generated/b0a50f2b672556b1d05d/run/violation1.itf.json",
+      "trace_sha256": "ca411fcdd562603751070202f5eddce6030b972eb5b817a4e0c2eabe5a818bf4",
+      "verdict": "killed",
+      "wall_secs": 23.388
+    },
+    {
+      "action": "DropPostDispatch",
+      "apalache_exit": 12,
+      "cfg": "formal/apalache/MCPostAdmissionDropGuard.cfg",
+      "classification": "post-state-corruption",
+      "column": 17,
+      "id": "5687c6dee5c2612fdfa4",
+      "invariant": "SafetyInv",
+      "length": 8,
+      "line": 579,
+      "log_sha256": "8781e73be0d27fc97d8011021727291c4d9314106437888a3d677804c1ca29aa",
+      "mutated_sha256": "b31aaa862ea852e489ef5b8b3600fdec51ac484b3d6636be289dc9ec45d5e088",
+      "operator": "replace_expression",
+      "original": "flushed_count = child_total[i]",
+      "path": "formal/apalache/PostAdmissionDropGuard.tla",
+      "rationale": "The parent receipt may be written only after every child receipt is flushed.",
+      "replacement": "flushed_count /= child_total[i]",
+      "source_sha256": "1a56b327fa2c6a444722b8810a03c0d33e4af93ca96e032c5c9553bafcb5ace7",
+      "spec": "PostAdmissionDropGuard",
+      "trace": "target/formal/spec-mutants/generated/5687c6dee5c2612fdfa4/run/violation1.itf.json",
+      "trace_sha256": "40bd9ce427d69001b07cb1d0c7fb48796b18e77d8d36555b13ad293c38433d74",
+      "verdict": "killed",
+      "wall_secs": 17.526
+    },
+    {
+      "action": "DropPreDispatch",
+      "apalache_exit": 12,
+      "cfg": "formal/apalache/MCPostAdmissionDropGuard.cfg",
+      "classification": "guard-weakening",
+      "column": 1,
+      "id": "dff3bb365a98b3038124",
+      "invariant": "SafetyInv",
+      "length": 8,
+      "line": 526,
+      "log_sha256": "e94f0894a43744923b4d78ce3e932faa8949461378b703e4c7dbb520364cb79c",
+      "mutated_sha256": "a0fa8123118541e2d09beadd954634ffdc32162589702d86dcc41fb599fb557f",
+      "operator": "delete_conjunct",
+      "original": "/\\ phase[i] = \"admitted\"",
+      "path": "formal/apalache/PostAdmissionDropGuard.tla",
+      "rationale": "Pre-dispatch cleanup may unwind only an admitted invocation.",
+      "replacement": "",
+      "source_sha256": "1a56b327fa2c6a444722b8810a03c0d33e4af93ca96e032c5c9553bafcb5ace7",
+      "spec": "PostAdmissionDropGuard",
+      "trace": "target/formal/spec-mutants/generated/dff3bb365a98b3038124/run/violation1.itf.json",
+      "trace_sha256": "a0d6620af3923019769919cf15b470f2b0bcba1af8a3d1f3623e669bc25f3b46",
+      "verdict": "killed",
+      "wall_secs": 20.217
+    },
+    {
+      "action": "DropPreDispatch",
+      "apalache_exit": 12,
+      "cfg": "formal/apalache/MCPostAdmissionDropGuard.cfg",
+      "classification": "guard-weakening",
+      "column": 1,
+      "id": "c33df45fcb89fbef4f78",
+      "invariant": "SafetyInv",
+      "length": 8,
+      "line": 528,
+      "log_sha256": "11cb9b7cb1444112517f2820a04df8264ebb4a4772ad1af8e521068623c24a00",
+      "mutated_sha256": "1c61acabadb543257fdb2bab81e47f2bd07b8842823d439b68af18f2615bb50e",
+      "operator": "delete_conjunct",
+      "original": "/\\ failed \\subseteq admitted_resources[i]",
+      "path": "formal/apalache/PostAdmissionDropGuard.tla",
+      "rationale": "Cleanup failures must be limited to resources admitted for the invocation.",
+      "replacement": "",
+      "source_sha256": "1a56b327fa2c6a444722b8810a03c0d33e4af93ca96e032c5c9553bafcb5ace7",
+      "spec": "PostAdmissionDropGuard",
+      "trace": "target/formal/spec-mutants/generated/c33df45fcb89fbef4f78/run/violation1.itf.json",
+      "trace_sha256": "42ebd23821ecf473192e2c6f350a34c2a9077eb8d5d680f244c76a6bd15c5b48",
+      "verdict": "killed",
+      "wall_secs": 9.861
+    },
+    {
+      "action": "IncompleteStream",
+      "apalache_exit": 12,
+      "cfg": "formal/apalache/MCPostAdmissionDropGuard.cfg",
+      "classification": "guard-weakening",
+      "column": 1,
+      "id": "d6e4c13fc47b4959bec1",
+      "invariant": "SafetyInv",
+      "length": 8,
+      "line": 461,
+      "log_sha256": "727559b05e6da8293d1834cb6c6d2927e72c5f12c3720be052ccfa39c96897d2",
+      "mutated_sha256": "101d8c6c25539401bb0adcb3d2fb84ae22194910024e7d3daaed3effed7f28c7",
+      "operator": "delete_conjunct",
+      "original": "/\\ phase[i] \\in {\"dispatch_started\", \"streaming\"}",
+      "path": "formal/apalache/PostAdmissionDropGuard.tla",
+      "rationale": "Incomplete-stream cleanup requires a started dispatch.",
+      "replacement": "",
+      "source_sha256": "1a56b327fa2c6a444722b8810a03c0d33e4af93ca96e032c5c9553bafcb5ace7",
+      "spec": "PostAdmissionDropGuard",
+      "trace": "target/formal/spec-mutants/generated/d6e4c13fc47b4959bec1/run/violation1.itf.json",
+      "trace_sha256": "7ce97f213656a2b3bd804678598c2fb9bed3aaec7b5d59bc1b6e67e5e9fd1ca6",
+      "verdict": "killed",
+      "wall_secs": 18.693
+    },
+    {
+      "action": "ServerErrorPostDispatch",
+      "apalache_exit": 12,
+      "cfg": "formal/apalache/MCPostAdmissionDropGuard.cfg",
+      "classification": "post-state-corruption",
+      "column": 56,
+      "id": "7053657f639909b06876",
+      "invariant": "SafetyInv",
+      "length": 8,
+      "line": 497,
+      "log_sha256": "27ab022db9e0309f8de1618f57f0f5d7490bf91e52ccb16b7bcda328cf915f4d",
+      "mutated_sha256": "0f476ca381ef043296eb6248dc189c2f6de7146cbbadc82ba0a133b74448cbfa",
+      "operator": "replace_expression",
+      "original": "ResolvePostDispatch(@)",
+      "path": "formal/apalache/PostAdmissionDropGuard.tla",
+      "rationale": "An outcome-unknown server error must retain its monetary hold.",
+      "replacement": "ResolveReturnedOutput(@, error_kind)",
+      "source_sha256": "1a56b327fa2c6a444722b8810a03c0d33e4af93ca96e032c5c9553bafcb5ace7",
+      "spec": "PostAdmissionDropGuard",
+      "trace": "target/formal/spec-mutants/generated/7053657f639909b06876/run/violation1.itf.json",
+      "trace_sha256": "1f0c2977cd34ec88413d90c1a41200c53944cbe0ce56c0679eaee60b1d724503",
+      "verdict": "killed",
+      "wall_secs": 15.685
+    },
+    {
+      "action": "StartDispatch",
+      "apalache_exit": 12,
+      "cfg": "formal/apalache/MCPostAdmissionDropGuard.cfg",
+      "classification": "guard-weakening",
+      "column": 1,
+      "id": "016c9b1d3d190e44c1e4",
+      "invariant": "SafetyInv",
+      "length": 8,
+      "line": 390,
+      "log_sha256": "f2e76f33c60ee3b4fc7ec6d302fd52c1052a58e81a49b9df6c79fde1f00c0ab4",
+      "mutated_sha256": "505d1cbc3ef21485eba37fcd5d56d512b840e9cd496216251281cf5f47881530",
+      "operator": "delete_conjunct",
+      "original": "/\\ phase[i] = \"admitted\"",
+      "path": "formal/apalache/PostAdmissionDropGuard.tla",
+      "rationale": "Dispatch may start only from an admitted invocation.",
+      "replacement": "",
+      "source_sha256": "1a56b327fa2c6a444722b8810a03c0d33e4af93ca96e032c5c9553bafcb5ace7",
+      "spec": "PostAdmissionDropGuard",
+      "trace": "target/formal/spec-mutants/generated/016c9b1d3d190e44c1e4/run/violation1.itf.json",
+      "trace_sha256": "189885622ff9df569d5ea5de48e0f560745854d6fea3d32b0aef34b1b506e128",
+      "verdict": "killed",
+      "wall_secs": 18.048
+    },
+    {
+      "action": "StreamChunk",
+      "apalache_exit": 12,
+      "cfg": "formal/apalache/MCPostAdmissionDropGuard.cfg",
+      "classification": "guard-weakening",
+      "column": 8,
+      "id": "9b4847a2e4b6ca117b29",
+      "invariant": "SafetyInv",
+      "length": 8,
+      "line": 401,
+      "log_sha256": "f4f22a714199bbca797db37136dcea7e9d83fb1cbe19ff0154197bbcfaa5e230",
+      "mutated_sha256": "648dbc964b73610c51dc34e7a0568c48308a399730ece95effa5fb91a4fdbda0",
+      "operator": "replace_expression",
+      "original": "child_buf[i] < ChildMax",
+      "path": "formal/apalache/PostAdmissionDropGuard.tla",
+      "rationale": "A buffered child count may not exceed the configured capacity.",
+      "replacement": "child_buf[i] <= ChildMax",
+      "source_sha256": "1a56b327fa2c6a444722b8810a03c0d33e4af93ca96e032c5c9553bafcb5ace7",
+      "spec": "PostAdmissionDropGuard",
+      "trace": "target/formal/spec-mutants/generated/9b4847a2e4b6ca117b29/run/violation1.itf.json",
+      "trace_sha256": "01d5a39d6614a6cf342dbddf9bef8619e329fab2d217859002dc44026881ceae",
+      "verdict": "killed",
+      "wall_secs": 30.562
+    },
+    {
+      "action": "PersistAllowReceipt",
+      "apalache_exit": 12,
+      "cfg": "formal/apalache/MCReceiptBeforeAllow.cfg",
+      "classification": "guard-weakening",
+      "column": 1,
+      "id": "f2568c260c87b6dbcf8e",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 110,
+      "log_sha256": "3e4a358deac4d4ddf60bc25374651943e281295f99f200b45cd37718972d22b3",
+      "mutated_sha256": "4135ae7fc53e08fbec0aa12dfc9ab374e2416d33e38a57e5438a138d38a29009",
+      "operator": "delete_conjunct",
+      "original": "/\\ CallDecision(r, c) \\in budget_checked[a]",
+      "path": "formal/apalache/ReceiptBeforeAllow.tla",
+      "rationale": "An allow receipt must be backed by the matching call budget check.",
+      "replacement": "",
+      "source_sha256": "24e009c411eee6746cb9b7c30e430bddd5e6ae7f8f3ed0996e0793981cd36d2a",
+      "spec": "ReceiptBeforeAllow",
+      "trace": "target/formal/spec-mutants/generated/f2568c260c87b6dbcf8e/run/violation1.itf.json",
+      "trace_sha256": "cdd1d4fbb03533266edf91df11c4a5b72729cd771fcebbef046e1c16cc11c350",
+      "verdict": "killed",
+      "wall_secs": 5.04
+    },
+    {
+      "action": "PublishAllow",
+      "apalache_exit": 12,
+      "cfg": "formal/apalache/MCReceiptBeforeAllow.cfg",
+      "classification": "historical-regression",
+      "column": 1,
+      "id": "4c6b8140da250108717a",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 126,
+      "log_sha256": "287bb97686dc0a9e63fb1f95e4bd8dc008dcfbb110aebd7ef1127abeff68eb66",
+      "mutated_sha256": "4e12381be5d5ef18712a812e40ae5a2fb168d2f10ef05c77b66af047a0443d1c",
+      "operator": "delete_conjunct",
+      "original": "/\\ HasAllowReceipt(a, c, r)",
+      "path": "formal/apalache/ReceiptBeforeAllow.tla",
+      "rationale": "Reproduces registered negative variant receipt-before-allow-guard.",
+      "registered_seed": "receipt-before-allow-guard",
+      "replacement": "",
+      "source_sha256": "24e009c411eee6746cb9b7c30e430bddd5e6ae7f8f3ed0996e0793981cd36d2a",
+      "spec": "ReceiptBeforeAllow",
+      "trace": "target/formal/spec-mutants/generated/4c6b8140da250108717a/run/violation1.itf.json",
+      "trace_sha256": "e3c45dd24e84e25121054fd2ee98b74508a0016ae61e793d1bb9db78c31b60c1",
+      "verdict": "killed",
+      "wall_secs": 5.764
+    },
+    {
+      "action": "PublishAllow",
+      "apalache_exit": 12,
+      "cfg": "formal/apalache/MCReceiptBeforeAllow.cfg",
+      "classification": "post-state-corruption",
+      "column": 11,
+      "id": "5388693e338f37b7da3a",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 128,
+      "log_sha256": "b09214908835851ac7ecc7df80fe27c888e6135d3963db2cef304edb485d5598",
+      "mutated_sha256": "f03459a9ba424b4392d4940be81c6810c1bb78770acef45942560930b3803384",
+      "operator": "replace_expression",
+      "original": "@ \\cup {CallDecision(r, c)}",
+      "path": "formal/apalache/ReceiptBeforeAllow.tla",
+      "rationale": "Publishing one allow must not authorize unrelated calls or capabilities.",
+      "replacement": "@ \\cup CallDecisions",
+      "source_sha256": "24e009c411eee6746cb9b7c30e430bddd5e6ae7f8f3ed0996e0793981cd36d2a",
+      "spec": "ReceiptBeforeAllow",
+      "trace": "target/formal/spec-mutants/generated/5388693e338f37b7da3a/run/violation1.itf.json",
+      "trace_sha256": "7facaa903c83b3d5f5900af7ed884d70c704ebeef3284bfcd8662d913f3808b2",
+      "verdict": "killed",
+      "wall_secs": 6.827
+    },
+    {
+      "action": "Delegate",
+      "apalache_exit": 12,
+      "cfg": "formal/apalache/MCRevocationCutCompleteness.cfg",
+      "classification": "post-state-corruption",
+      "column": 13,
+      "id": "b283cf5dbb28192cdaa8",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 109,
+      "log_sha256": "7ba367f3bc9a6d0bdad84a477d27c3526d8e3d16bc7a322d4b69ecfb6ccdd473",
+      "mutated_sha256": "6dd1c5059bf6b09c2dabab0c441050c792bd36a40223d18006d7b9a21767570b",
+      "operator": "replace_expression",
+      "original": "THEN descendants[ancestor] \\cup {child}",
+      "path": "formal/apalache/RevocationCutCompleteness.tla",
+      "rationale": "Every direct parent edge must appear in the descendant closure.",
+      "replacement": "THEN descendants[ancestor]",
+      "source_sha256": "0cfb9ccdc7fe7d9daf7cab2f73fa39b423d86a0f6793c75d4d332e40f4f602a9",
+      "spec": "RevocationCutCompleteness",
+      "trace": "target/formal/spec-mutants/generated/b283cf5dbb28192cdaa8/run/violation1.itf.json",
+      "trace_sha256": "35287652028edb1548b902aa3dbd3e17ad02b973183e5a1175d880c0419f2e16",
+      "verdict": "killed",
+      "wall_secs": 4.766
+    },
+    {
+      "action": "Revoke",
+      "apalache_exit": 12,
+      "cfg": "formal/apalache/MCRevocationCutCompleteness.cfg",
+      "classification": "historical-regression",
+      "column": 20,
+      "id": "9e551d4220d9aa53deaa",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 121,
+      "log_sha256": "2e7b16c37307bdea15b8314473263bec3a5d6c25589595bdf1ff650e0533072e",
+      "mutated_sha256": "4f4a7b6a09e8378ad2497b6b027e2fe56cd8581d18ea2aab00df45f2c14fc94f",
+      "operator": "replace_expression",
+      "original": "DescendsFrom(c, root)",
+      "path": "formal/apalache/RevocationCutCompleteness.tla",
+      "rationale": "Reproduces registered negative variant revocation-transitive-cut.",
+      "registered_seed": "revocation-transitive-cut",
+      "replacement": "c = root",
+      "source_sha256": "0cfb9ccdc7fe7d9daf7cab2f73fa39b423d86a0f6793c75d4d332e40f4f602a9",
+      "spec": "RevocationCutCompleteness",
+      "trace": "target/formal/spec-mutants/generated/9e551d4220d9aa53deaa/run/violation1.itf.json",
+      "trace_sha256": "d8b26474eaa2e5f496588d3a3bf876197eb6302efa3ea98f77bad10368482c9e",
+      "verdict": "killed",
+      "wall_secs": 5.954
+    },
+    {
+      "action": "Revoke",
+      "apalache_exit": 12,
+      "cfg": "formal/apalache/MCRevocationCutCompleteness.cfg",
+      "classification": "post-state-corruption",
+      "column": 17,
+      "id": "74c5064d22fabd5af671",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 122,
+      "log_sha256": "5c09c9faedabc5367a1459b632b021dcbb130f33966d2f986c20d4798b303a06",
+      "mutated_sha256": "99ead5a4eb085049a5c8f20fec4d6c5652d2d7f114945e30823f535a01ac727c",
+      "operator": "replace_expression",
+      "original": "THEN FALSE",
+      "path": "formal/apalache/RevocationCutCompleteness.tla",
+      "rationale": "Revocation must clear allow eligibility throughout the descendant closure.",
+      "replacement": "THEN TRUE",
+      "source_sha256": "0cfb9ccdc7fe7d9daf7cab2f73fa39b423d86a0f6793c75d4d332e40f4f602a9",
+      "spec": "RevocationCutCompleteness",
+      "trace": "target/formal/spec-mutants/generated/74c5064d22fabd5af671/run/violation1.itf.json",
+      "trace_sha256": "85438013cda2a934a40d7f82c2610aaca6877816e9f73035834add5b4c5e3aaf",
+      "verdict": "killed",
+      "wall_secs": 5.361
+    },
+    {
+      "action": "Delegate",
+      "apalache_exit": 12,
+      "cfg": "formal/tla/MCDelegationDepthBound.cfg",
+      "classification": "post-state-corruption",
+      "column": 21,
+      "id": "eaa9dadefb75e9d339e4",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 136,
+      "log_sha256": "4546eb6edb83d40ced1498ffb73478980d667b6e7ba70c55529761dcee9eb0cd",
+      "mutated_sha256": "662b9f9059c26ee41d7692f7c677b81a1df2c762514dabd3c204afcea8206b0d",
+      "operator": "replace_expression",
+      "original": "parent     |-> parentId",
+      "path": "formal/tla/DelegationDepthBound.tla",
+      "rationale": "A delegated link must retain the parent used to derive its depth.",
+      "replacement": "parent     |-> 0",
+      "source_sha256": "69c28ca6b16ef3b2174235347d8bb2aab40fce4cbb79123e4512f363b9717be9",
+      "spec": "DelegationDepthBound",
+      "trace": "target/formal/spec-mutants/generated/eaa9dadefb75e9d339e4/run/violation1.itf.json",
+      "trace_sha256": "a177e8b4c1541858585273a11ee04075dd0e07036580ba13e11f691cf1a8e0ef",
+      "verdict": "killed",
+      "wall_secs": 5.915
+    },
+    {
+      "action": "Delegate",
+      "apalache_exit": 12,
+      "cfg": "formal/tla/MCDelegationDepthBound.cfg",
+      "classification": "post-state-corruption",
+      "column": 21,
+      "id": "b613ba87bfb2225967f3",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 138,
+      "log_sha256": "3a8fadef568cdbce916792b1266c5364eb551ce6d6e6a59e1a187281a54f169e",
+      "mutated_sha256": "c89c3750436b85f10929dc11d2b50e0a8c38c03ad6a5e15760b1df7f94310507",
+      "operator": "replace_expression",
+      "original": "depth      |-> links[parentId].depth + 1",
+      "path": "formal/tla/DelegationDepthBound.tla",
+      "rationale": "Every delegation edge must increase depth by exactly one.",
+      "replacement": "depth      |-> links[parentId].depth",
+      "source_sha256": "69c28ca6b16ef3b2174235347d8bb2aab40fce4cbb79123e4512f363b9717be9",
+      "spec": "DelegationDepthBound",
+      "trace": "target/formal/spec-mutants/generated/b613ba87bfb2225967f3/run/violation1.itf.json",
+      "trace_sha256": "1fdba72fe4e63052e36d0ce53395c0c88f18d5d3b063c50cc6d3f1459a7f8473",
+      "verdict": "killed",
+      "wall_secs": 6.018
+    },
+    {
+      "action": "Delegate",
+      "apalache_exit": 12,
+      "cfg": "formal/tla/MCDelegationDepthBound.cfg",
+      "classification": "post-state-corruption",
+      "column": 21,
+      "id": "738cd1597dd6878ab98a",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 139,
+      "log_sha256": "2af9da5a03d1d1bbf3598ea1a44c02b7c934e3405264968261ad0e57d87aa8e5",
+      "mutated_sha256": "9d4afd16ec5c05e2f6755ea51552d5c924eab1f7df47a1d0b4911444a4c819a8",
+      "operator": "replace_expression",
+      "original": "attenuated |-> atten",
+      "path": "formal/tla/DelegationDepthBound.tla",
+      "rationale": "Every minted child must preserve its attenuation witness.",
+      "replacement": "attenuated |-> FALSE",
+      "source_sha256": "69c28ca6b16ef3b2174235347d8bb2aab40fce4cbb79123e4512f363b9717be9",
+      "spec": "DelegationDepthBound",
+      "trace": "target/formal/spec-mutants/generated/738cd1597dd6878ab98a/run/violation1.itf.json",
+      "trace_sha256": "16c64be1ea6986d8e9dc8e88223a10bb5bc13d3a5253c9b1351a3e198318b0a5",
+      "verdict": "killed",
+      "wall_secs": 6.159
+    },
+    {
+      "action": "MintRoot",
+      "apalache_exit": 12,
+      "cfg": "formal/tla/MCDelegationDepthBound.cfg",
+      "classification": "post-state-corruption",
+      "column": 21,
+      "id": "ffe0e44014b33abc872a",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 113,
+      "log_sha256": "79f6a13e90cecb9c3eb654ea3df522c9b5e170314a74575792cb041d16043951",
+      "mutated_sha256": "5698f693b9fe0644adafa0b536bb1d64390cd299bd486092e2da199ea449493c",
+      "operator": "replace_expression",
+      "original": "depth      |-> 0",
+      "path": "formal/tla/DelegationDepthBound.tla",
+      "rationale": "A newly minted root must start at depth zero.",
+      "replacement": "depth      |-> 1",
+      "source_sha256": "69c28ca6b16ef3b2174235347d8bb2aab40fce4cbb79123e4512f363b9717be9",
+      "spec": "DelegationDepthBound",
+      "trace": "target/formal/spec-mutants/generated/ffe0e44014b33abc872a/run/violation1.itf.json",
+      "trace_sha256": "4a17a35fba946bee8a38bfc77719adaa104c1379aa1a6a8b91379cc81b22d388",
+      "verdict": "killed",
+      "wall_secs": 5.06
+    },
+    {
+      "action": "Propagate",
+      "apalache_exit": 12,
+      "cfg": "formal/tla/MCDelegationDepthBound.cfg",
+      "classification": "post-state-corruption",
+      "column": 44,
+      "id": "9fa18afb3adf02964aa9",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 163,
+      "log_sha256": "b3ffc50e6beb6abb091423c34309c47a14f1f01e8f87fbb73a52eef3be097238",
+      "mutated_sha256": "b9b1e83215aefe67caa2d18d6619d0e6461f4e8dd9bb8dfeaee3ace3eadf762a",
+      "operator": "replace_expression",
+      "original": "@ \\cup {id}",
+      "path": "formal/tla/DelegationDepthBound.tla",
+      "rationale": "A peer may observe only the specific revocation that was issued.",
+      "replacement": "LinkIdSet",
+      "source_sha256": "69c28ca6b16ef3b2174235347d8bb2aab40fce4cbb79123e4512f363b9717be9",
+      "spec": "DelegationDepthBound",
+      "trace": "target/formal/spec-mutants/generated/9fa18afb3adf02964aa9/run/violation1.itf.json",
+      "trace_sha256": "722eb3dca463ab0f6f4a699e5f2980e3f4ce7e2ad1ac661b06411b31f83f910f",
+      "verdict": "killed",
+      "wall_secs": 8.328
+    },
+    {
+      "action": "Attenuate",
+      "apalache_exit": 12,
+      "cfg": "formal/tla/MCRevocationPropagation.cfg",
+      "classification": "post-state-corruption",
+      "column": 8,
+      "id": "97df4f528cd2a2780ba0",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 187,
+      "log_sha256": "a0508e3a8ef34b333727a1f57187198526d2fcf3e4bf21888e67388116c4a389",
+      "mutated_sha256": "5b4b8f368123408c7c0cbaa26f24f56832752f9004e68bfbcbec5fcdce1afd3a",
+      "operator": "replace_expression",
+      "original": "depth' = [depth EXCEPT ![a][c] = @ + 1]",
+      "path": "formal/tla/RevocationPropagation.tla",
+      "rationale": "Attenuation may not install a depth beyond the configured ceiling.",
+      "replacement": "depth' = [depth EXCEPT ![a][c] = DEPTH_MAX + 1]",
+      "source_sha256": "fe07c01f27ac7a76b657e3a1a56d4028545677c4458e34c9daecadbb64ead24d",
+      "spec": "RevocationPropagation",
+      "trace": "target/formal/spec-mutants/generated/97df4f528cd2a2780ba0/run/violation1.itf.json",
+      "trace_sha256": "fa96596c29530e0a98f3a52142e02c0442cb6a43607f023607c4c41a5ac7d1dd",
+      "verdict": "killed",
+      "wall_secs": 5.624
+    },
+    {
+      "action": "Evaluate",
+      "apalache_exit": 12,
+      "cfg": "formal/tla/MCRevocationPropagation.cfg",
+      "classification": "guard-weakening",
+      "column": 17,
+      "id": "989f13d2e24e76f3ef58",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 229,
+      "log_sha256": "b5e7db4dcc52dc12f4cb495350c3889f756644dae2e3d7b450db134db94bf205",
+      "mutated_sha256": "55aa4a0b4ce80e8c496290a583b4ac7e2eeb30c3225b86924961db69f1a0d89d",
+      "operator": "replace_expression",
+      "original": "rev_epoch[a][c] = 0",
+      "path": "formal/tla/RevocationPropagation.tla",
+      "rationale": "Evaluation must never issue allow after observing a revocation epoch.",
+      "replacement": "rev_epoch[a][c] /= 0",
+      "source_sha256": "fe07c01f27ac7a76b657e3a1a56d4028545677c4458e34c9daecadbb64ead24d",
+      "spec": "RevocationPropagation",
+      "trace": "target/formal/spec-mutants/generated/989f13d2e24e76f3ef58/run/violation1.itf.json",
+      "trace_sha256": "4776b5395b35497020be933fb85db970a33e6c2d69eb08294517d24ffd7debff",
+      "verdict": "killed",
+      "wall_secs": 14.648
+    },
+    {
+      "action": "Propagate",
+      "apalache_exit": 12,
+      "cfg": "formal/tla/MCRevocationPropagation.cfg",
+      "classification": "post-state-corruption",
+      "column": 47,
+      "id": "10a4426cd3ce2230021a",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 216,
+      "log_sha256": "04811dce7709f4d3eadc9e88fbb4860d816e098f78486e1256ca452c50826b0d",
+      "mutated_sha256": "461828ed1f420bf2fdf09299865c3c03353a592044c1943e7b8a4af010b1d75f",
+      "operator": "replace_expression",
+      "original": "![m.to][m.cap] = m.epoch",
+      "path": "formal/tla/RevocationPropagation.tla",
+      "rationale": "Propagation must install the signed nonzero revocation epoch.",
+      "replacement": "![m.to][m.cap] = 0",
+      "source_sha256": "fe07c01f27ac7a76b657e3a1a56d4028545677c4458e34c9daecadbb64ead24d",
+      "spec": "RevocationPropagation",
+      "trace": "target/formal/spec-mutants/generated/10a4426cd3ce2230021a/run/violation1.itf.json",
+      "trace_sha256": "2fb3d4726a694046b86296007b270ea98e37afa28c6406d7b63d9c83bdd061c7",
+      "verdict": "killed",
+      "wall_secs": 15.571
+    },
+    {
+      "action": "Propagate",
+      "apalache_exit": 12,
+      "cfg": "formal/tla/MCRevocationPropagation.cfg",
+      "classification": "post-state-corruption",
+      "column": 47,
+      "id": "715532b6a06805a98b93",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 217,
+      "log_sha256": "61d2406eff9b85b2c61b224bdf9113f22e904aff62507d4b5593828be10780df",
+      "mutated_sha256": "ef31f09bc6103223034c4a4bd894204113c75158def35129d6c73cf3342e5d34",
+      "operator": "replace_expression",
+      "original": "![m.to][m.cap] = \"revoked\"",
+      "path": "formal/tla/RevocationPropagation.tla",
+      "rationale": "Installing a revocation epoch must also mark the capability revoked.",
+      "replacement": "![m.to][m.cap] = \"active\"",
+      "source_sha256": "fe07c01f27ac7a76b657e3a1a56d4028545677c4458e34c9daecadbb64ead24d",
+      "spec": "RevocationPropagation",
+      "trace": "target/formal/spec-mutants/generated/715532b6a06805a98b93/run/violation1.itf.json",
+      "trace_sha256": "30b3b3c256ac097f216575ab5a83a8f70123439526d87289bc9bd830f46afc3b",
+      "verdict": "killed",
+      "wall_secs": 15.459
+    },
+    {
+      "action": "Revoke",
+      "apalache_exit": 12,
+      "cfg": "formal/tla/MCRevocationPropagation.cfg",
+      "classification": "post-state-corruption",
+      "column": 39,
+      "id": "45a048d221bb5663a5b0",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 199,
+      "log_sha256": "c85e697c8982e02c7b3c91ed2fb55e3d6119fe875088e7ae154e34a29e743870",
+      "mutated_sha256": "0238bbd8c516b7bcacc1c480c5d9d6cb3ecf4fda62d082283fb51998fb832269",
+      "operator": "replace_expression",
+      "original": "![a][c] = \"revoked\"",
+      "path": "formal/tla/RevocationPropagation.tla",
+      "rationale": "A locally revoked capability must enter the revoked state.",
+      "replacement": "![a][c] = \"attenuated\"",
+      "source_sha256": "fe07c01f27ac7a76b657e3a1a56d4028545677c4458e34c9daecadbb64ead24d",
+      "spec": "RevocationPropagation",
+      "trace": "target/formal/spec-mutants/generated/45a048d221bb5663a5b0/run/violation1.itf.json",
+      "trace_sha256": "138b8b463a1cd67c9d65ff379ac375dd47cf2bfc70c5619f459f18c724d890f6",
+      "verdict": "killed",
+      "wall_secs": 6.37
+    },
+    {
+      "action": "Revoke",
+      "apalache_exit": 12,
+      "cfg": "formal/tla/MCRevocationPropagation.cfg",
+      "classification": "post-state-corruption",
+      "column": 39,
+      "id": "11ae50b041e7ab094bd8",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 200,
+      "log_sha256": "77fcff69abcc3743b512aa25cfc1528a6991a6f56229e8ff34c43652176bf0fb",
+      "mutated_sha256": "052e4b0098bb5dac7d9f168d48ac55cf028ea270422ea2b2473ef114c65f849c",
+      "operator": "replace_expression",
+      "original": "![a][c] = clock",
+      "path": "formal/tla/RevocationPropagation.tla",
+      "rationale": "A local revocation must record a nonzero observation epoch.",
+      "replacement": "![a][c] = 0",
+      "source_sha256": "fe07c01f27ac7a76b657e3a1a56d4028545677c4458e34c9daecadbb64ead24d",
+      "spec": "RevocationPropagation",
+      "trace": "target/formal/spec-mutants/generated/11ae50b041e7ab094bd8/run/violation1.itf.json",
+      "trace_sha256": "679ccb7a40c3f6258681bb80ee4d7294734d815e465e80d2193abafd5f6230a7",
+      "verdict": "killed",
+      "wall_secs": 6.371
+    },
+    {
+      "action": "Revoke",
+      "apalache_exit": 12,
+      "cfg": "formal/tla/MCRevocationPropagation.cfg",
+      "classification": "post-state-corruption",
+      "column": 8,
+      "id": "06882d6be46449025864",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "line": 203,
+      "log_sha256": "4ad2dc36670a6c2d4a702d8a4331bac254a7852de63b22c73ee2ca77449c61c4",
+      "mutated_sha256": "a9dc87e9138cd75047846499fa204b0da005444919dcb786e369034baba91d42",
+      "operator": "replace_expression",
+      "original": "clock'     = clock + 1",
+      "path": "formal/tla/RevocationPropagation.tla",
+      "rationale": "The revocation epoch must be strictly earlier than the next clock value.",
+      "replacement": "clock'     = clock",
+      "source_sha256": "fe07c01f27ac7a76b657e3a1a56d4028545677c4458e34c9daecadbb64ead24d",
+      "spec": "RevocationPropagation",
+      "trace": "target/formal/spec-mutants/generated/06882d6be46449025864/run/violation1.itf.json",
+      "trace_sha256": "f784384c0ca81270bfbffaf85a925d30099f5899ee525bfbb9a32b96b8f3a34b",
+      "verdict": "killed",
+      "wall_secs": 6.316
+    }
+  ],
+  "positive_baselines": [
+    {
+      "apalache_exit": 0,
+      "cfg": "formal/apalache/MCKernelTransitionCancelSafe.cfg",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "log_sha256": "aaba68447cbab8c1ff9a4e35c0148b5d75cb94865d6218a5ddb02a00a464e863",
+      "path": "formal/apalache/KernelTransitionCancelSafe.tla",
+      "spec": "KernelTransitionCancelSafe",
+      "verdict": "survived",
+      "wall_secs": 58.678
+    },
+    {
+      "apalache_exit": 0,
+      "cfg": "formal/apalache/MCMonotoneLogApalache.cfg",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "log_sha256": "951f0d7f4e6cbfa881726fa4e7503dab0c2a1113512f7f942c6799de5e9a98b8",
+      "path": "formal/apalache/MonotoneLogApalache.tla",
+      "spec": "MonotoneLogApalache",
+      "verdict": "survived",
+      "wall_secs": 5.817
+    },
+    {
+      "apalache_exit": 0,
+      "cfg": "formal/apalache/MCPostAdmissionDropGuard.cfg",
+      "invariant": "SafetyInv",
+      "length": 8,
+      "log_sha256": "d2313bea2528136623d544ff2c65ff615652f69908ae708a585aeb2f1fa9b056",
+      "path": "formal/apalache/PostAdmissionDropGuard.tla",
+      "spec": "PostAdmissionDropGuard",
+      "verdict": "survived",
+      "wall_secs": 2644.538
+    },
+    {
+      "apalache_exit": 0,
+      "cfg": "formal/apalache/MCReceiptBeforeAllow.cfg",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "log_sha256": "36f4b28f2d9a97eeea55c2efcdca909e4d64162108c82028845e59bcddf358f0",
+      "path": "formal/apalache/ReceiptBeforeAllow.tla",
+      "spec": "ReceiptBeforeAllow",
+      "verdict": "survived",
+      "wall_secs": 139.245
+    },
+    {
+      "apalache_exit": 0,
+      "cfg": "formal/apalache/MCRevocationCutCompleteness.cfg",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "log_sha256": "f0d0e0d8c03e37f3cf40d1d42b451b4359bed51302d97287029b236d2be913a3",
+      "path": "formal/apalache/RevocationCutCompleteness.tla",
+      "spec": "RevocationCutCompleteness",
+      "verdict": "survived",
+      "wall_secs": 91.659
+    },
+    {
+      "apalache_exit": 0,
+      "cfg": "formal/tla/MCDelegationDepthBound.cfg",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "log_sha256": "559f7f21e32dcf70cffcabf6b2efc94114fe6aa3aa697a69c6dbe250455b6559",
+      "path": "formal/tla/DelegationDepthBound.tla",
+      "spec": "DelegationDepthBound",
+      "verdict": "survived",
+      "wall_secs": 122.339
+    },
+    {
+      "apalache_exit": 0,
+      "cfg": "formal/tla/MCRevocationPropagation.cfg",
+      "invariant": "SafetyInv",
+      "length": 6,
+      "log_sha256": "46533a2e85433e199fb8f4c1359f2ba88c994087c45dab13793389923211c4d6",
+      "path": "formal/tla/RevocationPropagation.tla",
+      "spec": "RevocationPropagation",
+      "verdict": "survived",
+      "wall_secs": 6672.861
+    }
+  ],
+  "registered_negative": [
+    {
+      "cfg": "formal/apalache/_negative_tests/MCDistributedRevocationRevocationGateBroken.cfg",
+      "invariant": "NoAllowAfterRevokeDistributed",
+      "length": 2,
+      "log_sha256": "138837f9617c8b353ff9e8d3fd64bb4464a1042ae4be8aae16b77cffa190be31",
+      "spec": "formal/apalache/_negative_tests/DistributedRevocationRevocationGateBroken.tla",
+      "timeout_secs": 300,
+      "trace": "target/formal/spec-mutants/registered-negative/DistributedRevocationRevocationGateBroken/run/violation1.itf.json",
+      "trace_sha256": "47ca24ca43bec87a1339a7b0aa06a2da294b250de9334533bcd30a3b59d16fa6",
+      "verdict": "killed"
+    },
+    {
+      "cfg": "formal/apalache/_negative_tests/MCDistributedRevocationSignerPinBroken.cfg",
+      "invariant": "SignerPinnedHighWater",
+      "length": 3,
+      "log_sha256": "d557db88562a1ea0040a522f65d7e2b65bbd43bed0e876c9ec89f220529848e6",
+      "spec": "formal/apalache/_negative_tests/DistributedRevocationSignerPinBroken.tla",
+      "timeout_secs": 300,
+      "trace": "target/formal/spec-mutants/registered-negative/DistributedRevocationSignerPinBroken/run/violation1.itf.json",
+      "trace_sha256": "ef3b194c79fd5a87f8d3bbb756398d64824ef69b4b4f1c142f7965b035635e7b",
+      "verdict": "killed"
+    },
+    {
+      "cfg": "formal/apalache/_negative_tests/MCDistributedRevocationSkewBroken.cfg",
+      "invariant": "ClockSkewBound",
+      "length": 4,
+      "log_sha256": "0a931fea44db9a6229fc51db6e12323a68d58f675aba8c50ff7a5c9566c8dc18",
+      "spec": "formal/apalache/_negative_tests/DistributedRevocationSkewBroken.tla",
+      "timeout_secs": 300,
+      "trace": "target/formal/spec-mutants/registered-negative/DistributedRevocationSkewBroken/run/violation1.itf.json",
+      "trace_sha256": "a336a165450d1f9cb386707dd46d854e1f3bea0842650641b57b42c40d1f549f",
+      "verdict": "killed"
+    },
+    {
+      "cfg": "formal/apalache/_negative_tests/MCDistributedRevocationPartitionBroken.cfg",
+      "invariant": "PartitionSuspendResume",
+      "length": 4,
+      "log_sha256": "fdeaefe332b815f6a1b218867934debaa81ef98c61be5bb7b6de3bc9598bb798",
+      "spec": "formal/apalache/_negative_tests/DistributedRevocationPartitionBroken.tla",
+      "timeout_secs": 300,
+      "trace": "target/formal/spec-mutants/registered-negative/DistributedRevocationPartitionBroken/run/violation1.itf.json",
+      "trace_sha256": "aef009e8bfc2b1517521ffd5386013bc0e5058869bc88319293643c901c63fa8",
+      "verdict": "killed"
+    },
+    {
+      "cfg": "formal/apalache/_negative_tests/MCDistributedRevocationFreshnessBroken.cfg",
+      "invariant": "StaleEvaluationDenied",
+      "length": 6,
+      "log_sha256": "1ed91a29e95dba6fa4a36c1e85c505fb24e82eaf7276bb0a823afed87b13dc7d",
+      "spec": "formal/apalache/_negative_tests/DistributedRevocationFreshnessBroken.tla",
+      "timeout_secs": 300,
+      "trace": "target/formal/spec-mutants/registered-negative/DistributedRevocationFreshnessBroken/run/violation1.itf.json",
+      "trace_sha256": "a6671597016f28ac2ae4d9d556a86d6cc00e65d33e361e33fa4cbdca499c787f",
+      "verdict": "killed"
+    },
+    {
+      "cfg": "formal/apalache/_negative_tests/MCDistributedRevocationEvaluationCountWitness.cfg",
+      "invariant": "RejectedRawEvaluationCountBound",
+      "length": 5,
+      "log_sha256": "0727ad5750a2596adf0992f358139fa8f1615b13f77d0d1b3968c08e680a4a75",
+      "spec": "formal/apalache/_negative_tests/DistributedRevocationEvaluationCountWitness.tla",
+      "timeout_secs": 300,
+      "trace": "target/formal/spec-mutants/registered-negative/DistributedRevocationEvaluationCountWitness/run/violation1.itf.json",
+      "trace_sha256": "9c761480fbb59a097dc8f3ae25c747067872bf60ca1e3885beadd91ea11d48ac",
+      "verdict": "killed"
+    },
+    {
+      "cfg": "formal/apalache/_negative_tests/MCReceiptBeforeAllowBroken.cfg",
+      "invariant": "ReceiptBeforeAllow",
+      "length": 4,
+      "log_sha256": "9435f479b9e0a131a36873dce9c390fc71264d0bd57d42eed07ceb4fc8215ee1",
+      "spec": "formal/apalache/_negative_tests/ReceiptBeforeAllowBroken.tla",
+      "timeout_secs": 300,
+      "trace": "target/formal/spec-mutants/registered-negative/ReceiptBeforeAllowBroken/run/violation1.itf.json",
+      "trace_sha256": "caaf386132c7c99cd674b4ccd8f8b022ced6c6fa5592200bfc8909537a1f5fac",
+      "verdict": "killed"
+    },
+    {
+      "cfg": "formal/apalache/_negative_tests/MCRevocationCutCompletenessBroken.cfg",
+      "invariant": "RevocationCutCompleteness",
+      "length": 4,
+      "log_sha256": "ac931c3e1321fcd513ddfb66c1eb4e69e22b1172fc38531e68c11806f8d49d08",
+      "spec": "formal/apalache/_negative_tests/RevocationCutCompletenessBroken.tla",
+      "timeout_secs": 300,
+      "trace": "target/formal/spec-mutants/registered-negative/RevocationCutCompletenessBroken/run/violation1.itf.json",
+      "trace_sha256": "9a27006f5513b2ade945d4c4de1c1d1f6984bc8ba9a087b7cf4e9e516bc7439c",
+      "verdict": "killed"
+    },
+    {
+      "cfg": "formal/apalache/_negative_tests/MCDropGuardDiscardChildBufferBroken.cfg",
+      "invariant": "ChildReceiptsFlushed",
+      "length": 4,
+      "log_sha256": "007f79e60cb2dc04e947b8ea87331a06e5fb3bb20fb3c59e57e2937c981450ab",
+      "spec": "formal/apalache/_negative_tests/DropGuardDiscardChildBufferBroken.tla",
+      "timeout_secs": 300,
+      "trace": "target/formal/spec-mutants/registered-negative/DropGuardDiscardChildBufferBroken/run/violation1.itf.json",
+      "trace_sha256": "fed0890c6ee41d42ee2d48c95add4e26b09d9a53e93c4a8bdc9f02ab0562b1ba",
+      "verdict": "killed"
+    },
+    {
+      "cfg": "formal/apalache/_negative_tests/MCDropGuardSkipChildBudgetReleaseBroken.cfg",
+      "invariant": "ReservationConservation",
+      "length": 4,
+      "log_sha256": "e5f32f0f4895f21881302810733cde135fc5e3b041fd2362fbeec087675fc4b9",
+      "spec": "formal/apalache/_negative_tests/DropGuardSkipChildBudgetReleaseBroken.tla",
+      "timeout_secs": 300,
+      "trace": "target/formal/spec-mutants/registered-negative/DropGuardSkipChildBudgetReleaseBroken/run/violation1.itf.json",
+      "trace_sha256": "6088554bd95080a8e3c750c832900cb4e09f11f7bb20e7b1dffb4a15aa8a5855",
+      "verdict": "killed"
+    },
+    {
+      "cfg": "formal/apalache/_negative_tests/MCDropGuardChildOversubscriptionBroken.cfg",
+      "invariant": "ReservationConservation",
+      "length": 4,
+      "log_sha256": "a9553eef0bfd581da13a5edb9620d790a5703b3e965ad5cbde6ee6b4e577ebf4",
+      "spec": "formal/apalache/_negative_tests/DropGuardChildOversubscriptionBroken.tla",
+      "timeout_secs": 300,
+      "trace": "target/formal/spec-mutants/registered-negative/DropGuardChildOversubscriptionBroken/run/violation1.itf.json",
+      "trace_sha256": "f69572b791954cdfe7b5eef42fc4c03e9aaef2c078a48d38be40b9089de72027",
+      "verdict": "killed"
+    },
+    {
+      "cfg": "formal/apalache/_negative_tests/MCDropGuardSkipInvocationReversalBroken.cfg",
+      "invariant": "ReservationConservation",
+      "length": 4,
+      "log_sha256": "9c6f6c332743db35b17f2a999eb70cb1b09ee5638d9aaea46f83fbbf3c1fe586",
+      "spec": "formal/apalache/_negative_tests/DropGuardSkipInvocationReversalBroken.tla",
+      "timeout_secs": 300,
+      "trace": "target/formal/spec-mutants/registered-negative/DropGuardSkipInvocationReversalBroken/run/violation1.itf.json",
+      "trace_sha256": "2aae73a681f425f174134a95fb1e64baf350904c5b78727338bda3c8ee4f1988",
+      "verdict": "killed"
+    },
+    {
+      "cfg": "formal/apalache/_negative_tests/MCDropGuardNoFaultReceiptBroken.cfg",
+      "invariant": "TerminalReceiptExactlyOne",
+      "length": 4,
+      "log_sha256": "93bae52357f52d92cb21d14d255ee901061fe5166fb98938a751484b87363f95",
+      "spec": "formal/apalache/_negative_tests/DropGuardNoFaultReceiptBroken.tla",
+      "timeout_secs": 300,
+      "trace": "target/formal/spec-mutants/registered-negative/DropGuardNoFaultReceiptBroken/run/violation1.itf.json",
+      "trace_sha256": "89ef50def7d55d885363d21d26a529fa5ec17c3321bbf65051dbecc45b6c707c",
+      "verdict": "killed"
+    },
+    {
+      "cfg": "formal/apalache/_negative_tests/MCDropGuardReleaseOnIncompleteStreamBroken.cfg",
+      "invariant": "RetainedIffAborted",
+      "length": 4,
+      "log_sha256": "4ed5fda5816cee33d9ddd7e6ef8ddbae742b789e2b2a3937bd7124d4dca6897e",
+      "spec": "formal/apalache/_negative_tests/DropGuardReleaseOnIncompleteStreamBroken.tla",
+      "timeout_secs": 300,
+      "trace": "target/formal/spec-mutants/registered-negative/DropGuardReleaseOnIncompleteStreamBroken/run/violation1.itf.json",
+      "trace_sha256": "ba6807119f159cfa4dd3594dcaa33a7eb2a7a0dd1068dbd5dfff3b006465f69e",
+      "verdict": "killed"
+    },
+    {
+      "cfg": "formal/apalache/_negative_tests/MCDropGuardNoRetainOnPostInvocationDenyBroken.cfg",
+      "invariant": "RetainedIffAborted",
+      "length": 4,
+      "log_sha256": "da95997be8fb195ac7808fbcb344ff3be831c476167223e4976037f9ac22bcb5",
+      "spec": "formal/apalache/_negative_tests/DropGuardNoRetainOnPostInvocationDenyBroken.tla",
+      "timeout_secs": 300,
+      "trace": "target/formal/spec-mutants/registered-negative/DropGuardNoRetainOnPostInvocationDenyBroken/run/violation1.itf.json",
+      "trace_sha256": "e94c9634213c5904c8d774f74451f71728aa850b25c087487fc24fc4e9ada899",
+      "verdict": "killed"
+    },
+    {
+      "cfg": "formal/apalache/_negative_tests/MCDropGuardReleaseOnPostDispatchAbortBroken.cfg",
+      "invariant": "RetainedIffAborted",
+      "length": 4,
+      "log_sha256": "c06dd35ffc229413eb123f3b8ebc1e232bdb5928ac4ab1da97256b6981dcc26e",
+      "spec": "formal/apalache/_negative_tests/DropGuardReleaseOnPostDispatchAbortBroken.tla",
+      "timeout_secs": 300,
+      "trace": "target/formal/spec-mutants/registered-negative/DropGuardReleaseOnPostDispatchAbortBroken/run/violation1.itf.json",
+      "trace_sha256": "39f710d303753024aafe44686b4ba6f9f4ab4739dbfb7923515dfd0a5ef37453",
+      "verdict": "killed"
+    }
+  ],
+  "registered_seeds": [
+    {
+      "mutant_id": "4c6b8140da250108717a",
+      "name": "receipt-before-allow-guard",
+      "negative_spec": "formal/apalache/_negative_tests/ReceiptBeforeAllowBroken.tla",
+      "status": "subsumed"
+    },
+    {
+      "mutant_id": "9e551d4220d9aa53deaa",
+      "name": "revocation-transitive-cut",
+      "negative_spec": "formal/apalache/_negative_tests/RevocationCutCompletenessBroken.tla",
+      "status": "subsumed"
+    }
+  ],
+  "sample_epoch": 0,
+  "sample_seed": "d292f14df1c49387",
+  "sample_size_requested": 16,
+  "schema": "chio.spec-mutants-report.v1",
+  "source_aggregates": {
+    "DelegationDepthBound": {
+      "activation_met": true,
+      "activation_ratio_percent": 100.0,
+      "activation_target_percent": 90.0,
+      "completion_ratio_percent": 100.0,
+      "killed": 5,
+      "sampled": 5,
+      "score_denominator": 5,
+      "survived": 0,
+      "timeout": 0,
+      "timeout_policy": "timeouts count as not killed",
+      "unviable": 0
+    },
+    "KernelTransitionCancelSafe": {
+      "activation_met": true,
+      "activation_ratio_percent": 100.0,
+      "activation_target_percent": 90.0,
+      "completion_ratio_percent": 100.0,
+      "killed": 3,
+      "sampled": 3,
+      "score_denominator": 3,
+      "survived": 0,
+      "timeout": 0,
+      "timeout_policy": "timeouts count as not killed",
+      "unviable": 0
+    },
+    "MonotoneLogApalache": {
+      "activation_met": true,
+      "activation_ratio_percent": 100.0,
+      "activation_target_percent": 90.0,
+      "completion_ratio_percent": 100.0,
+      "killed": 2,
+      "sampled": 2,
+      "score_denominator": 2,
+      "survived": 0,
+      "timeout": 0,
+      "timeout_policy": "timeouts count as not killed",
+      "unviable": 0
+    },
+    "PostAdmissionDropGuard": {
+      "activation_met": true,
+      "activation_ratio_percent": 90.0,
+      "activation_target_percent": 90.0,
+      "completion_ratio_percent": 90.0,
+      "killed": 9,
+      "sampled": 10,
+      "score_denominator": 10,
+      "survived": 0,
+      "timeout": 1,
+      "timeout_policy": "timeouts count as not killed",
+      "unviable": 0
+    },
+    "ReceiptBeforeAllow": {
+      "activation_met": true,
+      "activation_ratio_percent": 100.0,
+      "activation_target_percent": 90.0,
+      "completion_ratio_percent": 100.0,
+      "killed": 3,
+      "sampled": 3,
+      "score_denominator": 3,
+      "survived": 0,
+      "timeout": 0,
+      "timeout_policy": "timeouts count as not killed",
+      "unviable": 0
+    },
+    "RevocationCutCompleteness": {
+      "activation_met": true,
+      "activation_ratio_percent": 100.0,
+      "activation_target_percent": 90.0,
+      "completion_ratio_percent": 100.0,
+      "killed": 3,
+      "sampled": 3,
+      "score_denominator": 3,
+      "survived": 0,
+      "timeout": 0,
+      "timeout_policy": "timeouts count as not killed",
+      "unviable": 0
+    },
+    "RevocationPropagation": {
+      "activation_met": true,
+      "activation_ratio_percent": 100.0,
+      "activation_target_percent": 90.0,
+      "completion_ratio_percent": 100.0,
+      "killed": 7,
+      "sampled": 7,
+      "score_denominator": 7,
+      "survived": 0,
+      "timeout": 0,
+      "timeout_policy": "timeouts count as not killed",
+      "unviable": 0
+    }
+  },
+  "tools": {
+    "apalache": "0.50.1",
+    "python": "3.13.13"
+  },
+  "worktree": {
+    "clean": true
+  }
+}

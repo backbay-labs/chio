@@ -1,13 +1,14 @@
 # Formal Verification Documentation
 
-Planning and review set for the Chio formal verification estate, authored
-2026-07-09 from a full repository survey at commit `dbb4639e1`. The living
-verification artifacts themselves are under [`formal/`](../../formal/) at the
-repository root (proof manifest, Lean project, TLA+/Apalache specs, Aeneas
-lanes, Creusot contracts, diff-tests) with in-crate counterparts in
-`crates/kernel/chio-kernel-core` and registries in `.kani/`,
-`formal/rust-verification/`, and `fuzz/`. This tree is the map and the plan;
-`formal/` is the territory.
+Execution and review set for the Chio formal verification estate. The roadmap
+was authored from the 2026-07-09 repository survey and executed through its
+local acceptance gates on 2026-07-15. Retained full-cycle mutation evidence
+completed on 2026-07-16. The living verification artifacts are under
+[`formal/`](../../formal/) at the repository root, with in-crate
+counterparts in `crates/kernel/chio-kernel-core` and registries in `.kani/`,
+`formal/rust-verification/`, and `fuzz/`. This tree records the implemented
+design, measured evidence, remaining hosted work, and the single blocked
+dependency; `formal/` contains the executable evidence.
 
 ## Reading order
 
@@ -17,10 +18,10 @@ lanes, Creusot contracts, diff-tests) with in-crate counterparts in
    cadence. Descriptive only.
 2. [GAP_ANALYSIS.md](GAP_ANALYSIS.md) - the six load-bearing gaps (G1-G6)
    with evidence and consequences, plus the staleness inventory.
-3. [HYGIENE_PASS.md](HYGIENE_PASS.md) - fifteen mechanical fixes (H1-H15)
-   with exact edits and verification steps. Wave 0 of the roadmap.
-4. [ROADMAP.md](ROADMAP.md) - sequencing of all 23 plan specs into waves,
-   the dependency sketch, claims impact, and standing execution rules.
+3. [HYGIENE_PASS.md](HYGIENE_PASS.md) - the completed fifteen-item mechanical
+   hygiene pass and its verification commands.
+4. [ROADMAP.md](ROADMAP.md) - the executed sequencing of all 23 plan specs,
+   outcomes, claims impact, and standing evidence rules.
 5. The plan specs under [plan/](plan/), one architecture spec and
    implementation plan per work item.
 
@@ -68,20 +69,16 @@ Theme E - verify the verification, make lanes bite:
 
 - IDs: gaps are G1-G6 ([GAP_ANALYSIS.md](GAP_ANALYSIS.md)), hygiene items
   H1-H15 ([HYGIENE_PASS.md](HYGIENE_PASS.md)), plan specs FV-<Theme><N>.
-- Every plan spec carries a status header (all start as Proposed
-  (2026-07-09)), an effort tag (S days, M one to two weeks, L a month or
-  more), dependencies, and a "Manifest and registry updates" section listing
+- Every plan spec carries its final implementation status, an effort tag (S
+  days, M one to two weeks, L a month or more), dependencies, decisions, and a
+  "Manifest and registry updates" section listing
   the `formal/proof-manifest.toml`, `formal/MAPPING.md`,
   `formal/theorem-inventory.json`, `formal/assumptions.toml`, and
   `docs/reference/CLAIM_REGISTRY.md` changes the work implies.
-- Adopting a spec: move its status to Accepted with a date and owner (owners
-  default to the team in `formal/OWNERS.md`), open the tracking issue, and
-  keep the spec updated as the design meets reality. Specs are plans, not
-  normative protocol text; wire-level changes must still agree with
-  `spec/PROTOCOL.md`.
-- A future generated artifact, `COVERAGE.md` (the proof coverage matrix), is
-  specified by [FV-C5](plan/FV-C5-proof-coverage-map.md) and will live in
-  this directory once the generator lands.
+- Specs are truthful living implementation records, not normative protocol
+  text. Wire-level changes must still agree with `spec/PROTOCOL.md`.
+- [COVERAGE.md](COVERAGE.md) is the generated proof coverage matrix specified
+  by [FV-C5](plan/FV-C5-proof-coverage-map.md).
 
 ## Relationship to claims
 

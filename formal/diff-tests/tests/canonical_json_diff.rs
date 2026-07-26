@@ -1,14 +1,15 @@
 #![cfg(not(target_arch = "wasm32"))]
 
-//! Differential proptest harness for RFC 8785 (JSON Canonicalization Scheme).
+//! Differential proptest harness for Chio canonical JSON.
 //!
 //! Cross-checks `chio_core::canonical::canonicalize` (the production
 //! canonicalizer in `crates/core/chio-core-types/src/canonical.rs`) against an
 //! independently-implemented oracle defined in this file. The oracle is a
-//! deliberately small, separately-derived implementation of RFC 8785 that
-//! exercises a subset of the production code paths (no f64 ryu shortest-form;
-//! we restrict the proptest strategy to integer numbers so the two
-//! implementations agree byte-for-byte on the strategy's output domain).
+//! deliberately small, separately-derived implementation of RFC 8785. It
+//! exercises a subset of the
+//! production code paths (no f64 ryu shortest-form; we restrict the proptest
+//! strategy to integer numbers so the two implementations agree byte-for-byte
+//! on the strategy's output domain).
 //!
 //! The harness hosts at least six named property tests, each exercising one
 //! invariant from RFC 8785 section 3:
@@ -17,7 +18,7 @@
 //!   2. `key_sort_utf16`           -- object keys sort by UTF-16 code unit order
 //!   3. `no_insignificant_whitespace` -- output has no whitespace outside string literals
 //!   4. `integer_no_decimal_point` -- integer numbers serialize without trailing `.0`
-//!   5. `string_minimal_escaping`  -- only RFC 8785 required characters are escaped
+//!   5. `string_minimal_escaping`  -- only required controls are escaped
 //!   6. `parse_round_trip_equal`   -- parse(canonicalize(x)) is semantically equal to x
 //!   7. `byte_stable_oracle_match` -- production output matches the independent oracle
 //!   8. `valid_utf8_output`        -- output is always valid UTF-8
@@ -110,8 +111,7 @@ fn arbitrary_json_value() -> impl Strategy<Value = Value> {
 /// Independently-implemented RFC 8785 canonicalizer for the strategy domain.
 ///
 /// Restricted to integer numbers so we do not need to re-implement ryu
-/// shortest-form. Object keys sort by UTF-16 code unit order; strings receive
-/// minimal escaping per RFC 8785.
+/// shortest-form. Object keys sort by UTF-16 code unit order.
 fn oracle_canonicalize(value: &Value) -> String {
     let mut out = String::new();
     oracle_emit(value, &mut out);
@@ -193,13 +193,7 @@ fn oracle_escape(s: &str, out: &mut String) {
             '\n' => out.push_str("\\n"),
             '\r' => out.push_str("\\r"),
             '\t' => out.push_str("\\t"),
-            // Match the production canonicalizer's `is_control()` rule, which
-            // covers U+0000..U+001F and U+007F..U+009F. This is broader than
-            // RFC 8785's literal text (which only mandates U+0000..U+001F),
-            // but is the actual behavior of `chio_core::canonical` and is
-            // ECMAScript-JSON.stringify-compatible at all observable boundaries
-            // for the ASCII subset.
-            c if c.is_control() => {
+            c if matches!(c, '\u{0000}'..='\u{001f}') => {
                 out.push_str(&format!("\\u{:04x}", c as u32));
             }
             c => out.push(c),
@@ -445,10 +439,10 @@ proptest! {
         prop_assert_eq!(canonical, n.to_string());
     }
 
-    /// Invariant 5: string minimal escaping (RFC 8785 sec 3.2.2.2).
+    /// Invariant 5: string escaping (RFC 8785 sec 3.2.2.2).
     /// Only the seven required escapes (`\"`, `\\`, `\b`, `\f`, `\n`, `\r`,
-    /// `\t`) plus `\uXXXX` for U+0000..U+001F are emitted; characters above
-    /// U+001F (including U+2028 / U+2029) pass through unescaped.
+    /// `\t`) plus `\uXXXX` for U+0000..U+001F are emitted. Other characters
+    /// (including DEL, C1 controls, U+2028, and U+2029) pass through unescaped.
     #[test]
     fn string_minimal_escaping(s in ".{0,32}") {
         let value = Value::String(s.clone());
@@ -459,7 +453,7 @@ proptest! {
         let inner = &canonical[1..canonical.len() - 1];
 
         // Walk the inner: every backslash must be one of the seven shorthand
-        // escapes, or `\uXXXX` (only used for U+0000..U+001F).
+        // escapes, or `\uXXXX` for the C0 control range.
         let bytes = inner.as_bytes();
         let mut i = 0;
         while i < bytes.len() {
@@ -473,16 +467,11 @@ proptest! {
                             "truncated \\uXXXX in {:?}",
                             canonical
                         );
-                        // The production canonicalizer uses Rust's
-                        // `char::is_control()`, which matches the Unicode "Cc"
-                        // category: U+0000..U+001F plus U+007F..U+009F. Confirm
-                        // the escaped code point is in that range.
                         let hex = std::str::from_utf8(&bytes[i + 2..i + 6]).unwrap();
                         let cp = u32::from_str_radix(hex, 16).unwrap();
-                        let is_control_cp = cp < 0x20 || (0x7f..=0x9f).contains(&cp);
                         prop_assert!(
-                            is_control_cp,
-                            "\\u{:04x} should not be escaped (production escapes only U+0000..U+001F and U+007F..U+009F): {:?}",
+                            cp < 0x20,
+                            "\\u{:04x} is outside RFC 8785's escaped C0 range: {:?}",
                             cp,
                             canonical
                         );
@@ -555,6 +544,16 @@ proptest! {
 // ---------------------------------------------------------------------------
 // Targeted invariants (no proptest input; assert spec-fixed outputs)
 // ---------------------------------------------------------------------------
+
+#[test]
+fn del_and_c1_controls_pass_through_in_production_and_oracle() {
+    let controls = "\u{007f}\u{009f}";
+    let value = serde_json::json!({ (controls): controls });
+    let expected = format!("{{\"{controls}\":\"{controls}\"}}");
+
+    assert_eq!(canonicalize(&value).unwrap(), expected);
+    assert_eq!(oracle_canonicalize(&value), expected);
+}
 
 #[test]
 fn null_bool_literals() {

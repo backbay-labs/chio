@@ -39,10 +39,17 @@
         static STORE_DIR: OnceLock<tempfile::TempDir> = OnceLock::new();
         STORE_DIR
             .get_or_init(|| {
-                tempfile::Builder::new()
+                let directory = tempfile::Builder::new()
                     .prefix("chio-cli-session-stores-")
                     .tempdir()
-                    .expect("create private session store directory")
+                    .expect("create private session store directory");
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    fs::set_permissions(directory.path(), fs::Permissions::from_mode(0o700))
+                        .expect("restrict session store directory permissions");
+                }
+                directory
             })
             .path()
     }

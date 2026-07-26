@@ -10,8 +10,9 @@
   internally-consistent witness, because nothing tied
   `parent_scope_hash` to the issuer's actual upstream parent capability.
 
-  The Lean toolchain is currently unavailable in CI, so the manifest
-  status for this theorem is `assumed`. The Rust shell is exercised by
+  The root-imported theorem contains no proof placeholders, is exercised by
+  the nightly Lean gate, and is recorded as `proved`. The Rust shell is
+  exercised by
   `crates/tooling/chio-conformance/tests/attenuation_witness_rejects_inflated_parent_scope.rs`
   and the protocol-side check is implemented in
   `chio_core_types::capability::CapabilityToken::validate_chain_binding`.

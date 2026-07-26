@@ -2,8 +2,9 @@
 # check-fuzz-budget.sh - Budget report for GitHub Actions fuzz minutes.
 #
 # Sums the observed run wall time of the cflite_pr.yml, cflite_batch.yml,
-# fuzz.yml, mutants.yml, and mutants-fuzz-cocoverage.yml workflows across the
-# last 30 days and converts to minutes. cap_mode defaults to "fail" so
+# fuzz.yml, mutants.yml, mutants-fuzz-cocoverage.yml, and proof-mutants.yml
+# workflows across the last 30 days and converts to minutes. cap_mode defaults
+# to "fail" so
 # exceeding the cap hard-halts; set GH_FUZZ_BUDGET_CAP_MODE=warn only for
 # ad hoc budget reports.
 #
@@ -27,7 +28,22 @@ set -euo pipefail
 REPO="${1:-backbay-labs/chio}"
 CAP_MINUTES="${GH_FUZZ_BUDGET_MINUTES:-1800}"
 WINDOW_DAYS=30
-WORKFLOWS=("cflite_pr.yml" "cflite_batch.yml" "fuzz.yml" "mutants.yml" "mutants-fuzz-cocoverage.yml")
+if [[ -n "${GH_FUZZ_BUDGET_WORKFLOWS:-}" ]]; then
+    IFS=',' read -r -a WORKFLOWS <<<"${GH_FUZZ_BUDGET_WORKFLOWS}"
+else
+    WORKFLOWS=(
+        "cflite_pr.yml"
+        "cflite_batch.yml"
+        "fuzz.yml"
+        "mutants.yml"
+        "mutants-fuzz-cocoverage.yml"
+        "proof-mutants.yml"
+    )
+fi
+if [[ "${#WORKFLOWS[@]}" -eq 0 ]]; then
+    err "fuzz-budget: GH_FUZZ_BUDGET_WORKFLOWS selected no workflows"
+    exit 2
+fi
 
 err() { printf '%s\n' "$*" >&2; }
 

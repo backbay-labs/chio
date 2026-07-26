@@ -80,7 +80,6 @@ pub(crate) fn dispatch_chio_buyer_command(command: ChioBuyerCommands) -> Result<
     }
 }
 
-
 pub(crate) fn cmd_chio_attest_supply_chain_verify(
     artifact: &Path,
     bundle: &Path,
@@ -163,7 +162,13 @@ pub(crate) fn cmd_chio_attest_runtime_quote_verify(
         CliError::Other("runtime-quote verification requires --collateral".to_string())
     })?;
 
-    match verify_runtime_quote_with_backend(tee_kind, quote, collateral, &kernel_public_key, &receipt_root) {
+    match verify_runtime_quote_with_backend(
+        tee_kind,
+        quote,
+        collateral,
+        &kernel_public_key,
+        &receipt_root,
+    ) {
         Ok(verified) => {
             if let Some(provided_report_data) = observed_report_data {
                 if provided_report_data != verified.report_data {
@@ -182,7 +187,8 @@ pub(crate) fn cmd_chio_attest_runtime_quote_verify(
                     });
                     write_chio_attest_report(&report_json, report)?;
                     return Err(CliError::Other(
-                        "runtime-quote provided report-data does not match verified quote".to_string(),
+                        "runtime-quote provided report-data does not match verified quote"
+                            .to_string(),
                     ));
                 }
             }
@@ -250,11 +256,11 @@ pub(crate) fn verify_runtime_quote_with_backend(
         .verification_time_unix_seconds
         .map(unix_seconds_to_system_time)
         .transpose()?;
-    let context = chio_attest_verify::QuoteVerificationContext::new(kernel_public_key, receipt_root);
+    let context =
+        chio_attest_verify::QuoteVerificationContext::new(kernel_public_key, receipt_root);
     let verified = match tee_kind {
         "intel-tdx" => {
-            let verification_time =
-                verification_time.unwrap_or_else(std::time::SystemTime::now);
+            let verification_time = verification_time.unwrap_or_else(std::time::SystemTime::now);
             let verifier = chio_attest_verify::tdx::TdxDcapVerifier::with_verification_time(
                 chio_attest_verify::tdx::TdxCollateral::new(
                     decode_hex_required(
@@ -288,8 +294,7 @@ pub(crate) fn verify_runtime_quote_with_backend(
                 .map_err(|error| CliError::cli_other_error(format!("attest verify: {error}")))?
         }
         "amd-sev-snp" => {
-            let verification_time =
-                verification_time.unwrap_or_else(std::time::SystemTime::now);
+            let verification_time = verification_time.unwrap_or_else(std::time::SystemTime::now);
             let expected_launch_digest = decode_fixed_hex::<48>(
                 collateral_required_str(
                     collateral.expected_launch_digest_hex.as_deref(),
@@ -331,10 +336,12 @@ pub(crate) fn verify_runtime_quote_with_backend(
                 .map_err(|error| CliError::cli_other_error(format!("attest verify: {error}")))?
         }
         "aws-nitro" => {
-            let verification_time =
-                verification_time.unwrap_or_else(std::time::SystemTime::now);
+            let verification_time = verification_time.unwrap_or_else(std::time::SystemTime::now);
             let expected_pcr0 = decode_fixed_hex::<48>(
-                collateral_required_str(collateral.expected_pcr0_hex.as_deref(), "expectedPcr0Hex")?,
+                collateral_required_str(
+                    collateral.expected_pcr0_hex.as_deref(),
+                    "expectedPcr0Hex",
+                )?,
                 "expectedPcr0Hex",
             )?;
             let verifier = chio_attest_verify::nitro::NitroVerifier::with_verification_time(
@@ -370,7 +377,9 @@ pub(crate) fn verify_runtime_quote_with_backend(
             .signed_at
             .duration_since(std::time::SystemTime::UNIX_EPOCH)
             .map_err(|error| {
-                CliError::Other(format!("runtime quote signed_at precedes unix epoch: {error}"))
+                CliError::Other(format!(
+                    "runtime quote signed_at precedes unix epoch: {error}"
+                ))
             })?
             .as_secs(),
     })
@@ -439,7 +448,10 @@ pub(crate) fn unix_seconds_to_system_time(seconds: u64) -> Result<std::time::Sys
 }
 
 #[cfg(feature = "tee-quotes")]
-pub(crate) fn collateral_required_str<'a>(value: Option<&'a str>, name: &str) -> Result<&'a str, CliError> {
+pub(crate) fn collateral_required_str<'a>(
+    value: Option<&'a str>,
+    name: &str,
+) -> Result<&'a str, CliError> {
     value.ok_or_else(|| CliError::Other(format!("runtime quote collateral missing {name}")))
 }
 
@@ -452,14 +464,19 @@ pub(crate) fn collateral_required_u32(value: Option<u32>, name: &str) -> Result<
 pub(crate) fn decode_hex_required(value: Option<&str>, name: &str) -> Result<Vec<u8>, CliError> {
     let value = collateral_required_str(value, name)?;
     hex::decode(value).map_err(|error| {
-        CliError::Other(format!("runtime quote collateral {name} is not hex: {error}"))
+        CliError::Other(format!(
+            "runtime quote collateral {name} is not hex: {error}"
+        ))
     })
 }
 
 #[cfg(feature = "tee-quotes")]
-pub(crate) fn decode_hex_vec_required(values: Option<&[String]>, name: &str) -> Result<Vec<Vec<u8>>, CliError> {
-    let values =
-        values.ok_or_else(|| CliError::Other(format!("runtime quote collateral missing {name}")))?;
+pub(crate) fn decode_hex_vec_required(
+    values: Option<&[String]>,
+    name: &str,
+) -> Result<Vec<Vec<u8>>, CliError> {
+    let values = values
+        .ok_or_else(|| CliError::Other(format!("runtime quote collateral missing {name}")))?;
     values
         .iter()
         .enumerate()
@@ -473,7 +490,10 @@ pub(crate) fn decode_hex_vec_required(values: Option<&[String]>, name: &str) -> 
         .collect()
 }
 
-pub(crate) fn decode_fixed_hex<const N: usize>(value: &str, name: &str) -> Result<[u8; N], CliError> {
+pub(crate) fn decode_fixed_hex<const N: usize>(
+    value: &str,
+    name: &str,
+) -> Result<[u8; N], CliError> {
     let mut bytes = [0_u8; N];
     hex::decode_to_slice(value, &mut bytes)
         .map_err(|error| CliError::Other(format!("{name}: expected {N} bytes of hex: {error}")))?;

@@ -523,6 +523,26 @@ mod tests {
         CHIO_HTTP_STATUS_SCOPE_FINAL,
     };
 
+    fn secure_directory(path: &std::path::Path) -> std::io::Result<()> {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))?;
+        }
+        Ok(())
+    }
+
+    fn create_private_directory(path: &std::path::Path) -> std::io::Result<()> {
+        let mut builder = std::fs::DirBuilder::new();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::DirBuilderExt;
+            builder.mode(0o700);
+        }
+        builder.create(path)?;
+        secure_directory(path)
+    }
+
     fn valid_capability_token_json(id: &str, issuer: &Keypair) -> String {
         let now = chrono::Utc::now().timestamp() as u64;
         let token = CapabilityToken::sign(
@@ -595,6 +615,7 @@ mod tests {
     #[test]
     fn builder_with_durable_stores_allows_safe_method() -> Result<(), Box<dyn std::error::Error>> {
         let dir = tempfile::tempdir()?;
+        secure_directory(dir.path())?;
         let receipt_store: std::sync::Arc<dyn chio_kernel::ReceiptStore> = std::sync::Arc::new(
             chio_store_sqlite::SqliteReceiptStore::open(dir.path().join("receipts.db"))?,
         );
@@ -604,7 +625,7 @@ mod tests {
             )?);
         let authority_database = dir.path().join("authority.db");
         let authority_locks = dir.path().join("authority-locks");
-        std::fs::create_dir(&authority_locks)?;
+        create_private_directory(&authority_locks)?;
         chio_store_sqlite::SqliteAuthorityStore::provision(&authority_database, &authority_locks)?;
         let authority_store = chio_store_sqlite::SqliteAuthorityStore::open_serving(
             &authority_database,

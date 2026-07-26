@@ -32,6 +32,14 @@ use chio_kernel::execution_nonce::{
     mint_execution_nonce, verify_execution_nonce, ExecutionNonceConfig, ExecutionNonceError,
     InMemoryExecutionNonceStore, NonceBinding,
 };
+use std::time::{SystemTime, UNIX_EPOCH};
+
+fn current_unix_time() -> i64 {
+    let elapsed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    i64::try_from(elapsed.as_secs()).unwrap_or(i64::MAX)
+}
 
 fn sample_binding() -> NonceBinding {
     NonceBinding {
@@ -54,7 +62,7 @@ fn threat_native_channel_replay_replayed_nonce_rejected() {
     let store = InMemoryExecutionNonceStore::default();
     let cfg = ExecutionNonceConfig::default();
     let binding = sample_binding();
-    let now: i64 = 1_700_000_000;
+    let now = current_unix_time();
 
     let signed = match mint_execution_nonce(&kp, binding.clone(), &cfg, now) {
         Ok(signed) => signed,

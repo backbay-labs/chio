@@ -45,7 +45,7 @@ import re
 import shlex
 import subprocess
 import threading
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from typing import IO
 
 DEFAULT_SHELL_TIMEOUT: int = 60
@@ -114,20 +114,18 @@ _ENV_DENY_EXACT: frozenset[str] = frozenset(
     }
 )
 
-_WINDOWS_ABSOLUTE_BARE_TOKEN_RE = re.compile(
-    r"(?P<token>"
-    r"(?<![A-Za-z0-9+.-])[A-Za-z]:(?:[\\]|/(?!/))[^\s\"']*"
-    r"|(?<!:)\\\\[^\\/\s\"']+[\\/][^\\/\s\"']+(?:[\\/][^\s\"']*)?"
-    r"|(?<!:)//[^/\s\"']+/[^/\s\"']+(?:/[^\s\"']*)?"
-    r")"
+_WINDOWS_ABSOLUTE_BARE_START_RE = re.compile(
+    r"(?<![A-Za-z0-9+.-])[A-Za-z]:(?:[\\]|/(?!/))"
+    r"|(?<!:)\\\\(?=[^\\/\s\"']+[\\/][^\\/\s\"'])"
+    r"|(?<!:)//(?=[^/\s\"']+/[^/\s\"'])"
 )
-_WINDOWS_ABSOLUTE_EMBEDDED_TOKEN_RE = re.compile(
-    r"(?P<token>"
-    r"(?<![A-Za-z0-9+.-])[A-Za-z]:(?:[\\]|/(?!/)).*"
-    r"|(?<!:)\\\\[^\\/]+[\\/][^\\/]+(?:[\\/].*)?"
-    r"|(?<!:)//[^/]+/[^/]+(?:/.*)?"
-    r")"
+_WINDOWS_ABSOLUTE_EMBEDDED_START_RE = re.compile(
+    r"(?<![A-Za-z0-9+.-])[A-Za-z]:(?:[\\]|/(?!/))"
+    r"|(?<!:)\\\\(?=[^\\/]+[\\/][^\\/]+)"
+    r"|(?<!:)//(?=[^/]+/[^/]+)"
 )
+_WINDOWS_ABSOLUTE_LIST_BOUNDARIES = frozenset("=,;| \t\r\n\"'")
+_WINDOWS_ABSOLUTE_LIST_SUFFIX = " \t\r\n,;|\"'[](){}"
 _SSH_REMOTE_COMMANDS: frozenset[str] = frozenset({"scp", "rsync", "sftp"})
 _SSH_REMOTE_SPEC_RE = re.compile(r"^(?:[^@\s:/]+@)?[A-Za-z][A-Za-z0-9_.-]*:.+")
 
@@ -173,6 +171,40 @@ def _reject_windows_absolute_escape(token: str, root: str) -> None:
     root_parts = tuple(part.casefold() for part in root_path.parts)
     if len(token_parts) < len(root_parts) or token_parts[: len(root_parts)] != root_parts:
         raise ChioPathEscapeError(token, "outside_workspace")
+
+
+def _iter_windows_absolute_candidates(
+    text: str,
+    start_pattern: re.Pattern[str],
+    *,
+    stop_at_shell_boundary: bool,
+) -> Iterator[str]:
+    starts: list[re.Match[str]] = []
+    for start in start_pattern.finditer(text):
+        is_unc = text.startswith(("\\\\", "//"), start.start())
+        if is_unc and starts:
+            previous_to_current = text[starts[-1].end() : start.start()]
+            starts_new_shell_token = stop_at_shell_boundary and bool(
+                re.search(r"[\s\"']", previous_to_current)
+            )
+            has_list_boundary = (
+                start.start() > 0
+                and text[start.start() - 1] in _WINDOWS_ABSOLUTE_LIST_BOUNDARIES
+            )
+            if not starts_new_shell_token and not has_list_boundary:
+                continue
+        starts.append(start)
+
+    for index, start in enumerate(starts):
+        end = starts[index + 1].start() if index + 1 < len(starts) else len(text)
+        if stop_at_shell_boundary:
+            boundary = re.search(r"[\s\"']", text[start.end() : end])
+            if boundary is not None:
+                end = start.end() + boundary.start()
+        candidate = text[start.start() : end]
+        if index + 1 < len(starts):
+            candidate = candidate.rstrip(_WINDOWS_ABSOLUTE_LIST_SUFFIX)
+        yield candidate
 
 
 def _without_quoted_shell_spans(command: str) -> str:
@@ -323,10 +355,11 @@ def reject_shell_argv_escape(
     ssh_remote_tokens = _ssh_remote_tokens(argv, root_text)
     if root_path is not None:
         unquoted_command = _without_quoted_shell_spans(command or "")
-        for raw_windows_absolute in _WINDOWS_ABSOLUTE_BARE_TOKEN_RE.finditer(
-            unquoted_command
+        for candidate in _iter_windows_absolute_candidates(
+            unquoted_command,
+            _WINDOWS_ABSOLUTE_BARE_START_RE,
+            stop_at_shell_boundary=True,
         ):
-            candidate = raw_windows_absolute.group("token")
             if _is_ssh_remote_windows_candidate(candidate, ssh_remote_tokens):
                 continue
             _reject_windows_absolute_escape(
@@ -339,10 +372,11 @@ def reject_shell_argv_escape(
         if any(seg == ".." for seg in segments):
             raise ChioPathEscapeError(token, "dotdot_segment")
         if root_text is not None:
-            for embedded_windows_absolute in _WINDOWS_ABSOLUTE_EMBEDDED_TOKEN_RE.finditer(
-                token
+            for candidate in _iter_windows_absolute_candidates(
+                token,
+                _WINDOWS_ABSOLUTE_EMBEDDED_START_RE,
+                stop_at_shell_boundary=False,
             ):
-                candidate = embedded_windows_absolute.group("token")
                 if _is_ssh_remote_windows_candidate(candidate, ssh_remote_tokens):
                     continue
                 _reject_windows_absolute_escape(

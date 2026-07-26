@@ -1,0 +1,24 @@
+schema = "chio.adapter-source-inventory.v1"
+
+crate_name_markers = [
+  "adapter",
+  "bridge",
+  "edge",
+  "proxy",
+]
+
+explicit_roots = [
+  "crates/products/chio-api-protect/src",
+  "crates/protocol/chio-cross-protocol/src",
+  "crates/protocol/chio-openapi/src",
+]
+
+contract_sources = [
+  "crates/kernel/chio-kernel/src/kernel/validation.rs",
+  "crates/kernel/chio-runtime-core/src/admission_hook.rs",
+  "crates/kernel/chio-runtime-core/src/admission_hook/swarm_authority.rs",
+  "crates/kernel/chio-runtime-core/src/admission_hook/swarm_ref.rs",
+  "crates/products/chio-api-protect/src/evaluator.rs",
+  "crates/protocol/chio-acp-edge/src/edge.rs",
+  "crates/protocol/chio-mcp-edge/src/runtime/tool_calls.rs",
+]

@@ -15,6 +15,7 @@ use sha2::{Digest as Sha2Digest, Sha256};
 
 use crate::error::{Error, Result};
 use crate::hashing::Hash;
+use crate::merkle_steps::inclusion_step;
 
 /// Compute leaf hash per RFC 6962: `SHA256(0x00 || leaf_bytes)`.
 #[must_use]
@@ -32,15 +33,34 @@ pub fn leaf_hash(leaf_bytes: &[u8]) -> Hash {
 /// Compute node hash per RFC 6962: `SHA256(0x01 || left || right)`.
 #[must_use]
 pub fn node_hash(left: &Hash, right: &Hash) -> Hash {
-    let mut hasher = Sha256::new();
-    hasher.update([0x01]);
-    hasher.update(left.as_bytes());
-    hasher.update(right.as_bytes());
-    let result = hasher.finalize();
+    #[cfg(kani)]
+    {
+        // The traversal proof treats hashing as an order-sensitive algebra
+        // under ASSUME-SHA256.
+        let mut output = [0u8; 32];
+        output[0] = left.as_bytes()[0]
+            .wrapping_mul(3)
+            .wrapping_add(right.as_bytes()[0].wrapping_mul(5))
+            .wrapping_add(1);
+        output[1] = left.as_bytes()[1]
+            .wrapping_mul(7)
+            .wrapping_add(right.as_bytes()[1].wrapping_mul(11))
+            .wrapping_add(1);
+        Hash::from_bytes(output)
+    }
 
-    let mut bytes = [0u8; 32];
-    bytes.copy_from_slice(&result);
-    Hash::from_bytes(bytes)
+    #[cfg(not(kani))]
+    {
+        let mut hasher = Sha256::new();
+        hasher.update([0x01]);
+        hasher.update(left.as_bytes());
+        hasher.update(right.as_bytes());
+        let result = hasher.finalize();
+
+        let mut bytes = [0u8; 32];
+        bytes.copy_from_slice(&result);
+        Hash::from_bytes(bytes)
+    }
 }
 
 /// RFC 6962-compatible Merkle tree.
@@ -204,31 +224,27 @@ impl MerkleProof {
         }
 
         let mut h = lh;
-        let mut idx = self.leaf_index;
-        let mut size = self.tree_size;
+        let mut idx = u64::try_from(self.leaf_index).map_err(|_| Error::MerkleProofFailed)?;
+        let mut size = u64::try_from(self.tree_size).map_err(|_| Error::MerkleProofFailed)?;
         let mut path_idx: usize = 0;
 
         while size > 1 {
-            if idx.is_multiple_of(2) {
-                if idx + 1 < size {
-                    if path_idx >= self.audit_path.len() {
-                        return Err(Error::MerkleProofFailed);
-                    }
-                    let sibling = &self.audit_path[path_idx];
-                    path_idx += 1;
-                    h = node_hash(&h, sibling);
-                } // else: carried upward (no sibling at this level)
-            } else {
-                if path_idx >= self.audit_path.len() {
-                    return Err(Error::MerkleProofFailed);
-                }
-                let sibling = &self.audit_path[path_idx];
-                path_idx += 1;
-                h = node_hash(sibling, &h);
+            let step = inclusion_step(idx, size);
+            if step.consume_sibling {
+                let sibling = self
+                    .audit_path
+                    .get(path_idx)
+                    .ok_or(Error::MerkleProofFailed)?;
+                path_idx = path_idx.checked_add(1).ok_or(Error::MerkleProofFailed)?;
+                h = if step.sibling_on_left {
+                    node_hash(sibling, &h)
+                } else {
+                    node_hash(&h, sibling)
+                };
             }
 
-            idx /= 2;
-            size = size.div_ceil(2);
+            idx = step.next_index;
+            size = step.next_size;
         }
 
         if path_idx != self.audit_path.len() {
@@ -340,6 +356,20 @@ mod tests {
 
         let expected_root = node_hash(&leaf_hash(b"left"), &leaf_hash(b"right"));
         assert_eq!(tree.root(), expected_root);
+    }
+
+    #[test]
+    #[cfg(not(kani))]
+    fn standard_build_node_hash_uses_rfc6962_sha256() {
+        let left = Hash::from_bytes([0; 32]);
+        let right = Hash::from_bytes([1; 32]);
+        let expected = Hash::from_bytes([
+            0x2a, 0xd8, 0x2c, 0x3a, 0x51, 0xe8, 0xed, 0x64, 0x18, 0xcb, 0x5b, 0xf2, 0x67, 0xc5,
+            0xf9, 0xe5, 0x21, 0xb9, 0x9f, 0x7a, 0xb4, 0xfc, 0xe6, 0x57, 0xf4, 0x60, 0xa8, 0xf1,
+            0xa3, 0xe8, 0x7b, 0x2e,
+        ]);
+
+        assert_eq!(node_hash(&left, &right), expected);
     }
 
     #[test]

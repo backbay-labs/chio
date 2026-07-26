@@ -1,6 +1,6 @@
 # FV-A2: Prove equivalence against the generated Aeneas output
 
-- Status: Proposed (2026-07-09)
+- Status: Implemented (2026-07-11; local evidence complete)
 - Theme: A - Make the proven code the running code
 - Effort: M
 - Depends on: none
@@ -9,73 +9,94 @@
 
 ## Summary
 
-The Aeneas production lane extracts `crates/kernel/chio-kernel-core/src/formal_aeneas.rs` through Charon and Aeneas into generated Lean under `target/formal/aeneas-production/lean/`, but the tracked equivalence proofs never look at that output: `formal/lean4/Chio/Chio/Proofs/AeneasEquivalence.lean` hand-restates the extracted semantics in a namespace called `AeneasMirror` and proves 14 theorems against the handwritten Chio model. The hand-restatement is a manual transliteration seam of exactly the kind gap G4 warns about, sitting in the middle of the lane whose whole purpose is to remove manual transliteration. This document closes the gap: vendor the Aeneas Lean support library pinned to the existing release tag, commit the generated `Funs.lean`/`Types.lean` as reviewed snapshots, gate regeneration drift in CI, and prove each generated definition equal to its `AeneasMirror` counterpart so the chain Rust -> generated Lean -> handwritten model is machine-checked end to end.
+The production lane now extracts two Rust sources with authenticated Charon
+and Aeneas binaries, commits byte-identical emitted-path Lean snapshots, and
+proves every generated production function equivalent to its registered
+semantic target. The 15 decision helpers are tied to `AeneasMirror`; the
+ledger pair, inclusion step, and two economy conversion functions are tied
+directly to their semantic models. All 20 functions across four targets have
+`generated_equivalence` status, with no lower-assurance escape hatch.
 
-## Motivation and evidence
+## Implementation outcome
 
-- `scripts/check-aeneas-equivalence.sh` currently asserts only that `def <symbol>` appears in the generated `Funs.lean` for all 15 extracted symbols plus `BudgetCommitResult` in `Types.lean` (lines 25-50), records SHA-256 hashes of source and generated files into `target/formal/aeneas-production/equivalence-artifacts.json` (lines 52-77), and then builds `Chio.Proofs.AeneasEquivalence` (lines 80-83). Nothing checks that the generated definitions mean what the mirror says they mean.
-- `formal/lean4/Chio/Chio/Proofs/AeneasEquivalence.lean` states its own limitation in its header (lines 1-9): "Aeneas emits Lean that depends on its support library and generated `Std.U*` wrappers under target/formal. This tracked module mirrors the extracted pure helper semantics in ordinary Lean values". The `AeneasMirror` namespace (lines 20-84) is a third handwritten copy of the decision logic (after `formal_aeneas.rs` itself and the Creusot contract bodies; see [FV-A3](./FV-A3-creusot-dedup.md)).
-- A transliteration bug in `AeneasMirror` would be invisible: the 14 theorems (lines 86-179) would still close because both sides of each theorem are handwritten. The `def <symbol>` grep in the gate cannot catch a generated function whose body diverges from the mirror.
-- The toolchain is already pinned and reproducible: `.github/workflows/nightly.yml:25` sets `CHIO_AENEAS_RELEASE_TAG=build-2026.04.22.215158-38d10a22642d75d051e14006cc6e45055381f10e` and downloads release binaries at line 252 (sha256-pinned [v]). The Lean project uses `leanprover/lean4:v4.28.0-rc1` with zero external packages (`formal/lean4/Chio/lake-manifest.json` has `"packages": []`). Everything needed to make the generated code a first-class proof subject exists; it is just not wired.
-- Gap G1 context: because generation happens only under the nightly toolchain, PR reviewers today cannot even see what the generated Lean looks like, let alone diff a change to it. Committed snapshots fix the reviewability half of that gap for this lane even before FV-E3 builds the PR smoke tier.
+- `formal/aeneas/production.toml` is schema v1 and carries exact x86_64 and aarch64 archive, binary, and repaired-runtime hashes. `scripts/install-aeneas-toolchain.py` installs into a fixed architecture path, verifies the official archive and binaries, applies the deterministic aarch64 interpreter repair, and writes a registry-bound receipt.
+- `formal/lean4/vendor/aeneas/` contains the explicit transitive import closure for both `Aeneas` and `AeneasMeta`. Its vendor manifest pins the release, source archive, content digest, and Mathlib revision; the root Lake manifest records the real dependency closure.
+- `formal/lean4/Chio/FormalAeneas/Funs.lean` and `Types.lean` are identity-normalized snapshots at the emitted module path. The production gate regenerates them with the authenticated toolchain and fails on any byte drift.
+- The generated-equivalence proofs cover all 20 production functions. The
+  ledger transition is related directly to the handwritten ledger model, the
+  inclusion step to the Merkle-walk model, and both conversion directions to
+  the checked economy-conversion model.
+- `formal/aeneas/negative-tests.toml` registers six fail-closed mutations: status downgrade, theorem removal, archive substitution, driver substitution, snapshot drift, and a semantic generated-code change. The targeted campaign requires all six to be killed and records hashed logs.
+- Local completion evidence: authenticated production extraction and equivalence passed, all registered production artifacts appeared in proof coverage, focused proof-coverage tests passed, the full Lean proof check passed, `lake build Aeneas AeneasMeta` passed, and focused Rust tests plus package clippy passed.
 
-## Current state
+## Pre-implementation evidence
 
-- Extraction: `scripts/check-aeneas-production.sh` runs `charon rustc --preset=aeneas` over `formal_aeneas.rs` (lines 36-37), then `aeneas -backend lean -split-files -namespace Chio.AeneasProduction` into `target/formal/aeneas-production/lean/` (lines 46-47), greps for the 15 symbols (lines 56-77), and chains into the equivalence script.
-- `formal/aeneas/production.toml` names the lane: source, both scripts, `equivalence_module = "formal/lean4/Chio/Chio/Proofs/AeneasEquivalence.lean"`, `artifact_report`, and the 15 `extracted_symbols` [v].
-- The Lean project (`formal/lean4/Chio/lakefile.lean`: single `lean_lib Chio`, `srcDir := "."`) does not import the generated code and has no path to it: the generated files live under `target/`, are never committed, and depend on the Aeneas support library that the project does not vend.
-- The 14 equivalence theorems connect `AeneasMirror` to the handwritten model (`Chio.Core.budgetPrecheck`, `dpopNonceAdmits`, `revocationSnapshotDenies`, `receiptFieldsCoupled`, `CapabilityToken.isValidAt`, and friends), mostly by `rfl` or `cases ... <;> rfl`.
+- Before this work, `scripts/check-aeneas-equivalence.sh` asserted only that `def <symbol>` appeared for 15 extracted decision helpers, hashed raw files, and built the handwritten mirror proof. It did not prove the generated definitions meant what the mirror claimed.
+- `AeneasEquivalence.lean` explicitly described itself as a handwritten restatement. A transliteration bug in `AeneasMirror` was invisible because both sides of its equivalence theorems were handwritten.
+- The initial workflow pinned one release tag and archive hash but trusted PATH resolution for the driver, had no architecture-specific runtime repair evidence, and had an empty Lake package manifest. Those were pinning and closure gaps rather than a complete authenticated toolchain.
+- Generated Lean lived only under `target/`, so reviewers could not inspect or diff it. Committed identity snapshots and a PR-buildable proof module close that reviewability gap.
+
+## Implemented state
+
+- `scripts/check-aeneas-production.sh` validates the schema-v2 registry before running tools, authenticates all three installed executables and their receipt, invokes the exact Charon driver, extracts all registered functions, and always chains into the equivalence gate.
+- `scripts/check-aeneas-equivalence.sh` validates snapshot identity, vendor closure, exact Lake pins, theorem inventory, source and generated hashes, architecture-specific tool evidence, and the `#print axioms` output before writing a schema-v3 artifact report.
+- The Lean project imports `FormalAeneas.Types` and `FormalAeneas.Funs` through a separate library rooted at the emitted snapshot path. Its local Aeneas dependency and complete Mathlib closure are recorded in `lakefile.lean` and `lake-manifest.json`.
+- `production.toml` has four target groups containing 20 functions from two
+  sources. Each function has one registered equivalence theorem, and every
+  group requires `generated_equivalence`.
 
 ## Design
 
 ### Vendor the Aeneas Lean support library
 
-Vendor the support library (the `Aeneas` lake package shipped with the pinned release) under `formal/lean4/vendor/aeneas/`, added to the Chio lakefile as a path dependency. Pinning discipline: a `formal/lean4/vendor/aeneas/VENDOR.toml` records the source release tag (must equal `CHIO_AENEAS_RELEASE_TAG`) and a content hash; `scripts/check-aeneas-equivalence.sh` verifies the recorded tag matches the workflow env so the vendored library and the extraction binary cannot silently diverge.
+The support closure for both `Aeneas` and `AeneasMeta` is vendored under `formal/lean4/vendor/aeneas/` and added to the Chio lakefile as a path dependency. `VENDOR.toml` records the authenticated source archive, release tag, content digest, module roots, and exact Mathlib revision. `scripts/vendor-aeneas-lean.sh` derives the explicit transitive import closure, and `scripts/check-aeneas-equivalence.sh` recomputes and checks it.
 
-Why vendored-path over a git lake dependency: the Lean project currently has zero external packages, builds offline, and is itself release evidence; a git dependency reintroduces network fetch into proof CI and unpins the library from the binary release actually used for extraction. The vendored tree is refreshed only by a deliberate re-vendor script run when `CHIO_AENEAS_RELEASE_TAG` bumps.
+Why vendored-path over a git Aeneas dependency: the support code remains reviewable and pinned to the exact binary release used for extraction. Mathlib and its transitive packages remain normal Lake dependencies at exact revisions recorded in the real root manifest. The vendored tree is refreshed only by the authenticated re-vendor script.
 
-Main compatibility constraint: the support library must compile under the repo's `lean-toolchain` (`v4.28.0-rc1`). Aeneas releases pin their own Lean version; if the pinned release's library does not build on `v4.28.0-rc1`, the resolution order is (1) pick the Aeneas release matching our toolchain, (2) bump `lean-toolchain` in lockstep with the whole proof tree. Phase 1 exists to discover this early and cheaply.
+The vendored closure and generated snapshots compile under the repository `lean-toolchain`. Both `lake build Aeneas AeneasMeta` and the full Chio proof build are required evidence.
 
 ### Commit generated snapshots
 
-Commit `Funs.lean` and `Types.lean` snapshots under `formal/lean4/Chio/Chio/Generated/` so they build as `Chio.Generated.Funs` / `Chio.Generated.Types` inside the existing `lean_lib`. The snapshot step normalizes only what is required for that placement (module header/import lines emitted for the `Chio.AeneasProduction` namespace layout) via a small deterministic rewrite in the check script; the function and type bodies are committed byte-for-byte as generated. If header rewriting proves brittle across Aeneas versions, the fallback is to commit under the emitted module path (`formal/lean4/Chio/Chio/AeneasProduction/`) instead; decide in phase 2 and record the choice in `production.toml`.
+The committed snapshots live at the emitted module path, `formal/lean4/Chio/FormalAeneas/Funs.lean` and `Types.lean`, and build as `FormalAeneas.Funs` and `FormalAeneas.Types`. Snapshot normalization is identity: the committed files must be byte-for-byte equal to regenerated output. This avoids a handwritten header rewrite between generated semantics and proof input.
 
 Committed snapshot vs build-time-only generation, decided: committed.
 
 - Reviewability: a Rust edit to `formal_aeneas.rs` produces a visible generated-Lean diff in the same PR, reviewable by people who do not run Charon.
 - PR-time checking: Lean-side jobs (and FV-E3's smoke tier) can build and prove against the snapshot with only `lake`, no Charon/Aeneas toolchain, closing part of G1 for this lane.
 - Drift is still caught: nightly regenerates with the pinned toolchain and fails on any difference from the snapshot, so the snapshot cannot go stale silently.
-- Cost: a two-file committed artifact that changes only when the 140-line source [v] changes; accepted.
+- Cost: a two-file committed artifact that changes only when the registered production source changes; accepted.
 
 ### Drift gate
 
-Extend `scripts/check-aeneas-equivalence.sh`: after regeneration, apply the same normalization used at snapshot time and `diff` against the committed files; any difference fails with instructions to re-run the snapshot step and commit the result. The existing `equivalence-artifacts.json` gains the snapshot hashes next to the source and generated hashes so the artifact report ties all three together. Intended failure output:
+`scripts/check-aeneas-equivalence.sh` applies the snapshot normalization after regeneration and diffs the result against the committed files. Any difference fails with instructions to re-run the snapshot step and commit the result. `equivalence-artifacts.json` records the snapshot hashes next to the source and generated hashes so the artifact report ties all three together. Failure output is:
 
 ```
-aeneas-equivalence: SNAPSHOT DRIFT
+aeneas-equivalence: GENERATED SNAPSHOT DRIFT
   regenerated target/formal/aeneas-production/lean/Funs.lean differs from
-  committed formal/lean4/Chio/Chio/Generated/Funs.lean
-  Re-run: ./scripts/check-aeneas-production.sh && ./scripts/snapshot-aeneas-generated.sh
-  then commit the Generated/ diff. If you did not change formal_aeneas.rs,
-  the extraction toolchain moved: check CHIO_AENEAS_RELEASE_TAG.
+  committed formal/lean4/Chio/FormalAeneas/Funs.lean
+  Re-run: ./scripts/check-aeneas-production.sh
+  then: ./scripts/snapshot-aeneas-generated.sh --write
 ```
 
-(The snapshot step lands as `scripts/snapshot-aeneas-generated.sh` so the normalization logic exists exactly once and both the gate and the bless path call it.)
+The snapshot script has explicit `--check` and `--write` modes and fixture-only path overrides used by its drift selftest.
 
 ### Generated-equivalence proofs
 
-New module `formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean`, importing `Chio.Generated.Funs`, `Chio.Generated.Types`, the vendored support library, and the existing proofs module. For each of the 15 symbols: a theorem that the generated definition agrees with its `AeneasMirror` counterpart, then (by composition with the existing 14 theorems) with the handwritten model.
+The generated-equivalence modules import the emitted snapshots, vendored
+support library, reservation-ledger, Merkle-walk, and economy-conversion
+models. They cover 20 functions from two sources and connect every generated
+definition to the model cited by the property matrix.
 
-The main friction, called out plainly: Aeneas emits Result-typed, machine-integer code. Generated functions return `Result Bool` (or `Result BudgetCommitResult`) and operate on `U32`/`U64` scalars with wrapped arithmetic, so the theorems are not literally `rfl` against `Nat`-and-`Bool` mirror functions. Expected statement shape:
+The main friction is that Aeneas emits Result-typed, machine-integer code. Generated functions return `Result Bool` (or `Result BudgetCommitResult`) and operate on `U32`/`U64` scalars with wrapped arithmetic, so the theorems are not literally `rfl` against `Nat`-and-`Bool` mirror functions. The implemented proof structure is:
 
-- Pure boolean combinators (`dpop_admits`, `nonce_admits`, `guard_step_allows`, `revocation_snapshot_denies`, `receipt_fields_coupled`, the two covers-by-flags functions, `required_true_is_preserved`): `generated f args = Result.ok (AeneasMirror.f args)`; expected to close by `simp [f]` or `rfl` once unfolded, since no scalar arithmetic is involved.
-- Comparison-based predicates (`classify_time_window_code`, `time_window_valid`, `optional_u32_cap_is_subset`, `monetary_cap_is_subset_by_parts`, `budget_precheck`, `dpop_freshness_valid`): need a small helper-lemma layer translating `U64`/`U32` comparisons and saturating adds to `Nat` comparisons on `.val`, stated once and reused (proposed `Chio/Proofs/AeneasScalarLemmas.lean` if the support library's simp set is not sufficient on its own; prefer the support library's `progress`/simp machinery first).
-- `budget_commit`: the only function with subtraction guarded by a precheck. The proof must show the `U64` subtractions cannot underflow given `budget_precheck = true`, then relate the generated `BudgetCommitResult` struct to `AeneasMirror.budgetCommit`'s `Option BudgetState`. This is the single most expensive proof of the set; budget it as such.
+- Pure boolean combinators (`dpop_admits`, `nonce_admits`, `guard_step_allows`, `revocation_snapshot_denies`, `receipt_fields_coupled`, the two covers-by-flags functions, `required_true_is_preserved`) unfold to `Result.ok` equalities against `AeneasMirror`.
+- Comparison-based predicates (`classify_time_window_code`, `time_window_valid`, `optional_u32_cap_is_subset`, `monetary_cap_is_subset_by_parts`, `budget_precheck`, `dpop_freshness_valid`) reuse private scalar lemmas in the generated-equivalence module for `U64`/`U32` comparisons, checked addition, saturating addition, and value projections.
+- `budget_commit` discharges the guarded subtraction obligations before relating the generated `BudgetCommitResult` to `AeneasMirror.budgetCommit`'s `Option BudgetState`.
 
-Statements quantify over scalar values (`forall (a b c d : U64), ...`) with `.val` projections on the mirror side, so the theorems also document the operating range explicitly instead of leaving `Nat`-vs-`u64` implicit. Expected shape, sketched for the two representative difficulty classes:
+Statements quantify over scalar values (`forall (a b c d : U64), ...`) with `.val` projections on the mirror side, so the theorems document the operating range explicitly instead of leaving `Nat`-vs-`u64` implicit. Representative statement shapes are:
 
 ```lean
--- Boolean combinator class: no scalar layer, expected simp/rfl.
+-- Boolean combinator class: no scalar layer.
 theorem generated_dpop_admits_eq_mirror
     (required present valid fresh : Bool) :
     Chio.AeneasProduction.dpop_admits required present valid fresh =
@@ -96,64 +117,58 @@ Exact generated names and the `Result`/scalar spellings follow whatever the pinn
 
 ### Demote AeneasMirror
 
-After per-symbol proofs land, `AeneasMirror` stops being the lane's semantic anchor and becomes an internal stepping-stone layer: the composed theorems (generated = mirror = model) are exported under new names, `production.toml`'s `equivalence_module` points at the new module, and the module docstring in `AeneasEquivalence.lean` is rewritten to say the mirror is now derived, not load-bearing. The mirror is kept (it makes the composed proofs short) but any future edit to it must break a generated-equivalence theorem to matter, which is the point.
+`AeneasMirror` is an internal stepping-stone for the 15 decision functions rather than the lane's semantic anchor. The two ledger functions bypass it and target `ReservationLedger` directly. `production.toml` points at the generated-equivalence module, and no production function can be registered without an equivalence theorem.
 
-## Implementation plan
+## Implementation record
 
-1. Phase 1: vendor and compile.
-   - Add `formal/lean4/vendor/aeneas/` (support library from the pinned release), `formal/lean4/vendor/aeneas/VENDOR.toml`, and `scripts/vendor-aeneas-lean.sh` (re-vendor script).
-   - Modify `formal/lean4/Chio/lakefile.lean` (path dependency) and `formal/lean4/Chio/lake-manifest.json` as lake requires.
-   - Exit criterion: `lake build` green on `v4.28.0-rc1` with the vendored library; toolchain mismatch resolved per the design if it appears.
-2. Phase 2: snapshot and drift gate.
-   - Add `scripts/snapshot-aeneas-generated.sh` (single home for the normalization; called by gate and by authors).
-   - Add `formal/lean4/Chio/Chio/Generated/Funs.lean` and `Types.lean` (first snapshot, produced by that script).
-   - Modify `scripts/check-aeneas-equivalence.sh` (snapshot diff, artifact hashes, failure message above) and `scripts/check-aeneas-production.sh` only if the dest layout needs an extra hook.
-   - Modify `formal/aeneas/production.toml` (new `generated_snapshot` paths field).
-   - Exit criterion: nightly red on unrefreshed snapshot, green after refresh; the module-placement question (Generated/ vs emitted path) resolved and recorded.
-3. Phase 3: per-symbol proofs.
-   - Add `formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean` (and `AeneasScalarLemmas.lean` if the support library's simp set is not enough).
-   - Order: the eight pure boolean combinators first, then the comparison predicates, then `budget_commit` last.
-   - Modify `formal/lean4/Chio/Chio.lean` (root import) so the module is root-imported and counts as evidence under the manifest's rules.
-   - Exit criterion: 15/15 theorems sorry-free; scalar-lemma layer (if any) documented as the single U*/Result seam.
-4. Phase 4: demote the mirror.
-   - Modify `formal/lean4/Chio/Chio/Proofs/AeneasEquivalence.lean` (docstring rewrite, exported composed generated-vs-model theorems), `formal/aeneas/production.toml` (`equivalence_module`), and the registries below.
-   - Exit criterion: no property-matrix aeneas row whose only evidence is a mirror-only theorem.
+1. Vendored the authenticated Aeneas and AeneasMeta closure, pinned the real Lake dependency graph, and passed `lake build Aeneas AeneasMeta`.
+2. Chose emitted-path, identity-normalized snapshots and added deterministic check/write tooling plus a drift selftest.
+3. Added root-imported generated-code proofs for all 20 production functions,
+   including both economy conversion directions.
+4. Made the production gate registry-driven and fail-closed, demoted the decision mirror, and linked the generated ledger directly to its model.
+5. Added authenticated x86_64 and aarch64 installation, including exact deterministic aarch64 interpreter repair and a receipt binding the installed binaries to the registry.
+6. Added six registered negative mutations and required structured killed results with hashed logs.
 
 ## CI and gating changes
 
-- `scripts/check-aeneas-equivalence.sh` (already in `proof-manifest.toml` `gate_commands`) gains the snapshot drift check and the vendor-tag consistency check; it remains the nightly gate.
-- The Lean build job that runs `./scripts/check-formal-proofs.sh` now also compiles `Chio.Generated.*`, the vendored library, and the new proof module; expect a one-time build-minutes increase from the vendored library (mitigated by lake caching).
+- `scripts/check-aeneas-equivalence.sh` is registered in `proof-manifest.toml`, checks snapshot drift and vendor-tag consistency, and remains the nightly gate.
+- The Lean build job that runs `./scripts/check-formal-proofs.sh` compiles `FormalAeneas.*`, the vendored libraries, and the generated-equivalence proof module.
 - New failure mode made explicit in the script output: "generated snapshot drift" (Rust changed, snapshot not refreshed) vs "generated equivalence failure" (snapshot refreshed, proofs no longer close). The second is the alarm that means semantics moved.
-- PR-time: no new required job in this doc; FV-E3 should pull `lake build Chio.Proofs.AeneasGeneratedEquivalence` into its smoke tier since it needs no Rust toolchain. FV-A4's hash gate covers the cheap PR-time tripwire for the mirror seams this doc does not remove.
+- PR-time: the root-imported module builds through the existing formal smoke tier with only Lake. FV-A4's hash gate remains the cheap PR-time tripwire for mirror seams this work does not remove.
 
 ## Acceptance criteria
 
-- [ ] Vendored Aeneas support library builds under the repo `lean-toolchain`, with `VENDOR.toml` tag equal to `CHIO_AENEAS_RELEASE_TAG` and checked by script.
-- [ ] `Funs.lean`/`Types.lean` snapshots are committed, and a deliberate one-character edit to `formal_aeneas.rs` fails `check-aeneas-equivalence.sh` until the snapshot is refreshed.
-- [ ] All 15 extracted symbols have a generated-vs-mirror theorem in `AeneasGeneratedEquivalence.lean`, sorry-free and root-imported.
-- [ ] Composed generated-vs-handwritten-model theorems exist for the symbols the property matrix cites (P1, P2, P3, P4, P8 aeneas rows in `formal/proof-manifest.toml`).
-- [ ] `AeneasMirror` is documented as derived; no property-matrix row cites a mirror-only theorem as its sole aeneas evidence.
-- [ ] `equivalence-artifacts.json` ties source hash, snapshot hash, and regenerated hash together in one report.
+- [x] Vendored Aeneas and AeneasMeta support builds under the repository toolchain, with release, archive, content, and Mathlib pins checked by script.
+- [x] Identity-normalized `Funs.lean` and `Types.lean` snapshots are committed, and the drift mutation proves a changed generated file is rejected.
+- [x] All 18 production functions have a registered, sorry-free generated-equivalence theorem and the proof module is root-imported.
+- [x] Composed generated-vs-model theorems exist for the property-matrix decision evidence, and `ledger_apply` is registered as P1 evidence against the ledger model.
+- [x] `AeneasMirror` is documented as derived; the ledger functions do not depend on it.
+- [x] `equivalence-artifacts.json` ties the registry, source, tools, raw output, snapshots, proof module, vendor closure, Lake files, and architecture report together.
+- [x] Six independent negative mutations are killed and emitted in a structured report with log hashes.
 
 ## Risks and mitigations
 
-- Toolchain incompatibility (support library vs `v4.28.0-rc1`). Mitigation: phase 1 is deliberately tiny and lands nothing proof-facing; if lockstep bumping is required it is a contained, reviewable event with the whole proof tree rebuilt.
+- Toolchain incompatibility (support library vs `v4.28.0-rc1`). Resolution: the authenticated vendored closure builds under the pinned repository toolchain, and any future lockstep bump must rebuild the whole proof tree.
 - Aeneas output format churn: a future `CHIO_AENEAS_RELEASE_TAG` bump can rewrite the generated code shape and break every per-symbol proof at once. Mitigation: snapshots make the churn visible as a diff before any proof work starts; the scalar-lemma layer concentrates the U*/Result plumbing so most breakage lands in one file; tag bumps are already deliberate (sha256-pinned binaries).
-- Normalization bugs in the snapshot step could mask a real generated-code change. Mitigation: normalization is limited to module header/import lines by construction, is itself unit-tested with a fixture pair, and the raw generated hashes still land in the artifact report for audit.
-- Proof cost underestimate on `budget_commit`. Mitigation: it is sequenced last; if it stalls, the other 14 still land and the gap left is one named theorem, tracked in the theorem inventory as pending rather than silently absent.
+- Snapshot normalization could mask a real generated-code change. Resolution: normalization is identity, so any emitted byte change is visible and fails the gate.
+- Checked-arithmetic proof cost could leave partial coverage. Resolution: the
+  registry rejects any non-equivalence target or missing function-to-theorem
+  row; all 20 functions compile and pass the axiom audit.
 - Vendored-library bloat and license obligations. Mitigation: vendor only the Lean support library (not the toolchain), record upstream license alongside `VENDOR.toml`, and keep the re-vendor script the only write path.
 
-## Open questions
+## Decisions
 
-- Does the pinned Aeneas release's support library build on `v4.28.0-rc1` as-is? (Phase 1 answers this; both fallback paths are pre-agreed above.)
-- Exact emitted module/import layout under `-split-files -namespace Chio.AeneasProduction`: is the `Chio/Generated/` placement achievable with header rewriting alone, or do we adopt the emitted path? (Phase 2 decision point.)
-- Should the generated snapshot also feed FV-A4's hash manifest as a `[[mirror]]` entry (Rust source -> committed snapshot), making the drift check uniform with the other seams instead of bespoke in the equivalence script? Lean towards yes once FV-A4's xtask exists; keep the bespoke check until then.
-- When FV-A1 extends `formal_aeneas.rs` (new absorbed helpers), do we require the generated-equivalence theorem in the same PR or allow a one-nightly lag? Proposed: same PR once phase 3 tooling exists, enforced by the symbol list in `production.toml`.
+- The pinned support closure builds under the repository Lean toolchain.
+- Snapshots use the emitted `FormalAeneas` path with identity normalization.
+- Snapshot drift remains a dedicated production-lane check and is also hashed into the artifact report.
+- New production functions require a same-change registry row and generated-equivalence theorem; the gate does not permit a lagging extraction-only state.
 
 ## Manifest and registry updates
 
-- `formal/proof-manifest.toml`: add `formal/lean4/Chio/Chio/Proofs/AeneasGeneratedEquivalence.lean` (and the scalar-lemma module if created) to `root_modules`; update the `aeneas|production|formal/aeneas/production.toml` row context in `rust_refinement_lanes` notes; property-matrix aeneas entries (P1, P2, P3, P4, P8) re-point or extend their `proof.aeneas_*` theorem ids to the composed generated-equivalence theorems.
-- `formal/aeneas/production.toml`: new `generated_snapshot` field listing the committed snapshot paths; `equivalence_module` updated in phase 4; vendor tag field mirroring `CHIO_AENEAS_RELEASE_TAG`.
-- `formal/theorem-inventory.json`: new entries (schema `chio.theorem-inventory.v1`) for each generated-equivalence theorem, `claimClass` consistent with the existing aeneas rows, `mapsTo` copied from the property-matrix wiring; the demoted mirror theorems get a note pointing at their composed successors.
-- `formal/MAPPING.md`: no new rows required (the script enforces TLA invariants and Kani harnesses, not Lean theorems), but the informational Lean cross-reference block should mention the generated-equivalence module.
-- `docs/reference/CLAIM_REGISTRY.md`: the `FORM-IMPLEMENTATION-LINKED` evidence list already names `aeneas_production` and `aeneas_equivalence`; once this lands, the equivalence evidence genuinely includes the generated code, which is worth a one-line strengthening through the claim gate.
+- `formal/proof-manifest.toml` registers the generated proof, production and negative-test gates, target artifacts, and P1 ledger evidence.
+- `formal/aeneas/production.toml` records the snapshots, vendor release, two
+  architecture toolchains, 20 functions in four targets from two sources, and
+  exact theorem rows.
+- `formal/theorem-inventory.json` records the generated decision, composed model, and direct ledger theorems.
+- `formal/MAPPING.md` names the generated module and states that it covers every production function.
+- `docs/reference/CLAIM_REGISTRY.md` binds the implementation-linked claim to authenticated extraction, generated proofs, snapshots, vendor closure, and negative evidence.

@@ -1,0 +1,2 @@
+schema = "chio.dst.regressions.v1"
+child_receipt_flush_seed = 38

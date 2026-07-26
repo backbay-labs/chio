@@ -21,6 +21,10 @@ function compareUtf16(a: string, b: string): number {
   return 0;
 }
 
+function canonicalizeString(value: string): string {
+  return JSON.stringify(value);
+}
+
 function canonicalizeRawNumber(raw: string): string {
   if (!/[.eE]/.test(raw)) {
     return raw === "-0" ? "0" : raw;
@@ -46,13 +50,13 @@ function canonicalizeParsedJson(value: ParsedJson): string {
     case "number":
       return canonicalizeRawNumber(value.raw);
     case "string":
-      return JSON.stringify(value.value);
+      return canonicalizeString(value.value);
     case "array":
       return `[${value.items.map((item) => canonicalizeParsedJson(item)).join(",")}]`;
     case "object":
       return `{${Array.from(value.entries.entries())
         .sort(([left], [right]) => compareUtf16(left, right))
-        .map(([key, entryValue]) => `${JSON.stringify(key)}:${canonicalizeParsedJson(entryValue)}`)
+        .map(([key, entryValue]) => `${canonicalizeString(key)}:${canonicalizeParsedJson(entryValue)}`)
         .join(",")}}`;
   }
 }
@@ -224,7 +228,7 @@ export function canonicalizeJson(value: unknown): string {
       }
       return JSON.stringify(value);
     case "string":
-      return JSON.stringify(value);
+      return canonicalizeString(value);
     case "object":
       if (Array.isArray(value)) {
         return `[${value.map((item) => canonicalizeJson(item)).join(",")}]`;
@@ -242,7 +246,7 @@ export function canonicalizeJson(value: unknown): string {
 
       return `{${entries
         .sort(([left], [right]) => compareUtf16(left, right))
-        .map(([key, entryValue]) => `${JSON.stringify(key)}:${canonicalizeJson(entryValue)}`)
+        .map(([key, entryValue]) => `${canonicalizeString(key)}:${canonicalizeJson(entryValue)}`)
         .join(",")}}`;
     default:
       throw new ChioInvariantError(

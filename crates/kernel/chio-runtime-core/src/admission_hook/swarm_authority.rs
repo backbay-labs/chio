@@ -27,7 +27,7 @@ where
     bundle.now_unix_ms = now_unix_ms;
     verify_swarm_reference_hashes(&bundle, reference)?;
     let route_plan = find_route_plan(&bundle, &reference.route_plan_receipt.evidence_id)?;
-    verify_route_metadata_matches(route_metadata, route_plan)?;
+    let route_metadata = verify_route_metadata_matches(route_metadata, route_plan)?;
     verify_swarm_authority_bundle(&bundle, trusted_witness_keys).map_err(|error| {
         ChioRuntimeError::Rejected {
             code: "chio_swarm_authority_rejected",
@@ -46,11 +46,13 @@ where
             SwarmContinuationMode::SingleUse => Some(continuation.token_id.clone()),
             SwarmContinuationMode::Resumable => None,
         },
+        route_metadata,
     })
 }
 
 pub(super) struct VerifiedSwarmAuthorityReference {
     pub(super) continuation_id_to_consume: Option<String>,
+    pub(super) route_metadata: serde_json::Value,
 }
 
 fn verify_swarm_reference_hashes(
@@ -98,7 +100,7 @@ fn verify_swarm_reference_hashes(
 fn verify_route_metadata_matches(
     route_metadata: Option<&serde_json::Value>,
     route_plan: &SwarmRoutePlanReceipt,
-) -> Result<(), ChioRuntimeError> {
+) -> Result<serde_json::Value, ChioRuntimeError> {
     let Some(metadata) = route_metadata else {
         return Err(ChioRuntimeError::Rejected {
             code: "chio_swarm_authority_rejected",
@@ -188,7 +190,13 @@ fn verify_route_metadata_matches(
             ),
         });
     }
-    Ok(())
+    Ok(serde_json::json!({
+        "route": {
+            "bridge": bridge,
+            "protocolTarget": protocol_target,
+            "selectedRoute": selected_route
+        }
+    }))
 }
 
 fn route_metadata_string<'a>(route: &'a serde_json::Value, fields: &[&str]) -> Option<&'a str> {

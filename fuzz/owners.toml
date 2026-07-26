@@ -48,6 +48,14 @@ path  = "crates/protocol/chio-acp-edge"
 crate = "chio-wasm-guards"
 path  = "crates/guards/chio-wasm-guards"
 
+[targets.wasm_guard_escape]
+crate = "chio-wasm-guards"
+path  = "crates/guards/chio-wasm-guards"
+
+[targets.wasm_guard_smith]
+crate = "chio-wasm-guards"
+path  = "crates/guards/chio-wasm-guards"
+
 [targets.wit_host_call_boundary]
 crate = "chio-wasm-guards"
 path  = "crates/guards/chio-wasm-guards"
@@ -91,3 +99,23 @@ path  = "crates/trust/chio-federation"
 [targets.underwriting_policy_input]
 crate = "chio-underwriting"
 path  = "crates/economy/chio-underwriting"
+
+[targets.fuzz_policy_parse_compile]
+crate = "chio-policy"
+path  = "crates/guards/chio-policy"
+
+[targets.policy_analyze]
+crate = "chio-policy"
+path  = "crates/guards/chio-policy"
+
+[targets.fuzz_sql_parser]
+crate = "chio-data-guards"
+path  = "crates/guards/chio-data-guards"
+
+[targets.fuzz_merkle_checkpoint]
+crate = "chio-kernel"
+path  = "crates/kernel/chio-kernel"
+
+[targets.fuzz_tool_action]
+crate = "chio-guards"
+path  = "crates/guards/chio-guards"

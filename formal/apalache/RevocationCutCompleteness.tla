@@ -6,6 +6,15 @@
 (* descendant closure across Delegate transitions so Revoke checks the      *)
 (* whole subtree instead of only checking roots and direct parents.         *)
 (*                                                                          *)
+(* Code mapping (full cross-reference in formal/MAPPING.md):               *)
+(*   - crates/kernel/chio-kernel/src/kernel/validation.rs                  *)
+(*       ChioKernel::check_revocation                                      *)
+(*   - crates/kernel/chio-kernel/src/kernel/delegation.rs                  *)
+(*       consult_revocation_view, consult_revocation_view_at               *)
+(*   - crates/kernel/chio-kernel-core/src/revocation_view.rs               *)
+(*       RevocationSnapshot::is_revoked, RevocationView::is_revoked        *)
+(* These are abstraction anchors registered in formal/proof-manifest.toml. *)
+(*                                                                          *)
 (* Bounded transitive closure encoding:                                     *)
 (*  - Apalache 0.50.x cannot encode unbounded recursive set definitions    *)
 (*    in finite SMT; instead the spec maintains the descendant relation    *)
@@ -132,8 +141,13 @@ RevocationCutCompleteness ==
             \A r \in revoked :
                 DescendsFrom(c, r) => can_allow[a][c] = FALSE
 
+DirectParentInClosure ==
+    \A child \in CapSet :
+        parent[child] # 0 => child \in descendants[parent[child]]
+
 SafetyInv ==
     /\ DomainsOK
     /\ RevocationCutCompleteness
+    /\ DirectParentInClosure
 
 =============================================================================

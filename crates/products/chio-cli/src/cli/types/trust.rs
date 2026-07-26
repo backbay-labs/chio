@@ -261,6 +261,37 @@ pub(crate) enum TrustCommands {
         command: TrustUnderwritingAppealCommands,
     },
 
+    /// Check a signed observation log against a bounded transition model.
+    TraceVerify {
+        /// Canonical NDJSON observation log.
+        #[arg(long)]
+        log: PathBuf,
+
+        /// Trusted observer public key. Repeat to trust multiple observers.
+        #[arg(long = "trusted-key", required = true)]
+        trusted_keys: Vec<String>,
+
+        /// Transition model used for projection and reachability.
+        #[arg(long, value_enum, default_value_t = TrustTraceSpec::RevocationPropagation)]
+        spec: TrustTraceSpec,
+
+        /// Apalache executable.
+        #[arg(long, default_value = "apalache-mc")]
+        apalache_bin: PathBuf,
+
+        /// Maximum seconds for each bounded reachability query.
+        #[arg(long, default_value_t = 300)]
+        timeout_secs: u64,
+
+        /// Optional path for the deterministic ITF projection.
+        #[arg(long)]
+        itf_output: Option<PathBuf>,
+
+        /// Optional path for the validation report.
+        #[arg(long)]
+        report_output: Option<PathBuf>,
+    },
+
     /// Persist a capability revocation into the configured revocation database.
     Revoke {
         /// Capability ID to revoke.
@@ -340,6 +371,11 @@ pub(crate) enum TrustCommands {
         #[arg(long)]
         capability_id: String,
     },
+}
+
+#[derive(Clone, Copy, Debug, clap::ValueEnum)]
+pub(crate) enum TrustTraceSpec {
+    RevocationPropagation,
 }
 
 #[derive(Subcommand)]

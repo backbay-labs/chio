@@ -141,10 +141,10 @@ fn mcp_target_executor_carries_source_receipt_context_into_kernel_receipt_metada
         .unwrap();
     let metadata = result.response.receipt.metadata.as_ref().unwrap();
     assert_eq!(
-        metadata["receipt_context"]["sourceReceiptId"],
+        metadata["source_receipt_context"]["sourceReceiptId"],
         "source-receipt-1"
     );
-    assert_eq!(metadata["receipt_context"]["sourceProtocol"], "acp");
+    assert_eq!(metadata["source_receipt_context"]["sourceProtocol"], "acp");
 }
 
 fn make_kernel() -> ChioKernel {

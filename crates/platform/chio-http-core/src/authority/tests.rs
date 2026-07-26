@@ -12,6 +12,26 @@ use chio_core_types::crypto::sha256_hex;
 
 use chio_test_support::prelude::*;
 
+fn secure_directory(path: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(())
+}
+
+fn create_private_directory(path: &std::path::Path) -> std::io::Result<()> {
+    let mut builder = std::fs::DirBuilder::new();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(path)?;
+    secure_directory(path)
+}
+
 fn signed_capability_token_json(issuer: &Keypair, id: &str) -> String {
     signed_capability_token_json_with_scope(
         issuer,
@@ -241,6 +261,7 @@ fn failclosed_authority_surfaces_durability_error_for_denied_projection() {
 fn builder_with_durable_stores_evaluates_without_persistence_deny(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let dir = tempfile::tempdir()?;
+    secure_directory(dir.path())?;
     let receipt_store: Arc<dyn chio_kernel::ReceiptStore> = Arc::new(
         chio_store_sqlite::SqliteReceiptStore::open(dir.path().join("receipts.db"))?,
     );
@@ -249,7 +270,7 @@ fn builder_with_durable_stores_evaluates_without_persistence_deny(
     );
     let authority_database = dir.path().join("authority.db");
     let authority_locks = dir.path().join("authority-locks");
-    std::fs::create_dir(&authority_locks)?;
+    create_private_directory(&authority_locks)?;
     chio_store_sqlite::SqliteAuthorityStore::provision(&authority_database, &authority_locks)?;
     let authority_store = chio_store_sqlite::SqliteAuthorityStore::open_serving(
         &authority_database,

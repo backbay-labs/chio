@@ -26,17 +26,8 @@ pub fn render_traffic_diff_human<W: std::io::Write>(
         writeln!(writer)?;
         writeln!(writer, "{} ({})", group.class.human_label(), group.count)?;
         for item in &group.outcomes {
-            writeln!(
-                writer,
-                "  line {:>4} {}",
-                item.line,
-                item.replay_receipt_id,
-            )?;
-            writeln!(
-                writer,
-                "    captured: {}",
-                item.captured.compact(),
-            )?;
+            writeln!(writer, "  line {:>4} {}", item.line, item.replay_receipt_id,)?;
+            writeln!(writer, "    captured: {}", item.captured.compact(),)?;
             writeln!(writer, "    replay:   {}", item.replay.compact())?;
         }
     }
@@ -45,17 +36,8 @@ pub fn render_traffic_diff_human<W: std::io::Write>(
         writeln!(writer)?;
         writeln!(writer, "replay errors ({})", report.error_outcomes.len())?;
         for item in &report.error_outcomes {
-            writeln!(
-                writer,
-                "  line {:>4} {}",
-                item.line,
-                item.replay_receipt_id,
-            )?;
-            writeln!(
-                writer,
-                "    captured: {}",
-                item.captured.compact(),
-            )?;
+            writeln!(writer, "  line {:>4} {}", item.line, item.replay_receipt_id,)?;
+            writeln!(writer, "    captured: {}", item.captured.compact(),)?;
             writeln!(writer, "    error: {}", item.error)?;
         }
     }

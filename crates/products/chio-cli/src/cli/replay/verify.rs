@@ -35,7 +35,8 @@ pub fn verify_receipt(
     value: &serde_json::Value,
     trusted_kernel_key: Option<&chio_core::PublicKey>,
 ) -> VerifyOutcome {
-    let receipt: chio_core::receipt::body::ChioReceipt = match serde_json::from_value(value.clone()) {
+    let receipt: chio_core::receipt::body::ChioReceipt = match serde_json::from_value(value.clone())
+    {
         Ok(r) => r,
         Err(error) => {
             return VerifyOutcome {
@@ -62,7 +63,9 @@ pub fn verify_receipt(
             return VerifyOutcome {
                 ok: false,
                 signer_key_hex,
-                error: Some("action parameter_hash does not match canonical parameters".to_string()),
+                error: Some(
+                    "action parameter_hash does not match canonical parameters".to_string(),
+                ),
             };
         }
         Err(error) => {
@@ -97,7 +100,9 @@ pub fn verify_receipt(
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod replay_verify_tests {
     use super::*;
-    use chio_core::receipt::{body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction};
+    use chio_core::receipt::{
+        body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
+    };
     use chio_core::Keypair;
     use serde_json::json;
 
@@ -155,7 +160,10 @@ mod replay_verify_tests {
 
         let outcome = verify_receipt(&value, Some(&receipt.kernel_key));
         assert!(!outcome.ok, "tampered receipt must not verify");
-        assert!(outcome.error.is_some(), "bad signature carries an error note");
+        assert!(
+            outcome.error.is_some(),
+            "bad signature carries an error note"
+        );
         assert_eq!(
             outcome.signer_key_hex.len(),
             64,

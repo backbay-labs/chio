@@ -1257,6 +1257,83 @@ mod cluster_and_reports_tests {
         background.await.test_unwrap();
     }
 
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn replayed_budget_authorization_fails_closed_without_reversing_existing_hold() {
+        let budget_db = unique_temp_path("chio-replayed-budget-quorum", "db");
+        let state = state_with_cluster(
+            "http://node-a",
+            &["http://node-b"],
+            None,
+            None,
+            Some(budget_db.clone()),
+        );
+        update_peer_reachable(&state, "http://node-b");
+        let authority = current_budget_event_authority(&state)
+            .test_unwrap()
+            .test_unwrap();
+        let payload = TryChargeCostRequest {
+            capability_id: "cap-replayed-quorum".to_string(),
+            grant_index: 0,
+            max_invocations: Some(10),
+            cost_units: 100,
+            max_cost_per_invocation: Some(200),
+            max_total_cost_units: Some(1_000),
+            hold_id: Some("hold-replayed-quorum".to_string()),
+            event_id: Some("event-replayed-quorum".to_string()),
+        };
+        {
+            let store = SqliteBudgetStore::open(&budget_db).test_unwrap();
+            let allowed = store
+                .try_charge_cost_with_ids_and_authority(
+                    &payload.capability_id,
+                    payload.grant_index,
+                    payload.max_invocations,
+                    payload.cost_units,
+                    payload.max_cost_per_invocation,
+                    payload.max_total_cost_units,
+                    payload.hold_id.as_deref(),
+                    payload.event_id.as_deref(),
+                    Some(&authority),
+                )
+                .test_unwrap();
+            assert!(allowed);
+        }
+
+        let progress = state.cluster_progress.as_ref().test_unwrap().clone();
+        let loop_state = state.clone();
+        let background = tokio::spawn(async move {
+            progress.awaited_kick().await;
+            update_peer_failure(
+                &loop_state,
+                "http://node-b",
+                "quorum lost during replay".to_string(),
+            );
+            notify_cluster_progress(&loop_state);
+        });
+
+        let mut headers = HeaderMap::new();
+        headers.insert(AUTHORIZATION, HeaderValue::from_static("Bearer token"));
+        let response = handle_try_charge_cost(State(state), headers, Json(payload)).await;
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
+        background.await.test_unwrap();
+
+        let store = SqliteBudgetStore::open(&budget_db).test_unwrap();
+        let usage = store
+            .get_usage("cap-replayed-quorum", 0)
+            .test_unwrap()
+            .test_unwrap();
+        assert_eq!(usage.invocation_count, 1);
+        assert_eq!(usage.total_cost_exposed, 100);
+        let hold = store
+            .budget_hold_snapshot("hold-replayed-quorum")
+            .test_unwrap()
+            .test_unwrap();
+        assert!(hold.disposition.is_open());
+        assert_eq!(hold.remaining_exposure_units, 100);
+        drop(store);
+        let _ = std::fs::remove_file(budget_db);
+    }
+
     #[test]
     fn budget_write_progress_close_fails_closed_while_clustered() {
         // If the ClusterProgress sender is lost mid-write, a node that is STILL

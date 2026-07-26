@@ -1,20 +1,56 @@
 # Formal Verification: Roadmap
 
-- Status: Proposed (2026-07-09)
+- Status: Executed (2026-07-16; local gates complete)
 - Companion docs: [CURRENT_STATE.md](CURRENT_STATE.md),
   [GAP_ANALYSIS.md](GAP_ANALYSIS.md), [HYGIENE_PASS.md](HYGIENE_PASS.md),
   plan specs under [plan/](plan/)
 
-Sequencing for the 23 plan specs (FV-A1 through FV-E5) plus the hygiene pass.
+This roadmap records the execution order for the 23 plan specs plus the
+hygiene pass. All fifteen hygiene items and 22 plan specs are implemented.
+The economy collection proof remains blocked because its required netting
+surface is not present on this branch; scalar conservation helpers and Kani
+groundwork are implemented without claiming the absent collection behavior.
+One further spec, [FV-B5](plan/FV-B5-verus-concurrency-evaluation.md), was
+executed on 2026-07-23 as a time-boxed evaluation: the concurrent
+conservation artifact and both falsification variants verified as
+specified, and no lane was created because the FV-E5 enforcement
+precondition (one promoted lane) is unmet. The spec records the outcome
+and the experiment claims nothing.
+
+Local toolchain-backed evidence is complete. Hosted history is a separate
+advisory signal: ten scheduled gates and five pull-request gates are
+registered, with six path-scoped gates frozen until qualifying workflow runs
+exist. No hosted success streak is inferred from local execution.
+Implementation was fixed at commit
+`d292f14df1c493873199f4f9d969ade00472ff28` on 2026-07-15. The retained
+proof-model report was refreshed against prerequisite commit
+`a871396bffd010500f680c035e7b52c1867f38e2` on 2026-07-16, while the v1 schema
+migration and refreshed specification report are bound to
+`7b24142e8523fe08e501063dbf3d4f6cea3397be` on 2026-07-16.
+
 Effort scale: S is days, M is one to two weeks, L is a month or more of
-focused work. Waves are orderings by leverage and dependency, not sprint
-commitments; items within a wave are independent unless noted.
+focused work. The waves below preserve the implemented dependency order and
+the rationale used during execution.
+
+## Execution outcome
+
+- Implemented: hygiene H1-H15 and 22 of 23 plan specs.
+- Blocked: FV-D3 collection conservation beyond the scalar groundwork because
+  the M2 netting surface is absent. Property P11 is not registered or claimed.
+- Local evidence: all required Rust workspace, Lean, Aeneas, Creusot, Kani,
+  Apalache, differential, concurrency, and mutation gates completed against
+  the implementation commit.
+- Hosted evidence: workflow definitions and ratchets are implemented, while
+  promotion streaks remain open and advisory.
+- Assumption posture: distributed revocation is modeled and locally checked,
+  but no transport assumption is retired until hosted execution and the
+  modeled transport boundary justify that change.
 
 ## The whole portfolio at a glance
 
 | ID | Title | Theme | Effort | Gaps | Wave |
 | --- | --- | --- | --- | --- | --- |
-| [Hygiene](HYGIENE_PASS.md) | 13 mechanical fixes | - | S | G4 | 0 |
+| [Hygiene](HYGIENE_PASS.md) | 15 mechanical fixes | - | S | G4 | 0 |
 | [FV-E3](plan/FV-E3-pr-formal-smoke-tier.md) | PR formal smoke tier | E | S | G1 | 0 |
 | [FV-E4](plan/FV-E4-fuzz-plumbing-repair.md) | Fuzz plumbing repair | E | S | G6 | 0 |
 | [FV-A3](plan/FV-A3-creusot-dedup.md) | Creusot dedup | A | S | G4 | 1 |
@@ -39,6 +75,7 @@ commitments; items within a wave are independent unless noted.
 | [FV-D1](plan/FV-D1-distributed-revocation-model.md) | Distributed revocation model | D | L | - | 5 |
 | [FV-D4](plan/FV-D4-wasm-noninterference.md) | Wasm boundary non-interference | D | M-L | - | 5 |
 | [FV-C4](plan/FV-C4-policy-smt-analyzer.md) | Policy analyzer feature | C | L | - | 5 |
+| [FV-B5](plan/FV-B5-verus-concurrency-evaluation.md) | Verus concurrency evaluation | B | M | G3 | Evaluated |
 
 ## Dependency sketch
 
@@ -59,8 +96,9 @@ Wave 4   FV-C3   FV-D3   FV-D5     +--> FV-C4 (shared refinement algebra)
 Wave 5   FV-B4 part 2 (DST, needs B1/B3 invariants)   FV-D1   FV-D4   FV-C4
 ```
 
-FV-E5 (ratchets) starts in Wave 2 and then runs continuously: each lane that
-goes green for a sustained streak gets promoted per its runbook.
+FV-E5 (ratchets) starts in Wave 2 and then runs continuously. Its eleven
+registered lanes remain advisory until a qualifying post-reset streak and the
+runbook requirements justify promotion. No hosted streak is claimed here.
 
 ## Wave rationale
 
@@ -81,7 +119,8 @@ that is already paid for (13 unused rich seeds, unwired smoke tests).
 [FV-C5](plan/FV-C5-proof-coverage-map.md) joins the registries into one
 generated coverage page, which then drives all later prioritization.
 [FV-E2](plan/FV-E2-counterexample-regression-pipeline.md) is small and makes
-every future counterexample durable.
+every future counterexample durable through content-addressed ITF fixtures,
+active production replays, and deletion guarding.
 
 ### Wave 2: aim at the bug generator, wire proofs into production (the core wave)
 
@@ -93,8 +132,8 @@ five fixed bugs, and states the reservation conservation law in four
 independent lanes. [FV-A1](plan/FV-A1-absorb-verified-helpers.md) begins the
 rolling absorption of proven helpers into production call paths (budget first,
 so it composes with FV-B3).
-[FV-E5](plan/FV-E5-lane-ratchets.md) starts recording strictness and green
-streaks so later promotion to required checks is evidence-based.
+[FV-E5](plan/FV-E5-lane-ratchets.md) records strictness and bounded job history
+so later promotion to required checks can be evidence-based.
 
 ### Wave 3: deepen the chains
 
@@ -161,3 +200,39 @@ Work that changes what `docs/reference/CLAIM_REGISTRY.md` may approve:
 4. Honest posture: advisory lanes are labeled advisory; promotion to
    required goes through the FV-E5 ratchet with recorded streaks, and
    metadata-only runs can never masquerade as strict.
+
+## Lane posture promotion runbook
+
+1. Run `scripts/lane-gate.sh <lane> --report`. Promotion requires at least the
+   configured consecutive-success streak, evidence newer than
+   `evidence_after_run_id`, and a latest run inside `max_age_hours`. Dispatch
+   runs are excluded. A strict-mode lane also requires an unexpired strict
+   proof-report artifact for every counted run. Pull-request evidence must
+   target the configured base branch and carry the exact per-attempt real-work
+   marker artifact.
+2. Change only `releases.toml`: set the lane's `posture` to `required` and add
+   `promotion_evidence = { run_ids = [...], report_sha256 = "..." }`. The run
+   IDs must be the exact configured streak after the reset. Paste the exact
+   report output, including attempts, dates, job name, and freshness, in the
+   pull request so reviewers can verify its SHA-256. The existing CODEOWNERS
+   rule applies to that file; promotion does not require an enforcement-test
+   edit.
+3. Pull-request lanes are frozen. Before promotion, make the workflow run on
+   every pull request, add a stable aggregator, and upload the configured
+   execution marker only after the real proof job succeeds. Successful no-op
+   runs must report the aggregator but must not upload the marker. Remove the
+   freeze in the same reviewed change.
+4. After the posture change merges, an administrator adds the exact job display
+   name from `releases.toml` to the GitHub ruleset. Repository configuration is
+   a separate manual step; changing the TOML file cannot update a ruleset.
+5. Scheduled-only lanes use required posture only in the release-fleet sense.
+   `scripts/lane-gate.sh --fleet` blocks release qualification when their latest
+   qualifying job is missing, stale, non-strict when strict evidence is
+   required, or unsuccessful. They are not pull-request checks.
+6. Demotion changes `posture` back to `advisory`, removes
+   `promotion_evidence` and the ruleset context where applicable, and links the
+   incident record. A frozen lane cannot be promoted until the same reviewed
+   change removes `frozen` and resolves its stated reason.
+7. Set a new `evidence_after_run_id` whenever job semantics, proof mode, or
+   evidence collection changes materially. Evidence before the reset never
+   supports a later promotion.

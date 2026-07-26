@@ -108,17 +108,19 @@ if [[ "$MODE" == "schema-only" ]]; then
   exit 0
 fi
 
+target_dir="${CARGO_TARGET_DIR:-$ROOT/target}"
 if [[ -n "${CHIO_BIN:-}" ]]; then
   if [[ ! -x "$CHIO_BIN" ]]; then
     echo "CHIO_BIN is not executable: $CHIO_BIN" >&2
     exit 2
   fi
-elif [[ -x "$ROOT/target/debug/chio" ]]; then
-  CHIO_BIN="$ROOT/target/debug/chio"
+elif [[ -x "$target_dir/debug/chio" ]]; then
+  CHIO_BIN="$target_dir/debug/chio"
 else
   cargo build -p chio-cli --bin chio
-  CHIO_BIN="$ROOT/target/debug/chio"
+  CHIO_BIN="$target_dir/debug/chio"
 fi
+unset target_dir
 
 # shellcheck source=scripts/lib/chio-proof-trusted-keys.sh
 source "$ROOT/scripts/lib/chio-proof-trusted-keys.sh"

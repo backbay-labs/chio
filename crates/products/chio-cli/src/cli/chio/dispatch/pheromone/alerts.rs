@@ -88,11 +88,7 @@ pub(crate) fn cmd_chio_pheromone_relay_alert_handoff(
         },
     )
     .map_err(|error| CliError::cli_other_error(format!("Chio relay alert handoff: {error}")))?;
-    write_pretty_json(
-        report,
-        &handoff_report,
-        "Chio relay alert handoff report",
-    )
+    write_pretty_json(report, &handoff_report, "Chio relay alert handoff report")
 }
 
 pub(crate) fn cmd_chio_pheromone_relay_alert_normalize(
@@ -108,9 +104,7 @@ pub(crate) fn cmd_chio_pheromone_relay_alert_normalize(
             "Chio relay alert normalization profile",
         )?)
         .map_err(|error| {
-            CliError::cli_other_error(format!(
-                "Chio relay alert normalization profile: {error}"
-            ))
+            CliError::cli_other_error(format!("Chio relay alert normalization profile: {error}"))
         })?;
     let sources = read_relay_alert_normalization_sources(input_dir)?;
     let normalization = chio_pheromone_relay::normalize_relay_alert_delivery_evidence(
@@ -120,9 +114,7 @@ pub(crate) fn cmd_chio_pheromone_relay_alert_normalize(
             now_unix_ms,
         },
     )
-    .map_err(|error| {
-        CliError::cli_other_error(format!("Chio relay alert normalize: {error}"))
-    })?;
+    .map_err(|error| CliError::cli_other_error(format!("Chio relay alert normalize: {error}")))?;
     fs::create_dir_all(out_dir).map_err(|error| {
         CliError::cli_io_error(format!(
             "failed to create Chio relay alert normalized evidence dir {}: {error}",
@@ -167,17 +159,13 @@ pub(crate) fn cmd_chio_pheromone_relay_alert_review(
             "Chio relay alert acknowledgement report",
         )?)
         .map_err(|error| {
-            CliError::cli_other_error(format!(
-                "Chio relay alert acknowledgement report: {error}"
-            ))
+            CliError::cli_other_error(format!("Chio relay alert acknowledgement report: {error}"))
         })?;
     let drift_report: chio_pheromone_relay::RelayAlertDeliveryDriftReport = serde_json::from_str(
         &read_utf8_json_file(drift_report, "Chio relay alert delivery drift report")?,
     )
     .map_err(|error| {
-        CliError::cli_other_error(format!(
-            "Chio relay alert delivery drift report: {error}"
-        ))
+        CliError::cli_other_error(format!("Chio relay alert delivery drift report: {error}"))
     })?;
     let route_owner_profile: chio_pheromone_relay::RelayAlertRouteOwnerProfileDocument =
         serde_json::from_str(&read_utf8_json_file(

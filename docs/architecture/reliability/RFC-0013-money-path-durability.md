@@ -35,7 +35,7 @@ accounting is silently broken in five distinct places.
 
 - F70 (high): kernel death (OOM kill, crash, power loss) after the rail moved money
   (capture for generic adapters; pre-execution `authorize` for the in-tree prepaid
-  X402/ACP-Commerce adapters) but before `record_chio_receipt` commits leaves external funds
+  x402/ACP-Commerce adapters) but before `record_chio_receipt` commits leaves external funds
   moved with no receipt row and no stored rail reference. The durable
   `budget_mutation_events` log records exposure units and `hold_id` but not the
   payment `authorization_id`. Trigger: process death in that window. Effect: the payer

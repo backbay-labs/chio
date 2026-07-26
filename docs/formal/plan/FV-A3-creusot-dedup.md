@@ -1,6 +1,6 @@
 # FV-A3: Kill the Creusot contract body duplication
 
-- Status: Proposed (2026-07-09)
+- Status: Implemented (2026-07-09)
 - Theme: A - Make the proven code the running code
 - Effort: S
 - Depends on: none
@@ -18,12 +18,39 @@ The Creusot lane proves `#[ensures]` postconditions over contract functions in `
 - The duplication is structural, not accidental: `creusot-core` is a standalone mini-crate (own `[workspace]` in its `Cargo.toml`, `creusot-std` pinned to git rev `a12f3ac7f688c7b93cee2c2eb60282004a2bdb30`, proofs discharged through Why3find with z3/cvc5/alt-ergo/cvc4 [v]). It cannot see `chio-kernel-core` without either depending on it or splicing its source in.
 - The lane is a required strict-CI lane (`creusot|required|formal/rust-verification/creusot-contracts.toml` in `formal/proof-manifest.toml` `rust_refinement_lanes`, line 106), and its own `contract_goals` claim the wrappers "verify pure branch conditions shared with chio-kernel-core::formal_core" (`creusot-contracts.toml:33`). "Shared" is currently a manual promise.
 
-## Current state
+## Previous state
 
 - `formal/rust-verification/creusot-core/src/lib.rs` (68 lines): `use creusot_std::prelude::*;` then the seven `*_contract` functions with `#[requires]`/`#[ensures]` and hand-copied bodies.
 - `formal/rust-verification/creusot-core/Cargo.toml`: `publish = false`, empty `[workspace]` (deliberately outside the main workspace so the pinned Creusot toolchain builds it in isolation), single dependency `creusot-std` at the pinned rev.
 - Gates: `scripts/check-creusot-smoke.sh` and `scripts/check-creusot-core.sh` (named as `strict_smoke_command`/`strict_core_command` in the toml); `scripts/check-rust-verification-gates.sh` validates toml schemas and coverage presence, then requires the Creusot toolchain unless `CHIO_RUST_VERIFICATION_METADATA_ONLY=1`.
 - No mechanism relates contract bodies to production bodies; no mechanism relates the toml symbol list to the crate contents.
+
+## Implementation outcome
+
+The contract crate now includes `formal_aeneas.rs` directly and exposes eight
+contract wrappers whose bodies are only delegation calls. The former scalar
+budget shadow was replaced by contracts over `budget_precheck` and
+`budget_commit`, including accepted-state deductions and reject-state
+preservation for both dimensions.
+
+The contract-to-production map lives in `creusot-contracts.toml` as
+`[[contract_twin]]` entries. `check-creusot-body-sync.sh` validates that map,
+the included source, every production twin, and every wrapper body.
+`check-rust-verification-gates.sh` independently checks that the contract crate
+and `covered_symbols` agree in both directions before metadata-only mode may
+exit. A focused mutation test covers body drift, missing twin metadata, omitted
+coverage, and stale coverage.
+It also rejects conditional proof items, alternate include sources, and
+visibility changes that could otherwise hide a contract from one of the
+completeness checks.
+
+The pinned Creusot revision treats calls to unannotated program functions as
+opaque. The production functions therefore carry postconditions behind
+`cfg_attr(chio_creusot_contracts, ...)`, and `check-creusot-core.sh` enables
+that cfg only for the standalone contract crate. Normal kernel and Aeneas
+builds erase the attributes. This keeps each executable body single-sourced
+while making Creusot prove the production function contracts before the thin
+wrappers consume them.
 
 ## Design
 
@@ -64,7 +91,7 @@ pub fn dpop_admits_contract(dpop_required: bool, proof_present: bool,
 }
 ```
 
-  Creusot translates the included module as ordinary crate code, so the postcondition is proven against the production body, not a copy.
+  Creusot translates the included module as ordinary crate code. Because the pinned revision verifies program calls modularly, the included production functions carry postconditions behind a contract-crate-only cfg. Creusot proves those postconditions against the production bodies before using them at the wrapper calls.
 - Known mechanical wrinkle: `formal_aeneas.rs` opens with the inner attribute `#![allow(dead_code)]` (line 1), which does not survive `include!` into a module body. Fix: delete the inner attribute from `formal_aeneas.rs` and move it to the declaration site as an outer attribute (`#[allow(dead_code)] pub(crate) mod formal_aeneas;` in `crates/kernel/chio-kernel-core/src/lib.rs:65`). Zero semantic change to production; FV-A1's absorption work shrinks the need for the allow anyway.
 - The two shape-divergent contracts get resolved rather than papered over:
   - `time_window_valid_contract` delegates to `aeneas_body::time_window_valid`; its existing ensures now pins the real classify-then-compare body. Strictly stronger than today.
@@ -101,10 +128,10 @@ creusot-body-sync: BODY DRIFT
    - Modify `formal/rust-verification/creusot-contracts.toml` (add the missing `revocation_snapshot_denies_contract` row).
    - Modify `scripts/check-rust-verification-gates.sh` (contract-name completeness check, both directions).
 2. Phase 2: body-identity gate (pre-dedup form).
-   - Add `scripts/check-creusot-body-sync.sh` (normalized token-stream comparison, explicit twin map, `divergent_body_allowed` markers for the two known divergent shapes).
+   - Add `scripts/check-creusot-body-sync.sh` (normalized token-stream comparison, explicit twin map, and fail-closed source-shape validation).
    - Modify `scripts/check-rust-verification-gates.sh` (invoke the sync gate in metadata-only and strict modes).
 3. Phase 3: single-source the bodies (Option 2).
-   - Modify `crates/kernel/chio-kernel-core/src/formal_aeneas.rs` (remove inner `#![allow(dead_code)]`) and `crates/kernel/chio-kernel-core/src/lib.rs` (outer allow on the module declaration).
+   - Modify `crates/kernel/chio-kernel-core/src/formal_aeneas.rs` (remove inner `#![allow(dead_code)]`, add cfg-gated postconditions) and `crates/kernel/chio-kernel-core/src/lib.rs` (outer allow on the module declaration).
    - Modify `formal/rust-verification/creusot-core/src/lib.rs` (`include!` module, wrappers become delegation calls, add `budget_precheck_contract`/`budget_commit_contract`, retire `budget_commit_remaining_contract`).
    - Modify `formal/rust-verification/creusot-contracts.toml` (symbol renames/additions) - the phase 1 completeness check forces this to stay in sync.
    - Modify `scripts/check-creusot-body-sync.sh` (flip to the post-Option-2 delegation-only assertion).
@@ -114,17 +141,17 @@ creusot-body-sync: BODY DRIFT
 ## CI and gating changes
 
 - `scripts/check-rust-verification-gates.sh` gains two cheap, toolchain-free checks (registry completeness, body sync) that run everywhere the script runs today, including metadata-only mode. No new workflow jobs.
-- The strict Creusot lane's proof obligations change only in phase 3 (delegation bodies and the new budget contracts); expect a one-time Why3 re-run cost, no steady-state increase.
+- The strict Creusot lane's proof obligations change in phase 3 (production function postconditions, delegation bodies, and the new budget contracts); expect a one-time Why3 re-run cost and a small steady-state increase.
 - Failure messages must name the exact contract function and its twin, and (post phase 3) print the expected delegation form, so the fix is obvious from CI output alone.
 
 ## Acceptance criteria
 
-- [ ] `creusot-contracts.toml` lists all seven (post phase 3: eight, with the budget split and retirement accounted) contract functions; the completeness check fails CI when the crate and toml disagree in either direction.
-- [ ] `check-creusot-body-sync.sh` fails on a one-token edit to any contract body that is not mirrored in `formal_aeneas.rs` (demonstrated in the PR with a red run).
-- [ ] After phase 3, no logic body exists in `creusot-core/src/lib.rs` outside the included module; every `*_contract` is a single delegation call.
-- [ ] `time_window_valid_contract`'s ensures is proven against the real `classify_time_window_code`-based body.
-- [ ] `budget_precheck_contract` and `budget_commit_contract` cover the real two-dimensional functions, including reject-branch state preservation.
-- [ ] Strict lane (`check-creusot-core.sh`) green; metadata-only mode exercises the new static checks.
+- [x] `creusot-contracts.toml` lists every contract function (eight after phase 3, nine after FV-B3 added the reservation-ledger contract); the completeness check fails CI when the crate and toml disagree in either direction.
+- [x] `check-creusot-body-sync.sh` fails on a one-token edit to any contract body that is not mirrored in `formal_aeneas.rs` (demonstrated in the PR with a red run).
+- [x] After phase 3, no logic body exists in `creusot-core/src/lib.rs` outside the included module; every `*_contract` is a single delegation call.
+- [x] `time_window_valid_contract`'s ensures is proven against the real `classify_time_window_code`-based body.
+- [x] `budget_precheck_contract` and `budget_commit_contract` cover the real two-dimensional functions, including reject-branch state preservation.
+- [x] Strict lane (`check-creusot-core.sh`) green; metadata-only mode exercises the new static checks.
 
 ## Risks and mitigations
 
@@ -134,16 +161,27 @@ creusot-body-sync: BODY DRIFT
 - The retirement of `budget_commit_remaining_contract` drops a symbol other registries may reference. Mitigation: grep `formal/` and `docs/` for the symbol in phase 3; `proof-manifest.toml` does not name it today (verified: only `formal_core::budget_commit` appears, line 73).
 - Creusot toolchain pin drift (`creusot-std` rev) vs the included production code using newer Rust syntax. Mitigation: the included file is deliberately boring Rust; FV-A1 additions to it inherit the same extraction-safe constraints already enforced by the Aeneas lane greps.
 
-## Open questions
+## Decisions
 
-- Should the twin name map live in `creusot-contracts.toml` (machine-readable, next to `covered_symbols`) rather than inside `check-creusot-body-sync.sh`? Leaning toml (`[[contract_twin]]` entries), since FV-A4 establishes the pattern of manifests carrying seam metadata; decide in phase 2.
-- Post phase 3, is there still value in the Aeneas-lane grep asserting the 15 symbol names (`scripts/check-aeneas-production.sh:56-77`) also matching the contracts crate, or is that redundant with the delegation-only assertion? Default: leave the lanes independent.
-- Does the Creusot pinned rev handle `include!` across the workspace boundary cleanly (macro expansion happens in rustc, so it should)? Verify first thing in phase 3 with a spike before committing to the wrapper rewrite.
-- When FV-A1 adds new helpers to `formal_aeneas.rs`, should the completeness check also require a corresponding `*_contract` (forcing the Creusot lane to keep pace), or is Creusot coverage allowed to lag the Aeneas symbol set? Proposed: allowed to lag, tracked as a warning list in the gate output, ratcheted by FV-E5.
+- Store the twin map in `creusot-contracts.toml`. Coverage and seam metadata
+  stay together, and both gate scripts consume the same manifest.
+- Keep the Aeneas symbol-presence gate independent. It checks extraction
+  coverage, while the Creusot gate checks only declared contract twins.
+- Use the direct `include!` path. A source move must break the contract crate
+  immediately rather than permit a fallback copy.
+- Enable conditional postconditions only in the standalone contract crate.
+  The pinned Creusot revision does not expose unannotated program-call bodies
+  to callers, so direct delegation alone cannot discharge wrapper contracts.
+- Allow Creusot coverage to lag the full Aeneas helper set. Every contract must
+  have coverage and twin metadata, but adding an unrelated production helper
+  does not force a new proof obligation.
+- Keep the struct-returning `budget_commit_contract`. Its postconditions cover
+  acceptance, both accepted-state deductions, and both reject-state
+  preservation guarantees without projection wrappers.
 
 ## Manifest and registry updates
 
-- `formal/rust-verification/creusot-contracts.toml`: add `revocation_snapshot_denies_contract` (phase 1); rename/add budget contract symbols and update `contract_goals` prose to "single-sourced bodies included from formal_aeneas.rs" (phase 3); optional `[[contract_twin]]` map (open question).
+- `formal/rust-verification/creusot-contracts.toml`: add `revocation_snapshot_denies_contract` (phase 1); rename/add budget contract symbols and update `contract_goals` prose to "single-sourced bodies included from formal_aeneas.rs" (phase 3); add the required `[[contract_twin]]` map.
 - `formal/proof-manifest.toml`: no structural change; `rust_refinement_lanes` row for creusot is unchanged. If the gate script gains a new invocation name, `gate_commands` stays accurate because the entry point remains `./scripts/check-rust-verification-gates.sh`.
 - `formal/MAPPING.md`: not affected (script enforces TLA names and Kani harnesses only); no rows reference the contract functions.
 - `docs/reference/CLAIM_REGISTRY.md`: no claim text change required; the `FORM-IMPLEMENTATION-LINKED` evidence list already cites the strict gates, which now mean more.

@@ -160,11 +160,9 @@ mod tests {
         };
         let report = probe.run(&config);
         assert_eq!(report.severity, ProbeSeverity::Ok);
-        assert!(
-            report
-                .context
-                .iter()
-                .any(|c| c.value == KERNEL_DISPATCH_INFLIGHT_GAUGE)
-        );
+        assert!(report
+            .context
+            .iter()
+            .any(|c| c.value == KERNEL_DISPATCH_INFLIGHT_GAUGE));
     }
 }

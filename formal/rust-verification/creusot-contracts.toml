@@ -16,11 +16,15 @@ covered_symbols = [
   "chio_kernel_core::normalized::NormalizedScope::is_subset_of",
   "chio_kernel_core::normalized::NormalizedEvaluationVerdict::try_from_evaluation",
   "chio_kernel_core::receipts::sign_receipt",
+  "chio_kernel_core::formal_core::revocation_snapshot_denies",
   "formal/rust-verification/creusot-core::time_window_valid_contract",
-  "formal/rust-verification/creusot-core::budget_commit_remaining_contract",
+  "formal/rust-verification/creusot-core::budget_precheck_contract",
+  "formal/rust-verification/creusot-core::budget_commit_contract",
+  "formal/rust-verification/creusot-core::ledger_apply_conservation_contract",
   "formal/rust-verification/creusot-core::optional_u32_cap_subset_contract",
   "formal/rust-verification/creusot-core::required_true_preserved_contract",
   "formal/rust-verification/creusot-core::dpop_admits_contract",
+  "formal/rust-verification/creusot-core::revocation_snapshot_denies_contract",
   "formal/rust-verification/creusot-core::receipt_fields_coupled_contract",
 ]
 
@@ -30,5 +34,42 @@ contract_goals = [
   "evaluate returns Allow only after capability, subject, scope, and guard checks pass",
   "normalized projections preserve every covered proof-facing field",
   "receipt signing refuses kernel-key mismatch before invoking the signing backend",
-  "proof-facing Creusot wrappers verify pure branch conditions shared with chio-kernel-core::formal_core",
+  "proof-facing Creusot wrappers verify single-sourced bodies included from formal_aeneas.rs",
+  "reservation ledger transitions preserve amount totals, reject invalid updates unchanged, and make finalized states absorbing",
 ]
+
+[[contract_twin]]
+contract = "time_window_valid_contract"
+production = "time_window_valid"
+
+[[contract_twin]]
+contract = "budget_precheck_contract"
+production = "budget_precheck"
+
+[[contract_twin]]
+contract = "budget_commit_contract"
+production = "budget_commit"
+
+[[contract_twin]]
+contract = "ledger_apply_conservation_contract"
+production = "ledger_apply"
+
+[[contract_twin]]
+contract = "optional_u32_cap_subset_contract"
+production = "optional_u32_cap_is_subset"
+
+[[contract_twin]]
+contract = "required_true_preserved_contract"
+production = "required_true_is_preserved"
+
+[[contract_twin]]
+contract = "dpop_admits_contract"
+production = "dpop_admits"
+
+[[contract_twin]]
+contract = "revocation_snapshot_denies_contract"
+production = "revocation_snapshot_denies"
+
+[[contract_twin]]
+contract = "receipt_fields_coupled_contract"
+production = "receipt_fields_coupled"

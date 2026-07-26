@@ -93,6 +93,26 @@ func TestCanonicalVectors(t *testing.T) {
 	}
 }
 
+func TestCanonicalStringsPassDELAndC1ControlsThrough(t *testing.T) {
+	const controls = "\u007f\u009f"
+
+	value, err := invariants.CanonicalizeJSON(controls)
+	if err != nil {
+		t.Fatalf("CanonicalizeJSON value returned error: %v", err)
+	}
+	if value != `"`+controls+`"` {
+		t.Fatalf("unexpected canonical string value: %s", value)
+	}
+
+	object, err := invariants.CanonicalizeJSON(map[string]any{controls: controls})
+	if err != nil {
+		t.Fatalf("CanonicalizeJSON object returned error: %v", err)
+	}
+	if object != `{"`+controls+`":"`+controls+`"}` {
+		t.Fatalf("unexpected canonical string key/value: %s", object)
+	}
+}
+
 func TestHashingVectors(t *testing.T) {
 	var vectors hashingVectors
 	loadVectorFile(t, filepath.Join(vectorRoot, "hashing", "v1.json"), &vectors)

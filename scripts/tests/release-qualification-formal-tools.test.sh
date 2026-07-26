@@ -14,11 +14,14 @@ lines = workflow.read_text(encoding="utf-8").splitlines()
 
 required_markers = {
     "CHIO_AENEAS_RELEASE_TAG": "Aeneas release pin",
-    "CHIO_AENEAS_LINUX_X86_64_SHA256": "Aeneas archive checksum",
     "CHIO_CREUSOT_REV": "Creusot revision pin",
     "CHIO_KANI_VERSION": "Kani version pin",
+    "Install Java runtime": "Java runtime install step",
+    "Install Apalache": "Apalache install step",
+    "./tools/install-apalache.sh": "pinned Apalache installer",
     "Install Aeneas and Charon": "Aeneas and Charon install step",
-    "sha256sum -c -": "checksum verification",
+    "./scripts/install-aeneas-toolchain.py": "authenticated Aeneas installer",
+    "target/formal/aeneas-toolchain/${architecture}/bin": "authenticated Aeneas tool path",
     "Install Rust verification tools": "Kani and Creusot install step",
     "cargo install kani-verifier": "Kani installer",
     "cargo kani setup": "Kani setup",
@@ -47,6 +50,7 @@ formal_steps = [
     first_line("name: Install Aeneas and Charon"),
     first_line("name: Install Rust verification tools"),
 ]
+apalache_step = first_line("name: Install Apalache")
 portable_steps = [
     first_line("cargo install wasm-pack --version \"$(cat .tooling/wasm-pack.version)\" --locked"),
     first_line("cargo install wasm-bindgen-cli --version \"$(cat .tooling/wasm-bindgen.version)\" --locked"),
@@ -58,7 +62,7 @@ if early_installs:
         f"(early line numbers: {early_installs}, rust-cache line: {rust_cache_step})"
     )
 
-late = [line for line in formal_steps if line > release_step]
+late = [line for line in formal_steps + [apalache_step] if line > release_step]
 if late:
     raise SystemExit(
         "formal tool install steps must precede ./scripts/qualify-release.sh "

@@ -11,6 +11,7 @@ mod lineage_cmd;
 mod market_cmd;
 mod output;
 mod pheromone;
+mod policy_analysis;
 mod proof;
 mod receipt_evidence;
 mod reputation_guard;
@@ -48,6 +49,7 @@ pub(crate) use self::market_cmd::{
     cmd_market_info, cmd_market_install, cmd_market_list, parse_market_tier,
 };
 pub(crate) use output::write_cli_error;
+use policy_analysis::dispatch_policy;
 #[allow(unused_imports)]
 pub(crate) use self::pheromone::dispatch_chio_pheromone_command;
 use proof::{dispatch_commerce, dispatch_proof};
@@ -215,6 +217,7 @@ pub(crate) fn run() {
             control_token.as_deref(),
         ),
         Commands::Init { path } => scaffold::cmd_init(&path),
+        Commands::Policy { command } => dispatch_policy(command, json_output),
         Commands::Api { command } => dispatch_api(command, receipt_db, revocation_db, authority_seed_file, budget_db, control_url, control_token),
         Commands::Mcp { command } => dispatch_mcp(command, receipt_db, revocation_db, authority_seed_file, authority_db, budget_db, session_db, control_url, control_token),
         Commands::Trust { command } => dispatch_trust(command, json_output, receipt_db, revocation_db, authority_seed_file, authority_db, budget_db, session_db, control_url, control_token),

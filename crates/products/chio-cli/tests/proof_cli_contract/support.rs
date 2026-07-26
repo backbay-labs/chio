@@ -13,8 +13,11 @@ use std::io::{BufRead, BufReader, ErrorKind, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, Stdio};
-use std::sync::{Mutex, MutexGuard, OnceLock};
-use std::time::{Duration, Instant};
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Mutex, MutexGuard, OnceLock,
+};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 #[path = "support/archive.rs"]
 mod archive;
@@ -35,13 +38,12 @@ const PUBLIC_EXPORT_SIGNATURE_SEED_HEX: &str =
     "0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d";
 pub(crate) const STANDARD_WEBHOOKS_VERIFIER_SECRET: &str =
     "chio-agent-web-standard-webhooks-fixture-secret-v1";
-const STANDARD_WEBHOOKS_VERIFIER_NOW: &str = "1770508860";
-const STANDARD_WEBHOOKS_MAX_AGE_SECONDS: &str = "300";
+const STANDARD_WEBHOOKS_FIXTURE_TIMESTAMP: u64 = 1_770_508_800;
 pub(crate) const AGENT_WEB_FIXTURE_TRUSTED_KERNEL_KEYS: &str = concat!(
     "43046bfe4092b3e94994eada15dcc20d8aaa07b658fd3954eb8e0efb8bdca5de,",
     "4508a07aa941707f3eb2db94c8897a80b2c1197476b6de213ac273df7d86c4ff,",
     "bed7d2ab668da3efad613998f06f7abf7875f3a6b7677a9f3ce947d77d7760a6,",
-    "d04ab232742bb4ab3a1368bd4615e4e6d0224ab71a016baf8520a332c9778737,",
+    "204040e364c10f2bec9c1fe500a1cd4c247c89d650a01ed7e82caba867877c21,",
     "fa4834147f6e690c3693eff61336046403cd8ae2a14f31b3c407358569239565"
 );
 pub(crate) const AGENT_WEB_FIXTURE_TRUSTED_SIDECAR_KEYS: &str =
@@ -173,6 +175,15 @@ pub(crate) fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
+pub(crate) fn unique_agent_web_replay_store_path() -> PathBuf {
+    static NEXT_REPLAY_STORE: AtomicU64 = AtomicU64::new(0);
+    std::env::temp_dir().join(format!(
+        "chio-agent-web-proof-contract-replay-{}-{}.sqlite",
+        std::process::id(),
+        NEXT_REPLAY_STORE.fetch_add(1, Ordering::Relaxed)
+    ))
+}
+
 pub(crate) fn chio(args: &[&str]) -> std::process::Output {
     chio_command()
         .args(args)
@@ -182,20 +193,13 @@ pub(crate) fn chio(args: &[&str]) -> std::process::Output {
 
 pub(crate) fn chio_command() -> std::process::Command {
     let mut command = std::process::Command::new(env!("CARGO_BIN_EXE_chio"));
+    let (verifier_now, max_age_seconds) = standard_webhooks_clock_env();
     set_envs(
         &mut command,
         &[
             (
                 "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
                 STANDARD_WEBHOOKS_VERIFIER_SECRET,
-            ),
-            (
-                "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_NOW_UNIX_SECONDS",
-                STANDARD_WEBHOOKS_VERIFIER_NOW,
-            ),
-            (
-                "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_MAX_AGE_SECONDS",
-                STANDARD_WEBHOOKS_MAX_AGE_SECONDS,
             ),
             (
                 "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS",
@@ -210,6 +214,18 @@ pub(crate) fn chio_command() -> std::process::Command {
                 PROOF_ROOM_FIXTURE_TRUSTED_RECEIPT_KERNEL_KEYS,
             ),
         ],
+    );
+    command.env(
+        "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_NOW_UNIX_SECONDS",
+        verifier_now,
+    );
+    command.env(
+        "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_MAX_AGE_SECONDS",
+        max_age_seconds,
+    );
+    command.env(
+        "CHIO_AGENT_WEB_REPLAY_STORE_PATH",
+        unique_agent_web_replay_store_path(),
     );
     command.env(
         "CHIO_PROOF_ROOM_TRUSTED_BUNDLE_SIGNER_KEYS",
@@ -777,14 +793,21 @@ pub(crate) fn write_json(path: &Path, value: &serde_json::Value) {
 
 fn sign_transaction_passport_if_needed(
     _path: &Path,
+    value: serde_json::Value,
+) -> serde_json::Value {
+    sign_transaction_passport_with_seed(value, &TEST_SIGNATURE_SEED)
+}
+
+fn sign_transaction_passport_with_seed(
     mut value: serde_json::Value,
+    seed: &[u8; 32],
 ) -> serde_json::Value {
     if value.get("schema").and_then(serde_json::Value::as_str)
         != Some("chio.transaction-passport.v1")
     {
         return value;
     }
-    let keypair = Keypair::from_seed(&TEST_SIGNATURE_SEED);
+    let keypair = Keypair::from_seed(seed);
     value["issuer"] =
         serde_json::Value::String(format!("did:chio:{}", keypair.public_key().to_hex()));
     value["signature"] = serde_json::Value::String(String::new());
@@ -796,6 +819,12 @@ fn sign_transaction_passport_if_needed(
             .test_expect("transaction passport signs"),
     );
     value
+}
+
+fn write_collect_signed_transaction_passport(path: &Path, value: serde_json::Value) {
+    let value = sign_transaction_passport_with_seed(value, &COLLECT_SIGNATURE_SEED);
+    let bytes = serde_json::to_vec_pretty(&value).test_expect("serialize transaction passport");
+    std::fs::write(path, [&bytes[..], b"\n"].concat()).test_expect("write transaction passport");
 }
 
 pub(crate) fn signed_terminal_receipt(
@@ -1156,6 +1185,7 @@ fn refresh_proof_room_source_verifier_report(bundle: &Path) {
 }
 
 fn source_verifier_fixture_env() -> Vec<(&'static str, String)> {
+    let (verifier_now, max_age_seconds) = standard_webhooks_clock_env();
     let mut env = vec![
         (
             "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_SECRET",
@@ -1163,11 +1193,17 @@ fn source_verifier_fixture_env() -> Vec<(&'static str, String)> {
         ),
         (
             "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_NOW_UNIX_SECONDS",
-            STANDARD_WEBHOOKS_VERIFIER_NOW.to_string(),
+            verifier_now,
         ),
         (
             "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_MAX_AGE_SECONDS",
-            STANDARD_WEBHOOKS_MAX_AGE_SECONDS.to_string(),
+            max_age_seconds,
+        ),
+        (
+            "CHIO_AGENT_WEB_REPLAY_STORE_PATH",
+            unique_agent_web_replay_store_path()
+                .to_string_lossy()
+                .into_owned(),
         ),
         (
             "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS",
@@ -1236,6 +1272,18 @@ fn source_verifier_fixture_env() -> Vec<(&'static str, String)> {
             .map(|(name, value)| (*name, (*value).to_string())),
     );
     env
+}
+
+fn standard_webhooks_clock_env() -> (String, String) {
+    let host_now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .test_expect("host clock is after Unix epoch")
+        .as_secs();
+    let verifier_now = host_now.saturating_add(60);
+    let max_age_seconds = verifier_now
+        .saturating_sub(STANDARD_WEBHOOKS_FIXTURE_TIMESTAMP)
+        .saturating_add(300);
+    (verifier_now.to_string(), max_age_seconds.to_string())
 }
 
 fn refresh_existing_manifest_artifacts(bundle: &Path) {
@@ -1475,12 +1523,33 @@ pub(crate) fn assert_graph_node_hashes_bundle_artifact(
         .test_expect("graph artifact parses")
 }
 
+#[derive(Clone)]
+struct AgentWebReceiptIntent {
+    envelope_id: String,
+    projection_manifest_sha256: String,
+    source_protocol: String,
+    source_protocol_version: String,
+}
+
 pub(crate) fn resign_agent_web_receipts_for_policy(bundle: &Path, policy_sha256: &str) {
     let receipts_dir = bundle.join("receipts");
     if !receipts_dir.is_dir() {
         return;
     }
-    let keypair = Keypair::from_seed(&[17u8; 32]);
+    let passport: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(bundle.join("transaction-passport.json"))
+            .test_expect("read Agent Web transaction passport"),
+    )
+    .test_expect("Agent Web transaction passport parses");
+    let passport_id = passport["id"]
+        .as_str()
+        .test_expect("Agent Web transaction passport has id");
+    let passport_issuer = passport["issuer"]
+        .as_str()
+        .test_expect("Agent Web transaction passport has issuer");
+    let passport_scope_sha256 = agent_web_passport_scope_sha256(&passport);
+    let receipt_intents = agent_web_receipt_intents(bundle);
+    let keypair = Keypair::from_seed(&[18u8; 32]);
     for entry in std::fs::read_dir(&receipts_dir).test_expect("read Agent Web receipts dir") {
         let entry = entry.test_expect("read Agent Web receipt entry");
         let receipt_path = entry.path();
@@ -1491,25 +1560,42 @@ pub(crate) fn resign_agent_web_receipts_for_policy(bundle: &Path, policy_sha256:
             serde_json::from_slice(&std::fs::read(&receipt_path).test_expect("read receipt"))
                 .test_expect("Agent Web receipt parses");
         let Some(receipt_ref) = receipt
-            .metadata
-            .as_ref()
-            .and_then(|metadata| metadata.get("agent_web_receipt_ref"))
+            .action
+            .parameters
+            .get("agent_web_receipt_ref")
+            .or_else(|| {
+                receipt
+                    .metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.get("agent_web_receipt_ref"))
+            })
             .and_then(serde_json::Value::as_str)
+            .map(str::to_string)
         else {
             continue;
         };
-        let content_hash = agent_web_receipt_subject_path(receipt_ref)
+        let Some(intent) = receipt_intents.get(&receipt_ref) else {
+            continue;
+        };
+        let content_hash = agent_web_receipt_subject_path(&receipt_ref)
             .map(|subject_path| bundle.join(subject_path))
             .filter(|subject_path| subject_path.is_file())
             .map(|subject_path| sha256_file(&subject_path))
             .unwrap_or_else(|| receipt.content_hash.clone());
         let action = ToolCallAction::from_parameters(serde_json::json!({
             "agent_web_receipt_ref": receipt_ref,
-            "content_hash": content_hash
+            "content_hash": content_hash,
+            "transaction_passport_id": passport_id,
+            "transaction_passport_issuer": passport_issuer,
+            "agent_web_passport_scope_sha256": passport_scope_sha256,
+            "agent_web_envelope_id": intent.envelope_id,
+            "projection_manifest_sha256": intent.projection_manifest_sha256,
+            "source_protocol": intent.source_protocol,
+            "source_protocol_version": intent.source_protocol_version
         }))
         .test_expect("Agent Web receipt action hashes");
         let body = ChioReceiptBody {
-            id: receipt_ref.to_string(),
+            id: receipt_ref,
             timestamp: receipt.timestamp,
             capability_id: receipt.capability_id,
             tool_server: receipt.tool_server,
@@ -1540,12 +1626,81 @@ pub(crate) fn resign_agent_web_receipts_for_policy(bundle: &Path, policy_sha256:
     }
 }
 
+fn agent_web_receipt_intents(bundle: &Path) -> BTreeMap<String, AgentWebReceiptIntent> {
+    let mut intents = BTreeMap::new();
+    for entry in std::fs::read_dir(bundle).test_expect("read Agent Web fixture root") {
+        let entry = entry.test_expect("read Agent Web fixture entry");
+        let envelope_path = entry.path();
+        if envelope_path.extension().and_then(std::ffi::OsStr::to_str) != Some("json") {
+            continue;
+        }
+        let envelope: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(&envelope_path).test_expect("read Agent Web fixture artifact"),
+        )
+        .test_expect("Agent Web fixture artifact parses");
+        if envelope.get("schema").and_then(serde_json::Value::as_str)
+            != Some("chio.agent-web-proof-envelope.v2")
+        {
+            continue;
+        }
+        let intent = AgentWebReceiptIntent {
+            envelope_id: envelope["envelope_id"]
+                .as_str()
+                .test_expect("Agent Web envelope has id")
+                .to_string(),
+            projection_manifest_sha256: envelope["projection_manifest_sha256"]
+                .as_str()
+                .test_expect("Agent Web envelope has projection manifest digest")
+                .to_string(),
+            source_protocol: envelope["source_protocol"]
+                .as_str()
+                .test_expect("Agent Web envelope has source protocol")
+                .to_string(),
+            source_protocol_version: envelope["source_protocol_version"]
+                .as_str()
+                .test_expect("Agent Web envelope has source protocol version")
+                .to_string(),
+        };
+        for receipt_ref in envelope["receipt_refs"]
+            .as_array()
+            .test_expect("Agent Web envelope has receipt refs")
+        {
+            let receipt_ref = receipt_ref
+                .as_str()
+                .test_expect("Agent Web envelope receipt ref is a string");
+            assert!(
+                intents
+                    .insert(receipt_ref.to_string(), intent.clone())
+                    .is_none(),
+                "Agent Web receipt ref must resolve to one envelope: {receipt_ref}"
+            );
+        }
+    }
+    intents
+}
+
 pub(crate) fn refresh_agent_web_envelopes_for_subjects(
     bundle: &Path,
     evidence_graph: &mut serde_json::Value,
 ) {
     let keypair = Keypair::from_seed(&[17u8; 32]);
     let public_key = keypair.public_key().to_hex();
+    let passport: serde_json::Value = serde_json::from_slice(
+        &std::fs::read(bundle.join("transaction-passport.json"))
+            .test_expect("read Agent Web transaction passport"),
+    )
+    .test_expect("Agent Web transaction passport parses");
+    let passport_scope_sha256 = agent_web_passport_scope_sha256(&passport);
+    let openapi_subject_path = bundle.join("external/openapi-operation.json");
+    if openapi_subject_path.is_file() {
+        let mut subject: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(&openapi_subject_path).test_expect("read Agent Web OpenAPI subject"),
+        )
+        .test_expect("Agent Web OpenAPI subject parses");
+        subject["x_chio_proof_envelope_profile"] =
+            serde_json::Value::String("chio.agent-web-proof-envelope.v2".to_string());
+        write_json(&openapi_subject_path, &subject);
+    }
     for node in evidence_graph["nodes"]
         .as_array_mut()
         .test_expect("graph nodes array")
@@ -1567,8 +1722,13 @@ pub(crate) fn refresh_agent_web_envelopes_for_subjects(
             .test_expect("Agent Web envelope has external subject path");
         envelope["external_subject_digest"] =
             serde_json::Value::String(sha256_file(&bundle.join(subject_path)));
+        envelope["schema"] =
+            serde_json::Value::String("chio.agent-web-proof-envelope.v2".to_string());
+        envelope["agent_web_passport_scope_sha256"] =
+            serde_json::Value::String(passport_scope_sha256.clone());
         sign_agent_web_envelope_value(&mut envelope, &keypair, &public_key);
         write_json(&envelope_path, &envelope);
+        node["schema"] = serde_json::Value::String("chio.agent-web-proof-envelope.v2".to_string());
         node["sha256"] = serde_json::Value::String(sha256_file(&envelope_path));
     }
 }
@@ -1593,6 +1753,7 @@ fn agent_web_envelope_id(envelope: &serde_json::Value) -> String {
         &[
             "schema",
             "transaction_passport_ref",
+            "agent_web_passport_scope_sha256",
             "source_protocol",
             "source_protocol_version",
             "external_subject",
@@ -1621,6 +1782,7 @@ fn agent_web_envelope_signature_payload(envelope: &serde_json::Value) -> serde_j
             "schema",
             "envelope_id",
             "transaction_passport_ref",
+            "agent_web_passport_scope_sha256",
             "source_protocol",
             "source_protocol_version",
             "external_subject",
@@ -1654,6 +1816,13 @@ fn agent_web_envelope_payload(envelope: &serde_json::Value, fields: &[&str]) -> 
         );
     }
     serde_json::Value::Object(payload)
+}
+
+fn agent_web_passport_scope_sha256(passport: &serde_json::Value) -> String {
+    let passport = serde_json::from_value(passport.clone())
+        .test_expect("Agent Web transaction passport has typed fields");
+    chio_control_plane::agent_web::agent_web_passport_scope_sha256(&passport)
+        .test_expect("Agent Web passport scope hashes")
 }
 
 fn agent_web_receipt_subject_path(receipt_id: &str) -> Option<&'static str> {
@@ -1975,7 +2144,6 @@ pub(crate) fn build_commerce_settlement_passport_bundle() -> (tempfile::TempDir,
             .test_expect("passport has issued_at"),
         &policy,
     );
-
     let evidence_graph_path = bundle.join("evidence-graph.json");
     let mut evidence_graph: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&evidence_graph_path).test_expect("read graph"))
@@ -2065,6 +2233,12 @@ fn build_integrated_runtime_commerce_settlement_agent_web_bundle_for_commerce_or
             .test_expect("passport issued_at"),
         &policy,
     );
+    let mut receipt_passport = current_passport;
+    receipt_passport["id"] = serde_json::Value::String(passport_id.to_string());
+    receipt_passport["claim_set_sha256"] = serde_json::Value::String(claim_set_sha256.clone());
+    receipt_passport["claim_set_path"] = serde_json::Value::String("claim-set.json".to_string());
+    receipt_passport["verifier_policy_sha256"] = serde_json::Value::String(policy_sha256.clone());
+    write_json(&passport_path, &receipt_passport);
 
     for path in [
         "execution-lease.json",
@@ -2581,6 +2755,12 @@ pub(crate) fn build_disclosure_agent_web_bundle() -> (tempfile::TempDir, PathBuf
         &evidence_graph,
         &[(disclosure_passport_id, agent_web_passport_id)],
     );
+    let mut receipt_passport = disclosure_passport.clone();
+    receipt_passport["id"] = serde_json::Value::String(agent_web_passport_id.to_string());
+    receipt_passport["claim_set_sha256"] = serde_json::Value::String(claim_set_sha256.clone());
+    receipt_passport["claim_set_path"] = serde_json::Value::String("claim-set.json".to_string());
+    receipt_passport["verifier_policy_sha256"] = serde_json::Value::String(policy_sha256.clone());
+    write_collect_signed_transaction_passport(&passport_path, receipt_passport);
     refresh_signed_lineage_subgraph_digest(&bundle);
     append_graph_artifacts_from_fixture(&bundle, &agent_web_source, &mut evidence_graph, &[]);
     resign_agent_web_receipts_for_policy(&bundle, &policy_sha256);
@@ -2594,7 +2774,7 @@ pub(crate) fn build_disclosure_agent_web_bundle() -> (tempfile::TempDir, PathBuf
     passport["claim_set_sha256"] = serde_json::Value::String(claim_set_sha256);
     passport["claim_set_path"] = serde_json::Value::String("claim-set.json".to_string());
     passport["verifier_policy_sha256"] = serde_json::Value::String(policy_sha256);
-    write_json(&passport_path, &passport);
+    write_collect_signed_transaction_passport(&passport_path, passport);
 
     (tempdir, bundle)
 }

@@ -7,17 +7,46 @@ use chio_core_types::{
     receipt::decision::ToolCallAction,
     Keypair,
 };
-use std::{collections::BTreeMap, ffi::OsStr, fs, path::Path};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    ffi::OsStr,
+    fs,
+    path::Path,
+};
+
+const AGENT_WEB_RECEIPT_KERNEL_SIGNATURE_SEED: [u8; 32] = [18; 32];
+const AGENT_WEB_SIDECAR_SIGNATURE_SEED: [u8; 32] = [17; 32];
+
+#[derive(Clone)]
+struct AgentWebReceiptIntent {
+    passport_scope_sha256: String,
+    envelope_id: String,
+    projection_manifest_sha256: String,
+    source_protocol: String,
+    source_protocol_version: String,
+}
 
 pub(super) fn resign_agent_web_receipts_for_policy(
     bundle: &Path,
     policy_sha256: &str,
 ) -> Result<(), CliError> {
-    let receipts_dir = bundle.join("receipts");
-    if !receipts_dir.is_dir() {
+    let receipt_intents = agent_web_receipt_intents(bundle)?;
+    if receipt_intents.is_empty() {
         return Ok(());
     }
-    let keypair = Keypair::from_seed(&[17u8; 32]);
+    let receipts_dir = bundle.join("receipts");
+    if !receipts_dir.is_dir() {
+        return Err(CliError::cli_other_error(format!(
+            "proof fixture Agent Web receipts directory missing: {}",
+            receipts_dir.display()
+        )));
+    }
+    let passport_path = bundle.join("transaction-passport.json");
+    let passport = read_json_value(&passport_path)?;
+    let passport_id = required_json_string(&passport, "id", &passport_path)?.to_string();
+    let passport_issuer = required_json_string(&passport, "issuer", &passport_path)?.to_string();
+    let keypair = Keypair::from_seed(&AGENT_WEB_RECEIPT_KERNEL_SIGNATURE_SEED);
+    let mut normalized_refs = BTreeSet::new();
     for entry in fs::read_dir(&receipts_dir)? {
         let entry = entry?;
         let receipt_path = entry.path();
@@ -25,15 +54,54 @@ pub(super) fn resign_agent_web_receipts_for_policy(
             continue;
         }
         let receipt: ChioReceipt = serde_json::from_slice(&fs::read(&receipt_path)?)?;
-        let Some(receipt_ref) = receipt
-            .metadata
-            .as_ref()
-            .and_then(|metadata| metadata.get("agent_web_receipt_ref"))
+        let receipt_ref = receipt
+            .action
+            .parameters
+            .get("agent_web_receipt_ref")
+            .or_else(|| {
+                receipt
+                    .metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.get("agent_web_receipt_ref"))
+            })
             .and_then(serde_json::Value::as_str)
-        else {
+            .map(str::to_string);
+        let path_stem = receipt_path
+            .file_stem()
+            .and_then(OsStr::to_str)
+            .ok_or_else(|| {
+                CliError::cli_other_error(format!(
+                    "proof fixture Agent Web receipt path has no UTF-8 stem: {}",
+                    receipt_path.display()
+                ))
+            })?;
+        let Some(receipt_ref) = receipt_ref else {
+            if receipt_intents.contains_key(path_stem) {
+                return Err(CliError::cli_other_error(format!(
+                    "proof fixture Agent Web receipt ref missing: {}",
+                    receipt_path.display()
+                )));
+            }
             continue;
         };
-        let content_hash = agent_web_receipt_subject_path(receipt_ref)
+        validate_agent_web_receipt_ref_path(&receipt_path, path_stem, &receipt_ref)?;
+        let Some(intent) = receipt_intents.get(&receipt_ref) else {
+            if receipt_ref.starts_with("receipt-agent-web-")
+                && !is_intentional_unbound_receipt_fixture(bundle)
+            {
+                return Err(CliError::cli_other_error(format!(
+                    "proof fixture Agent Web receipt has no envelope intent: {}: {receipt_ref}",
+                    receipt_path.display()
+                )));
+            }
+            continue;
+        };
+        if !normalized_refs.insert(receipt_ref.clone()) {
+            return Err(CliError::cli_other_error(format!(
+                "proof fixture Agent Web receipt ref is duplicated: {receipt_ref}"
+            )));
+        }
+        let content_hash = agent_web_receipt_subject_path(&receipt_ref)
             .map(|subject_path| bundle.join(subject_path))
             .filter(|subject_path| subject_path.is_file())
             .map(|subject_path| sha256_file(&subject_path))
@@ -41,7 +109,14 @@ pub(super) fn resign_agent_web_receipts_for_policy(
             .unwrap_or_else(|| receipt.content_hash.clone());
         let action = ToolCallAction::from_parameters(serde_json::json!({
             "agent_web_receipt_ref": receipt_ref,
-            "content_hash": content_hash
+            "content_hash": content_hash,
+            "transaction_passport_id": passport_id,
+            "transaction_passport_issuer": passport_issuer,
+            "agent_web_passport_scope_sha256": intent.passport_scope_sha256,
+            "agent_web_envelope_id": intent.envelope_id,
+            "projection_manifest_sha256": intent.projection_manifest_sha256,
+            "source_protocol": intent.source_protocol,
+            "source_protocol_version": intent.source_protocol_version
         }))
         .map_err(|error| {
             CliError::cli_other_error(format!(
@@ -50,7 +125,7 @@ pub(super) fn resign_agent_web_receipts_for_policy(
             ))
         })?;
         let body = ChioReceiptBody {
-            id: receipt_ref.to_string(),
+            id: receipt_ref,
             timestamp: receipt.timestamp,
             capability_id: receipt.capability_id,
             tool_server: receipt.tool_server,
@@ -80,7 +155,102 @@ pub(super) fn resign_agent_web_receipts_for_policy(
         })?;
         write_json_line_file(&receipt_path, &signed_receipt)?;
     }
+    if !is_intentional_unbound_receipt_fixture(bundle) {
+        if let Some(missing_ref) = receipt_intents
+            .keys()
+            .find(|receipt_ref| !normalized_refs.contains(*receipt_ref))
+        {
+            return Err(CliError::cli_other_error(format!(
+                "proof fixture Agent Web envelope receipt was not normalized: {missing_ref}"
+            )));
+        }
+    }
     Ok(())
+}
+
+fn validate_agent_web_receipt_ref_path(
+    receipt_path: &Path,
+    path_stem: &str,
+    receipt_ref: &str,
+) -> Result<(), CliError> {
+    if receipt_ref != path_stem {
+        return Err(CliError::cli_other_error(format!(
+            "proof fixture Agent Web receipt ref does not match its canonical path stem: {}: {receipt_ref}",
+            receipt_path.display()
+        )));
+    }
+    Ok(())
+}
+
+fn is_intentional_unbound_receipt_fixture(bundle: &Path) -> bool {
+    bundle
+        .components()
+        .any(|component| component.as_os_str().to_str() == Some("agent-web-vc-unbound-receipt"))
+}
+
+fn agent_web_receipt_intents(
+    bundle: &Path,
+) -> Result<BTreeMap<String, AgentWebReceiptIntent>, CliError> {
+    let passport_scope_sha256 = agent_web_passport_scope_sha256(bundle)?;
+    let mut intents = BTreeMap::new();
+    for entry in fs::read_dir(bundle)? {
+        let entry = entry?;
+        let envelope_path = entry.path();
+        if envelope_path.extension().and_then(OsStr::to_str) != Some("json") {
+            continue;
+        }
+        let envelope = read_json_value(&envelope_path)?;
+        if envelope.get("schema").and_then(serde_json::Value::as_str)
+            != Some("chio.agent-web-proof-envelope.v2")
+        {
+            continue;
+        }
+        let intent = AgentWebReceiptIntent {
+            passport_scope_sha256: passport_scope_sha256.clone(),
+            envelope_id: required_json_string(&envelope, "envelope_id", &envelope_path)?
+                .to_string(),
+            projection_manifest_sha256: required_json_string(
+                &envelope,
+                "projection_manifest_sha256",
+                &envelope_path,
+            )?
+            .to_string(),
+            source_protocol: required_json_string(&envelope, "source_protocol", &envelope_path)?
+                .to_string(),
+            source_protocol_version: required_json_string(
+                &envelope,
+                "source_protocol_version",
+                &envelope_path,
+            )?
+            .to_string(),
+        };
+        let receipt_refs = envelope
+            .get("receipt_refs")
+            .and_then(serde_json::Value::as_array)
+            .ok_or_else(|| {
+                CliError::cli_other_error(format!(
+                    "proof fixture Agent Web envelope receipt refs missing: {}",
+                    envelope_path.display()
+                ))
+            })?;
+        for receipt_ref in receipt_refs {
+            let receipt_ref = receipt_ref.as_str().ok_or_else(|| {
+                CliError::cli_other_error(format!(
+                    "proof fixture Agent Web envelope receipt ref is not a string: {}",
+                    envelope_path.display()
+                ))
+            })?;
+            if intents
+                .insert(receipt_ref.to_string(), intent.clone())
+                .is_some()
+            {
+                return Err(CliError::cli_other_error(format!(
+                    "proof fixture Agent Web receipt resolves to multiple envelopes: {receipt_ref}"
+                )));
+            }
+        }
+    }
+    Ok(intents)
 }
 
 pub(super) fn normalize_agent_web_bilateral_in_toto_statement(
@@ -119,10 +289,20 @@ pub(super) fn normalize_agent_web_bilateral_in_toto_statement(
 pub(super) fn refresh_agent_web_envelopes_for_subjects(
     bundle: &Path,
     evidence_graph: &mut serde_json::Value,
+    preserve_standard_webhooks_digest_mismatch: bool,
 ) -> Result<(), CliError> {
-    let keypair = Keypair::from_seed(&[17u8; 32]);
+    let keypair = Keypair::from_seed(&AGENT_WEB_SIDECAR_SIGNATURE_SEED);
     let public_key = keypair.public_key().to_hex();
+    let passport_scope_sha256 = agent_web_passport_scope_sha256(bundle)?;
     let projection_manifest_paths = agent_web_projection_manifest_paths(bundle, evidence_graph)?;
+    let openapi_subject_path = bundle.join("external/openapi-operation.json");
+    if openapi_subject_path.is_file() {
+        let mut subject = read_json_value(&openapi_subject_path)?;
+        subject["x_chio_proof_envelope_profile"] =
+            serde_json::Value::String("chio.agent-web-proof-envelope.v2".to_string());
+        write_json_line_file(&openapi_subject_path, &subject)?;
+    }
+    let mut envelope_ids = BTreeSet::new();
     for node in json_array_mut(evidence_graph, "nodes", &bundle.join("evidence-graph.json"))? {
         if node.get("role").and_then(serde_json::Value::as_str) != Some("agent-web-proof-envelope")
         {
@@ -142,9 +322,17 @@ pub(super) fn refresh_agent_web_envelopes_for_subjects(
         let mut envelope = read_json_value(&envelope_path)?;
         let subject_path =
             required_json_string(&envelope, "external_subject_path", &envelope_path)?;
-        envelope["external_subject_digest"] =
-            serde_json::Value::String(sha256_file(&bundle.join(subject_path))?);
-        let manifest_ref = required_json_string(&envelope, "projection_manifest_ref", &envelope_path)?;
+        if !preserve_standard_webhooks_digest_mismatch
+            || envelope
+                .get("source_protocol")
+                .and_then(serde_json::Value::as_str)
+                != Some("standard-webhooks")
+        {
+            envelope["external_subject_digest"] =
+                serde_json::Value::String(sha256_file(&bundle.join(subject_path))?);
+        }
+        let manifest_ref =
+            required_json_string(&envelope, "projection_manifest_ref", &envelope_path)?;
         let manifest_path = projection_manifest_paths
             .get(&manifest_ref)
             .map(String::as_str)
@@ -155,8 +343,19 @@ pub(super) fn refresh_agent_web_envelopes_for_subjects(
             })?;
         envelope["projection_manifest_sha256"] =
             serde_json::Value::String(sha256_file(&bundle.join(manifest_path))?);
+        envelope["schema"] =
+            serde_json::Value::String("chio.agent-web-proof-envelope.v2".to_string());
+        envelope["agent_web_passport_scope_sha256"] =
+            serde_json::Value::String(passport_scope_sha256.clone());
         sign_agent_web_envelope_value(&mut envelope, &keypair, &public_key)?;
+        let envelope_id = required_json_string(&envelope, "envelope_id", &envelope_path)?;
+        if !envelope_ids.insert(envelope_id.clone()) {
+            return Err(CliError::cli_other_error(format!(
+                "proof fixture Agent Web envelope id is duplicated: {envelope_id}"
+            )));
+        }
         write_json_line_file(&envelope_path, &envelope)?;
+        node["schema"] = serde_json::Value::String("chio.agent-web-proof-envelope.v2".to_string());
         node["sha256"] = serde_json::Value::String(sha256_file(&envelope_path)?);
     }
     Ok(())
@@ -167,7 +366,10 @@ fn agent_web_projection_manifest_paths(
     evidence_graph: &serde_json::Value,
 ) -> Result<BTreeMap<String, String>, CliError> {
     let mut manifests = BTreeMap::new();
-    let Some(nodes) = evidence_graph.get("nodes").and_then(serde_json::Value::as_array) else {
+    let Some(nodes) = evidence_graph
+        .get("nodes")
+        .and_then(serde_json::Value::as_array)
+    else {
         return Ok(manifests);
     };
     for node in nodes {
@@ -176,13 +378,26 @@ fn agent_web_projection_manifest_paths(
         {
             continue;
         }
-        let Some(path) = node.get("path").and_then(serde_json::Value::as_str) else {
-            continue;
-        };
+        let path = node
+            .get("path")
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| {
+                CliError::cli_other_error(format!(
+                    "proof fixture Agent Web projection manifest node path missing: {}",
+                    bundle.display()
+                ))
+            })?;
         let manifest_path = bundle.join(path);
         let manifest = read_json_value(&manifest_path)?;
         let projection_id = required_json_string(&manifest, "projection_id", &manifest_path)?;
-        manifests.insert(projection_id.to_string(), path.to_string());
+        if manifests
+            .insert(projection_id.to_string(), path.to_string())
+            .is_some()
+        {
+            return Err(CliError::cli_other_error(format!(
+                "proof fixture Agent Web projection id is duplicated: {projection_id}"
+            )));
+        }
     }
     Ok(manifests)
 }
@@ -211,6 +426,7 @@ fn agent_web_envelope_id(envelope: &serde_json::Value) -> Result<String, CliErro
         &[
             "schema",
             "transaction_passport_ref",
+            "agent_web_passport_scope_sha256",
             "source_protocol",
             "source_protocol_version",
             "external_subject",
@@ -244,6 +460,7 @@ fn agent_web_envelope_signature_payload(
             "schema",
             "envelope_id",
             "transaction_passport_ref",
+            "agent_web_passport_scope_sha256",
             "source_protocol",
             "source_protocol_version",
             "external_subject",
@@ -260,6 +477,18 @@ fn agent_web_envelope_signature_payload(
             "limitations",
         ],
     )
+}
+
+fn agent_web_passport_scope_sha256(bundle: &Path) -> Result<String, CliError> {
+    let passport_path = bundle.join("transaction-passport.json");
+    let passport: chio_control_plane::transaction_passport::TransactionPassport =
+        serde_json::from_value(read_json_value(&passport_path)?)?;
+    chio_control_plane::agent_web::agent_web_passport_scope_sha256(&passport).map_err(|error| {
+        CliError::cli_other_error(format!(
+            "proof fixture Agent Web passport scope digest failed: {}: {error}",
+            passport_path.display()
+        ))
+    })
 }
 
 fn agent_web_envelope_payload(
@@ -319,4 +548,25 @@ fn agent_web_receipt_subject_path(receipt_id: &str) -> Option<&'static str> {
         "receipt-agent-web-x402-payment-allow" => "external/x402-payment.json",
         _ => return None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chio_test_support::prelude::*;
+
+    #[test]
+    fn receipt_ref_must_match_canonical_file_stem() {
+        let receipt_path = Path::new("receipts/receipt-agent-web-cloudevents-allow.json");
+        let error = validate_agent_web_receipt_ref_path(
+            receipt_path,
+            "receipt-agent-web-cloudevents-allow",
+            "receipt-agent-web-webhook-allow",
+        )
+        .test_expect_err("a receipt swap must be rejected");
+
+        assert!(error
+            .to_string()
+            .contains("receipt ref does not match its canonical path stem"));
+    }
 }

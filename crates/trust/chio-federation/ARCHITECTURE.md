@@ -86,6 +86,9 @@ flowchart TD
 | `src/bilateral_dsse/policy.rs` | `PolicyEvaluationSummary` validation (verdict agreement, non-empty policy ids). |
 | `src/bilateral_dsse/sign.rs` | Envelope signing: local dual-keypair and cosigner-mediated, for both profiles. |
 | `src/bilateral_dsse/verify.rs` | Envelope verification for both profiles, plus treaty-binding-ref checks shared with `bilateral_verifier`. |
+| `src/bilateral_dsse/typestate_handlers.rs` | Canonical construction, host signing, origin co-signing, and strict verification handlers used by the ordered producer typestate. |
+| `src/bilateral_dsse/tests.rs` | DSSE encoding, signing, verification, predicate, policy-summary, and typestate regressions. |
+| `src/_generated/bilateral_dsse_producer_typestate.rs` | Private-field stage wrappers and consuming transitions generated from `spec/statemachines/` when the `typestate` feature is enabled. |
 | `src/bilateral_verifier.rs` | Partial-verifier scope doc, submodule declarations, and re-exports. |
 | `src/bilateral_verifier/state.rs` | `PeerPinSet`/`PinnedPeer`, `PinnedEpoch`, and the `ReceiptStore` / `RevocationOracle` / `CapabilityLeaseRegistry` / `GovernanceReceiptStore` traits plus in-memory implementations. |
 | `src/bilateral_verifier/config.rs` | `VerifierConfig`, `ActionClassKind`, `UnknownActionClassPolicy`, `VerifiedBilateralCoSignInvocation`, treaty-review input types. |
@@ -93,12 +96,14 @@ flowchart TD
 | `src/bilateral_verifier/error.rs` | `VerifierError` (spec Section 7.1 codes) and the `BilateralCoSigningError` to `VerifierError` mapping. |
 | `src/bilateral_verifier/support.rs` | Private canonical-JSON, digest, and verdict helpers shared across the verifier submodules. |
 | `src/bilateral_verifier/treaty.rs` | `verify_treaty_bound_chio_bilateral_invocation` and treaty-binding-ref reconciliation against a buyer-supplied review package. |
+| `src/bilateral_verifier/tests.rs` | Partial and strict verifier unit tests. |
 | `src/trust_establishment.rs` | mTLS-style handshake (`KernelTrustExchange`, `PeerHandshakeEnvelope`), peer-pin store, conformance-tier derivation, `QuorumPolicy` tier gating. |
 | `src/treaty.rs` | Governance ladder manifest, treaty scope, ladder-intersection computation, cross-boundary admission evaluation. |
 | `src/revocation_gossip.rs` | Revocation-root gossip envelope, per-peer push queue, bounded catch-up/gap-fill protocol. |
 | `src/pheromone_gossip.rs` | Pheromone-deposit gossip envelope (direct and multi-hop transit), push queue, transit-policy verification. |
 | `src/metrics.rs` | Federation-hop counters and latency histogram, registered under `chio-metrics-spec` names. |
 | `src/demo.rs` | `DemoAllowAllRevocationOracle`, gated to `cfg(test)` or the `demo` feature. |
+| `src/tests.rs` | Root contract-artifact validation tests. |
 
 ## Protocol surfaces
 

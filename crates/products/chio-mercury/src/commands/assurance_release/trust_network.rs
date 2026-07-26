@@ -124,6 +124,9 @@ pub(in crate::commands) fn export_trust_network(
     );
     shared_proof_package.checkpoint_transparency = Some(checkpoint_transparency);
     shared_proof_package
+        .refresh_package_id()
+        .map_err(|error| CliError::Other(error.to_string()))?;
+    shared_proof_package
         .validate()
         .map_err(|error| CliError::Other(error.to_string()))?;
     write_json_file(&shared_proof_package_path, &shared_proof_package)?;

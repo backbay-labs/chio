@@ -10,7 +10,12 @@ fi
 
 (
   cd formal/rust-verification/creusot-core
-  cargo creusot prove
+  rustflags="${RUSTFLAGS:-}"
+  if [[ -n "${rustflags}" ]]; then
+    rustflags+=" "
+  fi
+  rustflags+="--cfg chio_creusot_contracts"
+  RUSTFLAGS="${rustflags}" cargo creusot prove
 )
 
 echo "Creusot core contracts passed"

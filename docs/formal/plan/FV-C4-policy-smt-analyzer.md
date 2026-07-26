@@ -1,6 +1,6 @@
 # FV-C4: `chio policy analyze` - static policy analysis as product surface
 
-- Status: Proposed (2026-07-09)
+- Status: Implemented (2026-07-12)
 - Theme: C - Turn verification into product surface
 - Effort: L
 - Depends on: none
@@ -28,7 +28,9 @@ Grounded in chio-policy source, verified this session:
 - Compilation: `compile_policy` / `compile_policy_with_source` (crates/guards/chio-policy/src/compiler.rs:85, 91) validate then materialize up to 12 guard types into a `CompiledPolicy { guards: GuardPipeline, post_invocation, default_scope: ChioScope, guard_names }` (L61-77). `GuardPipeline` holds boxed opaque guards - useless as an analysis IR, which is why the analyzer needs its own.
 - Evaluation semantics to respect: `evaluate` (crates/guards/chio-policy/src/evaluate/engine.rs:5-54) dispatches on `action_type` and denies fail-closed for unknown action types (L44-53); `evaluate_with_context` (L57) rejects unknown condition keys fail-closed (L87-97). Matching lives in evaluate/matchers.rs. Deny dominates allow within a block (block list consulted against allow list with the block winning), and the per-block `default` decides the no-match case.
 - Fuzzing already exercises parse/validate/compile with structured `Arbitrary` input plus YAML roundtrip via `fuzz_policy_parse_compile` [v] - the analyzer gets a corpus of weird-but-valid policies for free.
-- Nothing anywhere computes rule-to-rule relations or policy-to-policy refinement.
+- `crates/guards/chio-policy/src/analyze/` now owns rule-to-rule relations,
+  total lowering, bounded refinement, and evaluator-confirmed witnesses. The
+  public command is documented in `docs/reference/POLICY_ANALYSIS.md`.
 
 ## Design
 
@@ -57,7 +59,7 @@ plus the block's `DefaultAction` as an explicit bottom atom. Lowering is total o
 
 ### Pairwise rule relations (phase 1 capabilities)
 
-For each block, compute the relation between every atom pair over the decidable fragment: `Disjoint`, `Equal`, `SubsetOf`, `SupersetOf`, `Overlapping`. Glob-vs-glob subset/overlap for the HushSpec glob dialect is decidable via product construction on the two patterns (bounded; the dialect has `*`, `**`, `?`, and literals - the same dialect the matchers implement, and the analyzer must link against evaluate/matchers.rs semantics, not a lookalike). Findings derived:
+For each block, compute the relation between every atom pair over the decidable fragment: `Disjoint`, `Equal`, `SubsetOf`, `SupersetOf`, `Overlapping`. Glob-vs-glob subset/overlap for the HushSpec glob dialect is decidable via product construction on the two patterns (bounded; the dialect has `*`, `**`, `?`, and literals). Evaluation, compilation, and analysis share one glob tokenizer, so the analyzer does not carry a lookalike dialect. Findings derived:
 
 - Shadowed rule: atom B can never fire because an earlier-or-dominating atom A with a different effect covers it (given the engine's deny-dominates order).
 - Unreachable rule: atom B is covered by same-effect atoms, so removing it changes nothing.
@@ -66,7 +68,44 @@ For each block, compute the relation between every atom pair over the decidable 
 
 ### Policy-diff refinement (phase 2)
 
-`chio policy analyze --against old.yaml new.yaml` answers: is `new` a strict narrowing of `old`? Per block, compute the admitted set relation using the same pairwise algebra; the policy refines iff every input admitted by `new` is admitted by `old` (deny-side monotonicity: everything `old` denied, `new` still denies). When refinement fails, emit a witness: a concrete synthesized input (tool name, path, or host string) admitted by `new` and denied by `old`, constructed from the glob product automaton's distinguishing path. This is the attenuation question (`NormalizedScope::is_subset_of`) lifted to policy documents, and the implementation reuses the normalized subset helpers where the types line up (tool/resource grants derived from `tool_access` via the compiler's `compile_scope`) instead of duplicating them. Conceptually this is `refinesOn` from PredicateLang.lean with the sample quantifier replaced by the decidable fragment's exact relation - the doc for FV-D2 should cite this section when building its bridge.
+`chio policy analyze --against old.yaml new.yaml` answers whether every input admitted by `new` is admitted by `old`. Per block, it computes the admitted set relation using the same pairwise algebra. When refinement fails, it emits a concrete tool name, path, or host admitted by `new` and denied by `old`, constructed from the glob product automaton's distinguishing path. This is the attenuation question (`NormalizedScope::is_subset_of`) lifted to policy documents. The implementation does not call the normalized scope helper because HushSpec supports `**` and `?`, while capability grants have a different wildcard language. It uses one exact product construction for both pairwise relations and policy witnesses, then confirms every widening witness through `evaluate`. Conceptually this is `refinesOn` from PredicateLang.lean with the sample quantifier replaced by the decidable fragment's exact relation.
+
+### Lean algebra handoff
+
+The Lean algebra is not a production wire format. It is a tagged `Predicate`
+enum with `atom`, `top`, `bot`, `conj`, `disj`, and `neg`, evaluated over an
+`AdmissionView` projection of `TreatyScope`, `LadderIntersection`,
+`BilateralInvocation`, evidence, verifier-owned expected hashes, mode, time,
+and joint policy state. `AtomTag` names the modeled runtime gates: current
+schemas, treaty freshness, scope/intersection agreement, intersection binding,
+invocation binding, allowed action class, signer pair, continuation binding,
+required evidence presence and verification, joint policy allow, and a mode
+floor. `.unsupported` has no denotation.
+
+The fail-closed contract is two-stage. `supported` rejects any syntax tree
+containing an unsupported atom before Boolean connectives run. `defined`
+rejects a tree when a required projected value is unavailable. This means
+neither `.neg (.atom (.unsupported name))` nor a negated mode predicate with an
+unknown mode can produce allow.
+
+Refinement completeness is intentionally domain-scoped:
+
+```
+refinesOnConstitution new old domain = true <->
+  forall input, input in domain -> admits new input -> admits old input
+```
+
+The policy analyzer must not reinterpret this as global completeness from a
+sample. Its direct glob/set/range relation can issue a global refinement result
+only when that relation is exact for every analyzed atom. Opaque or unsupported
+matchers produce an indeterminate result. If the analyzer serializes a future
+shared predicate shape, its parser must reject unknown variants before
+negation, and its witness domain must be named in any finite decision.
+
+Two `abstraction_anchor` mirror entries bind the Lean projection to the exact
+Rust record and validator symbols. They are drift tripwires, not semantic
+equivalence evidence and not permission to call the Lean shape serialized
+production policy.
 
 ### Why not SMT first
 
@@ -104,8 +143,7 @@ chio policy analyze <policy.yaml> [--against <old.yaml>] [--format table|json] [
       "severity": "warning",
       "block": "egress",
       "rule_ref": { "field": "allow", "index": 4, "pattern": "api.example.com" },
-      "message": "never fires: block entry '*.example.com' (index 1) dominates it",
-      "witness": null
+      "message": "never fires: block entry '*.example.com' (index 1) dominates it"
     },
     {
       "id": "REFINE-0001",
@@ -114,69 +152,92 @@ chio policy analyze <policy.yaml> [--against <old.yaml>] [--format table|json] [
       "block": "path_allowlist",
       "rule_ref": { "field": "write", "index": 2, "pattern": "/srv/data/**" },
       "message": "new policy admits inputs the old policy denied",
-      "witness": { "action_type": "file_write", "path": "/srv/data/x.txt" }
+      "witness": { "action_type": "file_write", "target": "/srv/data/x.txt" }
     }
   ],
-  "not_analyzed": [{ "block": "secret_patterns", "reason": "regex-valued" }],
+  "not_analyzed": [
+    { "block": "secret_patterns", "field": "patterns", "reason": "regex-valued" }
+  ],
   "summary": { "errors": 1, "warnings": 1, "notices": 0 }
 }
 ```
 - Exit codes, fail-closed: 0 = clean at the configured threshold; 1 = findings at or above threshold; 2 = the policy failed to parse or validate, or an internal analyzer error. Unparseable input is never exit 0, so `chio policy analyze` can sit directly in a customer CI job.
-- Performance envelope: pairwise analysis is O(n^2) in atoms per block with a glob-product check per pair; target under 1 second for 1,000 atoms and document a hard cap (`--max-atoms`, default 10,000) beyond which the tool exits 2 rather than silently sampling.
+- Performance envelope: pairwise analysis is O(n^2) in atoms per block with a glob-product check per pair. The 1,000-literal fast path targets under 1 second. Aggregate matcher-comparison, finding, alphabet-construction, automaton-state, automaton-transition, and evaluator-confirmation budgets stop mixed-effect or wildcard inputs before quadratic work or output expands; exhaustion exits 2 rather than silently sampling. Finite action domains use exact set relations before production-evaluator confirmation.
 - Findings-to-receipts mapping: the JSON report's `policy_sha256` matches the policy hash recorded in receipts, so a finding can be joined to the receipts issued under that exact policy; `--emit-attestation` (later) can wrap the report in a signed statement for governance workflows (the `GovernanceMetadata` fields `policy_version`, `approved_by` already exist in models.rs).
 
 ## Implementation plan
 
-1. Phase 1 - IR and pairwise rule relations (shadow/unreachable/contradiction).
-   - Add `crates/guards/chio-policy/src/analyze/mod.rs`, `analyze/ir.rs` (lowering from `HushSpec`/`Rules`), `analyze/glob_rel.rs` (product-construction subset/overlap for the matcher dialect), `analyze/findings.rs`, `analyze/tests.rs`.
+1. Phase 1 - IR and pairwise rule relations (shadow/unreachable/contradiction). Implemented.
+   - Add `crates/guards/chio-policy/src/analyze/mod.rs`, `analyze/ir.rs` (lowering from `HushSpec`/`Rules`), `analyze/glob.rs` (product-construction subset/overlap for the matcher dialect), `analyze/report.rs`, and `analyze/tests.rs`.
    - Modify `crates/guards/chio-policy/src/lib.rs` to export the analyze API.
-   - Add CLI wiring: `crates/products/chio-cli/src/cli/policy/mod.rs`, `analyze.rs`; modify the chio-cli command tree registration.
+   - Add CLI wiring in `crates/products/chio-cli/src/cli/dispatch/policy_analysis.rs` and modify the chio-cli command tree registration.
    - Seed tests from the policy fuzz corpus and hand-written shadowing/unreachable fixtures.
-2. Phase 2 - policy-diff refinement verdicts with witnesses.
-   - Add `analyze/refine.rs` (per-block admitted-set comparison, witness synthesis from the product automaton), reusing `chio_kernel_core::normalized` subset helpers for the scope-shaped blocks via the existing compiler lowering.
+2. Phase 2 - policy-diff refinement verdicts with witnesses. Implemented.
+   - Add `analyze/refine.rs` for admitted-set comparison and witness synthesis from the shared glob product automaton, with confirmation through the production evaluator.
    - Add golden fixtures: policy pairs with known refine/not-refine verdicts and expected witnesses.
-3. Phase 3 - optional SMT backend for the general fragment.
+3. Phase 3 - optional SMT backend for the general fragment. Deferred by decision.
    - Add `crates/tooling/chio-policy-smt` (feature `smt` in chio-cli only): encodes regex-valued patterns and `when`-condition logic; cargo-vet/deny entries and a supply-chain review gate land in the same change.
    - Cross-check mode: on the decidable fragment, run both backends and fail on disagreement (the bounded analyzer becomes the oracle for the SMT encoding, in the diff-test spirit).
 
 ## CI and gating changes
 
 - Analyzer unit and fixture tests join the normal PR `cargo test` surface.
-- Add a repo self-check: run `chio policy analyze` over the in-tree example/fixture policies (rulesets shipped with chio-policy) in the PR job; findings above `warning` fail. This makes the repo the first customer.
-- Add the analyzer to `fuzz/target-map.toml` triggers for chio-policy paths in a later step (a `policy_analyze` fuzz target taking Arbitrary HushSpec pairs and asserting analyzer totality and witness validity: any produced witness must actually evaluate to admit-in-new/deny-in-old through `evaluate` - an executable soundness check of the analyzer against the real engine).
-- Phase 3's `smt` feature is excluded from default builds; a scheduled job compiles and cross-checks it.
+- Add a repo self-check: run `chio policy analyze` over the in-tree example/fixture policies (rulesets shipped with chio-policy) in the PR job; findings at or above `warning` fail. This makes the repo the first customer.
+- The `policy_analyze` fuzz target takes structured and raw HushSpec pairs,
+  exercises bounded analyzer totality, and confirms every widening witness
+  against the production evaluator.
+- A future phase 3 `smt` feature remains excluded from default builds and
+  requires a scheduled compile and cross-check lane when introduced.
 
 ## Acceptance criteria
 
-- [ ] Lowering is total over all 14 `RULE_BLOCK_NAMES`, with opaque atoms reported as not-analyzed (never silently dropped).
-- [ ] Shadowed, unreachable, and contradictory rules are detected on fixture policies with zero false positives on the shipped ruleset corpus.
-- [ ] Glob relation decisions match evaluate/matchers.rs semantics on a differential test (relation says SubsetOf implies every sampled match of A matches B).
-- [ ] `--against` produces refine/not-refine verdicts, and every not-refine verdict carries a witness that the real `evaluate` confirms (admitted by new, denied by old).
-- [ ] JSON schema `chio.policy-analysis.v1` is stable and documented; exit codes are fail-closed (parse failure is never 0).
-- [ ] 1,000-atom policy analyzes in under 1 second on the CI runner class.
-- [ ] The `smt` feature is absent from default dependency trees (`cargo tree` check in CI).
-- [ ] Repo self-check lane runs the analyzer over in-tree policies.
+- [x] Lowering is total over all 14 `RULE_BLOCK_NAMES`, with opaque atoms reported as not-analyzed (never silently dropped).
+- [x] Shadowed, unreachable, and contradictory rules are detected on fixture policies with zero false positives on the shipped ruleset corpus.
+- [x] Glob relation decisions match evaluate/matchers.rs semantics on a differential test (relation says SubsetOf implies every sampled match of A matches B).
+- [x] `--against` produces refine/not-refine verdicts, and every not-refine verdict carries a witness that the real `evaluate` confirms (admitted by new, denied by old).
+- [x] JSON schema `chio.policy-analysis.v1` is stable and documented; exit codes are fail-closed (parse failure is never 0).
+- [x] A 1,000-literal policy analyzes in under 1 second, and mixed-effect wildcard and literal stress cases exhaust aggregate budgets in under 1 second on the CI runner class.
+- [x] The `smt` feature is absent from default dependency trees (`cargo tree` check in CI).
+- [x] Repo self-check lane runs the analyzer over in-tree policies.
 
 ## Risks and mitigations
 
-- Analyzer disagrees with engine semantics (the fatal risk: a "refines" verdict the engine falsifies). Mitigations: link against the real matchers, never reimplement; the witness-execution check closes the loop through `evaluate` itself; the fuzz target asserts witness validity continuously.
-- Glob-product blowup on pathological patterns (many `**`). Mitigations: complexity cap per pair with a fail-closed "not analyzed" finding instead of a wrong answer; the regex_safety.rs precedent in chio-policy shows the house style for bounding pattern cost.
+- Analyzer disagrees with engine semantics (the fatal risk: a "refines" verdict the engine falsifies). Mitigations: evaluation, compilation, and analysis share one glob tokenizer; differential tests compare the relation engine with the real matcher; the witness-execution check closes the loop through `evaluate` itself; the fuzz target asserts witness validity continuously.
+- Glob-product and pairwise blowup on pathological patterns (many `**` or repeated conflicts). Mitigations: aggregate comparison, finding, alphabet-work, evaluator-confirmation, product-state, and transition caps terminate analysis with exit code 2 instead of returning a partial verdict; the regex_safety.rs precedent in chio-policy shows the house style for bounding pattern cost.
 - False-positive fatigue makes customers ignore findings. Mitigations: severity tiers with `--fail-on`; `Overlapping` (ambiguous) findings default to notice, only provable `Equal`/`SubsetOf` shadowing is warning-or-error.
 - Supply-chain pressure to ship SMT early. Mitigation: the phase gate is explicit - z3 enters only behind a non-default feature in a non-guard crate with vet/deny entries reviewed, mirroring the repo's existing cargo-vet human-gate discipline.
 - Semantics drift as new rule blocks land. Mitigation: `RULE_BLOCK_NAMES` is the lockstep inventory (models/rules.rs:16-18 comment); a unit test asserts the analyzer's lowering covers every name so a new block breaks the build until handled.
 
-## Open questions
+## Decisions
 
-- Should `when`-condition filtering (evaluate_with_context, engine.rs:57) be in phase 1 scope as context-conditional atoms, or analyzed pessimistically (conditions treated as opaque, findings marked conditional)?
-- Witness synthesis for numeric blocks: is a boundary value (max_additions + 1) an acceptable witness format alongside string witnesses?
-- Does refinement across `extends`/`merge_strategy` inheritance chains (models.rs:52-54, merge.rs) analyze the merged effective policy, the delta, or both? (Proposal: merged effective policy, since that is what the engine sees.)
-- Should the analyzer verdict for a policy pair be embeddable in the treaty/bilateral flow that PredicateLang models, once FV-D2's bridge lands?
-- Is `chio policy analyze` also the home for lints that are not relations (unused profiles, expired `expiry_date` in metadata), or does lint scope dilute the product story?
+- Analyze merged effective policies because those are the documents consumed
+  by the evaluator. Source documents are limited to 4 MiB and inheritance is
+  limited to 32 documents.
+- Treat conditions, regexes, stateful guards, and guard-only predicates as
+  opaque. They appear in `not_analyzed`; a changed opaque field makes policy
+  comparison inconclusive rather than successful.
+- Use boundary values for supported numeric witnesses. Witness payloads carry
+  optional `args_size` and `content` fields alongside the target string.
+- Keep treaty embedding and signed analysis attestations outside this command.
+  The report is deterministic JSON but is not itself a signed artifact.
+- Keep the command focused on rule relations and refinement. Lifecycle and
+  metadata linting remain separate concerns.
+- Do not add an SMT dependency. The direct analyzer decides the current
+  bounded fragment with no solver supply-chain addition. A future general
+  backend requires a separate dependency and cross-check review.
 
 ## Manifest and registry updates
 
 - formal/proof-manifest.toml: no change in phases 1-2 (the analyzer is tooling, not proof evidence). If phase 3's cross-check lane becomes a gate, add it to `gate_commands`.
 - formal/theorem-inventory.json: not applicable now; FV-D2 owns the Lean-side refinement entries and should cite the analyzer's relation semantics.
-- formal/MAPPING.md: no named-property rows; add an informational pointer from the PredicateLang cross-reference section to `analyze/refine.rs` when phase 2 lands.
-- fuzz/target-map.toml and fuzz/owners.toml: add the `policy_analyze` target (crate chio-policy, triggers on `crates/guards/chio-policy/src/analyze/**` and matcher sources, seeds from the policy corpus).
-- docs/reference/CLAIM_REGISTRY.md: propose claim `POLICY-ANALYZE` (approved_with_scope): "Chio ships a policy analyzer that decides rule shadowing, unreachability, contradiction, and policy-diff refinement over the decidable HushSpec fragment, with engine-confirmed witnesses for refinement failures." Evidence classes: `differential_test`, `runtime_qualification`. Do not claim "formally verified policy analysis" - no Lean artifact backs the analyzer itself until FV-D2.
+- formal/MAPPING.md: includes an informational PredicateLang cross-reference
+  to the executable analyzer without adding it to the proof boundary.
+- fuzz/target-map.toml and fuzz/owners.toml: register the `policy_analyze`
+  target, matcher triggers, and three calibrated seeds.
+- crates/guards/chio-policy/mutants.toml: includes the analyzer modules in the
+  existing policy mutation surface. The formal model mutation registry and
+  its measured inventory are unchanged because no proof-model source changed.
+- docs/reference/CLAIM_REGISTRY.md: registers `POLICY-ANALYZE` as
+  `approved_with_scope`, limited to bounded static analysis and
+  evaluator-confirmed widening witnesses. It does not license the phrase
+  "formally verified policy analysis."

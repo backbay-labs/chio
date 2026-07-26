@@ -13,7 +13,7 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
+    branches: [main, chio/autonomous-commerce-brainstorm]
 
 permissions:
   contents: read
@@ -46,6 +46,7 @@ jobs:
         run: |
           rustup toolchain install stable --profile minimal
           rustup default stable
+          rustup component add rustfmt
 
       - name: Install protobuf compiler
         uses: ./.github/actions/apt-install
@@ -74,11 +75,14 @@ jobs:
       - name: Assert no drift in generated files
         run: |
           set -euo pipefail
-          # `git diff --exit-code` over the four `_generated/` trees plus the
-          # checked-in Go file catches side-effect writes that the per-lane
-          # `--check` does not (for example, `npm ci` mutating package-lock.json).
+          # The Rust lane owns wire bindings, state-machine artifacts, and the
+          # generated state-machine reference. The remaining lanes own their
+          # language-specific binding trees.
           git diff --exit-code \
             crates/core/chio-core-types/src/_generated \
+            crates/trust/chio-federation/src/_generated \
+            crates/tooling/chio-conformance/tests/_generated \
+            docs/reference/generated/STATE_MACHINES.md \
             sdks/python/chio-sdk-python/src/chio_sdk/_generated \
             sdks/typescript/packages/conformance/src/_generated \
             sdks/go/chio-go-http/types.go
@@ -92,6 +96,9 @@ jobs:
           # untracked files and fail if any land in a path the lanes write to.
           untracked=$(git ls-files --others --exclude-standard -- \
             crates/core/chio-core-types/src/_generated \
+            crates/trust/chio-federation/src/_generated \
+            crates/tooling/chio-conformance/tests/_generated \
+            docs/reference/generated/STATE_MACHINES.md \
             sdks/python/chio-sdk-python/src/chio_sdk/_generated \
             sdks/typescript/packages/conformance/src/_generated \
             sdks/go/chio-go-http)
@@ -142,6 +149,16 @@ jobs:
           while IFS= read -r f; do
             check "$f" "cargo xtask codegen rust"
           done < <(find crates/core/chio-core-types/src/_generated -type f -name '*.rs' | sort)
+
+          while IFS= read -r f; do
+            check "$f" "cargo xtask codegen rust"
+          done < <(find crates/trust/chio-federation/src/_generated -type f -name '*.rs' | sort)
+
+          while IFS= read -r f; do
+            check "$f" "cargo xtask codegen rust"
+          done < <(find crates/tooling/chio-conformance/tests/_generated -type f -name '*.rs' | sort)
+
+          check "docs/reference/generated/STATE_MACHINES.md" "cargo xtask codegen rust"
 
           # Python: `sdks/python/chio-sdk-python/src/chio_sdk/_generated/**/*.py`
           # tail substring: `cargo xtask codegen --lang python`

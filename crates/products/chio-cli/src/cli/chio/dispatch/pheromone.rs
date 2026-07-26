@@ -28,9 +28,9 @@ pub(crate) use self::assurance::{
     cmd_chio_pheromone_relay_alert_assurance_archive_plan,
     cmd_chio_pheromone_relay_alert_assurance_archive_restore_drill_review,
     cmd_chio_pheromone_relay_alert_assurance_closeout_review,
-    cmd_chio_pheromone_relay_alert_assurance_physical_drill_review,
     cmd_chio_pheromone_relay_alert_assurance_export,
     cmd_chio_pheromone_relay_alert_assurance_package,
+    cmd_chio_pheromone_relay_alert_assurance_physical_drill_review,
     cmd_chio_pheromone_relay_alert_assurance_recovery_drill,
     cmd_chio_pheromone_relay_alert_assurance_replay,
     cmd_chio_pheromone_relay_alert_assurance_retention_external_review,
@@ -60,18 +60,14 @@ pub(crate) use self::iroh_mount::{
     IrohServeInputs,
 };
 pub(crate) use self::relay::{
-    RelaySigningKeyDocument, RelayTrustedIssuersDocument, cmd_chio_pheromone_relay_catchup,
-    cmd_chio_pheromone_relay_enqueue, cmd_chio_pheromone_relay_lint,
-    cmd_chio_pheromone_relay_metrics, cmd_chio_pheromone_relay_observe,
-    cmd_chio_pheromone_relay_serve, cmd_chio_pheromone_relay_status,
-    cmd_chio_pheromone_relay_tick, cmd_chio_pheromone_relay_trend, read_relay_event_reports,
+    cmd_chio_pheromone_relay_catchup, cmd_chio_pheromone_relay_enqueue,
+    cmd_chio_pheromone_relay_lint, cmd_chio_pheromone_relay_metrics,
+    cmd_chio_pheromone_relay_observe, cmd_chio_pheromone_relay_serve,
+    cmd_chio_pheromone_relay_status, cmd_chio_pheromone_relay_tick, cmd_chio_pheromone_relay_trend,
+    read_relay_event_reports, RelaySigningKeyDocument, RelayTrustedIssuersDocument,
 };
-pub(crate) use self::runtime::{
-    cmd_chio_pheromone_query, cmd_chio_pheromone_receive,
-};
-pub(crate) use super::{
-    read_utf8_json_file, write_json_string,
-};
+pub(crate) use self::runtime::{cmd_chio_pheromone_query, cmd_chio_pheromone_receive};
+pub(crate) use super::{read_utf8_json_file, write_json_string};
 use crate::CliError;
 use std::path::Path;
 
@@ -101,8 +97,7 @@ pub(crate) fn load_chio_workflow_verifier_trust_bundle(
     trust_bundle: &Path,
 ) -> Result<chio_pheromone_runtime::ChioWorkflowVerifierTrustBundle, CliError> {
     let trust_bundle_json = read_utf8_json_file(trust_bundle, "Chio verifier trust bundle")?;
-    chio_pheromone_runtime::ChioWorkflowVerifierTrustBundle::from_json(&trust_bundle_json)
-        .map_err(|error| {
-            CliError::cli_other_error(format!("Chio verifier trust bundle parse: {error}"))
-        })
+    chio_pheromone_runtime::ChioWorkflowVerifierTrustBundle::from_json(&trust_bundle_json).map_err(
+        |error| CliError::cli_other_error(format!("Chio verifier trust bundle parse: {error}")),
+    )
 }

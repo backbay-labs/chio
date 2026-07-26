@@ -25,7 +25,16 @@ fn unique_test_dir() -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .expect("system time before unix epoch")
         .as_nanos();
-    std::env::temp_dir().join(format!("chio-cli-auth-server-{nonce}"))
+    let path = std::env::temp_dir().join(format!("chio-cli-auth-server-{nonce}"));
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(&path).expect("create private test dir");
+    path
 }
 
 fn auth_server_test_guard() -> std::sync::MutexGuard<'static, ()> {

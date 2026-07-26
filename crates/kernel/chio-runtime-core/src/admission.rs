@@ -22,6 +22,32 @@ pub struct RuntimeAdmissionInput<'a> {
 pub fn evaluate_runtime_admission(
     input: RuntimeAdmissionInput<'_>,
 ) -> Result<RuntimeAdmissionReport, ChioRuntimeError> {
+    evaluate_runtime_admission_tracked(input, None)
+}
+
+#[derive(Default)]
+pub(crate) struct RuntimeAdmissionReservationTracker {
+    destructive_lease_id: std::cell::RefCell<Option<String>>,
+}
+
+impl RuntimeAdmissionReservationTracker {
+    pub(crate) fn destructive_lease_id(&self) -> Option<String> {
+        self.destructive_lease_id.borrow().clone()
+    }
+
+    fn mark_destructive_lease_consumed(&self, lease_id: String) {
+        self.destructive_lease_id.replace(Some(lease_id));
+    }
+
+    fn clear_destructive_lease(&self) {
+        self.destructive_lease_id.replace(None);
+    }
+}
+
+pub(crate) fn evaluate_runtime_admission_tracked(
+    input: RuntimeAdmissionInput<'_>,
+    reservation_tracker: Option<&RuntimeAdmissionReservationTracker>,
+) -> Result<RuntimeAdmissionReport, ChioRuntimeError> {
     let mut checks = Vec::new();
     let report_schema = runtime_admission_report_schema(&input.profile.schema);
     if !is_runtime_admission_profile_schema(&input.profile.schema) {
@@ -45,13 +71,27 @@ pub fn evaluate_runtime_admission(
     }
     checks.push(passed("profile.freshness"));
 
-    let Some(bundle) = input.store.bundle(input.admission_id)? else {
-        return Ok(rejected_report(
-            report_schema,
-            input.admission_id,
-            "missing_admission_bundle",
-            checks,
-        ));
+    let bundle = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        input.store.bundle(input.admission_id)
+    })) {
+        Ok(Ok(Some(bundle))) => bundle,
+        Ok(Ok(None)) => {
+            return Ok(rejected_report(
+                report_schema,
+                input.admission_id,
+                "missing_admission_bundle",
+                checks,
+            ));
+        }
+        Ok(Err(error)) => return Err(error),
+        Err(_) => {
+            return Ok(rejected_report(
+                report_schema,
+                input.admission_id,
+                "admission_bundle_store_error",
+                checks,
+            ));
+        }
     };
     if !is_runtime_admission_bundle_schema(&bundle.schema) {
         return Ok(rejected_report(
@@ -193,15 +233,30 @@ pub fn evaluate_runtime_admission(
                 checks,
             ));
         }
-        match input
-            .store
-            .consume_destructive_lease(lease_id, input.admission_id)
-        {
-            Ok(()) => {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            input
+                .store
+                .consume_destructive_lease(lease_id, input.admission_id)
+        })) {
+            Err(_) => {
+                return Ok(rejected_report_with_ambiguous_destructive_consumption(
+                    report_schema,
+                    input.admission_id,
+                    checks,
+                    lease_id,
+                    "destructive lease consume callback panicked",
+                ));
+            }
+            Ok(Ok(())) => {
                 consumed_destructive_lease_id = Some(lease_id.to_string());
+                if let (Some(tracker), Some(consumed_lease_id)) =
+                    (reservation_tracker, consumed_destructive_lease_id.as_ref())
+                {
+                    tracker.mark_destructive_lease_consumed(consumed_lease_id.clone());
+                }
                 checks.push(passed("destructive.lease_reserved"));
             }
-            Err(ChioRuntimeError::Rejected { code, .. }) => {
+            Ok(Err(ChioRuntimeError::Rejected { code, .. })) => {
                 return Ok(rejected_report(
                     report_schema,
                     input.admission_id,
@@ -209,20 +264,71 @@ pub fn evaluate_runtime_admission(
                     checks,
                 ));
             }
-            Err(error) => return Err(error),
+            Ok(Err(error)) => {
+                return Ok(rejected_report_with_ambiguous_destructive_consumption(
+                    report_schema,
+                    input.admission_id,
+                    checks,
+                    lease_id,
+                    &error.to_string(),
+                ));
+            }
         }
     }
     if let Some((entry, previous_hash_sha256)) = trust_floor_update {
-        match input
-            .store
-            .validate_and_record_runtime_trust_floor(entry, previous_hash_sha256)
-        {
-            Ok(()) => checks.push(passed("runtime_trust.floor")),
-            Err(ChioRuntimeError::Rejected { code, .. }) => {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            input
+                .store
+                .validate_and_record_runtime_trust_floor(entry, previous_hash_sha256)
+        })) {
+            Err(_) => {
+                let failure_code = "runtime_trust_floor_error";
                 if let Some(lease_id) = consumed_destructive_lease_id.as_deref() {
-                    input
-                        .store
-                        .release_destructive_lease(lease_id, input.admission_id)?;
+                    if let Err(reason) = release_destructive_lease_best_effort(
+                        input.store,
+                        lease_id,
+                        input.admission_id,
+                    ) {
+                        return Ok(rejected_report_with_destructive_release_failure(
+                            report_schema,
+                            input.admission_id,
+                            failure_code,
+                            checks,
+                            lease_id,
+                            &format!("runtime trust floor callback panicked; {reason}"),
+                        ));
+                    }
+                    if let Some(tracker) = reservation_tracker {
+                        tracker.clear_destructive_lease();
+                    }
+                }
+                return Ok(rejected_report(
+                    report_schema,
+                    input.admission_id,
+                    failure_code,
+                    checks,
+                ));
+            }
+            Ok(Ok(())) => checks.push(passed("runtime_trust.floor")),
+            Ok(Err(ChioRuntimeError::Rejected { code, .. })) => {
+                if let Some(lease_id) = consumed_destructive_lease_id.as_deref() {
+                    if let Err(reason) = release_destructive_lease_best_effort(
+                        input.store,
+                        lease_id,
+                        input.admission_id,
+                    ) {
+                        return Ok(rejected_report_with_destructive_release_failure(
+                            report_schema,
+                            input.admission_id,
+                            code,
+                            checks,
+                            lease_id,
+                            &reason,
+                        ));
+                    }
+                    if let Some(tracker) = reservation_tracker {
+                        tracker.clear_destructive_lease();
+                    }
                 }
                 return Ok(rejected_report(
                     report_schema,
@@ -231,11 +337,25 @@ pub fn evaluate_runtime_admission(
                     checks,
                 ));
             }
-            Err(error) => {
+            Ok(Err(error)) => {
                 if let Some(lease_id) = consumed_destructive_lease_id.as_deref() {
-                    input
-                        .store
-                        .release_destructive_lease(lease_id, input.admission_id)?;
+                    if let Err(reason) = release_destructive_lease_best_effort(
+                        input.store,
+                        lease_id,
+                        input.admission_id,
+                    ) {
+                        return Ok(rejected_report_with_destructive_release_failure(
+                            report_schema,
+                            input.admission_id,
+                            "runtime_trust_floor_error",
+                            checks,
+                            lease_id,
+                            &format!("{error}; {reason}"),
+                        ));
+                    }
+                    if let Some(tracker) = reservation_tracker {
+                        tracker.clear_destructive_lease();
+                    }
                 }
                 return Err(error);
             }
@@ -262,6 +382,20 @@ pub fn evaluate_runtime_admission(
     })
 }
 
+fn release_destructive_lease_best_effort(
+    store: &dyn RuntimeAdmissionStore,
+    lease_id: &str,
+    admission_id: &str,
+) -> Result<(), String> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        store.release_destructive_lease(lease_id, admission_id)
+    })) {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(error)) => Err(error.to_string()),
+        Err(_) => Err("destructive lease release callback panicked".to_string()),
+    }
+}
+
 fn is_runtime_admission_profile_schema(schema: &str) -> bool {
     matches!(schema, CHIO_RUNTIME_ADMISSION_PROFILE_SCHEMA)
 }
@@ -281,7 +415,7 @@ pub(crate) fn passed(code: &str) -> RuntimeAdmissionCheck {
     }
 }
 
-fn validate_runtime_trust_input(
+pub(crate) fn validate_runtime_trust_input(
     envelope: &SignedRuntimeVerifierTrustBundle,
     trusted_verifier_keys: &[RuntimeTrustedVerifierKey],
     bundle: &RuntimeAdmissionBundle,
@@ -405,6 +539,70 @@ fn rejected_report(
     checks: Vec<RuntimeAdmissionCheck>,
 ) -> RuntimeAdmissionReport {
     rejected_report_with_policy(report_schema, admission_id, failure_code, checks, None)
+}
+
+fn rejected_report_with_destructive_release_failure(
+    report_schema: &str,
+    admission_id: &str,
+    failure_code: &'static str,
+    checks: Vec<RuntimeAdmissionCheck>,
+    lease_id: &str,
+    release_failure_reason: &str,
+) -> RuntimeAdmissionReport {
+    let mut report = rejected_report(report_schema, admission_id, failure_code, checks);
+    if let Some(runtime) = report
+        .receipt_metadata
+        .get_mut(runtime_receipt_metadata_key(report_schema))
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        runtime.insert(
+            "reserved_destructive_lease_id".to_string(),
+            serde_json::Value::String(lease_id.to_string()),
+        );
+        runtime.insert(
+            "reservation_release_failed".to_string(),
+            serde_json::Value::Bool(true),
+        );
+        runtime.insert(
+            "reservation_release_failure_reason".to_string(),
+            serde_json::Value::String(release_failure_reason.to_string()),
+        );
+    }
+    report
+}
+
+fn rejected_report_with_ambiguous_destructive_consumption(
+    report_schema: &str,
+    admission_id: &str,
+    checks: Vec<RuntimeAdmissionCheck>,
+    lease_id: &str,
+    failure_reason: &str,
+) -> RuntimeAdmissionReport {
+    let mut report = rejected_report(
+        report_schema,
+        admission_id,
+        "destructive_lease_consume_error",
+        checks,
+    );
+    if let Some(runtime) = report
+        .receipt_metadata
+        .get_mut(runtime_receipt_metadata_key(report_schema))
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        runtime.insert(
+            "ambiguous_destructive_lease_id".to_string(),
+            serde_json::Value::String(lease_id.to_string()),
+        );
+        runtime.insert(
+            "reservation_ownership_ambiguous".to_string(),
+            serde_json::Value::Bool(true),
+        );
+        runtime.insert(
+            "reservation_consumption_failure_reason".to_string(),
+            serde_json::Value::String(failure_reason.to_string()),
+        );
+    }
+    report
 }
 
 fn rejected_report_with_policy(

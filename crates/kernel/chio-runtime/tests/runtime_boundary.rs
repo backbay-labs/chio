@@ -1,4 +1,12 @@
+use chio_core_types::capability::{
+    scope::{ChioScope, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
+};
 use chio_core_types::Keypair;
+use chio_kernel::{
+    RuntimeAdmissionContext, RuntimeAdmissionHook, RuntimeAdmissionRevalidationContext,
+    ToolCallRequest,
+};
 use chio_runtime::{
     ChioRuntimeAdmissionHook, ChioRuntimeAdmissionStore, ChioRuntimeError,
     InMemoryRuntimeAdmissionStore, RuntimeAdmissionProfile, SwarmAuthorityBundle,
@@ -38,6 +46,87 @@ fn runtime_admission_hook_boundary_is_chio_owned() {
         std::any::type_name::<InMemoryRuntimeAdmissionStore>(),
         "chio_runtime::stores::InMemoryRuntimeAdmissionStore"
     );
+}
+
+#[test]
+fn runtime_facade_immediate_dispatch_revalidation_is_opted_in_and_non_consuming(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let issuer = Keypair::generate();
+    let subject = Keypair::generate();
+    let capability = CapabilityToken::sign(
+        CapabilityTokenBody {
+            id: "cap-runtime-facade-revalidation".to_string(),
+            issuer: issuer.public_key(),
+            subject: subject.public_key(),
+            scope: ChioScope {
+                grants: vec![ToolGrant {
+                    server_id: "vendor-ledger".to_string(),
+                    tool_name: "read".to_string(),
+                    operations: vec![Operation::Invoke],
+                    constraints: Vec::new(),
+                    max_invocations: None,
+                    max_cost_per_invocation: None,
+                    max_total_cost: None,
+                    dpop_required: None,
+                }],
+                resource_grants: Vec::new(),
+                prompt_grants: Vec::new(),
+            },
+            issued_at: 1_800_000_000,
+            expires_at: 1_800_003_600,
+            delegation_chain: Vec::new(),
+            aggregate_invocation_budget: None,
+        },
+        &issuer,
+    )?;
+    let request = ToolCallRequest {
+        request_id: "req-runtime-facade-revalidation".to_string(),
+        capability: capability.clone(),
+        tool_name: "read".to_string(),
+        server_id: "vendor-ledger".to_string(),
+        agent_id: capability.subject.to_hex(),
+        arguments: serde_json::json!({}),
+        dpop_proof: None,
+        execution_nonce: None,
+        governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    };
+    let hook = ChioRuntimeAdmissionHook::new(
+        RuntimeAdmissionProfile {
+            schema: CHIO_RUNTIME_ADMISSION_PROFILE_SCHEMA.to_string(),
+            profile_id: "profile-runtime-facade-revalidation".to_string(),
+            local_kernel_id: "kernel.vendor-b".to_string(),
+            verifier_id: "did:chio:buyer-verifier".to_string(),
+            issued_at_unix_ms: 1_800_000_000_000,
+            expires_at_unix_ms: 1_800_003_600_000,
+        },
+        InMemoryRuntimeAdmissionStore::new(),
+    );
+    assert!(hook.requires_dispatch_revalidation());
+    let decision = hook.evaluate(&RuntimeAdmissionContext {
+        request: &request,
+        extra_metadata: None,
+        now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
+        matched_grant_index: Some(0),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+    })?;
+    assert!(decision.allowed);
+
+    hook.revalidate_before_dispatch(&RuntimeAdmissionRevalidationContext {
+        request: &request,
+        admission_metadata: decision.metadata.as_ref(),
+        now_unix_secs: 1_800_000_001,
+        now_unix_ms: 1_800_000_001_000,
+        matched_grant_index: Some(0),
+        local_kernel_id: "kernel.vendor-b".to_string(),
+    })?;
+    Ok(())
 }
 
 #[test]

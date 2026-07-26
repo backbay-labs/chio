@@ -13,11 +13,9 @@ pub(crate) fn cmd_chio_runtime_orchestrate_lint(
     report: &Path,
 ) -> Result<(), CliError> {
     let profile = load_runtime_orchestration_profile(profile)?;
-    let profile_sha256 = chio_runtime::runtime_orchestration_profile_sha256(&profile)
-        .map_err(|error| {
-            CliError::cli_other_error(format!(
-                "Chio runtime orchestration profile hash: {error}"
-            ))
+    let profile_sha256 =
+        chio_runtime::runtime_orchestration_profile_sha256(&profile).map_err(|error| {
+            CliError::cli_other_error(format!("Chio runtime orchestration profile hash: {error}"))
         })?;
     let report_value = chio_runtime::RuntimeOrchestrationStatusReport {
         schema: chio_runtime::CHIO_RUNTIME_ORCHESTRATION_STATUS_REPORT_SCHEMA.to_string(),
@@ -52,19 +50,14 @@ pub(crate) fn cmd_chio_runtime_orchestrate_plan(
 ) -> Result<(), CliError> {
     let profile = load_runtime_orchestration_profile(profile)?;
     let run_contract = load_runtime_run_contract(run_contract)?;
-    let store =
-        chio_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(|error| {
-            CliError::cli_other_error(format!("Chio runtime orchestration store: {error}"))
-        })?;
-    ensure_runtime_evidence_dir(evidence_dir)?;
-    let plan = chio_runtime::build_runtime_orchestration_plan(
-        &profile,
-        &run_contract,
-        now_unix_ms,
-    )
-    .map_err(|error| {
-        CliError::cli_other_error(format!("Chio runtime orchestration plan: {error}"))
+    let store = chio_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(|error| {
+        CliError::cli_other_error(format!("Chio runtime orchestration store: {error}"))
     })?;
+    ensure_runtime_evidence_dir(evidence_dir)?;
+    let plan = chio_runtime::build_runtime_orchestration_plan(&profile, &run_contract, now_unix_ms)
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chio runtime orchestration plan: {error}"))
+        })?;
     if plan.accepted {
         store
             .record_run_state(&plan.run_id, "planned", None, now_unix_ms)
@@ -107,20 +100,17 @@ pub(crate) fn cmd_chio_runtime_orchestrate_run(
 ) -> Result<(), CliError> {
     let profile = load_runtime_orchestration_profile(profile)?;
     let run_contract = load_runtime_run_contract(run_contract)?;
-    let profile_sha256 = chio_runtime::runtime_orchestration_profile_sha256(&profile)
-        .map_err(|error| {
-            CliError::cli_other_error(format!(
-                "Chio runtime orchestration profile hash: {error}"
-            ))
+    let profile_sha256 =
+        chio_runtime::runtime_orchestration_profile_sha256(&profile).map_err(|error| {
+            CliError::cli_other_error(format!("Chio runtime orchestration profile hash: {error}"))
         })?;
-    let run_contract_sha256 = chio_runtime::runtime_run_contract_sha256(&run_contract)
-        .map_err(|error| {
+    let run_contract_sha256 =
+        chio_runtime::runtime_run_contract_sha256(&run_contract).map_err(|error| {
             CliError::cli_other_error(format!("Chio runtime run contract hash: {error}"))
         })?;
-    let store =
-        chio_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(|error| {
-            CliError::cli_other_error(format!("Chio runtime orchestration store: {error}"))
-        })?;
+    let store = chio_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(|error| {
+        CliError::cli_other_error(format!("Chio runtime orchestration store: {error}"))
+    })?;
     ensure_runtime_evidence_dir(evidence_dir)?;
     let evidence = match chio_runtime::load_runtime_orchestration_evidence(evidence_dir) {
         Ok(evidence) => evidence,
@@ -177,10 +167,9 @@ pub(crate) fn cmd_chio_runtime_orchestrate_run(
         accepted = false;
         failure_code = Some("runtime_orchestration_evidence_stale".to_string());
     } else if evidence.proof_regeneration_report.accepted {
-        if let Err(failure) = chio_runtime::validate_runtime_orchestration_evidence_binding(
-            &run_contract,
-            &evidence,
-        ) {
+        if let Err(failure) =
+            chio_runtime::validate_runtime_orchestration_evidence_binding(&run_contract, &evidence)
+        {
             accepted = false;
             failure_code = Some(failure.code().to_string());
         } else if !evidence.verifier_report_accepted {
@@ -224,9 +213,7 @@ pub(crate) fn cmd_chio_runtime_orchestrate_run(
         store
             .record_run_step_state(&run_contract.run_id, state.clone())
             .map_err(|error| {
-                CliError::cli_other_error(format!(
-                    "Chio runtime orchestration step state: {error}"
-                ))
+                CliError::cli_other_error(format!("Chio runtime orchestration step state: {error}"))
             })?;
         step_states.push(state);
     }
@@ -282,17 +269,12 @@ pub(crate) fn cmd_chio_runtime_orchestrate_resume(
             "Chio runtime orchestration resume plan parse: {error}"
         ))
     })?;
-    chio_runtime::validate_runtime_orchestration_resume_plan(&resolved).map_err(
-        |error| {
-            CliError::cli_other_error(format!(
-                "Chio runtime orchestration resume plan: {error}"
-            ))
-        },
-    )?;
-    let _store =
-        chio_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(|error| {
-            CliError::cli_other_error(format!("Chio runtime orchestration store: {error}"))
-        })?;
+    chio_runtime::validate_runtime_orchestration_resume_plan(&resolved).map_err(|error| {
+        CliError::cli_other_error(format!("Chio runtime orchestration resume plan: {error}"))
+    })?;
+    let _store = chio_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(|error| {
+        CliError::cli_other_error(format!("Chio runtime orchestration store: {error}"))
+    })?;
     ensure_runtime_evidence_dir(evidence_dir)?;
     resolved.schema = chio_runtime::CHIO_RUNTIME_ORCHESTRATION_RESUME_PLAN_SCHEMA.to_string();
     resolved.generated_at_unix_ms = now_unix_ms;
@@ -311,13 +293,9 @@ pub(crate) fn cmd_chio_runtime_orchestrate_resume(
             .checks
             .push("runtime_orchestration.profile_window".to_string());
     }
-    chio_runtime::validate_runtime_orchestration_resume_plan(&resolved).map_err(
-        |error| {
-            CliError::cli_other_error(format!(
-                "Chio runtime orchestration resume report: {error}"
-            ))
-        },
-    )?;
+    chio_runtime::validate_runtime_orchestration_resume_plan(&resolved).map_err(|error| {
+        CliError::cli_other_error(format!("Chio runtime orchestration resume report: {error}"))
+    })?;
     write_pretty_json(
         report,
         &resolved,
@@ -333,16 +311,13 @@ pub(crate) fn cmd_chio_runtime_orchestrate_status(
     report: &Path,
 ) -> Result<(), CliError> {
     let profile = load_runtime_orchestration_profile(profile)?;
-    let profile_sha256 = chio_runtime::runtime_orchestration_profile_sha256(&profile)
-        .map_err(|error| {
-            CliError::cli_other_error(format!(
-                "Chio runtime orchestration profile hash: {error}"
-            ))
+    let profile_sha256 =
+        chio_runtime::runtime_orchestration_profile_sha256(&profile).map_err(|error| {
+            CliError::cli_other_error(format!("Chio runtime orchestration profile hash: {error}"))
         })?;
-    let store =
-        chio_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(|error| {
-            CliError::cli_other_error(format!("Chio runtime orchestration store: {error}"))
-        })?;
+    let store = chio_runtime::SqliteRuntimeOrchestrationStore::open(store).map_err(|error| {
+        CliError::cli_other_error(format!("Chio runtime orchestration store: {error}"))
+    })?;
     let evidence_sink_healthy = runtime_orchestration_recorded_evidence_healthy(
         &profile,
         &store,
@@ -368,9 +343,7 @@ fn runtime_orchestration_recorded_evidence_healthy(
     now_unix_ms: u64,
 ) -> Result<bool, CliError> {
     let run_ids = store.recorded_run_ids().map_err(|error| {
-        CliError::cli_other_error(format!(
-            "Chio runtime orchestration recorded runs: {error}"
-        ))
+        CliError::cli_other_error(format!("Chio runtime orchestration recorded runs: {error}"))
     })?;
     if run_ids.len() <= 1 {
         return chio_runtime::runtime_orchestration_evidence_sink_healthy(
@@ -415,17 +388,14 @@ pub(crate) fn cmd_chio_runtime_orchestrate_drift(
             "Chio runtime drift since-unix-ms must not exceed until-unix-ms".to_string(),
         ));
     }
-    chio_runtime::validate_runtime_orchestration_profile_fresh(&profile, until_unix_ms)
-        .map_err(|error| {
-            CliError::cli_other_error(format!("Chio runtime proof drift profile: {error}"))
-        })?;
+    chio_runtime::validate_runtime_orchestration_profile_fresh(&profile, until_unix_ms).map_err(
+        |error| CliError::cli_other_error(format!("Chio runtime proof drift profile: {error}")),
+    )?;
     let mut runs_in_window = Vec::new();
     for run_dir in sorted_child_dirs(runs_dir)? {
-        let evidence = chio_runtime::load_runtime_orchestration_evidence(&run_dir)
-            .map_err(|error| {
-                CliError::cli_other_error(format!(
-                    "Chio runtime orchestration evidence: {error}"
-                ))
+        let evidence =
+            chio_runtime::load_runtime_orchestration_evidence(&run_dir).map_err(|error| {
+                CliError::cli_other_error(format!("Chio runtime orchestration evidence: {error}"))
             })?;
         if evidence.manifest.generated_at_unix_ms >= since_unix_ms
             && evidence.manifest.generated_at_unix_ms <= until_unix_ms
@@ -440,12 +410,13 @@ pub(crate) fn cmd_chio_runtime_orchestrate_drift(
                         .to_string(),
                 ));
             }
-            chio_runtime::validate_runtime_orchestration_evidence_integrity(&evidence)
-                .map_err(|error| {
+            chio_runtime::validate_runtime_orchestration_evidence_integrity(&evidence).map_err(
+                |error| {
                     CliError::cli_other_error(format!(
                         "Chio runtime drift evidence integrity: {error}"
                     ))
-                })?;
+                },
+            )?;
             runs_in_window.push((evidence.manifest.generated_at_unix_ms, run_dir, evidence));
         }
     }

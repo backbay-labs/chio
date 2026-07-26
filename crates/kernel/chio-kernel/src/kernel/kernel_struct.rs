@@ -48,6 +48,7 @@ pub const DEFAULT_RECEIPT_APPEND_BUDGET_MS: u64 = 5_000;
 pub const MIN_RECEIPT_APPEND_BUDGET_MS: u64 = 250;
 pub const DEFAULT_RECEIPT_WRITER_POLL_MS: u64 = 1_000;
 pub const DEFAULT_RECEIPT_WRITER_STALL_MS: u64 = 10_000;
+pub const DEFAULT_RUNTIME_ADMISSION_READINESS_TIMEOUT_MS: u64 = 30_000;
 
 impl Default for HotPathDeadlineConfig {
     fn default() -> Self {
@@ -572,6 +573,10 @@ pub struct ChioKernel {
     pub(super) payment_adapter: Option<Box<dyn PaymentAdapter>>,
     pub(super) price_oracle: Option<Box<dyn PriceOracle>>,
     pub(super) runtime_admission_hook: Option<Arc<dyn RuntimeAdmissionHook>>,
+    pub(super) runtime_admission_readiness_timeout: Duration,
+    pub(super) runtime_trace_observer: Option<Arc<dyn RuntimeTraceObserver>>,
+    pub(super) runtime_trace_transition_lock: Mutex<()>,
+    pub(super) runtime_trace_sequence: AtomicU64,
     pub(super) attestation_trust_policy: Option<AttestationTrustPolicy>,
     pub(super) capability_crypto_floor: KernelCryptoFloor,
     /// How many receipts per Merkle checkpoint batch. Default: 100.
@@ -592,10 +597,10 @@ pub struct ChioKernel {
     /// any tool server that delegates verification to the kernel. Boxed
     /// trait object so SQLite-backed stores can be plugged in.
     pub(super) execution_nonce_store: Option<Box<dyn crate::execution_nonce::ExecutionNonceStore>>,
-    /// Replay store for governed approval tokens. Prevents a signed approval
-    /// from being consumed more than once. Uses the same LRU + TTL pattern as
-    /// DPoP nonce verification. Key: (request_id, governed_intent_hash).
-    pub(super) approval_replay_store: Option<dpop::DpopNonceStore>,
+    /// Replay store for governed approval tokens. Key:
+    /// `(subject_id, request_id, governed_intent_hash)`.
+    pub(super) approval_replay_store:
+        Option<Box<dyn crate::governed_approval_replay::GovernedApprovalReplayStore>>,
     pub(super) threshold_approval_requirement_resolver:
         Option<Arc<dyn crate::threshold_approval::ThresholdApprovalRequirementResolver>>,
     pub(super) supplemental_quota_verifier:
@@ -673,14 +678,15 @@ pub struct ChioKernel {
     /// accessors fall through to it on a cache miss.
     pub(super) federation_artifact_store:
         Option<std::sync::Arc<dyn crate::federation_artifact_store::FederationArtifactStore>>,
-    /// Request-keyed tenant scope for receipts. Async evaluate futures
+    /// Evaluation-keyed tenant scope for receipts. Async evaluate futures
     /// can resume on a different worker after dispatch, so the scope is
-    /// stored in this map rather than a thread-local.
+    /// stored in this map and selected through a task-local evaluation key.
+    /// Non-tool session operations use a namespaced request-key fallback.
     pub(super) receipt_tenant_ids: Arc<DashMap<String, String>>,
-    /// Request-keyed copy of the receipt-version admission snapshot.
+    /// Evaluation-keyed copy of the receipt-version admission snapshot.
     /// Async evaluate futures may resume on a different Tokio worker
     /// after dispatch. This map keeps the admitted version and peer state
-    /// available until the evaluation future finishes.
+    /// isolated until that specific evaluation future finishes.
     pub(super) receipt_federation_admissions: Arc<DashMap<String, ReceiptFederationAdmission>>,
     /// Operator-declared kernel identifier used as the
     /// `org_b_kernel_id` in bilateral co-signing. Defaults to the hex

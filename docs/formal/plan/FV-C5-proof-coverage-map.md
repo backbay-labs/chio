@@ -1,33 +1,103 @@
 # FV-C5: Generated proof-coverage map - one page answering "what exactly is verified"
 
-- Status: Proposed (2026-07-09)
+- Status: Implemented (2026-07-09)
 - Theme: C - Turn verification into product surface
 - Effort: S
 - Depends on: none (all input registries exist today)
-- Feeds: roadmap prioritization (single-lane surfaces stand out), the external evidence page behind FORM-* claims; strengthened when [FV-B4](FV-B4-loom-registry-and-dst.md) and [FV-E5](FV-E5-lane-ratchets.md) add their registries
+- Feeds: roadmap prioritization (single-lane surfaces stand out), the external evidence page behind FORM-* claims; consumes the [FV-B4](FV-B4-loom-registry-and-dst.md) Loom and DST registries plus advisory postures, with promotion governed by [FV-E5](FV-E5-lane-ratchets.md)
 - Related docs: [../GAP_ANALYSIS.md](../GAP_ANALYSIS.md), [../CURRENT_STATE.md](../CURRENT_STATE.md), [FV-E3](FV-E3-pr-formal-smoke-tier.md), [FV-C1](FV-C1-receipt-trace-validation.md)
 
 ## Summary
 
-Chio already has an unusually complete set of machine-readable verification registries - proof manifest, theorem inventory, mapping table, Kani manifests, fuzz target map, mutation configs - but no single artifact joins them. Answering "what exactly is verified, by which lane, for this file?" today means reading six files with different schemas. This plan adds a small generator (`cargo xtask gen proof-coverage`, module `xtask/src/proof_coverage.rs`) that joins the existing registries into a generated matrix, `docs/formal/COVERAGE.md` (TCB surfaces as rows, evidence lanes as columns, artifact ids in cells) plus `target/formal/coverage.json` for tooling. Generation is deterministic from checked-in registries plus the git commit sha, and a required PR check asserts regeneration produces no diff, following the repo's existing generated-artifact drift-check pattern.
+`cargo xtask gen proof-coverage` joins the declared evidence registries into
+`docs/formal/COVERAGE.md` and `target/formal/coverage.json`. The committed page
+contains 41 primary Rust-surface rows, 111 attributed artifacts, 122 explicitly
+unattributed artifacts, 44 content-addressed inputs, and zero mapping parse
+warnings on the current tree. Required PR CI regenerates the page in memory and
+fails on byte drift.
+
+The matrix reports artifact identity and primary ownership, not verification
+completeness. Every Kani harness and fuzz target has exactly one primary row.
+Every mutation config is classified once as current, recorded-local,
+historical, or inactive, and the live workspace mutation scope has one artifact
+per package. The theorem inventory and differential-test files do not currently
+carry machine-readable Rust-surface links, so the generator lists them as
+unattributed rather than inferring coverage from names.
+
+## Decisions
+
+- Use a conservative primary-owner join. Exact single Rust files produce file
+  rows. Multiple files in one package collapse to its crate row; cross-package
+  or unresolved evidence stays unattributed with related surfaces retained.
+  Crate and file rows may coexist.
+- Identify artifacts by registry path plus native key. This prevents aliases
+  such as the legacy Kani core registry from being double-counted.
+- Treat the legacy Kani public manifest as a cross-check of the flat manifest,
+  not a second harness source. Its core harness set must match exactly, and its
+  global `covered_symbols` remain validation metadata rather than proof counts.
+- Keep theorem inventory and differential-test artifacts unattributed until a
+  registry supplies a Rust surface. Property-level all-to-all inference would
+  overstate implementation linkage. Lean rows that do exist come from explicit
+  MAPPING table entries.
+- Preserve evidence qualifiers. Kani artifacts expose PR/nightly execution lane
+  and explicit model-only scope; theorem entries expose kind, claim class, and
+  assumed, proved, or unknown status in JSON and Markdown.
+- Validate every MAPPING source file and named property. Missing Rust files do
+  not license evidence cells, and malformed property-table headers create
+  deterministic warnings instead of silently dropping a table.
+- Expand mutation globs against the non-ignored workspace Rust path
+  projection, subtract exclusions, cross-check per-crate configs against the
+  live root config or a structured completed local run, and keep aggregate or
+  historical evidence unattributed.
+- Render compact counts in the matrix and full artifact IDs in detail blocks.
+  This preserves reviewable source rows under 120 columns without replacing
+  evidence identity with checkmarks.
+- Enumerate assumptions and excluded surfaces in dedicated sections and JSON
+  fields, not pseudo-rows. Scope boundaries should not look like code surfaces.
+- Use the combined input digest in the committed page. A committed file cannot
+  contain the hash of the commit that contains it. The actual invocation commit
+  is written to `target/formal/coverage.json`, and the Proof Room packager
+  resolves the page's single `@GIT_COMMIT@` token to the package commit.
+- Emit one public rendering. The same detailed page serves repository review
+  and Proof Room distribution; a shorter second source would create drift.
+- Exclude last-green timestamps from deterministic coverage. Runtime freshness
+  remains in `target/formal/proof-report.json`.
+- Consume the active `.loom/harnesses.toml` and `.dst/harnesses.toml`
+  registries plus their advisory postures in `releases.toml`. Registry
+  presence does not license claims absent from `MAPPING.md`.
+- Preserve Loom's required `scope = "bounded_abstract_model"` qualifier in
+  both renderings. A Loom artifact cannot be displayed as production-primitive
+  proof.
+- Preserve A4 manual mirrors and Creusot contract twins as non-proof linkage
+  metadata. These records support review and drift navigation but never add an
+  evidence cell or license a claim.
 
 ## Motivation and evidence
 
 - The inputs exist and are already load-bearing [v], verified present this session:
   - formal/proof-manifest.toml: `covered_rust_modules`, `covered_rust_symbols`, `property_matrix` P1-P10, `gate_commands`, `rust_refinement_lanes`.
-  - formal/theorem-inventory.json: 83 theorem entries (fields `id, leanName, file, kind, rootImported, claimClass, mapsTo, notes`) plus a separate `assumptions` block.
+  - formal/theorem-inventory.json: theorem entries with fields `id, leanName, file, kind, rootImported, claimClass, mapsTo, notes`, plus a separate `assumptions` block.
   - formal/MAPPING.md: grep-enforced property-to-Rust rows (scripts/check-mapping.sh).
   - formal/assumptions.toml: audited and retired assumptions.
   - .kani/harnesses.toml (schema `chio.kani.multi-crate.v1`, per-harness crate/lane/unwind) and formal/rust-verification/{kani-harnesses,kani-public-harnesses,creusot-contracts}.toml; formal/aeneas/{pilot,production}.toml named by `rust_refinement_lanes`.
-  - fuzz/target-map.toml (25 targets with `crate`, `triggers`, `seeds`) and fuzz/owners.toml.
+  - fuzz/target-map.toml (27 targets with `crate`, `triggers`, `seeds`) and fuzz/owners.toml.
   - .cargo/mutants.toml plus audits/mutation/per-crate-configs/*.toml (`examine_globs`, e.g. chio-kernel-core.toml:27) and docs/fuzzing/trust-boundary-mutants-baseline.toml (2026-04-29 baseline, kill rate 30.7% [v]).
-- Nobody can currently see the joins. Example of the payoff: chio-core-types/src/merkle.rs is fuzzed and diff-tested but has no Lean, Kani, or Creusot lane today - exactly the gap [FV-C2](FV-C2-verified-inclusion-verifier.md) fills; the matrix makes such single-lane and lane-mismatch surfaces jump out mechanically instead of anecdotally.
+- Nobody could previously see the joins. For example, the generated
+  `chio-kernel-core::receipts.rs` row carries one Creusot artifact and five Kani
+  artifacts but no Lean or TLA cell. The matrix makes that lane mismatch visible
+  without inferring links from names.
 - External evidence: FORM-BOUNDARY and FORM-IMPLEMENTATION-LINKED (docs/reference/CLAIM_REGISTRY.md) point at the manifest and inventory; a joined, human-readable page is the natural public artifact behind those claims, and the Proof Room bundle (`cargo xtask verify launch-acceptance`, xtask/src/cli.rs:214-219) is its distribution channel.
-- G4 (duplication drift): six registries that never get joined can drift apart silently; the join itself is a consistency check (unknown crate names, dangling theorem ids, and orphan harnesses become generator warnings).
+- G4 (duplication drift): six registries that never get joined can drift apart
+  silently; the join turns unknown crates and dangling property IDs into hard
+  failures while retaining soundly unjoined artifacts as explicit unattributed
+  entries.
 
 ## Current state
 
-- No COVERAGE.md, no coverage.json. The closest artifacts are target/formal/proof-report.json (gate results, tool versions, artifact hashes, produced by scripts/generate-proof-report.sh nightly and at release qualification [v]) and the prose in docs/formal/CURRENT_STATE.md - the former is about runs, the latter about narrative; neither is a per-surface matrix.
+- `docs/formal/COVERAGE.md` is the committed deterministic matrix;
+  `target/formal/coverage.json` is its machine-readable companion with the
+  current invocation commit. `target/formal/proof-report.json` now hashes both
+  artifacts while retaining gate results and tool versions.
 - xtask has the right skeleton: a noun-verb clap tree with a `gen` group whose leaves all support `--check` drift gating (xtask/src/cli.rs:127-151, aliases at L84-96), and a `check` group (L153-170). The plan follows that shape; the earlier working name `cargo xtask generate proof-coverage` is spelled `cargo xtask gen proof-coverage` to match the existing `gen` noun.
 - Precedent for the no-diff CI check: freeze-vectors `--check`, codegen `--check`, eval-receipt-regen `--check` all exit nonzero on byte drift.
 
@@ -42,10 +112,15 @@ Pipeline:
 1. Load registries (TOML via the existing xtask deps, JSON via serde; MAPPING.md via a tolerant table parser, below).
 2. Build the row set: the union of (a) proof-manifest `covered_rust_modules`, (b) crates named by `.kani/harnesses.toml` entries, (c) crates named by fuzz/target-map.toml, (d) crates with mutation per-crate configs, (e) surfaces named in MAPPING.md "Rust path constrained" cells. Rows are normalized to `crate :: module-file` granularity (kernel-core modules individually, other crates at crate granularity unless a registry names a file).
 3. Build the column set (evidence lanes): Lean, Aeneas, Creusot, Kani, Apalache/TLA, diff-tests, fuzz, mutants - plus loom/DST columns emitted only when the FV-B4/FV-E5 registries exist (feature-detect by file presence, so this doc needs no update when they land).
-4. Fill cells with artifact ids, sorted: theorem ids from the inventory (joined through `mapsTo` and MAPPING.md rows), harness names, fuzz target names, TLA invariant names, diff-test file names, mutation config + baseline reference. An empty cell renders as `-` deliberately: absence is the signal.
-5. Emit `docs/formal/COVERAGE.md` (matrix plus a per-row detail section and a generation footer: input file list with sha256s, git commit sha, generator version) and `target/formal/coverage.json` (same content, schema `chio.proof-coverage.v1`).
+4. Fill primary cells with canonical artifact IDs, sorted. The matrix renders
+   counts; per-row detail blocks retain full IDs. Evidence with no sound Rust
+   join is retained in `unattributed_artifacts` rather than discarded.
+5. Emit `docs/formal/COVERAGE.md` (matrix, details, assumptions, exclusions,
+   input SHA-256 list, combined digest, generator version, and commit token) and
+   `target/formal/coverage.json` (same declarations plus the actual invocation
+   commit, schema `chio.proof-coverage.v1`).
 
-coverage.json shape:
+Abridged `coverage.json` shape:
 
 ```json
 {
@@ -59,12 +134,27 @@ coverage.json shape:
     {
       "surface": "chio-kernel-core::receipts.rs",
       "lanes": {
-        "lean":    ["proof.receipt_sign_then_verify", "proof.receipt_immutability"],
-        "kani":    ["sign_receipt public harness"],
-        "diff":    ["receipt_encoding_diff"],
-        "fuzz":    ["receipt_log_replay"],
-        "mutants": ["audits/mutation/per-crate-configs/chio-kernel-core.toml"]
+        "lean": [],
+        "creusot": ["formal/rust-verification/creusot-contracts.toml::chio_kernel_core::receipts::sign_receipt"],
+        "kani": [".kani/harnesses.toml::chio-kernel-core/verify_receipt_roundtrip"],
+        "diff": []
       }
+    }
+  ],
+  "unattributed_artifacts": [
+    {
+      "id": "formal/diff-tests/tests/receipt_encoding_diff.rs",
+      "lane": "diff",
+      "reason": "differential-test files have no machine-readable Rust surface registry",
+      "related_properties": []
+    }
+  ],
+  "review_links": [
+    {
+      "kind": "manual_mirror",
+      "relationship": "transliteration",
+      "source": "crates/core/chio-core-types/src/capability/scope.rs",
+      "target": "formal/lean4/Chio/Chio/Core/Capability.lean"
     }
   ],
   "excluded_surfaces": ["..."],
@@ -74,93 +164,134 @@ coverage.json shape:
 
 ### Determinism
 
-Content is a pure function of checked-in registry bytes plus the git commit sha; no timestamps, no tool-run results (proof-report.json is a run artifact and is deliberately NOT an input - the page states what evidence is declared and gated, and links to the proof report for the latest run results). All collections sort by stable keys. Two consecutive runs must be byte-identical; the `--check` mode regenerates to memory and diffs against the committed file.
+Committed Markdown content is a pure function of checked-in registry bytes, a
+normalized Cargo workspace projection, and the generator version. It contains
+no timestamps or run results. The JSON companion additionally records the
+current Git commit. All collections sort by stable keys. Two consecutive runs
+are byte-identical; `--check` regenerates the Markdown in memory, writes the JSON
+companion, and compares the committed page byte-for-byte.
 
 ### Parsing details
 
 - MAPPING.md: parse markdown tables tolerantly - split rows on `|`, trim cells, skip separator rows and prose between tables, and record any malformed row as a deterministic `parse_warnings` entry in coverage.json instead of failing (the file is grep-enforced by scripts/check-mapping.sh, not schema-enforced, so tolerance is required; warnings keep tolerance honest).
-- Fuzz attribution: fuzz/target-map.toml's `crate` field attributes each target to its owning crate; `triggers` globs additionally attribute targets to module rows when a glob names a specific file (e.g. the canonical_json target's trigger on crates/core/chio-core-types/src/canonical.rs).
-- Mutants attribution: `examine_globs` from audits/mutation/per-crate-configs/*.toml map to rows the same way; the workspace .cargo/mutants.toml include-note about `include!`-based modules (chio-policy evaluate.rs, chio-credentials lib.rs) is honored by attributing to the umbrella file exactly as the config comments prescribe.
-- Kani attribution: `[[harness]]` crate field, refined by `covered_rust_symbols` when a symbol pins a module.
-
-### Matrix mock (shape reviewers should expect)
-
-Illustrative, not generated; artifact ids abbreviated:
-
-| Surface | Lean | Aeneas | Creusot | Kani | Apalache | Diff | Fuzz | Mutants |
-|---|---|---|---|---|---|---|---|---|
-| kernel-core capability_verify.rs | P1/P3 thms | prod | contracts | public_verify_capability | - | scope_diff | capability_receipt | examine |
-| kernel-core scope.rs | P1 thms | prod | contracts | subset harnesses | - | scope_diff | capability_receipt | examine |
-| kernel-core evaluate.rs | P3 thms | prod | contracts | evaluate harness | ReceiptBeforeAllow | - | receipt_log_replay | examine |
-| kernel-core normalized.rs | P1 thms | - | contracts | is_subset_of harnesses | AttenuationPreserving | scope_diff | - | examine |
-| kernel-core receipts.rs | P4 thms | - | - | sign_receipt harness | - | receipt_encoding_diff | receipt_log_replay | examine |
-| kernel-core formal_core.rs | P3/P8 thms | prod | - | dpop/guard harnesses | KernelTransitionCancelSafe | - | - | examine |
-| kernel-core formal_aeneas.rs | equiv thms | prod | - | equivalence harnesses | - | - | - | examine |
-| core-types canonical.rs | (FV-C3) | - | - | - | - | canonical_json_diff | canonical_json | - |
-| core-types merkle.rs | (FV-C2) | - | - | (FV-C2) | - | anchored_root | - | - |
-| core-types capability delegate | delegation thms | - | - | verify_delegation_chain_step | - | - | capability_receipt | - |
-| chio-kernel checkpoint.rs | bounded model | - | - | - | MonotoneLog | anchored_root | - | - |
-| chio-kernel receipt_store/budget_store | - | - | - | - | MonotoneLog, ReceiptBeforeAllow | - | - | - |
-| chio-policy evaluate | - | - | - | - | - | - | fuzz_policy_parse_compile | examine (umbrella) |
-| chio-anchor batch/bundle | - | - | - | anchor harnesses | - | - | - | examine |
-| revocation-oracle InclusionProof | P2 thms | - | - | oracle harnesses | RevocationCutCompleteness | - | - | - |
-
-Reading it teaches the roadmap: rows whose only entries are fuzz or diff (canonical.rs, merkle.rs, policy evaluate) are exactly where FV-C2/C3/C4 aim; the mostly-empty receipt_store row is the FV-B1/B4 territory.
+- Fuzz attribution: `crate` is authoritative. Exactly one literal owner-local
+  Rust trigger refines a target to a file; zero or multiple literal files keep
+  the target at crate granularity, with files recorded as related surfaces.
+- Mutants attribution: the live root config owns one crate row per active
+  package. Canonical per-crate configs are labeled exact, subset, or
+  recorded-local after workspace-file glob expansion and exclusions. Historical
+  configs and the aggregate baseline remain explicit and unattributed.
+- Kani attribution: exact MAPPING property matches may refine a harness to one
+  primary file. Otherwise the harness stays at its declared crate, with a
+  narrow kernel-core filename fallback for the two currently unmapped receipt
+  harnesses. Registry-global `covered_symbols` validate registry linkage but are
+  not counted as separate proof artifacts.
+- Theorem and diff attribution: both remain explicit and unattributed because
+  neither registry contains a Rust-surface key. The generator validates theorem
+  property IDs, preserves theorem status and class, and does not treat a shared
+  P1-P10 ID as a module join.
+- Manual mirrors and Creusot contract twins: validate their declared pairings
+  and preserve them under `review_links`, separate from attributed and
+  unattributed proof artifacts.
+- Concurrency registries: Loom validates crate, test, preemption, lane, abstract
+  scope, notes, integration target, and named test declaration. DST identities
+  join to exact MAPPING rows and carry `scope=single_process_single_store`;
+  `scripts/run-dst.sh` separately validates the 64-seed corpus,
+  10,000-episode count, source declarations, and compiled discovery. Coverage
+  does not infer oracle strength beyond those mappings.
 
 ### Consistency checks (free with the join)
 
-The generator fails (exit nonzero, even without `--check`) on: a `covered_rust_module` that no lane's artifact references; a theorem-inventory `mapsTo` property id not present in the manifest `property_matrix`; a Kani harness whose crate is not in the workspace; a fuzz target in target-map.toml without a corresponding fuzz_targets file. These are drift bugs today with no detector.
+The generator fails (exit nonzero, even without `--check`) on: a
+`covered_rust_module` that no lane artifact references; a theorem-inventory
+`mapsTo` property id not present in the manifest `property_matrix`; a Kani
+harness whose crate is not in the workspace; a fuzz target without a source
+file or exact owner key; and malformed present optional registries.
 
 ## Implementation plan
 
-1. Phase 1 - generator and outputs.
-   - Add `xtask/src/proof_coverage.rs` (registry loaders, join, renderers).
-   - Modify `xtask/src/cli.rs` (add `GenCommand::ProofCoverage { check }`) and `xtask/src/main.rs` (dispatch).
-   - Add generated `docs/formal/COVERAGE.md` (first committed generation) - note this is a new generated file, not a hand-edited doc; a header comment marks it generated with the regen command.
-   - No new crates or dependencies (xtask already parses TOML/JSON).
-2. Phase 2 - CI drift gate.
-   - Modify the required PR workflow to run `cargo xtask gen proof-coverage --check` alongside the existing freeze-vectors/codegen drift checks.
-   - Modify scripts/generate-proof-report.sh to copy `target/formal/coverage.json` into the proof-report artifact set so nightly runs archive the matrix at the checked commit.
-3. Phase 3 - surfacing.
-   - Modify the Proof Room bundle assembly (`cargo xtask verify launch-acceptance` path) to include COVERAGE.md, making it the public "what exactly is verified" page.
-   - Add forward-compatible loaders for the FV-B4 loom registry and FV-E5 ratchet files (feature-detected by path; columns appear when files do).
+1. Implemented the registry loaders, consistency checks, canonical joins, Markdown
+   renderer, JSON renderer, CLI command, and deterministic drift check in `xtask`.
+2. Added the generated `docs/formal/COVERAGE.md` and
+   `target/formal/coverage.json` outputs without adding a dependency.
+3. Added the required PR gate and proof-report generation, on-disk hash
+   validation, and nightly artifact upload wiring.
+4. Added the generated page to the Proof Room bundle and acceptance manifest.
+5. Added optional loaders for loom, deterministic-simulation, and gate-ratchet
+   registries. Missing optional registries leave their lanes absent, while
+   malformed present registries fail closed.
 
 ## CI and gating changes
 
-- New required PR check: `cargo xtask gen proof-coverage --check` (fails on regeneration diff and on any consistency-check violation). Runtime is file parsing only - well under a second - so it belongs in the required job, which also serves gap G1's direction of travel (a PR-time formal-adjacent gate that is actually cheap).
+- New required PR check: `cargo xtask gen proof-coverage --check` (fails on
+  regeneration diff and on any consistency-check violation). Runtime is local
+  registry parsing plus a normalized `cargo metadata` projection, so it remains
+  suitable for the required job and serves gap G1 with a cheap PR-time gate.
 - Nightly: coverage.json archived with the proof report.
 - No changes to existing formal lanes; the generator consumes their registries read-only.
 
 ## Acceptance criteria
 
-- [ ] `cargo xtask gen proof-coverage` produces docs/formal/COVERAGE.md and target/formal/coverage.json; two consecutive runs are byte-identical.
-- [ ] `--check` exits nonzero on any hand edit to COVERAGE.md and on registry/output drift.
-- [ ] Every entry in proof-manifest `covered_rust_modules` and every `.kani/harnesses.toml` harness, fuzz/target-map.toml target, and per-crate mutants config appears in exactly one row's cells.
-- [ ] MAPPING.md parsing tolerates the current file byte-for-byte and records zero warnings on it; a deliberately malformed fixture row produces a deterministic warning, not a crash.
-- [ ] Consistency checks catch a seeded drift fixture (test with a fake registry naming a nonexistent crate).
-- [ ] The matrix renders under 120 columns wide per row in Markdown source (reviewable diffs).
-- [ ] COVERAGE.md carries the generation footer (input hashes, commit sha, regen command) and a generated-file warning header.
-- [ ] Proof Room bundle includes the page (phase 3).
+- [x] `cargo xtask gen proof-coverage` produces `docs/formal/COVERAGE.md` and
+  `target/formal/coverage.json`; two consecutive runs are byte-identical.
+- [x] `--check` exits nonzero on any hand edit to `COVERAGE.md` and on
+  registry/output drift.
+- [x] Every proof-manifest `covered_rust_modules` entry, Kani harness, fuzz
+  target, and live mutation package has exactly one primary row. Every per-crate
+  mutation config has exactly one primary or unattributed classification.
+- [x] `MAPPING.md` parsing records zero warnings on the current file; a malformed
+  fixture row produces a deterministic warning instead of a crash.
+- [x] Consistency checks reject a seeded registry naming a nonexistent crate.
+- [x] Fuzz owner keys match target-map keys exactly; Loom and gate-posture
+  registries reject missing, unknown, or unsupported fields and values.
+- [x] The active DST registry contributes five mapped artifacts with the
+  `single_process_single_store` qualifier and an advisory nightly posture.
+- [x] Manual mirrors and Creusot contract twins are rendered as non-proof
+  linkage metadata and never counted as evidence artifacts.
+- [x] The matrix renders under 120 columns per Markdown source row.
+- [x] `COVERAGE.md` carries the generated-file warning, input hashes, combined
+  input digest, commit placeholder, and regeneration command. Runtime JSON and
+  Proof Room outputs carry the actual checked commit.
+- [x] The Proof Room bundle includes the generated page.
 
 ## Risks and mitigations
 
 - The page overstates: readers may misread "cell has an id" as "surface fully verified". Mitigation: cells carry artifact ids, not checkmarks; the page header links CLAIM_REGISTRY.md and repeats its constraint that per-lane evidence classes, not this matrix, license claims (LEAN-4-VERIFIED and P4-END-TO-END remain disallowed [v]).
 - MAPPING.md format drift breaks the parser. Mitigation: tolerant parsing with deterministic warnings; scripts/check-mapping.sh already constrains the file's content; a golden test pins the parse of the current file.
 - Row-granularity churn (module vs crate) makes diffs noisy. Mitigation: granularity rules are fixed in the generator and documented in the page footer; changing them is a reviewed generator change, and the drift gate makes every output change visible in the same PR as its cause.
-- theorem-inventory count drift (this session measured 83 theorem entries where earlier notes said 84): the generator never hardcodes counts; it reports what it parses, and the consistency checks make dangling references loud.
+- theorem-inventory count drift: the generator never hardcodes inventory counts; it reports what it parses, and the consistency checks make dangling references loud.
 - Two sources of truth (COVERAGE.md vs CURRENT_STATE.md prose). Mitigation: CURRENT_STATE.md gets a pointer to the generated page for per-surface questions; prose keeps narrative, the matrix keeps facts.
 
-## Open questions
+## Resolved questions
 
-- Should coverage.json also enumerate `excluded_surfaces` and assumptions as pseudo-rows so the page shows what is deliberately out of scope, not just what is in? (Leaning yes - it preempts the most common reviewer question.)
-- Row identity for multi-file crates outside kernel-core: crate-level rows now, or file-level as soon as any registry names files? (Proposal: file-level whenever any input is file-granular for that crate.)
-- Should the generator emit a second, shorter "external" rendering for the Proof Room (fewer internal ids, more prose), or is one artifact with a legend enough?
-- Do we want per-cell lane freshness (last-green timestamp from proof-report.json) in a clearly-marked non-deterministic companion page, keeping COVERAGE.md itself deterministic?
+- Assumptions and excluded surfaces are first-class companion sections and JSON
+  fields, not pseudo-rows that could look like verification evidence.
+- A registry-provided file path creates a file-level row. Crate-only evidence
+  remains on a crate-level row; multi-file same-package evidence collapses to
+  that crate, while cross-package evidence remains unattributed.
+- The committed page is also the Proof Room page. Bundle assembly resolves its
+  commit placeholder, avoiding a second rendering with divergent content.
+- Lane timestamps are omitted. Freshness belongs to the proof report, while the
+  committed coverage page remains byte-deterministic.
+- The committed page cannot include its own final Git commit hash without a
+  cryptographic fixed point. It includes the combined input digest and an
+  explicit commit placeholder; JSON and bundle outputs include the actual HEAD.
 
 ## Manifest and registry updates
 
-- formal/proof-manifest.toml: add `cargo xtask gen proof-coverage --check` to `gate_commands`; add a `notes` entry naming COVERAGE.md as the generated join of the registries.
-- formal/MAPPING.md: unchanged as an input; the doc's header gains one line noting it is consumed by the coverage generator (so future format changes consider the parser).
-- formal/theorem-inventory.json and formal/assumptions.toml: unchanged; read-only inputs.
-- .kani/harnesses.toml, fuzz/target-map.toml, fuzz/owners.toml, .cargo/mutants.toml, audits/mutation/per-crate-configs/, docs/fuzzing/trust-boundary-mutants-baseline.toml: unchanged; read-only inputs.
-- docs/reference/CLAIM_REGISTRY.md: add COVERAGE.md as a named public artifact under FORM-BOUNDARY / FORM-IMPLEMENTATION-LINKED evidence pointers ("the per-surface evidence matrix is generated from the same registries this registry cites"); no new claim wording is licensed by the matrix itself.
+- `formal/proof-manifest.toml`: includes
+  `cargo xtask gen proof-coverage --check` in `gate_commands` and names
+  `COVERAGE.md` as the generated registry join in `notes`.
+- formal/MAPPING.md: the header notes that the coverage generator consumes its
+  tables so format changes account for the parser.
+- `formal/theorem-inventory.json` and `formal/assumptions.toml`: unchanged
+  read-only inputs.
+- `.kani/harnesses.toml`, `fuzz/target-map.toml`, `fuzz/owners.toml`,
+  `.cargo/mutants.toml`, `audits/mutation/per-crate-configs/`, and
+  `docs/fuzzing/trust-boundary-mutants-baseline.toml`: unchanged read-only inputs.
+- `scripts/generate-proof-report.sh` and `scripts/check-proof-report.sh`: archive
+  and validate the generated JSON with the proof report.
+- Proof Room launch acceptance: copies the page, resolves the commit placeholder,
+  and records it in the acceptance manifest.
+- `docs/reference/CLAIM_REGISTRY.md`: names `COVERAGE.md` as derived public
+  navigation; the matrix is not an evidence class and licenses no claim wording.

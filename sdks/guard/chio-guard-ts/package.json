@@ -16,5 +16,8 @@
     "@bytecodealliance/jco": "^1.17.6",
     "esbuild": "^0.28.1",
     "typescript": "~5.7.0"
+  },
+  "overrides": {
+    "decompress": "npm:@xhmikosr/decompress@11.1.3"
   }
 }

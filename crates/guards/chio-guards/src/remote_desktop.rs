@@ -219,6 +219,14 @@ impl Guard for RemoteDesktopSideChannelGuard {
         };
         Ok(GuardDecision::from_verdict(verdict))
     }
+
+    fn requires_dispatch_revalidation(&self) -> bool {
+        true
+    }
+
+    fn revalidate_before_dispatch(&self, ctx: &GuardContext) -> Result<(), KernelError> {
+        crate::revalidate_non_consuming_guard(self, ctx)
+    }
 }
 
 /// Return `true` when `s` is a `remote.*` side-channel action type

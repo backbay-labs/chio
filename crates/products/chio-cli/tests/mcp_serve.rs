@@ -44,8 +44,17 @@ fn unique_test_dir() -> TestDir {
         .duration_since(UNIX_EPOCH)
         .expect("system time before unix epoch")
         .as_nanos();
+    let path = std::env::temp_dir().join(format!("chio-cli-mcp-serve-{nonce}"));
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(&path).expect("create private test dir");
     TestDir {
-        path: std::env::temp_dir().join(format!("chio-cli-mcp-serve-{nonce}")),
+        path,
         _guard: guard,
     }
 }

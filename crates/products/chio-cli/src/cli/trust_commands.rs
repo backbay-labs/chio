@@ -20,6 +20,10 @@ pub(crate) use underwriting::*;
 mod runtime_attestation;
 pub(crate) use runtime_attestation::*;
 
+#[path = "trust/trace_verify.rs"]
+mod trace_verify;
+pub(crate) use trace_verify::*;
+
 #[path = "trust/receipt/mod.rs"]
 mod receipt;
 pub(crate) use receipt::*;

@@ -1,6 +1,6 @@
 # FV-E5: Lane ratchets and strict-mode honesty
 
-Status: Proposed (2026-07-09)
+Status: Implemented (2026-07-10; hosted promotion streak incomplete)
 Theme: E - Verify the verification, and make lanes bite
 Effort: S-M
 Depends on: [FV-E3](FV-E3-pr-formal-smoke-tier.md) (the lanes must exist before their postures can ratchet)
@@ -9,157 +9,285 @@ Related docs: [../GAP_ANALYSIS.md](../GAP_ANALYSIS.md) (G1 and G5 posture), [FV-
 
 ## Summary
 
-The mutation lane already has an evidence-gated ratchet: `scripts/mutants-gate.sh` reads `releases.toml` and stays advisory until a recorded nightly success streak plus a release tag flip it to blocking. Every other formal lane has no posture machinery at all: kani-public-nightly, formal-qualification, apalache-safety, and apalache-temporal are each either silently advisory (nobody is blocked when nightly reds), or informally required (path-scoped PR checks not registered in rulesets). This document generalizes the ratchet: `releases.toml` gains `[gates.<lane>]` entries, a generic `scripts/lane-gate.sh` evaluates posture per lane, and the streak that justifies promotion is computed statelessly from the GitHub API at gate time instead of a hand-maintained counter. The second half closes the strictness escape hatch: `CHIO_RUST_VERIFICATION_METADATA_ONLY=1` currently skips proof-report generation entirely, so nothing records whether a given green run proved anything; `generate-proof-report.sh` will record `mode = strict | metadata_only` in the report and `check-proof-report.sh` gains `--require-strict`, used by release qualification, so a metadata-only run can never satisfy the RISK_REGISTER claim rule.
+The mutation lane retains its reviewed evidence ratchet in
+`scripts/mutants-gate.sh`. Pass/fail proof and corpus lanes use fifteen
+`[gates.<lane>]` entries in `releases.toml`, exact job-level GitHub Actions
+history, reset boundaries, freshness limits, and release-fleet enforcement.
+Proof reports record `mode = strict | metadata_only`. Release qualification
+requires strict mode. Metadata-only reports run the C5 coverage preflight and
+record every proof command as `not_run`.
 
 ## Motivation and evidence
 
-All verified this session:
+Repository observations:
 
-- The mutants ratchet pattern exists and works as designed: `scripts/mutants-gate.sh:143-153` exits advisory while `cycle_end_tag` is empty or the streak is short; `releases.toml:63-95` holds the schema (`target_catch_ratio_percent = 80`, `required_consecutive_nightly_successes = 2`, `observed_consecutive_nightly_successes = 0`, `cycle_end_tag = ""`), with a CODEOWNERS-gated lifecycle documented in its header (lines 44-61).
-- But the streak field is a manually maintained repo-state counter (`observed_consecutive_nightly_successes`, updated by CODEOWNERS-reviewed PR per `releases.toml:23-26,49-51`). That is appropriate for the mutants lane, where "success" means a judged kill-rate score; it does not scale to pass/fail lanes, where the workflow conclusion IS the evidence and a hand-copied counter can only go stale.
-- Lanes with no posture machinery today: `kani-public-nightly` (nightly.yml, advisory by placement), `formal-qualification` (nightly.yml), `apalache-safety` (required-by-path on PRs but absent from the ruleset inventory in `ci.yml:6-10`), `apalache-temporal` (schedule-only; its header at lines 10-12 explicitly forbids promotion "until the underlying property is fixed and the run is reliably green"), plus the lanes FV-E3 creates and the loom lane when [FV-B4](FV-B4-loom-registry-and-dst.md) lands it.
-- The escape hatch is real and unrecorded (G5): `CHIO_RUST_VERIFICATION_METADATA_ONLY=1` appears in `scripts/check-rust-verification-gates.sh:43-46` (schema-only pass), `scripts/ci-workspace.sh:19-24` (skips `generate-proof-report.sh` + `check-proof-report.sh` entirely), and `.github/workflows/nightly.yml:304-309` (same skip). A run in this mode leaves no artifact saying so; `check-proof-report.sh` validates whatever report exists (`required_top` keys at lines 17-25, all-gates-passed at lines 37-45) with no notion of how it was produced.
-- The claim rule this must protect: `docs/release/RISK_REGISTER.md:36-37`: "do not say Creusot/Kani production refinement is complete unless the strict Rust verification lane has actually passed in CI". Today that rule is enforced by nothing machine-checkable.
+- The mutants ratchet pattern exists and works as designed: `scripts/mutants-gate.sh:144-153` exits advisory while `cycle_end_tag` is empty or the streak is short; `releases.toml:177-209` holds the schema (`target_catch_ratio_percent = 80`, `required_consecutive_nightly_successes = 2`, `observed_consecutive_nightly_successes = 0`, `cycle_end_tag = ""`), with a CODEOWNERS-gated lifecycle documented in its header (lines 39-79).
+- But the streak field is a manually maintained repo-state counter (`observed_consecutive_nightly_successes`, updated by CODEOWNERS-reviewed PR per `releases.toml:43-49,64-79`). That is appropriate for the mutants lane, where "success" means a judged kill-rate score; it does not scale to pass/fail lanes, where the workflow conclusion IS the evidence and a hand-copied counter can only go stale.
+- The registry covers ten scheduled jobs and five pull-request jobs. All
+  fifteen are advisory. Six path-scoped or reliability-constrained entries
+  are frozen.
+- `CHIO_RUST_VERIFICATION_METADATA_ONLY=1` still supports toolchain-outage
+  diagnostics. It produces a `metadata_only` report with one passed coverage
+  preflight and `not_run` proof gates. Release qualification rejects that mode.
+- The strict Rust verification claim rule in `docs/release/RISK_REGISTER.md` is
+  enforced by the protected, adjacent report generation and structural check
+  in `scripts/ci-workspace.sh`.
 
 ## Current state
 
-- `releases.toml` has one gate family (`[mutants]`) plus unrelated release-audit records. It is CODEOWNERS-gated (header line 61).
-- `scripts/mutants-gate.sh` is bash-only with a flat scalar TOML reader (`read_toml_scalar`, lines 84-109) that cannot distinguish sections; fine for one table, unusable as-is for many `[gates.*]` tables.
-- The proof report is generated by `scripts/generate-proof-report.sh` into `target/formal/proof-report.json` (line 33): top-level keys include `schema`, `generatedAt`, `gateResults`, `toolVersions` (populated at lines 196-205), `artifactHashes`, `sourceLocations`, `git`, `ci`, `claimGate` (report dict at lines 219-248). It already supports `--no-run-gates` (lines 6-9), which records every gate as `status = "not_run"` (lines 144-153); such a report FAILS `check-proof-report.sh` today because that script requires every gate `passed` (lines 37-45). Notably, when running gates for real, generate strips `CHIO_RUST_VERIFICATION_METADATA_ONLY` from the child environment of `check-rust-verification-gates.sh` (lines 122-124), forcing that gate strict; the escape hatch therefore lives entirely in the CALLERS that skip the script, which is exactly why the mode goes unrecorded.
-- Release qualification reaches the proof report via `scripts/qualify-release.sh -> scripts/ci-workspace.sh` (`release-qualification.yml:15`), i.e. through the skippable block at `ci-workspace.sh:19-24`.
+- `releases.toml` carries the pass/fail lane registry alongside the unchanged `[mutants]` evidence model and remains CODEOWNERS-gated.
+- `scripts/lane-gate.sh` validates section-aware TOML with `tomllib`, counts exact job display names after each lane's reset, excludes dispatch runs, and checks freshness. `--fleet` evaluates required lanes during release qualification.
+- `target/formal/proof-report.json` has a required global `mode`. The checker
+  verifies the exact manifest command order, status and exit-code consistency,
+  current on-disk hashes, tool probes, Aeneas outputs, source locations, and
+  report plus coverage commit binding.
+- Nightly uploads the proof report and coverage JSON in one dynamically named
+  artifact. Release qualification copies both files into its checksummed
+  `formal/` evidence directory.
 
 ## Design
 
 ### Part 1: generic lane gates
 
-`releases.toml` gains one table per lane:
+`releases.toml` carries one table per lane:
 
 ```toml
 [gates.kani-public-nightly]
 workflow = "nightly.yml"
-job = "kani-public-nightly"
+job = "kani-public-nightly (lanes.pr + lanes.nightly_only)"
+event = "schedule"
 posture = "advisory"          # advisory | required
 required_streak = 7
-# activation_target omitted: pass/fail lane
+evidence_after_run_id = 29003108285
+max_age_hours = 48
 
 [gates.formal-qualification]
 workflow = "nightly.yml"
-job = "formal-qualification"
+job = "formal-qualification (proof report + portable + SDK parity)"
+event = "schedule"
 posture = "advisory"
 required_streak = 7
+evidence_after_run_id = 29003108285
+max_age_hours = 48
 strict_mode_required = true    # a metadata_only night does not count toward the streak
+strict_artifact_prefix = "formal-proof-report-strict-"
 
 [gates.apalache-safety]
 workflow = "apalache-safety.yml"
 job = "apalache-subset"
+event = "schedule"
 posture = "advisory"
 required_streak = 7
+evidence_after_run_id = 29012047382
+max_age_hours = 48
+
+[gates.apalache-negative]
+workflow = "apalache-safety.yml"
+job = "apalache-negative"
+event = "schedule"
+posture = "advisory"
+required_streak = 7
+evidence_after_run_id = 29086573702
+max_age_hours = 48
 
 [gates.apalache-temporal]
 workflow = "apalache-temporal.yml"
 job = "formal-tla-liveness"
+event = "schedule"
 posture = "advisory"
 required_streak = 7
+evidence_after_run_id = 29012076489
+max_age_hours = 48
 frozen = true                  # header precondition: reliably green + property fixed
 frozen_reason = "apalache-temporal.yml header forbids promotion until the underlying property is fixed"
 
-# Added when the lanes exist:
-# [gates.loom-nightly]         (FV-B4)
-# [gates.spec-mutants]         activation_target = 90 (FV-E1)
-# [gates.lean-build] / [gates.kani-public-pr] / [gates.rust-verification-metadata]  (FV-E3)
+# Pull-request lanes additionally name the intended base branch and an exact
+# per-run, per-attempt execution-marker artifact prefix. They remain frozen
+# until the workflow is run-always and uploads that marker only after real
+# verification work succeeds.
 ```
 
-Field semantics: `posture` documents the intended enforcement state and drives the gate exit code; `required_streak` is the consecutive-scheduled-success count that justifies a posture-flip PR; `activation_target` (optional) is a metric floor for lanes that score rather than pass/fail (spec-mutants kill rate, mutants catch ratio); `frozen = true` makes `lane-gate.sh` refuse `posture = "required"` at load time, fail-closed, so the apalache-temporal header rule is machine-enforced. The existing `[mutants]` table is not migrated: its judged, CODEOWNERS-attested evidence flow is intentionally different, and `mutants-gate.sh` stays authoritative for it (a comment in both files cross-references the split).
+Field semantics: `posture` drives the gate exit code; `required_streak` is the
+consecutive matching-event job-success count; `evidence_after_run_id` is an
+exclusive reset; and `max_age_hours` is the fleet freshness bound.
+`base_branch` excludes pull requests targeting another integration branch.
+`execution_artifact_prefix` names a marker ending in the exact run ID and run
+attempt. `frozen = true` rejects required posture at load time. The existing
+`[mutants]` table is not migrated because its judged, CODEOWNERS-attested
+evidence flow is intentionally different.
 
-New `scripts/lane-gate.sh <lane-name>`:
+Required posture also requires an inline `promotion_evidence` table. Its
+`run_ids` list contains exactly `required_streak` unique IDs newer than the
+reset, and `report_sha256` is the lowercase SHA-256 of the exact reviewed
+`--report` output. Advisory lanes cannot carry this field.
+
+`scripts/lane-gate.sh <lane-name>`:
 
 - Parses its `[gates.<lane>]` table with python3 tomllib (the pattern `check-corpus-metadata.sh` uses); bash-only section-aware TOML parsing is not worth reimplementing, and every CI job here already has python3.
 - Stateless streak computation at gate time via the GitHub API, no repo-state counter to maintain:
 
   ```bash
-  gh api --paginate \
-    "repos/${REPO}/actions/workflows/${WORKFLOW}/runs?event=schedule&status=completed&per_page=100" \
-    | jq '[.workflow_runs[] | {conclusion, created_at}]'
+  gh api \
+    "repos/${REPO}/actions/workflows/${WORKFLOW}/runs?event=schedule&status=completed&per_page=100&page=1"
   ```
 
-  Take runs newest-first and count consecutive `conclusion == "success"` from the head. `event=schedule` excludes `workflow_dispatch` runs by construction: manual dispatches must not count toward (or against) the streak, both because re-dispatching until green would let anyone manufacture a streak and because dispatch runs may carry non-default inputs. Rate limits: this is one paginated API call per gate evaluation with the Actions-provided `GITHUB_TOKEN` (repo-scoped, per GitHub's documented per-repository Actions token limits); the fuzz-budget script already makes five such calls nightly without issue (`check-fuzz-budget.sh:56-77`). Failure handling copies its precedent: `LANE_GATE_RATE_LIMIT_MODE` defaults to `fail` (fail-closed) with `warn` available for PR-adjacent contexts, mirroring `GH_FUZZ_BUDGET_RATE_LIMIT_MODE` (`check-fuzz-budget.sh:53`).
-- Exit semantics: `posture = advisory` always exits 0, printing `lane-gate: lane=<l> posture=advisory streak=<n>/<required> verdict=pass`; `posture = required` exits 1 when the lane's own current run failed (the caller passes `LANE_EXIT`) or, in fleet mode (`--fleet`, used by release qualification), when the latest scheduled run of any required lane is not a success. Output format mirrors `mutants-gate:` lines for grep-ability.
-- Call sites: appended as a final step inside each covered nightly/scheduled job (like mutants-gate in `mutants.yml:216-236`), and `scripts/lane-gate.sh --fleet` added to release qualification so a red required lane blocks a release even though nightly jobs cannot block merges.
+  Fetch matching workflow runs newest-first and stop after the required streak
+  or first barrier. At most ten pages are considered. Only the exact job name
+  and latest attempt count. Pull-request runs must target `base_branch` and
+  carry the exact unexpired execution marker. Warning mode applies only to
+  positively identified rate limits, transport failures, or temporary 502,
+  503, and 504 responses. Malformed JSON, 404s, corrupt timestamps, duplicate
+  runs, and attempt mismatches always fail.
+- Exit semantics: `posture = advisory` always exits 0 and reports the current job result without masking it; `posture = required` exits 1 when the lane's current job failed (the caller passes `LANE_EXIT`). In fleet mode, missing, stale, non-strict, or unsuccessful latest evidence for any required lane fails release qualification. Output uses stable `lane-gate:`, `lane-gate-evidence:`, and `lane-gate-barrier:` prefixes.
+- Every integrated registered job has a final `if: always()` call site.
+  `scripts/lane-gate.sh --fleet` runs after strict workspace qualification and
+  blocks releases when a required lane is unhealthy.
 
 ### Promotion runbook (documented in the script header and docs/formal/ROADMAP.md)
 
-1. A lane accumulates `required_streak >= 7` consecutive scheduled successes (checked any time with `scripts/lane-gate.sh <lane> --report`; stateless, so there is no counter to update and nothing to go stale).
-2. A posture-flip PR edits only `releases.toml` (`posture = "required"`), pasting the `--report` output (run IDs and dates) in the PR body. CODEOWNERS review applies automatically since `releases.toml` is CODEOWNERS-gated.
-3. After merge, adding the check to branch protection is a MANUAL admin step in the ruleset UI, using the exact reported check names from [FV-E3](FV-E3-pr-formal-smoke-tier.md) (rulesets match by `name:` per `ci.yml:3-10`). The runbook states explicitly that PR-lane promotion also requires the run-always-and-self-skip pattern from FV-E3's design (a paths-triggered required check that never reports blocks PRs as "Expected").
-4. Demotion is the same PR in reverse plus an incident note; `frozen` lanes cannot be promoted at all until the freezing precondition is removed in the same PR that fixes it (for apalache-temporal: the header's "underlying property is fixed and the run is reliably green" [v]).
-5. Nightly-only lanes (kani-public-nightly, formal-qualification) are "required" in the fleet sense only: they gate releases via `--fleet`, not PR merges. The runbook says so to prevent a confused ruleset entry pointing at a job that never runs on PRs.
+1. A lane accumulates `required_streak >= 7` consecutive successes for its configured event and exact job display name (checked with `scripts/lane-gate.sh <lane> --report`). Evidence must be after the reset and fresh.
+2. A posture-flip PR edits only `releases.toml`: set `posture = "required"`
+   and add `promotion_evidence = { run_ids = [...], report_sha256 = "..." }`.
+   Paste the exact `--report` output (run IDs, attempts, and dates) in the PR
+   body so reviewers can verify its digest. CODEOWNERS review applies
+   automatically since `releases.toml` is CODEOWNERS-gated. No enforcement-test
+   edit is part of promotion.
+3. A pull-request lane cannot be promoted while frozen. First replace the
+   workflow-level path filter with a run-always aggregator, bind the registry
+   entry to its intended base branch, and make the real proof job upload
+   `execution_artifact_prefix + run_id + "-" + run_attempt` only after the
+   verification command succeeds. A successful skip must not upload a marker.
+4. After merge, adding the check to branch protection is a manual admin step
+   in the ruleset UI, using the exact reported check name. A registry edit
+   cannot update repository rulesets.
+5. Demotion sets posture back to advisory, removes `promotion_evidence`, and
+   adds an incident note. A frozen lane cannot be promoted until the same
+   reviewed change resolves its reason.
+6. Scheduled-only lanes are required in the fleet sense only: they gate
+   releases via `--fleet`, not PR merges.
 
 ### Part 2: record the mode, close the escape hatch
 
-Exact changes, keyed to lines verified this session:
+Implemented behavior:
 
-1. `scripts/generate-proof-report.sh`:
-   - Derive the mode once: `metadata_only` when `CHIO_RUST_VERIFICATION_METADATA_ONLY=1` or `--no-run-gates` was passed; else `strict`. In metadata_only mode the script now reuses the existing `run_gates=0` path (lines 144-153, gates recorded `not_run`) instead of callers skipping the script.
-   - Add `"mode": mode` to the report dict, slotting next to `"schema"` and `"generatedAt"` (lines 220-221). The report already records tool versions (lines 196-205) and CI identity (lines 213-217); mode completes the provenance triple (what ran, with what, under which policy).
-   - Keep the existing strictness guarantee at lines 122-124 (the env var is stripped before running `check-rust-verification-gates.sh` as a gate) so a strict-mode report can never contain a silently downgraded verification gate.
-2. `scripts/check-proof-report.sh`:
-   - Add `"mode"` to `required_top` (lines 17-25); reject unknown values.
-   - Consistency rule replacing the unconditional all-passed check (lines 37-45): `mode == "strict"` requires every `gateResults[].status == "passed"` (current behavior); `mode == "metadata_only"` requires every status `== "not_run"` and prints a loud `WARNING: proof report is metadata-only; no proofs were executed` line. Mixed states fail.
-   - New flag `--require-strict`: exit 1 unless `mode == "strict"` (in addition to the consistency rule). No flag preserves current callers' behavior for strict reports and makes metadata-only reports pass-with-warning instead of being absent.
-3. Callers:
-   - `scripts/ci-workspace.sh:19-24`: replace the conditional skip with an unconditional `./scripts/generate-proof-report.sh` followed by `./scripts/check-proof-report.sh --require-strict`. Since release qualification reaches the report through this script (`release-qualification.yml:15`), setting the env var can no longer produce a green release run: it produces a metadata_only report, and `--require-strict` fails it. This is the machine-checkable form of the RISK_REGISTER rule (`docs/release/RISK_REGISTER.md:36-37`).
-   - `.github/workflows/nightly.yml:299-309` (formal-qualification): same replacement but WITHOUT `--require-strict`; the nightly escape hatch remains available for toolchain-outage days, now honestly recorded. The teeth: `[gates.formal-qualification]` has `strict_mode_required = true`, and `lane-gate.sh` treats a night whose uploaded report has `mode != "strict"` as a non-success for streak purposes (the report is uploaded as an artifact for exactly this check; simplest implementation is the job exporting `mode` into the job summary and lane-gate reading the run conclusion plus a `metadata-only` marker artifact; the design accepts either, decided in phase 3).
-   - `scripts/check-rust-verification-gates.sh:43-46` needs no change: its stdout is already honest, and its posture is now visible through the report's mode.
-4. Documentation: `docs/release/RISK_REGISTER.md` gains a sentence noting the rule is enforced by `check-proof-report.sh --require-strict` at release qualification (proposed edit, listed below).
+1. `scripts/generate-proof-report.sh` derives one global mode. Both modes first
+   run `cargo xtask gen proof-coverage --check`. Metadata-only mode records that
+   preflight as passed and every proof command as `not_run`. Strict mode runs
+   the exact manifest command set and rejects a dirty worktree before or after
+   execution. The trusted generator process attests the recorded gate statuses.
+   The generator, checker, claim inputs, and proof sources are tracked hashes.
+2. `scripts/check-proof-report.sh` loads the proof manifest and requires the
+   exact unique command order. It checks every status against its exit code,
+   compares every tracked and generated hash with disk, requires all strict
+   tool probes and Aeneas artifacts, resolves each inventory entry to exactly
+   one declaration, requires a clean strict worktree, and binds the report and
+   coverage JSON to `HEAD` and `GITHUB_SHA` when present. It validates the
+   generator's evidence; it does not replay proof commands.
+3. `scripts/ci-workspace.sh` always generates a report and requires strict
+   mode. Nightly records the mode and uploads the report plus coverage JSON as
+   `formal-proof-report-<mode>-<run-id>-<run-attempt>` with missing files fatal.
+4. Formal-qualification streak evidence requires the exact unexpired strict artifact name, including both run ID and latest run attempt. A strict artifact from an earlier attempt of the same run cannot satisfy a later metadata-only attempt. A metadata-only night may remain diagnostic and green, but it cannot count toward promotion.
 
 ## Implementation plan
 
-1. Phase 1 - mode recording (files to modify: `scripts/generate-proof-report.sh`, `scripts/check-proof-report.sh`; files to add: `scripts/tests/check-proof-report.test.sh` covering strict, metadata_only, mixed, and `--require-strict` cases with fixture reports).
-2. Phase 2 - caller rewiring (files to modify: `scripts/ci-workspace.sh`, `.github/workflows/nightly.yml`). Verify by running `CHIO_RUST_VERIFICATION_METADATA_ONLY=1 bash scripts/ci-workspace.sh` locally and confirming it fails at `--require-strict` with the metadata-only message.
-3. Phase 3 - lane-gate core (files to add: `scripts/lane-gate.sh`, `scripts/tests/lane-gate.test.sh` with a mocked `gh` shim; files to modify: `releases.toml` adding the four initial `[gates.*]` tables with `posture = "advisory"`).
-4. Phase 4 - call-site wiring (files to modify: `.github/workflows/nightly.yml` (both jobs), `.github/workflows/apalache-safety.yml`, `.github/workflows/apalache-temporal.yml` each gain a terminal lane-gate step; `.github/workflows/release-qualification.yml` or `scripts/qualify-release.sh` gains `scripts/lane-gate.sh --fleet`).
-5. Phase 5 - runbook (files to modify: `docs/formal/ROADMAP.md` promotion-runbook section; `.github/workflows/README.md` required-check inventory note that gate postures live in `releases.toml`).
-6. Phase 6 - onboard new lanes as they land: FV-E3's three PR lanes, FV-E1's spec-mutants (`activation_target = 90`), FV-B4's loom-nightly (files to modify: `releases.toml` only, one table each).
+1. [x] Phase 1 - mode recording and strict/metadata consistency tests.
+2. [x] Phase 2 - unconditional report generation in workspace and nightly callers, with strict mode required for release qualification.
+3. [x] Phase 3 - job-level lane gate, mocked API tests, reset and freshness policies, and advisory registry entries.
+4. [x] Phase 4 - terminal call sites for all covered jobs plus release-fleet enforcement.
+5. [x] Phase 5 - promotion, ruleset, reset, nightly-only, and demotion runbook.
+6. [x] Phase 6 - all five pull-request jobs and ten scheduled jobs are
+   registered. Future score-based or simulation lanes add their own tables
+   when their workflows land.
 
 ## CI and gating changes
 
-- Each covered scheduled workflow gains one terminal step (`bash scripts/lane-gate.sh <lane>`); advisory postures make this a no-op beyond logging, so landing it is risk-free.
-- Release qualification gains two teeth: `check-proof-report.sh --require-strict` (via ci-workspace.sh) and `lane-gate.sh --fleet`. Both are fail-closed.
+- Each covered job has a terminal lane-gate step. Advisory posture logs
+  evidence and preserves the underlying job result. B2 adds the
+  `apalache-negative` job after this isolated E5 change. Its integration must
+  add `actions: read` and this terminal step to that job:
+
+  ```yaml
+  - name: Record negative Apalache lane posture
+    if: always()
+    env:
+      GH_TOKEN: ${{ github.token }}
+      LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
+      LANE_GATE_RATE_LIMIT_MODE: warn
+    run: bash scripts/lane-gate.sh apalache-negative
+  ```
+- Release qualification enforces `check-proof-report.sh --require-strict` through `ci-workspace.sh` and then evaluates `lane-gate.sh --fleet`. Both are fail-closed.
 - No branch-protection changes in this document; the runbook governs those, manually, per promotion.
-- API budget: one `gh api` paginated call per lane per gated run plus the fleet check at release time; well inside Actions token limits, with `LANE_GATE_RATE_LIMIT_MODE=warn` available where availability beats strictness (never at release qualification).
+- API budget: workflow history is fetched lazily in pages and stops at the
+  streak threshold or first barrier. Job and artifact queries stop with it.
+  Advisory call sites use warning mode only for rate limits and transport
+  outages. Release qualification never enables warning mode.
 - The apalache-temporal lane stays excluded from promotion by the `frozen` flag until its header's reliably-green precondition is met [v]; the flag makes the exclusion load-bearing instead of a comment.
 
 ## Acceptance criteria
 
-- [ ] `target/formal/proof-report.json` contains `"mode": "strict"` on a real strict run and `"mode": "metadata_only"` when the env var is set; `check-proof-report.sh` enforces internal consistency for both.
-- [ ] `CHIO_RUST_VERIFICATION_METADATA_ONLY=1` through the release-qualification path fails at `--require-strict`; the failure message names the RISK_REGISTER rule.
-- [ ] A metadata-only nightly is visibly non-strict in the run summary and does not count toward the formal-qualification streak.
-- [ ] `scripts/lane-gate.sh kani-public-nightly --report` prints the current scheduled-success streak computed from the API, with dispatch runs excluded (verified against a hand-counted window).
-- [ ] `posture = "required"` on a `frozen = true` lane fails `lane-gate.sh` at load time.
-- [ ] `releases.toml` carries `[gates.*]` tables for the four existing lanes, all advisory, each naming workflow and job; CODEOWNERS gating covers edits by virtue of the existing rule.
-- [ ] Release qualification runs `lane-gate.sh --fleet` and goes red if any `posture = "required"` lane's latest scheduled run failed.
-- [ ] The promotion runbook exists in `docs/formal/ROADMAP.md`, including the manual ruleset step, the self-skip precondition for PR lanes, and the demotion path.
-- [ ] `[mutants]` behavior is unchanged (`MUTANTS_EXIT=0 bash scripts/mutants-gate.sh` output identical before and after).
+- [x] `target/formal/proof-report.json` records strict or metadata-only mode,
+  coverage preflight semantics, exact commands, hashes, artifacts, and commit
+  binding.
+- [x] Metadata-only release qualification fails at `--require-strict` with the formal claim-rule message.
+- [x] A metadata-only nightly is visible in the summary and artifact name and
+  cannot count toward the formal-qualification streak.
+- [x] Lane reports use event-filtered, exact job-level history after a reset and
+  print run IDs, attempts, and dates. Mocked dispatch exclusion and reset
+  boundaries pass.
+- [x] Required posture on a frozen lane fails at load time.
+- [x] `releases.toml` carries fifteen advisory `[gates.*]` tables with exact
+  workflow and job identities. Evidence scripts, the manifest, Apalache files,
+  affected workflows, and the registry have CODEOWNERS protection.
+- [x] Path-scoped PR entries remain frozen until a run-always aggregator and
+  real-execution marker uploader are reviewed.
+- [x] Release qualification runs `lane-gate.sh --fleet`, which rejects missing, stale, failed, or non-strict evidence for required lanes.
+- [x] The promotion runbook includes manual ruleset work, PR self-skip behavior, nightly-only semantics, resets, and demotion.
+- [x] `[mutants]` behavior and output are unchanged.
 
 ## Risks and mitigations
 
-- GitHub API unavailability at gate time. Mitigation: fail-closed by default with an explicit warn mode for non-release contexts, copying the proven `check-fuzz-budget.sh` split between rate-limit handling and cap handling.
-- Streak gaming via reruns: re-running a failed scheduled run in the UI can overwrite its conclusion. Mitigation: count by run (not attempt) newest-first and document that a rerun-to-green still reflects a real green at that commit; if this proves abusable, switch to `run_attempt == 1` filtering (one jq clause), noted in the script header.
+- GitHub API unavailability at gate time. Mitigation: fail closed by default.
+  Advisory callers may warn only on positively identified rate limiting,
+  transport failure, or temporary 502, 503, and 504 responses. Evidence
+  integrity errors remain fatal.
+- Streak gaming via reruns: re-running a failed scheduled run in the UI can replace the latest attempt's conclusion. Mitigation: count each run once using only its latest job attempt, and require strict proof artifacts to match that attempt. A rerun-to-green still reflects a real green at that commit; if this proves abusable, restrict evidence to first attempts in a follow-up policy change.
 - A required nightly lane reds for an environmental reason and blocks a release. Mitigation: that is the designed behavior (the release claim depends on the lane); the demotion PR path plus the `MUTANTS_GATE_OVERRIDE_REASON`-style audit-logged override can be added to lane-gate if a release-train hotfix ever needs it, with the same audit-row discipline as `mutants-gate.sh:257-280`. Not included initially: fewer escape hatches is the point of this document.
 - Two gate scripts (mutants-gate, lane-gate) confuse contributors. Mitigation: cross-referencing comments in both plus one paragraph in `docs/fuzzing/mutants.md`; unifying them is deliberately out of scope because the mutants evidence model is human-attested.
-- Mode recording relies on callers passing the env var honestly. Mitigation: generate-proof-report reads the env var itself; the only way to lie is to edit the script, which is hash-tracked in the report's own `artifactHashes.tracked` (it hashes `scripts/check-rust-verification-gates.sh` and friends at lines 164-177; add `generate-proof-report.sh` and `check-proof-report.sh` to that list in phase 1).
+- Mode recording relies on callers passing the env var honestly. Mitigation:
+  `generate-proof-report.sh` reads the variable itself, strict generation
+  requires a clean worktree, and the report hashes the generator, checker,
+  claim inputs, verification scripts, and proof sources.
 
-## Open questions
+## Decisions
 
-- Should `lane-gate.sh --fleet` also verify the freshness of the latest scheduled run (e.g. fail if the newest run is older than 48 h, catching a disabled cron)? Leaning yes; cheap and catches silent lane death, but needs a grace policy for repo-wide Actions outages.
-- Streak length: 7 is proposed for daily lanes; apalache-safety also runs per-PR, so its scheduled-only streak undercounts its real exercise. Is 7 scheduled greens plus zero PR failures in the window a better bar? Decide at phase 5 with data.
-- Should the proof report's `mode` also flow into `gateResults` per-gate (a gate skipped by mode marked distinctly from `not_run` for other reasons)? Currently unnecessary since mode is global to the run; revisit if per-gate modes ever diverge.
-- Where does the metadata-only marker for streak purposes live: job summary, artifact name, or a check-run annotation lane-gate can query? Phase 3 decision; artifact name is simplest to query via the same API call family.
+- Freshness is load-bearing. Daily and scheduled corpus lanes use 48 hours; pull-request lanes use 168 hours. Required release-fleet checks fail on missing or stale evidence.
+- Every lane starts with a seven-success threshold. Apalache safety and
+  negative-test promotion use scheduled evidence only. Pull-request histories
+  are scoped to `main`.
+- Proof mode is global because every proof gate shares one execution policy.
+  Metadata-only reports require the coverage preflight to pass and every proof
+  gate to be `not_run`; any other mix fails.
+- Strictness evidence uses the uploaded artifact name `formal-proof-report-<mode>-<run-id>-<run-attempt>`, and the job summary shows the same mode. Historical formal-qualification success counts only when the exact latest job attempt has an unexpired strict artifact. Artifacts from earlier attempts of the same run are rejected.
+- Job history, not workflow conclusion, is authoritative. The configured display name must match exactly once in a run.
+- Reset boundaries are configuration cutoffs, not hosted success claims. No
+  qualifying post-reset hosted streak is recorded by this change. Promotion
+  evidence remains pending for every lane.
 
 ## Manifest and registry updates
 
-- `releases.toml`: four new `[gates.*]` tables now; one more per future lane (FV-E1 spec-mutants and proof-mutants, FV-E3 PR lanes, FV-B4 loom-nightly). Header comment extended to document the `[gates.*]` schema next to the existing `[mutants]` schema and the split between them.
-- `target/formal/proof-report.json` schema: new required top-level `mode` field; consumers are `check-proof-report.sh` (updated here) and the formal-evidence bundle (verify it tolerates the added key; JSON key addition is backward-compatible for the audits/evidence snapshots).
-- Proposed edit to `docs/release/RISK_REGISTER.md` (not performed here): note that the Creusot/Kani claim rule is enforced by `check-proof-report.sh --require-strict` at release qualification.
-- `docs/reference/CLAIM_REGISTRY.md`: no change required; the claim-gate term list in `generate-proof-report.sh:106-112` is untouched.
-- `docs/formal/GAP_ANALYSIS.md`: G1 (posture half) and G5 (strictness-recording bullet) updated to point here when phases 2 and 4 land.
+- `releases.toml`: fifteen advisory `[gates.*]` tables cover ten scheduled and
+  five pull-request lanes. Six entries are frozen until their documented
+  hosted preconditions are met.
+- `target/formal/proof-report.json` schema: new required top-level `mode` and
+  `evidenceBoundary` fields; consumers are `check-proof-report.sh` (updated
+  here) and the formal-evidence bundle.
+- `docs/release/RISK_REGISTER.md`: the Creusot/Kani claim rule names protected
+  strict generation followed immediately by `check-proof-report.sh
+  --require-strict` as its release-qualification enforcement.
+- `docs/reference/CLAIM_REGISTRY.md` and `docs/formal/COVERAGE.md`: supplied by
+  C5 integration. The generator requires both and fails closed when that
+  integration is absent.
+- `docs/formal/GAP_ANALYSIS.md`: G1 records the active posture machinery and G5 records strictness-mode enforcement.
+- `.github/workflows/apalache-safety.yml`: B2 integration must append the
+  documented terminal `apalache-negative` lane-gate step because that job is
+  not present in the isolated E5 commit.

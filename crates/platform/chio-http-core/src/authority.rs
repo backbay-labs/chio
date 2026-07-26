@@ -254,6 +254,15 @@ impl Guard for HttpProjectionGuard {
             }
         }
     }
+
+    fn revalidate_before_dispatch(&self, ctx: &GuardContext<'_>) -> Result<(), KernelError> {
+        match self.evaluate(ctx)?.verdict {
+            chio_kernel::Verdict::Allow => Ok(()),
+            chio_kernel::Verdict::Deny | chio_kernel::Verdict::PendingApproval => Err(
+                KernelError::GuardDenied("HTTP projection revalidation denied".to_string()),
+            ),
+        }
+    }
 }
 
 /// Builder for an [`HttpAuthority`] whose embedded kernel is backed by durable

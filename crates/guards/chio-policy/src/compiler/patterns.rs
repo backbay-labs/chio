@@ -39,27 +39,7 @@ fn literal_prefix(pattern: &str) -> String {
 }
 
 fn glob_matches(pattern: &str, target: &str) -> Result<bool, CompileError> {
-    let mut regex = String::from("^");
-    let mut chars = pattern.chars().peekable();
-    while let Some(ch) = chars.next() {
-        match ch {
-            '*' => {
-                if matches!(chars.peek(), Some('*')) {
-                    chars.next();
-                    regex.push_str(".*");
-                } else {
-                    regex.push_str("[^/]*");
-                }
-            }
-            '?' => regex.push('.'),
-            '.' | '+' | '(' | ')' | '{' | '}' | '[' | ']' | '^' | '$' | '|' | '\\' => {
-                regex.push('\\');
-                regex.push(ch);
-            }
-            _ => regex.push(ch),
-        }
-    }
-    regex.push('$');
+    let regex = crate::glob_pattern::regex_source(pattern);
     crate::regex_safety::compile_generated_policy_regex(&regex, "compiler glob pattern")
         .map(|compiled| compiled.is_match(target))
         .map_err(|error| CompileError::Invalid(format!("invalid policy glob pattern: {error}")))

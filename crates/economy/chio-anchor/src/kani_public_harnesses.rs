@@ -198,21 +198,20 @@ pub fn public_anchor_emergency_controls_allows_truth_table() {
 /// Production entry: `chio_anchor::ops::ensure_anchor_operation_allowed`
 /// (`pub fn` in `crates/economy/chio-anchor/src/ops.rs`).
 ///
-/// Bounds: the production function constructs an `AnchorError::InvalidInput`
-/// payload via `format!()` on the fail-closed arm. The `format!()`
-/// macro paths into `core::str::count::do_count_chars` for UTF-8
-/// length accounting, which inflates cbmc's symex into the millions
-/// of steps even at unwind=4 (~140s symex + minutes of SAT in local
-/// runs against a tight per-harness budget). PR-tier CI cannot
-/// afford that wall-clock; the manifest enrolls this harness in the
-/// **nightly** lane at a 3600s budget. PR-tier
-/// regression coverage for the same property comes from:
+/// Bounds: the harness exhaustively selects among the five emergency
+/// modes and three operation kinds. The production fail-closed arm
+/// selects one of three static diagnostic strings with a bounded
+/// match, avoiding the dynamic formatting path that exhausted the
+/// original 3600s solver budget. The optimized harness runs in the PR
+/// lane with the standard non-core timeout while proving the real
+/// public `Result` and `AnchorError::InvalidInput` behavior. Additional
+/// PR-tier regression coverage for the same property comes from:
 ///   - `public_anchor_emergency_controls_allows_truth_table` (the
 ///     truth-table harness above, which calls `controls.allows()`
 ///     directly and finishes in ~0.1s).
 ///   - The runtime negative tests under
-///     `crates/economy/chio-anchor/tests/` that exercise the
-///     `format!()`-based error path.
+///     `crates/economy/chio-anchor/tests/` and `ops.rs` unit tests
+///     that exercise the bounded static diagnostic path.
 #[kani::proof]
 #[kani::unwind(4)]
 pub fn public_ensure_anchor_operation_allowed_fail_closed() {

@@ -163,4 +163,9 @@ fn run_scenarios_remains_the_underlying_transport_client() {
         "{} must continue to export the typescript-node-http driver constant",
         path.display()
     );
+    assert!(
+        raw.contains("../../../../../../sdks/typescript/packages/node-http/src/index.ts"),
+        "{} must resolve node-http from the repository root after the crate-folder migration",
+        path.display()
+    );
 }

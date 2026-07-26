@@ -1,0 +1,15 @@
+# FV-B5 evaluation artifact. This package is verified through the pinned
+# `verus` driver (see ../README.md for the exact command), not built by
+# cargo: the verus! macro and vstd ship inside the pinned Verus release.
+# The manifest exists to mark the package boundary and keep the experiment
+# outside the root workspace.
+[package]
+name = "chio-verus-eval-ledger"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[workspace]
+
+[lib]
+path = "src/lib.rs"

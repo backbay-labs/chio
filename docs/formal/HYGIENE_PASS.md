@@ -1,8 +1,13 @@
 # Formal Verification: Hygiene Pass
 
-- Status: Proposed (2026-07-09); all items are small, most are one-file edits
+- Status: Implemented and reverified (2026-07-15)
 - Companion docs: [GAP_ANALYSIS.md](GAP_ANALYSIS.md) (why these matter),
   [ROADMAP.md](ROADMAP.md) (sequencing: this is Wave 0)
+
+All fifteen items below are complete. Their targeted checks, the generated
+coverage check, and the full workspace build, test, clippy, and formatting
+quartet passed before the implementation commit. The pull-request formal tier
+now makes the lane comments and required-check posture truthful.
 
 Fifteen mechanical fixes: thirteen found by the 2026-07-09 survey (H1-H13)
 and two more found while grounding the plan specs (H14-H15). Each item lists
@@ -252,6 +257,23 @@ CI files isolated).
   the minimal repoint now.
 - Verify: every `ASSUME-*` id cited in MAPPING.md exists in
   assumptions.toml (add to the H3 grep set).
+
+## Decisions
+
+- The two root-imported theorem statuses are `proved`. Lean `v4.28.0` builds
+  the full project, the formal proof gate passes, and both the former RC and
+  stable compiler report only `propext` for those theorems.
+- Revocation safety and nightly liveness retain the configured `PROCS=4`,
+  `CAPS=8`, `DEPTH_MAX=4` bounds. Larger bounds remain a future TLC option.
+- Kani and mutation comments describe the current nightly-only wiring until
+  the pull-request smoke tier is implemented.
+- Pull-request fuzz and mutation budget checks fail at the cap; scheduled
+  measurement lanes remain advisory.
+- The Aeneas pilot remains a minimal toolchain-upgrade fixture. Production
+  evidence continues to come from `formal/aeneas/production.toml`.
+- Revocation propagation fairness is cited directly from the TLA+ spec rather
+  than registered as a transport assumption that the distributed model will
+  later replace.
 
 ## Execution notes
 

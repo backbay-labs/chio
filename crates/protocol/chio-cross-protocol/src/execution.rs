@@ -164,7 +164,7 @@ pub fn metadata_with_source_receipt_context(
             "receipt metadata must be a JSON object".to_string(),
         ));
     };
-    metadata_obj.insert("receipt_context".to_string(), receipt_context);
+    metadata_obj.insert("source_receipt_context".to_string(), receipt_context);
     Ok(metadata)
 }
 

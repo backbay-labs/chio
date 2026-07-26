@@ -1182,6 +1182,12 @@
       "schemaFile": "spec/schemas/chio-agent-web/v1/proof-envelope.schema.json"
     },
     {
+      "schema": "chio.agent-web-proof-envelope.v2",
+      "artifactKind": "agent_web_proof_envelope",
+      "introducedBy": "agent-web-interop-v2",
+      "schemaFile": "spec/schemas/chio-agent-web/v2/proof-envelope.schema.json"
+    },
+    {
       "schema": "chio.agent-web.external-projection-manifest.v1",
       "artifactKind": "agent_web_external_projection_manifest",
       "introducedBy": "agent-web-interop-v1",

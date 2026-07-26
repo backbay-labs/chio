@@ -577,6 +577,27 @@ targeting completion by Q1 2027; the windows below are indicative.
 For a guided local walkthrough, start with the
 [progressive tutorial](docs/start-here/PROGRESSIVE_TUTORIAL.md).
 
+## Formal verification
+
+The formal verification roadmap was executed through its local acceptance
+gates on 2026-07-15 against implementation commit
+`d292f14df1c493873199f4f9d969ade00472ff28`. Retained full-cycle proof-mutation
+evidence was refreshed on 2026-07-16 against prerequisite commit
+`a871396bffd010500f680c035e7b52c1867f38e2`. The repository now binds
+production Rust decisions to Lean, authenticated Aeneas extraction, Creusot
+contracts, Kani harnesses, TLA+/Apalache models, differential tests,
+concurrency exploration, and mutation evidence. The generated
+[proof coverage matrix](docs/formal/COVERAGE.md) is the authoritative map from
+properties to models, production symbols, assumptions, and gates.
+
+All hygiene items and 22 of the 23 planned work items are implemented. The
+remaining economy collection proof is blocked on the unmerged netting surface;
+its scalar conservation predicates and Kani groundwork are present, but no
+collection-level claim is made. Hosted CI streaks remain advisory evidence and
+are not represented as local proof results. See the
+[current-state snapshot](docs/formal/CURRENT_STATE.md) and the
+[executed roadmap](docs/formal/ROADMAP.md) for exact scope and limitations.
+
 ## Examples
 
 - Example index: [examples/README.md](examples/README.md)

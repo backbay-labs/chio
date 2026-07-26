@@ -12,6 +12,7 @@ use chio_core_types::{receipt::lineage::SignedExportEnvelope, PublicKey};
 use chio_kernel::{
     KernelError, RuntimeAdmissionContext as KernelRuntimeAdmissionContext,
     RuntimeAdmissionDecision as KernelRuntimeAdmissionDecision, RuntimeAdmissionHook,
+    RuntimeAdmissionRevalidationContext as KernelRuntimeAdmissionRevalidationContext,
 };
 use serde::{Deserialize, Serialize};
 
@@ -31,7 +32,10 @@ mod types;
 mod validation;
 
 pub use admission::{evaluate_runtime_admission, RuntimeAdmissionInput};
-pub(crate) use admission::{trust_floor_identity, validate_runtime_trust_floor_transition};
+pub(crate) use admission::{
+    evaluate_runtime_admission_tracked, trust_floor_identity,
+    validate_runtime_trust_floor_transition, RuntimeAdmissionReservationTracker,
+};
 pub use admission_hook::ChioRuntimeAdmissionHook;
 pub use buyer::{
     verify_buyer_attestation_packet, verify_buyer_attestation_review_package,

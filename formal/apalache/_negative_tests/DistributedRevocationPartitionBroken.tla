@@ -1,0 +1,3 @@
+-------------- MODULE DistributedRevocationPartitionBroken --------------
+EXTENDS DistributedRevocation
+=============================================================================

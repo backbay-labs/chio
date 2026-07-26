@@ -16,7 +16,11 @@ pub(crate) fn write_cli_error(
     }
 }
 
-pub(super) fn write_bytes(writer: &mut impl Write, bytes: &[u8], context: &str) -> Result<(), CliError> {
+pub(super) fn write_bytes(
+    writer: &mut impl Write,
+    bytes: &[u8],
+    context: &str,
+) -> Result<(), CliError> {
     writer
         .write_all(bytes)
         .map_err(|err| CliError::Other(format!("{context} write: {err}")))

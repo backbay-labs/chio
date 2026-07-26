@@ -213,31 +213,33 @@ exact same defect with no signal.
 
 ## Regression-test deletion
 
-Regression tests under `tests/regression_*.rs` and
-`crates/*/tests/regression_*.rs` are append-only by policy. Deleting
-one removes a known-defect oracle and re-opens the surface that
-defect protected.
+Regression tests under `tests/regression_*.rs`, grouped or flat crate test
+directories, and `formal/diff-tests/tests/regression_*.rs` are append-only by
+policy. Deleting one removes a known-defect oracle and re-opens the surface
+that defect protected.
 
 Two guards enforce the policy:
 
-- `scripts/check-regression-tests.sh` runs from the
-  `check-regression-tests` job in `.github/workflows/ci.yml` and fails
-  the build when a committed `regression_<sha>.rs` file is removed
-  without a paired issue link that names the deleted file.
+- `scripts/check-regression-tests.sh` runs inside the required
+  `Build, lint, test` job in `.github/workflows/ci.yml` and fails the build
+  when a committed regression file is deleted or renamed without a paired
+  issue link that names the affected file.
 - `CODEOWNERS` requires `Chio maintainers` review on any
-  diff that touches `tests/regression_*.rs` or
-  `crates/*/tests/regression_*.rs`.
+  diff that touches a guarded regression path or the deletion guard itself.
 
 When a regression test genuinely needs to come out (the underlying
 defect was fixed by a refactor that made the original assertion
 non-meaningful, or the target was deleted), the deleting PR must:
 
-1. Link the original `fuzz-crash` issue in the PR body.
+1. Link the originating crash or formal-counterexample issue in the PR body
+   (`fuzz-crash` for fuzz regressions).
 2. Explain why the test is no longer protective (one paragraph in
    the PR body).
 3. Get explicit `Chio maintainers` approval on the deletion line.
 
-The CI guard refuses the merge until those conditions are met.
+The required CI guard enforces a separate per-file issue or pull-request
+reference. CODEOWNERS enforces maintainer review; reviewers enforce the
+original-issue and explanatory requirements above.
 
 ## Cross-references
 

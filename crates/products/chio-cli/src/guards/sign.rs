@@ -15,11 +15,11 @@ use std::path::Path;
 #[cfg(test)]
 use std::path::PathBuf;
 
-use chio_wasm_guards::WasmGuardError;
 use chio_wasm_guards::manifest::{
-    SignedWasmModule, load_manifest, load_signature_sidecar, signed_module_message,
-    verify_signed_module, write_signature_sidecar,
+    load_manifest, load_signature_sidecar, signed_module_message, verify_signed_module,
+    write_signature_sidecar, SignedWasmModule,
 };
+use chio_wasm_guards::WasmGuardError;
 use ed25519_dalek::{Signer, SigningKey};
 use sha2::{Digest, Sha256};
 

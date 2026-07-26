@@ -1,4 +1,4 @@
-use std::{collections::BTreeSet, time::Duration};
+use std::{collections::BTreeSet, sync::Arc, time::Duration};
 
 use super::CliError;
 use chio_egress_contract::HttpEgressContract;
@@ -8,6 +8,7 @@ const AGENT_WEB_STANDARD_WEBHOOKS_NOW_UNIX_SECONDS_ENV: &str =
     "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_NOW_UNIX_SECONDS";
 const AGENT_WEB_STANDARD_WEBHOOKS_MAX_AGE_SECONDS_ENV: &str =
     "CHIO_AGENT_WEB_STANDARD_WEBHOOKS_MAX_AGE_SECONDS";
+const AGENT_WEB_REPLAY_STORE_PATH_ENV: &str = "CHIO_AGENT_WEB_REPLAY_STORE_PATH";
 const AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV: &str = "CHIO_AGENT_WEB_TRUSTED_KERNEL_KEYS";
 const AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS_ENV: &str =
     "CHIO_AGENT_WEB_TRUSTED_ENVELOPE_SIDECAR_KEYS";
@@ -21,8 +22,7 @@ const ENTERPRISE_TRUSTED_RECEIPT_KERNEL_KEYS_ENV: &str =
 const COMMERCE_TRUSTED_PROVIDER_KEYS_ENV: &str = "CHIO_COMMERCE_TRUSTED_PROVIDER_KEYS";
 const COMMERCE_TRUSTED_EVENT_AUTHORITY_RECEIPT_KERNEL_KEYS_ENV: &str =
     "CHIO_COMMERCE_TRUSTED_EVENT_AUTHORITY_RECEIPT_KERNEL_KEYS";
-const COMMERCE_TRUSTED_PAYMENT_SIGNER_KEYS_ENV: &str =
-    "CHIO_COMMERCE_TRUSTED_PAYMENT_SIGNER_KEYS";
+const COMMERCE_TRUSTED_PAYMENT_SIGNER_KEYS_ENV: &str = "CHIO_COMMERCE_TRUSTED_PAYMENT_SIGNER_KEYS";
 const TRUST_MARKET_TRUSTED_AUTHORITY_KEYS_ENV: &str = "CHIO_TRUST_MARKET_TRUSTED_AUTHORITY_KEYS";
 const SWARM_TRUSTED_WITNESS_KEYS_ENV: &str = "CHIO_SWARM_TRUSTED_WITNESS_KEYS";
 const DISCLOSURE_TRUSTED_LINEAGE_SIGNER_KEYS_ENV: &str =
@@ -62,7 +62,14 @@ const PUBLIC_SETTLEMENT_TRUSTED_ESCROW_RUNTIME_CODEHASH_ENV: &str =
 const PUBLIC_SETTLEMENT_TRUSTED_BOND_VAULT_RUNTIME_CODEHASH_ENV: &str =
     "CHIO_PUBLIC_SETTLEMENT_TRUSTED_BOND_VAULT_RUNTIME_CODEHASH";
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum AgentWebReplayMode {
+    ReadOnly,
+    Consume,
+}
+
 pub(super) fn agent_web_verifier_trust_from_env(
+    replay_mode: AgentWebReplayMode,
 ) -> Result<chio_control_plane::agent_web::AgentWebVerifierTrust, CliError> {
     let mut trust = match std::env::var(AGENT_WEB_STANDARD_WEBHOOKS_SECRET_ENV) {
         Ok(secret) => chio_control_plane::agent_web::AgentWebVerifierTrust::new()
@@ -76,10 +83,20 @@ pub(super) fn agent_web_verifier_trust_from_env(
             )))
         }
     };
-    if let Some((now_unix_seconds, max_age_seconds)) =
-        standard_webhooks_replay_window_from_env()?
-    {
+    if let Some((now_unix_seconds, max_age_seconds)) = standard_webhooks_replay_window_from_env()? {
         trust = trust.with_standard_webhooks_replay_window(now_unix_seconds, max_age_seconds);
+        if replay_mode == AgentWebReplayMode::Consume {
+            let replay_store_path = required_non_empty_env(AGENT_WEB_REPLAY_STORE_PATH_ENV)?;
+            let replay_store = chio_store_sqlite::SqliteAgentWebReplayStore::open(
+                replay_store_path,
+            )
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
+                    "{AGENT_WEB_REPLAY_STORE_PATH_ENV} could not be opened: {error}"
+                ))
+            })?;
+            trust = trust.with_standard_webhooks_replay_store(Arc::new(replay_store));
+        }
     }
     match std::env::var(AGENT_WEB_TRUSTED_KERNEL_KEYS_ENV) {
         Ok(keys) => {
@@ -110,6 +127,21 @@ pub(super) fn agent_web_verifier_trust_from_env(
         }
     }
     Ok(trust)
+}
+
+fn required_non_empty_env(env_name: &str) -> Result<String, CliError> {
+    match std::env::var(env_name) {
+        Ok(value) if !value.trim().is_empty() => Ok(value),
+        Ok(_) => Err(CliError::cli_other_error(format!(
+            "{env_name} must be a non-empty path"
+        ))),
+        Err(std::env::VarError::NotPresent) => Err(CliError::cli_other_error(format!(
+            "{env_name} is required when Standard Webhooks replay protection is enabled"
+        ))),
+        Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
+            "{env_name} must be valid UTF-8"
+        ))),
+    }
 }
 
 fn standard_webhooks_replay_window_from_env() -> Result<Option<(u64, u64)>, CliError> {
@@ -306,11 +338,13 @@ fn optional_public_settlement_independent_chain_head_from_env(
     proof_bundle: &chio_web3::settlement_proof::PublicSettlementProofBundle,
 ) -> Result<Option<chio_web3::settlement_proof::PublicSettlementIndependentChainHead>, CliError> {
     let head_from_json = match std::env::var(PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON_ENV) {
-        Ok(value) => serde_json::from_str(value.trim()).map(Some).map_err(|error| {
-            CliError::cli_other_error(format!(
+        Ok(value) => serde_json::from_str(value.trim())
+            .map(Some)
+            .map_err(|error| {
+                CliError::cli_other_error(format!(
                 "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON_ENV} must be valid JSON: {error}"
             ))
-        }),
+            }),
         Err(std::env::VarError::NotPresent) => Ok(None),
         Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
             "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_HEAD_JSON_ENV} must be valid UTF-8"
@@ -321,8 +355,10 @@ fn optional_public_settlement_independent_chain_head_from_env(
     }
 
     match std::env::var(PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV) {
-        Ok(value) => fetch_public_settlement_independent_chain_head_from_rpc(value.trim(), proof_bundle)
-            .map(Some),
+        Ok(value) => {
+            fetch_public_settlement_independent_chain_head_from_rpc(value.trim(), proof_bundle)
+                .map(Some)
+        }
         Err(std::env::VarError::NotPresent) => Ok(None),
         Err(std::env::VarError::NotUnicode(_)) => Err(CliError::cli_other_error(format!(
             "{PUBLIC_SETTLEMENT_INDEPENDENT_CHAIN_RPC_URL_ENV} must be valid UTF-8"
@@ -515,9 +551,10 @@ fn required_json_rpc_string<'a>(
     field: &str,
     label: &str,
 ) -> Result<&'a str, CliError> {
-    value.get(field).and_then(serde_json::Value::as_str).ok_or_else(|| {
-        CliError::cli_other_error(format!("{label}.{field} must be a string"))
-    })
+    value
+        .get(field)
+        .and_then(serde_json::Value::as_str)
+        .ok_or_else(|| CliError::cli_other_error(format!("{label}.{field} must be a string")))
 }
 
 pub(super) fn public_settlement_verifier_trust_from_env(
@@ -615,20 +652,25 @@ pub(super) fn commerce_trusted_event_authority_receipt_kernel_keys_from_env(
 
 pub(super) fn commerce_trusted_payment_signer_keys_from_env(
 ) -> Result<Vec<chio_core_types::PublicKey>, CliError> {
-    required_public_keys_from_env(COMMERCE_TRUSTED_PAYMENT_SIGNER_KEYS_ENV, "commerce payment signer")
+    required_public_keys_from_env(
+        COMMERCE_TRUSTED_PAYMENT_SIGNER_KEYS_ENV,
+        "commerce payment signer",
+    )
 }
 
 pub(super) fn disclosure_lineage_verifier_trust_from_env(
 ) -> Result<chio_selective_disclosure::DisclosureLineageVerifierTrust, CliError> {
-    Ok(chio_selective_disclosure::DisclosureLineageVerifierTrust::new()
-        .with_trusted_lineage_signer_keys(required_public_keys_from_env(
-            DISCLOSURE_TRUSTED_LINEAGE_SIGNER_KEYS_ENV,
-            "disclosure lineage signer",
-        )?)
-        .with_trusted_crypto_context_report_signer_keys(required_public_keys_from_env(
-            DISCLOSURE_TRUSTED_CRYPTO_CONTEXT_REPORT_SIGNER_KEYS_ENV,
-            "disclosure crypto context report signer",
-        )?))
+    Ok(
+        chio_selective_disclosure::DisclosureLineageVerifierTrust::new()
+            .with_trusted_lineage_signer_keys(required_public_keys_from_env(
+                DISCLOSURE_TRUSTED_LINEAGE_SIGNER_KEYS_ENV,
+                "disclosure lineage signer",
+            )?)
+            .with_trusted_crypto_context_report_signer_keys(required_public_keys_from_env(
+                DISCLOSURE_TRUSTED_CRYPTO_CONTEXT_REPORT_SIGNER_KEYS_ENV,
+                "disclosure crypto context report signer",
+            )?),
+    )
 }
 
 pub(super) fn transaction_trusted_root_keys_from_env(

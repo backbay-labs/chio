@@ -389,10 +389,18 @@ pub fn ensure_anchor_operation_allowed(
     if controls.allows(operation) {
         return Ok(());
     }
-    Err(AnchorError::InvalidInput(format!(
-        "anchor operation {operation:?} denied while emergency mode {:?} is active",
-        controls.mode
-    )))
+    let diagnostic = match operation {
+        AnchorOperationKind::PublishRoot => {
+            "anchor operation PublishRoot denied while emergency mode is active"
+        }
+        AnchorOperationKind::ConfirmPublication => {
+            "anchor operation ConfirmPublication denied while emergency mode is active"
+        }
+        AnchorOperationKind::ImportSecondaryProof => {
+            "anchor operation ImportSecondaryProof denied while emergency mode is active"
+        }
+    };
+    Err(AnchorError::InvalidInput(String::from(diagnostic)))
 }
 
 #[cfg(test)]
@@ -400,8 +408,8 @@ mod tests {
     use super::{
         anchor_incident_is_conflict, classify_anchor_lane, ensure_anchor_operation_allowed,
         AnchorAlertSeverity, AnchorControlState, AnchorEmergencyControls, AnchorEmergencyMode,
-        AnchorIncidentAlert, AnchorIndexerCursor, AnchorIndexerCursorInput, AnchorIndexerStatus,
-        AnchorLaneHealthStatus, AnchorOperationKind, AnchorRuntimeReport,
+        AnchorError, AnchorIncidentAlert, AnchorIndexerCursor, AnchorIndexerCursorInput,
+        AnchorIndexerStatus, AnchorLaneHealthStatus, AnchorOperationKind, AnchorRuntimeReport,
         CHIO_ANCHOR_RUNTIME_REPORT_SCHEMA,
     };
     use crate::bundle::AnchorLaneKind;
@@ -438,6 +446,38 @@ mod tests {
         assert!(error
             .to_string()
             .contains("anchor operation PublishRoot denied"));
+    }
+
+    #[test]
+    fn denied_operations_use_bounded_static_diagnostics() {
+        let cases = [
+            (
+                AnchorOperationKind::PublishRoot,
+                "anchor operation PublishRoot denied while emergency mode is active",
+            ),
+            (
+                AnchorOperationKind::ConfirmPublication,
+                "anchor operation ConfirmPublication denied while emergency mode is active",
+            ),
+            (
+                AnchorOperationKind::ImportSecondaryProof,
+                "anchor operation ImportSecondaryProof denied while emergency mode is active",
+            ),
+        ];
+
+        for (operation, expected) in cases {
+            let controls = AnchorEmergencyControls {
+                mode: AnchorEmergencyMode::Halted,
+                changed_at: 1_712_337_200,
+                reason: None,
+            };
+            let error = ensure_anchor_operation_allowed(controls, operation)
+                .test_expect_err("halted mode should deny every operation");
+            let AnchorError::InvalidInput(diagnostic) = error else {
+                panic!("denied anchor operation returned the wrong error variant");
+            };
+            assert_eq!(diagnostic, expected);
+        }
     }
 
     #[test]

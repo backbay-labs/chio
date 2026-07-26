@@ -1,6 +1,8 @@
 use super::evaluation_helpers::PreDispatchCleanupDeny;
 use super::*;
 use crate::budget_store::BudgetInvocationCaptureDecision;
+use crate::kernel::dispatch::dispatch_admission_error_reason;
+use crate::kernel::kernel_drop_guard::reserved_runtime_admission_ids;
 
 impl ChioKernel {
     pub(crate) fn evaluate_tool_call_with_nested_flow_client<C: NestedFlowClient>(
@@ -19,6 +21,27 @@ impl ChioKernel {
     }
 
     pub(crate) async fn evaluate_tool_call_with_nested_flow_client_async<C: NestedFlowClient>(
+        &self,
+        parent_context: &OperationContext,
+        request: &ToolCallRequest,
+        client: &mut C,
+        extra_metadata: Option<serde_json::Value>,
+    ) -> Result<ToolCallResponse, KernelError> {
+        let evaluation_id = uuid::Uuid::now_v7().to_string();
+        RECEIPT_EVALUATION_SCOPE_KEY
+            .scope(
+                evaluation_id,
+                self.evaluate_tool_call_with_nested_flow_client_async_scoped(
+                    parent_context,
+                    request,
+                    client,
+                    extra_metadata,
+                ),
+            )
+            .await
+    }
+
+    async fn evaluate_tool_call_with_nested_flow_client_async_scoped<C: NestedFlowClient>(
         &self,
         parent_context: &OperationContext,
         request: &ToolCallRequest,
@@ -111,7 +134,8 @@ impl ChioKernel {
                 &request.request_id,
                 receipt_admission.clone(),
             );
-        let _receipt_federation_scope = scope_receipt_federation_admission(Some(receipt_admission));
+        let _receipt_federation_scope =
+            scope_receipt_federation_admission(Some(receipt_admission.clone()));
 
         self.validate_web3_evidence_prerequisites()?;
 
@@ -149,7 +173,7 @@ impl ChioKernel {
             return self.build_deny_response(request, &msg, now, None);
         }
 
-        if let Err(e) = self.check_revocation(cap) {
+        if let Err(e) = self.check_tool_call_revocation_admission(request) {
             let msg = e.to_string();
             warn!(request_id = %request.request_id, reason = %redacted!(&msg), "capability rejected");
             return self.build_deny_response(request, &msg, now, None);
@@ -185,11 +209,27 @@ impl ChioKernel {
         // DPoP enforcement before budget charge: if any matching grant requires
         // DPoP, verify the proof now so an attacker cannot drain the budget with
         // a valid capability token but missing or invalid DPoP proof.
-        if matching_grants
+        let dpop_required = matching_grants
             .iter()
-            .any(|m| m.grant.dpop_required == Some(true))
-        {
-            if let Err(e) = self.verify_dpop_for_request(request, cap) {
+            .any(|matching| matching.grant.dpop_required == Some(true));
+        if dpop_required {
+            let verification = request.dpop_proof.as_ref().map_or_else(
+                || {
+                    Err(KernelError::DpopVerificationFailed(
+                        "grant requires DPoP proof but none was provided".to_string(),
+                    ))
+                },
+                |proof| {
+                    self.verify_dpop_for_permission_preview(
+                        proof,
+                        cap,
+                        &request.server_id,
+                        &request.tool_name,
+                        &request.arguments,
+                    )
+                },
+            );
+            if let Err(e) = verification {
                 let msg = e.to_string();
                 warn!(request_id = %request.request_id, reason = %redacted!(&msg), "DPoP verification failed");
                 return self.build_deny_response(request, &msg, now, None);
@@ -748,33 +788,6 @@ impl ChioKernel {
             });
         }
 
-        if budget_mutation.charge_result().is_none() {
-            if let Err(error) = self.reserve_presented_execution_nonce(request) {
-                let msg = error.to_string();
-                warn!(request_id = %request.request_id, reason = %redacted!(&msg), "execution nonce denied");
-                return self.with_pre_invocation_guard_evidence(
-                    &pre_invocation_guard_evidence,
-                    || {
-                        self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
-                            request,
-                            reason: &msg,
-                            timestamp: now,
-                            matched_grant_index,
-                            cap,
-                            budget_mutation: &budget_mutation,
-                            payment_authorization: None,
-                            durable_operation: durable_admission
-                                .as_ref()
-                                .map(DurableToolAdmission::operation),
-                            runtime_admission_metadata,
-                            verified_payee_binding: verified_governed_payee_binding.as_ref(),
-                            budget_lease_acquired,
-                        })
-                    },
-                );
-            }
-        }
-
         // Resolve the server before arming the drop guard. A missing registry
         // entry has not crossed the connector dispatch boundary, so this branch
         // can unwind pre-dispatch admission state.
@@ -809,6 +822,118 @@ impl ChioKernel {
                 })
             });
         };
+        let matched_grant = matching_grants
+            .iter()
+            .find(|matching| matching.index == matched_grant_index)
+            .map(|matching| matching.grant)
+            .ok_or_else(|| {
+                KernelError::Internal(
+                    "selected grant disappeared before dispatch revalidation".to_string(),
+                )
+            })?;
+        let mut credential_reservation = match self.reserve_dispatch_credentials(
+            request,
+            cap,
+            dpop_required,
+            current_unix_timestamp(),
+        ) {
+            Ok(reservation) => reservation,
+            Err(error) => {
+                let reason = error.to_string();
+                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "dispatch credential reservation denied (nested flow)");
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                            request,
+                            reason: &reason,
+                            timestamp: current_unix_timestamp(),
+                            matched_grant_index,
+                            cap,
+                            budget_mutation: &budget_mutation,
+                            payment_authorization: None,
+                            durable_operation: durable_admission
+                                .as_ref()
+                                .map(DurableToolAdmission::operation),
+                            runtime_admission_metadata: runtime_admission_metadata.clone(),
+                            verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                            budget_lease_acquired,
+                        })
+                    },
+                );
+            }
+        };
+        let force_dispatch_revalidation =
+            credential_reservation.requires_post_reservation_revalidation();
+        let revalidation_now_unix_ms = current_unix_timestamp_ms();
+        let readiness_result = {
+            let mut readiness_drop_guard = PostAdmissionDropGuard::new(
+                self,
+                request,
+                cap,
+                Some(matched_grant_index),
+                &budget_mutation,
+                None,
+                PostAdmissionReceiptContext {
+                    extra_metadata: runtime_admission_metadata.clone(),
+                    pre_invocation_guard_evidence: pre_invocation_guard_evidence.clone(),
+                    verified_payee_binding: verified_governed_payee_binding.clone(),
+                },
+                budget_lease_acquired,
+            )
+            .with_durable_operation(
+                durable_admission
+                    .as_ref()
+                    .map(DurableToolAdmission::operation),
+            );
+            let result = self
+                .wait_for_runtime_admission_dispatch_readiness(request)
+                .await;
+            readiness_drop_guard.disarm();
+            result
+        };
+        let final_dispatch_admission = match readiness_result {
+            Ok(readiness_waited) => self.revalidate_immediately_before_dispatch(
+                request,
+                dpop_required,
+                matched_grant,
+                matched_grant_index,
+                Some(parent_context),
+                Some(&parent_context.session_id),
+                Some(session_roots.as_slice()),
+                &receipt_admission,
+                runtime_admission_metadata.as_ref(),
+                false,
+                readiness_waited || force_dispatch_revalidation,
+                revalidation_now_unix_ms / 1000,
+                revalidation_now_unix_ms,
+            ),
+            Err(error) => Err(error),
+        };
+        if let Err(error) = final_dispatch_admission {
+            let mut reason = dispatch_admission_error_reason(&error);
+            if let Err(rollback_error) = credential_reservation.rollback_before_dispatch() {
+                reason = format!("{reason}; {rollback_error}");
+            }
+            warn!(request_id = %request.request_id, reason = %redacted!(&reason), "immediate dispatch revalidation denied (nested flow)");
+            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                    request,
+                    reason: &reason,
+                    timestamp: revalidation_now_unix_ms / 1000,
+                    matched_grant_index,
+                    cap,
+                    budget_mutation: &budget_mutation,
+                    payment_authorization: None,
+                    durable_operation: durable_admission
+                        .as_ref()
+                        .map(DurableToolAdmission::operation),
+                    runtime_admission_metadata: runtime_admission_metadata.clone(),
+                    verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                    budget_lease_acquired,
+                })
+            });
+        }
         if let Some(admission) = durable_admission.as_mut() {
             if let Err(error) = self.mark_durable_capture_pending(admission, now_unix_ms) {
                 let reason = error.to_string();
@@ -882,7 +1007,43 @@ impl ChioKernel {
             now_unix_ms,
             verified_governed_payee_binding.as_ref(),
         ) {
-            Ok(authorization) => authorization,
+            Ok(authorization) => {
+                if authorization.is_some() {
+                    if let Err(error) = credential_reservation.retain_after_external_authorization()
+                    {
+                        let reason = format!(
+                            "dispatch credential retention failed after payment authorization: {error}"
+                        );
+                        warn!(request_id = %request.request_id, reason = %redacted!(&reason), "payment credential retention denied (nested flow)");
+                        return self.with_pre_invocation_guard_evidence(
+                            &pre_invocation_guard_evidence,
+                            || {
+                                self.build_pre_dispatch_cleanup_deny_response_with_credentials(
+                                    PreDispatchCleanupDeny {
+                                        request,
+                                        reason: &reason,
+                                        timestamp: current_unix_timestamp(),
+                                        matched_grant_index,
+                                        cap,
+                                        budget_mutation: &budget_mutation,
+                                        payment_authorization: authorization.as_ref(),
+                                        durable_operation: durable_admission
+                                            .as_ref()
+                                            .map(DurableToolAdmission::operation),
+                                        runtime_admission_metadata: runtime_admission_metadata
+                                            .clone(),
+                                        verified_payee_binding: verified_governed_payee_binding
+                                            .as_ref(),
+                                        budget_lease_acquired,
+                                    },
+                                    PaymentCredentialDisposition::RetentionOutcomeUnknown,
+                                )
+                            },
+                        );
+                    }
+                }
+                authorization
+            }
             Err(error) => {
                 let internal_reason = error.to_string();
                 warn!(request_id = %request.request_id, reason = %redacted!(&internal_reason), "payment denied");
@@ -897,21 +1058,64 @@ impl ChioKernel {
                     &error,
                     PaymentError::Declined(_) | PaymentError::InsufficientFunds
                 ) {
+                    let mut denial_reason = reason.clone();
+                    let credential_disposition = if let Err(rollback_error) =
+                        credential_reservation.rollback_before_dispatch()
+                    {
+                        denial_reason = format!("{denial_reason}; {rollback_error}");
+                        PaymentCredentialDisposition::RetentionOutcomeUnknown
+                    } else {
+                        PaymentCredentialDisposition::NonePresent
+                    };
+                    let cleanup_metadata = self.merge_dispatch_credential_disposition_metadata(
+                        runtime_admission_metadata,
+                        credential_disposition,
+                    );
+                    if budget_mutation
+                        .charge_result()
+                        .and_then(|charge| charge.invocation_capture.as_ref())
+                        .is_some()
+                    {
+                        return self.with_pre_invocation_guard_evidence(
+                            &pre_invocation_guard_evidence,
+                            || {
+                                self.build_definite_payment_denial_after_capture(
+                                    request,
+                                    &denial_reason,
+                                    now,
+                                    cap,
+                                    &budget_mutation,
+                                    durable_admission
+                                        .as_ref()
+                                        .map(DurableToolAdmission::operation),
+                                    cleanup_metadata,
+                                    budget_lease_acquired,
+                                    verified_governed_payee_binding.as_ref(),
+                                )
+                            },
+                        );
+                    }
                     return self.with_pre_invocation_guard_evidence(
                         &pre_invocation_guard_evidence,
                         || {
-                            self.build_definite_payment_denial_after_capture(
-                                request,
-                                &reason,
-                                now,
-                                cap,
-                                &budget_mutation,
-                                durable_admission
-                                    .as_ref()
-                                    .map(DurableToolAdmission::operation),
-                                runtime_admission_metadata,
-                                budget_lease_acquired,
-                                verified_governed_payee_binding.as_ref(),
+                            self.build_pre_dispatch_cleanup_deny_response_with_credentials(
+                                PreDispatchCleanupDeny {
+                                    request,
+                                    reason: &denial_reason,
+                                    timestamp: now,
+                                    matched_grant_index,
+                                    cap,
+                                    budget_mutation: &budget_mutation,
+                                    payment_authorization: None,
+                                    durable_operation: durable_admission
+                                        .as_ref()
+                                        .map(DurableToolAdmission::operation),
+                                    runtime_admission_metadata: cleanup_metadata,
+                                    verified_payee_binding: verified_governed_payee_binding
+                                        .as_ref(),
+                                    budget_lease_acquired,
+                                },
+                                PaymentCredentialDisposition::NonePresent,
                             )
                         },
                     );
@@ -929,16 +1133,26 @@ impl ChioKernel {
                         }
                     })),
                 );
-                let nonce_error = self.reserve_presented_execution_nonce(request).err();
-                let denial_reason = nonce_error.as_ref().map_or(reason.as_str(), |_| {
-                    "execution nonce denied after ambiguous payment authorization"
-                });
+                let (denial_reason, credential_disposition) =
+                    match credential_reservation.commit() {
+                        Ok(disposition) => (reason, disposition),
+                        Err(retention_error) => (
+                            format!(
+                                "payment authorization outcome is ambiguous and credential retention failed: {retention_error}"
+                            ),
+                            PaymentCredentialDisposition::RetentionOutcomeUnknown,
+                        ),
+                    };
+                let metadata = self.merge_dispatch_credential_disposition_metadata(
+                    metadata,
+                    credential_disposition,
+                );
                 return self.with_pre_invocation_guard_evidence(
                     &pre_invocation_guard_evidence,
                     || {
                         self.build_deny_response_with_metadata_and_payee_binding(
                             request,
-                            denial_reason,
+                            &denial_reason,
                             now,
                             Some(matched_grant_index),
                             metadata,
@@ -949,31 +1163,105 @@ impl ChioKernel {
             }
         };
 
-        if budget_mutation.charge_result().is_some() {
-            if let Err(error) = self.reserve_presented_execution_nonce(request) {
-                let reason = error.to_string();
-                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "execution nonce denied after payment authorization");
+        if payment_authorization.is_some() {
+            let post_payment_now_unix_ms = current_unix_timestamp_ms();
+            if let Err(error) = self.revalidate_immediately_before_dispatch(
+                request,
+                dpop_required,
+                matched_grant,
+                matched_grant_index,
+                Some(parent_context),
+                Some(&parent_context.session_id),
+                Some(session_roots.as_slice()),
+                &receipt_admission,
+                runtime_admission_metadata.as_ref(),
+                false,
+                force_dispatch_revalidation,
+                post_payment_now_unix_ms / 1000,
+                post_payment_now_unix_ms,
+            ) {
+                let reason = dispatch_admission_error_reason(&error);
+                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "post-payment dispatch revalidation denied (nested flow)");
                 return self.with_pre_invocation_guard_evidence(
                     &pre_invocation_guard_evidence,
                     || {
-                        self.build_nonce_denial_after_monetary_cleanup(PreDispatchCleanupDeny {
-                            request,
-                            reason: &reason,
-                            timestamp: now,
-                            matched_grant_index,
-                            cap,
-                            budget_mutation: &budget_mutation,
-                            payment_authorization: payment_authorization.as_ref(),
-                            durable_operation: durable_admission
-                                .as_ref()
-                                .map(DurableToolAdmission::operation),
-                            runtime_admission_metadata,
-                            verified_payee_binding: verified_governed_payee_binding.as_ref(),
-                            budget_lease_acquired,
-                        })
+                        self.build_pre_dispatch_cleanup_deny_response_with_credentials(
+                            PreDispatchCleanupDeny {
+                                request,
+                                reason: &reason,
+                                timestamp: post_payment_now_unix_ms / 1000,
+                                matched_grant_index,
+                                cap,
+                                budget_mutation: &budget_mutation,
+                                payment_authorization: payment_authorization.as_ref(),
+                                durable_operation: durable_admission
+                                    .as_ref()
+                                    .map(DurableToolAdmission::operation),
+                                runtime_admission_metadata: runtime_admission_metadata.clone(),
+                                verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                                budget_lease_acquired,
+                            },
+                            PaymentCredentialDisposition::RetainedAfterAuthorization,
+                        )
                     },
                 );
             }
+        }
+
+        if let Err(error) = self.mark_session_request_dispatch_started(
+            Some(&parent_context.session_id),
+            parent_context.request_id.as_str(),
+        ) {
+            let reason = error.to_string();
+            warn!(request_id = %request.request_id, reason = %redacted!(&reason), "parent session cancellation won the nested pre-dispatch boundary");
+            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                self.build_pre_dispatch_cleanup_deny_response_with_credentials(
+                    PreDispatchCleanupDeny {
+                        request,
+                        reason: &reason,
+                        timestamp: current_unix_timestamp(),
+                        matched_grant_index,
+                        cap,
+                        budget_mutation: &budget_mutation,
+                        payment_authorization: payment_authorization.as_ref(),
+                        durable_operation: durable_admission
+                            .as_ref()
+                            .map(DurableToolAdmission::operation),
+                        runtime_admission_metadata: runtime_admission_metadata.clone(),
+                        verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                        budget_lease_acquired,
+                    },
+                    if payment_authorization.is_some() {
+                        PaymentCredentialDisposition::RetainedAfterAuthorization
+                    } else {
+                        PaymentCredentialDisposition::NonePresent
+                    },
+                )
+            });
+        }
+
+        if let Err(error) = credential_reservation.retain_if_dropped() {
+            let reason = format!("dispatch credential retention failed before dispatch: {error}");
+            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                self.build_pre_dispatch_cleanup_deny_response_with_credentials(
+                    PreDispatchCleanupDeny {
+                        request,
+                        reason: &reason,
+                        timestamp: current_unix_timestamp(),
+                        matched_grant_index,
+                        cap,
+                        budget_mutation: &budget_mutation,
+                        payment_authorization: payment_authorization.as_ref(),
+                        durable_operation: durable_admission
+                            .as_ref()
+                            .map(DurableToolAdmission::operation),
+                        runtime_admission_metadata: runtime_admission_metadata.clone(),
+                        verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                        budget_lease_acquired,
+                    },
+                    PaymentCredentialDisposition::RetentionOutcomeUnknown,
+                )
+            });
         }
 
         if let Some(admission) = durable_admission.as_mut() {
@@ -1036,10 +1324,12 @@ impl ChioKernel {
         // and the invoke below, so the future cannot be dropped in this window.
         post_admission_drop_guard.mark_dispatch_started();
         let has_monetary_charge = budget_mutation.charge_result().is_some();
+        let nested_interaction_observed = std::sync::atomic::AtomicBool::new(false);
         let dispatch_call = async {
             let mut bridge = SessionNestedFlowBridge {
                 sessions: &self.sessions,
                 child_receipts: post_admission_drop_guard.child_receipts_mut(),
+                nested_interaction_observed: &nested_interaction_observed,
                 parent_context,
                 allow_sampling: self.config.allow_sampling,
                 allow_sampling_tool_use: self.config.allow_sampling_tool_use,
@@ -1097,6 +1387,8 @@ impl ChioKernel {
             }
             None => dispatch_call.await,
         };
+        let nested_interaction_observed =
+            nested_interaction_observed.load(std::sync::atomic::Ordering::Acquire);
         // Persist the buffered child receipts while the guard is still armed,
         // draining each from the guard only once it durably lands. If the commit
         // writer is saturated and a bounded append times out, the `?` returns
@@ -1113,64 +1405,93 @@ impl ChioKernel {
         post_admission_drop_guard.disarm();
         drop(post_admission_drop_guard);
         let (tool_output, reported_cost) = match tool_output_result {
-            Ok(output) => output,
-            Err(error @ KernelError::UrlElicitationsRequired { .. }) => {
-                if durable_admission.is_none() {
-                    let cleanup = self.with_pre_invocation_guard_evidence(
-                        &pre_invocation_guard_evidence,
-                        || {
-                            self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
-                                request,
-                                reason: "tool server requested URL elicitation before execution",
-                                timestamp: now,
-                                matched_grant_index,
-                                cap,
-                                budget_mutation: &budget_mutation,
-                                payment_authorization: payment_authorization.as_ref(),
-                                durable_operation: None,
-                                runtime_admission_metadata: runtime_admission_metadata.clone(),
-                                verified_payee_binding: verified_governed_payee_binding.as_ref(),
-                                budget_lease_acquired,
-                            })
-                        },
-                    );
-                    if let Err(cleanup_error) = cleanup {
-                        warn!(
-                            request_id = %request.request_id,
-                            reason = %redacted!(&cleanup_error),
-                            audit_fault = "url_elicitation_cleanup_unrecorded",
-                            "nested URL-elicitation cleanup could not be confirmed"
-                        );
-                    }
-                    warn!(
-                        request_id = %request.request_id,
-                        reason = %redacted!(&error),
-                        "tool call requires URL elicitation"
-                    );
-                    return Err(error);
-                }
+            Ok(output) => {
+                let _credential_disposition = credential_reservation.commit()?;
+                output
+            }
+            Err(error @ KernelError::UrlElicitationsRequired { .. })
+                if nested_interaction_observed =>
+            {
+                let _credential_disposition = credential_reservation.commit()?;
+                let reason =
+                    format!("URL elicitation requested after a nested interaction: {error}");
                 let metadata = self.ambiguous_dispatch_receipt_metadata(
                     &budget_mutation,
                     payment_authorization.as_ref(),
-                    runtime_admission_metadata,
+                    runtime_admission_metadata.clone(),
                 );
-                let receipt_result =
-                    self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
-                        self.build_cancelled_response_with_metadata_and_payee_binding(
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_incomplete_response_with_output_metadata_and_payee_binding(
                             request,
-                            "tool server requested URL elicitation after dispatch entry",
+                            None,
+                            &reason,
                             now,
                             Some(matched_grant_index),
                             metadata,
                             verified_governed_payee_binding.as_ref(),
                         )
-                    });
-                if let Err(receipt_error) = receipt_result {
+                    },
+                );
+            }
+            Err(error @ KernelError::UrlElicitationsRequired { .. }) => {
+                let credential_cleanup = if payment_authorization.is_some() {
+                    credential_reservation.commit().map(|_| ())
+                } else {
+                    credential_reservation.rollback_before_dispatch()
+                };
+                if let Err(cleanup_error) = credential_cleanup {
                     warn!(
                         request_id = %request.request_id,
-                        reason = %redacted!(&receipt_error),
-                        audit_fault = "url_elicitation_terminal_receipt_unrecorded",
-                        "failed to record ambiguous URL-elicitation receipt"
+                        reason = %redacted!(&cleanup_error),
+                        audit_fault = "url_elicitation_credential_cleanup_unrecorded",
+                        "nested URL-elicitation credential cleanup could not be confirmed"
+                    );
+                }
+                let cleanup_denial = PreDispatchCleanupDeny {
+                    request,
+                    reason: "tool server requested URL elicitation before execution",
+                    timestamp: now,
+                    matched_grant_index,
+                    cap,
+                    budget_mutation: &budget_mutation,
+                    payment_authorization: payment_authorization.as_ref(),
+                    durable_operation: durable_admission
+                        .as_ref()
+                        .map(DurableToolAdmission::operation),
+                    runtime_admission_metadata: runtime_admission_metadata.clone(),
+                    verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                    budget_lease_acquired,
+                };
+                let credential_disposition = if payment_authorization.is_some() {
+                    PaymentCredentialDisposition::RetainedAfterAuthorization
+                } else {
+                    PaymentCredentialDisposition::NonePresent
+                };
+                let cleanup_requires_receipt = payment_authorization.is_some()
+                    || !reserved_runtime_admission_ids(runtime_admission_metadata.as_ref())
+                        .is_empty();
+                let cleanup = if cleanup_requires_receipt {
+                    self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                        self.build_pre_dispatch_cleanup_deny_response_with_credentials(
+                            cleanup_denial,
+                            credential_disposition,
+                        )
+                        .map(|_| ())
+                    })
+                } else {
+                    self.unwind_url_elicitation_before_effect(
+                        cleanup_denial,
+                        credential_disposition,
+                    )
+                };
+                if let Err(cleanup_error) = cleanup {
+                    warn!(
+                        request_id = %request.request_id,
+                        reason = %redacted!(&cleanup_error),
+                        audit_fault = "url_elicitation_cleanup_unrecorded",
+                        "nested URL-elicitation cleanup could not be confirmed"
                     );
                 }
                 warn!(

@@ -23,6 +23,50 @@ fn make_guard_request_for_agent(agent_id: &str) -> GuardRequest {
     request
 }
 
+#[test]
+fn unknown_verdict_code_is_rejected() {
+    // Grounds blocking_unknown_verdict_denies at the raw ABI decoder.
+    let wat = r#"
+        (module
+            (memory (export "memory") 2)
+            (func (export "evaluate") (param i32 i32) (result i32)
+                (i32.const 7)
+            )
+        )
+    "#;
+    let mut backend = WasmtimeBackend::new().unwrap();
+    backend.load_module(wat.as_bytes(), 1_000_000).unwrap();
+
+    let result = backend.evaluate(&make_guard_request());
+    assert!(matches!(
+        result,
+        Err(WasmGuardError::Trap(message))
+            if message == "unexpected return value from evaluate: 7"
+    ));
+    assert_eq!(decode_guest_verdict(7), DecodedGuestVerdict::Unknown(7));
+}
+
+#[test]
+fn unknown_verdict_tripwire_catches_fail_open_variant() {
+    // Calibrates blocking_unknown_verdict_denies against a fail-open copy.
+    fn fail_open_variant(code: i32) -> DecodedGuestVerdict {
+        match code {
+            crate::abi::VERDICT_DENY => DecodedGuestVerdict::Deny,
+            _ => DecodedGuestVerdict::Allow,
+        }
+    }
+
+    let expected = DecodedGuestVerdict::Unknown(7);
+    assert_eq!(decode_guest_verdict(7), expected);
+    let caught = std::panic::catch_unwind(|| {
+        assert_eq!(fail_open_variant(7), expected);
+    });
+    assert!(
+        caught.is_err(),
+        "tripwire must reject a fail-open unknown arm"
+    );
+}
+
 // -------------------------------------------------------------------
 // chio_alloc tests
 // -------------------------------------------------------------------
@@ -343,6 +387,29 @@ fn chio_deny_reason_invalid_returns_none() {
     }
 }
 
+#[test]
+fn malformed_guest_deny_response_retains_deny_without_reason() {
+    // Grounds malformed_deny_reason_preserves_decision with invalid UTF-8.
+    let wat = r#"
+        (module
+            (memory (export "memory") 2)
+            (data (i32.const 512) "\ff")
+            (func (export "evaluate") (param i32 i32) (result i32)
+                (i32.const 1)
+            )
+            (func (export "chio_deny_reason") (param $buf_ptr i32) (param i32) (result i32)
+                (memory.copy (local.get $buf_ptr) (i32.const 512) (i32.const 1))
+                (i32.const 1)
+            )
+        )
+    "#;
+    let mut backend = WasmtimeBackend::new().unwrap();
+    backend.load_module(wat.as_bytes(), 1_000_000).unwrap();
+
+    let result = backend.evaluate(&make_guard_request()).unwrap();
+    assert!(matches!(result, GuardVerdict::Deny { reason: None }));
+}
+
 // -------------------------------------------------------------------
 // Security enforcement tests
 // -------------------------------------------------------------------
@@ -431,6 +498,7 @@ fn import_validation_accepts_chio_only() {
 
 #[test]
 fn memory_growth_beyond_limit_traps() {
+    // Grounds resource_exhaustion_fail_closed at the memory limiter.
     // WAT module that tries to grow memory by 1000 pages (64 MB)
     // with a very small limit (2 pages = 128 KiB)
     let wat = r#"
@@ -456,6 +524,10 @@ fn memory_growth_beyond_limit_traps() {
     assert!(
         result.is_err(),
         "expected error (trap) when memory.grow exceeds limit, got: {result:?}"
+    );
+    assert!(
+        matches!(backend.last_fuel_consumed(), Some(consumed) if consumed <= 10_000_000),
+        "a completed trapping guest call must retain bounded fuel evidence"
     );
 }
 
@@ -484,6 +556,7 @@ fn memory_growth_within_limit_works() {
         result.is_ok(),
         "expected Ok when memory.grow is within limit, got: {result:?}"
     );
+    assert_eq!(backend.last_memory_bytes(), Some(2 * 64 * 1024));
 }
 
 #[test]

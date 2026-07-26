@@ -9,6 +9,10 @@ use chio_core_types::capability::{
     token::CapabilityToken,
 };
 use chio_core_types::crypto::{PublicKey, Signature, SigningAlgorithm, SigningBackend};
+use chio_core_types::hashing::Hash;
+use chio_core_types::merkle::node_hash;
+use chio_core_types::merkle_fixtures::bounded_merkle_case;
+use chio_core_types::merkle_steps::inclusion_step;
 use chio_core_types::receipt::{
     body::ChioReceiptBody, decision::Decision, decision::ToolCallAction, kinds::TrustLevel,
 };
@@ -17,11 +21,14 @@ use serde_json::Value;
 use crate::capability_verify::CapabilityError;
 use crate::clock::FixedClock;
 use crate::evaluate::EvaluateInput;
+use crate::formal_aeneas::{ledger_apply, ledger_is_terminal, ReservationLedger};
 use crate::formal_core::{
-    composite_quota_authorize, family_binding_preserved, guard_pipeline_allows,
-    monetary_cap_is_subset_by_parts, optional_u32_cap_is_subset, quota_maximum_compatible,
-    receipt_fields_coupled, required_true_is_preserved, revocation_snapshot_denies,
-    threshold_distinct_eligible_signers, time_window_valid, GuardStep,
+    budget_charge_admits, budget_increment_admits, composite_quota_authorize,
+    family_binding_preserved, guard_pipeline_allows, monetary_cap_is_subset_by_parts,
+    optional_u32_cap_is_subset, quota_maximum_compatible, receipt_fields_coupled,
+    required_true_is_preserved, revocation_lookup_denies, revocation_snapshot_denies,
+    threshold_distinct_eligible_signers, time_window_valid, BudgetAdmissionProjectionError,
+    GuardStep, RevocationCheckTarget,
 };
 use crate::guard::PortableToolCallRequest;
 use crate::normalized::{NormalizedOperation, NormalizedScope, NormalizedToolGrant};
@@ -500,6 +507,28 @@ pub fn verify_revocation_predicate_idempotent() {
     let mirrored_second = revocation_snapshot_denies(token_revoked, token_revoked);
     assert_eq!(mirrored_first, mirrored_second);
     assert_eq!(mirrored_first, token_revoked);
+}
+
+#[kani::proof]
+pub fn verify_revocation_admission_projection() {
+    let token_revoked = kani::any::<bool>();
+    let ancestor_revoked = kani::any::<bool>();
+
+    let store_denied =
+        if revocation_lookup_denies(RevocationCheckTarget::PresentedToken, token_revoked) {
+            true
+        } else {
+            revocation_lookup_denies(RevocationCheckTarget::Ancestor, ancestor_revoked)
+        };
+    let view_denied = if revocation_lookup_denies(RevocationCheckTarget::Ancestor, ancestor_revoked)
+    {
+        true
+    } else {
+        revocation_lookup_denies(RevocationCheckTarget::PresentedToken, token_revoked)
+    };
+
+    assert_eq!(store_denied, token_revoked || ancestor_revoked);
+    assert_eq!(view_denied, token_revoked || ancestor_revoked);
 }
 
 // Single-step delegation attenuation has two algebraic pillars in Chio:
@@ -1105,6 +1134,179 @@ pub fn verify_budget_checked_add_no_overflow() {
     }
 }
 
+fn reservation_ledger_total(state: ReservationLedger) -> u64 {
+    state
+        .reserved
+        .checked_add(state.committed)
+        .and_then(|total| total.checked_add(state.released))
+        .and_then(|total| total.checked_add(state.retained))
+        .unwrap_or_else(|| unreachable!("reachable reservation ledger total fits in u64"))
+}
+
+#[kani::proof]
+pub fn verify_reservation_ledger_terminal_classification() {
+    let state = ReservationLedger {
+        reserved: u64::from(kani::any::<u8>()),
+        committed: u64::from(kani::any::<u8>()),
+        released: u64::from(kani::any::<u8>()),
+        retained: u64::from(kani::any::<u8>()),
+    };
+    let expected =
+        state.reserved == 0 && (state.committed != 0 || state.released != 0 || state.retained != 0);
+    assert_eq!(ledger_is_terminal(state), expected);
+}
+
+#[kani::proof]
+pub fn verify_reservation_ledger_conservation() {
+    let mut state = ReservationLedger::default();
+    let mut admitted_total = 0u64;
+    let mut terminal_disposition = 0u8;
+
+    for _ in 0..6 {
+        let op = kani::any::<u8>();
+        let amount = u64::from(kani::any::<u8>());
+        kani::assume(op <= 3);
+        kani::assume(amount <= 8);
+
+        let before = state;
+        let before_total = reservation_ledger_total(before);
+        let (next, valid) = ledger_apply(before, op, amount);
+        if !valid {
+            assert_eq!(next, before);
+        } else if op == 0 {
+            admitted_total = admitted_total
+                .checked_add(amount)
+                .unwrap_or_else(|| unreachable!("six eight-unit reservations fit in u64"));
+            assert_eq!(reservation_ledger_total(next), before_total + amount);
+        } else {
+            assert_eq!(reservation_ledger_total(next), before_total);
+        }
+
+        state = next;
+        assert_eq!(reservation_ledger_total(state), admitted_total);
+        if valid && op != 0 && amount != 0 && state.reserved == 0 {
+            assert_eq!(terminal_disposition, 0);
+            terminal_disposition = op;
+        }
+        if terminal_disposition != 0 {
+            assert_eq!(state.reserved, 0);
+        }
+        if admitted_total != 0 && state.reserved == 0 {
+            assert_ne!(terminal_disposition, 0);
+        }
+    }
+
+    let tail = u64::from(kani::any::<u8>());
+    let overflow_amount = tail + 1;
+
+    let reserve_boundary = ReservationLedger {
+        reserved: u64::MAX - tail,
+        committed: 0,
+        released: 0,
+        retained: 0,
+    };
+    assert_eq!(
+        ledger_apply(reserve_boundary, 0, overflow_amount),
+        (reserve_boundary, false)
+    );
+
+    let mixed_bucket_boundary = ReservationLedger {
+        reserved: 1,
+        committed: u64::MAX - 1,
+        released: 0,
+        retained: 0,
+    };
+    assert_eq!(
+        ledger_apply(mixed_bucket_boundary, 0, 1),
+        (mixed_bucket_boundary, false)
+    );
+
+    for op in 1..=3 {
+        let destination = u64::MAX - overflow_amount;
+        let terminal_boundary = ReservationLedger {
+            reserved: overflow_amount,
+            committed: if op == 1 { destination } else { 0 },
+            released: if op == 2 { destination } else { 0 },
+            retained: if op == 3 { destination } else { 0 },
+        };
+        let (terminal, valid) = ledger_apply(terminal_boundary, op, overflow_amount);
+        assert!(valid);
+        assert_eq!(terminal.reserved, 0);
+        assert_eq!(reservation_ledger_total(terminal), u64::MAX);
+    }
+
+    let invalid_aggregate = ReservationLedger {
+        reserved: 1,
+        committed: u64::MAX,
+        released: 0,
+        retained: 0,
+    };
+    assert_eq!(
+        ledger_apply(invalid_aggregate, 2, 1),
+        (invalid_aggregate, false)
+    );
+
+    let over_disposition = ReservationLedger {
+        reserved: tail,
+        ..ReservationLedger::default()
+    };
+    assert_eq!(
+        ledger_apply(over_disposition, 1, overflow_amount),
+        (over_disposition, false)
+    );
+
+    let terminal = ReservationLedger {
+        reserved: 0,
+        committed: 1,
+        released: 0,
+        retained: 0,
+    };
+    assert_eq!(ledger_apply(terminal, 0, 1), (terminal, false));
+    assert_eq!(ledger_apply(terminal, 2, 1), (terminal, false));
+}
+
+#[kani::proof]
+pub fn verify_budget_admission_projection() {
+    let invocation_count = kani::any::<u32>();
+    let max_invocations = kani::any::<u32>();
+    let has_invocation_cap = kani::any::<bool>();
+    let invocation_cap = has_invocation_cap.then_some(max_invocations);
+    let invocation_projection = budget_increment_admits(invocation_count, invocation_cap);
+    assert_eq!(
+        invocation_projection,
+        !has_invocation_cap || invocation_count < max_invocations,
+    );
+
+    let cost_units = kani::any::<u64>();
+    let max_per_invocation = kani::any::<u64>();
+    let has_per_invocation_cap = kani::any::<bool>();
+    let committed_cost_units = kani::any::<u64>();
+    let max_total_cost_units = kani::any::<u64>();
+    let has_total_cap = kani::any::<bool>();
+    let actual = budget_charge_admits(
+        invocation_count,
+        committed_cost_units,
+        cost_units,
+        invocation_cap,
+        has_per_invocation_cap.then_some(max_per_invocation),
+        has_total_cap.then_some(max_total_cost_units),
+    );
+    let expected = if has_total_cap && committed_cost_units.checked_add(cost_units).is_none() {
+        Err(BudgetAdmissionProjectionError::TotalCostOverflow)
+    } else {
+        let invocation_allowed = !has_invocation_cap || invocation_count < max_invocations;
+        let per_invocation_allowed = !has_per_invocation_cap || cost_units <= max_per_invocation;
+        let total_allowed = !has_total_cap
+            || committed_cost_units
+                .checked_add(cost_units)
+                .is_some_and(|total| {
+                    committed_cost_units <= max_total_cost_units && total <= max_total_cost_units
+                });
+        Ok(invocation_allowed && per_invocation_allowed && total_allowed)
+    };
+    assert_eq!(actual, expected);
+}
+
 #[kani::proof]
 pub fn verify_composite_quota_all_or_nothing() {
     let before = [kani::any::<u8>(), kani::any::<u8>(), kani::any::<u8>()];
@@ -1210,8 +1412,7 @@ pub fn verify_threshold_distinct_signers() {
 
 // =====================================================================
 // Public harnesses for recursive delegation, the signed delegation
-// receipt, the revocation-view freshness gate, and sparse-Merkle
-// inclusion soundness.
+// receipt, the revocation-view freshness gate, and Merkle inclusion.
 //
 // Each harness mirrors a property already proved (or pending proof) on
 // the Lean and TLA+ sides:
@@ -1221,11 +1422,10 @@ pub fn verify_threshold_distinct_signers() {
 //     determinism on canonical bytes.
 //   * verify_revocation_view_freshness   - RevocationView::install_if_newer
 //     monotone-epoch fail-closed gate (revocation_view.rs).
-//   * verify_oracle_inclusion_soundness  - sparse-Merkle inclusion proof
-//     soundness modulo a symbolic hash function (chio-revocation-oracle).
+//   * verify_inclusion_step_equivalence  - production/extraction step parity.
+//   * verify_oracle_inclusion_walk_parity  - production inclusion-walk parity.
 //
-// Each property is modelled at the algebraic level so the symbolic search
-// space stays bounded.
+// Each property uses a bounded input domain.
 // =====================================================================
 
 #[kani::proof]
@@ -1350,37 +1550,157 @@ pub fn verify_revocation_view_freshness() {
 }
 
 #[kani::proof]
-pub fn verify_oracle_inclusion_soundness() {
-    let leaf_present = kani::any::<bool>();
-    let chain_hashes_to_root = kani::any::<bool>();
+pub fn verify_inclusion_step_equivalence() {
+    let index = u64::from(kani::any::<u8>());
+    let size = u64::from(kani::any::<u8>());
+    kani::assume(index <= 8);
+    kani::assume(size <= 8);
 
-    let verifier_accepts = guard_pipeline_allows(
-        leaf_present,
-        &[if chain_hashes_to_root {
-            GuardStep::Allow
-        } else {
-            GuardStep::Deny
-        }],
-    );
+    let production = inclusion_step(index, size);
+    let extracted = crate::formal_aeneas::inclusion_step(index, size);
+    assert_eq!(production.consume_sibling, extracted.consume_sibling);
+    assert_eq!(production.sibling_on_left, extracted.sibling_on_left);
+    assert_eq!(production.next_index, extracted.next_index);
+    assert_eq!(production.next_size, extracted.next_size);
+}
 
-    assert_eq!(verifier_accepts, leaf_present && chain_hashes_to_root);
-    assert!(
-        receipt_fields_coupled(
-            leaf_present,
-            chain_hashes_to_root,
-            verifier_accepts,
-            true,
-            true
-        ) || !verifier_accepts
-    );
+fn model_inclusion_root(
+    mut current: Hash,
+    mut index: u64,
+    mut size: u64,
+    audit_path: &[Hash],
+) -> Option<Hash> {
+    if size == 0 || index >= size {
+        return None;
+    }
 
-    let retry = guard_pipeline_allows(
-        leaf_present,
-        &[if chain_hashes_to_root {
-            GuardStep::Allow
-        } else {
-            GuardStep::Deny
-        }],
-    );
-    assert_eq!(retry, verifier_accepts);
+    let mut path_index = 0usize;
+    while size > 1 {
+        let sibling_on_left = index % 2 != 0;
+        let right_sibling_exists = index.checked_add(1).is_some_and(|sibling| sibling < size);
+        if sibling_on_left || right_sibling_exists {
+            let sibling = audit_path.get(path_index)?;
+            path_index = path_index.checked_add(1)?;
+            current = if sibling_on_left {
+                node_hash(sibling, &current)
+            } else {
+                node_hash(&current, sibling)
+            };
+        }
+        index /= 2;
+        size = size / 2 + size % 2;
+    }
+
+    (path_index == audit_path.len()).then_some(current)
+}
+
+fn perturb_symbolic_hash(hash: &mut Hash, first: u8, second: u8) {
+    let mut bytes = *hash.as_bytes();
+    bytes[0] ^= first;
+    bytes[1] ^= second;
+    *hash = Hash::from_bytes(bytes);
+}
+
+fn abstract_hash_options_equal(actual: Option<Hash>, model: Option<Hash>) -> bool {
+    match (actual, model) {
+        (None, None) => true,
+        (Some(actual), Some(model)) => {
+            let actual = actual.as_bytes();
+            let model = model.as_bytes();
+            actual[0] == model[0]
+                && actual[1] == model[1]
+                && actual[2] == model[2]
+                && actual[3] == model[3]
+                && actual[4] == model[4]
+                && actual[5] == model[5]
+                && actual[6] == model[6]
+                && actual[7] == model[7]
+                && actual[8] == model[8]
+                && actual[9] == model[9]
+                && actual[10] == model[10]
+                && actual[11] == model[11]
+                && actual[12] == model[12]
+                && actual[13] == model[13]
+                && actual[14] == model[14]
+                && actual[15] == model[15]
+                && actual[16] == model[16]
+                && actual[17] == model[17]
+                && actual[18] == model[18]
+                && actual[19] == model[19]
+                && actual[20] == model[20]
+                && actual[21] == model[21]
+                && actual[22] == model[22]
+                && actual[23] == model[23]
+                && actual[24] == model[24]
+                && actual[25] == model[25]
+                && actual[26] == model[26]
+                && actual[27] == model[27]
+                && actual[28] == model[28]
+                && actual[29] == model[29]
+                && actual[30] == model[30]
+                && actual[31] == model[31]
+        }
+        _ => false,
+    }
+}
+
+#[kani::proof]
+#[kani::unwind(5)]
+pub fn verify_oracle_inclusion_walk_parity() {
+    let tree_size = usize::from((kani::any::<u8>() & 7) + 1);
+    let leaf_index = usize::from(kani::any::<u8>());
+    kani::assume(leaf_index < tree_size);
+    let fixture = bounded_merkle_case(tree_size, leaf_index);
+    assert!(fixture.is_some());
+    let Some((mut leaf, _expected_root, mut proof)) = fixture else {
+        return;
+    };
+    perturb_symbolic_hash(&mut leaf, kani::any(), kani::any());
+
+    if let Some(sibling) = proof.audit_path.get_mut(0) {
+        perturb_symbolic_hash(sibling, kani::any(), kani::any());
+    }
+    if let Some(sibling) = proof.audit_path.get_mut(1) {
+        perturb_symbolic_hash(sibling, kani::any(), kani::any());
+    }
+    if let Some(sibling) = proof.audit_path.get_mut(2) {
+        perturb_symbolic_hash(sibling, kani::any(), kani::any());
+    }
+
+    match kani::any::<u8>() % 6 {
+        1 => {
+            if proof.audit_path.pop().is_none() {
+                proof.tree_size = 0;
+            }
+        }
+        2 => {
+            if proof.audit_path.is_empty() {
+                proof.tree_size = 0;
+            } else {
+                proof.tree_size = 1;
+                proof.leaf_index = 0;
+            }
+        }
+        3 => {
+            if proof.audit_path.len() > 1 {
+                proof.audit_path.swap(0, 1);
+            } else {
+                proof.leaf_index = proof.tree_size;
+            }
+        }
+        4 => proof.tree_size = 0,
+        5 => proof.leaf_index = proof.tree_size,
+        _ => {}
+    }
+
+    let model_index = u64::try_from(proof.leaf_index);
+    let model_size = u64::try_from(proof.tree_size);
+    assert!(model_index.is_ok());
+    assert!(model_size.is_ok());
+    let (Ok(model_index), Ok(model_size)) = (model_index, model_size) else {
+        return;
+    };
+    let model_root = model_inclusion_root(leaf, model_index, model_size, &proof.audit_path);
+    let actual_root = proof.compute_root_from_hash(leaf).ok();
+    assert!(abstract_hash_options_equal(actual_root, model_root));
 }

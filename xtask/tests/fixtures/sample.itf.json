@@ -1,0 +1,203 @@
+{
+  "#meta": {
+    "format": "ITF",
+    "varTypes": {
+      "allowed": "(Int -> Set(Int))",
+      "budget_checked": "(Int -> Set(Int))",
+      "clock": "Int",
+      "receipt_log": "(Int -> Seq({ cap: Int, verdict: Str }))"
+    }
+  },
+  "params": [
+    "Authorities",
+    "CapSet"
+  ],
+  "vars": [
+    "allowed",
+    "budget_checked",
+    "clock",
+    "receipt_log"
+  ],
+  "states": [
+    {
+      "#meta": {
+        "index": 0
+      },
+      "Authorities": {
+        "#set": [
+          {
+            "#bigint": "1"
+          }
+        ]
+      },
+      "CapSet": {
+        "#set": [
+          {
+            "#bigint": "1"
+          }
+        ]
+      },
+      "allowed": {
+        "#map": [
+          [
+            {
+              "#bigint": "1"
+            },
+            {
+              "#set": []
+            }
+          ]
+        ]
+      },
+      "budget_checked": {
+        "#map": [
+          [
+            {
+              "#bigint": "1"
+            },
+            {
+              "#set": []
+            }
+          ]
+        ]
+      },
+      "clock": {
+        "#bigint": "1"
+      },
+      "receipt_log": {
+        "#map": [
+          [
+            {
+              "#bigint": "1"
+            },
+            []
+          ]
+        ]
+      }
+    },
+    {
+      "#meta": {
+        "index": 1
+      },
+      "Authorities": {
+        "#set": [
+          {
+            "#bigint": "1"
+          }
+        ]
+      },
+      "CapSet": {
+        "#set": [
+          {
+            "#bigint": "1"
+          }
+        ]
+      },
+      "allowed": {
+        "#map": [
+          [
+            {
+              "#bigint": "1"
+            },
+            {
+              "#set": []
+            }
+          ]
+        ]
+      },
+      "budget_checked": {
+        "#map": [
+          [
+            {
+              "#bigint": "1"
+            },
+            {
+              "#set": [
+                {
+                  "#bigint": "1"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      "clock": {
+        "#bigint": "1"
+      },
+      "receipt_log": {
+        "#map": [
+          [
+            {
+              "#bigint": "1"
+            },
+            []
+          ]
+        ]
+      }
+    },
+    {
+      "#meta": {
+        "index": 2
+      },
+      "Authorities": {
+        "#set": [
+          {
+            "#bigint": "1"
+          }
+        ]
+      },
+      "CapSet": {
+        "#set": [
+          {
+            "#bigint": "1"
+          }
+        ]
+      },
+      "allowed": {
+        "#map": [
+          [
+            {
+              "#bigint": "1"
+            },
+            {
+              "#set": [
+                {
+                  "#bigint": "1"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      "budget_checked": {
+        "#map": [
+          [
+            {
+              "#bigint": "1"
+            },
+            {
+              "#set": [
+                {
+                  "#bigint": "1"
+                }
+              ]
+            }
+          ]
+        ]
+      },
+      "clock": {
+        "#bigint": "1"
+      },
+      "receipt_log": {
+        "#map": [
+          [
+            {
+              "#bigint": "1"
+            },
+            []
+          ]
+        ]
+      }
+    }
+  ]
+}

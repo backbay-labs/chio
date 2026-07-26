@@ -1,120 +1,147 @@
-# FV-D2: PredicateLang Bridge and Bounded Treaty Model
+# FV-D2: PredicateLang bridge soundness and the treaty-model swap
 
-Status: Completed (2026-07-25)
+Status: Implemented (2026-07-11)
 Theme: D - Widen the verified frontier
+Effort: M
 Depends on: none
 Feeds: [FV-C4](FV-C4-policy-smt-analyzer.md)
 
 ## Result
 
-The treaty proof surface now contains two models with an explicit relationship
-between them:
+The public treaty model now uses a decidable predicate language over a bounded
+projection of Chio's production federation admission records. The former
+closure representation remains available only in
+`Treaty/IntersectionLegacy.lean`. Root-imported equivalence theorems prove
+pointwise admission, domain-scoped refinement, global refinement, treaty
+admission, and amendment-verdict agreement for every value produced by the
+syntax-to-closure lift.
 
-- `Intersection.lean` retains the general closure model. Its predicates have
-  type `ReceiptId -> Bool`, and its refinement relation quantifies over all
-  receipt identifiers. It remains useful as the semantic specification, but it
-  is not a decision procedure.
-- `PredicateLang.lean` defines a finite predicate syntax over a structured
-  `ReceiptView`. Every atom has executable semantics for receipt identifiers,
-  receipt hashes, action classes, participant kernel IDs, ladder ranks, live
-  continuations, decisions, failure codes, and evidence digests.
-- `IntersectionSyntactic.lean` defines treaty admission with syntactic scope and
-  constitution predicates. Its amendment witness is explicitly bounded by the
-  finite receipt domain stored in the delta.
-- `BridgeEquivalence.lean` proves pointwise agreement between syntactic
-  admission and the closure model after resolving a legacy receipt identifier
-  to a `ReceiptView`.
+This is not a Rust refinement proof. The projection excludes parsing,
+canonical hashing, signature verification, store lookup, and IO. Two
+`abstraction_anchor` mirror entries bind the relevant Rust records and
+validators so source drift requires explicit review without calling the Lean
+file a transliteration.
 
-This closes the representation gap that made the former decidability wording
-incorrect. The result is bounded decidability, not universal decidability.
-A finite-domain refinement witness says nothing about a receipt outside the
-declared domain.
+## Decisions
 
-## Formal boundary
+- `AdmissionView` projects fields from `TreatyScope`, `LadderIntersection`,
+  `BilateralInvocation`, and `CrossBoundaryEvidenceRef`, plus verifier-owned
+  expected hashes, resolved mode, time, and joint policy result.
+- `AtomTag` names production-shaped admission gates. There are no
+  constant-false placeholders for supported atoms.
+- `supported` rejects any predicate containing `.unsupported`, before `neg` or
+  any other Boolean connective is evaluated.
+- `defined` rejects a supported predicate when a required projected value is
+  unavailable. In particular, an unknown governance mode remains denied under
+  negation.
+- Finite refinement is complete only on the exact, explicit `AdmissionView`
+  domain supplied to the decision. No small-sample claim is made for all
+  possible production inputs.
+- `ConstitutionalDeltaSyn.ofDecide` is an actual decision procedure. It accepts
+  old, new, and domain values and returns `Option ConstitutionalDeltaSyn`; the
+  caller cannot provide the proof result.
+- `Intersection.lean` is the public syntactic model. The closure model moved to
+  namespace `Chio.Treaty.Legacy`, so the representation migration is not a
+  parallel unused model.
+- Treaty admission and amendment evidence map to P3 (fail-closed evaluation),
+  not P7 (receipt-lineage soundness).
 
-For a predicate `p` and receipt view `r`, `denote p r` is executable. For
-syntactic constitutions `new` and `old` and a finite list `D`,
-`refinesOnConstitution new old D` is executable and decidable.
+## Production correspondence
 
-The soundness statement is:
+| Lean projection or gate | Production source | Scope |
+| --- | --- | --- |
+| `TreatyScopeView` | `crates/kernel/chio-runtime-core/src/types.rs::TreatyScope` | Schema, treaty id, participants, ladder hashes, action classes, and validity window |
+| `LadderIntersectionView` | `types.rs::LadderIntersection` | Schema, treaty id, participants, ladder hashes, action classes, and validity window |
+| `BilateralInvocationView` | `types.rs::BilateralInvocation` | Schema, treaty id, intersection and continuation hashes, action class, and signer ids |
+| evidence fields | `types.rs::CrossBoundaryEvidenceRef` and `CrossBoundaryAdmissionInput` | Required, present, and verified evidence projection |
+| schema, time, intersection, action, and evidence gates | `crates/kernel/chio-runtime-core/src/treaty.rs::validate_treaty_scope`, `validate_ladder_intersection`, `evaluate_cross_boundary_admission`, `validate_bilateral_invocation`, `ladder_mode_rank` | Bounded post-validation abstraction |
 
-```text
-refinesOnConstitution new old D = true
-  implies
-for every r in D, admits new r = true implies admits old r = true.
+The two mirror entries use ordered per-symbol hashes. A matching hash proves
+only that the reviewed Rust token stream has not changed. It does not prove
+that Rust enforces a Lean theorem.
+
+## Proof surface
+
+| Theorem | Established boundary |
+| --- | --- |
+| `unsupported_predicate_denies` | Any syntax tree containing an unsupported atom denies before Boolean evaluation |
+| `undefined_predicate_denies` | Missing projected semantics deny before Boolean evaluation |
+| `negated_unknown_atom_denies` | Direct regression for unknown syntax under negation |
+| `negated_unknown_mode_denies` | Direct regression for an unavailable mode under negation |
+| `runtime_admission_policy_exact` | Admission is exactly support, definition, and truth of every registered modeled gate |
+| `refinesOn_complete_on_fragment` | Predicate refinement decision is complete on its explicit finite domain |
+| `refinesOnConstitution_complete_on_fragment` | Constitution refinement decision is complete on its explicit finite domain |
+| `ConstitutionalDeltaSyn.ofDecide_isSome_iff` | The decision returns a proof-carrying delta exactly when domain refinement holds |
+| `bridge_refinement_on_iff` | Domain refinement agrees in both representations |
+| `bridge_global_iff` | Global refinement agrees in both representations |
+| `toClosure_treatyAdmits_agrees` | Treaty admission agrees pointwise after lifting |
+| `toClosure_amendmentVerdict_agrees` | Computed amendment verdict agrees after lifting |
+
+`IntersectionSyntactic.lean` re-proves the four treaty results and includes an
+executable non-trivial amendment. The old constitution accepts a policy-denied
+but action-allowed input; the new constitution rejects it. The narrowing is
+enacted by `ofDecide`, while the reverse widening is rejected.
+
+## Completeness boundary
+
+The earlier proposed equality-only receipt-id fragment was rejected because it
+did not correspond to the production schema, and constant-false atom semantics
+became fail-open under negation. The implemented theorem deliberately says:
+
+```
+refinesOn new old domain = true <->
+  forall input, input in domain -> new input -> old input
 ```
 
-There is deliberately no theorem that promotes this finite result to
-`forall r`. The legacy relation `BackwardRefines` remains universally
-quantified, and `bridge_soundness` reaches it only from an independently
-supplied universal syntactic witness.
+The domain must therefore be verifier-owned and must contain every admission
+input covered by the amendment decision. Generalization beyond that set needs
+either a finite-domain construction for every projected field or a separate
+symbolic completeness proof.
 
-The submission polity is `P = (T, K)`: receipt scope `T` and constitutional
-predicates `K`. Citizenship is not represented in this model and cannot appear
-as a formal contribution claim.
+## Mutation calibration
 
-## Shipped declarations
+The Lean mutation allowlist includes the fail-closed predicate and amendment
+decision definitions. The mutation runner accepts only explicitly approved
+`Core` and `Treaty` source roots, retains the global activation threshold, and
+records per-source outcomes. Direct negative theorems for unsupported syntax,
+undefined mode interpretation, and rejected widening remain root-imported even
+when mutation sampling rotates.
 
-`PredicateLang.lean` supplies:
+## Acceptance evidence
 
-- `bridge_pointwise`
-- `bridge_soundness`
-- `bridge_decidable_soundness`
-- `refinesOnConstitution_iff`
+- [x] `bridge_soundness`, `bridge_decidable_soundness`, and both reverse
+  equivalence theorems are root-imported and sorry-free.
+- [x] Finite refinement completeness is proved on the exact admission domain;
+  the broader completeness exclusion is documented in code and here.
+- [x] `IntersectionSyntactic.lean` re-proves all four treaty theorems and runs a
+  genuinely non-trivial narrowing and widening example through `ofDecide`.
+- [x] `Intersection.lean` now exposes the syntactic model; the closure model is
+  isolated under `Chio.Treaty.Legacy`.
+- [x] The theorem inventory, proof manifest, P3 property matrix, Rust drift
+  anchors, mapping notes, and generated coverage are updated together.
+- [x] The C4 handoff records the serialized-shape boundary, unsupported syntax
+  behavior, and domain-scoped completeness contract.
+- [x] `scripts/check-formal-proofs.sh`, `scripts/check-proof-report.sh`, formal
+  mirror tests, mutation checks, mapping checks, and coverage checks pass.
 
-`IntersectionSyntactic.lean` supplies:
+## Exclusions
 
-- `treaty_admission_iff_predicate_intersection`
-- `treaty_admission_stable_under_ladder_floor`
-- `amendment_admissible_iff_bounded_refinement`
-- `amendment_without_refinement_rejected`
-- executable examples for a nontrivial narrowing and a rejected widening
+- No claim that `Predicate` is a production wire format.
+- No claim that Lean parses JSON Schema or RFC 8785 canonical JSON.
+- No cryptographic or store-refinement claim.
+- No completeness claim outside the explicit admission domain.
+- No inverse conversion from arbitrary closures to syntax. Bidirectionality is
+  semantic equivalence on the image of `toClosure`, not representation
+  isomorphism for arbitrary functions.
 
-`BridgeEquivalence.lean` supplies:
+## Manifest and registry updates
 
-- `Legacy.scope_pointwise`
-- `Legacy.polity_admission_agrees`
-- `Legacy.treaty_admission_agrees`
-- `Legacy.treaty_admission_under_mode_agrees`
-- `Legacy.bounded_amendment_sound`
-
-All declarations are imported through `Chio.lean`, listed in
-`formal/proof-manifest.toml`, and recorded in
-`formal/theorem-inventory.json`. The legacy module is retained with a header
-that states its non-decidable status.
-
-## Rust handoff
-
-The Rust mirror must preserve the following conditions:
-
-1. The receipt projection contains exactly the fields interpreted by
-   `denoteAtom`.
-2. Predicate recursion and list membership reproduce Lean's Boolean semantics.
-3. The production evaluator and the independent reference evaluator do not
-   share an implementation helper.
-4. Differential generators cover every atom, constructor, empty collection,
-   absent optional field, duplicate entry, and bounded nesting.
-5. Any amendment result is reported as finite-domain evidence. The Rust mirror
-   must not describe it as a universal proof or as Lean verification of Rust.
-
-## Verification
-
-The required proof gate is:
-
-```bash
-./scripts/check-formal-proofs.sh
-```
-
-The completed gate builds 25 Lean jobs, scans the shipped source for
-placeholders, and validates the proof manifest, declared namespace opens,
-assumptions, root imports, and theorem inventory.
-
-## Residual limitations
-
-- The bridge proves semantic agreement for the modeled syntax; it does not
-  prove that the production Rust admission path is equivalent to Lean.
-- The finite amendment domain is supplied by the caller. Domain completeness
-  is an operational obligation outside this model.
-- Concrete signature verification, canonical JSON, storage, clocks, and
-  network delivery remain outside these treaty theorems.
-- No production amendment-enactment state machine is claimed.
+- `formal/proof-manifest.toml` registers the syntactic PredicateLang modules,
+  bridge theorems, runtime admission symbols, and mirror relationships.
+- `formal/theorem-inventory.json` records the domain-scoped soundness and
+  completeness results without widening them into parser or wire-format
+  claims.
+- `formal/MAPPING.md` binds the explicit finite admission domain and the
+  fail-closed unsupported-syntax behavior to the runtime projection.
+- `formal/assumptions.toml` gains no new trust dependency; the bridge scope is
+  an explicit exclusion rather than an assumption.

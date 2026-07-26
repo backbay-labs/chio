@@ -3,12 +3,12 @@ use std::path::Path;
 
 use base64::Engine;
 use chio_guard_registry::{
-    ExpectedIdentity, GUARD_ARTIFACT_MEDIA_TYPE, GUARD_CONFIG_MEDIA_TYPE, GUARD_WIT_WORLD,
-    GuardArtifactConfig, GuardCache, GuardOciRef, GuardPublishArtifact, GuardPublishArtifactInput,
-    GuardPublishRef, GuardPullRequest, GuardPullSigstoreBundleSource, GuardRegistryClient,
-    GuardRegistryConfig, RegistryCredentials, SigstoreVerifier,
+    ExpectedIdentity, GuardArtifactConfig, GuardCache, GuardOciRef, GuardPublishArtifact,
+    GuardPublishArtifactInput, GuardPublishRef, GuardPullRequest, GuardPullSigstoreBundleSource,
+    GuardRegistryClient, GuardRegistryConfig, RegistryCredentials, SigstoreVerifier,
+    GUARD_ARTIFACT_MEDIA_TYPE, GUARD_CONFIG_MEDIA_TYPE, GUARD_WIT_WORLD,
 };
-use chio_wasm_guards::blocklist::{E_GUARD_DIGEST_BLOCKLISTED, GuardDigestBlocklist};
+use chio_wasm_guards::blocklist::{GuardDigestBlocklist, E_GUARD_DIGEST_BLOCKLISTED};
 use chio_wasm_guards::manifest::GuardManifest;
 use sha2::{Digest, Sha256};
 
@@ -92,7 +92,9 @@ pub(super) struct GuardPublishPreflight {
     pub(super) wasm_bytes: Vec<u8>,
 }
 
-pub(super) fn guard_publish_preflight(project_dir: &Path) -> Result<GuardPublishPreflight, CliError> {
+pub(super) fn guard_publish_preflight(
+    project_dir: &Path,
+) -> Result<GuardPublishPreflight, CliError> {
     let manifest_path = project_dir.join("guard-manifest.yaml");
     let manifest_content = fs::read_to_string(&manifest_path)
         .map_err(|e| guard_io_error(format!("failed to read {}: {e}", manifest_path.display())))?;
@@ -221,16 +223,18 @@ pub(crate) fn cmd_guard_pull(command: GuardPullCommand<'_>) -> Result<(), CliErr
         .build()
         .map_err(|e| CliError::cli_other_error(format!("failed to create pull runtime: {e}")))?;
     let response = runtime
-        .block_on(client.pull_guard_to_cache(GuardPullRequest {
-            reference: &reference,
-            credentials: &credentials,
-            cache: &cache,
-            sigstore_bundle_json: sigstore_bundle.as_deref(),
-            sigstore_verifier: sigstore_verifier
-                .as_ref()
-                .map(|verifier| verifier as &dyn chio_guard_registry::AttestVerifier),
-            sigstore_expected_identity: sigstore_policy.as_ref(),
-        }))
+        .block_on(
+            client.pull_guard_to_cache(GuardPullRequest {
+                reference: &reference,
+                credentials: &credentials,
+                cache: &cache,
+                sigstore_bundle_json: sigstore_bundle.as_deref(),
+                sigstore_verifier: sigstore_verifier
+                    .as_ref()
+                    .map(|verifier| verifier as &dyn chio_guard_registry::AttestVerifier),
+                sigstore_expected_identity: sigstore_policy.as_ref(),
+            }),
+        )
         .map_err(|e| CliError::guard_error(e.to_string()))?;
 
     println!("pulled guard artifact");
@@ -267,14 +271,18 @@ pub(crate) fn cmd_guard_pull(command: GuardPullCommand<'_>) -> Result<(), CliErr
         match response.sigstore_bundle_source {
             Some(GuardPullSigstoreBundleSource::CallerProvided) => {
                 if response.sigstore_verified {
-                    println!("sigstore_status:  verified caller-provided bundle before cache admission");
+                    println!(
+                        "sigstore_status:  verified caller-provided bundle before cache admission"
+                    );
                 } else {
                     println!("sigstore_status:  cached caller-provided bundle bytes without verification policy");
                 }
             }
             Some(GuardPullSigstoreBundleSource::OciReferrer) => {
                 if response.sigstore_verified {
-                    println!("sigstore_status:  verified OCI referrer bundle before cache admission");
+                    println!(
+                        "sigstore_status:  verified OCI referrer bundle before cache admission"
+                    );
                 } else {
                     println!("sigstore_status:  cached OCI referrer bundle bytes without verification policy");
                 }

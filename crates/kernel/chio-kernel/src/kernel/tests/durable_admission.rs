@@ -2362,7 +2362,10 @@ fn completed_federated_replay_remains_closed_until_cosign_succeeds(
         .as_secs();
     let peer = handshake_and_pin(&trust, origin_kernel_id, &origin_keypair, now);
     let mut kernel = kernel.with_federation_peers(vec![peer]);
-    kernel.set_runtime_admission_hook(std::sync::Arc::new(TreatyDsseAdmissionHook));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(TreatyDsseAdmissionHook::new(
+        origin_keypair,
+        kernel.config.keypair.clone(),
+    )));
     let cosigner_calls = std::sync::Arc::new(AtomicU64::new(0));
     kernel.set_federation_cosigner(std::sync::Arc::new(CountingRejectingCosigner {
         calls: std::sync::Arc::clone(&cosigner_calls),

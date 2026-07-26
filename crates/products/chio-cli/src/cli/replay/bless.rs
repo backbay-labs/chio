@@ -15,8 +15,9 @@ pub(crate) fn cmd_replay_bless(args: &ReplayArgs, log: &Path) -> Result<(), CliE
 
     require_replay_bless_capability()?;
     let scenario = validate_replay_bless_into_path(into)?;
-    let tenant_pubkey = load_tenant_pubkey(tenant_pubkey_path)
-        .map_err(|error| CliError::cli_other_error(format!("failed to load tenant pubkey: {error}")))?;
+    let tenant_pubkey = load_tenant_pubkey(tenant_pubkey_path).map_err(|error| {
+        CliError::cli_other_error(format!("failed to load tenant pubkey: {error}"))
+    })?;
 
     let iter = open_ndjson(log).map_err(|error| {
         CliError::cli_io_error(format!(
@@ -44,8 +45,8 @@ pub(crate) fn cmd_replay_bless(args: &ReplayArgs, log: &Path) -> Result<(), CliE
         frames.push(record.frame);
     }
 
-    let summary = chio_replay_corpus::write_fixture(into, frames)
-        .map_err(map_replay_fixture_error)?;
+    let summary =
+        chio_replay_corpus::write_fixture(into, frames).map_err(map_replay_fixture_error)?;
 
     let mut stdout = std::io::stdout().lock();
     writeln!(

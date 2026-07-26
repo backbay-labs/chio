@@ -28,6 +28,15 @@ fn unique_dir(prefix: &str) -> PathBuf {
     std::env::temp_dir().join(format!("{prefix}-{nonce}"))
 }
 
+fn restrict_private_dir(path: &Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+            .expect("restrict private store directory");
+    }
+}
+
 struct ServerGuard {
     child: Child,
 }
@@ -85,6 +94,7 @@ fn wait_for_trust_service(client: &Client, base_url: &str) {
 #[test]
 fn check_command_persists_receipt_to_sqlite() {
     let dir = tempfile::tempdir().expect("private store directory");
+    restrict_private_dir(dir.path());
     let db_path = dir.path().join("receipts.sqlite3");
     let session_db_path = dir.path().join("sessions.sqlite3");
     let output = Command::new(env!("CARGO_BIN_EXE_chio"))
@@ -145,6 +155,7 @@ fn check_command_persists_receipt_via_control_service() {
 
     let dir = unique_dir("chio-cli-check-control");
     std::fs::create_dir_all(&dir).expect("create temp dir");
+    restrict_private_dir(&dir);
     let receipt_db_path = dir.join("receipts.sqlite3");
     let authority_db_path = dir.join("authority.sqlite3");
     let joint_authority_db_path = dir.join("joint-authority.sqlite3");

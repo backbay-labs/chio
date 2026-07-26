@@ -327,6 +327,14 @@ impl Guard for AgentVelocityGuard {
 
         Ok(GuardDecision::allow())
     }
+
+    fn requires_dispatch_revalidation(&self) -> bool {
+        true
+    }
+
+    fn revalidate_before_dispatch(&self, _ctx: &GuardContext) -> Result<(), KernelError> {
+        Ok(())
+    }
 }
 
 // ---------------------------------------------------------------------------

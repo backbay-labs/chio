@@ -1,0 +1,37 @@
+schema = "chio.dst.v1"
+package = "chio-kernel"
+target = "dst_drop_injection"
+scope = "single_process_single_store"
+seed_corpus = "crates/kernel/chio-kernel/tests/dst/seeds.toml"
+fixed_seed_count = 64
+wide_episode_count = 10000
+
+[[test]]
+name = "dst_fixed_seed_corpus"
+lane = "pr"
+ignored = false
+
+[[test]]
+name = "dst_sqlite_crash_reopen_boundaries"
+lane = "pr"
+ignored = false
+
+[[test]]
+name = "dst_child_receipt_flush_regression_is_killed"
+lane = "pr"
+ignored = false
+
+[[test]]
+name = "dst_budget_wrapper_preserves_replay_outcome"
+lane = "pr"
+ignored = false
+
+[[test]]
+name = "dst_wide_sweep"
+lane = "nightly"
+ignored = true
+
+[[test]]
+name = "dst_replay_seed"
+lane = "replay"
+ignored = true

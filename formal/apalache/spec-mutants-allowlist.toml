@@ -1,0 +1,392 @@
+schema = "chio.spec-mutants-allowlist.v1"
+negative_registry = "formal/apalache/_negative_tests/REGISTRY.toml"
+sample_size = 16
+timeout_secs = 300
+baseline_timeout_secs = 10800
+activation_target_percent = 90.0
+
+[[spec]]
+name = "KernelTransitionCancelSafe"
+path = "formal/apalache/KernelTransitionCancelSafe.tla"
+cfg = "formal/apalache/MCKernelTransitionCancelSafe.cfg"
+invariant = "SafetyInv"
+length = 6
+actions = ["BeginCancel", "Commit"]
+
+[[spec]]
+name = "MonotoneLogApalache"
+path = "formal/apalache/MonotoneLogApalache.tla"
+cfg = "formal/apalache/MCMonotoneLogApalache.cfg"
+invariant = "SafetyInv"
+length = 6
+actions = ["Evaluate"]
+
+[[spec]]
+name = "PostAdmissionDropGuard"
+path = "formal/apalache/PostAdmissionDropGuard.tla"
+cfg = "formal/apalache/MCPostAdmissionDropGuard.cfg"
+invariant = "SafetyInv"
+length = 8
+actions = ["Admit", "StartDispatch", "StreamChunk", "CompleteOk", "IncompleteStream", "ServerErrorPostDispatch", "DropPreDispatch", "DropPostDispatch"]
+
+[[spec]]
+name = "ReceiptBeforeAllow"
+path = "formal/apalache/ReceiptBeforeAllow.tla"
+cfg = "formal/apalache/MCReceiptBeforeAllow.cfg"
+invariant = "SafetyInv"
+length = 6
+actions = ["PersistAllowReceipt", "PublishAllow"]
+
+[[spec]]
+name = "RevocationCutCompleteness"
+path = "formal/apalache/RevocationCutCompleteness.tla"
+cfg = "formal/apalache/MCRevocationCutCompleteness.cfg"
+invariant = "SafetyInv"
+length = 6
+actions = ["Delegate", "Revoke"]
+
+[[spec]]
+name = "DelegationDepthBound"
+path = "formal/tla/DelegationDepthBound.tla"
+cfg = "formal/tla/MCDelegationDepthBound.cfg"
+invariant = "SafetyInv"
+length = 6
+actions = ["MintRoot", "Delegate", "Propagate"]
+
+[[spec]]
+name = "RevocationPropagation"
+path = "formal/tla/RevocationPropagation.tla"
+cfg = "formal/tla/MCRevocationPropagation.cfg"
+invariant = "SafetyInv"
+length = 6
+actions = ["Attenuate", "Revoke", "Propagate", "Evaluate"]
+
+[[probe]]
+name = "cancel-snapshot-budget"
+spec = "KernelTransitionCancelSafe"
+action = "BeginCancel"
+operator = "replace_expression"
+match = "snapshot_budget' = budget_used"
+replacement = "snapshot_budget' = [a \\in Authorities |-> [c \\in CapSet |-> 0]]"
+classification = "post-state-corruption"
+rationale = "A cancellation snapshot must retain nonzero committed budget state."
+
+[[probe]]
+name = "cancel-snapshot-receipts"
+spec = "KernelTransitionCancelSafe"
+action = "BeginCancel"
+operator = "replace_expression"
+match = "snapshot_receipts' = receipt_count"
+replacement = "snapshot_receipts' = [a \\in Authorities |-> 0]"
+classification = "post-state-corruption"
+rationale = "A cancellation snapshot must retain nonzero receipt state."
+
+[[probe]]
+name = "commit-during-cancel"
+spec = "KernelTransitionCancelSafe"
+action = "Commit"
+operator = "delete_conjunct"
+match = "/\\ cancel_pending = FALSE"
+replacement = ""
+classification = "guard-weakening"
+rationale = "A commit must not mutate budget or receipts while cancellation is pending."
+
+[[probe]]
+name = "log-constant-timestamp"
+spec = "MonotoneLogApalache"
+action = "Evaluate"
+operator = "replace_expression"
+match = "t |-> clock"
+replacement = "t |-> 1"
+classification = "post-state-corruption"
+rationale = "Repeated receipts must not reuse a fixed timestamp."
+
+[[probe]]
+name = "log-frozen-clock"
+spec = "MonotoneLogApalache"
+action = "Evaluate"
+operator = "replace_expression"
+match = "clock' = clock + 1"
+replacement = "clock' = clock"
+classification = "post-state-corruption"
+rationale = "Receipt creation must advance the logical clock."
+
+[[probe]]
+name = "admission-child-oversubscription"
+spec = "PostAdmissionDropGuard"
+action = "Admit"
+operator = "replace_expression"
+match = "ActiveChildShares < ChildMax"
+replacement = "ActiveChildShares <= ChildMax"
+classification = "guard-weakening"
+rationale = "Admitting a child at capacity oversubscribes the parent reservation."
+
+[[probe]]
+name = "dispatch-from-wrong-phase"
+spec = "PostAdmissionDropGuard"
+action = "StartDispatch"
+operator = "delete_conjunct"
+match = "/\\ phase[i] = \"admitted\""
+replacement = ""
+classification = "guard-weakening"
+rationale = "Dispatch may start only from an admitted invocation."
+
+[[probe]]
+name = "stream-child-overflow"
+spec = "PostAdmissionDropGuard"
+action = "StreamChunk"
+operator = "replace_expression"
+match = "child_buf[i] < ChildMax"
+replacement = "child_buf[i] <= ChildMax"
+classification = "guard-weakening"
+rationale = "A buffered child count may not exceed the configured capacity."
+
+[[probe]]
+name = "complete-from-wrong-phase"
+spec = "PostAdmissionDropGuard"
+action = "CompleteOk"
+operator = "delete_conjunct"
+match = "/\\ phase[i] \\in {\"dispatch_started\", \"streaming\"}"
+replacement = ""
+classification = "guard-weakening"
+rationale = "Successful completion requires a started dispatch."
+
+[[probe]]
+name = "incomplete-from-wrong-phase"
+spec = "PostAdmissionDropGuard"
+action = "IncompleteStream"
+operator = "delete_conjunct"
+match = "/\\ phase[i] \\in {\"dispatch_started\", \"streaming\"}"
+replacement = ""
+classification = "guard-weakening"
+rationale = "Incomplete-stream cleanup requires a started dispatch."
+
+[[probe]]
+name = "server-error-commits-hold"
+spec = "PostAdmissionDropGuard"
+action = "ServerErrorPostDispatch"
+operator = "replace_expression"
+match = "ResolvePostDispatch(@)"
+replacement = "ResolveReturnedOutput(@, error_kind)"
+classification = "post-state-corruption"
+rationale = "An outcome-unknown server error must retain its monetary hold."
+
+[[probe]]
+name = "pre-dispatch-drop-from-wrong-phase"
+spec = "PostAdmissionDropGuard"
+action = "DropPreDispatch"
+operator = "delete_conjunct"
+match = "/\\ phase[i] = \"admitted\""
+replacement = ""
+classification = "guard-weakening"
+rationale = "Pre-dispatch cleanup may unwind only an admitted invocation."
+
+[[probe]]
+name = "cleanup-failure-outside-admission"
+spec = "PostAdmissionDropGuard"
+action = "DropPreDispatch"
+operator = "delete_conjunct"
+match = "/\\ failed \\subseteq admitted_resources[i]"
+replacement = ""
+classification = "guard-weakening"
+rationale = "Cleanup failures must be limited to resources admitted for the invocation."
+
+[[probe]]
+name = "post-dispatch-drop-from-wrong-phase"
+spec = "PostAdmissionDropGuard"
+action = "DropPostDispatch"
+operator = "delete_conjunct"
+match = "/\\ phase[i] \\in {\"dispatch_started\", \"streaming\"}"
+replacement = ""
+classification = "guard-weakening"
+rationale = "Post-dispatch cleanup requires a started dispatch."
+
+[[probe]]
+name = "children-recorded-after-parent"
+spec = "PostAdmissionDropGuard"
+action = "DropPostDispatch"
+operator = "replace_expression"
+match = "flushed_count = child_total[i]"
+replacement = "flushed_count /= child_total[i]"
+classification = "post-state-corruption"
+rationale = "The parent receipt may be written only after every child receipt is flushed."
+
+[[probe]]
+name = "allow-receipt-without-budget"
+spec = "ReceiptBeforeAllow"
+action = "PersistAllowReceipt"
+operator = "delete_conjunct"
+match = "/\\ CallDecision(r, c) \\in budget_checked[a]"
+replacement = ""
+classification = "guard-weakening"
+rationale = "An allow receipt must be backed by the matching call budget check."
+
+[[probe]]
+name = "publish-unrelated-capabilities"
+spec = "ReceiptBeforeAllow"
+action = "PublishAllow"
+operator = "replace_expression"
+match = "@ \\cup {CallDecision(r, c)}"
+replacement = "@ \\cup CallDecisions"
+classification = "post-state-corruption"
+rationale = "Publishing one allow must not authorize unrelated calls or capabilities."
+
+[[probe]]
+name = "delegate-without-closure-update"
+spec = "RevocationCutCompleteness"
+action = "Delegate"
+operator = "replace_expression"
+match = "THEN descendants[ancestor] \\cup {child}"
+replacement = "THEN descendants[ancestor]"
+classification = "post-state-corruption"
+rationale = "Every direct parent edge must appear in the descendant closure."
+
+[[probe]]
+name = "revoke-keeps-allow"
+spec = "RevocationCutCompleteness"
+action = "Revoke"
+operator = "replace_expression"
+match = "THEN FALSE"
+replacement = "THEN TRUE"
+classification = "post-state-corruption"
+rationale = "Revocation must clear allow eligibility throughout the descendant closure."
+
+[[probe]]
+name = "mint-root-at-nonzero-depth"
+spec = "DelegationDepthBound"
+action = "MintRoot"
+operator = "replace_expression"
+match = "depth      |-> 0"
+replacement = "depth      |-> 1"
+classification = "post-state-corruption"
+rationale = "A newly minted root must start at depth zero."
+
+[[probe]]
+name = "delegation-loses-parent"
+spec = "DelegationDepthBound"
+action = "Delegate"
+operator = "replace_expression"
+match = "parent     |-> parentId"
+replacement = "parent     |-> 0"
+classification = "post-state-corruption"
+rationale = "A delegated link must retain the parent used to derive its depth."
+
+[[probe]]
+name = "delegation-does-not-increment-depth"
+spec = "DelegationDepthBound"
+action = "Delegate"
+operator = "replace_expression"
+match = "depth      |-> links[parentId].depth + 1"
+replacement = "depth      |-> links[parentId].depth"
+classification = "post-state-corruption"
+rationale = "Every delegation edge must increase depth by exactly one."
+
+[[probe]]
+name = "delegation-drops-attenuation"
+spec = "DelegationDepthBound"
+action = "Delegate"
+operator = "replace_expression"
+match = "attenuated |-> atten"
+replacement = "attenuated |-> FALSE"
+classification = "post-state-corruption"
+rationale = "Every minted child must preserve its attenuation witness."
+
+[[probe]]
+name = "propagate-unissued-revocations"
+spec = "DelegationDepthBound"
+action = "Propagate"
+operator = "replace_expression"
+match = "@ \\cup {id}"
+replacement = "LinkIdSet"
+classification = "post-state-corruption"
+rationale = "A peer may observe only the specific revocation that was issued."
+
+[[probe]]
+name = "attenuation-exceeds-depth"
+spec = "RevocationPropagation"
+action = "Attenuate"
+operator = "replace_expression"
+match = "depth' = [depth EXCEPT ![a][c] = @ + 1]"
+replacement = "depth' = [depth EXCEPT ![a][c] = DEPTH_MAX + 1]"
+classification = "post-state-corruption"
+rationale = "Attenuation may not install a depth beyond the configured ceiling."
+
+[[probe]]
+name = "revoke-keeps-active-state"
+spec = "RevocationPropagation"
+action = "Revoke"
+operator = "replace_expression"
+match = "![a][c] = \"revoked\""
+replacement = "![a][c] = \"attenuated\""
+classification = "post-state-corruption"
+rationale = "A locally revoked capability must enter the revoked state."
+
+[[probe]]
+name = "revoke-drops-epoch"
+spec = "RevocationPropagation"
+action = "Revoke"
+operator = "replace_expression"
+match = "![a][c] = clock"
+replacement = "![a][c] = 0"
+classification = "post-state-corruption"
+rationale = "A local revocation must record a nonzero observation epoch."
+
+[[probe]]
+name = "revoke-freezes-clock"
+spec = "RevocationPropagation"
+action = "Revoke"
+operator = "replace_expression"
+match = "clock'     = clock + 1"
+replacement = "clock'     = clock"
+classification = "post-state-corruption"
+rationale = "The revocation epoch must be strictly earlier than the next clock value."
+
+[[probe]]
+name = "propagate-drops-epoch"
+spec = "RevocationPropagation"
+action = "Propagate"
+operator = "replace_expression"
+match = "![m.to][m.cap] = m.epoch"
+replacement = "![m.to][m.cap] = 0"
+classification = "post-state-corruption"
+rationale = "Propagation must install the signed nonzero revocation epoch."
+
+[[probe]]
+name = "propagate-keeps-active-state"
+spec = "RevocationPropagation"
+action = "Propagate"
+operator = "replace_expression"
+match = "![m.to][m.cap] = \"revoked\""
+replacement = "![m.to][m.cap] = \"active\""
+classification = "post-state-corruption"
+rationale = "Installing a revocation epoch must also mark the capability revoked."
+
+[[probe]]
+name = "evaluate-allows-revoked"
+spec = "RevocationPropagation"
+action = "Evaluate"
+operator = "replace_expression"
+match = "rev_epoch[a][c] = 0"
+replacement = "rev_epoch[a][c] /= 0"
+classification = "guard-weakening"
+rationale = "Evaluation must never issue allow after observing a revocation epoch."
+
+[[seed]]
+name = "receipt-before-allow-guard"
+spec = "ReceiptBeforeAllow"
+action = "PublishAllow"
+operator = "delete_conjunct"
+match = "/\\ HasAllowReceipt(a, c, r)"
+replacement = ""
+negative_spec = "formal/apalache/_negative_tests/ReceiptBeforeAllowBroken.tla"
+negative_action = "PublishAllowBroken"
+
+[[seed]]
+name = "revocation-transitive-cut"
+spec = "RevocationCutCompleteness"
+action = "Revoke"
+operator = "replace_expression"
+match = "DescendsFrom(c, root)"
+replacement = "c = root"
+negative_spec = "formal/apalache/_negative_tests/RevocationCutCompletenessBroken.tla"
+negative_action = "RevokeShallow"

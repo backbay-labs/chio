@@ -1,9 +1,9 @@
 name: apalache-temporal
 
-# Scheduled/manual workflow: runs the temporal liveness property
-# RevocationEventuallySeen against formal/tla/RevocationPropagation.tla.
+# Scheduled/manual workflow: runs both revocation liveness properties plus the
+# distributed model's bounded refinement and non-vacuity witness.
 #
-# This job is scheduled/manual only and is not a required PR gate. Safety
+# This workflow is scheduled/manual only and is not a required PR gate. Safety
 # invariants for RevocationPropagation run in apalache-safety.yml at the PR
 # length bound. This length-24 temporal config keeps deep liveness coverage
 # separate.
@@ -18,15 +18,16 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: ${{ format('{0}-{1}-apalache-temporal', github.event_name, github.sha) }}
 
 jobs:
-  revocation-eventually-seen:
-    name: formal-tla-liveness
+  revocation_eventually_seen:
+    name: revocation-eventually-seen
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
 
@@ -54,8 +55,73 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          apalache-mc check \
-            --length=24 \
-            --temporal=RevocationEventuallySeen \
-            --config=formal/tla/MCRevocationPropagationTemporal.cfg \
+          ./scripts/check-apalache-positive.sh \
+            --temporal RevocationEventuallySeen \
+            --length 24 \
+            --timeout-seconds 3600 \
+            --config formal/tla/MCRevocationPropagationTemporal.cfg \
             formal/tla/RevocationPropagation.tla
+
+  distributed_revocation_temporal:
+    name: distributed-revocation-temporal
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Install Java runtime
+        uses: actions/setup-java@c1e323688fd81a25caa38c78aa6df2d33d3e20d9
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Install Apalache
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./tools/install-apalache.sh
+          echo "${HOME}/.local/bin" >> "${GITHUB_PATH}"
+
+      - name: Confirm Apalache
+        shell: bash
+        run: |
+          set -euo pipefail
+          command -v apalache-mc
+          apalache-mc version || true
+
+      - name: Distributed revocation temporal check
+        shell: bash
+        run: ./scripts/check-distributed-revocation-temporal.sh
+
+  temporal_verdict:
+    name: formal-tla-liveness
+    if: ${{ always() }}
+    needs:
+      - revocation_eventually_seen
+      - distributed_revocation_temporal
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+
+      - name: Validate temporal results
+        env:
+          LEGACY_RESULT: ${{ needs.revocation_eventually_seen.result }}
+          DISTRIBUTED_RESULT: ${{ needs.distributed_revocation_temporal.result }}
+        run: |
+          set -euo pipefail
+          if [[ "${LEGACY_RESULT}" != "success" || "${DISTRIBUTED_RESULT}" != "success" ]]; then
+            echo "one or more temporal Apalache jobs did not succeed" >&2
+            exit 1
+          fi
+
+      - name: Record temporal lane posture
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE_EXIT: ${{ job.status == 'success' && '0' || '1' }}
+          LANE_GATE_RATE_LIMIT_MODE: warn
+        run: |
+          set -euo pipefail
+          bash scripts/lane-gate.sh apalache-temporal
+          exit "${LANE_EXIT}"

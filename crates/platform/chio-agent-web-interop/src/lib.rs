@@ -1,15 +1,21 @@
-use std::collections::{BTreeMap, BTreeSet};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    fmt,
+    sync::{Arc, Mutex},
+};
 
 use serde::{Deserialize, Serialize};
 
 use chio_commerce_order::CommerceOrderContext;
 use chio_core_types::{
+    canonical_json_bytes,
     receipt::{
         body::ChioReceipt,
         decision::Decision,
         kinds::{ReceiptKind, TrustLevel},
     },
-    PublicKey,
+    sha256_hex, PublicKey, CHIO_AGENT_WEB_PROOF_ENVELOPE_V1_SCHEMA,
+    CHIO_AGENT_WEB_PROOF_ENVELOPE_V2_SCHEMA,
 };
 use chio_transaction_passport::{
     verify_minimal_passport_artifacts, verify_transaction_passport_signature_with_evidence_graph,
@@ -31,8 +37,9 @@ use claims::{
     CLAIM_SIDECAR_NOT_NATIVE_AUTHORITY, CLAIM_UNSUPPORTED_CLAIMS_LIMITED,
 };
 use evidence::{
-    find_node_by_id, find_node_by_path, graph_has_edge, parse_artifact, parse_graph,
-    raw_artifact_bytes, AgentWebEvidenceRole,
+    find_legacy_receipt_node, find_node_by_path, find_receipt_node, graph_has_edge, parse_artifact,
+    parse_graph, raw_artifact_bytes, receipt_node_ref_matches, AgentWebEvidenceRole,
+    AgentWebReceiptRef,
 };
 use policy::parse_policy;
 
@@ -52,8 +59,311 @@ pub struct AgentWebVerifierTrust {
     standard_webhooks_secrets: BTreeMap<String, Vec<u8>>,
     standard_webhooks_replay_window: Option<StandardWebhooksReplayWindow>,
     seen_standard_webhooks_ids: BTreeSet<String>,
+    standard_webhooks_replay_store: Option<Arc<dyn AgentWebReplayStore>>,
     trusted_receipt_kernel_keys: Vec<PublicKey>,
     trusted_envelope_sidecar_keys: Vec<PublicKey>,
+}
+
+pub const DEFAULT_AGENT_WEB_REPLAY_GLOBAL_CAPACITY: usize = 16_384;
+pub const DEFAULT_AGENT_WEB_REPLAY_PER_SCOPE_CAPACITY: usize = 4_096;
+pub const AGENT_WEB_REPLAY_SCOPE_HEX_LENGTH: usize = 64;
+pub const MAX_STANDARD_WEBHOOK_ID_BYTES: usize = 512;
+
+/// Opaque identity for one authenticated Standard Webhooks sender and endpoint.
+///
+/// Values are domain-separated HMAC outputs. The raw verifier secret is never
+/// exposed to replay-store implementations.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct AgentWebReplayScope(String);
+
+impl AgentWebReplayScope {
+    pub fn parse(value: impl Into<String>) -> Result<Self, AgentWebReplayStoreError> {
+        let value = value.into();
+        if value.len() != AGENT_WEB_REPLAY_SCOPE_HEX_LENGTH
+            || !value
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        {
+            return Err(AgentWebReplayStoreError::Unavailable(
+                "replay scope must be exactly 64 lowercase hexadecimal characters".to_string(),
+            ));
+        }
+        Ok(Self(value))
+    }
+
+    #[must_use]
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    fn from_digest(digest: [u8; 32]) -> Self {
+        Self(hex::encode(digest))
+    }
+}
+
+impl fmt::Display for AgentWebReplayScope {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AgentWebReplayEntry {
+    replay_scope: AgentWebReplayScope,
+    webhook_id: String,
+    expires_at_unix_seconds: u64,
+}
+
+impl AgentWebReplayEntry {
+    pub fn new(
+        replay_scope: AgentWebReplayScope,
+        webhook_id: impl Into<String>,
+        expires_at_unix_seconds: u64,
+    ) -> Result<Self, AgentWebReplayStoreError> {
+        let webhook_id = webhook_id.into();
+        validate_standard_webhook_id(&webhook_id).map_err(AgentWebReplayStoreError::Unavailable)?;
+        Ok(Self {
+            replay_scope,
+            webhook_id,
+            expires_at_unix_seconds,
+        })
+    }
+
+    #[must_use]
+    pub fn replay_scope(&self) -> &AgentWebReplayScope {
+        &self.replay_scope
+    }
+
+    #[must_use]
+    pub fn webhook_id(&self) -> &str {
+        &self.webhook_id
+    }
+
+    #[must_use]
+    pub fn expires_at_unix_seconds(&self) -> u64 {
+        self.expires_at_unix_seconds
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AgentWebReplayStoreError {
+    Replayed(String),
+    Unavailable(String),
+}
+
+impl fmt::Display for AgentWebReplayStoreError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Replayed(webhook_id) => {
+                write!(formatter, "replayed Standard Webhooks id: {webhook_id}")
+            }
+            Self::Unavailable(message) => {
+                write!(
+                    formatter,
+                    "Standard Webhooks replay store unavailable: {message}"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for AgentWebReplayStoreError {}
+
+/// Durable replay stores must reserve the entire batch atomically.
+///
+/// The consuming verifier calls this only after every signature, graph edge,
+/// receipt, and claim has passed. Returning an error must leave replay entries
+/// unmodified, although implementations may advance anti-rollback clock state.
+pub trait AgentWebReplayStore: fmt::Debug + Send + Sync {
+    fn check_and_insert(
+        &self,
+        now_unix_seconds: u64,
+        entries: &[AgentWebReplayEntry],
+    ) -> Result<(), AgentWebReplayStoreError>;
+}
+
+#[derive(Debug, Default)]
+struct InMemoryAgentWebReplayState {
+    entries: BTreeMap<(AgentWebReplayScope, String), u64>,
+    legacy_unscoped_entries: BTreeMap<String, u64>,
+    wall_clock_high_water: u64,
+}
+
+#[derive(Debug)]
+pub struct InMemoryAgentWebReplayStore {
+    state: Mutex<InMemoryAgentWebReplayState>,
+    global_capacity: usize,
+    per_scope_capacity: usize,
+}
+
+impl Default for InMemoryAgentWebReplayStore {
+    fn default() -> Self {
+        Self {
+            state: Mutex::new(InMemoryAgentWebReplayState::default()),
+            global_capacity: DEFAULT_AGENT_WEB_REPLAY_GLOBAL_CAPACITY,
+            per_scope_capacity: DEFAULT_AGENT_WEB_REPLAY_PER_SCOPE_CAPACITY,
+        }
+    }
+}
+
+impl InMemoryAgentWebReplayStore {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn new_with_capacity(
+        global_capacity: usize,
+        per_scope_capacity: usize,
+    ) -> Result<Self, AgentWebReplayStoreError> {
+        validate_replay_capacities(global_capacity, per_scope_capacity)?;
+        Ok(Self {
+            state: Mutex::new(InMemoryAgentWebReplayState::default()),
+            global_capacity,
+            per_scope_capacity,
+        })
+    }
+
+    /// Seed a legacy unscoped marker that blocks every authenticated scope.
+    ///
+    /// New callers should reserve an [`AgentWebReplayEntry`] instead. This
+    /// helper remains for compatibility with pre-scope test and migration code.
+    pub fn with_seen_id(webhook_id: impl Into<String>, expires_at_unix_seconds: u64) -> Self {
+        Self {
+            state: Mutex::new(InMemoryAgentWebReplayState {
+                entries: BTreeMap::new(),
+                legacy_unscoped_entries: BTreeMap::from([(
+                    webhook_id.into(),
+                    expires_at_unix_seconds,
+                )]),
+                wall_clock_high_water: 0,
+            }),
+            global_capacity: DEFAULT_AGENT_WEB_REPLAY_GLOBAL_CAPACITY,
+            per_scope_capacity: DEFAULT_AGENT_WEB_REPLAY_PER_SCOPE_CAPACITY,
+        }
+    }
+}
+
+impl AgentWebReplayStore for InMemoryAgentWebReplayStore {
+    fn check_and_insert(
+        &self,
+        now_unix_seconds: u64,
+        entries: &[AgentWebReplayEntry],
+    ) -> Result<(), AgentWebReplayStoreError> {
+        let mut state = self.state.lock().map_err(|_| {
+            AgentWebReplayStoreError::Unavailable(
+                "in-memory replay store lock poisoned".to_string(),
+            )
+        })?;
+        if now_unix_seconds < state.wall_clock_high_water {
+            return Err(AgentWebReplayStoreError::Unavailable(format!(
+                "verifier clock rollback detected: {now_unix_seconds} is before high-water {}",
+                state.wall_clock_high_water
+            )));
+        }
+        state.wall_clock_high_water = now_unix_seconds;
+
+        for entry in entries {
+            if entry.expires_at_unix_seconds() < now_unix_seconds {
+                return Err(AgentWebReplayStoreError::Unavailable(format!(
+                    "replay expiry for {} is before verifier time",
+                    entry.webhook_id()
+                )));
+            }
+        }
+
+        let mut batch_keys = BTreeSet::new();
+        let mut batch_scope_counts = BTreeMap::<&AgentWebReplayScope, usize>::new();
+        for entry in entries {
+            let key = (entry.replay_scope(), entry.webhook_id());
+            if !batch_keys.insert(key)
+                || state
+                    .entries
+                    .get(&(entry.replay_scope().clone(), entry.webhook_id().to_string()))
+                    .is_some_and(|expires_at| *expires_at >= now_unix_seconds)
+                || state
+                    .legacy_unscoped_entries
+                    .get(entry.webhook_id())
+                    .is_some_and(|expires_at| *expires_at >= now_unix_seconds)
+            {
+                return Err(AgentWebReplayStoreError::Replayed(
+                    entry.webhook_id().to_string(),
+                ));
+            }
+            *batch_scope_counts.entry(entry.replay_scope()).or_default() += 1;
+        }
+
+        let live_global = state
+            .entries
+            .values()
+            .chain(state.legacy_unscoped_entries.values())
+            .filter(|expires_at| **expires_at >= now_unix_seconds)
+            .count();
+        if live_global.saturating_add(entries.len()) > self.global_capacity {
+            return Err(AgentWebReplayStoreError::Unavailable(format!(
+                "global live-entry capacity {} exhausted; denying fail-closed",
+                self.global_capacity
+            )));
+        }
+        for (replay_scope, batch_count) in batch_scope_counts {
+            let live_for_scope = state
+                .entries
+                .iter()
+                .filter(|((scope, _), expires_at)| {
+                    scope == replay_scope && **expires_at >= now_unix_seconds
+                })
+                .count();
+            if live_for_scope.saturating_add(batch_count) > self.per_scope_capacity {
+                return Err(AgentWebReplayStoreError::Unavailable(format!(
+                    "per-scope live-entry capacity {} exhausted; denying fail-closed",
+                    self.per_scope_capacity
+                )));
+            }
+        }
+        state
+            .entries
+            .retain(|_, expires_at| *expires_at >= now_unix_seconds);
+        state
+            .legacy_unscoped_entries
+            .retain(|_, expires_at| *expires_at >= now_unix_seconds);
+        for entry in entries {
+            state.entries.insert(
+                (entry.replay_scope().clone(), entry.webhook_id().to_string()),
+                entry.expires_at_unix_seconds(),
+            );
+        }
+        Ok(())
+    }
+}
+
+fn validate_replay_capacities(
+    global_capacity: usize,
+    per_scope_capacity: usize,
+) -> Result<(), AgentWebReplayStoreError> {
+    if global_capacity == 0 || per_scope_capacity == 0 {
+        return Err(AgentWebReplayStoreError::Unavailable(
+            "global and per-scope replay capacities must be greater than zero".to_string(),
+        ));
+    }
+    if per_scope_capacity > global_capacity {
+        return Err(AgentWebReplayStoreError::Unavailable(
+            "per-scope replay capacity cannot exceed global replay capacity".to_string(),
+        ));
+    }
+    Ok(())
+}
+
+fn validate_standard_webhook_id(webhook_id: &str) -> Result<(), String> {
+    if webhook_id.is_empty()
+        || webhook_id.len() > MAX_STANDARD_WEBHOOK_ID_BYTES
+        || webhook_id
+            .chars()
+            .any(|character| character.is_control() || character.is_whitespace())
+    {
+        return Err(format!(
+            "Standard Webhooks id must be 1-{MAX_STANDARD_WEBHOOK_ID_BYTES} bytes without whitespace or control characters"
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone)]
@@ -107,6 +417,14 @@ impl AgentWebVerifierTrust {
         self
     }
 
+    pub fn with_standard_webhooks_replay_store(
+        mut self,
+        store: Arc<dyn AgentWebReplayStore>,
+    ) -> Self {
+        self.standard_webhooks_replay_store = Some(store);
+        self
+    }
+
     pub fn with_trusted_receipt_kernel_keys(
         mut self,
         keys: impl IntoIterator<Item = PublicKey>,
@@ -154,6 +472,118 @@ impl AgentWebVerifierTrust {
             .iter()
             .any(|trusted_key| trusted_key == key)
     }
+
+    fn validate_signer_role_separation(&self) -> Result<(), TransactionPassportError> {
+        if trusted_key_sets_overlap(
+            &self.trusted_passport_signer_keys,
+            &self.trusted_receipt_kernel_keys,
+        ) {
+            return Err(claim_failed(
+                "Agent Web passport and kernel signer roles overlap",
+            ));
+        }
+        if trusted_key_sets_overlap(
+            &self.trusted_passport_signer_keys,
+            &self.trusted_envelope_sidecar_keys,
+        ) {
+            return Err(claim_failed(
+                "Agent Web passport and sidecar signer roles overlap",
+            ));
+        }
+        if trusted_key_sets_overlap(
+            &self.trusted_receipt_kernel_keys,
+            &self.trusted_envelope_sidecar_keys,
+        ) {
+            return Err(claim_failed(
+                "Agent Web kernel and sidecar signer roles overlap",
+            ));
+        }
+        Ok(())
+    }
+
+    fn commit_standard_webhooks_replays(
+        &self,
+        entries: &[AgentWebReplayEntry],
+    ) -> Result<(), TransactionPassportError> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+        if entries
+            .iter()
+            .any(|entry| self.has_seen_standard_webhooks_id(entry.webhook_id()))
+        {
+            return Err(claim_failed("replayed Standard Webhooks id"));
+        }
+        let replay_window = self
+            .standard_webhooks_replay_window()
+            .ok_or_else(|| claim_failed("missing Standard Webhooks replay window"))?;
+        let store = self
+            .standard_webhooks_replay_store
+            .as_ref()
+            .ok_or_else(|| claim_failed("missing durable Standard Webhooks replay store"))?;
+        store
+            .check_and_insert(replay_window.now_unix_seconds, entries)
+            .map_err(|error| match error {
+                AgentWebReplayStoreError::Replayed(_) => {
+                    claim_failed("replayed Standard Webhooks id")
+                }
+                AgentWebReplayStoreError::Unavailable(message) => claim_failed(format!(
+                    "Standard Webhooks replay store unavailable: {message}"
+                )),
+            })
+    }
+}
+
+fn trusted_key_sets_overlap(left: &[PublicKey], right: &[PublicKey]) -> bool {
+    left.iter()
+        .any(|left_key| right.iter().any(|right_key| right_key == left_key))
+}
+
+/// Canonical non-circular Agent-Web authorization scope derived from fields
+/// covered by the passport root signature.
+///
+/// `evidence_graph_sha256` is excluded because the graph contains the
+/// envelope and receipt that bind this digest. `signature` is excluded because
+/// it signs the complete passport, including the graph digest. All remaining
+/// identity, validity, claim-set, policy, path, and omission fields are bound.
+#[derive(Serialize)]
+struct AgentWebPassportScopeDigestInput<'a> {
+    scope_schema: &'static str,
+    passport_schema: &'a str,
+    id: &'a str,
+    issued_at: &'a str,
+    not_before: Option<&'a str>,
+    expires_at: Option<&'a str>,
+    issuer: &'a str,
+    evidence_graph_path: &'a str,
+    claim_set_sha256: &'a str,
+    claim_set_path: &'a str,
+    verifier_policy_sha256: &'a str,
+    verifier_policy_path: &'a str,
+    omission_policy: &'a [chio_transaction_passport::TransactionOmissionPolicyEntry],
+}
+
+pub fn agent_web_passport_scope_sha256(
+    passport: &TransactionPassport,
+) -> Result<String, TransactionPassportError> {
+    let input = AgentWebPassportScopeDigestInput {
+        scope_schema: "chio.agent-web.passport-scope.v1",
+        passport_schema: &passport.schema,
+        id: &passport.id,
+        issued_at: &passport.issued_at,
+        not_before: passport.not_before.as_deref(),
+        expires_at: passport.expires_at.as_deref(),
+        issuer: &passport.issuer,
+        evidence_graph_path: &passport.evidence_graph_path,
+        claim_set_sha256: &passport.claim_set_sha256,
+        claim_set_path: &passport.claim_set_path,
+        verifier_policy_sha256: &passport.verifier_policy_sha256,
+        verifier_policy_path: &passport.verifier_policy_path,
+        omission_policy: &passport.omission_policy,
+    };
+    let canonical = canonical_json_bytes(&input)
+        .map_err(|_| claim_failed("Agent Web passport scope digest invalid"))?;
+    Ok(sha256_hex(&canonical))
 }
 
 struct ProjectionManifestEntry {
@@ -200,10 +630,45 @@ pub fn verify_agent_web_interop(
     verify_agent_web_interop_with_trust(bundle, &AgentWebVerifierTrust::new())
 }
 
+/// Verifies an Agent Web bundle without reserving Standard Webhooks replay
+/// identifiers. This read-only operation is safe to repeat for offline audit.
 pub fn verify_agent_web_interop_with_trust(
     bundle: &AgentWebInteropBundle,
     trust: &AgentWebVerifierTrust,
 ) -> Result<AgentWebInteropReport, TransactionPassportError> {
+    verify_agent_web_interop_with_trust_mode(bundle, trust, false, None)
+}
+
+/// Verifies an Agent Web bundle and atomically reserves its Standard Webhooks
+/// replay identifiers after the entire bundle passes validation.
+///
+/// Unlike [`verify_agent_web_interop_with_trust`], this is a consuming
+/// admission operation. It fails closed when webhook evidence is present and
+/// no replay store is configured.
+pub fn verify_agent_web_interop_with_trust_and_consume_replays(
+    bundle: &AgentWebInteropBundle,
+    trust: &AgentWebVerifierTrust,
+) -> Result<AgentWebInteropReport, TransactionPassportError> {
+    verify_agent_web_interop_with_trust_mode(bundle, trust, true, None)
+}
+
+/// Verifies an Agent Web bundle, confirms that its report matches a prior
+/// read-only verification, and only then atomically reserves replay IDs.
+pub fn verify_agent_web_interop_with_trust_and_consume_replays_if_report_matches(
+    bundle: &AgentWebInteropBundle,
+    trust: &AgentWebVerifierTrust,
+    expected_read_only_report: &AgentWebInteropReport,
+) -> Result<AgentWebInteropReport, TransactionPassportError> {
+    verify_agent_web_interop_with_trust_mode(bundle, trust, true, Some(expected_read_only_report))
+}
+
+fn verify_agent_web_interop_with_trust_mode(
+    bundle: &AgentWebInteropBundle,
+    trust: &AgentWebVerifierTrust,
+    consume_replays: bool,
+    expected_read_only_report: Option<&AgentWebInteropReport>,
+) -> Result<AgentWebInteropReport, TransactionPassportError> {
+    trust.validate_signer_role_separation()?;
     let signed_evidence_graph_bytes = bundle
         .root_evidence_graph_bytes
         .as_deref()
@@ -223,6 +688,7 @@ pub fn verify_agent_web_interop_with_trust(
 
     let graph = parse_graph(&bundle.evidence_graph_bytes)?;
     let policy = parse_policy(&bundle.verifier_policy_bytes)?;
+    let passport_scope_sha256 = agent_web_passport_scope_sha256(&bundle.passport)?;
 
     let mut manifests = BTreeMap::new();
     for node in graph
@@ -237,29 +703,54 @@ pub fn verify_agent_web_interop_with_trust(
         )?;
         validate_projection_manifest(&manifest)?;
         validate_required_unsupported_claims(&manifest)?;
-        manifests.insert(
-            manifest.projection_id.clone(),
-            ProjectionManifestEntry {
-                node_id: node.id.clone(),
-                node_sha256: node.sha256.clone(),
-                manifest,
-            },
-        );
+        let projection_id = manifest.projection_id.clone();
+        if manifests
+            .insert(
+                projection_id.clone(),
+                ProjectionManifestEntry {
+                    node_id: node.id.clone(),
+                    node_sha256: node.sha256.clone(),
+                    manifest,
+                },
+            )
+            .is_some()
+        {
+            return Err(claim_failed(format!(
+                "duplicate Agent Web projection id: {projection_id}"
+            )));
+        }
     }
 
     let mut verified_claims = Vec::new();
     let mut projections = Vec::new();
     let mut unsupported_claims = Vec::new();
     let mut limitations = Vec::new();
+    let mut envelope_ids = BTreeSet::new();
+    let mut pending_replay_entries = Vec::new();
 
     for envelope_node in graph
         .nodes
         .iter()
         .filter(|node| node.role == AgentWebEvidenceRole::AgentWebProofEnvelope)
     {
+        let envelope_schema = match envelope_node.schema.as_str() {
+            CHIO_AGENT_WEB_PROOF_ENVELOPE_V1_SCHEMA => CHIO_AGENT_WEB_PROOF_ENVELOPE_V1_SCHEMA,
+            CHIO_AGENT_WEB_PROOF_ENVELOPE_V2_SCHEMA => CHIO_AGENT_WEB_PROOF_ENVELOPE_V2_SCHEMA,
+            schema => {
+                return Err(claim_failed(format!(
+                    "unsupported Agent Web proof envelope schema: {schema}"
+                )));
+            }
+        };
         let envelope: AgentWebProofEnvelope =
-            parse_artifact(bundle, envelope_node, "chio.agent-web-proof-envelope.v1")?;
-        validate_envelope(&bundle.passport, &envelope, trust)?;
+            parse_artifact(bundle, envelope_node, envelope_schema)?;
+        validate_envelope(&bundle.passport, &passport_scope_sha256, &envelope, trust)?;
+        if !envelope_ids.insert(envelope.envelope_id.clone()) {
+            return Err(claim_failed(format!(
+                "duplicate Agent Web envelope id: {}",
+                envelope.envelope_id
+            )));
+        }
         let manifest_entry = manifests
             .get(&envelope.projection_manifest_ref)
             .ok_or_else(|| claim_failed("missing projection manifest"))?;
@@ -289,7 +780,11 @@ pub fn verify_agent_web_interop_with_trust(
         )?;
         validate_external_subject_schema(external_node, &envelope.source_protocol)?;
         let external_bytes = raw_artifact_bytes(bundle, external_node)?;
-        validate_external_subject(&envelope, &manifest_entry.manifest, external_bytes, trust)?;
+        if let Some(replay_entry) =
+            validate_external_subject(&envelope, &manifest_entry.manifest, external_bytes, trust)?
+        {
+            pending_replay_entries.push(replay_entry);
+        }
         if matches!(
             envelope.source_protocol.as_str(),
             "acp-commerce" | "ap2" | "x402"
@@ -308,7 +803,7 @@ pub fn verify_agent_web_interop_with_trust(
             trust,
             &envelope_node.id,
             &envelope,
-            &bundle.passport.verifier_policy_sha256,
+            &passport_scope_sha256,
         )?;
 
         verify_claim_mapping(
@@ -352,7 +847,7 @@ pub fn verify_agent_web_interop_with_trust(
     reject_required_external_authority_claims(&policy.required_claims)?;
     ensure_required_claims_verified(&policy.required_claims, &verified_claims)?;
 
-    Ok(AgentWebInteropReport {
+    let report = AgentWebInteropReport {
         schema: "chio.agent-web.interop-verifier-report.v1".to_string(),
         id: format!("agent-web-interop-report-{}", bundle.passport.id),
         issued_at: bundle.passport.issued_at.clone(),
@@ -362,7 +857,16 @@ pub fn verify_agent_web_interop_with_trust(
         projections,
         unsupported_claims,
         limitations,
-    })
+    };
+    if expected_read_only_report.is_some_and(|expected| expected != &report) {
+        return Err(claim_failed(
+            "consuming Agent Web report does not match its read-only verification",
+        ));
+    }
+    if consume_replays {
+        trust.commit_standard_webhooks_replays(&pending_replay_entries)?;
+    }
+    Ok(report)
 }
 
 fn validate_receipt_refs(
@@ -371,11 +875,16 @@ fn validate_receipt_refs(
     trust: &AgentWebVerifierTrust,
     envelope_node_id: &str,
     envelope: &AgentWebProofEnvelope,
-    verifier_policy_sha256: &str,
+    passport_scope_sha256: &str,
 ) -> Result<(), TransactionPassportError> {
     for receipt_ref in &envelope.receipt_refs {
-        let receipt_node = find_node_by_id(graph, AgentWebEvidenceRole::Receipt, receipt_ref)
-            .ok_or_else(|| claim_failed(format!("missing Agent Web receipt ref: {receipt_ref}")))?;
+        let receipt_node = if envelope.is_scope_bound_v2() {
+            let canonical_ref = AgentWebReceiptRef::parse(receipt_ref)?;
+            find_receipt_node(graph, &canonical_ref)
+        } else {
+            find_legacy_receipt_node(graph, receipt_ref)
+        }
+        .ok_or_else(|| claim_failed(format!("missing Agent Web receipt ref: {}", receipt_ref)))?;
         validate_required_edge(
             graph,
             envelope_node_id,
@@ -388,8 +897,10 @@ fn validate_receipt_refs(
         validate_agent_web_receipt(
             receipt_bytes,
             receipt_ref,
+            receipt_node,
+            &bundle.passport,
+            passport_scope_sha256,
             envelope,
-            verifier_policy_sha256,
             trust,
         )?;
     }
@@ -399,8 +910,10 @@ fn validate_receipt_refs(
 fn validate_agent_web_receipt(
     receipt_bytes: &[u8],
     receipt_ref: &str,
+    receipt_node: &evidence::AgentWebEvidenceNode,
+    passport: &TransactionPassport,
+    passport_scope_sha256: &str,
     envelope: &AgentWebProofEnvelope,
-    verifier_policy_sha256: &str,
     trust: &AgentWebVerifierTrust,
 ) -> Result<(), TransactionPassportError> {
     let receipt: ChioReceipt = serde_json::from_slice(receipt_bytes)
@@ -426,23 +939,110 @@ fn validate_agent_web_receipt(
     if !trust.trusts_receipt_kernel_key(&receipt.kernel_key) {
         return Err(claim_failed("Agent Web receipt kernel key untrusted"));
     }
+    if receipt.tool_server != "agent-web-sidecar"
+        || receipt.tool_name != "project-external-evidence"
+    {
+        return Err(claim_failed("Agent Web receipt producer mismatch"));
+    }
     if receipt.decision.as_ref() != Some(&Decision::Allow) {
         return Err(claim_failed("Agent Web receipt did not execute"));
     }
     if receipt.content_hash != envelope.external_subject_digest {
         return Err(claim_failed("Agent Web receipt content digest mismatch"));
     }
-    if receipt.policy_hash != verifier_policy_sha256 {
+    if receipt.policy_hash != passport.verifier_policy_sha256 {
         return Err(claim_failed("Agent Web receipt policy digest mismatch"));
     }
-    let bound_ref = receipt
-        .metadata
-        .as_ref()
-        .and_then(|metadata| metadata.get("agent_web_receipt_ref"))
+    if !envelope.is_scope_bound_v2() {
+        let bound_ref = receipt
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("agent_web_receipt_ref"))
+            .and_then(serde_json::Value::as_str)
+            .ok_or_else(|| claim_failed("Agent Web receipt ref mismatch"))?;
+        let bound_ref_matches = if envelope.is_scope_bound_v2() {
+            bound_ref == receipt_ref
+        } else {
+            receipt_node_ref_matches(receipt_node, bound_ref)
+        };
+        if !bound_ref_matches {
+            return Err(claim_failed("Agent Web receipt ref mismatch"));
+        }
+    }
+    if !envelope.is_scope_bound_v2() {
+        return Ok(());
+    }
+    validate_receipt_action_parameter(
+        &receipt,
+        "agent_web_receipt_ref",
+        receipt_ref,
+        "Agent Web receipt action ref mismatch",
+    )?;
+    validate_receipt_action_parameter(
+        &receipt,
+        "content_hash",
+        &envelope.external_subject_digest,
+        "Agent Web receipt action content digest mismatch",
+    )?;
+    validate_receipt_action_parameter(
+        &receipt,
+        "transaction_passport_id",
+        &passport.id,
+        "Agent Web receipt action passport id mismatch",
+    )?;
+    validate_receipt_action_parameter(
+        &receipt,
+        "transaction_passport_issuer",
+        &passport.issuer,
+        "Agent Web receipt action passport issuer mismatch",
+    )?;
+    validate_receipt_action_parameter(
+        &receipt,
+        "agent_web_passport_scope_sha256",
+        passport_scope_sha256,
+        "Agent Web receipt action passport scope mismatch",
+    )?;
+    validate_receipt_action_parameter(
+        &receipt,
+        "agent_web_envelope_id",
+        &envelope.envelope_id,
+        "Agent Web receipt action envelope id mismatch",
+    )?;
+    validate_receipt_action_parameter(
+        &receipt,
+        "projection_manifest_sha256",
+        &envelope.projection_manifest_sha256,
+        "Agent Web receipt action projection manifest digest mismatch",
+    )?;
+    validate_receipt_action_parameter(
+        &receipt,
+        "source_protocol",
+        &envelope.source_protocol,
+        "Agent Web receipt action source protocol mismatch",
+    )?;
+    validate_receipt_action_parameter(
+        &receipt,
+        "source_protocol_version",
+        &envelope.source_protocol_version,
+        "Agent Web receipt action source protocol version mismatch",
+    )?;
+    Ok(())
+}
+
+fn validate_receipt_action_parameter(
+    receipt: &ChioReceipt,
+    parameter: &str,
+    expected: &str,
+    mismatch_message: &str,
+) -> Result<(), TransactionPassportError> {
+    let actual = receipt
+        .action
+        .parameters
+        .get(parameter)
         .and_then(serde_json::Value::as_str)
-        .ok_or_else(|| claim_failed("Agent Web receipt ref mismatch"))?;
-    if bound_ref != receipt_ref {
-        return Err(claim_failed("Agent Web receipt ref mismatch"));
+        .ok_or_else(|| claim_failed(mismatch_message))?;
+    if actual != expected {
+        return Err(claim_failed(mismatch_message));
     }
     Ok(())
 }

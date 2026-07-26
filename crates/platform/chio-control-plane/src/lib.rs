@@ -873,7 +873,8 @@ mod tests {
 
     #[test]
     fn durable_admission_runtime_shares_one_owner_on_a_distinct_sidecar() {
-        let directory = tempfile::tempdir().expect("create durable admission test directory");
+        let directory =
+            durable_admission::private_tempdir().expect("create durable admission test directory");
         let session_database = directory.path().join("sessions.sqlite3");
         let admission_database =
             durable_admission_sidecar_path(&session_database).expect("derive admission sidecar");
@@ -903,7 +904,8 @@ mod tests {
 
     #[test]
     fn durable_admission_runtime_rejects_a_lost_signing_seed() {
-        let directory = tempfile::tempdir().expect("create durable admission test directory");
+        let directory =
+            durable_admission::private_tempdir().expect("create durable admission test directory");
         let admission_database = directory.path().join("admission.sqlite3");
         let runtime = DurableAdmissionRuntime::open(&admission_database)
             .expect("open durable admission runtime");

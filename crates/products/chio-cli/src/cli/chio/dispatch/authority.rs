@@ -24,8 +24,9 @@ pub(crate) fn cmd_chio_federation_authority_issue(
         "Chio local signing keys",
     )?)
     .map_err(|error| CliError::cli_other_error(format!("Chio local signing keys: {error}")))?;
-    let bundle = chio_federation_authority::issue_authority_bundle(&profile, &request, &signing_keys)
-        .map_err(|error| CliError::cli_other_error(format!("Chio authority issue: {error}")))?;
+    let bundle =
+        chio_federation_authority::issue_authority_bundle(&profile, &request, &signing_keys)
+            .map_err(|error| CliError::cli_other_error(format!("Chio authority issue: {error}")))?;
     fs::create_dir_all(out_dir).map_err(|error| {
         CliError::cli_io_error(format!(
             "failed to create Chio authority output directory {}: {error}",
@@ -34,9 +35,8 @@ pub(crate) fn cmd_chio_federation_authority_issue(
     })?;
     write_json_string(
         &out_dir.join("issuance-bundle.json"),
-        &chio_federation_authority::issuance_bundle_json(&bundle).map_err(|error| {
-            CliError::cli_other_error(format!("Chio issuance bundle: {error}"))
-        })?,
+        &chio_federation_authority::issuance_bundle_json(&bundle)
+            .map_err(|error| CliError::cli_other_error(format!("Chio issuance bundle: {error}")))?,
     )?;
     write_json_string(
         &out_dir.join("capability-leases.json"),
@@ -93,9 +93,8 @@ pub(crate) fn cmd_chio_federation_authority_checkpoint(
     .map_err(|error| CliError::cli_other_error(format!("Chio checkpoint publish: {error}")))?;
     write_json_string(
         out,
-        &chio_federation_authority::signed_revocation_checkpoint_json(&checkpoint).map_err(
-            |error| CliError::cli_other_error(format!("Chio checkpoint JSON: {error}")),
-        )?,
+        &chio_federation_authority::signed_revocation_checkpoint_json(&checkpoint)
+            .map_err(|error| CliError::cli_other_error(format!("Chio checkpoint JSON: {error}")))?,
     )
 }
 
@@ -117,24 +116,30 @@ pub(crate) fn cmd_chio_federation_authority_trust_bundle_assemble(
         "Chio peer pins",
     )?)
     .map_err(|error| CliError::cli_other_error(format!("Chio peer pins: {error}")))?;
-    let workflow_intersection: chio_attest_buyer_core::claims::WorkflowIntersectionArtifact = serde_json::from_str(
-        &read_utf8_json_file(workflow_intersection, "Chio workflow intersection")?,
-    )
-    .map_err(|error| {
-        CliError::cli_other_error(format!("Chio workflow intersection JSON: {error}"))
-    })?;
-    let disclosure_policy: chio_attest_buyer_core::disclosure::ChioDisclosurePolicy = serde_json::from_str(
-        &read_utf8_json_file(disclosure_policy, "Chio disclosure policy")?,
-    )
-    .map_err(|error| {
-        CliError::cli_other_error(format!("Chio disclosure policy JSON: {error}"))
-    })?;
-    let checkpoint: chio_attest_buyer_core::revocation::SignedChioRevocationCheckpoint = serde_json::from_str(
-        &read_utf8_json_file(checkpoint, "Chio revocation checkpoint")?,
-    )
-    .map_err(|error| {
-        CliError::cli_other_error(format!("Chio revocation checkpoint JSON: {error}"))
-    })?;
+    let workflow_intersection: chio_attest_buyer_core::claims::WorkflowIntersectionArtifact =
+        serde_json::from_str(&read_utf8_json_file(
+            workflow_intersection,
+            "Chio workflow intersection",
+        )?)
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chio workflow intersection JSON: {error}"))
+        })?;
+    let disclosure_policy: chio_attest_buyer_core::disclosure::ChioDisclosurePolicy =
+        serde_json::from_str(&read_utf8_json_file(
+            disclosure_policy,
+            "Chio disclosure policy",
+        )?)
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chio disclosure policy JSON: {error}"))
+        })?;
+    let checkpoint: chio_attest_buyer_core::revocation::SignedChioRevocationCheckpoint =
+        serde_json::from_str(&read_utf8_json_file(
+            checkpoint,
+            "Chio revocation checkpoint",
+        )?)
+        .map_err(|error| {
+            CliError::cli_other_error(format!("Chio revocation checkpoint JSON: {error}"))
+        })?;
     let document = chio_federation_authority::assemble_verifier_trust_bundle(
         &profile,
         &peer_pins,
@@ -145,8 +150,8 @@ pub(crate) fn cmd_chio_federation_authority_trust_bundle_assemble(
     .map_err(|error| CliError::cli_other_error(format!("Chio trust bundle assemble: {error}")))?;
     write_json_string(
         out,
-        &chio_attest_buyer_core::trust_bundle::verifier_trust_bundle_json(&document).map_err(|error| {
-            CliError::cli_other_error(format!("Chio verifier trust bundle JSON: {error}"))
-        })?,
+        &chio_attest_buyer_core::trust_bundle::verifier_trust_bundle_json(&document).map_err(
+            |error| CliError::cli_other_error(format!("Chio verifier trust bundle JSON: {error}")),
+        )?,
     )
 }
