@@ -177,6 +177,7 @@ pub const CHIO_RUNTIME_FAILURE_CODES: &[&str] = &[
     "chio_swarm_continuation_replay",
     "chio_swarm_continuation_store_unsupported",
     "chio_treaty_action_class_not_allowed",
+    "chio_treaty_admission_report_hash_mismatch",
     "chio_treaty_bilateral_hash_mismatch",
     "chio_treaty_bilateral_mismatch",
     "chio_treaty_continuation_hash_mismatch",

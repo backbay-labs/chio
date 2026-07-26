@@ -264,6 +264,30 @@ fn bounded_treaty_predicate_serialization_denies_unknown_or_unsupported_input(
         &duplicate_nested_operation,
         &receipt
     ));
+
+    let oversized_json = format!(
+        r#"{{"schema":"{CHIO_BOUNDED_TREATY_PREDICATE_SCHEMA}","predicate":{{"op":"atom","atom":{{"tag":"scope_contains","target":"{}"}}}}}}"#,
+        "x".repeat(70 * 1_024)
+    );
+    assert!(!evaluate_bounded_treaty_predicate_json(
+        &oversized_json,
+        &receipt
+    ));
+
+    let oversized_atom = serde_json::json!({
+        "schema": CHIO_BOUNDED_TREATY_PREDICATE_SCHEMA,
+        "predicate": {
+            "op": "atom",
+            "atom": {
+                "tag": "scope_contains",
+                "target": "x".repeat(1_025)
+            }
+        }
+    });
+    assert!(!evaluate_bounded_treaty_predicate_json(
+        &serde_json::to_string(&oversized_atom)?,
+        &receipt
+    ));
     Ok(())
 }
 
@@ -335,10 +359,12 @@ fn bounded_treaty_view_binds_runtime_artifacts_and_rejects_wrong_treaty(
         remote_receipt_sha256: "8".repeat(64),
         signer_kernel_ids: scope.participant_kernel_ids.clone(),
     };
+    let report_sha256 = sha256_hex(&canonical_json_bytes(&report)?);
 
     let view = bounded_treaty_receipt_view_from_verified_artifacts(
         &scope,
         &report,
+        &report_sha256,
         &invocation,
         &continuation,
         1_800_000_010_000,
@@ -360,6 +386,7 @@ fn bounded_treaty_view_binds_runtime_artifacts_and_rejects_wrong_treaty(
         let err = match bounded_treaty_receipt_view_from_verified_artifacts(
             &scope,
             &report,
+            &report_sha256,
             &invocation,
             &continuation,
             invalid_now,
@@ -380,6 +407,7 @@ fn bounded_treaty_view_binds_runtime_artifacts_and_rejects_wrong_treaty(
     assert!(bounded_treaty_receipt_view_from_verified_artifacts(
         &scope,
         &report,
+        &report_sha256,
         &mismatched,
         &continuation,
         1_800_000_010_000,
@@ -391,6 +419,7 @@ fn bounded_treaty_view_binds_runtime_artifacts_and_rejects_wrong_treaty(
     let err = match bounded_treaty_receipt_view_from_verified_artifacts(
         &scope,
         &report,
+        &report_sha256,
         &wrong_capability,
         &continuation,
         1_800_000_010_000,
@@ -404,11 +433,59 @@ fn bounded_treaty_view_binds_runtime_artifacts_and_rejects_wrong_treaty(
     };
     assert_eq!(err.code(), "chio_treaty_continuation_hash_mismatch");
 
+    let mut substituted_report = report.clone();
+    substituted_report.verified_evidence[0].artifact_sha256 = "9".repeat(64);
+    let err = match bounded_treaty_receipt_view_from_verified_artifacts(
+        &scope,
+        &substituted_report,
+        &report_sha256,
+        &invocation,
+        &continuation,
+        1_800_000_010_000,
+    ) {
+        Ok(_) => {
+            return Err(io::Error::other(
+                "an admission report outside its authenticated binding was accepted",
+            )
+            .into());
+        }
+        Err(err) => err,
+    };
+    assert_eq!(err.code(), "chio_treaty_admission_report_hash_mismatch");
+
+    let mut out_of_scope_report = report.clone();
+    out_of_scope_report.action_class_id = "workflow.read_only".to_string();
+    let out_of_scope_report_sha256 = sha256_hex(&canonical_json_bytes(&out_of_scope_report)?);
+    let mut out_of_scope_continuation = continuation.clone();
+    out_of_scope_continuation.action_class_id = out_of_scope_report.action_class_id.clone();
+    let out_of_scope_continuation_sha256 =
+        sha256_hex(&canonical_json_bytes(&out_of_scope_continuation)?);
+    let mut out_of_scope_invocation = invocation.clone();
+    out_of_scope_invocation.action_class_id = out_of_scope_report.action_class_id.clone();
+    out_of_scope_invocation.continuation_sha256 = out_of_scope_continuation_sha256;
+    let err = match bounded_treaty_receipt_view_from_verified_artifacts(
+        &scope,
+        &out_of_scope_report,
+        &out_of_scope_report_sha256,
+        &out_of_scope_invocation,
+        &out_of_scope_continuation,
+        1_800_000_010_000,
+    ) {
+        Ok(_) => {
+            return Err(
+                io::Error::other("an action class outside the treaty scope was accepted").into(),
+            );
+        }
+        Err(err) => err,
+    };
+    assert_eq!(err.code(), "chio_treaty_action_class_not_allowed");
+
     let mut wrong_treaty = invocation;
     wrong_treaty.treaty_id = "treaty-attacker".to_string();
     let err = match bounded_treaty_receipt_view_from_verified_artifacts(
         &scope,
         &report,
+        &report_sha256,
         &wrong_treaty,
         &continuation,
         1_800_000_010_000,
@@ -435,6 +512,14 @@ fn bounded_treaty_predicate_denies_excessive_nesting() {
         };
     }
     assert!(!evaluate_bounded_treaty_predicate(&predicate, &receipt));
+
+    let oversized_atom = atom(BoundedTreatyPredicateAtom::ScopeContains {
+        target: "x".repeat(1_025),
+    });
+    assert!(!evaluate_bounded_treaty_predicate(
+        &oversized_atom,
+        &receipt
+    ));
 }
 
 #[test]

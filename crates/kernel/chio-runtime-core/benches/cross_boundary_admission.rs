@@ -10,7 +10,7 @@ use chio_runtime_core::{
     CrossBoundaryEvidenceRef, GovernanceLadderActionClass, GovernanceLadderManifest, TreatyScope,
     CHIO_GOVERNANCE_LADDER_MANIFEST_SCHEMA, CHIO_TREATY_SCOPE_SCHEMA,
 };
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion};
 use treaty_admission_fixture::TreatyPredispatchDenyFixture;
 
 fn action() -> GovernanceLadderActionClass {
@@ -50,12 +50,21 @@ pub fn bench(c: &mut Criterion) {
         Err(error) => panic!("failed to build real treaty admission hook fixture: {error}"),
     };
     c.bench_function("treaty_predispatch_deny", |b| {
-        b.iter(|| {
-            assert!(
-                black_box(treaty_deny_fixture.evaluate_once()),
-                "real treaty admission hook did not return the expected policy denial"
-            );
-        });
+        b.iter_batched(
+            || match treaty_deny_fixture.prepare_request() {
+                Ok(request) => request,
+                Err(error) => {
+                    panic!("failed to prepare treaty admission benchmark request: {error}")
+                }
+            },
+            |request| {
+                assert!(
+                    black_box(treaty_deny_fixture.evaluate_once(&request)),
+                    "real treaty admission hook did not return the expected policy denial"
+                );
+            },
+            BatchSize::SmallInput,
+        );
     });
 
     let manifests = vec![

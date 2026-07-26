@@ -74,7 +74,9 @@ if [[ "$full" -eq 1 ]]; then
   CHIO_PAPER_RESULT_DIR="$result_dir/replay" \
     CHIO_TARGET_DIR="$target_dir" \
     bash docs/papers/programmable-sovereignty/bench/run-replay-corpus.sh
-  make -C docs/papers/programmable-sovereignty submit-check
+  paper_build_dir="$work_dir/paper"
+  cp -a docs/papers/programmable-sovereignty "$paper_build_dir"
+  make -C "$paper_build_dir" submit-check
   python3 scripts/generate-programmable-sovereignty-artifact.py --check
 fi
 

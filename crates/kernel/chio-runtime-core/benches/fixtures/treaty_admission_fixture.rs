@@ -35,7 +35,7 @@ use chio_runtime_core::{
 };
 use chio_store_sqlite::SqliteReceiptStore;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tempfile::{tempdir, TempDir};
 use tokio::runtime::{Builder, Runtime};
 
@@ -45,7 +45,11 @@ const ACTION_CLASS_ID: &str = "workflow.destructive.vendor_call";
 
 pub struct TreatyPredispatchDenyFixture {
     kernel: ChioKernel,
-    request: ToolCallRequest,
+    base_request: ToolCallRequest,
+    base_bundle: RuntimeAdmissionBundle,
+    store: InMemoryRuntimeAdmissionStore,
+    request_sequence: AtomicU64,
+    last_receipt_id: Mutex<Option<String>>,
     tool_invocations: Arc<AtomicU64>,
     runtime: Runtime,
     _receipt_directory: TempDir,
@@ -82,7 +86,6 @@ impl TreatyPredispatchDenyFixture {
         let bundle_sha256 = runtime_admission_bundle_sha256(&bundle)?;
         let artifacts = TreatyArtifacts::new(&args)?;
         let store = InMemoryRuntimeAdmissionStore::new();
-        store.insert_bundle(bundle)?;
         artifacts.insert_into(&store)?;
         let request = treaty_request(args, bundle_sha256, &artifacts)?;
         let profile = RuntimeAdmissionProfile {
@@ -93,8 +96,8 @@ impl TreatyPredispatchDenyFixture {
             issued_at_unix_ms: 1_800_000_000_000,
             expires_at_unix_ms: 1_800_003_600_000,
         };
-        let hook =
-            ChioRuntimeAdmissionHook::new(profile, store).with_fixed_now_unix_ms(NOW_UNIX_MS);
+        let hook = ChioRuntimeAdmissionHook::new(profile, store.clone())
+            .with_fixed_now_unix_ms(NOW_UNIX_MS);
         let tool_invocations = Arc::new(AtomicU64::new(0));
         let config = kernel_config();
         let peer_now_unix_secs = std::time::SystemTime::now()
@@ -124,23 +127,62 @@ impl TreatyPredispatchDenyFixture {
         let runtime = Builder::new_current_thread().enable_all().build()?;
         let fixture = Self {
             kernel,
-            request,
+            base_request: request,
+            base_bundle: bundle,
+            store,
+            request_sequence: AtomicU64::new(0),
+            last_receipt_id: Mutex::new(None),
             tool_invocations,
             runtime,
             _receipt_directory: receipt_directory,
         };
+        let smoke_request = fixture.prepare_request()?;
         assert!(
-            fixture.evaluate_once(),
+            fixture.evaluate_once(&smoke_request),
             "real treaty admission hook fixture must deny the unanimous policy verdict"
         );
         Ok(fixture)
     }
 
-    pub fn evaluate_once(&self) -> bool {
+    pub fn prepare_request(&self) -> Result<ToolCallRequest, Box<dyn std::error::Error>> {
+        let sequence = self.request_sequence.fetch_add(1, Ordering::SeqCst);
+        let request_id = format!("req-bench-treaty-deny-{sequence}");
+        let admission_id = format!("adm-bench-treaty-deny-{sequence}");
+        let mut bundle = self.base_bundle.clone();
+        bundle.admission_id.clone_from(&admission_id);
+        bundle.binding.request_id.clone_from(&request_id);
+        let bundle_sha256 = runtime_admission_bundle_sha256(&bundle)?;
+        self.store.insert_bundle(bundle)?;
+
+        let mut request = self.base_request.clone();
+        request.request_id = request_id;
+        let intent = request
+            .governed_intent
+            .as_mut()
+            .ok_or_else(|| std::io::Error::other("benchmark governed intent is missing"))?;
+        intent.id = format!("intent-bench-treaty-deny-{sequence}");
+        let admission = intent
+            .context
+            .as_mut()
+            .and_then(|context| context.get_mut("chioAdmission"))
+            .and_then(serde_json::Value::as_object_mut)
+            .ok_or_else(|| std::io::Error::other("benchmark admission context is missing"))?;
+        admission.insert(
+            "admissionId".to_string(),
+            serde_json::Value::String(admission_id),
+        );
+        admission.insert(
+            "bundleSha256".to_string(),
+            serde_json::Value::String(bundle_sha256),
+        );
+        Ok(request)
+    }
+
+    pub fn evaluate_once(&self, request: &ToolCallRequest) -> bool {
         let invocations_before = self.tool_invocations.load(Ordering::SeqCst);
         let response = match self
             .runtime
-            .block_on(self.kernel.evaluate_tool_call(&self.request))
+            .block_on(self.kernel.evaluate_tool_call(request))
         {
             Ok(response) => response,
             Err(error) => panic!("real treaty admission hook benchmark failed: {error}"),
@@ -160,6 +202,17 @@ impl TreatyPredispatchDenyFixture {
                 self.tool_invocations.load(Ordering::SeqCst)
             );
         }
+        let mut last_receipt_id = match self.last_receipt_id.lock() {
+            Ok(last_receipt_id) => last_receipt_id,
+            Err(error) => panic!("benchmark receipt-id tracker is poisoned: {error}"),
+        };
+        if last_receipt_id.as_deref() == Some(response.receipt.id.as_str()) {
+            panic!(
+                "benchmark request {} replayed receipt {}",
+                request.request_id, response.receipt.id
+            );
+        }
+        *last_receipt_id = Some(response.receipt.id);
         true
     }
 }

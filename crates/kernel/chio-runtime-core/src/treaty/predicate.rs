@@ -18,6 +18,8 @@ pub const CHIO_BOUNDED_TREATY_PREDICATE_SCHEMA: &str =
 
 const MAX_PREDICATE_DEPTH: usize = 32;
 const MAX_PREDICATE_NODES: usize = 1_024;
+const MAX_PREDICATE_JSON_BYTES: usize = 64 * 1_024;
+const MAX_PREDICATE_ATOM_STRING_BYTES: usize = 1_024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -137,6 +139,9 @@ pub fn evaluate_bounded_treaty_predicate_json(
     json: &str,
     receipt: &BoundedTreatyReceiptView,
 ) -> bool {
+    if json.len() > MAX_PREDICATE_JSON_BYTES {
+        return false;
+    }
     let Ok(canonical) = chio_core_types::canonical_json_bytes_from_str(json) else {
         return false;
     };
@@ -207,10 +212,13 @@ pub fn bounded_treaty_constitution_refines_on(
 
 /// Construct the bounded view from artifacts that pass the production
 /// validators and cross-artifact bindings. No request-supplied policy field is
-/// accepted by this constructor.
+/// accepted by this constructor. `expected_admission_report_sha256` must come
+/// from an independently authenticated binding to the canonical admission
+/// report, such as a verified bilateral DSSE treaty binding.
 pub fn bounded_treaty_receipt_view_from_verified_artifacts(
     treaty_scope: &TreatyScope,
     report: &CrossBoundaryAdmissionReport,
+    expected_admission_report_sha256: &str,
     invocation: &BilateralInvocation,
     continuation: &CrossKernelContinuation,
     now_unix_ms: u64,
@@ -224,6 +232,13 @@ pub fn bounded_treaty_receipt_view_from_verified_artifacts(
         || now_unix_ms >= treaty_scope.expires_at_unix_ms
     {
         return rejected("chio_treaty_stale", "bounded treaty view scope is not live");
+    }
+
+    if canonical_sha256(report)? != expected_admission_report_sha256 {
+        return rejected(
+            "chio_treaty_admission_report_hash_mismatch",
+            "bounded treaty view admission report does not match its authenticated binding",
+        );
     }
 
     let expected_scope_sha256 = treaty_scope_sha256(treaty_scope)?;
@@ -244,6 +259,16 @@ pub fn bounded_treaty_receipt_view_from_verified_artifacts(
         return rejected(
             "chio_treaty_intersection_mismatch",
             "bounded treaty view artifacts do not bind the same admission decision",
+        );
+    }
+    if !treaty_scope
+        .allowed_action_classes
+        .iter()
+        .any(|allowed| allowed == &report.action_class_id)
+    {
+        return rejected(
+            "chio_treaty_action_class_not_allowed",
+            "bounded treaty view action class is outside the treaty scope",
         );
     }
 
@@ -344,7 +369,9 @@ fn evaluate_predicate_checked(
     }
     *nodes += 1;
     match predicate {
-        BoundedTreatyPredicate::Atom { atom } => Some(evaluate_atom(atom, receipt)),
+        BoundedTreatyPredicate::Atom { atom } => {
+            atom_within_limits(atom).then(|| evaluate_atom(atom, receipt))
+        }
         BoundedTreatyPredicate::Top => Some(true),
         BoundedTreatyPredicate::Bot => Some(false),
         BoundedTreatyPredicate::Conj { left, right } => {
@@ -468,19 +495,50 @@ fn atom_json_shape_is_strict(value: &serde_json::Value) -> bool {
         return false;
     };
     match tag {
-        "scope_contains" => object.len() == 2 && object.contains_key("target"),
-        "participant_kernel_id_equals" => object.len() == 2 && object.contains_key("kernelId"),
-        "action_class_in" => object.len() == 2 && object.contains_key("class"),
-        "ladder_mode_at_least_rank" => object.len() == 2 && object.contains_key("rank"),
-        "receipt_hash_equals" => object.len() == 2 && object.contains_key("hash"),
-        "continuation_live" => object.len() == 2 && object.contains_key("continuationId"),
-        "decision_equals" => object.len() == 2 && object.contains_key("decision"),
-        "failure_code_equals" => object.len() == 2 && object.contains_key("code"),
+        "scope_contains" => object.len() == 2 && bounded_string_field(object, "target"),
+        "participant_kernel_id_equals" => {
+            object.len() == 2 && bounded_string_field(object, "kernelId")
+        }
+        "action_class_in" => object.len() == 2 && bounded_string_field(object, "class"),
+        "ladder_mode_at_least_rank" => {
+            object.len() == 2 && object.get("rank").is_some_and(serde_json::Value::is_u64)
+        }
+        "receipt_hash_equals" => object.len() == 2 && bounded_string_field(object, "hash"),
+        "continuation_live" => object.len() == 2 && bounded_string_field(object, "continuationId"),
+        "decision_equals" => object.len() == 2 && bounded_string_field(object, "decision"),
+        "failure_code_equals" => object.len() == 2 && bounded_string_field(object, "code"),
         "evidence_digest_equals" => {
             object.len() == 3
-                && object.contains_key("evidenceClass")
-                && object.contains_key("digest")
+                && bounded_string_field(object, "evidenceClass")
+                && bounded_string_field(object, "digest")
         }
         _ => false,
+    }
+}
+
+fn bounded_string_field(object: &serde_json::Map<String, serde_json::Value>, key: &str) -> bool {
+    object
+        .get(key)
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|value| value.len() <= MAX_PREDICATE_ATOM_STRING_BYTES)
+}
+
+fn atom_within_limits(atom: &BoundedTreatyPredicateAtom) -> bool {
+    let bounded = |value: &str| value.len() <= MAX_PREDICATE_ATOM_STRING_BYTES;
+    match atom {
+        BoundedTreatyPredicateAtom::ScopeContains { target } => bounded(target),
+        BoundedTreatyPredicateAtom::ParticipantKernelIdEquals { kernel_id } => bounded(kernel_id),
+        BoundedTreatyPredicateAtom::ActionClassIn { class } => bounded(class),
+        BoundedTreatyPredicateAtom::LadderModeAtLeastRank { .. }
+        | BoundedTreatyPredicateAtom::DecisionEquals { .. } => true,
+        BoundedTreatyPredicateAtom::ReceiptHashEquals { hash } => bounded(hash),
+        BoundedTreatyPredicateAtom::ContinuationLive { continuation_id } => {
+            bounded(continuation_id)
+        }
+        BoundedTreatyPredicateAtom::FailureCodeEquals { code } => bounded(code),
+        BoundedTreatyPredicateAtom::EvidenceDigestEquals {
+            evidence_class,
+            digest,
+        } => bounded(evidence_class) && bounded(digest),
     }
 }
