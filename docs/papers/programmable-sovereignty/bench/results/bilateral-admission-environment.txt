@@ -1,4 +1,4 @@
-3c62eaab04177ff411b7747b6ed6b61bf566217c
+62a858ef2dad64ee9b42762984707ba2f9ffe048
 worktree=clean
 rustc 1.93.0 (254b59607 2026-01-19)
 binary: rustc
@@ -45,8 +45,8 @@ Vulnerability Tsa:                       Not affected
 Vulnerability Tsx async abort:           Not affected
 Vulnerability Vmscape:                   Not affected
 MemTotal:       49223632 kB
-MemFree:        10414216 kB
-MemAvailable:   37478360 kB
+MemFree:         5400828 kB
+MemAvailable:   30907112 kB
 profile=release
 end_to_end_samples=20
 end_to_end_warmups=2

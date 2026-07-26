@@ -22,12 +22,12 @@ measurements that support them. It is a review aid, not part of the protocol.
 
 The retained result files report:
 
-- pre-dispatch treaty denial: 13.406 ms p50 and 22.826 ms p99;
-- complete local buyer workflow: 2.288 s p50 and 2.428 s p99;
+- pre-dispatch treaty denial: 10.695 ms p50 and 18.605 ms p99;
+- complete local buyer workflow: 2.254 s p50 and 2.316 s p99;
 - 20 complete-workflow samples and 30 component samples;
 - a 51,843-byte buyer package.
 
-The 2.288 s result includes three-vendor process orchestration, SQLite,
+The 2.254 s result includes three-vendor process orchestration, SQLite,
 package generation, buyer CLI startup, schema validation, and semantic review.
 It is not receiver-hook latency.
 

@@ -1,10 +1,10 @@
 component,p50_us,p99_us,samples,note
-receipt_sign,242.422,309.318,30,Ed25519 over the evaluated receipt shape
-receipt_verify,370.163,476.491,30,Ed25519 over the evaluated receipt shape
-receipt_append_sqlite,7011.802,10477.089,30,SQLite receipt store
-treaty_predispatch_deny,13405.539,22826.188,30,"full kernel path; real hook, SQLite denial receipt, invocation counter"
-strict_bilateral_dsse_verify,340.225,366.795,30,"two signatures, embedded receipt, treaty bindings"
-cross_boundary_admission_allow,22.070,28.077,30,receiver treaty scope and verified evidence
-buyer_proof_package_verify,49875.059,52293.652,30,offline three-vendor receiver verification
-producer_without_buyer_review,1983824.498,2054601.054,20,release binaries; process and schema-validation costs included
-complete_buyer_workflow,2288145.000,2428387.185,20,release binaries; process and schema-validation costs included
+receipt_sign,229.781,276.834,30,Ed25519 over the evaluated receipt shape
+receipt_verify,342.331,399.234,30,Ed25519 over the evaluated receipt shape
+receipt_append_sqlite,7138.212,10784.640,30,SQLite receipt store
+treaty_predispatch_deny,10695.222,18605.256,30,"full kernel path; real hook, SQLite denial receipt, invocation counter"
+strict_bilateral_dsse_verify,341.583,373.241,30,"two signatures, embedded receipt, treaty bindings"
+cross_boundary_admission_allow,20.856,35.507,30,receiver treaty scope and verified evidence
+buyer_proof_package_verify,50758.181,57579.079,30,offline three-vendor receiver verification
+producer_without_buyer_review,2013322.176,2113696.370,20,release binaries; process and schema-validation costs included
+complete_buyer_workflow,2254231.630,2315590.128,20,release binaries; process and schema-validation costs included
