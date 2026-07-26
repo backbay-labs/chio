@@ -741,10 +741,12 @@ def lean_archive_bytes() -> bytes:
     project = REPO / "formal/lean4/Chio"
     project_files = [
         project / "lean-toolchain",
-        project / "lakefile.lean",
         project / "lake-manifest.json",
-        project / "Chio.lean",
-        *sorted((project / "Chio").rglob("*.lean")),
+        *sorted(
+            path
+            for path in project.rglob("*.lean")
+            if ".lake" not in path.relative_to(project).parts
+        ),
     ]
     vendor = REPO / "formal/lean4/vendor/aeneas"
     vendor_files = [
