@@ -275,6 +275,12 @@ BENCHMARK_INPUT_ROOTS = [
     "spec",
 ]
 
+BENCHMARK_INPUT_EXCLUDES = [
+    "formal/lean4",
+    "formal/theorem-inventory.json",
+    "scripts/generate-programmable-sovereignty-artifact.py",
+]
+
 CORPORA = {
     "positive": [
         "examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json",
@@ -445,6 +451,19 @@ def benchmark_input_tree_sha256(benchmark_id: str, commit: str) -> str:
         ).stdout
     except subprocess.CalledProcessError:
         fail(f"benchmark input commit is unavailable: {commit}")
+    included_entries = []
+    for entry in tree.splitlines(keepends=True):
+        _, separator, path_bytes = entry.partition(b"\t")
+        if not separator:
+            fail(f"malformed benchmark input tree entry for {benchmark_id}")
+        path = path_bytes.rstrip(b"\n").decode("utf-8")
+        excluded = any(
+            path == prefix or path.startswith(f"{prefix}/")
+            for prefix in BENCHMARK_INPUT_EXCLUDES
+        )
+        if not excluded:
+            included_entries.append(entry)
+    tree = b"".join(included_entries)
     if not tree:
         fail(f"benchmark input tree is empty for {benchmark_id}")
     return sha256_bytes(tree)
