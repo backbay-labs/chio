@@ -7,6 +7,8 @@
 - Origin: the Radicle evaluation ([../../research/radicle/EVALUATION.md](../../research/radicle/EVALUATION.md)),
   which resolved into this program
 - Decision context: [../../adr/ADR-0017-radicle-carrier-not-authority.md](../../adr/ADR-0017-radicle-carrier-not-authority.md)
+- Full decomposition: [GAP-ANALYSIS.md](./GAP-ANALYSIS.md), the itemized work
+  breakdown with per-item citations that this program summarizes
 
 ## 1. Why this document exists
 
@@ -44,18 +46,28 @@ publication makes equivocation *discoverable* by someone who looks and who
 retained the contradiction; witnessing makes it *unpresentable*.
 
 **Claim-complete.** Every claim that a receipt asserts must be covered by the
-committed tree, with no silent omissions. Today the checkpoint commits to a
-batch range, and the honest description of what that proves is narrower than
-what the word "complete" implies.
+committed tree, with no silent omissions. Today the claim-log projection
+commits exactly two receipt kinds (tool receipts and child request receipts),
+while the signed-artifact registry defines fifteen receipt-family schemas, so
+the honest description of what a checkpoint proves is far narrower than what
+the word "complete" implies.
 
 **Child-receipt-complete.** Nested and delegated flows must have their child
-receipts committed, not just the parent. Otherwise a verifier confirming a
-parent receipt learns nothing about what the flow actually did.
+receipts provable, not merely committed. The commitment already exists: child
+receipts are projected into the claim log and become Merkle leaves exactly
+like tool receipts. What is missing is the proof surface: inclusion proofs are
+exported for tool receipts only, and tenant- or capability-scoped exports omit
+child receipts entirely, recording the omission in an internal enum rather
+than in anything a verifier sees. So a verifier confirming a parent receipt
+still learns nothing about what the flow actually did.
 
-**Qualified under the declared verifier policy.** There must *be* a declared
-verifier policy: a machine-readable statement of which keys, which quorum,
-which freshness window, and which failure modes deny. Absent that, "qualified"
-is unfalsifiable.
+**Qualified under the declared verifier policy.** The declared verifier policy
+exists (`chio.transaction.verifier-policy.v1`), but it must be able to state
+which keys, which quorum, which freshness window, and which failure modes
+deny, and a verifier must actually check those statements. Today the artifact
+can express none of them, its transparency-state enum has no `append_only`
+value, and the state feeding it is the string match of F2, so "qualified" is
+unfalsifiable.
 
 ## 3. Findings
 
@@ -181,11 +193,19 @@ retained, for how long, and what a verifier can still check after pruning.
 *Required:* a written retention contract that a verifier can reason about, not
 a code change by default.
 
-### F5: no declared verifier policy artifact exists
+### F5: the verifier policy cannot express the append-only qualification
 
-There is no machine-readable statement of accepted keys, required quorum,
-freshness window, or denial behavior. The fourth gate condition cannot be
-evaluated without one.
+The declared verifier policy artifact exists and is enforced:
+`chio.transaction.verifier-policy.v1`
+(`spec/schemas/chio-transaction/v1/verifier-policy.schema.json`, implemented
+in `crates/platform/chio-transaction-passport/src/verifier_policy.rs`)
+declares required claims, omitted claims, and accepted transparency states.
+But its `accepted_transparency_states` enum stops at `trust_anchored`, with no
+`append_only` value, so a policy cannot require the property this program
+exists to deliver. It carries no checkpoint key set, no witness quorum, no
+freshness window, and no per-failure denial behavior, and the transparency
+state feeding it is the string match of F2. The fourth gate condition cannot
+be evaluated until the artifact can express it.
 
 ## 4. Ordered work breakdown
 
@@ -201,17 +221,24 @@ tampered successor root fails verification in a conformance test that fails
 loudly before the fix.
 
 **Stage 2: complete the commitment.**
-Close claim-completeness and child-receipt-completeness: commit child receipts
-of nested and delegated flows, and specify exactly what the tree commits to.
-Write the retention contract (F4). Exit criterion: a verifier holding a parent
-receipt can enumerate and check every child commitment, or the parent is
-explicitly marked incomplete.
+Close claim-completeness and child-receipt-completeness. Child receipts are
+already committed; the work is the proof surface and the projection scope:
+emit inclusion proofs for child leaves (`collect_inclusion_proofs_for_export`
+takes tool receipts only), add the tenant and capability join paths whose
+absence makes scoped exports silently drop child receipts
+(`OmittedNoJoinPath`), extend the claim-log projection beyond the two receipt
+kinds it commits today, and bound the uncheckpointed tail with a time-based
+flush (`max_batch == 0` currently disables checkpointing entirely). Write the
+retention contract (F4). Exit criterion: a verifier holding a parent receipt
+can enumerate and check every child commitment, or the parent is explicitly
+marked incomplete.
 
-**Stage 3: declare the verifier policy.**
-Define the policy artifact: accepted keys, quorum threshold, freshness window,
-and the denial behavior for each failure mode, all fail-closed (F5). Exit
-criterion: two independent implementations reach the same accept or deny verdict
-from artifact plus policy alone.
+**Stage 3: make the verifier policy able to express the gate.**
+Extend `chio.transaction.verifier-policy.v1` with the qualification surface:
+an `append_only` transparency state, accepted checkpoint keys, quorum
+threshold, freshness window, and the denial behavior for each failure mode,
+all fail-closed (F5). Exit criterion: two independent implementations reach
+the same accept or deny verdict from artifact plus policy alone.
 
 **Stage 4: witness cosigning.**
 Adopt C2SP `tlog-checkpoint` and `tlog-cosignature`. This is the step that
