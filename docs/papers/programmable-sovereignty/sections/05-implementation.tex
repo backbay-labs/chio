@@ -61,13 +61,15 @@ observation.
 The production hook's explicit checks remain authoritative. This work also
 adds a versioned bounded predicate module,
 \codepath{chio.federation.bounded-treaty-predicate.v1}. Its parser denies
-unknown versions, tags, and fields and enforces depth and node limits of 32
-and 1,024. \codepath{bounded_treaty_receipt_view_from_verified_artifacts}
-cross-checks treaty scope, report, invocation, and continuation bindings before
-constructing the evaluator's input. The module supports differential testing
-and a restricted library interface. It has not replaced the hook's explicit
-checks, so the paper does not rely on it as an alternative production allow
-path.
+unknown versions, tags, and fields and enforces a 64 KiB serialized-input
+limit, a 1 KiB atom-string limit, and depth and node limits of 32 and 1,024.
+\codepath{bounded_treaty_receipt_view_from_verified_artifacts} requires an
+independently authenticated canonical report digest, checks that the action is
+inside the treaty scope, and cross-checks report, invocation, and continuation
+bindings before constructing the evaluator's input. The module supports
+differential testing and a restricted library interface. It has not replaced
+the hook's explicit checks, so the paper does not rely on it as an alternative
+production allow path.
 
 \subsection{Runtime and Offline Review}
 
