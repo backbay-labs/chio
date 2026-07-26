@@ -8,75 +8,20 @@ on:
         description: Repository-authorized security source commit
         required: true
         type: string
-      base_ref:
-        description: Exact pull request base ref
-        required: true
-        type: string
-      base_repository:
-        description: Exact pull request base repository
-        required: true
-        type: string
-      base_sha:
-        description: Exact pull request base commit
-        required: true
-        type: string
-      controller_actor:
-        description: Actor of the trusted controller run
-        required: true
-        type: string
-      controller_blob_sha:
-        description: Blob identifier of the trusted controller definition
-        required: true
-        type: string
       controller_dispatch_nonce:
         description: Unique controller-issued capture dispatch nonce
         required: true
         type: string
-      controller_issued_at_unix_ms:
-        description: Trusted controller issuance time
-        required: true
-        type: string
-      controller_run_attempt:
-        description: Exact trusted controller run attempt
-        required: true
-        type: string
-      controller_run_id:
-        description: Exact trusted controller run
-        required: true
-        type: string
-      controller_workflow_id:
-        description: Exact trusted controller workflow identifier
-        required: true
-        type: string
-      labels_digest:
-        description: Digest of the live pull request label set
+      dispatch_context:
+        description: Canonical JSON with the remaining authorized capture context
         required: true
         type: string
       merge_commit_sha:
         description: Exact pull request test merge commit
         required: true
         type: string
-      merge_tree_sha:
-        description: Exact pull request test merge tree
-        required: true
-        type: string
-      mode:
-        description: Enforcement or evidence refresh
-        required: true
-        type: choice
-        options:
-          - enforcement
-          - refresh
       pr_number:
         description: Pull request bound to the capture
-        required: true
-        type: string
-      security_definition_sha:
-        description: Authorized security workflow definition baseline commit
-        required: true
-        type: string
-      source_repository:
-        description: Exact repository containing the candidate commit
         required: true
         type: string
       source_sha:
@@ -141,28 +86,56 @@ jobs:
           CAPTURE_RUN_ID: ${{ github.run_id }}
           CAPTURE_SHA: ${{ github.sha }}
           INPUT_AUTHORIZED_SOURCE_SHA: ${{ inputs.authorized_source_sha }}
-          INPUT_BASE_REF: ${{ inputs.base_ref }}
-          INPUT_BASE_REPOSITORY: ${{ inputs.base_repository }}
-          INPUT_BASE_SHA: ${{ inputs.base_sha }}
-          INPUT_CONTROLLER_ACTOR: ${{ inputs.controller_actor }}
-          INPUT_CONTROLLER_BLOB_SHA: ${{ inputs.controller_blob_sha }}
           INPUT_CONTROLLER_DISPATCH_NONCE: ${{ inputs.controller_dispatch_nonce }}
-          INPUT_CONTROLLER_ISSUED_AT_UNIX_MS: ${{ inputs.controller_issued_at_unix_ms }}
-          INPUT_CONTROLLER_RUN_ATTEMPT: ${{ inputs.controller_run_attempt }}
-          INPUT_CONTROLLER_RUN_ID: ${{ inputs.controller_run_id }}
-          INPUT_CONTROLLER_WORKFLOW_ID: ${{ inputs.controller_workflow_id }}
-          INPUT_LABELS_DIGEST: ${{ inputs.labels_digest }}
+          INPUT_DISPATCH_CONTEXT: ${{ inputs.dispatch_context }}
           INPUT_MERGE_COMMIT_SHA: ${{ inputs.merge_commit_sha }}
-          INPUT_MERGE_TREE_SHA: ${{ inputs.merge_tree_sha }}
-          INPUT_MODE: ${{ inputs.mode }}
           INPUT_PR_NUMBER: ${{ inputs.pr_number }}
-          INPUT_SECURITY_DEFINITION_SHA: ${{ inputs.security_definition_sha }}
-          INPUT_SOURCE_REPOSITORY: ${{ inputs.source_repository }}
           INPUT_SOURCE_SHA: ${{ inputs.source_sha }}
         run: |
           set -euo pipefail
           shopt -s inherit_errexit
           umask 077
+
+          dispatch_context="$(
+            jq -cSe '
+              if type == "object"
+                and keys == [
+                  "base_ref",
+                  "base_repository",
+                  "base_sha",
+                  "controller_actor",
+                  "controller_blob_sha",
+                  "controller_issued_at_unix_ms",
+                  "controller_run_attempt",
+                  "controller_run_id",
+                  "controller_workflow_id",
+                  "labels_digest",
+                  "merge_tree_sha",
+                  "mode",
+                  "security_definition_sha",
+                  "source_repository"
+                ]
+                and all(.[]; type == "string")
+              then .
+              else error("invalid enterprise capture dispatch context")
+              end
+            ' <<< "${INPUT_DISPATCH_CONTEXT}"
+          )"
+          test "${dispatch_context}" = "${INPUT_DISPATCH_CONTEXT}"
+          INPUT_BASE_REF="$(jq -r '.base_ref' <<< "${dispatch_context}")"
+          INPUT_BASE_REPOSITORY="$(jq -r '.base_repository' <<< "${dispatch_context}")"
+          INPUT_BASE_SHA="$(jq -r '.base_sha' <<< "${dispatch_context}")"
+          INPUT_CONTROLLER_ACTOR="$(jq -r '.controller_actor' <<< "${dispatch_context}")"
+          INPUT_CONTROLLER_BLOB_SHA="$(jq -r '.controller_blob_sha' <<< "${dispatch_context}")"
+          INPUT_CONTROLLER_ISSUED_AT_UNIX_MS="$(jq -r '.controller_issued_at_unix_ms' <<< "${dispatch_context}")"
+          INPUT_CONTROLLER_RUN_ATTEMPT="$(jq -r '.controller_run_attempt' <<< "${dispatch_context}")"
+          INPUT_CONTROLLER_RUN_ID="$(jq -r '.controller_run_id' <<< "${dispatch_context}")"
+          INPUT_CONTROLLER_WORKFLOW_ID="$(jq -r '.controller_workflow_id' <<< "${dispatch_context}")"
+          INPUT_LABELS_DIGEST="$(jq -r '.labels_digest' <<< "${dispatch_context}")"
+          INPUT_MERGE_TREE_SHA="$(jq -r '.merge_tree_sha' <<< "${dispatch_context}")"
+          INPUT_MODE="$(jq -r '.mode' <<< "${dispatch_context}")"
+          INPUT_SECURITY_DEFINITION_SHA="$(jq -r '.security_definition_sha' <<< "${dispatch_context}")"
+          INPUT_SOURCE_REPOSITORY="$(jq -r '.source_repository' <<< "${dispatch_context}")"
 
           commit_pattern='^[0-9a-f]{40}$'
           digest_pattern='^[0-9a-f]{64}$'
