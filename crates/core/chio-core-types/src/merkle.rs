@@ -139,6 +139,90 @@ impl MerkleTree {
         }
     }
 
+    /// Generate an RFC 6962 consistency proof (RFC 9162 section 2.1.4.1)
+    /// showing that the tree over the first `old_size` leaves is a prefix of
+    /// this tree.
+    ///
+    /// The proof for `old_size == leaf_count()` is empty. Returns
+    /// `Err(Error::InvalidProofIndex)` when `old_size` is zero or exceeds the
+    /// current leaf count.
+    pub fn consistency_proof(&self, old_size: usize) -> Result<Vec<Hash>> {
+        let leaves = self.leaf_count();
+        if old_size == 0 || old_size > leaves {
+            return Err(Error::InvalidProofIndex {
+                index: old_size,
+                leaves,
+            });
+        }
+        let mut proof = Vec::new();
+        self.consistency_subproof(old_size, 0, leaves, true, &mut proof)?;
+        Ok(proof)
+    }
+
+    fn consistency_subproof(
+        &self,
+        m: usize,
+        lo: usize,
+        hi: usize,
+        complete: bool,
+        out: &mut Vec<Hash>,
+    ) -> Result<()> {
+        let n = hi - lo;
+        if m == n {
+            if !complete {
+                out.push(self.aligned_subtree_hash(lo, hi)?);
+            }
+            return Ok(());
+        }
+        let k = largest_power_of_two_less_than(n);
+        if m <= k {
+            self.consistency_subproof(m, lo, lo + k, complete, out)?;
+            out.push(self.aligned_subtree_hash(lo + k, hi)?);
+        } else {
+            self.consistency_subproof(m - k, lo + k, hi, false, out)?;
+            out.push(self.aligned_subtree_hash(lo, lo + k)?);
+        }
+        Ok(())
+    }
+
+    /// Hash of the subtree covering leaves `[lo, hi)`.
+    ///
+    /// Only ranges produced by the RFC 6962 split recursion are valid: `lo`
+    /// aligned to the range's covering power of two, and `hi` either the end
+    /// of a complete subtree or the end of the tree. Because this tree carries
+    /// the last node of an odd level upward unchanged, the node at
+    /// `levels[l][i]` is exactly `MTH(D[i*2^l : min((i+1)*2^l, n)])`, so every
+    /// such range is a stored node.
+    fn aligned_subtree_hash(&self, lo: usize, hi: usize) -> Result<Hash> {
+        let leaves = self.leaf_count();
+        if lo >= hi || hi > leaves {
+            return Err(Error::MerkleProofFailed);
+        }
+        let size = hi - lo;
+        if size == 1 {
+            return self
+                .levels
+                .first()
+                .and_then(|level| level.get(lo))
+                .copied()
+                .ok_or(Error::MerkleProofFailed);
+        }
+        let level = ceil_log2(size);
+        let width = 1usize << level;
+        if !lo.is_multiple_of(width) {
+            return Err(Error::MerkleProofFailed);
+        }
+        let covered_end = core::cmp::min(lo + width, leaves);
+        if covered_end != hi {
+            return Err(Error::MerkleProofFailed);
+        }
+        self.levels
+            .get(level)
+            .and_then(|nodes| nodes.get(lo / width))
+            .copied()
+            .ok_or(Error::MerkleProofFailed)
+    }
+
     /// Generate an inclusion proof for a leaf at the given index.
     pub fn inclusion_proof(&self, leaf_index: usize) -> Result<MerkleProof> {
         let tree_size = self.leaf_count();
@@ -178,6 +262,81 @@ impl MerkleTree {
             audit_path,
         })
     }
+}
+
+/// Largest power of two strictly less than `n`, per the RFC 6962 split rule.
+fn largest_power_of_two_less_than(n: usize) -> usize {
+    let mut p = 1usize;
+    while (p << 1) < n {
+        p <<= 1;
+    }
+    p
+}
+
+/// Smallest `l` with `2^l >= size`, for `size >= 1`.
+fn ceil_log2(size: usize) -> usize {
+    (usize::BITS - size.saturating_sub(1).leading_zeros()) as usize
+}
+
+/// Verify an RFC 6962 consistency proof (RFC 9162 section 2.1.4.2) between an
+/// old tree of `old_size` leaves with root `old_root` and a new tree of
+/// `new_size` leaves with root `new_root`.
+///
+/// Returns `false` on any mismatch, malformed proof, or invalid size pair.
+#[must_use]
+pub fn verify_consistency_proof(
+    old_size: usize,
+    new_size: usize,
+    old_root: &Hash,
+    new_root: &Hash,
+    proof: &[Hash],
+) -> bool {
+    if old_size == 0 || old_size > new_size {
+        return false;
+    }
+    if old_size == new_size {
+        return proof.is_empty() && old_root == new_root;
+    }
+    // When old_size is an exact power of two, the old root itself is the
+    // first node on the path and is not repeated inside the proof.
+    let mut path: Vec<&Hash> = Vec::with_capacity(proof.len() + 1);
+    if old_size.is_power_of_two() {
+        path.push(old_root);
+    }
+    path.extend(proof.iter());
+    let mut nodes = path.into_iter();
+    let Some(first) = nodes.next() else {
+        return false;
+    };
+
+    let mut fnode = old_size - 1;
+    let mut snode = new_size - 1;
+    while fnode & 1 == 1 {
+        fnode >>= 1;
+        snode >>= 1;
+    }
+
+    let mut old_reconstructed = *first;
+    let mut new_reconstructed = *first;
+    for node in nodes {
+        if snode == 0 {
+            return false;
+        }
+        if fnode & 1 == 1 || fnode == snode {
+            old_reconstructed = node_hash(node, &old_reconstructed);
+            new_reconstructed = node_hash(node, &new_reconstructed);
+            while fnode != 0 && fnode & 1 == 0 {
+                fnode >>= 1;
+                snode >>= 1;
+            }
+        } else {
+            new_reconstructed = node_hash(&new_reconstructed, node);
+        }
+        fnode >>= 1;
+        snode >>= 1;
+    }
+
+    old_reconstructed == *old_root && new_reconstructed == *new_root && snode == 0
 }
 
 /// Merkle inclusion proof.
@@ -273,14 +432,6 @@ mod tests {
                 node_hash(&left, &right)
             }
         }
-    }
-
-    fn largest_power_of_two_less_than(n: usize) -> usize {
-        let mut p = 1usize;
-        while (p << 1) < n {
-            p <<= 1;
-        }
-        p
     }
 
     #[test]
@@ -399,5 +550,126 @@ mod tests {
         let lh = leaf_hash(&leaves[2]);
         assert!(proof.verify_hash(lh, &root));
         assert!(!proof.verify_hash(Hash::zero(), &root));
+    }
+
+    /// Reference consistency-proof generator implementing the RFC 9162
+    /// SUBPROOF recursion directly over leaf-hash slices, independent of the
+    /// level-based tree structure.
+    fn reference_subproof(leaf_hashes: &[Hash], m: usize, complete: bool, out: &mut Vec<Hash>) {
+        let n = leaf_hashes.len();
+        if m == n {
+            if !complete {
+                out.push(tree_hash_recursive(leaf_hashes));
+            }
+            return;
+        }
+        let k = largest_power_of_two_less_than(n);
+        if m <= k {
+            reference_subproof(&leaf_hashes[..k], m, complete, out);
+            out.push(tree_hash_recursive(&leaf_hashes[k..]));
+        } else {
+            reference_subproof(&leaf_hashes[k..], m - k, false, out);
+            out.push(tree_hash_recursive(&leaf_hashes[..k]));
+        }
+    }
+
+    fn test_leaf_hashes(n: usize) -> Vec<Hash> {
+        (0..n)
+            .map(|i| leaf_hash(format!("leaf-{i}").as_bytes()))
+            .collect()
+    }
+
+    #[test]
+    fn consistency_proofs_match_reference_and_verify_for_all_size_pairs() {
+        for n in 1..=48usize {
+            let leaf_hashes = test_leaf_hashes(n);
+            let tree = MerkleTree::from_hashes(leaf_hashes.clone()).unwrap();
+            let new_root = tree.root();
+            for m in 1..=n {
+                let proof = tree.consistency_proof(m).unwrap();
+
+                let mut expected = Vec::new();
+                reference_subproof(&leaf_hashes, m, true, &mut expected);
+                assert_eq!(proof, expected, "generator mismatch at m={m} n={n}");
+
+                let old_root = tree_hash_recursive(&leaf_hashes[..m]);
+                assert!(
+                    verify_consistency_proof(m, n, &old_root, &new_root, &proof),
+                    "valid proof rejected at m={m} n={n}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn consistency_proof_rejects_tampered_roots_and_proofs() {
+        for (m, n) in [(1usize, 2usize), (3, 7), (4, 12), (6, 13), (7, 8), (16, 33)] {
+            let leaf_hashes = test_leaf_hashes(n);
+            let tree = MerkleTree::from_hashes(leaf_hashes.clone()).unwrap();
+            let new_root = tree.root();
+            let old_root = tree_hash_recursive(&leaf_hashes[..m]);
+            let proof = tree.consistency_proof(m).unwrap();
+
+            assert!(
+                !verify_consistency_proof(m, n, &Hash::zero(), &new_root, &proof),
+                "tampered old root accepted at m={m} n={n}"
+            );
+            assert!(
+                !verify_consistency_proof(m, n, &old_root, &Hash::zero(), &proof),
+                "tampered new root accepted at m={m} n={n}"
+            );
+            for index in 0..proof.len() {
+                let mut mutated = proof.clone();
+                mutated[index] = node_hash(&mutated[index], &mutated[index]);
+                assert!(
+                    !verify_consistency_proof(m, n, &old_root, &new_root, &mutated),
+                    "mutated proof node {index} accepted at m={m} n={n}"
+                );
+            }
+            if !proof.is_empty() {
+                assert!(
+                    !verify_consistency_proof(
+                        m,
+                        n,
+                        &old_root,
+                        &new_root,
+                        &proof[..proof.len() - 1]
+                    ),
+                    "truncated proof accepted at m={m} n={n}"
+                );
+            }
+            let mut extended = proof.clone();
+            extended.push(Hash::zero());
+            assert!(
+                !verify_consistency_proof(m, n, &old_root, &new_root, &extended),
+                "extended proof accepted at m={m} n={n}"
+            );
+        }
+    }
+
+    #[test]
+    fn consistency_proof_size_edge_cases() {
+        let leaf_hashes = test_leaf_hashes(9);
+        let tree = MerkleTree::from_hashes(leaf_hashes.clone()).unwrap();
+        let root = tree.root();
+
+        assert!(tree.consistency_proof(0).is_err());
+        assert!(tree.consistency_proof(10).is_err());
+
+        let equal = tree.consistency_proof(9).unwrap();
+        assert!(equal.is_empty());
+        assert!(verify_consistency_proof(9, 9, &root, &root, &equal));
+        assert!(!verify_consistency_proof(
+            9,
+            9,
+            &root,
+            &Hash::zero(),
+            &equal
+        ));
+        assert!(!verify_consistency_proof(0, 9, &root, &root, &[]));
+        assert!(!verify_consistency_proof(10, 9, &root, &root, &[]));
+
+        let old_root = tree_hash_recursive(&leaf_hashes[..4]);
+        assert!(!verify_consistency_proof(4, 9, &old_root, &root, &[]));
     }
 }

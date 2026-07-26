@@ -447,7 +447,16 @@ fn read_ndjson_file<T: for<'de> Deserialize<'de>>(
         })?
         .lines()
         .filter(|line| !line.trim().is_empty())
-        .map(|line| serde_json::from_str(line).map_err(CliError::from))
+        .enumerate()
+        .map(|(index, line)| {
+            serde_json::from_str(line).map_err(|error| {
+                CliError::attest_error(format!(
+                    "{relative_path} line {} does not parse as the current record schema \
+                     (records written by an older schema version must be re-exported): {error}",
+                    index + 1
+                ))
+            })
+        })
         .collect()
 }
 

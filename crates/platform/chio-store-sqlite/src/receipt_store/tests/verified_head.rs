@@ -748,8 +748,17 @@ fn catch_up_validates_checkpoint_projections() -> Result<(), Box<dyn std::error:
     // transparency projections.
     connection.execute_batch("DROP TRIGGER IF EXISTS kernel_checkpoints_project_tree_head;")?;
     let range_bytes = canonical_receipt_bytes(&store, 4, 6);
-    let checkpoint_two =
-        build_checkpoint_with_previous(2, 4, 6, &range_bytes, &keypair, Some(&checkpoint_one))?;
+    let checkpoint_two = build_checkpoint_with_previous(
+        2,
+        4,
+        6,
+        &range_bytes,
+        &keypair,
+        Some(&checkpoint_one),
+        &[chio_kernel::checkpoint::checkpoint_chain_leaf_hash(
+            &checkpoint_one.body,
+        )?],
+    )?;
     insert_checkpoint_row(&store, &checkpoint_two, checkpoint_two.body.batch_end_seq);
 
     let error = verify_head_against_latest_checkpoint(&connection, &mut head)

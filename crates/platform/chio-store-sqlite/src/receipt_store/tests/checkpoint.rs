@@ -330,6 +330,7 @@ fn store_checkpoint_accepts_contiguous_predecessor() {
         &canonical_receipt_bytes(&store, seqs[2], seqs[3]),
         &kp,
         Some(&first),
+        &[chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&first.body).test_unwrap()],
     )
     .test_unwrap();
     ReceiptStore::store_checkpoint(&store, &second).test_unwrap();
@@ -380,6 +381,7 @@ fn store_checkpoint_projects_tree_heads_and_predecessor_witnesses() {
         &canonical_receipt_bytes(&store, seqs[2], seqs[3]),
         &checkpoint_kp,
         Some(&first),
+        &[chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&first.body).test_unwrap()],
     )
     .test_unwrap();
     store.store_checkpoint(&second).test_unwrap();
@@ -504,6 +506,7 @@ fn open_backfills_claim_log_and_checkpoint_transparency_projections() {
         &[b"legacy-two".to_vec()],
         &checkpoint_kp,
         Some(&first),
+        &[chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&first.body).test_unwrap()],
     )
     .test_unwrap();
     insert_checkpoint_row(&store, &first, first.body.batch_end_seq);
@@ -596,6 +599,7 @@ fn record_checkpoint_publication_trust_anchor_binding_is_idempotent_and_visible_
         &canonical_receipt_bytes(&store, second_seq, second_seq),
         &checkpoint_kp,
         Some(&first),
+        &[chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&first.body).test_unwrap()],
     )
     .test_unwrap();
 

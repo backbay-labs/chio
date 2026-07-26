@@ -42,6 +42,11 @@ pub struct Web3CheckpointStatement {
     pub issued_at: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub previous_checkpoint_sha256: Option<String>,
+    /// Checkpoint-chain commitment carried by the signed kernel body; must
+    /// round-trip losslessly or the reconstructed body fails signature
+    /// verification.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain_root: Option<Hash>,
     pub kernel_key: PublicKey,
     pub signature: Signature,
 }

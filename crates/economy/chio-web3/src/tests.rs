@@ -362,6 +362,7 @@ fn sample_anchor_inclusion_proof_for_receipt(receipt: ChioReceipt) -> AnchorIncl
         merkle_root,
         issued_at: 1_743_292_800,
         previous_checkpoint_sha256: None,
+        chain_root: None,
         kernel_key: operator.public_key(),
         signature: Signature::from_hex(
             "00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",

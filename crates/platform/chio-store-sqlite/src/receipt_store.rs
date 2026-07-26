@@ -2013,6 +2013,24 @@ fn maybe_build_checkpoint(
     if signer.max_batch == 0 {
         return Ok(false);
     }
+    if head
+        .claim_log_max_seq
+        .saturating_sub(head.checkpointed_entry_seq())
+        < signer.max_batch
+    {
+        return Ok(false);
+    }
+    // Chain leaves for every persisted checkpoint, extended in-loop as new
+    // checkpoints commit; the cached head and the persisted chain must agree
+    // on length before any of them are committed to a new chain_root.
+    let mut chain_leaf_hashes = load_checkpoint_chain_leaf_hashes(connection)?;
+    if chain_leaf_hashes.len() as u64 != head.checkpoint_seq() {
+        return Err(ReceiptStoreError::Conflict(format!(
+            "cached head checkpoint_seq {} diverges from persisted chain length {}",
+            head.checkpoint_seq(),
+            chain_leaf_hashes.len()
+        )));
+    }
     let mut built = false;
     while head
         .claim_log_max_seq
@@ -2038,6 +2056,7 @@ fn maybe_build_checkpoint(
             &receipt_bytes,
             &signer.keypair,
             head.latest_checkpoint.as_ref(),
+            &chain_leaf_hashes,
         )
         .map_err(checkpoint_error_to_receipt_store)?;
         #[cfg(test)]
@@ -2059,7 +2078,20 @@ fn maybe_build_checkpoint(
         // see our discarded byte-different build diverge from the persisted row.
         let adopted =
             insert_checkpoint_incremental_tx(&tx, head.latest_checkpoint.as_ref(), &checkpoint)?;
+        // A clock-skew sibling may differ in issued_at and signature, but it
+        // was built from the same persisted chain, so its chain commitment
+        // must be byte-identical to ours; anything else is a fork.
+        if adopted.body.chain_root != checkpoint.body.chain_root {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "checkpoint {} adopted with a divergent chain commitment",
+                adopted.body.checkpoint_seq
+            )));
+        }
         tx.commit()?;
+        chain_leaf_hashes.push(
+            chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&adopted.body)
+                .map_err(checkpoint_error_to_receipt_store)?,
+        );
         head.latest_checkpoint = Some(adopted);
         built = true;
     }

@@ -579,8 +579,17 @@ fn flush_report_rejects_disconnected_checkpoint() -> Result<(), Box<dyn std::err
         .ok_or("checkpoint 1 missing")?;
 
     let range_bytes = canonical_receipt_bytes(&bad_store, 4, 6);
-    let mut disconnected_two =
-        build_checkpoint_with_previous(2, 4, 6, &range_bytes, &keypair, Some(&checkpoint_one))?;
+    let mut disconnected_two = build_checkpoint_with_previous(
+        2,
+        4,
+        6,
+        &range_bytes,
+        &keypair,
+        Some(&checkpoint_one),
+        &[chio_kernel::checkpoint::checkpoint_chain_leaf_hash(
+            &checkpoint_one.body,
+        )?],
+    )?;
     // Break the predecessor linkage while keeping the row individually valid:
     // point at a digest that is NOT cp1's, then re-sign so the body/signature
     // still verify (same mechanics as the clock-skew re-sign fixtures).
@@ -761,8 +770,21 @@ fn operator_checkpoint_append_reverifies_chain() -> Result<(), Box<dyn std::erro
         .load_checkpoint_by_seq(2)?
         .ok_or("checkpoint 2 must exist")?;
     let range_bytes = canonical_receipt_bytes(&store, 5, 6);
-    let checkpoint_three =
-        build_checkpoint_with_previous(3, 5, 6, &range_bytes, &keypair, Some(&checkpoint_two))?;
+    let checkpoint_one = store
+        .load_checkpoint_by_seq(1)?
+        .ok_or("checkpoint 1 must exist")?;
+    let checkpoint_three = build_checkpoint_with_previous(
+        3,
+        5,
+        6,
+        &range_bytes,
+        &keypair,
+        Some(&checkpoint_two),
+        &[
+            chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&checkpoint_one.body)?,
+            chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&checkpoint_two.body)?,
+        ],
+    )?;
 
     // Tamper an EARLIER checkpoint (seq 1) while the LATEST (seq 2) still parses:
     // mutate checkpoint 1's signed batch_end_seq so it no longer matches its

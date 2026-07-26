@@ -578,6 +578,7 @@ fn checkpoint_transparency_records_match_derived_chain() {
         &[b"three".to_vec(), b"four".to_vec()],
         &kp,
         Some(&first),
+        &[chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&first.body).test_unwrap()],
     )
     .test_unwrap();
     let checkpoints = vec![first, second];
@@ -604,6 +605,7 @@ fn checkpoint_transparency_verification_fails_closed_on_equivocation() {
         &[b"three".to_vec(), b"four".to_vec()],
         &kp,
         Some(&first),
+        &[chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&first.body).test_unwrap()],
     )
     .test_unwrap();
     let fork = build_checkpoint_with_previous(
@@ -613,6 +615,7 @@ fn checkpoint_transparency_verification_fails_closed_on_equivocation() {
         &[b"five".to_vec(), b"six".to_vec()],
         &kp,
         Some(&first),
+        &[chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&first.body).test_unwrap()],
     )
     .test_unwrap();
 

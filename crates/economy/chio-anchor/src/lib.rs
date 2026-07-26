@@ -156,6 +156,7 @@ pub fn checkpoint_statement_from_kernel(checkpoint: &KernelCheckpoint) -> Web3Ch
         merkle_root: checkpoint.body.merkle_root,
         issued_at: checkpoint.body.issued_at,
         previous_checkpoint_sha256: checkpoint.body.previous_checkpoint_sha256.clone(),
+        chain_root: checkpoint.body.chain_root,
         kernel_key: checkpoint.body.kernel_key.clone(),
         signature: checkpoint.signature.clone(),
     }
@@ -173,6 +174,7 @@ pub fn kernel_checkpoint_from_statement(statement: &Web3CheckpointStatement) -> 
             issued_at: statement.issued_at,
             previous_checkpoint_sha256: statement.previous_checkpoint_sha256.clone(),
             kernel_key: statement.kernel_key.clone(),
+            chain_root: statement.chain_root,
         },
         signature: statement.signature.clone(),
     }

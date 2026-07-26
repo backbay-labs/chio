@@ -13,7 +13,7 @@ use chio_core::canonical::canonical_json_bytes;
 use chio_core::crypto::{Keypair, PublicKey, Signature, SigningAlgorithm};
 use chio_core::hashing::sha256_hex;
 use chio_core::hashing::Hash;
-use chio_core::merkle::{MerkleProof, MerkleTree};
+use chio_core::merkle::{leaf_hash, verify_consistency_proof, MerkleProof, MerkleTree};
 use chio_core::receipt::{
     checkpoint::CheckpointPublicationIdentityKind,
     checkpoint::CheckpointPublicationTrustAnchorBinding,
@@ -25,7 +25,7 @@ use crate::ReceiptStoreError;
 pub const CHECKPOINT_SCHEMA: &str = "chio.checkpoint_statement.v1";
 pub const CHECKPOINT_PUBLICATION_SCHEMA: &str = "chio.checkpoint_publication.v1";
 pub const CHECKPOINT_WITNESS_SCHEMA: &str = "chio.checkpoint_witness.v1";
-pub const CHECKPOINT_CONSISTENCY_PROOF_SCHEMA: &str = "chio.checkpoint_consistency_proof.v1";
+pub const CHECKPOINT_CONSISTENCY_PROOF_SCHEMA: &str = "chio.checkpoint_consistency_proof.v2";
 pub const CHECKPOINT_EQUIVOCATION_SCHEMA: &str = "chio.checkpoint_equivocation.v1";
 
 #[must_use]
@@ -58,6 +58,7 @@ pub enum CheckpointError {
 
 /// The signed body of a kernel checkpoint statement.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct KernelCheckpointBody {
     /// Schema identifier for new checkpoint issuance.
     pub schema: String,
@@ -78,10 +79,19 @@ pub struct KernelCheckpointBody {
     /// Hash of the immediately preceding checkpoint body when this checkpoint extends a prior batch.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub previous_checkpoint_sha256: Option<String>,
+    /// RFC 6962 root over the checkpoint-chain leaves for checkpoint_seq 1
+    /// through this checkpoint, one leaf per checkpoint binding its sequence,
+    /// entry range, and batch root (see [`checkpoint_chain_leaf_hash`]). This
+    /// is the commitment that consistency proofs verify against. Absent on
+    /// checkpoints issued before the chain commitment existed and on detached
+    /// checkpoints built without chain context.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub chain_root: Option<Hash>,
 }
 
 /// A signed kernel checkpoint statement.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct KernelCheckpoint {
     /// The signed body.
     pub body: KernelCheckpointBody,
@@ -164,10 +174,16 @@ pub struct CheckpointWitness {
     pub witnessed_at: u64,
 }
 
-/// A deterministic prefix-growth proof derived from checkpoint continuity.
+/// A Merkle consistency proof between two checkpoint-chain commitments.
+///
+/// Proves, with RFC 6962 node hashes, that the checkpoint chain committed by
+/// `to_chain_root` is an append-only extension of the chain committed by
+/// `from_chain_root`. The chain tree has one leaf per checkpoint, so the tree
+/// sizes are the checkpoint sequences themselves.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CheckpointConsistencyProof {
-    /// Schema identifier for derived consistency proof records.
+    /// Schema identifier for consistency proof records.
     pub schema: String,
     /// Local log identity derived from the checkpoint signing key.
     pub log_id: String,
@@ -187,6 +203,18 @@ pub struct CheckpointConsistencyProof {
     pub appended_entry_start_seq: u64,
     /// Last entry sequence appended by the later checkpoint.
     pub appended_entry_end_seq: u64,
+    /// Signed chain commitment of the earlier checkpoint.
+    pub from_chain_root: Hash,
+    /// Signed chain commitment of the later checkpoint.
+    pub to_chain_root: Hash,
+    /// RFC 6962 consistency path from the earlier chain tree to the later
+    /// chain tree.
+    pub chain_proof_hashes: Vec<Hash>,
+    /// Inclusion proof binding the later checkpoint's own chain leaf to
+    /// `to_chain_root` at the last position. Without it a key holder could
+    /// commit a chain tree whose leaves are unrelated to the bodies the proof
+    /// names and still produce a verifying consistency path.
+    pub to_leaf_inclusion: MerkleProof,
 }
 
 /// Classifies a conflicting checkpoint observation.
@@ -275,6 +303,53 @@ pub fn checkpoint_body_sha256(body: &KernelCheckpointBody) -> Result<String, Che
     Ok(sha256_hex(&body_bytes))
 }
 
+/// Canonical leaf content for the checkpoint-chain commitment.
+///
+/// Deliberately excludes `issued_at`, the kernel key, and the signature so
+/// that two honest builders checkpointing the same batch produce the same
+/// leaf even when their wall clocks differ.
+#[derive(Serialize)]
+struct CheckpointChainLeaf {
+    checkpoint_seq: u64,
+    batch_start_seq: u64,
+    batch_end_seq: u64,
+    merkle_root: Hash,
+}
+
+/// RFC 6962 leaf hash of one checkpoint's chain-commitment leaf.
+pub fn checkpoint_chain_leaf_hash_from_parts(
+    checkpoint_seq: u64,
+    batch_start_seq: u64,
+    batch_end_seq: u64,
+    merkle_root: Hash,
+) -> Result<Hash, CheckpointError> {
+    let leaf = CheckpointChainLeaf {
+        checkpoint_seq,
+        batch_start_seq,
+        batch_end_seq,
+        merkle_root,
+    };
+    let leaf_bytes =
+        canonical_json_bytes(&leaf).map_err(|e| CheckpointError::Serialization(e.to_string()))?;
+    Ok(leaf_hash(&leaf_bytes))
+}
+
+/// RFC 6962 leaf hash of a checkpoint body's chain-commitment leaf.
+pub fn checkpoint_chain_leaf_hash(body: &KernelCheckpointBody) -> Result<Hash, CheckpointError> {
+    checkpoint_chain_leaf_hash_from_parts(
+        body.checkpoint_seq,
+        body.batch_start_seq,
+        body.batch_end_seq,
+        body.merkle_root,
+    )
+}
+
+/// Chain-commitment root over an ordered, gap-free run of chain leaves
+/// starting at checkpoint_seq 1.
+pub fn checkpoint_chain_root(chain_leaf_hashes: &[Hash]) -> Result<Hash, CheckpointError> {
+    Ok(MerkleTree::from_hashes(chain_leaf_hashes.to_vec())?.root())
+}
+
 /// Build a deterministic publication record from a signed checkpoint.
 pub fn build_checkpoint_publication(
     checkpoint: &KernelCheckpoint,
@@ -357,10 +432,77 @@ pub fn build_checkpoint_witness(
     })
 }
 
-/// Build a deterministic consistency proof when `current` cleanly extends `previous`.
+fn require_chain_root(checkpoint: &KernelCheckpoint) -> Result<Hash, CheckpointError> {
+    checkpoint.body.chain_root.ok_or_else(|| {
+        CheckpointError::Continuity(format!(
+            "checkpoint {} carries no chain commitment; consistency is unverifiable",
+            checkpoint.body.checkpoint_seq
+        ))
+    })
+}
+
+fn chain_tree_size(checkpoint: &KernelCheckpoint) -> Result<usize, CheckpointError> {
+    usize::try_from(checkpoint.body.checkpoint_seq).map_err(|_| {
+        CheckpointError::Invalid(format!(
+            "checkpoint_seq {} exceeds the addressable chain size",
+            checkpoint.body.checkpoint_seq
+        ))
+    })
+}
+
+/// Ensure the two pair endpoints appear at their own positions in the
+/// supplied chain leaves, then hand back the parsed sizes.
+fn validate_chain_leaves_for_pair(
+    previous: &KernelCheckpoint,
+    current: &KernelCheckpoint,
+    chain_leaf_hashes: &[Hash],
+) -> Result<(usize, usize), CheckpointError> {
+    let from_size = chain_tree_size(previous)?;
+    let to_size = chain_tree_size(current)?;
+    // Callers reach here through `validate_checkpoint_predecessor`, which
+    // forces `from_size + 1 == to_size`; re-check locally so a future direct
+    // caller gets an error rather than an out-of-bounds index below.
+    if from_size == 0 || from_size >= to_size {
+        return Err(CheckpointError::Continuity(format!(
+            "checkpoint {} does not extend checkpoint {} in chain order",
+            current.body.checkpoint_seq, previous.body.checkpoint_seq
+        )));
+    }
+    if chain_leaf_hashes.len() != to_size {
+        return Err(CheckpointError::Continuity(format!(
+            "chain leaf count {} does not match checkpoint {} chain size {}",
+            chain_leaf_hashes.len(),
+            current.body.checkpoint_seq,
+            to_size
+        )));
+    }
+    if chain_leaf_hashes[from_size - 1] != checkpoint_chain_leaf_hash(&previous.body)? {
+        return Err(CheckpointError::Continuity(format!(
+            "chain leaf {} does not match the predecessor checkpoint body",
+            previous.body.checkpoint_seq
+        )));
+    }
+    if chain_leaf_hashes[to_size - 1] != checkpoint_chain_leaf_hash(&current.body)? {
+        return Err(CheckpointError::Continuity(format!(
+            "chain leaf {} does not match the checkpoint body",
+            current.body.checkpoint_seq
+        )));
+    }
+    Ok((from_size, to_size))
+}
+
+/// Build a Merkle consistency proof showing that `current`'s chain commitment
+/// is an append-only extension of `previous`'s.
+///
+/// `chain_leaf_hashes` must contain the chain leaf of every checkpoint from
+/// sequence 1 through `current`, in order (see
+/// [`checkpoint_chain_leaf_hash`]). Both checkpoints must carry a signed
+/// `chain_root` and both roots must match the supplied leaves; the proof
+/// fails to build rather than committing to unverified data.
 pub fn build_checkpoint_consistency_proof(
     previous: &KernelCheckpoint,
     current: &KernelCheckpoint,
+    chain_leaf_hashes: &[Hash],
 ) -> Result<CheckpointConsistencyProof, CheckpointError> {
     validate_checkpoint_predecessor(previous, current)?;
     let previous_log_id = checkpoint_log_id(previous);
@@ -375,6 +517,26 @@ pub fn build_checkpoint_consistency_proof(
         )));
     }
 
+    let from_chain_root = require_chain_root(previous)?;
+    let to_chain_root = require_chain_root(current)?;
+    let (from_size, to_size) =
+        validate_chain_leaves_for_pair(previous, current, chain_leaf_hashes)?;
+    if checkpoint_chain_root(&chain_leaf_hashes[..from_size])? != from_chain_root {
+        return Err(CheckpointError::Continuity(format!(
+            "predecessor {} chain_root does not match the supplied chain leaves",
+            previous.body.checkpoint_seq
+        )));
+    }
+    let tree = MerkleTree::from_hashes(chain_leaf_hashes.to_vec())?;
+    if tree.root() != to_chain_root {
+        return Err(CheckpointError::Continuity(format!(
+            "checkpoint {} chain_root does not match the supplied chain leaves",
+            current.body.checkpoint_seq
+        )));
+    }
+    let chain_proof_hashes = tree.consistency_proof(from_size)?;
+    let to_leaf_inclusion = tree.inclusion_proof(to_size - 1)?;
+
     Ok(CheckpointConsistencyProof {
         schema: CHECKPOINT_CONSISTENCY_PROOF_SCHEMA.to_string(),
         log_id: current_log_id,
@@ -386,16 +548,80 @@ pub fn build_checkpoint_consistency_proof(
         to_log_tree_size: checkpoint_log_tree_size(&current.body),
         appended_entry_start_seq: current.body.batch_start_seq,
         appended_entry_end_seq: current.body.batch_end_seq,
+        from_chain_root,
+        to_chain_root,
+        chain_proof_hashes,
+        to_leaf_inclusion,
     })
 }
 
-/// Verify that a consistency proof matches a concrete checkpoint extension.
+/// Verify a consistency proof against two signed checkpoints.
+///
+/// The Merkle path in the proof is checked against the `chain_root`
+/// commitments inside the two signed bodies, so a verifier needs nothing
+/// beyond the two checkpoints and the proof itself. Structural mismatches
+/// (wrong pair, missing chain commitments, unsupported schema) are errors; a
+/// well-formed proof that does not verify returns `Ok(false)`.
 pub fn verify_checkpoint_consistency_proof(
     previous: &KernelCheckpoint,
     current: &KernelCheckpoint,
     proof: &CheckpointConsistencyProof,
 ) -> Result<bool, CheckpointError> {
-    Ok(*proof == build_checkpoint_consistency_proof(previous, current)?)
+    validate_checkpoint_predecessor(previous, current)?;
+    let previous_log_id = checkpoint_log_id(previous);
+    let current_log_id = checkpoint_log_id(current);
+    if previous_log_id != current_log_id {
+        return Err(CheckpointError::Continuity(format!(
+            "checkpoint {} derives log_id {} but predecessor {} derives {}",
+            current.body.checkpoint_seq,
+            current_log_id,
+            previous.body.checkpoint_seq,
+            previous_log_id
+        )));
+    }
+    if proof.schema != CHECKPOINT_CONSISTENCY_PROOF_SCHEMA {
+        return Err(CheckpointError::Invalid(format!(
+            "unsupported consistency proof schema {}",
+            proof.schema
+        )));
+    }
+    let from_chain_root = require_chain_root(previous)?;
+    let to_chain_root = require_chain_root(current)?;
+
+    let metadata_matches = proof.log_id == current_log_id
+        && proof.from_checkpoint_seq == previous.body.checkpoint_seq
+        && proof.to_checkpoint_seq == current.body.checkpoint_seq
+        && proof.from_checkpoint_sha256 == checkpoint_body_sha256(&previous.body)?
+        && proof.to_checkpoint_sha256 == checkpoint_body_sha256(&current.body)?
+        && proof.from_log_tree_size == checkpoint_log_tree_size(&previous.body)
+        && proof.to_log_tree_size == checkpoint_log_tree_size(&current.body)
+        && proof.appended_entry_start_seq == current.body.batch_start_seq
+        && proof.appended_entry_end_seq == current.body.batch_end_seq
+        && proof.from_chain_root == from_chain_root
+        && proof.to_chain_root == to_chain_root;
+    if !metadata_matches {
+        return Ok(false);
+    }
+
+    let to_size = chain_tree_size(current)?;
+    // The committed chain must actually end in this checkpoint's own leaf,
+    // otherwise the roots could commit leaves unrelated to the named bodies.
+    if proof.to_leaf_inclusion.tree_size != to_size
+        || proof.to_leaf_inclusion.leaf_index != to_size - 1
+        || !proof
+            .to_leaf_inclusion
+            .verify_hash(checkpoint_chain_leaf_hash(&current.body)?, &to_chain_root)
+    {
+        return Ok(false);
+    }
+
+    Ok(verify_consistency_proof(
+        chain_tree_size(previous)?,
+        to_size,
+        &from_chain_root,
+        &to_chain_root,
+        &proof.chain_proof_hashes,
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -574,6 +800,43 @@ pub fn build_checkpoint_transparency(
         })
         .collect::<BTreeSet<_>>();
 
+    // Chain leaves are derivable only for the contiguous, unique run of
+    // sequences starting at 1; a consistency proof needs every leaf up to its
+    // later checkpoint, so pairs beyond that run (or without signed chain
+    // commitments) yield witness records but no proof.
+    // Runs are per log: a set may carry checkpoints from several independent
+    // logs whose sequences interleave, and mixing their leaves would build a
+    // chain that belongs to neither.
+    let mut by_log_seq = BTreeMap::<(String, u64), Vec<&KernelCheckpoint>>::new();
+    for checkpoint in checkpoints {
+        by_log_seq
+            .entry((
+                checkpoint_log_id(checkpoint),
+                checkpoint.body.checkpoint_seq,
+            ))
+            .or_default()
+            .push(checkpoint);
+    }
+    let mut chain_leaf_hashes_by_log = BTreeMap::<String, Vec<Hash>>::new();
+    for (log_id, _) in by_log_seq.keys() {
+        if chain_leaf_hashes_by_log.contains_key(log_id) {
+            continue;
+        }
+        let mut chain_leaf_hashes = Vec::new();
+        let mut next_seq = 1u64;
+        while let Some([single]) = by_log_seq
+            .get(&(log_id.clone(), next_seq))
+            .map(Vec::as_slice)
+        {
+            chain_leaf_hashes.push(checkpoint_chain_leaf_hash(&single.body)?);
+            let Some(following) = next_seq.checked_add(1) else {
+                break;
+            };
+            next_seq = following;
+        }
+        chain_leaf_hashes_by_log.insert(log_id.clone(), chain_leaf_hashes);
+    }
+
     let mut witnesses = Vec::new();
     let mut consistency_proofs = Vec::new();
     for checkpoint in checkpoints {
@@ -591,8 +854,22 @@ pub fn build_checkpoint_transparency(
                 return Err(error);
             }
             witnesses.push(build_checkpoint_witness(previous, checkpoint)?);
-            if checkpoint_log_id(previous) == checkpoint_log_id(checkpoint) {
-                consistency_proofs.push(build_checkpoint_consistency_proof(previous, checkpoint)?);
+            let log_id = checkpoint_log_id(checkpoint);
+            if checkpoint_log_id(previous) == log_id
+                && previous.body.chain_root.is_some()
+                && checkpoint.body.chain_root.is_some()
+            {
+                let to_size = chain_tree_size(checkpoint)?;
+                if let Some(chain_leaf_hashes) = chain_leaf_hashes_by_log
+                    .get(&log_id)
+                    .filter(|leaves| leaves.len() >= to_size)
+                {
+                    consistency_proofs.push(build_checkpoint_consistency_proof(
+                        previous,
+                        checkpoint,
+                        &chain_leaf_hashes[..to_size],
+                    )?);
+                }
             }
         }
     }
@@ -755,7 +1032,9 @@ fn unix_now() -> u64 {
 
 /// Build a signed kernel checkpoint from a batch of canonical receipt bytes.
 ///
-/// `receipt_canonical_bytes_batch` must not be empty.
+/// `receipt_canonical_bytes_batch` must not be empty. The first checkpoint of
+/// a chain (`checkpoint_seq == 1`) commits a single-leaf chain; a detached
+/// checkpoint at a later sequence is issued without a chain commitment.
 pub fn build_checkpoint(
     checkpoint_seq: u64,
     batch_start_seq: u64,
@@ -770,10 +1049,18 @@ pub fn build_checkpoint(
         receipt_canonical_bytes_batch,
         keypair,
         None,
+        &[],
     )
 }
 
-/// Build a signed kernel checkpoint that explicitly links to the previous checkpoint when provided.
+/// Build a signed kernel checkpoint that explicitly links to the previous
+/// checkpoint when provided.
+///
+/// `prior_chain_leaf_hashes` must hold the chain leaf of every prior
+/// checkpoint in sequence order (see [`checkpoint_chain_leaf_hash`]); the new
+/// body then carries a `chain_root` extending them, and the leaves are
+/// cross-checked against the predecessor's own commitment when it has one. An
+/// empty slice is valid only with no previous checkpoint.
 pub fn build_checkpoint_with_previous(
     checkpoint_seq: u64,
     batch_start_seq: u64,
@@ -781,9 +1068,57 @@ pub fn build_checkpoint_with_previous(
     receipt_canonical_bytes_batch: &[Vec<u8>],
     keypair: &Keypair,
     previous_checkpoint: Option<&KernelCheckpoint>,
+    prior_chain_leaf_hashes: &[Hash],
 ) -> Result<KernelCheckpoint, CheckpointError> {
     let tree = MerkleTree::from_leaves(receipt_canonical_bytes_batch)?;
     let merkle_root = tree.root();
+
+    let own_chain_leaf = checkpoint_chain_leaf_hash_from_parts(
+        checkpoint_seq,
+        batch_start_seq,
+        batch_end_seq,
+        merkle_root,
+    )?;
+    let chain_root = match previous_checkpoint {
+        None => {
+            if !prior_chain_leaf_hashes.is_empty() {
+                return Err(CheckpointError::Invalid(
+                    "prior chain leaves supplied without a previous checkpoint".to_string(),
+                ));
+            }
+            (checkpoint_seq == 1)
+                .then(|| checkpoint_chain_root(&[own_chain_leaf]))
+                .transpose()?
+        }
+        Some(previous) => {
+            if prior_chain_leaf_hashes.len() as u64 != previous.body.checkpoint_seq {
+                return Err(CheckpointError::Continuity(format!(
+                    "prior chain leaf count {} does not match predecessor checkpoint_seq {}",
+                    prior_chain_leaf_hashes.len(),
+                    previous.body.checkpoint_seq
+                )));
+            }
+            if prior_chain_leaf_hashes.last() != Some(&checkpoint_chain_leaf_hash(&previous.body)?)
+            {
+                return Err(CheckpointError::Continuity(format!(
+                    "last prior chain leaf does not match predecessor checkpoint {}",
+                    previous.body.checkpoint_seq
+                )));
+            }
+            if let Some(previous_chain_root) = previous.body.chain_root {
+                if checkpoint_chain_root(prior_chain_leaf_hashes)? != previous_chain_root {
+                    return Err(CheckpointError::Continuity(format!(
+                        "predecessor {} chain_root does not match the supplied chain leaves",
+                        previous.body.checkpoint_seq
+                    )));
+                }
+            }
+            let mut chain = prior_chain_leaf_hashes.to_vec();
+            chain.push(own_chain_leaf);
+            Some(checkpoint_chain_root(&chain)?)
+        }
+    };
+
     let body = KernelCheckpointBody {
         schema: CHECKPOINT_SCHEMA.to_string(),
         checkpoint_seq,
@@ -796,6 +1131,7 @@ pub fn build_checkpoint_with_previous(
         previous_checkpoint_sha256: previous_checkpoint
             .map(|checkpoint| checkpoint_body_sha256(&checkpoint.body))
             .transpose()?,
+        chain_root,
     };
     let body_bytes =
         canonical_json_bytes(&body).map_err(|e| CheckpointError::Serialization(e.to_string()))?;
@@ -871,6 +1207,16 @@ pub fn validate_checkpoint(checkpoint: &KernelCheckpoint) -> Result<(), Checkpoi
             checkpoint.body.batch_end_seq
         )));
     }
+    if let Some(chain_root) = checkpoint.body.chain_root {
+        if checkpoint.body.checkpoint_seq == 1
+            && chain_root
+                != checkpoint_chain_root(&[checkpoint_chain_leaf_hash(&checkpoint.body)?])?
+        {
+            return Err(CheckpointError::Invalid(
+                "chain_root of the first checkpoint does not commit its own chain leaf".to_string(),
+            ));
+        }
+    }
     if !verify_checkpoint_signature(checkpoint)? {
         return Err(CheckpointError::InvalidSignature);
     }
@@ -929,6 +1275,13 @@ pub fn validate_checkpoint_predecessor(
         )));
     }
 
+    if predecessor.body.chain_root.is_some() && checkpoint.body.chain_root.is_none() {
+        return Err(CheckpointError::Continuity(format!(
+            "checkpoint {} drops the chain commitment its predecessor carries",
+            checkpoint.body.checkpoint_seq
+        )));
+    }
+
     Ok(())
 }
 
@@ -939,6 +1292,13 @@ mod tests {
     fn make_receipt_bytes(n: usize) -> Vec<Vec<u8>> {
         (0..n)
             .map(|i| format!("{{\"receipt_id\":\"rcpt-{i:04}\",\"seq\":{i}}}").into_bytes())
+            .collect()
+    }
+
+    fn chain_leaves(checkpoints: &[&KernelCheckpoint]) -> Vec<Hash> {
+        checkpoints
+            .iter()
+            .map(|checkpoint| checkpoint_chain_leaf_hash(&checkpoint.body).expect("chain leaf"))
             .collect()
     }
 
@@ -1025,9 +1385,16 @@ mod tests {
         let kp = Keypair::generate();
         let first = build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &kp)
             .expect("first checkpoint build failed");
-        let second =
-            build_checkpoint_with_previous(2, 4, 6, &make_receipt_bytes(3), &kp, Some(&first))
-                .expect("second checkpoint build failed");
+        let second = build_checkpoint_with_previous(
+            2,
+            4,
+            6,
+            &make_receipt_bytes(3),
+            &kp,
+            Some(&first),
+            &chain_leaves(&[&first]),
+        )
+        .expect("second checkpoint build failed");
         let expected_previous_checkpoint_sha256 =
             checkpoint_body_sha256(&first.body).expect("previous digest");
 
@@ -1045,9 +1412,16 @@ mod tests {
     fn build_checkpoint_transparency_derives_publications_and_witnesses() {
         let kp = Keypair::generate();
         let first = build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &kp).expect("build first");
-        let second =
-            build_checkpoint_with_previous(2, 4, 6, &make_receipt_bytes(3), &kp, Some(&first))
-                .expect("build second");
+        let second = build_checkpoint_with_previous(
+            2,
+            4,
+            6,
+            &make_receipt_bytes(3),
+            &kp,
+            Some(&first),
+            &chain_leaves(&[&first]),
+        )
+        .expect("build second");
 
         let transparency =
             validate_checkpoint_transparency(&[first.clone(), second.clone()]).expect("summary");
@@ -1134,9 +1508,16 @@ mod tests {
         let kp = Keypair::generate();
         let first =
             build_checkpoint(1, 1, 2, &make_receipt_bytes(2), &kp).expect("first checkpoint");
-        let second =
-            build_checkpoint_with_previous(2, 3, 4, &make_receipt_bytes(2), &kp, Some(&first))
-                .expect("second checkpoint");
+        let second = build_checkpoint_with_previous(
+            2,
+            3,
+            4,
+            &make_receipt_bytes(2),
+            &kp,
+            Some(&first),
+            &chain_leaves(&[&first]),
+        )
+        .expect("second checkpoint");
         let derived = validate_checkpoint_transparency(&[first.clone(), second.clone()])
             .expect("transparency");
         let supplied = CheckpointTransparencySummary {
@@ -1232,9 +1613,16 @@ mod tests {
     fn checkpoint_rejects_same_log_same_tree_size_fork() {
         let kp = Keypair::generate();
         let first = build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &kp).expect("first");
-        let second =
-            build_checkpoint_with_previous(2, 4, 6, &make_receipt_bytes(3), &kp, Some(&first))
-                .expect("second");
+        let second = build_checkpoint_with_previous(
+            2,
+            4,
+            6,
+            &make_receipt_bytes(3),
+            &kp,
+            Some(&first),
+            &chain_leaves(&[&first]),
+        )
+        .expect("second");
         let fork = build_checkpoint_with_previous(
             9,
             1,
@@ -1249,6 +1637,7 @@ mod tests {
             ],
             &kp,
             None,
+            &[],
         )
         .expect("fork");
 
@@ -1261,22 +1650,294 @@ mod tests {
     }
 
     #[test]
-    fn checkpoint_consistency_proof_verifies_prefix_growth() {
+    fn checkpoint_consistency_proof_verifies_chain_growth() {
         let kp = Keypair::generate();
         let first = build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &kp).expect("first");
-        let second =
-            build_checkpoint_with_previous(2, 4, 6, &make_receipt_bytes(3), &kp, Some(&first))
-                .expect("second");
+        let second = build_checkpoint_with_previous(
+            2,
+            4,
+            6,
+            &make_receipt_bytes(3),
+            &kp,
+            Some(&first),
+            &chain_leaves(&[&first]),
+        )
+        .expect("second");
+        let third = build_checkpoint_with_previous(
+            3,
+            7,
+            9,
+            &make_receipt_bytes(3),
+            &kp,
+            Some(&second),
+            &chain_leaves(&[&first, &second]),
+        )
+        .expect("third");
 
-        let proof = build_checkpoint_consistency_proof(&first, &second).expect("proof");
+        let leaves = chain_leaves(&[&first, &second, &third]);
+        let proof =
+            build_checkpoint_consistency_proof(&first, &second, &leaves[..2]).expect("proof");
+        assert_eq!(proof.schema, CHECKPOINT_CONSISTENCY_PROOF_SCHEMA);
         assert_eq!(proof.log_id, checkpoint_log_id(&first));
         assert_eq!(proof.from_log_tree_size, 3);
         assert_eq!(proof.to_log_tree_size, 6);
         assert_eq!(proof.appended_entry_start_seq, 4);
         assert_eq!(proof.appended_entry_end_seq, 6);
+        assert_eq!(Some(proof.from_chain_root), first.body.chain_root);
+        assert_eq!(Some(proof.to_chain_root), second.body.chain_root);
         assert!(
             verify_checkpoint_consistency_proof(&first, &second, &proof).expect("verify proof"),
-            "prefix-growth proof should verify"
+            "chain-growth proof should verify"
+        );
+
+        let later = build_checkpoint_consistency_proof(&second, &third, &leaves).expect("later");
+        assert!(
+            !later.chain_proof_hashes.is_empty(),
+            "a chain extension past one leaf must carry node hashes"
+        );
+        assert!(
+            verify_checkpoint_consistency_proof(&second, &third, &later).expect("verify later"),
+            "second chain-growth proof should verify"
+        );
+    }
+
+    #[test]
+    fn checkpoint_consistency_proof_rejects_unrelated_chain_root() {
+        let kp = Keypair::generate();
+        let first = build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &kp).expect("first");
+        let second = build_checkpoint_with_previous(
+            2,
+            4,
+            6,
+            &make_receipt_bytes(3),
+            &kp,
+            Some(&first),
+            &chain_leaves(&[&first]),
+        )
+        .expect("second");
+        let leaves = chain_leaves(&[&first, &second]);
+        let honest = build_checkpoint_consistency_proof(&first, &second, &leaves).expect("proof");
+
+        // A key-holding log that rewrites history: the successor commits a
+        // chain root with no append-only relation to the predecessor's, and
+        // re-signs. Every metadata field can be made to match, but the Merkle
+        // path cannot.
+        let mut rewritten = second.clone();
+        rewritten.body.chain_root =
+            Some(checkpoint_chain_root(&[leaf_hash(b"rewritten-history")]).expect("root"));
+        rewritten.signature = kp.sign(
+            &canonical_json_bytes(&rewritten.body).expect("canonical rewritten checkpoint body"),
+        );
+
+        let mut forged = honest.clone();
+        forged.to_checkpoint_sha256 =
+            checkpoint_body_sha256(&rewritten.body).expect("rewritten digest");
+        forged.to_chain_root = rewritten.body.chain_root.expect("rewritten chain root");
+        assert!(
+            !verify_checkpoint_consistency_proof(&first, &rewritten, &forged)
+                .expect("verify forged"),
+            "a chain root with no append-only relation must not verify"
+        );
+
+        // Tampering any single field of an otherwise honest proof fails too.
+        let mut tampered = honest.clone();
+        tampered.to_chain_root = Hash::zero();
+        assert!(
+            !verify_checkpoint_consistency_proof(&first, &second, &tampered)
+                .expect("verify tampered"),
+            "a tampered to_chain_root must not verify"
+        );
+        let mut truncated = honest.clone();
+        truncated.chain_proof_hashes.push(Hash::zero());
+        assert!(
+            !verify_checkpoint_consistency_proof(&first, &second, &truncated)
+                .expect("verify extended"),
+            "an extended proof path must not verify"
+        );
+    }
+
+    #[test]
+    fn checkpoint_consistency_proof_requires_the_committed_chain_to_end_in_this_checkpoint() {
+        let kp = Keypair::generate();
+        let first = build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &kp).expect("first");
+        let second = build_checkpoint_with_previous(
+            2,
+            4,
+            6,
+            &make_receipt_bytes(3),
+            &kp,
+            Some(&first),
+            &chain_leaves(&[&first]),
+        )
+        .expect("second");
+        let leaves = chain_leaves(&[&first, &second]);
+        let honest = build_checkpoint_consistency_proof(&first, &second, &leaves).expect("proof");
+
+        // A key holder commits a chain whose last leaf is not its own body and
+        // re-signs. The verifier recomputes from the checkpoint's true leaf, so
+        // the substituted root cannot be reproduced.
+        let smuggled_leaf = leaf_hash(b"not-this-checkpoint");
+        let smuggled_chain =
+            MerkleTree::from_hashes(vec![leaves[0], smuggled_leaf]).expect("smuggled chain");
+        let mut smuggled = second.clone();
+        smuggled.body.chain_root = Some(smuggled_chain.root());
+        smuggled.signature = kp.sign(
+            &canonical_json_bytes(&smuggled.body).expect("canonical smuggled checkpoint body"),
+        );
+        let mut smuggled_proof = honest.clone();
+        smuggled_proof.to_checkpoint_sha256 =
+            checkpoint_body_sha256(&smuggled.body).expect("smuggled digest");
+        smuggled_proof.to_chain_root = smuggled_chain.root();
+        smuggled_proof.chain_proof_hashes =
+            smuggled_chain.consistency_proof(1).expect("smuggled path");
+        smuggled_proof.to_leaf_inclusion = smuggled_chain
+            .inclusion_proof(1)
+            .expect("smuggled inclusion");
+        assert!(
+            !verify_checkpoint_consistency_proof(&first, &smuggled, &smuggled_proof)
+                .expect("verify smuggled chain"),
+            "a chain whose last leaf is not this checkpoint must not verify"
+        );
+
+        let mut wrong_index = honest.clone();
+        wrong_index.to_leaf_inclusion.leaf_index = 0;
+        assert!(
+            !verify_checkpoint_consistency_proof(&first, &second, &wrong_index)
+                .expect("verify wrong index"),
+            "the checkpoint leaf must be proven at the last position"
+        );
+    }
+
+    #[test]
+    fn checkpoint_consistency_proof_requires_chain_commitment() {
+        let kp = Keypair::generate();
+        let first = build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &kp).expect("first");
+        let second = build_checkpoint_with_previous(
+            2,
+            4,
+            6,
+            &make_receipt_bytes(3),
+            &kp,
+            Some(&first),
+            &chain_leaves(&[&first]),
+        )
+        .expect("second");
+        let leaves = chain_leaves(&[&first, &second]);
+        let proof = build_checkpoint_consistency_proof(&first, &second, &leaves).expect("proof");
+
+        // A legacy pair without chain commitments is unverifiable, not false.
+        let mut legacy_first = first.clone();
+        legacy_first.body.chain_root = None;
+        legacy_first.signature = kp
+            .sign(&canonical_json_bytes(&legacy_first.body).expect("canonical legacy first body"));
+        let mut legacy_second = second.clone();
+        legacy_second.body.previous_checkpoint_sha256 =
+            Some(checkpoint_body_sha256(&legacy_first.body).expect("legacy digest"));
+        legacy_second.body.chain_root = None;
+        legacy_second.signature = kp.sign(
+            &canonical_json_bytes(&legacy_second.body).expect("canonical legacy second body"),
+        );
+
+        let error = verify_checkpoint_consistency_proof(&legacy_first, &legacy_second, &proof)
+            .expect_err("legacy pair should be unverifiable");
+        assert!(
+            error.to_string().contains("no chain commitment"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn validate_checkpoint_predecessor_rejects_chain_commitment_downgrade() {
+        let kp = Keypair::generate();
+        let first = build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &kp).expect("first");
+        let mut second = build_checkpoint_with_previous(
+            2,
+            4,
+            6,
+            &make_receipt_bytes(3),
+            &kp,
+            Some(&first),
+            &chain_leaves(&[&first]),
+        )
+        .expect("second");
+        second.body.chain_root = None;
+        second.signature = kp.sign(
+            &canonical_json_bytes(&second.body).expect("canonical downgraded checkpoint body"),
+        );
+
+        let error =
+            validate_checkpoint_predecessor(&first, &second).expect_err("downgrade should fail");
+        assert!(
+            error.to_string().contains("drops the chain commitment"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn validate_checkpoint_rejects_first_checkpoint_chain_root_mismatch() {
+        let kp = Keypair::generate();
+        let mut checkpoint =
+            build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &kp).expect("build failed");
+        checkpoint.body.chain_root = Some(Hash::zero());
+        checkpoint.signature = kp.sign(
+            &canonical_json_bytes(&checkpoint.body).expect("canonical tampered checkpoint body"),
+        );
+
+        let error = validate_checkpoint(&checkpoint).expect_err("checkpoint should be invalid");
+        assert!(
+            error
+                .to_string()
+                .contains("does not commit its own chain leaf"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn checkpoint_body_rejects_unknown_fields() {
+        let kp = Keypair::generate();
+        let checkpoint =
+            build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &kp).expect("build failed");
+        let mut body_value =
+            serde_json::to_value(&checkpoint.body).expect("serialize checkpoint body");
+        body_value["smuggled_field"] = serde_json::json!("payload");
+
+        let error = serde_json::from_value::<KernelCheckpointBody>(body_value)
+            .expect_err("unknown body field should be rejected");
+        assert!(
+            error.to_string().contains("smuggled_field"),
+            "unexpected error: {error}"
+        );
+
+        let mut checkpoint_value = serde_json::to_value(&checkpoint).expect("serialize checkpoint");
+        checkpoint_value["extra"] = serde_json::json!(1);
+        let error = serde_json::from_value::<KernelCheckpoint>(checkpoint_value)
+            .expect_err("unknown top-level field should be rejected");
+        assert!(
+            error.to_string().contains("extra"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn legacy_checkpoint_body_without_chain_root_still_roundtrips() {
+        let kp = Keypair::generate();
+        let mut checkpoint =
+            build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &kp).expect("build failed");
+        checkpoint.body.chain_root = None;
+        checkpoint.signature = kp.sign(
+            &canonical_json_bytes(&checkpoint.body).expect("canonical legacy checkpoint body"),
+        );
+
+        let json = serde_json::to_string(&checkpoint).expect("serialize");
+        assert!(
+            !json.contains("chain_root"),
+            "an absent chain commitment must not appear on the wire"
+        );
+        let restored: KernelCheckpoint = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(restored.body.chain_root, None);
+        assert!(
+            verify_checkpoint_signature(&restored).expect("verify"),
+            "legacy checkpoint signature must survive the roundtrip"
         );
     }
 
@@ -1401,9 +2062,16 @@ mod tests {
     fn validate_checkpoint_predecessor_accepts_contiguous_batches() {
         let kp = Keypair::generate();
         let first = build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &kp).expect("build failed");
-        let second =
-            build_checkpoint_with_previous(2, 4, 6, &make_receipt_bytes(3), &kp, Some(&first))
-                .expect("build failed");
+        let second = build_checkpoint_with_previous(
+            2,
+            4,
+            6,
+            &make_receipt_bytes(3),
+            &kp,
+            Some(&first),
+            &chain_leaves(&[&first]),
+        )
+        .expect("build failed");
 
         validate_checkpoint_predecessor(&first, &second).expect("continuity should hold");
     }
@@ -1412,9 +2080,16 @@ mod tests {
     fn validate_checkpoint_predecessor_rejects_batch_gap() {
         let kp = Keypair::generate();
         let first = build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &kp).expect("build failed");
-        let second =
-            build_checkpoint_with_previous(2, 5, 6, &make_receipt_bytes(2), &kp, Some(&first))
-                .expect("build failed");
+        let second = build_checkpoint_with_previous(
+            2,
+            5,
+            6,
+            &make_receipt_bytes(2),
+            &kp,
+            Some(&first),
+            &chain_leaves(&[&first]),
+        )
+        .expect("build failed");
 
         let error =
             validate_checkpoint_predecessor(&first, &second).expect_err("continuity should fail");
@@ -1428,9 +2103,16 @@ mod tests {
     fn validate_checkpoint_predecessor_rejects_wrong_predecessor_digest() {
         let kp = Keypair::generate();
         let first = build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &kp).expect("build failed");
-        let mut second =
-            build_checkpoint_with_previous(2, 4, 6, &make_receipt_bytes(3), &kp, Some(&first))
-                .expect("build failed");
+        let mut second = build_checkpoint_with_previous(
+            2,
+            4,
+            6,
+            &make_receipt_bytes(3),
+            &kp,
+            Some(&first),
+            &chain_leaves(&[&first]),
+        )
+        .expect("build failed");
         second.body.previous_checkpoint_sha256 = Some("not-the-real-digest".to_string());
         second.signature =
             kp.sign(&canonical_json_bytes(&second.body).expect("canonical second checkpoint body"));
@@ -1471,6 +2153,7 @@ mod tests {
             &[b"three".to_vec(), b"four".to_vec()],
             &kp,
             Some(&first),
+            &chain_leaves(&[&first]),
         )
         .expect("second checkpoint");
         let mut fork = build_checkpoint_with_previous(
@@ -1480,6 +2163,7 @@ mod tests {
             &[b"five".to_vec(), b"six".to_vec()],
             &kp,
             Some(&first),
+            &chain_leaves(&[&first]),
         )
         .expect("fork checkpoint");
         fork.signature =
