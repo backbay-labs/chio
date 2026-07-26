@@ -783,6 +783,7 @@ fn test_authorization_context_report_rejects_invalid_chio_oauth_profile_projecti
                         approval: Some(GovernedApprovalReceiptMetadata {
                             token_id: "approval-auth-invalid".to_string(),
                             approver_key: issuer_hex.clone(),
+                            approval_artifact_digest: None,
                             approved: true,
                         }),
                         runtime_assurance: None,
@@ -1075,6 +1076,7 @@ fn test_authorization_context_report_rejects_incomplete_runtime_assurance_projec
                         approval: Some(GovernedApprovalReceiptMetadata {
                             token_id: "approval-auth-invalid-assurance".to_string(),
                             approver_key: issuer_hex.clone(),
+                            approval_artifact_digest: None,
                             approved: true,
                         }),
                         runtime_assurance: Some(RuntimeAssuranceReceiptMetadata {
@@ -1218,6 +1220,7 @@ fn test_authorization_context_report_rejects_invalid_delegated_call_chain_projec
                         approval: Some(GovernedApprovalReceiptMetadata {
                             token_id: "approval-auth-invalid-call-chain".to_string(),
                             approver_key: issuer_hex.clone(),
+                            approval_artifact_digest: None,
                             approved: true,
                         }),
                         runtime_assurance: None,

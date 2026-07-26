@@ -1,0 +1,20 @@
+{
+  "body": {
+    "admissionAuthorityId": "local-admission",
+    "admissionId": "3177026c3d1447014dfab0af08d835ddf6a868b1fb862c40d30959687cd5536b",
+    "admissionSequence": 1,
+    "admittedAt": 55,
+    "governingOperatorId": "operator.example",
+    "predecessorCharterDigest": "a79930cdbd1c5d68208e437f8b8851dcd0f66114b5d34c25cb48a670bf2a22fa",
+    "predecessorCharterId": "8e486b91278e696d27603e62e2192af0667d5417891379a354b4113be30bb375",
+    "predecessorCharterSequence": 1,
+    "proposalDigest": "ed03dcf3996ff36fd140f4dfad63f9e2d72dde84d1517ca456f7f9febcc2186e",
+    "proposalExpiresAt": 155,
+    "proposalId": "e11c99b30195166a6747b8c6a66a7fde2a0931ae82aea900d2a228a21d36f4a0",
+    "schema": "chio.fiscal.proposal-admission.v1",
+    "signerKeyEpoch": 1,
+    "signerKeyId": "fe812c12f3ab4ce6ac5db69ac352f906cb1b11ef43fb33e252ef7ff552263889"
+  },
+  "signature": "eb08c8a61b880ebb9037d197e97d8dd63a23ba6a047418b009a86d39a2fd5a77dc43643987f417f937eea5b735254e485148c9cf02a14bb46b5c07cc17f2cd04",
+  "signerKey": "ea4a6c63e29c520abef5507b132ec5f9954776aebebe7b92421eea691446d22c"
+}

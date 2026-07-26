@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-economy/clearing-settlement-intent/v1",
+  "title": "Chio Clearing Settlement Intent V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signerKey", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "intentId",
+        "roundCoreDigest",
+        "ordinal",
+        "debtorParticipantId",
+        "creditorParticipantId",
+        "creditorSettlementDestination",
+        "amount",
+        "contributingReservationRoot",
+        "dispatchIdempotencyKey"
+      ],
+      "properties": {
+        "schema": { "const": "chio.clearing.settlement-intent.v1" },
+        "intentId": { "$ref": "#/$defs/digest" },
+        "roundCoreDigest": { "$ref": "#/$defs/digest" },
+        "ordinal": { "$ref": "#/$defs/nonNegativeInteger" },
+        "debtorParticipantId": { "$ref": "#/$defs/text" },
+        "creditorParticipantId": { "$ref": "#/$defs/text" },
+        "creditorSettlementDestination": { "$ref": "#/$defs/text" },
+        "amount": { "$ref": "#/$defs/amount" },
+        "contributingReservationRoot": { "$ref": "#/$defs/digest" },
+        "dispatchIdempotencyKey": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "signerKey": { "$ref": "#/$defs/cryptoMaterial" },
+    "signature": { "$ref": "#/$defs/cryptoMaterial" }
+  },
+  "$defs": {
+    "nonNegativeInteger": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "positiveInteger": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "text": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "cryptoMaterial": { "type": "string", "minLength": 1, "maxLength": 16384 },
+    "amount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["units", "currency"],
+      "properties": {
+        "units": { "$ref": "#/$defs/positiveInteger" },
+        "currency": { "$ref": "#/$defs/currency" }
+      }
+    }
+  }
+}

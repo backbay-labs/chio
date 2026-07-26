@@ -52,6 +52,7 @@ fn capability_token_serde_roundtrip() {
         issued_at: 1000,
         expires_at: 2000,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let token = CapabilityToken::sign(body, &kp).unwrap();
 
@@ -81,6 +82,7 @@ fn capability_token_signature_verification() {
         issued_at: 1000,
         expires_at: 2000,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let token = CapabilityToken::sign(body, &kp).unwrap();
     assert!(token.verify_signature().unwrap());
@@ -101,6 +103,7 @@ fn legacy_body_signed_capability_token_still_verifies() -> Result<()> {
         issued_at: 1000,
         expires_at: 2000,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let (signature, _bytes) = kp.sign_canonical(&body)?;
     let token = CapabilityToken {
@@ -117,6 +120,7 @@ fn legacy_body_signed_capability_token_still_verifies() -> Result<()> {
         scope_attenuations: None,
         attenuation_proof: None,
         budget_share_bps: None,
+        aggregate_invocation_budget: None,
         signature,
     };
 
@@ -140,6 +144,7 @@ fn wrong_key_signature_fails() {
         issued_at: 1000,
         expires_at: 2000,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let mut token = CapabilityToken::sign(body, &kp).unwrap();
     token.issuer = other_kp.public_key();
@@ -158,6 +163,7 @@ fn time_validation() {
         issued_at: 1000,
         expires_at: 2000,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let token = CapabilityToken::sign(body, &kp).unwrap();
 
@@ -376,6 +382,7 @@ fn attenuated_capability_schema_and_budget_fail_closed() {
         issued_at: 10,
         expires_at: 20,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let token = CapabilityToken::sign_attenuated(
         CapabilityTokenAttenuationBody {
@@ -430,6 +437,7 @@ fn attenuated_capability_chain_binding_feature_disabled_fails_closed() {
         issued_at: 10,
         expires_at: 20,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let token = CapabilityToken::sign_attenuated(
         CapabilityTokenAttenuationBody {
@@ -479,6 +487,7 @@ fn attenuated_capability_requires_attenuation_proof() -> Result<()> {
         issued_at: 10,
         expires_at: 20,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let mut token = CapabilityToken::sign_attenuated(
         CapabilityTokenAttenuationBody {
@@ -519,6 +528,7 @@ fn empty_child_scope_attenuation_proof_survives_serialization() -> Result<()> {
         issued_at: 10,
         expires_at: 20,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let token = CapabilityToken::sign_attenuated(
         CapabilityTokenAttenuationBody {
@@ -550,6 +560,8 @@ fn attenuation_proof_validation_rejects_non_subset_scope() -> Result<()> {
             subset: true,
         }],
         restricted_predicates: vec![],
+        aggregate_budget: None,
+        cumulative_approval: None,
     };
 
     let parent_hash = scope_hash(&parent)?;
@@ -603,6 +615,7 @@ fn chain_binding_disabled_does_not_reject_v1_tokens() {
             issued_at: 10,
             expires_at: 20,
             delegation_chain: vec![],
+            aggregate_invocation_budget: None,
         },
         &issuer,
     )
@@ -640,6 +653,8 @@ fn plain_delegated_token_without_attenuation_proof_verifies_and_skips_chain_bind
             attenuations: vec![],
             timestamp: 100,
             scope_hash: None,
+            aggregate_budget: None,
+            cumulative_approval: None,
         },
         &issuer,
     )
@@ -654,6 +669,7 @@ fn plain_delegated_token_without_attenuation_proof_verifies_and_skips_chain_bind
             issued_at: 100,
             expires_at: 200,
             delegation_chain: vec![parent_link],
+            aggregate_invocation_budget: None,
         },
         &issuer,
     )
@@ -709,6 +725,7 @@ fn requires_chain_binding_tracks_only_new_attenuation() {
             issued_at: 100,
             expires_at: 200,
             delegation_chain: vec![],
+            aggregate_invocation_budget: None,
         },
         &issuer,
     )
@@ -723,6 +740,8 @@ fn requires_chain_binding_tracks_only_new_attenuation() {
             attenuations: vec![],
             timestamp: 100,
             scope_hash: None,
+            aggregate_budget: None,
+            cumulative_approval: None,
         },
         &issuer,
     )
@@ -760,6 +779,8 @@ fn make_signed_link(
         attenuations: vec![],
         timestamp,
         scope_hash: None,
+        aggregate_budget: None,
+        cumulative_approval: None,
     };
     DelegationLink::sign(body, delegator_kp).unwrap()
 }
@@ -884,6 +905,7 @@ fn governed_transaction_intent_binding_hash_changes_with_payload() {
         commerce: Some(GovernedCommerceContext {
             seller: "merchant.example".to_string(),
             shared_payment_token_id: "spt_123".to_string(),
+            settlement_destination_ref: Some("acct:merchant-primary".to_string()),
         }),
         metered_billing: Some(MeteredBillingContext {
             settlement_mode: MeteredSettlementMode::AllowThenSettle,
@@ -900,6 +922,7 @@ fn governed_transaction_intent_binding_hash_changes_with_payload() {
                 expires_at: Some(1300),
             },
             max_billed_units: Some(20),
+            verified_outcome: None,
         }),
         runtime_attestation: Some(RuntimeAttestationEvidence {
             schema: "chio.runtime-attestation.v1".to_string(),
@@ -924,6 +947,7 @@ fn governed_transaction_intent_binding_hash_changes_with_payload() {
             delegation_bond_id: Some("bond-1".to_string()),
         }),
         context: None,
+        body: GovernedTransactionIntentBody::ToolInvocation,
     };
     let mut changed = base.clone();
     changed
@@ -936,6 +960,73 @@ fn governed_transaction_intent_binding_hash_changes_with_payload() {
         base.binding_hash().unwrap(),
         changed.binding_hash().unwrap()
     );
+
+    let mut changed_destination = base.clone();
+    changed_destination
+        .commerce
+        .as_mut()
+        .expect("commerce present")
+        .settlement_destination_ref = Some("acct:merchant-substituted".to_string());
+    assert_ne!(
+        base.binding_hash().unwrap(),
+        changed_destination.binding_hash().unwrap()
+    );
+}
+
+#[test]
+fn active_response_intent_checks_plan_body_hash_and_effect_order() {
+    let executor = Keypair::generate();
+    let canonical_plan_body = serde_json::json!({
+        "actionId": "response-1",
+        "effects": ["restrict_egress", "suspend_session"]
+    });
+    let plan_body_hash =
+        GovernedResponsePlanIntentBody::plan_body_hash(&canonical_plan_body).unwrap();
+    let intent = GovernedTransactionIntent {
+        id: "response-1".to_string(),
+        server_id: ACTIVE_RESPONSE_SERVER_ID.to_string(),
+        tool_name: "apply_plan".to_string(),
+        purpose: "contain compromised session".to_string(),
+        max_amount: None,
+        commerce: None,
+        metered_billing: None,
+        runtime_attestation: None,
+        call_chain: None,
+        autonomy: None,
+        context: None,
+        body: GovernedTransactionIntentBody::ActiveResponsePlan(Box::new(
+            GovernedResponsePlanIntentBody {
+                plan_schema: GOVERNED_RESPONSE_PLAN_SCHEMA.to_string(),
+                plan_id: "response-1".to_string(),
+                operator_capability_id: "operator-capability-1".to_string(),
+                operator_capability_hash: "a".repeat(64),
+                operator_capability_expires_at: 2_000,
+                executor_subject: executor.public_key(),
+                canonical_plan_body,
+                plan_body_hash,
+                target_binding: serde_json::json!({"sessionId": "session-1"}),
+                ordered_effects: vec![
+                    GovernedResponseEffect::RestrictEgress,
+                    GovernedResponseEffect::SuspendSession,
+                ],
+                expires_at: 1_900,
+                rollback_binding: serde_json::json!({"mode": "remove_contributions"}),
+            },
+        )),
+    };
+
+    let original_hash = intent.binding_hash().unwrap();
+    let mut reordered = intent.clone();
+    if let GovernedTransactionIntentBody::ActiveResponsePlan(plan) = &mut reordered.body {
+        plan.ordered_effects.reverse();
+    }
+    assert_ne!(original_hash, reordered.binding_hash().unwrap());
+
+    let mut mismatched = intent;
+    if let GovernedTransactionIntentBody::ActiveResponsePlan(plan) = &mut mismatched.body {
+        plan.canonical_plan_body["actionId"] = serde_json::json!("response-2");
+    }
+    assert!(mismatched.binding_hash().is_err());
 }
 
 #[test]
@@ -969,17 +1060,22 @@ fn governed_approval_token_signature_roundtrip() {
         subject: subject.public_key(),
         governed_intent_hash: "intent-hash".to_string(),
         request_id: "req-1".to_string(),
+        threshold_proposal_hash: None,
         issued_at: 1000,
         expires_at: 2000,
         decision: GovernedApprovalDecision::Approved,
     };
 
     let token = GovernedApprovalToken::sign(body, &approver).unwrap();
+    let artifact_digest = token.artifact_digest().unwrap();
+    let mut changed_token = token.clone();
+    changed_token.request_id = "req-2".to_string();
 
     assert!(token.verify_signature().unwrap());
     assert!(token.is_valid_at(1500));
     assert!(!token.is_valid_at(2000));
     assert_eq!(token.subject, subject.public_key());
+    assert_ne!(artifact_digest, changed_token.artifact_digest().unwrap());
 }
 
 #[test]
@@ -1022,6 +1118,7 @@ fn governed_upstream_call_chain_proof_roundtrip_and_context_extraction() {
             GOVERNED_CALL_CHAIN_UPSTREAM_PROOF_CONTEXT_KEY: proof.clone(),
             "note": "preserve-other-context"
         })),
+        body: GovernedTransactionIntentBody::ToolInvocation,
     };
 
     assert!(proof.verify_signature().unwrap());
@@ -1085,6 +1182,7 @@ fn call_chain_continuation_token_roundtrip_and_matching_helpers() {
         context: Some(serde_json::json!({
             GOVERNED_CALL_CHAIN_CONTINUATION_CONTEXT_KEY: token.clone()
         })),
+        body: GovernedTransactionIntentBody::ToolInvocation,
     };
 
     assert!(token.verify_signature().unwrap());
@@ -1733,6 +1831,7 @@ fn ed25519_capability_token_is_byte_identical_without_algorithm_field() {
         issued_at: 1000,
         expires_at: 2000,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let token = CapabilityToken::sign(body, &kp).unwrap();
     let json = serde_json::to_value(&token).unwrap();
@@ -1755,6 +1854,7 @@ fn capability_token_backend_signing_with_ed25519_verifies() {
         issued_at: 1000,
         expires_at: 2000,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let token = CapabilityToken::sign_with_backend(body, &backend).unwrap();
     assert_eq!(
@@ -1780,6 +1880,7 @@ fn capability_token_p256_round_trip() {
         issued_at: 1000,
         expires_at: 2000,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let token = CapabilityToken::sign_with_backend(body, &backend).unwrap();
     assert_eq!(token.algorithm, Some(crate::crypto::SigningAlgorithm::P256));
@@ -1806,6 +1907,7 @@ fn capability_token_p384_round_trip() {
         issued_at: 1000,
         expires_at: 2000,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let token = CapabilityToken::sign_with_backend(body, &backend).unwrap();
     assert_eq!(token.algorithm, Some(crate::crypto::SigningAlgorithm::P384));
@@ -1825,6 +1927,7 @@ fn capability_token_p256_tampered_body_fails() {
         issued_at: 1000,
         expires_at: 2000,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let mut token = CapabilityToken::sign_with_backend(body, &backend).unwrap();
     token.id = "cap-tampered".to_string();
@@ -1842,6 +1945,7 @@ fn governed_approval_token_p256_verifies() {
         subject: subject.public_key(),
         governed_intent_hash: "hash-xyz".to_string(),
         request_id: "req-1".to_string(),
+        threshold_proposal_hash: None,
         issued_at: 1000,
         expires_at: 2000,
         decision: GovernedApprovalDecision::Approved,
@@ -1869,6 +1973,7 @@ fn delegate_parent_token(
         issued_at,
         expires_at,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     CapabilityToken::sign(body, parent_kp).unwrap()
 }
@@ -2158,6 +2263,7 @@ fn bac573_capability_token(issued_at: u64, expires_at: u64) -> (Keypair, Capabil
         issued_at,
         expires_at,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let token = CapabilityToken::sign(body, &kp).unwrap();
     (kp, token)
@@ -2256,6 +2362,7 @@ fn bac573_approval_token(issued_at: u64, expires_at: u64) -> (Keypair, GovernedA
         subject: Keypair::generate().public_key(),
         governed_intent_hash: "intent-hash".to_string(),
         request_id: "req-1".to_string(),
+        threshold_proposal_hash: None,
         issued_at,
         expires_at,
         decision: GovernedApprovalDecision::Approved,

@@ -21,13 +21,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn retryable_url_elicitation_is_not_a_receipt_write_error() {
-        let error = chio_kernel::KernelError::UrlElicitationsRequired {
+    fn cancellation_and_retryable_url_elicitation_are_not_receipt_write_errors() {
+        let url_error = chio_kernel::KernelError::UrlElicitationsRequired {
             message: "URL elicitation required".to_string(),
             elicitations: Vec::new(),
         };
+        let cancellation = chio_kernel::KernelError::RequestCancelled {
+            request_id: chio_core::session::RequestId::new("cancelled-request"),
+            reason: "cancelled by caller".to_string(),
+        };
 
-        assert!(!is_receipt_write_error(&error));
+        assert!(!is_receipt_write_error(&url_error));
+        assert!(!is_receipt_write_error(&cancellation));
         assert!(is_receipt_write_error(&chio_kernel::KernelError::Internal(
             "receipt sink unavailable".to_string()
         )));

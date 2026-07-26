@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec.chio.dev/schemas/chio-econsim/v1/scenario-result.schema.json",
+  "title": "Chio economic simulation scenario result v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "scenarioId",
+    "scenarioClass",
+    "seed",
+    "corpusManifestDigest",
+    "requirementIds",
+    "expectedDisposition",
+    "observedDisposition",
+    "targetStatus",
+    "outcome",
+    "assertionScope",
+    "explicitLimits"
+  ],
+  "properties": {
+    "schema": { "const": "chio.econsim.scenario-result.v1" },
+    "scenarioId": { "type": "string", "minLength": 1 },
+    "scenarioClass": {
+      "enum": [
+        "sybil-pricing-ring",
+        "collusion-bid-ring",
+        "credit-exhaustion",
+        "oracle-divergence",
+        "fee-structuring",
+        "settlement-dos"
+      ]
+    },
+    "seed": { "type": "integer", "minimum": 1, "maximum": 18446744073709551615 },
+    "corpusManifestDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "requirementIds": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "expectedDisposition": { "const": "fail-closed" },
+    "observedDisposition": {
+      "oneOf": [
+        { "enum": ["fail-closed", "breach"] },
+        { "type": "null" }
+      ]
+    },
+    "targetStatus": { "enum": ["bound", "missing"] },
+    "outcome": { "enum": ["held", "finding", "target-missing"] },
+    "findingSeverity": { "enum": ["low", "medium", "high", "critical"] },
+    "assertionScope": { "type": "string", "minLength": 1 },
+    "explicitLimits": {
+      "type": "array",
+      "minItems": 1,
+      "uniqueItems": true,
+      "items": { "type": "string", "minLength": 1 }
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "outcome": { "const": "held" } }, "required": ["outcome"] },
+      "then": {
+        "properties": {
+          "targetStatus": { "const": "bound" },
+          "observedDisposition": { "const": "fail-closed" }
+        },
+        "not": { "required": ["findingSeverity"] }
+      }
+    },
+    {
+      "if": { "properties": { "outcome": { "const": "finding" } }, "required": ["outcome"] },
+      "then": {
+        "properties": {
+          "targetStatus": { "const": "bound" },
+          "observedDisposition": { "const": "breach" }
+        },
+        "required": ["findingSeverity"]
+      }
+    },
+    {
+      "if": { "properties": { "outcome": { "const": "target-missing" } }, "required": ["outcome"] },
+      "then": {
+        "properties": {
+          "targetStatus": { "const": "missing" },
+          "observedDisposition": { "type": "null" },
+          "findingSeverity": { "const": "high" }
+        },
+        "required": ["findingSeverity"]
+      }
+    }
+  ]
+}

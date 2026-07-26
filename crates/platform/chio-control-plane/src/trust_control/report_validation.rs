@@ -558,6 +558,38 @@ pub(crate) fn validate_metered_billing_reconciliation_request(
 pub(crate) fn load_capability_authority(
     config: &TrustServiceConfig,
 ) -> Result<Box<dyn CapabilityAuthority>, Response> {
+    load_capability_authority_with_lineage_mode(config, true)
+}
+
+pub(crate) fn load_capability_authority_with_deferred_lineage(
+    config: &TrustServiceConfig,
+) -> Result<Box<dyn CapabilityAuthority>, Response> {
+    load_capability_authority_with_lineage_mode(config, false)
+}
+
+fn load_capability_authority_with_lineage_mode(
+    config: &TrustServiceConfig,
+    persist_lineage_immediately: bool,
+) -> Result<Box<dyn CapabilityAuthority>, Response> {
+    let wrap = |inner: Box<dyn CapabilityAuthority>| {
+        if persist_lineage_immediately {
+            issuance::wrap_capability_authority(
+                inner,
+                config.issuance_policy.clone(),
+                config.runtime_assurance_policy.clone(),
+                config.receipt_db_path.as_deref(),
+                config.budget_db_path.as_deref(),
+            )
+        } else {
+            issuance::wrap_capability_authority_with_deferred_lineage(
+                inner,
+                config.issuance_policy.clone(),
+                config.runtime_assurance_policy.clone(),
+                config.receipt_db_path.as_deref(),
+                config.budget_db_path.as_deref(),
+            )
+        }
+    };
     match (
         config.authority_seed_path.as_deref(),
         config.authority_db_path.as_deref(),
@@ -570,24 +602,10 @@ pub(crate) fn load_capability_authority(
             let keypair = load_or_create_authority_keypair(path).map_err(|error| {
                 plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
             })?;
-            Ok(issuance::wrap_capability_authority(
-                Box::new(LocalCapabilityAuthority::new(keypair)),
-                config.issuance_policy.clone(),
-                config.runtime_assurance_policy.clone(),
-                config.receipt_db_path.as_deref(),
-                config.budget_db_path.as_deref(),
-            ))
+            Ok(wrap(Box::new(LocalCapabilityAuthority::new(keypair))))
         }
         (None, Some(path)) => SqliteCapabilityAuthority::open(path)
-            .map(|authority| {
-                issuance::wrap_capability_authority(
-                    Box::new(authority),
-                    config.issuance_policy.clone(),
-                    config.runtime_assurance_policy.clone(),
-                    config.receipt_db_path.as_deref(),
-                    config.budget_db_path.as_deref(),
-                )
-            })
+            .map(|authority| wrap(Box::new(authority)))
             .map_err(|error| {
                 plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
             }),

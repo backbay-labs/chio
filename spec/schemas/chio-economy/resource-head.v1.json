@@ -1,0 +1,151 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-economy/resource-head/v1",
+  "title": "Chio Economic Resource Head V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "anchorId",
+    "namespace",
+    "resourceKey",
+    "headVersion",
+    "resourceVersion",
+    "lifecycleFence",
+    "lifecycleState",
+    "stateDigest",
+    "state",
+    "trustedClockHighWater"
+  ],
+  "properties": {
+    "schema": { "const": "chio.economy.resource-head.v1" },
+    "anchorId": { "$ref": "#/$defs/identifier" },
+    "namespace": { "$ref": "#/$defs/identifier" },
+    "resourceKey": { "$ref": "#/$defs/resourceKey" },
+    "headVersion": { "$ref": "#/$defs/positiveInteger" },
+    "resourceVersion": { "$ref": "#/$defs/positiveInteger" },
+    "lifecycleFence": { "$ref": "#/$defs/positiveInteger" },
+    "lifecycleState": { "$ref": "#/$defs/identifier" },
+    "stateDigest": { "$ref": "#/$defs/digest" },
+    "state": { "$ref": "#/$defs/content" },
+    "operationId": { "$ref": "#/$defs/digest" },
+    "effectIdempotencyKey": { "$ref": "#/$defs/digest" },
+    "frost": { "$ref": "#/$defs/frost" },
+    "terminalResult": { "$ref": "#/$defs/terminalResult" },
+    "trustedClockHighWater": { "$ref": "#/$defs/positiveInteger" },
+    "predecessorDigest": { "$ref": "#/$defs/digest" }
+  },
+  "allOf": [
+    {
+      "oneOf": [
+        { "required": ["operationId", "effectIdempotencyKey"] },
+        {
+          "not": {
+            "anyOf": [
+              { "required": ["operationId"] },
+              { "required": ["effectIdempotencyKey"] }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "if": {
+        "properties": { "headVersion": { "const": 1 } },
+        "required": ["headVersion"]
+      },
+      "then": { "not": { "required": ["predecessorDigest"] } },
+      "else": { "required": ["predecessorDigest"] }
+    }
+  ],
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "identifier": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 512,
+      "pattern": "^[A-Za-z0-9._:/-]+$"
+    },
+    "positiveInteger": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "resourceKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceFamily", "scopeId", "resourceId"],
+      "properties": {
+        "resourceFamily": { "$ref": "#/$defs/identifier" },
+        "scopeId": { "$ref": "#/$defs/identifier" },
+        "resourceId": { "$ref": "#/$defs/identifier" }
+      }
+    },
+    "content": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["storage", "value"],
+          "properties": {
+            "storage": { "const": "inline" },
+            "value": true
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "storage",
+            "contentRef",
+            "contentSha256",
+            "contentSizeBytes",
+            "availabilityReceipt",
+            "availabilityReceiptSha256"
+          ],
+          "properties": {
+            "storage": { "const": "available" },
+            "contentRef": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 2048
+            },
+            "contentSha256": { "$ref": "#/$defs/digest" },
+            "contentSizeBytes": { "$ref": "#/$defs/positiveInteger" },
+            "availabilityReceipt": true,
+            "availabilityReceiptSha256": { "$ref": "#/$defs/digest" }
+          }
+        }
+      ]
+    },
+    "frost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authorizationSlotId",
+        "authorizationId",
+        "actionDigest",
+        "signedEnvelopeDigest"
+      ],
+      "properties": {
+        "authorizationSlotId": { "$ref": "#/$defs/digest" },
+        "authorizationId": { "$ref": "#/$defs/digest" },
+        "actionDigest": { "$ref": "#/$defs/digest" },
+        "signedEnvelopeDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "terminalResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resultId", "resultDigest", "result"],
+      "properties": {
+        "resultId": { "$ref": "#/$defs/identifier" },
+        "resultDigest": { "$ref": "#/$defs/digest" },
+        "result": { "$ref": "#/$defs/content" }
+      }
+    }
+  }
+}

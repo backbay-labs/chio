@@ -1,5 +1,71 @@
 use super::super::*;
 use super::support::*;
+use chio_kernel::ReceiptStore;
+
+#[test]
+fn bounded_cost_page_and_count_queries_use_scope_appropriate_indexes() {
+    let path = unique_db_path("chio-receipts-cost-query-plan");
+    let store = SqliteReceiptStore::open(&path).test_unwrap();
+    let query = ReceiptQuery {
+        min_cost: Some(100),
+        max_cost: Some(200),
+        cost_currency: Some("USD".to_string()),
+        tenant_filter: Some("tenant-a".to_string()),
+        read_context: Some(chio_kernel::ReceiptReadContext::admin_service()),
+        ..ReceiptQuery::default()
+    };
+    let min_cost = 100_u64.to_be_bytes();
+    let max_cost = 200_u64.to_be_bytes();
+    let connection = store.connection().test_unwrap();
+
+    for (tenant_fragment, tenant, expected_index) in [
+        (
+            "(r.tenant_id = ?12)",
+            Some("tenant-a"),
+            "idx_chio_tool_receipts_cost",
+        ),
+        ("(?12 IS NULL)", None, "idx_chio_tool_receipts_cost_global"),
+    ] {
+        let (data_sql, count_sql) =
+            crate::receipt_store::evidence_retention::receipt_query_sql(&query, tenant_fragment)
+                .test_unwrap();
+        for sql in [data_sql, count_sql] {
+            let plan = connection
+                .prepare(&format!("EXPLAIN QUERY PLAN {sql}"))
+                .test_unwrap()
+                .query_map(
+                    rusqlite::params![
+                        None::<String>,
+                        None::<String>,
+                        None::<String>,
+                        None::<String>,
+                        None::<i64>,
+                        None::<i64>,
+                        min_cost.as_slice(),
+                        max_cost.as_slice(),
+                        None::<String>,
+                        None::<i64>,
+                        50_i64,
+                        tenant,
+                        "USD",
+                    ],
+                    |row| row.get::<_, String>(3),
+                )
+                .test_unwrap()
+                .collect::<Result<Vec<_>, _>>()
+                .test_unwrap()
+                .join("\n");
+            assert!(
+                plan.split_whitespace().any(|token| token == expected_index),
+                "unexpected query plan: {plan}"
+            );
+        }
+    }
+
+    drop(connection);
+    drop(store);
+    let _ = fs::remove_file(path);
+}
 
 #[test]
 fn sqlite_receipt_store_lists_filtered_receipts() {
@@ -225,6 +291,7 @@ fn cost_attribution_report_aggregates_matching_corpus_and_limits_detail_rows() {
             issued_at: 1_000,
             expires_at: 9_000,
             delegation_chain: vec![],
+            aggregate_invocation_budget: None,
         },
         &issuer_kp,
     )
@@ -232,14 +299,28 @@ fn cost_attribution_report_aggregates_matching_corpus_and_limits_detail_rows() {
     let child = CapabilityToken::sign(
         CapabilityTokenBody {
             id: "cap-child".to_string(),
-            issuer: issuer_kp.public_key(),
+            issuer: root_kp.public_key(),
             subject: leaf_kp.public_key(),
             scope: ChioScope::default(),
             issued_at: 1_100,
             expires_at: 9_000,
-            delegation_chain: vec![],
+            delegation_chain: vec![chio_core::capability::attenuation::DelegationLink::sign(
+                chio_core::capability::attenuation::DelegationLinkBody {
+                    capability_id: root.id.clone(),
+                    delegator: root_kp.public_key(),
+                    delegatee: leaf_kp.public_key(),
+                    attenuations: Vec::new(),
+                    timestamp: 1_100,
+                    scope_hash: None,
+                    aggregate_budget: None,
+                    cumulative_approval: None,
+                },
+                &root_kp,
+            )
+            .test_unwrap()],
+            aggregate_invocation_budget: None,
         },
-        &issuer_kp,
+        &root_kp,
     )
     .test_unwrap();
 
@@ -445,6 +526,7 @@ fn economic_receipt_projection_report_joins_signed_envelope_with_reconciliation_
             issued_at: 1_000,
             expires_at: 9_000,
             delegation_chain: Vec::new(),
+            aggregate_invocation_budget: None,
         },
         &issuer_kp,
     )
@@ -524,6 +606,7 @@ fn economic_receipt_projection_report_joins_signed_envelope_with_reconciliation_
                     approval: Some(GovernedApprovalReceiptMetadata {
                         token_id: "approval-economic-1".to_string(),
                         approver_key: subject_hex.clone(),
+                        approval_artifact_digest: None,
                         approved: true,
                     }),
                     runtime_assurance: None,
@@ -531,6 +614,10 @@ fn economic_receipt_projection_report_joins_signed_envelope_with_reconciliation_
                     autonomy: None,
                     economic_authorization: Some(EconomicAuthorizationReceiptMetadata {
                         version: EconomicAuthorizationReceiptMetadataVersion::V1,
+                        economic_intent_digest: None,
+                        payee_binding_digest: None,
+                        pre_action_authority_digest: None,
+                        credit_authority_digest: None,
                         economic_mode: EconomicAuthorizationMode::MeteredHoldCapture,
                         payer: EconomicPayerReceiptMetadata {
                             party_id: "agent-economic".to_string(),
@@ -784,6 +871,10 @@ fn economic_completion_flow_report_bundles_receipts_underwriting_and_credit_arti
                     autonomy: None,
                     economic_authorization: Some(EconomicAuthorizationReceiptMetadata {
                         version: EconomicAuthorizationReceiptMetadataVersion::V1,
+                        economic_intent_digest: None,
+                        payee_binding_digest: None,
+                        pre_action_authority_digest: None,
+                        credit_authority_digest: None,
                         economic_mode: EconomicAuthorizationMode::MeteredHoldCapture,
                         payer: EconomicPayerReceiptMetadata {
                             party_id: subject_key.to_string(),
@@ -1001,6 +1092,7 @@ fn compliance_report_counts_proof_and_lineage_coverage() {
             issued_at: 1_000,
             expires_at: 9_000,
             delegation_chain: vec![],
+            aggregate_invocation_budget: None,
         },
         &issuer_kp,
     )
@@ -1156,6 +1248,7 @@ fn receipt_store_authorization_context_report_does_not_mark_asserted_call_chain_
             issued_at: 1_000,
             expires_at: 9_000,
             delegation_chain: Vec::new(),
+            aggregate_invocation_budget: None,
         },
         &issuer_kp,
     )
@@ -1218,6 +1311,7 @@ fn receipt_store_authorization_context_report_does_not_mark_asserted_call_chain_
                     approval: Some(GovernedApprovalReceiptMetadata {
                         token_id: "approval-auth-asserted".to_string(),
                         approver_key: issuer_hex.clone(),
+                        approval_artifact_digest: None,
                         approved: true,
                     }),
                     runtime_assurance: None,

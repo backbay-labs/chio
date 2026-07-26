@@ -12,7 +12,7 @@ publish = false
 name = "chio_did"
 
 [dependencies]
-chio-core = { workspace = true }
+chio-core-types = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
 thiserror = { workspace = true }
 bs58 = { workspace = true }

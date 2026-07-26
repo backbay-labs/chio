@@ -17,6 +17,18 @@ fn valid_tool_action(parameters: serde_json::Value) -> ToolCallAction {
     ToolCallAction::from_parameters(parameters).unwrap()
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct ReceiptCost<'a> {
+    charged: Option<u64>,
+    currency: &'a str,
+}
+
+impl<'a> ReceiptCost<'a> {
+    pub(super) const fn new(charged: Option<u64>, currency: &'a str) -> Self {
+        Self { charged, currency }
+    }
+}
+
 pub(super) fn make_receipt_with_metadata(
     id: &str,
     capability_id: &str,
@@ -66,12 +78,32 @@ pub(super) fn make_receipt(
     timestamp: u64,
     cost: Option<u64>,
 ) -> ChioReceipt {
-    let metadata = cost.map(|c| {
+    make_receipt_with_currency(
+        id,
+        capability_id,
+        tool_server,
+        tool_name,
+        decision,
+        timestamp,
+        ReceiptCost::new(cost, "USD"),
+    )
+}
+
+pub(super) fn make_receipt_with_currency(
+    id: &str,
+    capability_id: &str,
+    tool_server: &str,
+    tool_name: &str,
+    decision: Decision,
+    timestamp: u64,
+    cost: ReceiptCost<'_>,
+) -> ChioReceipt {
+    let metadata = cost.charged.map(|charged| {
         serde_json::json!({
             "financial": {
                 "grant_index": 0u32,
-                "cost_charged": c,
-                "currency": "USD",
+                "cost_charged": charged,
+                "currency": cost.currency,
                 "budget_remaining": 1000u64,
                 "budget_total": 2000u64,
                 "delegation_depth": 0u32,

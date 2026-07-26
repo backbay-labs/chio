@@ -16,11 +16,14 @@
 
 use std::sync::Arc;
 
-use chio_core_types::capability::governance::GovernedApprovalToken;
+use chio_core_types::capability::governance::{GovernedApprovalToken, ThresholdApprovalProposal};
+use chio_core_types::capability::threshold_approval::ThresholdApprovalRequirement;
 use chio_core_types::crypto::PublicKey;
 use chio_kernel::{
     resume_with_decision, ApprovalDecision, ApprovalFilter, ApprovalOutcome, ApprovalRequest,
-    ApprovalStore, ApprovalStoreError, ApprovalToken, KernelError, ResolvedApproval,
+    ApprovalStore, ApprovalStoreError, ApprovalToken, CollectedThresholdApprovalSet, KernelError,
+    ResolvedApproval, ThresholdApprovalCollector, ThresholdApprovalCollectorProposal,
+    ThresholdApprovalCollectorStoreError,
 };
 use serde::{Deserialize, Serialize};
 
@@ -126,10 +129,24 @@ impl From<KernelError> for ApprovalHandlerError {
     }
 }
 
+impl From<ThresholdApprovalCollectorStoreError> for ApprovalHandlerError {
+    fn from(error: ThresholdApprovalCollectorStoreError) -> Self {
+        match error {
+            ThresholdApprovalCollectorStoreError::NotFound(message) => Self::NotFound(message),
+            ThresholdApprovalCollectorStoreError::Conflict(message) => Self::Conflict(message),
+            ThresholdApprovalCollectorStoreError::Backend(message)
+            | ThresholdApprovalCollectorStoreError::Serialization(message) => {
+                Self::Internal(message)
+            }
+        }
+    }
+}
+
 /// Admin handle bound to the kernel's approval store.
 #[derive(Clone)]
 pub struct ApprovalAdmin {
     store: Arc<dyn ApprovalStore>,
+    threshold_collector: Option<ThresholdApprovalCollector>,
 }
 
 impl std::fmt::Debug for ApprovalAdmin {
@@ -141,12 +158,34 @@ impl std::fmt::Debug for ApprovalAdmin {
 impl ApprovalAdmin {
     #[must_use]
     pub fn new(store: Arc<dyn ApprovalStore>) -> Self {
-        Self { store }
+        Self {
+            store,
+            threshold_collector: None,
+        }
+    }
+
+    #[must_use]
+    pub fn with_threshold_collector(
+        store: Arc<dyn ApprovalStore>,
+        threshold_collector: ThresholdApprovalCollector,
+    ) -> Self {
+        Self {
+            store,
+            threshold_collector: Some(threshold_collector),
+        }
     }
 
     #[must_use]
     pub fn store(&self) -> &Arc<dyn ApprovalStore> {
         &self.store
+    }
+
+    fn threshold_collector(&self) -> Result<&ThresholdApprovalCollector, ApprovalHandlerError> {
+        self.threshold_collector.as_ref().ok_or_else(|| {
+            ApprovalHandlerError::Internal(
+                "threshold approval collector is not configured".to_string(),
+            )
+        })
     }
 }
 
@@ -200,6 +239,21 @@ pub struct RespondResponse {
     pub approval_id: String,
     pub outcome: ApprovalOutcome,
     pub resolved_at: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateThresholdProposalRequest {
+    pub proposal: ThresholdApprovalProposal,
+    pub requirement: ThresholdApprovalRequirement,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub submitter: Option<PublicKey>,
+    #[serde(default)]
+    pub require_submitter_separation: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubmitThresholdApprovalRequest {
+    pub token: GovernedApprovalToken,
 }
 
 /// Body for `POST /approvals/batch/respond`.
@@ -405,4 +459,54 @@ pub fn handle_batch_respond(
             rejected,
         },
     })
+}
+
+pub fn handle_create_threshold_proposal(
+    admin: &ApprovalAdmin,
+    body: CreateThresholdProposalRequest,
+    now: u64,
+) -> Result<ThresholdApprovalCollectorProposal, ApprovalHandlerError> {
+    admin
+        .threshold_collector()?
+        .create_proposal(
+            body.proposal,
+            body.requirement,
+            body.submitter,
+            body.require_submitter_separation,
+            now,
+        )
+        .map_err(Into::into)
+}
+
+pub fn handle_get_threshold_proposal(
+    admin: &ApprovalAdmin,
+    proposal_id: &str,
+) -> Result<ThresholdApprovalCollectorProposal, ApprovalHandlerError> {
+    admin
+        .threshold_collector()?
+        .get_proposal(proposal_id)?
+        .ok_or_else(|| ApprovalHandlerError::NotFound(proposal_id.to_string()))
+}
+
+pub fn handle_submit_threshold_approval(
+    admin: &ApprovalAdmin,
+    proposal_id: &str,
+    body: SubmitThresholdApprovalRequest,
+    now: u64,
+) -> Result<ThresholdApprovalCollectorProposal, ApprovalHandlerError> {
+    admin
+        .threshold_collector()?
+        .submit_token(proposal_id, body.token, now)
+        .map_err(Into::into)
+}
+
+pub fn handle_deliver_threshold_approval(
+    admin: &ApprovalAdmin,
+    proposal_id: &str,
+    now: u64,
+) -> Result<CollectedThresholdApprovalSet, ApprovalHandlerError> {
+    admin
+        .threshold_collector()?
+        .deliver(proposal_id, now)
+        .map_err(Into::into)
 }

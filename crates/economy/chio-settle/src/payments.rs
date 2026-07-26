@@ -12,6 +12,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::SettlementError;
 
+#[path = "payments_approval.rs"]
+mod approval_binding;
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum X402SettlementMode {
@@ -117,11 +120,13 @@ pub struct PreparedPaymasterCompatibility {
 
 pub fn build_x402_payment_requirements(
     dispatch: &Web3SettlementDispatchArtifact,
+    approval_binding: &ApprovalBinding,
     facilitator_url: &str,
     resource: &str,
     accepted_tokens: Vec<String>,
     settlement_mode: X402SettlementMode,
 ) -> Result<X402PaymentRequirements, SettlementError> {
+    approval_binding.assert_dispatch("x402", dispatch)?;
     validate_x402_field("facilitator URL", facilitator_url)?;
     validate_x402_field("resource", resource)?;
     if accepted_tokens.is_empty() {
@@ -131,6 +136,16 @@ pub fn build_x402_payment_requirements(
     }
     for (index, token) in accepted_tokens.iter().enumerate() {
         validate_x402_field(&format!("accepted token {index}"), token)?;
+    }
+    if !accepted_tokens.iter().any(|token| {
+        token
+            .trim()
+            .eq_ignore_ascii_case(approval_binding.token_symbol.trim())
+    }) {
+        return Err(SettlementError::InvalidBinding(format!(
+            "x402 accepted tokens do not include the approval-bound token {:?}",
+            approval_binding.token_symbol
+        )));
     }
     Ok(X402PaymentRequirements {
         version: "x402".to_string(),
@@ -231,34 +246,6 @@ pub struct ApprovalBinding {
     /// authorization window to the approval window so a captured signature
     /// cannot be broadcast after the approval that governs it has expired.
     pub approval_expires_at: u64,
-}
-
-impl ApprovalBinding {
-    /// Assert that a lane's token symbol matches the approval-bound token.
-    ///
-    /// Comparison is case-insensitive after trimming so `"usdc"`, `" USDC "`,
-    /// and `"USDC"` are treated as the same token. Used by lanes that
-    /// identify their token by symbol rather than by contract address (the
-    /// x402 accepted-token list and the Circle token symbol). Fails closed
-    /// on any mismatch so a captured authorization for one token cannot be
-    /// redirected to a different token the approval never authorized.
-    pub fn assert_token_symbol(
-        &self,
-        lane: &str,
-        lane_token_symbol: &str,
-    ) -> Result<(), SettlementError> {
-        if !lane_token_symbol
-            .trim()
-            .eq_ignore_ascii_case(self.token_symbol.trim())
-        {
-            return Err(SettlementError::InvalidBinding(format!(
-                "{lane} token mismatch: lane token {lane_token_symbol:?} is not the \
-                 approval-bound token {:?}",
-                self.token_symbol
-            )));
-        }
-        Ok(())
-    }
 }
 
 /// Outcome of a [`Eip3009NonceStore::record_if_fresh`] call.
@@ -368,11 +355,9 @@ fn canonicalize_nonce_key_component(value: &str) -> String {
 /// Process-local single-use EIP-3009 nonce store.
 ///
 /// Backed by `Mutex<Eip3009NonceMap>`. Suitable for tests and
-/// single-process deployments; replay state is lost on restart. Durable
-/// deployments back the [`Eip3009NonceStore`] trait with
-/// `chio_store_sqlite::SqliteEip3009NonceStore`, which persists nonces
-/// across restarts and cannot wedge at capacity (its caller drives
-/// `gc_expired` explicitly).
+/// explicitly ephemeral single-process deployments. No durable implementation
+/// is provided in-tree; production callers must supply durable replay protection
+/// before broadcast.
 pub struct InMemoryEip3009NonceStore {
     inner: Mutex<Eip3009NonceMap>,
     max_entries: usize,
@@ -626,15 +611,6 @@ pub fn prepare_transfer_with_authorization(
         canonical_contract,
         hex::encode(nonce.as_slice())
     );
-    // Caller-driven GC: pruning stays out of the record path by contract,
-    // so this now-bearing verify path sweeps expired entries when the store
-    // nears capacity, using the same clock it already validated the
-    // authorization window against.
-    if let Ok(len) = nonce_store.len() {
-        if len >= (DEFAULT_MAX_EIP3009_NONCE_ENTRIES / 8) * 7 {
-            let _ = nonce_store.gc_expired(now_unix_seconds);
-        }
-    }
     match nonce_store.record_if_fresh(
         &canonical_from,
         &canonical_nonce,
@@ -794,11 +770,11 @@ pub const CHIO_OFFCHAIN_SETTLEMENT_RECEIPT_SCHEMA: &str = "chio.settle.offchain_
 /// authorization digest to a governed receipt.
 ///
 /// Minted after a successful [`prepare_transfer_with_authorization`] call.
-/// No broadcast path exists in this crate: this artifact records that an
-/// authorization was prepared and binds it to the governed receipt that
-/// authorized the spend. The `execution_nonce_ref` and `hold_ref` fields are
-/// reserved linkage fields for the comptroller surface and are `None` until
-/// the corresponding on-chain execution stage is implemented.
+/// This off-chain EIP-3009 preparation lane does not broadcast: the artifact
+/// records that an authorization was prepared and binds it to the governed
+/// receipt that authorized the spend. The `execution_nonce_ref` and `hold_ref`
+/// fields are reserved linkage fields for the comptroller surface and are
+/// `None` until the corresponding on-chain execution stage is implemented.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
 pub struct OffchainSettlementReceiptArtifact {
@@ -882,11 +858,13 @@ pub fn validate_offchain_settlement_receipt(
 
 pub fn evaluate_circle_nanopayment(
     dispatch: &Web3SettlementDispatchArtifact,
+    approval_binding: &ApprovalBinding,
     policy: &CircleNanopaymentPolicy,
 ) -> Result<Option<PreparedCircleNanopayment>, SettlementError> {
     if !policy.enabled {
         return Ok(None);
     }
+    approval_binding.assert_dispatch("circle", dispatch)?;
     if !policy.operator_managed_custody_explicit {
         return Err(SettlementError::InvalidInput(
             "Circle nanopayment policy must keep operator-managed custody explicit".to_string(),
@@ -1048,14 +1026,27 @@ mod tests {
         }
     }
 
+    fn binding_for_dispatch(dispatch: &Web3SettlementDispatchArtifact) -> ApprovalBinding {
+        ApprovalBinding {
+            chain_id: 8453,
+            payee_address: dispatch.beneficiary_address.clone(),
+            amount_minor_units: u128::from(dispatch.settlement_amount.units),
+            token_symbol: dispatch.settlement_amount.currency.clone(),
+            token_contract: None,
+            approval_expires_at: SAMPLE_VALID_BEFORE,
+        }
+    }
+
     #[test]
     fn builds_x402_requirements() {
         let dispatch = sample_dispatch();
+        let binding = binding_for_dispatch(&dispatch);
         let requirements = build_x402_payment_requirements(
             &dispatch,
+            &binding,
             "https://facilitator.example/x402",
             "https://tool.example/v1/run",
-            vec!["USDC".to_string(), "EURC".to_string()],
+            vec!["USD".to_string(), "EURC".to_string()],
             X402SettlementMode::PrepaidAuthorization,
         )
         .test_unwrap();
@@ -1067,12 +1058,14 @@ mod tests {
     #[test]
     fn x402_requirements_reject_blank_accepted_tokens() {
         let dispatch = sample_dispatch();
+        let binding = binding_for_dispatch(&dispatch);
 
         let error = build_x402_payment_requirements(
             &dispatch,
+            &binding,
             "https://facilitator.example/x402",
             "https://tool.example/v1/run",
-            vec!["USDC".to_string(), " ".to_string()],
+            vec!["USD".to_string(), " ".to_string()],
             X402SettlementMode::PrepaidAuthorization,
         )
         .test_unwrap_err();
@@ -1569,8 +1562,10 @@ mod tests {
     #[test]
     fn evaluates_circle_nanopayment_candidate() {
         let dispatch = sample_dispatch();
+        let binding = binding_for_dispatch(&dispatch);
         let prepared = evaluate_circle_nanopayment(
             &dispatch,
+            &binding,
             &CircleNanopaymentPolicy {
                 enabled: true,
                 managed_balance_id: "bal_123".to_string(),
@@ -1584,6 +1579,25 @@ mod tests {
         .test_unwrap();
 
         assert_eq!(prepared.dispatch_id, dispatch.dispatch_id);
+    }
+
+    #[test]
+    fn settlement_compatibility_lanes_reject_mismatched_approval_binding() {
+        let dispatch = sample_dispatch();
+        let mut binding = binding_for_dispatch(&dispatch);
+        binding.amount_minor_units += 1;
+
+        let error = build_x402_payment_requirements(
+            &dispatch,
+            &binding,
+            "https://facilitator.example/x402",
+            "https://tool.example/v1/run",
+            vec!["USD".to_string()],
+            X402SettlementMode::PrepaidAuthorization,
+        )
+        .test_unwrap_err();
+
+        assert!(error.to_string().contains("amount mismatch"));
     }
 
     #[test]
@@ -1618,6 +1632,7 @@ mod tests {
                 subject: kp.public_key(),
                 governed_intent_hash: "test-intent-hash".to_string(),
                 request_id: "test-req-1".to_string(),
+                threshold_proposal_hash: None,
                 issued_at: SAMPLE_VALID_AFTER,
                 expires_at: SAMPLE_VALID_BEFORE,
                 decision: GovernedApprovalDecision::Approved,
@@ -1636,6 +1651,7 @@ mod tests {
                 subject: kp.public_key(),
                 governed_intent_hash: "test-intent-hash".to_string(),
                 request_id: "test-req-denied".to_string(),
+                threshold_proposal_hash: None,
                 issued_at: SAMPLE_VALID_AFTER,
                 expires_at: SAMPLE_VALID_BEFORE,
                 decision: GovernedApprovalDecision::Denied,

@@ -13,8 +13,8 @@
     "forceConsistentCasingInFileNames": true,
     "moduleResolution": "Bundler",
     "declaration": true,
-    "noEmit": true
+    "outDir": "./dist"
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules"]
+  "exclude": ["dist", "node_modules"]
 }

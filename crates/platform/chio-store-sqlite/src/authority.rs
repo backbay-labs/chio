@@ -2,16 +2,20 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use crate::budget_store::{
+    budget_snapshot_anchor_chain_digest, BudgetSnapshotAnchorCommitment,
+    SignedBudgetSnapshotAnchorCommitment,
+};
 use chio_core::capability::{
     scope::ChioScope,
     token::{CapabilityToken, CapabilityTokenBody},
 };
-use chio_core::crypto::{Keypair, PublicKey};
+use chio_core::crypto::{Keypair, PublicKey, Signature};
 use chio_kernel::{
-    AuthoritySnapshot, AuthorityStatus, AuthorityStoreError, AuthorityTrustedKeySnapshot,
-    CapabilityAuthority, KernelError,
+    ensure_capability_issuance_supported, AuthoritySnapshot, AuthorityStatus, AuthorityStoreError,
+    AuthorityTrustedKeySnapshot, CapabilityAuthority, KernelError,
 };
-use rusqlite::{params, Connection};
+use rusqlite::{params, Connection, OptionalExtension};
 use uuid::Uuid;
 
 pub struct SqliteCapabilityAuthority {
@@ -21,7 +25,7 @@ pub struct SqliteCapabilityAuthority {
 }
 
 /// Authority-store schema revision. Bump on every schema-affecting change.
-const AUTHORITY_STORE_SUPPORTED_SCHEMA_VERSION: i32 = 0;
+const AUTHORITY_STORE_SUPPORTED_SCHEMA_VERSION: i32 = 1;
 /// Stable key under which this store records its schema revision in the shared
 /// keyed metadata table, distinct from any co-located store's key.
 const AUTHORITY_STORE_SCHEMA_KEY: &str = "authority";
@@ -233,6 +237,138 @@ impl SqliteCapabilityAuthority {
         Self::read_keypair_from_connection(&connection)
     }
 
+    pub fn commit_budget_snapshot_anchor_set(
+        &self,
+        anchor_set_digest: &str,
+        leader_url: &str,
+        election_term: u64,
+        committed_at: u64,
+    ) -> Result<Vec<SignedBudgetSnapshotAnchorCommitment>, AuthorityStoreError> {
+        if anchor_set_digest.len() != 64
+            || !anchor_set_digest
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+            || leader_url.is_empty()
+            || election_term == 0
+        {
+            return Err(AuthorityStoreError::Fence(
+                "budget snapshot anchor commitment identity is invalid".to_string(),
+            ));
+        }
+        let election_term_sqlite = i64::try_from(election_term).map_err(|_| {
+            AuthorityStoreError::Fence(
+                "budget snapshot anchor election term exceeds SQLite range".to_string(),
+            )
+        })?;
+        let committed_at_sqlite = i64::try_from(committed_at).map_err(|_| {
+            AuthorityStoreError::Fence(
+                "budget snapshot anchor commit time exceeds SQLite range".to_string(),
+            )
+        })?;
+        let mut connection = Self::open_connection(&self.path)?;
+        let transaction = connection.transaction()?;
+        let keypair = Self::read_keypair_from_connection(&transaction)?;
+        let signer_public_key = keypair.public_key().to_hex();
+        let latest = transaction
+            .query_row(
+                r#"
+                SELECT commit_sequence, anchor_set_digest, leader_url, election_term,
+                       signer_public_key
+                FROM authority_budget_anchor_commits
+                ORDER BY commit_sequence DESC LIMIT 1
+                "#,
+                [],
+                |row| {
+                    Ok((
+                        row.get::<_, i64>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, String>(2)?,
+                        row.get::<_, i64>(3)?,
+                        row.get::<_, String>(4)?,
+                    ))
+                },
+            )
+            .optional()?;
+        let already_committed = latest
+            .as_ref()
+            .is_some_and(|(_, digest, leader, term, signer)| {
+                digest == anchor_set_digest
+                    && leader == leader_url
+                    && *term == election_term_sqlite
+                    && signer == &signer_public_key
+            });
+        if !already_committed {
+            let (previous_sequence, previous_chain_digest) = transaction
+                .query_row(
+                    r#"
+                    SELECT commit_sequence, chain_digest
+                    FROM authority_budget_anchor_commits
+                    ORDER BY commit_sequence DESC LIMIT 1
+                    "#,
+                    [],
+                    |row| Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?)),
+                )
+                .optional()?
+                .unwrap_or((
+                    0,
+                    "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+                ));
+            let commit_sequence = u64::try_from(previous_sequence)
+                .ok()
+                .and_then(|value| value.checked_add(1))
+                .ok_or_else(|| {
+                    AuthorityStoreError::Fence(
+                        "budget snapshot anchor commitment sequence overflowed".to_string(),
+                    )
+                })?;
+            let mut body = BudgetSnapshotAnchorCommitment {
+                schema: "chio.budget-snapshot-anchor-commitment.v1".to_string(),
+                commit_sequence,
+                previous_chain_digest,
+                chain_digest: String::new(),
+                anchor_set_digest: anchor_set_digest.to_string(),
+                leader_url: leader_url.to_string(),
+                election_term,
+                committed_at,
+                signer_public_key,
+            };
+            body.chain_digest = budget_snapshot_anchor_chain_digest(&body)
+                .map_err(|error| AuthorityStoreError::Fence(error.to_string()))?;
+            let signature = keypair
+                .sign_canonical(&body)
+                .map_err(|error| AuthorityStoreError::Fence(error.to_string()))?
+                .0;
+            let commit_sequence_sqlite = i64::try_from(commit_sequence).map_err(|_| {
+                AuthorityStoreError::Fence(
+                    "budget snapshot anchor commitment sequence exceeds SQLite range".to_string(),
+                )
+            })?;
+            transaction.execute(
+                r#"
+                INSERT INTO authority_budget_anchor_commits (
+                    commit_sequence, previous_chain_digest, chain_digest,
+                    anchor_set_digest, leader_url, election_term, committed_at,
+                    signer_public_key, signature
+                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                "#,
+                params![
+                    commit_sequence_sqlite,
+                    &body.previous_chain_digest,
+                    &body.chain_digest,
+                    &body.anchor_set_digest,
+                    &body.leader_url,
+                    election_term_sqlite,
+                    committed_at_sqlite,
+                    &body.signer_public_key,
+                    signature.to_hex(),
+                ],
+            )?;
+        }
+        let chain = Self::read_budget_anchor_commit_chain(&transaction)?;
+        transaction.commit()?;
+        Ok(chain)
+    }
+
     pub fn cluster_fence(&self) -> Result<AuthorityClusterFence, AuthorityStoreError> {
         let connection = Self::open_connection(&self.path)?;
         Self::read_cluster_fence_from_connection(&connection)
@@ -348,6 +484,30 @@ impl SqliteCapabilityAuthority {
             INSERT INTO authority_cluster_fence (singleton_id, leader_url, election_term, updated_at)
             VALUES (1, NULL, 0, 0)
             ON CONFLICT(singleton_id) DO NOTHING;
+
+            CREATE TABLE IF NOT EXISTS authority_budget_anchor_commits (
+                commit_sequence INTEGER PRIMARY KEY CHECK (commit_sequence > 0),
+                previous_chain_digest TEXT NOT NULL,
+                chain_digest TEXT NOT NULL UNIQUE,
+                anchor_set_digest TEXT NOT NULL,
+                leader_url TEXT NOT NULL CHECK (leader_url <> ''),
+                election_term INTEGER NOT NULL CHECK (election_term > 0),
+                committed_at INTEGER NOT NULL CHECK (committed_at >= 0),
+                signer_public_key TEXT NOT NULL CHECK (signer_public_key <> ''),
+                signature TEXT NOT NULL CHECK (signature <> '')
+            );
+
+            CREATE TRIGGER IF NOT EXISTS authority_budget_anchor_commits_immutable
+            BEFORE UPDATE ON authority_budget_anchor_commits
+            BEGIN
+                SELECT RAISE(ABORT, 'budget anchor commitment is immutable');
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS authority_budget_anchor_commits_no_delete
+            BEFORE DELETE ON authority_budget_anchor_commits
+            BEGIN
+                SELECT RAISE(ABORT, 'budget anchor commitment is immutable');
+            END;
             "#,
         )?;
         if !Self::table_has_column(&connection, "authority_state", "public_key_hex")? {
@@ -411,6 +571,51 @@ impl SqliteCapabilityAuthority {
             |row| row.get::<_, String>(0),
         )?;
         Keypair::from_seed_hex(seed_hex.trim()).map_err(Into::into)
+    }
+
+    fn read_budget_anchor_commit_chain(
+        connection: &Connection,
+    ) -> Result<Vec<SignedBudgetSnapshotAnchorCommitment>, AuthorityStoreError> {
+        let mut statement = connection.prepare(
+            r#"
+            SELECT commit_sequence, previous_chain_digest, chain_digest,
+                   anchor_set_digest, leader_url, election_term, committed_at,
+                   signer_public_key, signature
+            FROM authority_budget_anchor_commits
+            ORDER BY commit_sequence
+            "#,
+        )?;
+        let rows = statement.query_map([], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, i64>(5)?,
+                row.get::<_, i64>(6)?,
+                row.get::<_, String>(7)?,
+                row.get::<_, String>(8)?,
+            ))
+        })?;
+        rows.map(|row| {
+            let (sequence, previous, chain, anchors, leader, term, at, signer, signature) = row?;
+            Ok(SignedBudgetSnapshotAnchorCommitment {
+                body: BudgetSnapshotAnchorCommitment {
+                    schema: "chio.budget-snapshot-anchor-commitment.v1".to_string(),
+                    commit_sequence: sequence.max(0) as u64,
+                    previous_chain_digest: previous,
+                    chain_digest: chain,
+                    anchor_set_digest: anchors,
+                    leader_url: leader,
+                    election_term: term.max(0) as u64,
+                    committed_at: at.max(0) as u64,
+                    signer_public_key: signer,
+                },
+                signature: Signature::from_hex(&signature)?,
+            })
+        })
+        .collect()
     }
 
     fn read_public_state_from_connection(
@@ -644,6 +849,7 @@ impl CapabilityAuthority for SqliteCapabilityAuthority {
         scope: ChioScope,
         ttl_seconds: u64,
     ) -> Result<CapabilityToken, KernelError> {
+        ensure_capability_issuance_supported(&scope)?;
         let keypair = self
             .read_current_keypair()
             .map_err(|error| KernelError::CapabilityIssuanceFailed(error.to_string()))?;
@@ -656,6 +862,7 @@ impl CapabilityAuthority for SqliteCapabilityAuthority {
             issued_at: now,
             expires_at: now.saturating_add(ttl_seconds),
             delegation_chain: vec![],
+            aggregate_invocation_budget: None,
         };
 
         CapabilityToken::sign(body, &keypair)

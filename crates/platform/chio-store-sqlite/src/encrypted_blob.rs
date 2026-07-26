@@ -240,7 +240,7 @@ pub fn decrypt_blob(tenant_key: &TenantKey, blob: &EncryptedBlob) -> Result<Vec<
         .map_err(|_| DecryptError::AuthenticationFailed)
 }
 
-fn decrypt_blob_with_aad(
+pub(crate) fn decrypt_blob_with_aad(
     tenant_key: &TenantKey,
     blob: &EncryptedBlob,
     aad: &[u8],
@@ -261,7 +261,7 @@ fn try_encrypt_blob(tenant_key: &TenantKey, plaintext: &[u8]) -> Result<Encrypte
     try_encrypt_blob_with_aad(tenant_key, plaintext, &[])
 }
 
-fn try_encrypt_blob_with_aad(
+pub(crate) fn try_encrypt_blob_with_aad(
     tenant_key: &TenantKey,
     plaintext: &[u8],
     aad: &[u8],

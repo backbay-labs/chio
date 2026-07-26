@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-economy/channel-terminal-outcome-commitment/v1",
+  "title": "Chio Channel Terminal Outcome Commitment V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "kernelKey", "kernelSignature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "operationId",
+        "reservationId",
+        "reservationDigest",
+        "receiptId",
+        "receiptDigest",
+        "terminalResult",
+        "outcomeRecordedAtUnixMs",
+        "terminalizedAtUnixMs"
+      ],
+      "properties": {
+        "schema": { "const": "chio.channel.terminal-outcome-commitment.v1" },
+        "operationId": { "$ref": "#/$defs/digest" },
+        "reservationId": { "$ref": "#/$defs/digest" },
+        "reservationDigest": { "$ref": "#/$defs/digest" },
+        "receiptId": { "$ref": "#/$defs/text" },
+        "receiptDigest": { "$ref": "#/$defs/digest" },
+        "terminalResult": { "$ref": "#/$defs/terminalResult" },
+        "outcomeRecordedAtUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "terminalizedAtUnixMs": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "kernelKey": { "$ref": "#/$defs/publicKey" },
+    "kernelSignature": { "$ref": "#/$defs/signature" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "text": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "positiveInteger": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "publicKey": { "type": "string", "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$", "maxLength": 16384 },
+    "signature": { "type": "string", "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$", "maxLength": 16384 },
+    "terminalResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resultId", "resultDigest", "result"],
+      "properties": {
+        "resultId": { "$ref": "#/$defs/text" },
+        "resultDigest": { "$ref": "#/$defs/digest" },
+        "result": { "$ref": "#/$defs/economicContent" }
+      }
+    },
+    "economicContent": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["storage", "value"],
+          "properties": {
+            "storage": { "const": "inline" },
+            "value": true
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "storage",
+            "content_ref",
+            "content_sha256",
+            "content_size_bytes",
+            "availability_receipt",
+            "availability_receipt_sha256"
+          ],
+          "properties": {
+            "storage": { "const": "available" },
+            "content_ref": { "$ref": "#/$defs/text" },
+            "content_sha256": { "$ref": "#/$defs/digest" },
+            "content_size_bytes": { "$ref": "#/$defs/positiveInteger" },
+            "availability_receipt": true,
+            "availability_receipt_sha256": { "$ref": "#/$defs/digest" }
+          }
+        }
+      ]
+    }
+  }
+}

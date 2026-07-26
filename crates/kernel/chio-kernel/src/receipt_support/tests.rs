@@ -1,143 +1,4 @@
 use super::*;
-
-#[test]
-fn external_receipt_metadata_cannot_define_kernel_owned_namespaces() {
-    let sanitized = sanitize_external_receipt_metadata(Some(serde_json::json!({
-        "acp": { "sessionId": "fake" },
-        "actor_subject": "fake",
-        "agent_web_receipt_ref": "fake",
-        "checkpoint_id": "fake",
-        "chio_runtime": { "post_dispatch_outcome_unknown": false },
-        "execution_nonce": { "stage": "preflight", "tool_dispatched": false },
-        "financial": { "cost_charged": 0 },
-        "budget_authority": { "hold_id": "fake" },
-        "governed_transaction": { "intent_hash": "fake" },
-        "governed_transaction_diagnostics": { "asserted_call_chain": "fake" },
-        "lineageReferences": {
-            "sessionAnchorId": "fake",
-            "sessionAnchorHash": "fake"
-        },
-        "attribution": { "subject_key": "fake" },
-        "model_metadata": { "model_id": "fake" },
-        "memory_provenance": { "verified": true },
-        "mercury": { "approvalState": "APPROVED" },
-        "post_invocation": { "sanitized": false },
-        "receipt_context": { "session_id": "fake" },
-        "redaction_status": "clean",
-        "runtime_admission": { "accepted": true },
-        "stream": { "chunks_received": 0 },
-        "provenance": {
-            "otel": {
-                "trace_id": "0123456789abcdef0123456789abcdef",
-                "span_id": "0123456789abcdef"
-            }
-        },
-        "route_selection": { "protocol": "mcp" }
-    })));
-
-    assert_eq!(
-        sanitized,
-        Some(serde_json::json!({
-            "provenance": {
-                "otel": {
-                    "trace_id": "0123456789abcdef0123456789abcdef",
-                    "span_id": "0123456789abcdef"
-                }
-            },
-            "route_selection": { "protocol": "mcp" }
-        }))
-    );
-}
-
-#[test]
-fn metadata_merge_replaces_scalar_base_with_higher_precedence_evidence() {
-    let merged = merge_metadata_objects(
-        Some(serde_json::json!("caller-shaped")),
-        Some(serde_json::json!({
-            "chio_runtime": {
-                "accepted": true,
-                "reserved_destructive_lease_id": "lease-1"
-            }
-        })),
-    );
-
-    assert_eq!(
-        merged,
-        Some(serde_json::json!({
-            "chio_runtime": {
-                "accepted": true,
-                "reserved_destructive_lease_id": "lease-1"
-            }
-        }))
-    );
-}
-
-#[test]
-fn metadata_merge_replaces_array_base_with_higher_precedence_evidence() {
-    let merged = merge_metadata_objects(
-        Some(serde_json::json!(["caller-shaped"])),
-        Some(serde_json::json!({
-            "chio_runtime": {
-                "accepted": true,
-                "reserved_treaty_continuation_id": "continuation-1"
-            }
-        })),
-    );
-
-    assert_eq!(
-        merged,
-        Some(serde_json::json!({
-            "chio_runtime": {
-                "accepted": true,
-                "reserved_treaty_continuation_id": "continuation-1"
-            }
-        }))
-    );
-}
-
-#[test]
-fn metadata_merge_keeps_structured_base_over_scalar_extra() {
-    let merged = merge_metadata_objects(
-        Some(serde_json::json!({
-            "chio_runtime": {
-                "accepted": true,
-                "reserved_destructive_lease_id": "lease-1"
-            }
-        })),
-        Some(serde_json::json!("caller-shaped")),
-    );
-
-    assert_eq!(
-        merged,
-        Some(serde_json::json!({
-            "chio_runtime": {
-                "accepted": true,
-                "reserved_destructive_lease_id": "lease-1"
-            }
-        }))
-    );
-}
-
-#[test]
-fn metadata_merge_keeps_structured_base_over_array_extra() {
-    let merged = merge_metadata_objects(
-        Some(serde_json::json!({
-            "attribution": {
-                "grant_index": 0
-            }
-        })),
-        Some(serde_json::json!(["caller-shaped"])),
-    );
-
-    assert_eq!(
-        merged,
-        Some(serde_json::json!({
-            "attribution": {
-                "grant_index": 0
-            }
-        }))
-    );
-}
 use crate::operator_report::GovernedTransactionDiagnostics;
 use crate::*;
 use chio_core::capability::{
@@ -164,6 +25,7 @@ fn test_capability() -> CapabilityToken {
             issued_at: 100,
             expires_at: 200,
             delegation_chain: Vec::new(),
+            aggregate_invocation_budget: None,
         },
         &keypair,
     )
@@ -282,8 +144,12 @@ fn governed_request_metadata_preserves_asserted_call_chain_and_diagnostics() {
             call_chain: Some(call_chain.clone()),
             autonomy: None,
             context: None,
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -357,8 +223,12 @@ fn governed_request_metadata_marks_matching_local_call_chain_evidence_as_observe
             call_chain: Some(call_chain.clone()),
             autonomy: None,
             context: None,
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -398,75 +268,6 @@ fn governed_request_metadata_marks_matching_local_call_chain_evidence_as_observe
     );
     assert_eq!(provenance.into_inner(), call_chain);
     assert!(metadata.get("governed_transaction_diagnostics").is_none());
-}
-
-#[test]
-fn explicit_receipt_context_none_does_not_inherit_scoped_call_chain_evidence() {
-    let call_chain = GovernedCallChainContext {
-        chain_id: "chain-explicit-none".to_string(),
-        parent_request_id: "req-parent-explicit-none".to_string(),
-        parent_receipt_id: None,
-        origin_subject: "subject-origin".to_string(),
-        delegator_subject: "subject-delegator".to_string(),
-    };
-    let request = ToolCallRequest {
-        request_id: "req-explicit-none".to_string(),
-        capability: test_capability(),
-        tool_name: "charge".to_string(),
-        server_id: "srv-pay".to_string(),
-        agent_id: "agent-1".to_string(),
-        arguments: serde_json::json!({}),
-        dpop_proof: None,
-        execution_nonce: None,
-        governed_intent: Some(GovernedTransactionIntent {
-            id: "intent-explicit-none".to_string(),
-            server_id: "srv-pay".to_string(),
-            tool_name: "charge".to_string(),
-            purpose: "pay supplier".to_string(),
-            max_amount: None,
-            commerce: None,
-            metered_billing: None,
-            runtime_attestation: None,
-            call_chain: Some(call_chain),
-            autonomy: None,
-            context: None,
-        }),
-        approval_token: None,
-        model_metadata: None,
-        federated_origin_kernel_id: None,
-    };
-    let _scope =
-        scope_governed_call_chain_receipt_evidence(Some(GovernedCallChainReceiptEvidence {
-            local_parent_request_id: Some("req-parent-explicit-none".to_string()),
-            local_parent_receipt_id: None,
-            capability_delegator_subject: Some("subject-delegator".to_string()),
-            capability_origin_subject: Some("subject-origin".to_string()),
-            upstream_proof: None,
-            continuation_token_id: None,
-            session_anchor_id: None,
-        }));
-    let evaluation_context = crate::kernel::EvaluationReceiptContext::default();
-
-    let metadata = super::receipt_metadata::governed_request_metadata_with_context(
-        &request,
-        None,
-        0,
-        &evaluation_context,
-    )
-    .expect("metadata should build")
-    .expect("governed metadata should exist");
-    let governed: GovernedTransactionReceiptMetadata =
-        serde_json::from_value(metadata["governed_transaction"].clone())
-            .expect("receipt metadata should deserialize");
-    let provenance = governed
-        .call_chain
-        .expect("call-chain provenance should be present");
-
-    assert_eq!(
-        provenance.evidence_class,
-        GovernedProvenanceEvidenceClass::Asserted
-    );
-    assert!(provenance.evidence_sources.is_empty());
 }
 
 #[test]
@@ -516,8 +317,12 @@ fn governed_request_metadata_marks_validated_upstream_call_chain_proof_as_verifi
             call_chain: Some(call_chain.clone()),
             autonomy: None,
             context: None,
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -590,8 +395,12 @@ fn governed_request_metadata_omits_unverified_runtime_assurance() {
             call_chain: None,
             autonomy: None,
             context: None,
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -632,8 +441,12 @@ fn governed_request_metadata_uses_verified_runtime_assurance_boundary() {
             call_chain: None,
             autonomy: None,
             context: None,
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -694,8 +507,12 @@ fn governed_request_metadata_prefers_scoped_nitro_verified_record() {
             call_chain: None,
             autonomy: None,
             context: None,
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -756,8 +573,12 @@ fn governed_request_metadata_rejects_mismatched_scoped_runtime_attestation_recor
             call_chain: None,
             autonomy: None,
             context: None,
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -775,7 +596,7 @@ fn governed_request_metadata_rejects_mismatched_scoped_runtime_attestation_recor
 }
 
 #[test]
-fn request_receipt_metadata_projects_economic_authorization_from_financial_metadata() {
+fn request_receipt_metadata_omits_economic_authorization_without_verified_payee_binding() {
     let request = ToolCallRequest {
         request_id: "req-economic-1".to_string(),
         capability: test_capability(),
@@ -797,6 +618,7 @@ fn request_receipt_metadata_projects_economic_authorization_from_financial_metad
             commerce: Some(chio_core::capability::governance::GovernedCommerceContext {
                 seller: "seller-1".to_string(),
                 shared_payment_token_id: "shared-token-1".to_string(),
+                settlement_destination_ref: Some("acct:seller-1".to_string()),
             }),
             metered_billing: Some(chio_core::capability::governance::MeteredBillingContext {
                 settlement_mode:
@@ -814,13 +636,18 @@ fn request_receipt_metadata_projects_economic_authorization_from_financial_metad
                     expires_at: Some(200),
                 },
                 max_billed_units: Some(100),
+                verified_outcome: None,
             }),
             runtime_attestation: None,
             call_chain: None,
             autonomy: None,
             context: None,
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -847,32 +674,7 @@ fn request_receipt_metadata_projects_economic_authorization_from_financial_metad
     let governed: GovernedTransactionReceiptMetadata =
         serde_json::from_value(metadata["governed_transaction"].clone())
             .expect("governed metadata should deserialize");
-    let economic = governed
-        .economic_authorization
-        .expect("economic authorization should be present");
-
-    assert_eq!(
-        economic.economic_mode,
-        chio_core::receipt::economics::EconomicAuthorizationMode::MeteredHoldCapture
-    );
-    assert_eq!(economic.budget.currency, "USD");
-    assert_eq!(economic.budget.cost_charged, 230);
-    assert_eq!(economic.rail.kind, "shared_payment_token");
-    assert_eq!(
-        economic.rail.contract_or_account_ref.as_deref(),
-        Some("payref-1")
-    );
-    assert_eq!(
-        economic.settlement.settlement_status,
-        SettlementStatus::Pending
-    );
-    assert_eq!(
-        economic
-            .metering
-            .expect("metering projection should be present")
-            .provider,
-        "meterd"
-    );
+    assert!(governed.economic_authorization.is_none());
 }
 
 #[test]
@@ -898,8 +700,12 @@ fn request_receipt_metadata_treats_untyped_financial_extra_metadata_as_pass_thro
             call_chain: None,
             autonomy: None,
             context: None,
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };

@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-economy/clearing-round-abort/v1",
+  "title": "Chio Clearing Round Abort V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signerKey", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "roundId",
+        "governanceScopeId",
+        "roundCoreDigest",
+        "reservationRoot",
+        "reservationCount",
+        "reason",
+        "sourceLifecycleHeadDigest",
+        "sourceLifecycleVersion",
+        "sourceLifecycleFence",
+        "nextLifecycleVersion",
+        "nextLifecycleFence",
+        "zeroDispatchProofDigest",
+        "authorityDigest",
+        "dispositionAuthorityId",
+        "dispositionAuthorityKeyEpoch",
+        "authorizedAtUnixMs"
+      ],
+      "properties": {
+        "schema": { "const": "chio.clearing.round-abort.v1" },
+        "roundId": { "$ref": "#/$defs/text" },
+        "governanceScopeId": { "$ref": "#/$defs/text" },
+        "roundCoreDigest": { "$ref": "#/$defs/digest" },
+        "outputManifestDigest": { "$ref": "#/$defs/digest" },
+        "reservationRoot": { "$ref": "#/$defs/digest" },
+        "reservationCount": { "type": "integer", "minimum": 1, "maximum": 126 },
+        "reason": {
+          "enum": [
+            "operator_cancelled",
+            "participant_rejected",
+            "dispute_accepted",
+            "quorum_unavailable",
+            "recovery_conflict"
+          ]
+        },
+        "sourceLifecycleHeadDigest": { "$ref": "#/$defs/digest" },
+        "sourceLifecycleVersion": { "$ref": "#/$defs/positiveInteger" },
+        "sourceLifecycleFence": { "$ref": "#/$defs/positiveInteger" },
+        "nextLifecycleVersion": { "$ref": "#/$defs/positiveInteger" },
+        "nextLifecycleFence": { "$ref": "#/$defs/positiveInteger" },
+        "zeroDispatchProofDigest": { "$ref": "#/$defs/digest" },
+        "authorityDigest": { "$ref": "#/$defs/digest" },
+        "frostBurnCheckpointDigest": { "$ref": "#/$defs/digest" },
+        "dispositionAuthorityId": { "$ref": "#/$defs/text" },
+        "dispositionAuthorityKeyEpoch": { "$ref": "#/$defs/positiveInteger" },
+        "authorizedAtUnixMs": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "signerKey": { "$ref": "#/$defs/cryptoMaterial" },
+    "signature": { "$ref": "#/$defs/cryptoMaterial" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "text": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "positiveInteger": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "cryptoMaterial": { "type": "string", "minLength": 1, "maxLength": 16384 }
+  }
+}

@@ -1435,110 +1435,1313 @@ fn liability_claim_settlement_receipt_rejects_counterparty_match_in_mismatch_sta
     assert!(error.contains("require at least one observed counterparty to differ"));
 }
 
-#[test]
-fn adjudication_new_optional_fields_are_omitted_when_none() {
-    let fixtures = sample_market_fixtures();
-    let adjudication = fixtures.claim_adjudication.body.clone();
-    let json = require_ok(
-        serde_json::to_string(&adjudication),
-        "serialize adjudication",
-    );
-    assert!(
-        !json.contains("decisionRuleRef") && !json.contains("decision_rule_ref"),
-        "decision_rule_ref must be omitted when None: {json}"
-    );
-    assert!(
-        !json.contains("rosterAnchorRef") && !json.contains("roster_anchor_ref"),
-        "roster_anchor_ref must be omitted when None: {json}"
-    );
+struct ParametricTestFixture {
+    bound_coverage: SignedLiabilityBoundCoverage,
+    policy_signer: crate::crypto::Keypair,
+    policy_signer_key: crate::crypto::PublicKey,
+    payout_rail: ParametricPayoutRail,
+    evaluator_authority: EvaluatorAuthorityRef,
+    pre_action_authority_digest: String,
+    policy: ParametricPolicy,
 }
 
-#[test]
-fn adjudication_shape_validate_rejects_blank_decision_rule() {
-    let fixtures = sample_market_fixtures();
-    let mut adjudication = fixtures.claim_adjudication.body.clone();
-    adjudication.decision_rule_ref = Some("   ".to_string());
-    let error = require_err(
-        adjudication.validate(),
-        "blank decision_rule_ref must fail shape validation",
-    );
-    assert!(error.contains("decision_rule_ref"));
+impl ParametricTestFixture {
+    fn context(&self) -> ParametricPolicyVerificationContext<'_> {
+        ParametricPolicyVerificationContext {
+            bound_coverage: &self.bound_coverage,
+            coverage_authority_id: "carrier-alpha",
+            coverage_authority_key: &self.bound_coverage.signer_key,
+            policy_signer_key: &self.policy_signer_key,
+            payer_id: "operator-treasury-1",
+            beneficiary_id: "subject-1",
+            funding_facility_id: "cfd-1",
+            pre_action_authority_digest: &self.pre_action_authority_digest,
+            payout_rail: &self.payout_rail,
+            evaluator_authority: &self.evaluator_authority,
+        }
+    }
+
+    fn signed_policy(&self) -> SignedParametricPolicy {
+        require_ok(
+            SignedParametricPolicy::sign(self.policy.clone(), &self.policy_signer),
+            "sign parametric policy",
+        )
+    }
 }
 
-#[test]
-fn validate_against_roster_accepts_on_roster_with_rule_and_anchor() {
-    let fixtures = sample_market_fixtures();
-    let mut adjudication = fixtures.claim_adjudication.body.clone();
-    adjudication.decision_rule_ref = Some("rule.partial-settlement.v1".to_string());
-    adjudication.roster_anchor_ref = Some("roster-anchor-abc".to_string());
+fn digest<T: serde::Serialize>(value: &T) -> String {
+    let bytes = require_ok(
+        crate::crypto::canonical_json_bytes(value),
+        "canonicalize digest input",
+    );
+    crate::crypto::sha256_hex(&bytes)
+}
+
+fn validate_parametric_schema(name: &str, value: &impl serde::Serialize) {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../spec/schemas/chio-parametric/v1")
+        .join(name);
+    let schema = require_ok(chio_spec_validate::load_json(&path), "load schema");
+    let instance = require_ok(serde_json::to_value(value), "serialize schema instance");
     require_ok(
-        adjudication.validate_against_roster(
-            &["arbiter.chio".to_string()],
-            &["rule.partial-settlement.v1".to_string()],
-            "roster-anchor-abc",
+        chio_spec_validate::validate_value(
+            &path,
+            &schema,
+            &std::path::PathBuf::from("<parametric-artifact>"),
+            &instance,
         ),
-        "on-roster adjudicator with valid rule and matching anchor should pass",
+        "validate schema instance",
+    );
+}
+
+fn assert_parametric_schema_rejects(name: &str, value: &serde_json::Value) {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../spec/schemas/chio-parametric/v1")
+        .join(name);
+    let schema = require_ok(chio_spec_validate::load_json(&path), "load schema");
+    assert!(
+        chio_spec_validate::validate_value(
+            &path,
+            &schema,
+            &std::path::PathBuf::from("<parametric-artifact>"),
+            value,
+        )
+        .is_err(),
+        "schema unexpectedly accepted malformed parametric artifact"
+    );
+}
+
+fn sample_parametric_fixture() -> ParametricTestFixture {
+    let bound_coverage = sample_market_fixtures().bound_coverage;
+    let policy_signer = crate::crypto::Keypair::from_seed(&[42; 32]);
+    let policy_signer_key = policy_signer.public_key();
+    let payout_rail = ParametricPayoutRail {
+        kind: crate::credit::CapitalExecutionRailKind::Web3,
+        rail_id: "web3-primary".to_string(),
+        destination_account_digest: "22".repeat(32),
+    };
+    let evaluator_authority = EvaluatorAuthorityRef {
+        authority_id: "evaluator-1".to_string(),
+        key_id: "evaluator-key-1".to_string(),
+        key_epoch: 3,
+    };
+    let pre_action_authority_digest = "33".repeat(32);
+    let policy = ParametricPolicy {
+        schema: PARAMETRIC_POLICY_SCHEMA.to_string(),
+        issued_at: bound_coverage.body.bound_at + 1,
+        subject_key: "subject-1".to_string(),
+        bound_coverage_body_digest: digest(&bound_coverage.body),
+        bound_coverage_envelope_digest: digest(&bound_coverage),
+        coverage_authority_id: "carrier-alpha".to_string(),
+        payer_id: "operator-treasury-1".to_string(),
+        beneficiary_id: "subject-1".to_string(),
+        funding_facility_id: "cfd-1".to_string(),
+        pre_action_authority_digest: pre_action_authority_digest.clone(),
+        coverage_amount: bound_coverage.body.coverage_amount.clone(),
+        effective_from: bound_coverage.body.effective_from,
+        effective_until: bound_coverage.body.effective_until,
+        window_anchor: bound_coverage.body.effective_from,
+        window_seconds: 1_000,
+        max_checkpoint_lag_seconds: 120,
+        predicate: TriggerPredicate::GuardDenialRate {
+            min_events: 2,
+            threshold_bps: 5_000,
+        },
+        payout_schedule: PayoutSchedule::Fixed { amount: usd(1_000) },
+        payout_mode: ParametricPayoutMode::Automatic,
+        payout_rail: payout_rail.clone(),
+        evaluator_authority: evaluator_authority.clone(),
+    };
+    ParametricTestFixture {
+        bound_coverage,
+        policy_signer,
+        policy_signer_key,
+        payout_rail,
+        evaluator_authority,
+        pre_action_authority_digest,
+        policy,
+    }
+}
+
+struct ParametricEvidenceFixture {
+    registry: TrustedEvidenceSourceRegistry,
+    proof: EvidenceCorpusProofV1,
+}
+
+fn sample_evidence_fixture(
+    window: &ParametricTriggerWindow,
+    anchor_epoch: u64,
+    signer_key_epoch: u64,
+    signer: &crate::crypto::Keypair,
+    selected_digest_byte: &str,
+) -> ParametricEvidenceFixture {
+    let members = [
+        EvidenceIndexMemberV1 {
+            sequence: 9,
+            subject_key: "subject-1".to_string(),
+            observed_at: window.start_at - 1,
+            artifact_digest: "39".repeat(32),
+            observation: EvidenceObservationV1::GuardDecision { denied: false },
+        },
+        EvidenceIndexMemberV1 {
+            sequence: 10,
+            subject_key: "subject-1".to_string(),
+            observed_at: window.start_at + 10,
+            artifact_digest: selected_digest_byte.repeat(32),
+            observation: EvidenceObservationV1::GuardDecision { denied: true },
+        },
+        EvidenceIndexMemberV1 {
+            sequence: 11,
+            subject_key: "subject-1".to_string(),
+            observed_at: window.start_at + 20,
+            artifact_digest: "41".repeat(32),
+            observation: EvidenceObservationV1::GuardDecision { denied: false },
+        },
+        EvidenceIndexMemberV1 {
+            sequence: 12,
+            subject_key: "subject-1".to_string(),
+            observed_at: window.end_at,
+            artifact_digest: "42".repeat(32),
+            observation: EvidenceObservationV1::GuardDecision { denied: false },
+        },
+    ];
+    evidence_fixture_from_members(
+        &members,
+        1..3,
+        12,
+        window,
+        anchor_epoch,
+        signer_key_epoch,
+        signer,
+    )
+}
+
+fn evidence_fixture_from_members(
+    members: &[EvidenceIndexMemberV1],
+    selected: std::ops::Range<usize>,
+    source_prefix_cutoff: u64,
+    window: &ParametricTriggerWindow,
+    anchor_epoch: u64,
+    signer_key_epoch: u64,
+    signer: &crate::crypto::Keypair,
+) -> ParametricEvidenceFixture {
+    let leaves = members
+        .iter()
+        .map(|member| {
+            require_ok(
+                crate::crypto::canonical_json_bytes(member),
+                "canonicalize evidence member",
+            )
+        })
+        .collect::<Vec<_>>();
+    let tree = require_ok(
+        chio_core_types::MerkleTree::from_leaves(&leaves),
+        "build evidence tree",
+    );
+    let proven = |index: usize| {
+        let proof = require_ok(tree.inclusion_proof(index), "build evidence proof");
+        ProvenEvidenceMemberV1 {
+            member: members[index].clone(),
+            proof: EvidenceMerkleProofV1 {
+                tree_size: u64::try_from(proof.tree_size)
+                    .unwrap_or_else(|error| panic!("convert tree size: {error:?}")),
+                leaf_index: u64::try_from(proof.leaf_index)
+                    .unwrap_or_else(|error| panic!("convert leaf index: {error:?}")),
+                audit_path: proof.audit_path.iter().map(|hash| hash.to_hex()).collect(),
+            },
+        }
+    };
+    let checkpoint = EvidenceSourceCheckpointV1 {
+        schema: EVIDENCE_SOURCE_CHECKPOINT_SCHEMA.to_string(),
+        signature_domain: EVIDENCE_SOURCE_CHECKPOINT_DOMAIN.to_string(),
+        source_kind: EvidenceSourceKind::ReceiptStore,
+        source_id: "kernel-receipts".to_string(),
+        index_namespace: "subject-time-sequence-v1".to_string(),
+        anchor_epoch,
+        signer_key_epoch,
+        checkpoint_id: format!("checkpoint-{anchor_epoch}-{signer_key_epoch}"),
+        checkpoint_at: window.end_at + 10,
+        source_prefix_cutoff,
+        query_tree_size: u64::try_from(tree.leaf_count())
+            .unwrap_or_else(|error| panic!("convert leaf count: {error:?}")),
+        query_index_root: tree.root().to_hex(),
+    };
+    let signed_checkpoint = require_ok(
+        SignedEvidenceSourceCheckpointV1::sign(checkpoint, signer),
+        "sign evidence checkpoint",
+    );
+    let predecessor = selected.start.checked_sub(1).map(&proven);
+    let successor = (selected.end < members.len()).then(|| proven(selected.end));
+    let selected_members = (selected.start..selected.end).map(&proven).collect();
+    let range = require_ok(
+        EvidenceSourceRangeProofV1::new(
+            signed_checkpoint,
+            selected_members,
+            predecessor,
+            successor,
+        ),
+        "build evidence range",
+    );
+    let trusted = require_ok(
+        TrustedEvidenceSource::new(
+            EvidenceSourceKind::ReceiptStore,
+            "kernel-receipts".to_string(),
+            "subject-time-sequence-v1".to_string(),
+            anchor_epoch,
+            signer_key_epoch,
+            EVIDENCE_SOURCE_CHECKPOINT_DOMAIN.to_string(),
+            signer.public_key(),
+        ),
+        "build trusted evidence source",
+    );
+    ParametricEvidenceFixture {
+        registry: require_ok(
+            TrustedEvidenceSourceRegistry::new(vec![trusted]),
+            "build evidence registry",
+        ),
+        proof: EvidenceCorpusProofV1 {
+            ranges: vec![range],
+        },
+    }
+}
+
+fn verify_sample_corpus(
+    policy: &VerifiedParametricPolicy,
+    window: &ParametricTriggerWindow,
+    evidence: &ParametricEvidenceFixture,
+) -> VerifiedEvidenceCorpusV1 {
+    require_ok(
+        policy.verify_evidence_corpus(window.clone(), evidence.proof.clone(), &evidence.registry),
+        "verify evidence corpus",
+    )
+}
+
+fn resign_evidence_checkpoint(proof: &mut EvidenceCorpusProofV1, signer: &crate::crypto::Keypair) {
+    let body = proof.ranges[0].checkpoint.body.clone();
+    proof.ranges[0].checkpoint = require_ok(
+        SignedEvidenceSourceCheckpointV1::sign(body, signer),
+        "resign evidence checkpoint",
+    );
+}
+
+fn evidence_verification_error(
+    policy: &VerifiedParametricPolicy,
+    window: &ParametricTriggerWindow,
+    proof: EvidenceCorpusProofV1,
+    registry: &TrustedEvidenceSourceRegistry,
+) -> ParametricContractError {
+    require_err(
+        policy.verify_evidence_corpus(window.clone(), proof, registry),
+        "reject evidence corpus",
+    )
+}
+
+#[test]
+fn parametric_policy_verification_binds_coverage_authority_and_beneficiary() {
+    let fixture = sample_parametric_fixture();
+    let verified = require_ok(
+        VerifiedParametricPolicy::verify(fixture.signed_policy(), &fixture.context()),
+        "verify parametric policy",
+    );
+    assert_eq!(verified.body(), &fixture.policy);
+
+    let mut wrong_beneficiary = fixture.policy.clone();
+    wrong_beneficiary.beneficiary_id = "attacker".to_string();
+    let signed = require_ok(
+        SignedParametricPolicy::sign(wrong_beneficiary, &fixture.policy_signer),
+        "sign beneficiary mutation",
+    );
+    assert_eq!(
+        require_err(
+            VerifiedParametricPolicy::verify(signed, &fixture.context()),
+            "beneficiary substitution",
+        ),
+        ParametricContractError::BindingMismatch("beneficiary_id")
+    );
+
+    let mut colluding_policy = fixture.policy.clone();
+    colluding_policy.beneficiary_id = "attacker".to_string();
+    let signed = require_ok(
+        SignedParametricPolicy::sign(colluding_policy, &fixture.policy_signer),
+        "sign colluding beneficiary mutation",
+    );
+    let mut colluding_context = fixture.context();
+    colluding_context.beneficiary_id = "attacker";
+    assert_eq!(
+        require_err(
+            VerifiedParametricPolicy::verify(signed, &colluding_context),
+            "coverage-bound beneficiary substitution",
+        ),
+        ParametricContractError::BindingMismatch("beneficiary_id")
+    );
+
+    let mut retroactive = fixture.policy.clone();
+    retroactive.issued_at = retroactive.effective_from + 1;
+    let signed = require_ok(
+        SignedParametricPolicy::sign(retroactive, &fixture.policy_signer),
+        "sign retroactive policy",
+    );
+    assert_eq!(
+        require_err(
+            VerifiedParametricPolicy::verify(signed, &fixture.context()),
+            "retroactive policy",
+        ),
+        ParametricContractError::BindingMismatch("issued_at")
+    );
+
+    let rogue_authority = crate::crypto::Keypair::from_seed(&[41; 32]).public_key();
+    let mut context = fixture.context();
+    context.coverage_authority_key = &rogue_authority;
+    assert_eq!(
+        require_err(
+            VerifiedParametricPolicy::verify(fixture.signed_policy(), &context),
+            "coverage authority substitution",
+        ),
+        ParametricContractError::UntrustedCoverageAuthority
     );
 }
 
 #[test]
-fn validate_against_roster_rejects_off_roster_adjudicator() {
-    let fixtures = sample_market_fixtures();
-    let mut adjudication = fixtures.claim_adjudication.body.clone();
-    adjudication.decision_rule_ref = Some("rule.partial-settlement.v1".to_string());
-    adjudication.roster_anchor_ref = Some("roster-anchor-abc".to_string());
-    let error = require_err(
-        adjudication.validate_against_roster(
-            &["someone.else".to_string()],
-            &["rule.partial-settlement.v1".to_string()],
-            "roster-anchor-abc",
-        ),
-        "off-roster adjudicator must be denied",
+fn parametric_artifacts_match_their_committed_schemas() {
+    let fixture = sample_parametric_fixture();
+    let signed = fixture.signed_policy();
+    let verified = require_ok(
+        VerifiedParametricPolicy::verify(signed.clone(), &fixture.context()),
+        "verify parametric policy",
     );
-    assert!(error.contains("not on the predeclared roster"));
+    let window = require_ok(
+        verified.body().window_at(1_700_010_500),
+        "derive policy window",
+    );
+    let signer = crate::crypto::Keypair::from_seed(&[51; 32]);
+    let evidence = sample_evidence_fixture(&window, 1, 1, &signer, "40");
+    let corpus = verify_sample_corpus(&verified, &window, &evidence);
+    let identity = require_ok(verified.claim_identity(&corpus), "derive claim identity");
+
+    validate_parametric_schema("policy.schema.json", &signed);
+    validate_parametric_schema("evidence-corpus-manifest.schema.json", corpus.manifest());
+    validate_parametric_schema("trigger-instance-key.schema.json", &identity.key);
 }
 
 #[test]
-fn validate_against_roster_rejects_missing_or_unknown_rule() {
-    let fixtures = sample_market_fixtures();
-    let mut adjudication = fixtures.claim_adjudication.body.clone();
-    adjudication.roster_anchor_ref = Some("roster-anchor-abc".to_string());
-    // missing rule
-    let missing = require_err(
-        adjudication.validate_against_roster(
-            &["arbiter.chio".to_string()],
-            &["rule.partial-settlement.v1".to_string()],
-            "roster-anchor-abc",
-        ),
-        "missing decision_rule_ref must be denied",
+fn parametric_policy_schema_rejects_missing_payout_mode() {
+    let fixture = sample_parametric_fixture();
+    let mut value = require_ok(
+        serde_json::to_value(fixture.signed_policy()),
+        "serialize parametric policy",
     );
-    assert!(missing.contains("decision_rule_ref"));
-    // present but unknown rule
-    adjudication.decision_rule_ref = Some("rule.unknown".to_string());
-    let unknown = require_err(
-        adjudication.validate_against_roster(
-            &["arbiter.chio".to_string()],
-            &["rule.partial-settlement.v1".to_string()],
-            "roster-anchor-abc",
-        ),
-        "unknown decision_rule_ref must be denied",
+    let body = require_some(
+        value
+            .get_mut("body")
+            .and_then(serde_json::Value::as_object_mut),
+        "parametric policy body",
     );
-    assert!(unknown.contains("not an allowed decision rule"));
+    assert!(body.remove("payoutMode").is_some());
+
+    assert_parametric_schema_rejects("policy.schema.json", &value);
 }
 
 #[test]
-fn validate_against_roster_rejects_anchor_mismatch() {
-    let fixtures = sample_market_fixtures();
-    let mut adjudication = fixtures.claim_adjudication.body.clone();
-    adjudication.decision_rule_ref = Some("rule.partial-settlement.v1".to_string());
-    adjudication.roster_anchor_ref = Some("roster-anchor-STALE".to_string());
-    let error = require_err(
-        adjudication.validate_against_roster(
-            &["arbiter.chio".to_string()],
-            &["rule.partial-settlement.v1".to_string()],
-            "roster-anchor-abc",
-        ),
-        "recorded anchor not matching the applied roster must be denied",
+fn parametric_policy_schema_rejects_unknown_payout_mode() {
+    let fixture = sample_parametric_fixture();
+    let mut value = require_ok(
+        serde_json::to_value(fixture.signed_policy()),
+        "serialize parametric policy",
     );
-    assert!(error.contains("roster_anchor_ref"));
+    let body = require_some(
+        value
+            .get_mut("body")
+            .and_then(serde_json::Value::as_object_mut),
+        "parametric policy body",
+    );
+    assert!(body
+        .insert(
+            "payoutMode".to_string(),
+            serde_json::json!({ "kind": "deferred" }),
+        )
+        .is_some());
+
+    assert_parametric_schema_rejects("policy.schema.json", &value);
+}
+
+#[test]
+fn parametric_policy_verification_fails_closed_on_signer_schema_and_encoding() {
+    let fixture = sample_parametric_fixture();
+    let mut tampered = fixture.signed_policy();
+    tampered.body.max_checkpoint_lag_seconds += 1;
+    assert_eq!(
+        require_err(
+            VerifiedParametricPolicy::verify(tampered, &fixture.context()),
+            "tampered policy",
+        ),
+        ParametricContractError::InvalidSignature
+    );
+
+    let rogue_signer = crate::crypto::Keypair::from_seed(&[40; 32]);
+    let rogue_policy = require_ok(
+        SignedParametricPolicy::sign(fixture.policy.clone(), &rogue_signer),
+        "sign rogue policy",
+    );
+    assert_eq!(
+        require_err(
+            VerifiedParametricPolicy::verify(rogue_policy, &fixture.context()),
+            "rogue policy signer",
+        ),
+        ParametricContractError::UntrustedPolicySigner
+    );
+
+    let mut unknown = fixture.policy.clone();
+    unknown.schema = "chio.parametric.policy.v9".to_string();
+    let unknown = require_ok(
+        SignedParametricPolicy::sign(unknown, &fixture.policy_signer),
+        "sign unknown schema",
+    );
+    assert_eq!(
+        require_err(
+            VerifiedParametricPolicy::verify(unknown, &fixture.context()),
+            "unknown policy schema",
+        ),
+        ParametricContractError::UnknownSchema("chio.parametric.policy.v9".to_string())
+    );
+
+    let verified = require_ok(
+        VerifiedParametricPolicy::verify(fixture.signed_policy(), &fixture.context()),
+        "verify canonical policy",
+    );
+    let canonical = require_ok(verified.canonical_bytes(), "encode canonical policy");
+    let round_trip = require_ok(
+        VerifiedParametricPolicy::from_canonical_bytes(&canonical, &fixture.context()),
+        "decode canonical policy",
+    );
+    assert_eq!(round_trip.envelope_digest(), verified.envelope_digest());
+
+    let mut padded = vec![b' '];
+    padded.extend_from_slice(&canonical);
+    assert!(matches!(
+        VerifiedParametricPolicy::from_canonical_bytes(&padded, &fixture.context()),
+        Err(ParametricContractError::Canonicalization(_))
+    ));
+}
+
+#[test]
+fn parametric_claim_identity_survives_checkpoint_and_signer_rotation_within_anchor_epoch() {
+    let fixture = sample_parametric_fixture();
+    let verified = require_ok(
+        VerifiedParametricPolicy::verify(fixture.signed_policy(), &fixture.context()),
+        "verify parametric policy",
+    );
+    let window = require_ok(
+        verified.body().window_at(1_700_010_500),
+        "derive policy window",
+    );
+    let first_signer = crate::crypto::Keypair::from_seed(&[51; 32]);
+    let rotated_signer = crate::crypto::Keypair::from_seed(&[52; 32]);
+    let first_evidence = sample_evidence_fixture(&window, 1, 7, &first_signer, "40");
+    let rotated_evidence = sample_evidence_fixture(&window, 1, 8, &rotated_signer, "40");
+    let first = verify_sample_corpus(&verified, &window, &first_evidence);
+    let rotated = verify_sample_corpus(&verified, &window, &rotated_evidence);
+
+    let first_identity = require_ok(
+        verified.claim_identity(&first),
+        "derive first claim identity",
+    );
+    let rotated_identity = require_ok(
+        verified.claim_identity(&rotated),
+        "derive rotated claim identity",
+    );
+    assert_eq!(first_identity, rotated_identity);
+
+    let mut advanced_evidence = first_evidence;
+    advanced_evidence.proof.ranges[0]
+        .checkpoint
+        .body
+        .source_prefix_cutoff += 1;
+    advanced_evidence.proof.ranges[0]
+        .checkpoint
+        .body
+        .checkpoint_id = "checkpoint-after-unrelated-append".to_string();
+    resign_evidence_checkpoint(&mut advanced_evidence.proof, &first_signer);
+    let advanced = verify_sample_corpus(&verified, &window, &advanced_evidence);
+    let advanced_identity = require_ok(
+        verified.claim_identity(&advanced),
+        "derive append-only checkpoint identity",
+    );
+    assert_eq!(first_identity, advanced_identity);
+
+    let changed_evidence = sample_evidence_fixture(&window, 1, 8, &rotated_signer, "bb");
+    let changed_member = verify_sample_corpus(&verified, &window, &changed_evidence);
+    let changed_identity = require_ok(
+        verified.claim_identity(&changed_member),
+        "derive changed evidence identity",
+    );
+    assert_ne!(changed_identity.claim_id, first_identity.claim_id);
+}
+
+#[test]
+fn parametric_claim_identity_survives_checkpoint_anchor_rotation() {
+    let fixture = sample_parametric_fixture();
+    let verified = require_ok(
+        VerifiedParametricPolicy::verify(fixture.signed_policy(), &fixture.context()),
+        "verify parametric policy",
+    );
+    let window = require_ok(
+        verified.body().window_at(1_700_010_500),
+        "derive policy window",
+    );
+    let signer = crate::crypto::Keypair::from_seed(&[51; 32]);
+    let first_evidence = sample_evidence_fixture(&window, 1, 7, &signer, "40");
+    let rotated_evidence = sample_evidence_fixture(&window, 2, 7, &signer, "40");
+    let first = verify_sample_corpus(&verified, &window, &first_evidence);
+    let rotated = verify_sample_corpus(&verified, &window, &rotated_evidence);
+
+    let first_identity = require_ok(
+        verified.claim_identity(&first),
+        "derive first claim identity",
+    );
+    let rotated_identity = require_ok(
+        verified.claim_identity(&rotated),
+        "derive anchor-rotated claim identity",
+    );
+    assert_eq!(first_identity.claim_id, rotated_identity.claim_id);
+    assert_eq!(
+        first_identity.trigger_instance_id,
+        rotated_identity.trigger_instance_id
+    );
+}
+
+#[test]
+fn parametric_trigger_identity_covers_every_semantic_dimension() {
+    let fixture = sample_parametric_fixture();
+    let verified = require_ok(
+        VerifiedParametricPolicy::verify(fixture.signed_policy(), &fixture.context()),
+        "verify parametric policy",
+    );
+    let window = require_ok(
+        verified.body().window_at(1_700_010_500),
+        "derive policy window",
+    );
+    let signer = crate::crypto::Keypair::from_seed(&[51; 32]);
+    let evidence = sample_evidence_fixture(&window, 1, 1, &signer, "40");
+    let corpus = verify_sample_corpus(&verified, &window, &evidence);
+    let identity = require_ok(verified.claim_identity(&corpus), "derive claim identity");
+    let baseline = identity.trigger_instance_id;
+    let mut variants = Vec::new();
+
+    let mut changed = identity.key.clone();
+    changed.parametric_policy_body_digest = "01".repeat(32);
+    variants.push(changed);
+    let mut changed = identity.key.clone();
+    changed.subject_key = "subject-2".to_string();
+    variants.push(changed);
+    let mut changed = identity.key.clone();
+    changed.window_start += 1;
+    variants.push(changed);
+    let mut changed = identity.key.clone();
+    changed.trigger_predicate_body_digest = "02".repeat(32);
+    variants.push(changed);
+    let mut changed = identity.key;
+    changed.evidence_range_digest = "03".repeat(32);
+    variants.push(changed);
+
+    for variant in variants {
+        assert_ne!(
+            require_ok(variant.trigger_instance_id(), "derive changed trigger id"),
+            baseline
+        );
+    }
+}
+
+#[test]
+fn parametric_schedule_validation_fails_closed() {
+    let schedule = PayoutSchedule::Linear {
+        base: usd(0),
+        per_unit_minor: u64::MAX,
+        magnitude_unit: TriggerMagnitudeUnit::Count,
+    };
+    assert_eq!(
+        schedule.evaluate(
+            &TriggerPredicate::DriftSeverity { min_critical: 1 },
+            &TriggerMagnitude::Count { value: 2 },
+            &usd(u64::MAX),
+        ),
+        Err(ParametricContractError::ScheduleOverflow)
+    );
+}
+
+#[test]
+fn parametric_evidence_verification_rejects_untrusted_source_epochs_and_authority() {
+    let fixture = sample_parametric_fixture();
+    let verified = require_ok(
+        VerifiedParametricPolicy::verify(fixture.signed_policy(), &fixture.context()),
+        "verify parametric policy",
+    );
+    let window = require_ok(
+        verified.body().window_at(1_700_010_500),
+        "derive policy window",
+    );
+    let signer = crate::crypto::Keypair::from_seed(&[51; 32]);
+    let rogue = crate::crypto::Keypair::from_seed(&[52; 32]);
+    let evidence = sample_evidence_fixture(&window, 1, 7, &signer, "40");
+
+    let mut untrusted_source = evidence.proof.clone();
+    untrusted_source.ranges[0].checkpoint.body.source_id = "rogue-source".to_string();
+    resign_evidence_checkpoint(&mut untrusted_source, &signer);
+    assert_eq!(
+        evidence_verification_error(&verified, &window, untrusted_source, &evidence.registry,),
+        ParametricContractError::UntrustedEvidenceSource
+    );
+
+    let mut stale_anchor = evidence.proof.clone();
+    stale_anchor.ranges[0].checkpoint.body.anchor_epoch = 2;
+    resign_evidence_checkpoint(&mut stale_anchor, &signer);
+    assert_eq!(
+        evidence_verification_error(&verified, &window, stale_anchor, &evidence.registry,),
+        ParametricContractError::StaleEvidenceAnchorEpoch
+    );
+
+    let mut stale_signer = evidence.proof.clone();
+    stale_signer.ranges[0].checkpoint.body.signer_key_epoch = 8;
+    resign_evidence_checkpoint(&mut stale_signer, &signer);
+    assert_eq!(
+        evidence_verification_error(&verified, &window, stale_signer, &evidence.registry,),
+        ParametricContractError::StaleEvidenceSignerEpoch
+    );
+
+    let mut wrong_signer = evidence.proof.clone();
+    resign_evidence_checkpoint(&mut wrong_signer, &rogue);
+    assert_eq!(
+        evidence_verification_error(&verified, &window, wrong_signer, &evidence.registry,),
+        ParametricContractError::UntrustedEvidenceSigner
+    );
+
+    let mut wrong_domain = evidence.proof.clone();
+    wrong_domain.ranges[0].checkpoint.body.signature_domain = "wrong.domain".to_string();
+    resign_evidence_checkpoint(&mut wrong_domain, &signer);
+    assert_eq!(
+        evidence_verification_error(&verified, &window, wrong_domain, &evidence.registry,),
+        ParametricContractError::BindingMismatch("corpus.signature_domain")
+    );
+
+    let mut wrong_namespace = evidence.proof.clone();
+    wrong_namespace.ranges[0].checkpoint.body.index_namespace = "wrong-index".to_string();
+    resign_evidence_checkpoint(&mut wrong_namespace, &signer);
+    assert_eq!(
+        evidence_verification_error(&verified, &window, wrong_namespace, &evidence.registry,),
+        ParametricContractError::BindingMismatch("corpus.index_namespace")
+    );
+}
+
+#[test]
+fn parametric_evidence_verification_rejects_incomplete_and_tampered_range_proofs() {
+    let fixture = sample_parametric_fixture();
+    let verified = require_ok(
+        VerifiedParametricPolicy::verify(fixture.signed_policy(), &fixture.context()),
+        "verify parametric policy",
+    );
+    let window = require_ok(
+        verified.body().window_at(1_700_010_500),
+        "derive policy window",
+    );
+    let signer = crate::crypto::Keypair::from_seed(&[51; 32]);
+    let evidence = sample_evidence_fixture(&window, 1, 7, &signer, "40");
+
+    let mut incomplete = evidence.proof.clone();
+    incomplete.ranges[0].predecessor = None;
+    assert_eq!(
+        evidence_verification_error(&verified, &window, incomplete, &evidence.registry),
+        ParametricContractError::IncompleteEvidenceBoundaries
+    );
+
+    let mut member_tamper = evidence.proof.clone();
+    member_tamper.ranges[0].members[0].member.artifact_digest = "aa".repeat(32);
+    assert_eq!(
+        evidence_verification_error(&verified, &window, member_tamper, &evidence.registry),
+        ParametricContractError::InvalidEvidenceRangeProof
+    );
+
+    let mut root_tamper = evidence.proof.clone();
+    root_tamper.ranges[0].selected_member_root = "bb".repeat(32);
+    assert_eq!(
+        evidence_verification_error(&verified, &window, root_tamper, &evidence.registry),
+        ParametricContractError::BindingMismatch("corpus.selected_member_root")
+    );
+
+    let mut count_tamper = evidence.proof.clone();
+    count_tamper.ranges[0].selected_count += 1;
+    assert_eq!(
+        evidence_verification_error(&verified, &window, count_tamper, &evidence.registry),
+        ParametricContractError::BindingMismatch("corpus.selected_count")
+    );
+}
+
+fn interleaved_evidence_fixture(
+    window: &ParametricTriggerWindow,
+    selected_sequences: [u64; 2],
+    signer: &crate::crypto::Keypair,
+) -> ParametricEvidenceFixture {
+    let members = [
+        EvidenceIndexMemberV1 {
+            sequence: 1,
+            subject_key: "subject-1".to_string(),
+            observed_at: window.start_at - 1,
+            artifact_digest: "39".repeat(32),
+            observation: EvidenceObservationV1::GuardDecision { denied: false },
+        },
+        EvidenceIndexMemberV1 {
+            sequence: selected_sequences[0],
+            subject_key: "subject-1".to_string(),
+            observed_at: window.start_at + 10,
+            artifact_digest: "40".repeat(32),
+            observation: EvidenceObservationV1::GuardDecision { denied: true },
+        },
+        EvidenceIndexMemberV1 {
+            sequence: selected_sequences[1],
+            subject_key: "subject-1".to_string(),
+            observed_at: window.start_at + 20,
+            artifact_digest: "41".repeat(32),
+            observation: EvidenceObservationV1::GuardDecision { denied: false },
+        },
+        EvidenceIndexMemberV1 {
+            sequence: 7,
+            subject_key: "subject-1".to_string(),
+            observed_at: window.end_at,
+            artifact_digest: "42".repeat(32),
+            observation: EvidenceObservationV1::GuardDecision { denied: false },
+        },
+        EvidenceIndexMemberV1 {
+            sequence: 2,
+            subject_key: "subject-2".to_string(),
+            observed_at: window.start_at + 5,
+            artifact_digest: "43".repeat(32),
+            observation: EvidenceObservationV1::GuardDecision { denied: true },
+        },
+        EvidenceIndexMemberV1 {
+            sequence: 4,
+            subject_key: "subject-2".to_string(),
+            observed_at: window.start_at + 15,
+            artifact_digest: "44".repeat(32),
+            observation: EvidenceObservationV1::GuardDecision { denied: true },
+        },
+    ];
+    evidence_fixture_from_members(&members, 1..3, 7, window, 1, 7, signer)
+}
+
+#[test]
+fn parametric_evidence_accepts_gapped_sequences_from_a_multi_subject_source() {
+    let fixture = sample_parametric_fixture();
+    let verified = require_ok(
+        VerifiedParametricPolicy::verify(fixture.signed_policy(), &fixture.context()),
+        "verify parametric policy",
+    );
+    let window = require_ok(
+        verified.body().window_at(1_700_010_500),
+        "derive policy window",
+    );
+    let signer = crate::crypto::Keypair::from_seed(&[51; 32]);
+    let evidence = interleaved_evidence_fixture(&window, [3, 5], &signer);
+    let corpus = verify_sample_corpus(&verified, &window, &evidence);
+    match require_ok(verified.evaluate_trigger(&corpus), "evaluate trigger") {
+        VerifiedTriggerVerdictV1::Fired(_) => {}
+        VerifiedTriggerVerdictV1::NotFired => panic!("gapped corpus did not fire"),
+    }
+}
+
+#[test]
+fn parametric_evidence_accepts_source_sequences_independent_of_query_order() {
+    let fixture = sample_parametric_fixture();
+    let verified = require_ok(
+        VerifiedParametricPolicy::verify(fixture.signed_policy(), &fixture.context()),
+        "verify parametric policy",
+    );
+    let window = require_ok(
+        verified.body().window_at(1_700_010_500),
+        "derive policy window",
+    );
+    let signer = crate::crypto::Keypair::from_seed(&[51; 32]);
+
+    let late_append = interleaved_evidence_fixture(&window, [5, 3], &signer);
+    let corpus = verify_sample_corpus(&verified, &window, &late_append);
+    let range = &corpus.manifest().ranges[0];
+    assert_eq!(
+        range.sequence_range,
+        Some(InclusiveSequenceRange { first: 3, last: 5 })
+    );
+    match require_ok(verified.evaluate_trigger(&corpus), "evaluate trigger") {
+        VerifiedTriggerVerdictV1::Fired(_) => {}
+        VerifiedTriggerVerdictV1::NotFired => panic!("late-append corpus did not fire"),
+    }
+}
+
+#[test]
+fn parametric_evidence_rejects_duplicate_source_sequences() {
+    let fixture = sample_parametric_fixture();
+    let verified = require_ok(
+        VerifiedParametricPolicy::verify(fixture.signed_policy(), &fixture.context()),
+        "verify parametric policy",
+    );
+    let window = require_ok(
+        verified.body().window_at(1_700_010_500),
+        "derive policy window",
+    );
+    let signer = crate::crypto::Keypair::from_seed(&[51; 32]);
+
+    let duplicate = interleaved_evidence_fixture(&window, [3, 3], &signer);
+    assert_eq!(
+        evidence_verification_error(&verified, &window, duplicate.proof, &duplicate.registry),
+        ParametricContractError::InvalidField("corpus.expected_count")
+    );
+}
+
+#[test]
+fn verified_parametric_corpus_replays_and_is_the_only_fired_claim_input() {
+    let fixture = sample_parametric_fixture();
+    let verified = require_ok(
+        VerifiedParametricPolicy::verify(fixture.signed_policy(), &fixture.context()),
+        "verify parametric policy",
+    );
+    let window = require_ok(
+        verified.body().window_at(1_700_010_500),
+        "derive policy window",
+    );
+    let signer = crate::crypto::Keypair::from_seed(&[51; 32]);
+    let evidence = sample_evidence_fixture(&window, 1, 7, &signer, "40");
+    let first = verify_sample_corpus(&verified, &window, &evidence);
+    let replay = verify_sample_corpus(&verified, &window, &evidence);
+    assert_eq!(first, replay);
+
+    let trigger = match require_ok(verified.evaluate_trigger(&first), "evaluate trigger") {
+        VerifiedTriggerVerdictV1::Fired(trigger) => trigger,
+        VerifiedTriggerVerdictV1::NotFired => panic!("verified corpus did not fire"),
+    };
+    let claim = require_ok(
+        ParametricClaimRecordV1::open(&verified, &trigger, window.end_at),
+        "open verified claim",
+    );
+    assert_eq!(claim.claim_id(), trigger.identity().claim_id);
+    require_ok(
+        claim.verify_semantic_replay(&verified, &trigger),
+        "verify semantic replay",
+    );
+}
+
+fn sample_parametric_opening(
+    payout_mode: ParametricPayoutMode,
+) -> (
+    VerifiedParametricPolicy,
+    VerifiedEvidenceCorpusV1,
+    VerifiedFiredTriggerV1,
+    u64,
+) {
+    let mut fixture = sample_parametric_fixture();
+    fixture.policy.payout_mode = payout_mode;
+    let verified = require_ok(
+        VerifiedParametricPolicy::verify(fixture.signed_policy(), &fixture.context()),
+        "verify opening policy",
+    );
+    let window = require_ok(
+        verified.body().window_at(1_700_010_500),
+        "derive opening window",
+    );
+    let signer = crate::crypto::Keypair::from_seed(&[61; 32]);
+    let evidence = sample_evidence_fixture(&window, 1, 7, &signer, "40");
+    let corpus = verify_sample_corpus(&verified, &window, &evidence);
+    let trigger = match require_ok(
+        verified.evaluate_trigger(&corpus),
+        "evaluate opening trigger",
+    ) {
+        VerifiedTriggerVerdictV1::Fired(trigger) => trigger,
+        VerifiedTriggerVerdictV1::NotFired => panic!("opening trigger did not fire"),
+    };
+    (verified, corpus, *trigger, window.end_at)
+}
+
+fn seal_parametric_opening_projection(
+    projection: &ParametricClaimOpeningProjectionV1,
+    signer: &crate::crypto::Keypair,
+) -> chio_core_types::economic_continuity::EconomicStateBatchV1 {
+    let mut batch = projection.batch_template().clone().into_unsigned_batch();
+    require_ok(batch.seal(signer), "seal parametric opening batch");
+    batch
+}
+
+fn verified_parametric_opening_view(
+    mut heads: Vec<chio_core_types::economic_continuity::EconomicResourceHeadV1>,
+    mut absent_resource_keys: Vec<chio_core_types::economic_continuity::EconomicResourceKeyV1>,
+    checkpoint_sequence: u64,
+    checkpoint_digest: String,
+    observed_at: u64,
+    signer: &crate::crypto::Keypair,
+) -> (
+    chio_core_types::economic_continuity::EconomicStateAnchorPins,
+    chio_core_types::economic_continuity::VerifiedEconomicStateView,
+) {
+    use chio_core_types::economic_continuity::{
+        verify_economic_state_view, EconomicStateAnchorPins, EconomicStateAnchorViewV1,
+        CHIO_ECONOMIC_STATE_ANCHOR_VIEW_SCHEMA,
+    };
+
+    heads.sort_by(|left, right| left.resource_key.cmp(&right.resource_key));
+    absent_resource_keys.sort();
+    let pins = EconomicStateAnchorPins {
+        anchor_id: "parametric-anchor".to_string(),
+        namespace: "parametric-market".to_string(),
+        signer_key_id: "parametric-anchor-key".to_string(),
+        signer_key_epoch: 1,
+        signer_public_key: signer.public_key(),
+    };
+    let mut view = EconomicStateAnchorViewV1 {
+        schema: CHIO_ECONOMIC_STATE_ANCHOR_VIEW_SCHEMA.to_string(),
+        anchor_id: pins.anchor_id.clone(),
+        namespace: pins.namespace.clone(),
+        checkpoint_sequence,
+        checkpoint_digest,
+        heads_root: String::new(),
+        heads,
+        absent_resource_keys,
+        request_replays_root: String::new(),
+        request_replays: Vec::new(),
+        absent_request_keys: Vec::new(),
+        observed_at,
+        signer_key_id: pins.signer_key_id.clone(),
+        signer_key_epoch: pins.signer_key_epoch,
+        anchor_signature: String::new(),
+    };
+    require_ok(view.seal(signer), "seal parametric opening view");
+    let verified = require_ok(
+        verify_economic_state_view(view, &pins),
+        "verify parametric opening view",
+    );
+    (pins, verified)
+}
+
+#[test]
+fn parametric_opening_projects_two_direct_genesis_heads() {
+    use chio_core_types::economic_continuity::{
+        verify_economic_state_batch_advance, EconomicTransitionAuthorizationV1,
+        EconomicTransitionProofVerifier,
+    };
+
+    let (policy, corpus, trigger, opened_at) =
+        sample_parametric_opening(ParametricPayoutMode::Automatic);
+    let signer = crate::crypto::Keypair::from_seed(&[62; 32]);
+    let keys = vec![
+        parametric_trigger_resource_key(trigger.identity()),
+        parametric_claim_resource_key(trigger.identity()),
+    ];
+    let (pins, current) =
+        verified_parametric_opening_view(Vec::new(), keys, 7, "71".repeat(32), opened_at, &signer);
+    let projection = match require_ok(
+        prepare_parametric_claim_opening(&current, &policy, &corpus, &trigger, opened_at),
+        "project automatic opening",
+    ) {
+        ParametricClaimOpeningOutcomeV1::Projected(projection) => projection,
+        ParametricClaimOpeningOutcomeV1::Replay(_) => panic!("new opening was replayed"),
+    };
+    let unsigned = projection.batch_template().unsigned_batch();
+    assert!(unsigned.batch_id.is_empty());
+    assert!(unsigned.checkpoint_digest.is_empty());
+    assert!(unsigned.expected_heads_root.is_empty());
+    assert!(unsigned.next_heads_root.is_empty());
+    assert!(unsigned.anchor_signature.is_empty());
+    assert_eq!(
+        projection.state().trigger().signed_policy(),
+        policy.signed()
+    );
+    assert_eq!(
+        projection.state().trigger().evidence_manifest(),
+        corpus.manifest()
+    );
+    let batch = seal_parametric_opening_projection(&projection, &signer);
+
+    assert_eq!(projection.claim().state(), ParametricClaimStateV1::Ready);
+    assert_eq!(batch.transitions.len(), 2);
+    assert!(batch.effect_slots.is_empty());
+    assert!(batch.request_replays.is_empty());
+    assert!(batch.operation_id.is_none());
+    assert!(batch.transitions.iter().all(|transition| {
+        transition.expected_head_digest.is_none()
+            && transition.next_head.head_version == 1
+            && transition.next_head.resource_version == 1
+            && transition.next_head.lifecycle_fence == 1
+            && transition.next_head.trusted_clock_high_water == opened_at
+            && transition.next_head.predecessor_digest.is_none()
+            && transition.prepared_effect.is_none()
+            && transition.transition_proof_digest == projection.proof_digest()
+    }));
+    assert!(batch
+        .transitions
+        .windows(2)
+        .all(|pair| pair[0].resource_key < pair[1].resource_key));
+
+    let verifier = ParametricClaimOpeningBatchVerifier::new(projection.as_ref().clone());
+    assert_eq!(
+        require_ok(
+            verifier.verify_batch(&current, &batch),
+            "verify exact projected batch",
+        ),
+        vec![EconomicTransitionAuthorizationV1::Direct; 2]
+    );
+    require_ok(
+        verify_economic_state_batch_advance(&current, batch, &pins, &verifier),
+        "verify automatic opening advance",
+    );
+}
+
+#[test]
+fn parametric_contestable_opening_and_progressed_replay_are_retained() {
+    use chio_core_types::economic_continuity::EconomicContentV1;
+
+    let (policy, corpus, trigger, opened_at) =
+        sample_parametric_opening(ParametricPayoutMode::Contestable { window_seconds: 60 });
+    let signer = crate::crypto::Keypair::from_seed(&[63; 32]);
+    let keys = vec![
+        parametric_trigger_resource_key(trigger.identity()),
+        parametric_claim_resource_key(trigger.identity()),
+    ];
+    let (_, current) =
+        verified_parametric_opening_view(Vec::new(), keys, 9, "72".repeat(32), opened_at, &signer);
+    let projection = match require_ok(
+        prepare_parametric_claim_opening(&current, &policy, &corpus, &trigger, opened_at),
+        "project contestable opening",
+    ) {
+        ParametricClaimOpeningOutcomeV1::Projected(projection) => projection,
+        ParametricClaimOpeningOutcomeV1::Replay(_) => panic!("new opening was replayed"),
+    };
+    let batch = seal_parametric_opening_projection(&projection, &signer);
+    assert_eq!(
+        projection.claim().state(),
+        ParametricClaimStateV1::ContestOpen
+    );
+    assert_eq!(projection.claim().contest_deadline(), Some(opened_at + 60));
+
+    let mut committed_heads = batch
+        .transitions
+        .iter()
+        .map(|transition| transition.next_head.clone())
+        .collect::<Vec<_>>();
+    let claim_head = committed_heads
+        .iter_mut()
+        .find(|head| head.resource_key.resource_family == PARAMETRIC_CLAIM_RESOURCE_FAMILY)
+        .unwrap_or_else(|| panic!("opening batch omitted claim head"));
+    let predecessor_digest = require_ok(claim_head.digest(), "digest opening claim head");
+    let EconomicContentV1::Inline { value } = &mut claim_head.state else {
+        panic!("opening claim head did not retain inline state");
+    };
+    value["claim"]["state"] = serde_json::json!("contested");
+    value["claim"]["version"] = serde_json::json!(2);
+    value["claim"]["lifecycleFence"] = serde_json::json!(2);
+    value["claim"]["contestDigest"] = serde_json::json!("ab".repeat(32));
+    claim_head.head_version = 2;
+    claim_head.resource_version = 2;
+    claim_head.lifecycle_fence = 2;
+    claim_head.lifecycle_state = "contested".to_string();
+    claim_head.trusted_clock_high_water = opened_at + 10;
+    claim_head.predecessor_digest = Some(predecessor_digest);
+    claim_head.state_digest =
+        require_ok(claim_head.state.digest(), "digest progressed claim state");
+    let (_, committed) = verified_parametric_opening_view(
+        committed_heads,
+        Vec::new(),
+        batch.checkpoint_sequence,
+        batch.checkpoint_digest.clone(),
+        opened_at + 11,
+        &signer,
+    );
+    assert_eq!(
+        require_err(
+            prepare_parametric_claim_opening(
+                &committed,
+                &policy,
+                &corpus,
+                &trigger,
+                opened_at + 10,
+            ),
+            "reject stale opening retry",
+        ),
+        ParametricLifecycleError::StaleTrustedTime
+    );
+    let replay = require_ok(
+        prepare_parametric_claim_opening(&committed, &policy, &corpus, &trigger, opened_at + 12),
+        "detect progressed opening replay",
+    );
+    let ParametricClaimOpeningOutcomeV1::Replay(replay) = replay else {
+        panic!("progressed opening retry projected fresh state");
+    };
+    assert_eq!(replay.claim().state(), ParametricClaimStateV1::Contested);
+    assert_eq!(replay.claim().version(), 2);
+
+    let (_, future_poisoned) = verified_parametric_opening_view(
+        committed.view().heads.clone(),
+        Vec::new(),
+        committed.view().checkpoint_sequence,
+        committed.view().checkpoint_digest.clone(),
+        opened_at + 9,
+        &signer,
+    );
+    assert_eq!(
+        require_err(
+            prepare_parametric_claim_opening(
+                &future_poisoned,
+                &policy,
+                &corpus,
+                &trigger,
+                opened_at + 12,
+            ),
+            "reject head clock beyond signed view time",
+        ),
+        ParametricLifecycleError::StaleTrustedTime
+    );
+
+    let mut rewritten_heads = committed.view().heads.clone();
+    let rewritten_claim = rewritten_heads
+        .iter_mut()
+        .find(|head| head.resource_key.resource_family == PARAMETRIC_CLAIM_RESOURCE_FAMILY)
+        .unwrap_or_else(|| panic!("committed view omitted claim head"));
+    let EconomicContentV1::Inline { value } = &mut rewritten_claim.state else {
+        panic!("progressed claim head did not retain inline state");
+    };
+    value["claim"]["openedAt"] = serde_json::json!(opened_at + 1);
+    value["trustedOpenedAt"] = serde_json::json!(opened_at + 1);
+    rewritten_claim.state_digest = require_ok(
+        rewritten_claim.state.digest(),
+        "digest rewritten opening time",
+    );
+    let (_, rewritten) = verified_parametric_opening_view(
+        rewritten_heads,
+        Vec::new(),
+        committed.view().checkpoint_sequence,
+        committed.view().checkpoint_digest.clone(),
+        opened_at + 13,
+        &signer,
+    );
+    assert_eq!(
+        require_err(
+            prepare_parametric_claim_opening(
+                &rewritten,
+                &policy,
+                &corpus,
+                &trigger,
+                opened_at + 14,
+            ),
+            "reject rewritten immutable opening time",
+        ),
+        ParametricLifecycleError::Conflict
+    );
+}
+
+#[test]
+fn parametric_opening_replay_rejects_semantic_or_batch_drift() {
+    use chio_core_types::economic_continuity::{
+        EconomicContentV1, EconomicTransitionProofVerifier,
+    };
+
+    let (policy, corpus, trigger, opened_at) =
+        sample_parametric_opening(ParametricPayoutMode::Automatic);
+    let signer = crate::crypto::Keypair::from_seed(&[64; 32]);
+    let keys = vec![
+        parametric_trigger_resource_key(trigger.identity()),
+        parametric_claim_resource_key(trigger.identity()),
+    ];
+    let (_, current) =
+        verified_parametric_opening_view(Vec::new(), keys, 11, "73".repeat(32), opened_at, &signer);
+    let projection = match require_ok(
+        prepare_parametric_claim_opening(&current, &policy, &corpus, &trigger, opened_at),
+        "project opening for drift checks",
+    ) {
+        ParametricClaimOpeningOutcomeV1::Projected(projection) => projection,
+        ParametricClaimOpeningOutcomeV1::Replay(_) => panic!("new opening was replayed"),
+    };
+    let batch = seal_parametric_opening_projection(&projection, &signer);
+
+    for path in [
+        &["trigger", "magnitude", "value"][..],
+        &["claim", "payoutAmount", "units"][..],
+        &["claim", "beneficiaryId"][..],
+        &["claim", "openedAt"][..],
+        &["trustedOpenedAt"][..],
+        &[
+            "trigger",
+            "signedPolicy",
+            "body",
+            "evaluatorAuthority",
+            "authorityId",
+        ][..],
+    ] {
+        let mut heads = batch
+            .transitions
+            .iter()
+            .map(|transition| transition.next_head.clone())
+            .collect::<Vec<_>>();
+        for head in &mut heads {
+            let EconomicContentV1::Inline { value } = &mut head.state else {
+                panic!("opening head did not retain inline state");
+            };
+            let mut target = value;
+            for key in &path[..path.len() - 1] {
+                target = &mut target[*key];
+            }
+            let leaf = path[path.len() - 1];
+            target[leaf] = match leaf {
+                "units" | "value" => serde_json::json!(999_999),
+                "openedAt" | "trustedOpenedAt" => serde_json::json!(opened_at + 1),
+                _ => serde_json::json!("substituted-authority"),
+            };
+            head.state_digest = require_ok(head.state.digest(), "digest tampered state");
+        }
+        let (_, tampered) = verified_parametric_opening_view(
+            heads,
+            Vec::new(),
+            batch.checkpoint_sequence,
+            batch.checkpoint_digest.clone(),
+            opened_at + 1,
+            &signer,
+        );
+        assert_eq!(
+            require_err(
+                prepare_parametric_claim_opening(
+                    &tampered,
+                    &policy,
+                    &corpus,
+                    &trigger,
+                    opened_at + 2,
+                ),
+                "reject semantic replay drift",
+            ),
+            ParametricLifecycleError::Conflict
+        );
+    }
+
+    let mut mismatched_heads = batch
+        .transitions
+        .iter()
+        .map(|transition| transition.next_head.clone())
+        .collect::<Vec<_>>();
+    mismatched_heads[0].lifecycle_state = "fired".to_string();
+    let (_, mismatched) = verified_parametric_opening_view(
+        mismatched_heads,
+        Vec::new(),
+        batch.checkpoint_sequence,
+        batch.checkpoint_digest.clone(),
+        opened_at + 1,
+        &signer,
+    );
+    assert_eq!(
+        require_err(
+            prepare_parametric_claim_opening(
+                &mismatched,
+                &policy,
+                &corpus,
+                &trigger,
+                opened_at + 2,
+            ),
+            "reject mismatched trigger and claim heads",
+        ),
+        ParametricLifecycleError::Conflict
+    );
+
+    let verifier = ParametricClaimOpeningBatchVerifier::new(projection.as_ref().clone());
+    let mut changed_batch = batch;
+    changed_batch.issued_at += 1;
+    require_ok(changed_batch.seal(&signer), "reseal changed opening batch");
+    assert!(verifier.verify_batch(&current, &changed_batch).is_err());
 }

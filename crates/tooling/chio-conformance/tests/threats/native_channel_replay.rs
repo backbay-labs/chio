@@ -44,6 +44,7 @@ fn current_unix_time() -> i64 {
 fn sample_binding() -> NonceBinding {
     NonceBinding {
         subject_id: "subject-attacker".to_string(),
+        request_id: "request-replay".to_string(),
         capability_id: "cap-replay".to_string(),
         tool_server: "fs".to_string(),
         tool_name: "read_file".to_string(),

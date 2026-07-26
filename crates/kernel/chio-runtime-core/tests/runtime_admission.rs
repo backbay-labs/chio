@@ -95,6 +95,7 @@ fn capability(capability_id: &str) -> Result<CapabilityToken, Box<dyn std::error
             issued_at: 1_800_000_000,
             expires_at: 1_800_003_600,
             delegation_chain: Vec::new(),
+            aggregate_invocation_budget: None,
         },
         &issuer,
     )?)
@@ -1062,8 +1063,12 @@ fn chio_runtime_hook_releases_chio_native_reserved_state_after_kernel_abort(
                     "bundleSha256": bundle_hash
                 }
             })),
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -1142,8 +1147,12 @@ fn chio_runtime_hook_denies_swarm_context_without_required_evidence_refs(
                     }
                 }
             })),
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -1211,8 +1220,12 @@ fn chio_runtime_hook_denies_stale_swarm_continuation_before_dispatch(
                 },
                 "chioSwarm": swarm_runtime_context(&swarm_bundle)?
             })),
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -2118,6 +2131,10 @@ fn treaty_runtime_fixture_with_policy(
         bilateral_invocation_binding_sha256
     );
     let bilateral_invocation_sha256 = bilateral_invocation_binding_sha256;
+    let dsse_consistency_model = chio_runtime_core::bilateral_dsse_consistency_model(
+        &bilateral_invocation.consistency_model,
+    )?
+    .to_string();
     let bilateral_dsse = sign_chio_bilateral_dsse_envelope(
         &receipt,
         &signer_a,
@@ -2143,7 +2160,7 @@ fn treaty_runtime_fixture_with_policy(
                 },
             }),
             consistency_anchor: Some("anchor-live".to_string()),
-            consistency_model: Some(bilateral_invocation.consistency_model.clone()),
+            consistency_model: Some(dsse_consistency_model.clone()),
             cross_org_visibility: Some("treaty_only".to_string()),
             treaty_binding_ref: Some(TreatyBindingRef {
                 treaty_id: bilateral_invocation.treaty_id.clone(),
@@ -2153,7 +2170,7 @@ fn treaty_runtime_fixture_with_policy(
                 continuation_sha256: continuation_sha256.clone(),
                 lineage_bundle_sha256: lineage_bundle_sha256.clone(),
                 action_class_id: bilateral_invocation.action_class_id.clone(),
-                consistency_model: bilateral_invocation.consistency_model.clone(),
+                consistency_model: dsse_consistency_model,
                 request_sha256: bilateral_invocation.request_sha256.clone(),
                 outcome_sha256: bilateral_invocation.outcome_sha256.clone(),
                 local_receipt_sha256: bilateral_invocation.local_receipt_sha256.clone(),
@@ -2322,6 +2339,9 @@ fn treaty_runtime_request(
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: Some("kernel.buyer".to_string()),
     };
@@ -2343,6 +2363,7 @@ fn treaty_runtime_request(
             },
             "chioTreaty": treaty_context
         })),
+        body: Default::default(),
     });
     Ok(request)
 }
@@ -2380,8 +2401,12 @@ fn chio_swarm_runtime_request(
                 },
                 "chioSwarm": swarm_context
             })),
+            body: Default::default(),
         }),
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     })

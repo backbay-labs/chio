@@ -10,6 +10,600 @@ impl BudgetStore for SqliteBudgetStore {
         self.try_increment_with_event_id(capability_id, grant_index, max_invocations, None)
     }
 
+    fn authorize_budget_hold(
+        &self,
+        request: BudgetAuthorizeHoldRequest,
+    ) -> Result<BudgetAuthorizeHoldDecision, BudgetStoreError> {
+        request.validate()?;
+        if !request.invocation_quotas.is_empty()
+            || request.cumulative_approval.is_some()
+            || request.admission_binding.is_some()
+        {
+            return self.authorize_composite_hold(request);
+        }
+        self.require_standalone_mutation("unbound authorization")?;
+        self.authorize_budget_hold_atomic(&request)
+    }
+
+    fn capture_invocation_reservations(
+        &self,
+        request: BudgetCaptureInvocationRequest,
+    ) -> Result<BudgetInvocationCaptureDecision, BudgetStoreError> {
+        validate_budget_grant_index(request.grant_index)?;
+        request.validate()?;
+        if self.is_structured_hold(&request.hold_id)? {
+            return self.capture_composite_invocation(request);
+        }
+        self.require_standalone_mutation("unbound invocation capture")?;
+        if request.trusted_time.is_some() {
+            return Err(BudgetStoreError::Invariant(
+                "trusted capture time is not supported by the sqlite budget store".to_string(),
+            ));
+        }
+        if let Some(authority) = request.authority.as_ref() {
+            budget_u64_to_sqlite(authority.lease_epoch, "lease_epoch")?;
+        }
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        Self::reject_structured_hold_from_legacy_writer(
+            &transaction,
+            Some(&request.hold_id),
+            "invocation capture",
+        )?;
+
+        let existing_event =
+            SqliteBudgetStore::load_mutation_event(&transaction, &request.event_id)?;
+        let existing = SqliteBudgetStore::existing_event_allowed(
+            &transaction,
+            Some(&request.event_id),
+            BudgetMutationKind::CaptureInvocation,
+            &request.capability_id,
+            request.grant_index,
+            Some(&request.hold_id),
+            request.authority.as_ref(),
+            existing_event
+                .as_ref()
+                .map_or(0, |event| event.exposure_units),
+            0,
+            None,
+            None,
+            None,
+        )?;
+        let usage = transaction
+            .query_row(
+                r#"
+                SELECT seq, invocation_count, total_cost_exposed, total_cost_realized_spend
+                FROM capability_grant_budgets
+                WHERE capability_id = ?1 AND grant_index = ?2
+                "#,
+                params![&request.capability_id, request.grant_index as i64],
+                |row| {
+                    Ok((
+                        budget_u64_from_row(row, 0, "seq")?,
+                        budget_u32_from_row(row, 1, "invocation_count")?,
+                        budget_u64_from_row(row, 2, "total_cost_exposed")?,
+                        budget_u64_from_row(row, 3, "total_cost_realized_spend")?,
+                    ))
+                },
+            )
+            .optional()?
+            .ok_or_else(|| BudgetStoreError::Invariant("missing charged budget row".to_string()))?;
+        let mutation = |event_id: String,
+                        event_seq,
+                        authority: Option<BudgetEventAuthority>,
+                        invocation_count_after,
+                        total_cost_exposed_after,
+                        total_cost_realized_spend_after,
+                        exposure_units|
+         -> Result<BudgetHoldMutationDecision, BudgetStoreError> {
+            Ok(BudgetHoldMutationDecision {
+                hold_id: Some(request.hold_id.clone()),
+                admission_binding: None,
+                exposure_units,
+                realized_spend_units: 0,
+                committed_cost_units_after: checked_committed_cost_units(
+                    total_cost_exposed_after,
+                    total_cost_realized_spend_after,
+                )?,
+                invocation_count_after,
+                invocation_quota_usages: Vec::new(),
+                cumulative_approval: None,
+                invocation_state: BudgetInvocationState::Captured,
+                monetary_state: if exposure_units == 0 {
+                    BudgetMonetaryState::None
+                } else {
+                    BudgetMonetaryState::Exposed
+                },
+                metadata: BudgetCommitMetadata {
+                    authority,
+                    guarantee_level: self.budget_guarantee_level(),
+                    budget_profile: self.budget_authority_profile(),
+                    metering_profile: self.budget_metering_profile(),
+                    budget_commit_index: Some(event_seq),
+                    event_id: Some(event_id),
+                    recorded_at_unix_seconds: None,
+                },
+            })
+        };
+
+        if existing.is_some() {
+            let hold =
+                SqliteBudgetStore::load_hold(&transaction, &request.hold_id)?.ok_or_else(|| {
+                    BudgetStoreError::Invariant(format!(
+                        "captured budget hold `{}` disappeared",
+                        request.hold_id
+                    ))
+                })?;
+            if !hold.invocation_captured {
+                transaction.rollback()?;
+                return Err(BudgetStoreError::Invariant(format!(
+                    "budget hold `{}` invocation capture is no longer current",
+                    request.hold_id
+                )));
+            }
+            let original =
+                SqliteBudgetStore::load_current_capture_event(&transaction, &request.hold_id)?;
+            if original.event_id != request.event_id {
+                transaction.rollback()?;
+                return Err(BudgetStoreError::Invariant(format!(
+                    "budget hold `{}` invocation capture is no longer current",
+                    request.hold_id
+                )));
+            }
+            transaction.rollback()?;
+            return Ok(BudgetInvocationCaptureDecision::AlreadyCaptured(mutation(
+                original.event_id,
+                original.event_seq,
+                original.authority,
+                original.invocation_count_after,
+                original.total_cost_exposed_after,
+                original.total_cost_realized_spend_after,
+                original.exposure_units,
+            )?));
+        }
+
+        let hold = SqliteBudgetStore::ensure_open_hold(
+            &transaction,
+            &request.hold_id,
+            &request.capability_id,
+            request.grant_index,
+        )?;
+        SqliteBudgetStore::validate_hold_authority(
+            &request.hold_id,
+            hold.authority.as_ref(),
+            request.authority.as_ref(),
+        )?;
+        if !hold.invocation_count_debited {
+            transaction.rollback()?;
+            return Err(BudgetStoreError::Invariant(format!(
+                "budget hold `{}` has no invocation reservation to capture",
+                request.hold_id
+            )));
+        }
+        if hold.invocation_captured {
+            let original =
+                SqliteBudgetStore::load_current_capture_event(&transaction, &request.hold_id)?;
+            if original.event_id != request.event_id {
+                transaction.rollback()?;
+                return Err(BudgetStoreError::Invariant(format!(
+                    "budget hold `{}` invocation was captured by a different event",
+                    request.hold_id
+                )));
+            }
+            transaction.rollback()?;
+            return Ok(BudgetInvocationCaptureDecision::AlreadyCaptured(mutation(
+                original.event_id,
+                original.event_seq,
+                original.authority,
+                original.invocation_count_after,
+                original.total_cost_exposed_after,
+                original.total_cost_realized_spend_after,
+                original.exposure_units,
+            )?));
+        }
+
+        let event_seq = allocate_budget_replication_seq(&transaction)?;
+        let changed = transaction.execute(
+            r#"
+            UPDATE budget_authorization_holds
+            SET invocation_captured = 1,
+                disposition = CASE
+                    WHEN remaining_exposure_units = 0 THEN 'reconciled'
+                    ELSE disposition
+                END,
+                updated_at = ?2
+            WHERE hold_id = ?1
+              AND invocation_count_debited = 1
+              AND invocation_captured = 0
+            "#,
+            params![&request.hold_id, unix_now()],
+        )?;
+        if changed != 1 {
+            transaction.rollback()?;
+            return Err(BudgetStoreError::Invariant(format!(
+                "budget hold `{}` invocation capture compare-and-set failed",
+                request.hold_id
+            )));
+        }
+
+        SqliteBudgetStore::append_mutation_event(
+            &transaction,
+            Some(&request.event_id),
+            Some(&request.hold_id),
+            request.authority.as_ref(),
+            &request.capability_id,
+            request.grant_index,
+            BudgetMutationKind::CaptureInvocation,
+            Some(true),
+            event_seq,
+            Some(usage.0),
+            hold.remaining_exposure_units,
+            0,
+            None,
+            None,
+            None,
+            usage.1,
+            usage.2,
+            usage.3,
+        )?;
+        transaction.commit()?;
+        Ok(BudgetInvocationCaptureDecision::Captured(mutation(
+            request.event_id,
+            event_seq,
+            request.authority,
+            usage.1,
+            usage.2,
+            usage.3,
+            hold.remaining_exposure_units,
+        )?))
+    }
+
+    fn authorize_cumulative_approval(
+        &self,
+        request: BudgetAuthorizeCumulativeApprovalRequest,
+    ) -> Result<BudgetCumulativeApprovalAuthorizationDecision, BudgetStoreError> {
+        self.authorize_composite_cumulative_approval(request)
+    }
+
+    fn cancel_captured_before_dispatch(
+        &self,
+        request: BudgetCancelCapturedBeforeDispatchRequest,
+    ) -> Result<BudgetCapturedBeforeDispatchCancellationDecision, BudgetStoreError> {
+        validate_budget_grant_index(request.grant_index)?;
+        request.validate()?;
+        if self.is_structured_hold(&request.hold_id)? {
+            return self.cancel_captured_composite_hold(request);
+        }
+        self.require_standalone_mutation("captured invocation cancellation")?;
+        if let Some(authority) = request.authority.as_ref() {
+            budget_u64_to_sqlite(authority.lease_epoch, "lease_epoch")?;
+        }
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        Self::reject_structured_hold_from_legacy_writer(
+            &transaction,
+            Some(&request.hold_id),
+            "captured invocation cancellation",
+        )?;
+
+        if let Some(existing) =
+            SqliteBudgetStore::load_mutation_event(&transaction, &request.event_id)?
+        {
+            SqliteBudgetStore::validate_replay_authority(
+                &request.event_id,
+                existing.authority.as_ref(),
+                request.authority.as_ref(),
+            )?;
+            let matches = existing.kind == BudgetMutationKind::CancelCapturedBeforeDispatch
+                && existing.hold_id.as_deref() == Some(request.hold_id.as_str())
+                && existing.capability_id == request.capability_id
+                && existing.grant_index == request.grant_index as u32
+                && existing.allowed == Some(true)
+                && existing.realized_spend_units == 0
+                && existing.max_invocations.is_none()
+                && existing.max_cost_per_invocation.is_none()
+                && existing.max_total_cost_units.is_none();
+            if !matches {
+                transaction.rollback()?;
+                return Err(BudgetStoreError::Invariant(format!(
+                    "budget event_id `{}` was reused for a different mutation",
+                    request.event_id
+                )));
+            }
+            let mutation = BudgetHoldMutationDecision {
+                hold_id: Some(request.hold_id),
+                admission_binding: None,
+                exposure_units: existing.exposure_units,
+                realized_spend_units: 0,
+                committed_cost_units_after: checked_committed_cost_units(
+                    existing.total_cost_exposed_after,
+                    existing.total_cost_realized_spend_after,
+                )?,
+                invocation_count_after: existing.invocation_count_after,
+                invocation_quota_usages: Vec::new(),
+                cumulative_approval: None,
+                invocation_state: BudgetInvocationState::Reversed,
+                monetary_state: if existing.exposure_units == 0 {
+                    BudgetMonetaryState::None
+                } else {
+                    BudgetMonetaryState::Reversed
+                },
+                metadata: BudgetCommitMetadata {
+                    authority: existing.authority,
+                    guarantee_level: self.budget_guarantee_level(),
+                    budget_profile: self.budget_authority_profile(),
+                    metering_profile: self.budget_metering_profile(),
+                    budget_commit_index: Some(existing.event_seq),
+                    event_id: Some(existing.event_id),
+                    recorded_at_unix_seconds: u64::try_from(existing.recorded_at).ok(),
+                },
+            };
+            transaction.rollback()?;
+            return Ok(
+                BudgetCapturedBeforeDispatchCancellationDecision::AlreadyCancelled(mutation),
+            );
+        }
+
+        let hold = SqliteBudgetStore::ensure_open_hold(
+            &transaction,
+            &request.hold_id,
+            &request.capability_id,
+            request.grant_index,
+        )?;
+        SqliteBudgetStore::validate_hold_authority(
+            &request.hold_id,
+            hold.authority.as_ref(),
+            request.authority.as_ref(),
+        )?;
+        if !hold.invocation_count_debited || !hold.invocation_captured {
+            transaction.rollback()?;
+            return Err(BudgetStoreError::Invariant(format!(
+                "budget hold `{}` has no captured invocation to cancel before dispatch",
+                request.hold_id
+            )));
+        }
+        let capture =
+            SqliteBudgetStore::load_current_capture_event(&transaction, &request.hold_id)?;
+        if capture.capability_id != request.capability_id
+            || capture.grant_index != request.grant_index as u32
+            || capture.allowed != Some(true)
+        {
+            transaction.rollback()?;
+            return Err(BudgetStoreError::Invariant(format!(
+                "captured budget hold `{}` has mismatched capture evidence",
+                request.hold_id
+            )));
+        }
+
+        let current = transaction
+            .query_row(
+                r#"
+                SELECT invocation_count, total_cost_exposed, total_cost_realized_spend
+                FROM capability_grant_budgets
+                WHERE capability_id = ?1 AND grant_index = ?2
+                "#,
+                params![&request.capability_id, request.grant_index as i64],
+                |row| {
+                    Ok((
+                        budget_u32_from_row(row, 0, "invocation_count")?,
+                        budget_u64_from_row(row, 1, "total_cost_exposed")?,
+                        budget_u64_from_row(row, 2, "total_cost_realized_spend")?,
+                    ))
+                },
+            )
+            .optional()?
+            .ok_or_else(|| BudgetStoreError::Invariant("missing charged budget row".to_string()))?;
+        if hold.remaining_exposure_units != hold.authorized_exposure_units
+            || current.0 == 0
+            || current.1 < hold.authorized_exposure_units
+        {
+            transaction.rollback()?;
+            return Err(BudgetStoreError::Invariant(format!(
+                "budget hold `{}` does not match captured-before-dispatch cancellation",
+                request.hold_id
+            )));
+        }
+
+        let total_cost_exposed_after = current.1 - hold.authorized_exposure_units;
+        let event_seq = allocate_budget_replication_seq(&transaction)?;
+        transaction.execute(
+            r#"
+            UPDATE capability_grant_budgets
+            SET invocation_count = ?3,
+                updated_at = ?4,
+                seq = ?5,
+                total_cost_exposed = ?6
+            WHERE capability_id = ?1 AND grant_index = ?2
+            "#,
+            params![
+                &request.capability_id,
+                request.grant_index as i64,
+                current.0 - 1,
+                unix_now(),
+                budget_u64_to_sqlite(event_seq, "seq")?,
+                budget_u64_to_sqlite(total_cost_exposed_after, "total_cost_exposed")?,
+            ],
+        )?;
+        SqliteBudgetStore::update_hold(
+            &transaction,
+            &request.hold_id,
+            0,
+            HoldDisposition::Reversed,
+            request.authority.as_ref().or(hold.authority.as_ref()),
+        )?;
+        transaction.execute(
+            "UPDATE budget_authorization_holds SET invocation_captured = 0 WHERE hold_id = ?1",
+            params![&request.hold_id],
+        )?;
+        SqliteBudgetStore::append_mutation_event(
+            &transaction,
+            Some(&request.event_id),
+            Some(&request.hold_id),
+            request.authority.as_ref(),
+            &request.capability_id,
+            request.grant_index,
+            BudgetMutationKind::CancelCapturedBeforeDispatch,
+            Some(true),
+            event_seq,
+            Some(event_seq),
+            hold.authorized_exposure_units,
+            0,
+            None,
+            None,
+            None,
+            current.0 - 1,
+            total_cost_exposed_after,
+            current.2,
+        )?;
+        transaction.commit()?;
+
+        Ok(BudgetCapturedBeforeDispatchCancellationDecision::Cancelled(
+            BudgetHoldMutationDecision {
+                hold_id: Some(request.hold_id),
+                admission_binding: None,
+                exposure_units: hold.authorized_exposure_units,
+                realized_spend_units: 0,
+                committed_cost_units_after: checked_committed_cost_units(
+                    total_cost_exposed_after,
+                    current.2,
+                )?,
+                invocation_count_after: current.0 - 1,
+                invocation_quota_usages: Vec::new(),
+                cumulative_approval: None,
+                invocation_state: BudgetInvocationState::Reversed,
+                monetary_state: if hold.authorized_exposure_units == 0 {
+                    BudgetMonetaryState::None
+                } else {
+                    BudgetMonetaryState::Reversed
+                },
+                metadata: BudgetCommitMetadata {
+                    authority: request.authority,
+                    guarantee_level: self.budget_guarantee_level(),
+                    budget_profile: self.budget_authority_profile(),
+                    metering_profile: self.budget_metering_profile(),
+                    budget_commit_index: Some(event_seq),
+                    event_id: Some(request.event_id),
+                    recorded_at_unix_seconds: None,
+                },
+            },
+        ))
+    }
+
+    fn release_budget_hold(
+        &self,
+        request: BudgetReleaseHoldRequest,
+    ) -> Result<BudgetReleaseHoldDecision, BudgetStoreError> {
+        request.validate()?;
+        let hold_id = request.hold_id.as_deref().ok_or_else(|| {
+            BudgetStoreError::Invariant(
+                "sqlite rich budget release requires a durable hold identity".to_string(),
+            )
+        })?;
+        let event_id = request.event_id.as_deref().ok_or_else(|| {
+            BudgetStoreError::Invariant(
+                "sqlite rich budget release requires a durable event identity".to_string(),
+            )
+        })?;
+        if self.is_structured_hold(hold_id)? {
+            return self.release_composite_hold(request);
+        }
+        self.require_standalone_mutation("legacy exposure release")?;
+        self.reduce_charge_cost_with_ids_and_authority(
+            &request.capability_id,
+            request.grant_index,
+            request.released_exposure_units,
+            Some(hold_id),
+            Some(event_id),
+            request.authority.as_ref(),
+        )?;
+        recorded_sqlite_hold_mutation(self, hold_id, event_id, BudgetMutationKind::ReleaseExposure)
+    }
+
+    fn reverse_budget_hold(
+        &self,
+        request: BudgetReverseHoldRequest,
+    ) -> Result<BudgetReverseHoldDecision, BudgetStoreError> {
+        request.validate()?;
+        let hold_id = request.hold_id.as_deref().ok_or_else(|| {
+            BudgetStoreError::Invariant(
+                "sqlite rich budget reversal requires a durable hold identity".to_string(),
+            )
+        })?;
+        let event_id = request.event_id.as_deref().ok_or_else(|| {
+            BudgetStoreError::Invariant(
+                "sqlite rich budget reversal requires a durable event identity".to_string(),
+            )
+        })?;
+        if self.is_structured_hold(hold_id)? {
+            return self.reverse_composite_hold(request);
+        }
+        self.require_standalone_mutation("legacy hold reversal")?;
+        if request.expected_cumulative_approval_state.is_some() {
+            return Err(BudgetStoreError::Invariant(
+                "legacy sqlite budget holds do not support cumulative approval state fencing"
+                    .to_string(),
+            ));
+        }
+        self.reverse_charge_cost_with_ids_and_authority(
+            &request.capability_id,
+            request.grant_index,
+            request.reversed_exposure_units,
+            Some(hold_id),
+            Some(event_id),
+            request.authority.as_ref(),
+        )?;
+        recorded_sqlite_hold_mutation(self, hold_id, event_id, BudgetMutationKind::ReverseExposure)
+    }
+
+    fn reconcile_budget_hold(
+        &self,
+        request: BudgetReconcileHoldRequest,
+    ) -> Result<BudgetReconcileHoldDecision, BudgetStoreError> {
+        request.validate()?;
+        let hold_id = request.hold_id.as_deref().ok_or_else(|| {
+            BudgetStoreError::Invariant(
+                "sqlite rich budget reconciliation requires a durable hold identity".to_string(),
+            )
+        })?;
+        let event_id = request.event_id.as_deref().ok_or_else(|| {
+            BudgetStoreError::Invariant(
+                "sqlite rich budget reconciliation requires a durable event identity".to_string(),
+            )
+        })?;
+        if self.is_structured_hold(hold_id)? {
+            return self.reconcile_composite_hold(request);
+        }
+        self.require_standalone_mutation("legacy spend reconciliation")?;
+        self.settle_charge_cost_with_ids_and_authority(
+            &request.capability_id,
+            request.grant_index,
+            request.exposed_cost_units,
+            request.realized_spend_units,
+            Some(hold_id),
+            Some(event_id),
+            request.authority.as_ref(),
+        )?;
+        recorded_sqlite_hold_mutation(self, hold_id, event_id, BudgetMutationKind::ReconcileSpend)
+    }
+
+    fn capture_budget_hold(
+        &self,
+        request: BudgetCaptureHoldRequest,
+    ) -> Result<BudgetCaptureHoldDecision, BudgetStoreError> {
+        request.validate()?;
+        let hold_id = request.hold_id.as_deref().ok_or_else(|| {
+            BudgetStoreError::Invariant(
+                "sqlite monetary capture requires a durable hold identity".to_string(),
+            )
+        })?;
+        if !self.is_structured_hold(hold_id)? {
+            return Err(BudgetStoreError::Invariant(
+                "legacy sqlite budget holds do not support distinct monetary capture".to_string(),
+            ));
+        }
+        self.capture_composite_hold(request)
+    }
+
     fn try_charge_cost(
         &self,
         capability_id: &str,
@@ -67,417 +661,26 @@ impl BudgetStore for SqliteBudgetStore {
         event_id: Option<&str>,
         authority: Option<&BudgetEventAuthority>,
     ) -> Result<bool, BudgetStoreError> {
-        self.charge_cost_with_optional_journal(
-            capability_id,
+        self.require_standalone_mutation("unbound charge")?;
+        validate_budget_grant_index(grant_index)?;
+        let request = BudgetAuthorizeHoldRequest {
+            capability_id: capability_id.to_string(),
             grant_index,
             max_invocations,
-            cost_units,
+            invocation_quotas: Vec::new(),
+            cumulative_approval: None,
+            admission_binding: None,
+            requested_exposure_units: cost_units,
             max_cost_per_invocation,
             max_total_cost_units,
-            hold_id,
-            event_id,
-            authority,
-            None,
-        )
-        .map(|outcome| outcome.allowed)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn try_charge_cost_with_ids_and_authority_outcome(
-        &self,
-        capability_id: &str,
-        grant_index: usize,
-        max_invocations: Option<u32>,
-        cost_units: u64,
-        max_cost_per_invocation: Option<u64>,
-        max_total_cost_units: Option<u64>,
-        hold_id: Option<&str>,
-        event_id: Option<&str>,
-        authority: Option<&BudgetEventAuthority>,
-    ) -> Result<BudgetAuthorizeMutationOutcome, BudgetStoreError> {
-        self.charge_cost_with_optional_journal(
-            capability_id,
-            grant_index,
-            max_invocations,
-            cost_units,
-            max_cost_per_invocation,
-            max_total_cost_units,
-            hold_id,
-            event_id,
-            authority,
-            None,
-        )
-    }
-
-    fn list_open_holds_older_than(
-        &self,
-        older_than_unix_ms: u64,
-        limit: usize,
-    ) -> Result<Vec<chio_kernel::budget_store::OpenHoldSummary>, BudgetStoreError> {
-        // Hold rows stamp created_at in unix seconds; the trait API speaks
-        // milliseconds, so convert at the boundary.
-        let cutoff_secs = (older_than_unix_ms / 1_000).min(i64::MAX as u64) as i64;
-        let connection = self.connection()?;
-        let mut statement = connection.prepare(
-            "SELECT hold_id, capability_id, grant_index, remaining_exposure_units, created_at \
-             FROM budget_authorization_holds \
-             WHERE disposition = 'open' AND created_at <= ?1 \
-             ORDER BY created_at ASC LIMIT ?2",
-        )?;
-        let rows = statement.query_map(
-            params![cutoff_secs, limit.min(i64::MAX as usize) as i64],
-            |row| {
-                Ok(chio_kernel::budget_store::OpenHoldSummary {
-                    hold_id: row.get::<_, String>(0)?,
-                    capability_id: row.get::<_, String>(1)?,
-                    grant_index: row.get::<_, i64>(2)?.clamp(0, i64::from(u32::MAX)) as u32,
-                    remaining_exposure_units: row.get::<_, i64>(3)?.max(0) as u64,
-                    created_at_unix_ms: (row.get::<_, i64>(4)?.max(0) as u64).saturating_mul(1_000),
-                })
-            },
-        )?;
-        let mut out = Vec::new();
-        for row in rows {
-            out.push(row?);
-        }
-        Ok(out)
-    }
-
-    fn expire_open_hold(&self, hold_id: &str) -> Result<bool, BudgetStoreError> {
-        let mut connection = self.connection()?;
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        // Read the open hold's remainder and owning grant inside the
-        // transaction; a non-open or absent hold is an idempotent no-op.
-        let row: Option<(String, i64, i64, bool)> = transaction
-            .query_row(
-                "SELECT capability_id, grant_index, remaining_exposure_units, \
-                        invocation_count_debited \
-                 FROM budget_authorization_holds WHERE hold_id = ?1 AND disposition = 'open'",
-                params![hold_id],
-                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
-            )
-            .optional()?;
-        let Some((capability_id, grant_index, remaining, invocation_count_debited)) = row else {
-            return Ok(false);
+            hold_id: hold_id.map(ToOwned::to_owned),
+            event_id: event_id.map(ToOwned::to_owned),
+            authority: authority.cloned(),
         };
-        let remaining = remaining.max(0);
-        let now = unix_now();
-        // Release capacity by exactly the remainder and return the hold's
-        // invocation debit, mirroring the normal reverse path: the call
-        // never completed, so it must not permanently consume a
-        // max_invocations slot. Never touch realized spend: an expired hold
-        // returns capacity without recording spend.
-        transaction.execute(
-            "UPDATE capability_grant_budgets \
-             SET total_cost_exposed = MAX(total_cost_exposed - ?1, 0), \
-                 invocation_count = CASE WHEN ?5 THEN MAX(invocation_count - 1, 0) \
-                                         ELSE invocation_count END, \
-                 updated_at = ?2 \
-             WHERE capability_id = ?3 AND grant_index = ?4",
-            params![
-                remaining,
-                now,
-                capability_id,
-                grant_index,
-                invocation_count_debited
-            ],
-        )?;
-        transaction.execute(
-            "UPDATE budget_authorization_holds \
-             SET disposition = 'expired', remaining_exposure_units = 0, updated_at = ?1 \
-             WHERE hold_id = ?2",
-            params![now, hold_id],
-        )?;
-        let usage: Option<(u64, u32, u64, u64)> = transaction
-            .query_row(
-                "SELECT seq, invocation_count, total_cost_exposed, total_cost_realized_spend \
-                 FROM capability_grant_budgets WHERE capability_id = ?1 AND grant_index = ?2",
-                params![capability_id, grant_index],
-                |row| {
-                    Ok((
-                        budget_u64_from_row(row, 0, "seq")?,
-                        budget_u32_from_row(row, 1, "invocation_count")?,
-                        budget_u64_from_row(row, 2, "total_cost_exposed")?,
-                        budget_u64_from_row(row, 3, "total_cost_realized_spend")?,
-                    ))
-                },
-            )
-            .optional()?;
-        let (usage_seq, invocation_count_after, exposed_after, realized_after) =
-            usage.unwrap_or((0, 0, 0, 0));
-        let event_seq = allocate_budget_replication_seq(&transaction)?;
-        SqliteBudgetStore::append_mutation_event(
-            &transaction,
-            Some(&format!("{hold_id}:expire")),
-            Some(hold_id),
-            None,
-            &capability_id,
-            grant_index.max(0) as usize,
-            BudgetMutationKind::ExpireHold,
-            Some(true),
-            event_seq,
-            Some(usage_seq),
-            remaining as u64,
-            0,
-            None,
-            None,
-            None,
-            invocation_count_after,
-            exposed_after,
-            realized_after,
-        )?;
-        transaction.commit()?;
-        Ok(true)
-    }
-
-    fn open_hold_count(&self) -> Result<u64, BudgetStoreError> {
-        let connection = self.connection()?;
-        let count: i64 = connection.query_row(
-            "SELECT COUNT(*) FROM budget_authorization_holds WHERE disposition = 'open'",
-            [],
-            |row| row.get(0),
-        )?;
-        Ok(count.max(0) as u64)
-    }
-
-    fn authorize_budget_hold(
-        &self,
-        request: BudgetAuthorizeHoldRequest,
-    ) -> Result<BudgetAuthorizeHoldDecision, BudgetStoreError> {
-        // Same-transaction hold + journal write: the optional journal row
-        // joins the single Immediate transaction the charge path opens, so
-        // the money path's recoverable record commits exactly when the hold
-        // does.
-        let outcome = self.charge_cost_with_optional_journal(
-            &request.capability_id,
-            request.grant_index,
-            request.max_invocations,
-            request.requested_exposure_units,
-            request.max_cost_per_invocation,
-            request.max_total_cost_units,
-            request.hold_id.as_deref(),
-            request.event_id.as_deref(),
-            request.authority.as_ref(),
-            request.payment_journal.as_ref(),
-        )?;
-        let allowed = outcome.allowed;
-        let usage = self.get_usage(&request.capability_id, request.grant_index)?;
-        let committed_cost_units_after = usage
-            .as_ref()
-            .map(BudgetUsageRecord::committed_cost_units)
-            .transpose()?
-            .unwrap_or(0);
-        let invocation_count_after = usage.as_ref().map_or(0, |usage| usage.invocation_count);
-        let mut metadata = chio_kernel::budget_store::budget_commit_metadata(
-            self,
-            request.authority,
-            allowed
-                .then(|| usage.as_ref().map(|usage| usage.seq))
-                .flatten(),
-            request.event_id,
-        );
-        metadata.replayed_event = outcome.replayed_event;
-
-        if allowed {
-            Ok(BudgetAuthorizeHoldDecision::Authorized(
-                AuthorizedBudgetHold {
-                    hold_id: request.hold_id,
-                    authorized_exposure_units: request.requested_exposure_units,
-                    committed_cost_units_after,
-                    invocation_count_after,
-                    metadata,
-                },
-            ))
-        } else {
-            Ok(BudgetAuthorizeHoldDecision::Denied(DeniedBudgetHold {
-                hold_id: request.hold_id,
-                attempted_exposure_units: request.requested_exposure_units,
-                committed_cost_units_after,
-                invocation_count_after,
-                metadata,
-            }))
-        }
-    }
-
-    fn record_payment_journal(
-        &self,
-        entry: &chio_kernel::payment::PaymentJournalRecord,
-    ) -> Result<(), BudgetStoreError> {
-        let mut connection = self.connection()?;
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        insert_payment_journal_tx(&transaction, entry, false)?;
-        transaction.commit()?;
-        Ok(())
-    }
-
-    fn advance_payment_journal(
-        &self,
-        request_id: &str,
-        expected: chio_kernel::payment::PaymentJournalState,
-        next: chio_kernel::payment::PaymentJournalState,
-        authorization_id: Option<&str>,
-        transaction_id: Option<&str>,
-        settle: Option<chio_kernel::payment::PaymentSettleIntent>,
-    ) -> Result<(), BudgetStoreError> {
-        use chio_kernel::payment::PaymentJournalState as State;
-        // A Settling advance MUST carry the committed settle intent so
-        // recovery can replay the exact rail call; any other transition
-        // MUST NOT carry one.
-        if next == State::Settling && settle.is_none() {
-            return Err(BudgetStoreError::Invariant(
-                "advance to Settling requires a settle intent".to_string(),
-            ));
-        }
-        if next != State::Settling && settle.is_some() {
-            return Err(BudgetStoreError::Invariant(
-                "settle intent is only valid on the Settling transition".to_string(),
-            ));
-        }
-        let (settle_action, settle_amount) = match settle {
-            Some(intent) => (
-                Some(settle_action_str(intent.action)),
-                intent
-                    .amount_units
-                    .map(|units| units.min(i64::MAX as u64) as i64),
-            ),
-            None => (None, None),
-        };
-        let mut connection = self.connection()?;
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let changed = transaction.execute(
-            "UPDATE payment_journal SET \
-               state = ?1, \
-               authorization_id = COALESCE(?2, authorization_id), \
-               transaction_id = COALESCE(?3, transaction_id), \
-               settle_action = COALESCE(?4, settle_action), \
-               settle_amount_units = COALESCE(?5, settle_amount_units), \
-               updated_at = ?6 \
-             WHERE request_id = ?7 AND state = ?8",
-            params![
-                journal_state_str(next),
-                authorization_id,
-                transaction_id,
-                settle_action,
-                settle_amount,
-                journal_now_unix_ms(),
-                request_id,
-                journal_state_str(expected),
-            ],
-        )?;
-        if changed == 0 {
-            transaction.rollback()?;
-            return Err(BudgetStoreError::Invariant(format!(
-                "payment journal advance conflict for `{request_id}`: row is not in the \
-                 expected {expected:?} state"
-            )));
-        }
-        transaction.commit()?;
-        Ok(())
-    }
-
-    fn close_payment_journal(&self, request_id: &str) -> Result<bool, BudgetStoreError> {
-        let mut connection = self.connection()?;
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        // Idempotent: an already-closed or absent row changes nothing. A
-        // reconcile-failed row stays put; the incident is cleared by an
-        // operator, never by a stray close.
-        let changed = transaction.execute(
-            "UPDATE payment_journal SET state = 'closed', updated_at = ?1 \
-             WHERE request_id = ?2 AND state NOT IN ('closed', 'reconcile_failed')",
-            params![journal_now_unix_ms(), request_id],
-        )?;
-        transaction.commit()?;
-        Ok(changed > 0)
-    }
-
-    fn list_incomplete_payment_journal(
-        &self,
-        older_than_unix_ms: u64,
-    ) -> Result<Vec<chio_kernel::payment::PaymentJournalRecord>, BudgetStoreError> {
-        let connection = self.connection()?;
-        let mut statement = connection.prepare(
-            "SELECT request_id, capability_id, grant_index, hold_id, rail, authorization_id, \
-                    transaction_id, amount_units, settle_action, settle_amount_units, currency, \
-                    state, created_at, tenant_id \
-             FROM payment_journal \
-             WHERE state NOT IN ('closed', 'reconcile_failed') AND created_at <= ?1 \
-             ORDER BY created_at ASC",
-        )?;
-        let cutoff = older_than_unix_ms.min(i64::MAX as u64) as i64;
-        let rows = statement.query_map(params![cutoff], |row| {
-            Ok::<PaymentJournalRow, rusqlite::Error>((
-                row.get(0)?,
-                row.get(1)?,
-                row.get(2)?,
-                row.get(3)?,
-                row.get(4)?,
-                row.get(5)?,
-                row.get(6)?,
-                row.get(7)?,
-                row.get(8)?,
-                row.get(9)?,
-                row.get(10)?,
-                row.get(11)?,
-                row.get(12)?,
-                row.get(13)?,
-            ))
-        })?;
-        let mut out = Vec::new();
-        for row in rows {
-            out.push(payment_journal_row_to_record(row?)?);
-        }
-        Ok(out)
-    }
-
-    fn get_payment_journal(
-        &self,
-        request_id: &str,
-    ) -> Result<Option<chio_kernel::payment::PaymentJournalRecord>, BudgetStoreError> {
-        let connection = self.connection()?;
-        let mut statement = connection.prepare(
-            "SELECT request_id, capability_id, grant_index, hold_id, rail, authorization_id, \
-                    transaction_id, amount_units, settle_action, settle_amount_units, currency, \
-                    state, created_at, tenant_id \
-             FROM payment_journal \
-             WHERE request_id = ?1 AND state NOT IN ('closed', 'reconcile_failed')",
-        )?;
-        let mut rows = statement.query_map(params![request_id], |row| {
-            Ok::<PaymentJournalRow, rusqlite::Error>((
-                row.get(0)?,
-                row.get(1)?,
-                row.get(2)?,
-                row.get(3)?,
-                row.get(4)?,
-                row.get(5)?,
-                row.get(6)?,
-                row.get(7)?,
-                row.get(8)?,
-                row.get(9)?,
-                row.get(10)?,
-                row.get(11)?,
-                row.get(12)?,
-                row.get(13)?,
-            ))
-        })?;
-        let Some(row) = rows.next() else {
-            return Ok(None);
-        };
-        Ok(Some(payment_journal_row_to_record(row?)?))
-    }
-
-    fn payment_journal_reconcile_failed_rail(
-        &self,
-        request_id: &str,
-    ) -> Result<Option<String>, BudgetStoreError> {
-        let connection = self.connection()?;
-        connection
-            .query_row(
-                "SELECT rail FROM payment_journal WHERE request_id = ?1 AND state = 'reconcile_failed'",
-                params![request_id],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(BudgetStoreError::from)
+        Ok(matches!(
+            self.authorize_budget_hold_atomic(&request)?,
+            BudgetAuthorizeHoldDecision::Authorized(_)
+        ))
     }
 
     fn reverse_charge_cost(
@@ -516,8 +719,15 @@ impl BudgetStore for SqliteBudgetStore {
         event_id: Option<&str>,
         authority: Option<&BudgetEventAuthority>,
     ) -> Result<(), BudgetStoreError> {
+        self.require_standalone_mutation("legacy charge reversal")?;
+        validate_budget_grant_index(grant_index)?;
+        budget_u64_to_sqlite(cost_units, "exposure_units")?;
+        if let Some(authority) = authority {
+            budget_u64_to_sqlite(authority.lease_epoch, "lease_epoch")?;
+        }
         let mut connection = self.connection()?;
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let transaction = self.begin_write(&mut connection)?;
+        Self::reject_structured_hold_from_legacy_writer(&transaction, hold_id, "charge reversal")?;
 
         if SqliteBudgetStore::existing_event_allowed(
             &transaction,
@@ -538,6 +748,14 @@ impl BudgetStore for SqliteBudgetStore {
             transaction.rollback()?;
             return Ok(());
         }
+        if hold_id.is_none()
+            && SqliteBudgetStore::has_live_hold(&transaction, capability_id, grant_index)?
+        {
+            transaction.rollback()?;
+            return Err(BudgetStoreError::Invariant(
+                "live budget hold blocks generic reverse".to_string(),
+            ));
+        }
         if let Some(hold_id) = hold_id {
             let hold = SqliteBudgetStore::ensure_open_hold(
                 &transaction,
@@ -545,7 +763,10 @@ impl BudgetStore for SqliteBudgetStore {
                 capability_id,
                 grant_index,
             )?;
-            if hold.remaining_exposure_units != cost_units || !hold.invocation_count_debited {
+            if hold.remaining_exposure_units != cost_units
+                || !hold.invocation_count_debited
+                || hold.invocation_captured
+            {
                 transaction.rollback()?;
                 return Err(BudgetStoreError::Invariant(format!(
                     "budget hold `{hold_id}` does not match reverse amount"
@@ -613,8 +834,8 @@ impl BudgetStore for SqliteBudgetStore {
                 grant_index as i64,
                 invocation_count - 1,
                 unix_now(),
-                budget_sqlite_i64(seq, "budget usage sequence")?,
-                budget_sqlite_i64(new_total_cost_exposed, "total_cost_exposed")?,
+                budget_u64_to_sqlite(seq, "seq")?,
+                budget_u64_to_sqlite(new_total_cost_exposed, "total_cost_exposed")?,
             ],
         )?;
         if let Some(hold_id) = hold_id {
@@ -698,8 +919,15 @@ impl BudgetStore for SqliteBudgetStore {
         event_id: Option<&str>,
         authority: Option<&BudgetEventAuthority>,
     ) -> Result<(), BudgetStoreError> {
+        self.require_standalone_mutation("legacy charge reduction")?;
+        validate_budget_grant_index(grant_index)?;
+        budget_u64_to_sqlite(cost_units, "exposure_units")?;
+        if let Some(authority) = authority {
+            budget_u64_to_sqlite(authority.lease_epoch, "lease_epoch")?;
+        }
         let mut connection = self.connection()?;
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let transaction = self.begin_write(&mut connection)?;
+        Self::reject_structured_hold_from_legacy_writer(&transaction, hold_id, "charge reduction")?;
 
         if SqliteBudgetStore::existing_event_allowed(
             &transaction,
@@ -720,6 +948,14 @@ impl BudgetStore for SqliteBudgetStore {
             transaction.rollback()?;
             return Ok(());
         }
+        if hold_id.is_none()
+            && SqliteBudgetStore::has_live_hold(&transaction, capability_id, grant_index)?
+        {
+            transaction.rollback()?;
+            return Err(BudgetStoreError::Invariant(
+                "live budget hold blocks generic release".to_string(),
+            ));
+        }
         if let Some(hold_id) = hold_id {
             let hold = SqliteBudgetStore::ensure_open_hold(
                 &transaction,
@@ -727,6 +963,12 @@ impl BudgetStore for SqliteBudgetStore {
                 capability_id,
                 grant_index,
             )?;
+            if hold.invocation_captured {
+                transaction.rollback()?;
+                return Err(BudgetStoreError::Invariant(format!(
+                    "budget hold `{hold_id}` invocation was already captured"
+                )));
+            }
             if hold.remaining_exposure_units < cost_units {
                 transaction.rollback()?;
                 return Err(BudgetStoreError::Invariant(format!(
@@ -787,8 +1029,8 @@ impl BudgetStore for SqliteBudgetStore {
                 capability_id,
                 grant_index as i64,
                 unix_now(),
-                budget_sqlite_i64(seq, "budget usage sequence")?,
-                budget_sqlite_i64(new_total_cost_exposed, "total_cost_exposed")?,
+                budget_u64_to_sqlite(seq, "seq")?,
+                budget_u64_to_sqlite(new_total_cost_exposed, "total_cost_exposed")?,
             ],
         )?;
         if let Some(hold_id) = hold_id {
@@ -888,14 +1130,26 @@ impl BudgetStore for SqliteBudgetStore {
         event_id: Option<&str>,
         authority: Option<&BudgetEventAuthority>,
     ) -> Result<(), BudgetStoreError> {
+        self.require_standalone_mutation("legacy charge settlement")?;
+        validate_budget_grant_index(grant_index)?;
         if realized_cost_units > exposed_cost_units {
             return Err(BudgetStoreError::Invariant(
                 "cannot realize spend larger than exposed cost".to_string(),
             ));
         }
+        budget_u64_to_sqlite(exposed_cost_units, "exposure_units")?;
+        budget_u64_to_sqlite(realized_cost_units, "realized_spend_units")?;
+        if let Some(authority) = authority {
+            budget_u64_to_sqlite(authority.lease_epoch, "lease_epoch")?;
+        }
 
         let mut connection = self.connection()?;
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let transaction = self.begin_write(&mut connection)?;
+        Self::reject_structured_hold_from_legacy_writer(
+            &transaction,
+            hold_id,
+            "charge settlement",
+        )?;
 
         if SqliteBudgetStore::existing_event_allowed(
             &transaction,
@@ -916,6 +1170,14 @@ impl BudgetStore for SqliteBudgetStore {
             transaction.rollback()?;
             return Ok(());
         }
+        if hold_id.is_none()
+            && SqliteBudgetStore::has_live_hold(&transaction, capability_id, grant_index)?
+        {
+            transaction.rollback()?;
+            return Err(BudgetStoreError::Invariant(
+                "live budget hold blocks generic reconciliation".to_string(),
+            ));
+        }
         if let Some(hold_id) = hold_id {
             let hold = SqliteBudgetStore::ensure_open_hold(
                 &transaction,
@@ -923,6 +1185,12 @@ impl BudgetStore for SqliteBudgetStore {
                 capability_id,
                 grant_index,
             )?;
+            if !hold.invocation_captured {
+                transaction.rollback()?;
+                return Err(BudgetStoreError::Invariant(format!(
+                    "budget hold `{hold_id}` invocation was not captured before reconciliation"
+                )));
+            }
             if hold.remaining_exposure_units != exposed_cost_units {
                 transaction.rollback()?;
                 return Err(BudgetStoreError::Invariant(format!(
@@ -983,6 +1251,7 @@ impl BudgetStore for SqliteBudgetStore {
                     "total_cost_realized_spend + realized_cost_units overflowed u64".to_string(),
                 )
             })?;
+        budget_u64_to_sqlite(new_total_cost_realized_spend, "total_cost_realized_spend")?;
 
         let seq = allocate_budget_replication_seq(&transaction)?;
         transaction.execute(
@@ -998,9 +1267,9 @@ impl BudgetStore for SqliteBudgetStore {
                 capability_id,
                 grant_index as i64,
                 unix_now(),
-                budget_sqlite_i64(seq, "budget usage sequence")?,
-                budget_sqlite_i64(new_total_cost_exposed, "total_cost_exposed")?,
-                budget_sqlite_i64(new_total_cost_realized_spend, "total_cost_realized_spend",)?,
+                budget_u64_to_sqlite(seq, "seq")?,
+                budget_u64_to_sqlite(new_total_cost_exposed, "total_cost_exposed")?,
+                budget_u64_to_sqlite(new_total_cost_realized_spend, "total_cost_realized_spend",)?,
             ],
         )?;
         if let Some(hold_id) = hold_id {
@@ -1053,8 +1322,9 @@ impl BudgetStore for SqliteBudgetStore {
         limit: usize,
         capability_id: Option<&str>,
     ) -> Result<Vec<BudgetUsageRecord>, BudgetStoreError> {
-        let connection = self.connection()?;
-        let mut statement = connection.prepare(
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        let mut statement = transaction.prepare(
             r#"
             SELECT
                 capability_id,
@@ -1071,7 +1341,10 @@ impl BudgetStore for SqliteBudgetStore {
             "#,
         )?;
         let rows = statement.query_map(params![capability_id, limit as i64], record_from_row)?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+        let rows = rows.collect::<Result<Vec<_>, _>>()?;
+        drop(statement);
+        transaction.rollback()?;
+        Ok(rows)
     }
 
     fn get_usage(
@@ -1079,7 +1352,10 @@ impl BudgetStore for SqliteBudgetStore {
         capability_id: &str,
         grant_index: usize,
     ) -> Result<Option<BudgetUsageRecord>, BudgetStoreError> {
-        self.connection()?
+        validate_budget_grant_index(grant_index)?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        let row = transaction
             .query_row(
                 r#"
                 SELECT
@@ -1096,8 +1372,87 @@ impl BudgetStore for SqliteBudgetStore {
                 params![capability_id, grant_index as i64],
                 record_from_row,
             )
-            .optional()
-            .map_err(Into::into)
+            .optional()?;
+        transaction.rollback()?;
+        Ok(row)
+    }
+
+    fn get_invocation_quota_usage(
+        &self,
+        key: &BudgetQuotaKey,
+    ) -> Result<Option<BudgetInvocationQuotaUsage>, BudgetStoreError> {
+        self.composite_quota_usage(key)
+    }
+
+    fn get_cumulative_approval_account_usage(
+        &self,
+        key: &BudgetCumulativeApprovalAccountKey,
+    ) -> Result<Option<BudgetCumulativeApprovalAccountUsage>, BudgetStoreError> {
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        let row = transaction
+            .query_row(
+                r#"
+                SELECT root_grant_hash, delegation_root_id, root_binding_digest,
+                       currency, authority_threshold_units,
+                       reserved_authorized_units, captured_authorized_units, version
+                FROM budget_cumulative_approval_accounts
+                WHERE authority_id = ?1 AND owner_id = ?2
+                  AND approval_budget_id = ?3 AND approval_budget_epoch = ?4
+                "#,
+                params![
+                    &key.authority_id,
+                    &key.owner_id,
+                    &key.approval_budget_id,
+                    budget_u64_to_sqlite(key.approval_budget_epoch, "approval_budget_epoch")?,
+                ],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                        row.get::<_, String>(3)?,
+                        budget_u64_from_row(row, 4, "authority_threshold_units")?,
+                        budget_u64_from_row(row, 5, "reserved_authorized_units")?,
+                        budget_u64_from_row(row, 6, "captured_authorized_units")?,
+                        budget_u64_from_row(row, 7, "version")?,
+                    ))
+                },
+            )
+            .optional()?;
+        let Some(row) = row else {
+            transaction.rollback()?;
+            return Ok(None);
+        };
+        if row.0 != key.root_grant_hash
+            || row.1 != key.delegation_root_id
+            || row.2 != key.root_binding_digest
+            || row.3 != key.currency
+        {
+            return Err(BudgetStoreError::Invariant(
+                "cumulative approval account immutable identity changed".to_string(),
+            ));
+        }
+        let amount = |units| MonetaryAmount {
+            units,
+            currency: key.currency.clone(),
+        };
+        let usage = BudgetCumulativeApprovalAccountUsage {
+            account_key: key.clone(),
+            authority_threshold: amount(row.4),
+            reserved_authorized: amount(row.5),
+            captured_authorized: amount(row.6),
+            version: row.7,
+        };
+        transaction.rollback()?;
+        Ok(Some(usage))
+    }
+
+    fn get_cumulative_approval_operation_usage(
+        &self,
+        operation_id: &str,
+    ) -> Result<Option<BudgetCumulativeApprovalUsage>, BudgetStoreError> {
+        self.composite_cumulative_operation_usage(operation_id)
     }
 
     fn list_mutation_events(
@@ -1106,30 +1461,14 @@ impl BudgetStore for SqliteBudgetStore {
         capability_id: Option<&str>,
         grant_index: Option<usize>,
     ) -> Result<Vec<BudgetMutationRecord>, BudgetStoreError> {
-        let connection = self.connection()?;
-        let mut statement = connection.prepare(
+        if let Some(grant_index) = grant_index {
+            validate_budget_grant_index(grant_index)?;
+        }
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        let mut statement = transaction.prepare(
             r#"
-            SELECT
-                event_id,
-                hold_id,
-                capability_id,
-                grant_index,
-                kind,
-                allowed,
-                recorded_at,
-                event_seq,
-                usage_seq,
-                exposure_units,
-                realized_spend_units,
-                max_invocations,
-                max_exposure_per_invocation,
-                max_total_exposure_units,
-                invocation_count_after,
-                total_cost_exposed_after,
-                total_cost_realized_spend_after,
-                authority_id,
-                lease_id,
-                lease_epoch
+            SELECT event_id
             FROM budget_mutation_events
             WHERE (?1 IS NULL OR capability_id = ?1)
               AND (?2 IS NULL OR grant_index = ?2)
@@ -1137,15 +1476,29 @@ impl BudgetStore for SqliteBudgetStore {
             LIMIT ?3
             "#,
         )?;
-        let rows = statement.query_map(
-            params![
-                capability_id,
-                grant_index.map(|value| value as i64),
-                limit as i64
-            ],
-            mutation_record_from_row,
-        )?;
-        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+        let event_ids = statement
+            .query_map(
+                params![
+                    capability_id,
+                    grant_index.map(|value| value as i64),
+                    limit as i64
+                ],
+                |row| row.get::<_, String>(0),
+            )?
+            .collect::<Result<Vec<_>, _>>()?;
+        drop(statement);
+        let events = event_ids
+            .iter()
+            .map(|event_id| {
+                Self::load_projected_mutation_event(&transaction, event_id)?.ok_or_else(|| {
+                    BudgetStoreError::Invariant(format!(
+                        "budget mutation event `{event_id}` disappeared while listing"
+                    ))
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        transaction.rollback()?;
+        Ok(events)
     }
 
     fn reap_orphaned_holds(
@@ -1163,11 +1516,6 @@ impl BudgetStore for SqliteBudgetStore {
     fn list_open_delegated_reserved_hold_ids(
         &self,
     ) -> Result<Option<Vec<String>>, BudgetStoreError> {
-        // SQLite persists the delegation depth on each reserved hold, so it can
-        // enumerate the open delegated reservations precisely. Returning Some(..)
-        // switches the mediation kernel onto the precise restart gate that drains
-        // only the affected delegated admission, rather than the coarse gate that
-        // denies all mediation until every open hold closes.
         Ok(Some(self.list_open_delegated_reserved_holds()?))
     }
 
@@ -1175,10 +1523,6 @@ impl BudgetStore for SqliteBudgetStore {
         &self,
         request_id: &str,
     ) -> Result<Option<bool>, BudgetStoreError> {
-        // SQLite persists every hold under its full id, so it can answer the
-        // durable prefix probe precisely; Some(..) switches the mediation gate
-        // onto the capability-agnostic reuse check instead of the per-capability
-        // exact-id fallback.
         Ok(Some(self.hold_exists_for_request_id(request_id)?))
     }
 
@@ -1214,7 +1558,8 @@ impl BudgetStore for SqliteBudgetStore {
         reserved_until_unix_secs: i64,
         envelope: &ReservedHoldEnvelope,
     ) -> Result<(), BudgetStoreError> {
-        self.reserve_invocation_hold(
+        SqliteBudgetStore::reserve_invocation_hold(
+            self,
             hold_id,
             capability_id,
             grant_index,
@@ -1224,619 +1569,150 @@ impl BudgetStore for SqliteBudgetStore {
     }
 
     fn reap_expired_reserved_holds(&self, now_unix_secs: i64) -> Result<usize, BudgetStoreError> {
-        self.reap_expired_reserved_holds(now_unix_secs)
+        SqliteBudgetStore::reap_expired_reserved_holds(self, now_unix_secs)
     }
 }
 
-impl SqliteBudgetStore {
-    /// The single-transaction charge path, optionally committing a
-    /// payment-journal row inside the SAME Immediate transaction as the
-    /// hold write, so the money path's recoverable record is durable
-    /// exactly when the hold is. Idempotent hold retries tolerate their
-    /// own journal row; any other request-id reuse fails closed.
-    #[allow(clippy::too_many_arguments)]
-    pub(super) fn charge_cost_with_optional_journal(
-        &self,
-        capability_id: &str,
-        grant_index: usize,
-        max_invocations: Option<u32>,
-        cost_units: u64,
-        max_cost_per_invocation: Option<u64>,
-        max_total_cost_units: Option<u64>,
-        hold_id: Option<&str>,
-        event_id: Option<&str>,
-        authority: Option<&BudgetEventAuthority>,
-        journal: Option<&chio_kernel::payment::PaymentJournalRecord>,
-    ) -> Result<BudgetAuthorizeMutationOutcome, BudgetStoreError> {
-        let mut connection = self.connection()?;
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-
-        if let Some(existing_allowed) = SqliteBudgetStore::existing_event_allowed(
-            &transaction,
-            event_id,
-            BudgetMutationKind::AuthorizeExposure,
-            capability_id,
-            grant_index,
-            hold_id,
-            authority,
-            cost_units,
-            0,
-            max_invocations,
-            max_cost_per_invocation,
-            max_total_cost_units,
-        )? {
-            transaction.rollback()?;
-            return Ok(BudgetAuthorizeMutationOutcome {
-                allowed: existing_allowed.unwrap_or(false),
-                replayed_event: true,
-            });
-        }
-
-        let row: Option<(u32, u64, u64)> = transaction
-            .query_row(
-                r#"
-                SELECT invocation_count, total_cost_exposed, total_cost_realized_spend
-                FROM capability_grant_budgets
-                WHERE capability_id = ?1 AND grant_index = ?2
-                "#,
-                params![capability_id, grant_index as i64],
-                |row| {
-                    Ok((
-                        budget_u32_from_row(row, 0, "invocation_count")?,
-                        budget_u64_from_row(row, 1, "total_cost_exposed")?,
-                        budget_u64_from_row(row, 2, "total_cost_realized_spend")?,
-                    ))
-                },
-            )
-            .optional()?;
-        let (current_count, current_exposed, current_realized) = row.unwrap_or((0, 0, 0));
-
-        if let Some(hold_id) = hold_id {
-            let retry_follows_rollback = match event_id {
-                Some(event_id) => Self::rollback_event_exists(&transaction, event_id)?,
-                None => false,
-            };
-            if let Some(hold) = SqliteBudgetStore::load_hold(&transaction, hold_id)? {
-                if hold.capability_id == capability_id
-                    && hold.grant_index == grant_index
-                    && hold.authorized_exposure_units == cost_units
-                    && hold.remaining_exposure_units == cost_units
-                    && hold.invocation_count_debited
-                    && hold.disposition == HoldDisposition::Open
-                    && current_exposed >= cost_units
-                {
-                    let current = transaction
-                        .query_row(
-                            r#"
-                            SELECT seq, invocation_count, total_cost_exposed, total_cost_realized_spend
-                            FROM capability_grant_budgets
-                            WHERE capability_id = ?1 AND grant_index = ?2
-                            "#,
-                            params![capability_id, grant_index as i64],
-                            |row| {
-                                Ok((
-                                    budget_u64_from_row(row, 0, "seq")?,
-                                    budget_u32_from_row(row, 1, "invocation_count")?,
-                                    budget_u64_from_row(row, 2, "total_cost_exposed")?,
-                                    budget_u64_from_row(
-                                        row,
-                                        3,
-                                        "total_cost_realized_spend",
-                                    )?,
-                                ))
-                            },
-                        )
-                        .optional()?;
-                    if let Some((
-                        usage_seq,
-                        invocation_count_after,
-                        total_cost_exposed_after,
-                        total_cost_realized_spend_after,
-                    )) = current
-                    {
-                        let event_seq = allocate_budget_replication_seq(&transaction)?;
-                        if retry_follows_rollback {
-                            SqliteBudgetStore::upsert_hold(
-                                &transaction,
-                                hold_id,
-                                capability_id,
-                                grant_index,
-                                cost_units,
-                                cost_units,
-                                HoldDisposition::Open,
-                                authority,
-                            )?;
-                        }
-                        SqliteBudgetStore::append_mutation_event(
-                            &transaction,
-                            event_id,
-                            Some(hold_id),
-                            authority,
-                            capability_id,
-                            grant_index,
-                            BudgetMutationKind::AuthorizeExposure,
-                            Some(true),
-                            event_seq,
-                            Some(usage_seq),
-                            cost_units,
-                            0,
-                            max_invocations,
-                            max_cost_per_invocation,
-                            max_total_cost_units,
-                            invocation_count_after,
-                            total_cost_exposed_after,
-                            total_cost_realized_spend_after,
-                        )?;
-                        if let Some(journal) = journal {
-                            insert_payment_journal_tx(&transaction, journal, true)?;
-                        }
-                        transaction.commit()?;
-                        return Ok(BudgetAuthorizeMutationOutcome {
-                            allowed: true,
-                            replayed_event: false,
-                        });
-                    }
-                }
-            }
-            if retry_follows_rollback {
-                Self::delete_hold_if_exists(&transaction, hold_id)?;
-            }
-        }
-
-        let committed_cost_units = if max_total_cost_units.is_some() {
-            checked_committed_cost_units(current_exposed, current_realized)?
-        } else {
-            0
-        };
-        let allowed = budget_charge_admits(
-            current_count,
-            committed_cost_units,
-            cost_units,
-            max_invocations,
-            max_cost_per_invocation,
-            max_total_cost_units,
-        )
-        .map_err(|error| match error {
-            BudgetAdmissionProjectionError::TotalCostOverflow => BudgetStoreError::Overflow(
-                "authorized exposure + cost_units overflowed u64".to_string(),
-            ),
+fn recorded_sqlite_hold_mutation(
+    store: &SqliteBudgetStore,
+    hold_id: &str,
+    event_id: &str,
+    expected_kind: BudgetMutationKind,
+) -> Result<BudgetHoldMutationDecision, BudgetStoreError> {
+    let mut connection = store.connection()?;
+    let transaction = store.begin_read(&mut connection)?;
+    let event =
+        SqliteBudgetStore::load_mutation_event(&transaction, event_id)?.ok_or_else(|| {
+            BudgetStoreError::Invariant(format!(
+                "sqlite budget mutation event `{event_id}` disappeared"
+            ))
         })?;
-
-        let (
-            invocation_count_after,
-            total_cost_exposed_after,
-            total_cost_realized_spend_after,
-            event_seq,
-            usage_seq,
-        );
-        if allowed {
-            if let Some(hold_id) = hold_id {
-                let retry_follows_rollback = match event_id {
-                    Some(event_id) => Self::rollback_event_exists(&transaction, event_id)?,
-                    None => false,
-                };
-                if retry_follows_rollback {
-                    if let Some(hold) = SqliteBudgetStore::load_hold(&transaction, hold_id)? {
-                        if hold.capability_id == capability_id
-                            && hold.grant_index == grant_index
-                            && hold.authorized_exposure_units == cost_units
-                            && hold.remaining_exposure_units == cost_units
-                            && hold.invocation_count_debited
-                            && hold.disposition == HoldDisposition::Open
-                            && current_exposed >= cost_units
-                        {
-                            let current = transaction
-                                .query_row(
-                                    r#"
-                                    SELECT seq, invocation_count, total_cost_exposed, total_cost_realized_spend
-                                    FROM capability_grant_budgets
-                                    WHERE capability_id = ?1 AND grant_index = ?2
-                                    "#,
-                                    params![capability_id, grant_index as i64],
-                                    |row| {
-                                        Ok((
-                                            budget_u64_from_row(row, 0, "seq")?,
-                                            budget_u32_from_row(row, 1, "invocation_count")?,
-                                            budget_u64_from_row(row, 2, "total_cost_exposed")?,
-                                            budget_u64_from_row(
-                                                row,
-                                                3,
-                                                "total_cost_realized_spend",
-                                            )?,
-                                        ))
-                                    },
-                                )
-                                .optional()?;
-                            if let Some((
-                                usage_seq,
-                                invocation_count_after,
-                                total_cost_exposed_after,
-                                total_cost_realized_spend_after,
-                            )) = current
-                            {
-                                let event_seq = allocate_budget_replication_seq(&transaction)?;
-                                SqliteBudgetStore::upsert_hold(
-                                    &transaction,
-                                    hold_id,
-                                    capability_id,
-                                    grant_index,
-                                    cost_units,
-                                    cost_units,
-                                    HoldDisposition::Open,
-                                    authority,
-                                )?;
-                                SqliteBudgetStore::append_mutation_event(
-                                    &transaction,
-                                    event_id,
-                                    Some(hold_id),
-                                    authority,
-                                    capability_id,
-                                    grant_index,
-                                    BudgetMutationKind::AuthorizeExposure,
-                                    Some(true),
-                                    event_seq,
-                                    Some(usage_seq),
-                                    cost_units,
-                                    0,
-                                    max_invocations,
-                                    max_cost_per_invocation,
-                                    max_total_cost_units,
-                                    invocation_count_after,
-                                    total_cost_exposed_after,
-                                    total_cost_realized_spend_after,
-                                )?;
-                                if let Some(journal) = journal {
-                                    insert_payment_journal_tx(&transaction, journal, true)?;
-                                }
-                                transaction.commit()?;
-                                return Ok(BudgetAuthorizeMutationOutcome {
-                                    allowed: true,
-                                    replayed_event: false,
-                                });
-                            }
-                        }
-                    }
-                    Self::delete_hold_if_exists(&transaction, hold_id)?;
-                } else if let Some(hold) = SqliteBudgetStore::load_hold(&transaction, hold_id)? {
-                    if hold.capability_id == capability_id
-                        && hold.grant_index == grant_index
-                        && hold.authorized_exposure_units == cost_units
-                        && hold.remaining_exposure_units == cost_units
-                        && hold.invocation_count_debited
-                        && hold.disposition == HoldDisposition::Open
-                    {
-                        let current = transaction
-                            .query_row(
-                                r#"
-                                SELECT seq, invocation_count, total_cost_exposed, total_cost_realized_spend
-                                FROM capability_grant_budgets
-                                WHERE capability_id = ?1 AND grant_index = ?2
-                                "#,
-                                params![capability_id, grant_index as i64],
-                                |row| {
-                                    Ok((
-                                        budget_u64_from_row(row, 0, "seq")?,
-                                        budget_u32_from_row(row, 1, "invocation_count")?,
-                                        budget_u64_from_row(row, 2, "total_cost_exposed")?,
-                                        budget_u64_from_row(
-                                            row,
-                                            3,
-                                            "total_cost_realized_spend",
-                                        )?,
-                                    ))
-                                },
-                            )
-                            .optional()?;
-                        if let Some((
-                            seq,
-                            invocation_count_after,
-                            total_cost_exposed_after,
-                            total_cost_realized_spend_after,
-                        )) = current
-                        {
-                            if total_cost_exposed_after < cost_units {
-                                transaction.rollback()?;
-                                return Err(BudgetStoreError::Invariant(format!(
-                                    "budget hold `{hold_id}` is not reflected in usage totals"
-                                )));
-                            }
-                            SqliteBudgetStore::append_mutation_event(
-                                &transaction,
-                                event_id,
-                                Some(hold_id),
-                                authority,
-                                capability_id,
-                                grant_index,
-                                BudgetMutationKind::AuthorizeExposure,
-                                Some(true),
-                                seq,
-                                Some(seq),
-                                cost_units,
-                                0,
-                                max_invocations,
-                                max_cost_per_invocation,
-                                max_total_cost_units,
-                                invocation_count_after,
-                                total_cost_exposed_after,
-                                total_cost_realized_spend_after,
-                            )?;
-                            if let Some(journal) = journal {
-                                insert_payment_journal_tx(&transaction, journal, true)?;
-                            }
-                            transaction.commit()?;
-                            return Ok(BudgetAuthorizeMutationOutcome {
-                                allowed: true,
-                                replayed_event: false,
-                            });
-                        }
-                    }
-                    transaction.rollback()?;
-                    return Err(BudgetStoreError::Invariant(format!(
-                        "budget hold `{hold_id}` already exists"
-                    )));
-                }
-            }
-            let new_total_cost_exposed =
-                current_exposed.checked_add(cost_units).ok_or_else(|| {
-                    BudgetStoreError::Overflow(
-                        "total_cost_exposed + cost_units overflowed u64".to_string(),
-                    )
-                })?;
-            let updated_at = unix_now();
-            let seq = allocate_budget_replication_seq(&transaction)?;
-            transaction.execute(
-                r#"
-                INSERT INTO capability_grant_budgets (
-                    capability_id,
-                    grant_index,
-                    invocation_count,
-                    updated_at,
-                    seq,
-                    total_cost_exposed,
-                    total_cost_realized_spend
-                ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
-                ON CONFLICT(capability_id, grant_index) DO UPDATE SET
-                    invocation_count = excluded.invocation_count,
-                    updated_at = excluded.updated_at,
-                    seq = excluded.seq,
-                    total_cost_exposed = excluded.total_cost_exposed,
-                    total_cost_realized_spend = excluded.total_cost_realized_spend
-                "#,
-                params![
-                    capability_id,
-                    budget_sqlite_i64(grant_index as u64, "grant_index")?,
-                    i64::from(current_count.saturating_add(1)),
-                    updated_at,
-                    budget_sqlite_i64(seq, "budget usage sequence")?,
-                    budget_sqlite_i64(new_total_cost_exposed, "total_cost_exposed")?,
-                    budget_sqlite_i64(current_realized, "total_cost_realized_spend")?,
-                ],
-            )?;
-            if let Some(hold_id) = hold_id {
-                SqliteBudgetStore::create_hold(
-                    &transaction,
-                    hold_id,
-                    capability_id,
-                    grant_index,
-                    cost_units,
-                    authority,
-                )?;
-            }
-            invocation_count_after = current_count.saturating_add(1);
-            total_cost_exposed_after = new_total_cost_exposed;
-            total_cost_realized_spend_after = current_realized;
-            event_seq = seq;
-            usage_seq = Some(seq);
-        } else {
-            event_seq = allocate_budget_replication_seq(&transaction)?;
-            invocation_count_after = current_count;
-            total_cost_exposed_after = current_exposed;
-            total_cost_realized_spend_after = current_realized;
-            usage_seq = None;
-        }
-        SqliteBudgetStore::append_mutation_event(
-            &transaction,
-            event_id,
-            hold_id,
-            authority,
-            capability_id,
-            grant_index,
-            BudgetMutationKind::AuthorizeExposure,
-            Some(allowed),
-            event_seq,
-            usage_seq,
-            cost_units,
-            0,
-            max_invocations,
-            max_cost_per_invocation,
-            max_total_cost_units,
-            invocation_count_after,
-            total_cost_exposed_after,
-            total_cost_realized_spend_after,
-        )?;
-        if allowed {
-            if let Some(journal) = journal {
-                insert_payment_journal_tx(&transaction, journal, true)?;
-            }
-        }
-        transaction.commit()?;
-        Ok(BudgetAuthorizeMutationOutcome {
-            allowed,
-            replayed_event: false,
-        })
-    }
-}
-
-fn journal_state_str(state: chio_kernel::payment::PaymentJournalState) -> &'static str {
-    use chio_kernel::payment::PaymentJournalState as State;
-    match state {
-        State::HoldPlaced => "hold_placed",
-        State::Authorized => "authorized",
-        State::Settling => "settling",
-        State::Settled => "settled",
-        State::Closed => "closed",
-        State::ReconcileFailed => "reconcile_failed",
-    }
-}
-
-fn parse_journal_state(
-    value: &str,
-) -> Result<chio_kernel::payment::PaymentJournalState, BudgetStoreError> {
-    use chio_kernel::payment::PaymentJournalState as State;
-    match value {
-        "hold_placed" => Ok(State::HoldPlaced),
-        "authorized" => Ok(State::Authorized),
-        "settling" => Ok(State::Settling),
-        "settled" => Ok(State::Settled),
-        "closed" => Ok(State::Closed),
-        "reconcile_failed" => Ok(State::ReconcileFailed),
-        other => Err(BudgetStoreError::Invariant(format!(
-            "unknown payment journal state `{other}`"
-        ))),
-    }
-}
-
-fn settle_action_str(action: chio_kernel::payment::PaymentSettleAction) -> &'static str {
-    match action {
-        chio_kernel::payment::PaymentSettleAction::Capture => "capture",
-        chio_kernel::payment::PaymentSettleAction::Release => "release",
-    }
-}
-
-fn parse_settle_action(
-    value: &str,
-) -> Result<chio_kernel::payment::PaymentSettleAction, BudgetStoreError> {
-    match value {
-        "capture" => Ok(chio_kernel::payment::PaymentSettleAction::Capture),
-        "release" => Ok(chio_kernel::payment::PaymentSettleAction::Release),
-        other => Err(BudgetStoreError::Invariant(format!(
-            "unknown payment settle action `{other}`"
-        ))),
-    }
-}
-
-/// Column shape shared by every `payment_journal` point and range query,
-/// in the fixed order every `SELECT` below projects.
-type PaymentJournalRow = (
-    String,
-    String,
-    i64,
-    Option<String>,
-    String,
-    Option<String>,
-    Option<String>,
-    i64,
-    Option<String>,
-    Option<i64>,
-    String,
-    String,
-    i64,
-    Option<String>,
-);
-
-/// Decode one `payment_journal` row into the kernel-owned record type.
-fn payment_journal_row_to_record(
-    row: PaymentJournalRow,
-) -> Result<chio_kernel::payment::PaymentJournalRecord, BudgetStoreError> {
-    let (
-        request_id,
-        capability_id,
-        grant_index,
-        hold_id,
-        rail,
-        authorization_id,
-        transaction_id,
-        amount_units,
-        settle_action,
-        settle_amount_units,
-        currency,
-        state,
-        created_at,
-        tenant_id,
-    ) = row;
-    Ok(chio_kernel::payment::PaymentJournalRecord {
-        request_id,
-        capability_id,
-        grant_index: grant_index.clamp(0, i64::from(u32::MAX)) as u32,
-        hold_id,
-        rail,
-        authorization_id,
-        transaction_id,
-        amount_units: amount_units.max(0) as u64,
-        settle_action: settle_action
-            .as_deref()
-            .map(parse_settle_action)
-            .transpose()?,
-        settle_amount_units: settle_amount_units.map(|units| units.max(0) as u64),
-        currency,
-        state: parse_journal_state(&state)?,
-        created_at_unix_ms: created_at.max(0) as u64,
-        tenant_id,
-    })
-}
-
-fn journal_now_unix_ms() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|elapsed| elapsed.as_millis().min(i64::MAX as u128) as i64)
-        .unwrap_or(0)
-}
-
-/// Insert a payment-journal row inside an open transaction. A reused
-/// request id fails closed, except that an idempotent hold retry may
-/// re-encounter the row it wrote on a prior attempt (same request id and
-/// hold id).
-fn insert_payment_journal_tx(
-    transaction: &rusqlite::Transaction<'_>,
-    entry: &chio_kernel::payment::PaymentJournalRecord,
-    allow_idempotent_retry: bool,
-) -> Result<(), BudgetStoreError> {
-    let changed = transaction.execute(
-        "INSERT INTO payment_journal (request_id, capability_id, grant_index, hold_id, rail, \
-         authorization_id, transaction_id, amount_units, settle_action, settle_amount_units, \
-         currency, state, created_at, updated_at, tenant_id) \
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15) \
-         ON CONFLICT(request_id) DO NOTHING",
-        params![
-            entry.request_id,
-            entry.capability_id,
-            i64::from(entry.grant_index),
-            entry.hold_id,
-            entry.rail,
-            entry.authorization_id,
-            entry.transaction_id,
-            entry.amount_units.min(i64::MAX as u64) as i64,
-            entry.settle_action.map(settle_action_str),
-            entry
-                .settle_amount_units
-                .map(|units| units.min(i64::MAX as u64) as i64),
-            entry.currency,
-            journal_state_str(entry.state),
-            entry.created_at_unix_ms.min(i64::MAX as u64) as i64,
-            journal_now_unix_ms(),
-            entry.tenant_id,
-        ],
-    )?;
-    if changed == 0 {
-        if allow_idempotent_retry {
-            let existing_hold: Option<Option<String>> = transaction
-                .query_row(
-                    "SELECT hold_id FROM payment_journal WHERE request_id = ?1",
-                    params![entry.request_id],
-                    |row| row.get(0),
-                )
-                .optional()?;
-            if existing_hold
-                .as_ref()
-                .is_some_and(|hold| *hold == entry.hold_id)
-            {
-                return Ok(());
-            }
-        }
+    if event.kind != expected_kind || event.hold_id.as_deref() != Some(hold_id) {
         return Err(BudgetStoreError::Invariant(format!(
-            "payment journal request_id already recorded: {}",
-            entry.request_id
+            "sqlite budget mutation event `{event_id}` changed identity"
         )));
     }
-    Ok(())
+    let (authorization_seq, authorized_exposure_units) = transaction
+        .query_row(
+            r#"
+            SELECT event_seq, exposure_units
+            FROM budget_mutation_events
+            WHERE hold_id = ?1
+              AND kind = ?2
+              AND allowed = 1
+              AND event_seq < ?3
+            ORDER BY event_seq DESC LIMIT 1
+            "#,
+            params![
+                hold_id,
+                BudgetMutationKind::AuthorizeExposure.as_str(),
+                budget_u64_to_sqlite(event.event_seq, "event_seq")?,
+            ],
+            |row| {
+                Ok((
+                    budget_u64_from_row(row, 0, "event_seq")?,
+                    budget_u64_from_row(row, 1, "exposure_units")?,
+                ))
+            },
+        )
+        .optional()?
+        .ok_or_else(|| {
+            BudgetStoreError::Invariant(format!(
+                "sqlite budget hold `{hold_id}` has no authorization generation"
+            ))
+        })?;
+    let invocation_captured = transaction.query_row(
+        r#"
+        SELECT EXISTS(
+            SELECT 1 FROM budget_mutation_events
+            WHERE hold_id = ?1
+              AND kind = ?2
+              AND event_seq > ?3
+              AND event_seq <= ?4
+        )
+        "#,
+        params![
+            hold_id,
+            BudgetMutationKind::CaptureInvocation.as_str(),
+            budget_u64_to_sqlite(authorization_seq, "authorization_seq")?,
+            budget_u64_to_sqlite(event.event_seq, "event_seq")?,
+        ],
+        |row| Ok(row.get::<_, i64>(0)? != 0),
+    )?;
+    let invocation_state = if expected_kind == BudgetMutationKind::ReverseExposure {
+        BudgetInvocationState::Reversed
+    } else if invocation_captured {
+        BudgetInvocationState::Captured
+    } else {
+        BudgetInvocationState::Authorized
+    };
+    let monetary_state = if expected_kind == BudgetMutationKind::ReverseExposure {
+        if event.exposure_units == 0 {
+            BudgetMonetaryState::None
+        } else {
+            BudgetMonetaryState::Reversed
+        }
+    } else if expected_kind == BudgetMutationKind::ReleaseExposure {
+        let released_exposure_units = transaction.query_row(
+            r#"
+            SELECT COALESCE(SUM(exposure_units), 0)
+            FROM budget_mutation_events
+            WHERE hold_id = ?1
+              AND kind = ?2
+              AND event_seq > ?3
+              AND event_seq <= ?4
+            "#,
+            params![
+                hold_id,
+                BudgetMutationKind::ReleaseExposure.as_str(),
+                budget_u64_to_sqlite(authorization_seq, "authorization_seq")?,
+                budget_u64_to_sqlite(event.event_seq, "event_seq")?,
+            ],
+            |row| budget_u64_from_row(row, 0, "released_exposure_units"),
+        )?;
+        let remaining_exposure_units = authorized_exposure_units
+            .checked_sub(released_exposure_units)
+            .ok_or_else(|| {
+                BudgetStoreError::Invariant(format!(
+                    "sqlite budget hold `{hold_id}` release history exceeds authorization"
+                ))
+            })?;
+        if authorized_exposure_units == 0 {
+            BudgetMonetaryState::None
+        } else if remaining_exposure_units == 0 {
+            BudgetMonetaryState::Released
+        } else {
+            BudgetMonetaryState::Exposed
+        }
+    } else if event.exposure_units == 0 && event.realized_spend_units == 0 {
+        BudgetMonetaryState::None
+    } else {
+        BudgetMonetaryState::Reconciled
+    };
+    let decision = BudgetHoldMutationDecision {
+        hold_id: Some(hold_id.to_string()),
+        admission_binding: None,
+        exposure_units: event.exposure_units,
+        realized_spend_units: event.realized_spend_units,
+        committed_cost_units_after: checked_committed_cost_units(
+            event.total_cost_exposed_after,
+            event.total_cost_realized_spend_after,
+        )?,
+        invocation_count_after: event.invocation_count_after,
+        invocation_quota_usages: Vec::new(),
+        cumulative_approval: None,
+        invocation_state,
+        monetary_state,
+        metadata: BudgetCommitMetadata {
+            authority: event.authority,
+            guarantee_level: store.budget_guarantee_level(),
+            budget_profile: store.budget_authority_profile(),
+            metering_profile: store.budget_metering_profile(),
+            budget_commit_index: Some(event.event_seq),
+            event_id: Some(event.event_id),
+            recorded_at_unix_seconds: u64::try_from(event.recorded_at).ok(),
+        },
+    };
+    transaction.rollback()?;
+    Ok(decision)
 }

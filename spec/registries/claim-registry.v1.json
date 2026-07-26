@@ -596,6 +596,62 @@
       "summary": "The swarm authority verifier requires the graph and all continuation tokens to bind a fresh revocation epoch and rejects revoked task ids.",
       "introduced_in": "swarm-authority-v1",
       "proof_manifest_ref": "manifest.swarm.revocation_epoch_bound"
+    },
+    {
+      "id": "claim.fincred.credit_scorecard.verified_projection_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-trust/v1/financial-credit-scorecard.schema.json",
+      "summary": "Credit-scorecard credential issuance accepts only the typed verified projection and cannot upgrade unresolved source evidence above Asserted.",
+      "introduced_in": "financial-credentials-v1",
+      "proof_manifest_ref": "manifest.fincred.credit_scorecard.verified_projection_bound"
+    },
+    {
+      "id": "claim.fincred.exposure_history.complete_window_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-trust/v1/financial-exposure-history.schema.json",
+      "summary": "Exposure-history projection rejects summary counts or totals that do not match the committed source rows for its declared half-open window.",
+      "introduced_in": "financial-credentials-v1",
+      "proof_manifest_ref": "manifest.fincred.exposure_history.complete_window_bound"
+    },
+    {
+      "id": "claim.fincred.premium_history.complete_window_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-trust/v1/financial-premium-history.schema.json",
+      "summary": "Premium-history projection rejects an omitted oldest member inside its declared half-open source window.",
+      "introduced_in": "financial-credentials-v1",
+      "proof_manifest_ref": "manifest.fincred.premium_history.complete_window_bound"
+    },
+    {
+      "id": "claim.fincred.loss_history.complete_window_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-trust/v1/financial-loss-history.schema.json",
+      "summary": "Loss-history projection rejects an omitted newest member inside its declared half-open source window.",
+      "introduced_in": "financial-credentials-v1",
+      "proof_manifest_ref": "manifest.fincred.loss_history.complete_window_bound"
+    },
+    {
+      "id": "claim.fincred.settlement_reliability.fail_closed",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-trust/v1/financial-settlement-reliability.schema.json",
+      "summary": "Settlement-reliability credentials fail closed at decoding and verification until the authenticated obligation and reconciliation proof substrate is available.",
+      "introduced_in": "financial-credentials-v1",
+      "proof_manifest_ref": "manifest.fincred.settlement_reliability.fail_closed"
+    },
+    {
+      "id": "claim.fincred.source_manifest.credential_set_bound",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-trust/v1/financial-agent-passport-source-manifest.schema.json",
+      "summary": "The signed V2 source manifest binds the exact credential set, subject, validity, roots, enterprise provenance, and issuer-asserted trust tier; redundant passport fields must match it exactly.",
+      "introduced_in": "financial-credentials-v1",
+      "proof_manifest_ref": "manifest.fincred.source_manifest.credential_set_bound"
+    },
+    {
+      "id": "claim.fincred.presentation_challenge.signed_exact",
+      "status": "enforced",
+      "schema_artifact": "spec/schemas/chio-trust/v1/financial-passport-presentation-challenge.schema.json",
+      "summary": "A V2 presentation challenge carries a domain-separated body digest and verifier signature, and holders reject digest, signer, signature, or unknown-field tampering before disclosure.",
+      "introduced_in": "financial-credentials-v1",
+      "proof_manifest_ref": "manifest.fincred.presentation_challenge.signed_exact"
     }
   ],
   "proposed_claims": [

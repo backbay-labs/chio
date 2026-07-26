@@ -40,9 +40,11 @@ pub(super) use self::metadata::{
     task_outcome_to_jsonrpc, tool_call_outcome_to_jsonrpc,
 };
 pub(super) use self::parsing::{
-    build_operation_context, parse_completion_argument, parse_completion_reference, parse_cursor,
-    parse_peer_capabilities, parse_request_execution_nonce, parse_request_extra_metadata,
-    parse_request_governed_intent, parse_request_model_metadata, parse_task_id,
+    build_operation_context, build_operation_context_for_retry, parse_completion_argument,
+    parse_completion_reference, parse_cursor, parse_peer_capabilities,
+    parse_request_approval_artifacts, parse_request_execution_nonce, parse_request_extra_metadata,
+    parse_request_governed_intent, parse_request_model_metadata, parse_request_stable_request_id,
+    parse_request_supplemental_authorization, parse_task_id,
 };
 pub(super) use self::response::{
     adapter_jsonrpc_error, jsonrpc_error, jsonrpc_error_with_data, jsonrpc_result,

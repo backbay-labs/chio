@@ -1,0 +1,815 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/fiscal-defs/v1.schema.json",
+  "$defs": {
+    "iJsonInteger": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "positiveIJsonInteger": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "u32": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 4294967295
+    },
+    "positiveU32": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 4294967295
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "\\S"
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "publicKey": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194})$",
+      "maxLength": 199
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+)$",
+      "maxLength": 2048
+    },
+    "fiscalDomain": {
+      "type": "string",
+      "enum": [
+        "tier_limits",
+        "marketplace_discount_per_hundred",
+        "decision_premium_basis_points",
+        "insurance_premium_schedule",
+        "open_market_fee_and_bond_schedule"
+      ]
+    },
+    "monetaryAmount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["units", "currency"],
+      "properties": {
+        "units": { "$ref": "#/$defs/iJsonInteger" },
+        "currency": { "$ref": "#/$defs/currency" }
+      }
+    },
+    "positiveMonetaryAmount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["units", "currency"],
+      "properties": {
+        "units": { "$ref": "#/$defs/positiveIJsonInteger" },
+        "currency": { "$ref": "#/$defs/text" }
+      }
+    },
+    "fiscalSigner": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["keyId", "publicKey"],
+      "properties": {
+        "keyId": { "$ref": "#/$defs/digest" },
+        "publicKey": { "$ref": "#/$defs/publicKey" }
+      }
+    },
+    "openMarketEconomicsScope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["namespace"],
+      "properties": {
+        "namespace": { "$ref": "#/$defs/text" },
+        "allowedListingOperatorIds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/text" }
+        },
+        "allowedActorKinds": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "tool_server",
+              "credential_issuer",
+              "credential_verifier",
+              "liability_provider"
+            ]
+          }
+        },
+        "allowedAdmissionClasses": {
+          "type": "array",
+          "items": {
+            "enum": ["public_untrusted", "reviewable", "bond_backed", "role_gated"]
+          }
+        },
+        "policyReference": { "$ref": "#/$defs/text" }
+      }
+    },
+    "openMarketBondRequirement": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["bondClass", "requiredAmount", "collateralReferenceKind", "slashable"],
+      "properties": {
+        "bondClass": { "enum": ["publication", "listing", "dispute"] },
+        "requiredAmount": { "$ref": "#/$defs/positiveMonetaryAmount" },
+        "collateralReferenceKind": { "enum": ["credit_bond", "external_reference"] },
+        "slashable": { "type": "boolean" }
+      }
+    },
+    "openMarketFeeScheduleBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "feeScheduleId",
+        "namespace",
+        "governingOperatorId",
+        "scope",
+        "publicationFee",
+        "disputeFee",
+        "marketParticipationFee",
+        "bondRequirements",
+        "issuedAt",
+        "issuedBy"
+      ],
+      "properties": {
+        "schema": { "const": "chio.registry.market-fee-schedule.v1" },
+        "feeScheduleId": { "$ref": "#/$defs/text" },
+        "namespace": { "$ref": "#/$defs/text" },
+        "governingOperatorId": { "$ref": "#/$defs/text" },
+        "governingOperatorName": { "$ref": "#/$defs/text" },
+        "scope": { "$ref": "#/$defs/openMarketEconomicsScope" },
+        "publicationFee": { "$ref": "#/$defs/positiveMonetaryAmount" },
+        "disputeFee": { "$ref": "#/$defs/positiveMonetaryAmount" },
+        "marketParticipationFee": { "$ref": "#/$defs/positiveMonetaryAmount" },
+        "bondRequirements": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/openMarketBondRequirement" }
+        },
+        "issuedAt": { "$ref": "#/$defs/iJsonInteger" },
+        "expiresAt": { "$ref": "#/$defs/positiveIJsonInteger" },
+        "issuedBy": { "$ref": "#/$defs/text" },
+        "note": { "$ref": "#/$defs/text" }
+      }
+    },
+    "fiscalParams": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "ceilings"],
+          "properties": {
+            "kind": { "const": "tier_limits" },
+            "ceilings": {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 4,
+              "items": { "$ref": "#/$defs/monetaryAmount" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "discounts"],
+          "properties": {
+            "kind": { "const": "marketplace_discount_per_hundred" },
+            "discounts": {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 4,
+              "items": { "type": "integer", "minimum": 0, "maximum": 100 }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "approve", "reduceCeiling"],
+          "properties": {
+            "kind": { "const": "decision_premium_basis_points" },
+            "approve": {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 4,
+              "items": { "$ref": "#/$defs/u32" }
+            },
+            "reduceCeiling": {
+              "type": "array",
+              "minItems": 4,
+              "maxItems": 4,
+              "items": { "$ref": "#/$defs/u32" }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "declineFloor",
+            "highRiskFloor",
+            "mediumRiskFloor",
+            "lowRiskFloor",
+            "scoreAdjustmentsBps",
+            "behavioralThreshold",
+            "behavioralPenaltyPerSigma",
+            "behavioralPenaltyCap"
+          ],
+          "properties": {
+            "kind": { "const": "insurance_premium_schedule" },
+            "declineFloor": { "$ref": "#/$defs/u32" },
+            "highRiskFloor": { "$ref": "#/$defs/u32" },
+            "mediumRiskFloor": { "$ref": "#/$defs/u32" },
+            "lowRiskFloor": { "$ref": "#/$defs/u32" },
+            "scoreAdjustmentsBps": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": { "$ref": "#/$defs/u32" }
+            },
+            "behavioralThreshold": { "type": "number", "minimum": 0 },
+            "behavioralPenaltyPerSigma": { "$ref": "#/$defs/u32" },
+            "behavioralPenaltyCap": { "$ref": "#/$defs/u32" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "legacyBody"],
+          "properties": {
+            "kind": { "const": "open_market_fee_and_bond_schedule" },
+            "legacyBody": { "$ref": "#/$defs/openMarketFeeScheduleBody" }
+          }
+        }
+      ]
+    },
+    "fiscalCharterBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "charterId",
+        "governingOperatorId",
+        "governedDomains",
+        "signerSet",
+        "approvalThreshold",
+        "timelockSeconds",
+        "proposalTtlSeconds",
+        "approvalTtlSeconds",
+        "issuedAt",
+        "expiresAt",
+        "issuedBy",
+        "sequence"
+      ],
+      "properties": {
+        "schema": { "const": "chio.fiscal.charter.v1" },
+        "charterId": { "$ref": "#/$defs/digest" },
+        "governingOperatorId": { "$ref": "#/$defs/text" },
+        "governedDomains": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 5,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/fiscalDomain" }
+        },
+        "signerSet": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/fiscalSigner" }
+        },
+        "approvalThreshold": { "$ref": "#/$defs/positiveU32" },
+        "timelockSeconds": { "$ref": "#/$defs/positiveIJsonInteger" },
+        "proposalTtlSeconds": { "$ref": "#/$defs/positiveIJsonInteger" },
+        "approvalTtlSeconds": { "$ref": "#/$defs/positiveIJsonInteger" },
+        "issuedAt": { "$ref": "#/$defs/iJsonInteger" },
+        "expiresAt": { "$ref": "#/$defs/positiveIJsonInteger" },
+        "issuedBy": { "$ref": "#/$defs/text" },
+        "sequence": { "$ref": "#/$defs/positiveIJsonInteger" },
+        "predecessorCharterDigest": { "$ref": "#/$defs/digest" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "sequence": { "const": 1 } }, "required": ["sequence"] },
+          "then": { "not": { "required": ["predecessorCharterDigest"] } },
+          "else": { "required": ["predecessorCharterDigest"] }
+        }
+      ]
+    },
+    "signedFiscalCharter": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["body", "signerKey", "signature"],
+      "properties": {
+        "body": { "$ref": "#/$defs/fiscalCharterBody" },
+        "signerKey": { "$ref": "#/$defs/publicKey" },
+        "signature": { "$ref": "#/$defs/signature" }
+      }
+    },
+    "fiscalScheduleBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "scheduleId",
+        "charterId",
+        "charterDigest",
+        "domain",
+        "params",
+        "sequence",
+        "validFrom",
+        "validUntil",
+        "issuedAt",
+        "issuedBy"
+      ],
+      "properties": {
+        "schema": { "const": "chio.fiscal.schedule.v1" },
+        "scheduleId": { "$ref": "#/$defs/digest" },
+        "charterId": { "$ref": "#/$defs/digest" },
+        "charterDigest": { "$ref": "#/$defs/digest" },
+        "domain": { "$ref": "#/$defs/fiscalDomain" },
+        "params": { "$ref": "#/$defs/fiscalParams" },
+        "sequence": { "$ref": "#/$defs/positiveIJsonInteger" },
+        "supersedesScheduleId": { "$ref": "#/$defs/digest" },
+        "validFrom": { "$ref": "#/$defs/iJsonInteger" },
+        "validUntil": { "$ref": "#/$defs/positiveIJsonInteger" },
+        "issuedAt": { "$ref": "#/$defs/iJsonInteger" },
+        "issuedBy": { "$ref": "#/$defs/text" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "sequence": { "const": 1 } }, "required": ["sequence"] },
+          "then": { "not": { "required": ["supersedesScheduleId"] } },
+          "else": { "required": ["supersedesScheduleId"] }
+        },
+        {
+          "if": { "properties": { "domain": { "const": "tier_limits" } }, "required": ["domain"] },
+          "then": { "properties": { "params": { "properties": { "kind": { "const": "tier_limits" } }, "required": ["kind"] } } }
+        },
+        {
+          "if": { "properties": { "domain": { "const": "marketplace_discount_per_hundred" } }, "required": ["domain"] },
+          "then": { "properties": { "params": { "properties": { "kind": { "const": "marketplace_discount_per_hundred" } }, "required": ["kind"] } } }
+        },
+        {
+          "if": { "properties": { "domain": { "const": "decision_premium_basis_points" } }, "required": ["domain"] },
+          "then": { "properties": { "params": { "properties": { "kind": { "const": "decision_premium_basis_points" } }, "required": ["kind"] } } }
+        },
+        {
+          "if": { "properties": { "domain": { "const": "insurance_premium_schedule" } }, "required": ["domain"] },
+          "then": { "properties": { "params": { "properties": { "kind": { "const": "insurance_premium_schedule" } }, "required": ["kind"] } } }
+        },
+        {
+          "if": { "properties": { "domain": { "const": "open_market_fee_and_bond_schedule" } }, "required": ["domain"] },
+          "then": { "properties": { "params": { "properties": { "kind": { "const": "open_market_fee_and_bond_schedule" } }, "required": ["kind"] } } }
+        }
+      ]
+    },
+    "signedFiscalSchedule": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["body", "signerKey", "signature"],
+      "properties": {
+        "body": { "$ref": "#/$defs/fiscalScheduleBody" },
+        "signerKey": { "$ref": "#/$defs/publicKey" },
+        "signature": { "$ref": "#/$defs/signature" }
+      }
+    },
+    "fiscalGenesisPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "policyId",
+        "governingOperatorId",
+        "genesisCharterId",
+        "genesisCharterDigest",
+        "bootstrapAuthorityKey",
+        "anchorId",
+        "anchorNamespace",
+        "anchorSignerKeyId",
+        "anchorSignerKeyEpoch",
+        "anchorAuthorityKey",
+        "bootstrapTierLimits"
+      ],
+      "properties": {
+        "schema": { "const": "chio.fiscal.genesis-policy.v1" },
+        "policyId": { "$ref": "#/$defs/digest" },
+        "governingOperatorId": { "$ref": "#/$defs/text" },
+        "genesisCharterId": { "$ref": "#/$defs/digest" },
+        "genesisCharterDigest": { "$ref": "#/$defs/digest" },
+        "bootstrapAuthorityKey": { "$ref": "#/$defs/publicKey" },
+        "anchorId": { "$ref": "#/$defs/text" },
+        "anchorNamespace": { "$ref": "#/$defs/text" },
+        "anchorSignerKeyId": { "$ref": "#/$defs/digest" },
+        "anchorSignerKeyEpoch": { "$ref": "#/$defs/positiveIJsonInteger" },
+        "anchorAuthorityKey": { "$ref": "#/$defs/publicKey" },
+        "bootstrapTierLimits": {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 64,
+          "propertyNames": { "$ref": "#/$defs/currency" },
+          "additionalProperties": {
+            "type": "array",
+            "minItems": 4,
+            "maxItems": 4,
+            "items": { "$ref": "#/$defs/iJsonInteger" }
+          }
+        }
+      }
+    },
+    "fiscalProposalTarget": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "candidate"],
+          "properties": {
+            "kind": { "const": "schedule" },
+            "candidate": { "$ref": "#/$defs/signedFiscalSchedule" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "successor"],
+          "properties": {
+            "kind": { "const": "charter_rotation" },
+            "successor": { "$ref": "#/$defs/signedFiscalCharter" }
+          }
+        }
+      ]
+    },
+    "fiscalProposalBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "proposalId", "target", "rationaleDigest", "proposedBy", "proposedAt"],
+      "properties": {
+        "schema": { "const": "chio.fiscal.proposal.v1" },
+        "proposalId": { "$ref": "#/$defs/digest" },
+        "target": { "$ref": "#/$defs/fiscalProposalTarget" },
+        "rationaleDigest": { "$ref": "#/$defs/digest" },
+        "proposedBy": { "$ref": "#/$defs/digest" },
+        "proposedAt": { "$ref": "#/$defs/positiveIJsonInteger" }
+      }
+    },
+    "signedFiscalProposal": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["body", "signerKey", "signature"],
+      "properties": {
+        "body": { "$ref": "#/$defs/fiscalProposalBody" },
+        "signerKey": { "$ref": "#/$defs/publicKey" },
+        "signature": { "$ref": "#/$defs/signature" }
+      }
+    },
+    "fiscalProposalAdmissionBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "admissionId",
+        "proposalId",
+        "proposalDigest",
+        "governingOperatorId",
+        "predecessorCharterId",
+        "predecessorCharterDigest",
+        "predecessorCharterSequence",
+        "admissionSequence",
+        "admittedAt",
+        "proposalExpiresAt",
+        "admissionAuthorityId",
+        "signerKeyId",
+        "signerKeyEpoch"
+      ],
+      "properties": {
+        "schema": { "const": "chio.fiscal.proposal-admission.v1" },
+        "admissionId": { "$ref": "#/$defs/digest" },
+        "proposalId": { "$ref": "#/$defs/digest" },
+        "proposalDigest": { "$ref": "#/$defs/digest" },
+        "governingOperatorId": { "$ref": "#/$defs/text" },
+        "predecessorCharterId": { "$ref": "#/$defs/digest" },
+        "predecessorCharterDigest": { "$ref": "#/$defs/digest" },
+        "predecessorCharterSequence": { "$ref": "#/$defs/positiveIJsonInteger" },
+        "admissionSequence": { "$ref": "#/$defs/positiveIJsonInteger" },
+        "admittedAt": { "$ref": "#/$defs/positiveIJsonInteger" },
+        "proposalExpiresAt": { "$ref": "#/$defs/positiveIJsonInteger" },
+        "admissionAuthorityId": { "$ref": "#/$defs/text" },
+        "signerKeyId": { "$ref": "#/$defs/digest" },
+        "signerKeyEpoch": { "$ref": "#/$defs/positiveIJsonInteger" }
+      }
+    },
+    "signedFiscalProposalAdmission": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["body", "signerKey", "signature"],
+      "properties": {
+        "body": { "$ref": "#/$defs/fiscalProposalAdmissionBody" },
+        "signerKey": { "$ref": "#/$defs/publicKey" },
+        "signature": { "$ref": "#/$defs/signature" }
+      }
+    },
+    "fiscalApprovalBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "approvalId",
+        "signerKeyId",
+        "proposalId",
+        "proposalDigest",
+        "admissionId",
+        "admissionDigest",
+        "approvedAt",
+        "approvalExpiresAt"
+      ],
+      "properties": {
+        "schema": { "const": "chio.fiscal.approval.v1" },
+        "approvalId": { "$ref": "#/$defs/digest" },
+        "signerKeyId": { "$ref": "#/$defs/digest" },
+        "proposalId": { "$ref": "#/$defs/digest" },
+        "proposalDigest": { "$ref": "#/$defs/digest" },
+        "admissionId": { "$ref": "#/$defs/digest" },
+        "admissionDigest": { "$ref": "#/$defs/digest" },
+        "approvedAt": { "$ref": "#/$defs/positiveIJsonInteger" },
+        "approvalExpiresAt": { "$ref": "#/$defs/positiveIJsonInteger" }
+      }
+    },
+    "signedFiscalApproval": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["body", "signerKey", "signature"],
+      "properties": {
+        "body": { "$ref": "#/$defs/fiscalApprovalBody" },
+        "signerKey": { "$ref": "#/$defs/publicKey" },
+        "signature": { "$ref": "#/$defs/signature" }
+      }
+    },
+    "fiscalActivationTarget": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "scheduleId"],
+          "properties": {
+            "kind": { "const": "schedule" },
+            "scheduleId": { "$ref": "#/$defs/digest" },
+            "supersedesScheduleId": { "$ref": "#/$defs/digest" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "kind",
+            "successorCharterDigest",
+            "predecessorCharterDigest",
+            "successorSchedules"
+          ],
+          "properties": {
+            "kind": { "const": "charter_rotation" },
+            "successorCharterDigest": { "$ref": "#/$defs/digest" },
+            "predecessorCharterDigest": { "$ref": "#/$defs/digest" },
+            "successorSchedules": {
+              "type": "array",
+              "items": { "$ref": "#/$defs/signedFiscalSchedule" }
+            }
+          }
+        }
+      ]
+    },
+    "fiscalActivationBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "activationId",
+        "proposalId",
+        "proposalDigest",
+        "admissionId",
+        "admissionDigest",
+        "charterId",
+        "charterDigest",
+        "approvalSetDigest",
+        "target",
+        "approvals",
+        "activationNotBefore",
+        "activatedAt",
+        "issuedBy"
+      ],
+      "properties": {
+        "schema": { "const": "chio.fiscal.activation.v1" },
+        "activationId": { "$ref": "#/$defs/digest" },
+        "proposalId": { "$ref": "#/$defs/digest" },
+        "proposalDigest": { "$ref": "#/$defs/digest" },
+        "admissionId": { "$ref": "#/$defs/digest" },
+        "admissionDigest": { "$ref": "#/$defs/digest" },
+        "charterId": { "$ref": "#/$defs/digest" },
+        "charterDigest": { "$ref": "#/$defs/digest" },
+        "approvalSetDigest": { "$ref": "#/$defs/digest" },
+        "target": { "$ref": "#/$defs/fiscalActivationTarget" },
+        "approvals": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "$ref": "#/$defs/signedFiscalApproval" }
+        },
+        "activationNotBefore": { "$ref": "#/$defs/positiveIJsonInteger" },
+        "activatedAt": { "$ref": "#/$defs/positiveIJsonInteger" },
+        "issuedBy": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "signedFiscalActivation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["body", "signerKey", "signature"],
+      "properties": {
+        "body": { "$ref": "#/$defs/fiscalActivationBody" },
+        "signerKey": { "$ref": "#/$defs/publicKey" },
+        "signature": { "$ref": "#/$defs/signature" }
+      }
+    },
+    "fiscalConsumerReadinessBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "readinessId",
+        "governingOperatorId",
+        "genesisPolicyId",
+        "genesisPolicyDigest",
+        "readinessSequence",
+        "runtimeRegistryDigest",
+        "readyDomains",
+        "attestedAt",
+        "signerKeyId",
+        "signerKeyEpoch"
+      ],
+      "properties": {
+        "schema": { "const": "chio.fiscal.consumer-readiness.v1" },
+        "readinessId": { "$ref": "#/$defs/digest" },
+        "governingOperatorId": { "$ref": "#/$defs/text" },
+        "genesisPolicyId": { "$ref": "#/$defs/digest" },
+        "genesisPolicyDigest": { "$ref": "#/$defs/digest" },
+        "readinessSequence": { "$ref": "#/$defs/positiveIJsonInteger" },
+        "runtimeRegistryDigest": { "$ref": "#/$defs/digest" },
+        "readyDomains": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "prefixItems": [
+            { "const": "tier_limits" },
+            { "const": "marketplace_discount_per_hundred" },
+            { "const": "decision_premium_basis_points" },
+            { "const": "insurance_premium_schedule" },
+            { "const": "open_market_fee_and_bond_schedule" }
+          ],
+          "items": false
+        },
+        "attestedAt": { "$ref": "#/$defs/positiveIJsonInteger" },
+        "signerKeyId": { "$ref": "#/$defs/digest" },
+        "signerKeyEpoch": { "$ref": "#/$defs/positiveIJsonInteger" }
+      }
+    },
+    "signedFiscalConsumerReadiness": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["body", "signerKey", "signature"],
+      "properties": {
+        "body": { "$ref": "#/$defs/fiscalConsumerReadinessBody" },
+        "signerKey": { "$ref": "#/$defs/publicKey" },
+        "signature": { "$ref": "#/$defs/signature" }
+      }
+    },
+    "fiscalScheduleHead": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["scheduleId", "scheduleDigest", "sequence"],
+      "properties": {
+        "scheduleId": { "$ref": "#/$defs/digest" },
+        "scheduleDigest": { "$ref": "#/$defs/digest" },
+        "sequence": { "$ref": "#/$defs/positiveIJsonInteger" }
+      }
+    },
+    "fiscalDomainState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["domain", "everActivated"],
+      "properties": {
+        "domain": { "$ref": "#/$defs/fiscalDomain" },
+        "everActivated": { "type": "boolean" },
+        "active": { "$ref": "#/$defs/fiscalScheduleHead" },
+        "lastKnownGood": { "$ref": "#/$defs/fiscalScheduleHead" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "everActivated": { "const": true } }, "required": ["everActivated"] },
+          "then": { "required": ["active", "lastKnownGood"] },
+          "else": {
+            "not": {
+              "anyOf": [
+                { "required": ["active"] },
+                { "required": ["lastKnownGood"] }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "fiscalStagedTransition": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["transitionId", "transitionDigest"],
+      "properties": {
+        "transitionId": { "$ref": "#/$defs/digest" },
+        "transitionDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "fiscalContinuityCheckpointBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "checkpointId",
+        "anchorId",
+        "anchorNamespace",
+        "governingOperatorId",
+        "continuitySequence",
+        "genesisPolicyId",
+        "genesisPolicyDigest",
+        "pinnedCharterId",
+        "pinnedCharterDigest",
+        "pinnedCharterSequence",
+        "runtimeReadinessDigest",
+        "domains",
+        "trustedClockHighWater",
+        "signerKeyId",
+        "signerKeyEpoch"
+      ],
+      "properties": {
+        "schema": { "const": "chio.fiscal.continuity-checkpoint.v1" },
+        "checkpointId": { "$ref": "#/$defs/digest" },
+        "anchorId": { "$ref": "#/$defs/text" },
+        "anchorNamespace": { "$ref": "#/$defs/text" },
+        "governingOperatorId": { "$ref": "#/$defs/text" },
+        "continuitySequence": { "$ref": "#/$defs/iJsonInteger" },
+        "previousCheckpointDigest": { "$ref": "#/$defs/digest" },
+        "genesisPolicyId": { "$ref": "#/$defs/digest" },
+        "genesisPolicyDigest": { "$ref": "#/$defs/digest" },
+        "pinnedCharterId": { "$ref": "#/$defs/digest" },
+        "pinnedCharterDigest": { "$ref": "#/$defs/digest" },
+        "pinnedCharterSequence": { "$ref": "#/$defs/positiveIJsonInteger" },
+        "runtimeReadinessDigest": { "$ref": "#/$defs/digest" },
+        "domains": {
+          "type": "array",
+          "minItems": 5,
+          "maxItems": 5,
+          "prefixItems": [
+            { "allOf": [{ "$ref": "#/$defs/fiscalDomainState" }, { "properties": { "domain": { "const": "tier_limits" } } }] },
+            { "allOf": [{ "$ref": "#/$defs/fiscalDomainState" }, { "properties": { "domain": { "const": "marketplace_discount_per_hundred" } } }] },
+            { "allOf": [{ "$ref": "#/$defs/fiscalDomainState" }, { "properties": { "domain": { "const": "decision_premium_basis_points" } } }] },
+            { "allOf": [{ "$ref": "#/$defs/fiscalDomainState" }, { "properties": { "domain": { "const": "insurance_premium_schedule" } } }] },
+            { "allOf": [{ "$ref": "#/$defs/fiscalDomainState" }, { "properties": { "domain": { "const": "open_market_fee_and_bond_schedule" } } }] }
+          ],
+          "items": false
+        },
+        "trustedClockHighWater": { "$ref": "#/$defs/iJsonInteger" },
+        "stagedTransition": { "$ref": "#/$defs/fiscalStagedTransition" },
+        "signerKeyId": { "$ref": "#/$defs/digest" },
+        "signerKeyEpoch": { "$ref": "#/$defs/positiveIJsonInteger" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "continuitySequence": { "const": 0 } }, "required": ["continuitySequence"] },
+          "then": {
+            "not": {
+              "anyOf": [
+                { "required": ["previousCheckpointDigest"] },
+                { "required": ["stagedTransition"] }
+              ]
+            }
+          },
+          "else": { "required": ["previousCheckpointDigest"] }
+        }
+      ]
+    },
+    "signedFiscalContinuityCheckpoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["body", "signerKey", "signature"],
+      "properties": {
+        "body": { "$ref": "#/$defs/fiscalContinuityCheckpointBody" },
+        "signerKey": { "$ref": "#/$defs/publicKey" },
+        "signature": { "$ref": "#/$defs/signature" }
+      }
+    }
+  }
+}

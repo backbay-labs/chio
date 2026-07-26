@@ -68,6 +68,7 @@ mod tests {
     fn binding() -> NonceBinding {
         NonceBinding {
             subject_id: "subject".to_string(),
+            request_id: "req-1".to_string(),
             capability_id: "cap-1".to_string(),
             tool_server: "fs".to_string(),
             tool_name: "read_file".to_string(),

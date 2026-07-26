@@ -604,7 +604,7 @@ class ChioClient:
 
         Optional helper for callers that hold a full signed capability token.
         ``capability`` must be the complete signed ``CapabilityToken`` (not an
-        id-only ``{"id": ...}`` stub); the id-only SDK wrappers cannot drive
+        id-only ``{"id": ...}`` object); the id-only SDK wrappers cannot drive
         this route and use ``evaluate_tool_call`` instead. Posts to the
         kernel-mediated ``/v1/evaluate`` route and returns
         ``{"status", "receipt", "execution_nonce"}``, where ``status`` is one of

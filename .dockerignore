@@ -11,3 +11,6 @@ npm-debug.log
 dist
 tmp
 .DS_Store
+**/.env
+**/.env.*
+!**/.env.example

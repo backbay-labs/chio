@@ -67,19 +67,38 @@ fn expired_row_is_pruned_and_slot_becomes_free() {
 #[test]
 fn persists_consumed_marker_across_reopen() {
     let path = unique_db_path("chio-exec-nonce-persist");
+    let now = i64::try_from(
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .test_expect("time before epoch")
+            .as_secs(),
+    )
+    .test_expect("wall clock fits i64");
+    let expires_at = now.saturating_add(120);
     {
         let store = SqliteExecutionNonceStore::open(&path).test_unwrap();
         let now = now_secs();
         assert!(store
-            .try_reserve("persistent-id", now, now.saturating_add(10_000_000_000))
+            .try_reserve("persistent-id", now, expires_at)
             .test_unwrap());
+        assert!(store.is_consumed("persistent-id").test_unwrap());
     }
     let reopened = SqliteExecutionNonceStore::open(&path).test_unwrap();
-    let now = now_secs();
+    assert!(reopened.is_consumed("persistent-id").test_unwrap());
     assert!(!reopened
-        .try_reserve("persistent-id", now, now.saturating_add(10_000_000_000))
+        .try_reserve("persistent-id", now, expires_at)
         .test_unwrap());
     let _ = std::fs::remove_file(path);
+}
+
+#[test]
+fn expired_consumed_marker_does_not_block_a_validated_nonce() {
+    let store = SqliteExecutionNonceStore::open_in_memory().test_unwrap();
+    let now = now_secs();
+    assert!(store
+        .try_reserve("expired-id", now, now.saturating_sub(1))
+        .test_unwrap());
+    assert!(!store.is_consumed("expired-id").test_unwrap());
 }
 
 #[test]

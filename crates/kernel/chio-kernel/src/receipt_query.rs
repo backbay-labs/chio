@@ -112,6 +112,8 @@ pub struct ReceiptQuery {
     /// Include only receipts with financial cost_charged <= max_cost (minor units).
     /// Receipts without financial metadata are excluded when this filter is set.
     pub max_cost: Option<u64>,
+    /// Currency for cost filters. Required when either cost bound is present.
+    pub cost_currency: Option<String>,
     /// Cursor for forward pagination: return only receipts with seq > cursor (exclusive).
     pub cursor: Option<u64>,
     /// Maximum number of receipts to return per page (capped at MAX_QUERY_LIMIT).
@@ -127,6 +129,27 @@ pub struct ReceiptQuery {
 }
 
 impl ReceiptQuery {
+    pub fn validated_cost_currency(&self) -> Result<Option<&str>, String> {
+        if self
+            .min_cost
+            .zip(self.max_cost)
+            .is_some_and(|(minimum, maximum)| minimum > maximum)
+        {
+            return Err("receipt query minimum cost exceeds maximum cost".to_string());
+        }
+        let has_cost_bound = self.min_cost.is_some() || self.max_cost.is_some();
+        let Some(currency) = self.cost_currency.as_deref() else {
+            if has_cost_bound {
+                return Err("receipt query cost bounds require a currency".to_string());
+            }
+            return Ok(None);
+        };
+        if currency.len() != 3 || !currency.bytes().all(|byte| byte.is_ascii_uppercase()) {
+            return Err("receipt query currency must be a three-letter uppercase code".to_string());
+        }
+        Ok(Some(currency))
+    }
+
     #[must_use]
     pub fn with_read_context(mut self, read_context: ReceiptReadContext) -> Self {
         self.read_context = Some(read_context);
@@ -146,6 +169,7 @@ impl ReceiptQuery {
     }
 
     pub fn effective_read_scope(&self) -> Result<EffectiveReceiptReadScope, String> {
+        self.validated_cost_currency()?;
         if let Some(context) = &self.read_context {
             return match &context.boundary {
                 ReceiptReadBoundary::AdminAll => {

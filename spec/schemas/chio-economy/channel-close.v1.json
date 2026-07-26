@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-economy/channel-close/v1",
+  "title": "Chio Channel Close V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "payeeSignature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "channelId",
+        "openDigest",
+        "closeKind",
+        "finalStateDigest",
+        "finalStateSequence",
+        "finalCumulativeOwed",
+        "expectedReleaseTokenBaseUnits",
+        "expectedRefundAfterReleaseTokenBaseUnits",
+        "disputeWindowSecs",
+        "proposedAtUnixMs",
+        "disputeDeadlineUnixMs",
+        "closeSubmissionCutoffUnixSecs",
+        "channelStateVersion",
+        "escrowReservationVersion",
+        "lifecycleFence"
+      ],
+      "properties": {
+        "schema": { "const": "chio.channel.close.v1" },
+        "channelId": { "$ref": "#/$defs/digest" },
+        "openDigest": { "$ref": "#/$defs/digest" },
+        "closeKind": { "enum": ["cooperative", "contested"] },
+        "finalStateDigest": { "$ref": "#/$defs/digest" },
+        "finalStateSequence": { "$ref": "#/$defs/nonNegativeInteger" },
+        "finalCumulativeOwed": { "$ref": "#/$defs/monetaryAmount" },
+        "expectedReleaseTokenBaseUnits": { "$ref": "#/$defs/baseUnits" },
+        "expectedRefundAfterReleaseTokenBaseUnits": { "$ref": "#/$defs/baseUnits" },
+        "disputeWindowSecs": { "$ref": "#/$defs/positiveInteger" },
+        "proposedAtUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "disputeDeadlineUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "closeSubmissionCutoffUnixSecs": { "$ref": "#/$defs/positiveInteger" },
+        "channelStateVersion": { "$ref": "#/$defs/positiveInteger" },
+        "escrowReservationVersion": { "$ref": "#/$defs/positiveInteger" },
+        "lifecycleFence": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "payeeSignature": { "$ref": "#/$defs/channelSignature" },
+    "payerSignature": { "$ref": "#/$defs/channelSignature" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "currency": { "type": "string", "pattern": "^[A-Z]{3}$" },
+    "baseUnits": { "type": "string", "pattern": "^(0|[1-9][0-9]{0,37}|[1-2][0-9]{38}|3[0-3][0-9]{37}|340[0-1][0-9]{35}|3402[0-7][0-9]{34}|34028[0-1][0-9]{33}|340282[0-2][0-9]{32}|3402823[0-5][0-9]{31}|34028236[0-5][0-9]{30}|340282366[0-8][0-9]{29}|3402823669[0-1][0-9]{28}|340282366920[0-8][0-9]{26}|3402823669209[0-2][0-9]{25}|34028236692093[0-7][0-9]{24}|340282366920938[0-3][0-9]{23}|3402823669209384[0-5][0-9]{22}|34028236692093846[0-2][0-9]{21}|340282366920938463[0-3][0-9]{20}|3402823669209384634[0-5][0-9]{19}|34028236692093846346[0-2][0-9]{18}|340282366920938463463[0-2][0-9]{17}|3402823669209384634633[0-6][0-9]{16}|34028236692093846346337[0-3][0-9]{15}|340282366920938463463374[0-5][0-9]{14}|34028236692093846346337460[0-6][0-9]{12}|340282366920938463463374607[0-3][0-9]{11}|3402823669209384634633746074[0-2][0-9]{10}|340282366920938463463374607430[0-9]{9}|340282366920938463463374607431[0-6][0-9]{8}|3402823669209384634633746074317[0-5][0-9]{7}|34028236692093846346337460743176[0-7][0-9]{6}|340282366920938463463374607431768[0-1][0-9]{5}|34028236692093846346337460743176820[0-9]{4}|340282366920938463463374607431768210[0-9]{3}|340282366920938463463374607431768211[0-3][0-9]{2}|3402823669209384634633746074317682114[0-4][0-9]|34028236692093846346337460743176821145[0-4]|340282366920938463463374607431768211455)$" },
+    "positiveInteger": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "nonNegativeInteger": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "text": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "publicKey": { "type": "string", "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$", "maxLength": 16384 },
+    "signature": { "type": "string", "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$", "maxLength": 16384 },
+    "monetaryAmount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["units", "currency"],
+      "properties": {
+        "units": { "$ref": "#/$defs/nonNegativeInteger" },
+        "currency": { "$ref": "#/$defs/currency" }
+      }
+    },
+    "channelSignature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signerId", "keyEpoch", "signerKey", "signature"],
+      "properties": {
+        "signerId": { "$ref": "#/$defs/text" },
+        "keyEpoch": { "$ref": "#/$defs/positiveInteger" },
+        "signerKey": { "$ref": "#/$defs/publicKey" },
+        "signature": { "$ref": "#/$defs/signature" }
+      }
+    }
+  }
+}

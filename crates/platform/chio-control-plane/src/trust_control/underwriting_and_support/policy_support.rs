@@ -948,32 +948,6 @@ pub(crate) fn open_receipt_store(
         .map_err(|error| plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()))
 }
 
-pub(crate) fn open_revocation_store(
-    config: &TrustServiceConfig,
-) -> Result<SqliteRevocationStore, Response> {
-    let Some(path) = config.revocation_db_path.as_deref() else {
-        return Err(plain_http_error(
-            StatusCode::CONFLICT,
-            "trust control service requires --revocation-db",
-        ));
-    };
-    SqliteRevocationStore::open(path)
-        .map_err(|error| plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()))
-}
-
-pub(crate) fn open_budget_store(
-    config: &TrustServiceConfig,
-) -> Result<SqliteBudgetStore, Response> {
-    let Some(path) = config.budget_db_path.as_deref() else {
-        return Err(plain_http_error(
-            StatusCode::CONFLICT,
-            "trust control service requires --budget-db",
-        ));
-    };
-    SqliteBudgetStore::open(path)
-        .map_err(|error| plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()))
-}
-
 pub(crate) fn revocation_list_response(
     capability_id: Option<String>,
     revoked: Option<bool>,

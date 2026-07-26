@@ -2,43 +2,23 @@ use chio_core::receipt::metadata::GuardEvidence;
 use chio_log_redact::redacted;
 use tracing::warn;
 
-use crate::budget_store::{BudgetReconcileHoldDecision, BudgetReverseHoldDecision};
-use crate::{
-    CapabilityToken, ChildRequestReceipt, PaymentAuthorization, PaymentCredentialDisposition,
-    PreDispatchPaymentUnwindEvidence, ToolCallRequest,
-};
+use crate::admission_operation::AdmissionOperationV1;
+use crate::{CapabilityToken, ChildRequestReceipt, PaymentAuthorization, ToolCallRequest};
 
 use super::{
-    current_unix_timestamp, merge_metadata_objects, project_runtime_admission_receipt_metadata,
-    scope_pre_invocation_guard_evidence, ChioKernel, EvaluationReceiptContext, KernelError,
-    PreExecutionBudgetMutation,
+    current_unix_timestamp, current_unix_timestamp_ms, merge_metadata_objects,
+    scope_pre_invocation_guard_evidence, ChioKernel, KernelError, PreExecutionBudgetMutation,
+    VerifiedGovernedPayeeBinding,
 };
 
 const POST_ADMISSION_DROP_REASON: &str = "tool evaluation future dropped after admission";
 const PRE_DISPATCH_CLEANUP_FAULT_REASON: &str =
     "tool evaluation future dropped before dispatch with cleanup fault";
 
-/// Describe an open hold retained after a dispatched evaluation was dropped.
-///
-/// The drop path cannot safely reverse the hold immediately because the tool
-/// may already have committed its side effect. Recovery locates the open hold
-/// from the budget store; this signed audit breadcrumb makes the retained hold
-/// and its pending terminal action explicit.
-fn pending_reversal_marker(hold_id: &str, reason: &str) -> serde_json::Value {
-    serde_json::json!({
-        "hold_id": hold_id,
-        "terminal": {
-            "disposition": "pending_reversal",
-            "reason": reason,
-        }
-    })
-}
-
 pub(crate) struct PostAdmissionReceiptContext {
-    pub(crate) evaluation_context: EvaluationReceiptContext,
     pub(crate) extra_metadata: Option<serde_json::Value>,
-    pub(crate) runtime_admission_metadata: Option<serde_json::Value>,
     pub(crate) pre_invocation_guard_evidence: Vec<GuardEvidence>,
+    pub(crate) verified_payee_binding: Option<VerifiedGovernedPayeeBinding>,
 }
 
 /// A single pre-dispatch cleanup step that failed. Collected so a signed fault
@@ -46,43 +26,14 @@ pub(crate) struct PostAdmissionReceiptContext {
 /// reservation ids that step was unwinding, letting an operator locate a hold
 /// or reservation that may be stuck without cross-referencing the top-level
 /// admission metadata.
-pub(crate) struct PreDispatchCleanupFault {
-    pub(crate) step: &'static str,
-    pub(crate) reason: String,
+struct PreDispatchCleanupFault {
+    step: &'static str,
+    reason: String,
     /// Ids of the holds / reservations this step was releasing (budget hold id,
     /// payment authorization id, delegated child / parent capability id, or the
     /// reserved runtime lease / continuation ids). Empty when the failing step
     /// carries no locatable id.
-    pub(crate) hold_ids: Vec<String>,
-}
-
-pub(crate) struct PreDispatchCleanup<'a> {
-    pub(crate) request: &'a ToolCallRequest,
-    pub(crate) cap: &'a CapabilityToken,
-    pub(crate) budget_mutation: &'a PreExecutionBudgetMutation,
-    pub(crate) payment_authorization: Option<&'a PaymentAuthorization>,
-    pub(crate) payment_authorization_outcome_unknown: Option<&'a str>,
-    pub(crate) payment_credential_disposition: PaymentCredentialDisposition,
-    pub(crate) receipt_metadata: Option<serde_json::Value>,
-    pub(crate) runtime_admission_metadata: Option<serde_json::Value>,
-    pub(crate) budget_lease_acquired: bool,
-}
-
-pub(crate) struct PreDispatchCleanupOutcome {
-    pub(crate) reverse: Option<BudgetReverseHoldDecision>,
-    pub(crate) metadata: Option<serde_json::Value>,
-    pub(crate) faults: Vec<PreDispatchCleanupFault>,
-}
-
-fn run_pre_dispatch_cleanup_step<T, E: std::fmt::Display>(
-    panic_reason: &'static str,
-    operation: impl FnOnce() -> Result<T, E>,
-) -> Result<T, String> {
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation)) {
-        Ok(Ok(value)) => Ok(value),
-        Ok(Err(error)) => Err(redacted!(&error).to_string()),
-        Err(_) => Err(panic_reason.to_string()),
-    }
+    hold_ids: Vec<String>,
 }
 
 /// Extract the reserved runtime-admission lease / continuation ids carried in
@@ -108,311 +59,19 @@ pub(crate) fn reserved_runtime_admission_ids(metadata: Option<&serde_json::Value
     ids
 }
 
-impl ChioKernel {
-    pub(crate) fn cleanup_pre_dispatch_state(
-        &self,
-        cleanup: PreDispatchCleanup<'_>,
-    ) -> PreDispatchCleanupOutcome {
-        let release_metadata = cleanup.runtime_admission_metadata;
-        let mut runtime_metadata =
-            project_runtime_admission_receipt_metadata(release_metadata.as_ref()).unwrap_or(None);
-        let mut faults = Vec::new();
-
-        if release_metadata.is_some() {
-            if let Err(reason) = run_pre_dispatch_cleanup_step(
-                "runtime admission reservation release panicked",
-                || self.release_runtime_admission_reservations(release_metadata.as_ref()),
-            ) {
-                warn!(
-                    request_id = %cleanup.request.request_id,
-                    reason = %redacted!(&reason),
-                    "runtime admission reservation release failed during pre-dispatch cleanup"
-                );
-                let hold_ids = reserved_runtime_admission_ids(release_metadata.as_ref());
-                runtime_metadata = merge_metadata_objects(
-                    runtime_metadata,
-                    Some(serde_json::json!({
-                        "chio_runtime": {
-                            "reservation_release_failed": true,
-                            "reservation_release_failure_reason": reason,
-                        }
-                    })),
-                );
-                faults.push(PreDispatchCleanupFault {
-                    step: "runtime_admission_release",
-                    reason,
-                    hold_ids,
-                });
-            }
-        }
-
-        let charge = cleanup.budget_mutation.charge_result();
-        let mut retain_budget_exposure = false;
-        let mut retain_payment_authorization = false;
-        let mut payment_unwind_outcome_unknown = false;
-        let mut budget_reversal_outcome_unknown = false;
-        let mut payment_unwind_evidence: Option<PreDispatchPaymentUnwindEvidence> = None;
-
-        if let Some(reason) = cleanup.payment_authorization_outcome_unknown {
-            retain_budget_exposure = charge.is_some();
-            retain_payment_authorization = true;
-            let mut hold_ids = cleanup
-                .payment_authorization
-                .map(|authorization| vec![authorization.authorization_id.clone()])
-                .unwrap_or_default();
-            if let Some(charge) = charge {
-                hold_ids.push(charge.budget_hold_id.clone());
-            }
-            faults.push(PreDispatchCleanupFault {
-                step: "payment_authorization",
-                reason: reason.to_string(),
-                hold_ids,
-            });
-        }
-
-        if let Some(payment_authorization) = cleanup.payment_authorization {
-            match run_pre_dispatch_cleanup_step(
-                "payment adapter panicked during pre-dispatch unwind",
-                || {
-                    self.unwind_aborted_payment(
-                        cleanup.request,
-                        charge,
-                        payment_authorization,
-                        cleanup.payment_credential_disposition,
-                    )
-                },
-            ) {
-                Ok(evidence) => payment_unwind_evidence = Some(evidence),
-                Err(reason) => {
-                    retain_budget_exposure = charge.is_some();
-                    retain_payment_authorization = true;
-                    payment_unwind_outcome_unknown = true;
-                    let mut hold_ids = vec![payment_authorization.authorization_id.clone()];
-                    if let Some(charge) = charge {
-                        hold_ids.push(charge.budget_hold_id.clone());
-                    }
-                    faults.push(PreDispatchCleanupFault {
-                        step: "monetary_unwind",
-                        reason,
-                        hold_ids,
-                    });
-                }
-            }
-        }
-
-        let skip_budget_reversal = retain_budget_exposure || retain_payment_authorization;
-        let reverse = if skip_budget_reversal {
-            None
-        } else {
-            match run_pre_dispatch_cleanup_step(
-                "budget store panicked during pre-dispatch reversal",
-                || self.reverse_pre_execution_budget_mutation(cleanup.cap, cleanup.budget_mutation),
-            ) {
-                Ok(reverse) => reverse,
-                Err(reason) => {
-                    let hold_ids = charge.map_or_else(
-                        || vec![cleanup.cap.id.clone()],
-                        |charge| vec![charge.budget_hold_id.clone()],
-                    );
-                    if charge.is_some() {
-                        retain_budget_exposure = true;
-                        budget_reversal_outcome_unknown = true;
-                    }
-                    faults.push(PreDispatchCleanupFault {
-                        step: "budget_reversal",
-                        reason,
-                        hold_ids,
-                    });
-                    None
-                }
-            }
-        };
-        // Recompute after the reversal attempt: a failed or panicked reversal
-        // changes `retain_budget_exposure` above. Using the pre-attempt snapshot
-        // here would release delegated headroom and omit retention evidence while
-        // the hold's outcome is still unknown.
-        let retain_budget_mutation = retain_budget_exposure || retain_payment_authorization;
-
-        if cleanup.budget_lease_acquired && !retain_budget_mutation {
-            if let Err(reason) =
-                run_pre_dispatch_cleanup_step("admitted capability budget release panicked", || {
-                    self.release_admitted_capability_budget(cleanup.cap)
-                })
-            {
-                let mut hold_ids = vec![cleanup.cap.id.clone()];
-                if let Some(parent_link) = cleanup.cap.delegation_chain.last() {
-                    hold_ids.push(parent_link.capability_id.clone());
-                }
-                faults.push(PreDispatchCleanupFault {
-                    step: "child_budget_release",
-                    reason,
-                    hold_ids,
-                });
-            }
-        }
-
-        if retain_budget_mutation || retain_payment_authorization {
-            let mut retained = serde_json::Map::new();
-            retained.insert(
-                "pre_dispatch_monetary_outcome_unknown".to_string(),
-                serde_json::Value::Bool(true),
-            );
-            if let Some(charge) = charge.filter(|_| retain_budget_exposure) {
-                retained.insert(
-                    "retained_budget_hold_id".to_string(),
-                    serde_json::json!(&charge.budget_hold_id),
-                );
-                retained.insert(
-                    "retained_budget_exposure_units".to_string(),
-                    serde_json::json!(charge.cost_charged),
-                );
-            }
-            if cleanup.payment_authorization_outcome_unknown.is_some() {
-                retained.insert(
-                    "payment_authorization_outcome_unknown".to_string(),
-                    serde_json::Value::Bool(true),
-                );
-            }
-            if payment_unwind_outcome_unknown {
-                retained.insert(
-                    "payment_unwind_outcome_unknown".to_string(),
-                    serde_json::Value::Bool(true),
-                );
-            }
-            if budget_reversal_outcome_unknown {
-                retained.insert(
-                    "budget_reversal_outcome_unknown".to_string(),
-                    serde_json::Value::Bool(true),
-                );
-            }
-            if cleanup.payment_authorization_outcome_unknown.is_some()
-                || payment_unwind_outcome_unknown
-            {
-                retained.insert(
-                    "payment_credential_disposition".to_string(),
-                    serde_json::json!(cleanup.payment_credential_disposition),
-                );
-            }
-            if cleanup.budget_lease_acquired && retain_budget_mutation {
-                retained.insert(
-                    "retained_capability_budget_lease".to_string(),
-                    serde_json::Value::Bool(true),
-                );
-            }
-            if let Some(authorization) = cleanup
-                .payment_authorization
-                .filter(|_| retain_payment_authorization)
-            {
-                retained.insert(
-                    "retained_payment_authorization_id".to_string(),
-                    serde_json::json!(&authorization.authorization_id),
-                );
-                retained.insert(
-                    "retained_payment_authorization_settled".to_string(),
-                    serde_json::json!(authorization.settled),
-                );
-            }
-            runtime_metadata = merge_metadata_objects(
-                runtime_metadata,
-                Some(serde_json::json!({ "chio_runtime": retained })),
-            );
-        }
-
-        if cleanup.payment_credential_disposition
-            == PaymentCredentialDisposition::RetentionOutcomeUnknown
-        {
-            runtime_metadata = merge_metadata_objects(
-                runtime_metadata,
-                Some(serde_json::json!({
-                    "chio_runtime": {
-                        "dispatch_credential_retention_outcome_unknown": true,
-                        "dispatch_credential_disposition": cleanup
-                            .payment_credential_disposition,
-                    }
-                })),
-            );
-        }
-
-        if let Some(evidence) = payment_unwind_evidence {
-            match serde_json::to_value(evidence) {
-                Ok(evidence) => {
-                    runtime_metadata = merge_metadata_objects(
-                        runtime_metadata,
-                        Some(serde_json::json!({
-                            "chio_runtime": {
-                                "pre_dispatch_payment_unwind": evidence,
-                            }
-                        })),
-                    );
-                }
-                Err(error) => faults.push(PreDispatchCleanupFault {
-                    step: "payment_unwind_receipt_evidence",
-                    reason: redacted!(&error).to_string(),
-                    hold_ids: Vec::new(),
-                }),
-            }
-        }
-
-        if !faults.is_empty() {
-            let fault_entries = faults
-                .iter()
-                .map(|fault| {
-                    serde_json::json!({
-                        "step": fault.step,
-                        "reason": fault.reason,
-                        "hold_ids": fault.hold_ids,
-                    })
-                })
-                .collect::<Vec<_>>();
-            runtime_metadata = merge_metadata_objects(
-                runtime_metadata,
-                Some(serde_json::json!({
-                    "chio_runtime": {
-                        "pre_dispatch_cleanup_failed": true,
-                        "pre_dispatch_cleanup_faults": fault_entries,
-                    }
-                })),
-            );
-        }
-
-        let metadata = merge_metadata_objects(cleanup.receipt_metadata, runtime_metadata);
-        let metadata = if let Some(charge) = charge.filter(|_| retain_budget_exposure) {
-            self.merge_budget_receipt_metadata(
-                metadata,
-                self.budget_execution_receipt_metadata(charge, None, None),
-            )
-        } else {
-            metadata
-        };
-
-        PreDispatchCleanupOutcome {
-            reverse,
-            metadata,
-            faults,
-        }
-    }
-}
-
 pub(crate) struct PostAdmissionDropGuard<'a> {
     kernel: &'a ChioKernel,
     request: &'a ToolCallRequest,
     cap: &'a CapabilityToken,
     matched_grant_index: Option<usize>,
     budget_mutation: &'a PreExecutionBudgetMutation,
-    payment_authorization: Option<PaymentAuthorization>,
-    payment_credential_disposition: PaymentCredentialDisposition,
+    payment_authorization: Option<&'a PaymentAuthorization>,
     receipt_context: PostAdmissionReceiptContext,
     /// Signed child-request receipts buffered by the nested-flow bridge during
     /// dispatch. Owned by the guard (rather than the evaluation stack frame) so
     /// a post-dispatch drop can still flush them onto the append-only log,
-    /// preserving receipt completeness for nested child operations.
+    /// preserving receipt-completeness for nested child operations.
     child_receipts: Vec<ChildRequestReceipt>,
-    /// Signed child receipts whose durable append was attempted but returned an
-    /// error or panicked. They must not be retried because a generic store
-    /// cannot distinguish a pre-commit failure from a commit acknowledgement
-    /// failure. The parent cancellation carries this evidence explicitly.
-    child_receipts_with_unknown_append_outcome: Vec<ChildRequestReceipt>,
-    child_receipt_persistence_failure_reason: Option<String>,
     /// Whether THIS evaluation acquired a sibling-sum child-budget holder lease
     /// (the `Ok(true)` from `admit_capability_budget`). `false` means the
     /// capability had no parent to admit against, so there is no lease to drop.
@@ -421,7 +80,7 @@ pub(crate) struct PostAdmissionDropGuard<'a> {
     /// overlapping evaluation that still holds it keeps its share protected.
     /// Gates the step-4 child-budget release in `handle_pre_dispatch_drop`.
     budget_lease_acquired: bool,
-    budget_reconcile_decision: std::sync::OnceLock<BudgetReconcileHoldDecision>,
+    durable_operation: Option<&'a AdmissionOperationV1>,
     armed: bool,
     dispatch_started: bool,
 }
@@ -444,17 +103,22 @@ impl<'a> PostAdmissionDropGuard<'a> {
             cap,
             matched_grant_index,
             budget_mutation,
-            payment_authorization: payment_authorization.cloned(),
-            payment_credential_disposition: PaymentCredentialDisposition::NonePresent,
+            payment_authorization,
             receipt_context,
             child_receipts: Vec::new(),
-            child_receipts_with_unknown_append_outcome: Vec::new(),
-            child_receipt_persistence_failure_reason: None,
             budget_lease_acquired,
-            budget_reconcile_decision: std::sync::OnceLock::new(),
+            durable_operation: None,
             armed: true,
             dispatch_started: false,
         }
+    }
+
+    pub(crate) fn with_durable_operation(
+        mut self,
+        operation: Option<&'a AdmissionOperationV1>,
+    ) -> Self {
+        self.durable_operation = operation;
+        self
     }
 
     /// Borrow the buffered child-receipt sink so the nested-flow bridge can push
@@ -465,25 +129,19 @@ impl<'a> PostAdmissionDropGuard<'a> {
         &mut self.child_receipts
     }
 
-    /// Persist buffered children while retaining any suffix whose append was
-    /// never attempted. An append with an unknown outcome is quarantined from
-    /// retries and signed into the parent cancellation if evaluation aborts.
-    pub(crate) fn flush_child_receipts(&mut self) -> Result<(), KernelError> {
-        let result = self.kernel.record_child_receipts(
-            &mut self.child_receipts,
-            &mut self.child_receipts_with_unknown_append_outcome,
-        );
-        if let Err(error) = &result {
-            self.child_receipt_persistence_failure_reason = Some(redacted!(error).to_string());
-        }
-        result
-    }
-
-    /// Persist the buffered child receipts on the normal path. This keeps the
-    /// main-branch API while sharing the append-outcome quarantine used by the
-    /// drop path, so an uncertain append is never retried.
+    /// Record the buffered child receipts on the normal (non-drop) path,
+    /// removing each from the buffer only once it is durably persisted. If a
+    /// bounded append fails, the not-yet-persisted receipts stay buffered so the
+    /// still-armed drop path flushes them onto the append-only log instead of
+    /// discarding them with the dropped future. The guard must stay armed until
+    /// this returns `Ok`; the caller disarms only on success, so the disarmed
+    /// drop then flushes an empty buffer and never double-records.
     pub(crate) fn record_buffered_child_receipts(&mut self) -> Result<(), KernelError> {
-        self.flush_child_receipts()
+        while !self.child_receipts.is_empty() {
+            self.kernel.record_child_receipt(&self.child_receipts[0])?;
+            self.child_receipts.remove(0);
+        }
+        Ok(())
     }
 
     /// Mark that the tool-server dispatch await has been entered. After this
@@ -494,192 +152,202 @@ impl<'a> PostAdmissionDropGuard<'a> {
         self.dispatch_started = true;
     }
 
-    pub(crate) fn set_payment_authorization(
-        &mut self,
-        payment_authorization: Option<&PaymentAuthorization>,
-    ) {
-        self.payment_authorization = payment_authorization.cloned();
-    }
-
-    pub(crate) fn set_payment_credential_disposition(
-        &mut self,
-        disposition: PaymentCredentialDisposition,
-    ) {
-        self.payment_credential_disposition = disposition;
-    }
-
-    pub(crate) fn budget_reconcile_decision(
-        &self,
-    ) -> &std::sync::OnceLock<BudgetReconcileHoldDecision> {
-        &self.budget_reconcile_decision
-    }
-
     pub(crate) fn disarm(&mut self) {
         self.armed = false;
     }
 
-    /// End lifecycle protection only after a terminal response succeeded or
-    /// its parent receipt was durably appended. A failure before persistence
-    /// starts leaves the guard armed so Drop can record a fail-closed
-    /// cancellation. An ambiguous append remains armed so Drop can report the
-    /// audit fault without attempting a contradictory terminal receipt.
-    pub(crate) fn finish_terminal<T>(
-        &mut self,
-        result: Result<T, KernelError>,
-    ) -> Result<T, KernelError> {
-        if result.is_ok()
-            || self
-                .receipt_context
-                .evaluation_context
-                .terminal_receipt_committed()
-        {
-            self.disarm();
-        }
-        result
-    }
-
-    /// Retain every state transition whose outcome became ambiguous after
-    /// dispatch and identify the held exposure in the cancellation receipt.
-    fn retain_post_dispatch_state(&self) -> Option<serde_json::Value> {
-        let mut metadata = self.kernel.retain_post_dispatch_state(
-            self.receipt_context.extra_metadata.clone(),
-            self.receipt_context.runtime_admission_metadata.clone(),
-            self.budget_mutation.charge_result(),
-            self.budget_reconcile_decision.get(),
-            self.payment_authorization.as_ref(),
-        );
-        if let Some(charge) = self
-            .budget_mutation
-            .charge_result()
-            .filter(|_| self.budget_reconcile_decision.get().is_none())
-        {
-            metadata = self.kernel.merge_budget_receipt_metadata(
-                metadata,
-                serde_json::json!({
-                    "budget_authority": pending_reversal_marker(
-                        &charge.budget_hold_id,
-                        POST_ADMISSION_DROP_REASON,
-                    )
-                }),
-            );
-        }
-        if self.payment_credential_disposition == PaymentCredentialDisposition::NonePresent {
-            return metadata;
-        }
-        merge_metadata_objects(
-            metadata,
-            Some(serde_json::json!({
-                "chio_runtime": {
-                    "dispatch_credential_disposition": self.payment_credential_disposition,
-                    "dispatch_credential_retention_outcome_unknown": self
-                        .payment_credential_disposition
-                        == PaymentCredentialDisposition::RetentionOutcomeUnknown,
-                }
-            })),
-        )
-    }
-
-    /// Clean up a future dropped BEFORE tool-server dispatch. Runtime state and
-    /// budget mutations are reversed when their external outcomes are known.
-    /// An ambiguous payment authorization or unwind retains the local monetary
-    /// exposure and delegated budget lease so retry capacity cannot reopen. A
-    /// clean unwind records no receipt. Any fault records a signed receipt so a
-    /// retained hold or reservation is visible in the append-only log.
+    /// Fully unwind a future dropped BEFORE tool-server dispatch. No side
+    /// effect is possible, so every pre-execution mutation is reversed: the
+    /// monetary hold, an invocation-only budget increment,
+    /// runtime-admission reservations, and an admitted child/delegated
+    /// capability budget share. A clean unwind records NO receipt
+    /// (the intended receipt-free exit). If ANY step fails, a signed fault
+    /// receipt is recorded so a stuck hold/reservation is on the
+    /// append-only log rather than silently burned. Best-effort from Drop:
+    /// each step is attempted independently and failures are collected.
     fn handle_pre_dispatch_drop(&self) {
-        let outcome = self.kernel.cleanup_pre_dispatch_state(PreDispatchCleanup {
-            request: self.request,
-            cap: self.cap,
-            budget_mutation: self.budget_mutation,
-            payment_authorization: self.payment_authorization.as_ref(),
-            payment_authorization_outcome_unknown: None,
-            payment_credential_disposition: self.payment_credential_disposition,
-            receipt_metadata: self.receipt_context.extra_metadata.clone(),
-            runtime_admission_metadata: self.receipt_context.runtime_admission_metadata.clone(),
-            budget_lease_acquired: self.budget_lease_acquired,
-        });
-        if outcome.faults.is_empty() {
-            // No terminal receipt is emitted for a clean pre-dispatch drop, so
-            // clear the durable intent explicitly. A bounded clear failure
-            // leaves the row available to recovery rather than losing it.
-            self.kernel
-                .clear_dispatch_intent_for_non_dispatch_exit(self.request);
-        } else {
-            self.record_pre_dispatch_cleanup_fault_receipt(outcome.metadata);
-        }
-        #[cfg(debug_assertions)]
-        if outcome.faults.is_empty() {
-            if let Some(grant_index) = self.matched_grant_index {
-                self.kernel
-                    .debug_assert_reservation_conservation(&self.cap.id, grant_index);
-            }
-        }
-    }
+        let mut faults: Vec<PreDispatchCleanupFault> = Vec::new();
 
-    /// Persist signed child receipts before the parent cancellation receipt.
-    /// Only a suffix that never reached the store is retried. Receipts with an
-    /// unknown append outcome remain owned by the guard as signed evidence.
-    fn flush_buffered_child_receipts_from_drop(&mut self) -> Option<String> {
-        if self.child_receipts.is_empty()
-            && self.child_receipts_with_unknown_append_outcome.is_empty()
-        {
-            return None;
-        }
-        while !self.child_receipts.is_empty() {
-            let pending_before = self.child_receipts.len();
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                self.flush_child_receipts()
-            }))
-            .unwrap_or_else(|_| {
-                Err(KernelError::Internal(
-                    "buffered child receipt persistence panicked".to_string(),
-                ))
-            });
-            if let Err(error) = result {
-                self.child_receipt_persistence_failure_reason = Some(redacted!(&error).to_string());
-                // An outcome-unknown receipt was removed from the retry queue
-                // and quarantined. Continue with the untouched suffix, but stop
-                // when the failure happened before any append was attempted.
-                if self.child_receipts.len() >= pending_before {
-                    break;
+        // 1. Monetary hold reversal (budget charge + payment release/refund).
+        if self.budget_mutation.charge_result().is_some() {
+            match self.kernel.unwind_pre_dispatch_monetary_invocation(
+                self.request,
+                self.cap,
+                self.budget_mutation.charge_result(),
+                self.payment_authorization,
+            ) {
+                Ok(_) => {}
+                Err(error) => {
+                    let reason = redacted!(&error).to_string();
+                    warn!(
+                        request_id = %self.request.request_id,
+                        reason = %redacted!(&error),
+                        "failed to unwind dropped pre-dispatch monetary invocation"
+                    );
+                    let mut hold_ids = Vec::new();
+                    if let Some(charge) = self.budget_mutation.charge_result() {
+                        hold_ids.push(charge.budget_hold_id.clone());
+                    }
+                    if let Some(authorization) = self.payment_authorization {
+                        hold_ids.push(authorization.authorization_id.clone());
+                    }
+                    faults.push(PreDispatchCleanupFault {
+                        step: "monetary_unwind",
+                        reason,
+                        hold_ids,
+                    });
                 }
             }
         }
-        if self.child_receipts.is_empty()
-            && self.child_receipts_with_unknown_append_outcome.is_empty()
-        {
-            return None;
+
+        // 2. Invocation-only budget reversal. A non-monetary grant
+        //    with `max_invocations` incremented the invocation counter at
+        //    admission; reverse it so a never-dispatched call does not
+        //    permanently consume a slot. Reuse the same primitive the
+        //    pre-dispatch denial path uses, gated on the Invocation variant so
+        //    a Charge (handled above) is not reversed twice.
+        if matches!(
+            self.budget_mutation,
+            PreExecutionBudgetMutation::Invocation { .. }
+                | PreExecutionBudgetMutation::InvocationHold(_)
+        ) {
+            match self
+                .kernel
+                .reverse_pre_execution_budget_mutation(self.cap, self.budget_mutation)
+            {
+                Ok(_) => {}
+                Err(error) => {
+                    let reason = redacted!(&error).to_string();
+                    warn!(
+                        request_id = %self.request.request_id,
+                        reason = %redacted!(&error),
+                        "failed to reverse dropped pre-dispatch invocation budget"
+                    );
+                    faults.push(PreDispatchCleanupFault {
+                        step: "invocation_reversal",
+                        reason,
+                        hold_ids: self.budget_mutation.durable_hold_result().map_or_else(
+                            || vec![self.cap.id.clone()],
+                            |hold| vec![hold.budget_hold_id.clone()],
+                        ),
+                    });
+                }
+            }
         }
-        let reason = self
-            .child_receipt_persistence_failure_reason
-            .clone()
-            .unwrap_or_else(|| "child receipt append outcome is unknown".to_string());
-        warn!(
-            request_id = %self.request.request_id,
-            reason = %redacted!(&reason),
-            unpersisted_child_receipts = self.child_receipts.len(),
-            append_outcome_unknown_child_receipts = self
-                .child_receipts_with_unknown_append_outcome
-                .len(),
-            audit_fault = "post_admission_drop_child_receipts_unconfirmed",
-            "nested child receipt persistence could not be fully confirmed"
-        );
-        Some(reason)
+
+        // 3. Runtime-admission reservation release.
+        if let Err(error) = self
+            .kernel
+            .release_runtime_admission_reservations(self.receipt_context.extra_metadata.as_ref())
+        {
+            let reason = redacted!(&error).to_string();
+            warn!(
+                request_id = %self.request.request_id,
+                reason = %redacted!(&error),
+                "failed to release runtime-admission reservations on pre-dispatch drop"
+            );
+            faults.push(PreDispatchCleanupFault {
+                step: "runtime_admission_release",
+                reason,
+                // Name the reserved lease / continuation ids so an operator can
+                // locate the possibly-stuck reservation from the fault entry.
+                hold_ids: reserved_runtime_admission_ids(
+                    self.receipt_context.extra_metadata.as_ref(),
+                ),
+            });
+        }
+
+        // 4. Admitted child/delegated capability budget lease release (Finding
+        //    B), gated on this evaluation having acquired a lease. A delegated
+        //    capability took a holder lease on its share of the parent budget at
+        //    admission; drop it or the lease stays permanently recorded. Release
+        //    ONLY when THIS evaluation acquired a lease (`budget_lease_acquired`).
+        //    The release is reference-counted: it decrements the holder count
+        //    and frees the edge (returning the share to the parent) only when
+        //    this was the LAST holder. An overlapping evaluation that still holds
+        //    the edge keeps its share, so an oversubscribing sibling stays
+        //    denied. Fail-closed: an evaluation that never acquired a lease
+        //    (`budget_lease_acquired == false`) releases nothing, because
+        //    over-releasing (dropping a holder this evaluation never took) would
+        //    free another evaluation's live share (a budget bypass), the worse
+        //    failure. Mirrors the pre-dispatch denial path.
+        if self.budget_lease_acquired {
+            if let Err(error) = self.kernel.release_admitted_capability_budget(self.cap) {
+                let reason = redacted!(&error).to_string();
+                warn!(
+                    request_id = %self.request.request_id,
+                    reason = %redacted!(&error),
+                    "failed to release admitted capability budget on pre-dispatch drop"
+                );
+                // Name the delegated child capability id and its parent so the
+                // stuck sibling-sum share is locatable from the fault entry.
+                let mut hold_ids = vec![self.cap.id.clone()];
+                if let Some(parent_link) = self.cap.delegation_chain.last() {
+                    hold_ids.push(parent_link.capability_id.clone());
+                }
+                faults.push(PreDispatchCleanupFault {
+                    step: "child_budget_release",
+                    reason,
+                    hold_ids,
+                });
+            }
+        }
+
+        if faults.is_empty() {
+            if let Some(operation) = self.durable_operation {
+                if let Err(error) = self
+                    .kernel
+                    .compensate_durable_admission_after_pre_dispatch_cleanup(
+                        Some(operation),
+                        None,
+                        self.payment_authorization,
+                    )
+                {
+                    let reason = redacted!(&error).to_string();
+                    warn!(
+                        request_id = %self.request.request_id,
+                        reason = %redacted!(&error),
+                        "failed to terminalize dropped pre-dispatch admission"
+                    );
+                    faults.push(PreDispatchCleanupFault {
+                        step: "durable_admission_compensation",
+                        reason,
+                        hold_ids: vec![operation.binding().operation_id().as_str().to_owned()],
+                    });
+                }
+            }
+        }
+
+        // 5. Fault receipt. Clean cleanup is receipt-free (the
+        //    intended design); any fault records a signed receipt.
+        if !faults.is_empty() {
+            self.record_pre_dispatch_cleanup_fault_receipt(&faults);
+        }
     }
 
-    fn child_receipt_persistence_fault_metadata(&self, reason: &str) -> serde_json::Value {
-        serde_json::json!({
-            "chio_runtime": {
-                "child_receipt_persistence_failed": true,
-                "child_receipt_persistence_failure_reason": reason,
-                "unpersisted_child_receipt_count": self.child_receipts.len(),
-                "unpersisted_signed_child_receipts": &self.child_receipts,
-                "append_outcome_unknown_child_receipt_count": self
-                    .child_receipts_with_unknown_append_outcome
-                    .len(),
-                "append_outcome_unknown_signed_child_receipts": &self
-                    .child_receipts_with_unknown_append_outcome,
+    /// Flush the child receipts the nested-flow bridge buffered during dispatch
+    /// onto the append-only log. The receipts are ALREADY SIGNED, so this
+    /// persists each through the same synchronous per-receipt record path the
+    /// normal exit uses. Called only from the post-dispatch drop branch (a child
+    /// operation can only have run once dispatch started); a pre-dispatch drop
+    /// leaves the buffer empty. Each receipt is recorded independently and a
+    /// failure does NOT abandon the receipts queued behind it: a saturated or
+    /// wedged writer that fails one bounded append must not discard the rest,
+    /// which a stop-at-first-failure batch record would. Best-effort from Drop:
+    /// a per-receipt failure logs an `audit_fault` and never panics, and the
+    /// buffer is drained unconditionally so the guard cannot re-record on a
+    /// later drop.
+    fn flush_buffered_child_receipts_from_drop(&mut self) {
+        for receipt in std::mem::take(&mut self.child_receipts) {
+            if let Err(error) = self.kernel.record_child_receipt(&receipt) {
+                warn!(
+                    request_id = %self.request.request_id,
+                    reason = %redacted!(&error),
+                    audit_fault = "post_admission_drop_child_receipts_unrecorded",
+                    "failed to flush a buffered nested child receipt on post-admission drop"
+                );
             }
-        })
+        }
     }
 
     /// Record a signed cancellation receipt documenting a pre-dispatch cleanup
@@ -687,26 +355,41 @@ impl<'a> PostAdmissionDropGuard<'a> {
     /// log with the `audit_fault` field. The failing steps and the reserved
     /// lease/continuation ids (carried in the admission metadata) are folded
     /// into the receipt so an operator can locate the stuck hold.
-    fn record_pre_dispatch_cleanup_fault_receipt(&self, metadata: Option<serde_json::Value>) {
+    fn record_pre_dispatch_cleanup_fault_receipt(&self, faults: &[PreDispatchCleanupFault]) {
+        let fault_entries: Vec<serde_json::Value> = faults
+            .iter()
+            .map(|fault| {
+                serde_json::json!({
+                    "step": fault.step,
+                    "reason": fault.reason,
+                    "hold_ids": fault.hold_ids,
+                })
+            })
+            .collect();
+        let metadata = merge_metadata_objects(
+            self.receipt_context.extra_metadata.clone(),
+            Some(serde_json::json!({
+                "chio_runtime": {
+                    "pre_dispatch_cleanup_failed": true,
+                    "pre_dispatch_cleanup_faults": fault_entries,
+                }
+            })),
+        );
+
         let _guard_evidence_scope = scope_pre_invocation_guard_evidence(
             self.receipt_context.pre_invocation_guard_evidence.clone(),
         );
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.kernel.build_cancelled_response_with_metadata(
+        if let Err(error) = self
+            .kernel
+            .build_cancelled_response_with_metadata_and_payee_binding(
                 self.request,
-                &self.receipt_context.evaluation_context,
                 PRE_DISPATCH_CLEANUP_FAULT_REASON,
                 current_unix_timestamp(),
                 self.matched_grant_index,
                 metadata,
+                self.receipt_context.verified_payee_binding.as_ref(),
             )
-        }))
-        .unwrap_or_else(|_| {
-            Err(KernelError::Internal(
-                "pre-dispatch cleanup fault receipt recording panicked".to_string(),
-            ))
-        });
-        if let Err(error) = result {
+        {
             warn!(
                 request_id = %self.request.request_id,
                 reason = %redacted!(&error),
@@ -717,71 +400,57 @@ impl<'a> PostAdmissionDropGuard<'a> {
     }
 }
 
-impl PostAdmissionDropGuard<'_> {
-    fn handle_drop(&mut self) {
-        if !self.armed
-            || self
-                .receipt_context
-                .evaluation_context
-                .terminal_receipt_committed()
-        {
-            return;
-        }
-
-        if self
-            .receipt_context
-            .evaluation_context
-            .terminal_receipt_append_started()
-        {
-            warn!(
-                request_id = %self.request.request_id,
-                audit_fault = "terminal_receipt_append_outcome_unknown",
-                "skipped cancellation because terminal receipt persistence may have committed"
-            );
+impl Drop for PostAdmissionDropGuard<'_> {
+    fn drop(&mut self) {
+        if !self.armed {
             return;
         }
 
         if !self.dispatch_started {
             // Pre-dispatch drop (or a panic unwinding before dispatch).
-            // Nothing was written to the tool server. Reverse local state when
-            // external outcomes are known; ambiguous payment outcomes retain
-            // spending exposure and record a signed cleanup-fault receipt.
+            // Nothing was written to the tool server, so no side effect is
+            // possible: fully reverse every pre-execution mutation. A clean
+            // unwind records NO cancellation receipt; a cleanup fault records
+            // a signed fault receipt (see `handle_pre_dispatch_drop`).
             self.handle_pre_dispatch_drop();
             return;
         }
 
-        // Child receipts precede the parent cancellation in the append-only log.
-        let child_receipt_persistence_fault = self.flush_buffered_child_receipts_from_drop();
+        // Flush the buffered nested child receipts FIRST. The child operations
+        // completed and were signed before the parent evaluation was cancelled,
+        // so on the append-only log they precede the parent cancellation
+        // receipt recorded below. Without this flush the already-signed child
+        // receipts would be discarded with the dropped future, leaving the
+        // completed child requests off the log and breaking receipt-completeness.
+        self.flush_buffered_child_receipts_from_drop();
 
-        // A side effect may have executed. Retain every reservation and
-        // monetary exposure, then record their identifiers in the receipt.
-        let mut receipt_metadata = self.retain_post_dispatch_state();
-        if let Some(reason) = child_receipt_persistence_fault.as_deref() {
-            receipt_metadata = merge_metadata_objects(
-                receipt_metadata,
-                Some(self.child_receipt_persistence_fault_metadata(reason)),
-            );
-        }
+        // Post-dispatch drop. The tool-server invoke was in flight; a side
+        // effect MAY have executed. Fail closed: retain the runtime-
+        // admission reservations (releasing a single-use destructive lease
+        // here would license a replay) and ALWAYS record a cancellation
+        // receipt so the executed-or-not side effect is on the append-only
+        // log. The retained reservations are marked in the receipt metadata
+        // so the burned lease is auditable and operator-recoverable.
+        let receipt_metadata = self.kernel.ambiguous_dispatch_receipt_metadata(
+            self.budget_mutation,
+            self.payment_authorization,
+            self.receipt_context.extra_metadata.clone(),
+        );
 
         let _guard_evidence_scope = scope_pre_invocation_guard_evidence(
             self.receipt_context.pre_invocation_guard_evidence.clone(),
         );
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.kernel.build_cancelled_response_with_metadata(
+        if let Err(error) = self
+            .kernel
+            .build_cancelled_response_with_metadata_and_payee_binding(
                 self.request,
-                &self.receipt_context.evaluation_context,
                 POST_ADMISSION_DROP_REASON,
                 current_unix_timestamp(),
                 self.matched_grant_index,
                 receipt_metadata,
+                self.receipt_context.verified_payee_binding.as_ref(),
             )
-        }))
-        .unwrap_or_else(|_| {
-            Err(KernelError::Internal(
-                "post-admission cancellation receipt recording panicked".to_string(),
-            ))
-        });
-        if let Err(error) = result {
+        {
             warn!(
                 request_id = %self.request.request_id,
                 reason = %redacted!(&error),
@@ -789,27 +458,23 @@ impl PostAdmissionDropGuard<'_> {
                 "failed to record cancellation receipt for dropped post-admission invocation"
             );
         }
-        #[cfg(debug_assertions)]
-        if let Some(grant_index) = self.matched_grant_index {
-            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                self.kernel
-                    .debug_assert_reservation_conservation(&self.cap.id, grant_index);
-            }));
-        }
-    }
-}
 
-impl Drop for PostAdmissionDropGuard<'_> {
-    fn drop(&mut self) {
-        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.handle_drop();
-        }));
-        if result.is_err() {
-            warn!(
-                request_id = %self.request.request_id,
-                audit_fault = "post_admission_drop_handler_panicked",
-                "post-admission drop handler panicked"
-            );
+        // The dispatch commit landed but the return never did, so the operation
+        // would stay non-terminal and reject every replay of this request id
+        // until the next startup sweep. Terminalizing here refuses if a durable
+        // outcome exists, so it cannot overwrite a return that did complete.
+        if let Some(operation) = self.durable_operation {
+            if let Err(error) = self
+                .kernel
+                .terminalize_dispatch_committed_admission(operation, current_unix_timestamp_ms())
+            {
+                warn!(
+                    request_id = %self.request.request_id,
+                    reason = %redacted!(&error),
+                    audit_fault = "post_admission_drop_admission_unterminalized",
+                    "failed to terminalize dropped post-dispatch admission"
+                );
+            }
         }
     }
 }

@@ -146,6 +146,7 @@ mod retention {
                 issued_at: 100,
                 expires_at: 10_000,
                 delegation_chain: vec![],
+                aggregate_invocation_budget: None,
             },
             issuer,
         )

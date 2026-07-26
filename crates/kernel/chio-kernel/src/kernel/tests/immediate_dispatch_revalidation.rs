@@ -341,7 +341,7 @@ fn nested_bridge_cancellation_blocks_next_child_and_drop_clears_dispatch_scope(
 
     let mut child_receipts = Vec::new();
     let mut client = NoopNestedFlowClient;
-    let nested_interaction_observed = std::sync::atomic::AtomicBool::new(false);
+    let nested_interaction_observed = AtomicBool::new(false);
     {
         let mut bridge = SessionNestedFlowBridge {
             sessions: &kernel.sessions,

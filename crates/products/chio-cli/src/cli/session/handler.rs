@@ -13,6 +13,16 @@ pub(crate) fn handle_agent_message(
     }
 
     let (context, operation) = normalize_agent_message(msg, session_id, session_agent_id);
+    if let Some(conflict) = msg.authorization_conflict() {
+        return reject_conflicting_authorization(
+            kernel,
+            &context,
+            operation,
+            session_agent_id,
+            conflict,
+            stats,
+        );
+    }
     match kernel.evaluate_session_operation(&context, &operation) {
         Ok(SessionOperationResponse::ToolCall(response)) => {
             match response.verdict {
@@ -64,8 +74,11 @@ pub(crate) fn handle_agent_message(
                     arguments: tool_call.arguments,
                     dpop_proof: None,
                     execution_nonce: None,
-                    governed_intent: None,
-                    approval_token: None,
+                    governed_intent: tool_call.governed_intent,
+                    approval_token: tool_call.approval_token,
+                    approval_tokens: tool_call.approval_tokens,
+                    threshold_approval_proposal: tool_call.threshold_approval_proposal,
+                    supplemental_authorization: tool_call.supplemental_authorization,
                     model_metadata: None,
                     federated_origin_kernel_id: None,
                 };
@@ -77,6 +90,7 @@ pub(crate) fn handle_agent_message(
                             error: ToolCallError::InternalError(e.to_string()),
                         },
                         receipt: Box::new(receipt),
+                        execution_nonce: None,
                     }],
                     Err(sign_err) => {
                         error!(
@@ -118,6 +132,63 @@ pub(crate) fn handle_agent_message(
     }
 }
 
+fn reject_conflicting_authorization(
+    kernel: &mut ChioKernel,
+    context: &OperationContext,
+    operation: SessionOperation,
+    session_agent_id: &str,
+    conflict: &'static str,
+    stats: &mut SessionStats,
+) -> Vec<KernelMessage> {
+    let SessionOperation::ToolCall(tool_call) = operation else {
+        return vec![KernelMessage::Heartbeat];
+    };
+    stats.denied += 1;
+    error!(
+        request_id = %context.request_id,
+        conflict = conflict,
+        "denied tool call presenting conflicting authorization artifacts"
+    );
+    let request = KernelToolCallRequest {
+        request_id: context.request_id.to_string(),
+        capability: tool_call.capability,
+        tool_name: tool_call.tool_name,
+        server_id: tool_call.server_id,
+        agent_id: session_agent_id.to_string(),
+        arguments: tool_call.arguments,
+        dpop_proof: None,
+        execution_nonce: None,
+        governed_intent: tool_call.governed_intent,
+        approval_token: tool_call.approval_token,
+        approval_tokens: tool_call.approval_tokens,
+        threshold_approval_proposal: tool_call.threshold_approval_proposal,
+        supplemental_authorization: tool_call.supplemental_authorization,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    };
+    match make_error_receipt(kernel, &request) {
+        Ok(receipt) => vec![KernelMessage::ToolCallResponse {
+            id: context.request_id.to_string(),
+            result: ToolCallResult::Err {
+                error: ToolCallError::PolicyDenied {
+                    guard: "session_authorization".to_string(),
+                    reason: conflict.to_string(),
+                },
+            },
+            receipt: Box::new(receipt),
+            execution_nonce: None,
+        }],
+        Err(sign_err) => {
+            error!(
+                error = %sign_err,
+                request_id = %context.request_id,
+                "failed to sign denial receipt; dropping tool call response"
+            );
+            vec![]
+        }
+    }
+}
+
 pub(crate) fn normalize_agent_message(
     msg: &AgentMessage,
     session_id: &SessionId,
@@ -130,6 +201,12 @@ pub(crate) fn normalize_agent_message(
             server_id,
             tool,
             params,
+            governed_intent,
+            approval_token,
+            approval_tokens,
+            threshold_approval_proposal,
+            supplemental_authorization,
+            execution_nonce,
         } => (
             OperationContext::new(
                 session_id.clone(),
@@ -140,9 +217,15 @@ pub(crate) fn normalize_agent_message(
                 capability: *capability_token.clone(),
                 server_id: server_id.clone(),
                 tool_name: tool.clone(),
-                arguments: params.clone(),
-                governed_intent: None,
-                execution_nonce: None,
+                arguments: params.as_ref().clone(),
+                governed_intent: governed_intent.as_deref().cloned(),
+                approval_token: approval_token.as_deref().cloned(),
+                approval_tokens: approval_tokens.clone(),
+                threshold_approval_proposal: threshold_approval_proposal.as_deref().cloned(),
+                supplemental_authorization: supplemental_authorization.as_deref().cloned(),
+                execution_nonce: execution_nonce
+                    .as_deref()
+                    .and_then(|nonce| serde_json::to_value(nonce).ok()),
                 model_metadata: None,
                 extra_metadata: None,
             })),

@@ -2227,7 +2227,7 @@ fn add_runtime_swarm_parity_evidence(bundle: &Path) -> Result<(), CliError> {
 }
 
 fn add_runtime_swarm_loopback_evidence(bundle: &Path, temp_root: &Path) -> Result<(), CliError> {
-    fs::create_dir_all(temp_root)?;
+    create_private_runtime_swarm_directory(temp_root)?;
     let scenario_path = temp_root.join("scenario.json");
     write_executable_runtime_swarm_scenario(&scenario_path)?;
     let store_dir = temp_root.join("store");
@@ -2266,6 +2266,18 @@ fn add_runtime_swarm_loopback_evidence(bundle: &Path, temp_root: &Path) -> Resul
     let mut passport = read_json_value(&passport_path)?;
     passport["evidence_graph_sha256"] = serde_json::Value::String(evidence_graph_sha256);
     write_signed_transaction_passport(&passport_path, passport)?;
+    Ok(())
+}
+
+fn create_private_runtime_swarm_directory(path: &Path) -> Result<(), CliError> {
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(path)?;
     Ok(())
 }
 

@@ -75,6 +75,7 @@ fn runtime_facade_immediate_dispatch_revalidation_is_opted_in_and_non_consuming(
             issued_at: 1_800_000_000,
             expires_at: 1_800_003_600,
             delegation_chain: Vec::new(),
+            aggregate_invocation_budget: None,
         },
         &issuer,
     )?;
@@ -89,6 +90,9 @@ fn runtime_facade_immediate_dispatch_revalidation_is_opted_in_and_non_consuming(
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };

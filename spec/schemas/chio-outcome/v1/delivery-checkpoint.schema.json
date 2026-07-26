@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-outcome/delivery-checkpoint/v1",
+  "title": "Chio Outcome Delivery Checkpoint V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signerKey", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "anchorId",
+        "anchorKeyEpoch",
+        "receiverBindingDigest",
+        "receiverId",
+        "receiverNamespace",
+        "receiverKeyEpoch",
+        "deliveryId",
+        "idempotencyKey",
+        "receiverQueueId",
+        "sequence",
+        "state",
+        "requestId",
+        "eligibilityDigest",
+        "providerAcceptanceDigest",
+        "outputDigest",
+        "trustedClockHighWaterUnixMs"
+      ],
+      "properties": {
+        "schema": { "const": "chio.outcome.delivery-checkpoint.v1" },
+        "anchorId": { "$ref": "#/$defs/text" },
+        "anchorKeyEpoch": { "$ref": "#/$defs/positiveInteger" },
+        "receiverBindingDigest": { "$ref": "#/$defs/digest" },
+        "receiverId": { "$ref": "#/$defs/text" },
+        "receiverNamespace": { "$ref": "#/$defs/text" },
+        "receiverKeyEpoch": { "$ref": "#/$defs/positiveInteger" },
+        "deliveryId": { "$ref": "#/$defs/text" },
+        "idempotencyKey": { "$ref": "#/$defs/text" },
+        "receiverQueueId": { "$ref": "#/$defs/text" },
+        "sequence": { "$ref": "#/$defs/positiveInteger" },
+        "predecessorDigest": { "$ref": "#/$defs/digest" },
+        "state": { "enum": ["pending", "acknowledged", "cancelled"] },
+        "requestId": { "$ref": "#/$defs/text" },
+        "eligibilityDigest": { "$ref": "#/$defs/digest" },
+        "providerAcceptanceDigest": { "$ref": "#/$defs/digest" },
+        "outputDigest": { "$ref": "#/$defs/digest" },
+        "blobReference": { "$ref": "#/$defs/text" },
+        "blobDigest": { "$ref": "#/$defs/digest" },
+        "blobAbsenceProofDigest": { "$ref": "#/$defs/digest" },
+        "cancellationFenceDigest": { "$ref": "#/$defs/digest" },
+        "trustedClockHighWaterUnixMs": { "$ref": "#/$defs/positiveInteger" }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "state": { "const": "pending" } } },
+          "then": {
+            "properties": { "sequence": { "const": 1 } },
+            "not": {
+              "anyOf": [
+                { "required": ["predecessorDigest"] },
+                { "required": ["blobReference"] },
+                { "required": ["blobDigest"] },
+                { "required": ["blobAbsenceProofDigest"] },
+                { "required": ["cancellationFenceDigest"] }
+              ]
+            }
+          }
+        },
+        {
+          "if": { "properties": { "state": { "const": "acknowledged" } } },
+          "then": {
+            "required": ["predecessorDigest", "blobReference", "blobDigest"],
+            "properties": { "sequence": { "minimum": 2 } },
+            "not": {
+              "anyOf": [
+                { "required": ["blobAbsenceProofDigest"] },
+                { "required": ["cancellationFenceDigest"] }
+              ]
+            }
+          }
+        },
+        {
+          "if": { "properties": { "state": { "const": "cancelled" } } },
+          "then": {
+            "required": [
+              "predecessorDigest",
+              "blobAbsenceProofDigest",
+              "cancellationFenceDigest"
+            ],
+            "properties": { "sequence": { "minimum": 2 } },
+            "not": {
+              "anyOf": [
+                { "required": ["blobReference"] },
+                { "required": ["blobDigest"] }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "signerKey": { "$ref": "#/$defs/cryptoMaterial" },
+    "signature": { "$ref": "#/$defs/cryptoMaterial" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "text": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "^[^\\s\\u0000-\\u001F\\u007F-\\u009F](?:[^\\u0000-\\u001F\\u007F-\\u009F]*[^\\s\\u0000-\\u001F\\u007F-\\u009F])?$"
+    },
+    "positiveInteger": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "cryptoMaterial": { "type": "string", "minLength": 1, "maxLength": 16384 }
+  }
+}

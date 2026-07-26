@@ -13,8 +13,8 @@ use chio_core::receipt::{lineage::ChildRequestReceipt, lineage::ChildRequestRece
 use chio_core::session::{OperationKind, OperationTerminalState, RequestId, SessionId};
 use chio_kernel::{build_checkpoint, build_checkpoint_with_previous};
 use chio_kernel::{
-    EvidenceChildReceiptScope, EvidenceExportBundle, EvidenceExportQuery,
-    EvidenceRetentionMetadata, EvidenceToolReceiptRecord,
+    CapabilitySnapshotProvenance, EvidenceChildReceiptScope, EvidenceExportBundle,
+    EvidenceExportQuery, EvidenceRetentionMetadata, EvidenceToolReceiptRecord,
 };
 
 use chio_test_support::prelude::*;
@@ -265,6 +265,26 @@ fn manifest_count_verification_rejects_semantic_drift() {
         error.to_string().contains("semantic summary"),
         "unexpected error: {error}"
     );
+}
+
+#[test]
+fn evidence_verification_rejects_legacy_lineage_projection() {
+    let snapshot = CapabilitySnapshot {
+        capability_id: "legacy-evidence-capability".to_string(),
+        subject_key: "legacy-subject".to_string(),
+        issuer_key: "legacy-issuer".to_string(),
+        issued_at: 1,
+        expires_at: 2,
+        grants_json: "{}".to_string(),
+        delegation_depth: 0,
+        parent_capability_id: None,
+        federated_parent_capability_id: None,
+        provenance: CapabilitySnapshotProvenance::LegacyProjection,
+        signed_capability: None,
+    };
+
+    let error = verify_lineage(&[snapshot]).test_unwrap_err();
+    assert!(error.to_string().contains("legacy projection provenance"));
 }
 
 #[test]

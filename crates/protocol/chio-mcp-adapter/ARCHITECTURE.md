@@ -38,27 +38,14 @@ the shared transport (including `drain_notifications`) passes through
 `with_request_gate`, while immutable `capabilities()` reads stay ungated to avoid
 deadlock on cached reads.
 
-## Invariants and failure modes
+## Trust invariants and failure modes
 
 - The stdio reader rejects EOF before the newline delimiter for a non-empty
   frame: a delimiterless final object is not a complete frame. `read_bounded_line`
   also enforces the maximum frame size.
 - Manifest projection preserves MCP annotation semantics: missing or malformed
   safety hints imply side effects, and `destructiveHint=true` overrides
-  `readOnlyHint=true`. Each tool is validated once through the internal
-  projection type, and an MCP `title` is folded into the Chio description.
-- Trust posture: `readOnlyHint` is the upstream server's own self-reported claim,
-  captured into the manifest once at adapt time and never re-verified per call.
-  The MCP spec treats tool annotations as untrusted hints, so a lying or
-  compromised upstream server can mark a side-effecting tool `readOnlyHint: true`
-  and exempt it from the RFC-0003 dispatch-intent journal's crash-window audit
-  net; the conservative parsing above bounds the exposure (a malformed hint or a
-  concurrent `destructiveHint: true` still journals), but it cannot detect an
-  upstream server lying cleanly about a genuinely side-effecting tool. Policy
-  evaluation, guards, and receipt issuance are unaffected either way; only the
-  pre-dispatch durable intent write is skipped for the exempted call.
-  `DispatchIntentJournalMode::All` is the operator override for deployments that
-  do not trust their upstream servers' self-reported hints.
+  `readOnlyHint=true`.
 - Result normalization inserts `isError: false` only when an MCP-shaped success
   omits it, matching `chio-mcp-edge`'s `value_to_tool_result`. Explicit upstream
   `isError` values and both `content` and `structuredContent` bytes are preserved.

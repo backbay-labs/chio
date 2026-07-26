@@ -139,6 +139,38 @@ fn signing_block_counter_reports_reason_label() {
 }
 
 #[test]
+fn metrics_endpoint_shares_settlement_unresolved_counter() {
+    use chio_metrics_spec::runtime::families;
+
+    let sample_prefix = "chio_settlement_unresolved_total ";
+    let before_body = render_guard_metrics_prometheus();
+    let before = match before_body.lines().find_map(|line| {
+        line.strip_prefix(sample_prefix)
+            .and_then(|value| value.parse::<u64>().ok())
+    }) {
+        Some(value) => value,
+        None => panic!("settlement unresolved counter was not preregistered: {before_body}"),
+    };
+
+    families::SETTLEMENT_UNRESOLVED.incr(&[]);
+
+    let after_body = render_guard_metrics_prometheus();
+    let after = match after_body.lines().find_map(|line| {
+        line.strip_prefix(sample_prefix)
+            .and_then(|value| value.parse::<u64>().ok())
+    }) {
+        Some(value) => value,
+        None => panic!("settlement unresolved counter was not rendered: {after_body}"),
+    };
+    assert!(
+        after > before,
+        "shared counter did not increase: before={before}, after={after}"
+    );
+    assert!(after_body.contains("# HELP chio_settlement_unresolved_total "));
+    assert!(after_body.contains("# TYPE chio_settlement_unresolved_total counter"));
+}
+
+#[test]
 fn watchdog_gauges_render_from_health_report() {
     use chio_kernel::receipt_store::{ReceiptStoreHealthReport, ReceiptWriterCounters};
     let report = ReceiptStoreHealthReport {

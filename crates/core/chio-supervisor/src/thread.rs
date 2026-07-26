@@ -27,7 +27,7 @@ impl SupervisedThread {
     /// green off a worker that never started.
     pub fn spawn<F>(config: SupervisorConfig, worker: F) -> Self
     where
-        F: Fn(&Arc<AtomicBool>) -> SupervisedOutcome + Send + 'static,
+        F: FnMut(&Arc<AtomicBool>) -> SupervisedOutcome + Send + 'static,
     {
         let health = HealthFlag::new(config.tcb_critical);
         let shutdown = Arc::new(AtomicBool::new(false));
@@ -63,8 +63,15 @@ impl SupervisedThread {
     }
 
     /// Signal shutdown and join the worker. Returns the terminal health level.
-    pub fn shutdown(mut self) -> crate::HealthLevel {
+    pub fn shutdown(self) -> crate::HealthLevel {
         self.signal_shutdown();
+        self.join()
+    }
+
+    /// Join after the worker reaches its own terminal condition without setting
+    /// the shutdown flag. Use when another owned resource, such as a disconnected
+    /// command channel, tells the worker to drain and exit.
+    pub fn join(mut self) -> crate::HealthLevel {
         if let Some(handle) = self.handle.take() {
             let _ = handle.join();
         }
@@ -86,11 +93,11 @@ impl Drop for SupervisedThread {
 
 fn supervise_loop<F>(
     config: SupervisorConfig,
-    worker: F,
+    mut worker: F,
     health: HealthFlag,
     shutdown: Arc<AtomicBool>,
 ) where
-    F: Fn(&Arc<AtomicBool>) -> SupervisedOutcome,
+    F: FnMut(&Arc<AtomicBool>) -> SupervisedOutcome,
 {
     loop {
         if shutdown.load(Ordering::SeqCst) {
@@ -241,5 +248,55 @@ mod tests {
         assert_eq!(thread.health().level(), HealthLevel::Healthy);
         thread.shutdown();
         assert!(ticks.load(Ordering::SeqCst) >= 1);
+    }
+
+    #[test]
+    fn join_does_not_cancel_before_the_worker_enters() {
+        let (release_tx, release_rx) = std::sync::mpsc::sync_channel(1);
+        let (entered_tx, entered_rx) = std::sync::mpsc::sync_channel(1);
+        let thread = SupervisedThread::spawn(fast_config("join-entry", true, 5), move |shutdown| {
+            release_rx.recv().unwrap_or(());
+            assert!(!shutdown.load(Ordering::SeqCst));
+            entered_tx.send(()).unwrap_or(());
+            SupervisedOutcome::Shutdown
+        });
+
+        let joiner = std::thread::spawn(move || thread.join());
+        release_tx.send(()).unwrap_or(());
+        let level = joiner.join().unwrap_or(HealthLevel::Failed);
+        assert_eq!(entered_rx.try_recv(), Ok(()));
+        assert_eq!(level, HealthLevel::Healthy);
+    }
+
+    #[test]
+    fn join_waits_through_restart_backoff() {
+        let attempts = Arc::new(AtomicU32::new(0));
+        let worker_attempts = Arc::clone(&attempts);
+        let (restarting_tx, restarting_rx) = std::sync::mpsc::sync_channel(1);
+        let (restarted_tx, restarted_rx) = std::sync::mpsc::sync_channel(1);
+        let thread = SupervisedThread::spawn(
+            SupervisorConfig {
+                base_backoff: Duration::from_millis(25),
+                max_backoff: Duration::from_millis(25),
+                ..fast_config("join-backoff", true, 5)
+            },
+            move |shutdown| {
+                let attempt = worker_attempts.fetch_add(1, Ordering::SeqCst);
+                if attempt == 0 {
+                    restarting_tx.send(()).unwrap_or(());
+                    SupervisedOutcome::Restart
+                } else {
+                    assert!(!shutdown.load(Ordering::SeqCst));
+                    restarted_tx.send(()).unwrap_or(());
+                    SupervisedOutcome::Shutdown
+                }
+            },
+        );
+
+        restarting_rx.recv().unwrap_or(());
+        let level = thread.join();
+        assert_eq!(restarted_rx.try_recv(), Ok(()));
+        assert_eq!(level, HealthLevel::Healthy);
+        assert_eq!(attempts.load(Ordering::SeqCst), 2);
     }
 }

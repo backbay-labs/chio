@@ -25,6 +25,12 @@ use crate::crypto::{sha256_hex, sign_canonical_with_backend, SigningBackend};
 use crate::hook::{
     CreditEvaluatorError, CreditEvaluatorHook, IouEnvelope, IouEnvelopeBody, IOU_ENVELOPE_SCHEMA,
 };
+use crate::iou_v2::{
+    mint_iou_envelope_v2, IouEnvelopeMintContextV2, IouEnvelopeReceiptTrustV2, IouEnvelopeV2Error,
+    SignedIouEnvelopeV2,
+};
+use crate::obligation::{CreditAdmissionStore, CreditAdmissionStoreAdapter};
+use crate::receipt::crypto_floor::ReceiptCryptoFloor;
 use crate::receipt::{body::chio_receipt_id, body::ChioReceipt};
 
 /// Deterministic IOU id derivation from the originating receipt id.
@@ -43,7 +49,7 @@ fn derive_iou_id(receipt_id: &str) -> String {
 /// envelope.
 pub struct LocalCreditAccount<B: SigningBackend> {
     backend: B,
-    trusted_kernel_keys: std::collections::BTreeSet<String>,
+    receipt_trust: IouEnvelopeReceiptTrustV2,
 }
 
 impl<B: SigningBackend> LocalCreditAccount<B> {
@@ -54,7 +60,10 @@ impl<B: SigningBackend> LocalCreditAccount<B> {
     pub fn new(backend: B) -> Self {
         Self {
             backend,
-            trusted_kernel_keys: std::collections::BTreeSet::new(),
+            receipt_trust: IouEnvelopeReceiptTrustV2::new(
+                std::iter::empty::<crate::crypto::PublicKey>(),
+                ReceiptCryptoFloor::AllowClassical,
+            ),
         }
     }
 
@@ -67,16 +76,42 @@ impl<B: SigningBackend> LocalCreditAccount<B> {
     {
         Self {
             backend,
-            trusted_kernel_keys: trusted_kernel_keys
-                .into_iter()
-                .map(|key| key.to_hex())
-                .collect(),
+            receipt_trust: IouEnvelopeReceiptTrustV2::new(
+                trusted_kernel_keys,
+                ReceiptCryptoFloor::AllowClassical,
+            ),
+        }
+    }
+
+    #[must_use]
+    pub fn new_with_receipt_trust(backend: B, receipt_trust: IouEnvelopeReceiptTrustV2) -> Self {
+        Self {
+            backend,
+            receipt_trust,
         }
     }
 
     /// Borrow the underlying signing backend.
     pub fn backend(&self) -> &B {
         &self.backend
+    }
+
+    #[must_use]
+    pub const fn receipt_trust(&self) -> &IouEnvelopeReceiptTrustV2 {
+        &self.receipt_trust
+    }
+
+    pub fn mint_obligation_iou_v2<S: CreditAdmissionStore>(
+        &self,
+        credit_admission_store: &CreditAdmissionStoreAdapter<S>,
+        context: &IouEnvelopeMintContextV2<'_>,
+    ) -> Result<SignedIouEnvelopeV2, IouEnvelopeV2Error> {
+        mint_iou_envelope_v2(
+            &self.backend,
+            &self.receipt_trust,
+            credit_admission_store,
+            context,
+        )
     }
 }
 
@@ -110,7 +145,7 @@ impl<B: SigningBackend> CreditEvaluatorHook for LocalCreditAccount<B> {
             });
         }
         let kernel_key = receipt.kernel_key.to_hex();
-        if !self.trusted_kernel_keys.contains(&kernel_key) {
+        if !self.receipt_trust.contains(&receipt.kernel_key) {
             return Err(CreditEvaluatorError::SignerUntrusted {
                 receipt_id: receipt.id.clone(),
                 kernel_key,

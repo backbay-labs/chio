@@ -11,6 +11,9 @@ use crate::{
     generate_markdown_report, load_results_from_dir, load_scenarios_from_dir, CompatibilityReport,
 };
 
+const SERVER_STARTUP_ATTEMPTS: usize = 900;
+const SERVER_STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(100);
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PeerTarget {
     Js,
@@ -184,6 +187,17 @@ pub fn default_run_options() -> ConformanceRunOptions {
     }
 }
 
+fn create_private_directory(path: &Path) -> std::io::Result<()> {
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(path)
+}
+
 pub fn run_conformance_harness(
     options: &ConformanceRunOptions,
 ) -> Result<ConformanceRunSummary, RunnerError> {
@@ -196,6 +210,7 @@ pub fn run_conformance_harness(
     }
 
     let artifacts_dir = options.results_dir.join("artifacts");
+    create_private_directory(&artifacts_dir)?;
     let logs_dir = artifacts_dir.join("logs");
     fs::create_dir_all(&logs_dir)?;
 
@@ -206,8 +221,8 @@ pub fn run_conformance_harness(
     let chio_executable = ensure_chio_executable(&options.repo_root, &options.cargo_binary)?;
     let server_log_path = logs_dir.join("chio-mcp-serve-http.log");
     let server = spawn_remote_edge(&chio_executable, options, listen, &server_log_path)?;
-    let _server_guard = ChildGuard { child: server };
-    wait_for_server(listen)?;
+    let mut server_guard = ChildGuard { child: server };
+    wait_for_server(listen, &mut server_guard.child, &server_log_path)?;
 
     let mut peer_result_files = Vec::new();
     for peer in &options.peers {
@@ -358,11 +373,14 @@ fn spawn_remote_edge(
 
     let public_base_url = format!("http://{listen}");
     let auth_server_seed_path = options.results_dir.join("artifacts/auth-server.seed");
+    let session_db_path = options.results_dir.join("artifacts/mcp-session.sqlite3");
+    command.arg("--session-db").arg(&session_db_path);
     let mut command_description = format!(
-        "{} mcp serve-http --policy {} --server-id conformance-mcp-core --listen {}",
+        "{} mcp serve-http --policy {} --server-id conformance-mcp-core --listen {} --session-db {}",
         chio_executable.display(),
         options.policy_path.display(),
-        listen
+        listen,
+        session_db_path.display()
     );
 
     apply_conformance_auth_env(&mut command, options, options.auth_mode);
@@ -598,13 +616,24 @@ fn reserve_listen_addr() -> Result<SocketAddr, RunnerError> {
     Ok(addr)
 }
 
-fn wait_for_server(listen: SocketAddr) -> Result<(), RunnerError> {
-    for _ in 0..100 {
+fn wait_for_server(
+    listen: SocketAddr,
+    server: &mut Child,
+    log_path: &Path,
+) -> Result<(), RunnerError> {
+    for _ in 0..SERVER_STARTUP_ATTEMPTS {
         if TcpStream::connect(listen).is_ok() {
-            thread::sleep(Duration::from_millis(100));
+            thread::sleep(SERVER_STARTUP_POLL_INTERVAL);
             return Ok(());
         }
-        thread::sleep(Duration::from_millis(100));
+        if let Some(status) = server.try_wait()? {
+            return Err(RunnerError::ProcessFailed {
+                command: "chio mcp serve-http".to_string(),
+                status: status.code().unwrap_or(1),
+                log_path: log_path.display().to_string(),
+            });
+        }
+        thread::sleep(SERVER_STARTUP_POLL_INTERVAL);
     }
     Err(RunnerError::ServerStartupTimeout { listen })
 }

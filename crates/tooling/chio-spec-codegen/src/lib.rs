@@ -26,7 +26,7 @@
 //!
 //! ```text
 //! crates/chio-core-types/src/_generated/
-//!   chio_wire_v1.rs   (all types, formatted via prettyplease)
+//!   chio_wire_v1.rs   (one module per unreferenced root schema)
 //!   mod.rs            (header-only module marker; not pulled into lib.rs yet)
 //! ```
 //!
@@ -63,8 +63,9 @@ use std::collections::BTreeSet;
 use std::ffi::OsStr;
 use std::fmt;
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
 use typify::{TypeSpace, TypeSpaceSettings};
 
@@ -131,6 +132,8 @@ pub enum CodegenError {
     SchemaRef(PathBuf, String),
     /// The token stream emitted by typify did not parse as a `syn::File`.
     SynParse(syn::Error),
+    /// `rustfmt` could not format generated Rust source.
+    Rustfmt(PathBuf, String),
     /// The error registry YAML could not be loaded or validated.
     Registry(PathBuf, String),
     /// The schemas directory did not exist on disk.
@@ -158,6 +161,9 @@ impl fmt::Display for CodegenError {
                 write!(f, "schema reference error in {}: {msg}", path.display())
             }
             Self::SynParse(err) => write!(f, "generated tokens did not parse: {err}"),
+            Self::Rustfmt(path, msg) => {
+                write!(f, "rustfmt failed for {}: {msg}", path.display())
+            }
             Self::Registry(path, msg) => {
                 write!(
                     f,
@@ -210,24 +216,7 @@ pub fn codegen_rust(schemas_dir: &Path, out_dir: &Path) -> Result<()> {
     schema_files.sort();
     let referenced_schema_roots = collect_local_schema_ref_roots(&schema_files, schemas_dir)?;
 
-    let settings = TypeSpaceSettings::default();
-    let mut type_space = TypeSpace::new(&settings);
-
-    for path in &schema_files {
-        if should_skip_referenced_root(path, &referenced_schema_roots)? {
-            continue;
-        }
-        let value = load_schema_value(path, schemas_dir)?;
-        let schema: schemars::schema::RootSchema = serde_json::from_value(value)
-            .map_err(|err| CodegenError::SchemaShape(path.clone(), err))?;
-        type_space
-            .add_root_schema(schema)
-            .map_err(|err| CodegenError::Typify(path.clone(), err.to_string()))?;
-    }
-
-    let tokens = type_space.to_stream();
-    let file: syn::File = syn::parse2(tokens).map_err(CodegenError::SynParse)?;
-    let pretty = prettyplease::unparse(&file);
+    let pretty = render_schema_modules(&schema_files, schemas_dir, &referenced_schema_roots)?;
 
     fs::create_dir_all(out_dir).map_err(|err| CodegenError::Io(out_dir.to_path_buf(), err))?;
 
@@ -237,7 +226,8 @@ pub fn codegen_rust(schemas_dir: &Path, out_dir: &Path) -> Result<()> {
     body.push_str(&pretty);
 
     let out_path = out_dir.join(CHIO_WIRE_V1_OUTPUT);
-    write_if_changed(&out_path, body.as_bytes())?;
+    let formatted = rustfmt_generated(&out_path, &body)?;
+    write_if_changed(&out_path, formatted.as_bytes())?;
 
     // Refresh mod.rs so the header check passes on a fresh clone.
     // mod.rs intentionally does not re-export `chio_wire_v1`; the generated
@@ -268,27 +258,101 @@ pub fn render_chio_wire_v1(schemas_dir: &Path) -> Result<String> {
     schema_files.sort();
     let referenced_schema_roots = collect_local_schema_ref_roots(&schema_files, schemas_dir)?;
 
+    let pretty = render_schema_modules(&schema_files, schemas_dir, &referenced_schema_roots)?;
+    let mut body = String::with_capacity(GENERATED_HEADER.len() + pretty.len() + 1);
+    body.push_str(GENERATED_HEADER);
+    body.push('\n');
+    body.push_str(&pretty);
+    rustfmt_generated(Path::new(CHIO_WIRE_V1_OUTPUT), &body)
+}
+
+pub(crate) fn rustfmt_generated(path: &Path, source: &str) -> Result<String> {
+    let mut child = Command::new("rustfmt")
+        .args(["--emit", "stdout", "--edition", "2021"])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|err| CodegenError::Io(PathBuf::from("rustfmt"), err))?;
+
+    let Some(mut stdin) = child.stdin.take() else {
+        return Err(CodegenError::Rustfmt(
+            path.to_path_buf(),
+            "stdin unavailable".to_string(),
+        ));
+    };
+    stdin
+        .write_all(source.as_bytes())
+        .map_err(|err| CodegenError::Io(PathBuf::from("rustfmt stdin"), err))?;
+    drop(stdin);
+
+    let output = child
+        .wait_with_output()
+        .map_err(|err| CodegenError::Io(PathBuf::from("rustfmt"), err))?;
+    if !output.status.success() {
+        return Err(CodegenError::Rustfmt(
+            path.to_path_buf(),
+            String::from_utf8_lossy(&output.stderr).into_owned(),
+        ));
+    }
+    String::from_utf8(output.stdout)
+        .map_err(|err| CodegenError::Rustfmt(path.to_path_buf(), err.to_string()))
+}
+
+fn render_schema_modules(
+    schema_files: &[PathBuf],
+    schemas_dir: &Path,
+    referenced_schema_roots: &BTreeSet<PathBuf>,
+) -> Result<String> {
     let settings = TypeSpaceSettings::default();
-    let mut type_space = TypeSpace::new(&settings);
-    for path in &schema_files {
-        if should_skip_referenced_root(path, &referenced_schema_roots)? {
+    let mut source = String::new();
+
+    for path in schema_files {
+        if should_skip_referenced_root(path, referenced_schema_roots)? {
             continue;
         }
         let value = load_schema_value(path, schemas_dir)?;
         let schema: schemars::schema::RootSchema = serde_json::from_value(value)
             .map_err(|err| CodegenError::SchemaShape(path.clone(), err))?;
+        let mut type_space = TypeSpace::new(&settings);
         type_space
             .add_root_schema(schema)
             .map_err(|err| CodegenError::Typify(path.clone(), err.to_string()))?;
+        let tokens = type_space.to_stream();
+        let file: syn::File = syn::parse2(tokens).map_err(CodegenError::SynParse)?;
+        let module_name = schema_module_name(path, schemas_dir)?;
+        source.push_str("pub mod ");
+        source.push_str(&module_name);
+        source.push_str(" {\n");
+        source.push_str(&prettyplease::unparse(&file));
+        source.push_str("}\n");
     }
-    let tokens = type_space.to_stream();
-    let file: syn::File = syn::parse2(tokens).map_err(CodegenError::SynParse)?;
-    let pretty = prettyplease::unparse(&file);
-    let mut body = String::with_capacity(GENERATED_HEADER.len() + pretty.len() + 1);
-    body.push_str(GENERATED_HEADER);
-    body.push('\n');
-    body.push_str(&pretty);
-    Ok(body)
+
+    let file = syn::parse_file(&source).map_err(CodegenError::SynParse)?;
+    Ok(prettyplease::unparse(&file))
+}
+
+fn schema_module_name(path: &Path, schemas_dir: &Path) -> Result<String> {
+    let relative = path.strip_prefix(schemas_dir).map_err(|_| {
+        CodegenError::SchemaRef(
+            path.to_path_buf(),
+            format!("schema is outside {}", schemas_dir.display()),
+        )
+    })?;
+    let relative = relative.to_string_lossy();
+    let stem = relative
+        .strip_suffix(".schema.json")
+        .unwrap_or(relative.as_ref());
+    Ok(stem
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect())
 }
 
 fn walk_schema_files(dir: &Path, out: &mut Vec<PathBuf>) -> Result<()> {
@@ -786,11 +850,14 @@ mod tests {
             "local cross-file refs must not be erased before typify"
         );
         assert_eq!(
-            rendered
-                .matches("\npub struct ChioReceiptRecord {\n")
-                .count(),
+            rendered.matches("pub struct ChioReceiptRecord {\n").count(),
             1,
             "the referenced receipt root schema must be emitted once"
+        );
+        assert_eq!(
+            rustfmt_generated(Path::new(CHIO_WIRE_V1_OUTPUT), &rendered)?,
+            rendered,
+            "wire bindings must already match rustfmt output"
         );
         Ok(())
     }

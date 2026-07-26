@@ -35,14 +35,13 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 | `chio-kernel-core::capability_verify.rs` | - | - | 2 | 1 | - | - | - | - | - | - |
 | `chio-kernel-core::evaluate.rs` | - | - | 1 | 1 | - | - | - | - | - | - |
 | `chio-kernel-core::formal_aeneas.rs` | - | 18 | - | 2 | - | - | - | 1 | - | - |
-| `chio-kernel-core::formal_core.rs` | - | - | 1 | 5 | - | - | - | 1 | - | - |
+| `chio-kernel-core::formal_core.rs` | - | - | 1 | 9 | - | - | - | 1 | - | - |
 | `chio-kernel-core::kani_public_harnesses.rs` | - | - | - | 1 | - | - | - | - | - | - |
 | `chio-kernel-core::normalized.rs` | - | - | 5 | 3 | - | - | - | - | - | - |
 | `chio-kernel-core::receipts.rs` | - | - | 1 | 5 | - | - | - | - | - | - |
 | `chio-kernel-core::revocation_view.rs` | - | - | - | 1 | - | - | - | - | - | - |
 | `chio-kernel-core::scope.rs` | - | - | 2 | 2 | - | - | - | - | - | - |
-| `chio-kernel::*` | 1 | - | - | - | - | - | 1 | 3 | 4 | 5 |
-| `chio-kernel::budget_store/in_memory.rs` | - | - | - | - | - | - | - | - | 1 | - |
+| `chio-kernel::*` | 1 | - | - | - | - | - | 1 | 3 | 5 | 5 |
 | `chio-kernel::kernel/construction.rs` | - | - | - | - | - | - | - | - | 1 | - |
 | `chio-kernel::kernel/delegation.rs` | - | - | - | - | 1 | - | - | - | - | - |
 | `chio-kernel::kernel/kernel_drop_guard.rs` | - | - | - | - | - | - | - | - | 1 | - |
@@ -313,10 +312,14 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 **kani**
 
 - `.kani/harnesses.toml::chio-kernel-core/verify_budget_admission_projection` (execution_lane=pr)
+- `.kani/harnesses.toml::chio-kernel-core/verify_composite_quota_all_or_nothing` (execution_lane=pr)
 - `.kani/harnesses.toml::chio-kernel-core/verify_delegation_chain_step` (execution_lane=pr)
+- `.kani/harnesses.toml::chio-kernel-core/verify_family_binding_preservation` (execution_lane=pr)
+- `.kani/harnesses.toml::chio-kernel-core/verify_quota_maximum_immutable` (execution_lane=pr)
 - `.kani/harnesses.toml::chio-kernel-core/verify_revocation_admission_projection` (execution_lane=pr)
 - `.kani/harnesses.toml::chio-kernel-core/verify_revocation_predicate_idempotent` (execution_lane=pr)
 - `.kani/harnesses.toml::chio-kernel-core/verify_scope_intersection_associative` (execution_lane=pr)
+- `.kani/harnesses.toml::chio-kernel-core/verify_threshold_distinct_signers` (execution_lane=pr)
 
 **mutants**
 
@@ -398,6 +401,7 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 - `.loom/harnesses.toml::chio-kernel/loom_concurrency::loom_post_admission_drop_guards_race_on_receipt_store_write_lock` (lane=nightly, max_preemptions=3, scope=bounded_abstract_model)
 - `.loom/harnesses.toml::chio-kernel/loom_concurrency::loom_revocation_race_eval` (lane=nightly, max_preemptions=3, scope=bounded_abstract_model)
 - `.loom/harnesses.toml::chio-kernel/loom_concurrency::loom_session_create_lookup_terminal_same_id` (lane=nightly, max_preemptions=3, scope=bounded_abstract_model)
+- `.loom/harnesses.toml::chio-kernel/loom_concurrency::protocol_primitives_last_unit_contention` (lane=nightly, max_preemptions=3, scope=bounded_abstract_model)
 
 **dst**
 
@@ -406,12 +410,6 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 - `.dst/harnesses.toml::chio-kernel/dst_drop_injection::dst_replay_seed` (scope=single_process_single_store)
 - `.dst/harnesses.toml::chio-kernel/dst_drop_injection::dst_sqlite_crash_reopen_boundaries` (scope=single_process_single_store)
 - `.dst/harnesses.toml::chio-kernel/dst_drop_injection::dst_wide_sweep` (scope=single_process_single_store)
-
-### `chio-kernel::budget_store/in_memory.rs`
-
-**loom**
-
-- `.loom/harnesses.toml::chio-kernel/loom_concurrency::loom_budget_atomic_decrement` (lane=nightly, max_preemptions=3, scope=bounded_abstract_model)
 
 ### `chio-kernel::kernel/construction.rs`
 
@@ -893,7 +891,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 
 - Generator version: `3`
 - Regenerate: `cargo xtask gen proof-coverage`
-- Input digest: `77e2ff6328e0e75fb7470dc2dbdcc4b852e08a37183a67c247d1b028148de147`
+- Input digest: `9bd2f27fcbe35f0e4205507177a70c2aa241822633921fdbc950390eebabeb11`
 - Git commit: `@GIT_COMMIT@` (resolved in coverage.json and Proof Room packages)
 - Row identity: file rows use package-relative Rust paths; crate-only artifacts use `package::*`.
 
@@ -902,10 +900,10 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `.cargo/config.toml`: `d1100dc750bd88e2b0484657c792c8ce257c1ab3392a0aad54fcf49f20dae5c4`
 - `.cargo/mutants.toml`: `14feb40a4e4468ab17b8eb6fc8af6f12e6117c2ada73a2696009f7de8102b5b4`
 - `.dst/harnesses.toml`: `483b738539a5a474295ea7d568b6b4362afd8b1d4f66001e24899f72039ba4df`
-- `.kani/harnesses.toml`: `72e831dc376440c791f009ed95a0cfc23c285ebba3df43eb1e82720b4d2970d2`
-- `.loom/harnesses.toml`: `5fccf3f6760229ce3004d587cc0e1da137cb59c34fa3fd1483d3ac05b0753cd3`
-- `Cargo.lock`: `41cc5777d0a5c94aaa0e065cf216de69bb6a6d97b2e9ad97131944f3df86cc7c`
-- `Cargo.toml`: `e98a86380752ce3909a321cc17ea9229c85d7abfb05fc8418322a8039c29ce7b`
+- `.kani/harnesses.toml`: `94aad2994e9b491ad71db8d4e4acafa4573d829b5f22613d722ac1ca6e23e10c`
+- `.loom/harnesses.toml`: `b1cf2e0c9303db2c24666365962ea38d410c654e617a2572dc415432dbf3570c`
+- `Cargo.lock`: `a84486d5ba223cbf6f4a046d64c70339ca280cc590d2f0fa7fed73d3ababb264`
+- `Cargo.toml`: `30d2765c24d6f9a83f7c31c57d8006a3301fe99f92f204390f216d3040fe3ec3`
 - `audits/evidence/mutants/chio-weights/2026-05-08.json`: `452aaf5734039a489967a629ec3c6b1b9d1351e06ec1f8e76c136ae389477ca7`
 - `audits/mutation/per-crate-configs/chio-anchor.toml`: `9d5a1f0e850ddadc3e621dd67282bb36460e13d3cb6e1af06a3fc03597af8ec3`
 - `audits/mutation/per-crate-configs/chio-attest-verify.toml`: `28f31f18a2676af227db8d66b6812c2517bdc49a965ac0524c6d50cce0695475`
@@ -914,53 +912,68 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `audits/mutation/per-crate-configs/chio-kernel-core.toml`: `36817782c8a584db9c883135043f0b5034f74a2cd114d22aa5cd1b3990d888a1`
 - `audits/mutation/per-crate-configs/chio-policy.toml`: `4a0edd1a6711e51cdeaf48e71f6c94ee512612e962f9f49ee1e0ac4707f76ba3`
 - `audits/mutation/per-crate-configs/chio-weights.toml`: `8851bcc823e192ef10d705097257daf8a0ed03a466ead6c1ea11eff467e1e3ce`
-- `cargo-metadata://workspace-packages`: `8c1c11e550d347da307ba9d87a1e72fc552d691d862b1e1c673b70dfe10fee17`
-- `crates/core/chio-core-types/Cargo.toml`: `a0e83083639abad81e44e57e5c12bc57de6c88ac173ce1af89ee3deee0e36402`
-- `crates/core/chio-core-types/src/_generated/chio_wire_v1.rs`: `cbc0153f1fad2fa1e4d81d74416937e1978390c7865c010ec9e6ea5173813ed9`
+- `cargo-metadata://workspace-packages`: `bfd5d9d5271018673d28cc1169ec76defa93a7e60c5833690e397773130fd2d1`
+- `crates/core/chio-core-types/Cargo.toml`: `f36b136c6cd6170578799c43f950130de532ec1084cc0b292c45f4a78f7b0891`
+- `crates/core/chio-core-types/src/_generated/chio_wire_v1.rs`: `8501901528593e9a3c47969a264fe41275873d175427c26a2010c6e5f91a3f8e`
 - `crates/core/chio-core-types/src/_generated/mod.rs`: `6a8f664ceb143338fff9e0dec10f70fc8c3962d8a0d1d33d7103b971446c19d1`
 - `crates/core/chio-core-types/src/canonical.rs`: `a242e319dabbe817dfe6820c7d4add61c2ea38fe0c11bfa9e1a880788491131e`
-- `crates/core/chio-core-types/src/capability/attenuation.rs`: `65355556de6428e23cb81c8885f8605bfa23c84a55d96e561404395ce2173933`
+- `crates/core/chio-core-types/src/capability/aggregate_invocation.rs`: `d545c5f03a670e16eea90d5e8977980b741b186f13a47ceed9c025316ec9a477`
+- `crates/core/chio-core-types/src/capability/aggregate_invocation_tests.rs`: `11c72df32e3635ebf339c93d24ffb9fb20057f5b8119114f2b0da73ea2579d4b`
+- `crates/core/chio-core-types/src/capability/attenuation.rs`: `824be25091a4da3394b43a64d70cc7a2261f371a4a2e4da4497c9c5c09ef6365`
 - `crates/core/chio-core-types/src/capability/caveat.rs`: `f1417d4110fc9e371e5389139a3a5e8f0f8dee1f829415269035abba347d0591`
-- `crates/core/chio-core-types/src/capability/caveat_and_delegation_guard_tests.rs`: `01b5ef095685c9804f057495a248fd10ebf73e770795516d5e35601c75e869c4`
+- `crates/core/chio-core-types/src/capability/caveat_and_delegation_guard_tests.rs`: `9ebe058c2266cc258b1a5244916b8b1645907444cebc0e2961b5b84372d4aeec`
 - `crates/core/chio-core-types/src/capability/crypto_floor.rs`: `97d95000bd407239ab8aa4f54a4edbc024464b4f5fdc3b4659d88c65ac406fc6`
-- `crates/core/chio-core-types/src/capability/delegation_trust_root_tests.rs`: `7a3895ac9aa29d14631060cad782d2b751f08a4b0784f56c467f286bc60503c8`
-- `crates/core/chio-core-types/src/capability/features.rs`: `9adccce9b177b2f896bee3dd1a186e7eac2582c1626cbe7846115e75bd36bdab`
-- `crates/core/chio-core-types/src/capability/governance.rs`: `4043ec4325995f3dcf861b9c066f2df0762c0f0bb6ece0ed3c19592e43a2ad46`
-- `crates/core/chio-core-types/src/capability/mod.rs`: `8cd1e44959f691bf996faa465b60d149292f400d03ea9f4c94bcd7a3f768fc97`
+- `crates/core/chio-core-types/src/capability/cumulative_approval.rs`: `3b749f393c6150db665552bdcf605af68abe124063178531fab60ed5c9e81726`
+- `crates/core/chio-core-types/src/capability/cumulative_approval_tests.rs`: `140b6109e4250489585b4646831466971d5ae7e04f12534ab9c849e4e34acd78`
+- `crates/core/chio-core-types/src/capability/delegation_trust_root_tests.rs`: `d6cf7906084de0d3c5963c4c4d615f0c5c79b3198e585cda51f1d2a29db30b0e`
+- `crates/core/chio-core-types/src/capability/features.rs`: `a49a7afef3dd0b181a6aedafe16c220858ca6d64b4de1d2e72dcf9688a475ec5`
+- `crates/core/chio-core-types/src/capability/governance.rs`: `b9fc1cbf70a9f2280a0c8871f03e4cce46fcfc980ef14c5eaf433ae38892bab6`
+- `crates/core/chio-core-types/src/capability/mod.rs`: `767d590fa97a7eb6a8cacba227d515acf42a21dc89927bf14373efbc4228b21f`
 - `crates/core/chio-core-types/src/capability/runtime_attestation.rs`: `2a9a5a75c2a2f0ccd49b26f2d923d9be8ec6502e0427e3d2dc00e1da502b5b20`
-- `crates/core/chio-core-types/src/capability/scope.rs`: `37cc1f1c00c29673ef831b18e75e490c21197f542978d94045dfff84446757f5`
-- `crates/core/chio-core-types/src/capability/tests.rs`: `ff94aa1bfe01ac3413e4c1cb978a70a50dc6664cb6bb4be459196147e7de9b81`
-- `crates/core/chio-core-types/src/capability/token.rs`: `595f28dacedba8a6dbe399f73812800712580d16512fb93ae61f3f097cd2b65e`
+- `crates/core/chio-core-types/src/capability/scope.rs`: `490f2560f266f67ed7744bffc54ca7b8d9a8f2e4ca3f46581b436f6ee65cf925`
+- `crates/core/chio-core-types/src/capability/supplemental_authorization.rs`: `8a6cea2a6b9d299590c56262da4ee69414ac08e16305410ef740a19b6b99bebe`
+- `crates/core/chio-core-types/src/capability/tests.rs`: `a2636c7f5a525840d48f2f73032f40ee1961ae559750739ad3711a5bd72aca25`
+- `crates/core/chio-core-types/src/capability/threshold_approval.rs`: `ffd9bd593bdd38599b5f6dc3bf8d5775d0f2cfb8edb2a415aec36dcb0dd413a6`
+- `crates/core/chio-core-types/src/capability/threshold_approval_tests.rs`: `446aa3fb1803fb2fbf2ecb31510b8ba71fbb1e795eb832d4f2950484e7039989`
+- `crates/core/chio-core-types/src/capability/token.rs`: `2bc88e9238d2e551c45df77401e13c12937d803a8c4ac37ebe818da670b04d06`
 - `crates/core/chio-core-types/src/capability/trust_policy.rs`: `71c821398a6645ce694c59ea3cea5072de810d9b972a5b392d5cd32211b0af45`
 - `crates/core/chio-core-types/src/capability/validation.rs`: `f8ca1a13887fc749b50f66fcbce7bc052cf99865fedd79633b059caf9c1ae4c4`
 - `crates/core/chio-core-types/src/capability/workload_identity.rs`: `085e2decd0b7f77df2a238b0bf977a9342c58f56328b2f6686f18a583a265375`
 - `crates/core/chio-core-types/src/crypto.rs`: `bf3a6906fdb2af64a8197aa15a8a57490d346eaa408d437be4273c08f3a27fb4`
-- `crates/core/chio-core-types/src/delegation_receipt.rs`: `da2b820d76eef50ccc08b8d70709be343014ab69d9f163fb2dce8e0adcbec38e`
+- `crates/core/chio-core-types/src/delegation_receipt.rs`: `048a4eb86cbd8cef580f4ea12e4ba855119448be47bc274c85c0b1299802e1ae`
+- `crates/core/chio-core-types/src/economic_continuity.rs`: `036fd5b206267cb2ad77b07c8ff335031a20e81af4176da79c214d2ea5a1d423`
+- `crates/core/chio-core-types/src/economic_continuity/anchor.rs`: `a22bc1a390c7291958273a61ed45350e5d2bae088210ec6d9ff3a1e34c9e0b00`
+- `crates/core/chio-core-types/src/economic_continuity/anchor/effect.rs`: `937a434a9b7313ecbc6c8333539237c6a894eee80806c17461bdbb0e79ef7a30`
+- `crates/core/chio-core-types/src/economic_continuity/anchor/query.rs`: `b85a8441a5e056eefd473f4d0ca9db564bed740c6105ad3856f3b1fcfca06484`
+- `crates/core/chio-core-types/src/economic_continuity_anchor_tests.rs`: `502ac7fae29494c234f2dd248c5f4de8a36fe949141a0084b11abf5e66946cdf`
+- `crates/core/chio-core-types/src/economic_continuity_tests.rs`: `5f6deeaf370b2c400c0e99535d96099f9531054f8de94a40910b5d3151fe78f4`
 - `crates/core/chio-core-types/src/error.rs`: `716868713c5492524a91683e8794d56c340f29761ab20828953292cbecbf4801`
 - `crates/core/chio-core-types/src/hashing.rs`: `0379f1ab43b5e88408c665b983a2a4550111967fc26fa1ec2ee3ba67544e0fed`
-- `crates/core/chio-core-types/src/lib.rs`: `21948624bfedfd3cbc95492996e6405d1f12eef14d2cb10f6fa84b5f44defb28`
+- `crates/core/chio-core-types/src/lib.rs`: `4acae588aec1294ccf01b51bbc361b145caf19ecfaa584d8d64fe34627262e8f`
 - `crates/core/chio-core-types/src/loaded_weights.rs`: `14802dc92c37a56e72ad36c1c3beb1bce02cba0ddff32eebb2fe3b269ae6d547`
 - `crates/core/chio-core-types/src/manifest.rs`: `22e1d1b17965e4e5dd7550d92e3e95fa44c3155f9e4062b4af5cfec8b4341eed`
 - `crates/core/chio-core-types/src/merkle.rs`: `b83883b788e9bdb235f84e8ca6266c13dc9d4a132769de740354a18f811a0df8`
 - `crates/core/chio-core-types/src/merkle_fixtures.rs`: `ab06ca4d8f9b702fef7d7618665b46ad35cedaa1714c7b18881294c6c0430788`
 - `crates/core/chio-core-types/src/merkle_steps.rs`: `926a5cce3115e4b4f9494424d093ab346f79cce691c4512d608f8ba1b2cbf23c`
-- `crates/core/chio-core-types/src/message.rs`: `992e297cd466fdfabba028c2bfea29b17b22c113fa754f001c8a905e6745156c`
+- `crates/core/chio-core-types/src/message.rs`: `b29ebaed8b2be5980f181274d3b48233d708a7218af094cbb112ef6c747f4891`
 - `crates/core/chio-core-types/src/oracle.rs`: `1b88cc11e63933b3ba295bcb4c1f713fd44f315cb7b34fea8bc067827b1d5fae`
 - `crates/core/chio-core-types/src/plan.rs`: `219c7dc76c59bee7e10333c227e84453917288685f7ac6c9e70459c97c8f2923`
 - `crates/core/chio-core-types/src/pq.rs`: `2580f3f24f4b9f2b7f971f0c12a3ae50e05dda376ba193792b94a58e56179e67`
+- `crates/core/chio-core-types/src/provider_attempt.rs`: `7abe37dd19fe9583f642cef1a948f6fcda433c2ebd9c15d71f7ea8cd8736840e`
+- `crates/core/chio-core-types/src/provider_attempt_tests.rs`: `a062df43c7827ac4ad01bc5d4e8a04c0143e0a3d2eadc097e932800681f01cf8`
 - `crates/core/chio-core-types/src/receipt/authoritative_spend.rs`: `42153889946e2489ec039e46f6f08981ce6eb95eacb99ee42f1cc424c4e70407`
-- `crates/core/chio-core-types/src/receipt/body.rs`: `f388203f957b38ea52b49c8edf90cbf8b6afb19eecc850438dee8953cc551de6`
+- `crates/core/chio-core-types/src/receipt/body.rs`: `d4a6c89f42a381efa3ea53a21d61abcd4cdbcf6882128fe1b574c448b9ada2ec`
 - `crates/core/chio-core-types/src/receipt/checkpoint.rs`: `a2e251b696aeea565970dfcf51016fc636c117f6765b49641a42505369f8882d`
 - `crates/core/chio-core-types/src/receipt/crypto_floor.rs`: `e81e8154fee4913a55a26a828670c2bd81d3361a1a2b28823ef102464bbc3ed9`
 - `crates/core/chio-core-types/src/receipt/decision.rs`: `b011299b4b441f9e6eb0578eb9f70b0a5c0010f4ce8c0cc238fbc5d241bfc013`
-- `crates/core/chio-core-types/src/receipt/economics.rs`: `180e160f2f70b1cc7f0aa065951589a3b58c06fa11c6f8b76b0df4d0de870b9c`
-- `crates/core/chio-core-types/src/receipt/governance.rs`: `b573b5afad524ad09a5297aa69eddcff5b5ec9070468d99add2a8d2baa6f52b8`
+- `crates/core/chio-core-types/src/receipt/economics.rs`: `3d8897c508486f2a503225e108a7f9a798c249e18b261246f53e4fc029653f4a`
+- `crates/core/chio-core-types/src/receipt/governance.rs`: `250954d1cfa40416256d372d0aa9f054dad15f00bdcdda60eecd54ca9f5de10f`
 - `crates/core/chio-core-types/src/receipt/kinds.rs`: `23c3b2701b6001977708c1e383794f969e09dd4b5d3e06dab6d19b1f564c9d1e`
-- `crates/core/chio-core-types/src/receipt/lineage.rs`: `4d46a859b28d977c7d0e38fba9ddb621e70967a2db5601ac4fc6b4a1733c8635`
-- `crates/core/chio-core-types/src/receipt/metadata.rs`: `cf1afdd0e562b938150b0fda4ba1ec1c0056c09d5355e8d16b84f95412b58c92`
+- `crates/core/chio-core-types/src/receipt/lineage.rs`: `af8b2598064b935ed20e6e0700dbf218988eb05c6f3709375c093f18fc643d6c`
+- `crates/core/chio-core-types/src/receipt/metadata.rs`: `735a23e012f3f2a3e41e3e8a26eab279c1abe626bd5dff397166126f6c078c6c`
 - `crates/core/chio-core-types/src/receipt/mod.rs`: `69060e96bffd0fc3c2f6d35cfa0b716b6e22f75703e6b9529c4fd6bc72115654`
 - `crates/core/chio-core-types/src/receipt/signing.rs`: `e1ffeb174314d700759c38a8d0e5a3f53cce090386ac2ae2793f5b0bfc9bdeff`
-- `crates/core/chio-core-types/src/receipt/tests.rs`: `07c83264414087f2fa37709c3d76b4a39adc9256e5f3506058000f1494654189`
+- `crates/core/chio-core-types/src/receipt/tests.rs`: `8e773f6d61f6a4129ef704eb38bd65305cb330d068dfe556300c05fb056620b8`
 - `crates/core/chio-core-types/src/receipt/validation.rs`: `a70879e6d64b3748c4fda70e7def4a1670bf25fcec66adfdb1cef14751a57dab`
 - `crates/core/chio-core-types/src/runtime_attestation.rs`: `add06b86c2d4fdba9f22eb75469ee40b4a729d27ea5d5afe73f0e0c6146f8830`
 - `crates/core/chio-core-types/src/schema_binding.rs`: `f2609fc3d4e3b65d6c4ef786b3288fb96631f236ebfcdc522f42397b0ebb380b`
@@ -974,54 +987,56 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `crates/core/chio-core-types/src/session/operation.rs`: `c053147085c9860c9c0c9130627ac19002d5fa46324750254e325a5ed1faccd3`
 - `crates/core/chio-core-types/src/session/ownership.rs`: `ce3bbe59d2c57a86726019e16df57f871db62463ac20e6881afc08db241e58d0`
 - `crates/core/chio-core-types/src/session/payloads.rs`: `66d6ff880545114f8b411776d707d2e5b4315485c4fd1613e8faee5b11967250`
-- `crates/core/chio-core-types/src/session/resources.rs`: `2822c7b802298e77812c596feec80d8965c4baca7aa0ac3855d8795284bd61cc`
+- `crates/core/chio-core-types/src/session/resources.rs`: `41b1f21c7793d3dba1c011cc78412eba40e41d8aef7b3280522004700ec39766`
 - `crates/core/chio-core-types/src/session/session_op.rs`: `1cef65971d083f73ff35e554abfb92b27df32996147f51574abfeb3828eb550e`
-- `crates/core/chio-core-types/src/session/tests.rs`: `181c9e0c868a612f25f4d2042e7c315329ad42758e4e79f5a402abe1acb51eaf`
-- `crates/core/chio-core-types/src/signed_artifact.rs`: `bd86d3f34c7febb49e05c9f48e8c18e0463c766749c5d4e1ee7138901bef1385`
+- `crates/core/chio-core-types/src/session/tests.rs`: `df7281585c7e579e535f26fa765decacdbe47e46845c6e704285fa6d0e1df4d1`
+- `crates/core/chio-core-types/src/signed_artifact.rs`: `73778a37202862e6014b2b73d505765c45b9b0cce29f5e6f7078f84ab5d37dd9`
 - `crates/core/chio-core-types/src/signer_binding.rs`: `04da22bf9278ff3d69cd9b39505be2d0fd4dd9c89c26194f4013c25a6f7cea07`
+- `crates/core/chio-core-types/src/store_fence.rs`: `642a8b51a3674b0146d4522e42bf1776534af7cede7a7ee8d0cce33d05863c82`
 - `crates/economy/chio-credit/src/formal_economy.rs`: `0e659e620f921da7e51f17f3bcd6d3b40a902fa52dd4f3e2836101c712da23f6`
 - `crates/economy/chio-credit/src/kani_public_harnesses.rs`: `1cc7f5c38ca1ba5d420b21c005932014232e44e35a568aead55bdfe8181e8275`
 - `crates/economy/chio-web3/src/kani_public_harnesses.rs`: `5406b789197a0fe44d05b4fcc681b7634992be6296d1d3e2e6dd29ac57e9e6ad`
 - `crates/kernel/chio-kernel-core/Cargo.toml`: `160d51a82395aa586d8251f68e467a5f3ba636c2b662af7256afd701e42c1758`
 - `crates/kernel/chio-kernel-core/src/budget_split.rs`: `20c6317395f251baad44c4153087853b4a2d2cc27725c7a55ff40499530f2835`
-- `crates/kernel/chio-kernel-core/src/capability_verify.rs`: `4a1b436fa32e2e2b071c044d678c85159d7f0d68888d983762624c76dd1ea3ad`
+- `crates/kernel/chio-kernel-core/src/capability_verify.rs`: `f39216ccf0b335038e03a9a90e6ec89262a7e6625e10457374839be4ead1c2e3`
+- `crates/kernel/chio-kernel-core/src/capability_verify_tests.rs`: `97cf6bc40fa175cb65f2d0184203aeab6c0d2e22c863773d5d4b2d5538164d00`
 - `crates/kernel/chio-kernel-core/src/clock.rs`: `8668efdb38109f01f012862acf41cfab4d0aee0b700d0348ebef906ab9046b58`
-- `crates/kernel/chio-kernel-core/src/evaluate.rs`: `cec57a9f26f859df919c91aac0449c0fb4ea032aa2e2db702185a5ea18047904`
+- `crates/kernel/chio-kernel-core/src/evaluate.rs`: `b5c5904ee6882dc175ab26ff7d0ba1a3487c39b42844445b0790812493ea8ab0`
 - `crates/kernel/chio-kernel-core/src/formal_aeneas.rs`: `ba30d5009a253812effa46d96a46f3e663455f64f01ded228df86291fe0f4187`
-- `crates/kernel/chio-kernel-core/src/formal_core.rs`: `cc4c2588faeab06c9cce8dfcbcfca140ccd8ff72f8dddb3f7652de6eabb5b9f2`
+- `crates/kernel/chio-kernel-core/src/formal_core.rs`: `0ff0a17c6b607a86a5b0df71bba02e8871ab1f27072380a01962a42d57f854ee`
 - `crates/kernel/chio-kernel-core/src/fuzz.rs`: `184d1082d3ef20267a766e554bc0b4456159521d94f6ed82a7aeda453b019072`
 - `crates/kernel/chio-kernel-core/src/guard.rs`: `4734d658d8dd17759cf5c8ecc20dfb92ffc49eb6b0c0df22d79da67e6ed22c3c`
 - `crates/kernel/chio-kernel-core/src/kani_harnesses.rs`: `0c46814569e54b2eb67d8cc561d2c3af432919d147caba36e0a924e2a959a570`
-- `crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs`: `629b50369cde315face5320bcd6df0eac3aa199fa27b3db49167b081c9dcc84a`
-- `crates/kernel/chio-kernel-core/src/lib.rs`: `5de2054275499f193af6d49b0995bac7b7fdcf14e60459da91def77813bd546e`
-- `crates/kernel/chio-kernel-core/src/normalized.rs`: `1b795598b20ec526bc618951e01092fe3743b986932fc1f42fcaaa8ccb52a8b7`
+- `crates/kernel/chio-kernel-core/src/kani_public_harnesses.rs`: `a69d9d9d21bf8a872d0096a1dea1691f2e9d4021635fcbfed28260e02e607ae5`
+- `crates/kernel/chio-kernel-core/src/lib.rs`: `e8f6c6e7e78bf6cdabe12bc8a3b32b2f1282295e228b823b01658fcae3c73292`
+- `crates/kernel/chio-kernel-core/src/normalized.rs`: `76643690f98a6cc9dad109b63b4271c5aa0f98c232ca52be7438ee4c462dd904`
 - `crates/kernel/chio-kernel-core/src/passport_verify.rs`: `1f9840487c0c683a007962a5989aee0f1bee2bb9dd1ba023314e59c4c0770c2d`
 - `crates/kernel/chio-kernel-core/src/receipts.rs`: `f1cef94ee8abe77ef6ffcadeff34693a9d4d62c18a9c1e2263d7520792a78096`
 - `crates/kernel/chio-kernel-core/src/revocation_view.rs`: `a32e563388c19e8991557243e8d26cb2f6b7ae578aff406cd46a30497d2ea4e6`
 - `crates/kernel/chio-kernel-core/src/rng.rs`: `5d3991259da3e40d0213a36def3b508494f8cfe472dcbc073da37fe10a0cca18`
-- `crates/kernel/chio-kernel-core/src/scope.rs`: `9fd9f24eea98448bb7b1889cae90d97a5c40ff0c38e1567d9b24b631a55d4768`
-- `crates/kernel/chio-kernel/src/kernel/delegation.rs`: `198816972f2c2c687720c6dc70aadc211c1c49286ff996447dc8001f248b6b7f`
-- `crates/kernel/chio-kernel/src/kernel/dispatch.rs`: `28c1f39097816a4d4d3bd839e4b0b275069712d1397362d4d9a99acbb09dacda`
-- `crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs`: `840f2a043851a12311d6d0b8b1fce50fa16dfd15b9ec1170353b4a9031bfbfb1`
+- `crates/kernel/chio-kernel-core/src/scope.rs`: `3545c0b8808201bd2723647d465790194f8ae275be87ff3da45921b501bb662c`
+- `crates/kernel/chio-kernel/src/kernel/delegation.rs`: `e1ec9d7e8101fb6afeac5e8002602e2dac4e7c363680e1b366ac1b0414ce400d`
+- `crates/kernel/chio-kernel/src/kernel/dispatch.rs`: `bae04423fa5ae5ba8c8f77e2bac7b6ae0940a3e0117e1c69639701fcfc9cccb7`
+- `crates/kernel/chio-kernel/src/kernel/kernel_drop_guard.rs`: `2461a9decc69a1447750ac52c4396399e482dd3b4dde393c7e7509545b5b3e35`
 - `crates/kernel/chio-kernel/src/kernel/ledger_audit.rs`: `defcb8e3b9de79e211b55fc1309609847d18e13d7df357a02a8a6f5a87aeb137`
-- `crates/kernel/chio-kernel/src/kernel/responses/allow_responses.rs`: `90cfdafb2fcc689025e0824f99f4adead761e5d18d35aae6d35def5a7150ecc0`
-- `crates/kernel/chio-kernel/src/kernel/responses/finalization.rs`: `100d85e8c93e330ee76c99a057474421f35ff650579e3b3223759c6f9a515579`
-- `crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs`: `81aa72ec9a0b28648fb246658825b573aee7421c80ef6291f591bf27644191e9`
-- `crates/kernel/chio-kernel/src/kernel/tests/budget.rs`: `6b2e4764d5b5c70518bbf1b5634419b8cef9ebcba67e8f66aeb6fa693e2b0e25`
-- `crates/kernel/chio-kernel/src/kernel/tests/chio_runtime.rs`: `0aa24a21c9d94534277ce5fee02a6abec6796b24f6e8b4b285585622349f9761`
-- `crates/kernel/chio-kernel/src/kernel/tests/drop_guard_proptest.rs`: `61357cd2c892e52a135bd8f911c2831ab621c703207ad4a7825d3ff1597dff1e`
-- `crates/kernel/chio-kernel/src/kernel/validation.rs`: `d737b2cbe7c3d9e88574a638d2f61171e9eb4801824c14f53452180b90ab37a3`
-- `crates/kernel/chio-kernel/tests/dst_drop_injection.rs`: `2c1f7b1d28b39b5f7e663c7a2528e7041c88dbfc35e7cf1cf4e184040d920d10`
-- `crates/kernel/chio-kernel/tests/loom_concurrency.rs`: `4c291cf5842ecf25ba945e296b5b934bf66a5f8ff8879bf1ee6c432f6014935f`
-- `crates/kernel/chio-kernel/tests/property_reservation_ledger.rs`: `4b4aa3612d5ec970bfdf1936774e058b413bc9e56cb091fd3e6d35adcdb2b7a6`
-- `crates/platform/chio-store-sqlite/src/receipt_store/evidence_retention.rs`: `7917c397cda2df0441080019bca34bf0e1a17d328b4288fcf609e18a1984eab0`
-- `crates/tooling/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs`: `0572f40fa21468e603a88b767ab3a8225a4cfd7a88d6f841422b6037e6dfd719`
+- `crates/kernel/chio-kernel/src/kernel/responses/allow_responses.rs`: `3e4d5182d2de2925f1347610866c0692c4fd907d694c357aacdc169062826be3`
+- `crates/kernel/chio-kernel/src/kernel/responses/finalization.rs`: `add3648fcaf76907ba84f5a7eede26c4445a24004b35afe41689ec92c0fb2ed3`
+- `crates/kernel/chio-kernel/src/kernel/responses/receipt_persistence.rs`: `25cddeb9da3317ee4d68dbfaa7feae90f2f1c652e84508c7a06a10f20be7fc00`
+- `crates/kernel/chio-kernel/src/kernel/tests/budget.rs`: `872e9d25c2506b61317ea8945becc1a6bc158d2f25b2486a3a09fba6640cad27`
+- `crates/kernel/chio-kernel/src/kernel/tests/chio_runtime.rs`: `99dd69bce6f4ecac1e463982292f531eeec1ae61dd25c9f444085dba67cd4117`
+- `crates/kernel/chio-kernel/src/kernel/tests/drop_guard_proptest.rs`: `fc649f6056adecc6be391bebe6d6403085d7db31462d94eb8bc99b4f4aeeae34`
+- `crates/kernel/chio-kernel/src/kernel/validation.rs`: `f9349d94728257712ae5a44b0ecf80bcad1e38886e94f1ff2801d6f3370329ee`
+- `crates/kernel/chio-kernel/tests/dst_drop_injection.rs`: `e8bcf4fabef8849958ff7297ae8a0e6164dc9f999d42568a6586dcbc8b89e52a`
+- `crates/kernel/chio-kernel/tests/loom_concurrency.rs`: `ba356cee1d2cc9e15a99eb0d36efc79416dc355576f51d6c149f9cec85f89afe`
+- `crates/kernel/chio-kernel/tests/property_reservation_ledger.rs`: `863b550330184a2ddd02a46abe9d76cf552ff47443c2985485f77528f2e15585`
+- `crates/platform/chio-store-sqlite/src/receipt_store/evidence_retention.rs`: `9a4fe38f6ac2c28e84b469fa621338dd897ec86d6454202be937e1dff3f9aebf`
+- `crates/tooling/chio-conformance/tests/budget_split_rejects_oversubscribed_siblings.rs`: `49f620f09a36d60d0c75ef1e00000f1998ca76e6bf88f43eb39f8cb81f1f7242`
 - `crates/trust/chio-federation/src/revocation_gossip.rs`: `87d1fbacfb95456665adbb14ecf35d900b6e93aab6c4bbcb3ebce4951d7214ee`
 - `crates/trust/chio-federation/tests/distributed_revocation_refinement.rs`: `59da3e7b78e64fc67ce2195f2dff4cad92b9b4ecac9e576a0b2d57a688899f0c`
 - `crates/trust/chio-revocation-oracle/src/api.rs`: `b1bfcf2fa979f132693ef895f40512b53a5797b8ca2dbe609c3524eac58d0375`
 - `crates/trust/chio-revocation-oracle/src/freshness.rs`: `d699d5c59f1c5a660d9c06f294bb2ac1ee2c0fcd00cd9eebbe043df74ba733b8`
 - `docs/fuzzing/trust-boundary-mutants-baseline.toml`: `7331fb69499474ca22b14b6fb5a6f9a966eae2e2a26d3433d9030a4c985efee9`
-- `formal/MAPPING.md`: `4a59b4eadbb3f989b881a04ff3887c5d87a10a885be38be0806f50047b1d75cf`
+- `formal/MAPPING.md`: `ac971a0664bb490eb83b7608d0731b08ac747e40a7d2eff296920976f5908179`
 - `formal/aeneas/pilot.toml`: `86627b363717b47ced94caeb826185d400cf70fe357a55fe34d02ea70670956c`
 - `formal/aeneas/production.toml`: `2a3e3189ae4d283ddd6392ca373da61452c55252247be8050e068239745ef93e`
 - `formal/aeneas/verified_core.rs`: `44ef85fbe6c537e8c65a483a67c167f502ca1a108a25293414b27ab2a85046b8`
@@ -1087,11 +1102,11 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `formal/mutation/evidence/spec-mutants-7b24142e8523fe08e501063dbf3d4f6cea3397be.json`: `82878e03aaafa1ceeb1f791386cffd57f9f88453b24113bd51e43b67996a66c2`
 - `formal/mutation/evidence/spec-mutants-d292f14df1c493873199f4f9d969ade00472ff28.json`: `d7b7a63401bfb071af87743ec07191e380c29ee1e306cca1fe35859a8194e623`
 - `formal/mutation/registry.toml`: `48387345d00fe7c53e777326f73e31370f7bc3d362a09f1059cadc06c98b6bb6`
-- `formal/proof-manifest.toml`: `842e53eff84b1dce4d99a32cdcbf8ff12598976d66e9ba902f7979eaf660db58`
+- `formal/proof-manifest.toml`: `8ce74cf72a540d939ba88c71a01a1f085d91b5e2f64e0d73c8b7774a9e769d97`
 - `formal/rust-verification/creusot-contracts.toml`: `83000c98743013d3d6d468976a163edaf16d0d621070410d741f146bf61a28a5`
 - `formal/rust-verification/formal-mutants.toml`: `5f15de2f3833b11db3d783d05ab6efcd2c49840ede010fe7ec54fc2846c48fc6`
 - `formal/rust-verification/kani-harnesses.toml`: `f82442bef24ae67283c3f171cff15e8aa6cc4d808c7893b9e349b6bf315b50ce`
-- `formal/rust-verification/kani-public-harnesses.toml`: `319501d0b82a73a32b939dc7746ecb87569101a3f06bf496516f5b4d631ed42c`
+- `formal/rust-verification/kani-public-harnesses.toml`: `d8ee3ef2659c8cef4913d60ff74ed0e1ef77c7789ddd47c637b1642bf1f29db2`
 - `formal/theorem-inventory.json`: `aaf1a65989372e3ea48327ae3b0ef3c02ab8afdb9b3e4890c74f25064a01cf83`
 - `formal/tla/DelegationDepthBound.tla`: `69c28ca6b16ef3b2174235347d8bb2aab40fce4cbb79123e4512f363b9717be9`
 - `formal/tla/DistributedRevocation.tla`: `59110faa37eeeaac45b9b206594ae5ef39f94404323a377967012431489b8aa7`
@@ -1105,7 +1120,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `formal/tla/trace/TraceEvaluateRevocationPropagation.tla`: `a7e923ace268ed8ca2575fed423c5a963776b2f34929fb547f3d3b61aed81589`
 - `fuzz/owners.toml`: `06e18ce8f287a40a393684e23ddfae5a3a545d1302edd264f52e240d8d14d3c2`
 - `fuzz/target-map.toml`: `2c36579e3496db8fe0916df69bdc760bcb520c45bc11c73cc10b159acb8d3009`
-- `git-worktree://rust-files`: `f7435833af9ecde40e12538bafef29eed6d2171218ccd35055a827330a1a50f2`
+- `git-worktree://rust-files`: `4ed0fc04fe4fcd360df7f2348db12056ede29bffb9048be3cb6e1619a6dc2e3b`
 - `releases.toml`: `8fa34f25cfafa13c5230e5f7305d45cb95ac276e2f2f65d9aaa87a1af3f7431d`
 - `rust-toolchain.toml`: `8bc51ecab82415fddd8489604f2424e137d71856e7f65cbdcfaa48850d794b46`
 - `scripts/check-apalache-negative.sh`: `9441ad16cab3d4edf8c92d542920a60691217f09b65b9be70793b5fbcf24e4a5`
@@ -1116,4 +1131,4 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `scripts/proof-mutants.sh`: `b6a8709ff3d15e8e58521ed60efda0e344733a81b1902dc314928cdedec479a7`
 - `scripts/spec-mutants.py`: `ca80a1a94c5731933f3bab3258bd0f4bbfa61f754bb8de82e73950ae1d417cb0`
 - `tools/install-apalache.sh`: `3f50745f56521685d30d18669bddb64a4bff060b40c121b30cdbf61fe26f4cc5`
-- `xtask/src/proof_coverage.rs`: `91373b1ea5307f09674234f782ccc4c365b7affe90d9fb1ed13e809a7a5bfaec`
+- `xtask/src/proof_coverage.rs`: `4279dd034a66e657d8c9bb66b2f67ab49cee2c47b0c72506c0686208d953edf4`

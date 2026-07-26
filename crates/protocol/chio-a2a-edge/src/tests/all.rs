@@ -6,7 +6,15 @@ mod tests {
     use std::sync::{Arc, Mutex, MutexGuard};
     use std::time::{SystemTime, UNIX_EPOCH};
 
-    use chio_core::capability::{scope::{ChioScope, Operation, ToolGrant}, token::{CapabilityTokenBody}};
+    use chio_core::capability::{
+        governance::{
+            GovernedApprovalDecision, GovernedApprovalToken, GovernedApprovalTokenBody,
+            ThresholdApprovalProposal, ThresholdApprovalProposalBody,
+            THRESHOLD_APPROVAL_PROPOSAL_SCHEMA,
+        },
+        scope::{ChioScope, Operation, ToolGrant},
+        token::CapabilityTokenBody,
+    };
     use chio_core::crypto::Keypair;
     use chio_kernel::{
         ChioKernel, KernelConfig, KernelError, NestedFlowBridge, RuntimeAdmissionContext,
@@ -434,7 +442,6 @@ mod tests {
             retention_config: None,
             memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
             deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-            dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
         }
     }
 
@@ -467,10 +474,116 @@ mod tests {
                 issued_at: now.saturating_sub(30),
                 expires_at: now + 300,
                 delegation_chain: vec![],
+                aggregate_invocation_budget: None,
             },
             issuer,
         )
         .test_expect("capability should sign")
+    }
+
+    fn threshold_artifacts(
+        subject: &Keypair,
+        request_id: &str,
+    ) -> (Vec<GovernedApprovalToken>, ThresholdApprovalProposal) {
+        let policy_authority = Keypair::generate();
+        let approvers = [Keypair::generate(), Keypair::generate()];
+        let intent_hash = "a".repeat(64);
+        let proposal = ThresholdApprovalProposal::sign(
+            ThresholdApprovalProposalBody {
+                schema: THRESHOLD_APPROVAL_PROPOSAL_SCHEMA.to_string(),
+                proposal_id: format!("proposal-{request_id}"),
+                request_id: request_id.to_string(),
+                governed_intent_hash: intent_hash.clone(),
+                subject: subject.public_key(),
+                authorizing_capability_digest: "b".repeat(64),
+                policy_hash: "c".repeat(64),
+                threshold: 2,
+                eligible_set_digest: "d".repeat(64),
+                proposal_created_at: 100,
+                proposal_deadline: 200,
+                policy_authority: policy_authority.public_key(),
+            },
+            &policy_authority,
+        )
+        .test_expect("threshold proposal should sign");
+        let proposal_hash = proposal
+            .artifact_digest()
+            .test_expect("threshold proposal should hash");
+        let approvals = approvers
+            .iter()
+            .enumerate()
+            .map(|(index, approver)| {
+                GovernedApprovalToken::sign(
+                    GovernedApprovalTokenBody {
+                        id: format!("approval-{request_id}-{index}"),
+                        approver: approver.public_key(),
+                        subject: subject.public_key(),
+                        governed_intent_hash: intent_hash.clone(),
+                        request_id: request_id.to_string(),
+                        threshold_proposal_hash: Some(proposal_hash.clone()),
+                        issued_at: 100,
+                        expires_at: 200,
+                        decision: GovernedApprovalDecision::Approved,
+                    },
+                    approver,
+                )
+                .test_expect("approval should sign")
+            })
+            .collect();
+        (approvals, proposal)
+    }
+
+    #[test]
+    fn a2a_projection_preserves_complete_approval_set_and_opaque_extension() {
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let capability = capability_for_tool(&issuer, &subject, "srv", "run");
+        let (approvals, proposal) = threshold_artifacts(&subject, "a2a-auth-set");
+        let supplemental =
+            chio_core::capability::supplemental_authorization::OpaqueSupplementalAuthorization {
+                signed_extension: "opaque-a2a-extension".to_string(),
+            };
+        let execution = A2aKernelExecutionContext {
+            capability,
+            agent_id: subject.public_key().to_hex(),
+            dpop_proof: None,
+            execution_nonce: None,
+            governed_intent: None,
+            approval_token: None,
+            approval_tokens: approvals.clone(),
+            threshold_approval_proposal: Some(proposal.clone()),
+            supplemental_authorization: Some(supplemental.clone()),
+            model_metadata: None,
+        };
+        let source = SendMessageRequest {
+            message: A2aMessage {
+                role: "user".to_string(),
+                parts: vec![A2aPart::Data {
+                    data: serde_json::json!({"value": 7}),
+                }],
+                metadata: None,
+            },
+            metadata: None,
+        };
+
+        let projected = ChioA2aEdge::build_execution_request(
+            SkillBinding {
+                target_protocol: DiscoveryProtocol::Native,
+                server_id: "srv".to_string(),
+                tool_name: "run".to_string(),
+            },
+            "run",
+            &source,
+            serde_json::json!({"value": 7}),
+            &execution,
+            "a2a-auth-set".to_string(),
+            "a2a-kernel-auth-set".to_string(),
+        )
+        .test_expect("A2A request should project");
+
+        assert_eq!(projected.approval_tokens, approvals);
+        assert_eq!(projected.threshold_approval_proposal, Some(proposal));
+        assert_eq!(projected.supplemental_authorization, Some(supplemental));
     }
 
     fn assert_receipt_write_prometheus_sample_at_least(outcome: &str, minimum: u64) {
@@ -862,6 +975,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -920,6 +1036,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -934,6 +1053,168 @@ mod tests {
     }
 
     #[test]
+    fn send_message_rejects_supplemental_authorization_without_stable_request_id() {
+        let mut edge =
+            ChioA2aEdge::new(A2aEdgeConfig::default(), vec![test_manifest()]).test_unwrap();
+        let config = test_kernel_config();
+        let kernel_issuer = config.keypair.clone();
+        let mut kernel = ChioKernel::new(config);
+        kernel.register_tool_server(Box::new(test_server()));
+
+        let subject = Keypair::generate();
+        let execution = A2aKernelExecutionContext {
+            capability: capability_for_tool(&kernel_issuer, &subject, "test-srv", "echo"),
+            agent_id: subject.public_key().to_hex(),
+            dpop_proof: None,
+            execution_nonce: None,
+            governed_intent: None,
+            approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: Some(
+                chio_core::capability::supplemental_authorization::OpaqueSupplementalAuthorization {
+                    signed_extension: "opaque-extension".to_string(),
+                },
+            ),
+            model_metadata: None,
+        };
+
+        let error = edge
+            .handle_send_message("echo", &text_message("hello"), &kernel, &execution)
+            .test_expect_err("supplemental authorization must require a stable request id");
+
+        assert_eq!(
+            error.to_string(),
+            "invalid request: A2A request-bound authorization artifacts and execution nonces \
+             require handle_send_message_with_request_id or handle_stream_message_with_request_id"
+        );
+    }
+
+    #[test]
+    fn send_message_rejects_singular_approval_token_without_stable_request_id() {
+        let mut edge =
+            ChioA2aEdge::new(A2aEdgeConfig::default(), vec![test_manifest()]).test_unwrap();
+        let config = test_kernel_config();
+        let kernel_issuer = config.keypair.clone();
+        let mut kernel = ChioKernel::new(config);
+        kernel.register_tool_server(Box::new(test_server()));
+
+        let subject = Keypair::generate();
+        let (approvals, _proposal) = threshold_artifacts(&subject, "a2a-singular-auth");
+        let approval_token = approvals
+            .into_iter()
+            .next()
+            .test_expect("threshold artifacts must yield at least one approval token");
+        let execution = A2aKernelExecutionContext {
+            capability: capability_for_tool(&kernel_issuer, &subject, "test-srv", "echo"),
+            agent_id: subject.public_key().to_hex(),
+            dpop_proof: None,
+            execution_nonce: None,
+            governed_intent: None,
+            approval_token: Some(approval_token.clone()),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
+            model_metadata: None,
+        };
+
+        let error = edge
+            .handle_send_message("echo", &text_message("hello"), &kernel, &execution)
+            .test_expect_err("a singular approval token must require a stable request id");
+
+        assert_eq!(
+            error.to_string(),
+            "invalid request: A2A request-bound authorization artifacts and execution nonces \
+             require handle_send_message_with_request_id or handle_stream_message_with_request_id"
+        );
+    }
+
+    #[test]
+    fn send_message_with_request_id_accepts_request_bound_artifacts() {
+        let mut edge =
+            ChioA2aEdge::new(A2aEdgeConfig::default(), vec![test_manifest()]).test_unwrap();
+        let config = test_kernel_config();
+        let kernel_issuer = config.keypair.clone();
+        let mut kernel = ChioKernel::new(config);
+        kernel.register_tool_server(Box::new(test_server()));
+
+        let subject = Keypair::generate();
+        let execution = A2aKernelExecutionContext {
+            capability: capability_for_tool(&kernel_issuer, &subject, "test-srv", "echo"),
+            agent_id: subject.public_key().to_hex(),
+            dpop_proof: None,
+            execution_nonce: None,
+            governed_intent: None,
+            approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: Some(
+                chio_core::capability::supplemental_authorization::OpaqueSupplementalAuthorization {
+                    signed_extension: "opaque-extension".to_string(),
+                },
+            ),
+            model_metadata: None,
+        };
+
+        edge.handle_send_message_with_request_id(
+            "caller-chosen-request",
+            "echo",
+            &text_message("hello"),
+            &kernel,
+            &execution,
+        )
+        .test_expect("stable request id path must accept request-bound artifacts");
+    }
+
+    #[test]
+    fn execution_context_rejects_oversized_threshold_approval_set() {
+        let subject = Keypair::generate();
+        let approver = Keypair::generate();
+        let token = GovernedApprovalToken::sign(
+            GovernedApprovalTokenBody {
+                id: "approval-oversize".to_string(),
+                approver: approver.public_key(),
+                subject: subject.public_key(),
+                governed_intent_hash: "a".repeat(64),
+                request_id: "a2a-request".to_string(),
+                threshold_proposal_hash: Some("b".repeat(64)),
+                issued_at: 1,
+                expires_at: 2,
+                decision: GovernedApprovalDecision::Approved,
+            },
+            &approver,
+        )
+        .test_unwrap();
+        let execution = A2aKernelExecutionContext {
+            capability: capability_for_tool(&Keypair::generate(), &subject, "test-srv", "echo"),
+            agent_id: subject.public_key().to_hex(),
+            dpop_proof: None,
+            execution_nonce: None,
+            governed_intent: None,
+            approval_token: None,
+            approval_tokens: vec![
+                token;
+                chio_core::capability::threshold_approval::MAX_THRESHOLD_APPROVAL_TOKENS
+                    + 1
+            ],
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
+            model_metadata: None,
+        };
+
+        let error = validate_execution_context(&execution)
+            .test_expect_err("oversized A2A threshold approval set must fail");
+
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "invalid request: A2A threshold approval set exceeds {} tokens",
+                chio_core::capability::threshold_approval::MAX_THRESHOLD_APPROVAL_TOKENS
+            )
+        );
+    }
+
+    #[test]
     fn execution_context_rejects_control_character_agent_id() {
         let subject = Keypair::generate();
         let execution = A2aKernelExecutionContext {
@@ -943,6 +1224,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -971,6 +1255,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -1013,6 +1300,9 @@ mod tests {
                     execution_nonce: None,
                     governed_intent: None,
                     approval_token: None,
+                    approval_tokens: Vec::new(),
+                    threshold_approval_proposal: None,
+                    supplemental_authorization: None,
                     model_metadata: None,
                 },
                 "approval required",
@@ -1062,6 +1352,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
         let before_error = receipt_write_total(RECEIPT_WRITE_OUTCOME_ERROR);
@@ -1096,6 +1389,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
         let capability_ref = CrossProtocolCapabilityRef {
@@ -1159,6 +1455,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -1548,6 +1847,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
         let response = edge.handle_jsonrpc(
@@ -1595,6 +1897,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -1636,6 +1941,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
         let response = edge.handle_jsonrpc(
@@ -1678,6 +1986,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
         let response = edge.handle_jsonrpc(
@@ -1713,6 +2024,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
         let response = edge.handle_jsonrpc(
@@ -1743,6 +2057,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -1775,6 +2092,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -1807,6 +2127,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -1846,6 +2169,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -1957,6 +2283,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2003,6 +2332,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2079,6 +2411,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2147,6 +2482,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2184,6 +2522,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2249,6 +2590,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2320,6 +2664,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2379,6 +2726,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2422,6 +2772,9 @@ mod tests {
                 execution_nonce: None,
                 governed_intent: None,
                 approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: None,
             };
 
@@ -2489,6 +2842,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2565,6 +2921,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2640,6 +2999,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2696,6 +3058,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 

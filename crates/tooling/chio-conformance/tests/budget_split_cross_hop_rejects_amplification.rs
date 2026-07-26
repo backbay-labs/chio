@@ -74,6 +74,7 @@ fn sign_attenuated_with_chain(
         issued_at: 100,
         expires_at: 200,
         delegation_chain: chain,
+        aggregate_invocation_budget: None,
     };
     CapabilityToken::sign_attenuated(
         CapabilityTokenAttenuationBody {
@@ -117,6 +118,8 @@ fn parent_5000_child_4000_two_grandchildren_3000_each_second_rejected() {
             attenuations: vec![],
             timestamp: 100,
             scope_hash: Some(scope_hash(&parent_scope).unwrap()),
+            aggregate_budget: None,
+            cumulative_approval: None,
         },
         &kp,
     )
@@ -160,6 +163,8 @@ fn parent_5000_child_4000_two_grandchildren_3000_each_second_rejected() {
                 attenuations: vec![],
                 timestamp: 110,
                 scope_hash: Some(scope_hash(&parent_scope).unwrap()),
+                aggregate_budget: None,
+                cumulative_approval: None,
             },
             &child_subject,
         )

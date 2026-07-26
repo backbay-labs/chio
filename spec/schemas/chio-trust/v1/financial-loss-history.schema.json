@@ -1,0 +1,48 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio/fincred/loss-history/v1.schema.json",
+  "allOf": [
+    { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/credential" },
+    {
+      "properties": {
+        "schema": { "const": "chio.fincred.loss-history.v1" },
+        "family": { "const": "loss_history" },
+        "type": { "const": ["VerifiableCredential", "ChioLossHistoryCredential"] },
+        "credentialSubject": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["family", "claims"],
+          "properties": {
+            "family": { "const": "loss_history" },
+            "claims": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "id",
+                "delinquencyCount",
+                "recoveryCount",
+                "reserveReleaseCount",
+                "reserveSlashCount",
+                "writeOffCount",
+                "outstandingAmounts"
+              ],
+              "properties": {
+                "id": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/did" },
+                "delinquencyCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                "recoveryCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                "reserveReleaseCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                "reserveSlashCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                "writeOffCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+                "outstandingAmounts": {
+                  "type": "array",
+                  "maxItems": 64,
+                  "items": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/money" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -23,10 +23,11 @@ use crate::clock::FixedClock;
 use crate::evaluate::EvaluateInput;
 use crate::formal_aeneas::{ledger_apply, ledger_is_terminal, ReservationLedger};
 use crate::formal_core::{
-    budget_charge_admits, budget_increment_admits, monetary_cap_is_subset_by_parts,
-    optional_u32_cap_is_subset, required_true_is_preserved, revocation_lookup_denies,
-    revocation_snapshot_denies, time_window_valid, BudgetAdmissionProjectionError,
-    RevocationCheckTarget,
+    budget_charge_admits, budget_increment_admits, composite_quota_authorize,
+    family_binding_preserved, guard_pipeline_allows, monetary_cap_is_subset_by_parts,
+    optional_u32_cap_is_subset, quota_maximum_compatible, receipt_fields_coupled,
+    required_true_is_preserved, revocation_snapshot_denies, threshold_distinct_eligible_signers,
+    time_window_valid, BudgetAdmissionProjectionError, GuardStep,
 };
 use crate::guard::PortableToolCallRequest;
 use crate::normalized::{NormalizedOperation, NormalizedScope, NormalizedToolGrant};
@@ -81,6 +82,7 @@ fn unsigned_capability(ttl: u64) -> CapabilityToken {
         scope_attenuations: None,
         attenuation_proof: None,
         budget_share_bps: None,
+        aggregate_invocation_budget: None,
         signature: Signature::from_bytes(&[0; 64]),
     }
 }
@@ -1302,6 +1304,109 @@ pub fn verify_budget_admission_projection() {
         Ok(invocation_allowed && per_invocation_allowed && total_allowed)
     };
     assert_eq!(actual, expected);
+}
+
+#[kani::proof]
+pub fn verify_composite_quota_all_or_nothing() {
+    let before = [kani::any::<u8>(), kani::any::<u8>(), kani::any::<u8>()];
+    let maximum = [kani::any::<u8>(), kani::any::<u8>(), kani::any::<u8>()];
+    let applicable = [
+        kani::any::<bool>(),
+        kani::any::<bool>(),
+        kani::any::<bool>(),
+    ];
+    let result = composite_quota_authorize(before, maximum, applicable);
+
+    if result.accepted {
+        for index in 0..3 {
+            if applicable[index] {
+                assert_eq!(result.captured[index], before[index] + 1);
+                assert!(result.captured[index] <= maximum[index]);
+            } else {
+                assert_eq!(result.captured[index], before[index]);
+            }
+        }
+    } else {
+        assert_eq!(result.captured, before);
+    }
+}
+
+#[kani::proof]
+pub fn verify_quota_maximum_immutable() {
+    let initialized = kani::any::<bool>();
+    let existing = kani::any::<u8>();
+    let presented = kani::any::<u8>();
+    let compatible = quota_maximum_compatible(initialized, existing, presented);
+
+    assert_eq!(compatible, !initialized || existing == presented);
+    if initialized && existing != presented {
+        assert!(!compatible);
+    }
+}
+
+#[kani::proof]
+pub fn verify_family_binding_preservation() {
+    let fields = [
+        kani::any::<bool>(),
+        kani::any::<bool>(),
+        kani::any::<bool>(),
+        kani::any::<bool>(),
+        kani::any::<bool>(),
+        kani::any::<bool>(),
+        kani::any::<bool>(),
+        kani::any::<bool>(),
+    ];
+    let root_maximum = kani::any::<u8>();
+    let descendant_maximum = kani::any::<u8>();
+    let preserved = family_binding_preserved(fields, root_maximum, descendant_maximum);
+
+    assert_eq!(
+        preserved,
+        fields.iter().all(|matches| *matches) && root_maximum == descendant_maximum
+    );
+    if fields.iter().any(|matches| !*matches) || root_maximum != descendant_maximum {
+        assert!(!preserved);
+    }
+}
+
+#[kani::proof]
+pub fn verify_threshold_distinct_signers() {
+    let signer_ids = [kani::any::<u8>(), kani::any::<u8>(), kani::any::<u8>()];
+    let present = [
+        kani::any::<bool>(),
+        kani::any::<bool>(),
+        kani::any::<bool>(),
+    ];
+    let eligible = [
+        kani::any::<bool>(),
+        kani::any::<bool>(),
+        kani::any::<bool>(),
+    ];
+    let count = threshold_distinct_eligible_signers(signer_ids, present, eligible);
+
+    assert!(count <= 3);
+    for signer in 0..3_u8 {
+        let occurrences = (0..3)
+            .filter(|index| present[*index] && signer_ids[*index] == signer)
+            .count();
+        if occurrences > 1 {
+            let mut without_duplicate = present;
+            let mut retained = false;
+            for index in 0..3 {
+                if signer_ids[index] == signer && without_duplicate[index] {
+                    if retained {
+                        without_duplicate[index] = false;
+                    } else {
+                        retained = true;
+                    }
+                }
+            }
+            assert_eq!(
+                count,
+                threshold_distinct_eligible_signers(signer_ids, without_duplicate, eligible)
+            );
+        }
+    }
 }
 
 // =====================================================================

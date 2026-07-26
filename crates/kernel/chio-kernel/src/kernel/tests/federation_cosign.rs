@@ -580,11 +580,7 @@ fn federation_cosigner_not_called_when_local_persistence_fails() {
     let receipt = make_signed_receipt(&kernel.config.keypair, "rcpt-fed-store-fails");
 
     let err = kernel
-        .record_chio_receipt_with_federation(
-            &request,
-            &receipt,
-            &EvaluationReceiptContext::default(),
-        )
+        .record_chio_receipt_with_federation(&request, &receipt)
         .expect_err("local persistence failure must abort before federation cosign");
 
     assert!(
@@ -608,11 +604,7 @@ fn missing_federation_admission_context_fails_after_local_receipt_persistence() 
         federation_receipt_context_fixture("fed-missing-admission-context");
 
     let error = kernel
-        .record_chio_receipt_with_federation(
-            &request,
-            &receipt,
-            &EvaluationReceiptContext::default(),
-        )
+        .record_chio_receipt_with_federation(&request, &receipt)
         .expect_err("missing admission context must fail closed");
 
     assert!(error.to_string().contains("admission snapshot missing"));
@@ -624,14 +616,14 @@ fn missing_federation_admission_context_fails_after_local_receipt_persistence() 
 fn mismatched_federation_admission_context_fails_after_local_receipt_persistence() {
     let (kernel, request, receipt, append_calls, cosigner_calls) =
         federation_receipt_context_fixture("fed-mismatched-admission-context");
-    let mut evaluation_context = EvaluationReceiptContext::default();
-    evaluation_context.set_federation_admission(ReceiptFederationAdmission {
+    let _admission_scope = scope_receipt_federation_admission(Some(ReceiptFederationAdmission {
         remote_kernel_id: Some("kernel.org-other".to_string()),
         peer: None,
-    });
+        verified_treaty_material: None,
+    }));
 
     let error = kernel
-        .record_chio_receipt_with_federation(&request, &receipt, &evaluation_context)
+        .record_chio_receipt_with_federation(&request, &receipt)
         .expect_err("mismatched admission context must fail closed");
 
     assert!(error.to_string().contains("does not match origin kernel"));

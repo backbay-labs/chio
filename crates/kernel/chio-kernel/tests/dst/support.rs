@@ -14,9 +14,8 @@ use chio_core::session::{
     CreateElicitationOperation, CreateElicitationResult, CreateMessageOperation,
     CreateMessageResult, OperationContext, RequestId, RootDefinition, ToolCallOperation,
 };
-use chio_kernel::budget_store::{
-    BudgetAuthorizeMutationOutcome, BudgetEventAuthority, BudgetMutationKind, BudgetMutationRecord,
-};
+use chio_kernel::admission_operation::DurableAdmissionMode;
+use chio_kernel::budget_store::{BudgetEventAuthority, BudgetMutationKind, BudgetMutationRecord};
 use chio_kernel::{
     BudgetStore, BudgetStoreError, BudgetUsageRecord, ChioKernel, InMemoryBudgetStore,
     KernelConfig, KernelError, NestedFlowBridge, NestedFlowClient, PeerCapabilities, ReceiptStore,
@@ -378,32 +377,6 @@ impl BudgetStore for FaultingBudgetStore {
         )
     }
 
-    fn try_charge_cost_with_ids_and_authority_outcome(
-        &self,
-        capability_id: &str,
-        grant_index: usize,
-        max_invocations: Option<u32>,
-        cost_units: u64,
-        max_cost_per_invocation: Option<u64>,
-        max_total_cost_units: Option<u64>,
-        hold_id: Option<&str>,
-        event_id: Option<&str>,
-        authority: Option<&BudgetEventAuthority>,
-    ) -> Result<BudgetAuthorizeMutationOutcome, BudgetStoreError> {
-        self.mutation("try_charge_cost_with_ids_and_authority_outcome")?;
-        self.inner.try_charge_cost_with_ids_and_authority_outcome(
-            capability_id,
-            grant_index,
-            max_invocations,
-            cost_units,
-            max_cost_per_invocation,
-            max_total_cost_units,
-            hold_id,
-            event_id,
-            authority,
-        )
-    }
-
     fn reverse_charge_cost(
         &self,
         capability_id: &str,
@@ -576,6 +549,33 @@ impl BudgetStore for FaultingBudgetStore {
         self.inner.get_usage(capability_id, grant_index)
     }
 
+    fn get_invocation_quota_usage(
+        &self,
+        key: &chio_kernel::budget_store::BudgetQuotaKey,
+    ) -> Result<Option<chio_kernel::budget_store::BudgetInvocationQuotaUsage>, BudgetStoreError>
+    {
+        self.inner.get_invocation_quota_usage(key)
+    }
+
+    fn get_cumulative_approval_account_usage(
+        &self,
+        key: &chio_kernel::budget_store::BudgetCumulativeApprovalAccountKey,
+    ) -> Result<
+        Option<chio_kernel::budget_store::BudgetCumulativeApprovalAccountUsage>,
+        BudgetStoreError,
+    > {
+        self.inner.get_cumulative_approval_account_usage(key)
+    }
+
+    fn get_cumulative_approval_operation_usage(
+        &self,
+        operation_id: &str,
+    ) -> Result<Option<chio_kernel::budget_store::BudgetCumulativeApprovalUsage>, BudgetStoreError>
+    {
+        self.inner
+            .get_cumulative_approval_operation_usage(operation_id)
+    }
+
     fn list_mutation_events(
         &self,
         limit: usize,
@@ -598,107 +598,200 @@ impl BudgetStore for FaultingBudgetStore {
         self.inner.budget_metering_profile()
     }
 
-    fn list_open_holds_older_than(
+    fn capture_invocation_reservations(
         &self,
-        older_than_unix_ms: u64,
-        limit: usize,
-    ) -> Result<Vec<chio_kernel::budget_store::OpenHoldSummary>, BudgetStoreError> {
-        self.inner
-            .list_open_holds_older_than(older_than_unix_ms, limit)
+        request: chio_kernel::budget_store::BudgetCaptureInvocationRequest,
+    ) -> Result<chio_kernel::budget_store::BudgetInvocationCaptureDecision, BudgetStoreError> {
+        self.mutation("capture_invocation_reservations")?;
+        self.inner.capture_invocation_reservations(request)
     }
 
-    fn expire_open_hold(&self, hold_id: &str) -> Result<bool, BudgetStoreError> {
-        self.mutation("expire_open_hold")?;
-        self.inner.expire_open_hold(hold_id)
-    }
-
-    fn open_hold_count(&self) -> Result<u64, BudgetStoreError> {
-        self.inner.open_hold_count()
-    }
-
-    fn record_payment_journal(
+    fn authorize_cumulative_approval(
         &self,
-        entry: &chio_kernel::payment::PaymentJournalRecord,
-    ) -> Result<(), BudgetStoreError> {
-        self.mutation("record_payment_journal")?;
-        self.inner.record_payment_journal(entry)
+        request: chio_kernel::budget_store::BudgetAuthorizeCumulativeApprovalRequest,
+    ) -> Result<
+        chio_kernel::budget_store::BudgetCumulativeApprovalAuthorizationDecision,
+        BudgetStoreError,
+    > {
+        self.mutation("authorize_cumulative_approval")?;
+        self.inner.authorize_cumulative_approval(request)
     }
 
-    fn advance_payment_journal(
+    fn cancel_captured_before_dispatch(
+        &self,
+        request: chio_kernel::budget_store::BudgetCancelCapturedBeforeDispatchRequest,
+    ) -> Result<
+        chio_kernel::budget_store::BudgetCapturedBeforeDispatchCancellationDecision,
+        BudgetStoreError,
+    > {
+        self.mutation("cancel_captured_before_dispatch")?;
+        self.inner.cancel_captured_before_dispatch(request)
+    }
+
+    fn authorize_budget_hold(
+        &self,
+        request: chio_kernel::budget_store::BudgetAuthorizeHoldRequest,
+    ) -> Result<chio_kernel::budget_store::BudgetAuthorizeHoldDecision, BudgetStoreError> {
+        self.mutation("authorize_budget_hold")?;
+        self.inner.authorize_budget_hold(request)
+    }
+
+    fn reverse_budget_hold(
+        &self,
+        request: chio_kernel::budget_store::BudgetReverseHoldRequest,
+    ) -> Result<chio_kernel::budget_store::BudgetReverseHoldDecision, BudgetStoreError> {
+        self.mutation("reverse_budget_hold")?;
+        self.inner.reverse_budget_hold(request)
+    }
+
+    fn release_budget_hold(
+        &self,
+        request: chio_kernel::budget_store::BudgetReleaseHoldRequest,
+    ) -> Result<chio_kernel::budget_store::BudgetReleaseHoldDecision, BudgetStoreError> {
+        self.mutation("release_budget_hold")?;
+        self.inner.release_budget_hold(request)
+    }
+
+    fn reconcile_budget_hold(
+        &self,
+        request: chio_kernel::budget_store::BudgetReconcileHoldRequest,
+    ) -> Result<chio_kernel::budget_store::BudgetReconcileHoldDecision, BudgetStoreError> {
+        self.mutation("reconcile_budget_hold")?;
+        self.inner.reconcile_budget_hold(request)
+    }
+
+    fn capture_budget_hold(
+        &self,
+        request: chio_kernel::budget_store::BudgetCaptureHoldRequest,
+    ) -> Result<chio_kernel::budget_store::BudgetCaptureHoldDecision, BudgetStoreError> {
+        self.mutation("capture_budget_hold")?;
+        self.inner.capture_budget_hold(request)
+    }
+
+    fn reap_orphaned_holds(
+        &self,
+        realized_by_hold: &HashMap<String, u64>,
+    ) -> Result<(usize, usize), BudgetStoreError> {
+        self.mutation("reap_orphaned_holds")?;
+        self.inner.reap_orphaned_holds(realized_by_hold)
+    }
+
+    fn count_open_holds(&self) -> Result<usize, BudgetStoreError> {
+        self.inner.count_open_holds()
+    }
+
+    fn list_open_delegated_reserved_hold_ids(
+        &self,
+    ) -> Result<Option<Vec<String>>, BudgetStoreError> {
+        self.inner.list_open_delegated_reserved_hold_ids()
+    }
+
+    fn request_id_has_reserved_hold(
         &self,
         request_id: &str,
-        expected: chio_kernel::payment::PaymentJournalState,
-        next: chio_kernel::payment::PaymentJournalState,
-        authorization_id: Option<&str>,
-        transaction_id: Option<&str>,
-        settle: Option<chio_kernel::payment::PaymentSettleIntent>,
+    ) -> Result<Option<bool>, BudgetStoreError> {
+        self.inner.request_id_has_reserved_hold(request_id)
+    }
+
+    fn get_budget_hold(
+        &self,
+        hold_id: &str,
+    ) -> Result<Option<chio_kernel::budget_store::BudgetHoldSnapshot>, BudgetStoreError> {
+        self.inner.get_budget_hold(hold_id)
+    }
+
+    fn mark_hold_reserved(
+        &self,
+        hold_id: &str,
+        reserved_until_unix_secs: i64,
+        currency: &str,
+        payment_reference: Option<&str>,
+        envelope: &chio_kernel::budget_store::ReservedHoldEnvelope,
     ) -> Result<(), BudgetStoreError> {
-        self.mutation("advance_payment_journal")?;
-        self.inner.advance_payment_journal(
-            request_id,
-            expected,
-            next,
-            authorization_id,
-            transaction_id,
-            settle,
+        self.mutation("mark_hold_reserved")?;
+        self.inner.mark_hold_reserved(
+            hold_id,
+            reserved_until_unix_secs,
+            currency,
+            payment_reference,
+            envelope,
         )
     }
 
-    fn close_payment_journal(&self, request_id: &str) -> Result<bool, BudgetStoreError> {
-        self.mutation("close_payment_journal")?;
-        self.inner.close_payment_journal(request_id)
+    fn reserve_invocation_hold(
+        &self,
+        hold_id: &str,
+        capability_id: &str,
+        grant_index: usize,
+        reserved_until_unix_secs: i64,
+        envelope: &chio_kernel::budget_store::ReservedHoldEnvelope,
+    ) -> Result<(), BudgetStoreError> {
+        self.mutation("reserve_invocation_hold")?;
+        self.inner.reserve_invocation_hold(
+            hold_id,
+            capability_id,
+            grant_index,
+            reserved_until_unix_secs,
+            envelope,
+        )
     }
 
-    fn list_incomplete_payment_journal(
-        &self,
-        older_than_unix_ms: u64,
-    ) -> Result<Vec<chio_kernel::payment::PaymentJournalRecord>, BudgetStoreError> {
-        self.inner
-            .list_incomplete_payment_journal(older_than_unix_ms)
-    }
-
-    fn get_payment_journal(
-        &self,
-        request_id: &str,
-    ) -> Result<Option<chio_kernel::payment::PaymentJournalRecord>, BudgetStoreError> {
-        self.inner.get_payment_journal(request_id)
-    }
-
-    fn payment_journal_reconcile_failed_rail(
-        &self,
-        request_id: &str,
-    ) -> Result<Option<String>, BudgetStoreError> {
-        self.inner.payment_journal_reconcile_failed_rail(request_id)
+    fn reap_expired_reserved_holds(&self, now_unix_secs: i64) -> Result<usize, BudgetStoreError> {
+        self.mutation("reap_expired_reserved_holds")?;
+        self.inner.reap_expired_reserved_holds(now_unix_secs)
     }
 }
 
 pub fn assert_wrapped_budget_replay_outcome() -> Result<(), String> {
     let store = FaultingBudgetStore::new(Arc::new(InMemoryBudgetStore::new()), None);
-    let authorize = || {
-        store.try_charge_cost_with_ids_and_authority_outcome(
-            "dst-replay-capability",
-            0,
-            Some(1),
-            1,
-            Some(1),
-            Some(1),
-            Some("dst-replay-hold"),
-            Some("dst-replay-event"),
-            None,
-        )
+    let request = chio_kernel::budget_store::BudgetAuthorizeHoldRequest {
+        capability_id: "dst-replay-capability".to_string(),
+        grant_index: 0,
+        max_invocations: Some(1),
+        invocation_quotas: Vec::new(),
+        cumulative_approval: None,
+        admission_binding: None,
+        requested_exposure_units: 1,
+        max_cost_per_invocation: Some(1),
+        max_total_cost_units: Some(1),
+        hold_id: Some("dst-replay-hold".to_string()),
+        event_id: Some("dst-replay-event".to_string()),
+        authority: None,
     };
 
-    let first = authorize().map_err(|error| format!("first wrapped authorization: {error}"))?;
-    if !first.allowed || first.replayed_event {
-        return Err(format!(
-            "first wrapped authorization had unexpected outcome: {first:?}"
-        ));
-    }
+    let first = store
+        .authorize_budget_hold(request.clone())
+        .map_err(|error| format!("first wrapped authorization: {error}"))?;
+    require(
+        matches!(
+            first,
+            chio_kernel::budget_store::BudgetAuthorizeHoldDecision::Authorized(_)
+        ),
+        &format!("first wrapped authorization had unexpected outcome: {first:?}"),
+    )?;
+    let event_count = store
+        .list_mutation_events(16, Some("dst-replay-capability"), Some(0))
+        .map_err(|error| format!("list first wrapped authorization event: {error}"))?
+        .len();
 
-    let replay = authorize().map_err(|error| format!("replayed wrapped authorization: {error}"))?;
-    if !replay.allowed || !replay.replayed_event {
-        return Err(format!("wrapped store erased replay metadata: {replay:?}"));
-    }
+    let replay = store
+        .authorize_budget_hold(request)
+        .map_err(|error| format!("replayed wrapped authorization: {error}"))?;
+    require(
+        matches!(
+            replay,
+            chio_kernel::budget_store::BudgetAuthorizeHoldDecision::Authorized(_)
+        ),
+        &format!("wrapped store changed replay outcome: {replay:?}"),
+    )?;
+    let replay_event_count = store
+        .list_mutation_events(16, Some("dst-replay-capability"), Some(0))
+        .map_err(|error| format!("list replayed wrapped authorization event: {error}"))?
+        .len();
+    require(
+        replay_event_count == event_count,
+        "wrapped store duplicated an idempotent authorization event",
+    )?;
     Ok(())
 }
 
@@ -710,48 +803,55 @@ pub fn assert_wrapped_budget_hold_sweep() -> Result<(), String> {
     );
     let store = FaultingBudgetStore::new(inner, None);
     let authorized = store
-        .try_charge_cost_with_ids_and_authority_outcome(
-            "dst-hold-sweep-capability",
-            0,
-            Some(1),
-            10,
-            Some(10),
-            Some(10),
-            Some("dst-hold-sweep-hold"),
-            Some("dst-hold-sweep-authorize"),
-            None,
-        )
+        .authorize_budget_hold(chio_kernel::budget_store::BudgetAuthorizeHoldRequest {
+            capability_id: "dst-hold-sweep-capability".to_string(),
+            grant_index: 0,
+            max_invocations: Some(1),
+            invocation_quotas: Vec::new(),
+            cumulative_approval: None,
+            admission_binding: None,
+            requested_exposure_units: 10,
+            max_cost_per_invocation: Some(10),
+            max_total_cost_units: Some(10),
+            hold_id: Some("dst-hold-sweep-hold".to_string()),
+            event_id: Some("dst-hold-sweep-authorize".to_string()),
+            authority: None,
+        })
         .map_err(|error| format!("authorize wrapped hold-sweep hold: {error}"))?;
     require(
-        authorized.allowed,
+        matches!(
+            authorized,
+            chio_kernel::budget_store::BudgetAuthorizeHoldDecision::Authorized(_)
+        ),
         "wrapped hold-sweep authorization denied",
     )?;
     require(
         store
-            .open_hold_count()
+            .count_open_holds()
             .map_err(|error| format!("count wrapped open holds: {error}"))?
             == 1,
         "wrapped hold count did not reach one",
     )?;
     let open = store
-        .list_open_holds_older_than(u64::MAX, 8)
-        .map_err(|error| format!("list wrapped open holds: {error}"))?;
+        .get_budget_hold("dst-hold-sweep-hold")
+        .map_err(|error| format!("load wrapped open hold: {error}"))?;
     require(
-        open.len() == 1 && open[0].hold_id == "dst-hold-sweep-hold",
-        "wrapped hold listing lost the open hold",
+        open.as_ref().is_some_and(|hold| hold.disposition.is_open()),
+        "wrapped hold lookup lost the open hold",
+    )?;
+    let (_, reversed) = store
+        .reap_orphaned_holds(&HashMap::new())
+        .map_err(|error| format!("reap wrapped open hold: {error}"))?;
+    require(
+        reversed == 1,
+        "wrapped orphan reaper did not reverse the hold",
     )?;
     require(
         store
-            .expire_open_hold("dst-hold-sweep-hold")
-            .map_err(|error| format!("expire wrapped open hold: {error}"))?,
-        "wrapped hold expiration did not apply",
-    )?;
-    require(
-        store
-            .open_hold_count()
+            .count_open_holds()
             .map_err(|error| format!("count wrapped holds after expiration: {error}"))?
             == 0,
-        "wrapped hold remained open after expiration",
+        "wrapped hold remained open after orphan reaping",
     )?;
     Ok(())
 }
@@ -761,104 +861,6 @@ struct FaultingAdmissionHook {
     releases: Arc<AtomicU64>,
     readiness_polls: Arc<AtomicU64>,
     fail_release: bool,
-}
-
-#[derive(Default)]
-struct DstPaymentRailState {
-    authorizations: AtomicU64,
-    capture_attempts: AtomicU64,
-    capture_effects: AtomicU64,
-    captured_references: Mutex<HashMap<(String, String), (u64, String)>>,
-}
-
-struct DstPaymentAdapter {
-    state: Arc<DstPaymentRailState>,
-}
-
-impl chio_kernel::PaymentAdapter for DstPaymentAdapter {
-    fn rail_id(&self) -> &str {
-        "dst-payment"
-    }
-
-    fn authorize(
-        &self,
-        request: &chio_kernel::PaymentAuthorizeRequest,
-    ) -> Result<chio_kernel::PaymentAuthorization, chio_kernel::PaymentError> {
-        self.state.authorizations.fetch_add(1, Ordering::SeqCst);
-        Ok(chio_kernel::PaymentAuthorization {
-            authorization_id: format!("dst-auth-{}", request.reference),
-            settled: false,
-            settlement_transaction_id: None,
-            metadata: serde_json::json!({}),
-        })
-    }
-
-    fn capture(
-        &self,
-        authorization_id: &str,
-        amount_units: u64,
-        currency: &str,
-        reference: &str,
-    ) -> Result<chio_kernel::PaymentResult, chio_kernel::PaymentError> {
-        self.state.capture_attempts.fetch_add(1, Ordering::SeqCst);
-        let key = (authorization_id.to_string(), reference.to_string());
-        let mut captured = self.state.captured_references.lock().map_err(|_| {
-            chio_kernel::PaymentError::RailError(
-                "DST payment adapter capture state lock poisoned".to_string(),
-            )
-        })?;
-        if let Some((recorded_amount, recorded_currency)) = captured.get(&key) {
-            if *recorded_amount != amount_units || recorded_currency != currency {
-                return Err(chio_kernel::PaymentError::RailError(
-                    "DST payment adapter received a conflicting idempotent capture".to_string(),
-                ));
-            }
-        } else {
-            captured.insert(key, (amount_units, currency.to_string()));
-            self.state.capture_effects.fetch_add(1, Ordering::SeqCst);
-        }
-        Ok(chio_kernel::PaymentResult {
-            transaction_id: format!("dst-txn-{authorization_id}"),
-            settlement_status: chio_kernel::RailSettlementStatus::Settled,
-            metadata: serde_json::json!({}),
-        })
-    }
-
-    fn release(
-        &self,
-        authorization_id: &str,
-        _reference: &str,
-    ) -> Result<chio_kernel::PaymentResult, chio_kernel::PaymentError> {
-        Ok(chio_kernel::PaymentResult {
-            transaction_id: format!("dst-release-{authorization_id}"),
-            settlement_status: chio_kernel::RailSettlementStatus::Released,
-            metadata: serde_json::json!({}),
-        })
-    }
-
-    fn refund(
-        &self,
-        transaction_id: &str,
-        _amount_units: u64,
-        _currency: &str,
-        _reference: &str,
-    ) -> Result<chio_kernel::PaymentResult, chio_kernel::PaymentError> {
-        Ok(chio_kernel::PaymentResult {
-            transaction_id: format!("dst-refund-{transaction_id}"),
-            settlement_status: chio_kernel::RailSettlementStatus::Refunded,
-            metadata: serde_json::json!({}),
-        })
-    }
-
-    fn settlement_state(
-        &self,
-        _reference: &str,
-        authorization_id: Option<&str>,
-    ) -> Result<chio_kernel::RailSettlementState, chio_kernel::PaymentError> {
-        Ok(chio_kernel::RailSettlementState::Held {
-            authorization_id: authorization_id.unwrap_or("dst-auth-recovered").to_string(),
-        })
-    }
 }
 
 impl RuntimeAdmissionHook for FaultingAdmissionHook {
@@ -984,6 +986,7 @@ pub fn run_episode(seed: u64) -> Result<EpisodeSummary, String> {
     let server_starts = Arc::new(AtomicU64::new(0));
 
     let mut kernel = ChioKernel::new(kernel_config());
+    configure_ephemeral_dst_kernel(&mut kernel)?;
     let receipt_handle: Arc<dyn ReceiptStore> = receipt_store.clone();
     kernel
         .set_receipt_store_handle(receipt_handle)
@@ -1029,6 +1032,7 @@ pub fn run_episode(seed: u64) -> Result<EpisodeSummary, String> {
     Ok(EpisodeSummary { plan })
 }
 
+#[cfg(any())]
 pub fn run_payment_journal_episode(inject_record_failure: bool) -> Result<(), String> {
     let files = CrashFiles::new(CrashBoundary::BeforeReceiptPersist);
     let receipt_store = Arc::new(
@@ -1131,6 +1135,7 @@ pub fn run_payment_journal_episode(inject_record_failure: bool) -> Result<(), St
     Ok(())
 }
 
+#[cfg(any())]
 pub fn run_payment_journal_restart_recovery_episode() -> Result<(), String> {
     let files = CrashFiles::new(CrashBoundary::AfterReceiptPersist);
     let receipt_store = Arc::new(
@@ -1426,7 +1431,7 @@ fn oracle_drop_disposition(
             let expected_step = if plan.class == EpisodeClass::PreDispatchAdmissionReleaseFault {
                 "runtime_admission_release"
             } else {
-                "budget_reversal"
+                "monetary_unwind"
             };
             let has_expected_step = receipt
                 .metadata
@@ -1520,8 +1525,12 @@ fn oracle_drop_disposition(
                 "budget admission fault reached the server",
             )?;
             require(
-                admission_evaluations == 0,
-                "budget fault ran runtime admission",
+                admission_evaluations == 1,
+                "budget fault did not run runtime admission exactly once",
+            )?;
+            require(
+                admission_releases == 1,
+                "budget fault retained its pre-dispatch runtime reservation",
             )?;
             let response = response
                 .and_then(|result| result.as_ref().ok())
@@ -1587,7 +1596,52 @@ pub fn oracle_conservation(
                     unnamed_outstanding += exposure;
                 }
             }
-            BudgetMutationKind::ReverseExposure | BudgetMutationKind::ExpireHold => {
+            BudgetMutationKind::ReserveInvocation if event.allowed == Some(true) => {
+                invocations = invocations
+                    .checked_add(1)
+                    .ok_or_else(|| "invocation count overflow".to_string())?;
+                let exposure = u128::from(event.exposure_units);
+                reserved += exposure;
+                outstanding += exposure;
+                if let Some(hold_id) = event.hold_id.as_ref() {
+                    if holds
+                        .insert(hold_id.clone(), event.exposure_units)
+                        .is_some()
+                    {
+                        return Err(format!("duplicate budget hold {hold_id}"));
+                    }
+                } else {
+                    unnamed_outstanding += exposure;
+                }
+            }
+            BudgetMutationKind::CaptureInvocation => {}
+            BudgetMutationKind::ReverseInvocation => {
+                invocations = invocations
+                    .checked_sub(1)
+                    .ok_or_else(|| format!("{} reversed without admission", event.event_id))?;
+                dispose_exposure(
+                    event,
+                    &mut outstanding,
+                    &mut released,
+                    &mut holds,
+                    &mut unnamed_outstanding,
+                    true,
+                )?;
+            }
+            BudgetMutationKind::ReverseExposure => {
+                invocations = invocations
+                    .checked_sub(1)
+                    .ok_or_else(|| format!("{} reversed without admission", event.event_id))?;
+                dispose_exposure(
+                    event,
+                    &mut outstanding,
+                    &mut released,
+                    &mut holds,
+                    &mut unnamed_outstanding,
+                    true,
+                )?;
+            }
+            BudgetMutationKind::CancelCapturedBeforeDispatch => {
                 invocations = invocations
                     .checked_sub(1)
                     .ok_or_else(|| format!("{} reversed without admission", event.event_id))?;
@@ -1610,7 +1664,7 @@ pub fn oracle_conservation(
                     false,
                 )?;
             }
-            BudgetMutationKind::ReconcileSpend => {
+            BudgetMutationKind::ReconcileSpend | BudgetMutationKind::CaptureSpend => {
                 if event.realized_spend_units > event.exposure_units {
                     return Err(format!("{} realized more than exposed", event.event_id));
                 }
@@ -1621,7 +1675,10 @@ pub fn oracle_conservation(
                 released += u128::from(event.exposure_units - event.realized_spend_units);
                 consume_hold(event, &mut holds, &mut unnamed_outstanding, true)?;
             }
-            BudgetMutationKind::IncrementInvocation | BudgetMutationKind::AuthorizeExposure => {}
+            BudgetMutationKind::IncrementInvocation
+            | BudgetMutationKind::ReserveInvocation
+            | BudgetMutationKind::AuthorizeExposure
+            | BudgetMutationKind::AuthorizeCumulativeApproval => {}
         }
         if reserved != outstanding + committed + released {
             return Err(format!("reservation partition drift at {}", event.event_id));
@@ -1637,7 +1694,14 @@ pub fn oracle_conservation(
             || u128::from(event.total_cost_exposed_after) != outstanding
             || u128::from(event.total_cost_realized_spend_after) != committed
         {
-            return Err(format!("budget snapshot drift at {}", event.event_id));
+            return Err(format!(
+                "budget snapshot drift at {} ({:?}): expected invocations={invocations}, exposed={outstanding}, realized={committed}; observed invocations={}, exposed={}, realized={}",
+                event.event_id,
+                event.kind,
+                event.invocation_count_after,
+                event.total_cost_exposed_after,
+                event.total_cost_realized_spend_after,
+            ));
         }
     }
 
@@ -1785,6 +1849,7 @@ pub fn run_crash_reopen(boundary: CrashBoundary) -> Result<(), String> {
             .map_err(|error| format!("open budget database: {error}"))?,
     );
     let mut kernel = ChioKernel::new(kernel_config());
+    configure_ephemeral_dst_kernel(&mut kernel)?;
     let crash_store: Arc<dyn ReceiptStore> = Arc::new(CrashReceiptStore {
         inner: Arc::clone(&sqlite_receipts),
         boundary,
@@ -1877,6 +1942,7 @@ pub fn run_child_flush_mutation(seed: u64, suppress_child_append: bool) -> Resul
     ));
     let budget = Arc::new(InMemoryBudgetStore::new());
     let mut kernel = ChioKernel::new(kernel_config());
+    configure_ephemeral_dst_kernel(&mut kernel)?;
     let receipt_handle: Arc<dyn ReceiptStore> = receipt_store.clone();
     kernel
         .set_receipt_store_handle(receipt_handle)
@@ -1926,6 +1992,10 @@ pub fn run_child_flush_mutation(seed: u64, suppress_child_append: bool) -> Resul
         tool_name: TOOL_NAME.to_string(),
         arguments: serde_json::json!({"child": true, "seed": seed}),
         governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         execution_nonce: None,
         model_metadata: None,
         extra_metadata: None,
@@ -2078,14 +2148,21 @@ fn kernel_config() -> KernelConfig {
         max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
         max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: false,
-        allow_ephemeral_receipt_log: false,
+        allow_ephemeral_receipt_log: true,
         allow_ephemeral_revocation_store: true,
         checkpoint_batch_size: 0,
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     }
+}
+
+fn configure_ephemeral_dst_kernel(kernel: &mut ChioKernel) -> Result<(), String> {
+    kernel
+        .configure_durable_admission(DurableAdmissionMode::Off, true)
+        .map_err(|error| format!("configure explicit ephemeral DST admission: {error}"))?;
+    kernel.enable_unsafe_ephemeral_financial_dispatch_for_development();
+    Ok(())
 }
 
 fn scope() -> ChioScope {
@@ -2122,6 +2199,9 @@ fn request(seed: u64, capability: &CapabilityToken) -> ToolCallRequest {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     }

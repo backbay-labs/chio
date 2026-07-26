@@ -4,7 +4,11 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use chio_core::capability::scope::{ChioScope, MonetaryAmount, Operation, ToolGrant};
+use chio_core::capability::{
+    attenuation::{DelegationLink, DelegationLinkBody},
+    scope::{ChioScope, MonetaryAmount, Operation, ToolGrant},
+    token::{CapabilityToken, CapabilityTokenBody},
+};
 use chio_core::crypto::Keypair;
 use chio_core::receipt::{
     body::ChioReceipt, body::ChioReceiptBody, decision::Decision, decision::ToolCallAction,
@@ -18,8 +22,8 @@ use chio_credentials::{
     SignedPortableNegativeEvent, SignedPortableReputationSummary,
 };
 use chio_kernel::{
-    BudgetStore, CapabilityAuthority, CapabilitySnapshot, FederatedEvidenceShareImport,
-    LocalCapabilityAuthority, ReceiptStore, StoredToolReceipt,
+    BudgetStore, CapabilityAuthority, CapabilitySnapshot, CapabilitySnapshotProvenance,
+    FederatedEvidenceShareImport, LocalCapabilityAuthority, ReceiptStore, StoredToolReceipt,
 };
 use chio_store_sqlite::{SqliteBudgetStore, SqliteCapabilityAuthority, SqliteReceiptStore};
 use chio_test_support::loopback::{reserve_listen_addr, skip_when_loopback_bind_denied};
@@ -216,21 +220,85 @@ fn imported_scope_json() -> String {
     .expect("serialize imported scope")
 }
 
+fn signed_snapshot(token: &CapabilityToken) -> CapabilitySnapshot {
+    CapabilitySnapshot {
+        capability_id: token.id.clone(),
+        subject_key: token.subject.to_hex(),
+        issuer_key: token.issuer.to_hex(),
+        issued_at: token.issued_at,
+        expires_at: token.expires_at,
+        grants_json: serde_json::to_string(&token.scope).expect("serialize signed scope"),
+        delegation_depth: token.delegation_chain.len() as u64,
+        parent_capability_id: token
+            .delegation_chain
+            .last()
+            .map(|link| link.capability_id.clone()),
+        federated_parent_capability_id: None,
+        provenance: CapabilitySnapshotProvenance::SignedToken,
+        signed_capability: Some(token.clone()),
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn import_federated_reputation_share(
     receipt_db_path: &Path,
     share_id: &str,
-    subject_key: &str,
+    subject_keypair: &Keypair,
     issuer: &str,
     partner: &str,
     require_proofs: bool,
     exported_at: u64,
     kernel_kp: &Keypair,
 ) {
-    let remote_signer = Keypair::generate().public_key().to_hex();
+    let remote_signer_kp = Keypair::generate();
+    let remote_signer = remote_signer_kp.public_key().to_hex();
+    let subject_key = subject_keypair.public_key().to_hex();
     let root_capability_id = format!("{share_id}-root");
     let delegate_capability_id = format!("{share_id}-delegate");
     let scope_json = imported_scope_json();
+    let scope: ChioScope = serde_json::from_str(&scope_json).expect("parse imported scope");
+    let root_token = CapabilityToken::sign(
+        CapabilityTokenBody {
+            id: root_capability_id,
+            issuer: remote_signer_kp.public_key(),
+            subject: subject_keypair.public_key(),
+            scope: scope.clone(),
+            issued_at: exported_at.saturating_sub(1_800),
+            expires_at: exported_at.saturating_add(86_400),
+            delegation_chain: Vec::new(),
+            aggregate_invocation_budget: None,
+        },
+        &remote_signer_kp,
+    )
+    .expect("sign imported root capability");
+    let mut delegate_body = CapabilityTokenBody {
+        id: delegate_capability_id.clone(),
+        issuer: subject_keypair.public_key(),
+        subject: subject_keypair.public_key(),
+        scope,
+        issued_at: exported_at.saturating_sub(900),
+        expires_at: exported_at.saturating_add(43_200),
+        delegation_chain: Vec::new(),
+        aggregate_invocation_budget: None,
+    };
+    delegate_body.delegation_chain.push(
+        DelegationLink::sign(
+            DelegationLinkBody {
+                capability_id: root_token.id.clone(),
+                delegator: subject_keypair.public_key(),
+                delegatee: delegate_body.subject.clone(),
+                attenuations: Vec::new(),
+                timestamp: delegate_body.issued_at,
+                scope_hash: None,
+                aggregate_budget: None,
+                cumulative_approval: None,
+            },
+            subject_keypair,
+        )
+        .expect("sign imported delegation link"),
+    );
+    let delegate_token = CapabilityToken::sign(delegate_body, subject_keypair)
+        .expect("sign imported delegated capability");
 
     let mut store = SqliteReceiptStore::open(receipt_db_path).expect("open receipt store");
     store
@@ -253,7 +321,7 @@ fn import_federated_reputation_share(
                     receipt: make_receipt(
                         &format!("{share_id}-receipt-1"),
                         &delegate_capability_id,
-                        subject_key,
+                        &subject_key,
                         &remote_signer,
                         exported_at.saturating_sub(300),
                         kernel_kp,
@@ -264,7 +332,7 @@ fn import_federated_reputation_share(
                     receipt: make_receipt(
                         &format!("{share_id}-receipt-2"),
                         &delegate_capability_id,
-                        subject_key,
+                        &subject_key,
                         &remote_signer,
                         exported_at.saturating_sub(60),
                         kernel_kp,
@@ -272,26 +340,8 @@ fn import_federated_reputation_share(
                 },
             ],
             capability_lineage: vec![
-                CapabilitySnapshot {
-                    capability_id: root_capability_id.clone(),
-                    subject_key: subject_key.to_string(),
-                    issuer_key: remote_signer.clone(),
-                    issued_at: exported_at.saturating_sub(1_800),
-                    expires_at: exported_at.saturating_add(86_400),
-                    grants_json: scope_json.clone(),
-                    delegation_depth: 0,
-                    parent_capability_id: None,
-                },
-                CapabilitySnapshot {
-                    capability_id: delegate_capability_id,
-                    subject_key: subject_key.to_string(),
-                    issuer_key: remote_signer,
-                    issued_at: exported_at.saturating_sub(900),
-                    expires_at: exported_at.saturating_add(43_200),
-                    grants_json: scope_json,
-                    delegation_depth: 1,
-                    parent_capability_id: Some(root_capability_id),
-                },
+                signed_snapshot(&root_token),
+                signed_snapshot(&delegate_token),
             ],
         })
         .expect("import federated reputation share");
@@ -598,7 +648,7 @@ fn cli_reputation_local_surfaces_imported_trust_guardrails() {
     import_federated_reputation_share(
         &receipt_db_path,
         "share-accepted",
-        &subject_hex,
+        &subject_kp,
         "org-remote-accepted",
         "org-local",
         true,
@@ -608,7 +658,7 @@ fn cli_reputation_local_surfaces_imported_trust_guardrails() {
     import_federated_reputation_share(
         &receipt_db_path,
         "share-rejected",
-        &subject_hex,
+        &subject_kp,
         "org-remote-rejected",
         "org-local",
         false,
@@ -891,7 +941,7 @@ fn trust_service_reputation_views_include_imported_trust_provenance() {
     import_federated_reputation_share(
         &receipt_db_path,
         "share-http-imported",
-        &subject_hex,
+        &subject_kp,
         "org-http-remote",
         "org-http-local",
         true,

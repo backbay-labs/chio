@@ -2,7 +2,6 @@
 
 mod support;
 
-use std::fs;
 use std::net::TcpListener;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -15,7 +14,7 @@ fn test_dir() -> std::path::PathBuf {
         "chio-hosted-mcp-support-config-{}-{nonce}",
         std::process::id()
     ));
-    fs::create_dir_all(&path).expect("create test dir");
+    support::create_private_test_directory(&path);
     path
 }
 
@@ -75,10 +74,7 @@ fn base_remote_config_carries_wrapped_server_defaults() {
         config.receipt_db_path,
         Some(dir.join("remote-receipts.sqlite3"))
     );
-    assert_eq!(
-        config.revocation_db_path,
-        Some(dir.join("remote-revocations.sqlite3"))
-    );
+    assert_eq!(config.revocation_db_path, None);
     assert_eq!(
         config.authority_seed_path,
         Some(dir.join("remote-authority.seed"))

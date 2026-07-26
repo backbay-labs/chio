@@ -103,6 +103,23 @@ test("query() with params encodes them as URL query parameters", async () => {
   assert.equal(requestUrl.searchParams.get("cursor"), "5");
 });
 
+test("query() preserves exact u64 cost bounds and currency", async () => {
+  const requests: Array<{ url: string; options: RequestInit }> = [];
+  const mockFetch = makeMockFetch(200, { totalCount: 0, receipts: [] }, requests);
+  const client = new ReceiptQueryClient("http://localhost:8080", "tok", mockFetch);
+
+  await client.query({
+    minCost: 18446744073709551615n,
+    maxCost: 18446744073709551615n,
+    costCurrency: "USD",
+  });
+
+  const requestUrl = new URL(requests[0].url);
+  assert.equal(requestUrl.searchParams.get("minCost"), "18446744073709551615");
+  assert.equal(requestUrl.searchParams.get("maxCost"), "18446744073709551615");
+  assert.equal(requestUrl.searchParams.get("costCurrency"), "USD");
+});
+
 test("query() returns typed ReceiptQueryResponse with totalCount, nextCursor, receipts", async () => {
   const responseBody: ReceiptQueryResponse = {
     totalCount: 1,

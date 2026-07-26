@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/kernel/execution_nonce.schema.json",
+  "title": "Chio signed execution nonce",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["nonce", "signature"],
+  "properties": {
+    "nonce": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["schema", "nonce_id", "issued_at", "expires_at", "bound_to"],
+      "properties": {
+        "schema": { "const": "chio.execution_nonce.v1" },
+        "nonce_id": { "type": "string", "minLength": 1 },
+        "issued_at": { "type": "integer", "minimum": 0 },
+        "expires_at": { "type": "integer", "minimum": 0 },
+        "bound_to": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "subject_id",
+            "request_id",
+            "capability_id",
+            "tool_server",
+            "tool_name",
+            "parameter_hash"
+          ],
+          "properties": {
+            "subject_id": { "type": "string", "minLength": 1 },
+            "request_id": { "type": "string", "minLength": 1 },
+            "capability_id": { "type": "string", "minLength": 1 },
+            "tool_server": { "type": "string", "minLength": 1 },
+            "tool_name": { "type": "string", "minLength": 1 },
+            "parameter_hash": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$"
+            }
+          }
+        },
+        "reserved_hold_id": { "type": "string", "minLength": 1 },
+        "reserving_request_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
+    }
+  }
+}

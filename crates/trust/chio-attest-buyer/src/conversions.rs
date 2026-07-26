@@ -64,6 +64,7 @@ pub(crate) fn runtime_core_cross_boundary_admission_report(
         mode: value.mode.clone(),
         consistency_model: value.consistency_model.clone(),
         co_sign: value.co_sign.clone(),
+        co_sign_quorum: value.co_sign_quorum.clone(),
         required_evidence: value.required_evidence.clone(),
         present_evidence: value.present_evidence.clone(),
         verified_evidence: value

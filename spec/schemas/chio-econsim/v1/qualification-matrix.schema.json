@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec.chio.dev/schemas/chio-econsim/v1/qualification-matrix.schema.json",
+  "title": "Chio economic simulation qualification matrix v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema", "profileId", "harnessProvenance", "cases"],
+  "properties": {
+    "schema": { "const": "chio.econsim.qualification-matrix.v1" },
+    "profileId": { "type": "string", "minLength": 1 },
+    "harnessProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gitCommit",
+        "sourceTreeState",
+        "sourceTreeDigest",
+        "executableDigest",
+        "cargoLockDigest",
+        "enabledFeatures",
+        "targetTriple",
+        "rustcVersion",
+        "cargoVersion",
+        "command",
+        "scenarioManifestDigest",
+        "corpusManifestDigest",
+        "runnerKeyId",
+        "qualificationScope"
+      ],
+      "properties": {
+        "gitCommit": { "type": "string", "minLength": 1 },
+        "sourceTreeState": { "enum": ["clean", "dirty"] },
+        "sourceTreeDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "executableDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "cargoLockDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "enabledFeatures": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "targetTriple": { "type": "string", "minLength": 1 },
+        "rustcVersion": { "type": "string", "minLength": 1 },
+        "cargoVersion": { "type": "string", "minLength": 1 },
+        "command": {
+          "type": "array",
+          "minItems": 1,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "scenarioManifestDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "corpusManifestDigest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "runnerKeyId": { "type": "string", "minLength": 1 },
+        "qualificationScope": {
+          "type": "string",
+          "pattern": "internal qualification only"
+        }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 6,
+      "items": { "$ref": "scenario-result.schema.json" }
+    }
+  }
+}

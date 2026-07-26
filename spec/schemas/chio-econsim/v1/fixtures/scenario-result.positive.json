@@ -1,0 +1,14 @@
+{
+  "schema": "chio.econsim.scenario-result.v1",
+  "scenarioId": "fee-structuring-seed-205759",
+  "scenarioClass": "fee-structuring",
+  "seed": 205759,
+  "corpusManifestDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "requirementIds": ["AE-CUMULATIVE-APPROVAL-1"],
+  "expectedDisposition": "fail-closed",
+  "observedDisposition": "fail-closed",
+  "targetStatus": "bound",
+  "outcome": "held",
+  "assertionScope": "concurrent sub-threshold requests share one authority-bound accumulator",
+  "explicitLimits": ["internal qualification only"]
+}

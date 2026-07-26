@@ -47,25 +47,45 @@
         "guarded",
         "receipt_backed",
         "partition_contingency",
-        "quorum_required"
+        "maintenance"
       ]
     },
     "consistencyModel": {
       "type": "string",
       "enum": [
-        "crdt_commutative",
-        "totally_ordered",
-        "single_kernel",
-        "quorum_required"
+        "crdt-commutative",
+        "totally-ordered",
+        "single-kernel",
+        "quorum-required"
       ]
     },
     "coSign": {
       "type": "string",
-      "enum": ["none", "bilateral_required", "quorum_required"]
+      "enum": ["none", "bilateral_if_cross_org", "bilateral_required", "n_of_m"]
+    },
+    "coSignQuorum": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["n", "m", "scope"],
+      "properties": {
+        "n": { "type": "integer", "minimum": 2 },
+        "m": { "type": "integer", "minimum": 2 },
+        "scope": { "enum": ["treaty", "kernel", "operator"] }
+      }
     },
     "actionClass": {
       "type": "object",
       "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": { "coSign": { "const": "n_of_m" } },
+            "required": ["coSign"]
+          },
+          "then": { "required": ["coSignQuorum"] },
+          "else": { "not": { "required": ["coSignQuorum"] } }
+        }
+      ],
       "required": [
         "actionClassId",
         "mode",
@@ -81,6 +101,7 @@
         "destructive": { "type": "boolean" },
         "consistencyModel": { "$ref": "#/$defs/consistencyModel" },
         "coSign": { "$ref": "#/$defs/coSign" },
+        "coSignQuorum": { "$ref": "#/$defs/coSignQuorum" },
         "evidenceRequired": {
           "type": "array",
           "items": { "type": "string", "pattern": "^[a-z0-9_]+$" },

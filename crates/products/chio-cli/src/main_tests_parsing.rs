@@ -178,6 +178,32 @@ fn receipt_flush_rejects_zero_timeout() {
 }
 
 #[test]
+fn receipt_list_cost_bounds_require_currency() {
+    assert!(parse_cli([
+        "chio",
+        "receipt",
+        "list",
+        "--min-cost",
+        "18446744073709551615",
+        "--admin-all",
+    ])
+    .is_err());
+    assert!(parse_cli([
+        "chio",
+        "receipt",
+        "list",
+        "--min-cost",
+        "18446744073709551615",
+        "--max-cost",
+        "18446744073709551615",
+        "--cost-currency",
+        "USD",
+        "--admin-all",
+    ])
+    .is_ok());
+}
+
+#[test]
 fn receipt_checkpoint_create_subcommand_parses() {
     let cli = parse_cli([
         "chio",
@@ -569,17 +595,15 @@ fn chio_native_command_surfaces_preserve_required_arguments() {
 }
 
 #[test]
-fn chio_runtime_loopback_capability_window_covers_replay_and_wall_clock() {
+fn chio_runtime_loopback_capability_window_is_scenario_relative() {
     let replay_now_unix_ms = 4_102_444_800_000;
-    let wall_now_secs = unix_now_ms() / 1000;
+    let replay_now_secs = replay_now_unix_ms / 1000;
 
     let (issued_at, expires_at) =
         chio_runtime_harness::runtime_loopback_capability_window(replay_now_unix_ms);
 
-    assert!(issued_at <= replay_now_unix_ms / 1000);
-    assert!(expires_at > replay_now_unix_ms / 1000);
-    assert!(issued_at <= wall_now_secs);
-    assert!(expires_at > wall_now_secs);
+    assert_eq!(issued_at, replay_now_secs - 60);
+    assert_eq!(expires_at, replay_now_secs + 157_680_000);
 }
 
 #[test]

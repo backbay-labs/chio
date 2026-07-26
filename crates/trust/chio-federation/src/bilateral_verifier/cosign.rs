@@ -13,6 +13,22 @@ pub fn verify_chio_bilateral_invocation(
     envelope: &DsseEnvelope,
     config: &ChioBilateralVerifierConfig<'_, '_>,
 ) -> Result<VerifiedBilateralCoSignInvocation, VerifierError> {
+    verify_chio_bilateral_invocation_inner(envelope, config, None)
+}
+
+pub fn verify_chio_bilateral_invocation_with_frost(
+    envelope: &DsseEnvelope,
+    config: &ChioBilateralVerifierConfig<'_, '_>,
+    authorization: &crate::frost::VerifiedFrostAuthorization,
+) -> Result<VerifiedBilateralCoSignInvocation, VerifierError> {
+    verify_chio_bilateral_invocation_inner(envelope, config, Some(authorization))
+}
+
+fn verify_chio_bilateral_invocation_inner(
+    envelope: &DsseEnvelope,
+    config: &ChioBilateralVerifierConfig<'_, '_>,
+    frost_authorization: Option<&crate::frost::VerifiedFrostAuthorization>,
+) -> Result<VerifiedBilateralCoSignInvocation, VerifierError> {
     if envelope.payload_type != crate::bilateral_dsse::PAYLOAD_TYPE_IN_TOTO {
         return Err(VerifierError::DsseMalformed(format!(
             "payloadType {:?} is not application/vnd.in-toto+json",
@@ -81,9 +97,22 @@ pub fn verify_chio_bilateral_invocation(
         )));
     }
 
-    let statement =
-        verify_chio_bilateral_dsse_envelope(envelope, &pinned_a.public_key, &pinned_b.public_key)
-            .map_err(map_bilateral_error)?;
+    let statement = match frost_authorization {
+        Some(authorization) => {
+            crate::bilateral_dsse::verify_chio_bilateral_dsse_envelope_with_frost(
+                envelope,
+                &pinned_a.public_key,
+                &pinned_b.public_key,
+                authorization,
+            )
+        }
+        None => verify_chio_bilateral_dsse_envelope(
+            envelope,
+            &pinned_a.public_key,
+            &pinned_b.public_key,
+        ),
+    }
+    .map_err(map_bilateral_error)?;
     let pred = &statement.predicate;
 
     require_fresh_ladder_manifest(config.base, &pred.tool_server_a.kernel_id, "tool_server_a")?;
@@ -343,7 +372,7 @@ pub fn verify_chio_bilateral_invocation(
         }
         if !matches!(
             pred.consistency_model.as_str(),
-            "crdt_commutative" | "totally_ordered" | "single_kernel" | "quorum_required"
+            "crdt-commutative" | "totally-ordered" | "single-kernel" | "quorum-required"
         ) {
             return Err(VerifierError::PredicateSchemaInvalid(format!(
                 "consistency_model {:?} is not supported",
@@ -352,7 +381,7 @@ pub fn verify_chio_bilateral_invocation(
         }
         if matches!(
             pred.consistency_model.as_str(),
-            "totally_ordered" | "quorum_required"
+            "totally-ordered" | "quorum-required"
         ) && pred.consistency_anchor.as_deref().is_none_or(str::is_empty)
         {
             return Err(VerifierError::PredicateSchemaInvalid(
@@ -360,13 +389,78 @@ pub fn verify_chio_bilateral_invocation(
             ));
         }
     }
+    let frost_authorization =
+        bind_frost_authorization_to_predicate(pred, frost_authorization, config)?;
     Ok(VerifiedBilateralCoSignInvocation {
         statement,
         resolved_receipt,
         resolved_lease,
         resolved_governance_receipt,
         joint_verdict,
+        frost_authorization,
     })
+}
+
+fn bind_frost_authorization_to_predicate(
+    predicate: &BilateralPredicate,
+    authorization: Option<&crate::frost::VerifiedFrostAuthorization>,
+    config: &ChioBilateralVerifierConfig<'_, '_>,
+) -> Result<Option<crate::frost::VerifiedFrostAuthorization>, VerifierError> {
+    match predicate.co_sign.as_str() {
+        "bilateral_required" | "bilateral_if_cross_org" => {
+            if authorization.is_some() {
+                return Err(VerifierError::PredicateSchemaInvalid(
+                    "verified FROST authorization supplied for a non-n_of_m predicate".to_string(),
+                ));
+            }
+            Ok(None)
+        }
+        "n_of_m" => {
+            let authorization = authorization.ok_or_else(|| {
+                VerifierError::PredicateSchemaInvalid(
+                    "co_sign n_of_m requires VerifiedFrostAuthorization".to_string(),
+                )
+            })?;
+            let treaty = predicate.treaty_binding_ref.as_ref().ok_or_else(|| {
+                VerifierError::PredicateSchemaInvalid(
+                    "co_sign n_of_m requires treaty_binding_ref".to_string(),
+                )
+            })?;
+            if predicate.consistency_model != "quorum-required"
+                || predicate.consistency_anchor.as_deref() != Some("frost-quorum")
+            {
+                return Err(VerifierError::PredicateSchemaInvalid(
+                    "co_sign n_of_m requires quorum-required consistency anchored by frost-quorum"
+                        .to_string(),
+                ));
+            }
+            if authorization.ladder_action_class() != treaty.action_class_id {
+                return Err(VerifierError::PredicateSchemaInvalid(
+                    "verified FROST action class does not match treaty action class".to_string(),
+                ));
+            }
+            if authorization.scope_id() != treaty.treaty_id {
+                return Err(VerifierError::PredicateSchemaInvalid(
+                    "verified FROST scope does not match treaty id".to_string(),
+                ));
+            }
+            if authorization.resource_id() != predicate.invocation_id {
+                return Err(VerifierError::PredicateSchemaInvalid(
+                    "verified FROST resource does not match invocation id".to_string(),
+                ));
+            }
+            let now = config.base.pinned_epoch.now_unix_ms / 1_000;
+            if !authorization.is_current_at(now) {
+                return Err(VerifierError::PredicateSchemaInvalid(
+                    "verified FROST authorization is not current at the pinned epoch".to_string(),
+                ));
+            }
+            Ok(Some(authorization.clone()))
+        }
+        other => Err(VerifierError::PredicateSchemaInvalid(format!(
+            "co_sign {other:?} is unsupported"
+        ))),
+    }
 }
 
 fn require_fresh_ladder_manifest(
@@ -765,6 +859,7 @@ pub fn verify_bilateral_cosign_invocation(
         resolved_lease,
         resolved_governance_receipt,
         joint_verdict,
+        frost_authorization: None,
     })
 }
 
@@ -822,7 +917,8 @@ fn validate_predicate_required_fields(pred: &BilateralPredicate) -> Result<(), V
         "bilateral_required" | "bilateral_if_cross_org" => {}
         "n_of_m" => {
             return Err(VerifierError::PredicateSchemaInvalid(
-                "co_sign \"n_of_m\" is rejected until quorum metadata and signature-set verification are implemented".to_string(),
+                "co_sign n_of_m requires the strict verifier API with VerifiedFrostAuthorization"
+                    .to_string(),
             ))
         }
         other => {

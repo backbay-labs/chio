@@ -164,7 +164,7 @@ Create `scripts/demo/flagship-wall-stops-money.sh`:
 set -euo pipefail
 # NON-CLAIMS: this is a verifier-level proof over an OFFLINE projection. It is not a live
 # money-stop, holds no funds, and asserts no public availability. Settlement is a verify-only
-# x402/AP2/ACP projection over an offline PSP (stripe-shaped-offline).
+# x402/AP2/ACP-Commerce projection over an offline PSP (stripe-shaped-offline).
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 BUNDLE="${1:-$ROOT/fixtures/proof-room/public-stages/commerce-transaction-passport/proof-room-bundle}"
 
@@ -218,7 +218,7 @@ import json, sys
 d = json.load(open(sys.argv[1]))
 print(f"terminal_status={d['terminal_status']} kernel_key={d['kernel_key'][:12]}...")
 PY
-echo "in-budget attempt authorized via x402/AP2/ACP verify-only protocol_projections"
+echo "in-budget attempt authorized via x402/AP2/ACP-Commerce verify-only protocol_projections"
 
 echo
 echo "-- SETTLED (offline projection) --"
@@ -290,7 +290,7 @@ settlement --require risk --require trust-market` and then narrates:
    commerce-mandate-occurrence-limit, commerce-expired-mandate,
    commerce-payment-amount-mismatch) that the verifier REJECTS.
 3. ALLOWED - a kernel-signed terminal receipt (terminal_status `allowed_executed`),
-   authorized via the x402/AP2/ACP verify-only protocol projections.
+   authorized via the x402/AP2/ACP-Commerce verify-only protocol projections.
 4. SETTLED - the offline settlement-packet (status `settled`).
 
 ## Honesty boundary (non-claims)
@@ -298,7 +298,7 @@ settlement --require risk --require trust-market` and then narrates:
 This is a verifier-level proof over an OFFLINE projection. The DENIED and ALLOWED
 receipts are two independent kernel-signed terminal receipts; they carry no amount
 and no mandate reference, so this walkthrough does NOT claim they are two occurrences
-of one mandate. Settlement is a verify-only x402/AP2/ACP projection over an offline
+of one mandate. Settlement is a verify-only x402/AP2/ACP-Commerce projection over an offline
 PSP (stripe-shaped-offline). No funds are held, no live money-stop is claimed, and no
 public availability is asserted. See docs/start-here/PROOF_ROOM_QUICKSTART.md.
 ```

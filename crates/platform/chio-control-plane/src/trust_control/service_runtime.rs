@@ -1,3 +1,5 @@
+#[path = "service_runtime/admission_authority.rs"]
+mod admission_authority;
 #[path = "service_runtime/budget.rs"]
 pub mod budget;
 #[path = "service_runtime/client.rs"]
@@ -10,6 +12,8 @@ mod init;
 pub mod issuance;
 #[path = "service_runtime/public_registry.rs"]
 pub mod public_registry;
+#[path = "service_runtime/remote_admission.rs"]
+pub(crate) mod remote_admission;
 #[path = "service_runtime/remote_authority.rs"]
 pub mod remote_authority;
 #[path = "service_runtime/remote_stores.rs"]

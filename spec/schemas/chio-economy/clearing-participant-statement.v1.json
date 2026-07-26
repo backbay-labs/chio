@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-economy/clearing-participant-statement/v1",
+  "title": "Chio Clearing Participant Statement V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signerKey", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "roundCoreDigest",
+        "participantId",
+        "grossDebitUnits",
+        "grossCreditUnits",
+        "bilateralDebitCancelledUnits",
+        "bilateralCreditCancelledUnits",
+        "netBalance",
+        "contributingAtomDigests"
+      ],
+      "properties": {
+        "schema": { "const": "chio.clearing.participant-statement.v1" },
+        "roundCoreDigest": { "$ref": "#/$defs/digest" },
+        "participantId": { "$ref": "#/$defs/text" },
+        "grossDebitUnits": { "$ref": "#/$defs/nonNegativeInteger" },
+        "grossCreditUnits": { "$ref": "#/$defs/nonNegativeInteger" },
+        "bilateralDebitCancelledUnits": { "$ref": "#/$defs/nonNegativeInteger" },
+        "bilateralCreditCancelledUnits": { "$ref": "#/$defs/nonNegativeInteger" },
+        "netBalance": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["direction", "units"],
+          "properties": {
+            "direction": { "enum": ["debit", "credit", "zero"] },
+            "units": { "$ref": "#/$defs/nonNegativeInteger" }
+          }
+        },
+        "contributingAtomDigests": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 126,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/digest" }
+        }
+      }
+    },
+    "signerKey": { "$ref": "#/$defs/cryptoMaterial" },
+    "signature": { "$ref": "#/$defs/cryptoMaterial" }
+  },
+  "$defs": {
+    "nonNegativeInteger": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "text": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "cryptoMaterial": { "type": "string", "minLength": 1, "maxLength": 16384 }
+  }
+}

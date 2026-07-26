@@ -85,7 +85,7 @@ pub(crate) fn build_runtime_loopback_buyer_closure(
         continuation_sha256: treaty_context.continuation_sha256.clone(),
         lineage_statement_sha256: String::new(),
         action_class_id: action_class_id.clone(),
-        consistency_model: "totally_ordered".to_string(),
+        consistency_model: "totally-ordered".to_string(),
         capability_id: step.request.capability_id.clone(),
         request_sha256: receipt.action.parameter_hash.clone(),
         outcome_sha256: outcome_sha256.clone(),
@@ -229,6 +229,14 @@ pub(crate) fn build_runtime_loopback_buyer_closure(
         governance_receipt,
         "Chio runtime buyer closure governance receipt digest",
     )?;
+    let dsse_consistency_model =
+        chio_runtime_core::bilateral_dsse_consistency_model(&admission_report.consistency_model)
+            .map_err(|error| {
+                RuntimeLoopbackError::message(format!(
+                    "Chio runtime buyer closure DSSE consistency model: {error}"
+                ))
+            })?
+            .to_string();
     let buyer_key = chio_attest_loopback::runtime_buyer_keypair();
     let vendor_key = chio_attest_loopback::runtime_vendor_keypair(step_index).map_err(|error| {
         RuntimeLoopbackError::message(format!("Chio runtime buyer closure vendor key: {error}"))
@@ -261,7 +269,7 @@ pub(crate) fn build_runtime_loopback_buyer_closure(
                 },
             }),
             consistency_anchor: workflow_step.consistency_anchor.clone(),
-            consistency_model: Some(admission_report.consistency_model.clone()),
+            consistency_model: Some(dsse_consistency_model.clone()),
             cross_org_visibility: None,
             treaty_binding_ref: Some(chio_federation::bilateral_dsse::TreatyBindingRef {
                 treaty_id: admission_report.treaty_id.clone(),
@@ -271,7 +279,7 @@ pub(crate) fn build_runtime_loopback_buyer_closure(
                 continuation_sha256: treaty_context.continuation_sha256.clone(),
                 lineage_bundle_sha256,
                 action_class_id: admission_report.action_class_id.clone(),
-                consistency_model: admission_report.consistency_model.clone(),
+                consistency_model: dsse_consistency_model,
                 request_sha256: bilateral_invocation.request_sha256.clone(),
                 outcome_sha256: bilateral_invocation.outcome_sha256.clone(),
                 local_receipt_sha256: bilateral_invocation.local_receipt_sha256.clone(),

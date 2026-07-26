@@ -31,6 +31,7 @@ pub(crate) struct DispatchCredentialReservation<'a> {
     approval_key: Option<(String, String, String)>,
     credentials_present: bool,
     rollback_on_drop: bool,
+    retain_on_drop: bool,
 }
 
 impl DispatchCredentialReservation<'_> {
@@ -40,10 +41,30 @@ impl DispatchCredentialReservation<'_> {
     pub(crate) fn retain_if_dropped(
         &mut self,
     ) -> Result<PaymentCredentialDisposition, KernelError> {
-        // Retention is fail-closed. Once requested, a later store failure must
-        // never let Drop roll back markers that may already protect a rail
-        // authorization with an uncertain outcome.
+        // Keep owned reservations reversible until the dispatch result
+        // classifies the boundary. A URL-elicitation result is explicitly
+        // pre-effect and must be able to roll the reservations back. If the
+        // evaluation future is dropped while dispatch is being polled, Drop
+        // promotes the governed approval marker and leaves owned nonce
+        // reservations in their fail-closed state.
         self.rollback_on_drop = false;
+        self.retain_on_drop = true;
+        // A legacy execution nonce store has no owned reservation state. Its
+        // marker must be consumed before entering the effect boundary and
+        // cannot participate in pre-effect rollback.
+        self.reserve_legacy_execution_nonce_at_effect_boundary()?;
+        Ok(self.retention_disposition())
+    }
+
+    /// Retain replay markers after an external authorization has already been
+    /// acknowledged. At this point retrying could duplicate a payment hold or
+    /// minted authority, so the governed approval marker must be promoted
+    /// before the evaluation can continue.
+    pub(crate) fn retain_after_external_authorization(
+        &mut self,
+    ) -> Result<PaymentCredentialDisposition, KernelError> {
+        self.rollback_on_drop = false;
+        self.retain_on_drop = true;
         self.reserve_legacy_execution_nonce_at_effect_boundary()?;
         self.commit_approval_marker()?;
         Ok(self.retention_disposition())
@@ -61,6 +82,7 @@ impl DispatchCredentialReservation<'_> {
         // Clear rollback before the first fallible retention operation. On an
         // uncertain failure, keeping every owned marker is the safe direction.
         self.rollback_on_drop = false;
+        self.retain_on_drop = false;
         self.reserve_legacy_execution_nonce_at_effect_boundary()?;
         self.commit_approval_marker()?;
         Ok(self.retention_disposition())
@@ -89,7 +111,10 @@ impl DispatchCredentialReservation<'_> {
         match run_credential_store_operation(
             &self.reservation_id,
             "legacy execution nonce reservation",
-            || store.reserve_until_for_capability(&nonce_id, nonce_expires_at, &capability_id),
+            || {
+                let _ = capability_id;
+                store.reserve_until(&nonce_id, nonce_expires_at)
+            },
         ) {
             Ok(true) => Ok(()),
             Ok(false) => Err(KernelError::Internal(
@@ -146,6 +171,7 @@ impl DispatchCredentialReservation<'_> {
 
     pub(crate) fn rollback_before_dispatch(mut self) -> Result<(), KernelError> {
         self.rollback_on_drop = false;
+        self.retain_on_drop = false;
         self.rollback_entries()
     }
 
@@ -244,6 +270,21 @@ impl DispatchCredentialReservation<'_> {
 
 impl Drop for DispatchCredentialReservation<'_> {
     fn drop(&mut self) {
+        if self.retain_on_drop {
+            if let Err(error) = self.reserve_legacy_execution_nonce_at_effect_boundary() {
+                tracing::warn!(
+                    reason = %redacted!(&error),
+                    "legacy dispatch credential retention failed while dropping an evaluation"
+                );
+            }
+            if let Err(error) = self.commit_approval_marker() {
+                tracing::warn!(
+                    reason = %redacted!(&error),
+                    "governed dispatch credential retention failed while dropping an evaluation"
+                );
+            }
+            return;
+        }
         if !self.rollback_on_drop {
             return;
         }
@@ -351,6 +392,7 @@ impl ChioKernel {
                 || execution_nonce.is_some()
                 || approval_intent_hash.is_some(),
             rollback_on_drop: true,
+            retain_on_drop: false,
         };
 
         let result = (|| {
@@ -402,10 +444,9 @@ impl ChioKernel {
                         &reservation.reservation_id,
                         "execution nonce reservation",
                         || {
-                            store.reserve_for_dispatch_for_capability(
+                            store.reserve_for_dispatch(
                                 &presented.nonce.nonce_id,
                                 presented.nonce.expires_at,
-                                &presented.nonce.bound_to.capability_id,
                                 &reservation.reservation_id,
                             )
                         },
@@ -508,9 +549,10 @@ impl ChioKernel {
             capability_id: cap.id.clone(),
             tool_server: request.server_id.clone(),
             tool_name: request.tool_name.clone(),
+            request_id: request.request_id.clone(),
             parameter_hash,
         };
-        crate::execution_nonce::verify_execution_nonce_stateless(
+        crate::execution_nonce::validate_execution_nonce(
             presented,
             &self.config.keypair.public_key(),
             &expected,

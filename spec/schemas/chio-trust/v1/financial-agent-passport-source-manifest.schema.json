@@ -1,0 +1,73 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio/agent-passport/source-manifest/v2.schema.json",
+  "$defs": {
+    "enterpriseIdentityProvenance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["providerId", "providerKind", "federationMethod", "principal", "subjectKey"],
+      "properties": {
+        "providerId": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" },
+        "providerRecordId": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" },
+        "providerKind": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" },
+        "federationMethod": { "enum": ["jwt", "introspection", "scim", "saml"] },
+        "principal": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" },
+        "subjectKey": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" },
+        "clientId": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" },
+        "objectId": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" },
+        "tenantId": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" },
+        "organizationId": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" },
+        "groups": { "type": "array", "maxItems": 256, "items": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" } },
+        "roles": { "type": "array", "maxItems": 256, "items": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" } },
+        "sourceSubject": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" },
+        "attributeSources": { "type": "object", "maxProperties": 256, "additionalProperties": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" } },
+        "trustMaterialRef": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" }
+      }
+    }
+  },
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signerKey", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "sourcePassportId",
+        "issuer",
+        "subject",
+        "issuedAt",
+        "expiresAt",
+        "credentialCount",
+        "credentialRoot",
+        "merkleRoots"
+      ],
+      "properties": {
+        "schema": { "const": "chio.financial-agent-passport.source-manifest.v1" },
+        "sourcePassportId": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/digest" },
+        "issuer": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/did" },
+        "subject": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/did" },
+        "issuedAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "expiresAt": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "credentialCount": { "type": "integer", "minimum": 1, "maximum": 256 },
+        "credentialRoot": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/digest" },
+        "merkleRoots": {
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/identifier" }
+        },
+        "enterpriseIdentityProvenance": {
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": { "$ref": "#/$defs/enterpriseIdentityProvenance" }
+        },
+        "trustTier": { "enum": ["unverified", "attested", "verified", "premier"] }
+      }
+    },
+    "signerKey": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "signature": { "type": "string", "pattern": "^[0-9a-f]{128}$" }
+  }
+}

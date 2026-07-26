@@ -13,8 +13,7 @@ impl PaymentAdapter for MutatingPaymentAdapter {
         self.mutable_state.store(true, Ordering::SeqCst);
         Ok(PaymentAuthorization {
             authorization_id: "post-payment-revalidation".to_string(),
-            settled: false,
-            settlement_transaction_id: None,
+            state: PaymentAuthorizationState::Held,
             metadata: serde_json::json!({"adapter": "mutating-test"}),
         })
     }
@@ -136,16 +135,11 @@ fn make_post_payment_mutation_fixture(
         id: "post-payment-server".to_string(),
         invocations: invocations.clone(),
     }));
-    assert!(
-        kernel
-            .set_payment_adapter(Box::new(MutatingPaymentAdapter {
-                mutable_state,
-                authorizations,
-                releases,
-            }))
-            .is_ok(),
-        "payment adapter installation must succeed"
-    );
+    kernel.set_payment_adapter(Box::new(MutatingPaymentAdapter {
+        mutable_state,
+        authorizations,
+        releases,
+    }));
 
     let agent = make_keypair();
     let capability = make_capability(
@@ -220,12 +214,12 @@ async fn async_payment_mutation_is_revalidated_by_guard_before_dispatch(
 
     let response = kernel.evaluate_tool_call(&request).await?;
 
+    assert_eq!(authorizations.load(Ordering::SeqCst), 1);
+    assert_eq!(revalidations.load(Ordering::SeqCst), 2);
     assert_eq!(response.verdict, Verdict::Deny);
     assert!(response.reason.as_deref().is_some_and(
         |reason| reason.contains("payment authorization invalidated mutable guard state")
     ));
-    assert_eq!(authorizations.load(Ordering::SeqCst), 1);
-    assert_eq!(revalidations.load(Ordering::SeqCst), 2);
     assert_eq!(releases.load(Ordering::SeqCst), 1);
     assert_eq!(invocations.load(Ordering::SeqCst), 0);
     assert_clean_payment_unwind_receipt(&response, "retained_after_authorization")?;
@@ -282,12 +276,12 @@ async fn nested_payment_mutation_is_revalidated_by_runtime_hook_before_dispatch(
         )
         .await?;
 
+    assert_eq!(authorizations.load(Ordering::SeqCst), 1);
+    assert_eq!(revalidations.load(Ordering::SeqCst), 2);
     assert_eq!(response.verdict, Verdict::Deny);
     assert!(response.reason.as_deref().is_some_and(|reason| reason
         .contains("payment authorization invalidated mutable runtime admission state")));
     assert_eq!(evaluations.load(Ordering::SeqCst), 1);
-    assert_eq!(authorizations.load(Ordering::SeqCst), 1);
-    assert_eq!(revalidations.load(Ordering::SeqCst), 2);
     assert_eq!(releases.load(Ordering::SeqCst), 1);
     assert_eq!(invocations.load(Ordering::SeqCst), 0);
     assert_clean_payment_unwind_receipt(&response, "retained_after_authorization")?;

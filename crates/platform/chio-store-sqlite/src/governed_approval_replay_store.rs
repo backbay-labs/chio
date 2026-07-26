@@ -429,7 +429,7 @@ impl SqliteGovernedApprovalReplayStore {
         let path = path.as_ref();
         let filesystem_path = path
             .to_str()
-            .map(crate::sqlite_uri_filesystem_path)
+            .map(crate::sqlite_filesystem_path)
             .unwrap_or_else(|| path.to_path_buf());
         if !filesystem_path.is_file() {
             return Err(SqliteGovernedApprovalReplayStoreError::storage(format!(
@@ -654,7 +654,7 @@ fn record_governed_approval_prune(
     horizon: i64,
 ) -> Result<(), rusqlite::Error> {
     transaction.execute(
-        "DELETE FROM chio_governed_approval_replay_entries WHERE expires_at <= ?1 AND dispatch_reservation_id IS NULL",
+        "DELETE FROM chio_governed_approval_replay_entries WHERE expires_at <= ?1",
         params![horizon],
     )?;
     transaction.execute(
@@ -1107,6 +1107,54 @@ mod tests {
                 second_expiry,
                 "owner-b",
                 base.saturating_add(1),
+            )
+            .unwrap());
+    }
+
+    #[test]
+    fn expiry_reclaims_crash_owned_reservation_and_capacity() {
+        let store = SqliteGovernedApprovalReplayStore::open_in_memory_with_capacity(1).unwrap();
+        let base = now_secs();
+        let first_expiry = u64::try_from(base).unwrap().saturating_add(1);
+        let second_expiry = u64::try_from(base).unwrap().saturating_add(100);
+
+        assert!(store
+            .try_reserve_at(
+                "subject",
+                "crashed-request",
+                "crashed-intent",
+                first_expiry,
+                "abandoned-owner",
+                base,
+            )
+            .unwrap());
+        assert!(store
+            .try_reserve_at(
+                "subject",
+                "next-request",
+                "next-intent",
+                second_expiry,
+                "next-owner",
+                base,
+            )
+            .is_err());
+
+        assert!(store
+            .try_reserve_at(
+                "subject",
+                "next-request",
+                "next-intent",
+                second_expiry,
+                "next-owner",
+                base.saturating_add(1),
+            )
+            .unwrap());
+        assert!(!store
+            .commit_owned(
+                "subject",
+                "crashed-request",
+                "crashed-intent",
+                "abandoned-owner",
             )
             .unwrap());
     }

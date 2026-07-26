@@ -14,6 +14,70 @@ struct RevalidationReadyRuntimeAdmissionHook {
     releases: std::sync::Arc<AtomicU64>,
 }
 
+struct NestedMutationExecutionNonceStore {
+    inner: InMemoryExecutionNonceStore,
+    mutable_state: std::sync::Arc<AtomicBool>,
+}
+
+impl ExecutionNonceStore for NestedMutationExecutionNonceStore {
+    fn reserve(&self, nonce_id: &str) -> Result<bool, KernelError> {
+        self.inner.reserve(nonce_id)
+    }
+
+    fn reserve_until(&self, nonce_id: &str, nonce_expires_at: i64) -> Result<bool, KernelError> {
+        self.inner.reserve_until(nonce_id, nonce_expires_at)
+    }
+
+    fn supports_dispatch_reservations(&self) -> bool {
+        true
+    }
+
+    fn reserve_for_dispatch(
+        &self,
+        nonce_id: &str,
+        nonce_expires_at: i64,
+        reservation_id: &str,
+    ) -> Result<bool, KernelError> {
+        self.mutable_state.store(true, Ordering::Release);
+        self.inner
+            .reserve_for_dispatch(nonce_id, nonce_expires_at, reservation_id)
+    }
+
+    fn rollback_dispatch_reservation(
+        &self,
+        nonce_id: &str,
+        reservation_id: &str,
+    ) -> Result<bool, KernelError> {
+        self.inner
+            .rollback_dispatch_reservation(nonce_id, reservation_id)
+    }
+}
+
+struct NestedReservationMutationGuard {
+    mutable_state: std::sync::Arc<AtomicBool>,
+    revalidations: std::sync::Arc<AtomicU64>,
+}
+
+impl Guard for NestedReservationMutationGuard {
+    fn name(&self) -> &str {
+        "nested-reservation-mutation"
+    }
+
+    fn evaluate(&self, _ctx: &GuardContext<'_>) -> Result<GuardDecision, KernelError> {
+        Ok(GuardDecision::allow())
+    }
+
+    fn revalidate_before_dispatch(&self, _ctx: &GuardContext<'_>) -> Result<(), KernelError> {
+        self.revalidations.fetch_add(1, Ordering::SeqCst);
+        if self.mutable_state.load(Ordering::Acquire) {
+            return Err(KernelError::GuardDenied(
+                "credential reservation invalidated mutable guard state".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 impl RuntimeAdmissionHook for RevalidationReadyRuntimeAdmissionHook {
     fn name(&self) -> &str {
         "nested-url-revalidation-ready"
@@ -194,6 +258,10 @@ fn nested_child_before_url_elicitation_is_terminal_and_consumes_nonce(
         tool_name: request.tool_name.clone(),
         arguments: request.arguments.clone(),
         governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         execution_nonce: Some(serde_json::to_value(&nonce)?),
         model_metadata: None,
         extra_metadata: None,
@@ -293,6 +361,10 @@ fn nested_notification_before_url_elicitation_is_terminal_without_child_receipt(
         tool_name: request.tool_name,
         arguments: request.arguments,
         governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         execution_nonce: None,
         model_metadata: None,
         extra_metadata: None,
@@ -391,15 +463,13 @@ fn nested_flow_revalidates_after_credential_reservation(
     let mutable_state = std::sync::Arc::new(AtomicBool::new(false));
     kernel.set_execution_nonce_store(
         nonce_config.clone(),
-        Box::new(BlockingExecutionNonceStore {
+        Box::new(NestedMutationExecutionNonceStore {
             inner: InMemoryExecutionNonceStore::from_config(&nonce_config),
-            entered: std::sync::Arc::new(tokio::sync::Notify::new()),
-            released: std::sync::Arc::new(AtomicBool::new(true)),
-            mutable_state: Some(std::sync::Arc::clone(&mutable_state)),
+            mutable_state: std::sync::Arc::clone(&mutable_state),
         }),
     );
     let revalidations = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.add_guard(Box::new(ReservationMutationGuard {
+    kernel.add_guard(Box::new(NestedReservationMutationGuard {
         mutable_state,
         revalidations: std::sync::Arc::clone(&revalidations),
     }));
@@ -435,6 +505,10 @@ fn nested_flow_revalidates_after_credential_reservation(
         tool_name: request.tool_name.clone(),
         arguments: request.arguments.clone(),
         governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         execution_nonce: Some(serde_json::to_value(&nonce)?),
         model_metadata: None,
         extra_metadata: None,

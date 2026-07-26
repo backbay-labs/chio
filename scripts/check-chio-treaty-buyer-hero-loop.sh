@@ -279,7 +279,7 @@ for envelope in proof_package.get("bilateralEnvelopes", []):
     consistency_model = predicate.get("consistency_model") or predicate.get("consistencyModel")
     if treaty_binding_ref:
         has_treaty_dsse = True
-        if consistency_model != "totally_ordered":
+        if consistency_model != "totally-ordered":
             raise SystemExit("treaty DSSE did not carry ordered consistency")
 if not has_treaty_dsse:
     raise SystemExit("proof package did not carry a treaty-bound bilateral DSSE")

@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use chio_kernel::budget_store::{BudgetCaptureInvocationRequest, BudgetInvocationCaptureDecision};
 use chio_kernel::{BudgetStore, InMemoryBudgetStore};
 use chio_kernel_core::{BudgetRegistry, InMemoryBudgetRegistry};
 use proptest::prelude::*;
@@ -103,6 +104,7 @@ fn assert_store_conservation(
                     invocations += 1;
                 }
             }
+            "capture_invocation" => {}
             "reverse_exposure" => {
                 let amount = u128::from(event.exposure_units);
                 outstanding = outstanding
@@ -214,16 +216,32 @@ fn terminal_hold(
                 Some(&format!("{}:reverse", hold.id)),
             )
             .expect("open hold reverses exactly once"),
-        TerminalClass::Committed => store
-            .settle_charge_cost_with_ids(
-                CAPABILITY_ID,
-                GRANT_INDEX,
-                hold.remaining,
-                u64::from(realized_hint).min(hold.remaining),
-                Some(&hold.id),
-                Some(&format!("{}:reconcile", hold.id)),
-            )
-            .expect("open hold reconciles exactly once"),
+        TerminalClass::Committed => {
+            let capture = store
+                .capture_invocation_reservations(BudgetCaptureInvocationRequest {
+                    capability_id: CAPABILITY_ID.to_string(),
+                    grant_index: GRANT_INDEX,
+                    hold_id: hold.id.clone(),
+                    event_id: format!("{}:capture-invocation", hold.id),
+                    trusted_time: None,
+                    authority: None,
+                })
+                .expect("open hold captures its invocation before reconciliation");
+            assert!(matches!(
+                capture,
+                BudgetInvocationCaptureDecision::Captured(_)
+            ));
+            store
+                .settle_charge_cost_with_ids(
+                    CAPABILITY_ID,
+                    GRANT_INDEX,
+                    hold.remaining,
+                    u64::from(realized_hint).min(hold.remaining),
+                    Some(&hold.id),
+                    Some(&format!("{}:reconcile", hold.id)),
+                )
+                .expect("open dispatch-captured hold reconciles exactly once");
+        }
     }
     assert!(terminal_history.insert(hold.id, class).is_none());
 }
@@ -254,7 +272,7 @@ fn omitted_release_is_detected_by_terminal_history_replay() {
 proptest! {
     #![proptest_config(ProptestConfig {
         failure_persistence: Some(Box::new(FileFailurePersistence::Direct(
-            "crates/kernel/chio-kernel/proptest-regressions/property_reservation_ledger.txt",
+            "proptest-regressions/property_reservation_ledger.txt",
         ))),
         .. ProptestConfig::default()
     })]
@@ -301,16 +319,18 @@ proptest! {
                 ReservationOp::Release(amount) => {
                     if let Some(hold) = open.last_mut() {
                         let released = u64::from(amount).min(hold.remaining);
-                        store
-                            .reduce_charge_cost_with_ids(
+                        if released > 0 {
+                            store
+                                .reduce_charge_cost_with_ids(
                                 CAPABILITY_ID,
                                 GRANT_INDEX,
                                 released,
                                 Some(&hold.id),
                                 Some(&format!("{}:release:{operation_index}", hold.id)),
                             )
-                            .expect("release is bounded by outstanding exposure");
-                        hold.remaining -= released;
+                                .expect("release is bounded by outstanding exposure");
+                            hold.remaining -= released;
+                        }
                         if hold.remaining == 0 {
                             let terminal = open.pop().expect("last_mut established an open hold");
                             assert!(terminal_history

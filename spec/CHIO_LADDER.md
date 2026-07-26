@@ -259,8 +259,8 @@ manifests against this schema before signature verification.
         },
         "consistency_anchor": {
           "type": "string",
-          "enum": ["chio-anchor", "hash-chain", "frost-quorum"],
-          "description": "REQUIRED for `totally-ordered` (hash-chain or chio-anchor) and `quorum-required` (frost-quorum)."
+          "enum": ["chio-anchor", "hash-chain", "frost-quorum", "external-checkpoint"],
+          "description": "REQUIRED for `totally-ordered` (hash-chain, chio-anchor, or external-checkpoint) and `quorum-required` (frost-quorum)."
         },
         "aliases": {
           "type": "array",
@@ -434,18 +434,41 @@ no commutative interpretation: revocations of jointly-issued credentials,
 multi-party settlements, treaty-wide sanctions, passport invalidations
 that span issuing orgs.
 
-**Signature shape:** FROST-aggregated Ed25519 signature over canonical
-JSON of the action body, with `consistency_anchor: "frost-quorum"` and
-quorum scope declared in `co_sign_quorum`. Bilateral trees are
-**insufficient** and MUST be rejected for this model.
+**Signature shape:** FROST-aggregated Ed25519 signature over
+`CHIO-FROST-AUTHORIZATION-V1\0 || RFC8785(FrostAuthorizationBodyV1)`. The
+authorization body's `action_digest` binds the exact canonical consumer action
+body; it also binds domain, action class, authority scope, resource id, resource
+version, lifecycle fence, roster digest and key epoch. It additionally signs the
+canonical ladder-entry digest and exact quorum `n`, `m`, and scope. The active
+roster threshold/count and trusted scope classification MUST match that entry.
+The trusted roster commits the group key. Its `chio.frost.roster.v1` signature
+is verified against a pinned roster-authority key, not artifact-supplied key
+material. An external signed monotonic `chio.frost.epoch-checkpoint.v1`
+checkpoint prevents a restored local roster database from reactivating an older
+key. Every execution rereads that checkpoint so a retained verified-roster
+handle cannot survive rotation. A separate external signed
+`chio.frost.authorization-slot-checkpoint.v1` checkpoint permanently binds the
+exact domain/action/message for one scope/resource/version/fence before any
+commitment is published. The roster, epoch, and slot authority keys are
+role-separated pinned trust roots; embedded authority keys and cross-role key
+reuse are rejected. The verifier rejects a domain/action pair absent from its
+exhaustive registry. The manifest
+uses `consistency_anchor: "frost-quorum"` and declares quorum scope in
+`co_sign_quorum`. Bilateral trees are **insufficient** and MUST be rejected for
+this model.
 
-**Divergent co-sign handling:** structurally impossible: only one
-quorum-aggregated signature can succeed per body hash within a quorum
-epoch.
+**Divergent co-sign handling:** a valid group signature proves threshold-group
+authorization for one exact body. It does not prove the signer subset. Durable
+nonce/share sessions plus external epoch and same-epoch slot continuity prevent
+a second message for one authorization slot, including after local snapshot
+restore. The consumer MUST also verify the current rollback-independent resource
+head and consume the authorization through that resource/effect gate; a
+rollbackable local compare-and-swap is insufficient. Only that winner may
+execute, and an action class without such an owned gate remains disabled.
 
-**Residual:** operational overhead of FROST signing-key custody and the
-pre-handshake key-share ceremony. The opt-in is per-class precisely so
-this overhead is paid only where needed.
+**Residual:** FROST key custody, DKG and rotation overhead, signer availability,
+possible threshold equivocation, and correct consumer resource fencing. The
+opt-in is per class so this overhead is paid only where needed.
 
 A manifest MUST be rejected at handshake with
 `ladder.consistency_underspecified` if any `destructive: true` class
@@ -685,12 +708,29 @@ and [../crates/economy/chio-settle/src/lib.rs](../crates/economy/chio-settle/src
       "evidence_required": ["trust_activation", "workflow_receipt", "anchor_epoch"],
       "co_sign": "bilateral_required",
       "consistency_model": "totally-ordered",
-      "consistency_anchor": "chio-anchor",
-      "partition_fallback": {
-        "lease_kind": "narrow_destructive",
-        "blast_radius_cap": { "unit": "amount_minor", "max": 10000 },
-        "ttl_secs": 300
-      }
+      "consistency_anchor": "chio-anchor"
+    },
+    {
+      "id": "fiscal.amendment_activate",
+      "title": "Fiscal amendment activation",
+      "mode": "receipt_backed",
+      "destructive": true,
+      "cross_org_visibility": "private",
+      "evidence_required": ["operator_report", "workflow_receipt", "external"],
+      "co_sign": "none",
+      "consistency_model": "totally-ordered",
+      "consistency_anchor": "external-checkpoint"
+    },
+    {
+      "id": "factor.assignment_bind",
+      "title": "Receivable assignment binding",
+      "mode": "receipt_backed",
+      "destructive": true,
+      "cross_org_visibility": "federated",
+      "evidence_required": ["trust_activation", "workflow_receipt"],
+      "co_sign": "bilateral_required",
+      "consistency_model": "totally-ordered",
+      "consistency_anchor": "hash-chain"
     },
     {
       "id": "market.liability_auto_bind",
@@ -702,6 +742,30 @@ and [../crates/economy/chio-settle/src/lib.rs](../crates/economy/chio-settle/src
       "co_sign": "bilateral_required",
       "consistency_model": "totally-ordered",
       "consistency_anchor": "chio-anchor"
+    },
+    {
+      "id": "clearing.round_finalize",
+      "title": "Clearing round finalization",
+      "mode": "receipt_backed",
+      "destructive": true,
+      "cross_org_visibility": "federated",
+      "evidence_required": ["trust_activation", "workflow_receipt", "anchor_epoch"],
+      "co_sign": "n_of_m",
+      "co_sign_quorum": { "n": 2, "m": 3, "scope": "treaty" },
+      "consistency_model": "quorum-required",
+      "consistency_anchor": "frost-quorum"
+    },
+    {
+      "id": "channel.close",
+      "title": "Escrow channel close",
+      "mode": "receipt_backed",
+      "destructive": true,
+      "cross_org_visibility": "federated",
+      "evidence_required": ["trust_activation", "workflow_receipt", "anchor_epoch"],
+      "co_sign": "n_of_m",
+      "co_sign_quorum": { "n": 2, "m": 3, "scope": "treaty" },
+      "consistency_model": "quorum-required",
+      "consistency_anchor": "frost-quorum"
     },
     {
       "id": "settle.commitment",
@@ -745,6 +809,30 @@ and [../crates/economy/chio-settle/src/lib.rs](../crates/economy/chio-settle/src
   ]
 }
 ```
+
+For `credit.facility_bind`, `bilateral_required` means signatures from the
+debtor and original creditor over the exact credit admission terms. The
+configured facility authority signs the same body, including the operation and
+request, facility authority evidence, exposure version and fence, scope, payee,
+amount and effective ceiling, nonce, due date, and validity window. Completion
+requires the matching online authoritative exposure compare-and-swap. Receipts,
+audit chains, anchoring, and leases never substitute for that compare-and-swap,
+and this action class has no partition fallback.
+
+For `fiscal.amendment_activate`, the local authority floor is high assurance.
+The active fiscal charter's independent m-of-n approval set is the domain
+authorization check, so ladder `co_sign` remains `none` and does not imply a
+FROST quorum. The external checkpoint orders the continuity sequence, schedule
+heads, activation history, runtime readiness digest, and trusted clock
+high-water mark.
+
+For `factor.assignment_bind`, `bilateral_required` means signatures from the
+seller and buyer over the exact assignment agreement. The `hash-chain` anchor
+is the authoritative obligor's obligation-head version and resource-fence
+chain. Completion additionally requires a fresh signed status proof and the
+signed acknowledgement produced by the online obligor compare-and-swap. The
+audit chain and optional anchoring never substitute for that compare-and-swap,
+and this action class has no partition fallback.
 
 Workflow composition in the Chio verifier uses two verifier-owned
 classes layered over this profile:
@@ -843,6 +931,18 @@ and
       "destructive": true,
       "cross_org_visibility": "federated",
       "evidence_required": ["trust_activation", "registry_search", "operator_report", "anchor_epoch"],
+      "co_sign": "n_of_m",
+      "co_sign_quorum": { "n": 3, "m": 5, "scope": "treaty" },
+      "consistency_model": "quorum-required",
+      "consistency_anchor": "frost-quorum"
+    },
+    {
+      "id": "governance.roster_rotate",
+      "title": "FROST roster rotation",
+      "mode": "receipt_backed",
+      "destructive": true,
+      "cross_org_visibility": "federated",
+      "evidence_required": ["trust_activation", "registry_search", "anchor_epoch"],
       "co_sign": "n_of_m",
       "co_sign_quorum": { "n": 3, "m": 5, "scope": "treaty" },
       "consistency_model": "quorum-required",

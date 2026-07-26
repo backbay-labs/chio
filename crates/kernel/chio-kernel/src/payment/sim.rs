@@ -6,8 +6,8 @@
 //! tool-call receipt carries the governed intent hash and approval token id.
 
 use crate::payment::{
-    PaymentAdapter, PaymentAuthorization, PaymentAuthorizeRequest, PaymentError, PaymentResult,
-    RailSettlementStatus,
+    PaymentAdapter, PaymentAuthorization, PaymentAuthorizationState, PaymentAuthorizeRequest,
+    PaymentError, PaymentResult, RailSettlementStatus,
 };
 
 /// Deterministic no-broadcast payment adapter.
@@ -45,8 +45,7 @@ impl PaymentAdapter for SimPaymentAdapter {
         );
         Ok(PaymentAuthorization {
             authorization_id,
-            settled: false,
-            settlement_transaction_id: None,
+            state: PaymentAuthorizationState::PrepaidFinal,
             metadata: serde_json::json!({
                 "adapter": "sim",
                 "mode": "prepaid_no_broadcast",
@@ -114,13 +113,13 @@ mod tests {
     }
 
     #[test]
-    fn authorize_is_deterministic_and_unsettled() {
+    fn authorize_is_deterministic_and_prepaid() {
         let adapter = SimPaymentAdapter::new();
         let a = adapter.authorize(&request("req-1", 100)).unwrap();
         let b = adapter.authorize(&request("req-1", 100)).unwrap();
         assert_eq!(a.authorization_id, b.authorization_id);
         assert!(a.authorization_id.starts_with("sim-"));
-        assert!(!a.settled, "sim must leave capture/release to the kernel");
+        assert!(a.state.is_final(), "sim authorization is prepaid and final");
     }
 
     #[test]

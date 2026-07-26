@@ -1,0 +1,15 @@
+{
+  "body": {
+    "admissionDigest": "2ac9732e96d4dcc023cba39a22a10fb8273b13073e0fe1267b99319d5cccd749",
+    "admissionId": "3177026c3d1447014dfab0af08d835ddf6a868b1fb862c40d30959687cd5536b",
+    "approvalExpiresAt": 106,
+    "approvalId": "06514e13bb7db67a228248c6289a873dacf167d1a92fe5a56024f3051bf5d518",
+    "approvedAt": 56,
+    "proposalDigest": "ed03dcf3996ff36fd140f4dfad63f9e2d72dde84d1517ca456f7f9febcc2186e",
+    "proposalId": "e11c99b30195166a6747b8c6a66a7fde2a0931ae82aea900d2a228a21d36f4a0",
+    "schema": "chio.fiscal.approval.v1",
+    "signerKeyId": "34750f98bd59fcfc946da45aaabe933be154a4b5094e1c4abf42866505f3c97e"
+  },
+  "signature": "a9faf1ebf4edcae31ddc3d448006f0d8c2b286388bed4394eff06575e2da1f7d38850703f117f65add060168c65e79a43a218e18c8bf551f0f706acf69747207",
+  "signerKey": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+}

@@ -1,0 +1,51 @@
+{
+  "body": {
+    "proposalId": "e11c99b30195166a6747b8c6a66a7fde2a0931ae82aea900d2a228a21d36f4a0",
+    "proposedAt": 50,
+    "proposedBy": "34750f98bd59fcfc946da45aaabe933be154a4b5094e1c4abf42866505f3c97e",
+    "rationaleDigest": "dcb2943cce89098f95253d6e3b8342020f57dfdd18ac8a678c9e77fa57ae3870",
+    "schema": "chio.fiscal.proposal.v1",
+    "target": {
+      "candidate": {
+        "body": {
+          "charterDigest": "a79930cdbd1c5d68208e437f8b8851dcd0f66114b5d34c25cb48a670bf2a22fa",
+          "charterId": "8e486b91278e696d27603e62e2192af0667d5417891379a354b4113be30bb375",
+          "domain": "tier_limits",
+          "issuedAt": 70,
+          "issuedBy": "operator.example",
+          "params": {
+            "ceilings": [
+              {
+                "currency": "USD",
+                "units": 100
+              },
+              {
+                "currency": "USD",
+                "units": 200
+              },
+              {
+                "currency": "USD",
+                "units": 300
+              },
+              {
+                "currency": "USD",
+                "units": 400
+              }
+            ],
+            "kind": "tier_limits"
+          },
+          "scheduleId": "4f49e92187f7c116b66d028a22e1498a8a8fc8c72fb9b42f50fb4df7b464a6a7",
+          "schema": "chio.fiscal.schedule.v1",
+          "sequence": 1,
+          "validFrom": 70,
+          "validUntil": 900
+        },
+        "signature": "28c9502a77c965174840f276fded5b9f22754ad933dbd8dc5efc8e2c280f1384856469fa19313f5a7beef47fc20126838a819988f38b82c711865b15381e6e0e",
+        "signerKey": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618"
+      },
+      "kind": "schedule"
+    }
+  },
+  "signature": "496e5b6fde69281b3e169aec3f065642023945f55ba18c66e7c8dcc1debab6d28912a85d30965e1f481baa32bc9c2a4dcb08d601bbeb6aa710ba040573266209",
+  "signerKey": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+}

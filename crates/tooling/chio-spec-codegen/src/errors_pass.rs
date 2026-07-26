@@ -1,10 +1,8 @@
 use std::collections::BTreeSet;
 use std::fs;
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::path::Path;
 
-use crate::{write_if_changed, CodegenError, Result};
+use crate::{rustfmt_generated, write_if_changed, CodegenError, Result};
 
 pub const ERROR_REGISTRY_INPUT: &str = "spec/errors/registry.yaml";
 pub const ERRORS_GENERATED_DIR: &str = "crates/core/chio-errors/src/_generated";
@@ -797,36 +795,6 @@ fn render_error_registry(path: &Path, registry: &ErrorRegistry) -> Result<String
     formatted.push('\n');
     formatted.push_str(&body);
     rustfmt_generated(path, &formatted)
-}
-
-fn rustfmt_generated(path: &Path, source: &str) -> Result<String> {
-    let mut child = Command::new("rustfmt")
-        .args(["--emit", "stdout", "--edition", "2021"])
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|err| CodegenError::Io(PathBuf::from("rustfmt"), err))?;
-
-    {
-        let Some(mut stdin) = child.stdin.take() else {
-            return Err(registry_error(path, 1, "rustfmt stdin unavailable"));
-        };
-        stdin
-            .write_all(source.as_bytes())
-            .map_err(|err| CodegenError::Io(PathBuf::from("rustfmt stdin"), err))?;
-    }
-
-    let output = child
-        .wait_with_output()
-        .map_err(|err| CodegenError::Io(PathBuf::from("rustfmt"), err))?;
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(registry_error(path, 1, format!("rustfmt failed: {stderr}")));
-    }
-
-    String::from_utf8(output.stdout)
-        .map_err(|err| registry_error(path, 1, format!("rustfmt emitted invalid UTF-8: {err}")))
 }
 
 fn render_errors_mod() -> String {

@@ -16,11 +16,6 @@
 //! and has neither an iroh `EndpointId` field nor a per-entry
 //! passport-over-transport endorsement (ADR-0014 "Existing Transport Versus
 //! Iroh"). Option B (ADAPTER-SPEC section 5) requires both.
-//!
-//! TODO(iroh-transport): when `chio-pheromone-relay` grows a transport-key
-//! directory shape (an issuer-signed `EndpointId` binding + passport
-//! endorsement), re-home these types onto it so there is exactly one directory
-//! verifier. Until then this mirror MUST NOT weaken any of the five checks.
 
 use std::collections::HashMap;
 use std::collections::HashSet;

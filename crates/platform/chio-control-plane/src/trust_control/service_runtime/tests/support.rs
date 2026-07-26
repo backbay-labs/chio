@@ -13,9 +13,16 @@ pub(super) struct CapturedRequest {
     body: String,
 }
 
+impl CapturedRequest {
+    pub(super) fn body(&self) -> &str {
+        &self.body
+    }
+}
+
 pub(super) struct StaticResponseServer {
     pub(super) url: String,
     captured: Arc<Mutex<Vec<CapturedRequest>>>,
+    body: Arc<Mutex<String>>,
     join: Option<thread::JoinHandle<()>>,
 }
 
@@ -28,7 +35,8 @@ impl StaticResponseServer {
     ) -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").test_expect("bind static response server");
         let addr = listener.local_addr().test_expect("server local addr");
-        let body = body.to_string();
+        let body = Arc::new(Mutex::new(body.to_string()));
+        let response_body = Arc::clone(&body);
         let content_type = content_type.to_string();
         let captured = Arc::new(Mutex::new(Vec::new()));
         let captured_requests = Arc::clone(&captured);
@@ -40,6 +48,7 @@ impl StaticResponseServer {
                     .lock()
                     .test_expect("capture request")
                     .push(request);
+                let body = response_body.lock().test_expect("response body");
                 write!(
                     stream,
                     "HTTP/1.1 {status} test\r\nContent-Length: {}\r\nContent-Type: {content_type}\r\nConnection: close\r\n\r\n{}",
@@ -53,8 +62,13 @@ impl StaticResponseServer {
         Self {
             url: format!("http://{addr}"),
             captured,
+            body,
             join: Some(join),
         }
+    }
+
+    pub(super) fn set_body(&self, body: &str) {
+        *self.body.lock().test_expect("response body") = body.to_string();
     }
 
     pub(super) fn requests(&self) -> Vec<CapturedRequest> {
@@ -178,6 +192,22 @@ pub(super) fn assert_json_post(request: &CapturedRequest, path: &str, body_fragm
         assert!(
             request.body.contains(fragment),
             "expected `{}` in body `{}`",
+            fragment,
+            request.body
+        );
+    }
+}
+
+pub(super) fn assert_json_post_omits(
+    request: &CapturedRequest,
+    path: &str,
+    body_fragments: &[&str],
+) {
+    assert_json_post(request, path, &[]);
+    for fragment in body_fragments {
+        assert!(
+            !request.body.contains(fragment),
+            "did not expect `{}` in body `{}`",
             fragment,
             request.body
         );

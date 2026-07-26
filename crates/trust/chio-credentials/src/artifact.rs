@@ -27,6 +27,9 @@ pub enum CredentialError {
     #[error("credential has expired")]
     CredentialExpired,
 
+    #[error("credential is not yet valid")]
+    CredentialNotYetValid,
+
     #[error("credential issuance date must be before or equal to expiration date")]
     InvalidCredentialValidityWindow,
 
@@ -39,6 +42,36 @@ pub enum CredentialError {
     #[error("passport schema must be {PASSPORT_SCHEMA}")]
     InvalidPassportSchema,
 
+    #[error("unsupported versioned passport schema: {0}")]
+    UnsupportedVersionedPassportSchema(String),
+
+    #[error("invalid versioned passport: {0}")]
+    InvalidVersionedPassport(String),
+
+    #[error("passport v2 cannot be downgraded without losing data")]
+    PassportDowngradeWouldLoseData,
+
+    #[error("unsupported financial credential schema: {0}")]
+    UnsupportedFinancialCredentialSchema(String),
+
+    #[error("financial credential schema {schema} does not select family {family}")]
+    FinancialCredentialSchemaFamilyMismatch { schema: String, family: String },
+
+    #[error("invalid financial credential: {0}")]
+    InvalidFinancialCredential(String),
+
+    #[error("financial credential authority denied: {0}")]
+    FinancialAuthority(String),
+
+    #[error("legacy cross-issuer v1 activation is unsupported")]
+    UnsupportedLegacyCrossIssuerV1,
+
+    #[error("settlement reliability proof substrate is unavailable")]
+    FinancialReliabilityProofSubstrateUnavailable,
+
+    #[error("financial source resolver proof substrate is unavailable")]
+    FinancialSourceResolverUnavailable,
+
     #[error("passport subject does not match credential subject {0}")]
     PassportSubjectMismatch(String),
 
@@ -48,7 +81,9 @@ pub enum CredentialError {
     #[error("enterprise identity provenance field {field} must be non-empty")]
     MissingEnterpriseIdentityProvenanceField { field: &'static str },
 
-    #[error("passport enterprise identity provenance does not match embedded credential provenance")]
+    #[error(
+        "passport enterprise identity provenance does not match embedded credential provenance"
+    )]
     PassportEnterpriseIdentityProvenanceMismatch,
 
     #[error("verifier policy threshold for {field} must be within [0.0, 1.0], got {value}")]
@@ -99,6 +134,18 @@ pub enum CredentialError {
     #[error("challenge nonce must be non-empty")]
     MissingChallengeNonce,
 
+    #[error("challenge verifier key epoch is invalid")]
+    InvalidChallengeVerifierKeyEpoch,
+
+    #[error("challenge signer key does not match verifier DID")]
+    ChallengeVerifierKeyMismatch,
+
+    #[error("challenge digest does not match its signed body")]
+    InvalidChallengeDigest,
+
+    #[error("challenge signature verification failed")]
+    InvalidChallengeSignature,
+
     #[error("challenge is not yet valid")]
     ChallengeNotYetValid,
 
@@ -128,6 +175,15 @@ pub enum CredentialError {
 
     #[error("presentation signature verification failed")]
     InvalidPresentationSignature,
+
+    #[error("presentation selectors do not exactly match the challenge")]
+    PresentationSelectorMismatch,
+
+    #[error("presentation challenge was already consumed")]
+    PresentationReplay,
+
+    #[error("presentation challenge-use store is unavailable")]
+    PresentationReplayStoreUnavailable,
 
     #[error("expected challenge does not match embedded challenge")]
     ChallengeMismatch,
@@ -198,7 +254,8 @@ pub struct ChioCredentialEvidence {
     pub lineage_records: usize,
     pub uncheckpointed_receipts: usize,
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub runtime_attestation: Option<chio_core::capability::runtime_attestation::RuntimeAttestationEvidence>,
+    pub runtime_attestation:
+        Option<chio_core::capability::runtime_attestation::RuntimeAttestationEvidence>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -286,7 +343,7 @@ pub struct ReputationCredentialSubject {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UnsignedReputationCredential {
     #[serde(rename = "@context")]
     pub context: Vec<String>,
@@ -312,10 +369,49 @@ pub struct CredentialProof {
     pub proof_value: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct ReputationCredential {
     #[serde(flatten)]
     pub unsigned: UnsignedReputationCredential,
     pub proof: CredentialProof,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct ReputationCredentialWire {
+    #[serde(rename = "@context")]
+    context: Vec<String>,
+    #[serde(rename = "type")]
+    credential_type: Vec<String>,
+    issuer: String,
+    issuance_date: String,
+    expiration_date: String,
+    credential_subject: ReputationCredentialSubject,
+    evidence: ChioCredentialEvidence,
+    #[serde(default)]
+    enterprise_identity_provenance: Option<EnterpriseIdentityProvenance>,
+    proof: CredentialProof,
+}
+
+impl<'de> Deserialize<'de> for ReputationCredential {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let wire = ReputationCredentialWire::deserialize(deserializer)?;
+        Ok(Self {
+            unsigned: UnsignedReputationCredential {
+                context: wire.context,
+                credential_type: wire.credential_type,
+                issuer: wire.issuer,
+                issuance_date: wire.issuance_date,
+                expiration_date: wire.expiration_date,
+                credential_subject: wire.credential_subject,
+                evidence: wire.evidence,
+                enterprise_identity_provenance: wire.enterprise_identity_provenance,
+            },
+            proof: wire.proof,
+        })
+    }
 }

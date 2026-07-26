@@ -1,0 +1,26 @@
+[package]
+name = "chio-fiscal"
+description = "Chio governed fiscal charter and schedule contracts"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[lib]
+name = "chio_fiscal"
+
+[dependencies]
+chio-core-types = { workspace = true }
+chio-listing = { workspace = true }
+hex = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+chio-test-support = { workspace = true }
+
+[lints]
+workspace = true

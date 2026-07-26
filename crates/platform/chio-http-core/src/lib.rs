@@ -33,10 +33,12 @@ pub use metrics::{
 };
 
 pub use approvals::{
-    handle_batch_respond, handle_get_approval, handle_list_pending, handle_respond, ApprovalAdmin,
-    ApprovalHandlerError, BatchDecisionEntry, BatchRespondRequest, BatchRespondResponse,
-    BatchRespondResult, BatchRespondSummary, GetApprovalResponse, PendingListResponse,
-    PendingQuery, RespondRequest, RespondResponse,
+    handle_batch_respond, handle_create_threshold_proposal, handle_deliver_threshold_approval,
+    handle_get_approval, handle_get_threshold_proposal, handle_list_pending, handle_respond,
+    handle_submit_threshold_approval, ApprovalAdmin, ApprovalHandlerError, BatchDecisionEntry,
+    BatchRespondRequest, BatchRespondResponse, BatchRespondResult, BatchRespondSummary,
+    CreateThresholdProposalRequest, GetApprovalResponse, PendingListResponse, PendingQuery,
+    RespondRequest, RespondResponse, SubmitThresholdApprovalRequest,
 };
 pub use authority::{
     http_authority_tool_grant, HttpAuthority, HttpAuthorityBuilder, HttpAuthorityError,

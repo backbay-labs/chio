@@ -18,6 +18,7 @@ use reqwest::header::{ACCEPT, AUTHORIZATION, CONTENT_TYPE};
 use serde_json::{json, Value};
 
 static UNIQUE_TEST_DIR_COUNTER: AtomicU64 = AtomicU64::new(0);
+const HTTP_CLIENT_TIMEOUT: Duration = Duration::from_secs(15);
 const SERVER_STARTUP_TIMEOUT: Duration = Duration::from_secs(90);
 const SERVER_STARTUP_POLL_INTERVAL: Duration = Duration::from_millis(50);
 
@@ -27,10 +28,23 @@ fn unique_test_dir() -> PathBuf {
         .expect("system time before unix epoch")
         .as_nanos();
     let counter = UNIQUE_TEST_DIR_COUNTER.fetch_add(1, Ordering::Relaxed);
-    std::env::temp_dir().join(format!(
+    let path = std::env::temp_dir().join(format!(
         "chio-cli-mcp-http-{}-{nonce}-{counter}",
         std::process::id()
-    ))
+    ));
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(&path).expect("create private test dir");
+    path
+}
+
+fn default_session_db_path(dir: &Path, listen: SocketAddr) -> PathBuf {
+    dir.join(format!("remote-session-{}.sqlite3", listen.port()))
 }
 
 macro_rules! skip_when_loopback_denied {
@@ -614,21 +628,21 @@ fn spawn_http_server_with_policy_path_and_session_lifecycle_env_prefix(
 ) -> ServerGuard {
     let script_path = write_mock_server_script(dir);
     let receipt_db_path = dir.join("remote-receipts.sqlite3");
-    let revocation_db_path = dir.join("remote-revocations.sqlite3");
     let authority_seed_path = dir.join("remote-authority.seed");
+    let default_session_db_path = default_session_db_path(dir, listen);
+    let session_db_path = session_db_path.unwrap_or(&default_session_db_path);
 
     let mut command = Command::new(env!("CARGO_BIN_EXE_chio"));
     command.args([
         "--receipt-db",
         receipt_db_path.to_str().expect("receipt db path"),
-        "--revocation-db",
-        revocation_db_path.to_str().expect("revocation db path"),
         "--authority-seed-file",
         authority_seed_path.to_str().expect("authority seed path"),
     ]);
-    if let Some(path) = session_db_path {
-        command.args(["--session-db", path.to_str().expect("session db path")]);
-    }
+    command.args([
+        "--session-db",
+        session_db_path.to_str().expect("session db path"),
+    ]);
     command.args([
         "mcp",
         "serve-http",
@@ -686,21 +700,21 @@ fn spawn_http_server_with_policy_path_and_jwt_auth(
 ) -> ServerGuard {
     let script_path = write_mock_server_script(dir);
     let receipt_db_path = dir.join("remote-receipts.sqlite3");
-    let revocation_db_path = dir.join("remote-revocations.sqlite3");
     let authority_seed_path = dir.join("remote-authority.seed");
+    let default_session_db_path = default_session_db_path(dir, listen);
+    let session_db_path = session_db_path.unwrap_or(&default_session_db_path);
 
     let mut command = Command::new(env!("CARGO_BIN_EXE_chio"));
     command.args([
         "--receipt-db",
         receipt_db_path.to_str().expect("receipt db path"),
-        "--revocation-db",
-        revocation_db_path.to_str().expect("revocation db path"),
         "--authority-seed-file",
         authority_seed_path.to_str().expect("authority seed path"),
     ]);
-    if let Some(path) = session_db_path {
-        command.args(["--session-db", path.to_str().expect("session db path")]);
-    }
+    command.args([
+        "--session-db",
+        session_db_path.to_str().expect("session db path"),
+    ]);
     let child = command
         .args([
             "mcp",
@@ -745,8 +759,8 @@ fn spawn_http_server_with_shared_owner(
     let policy_path = write_policy(dir);
     let script_path = write_mock_server_script(dir);
     let receipt_db_path = dir.join("remote-receipts.sqlite3");
-    let revocation_db_path = dir.join("remote-revocations.sqlite3");
     let authority_seed_path = dir.join("remote-authority.seed");
+    let session_db_path = default_session_db_path(dir, listen);
 
     let child = Command::new(env!("CARGO_BIN_EXE_chio"))
         .env(
@@ -756,10 +770,10 @@ fn spawn_http_server_with_shared_owner(
         .args([
             "--receipt-db",
             receipt_db_path.to_str().expect("receipt db path"),
-            "--revocation-db",
-            revocation_db_path.to_str().expect("revocation db path"),
             "--authority-seed-file",
             authority_seed_path.to_str().expect("authority seed path"),
+            "--session-db",
+            session_db_path.to_str().expect("session db path"),
             "mcp",
             "serve-http",
             "--policy",
@@ -795,16 +809,16 @@ fn spawn_http_server_with_authority_db(
     let policy_path = write_policy(dir);
     let script_path = write_mock_server_script(dir);
     let receipt_db_path = dir.join("remote-receipts.sqlite3");
-    let revocation_db_path = dir.join("remote-revocations.sqlite3");
+    let session_db_path = default_session_db_path(dir, listen);
 
     let child = Command::new(env!("CARGO_BIN_EXE_chio"))
         .args([
             "--receipt-db",
             receipt_db_path.to_str().expect("receipt db path"),
-            "--revocation-db",
-            revocation_db_path.to_str().expect("revocation db path"),
             "--authority-db",
             authority_db_path.to_str().expect("authority db path"),
+            "--session-db",
+            session_db_path.to_str().expect("session db path"),
             "mcp",
             "serve-http",
             "--policy",
@@ -860,17 +874,17 @@ fn spawn_http_server_with_shared_owner_and_jwt_auth(
     let policy_path = write_policy(dir);
     let script_path = write_mock_server_script(dir);
     let receipt_db_path = dir.join("remote-receipts.sqlite3");
-    let revocation_db_path = dir.join("remote-revocations.sqlite3");
     let authority_seed_path = dir.join("remote-authority.seed");
+    let session_db_path = default_session_db_path(dir, listen);
 
     let child = Command::new(env!("CARGO_BIN_EXE_chio"))
         .args([
             "--receipt-db",
             receipt_db_path.to_str().expect("receipt db path"),
-            "--revocation-db",
-            revocation_db_path.to_str().expect("revocation db path"),
             "--authority-seed-file",
             authority_seed_path.to_str().expect("authority seed path"),
+            "--session-db",
+            session_db_path.to_str().expect("session db path"),
             "mcp",
             "serve-http",
             "--policy",
@@ -917,17 +931,17 @@ fn spawn_http_server_with_jwt_auth_and_identity_federation(
     let policy_path = write_policy(dir);
     let script_path = write_mock_server_script(dir);
     let receipt_db_path = dir.join("remote-receipts.sqlite3");
-    let revocation_db_path = dir.join("remote-revocations.sqlite3");
     let authority_seed_path = dir.join("remote-authority.seed");
+    let session_db_path = default_session_db_path(dir, listen);
 
     let mut command = Command::new(env!("CARGO_BIN_EXE_chio"));
     command.args([
         "--receipt-db",
         receipt_db_path.to_str().expect("receipt db path"),
-        "--revocation-db",
-        revocation_db_path.to_str().expect("revocation db path"),
         "--authority-seed-file",
         authority_seed_path.to_str().expect("authority seed path"),
+        "--session-db",
+        session_db_path.to_str().expect("session db path"),
         "mcp",
         "serve-http",
         "--policy",
@@ -979,18 +993,18 @@ fn spawn_http_server_with_jwt_auth_and_local_discovery(
     let policy_path = write_policy(dir);
     let script_path = write_mock_server_script(dir);
     let receipt_db_path = dir.join("remote-receipts.sqlite3");
-    let revocation_db_path = dir.join("remote-revocations.sqlite3");
     let authority_seed_path = dir.join("remote-authority.seed");
     let public_base_url = format!("http://{listen}");
+    let session_db_path = default_session_db_path(dir, listen);
 
     let child = Command::new(env!("CARGO_BIN_EXE_chio"))
         .args([
             "--receipt-db",
             receipt_db_path.to_str().expect("receipt db path"),
-            "--revocation-db",
-            revocation_db_path.to_str().expect("revocation db path"),
             "--authority-seed-file",
             authority_seed_path.to_str().expect("authority seed path"),
+            "--session-db",
+            session_db_path.to_str().expect("session db path"),
             "mcp",
             "serve-http",
             "--policy",
@@ -1223,17 +1237,17 @@ fn spawn_http_server_with_oidc_discovery_and_identity_federation(
     let policy_path = write_policy(dir);
     let script_path = write_mock_server_script(dir);
     let receipt_db_path = dir.join("remote-receipts.sqlite3");
-    let revocation_db_path = dir.join("remote-revocations.sqlite3");
     let authority_seed_path = dir.join("remote-authority.seed");
+    let session_db_path = default_session_db_path(dir, listen);
 
     let mut command = Command::new(env!("CARGO_BIN_EXE_chio"));
     command.args([
         "--receipt-db",
         receipt_db_path.to_str().expect("receipt db path"),
-        "--revocation-db",
-        revocation_db_path.to_str().expect("revocation db path"),
         "--authority-seed-file",
         authority_seed_path.to_str().expect("authority seed path"),
+        "--session-db",
+        session_db_path.to_str().expect("session db path"),
         "mcp",
         "serve-http",
         "--policy",
@@ -1287,17 +1301,17 @@ fn spawn_http_server_with_token_introspection_and_identity_federation(
     let policy_path = write_policy(dir);
     let script_path = write_mock_server_script(dir);
     let receipt_db_path = dir.join("remote-receipts.sqlite3");
-    let revocation_db_path = dir.join("remote-revocations.sqlite3");
     let authority_seed_path = dir.join("remote-authority.seed");
+    let session_db_path = default_session_db_path(dir, listen);
 
     let mut command = Command::new(env!("CARGO_BIN_EXE_chio"));
     command.args([
         "--receipt-db",
         receipt_db_path.to_str().expect("receipt db path"),
-        "--revocation-db",
-        revocation_db_path.to_str().expect("revocation db path"),
         "--authority-seed-file",
         authority_seed_path.to_str().expect("authority seed path"),
+        "--session-db",
+        session_db_path.to_str().expect("session db path"),
         "mcp",
         "serve-http",
         "--policy",
@@ -1344,20 +1358,19 @@ fn spawn_trust_control_service(
     listen: SocketAddr,
     service_token: &str,
     receipt_db_path: &Path,
-    revocation_db_path: &Path,
     authority_db_path: &Path,
-    budget_db_path: &Path,
+    joint_authority_db_path: &Path,
 ) -> ServerGuard {
     let child = Command::new(env!("CARGO_BIN_EXE_chio"))
         .args([
             "--receipt-db",
             receipt_db_path.to_str().expect("receipt db path"),
-            "--revocation-db",
-            revocation_db_path.to_str().expect("revocation db path"),
             "--authority-db",
             authority_db_path.to_str().expect("authority db path"),
-            "--budget-db",
-            budget_db_path.to_str().expect("budget db path"),
+            "--session-db",
+            joint_authority_db_path
+                .to_str()
+                .expect("joint authority db path"),
             "trust",
             "serve",
             "--listen",
@@ -1383,6 +1396,7 @@ fn spawn_http_server_with_control_plane(
 ) -> ServerGuard {
     let policy_path = write_policy(dir);
     let script_path = write_mock_server_script(dir);
+    let session_db_path = default_session_db_path(dir, listen);
 
     let child = Command::new(env!("CARGO_BIN_EXE_chio"))
         .args([
@@ -1390,6 +1404,8 @@ fn spawn_http_server_with_control_plane(
             control_url,
             "--control-token",
             control_token,
+            "--session-db",
+            session_db_path.to_str().expect("session db path"),
             "mcp",
             "serve-http",
             "--policy",
@@ -2007,7 +2023,11 @@ fn initialize_session_with_capabilities(
             }
         }),
     );
-    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    if response.status() != reqwest::StatusCode::OK {
+        let status = response.status();
+        let body = response.text().expect("read failed response body");
+        panic!("initialize returned {status}: {body}");
+    }
     let session_id = response
         .headers()
         .get("MCP-Session-Id")
@@ -2049,7 +2069,7 @@ fn mcp_serve_http_streams_roots_request_after_initialized_when_client_supports_r
     let token = "test-token";
     let _server = spawn_http_server(&dir, listen, token);
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build client");
     let base_url = format!("http://{listen}");
@@ -2147,7 +2167,7 @@ fn mcp_serve_http_requires_auth_reuses_sessions_and_supports_delete() {
     let token = "test-token";
     let _server = spawn_http_server(&dir, listen, token);
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -2187,7 +2207,11 @@ fn mcp_serve_http_requires_auth_reuses_sessions_and_supports_delete() {
             "params": {}
         }),
     );
-    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    if response.status() != reqwest::StatusCode::OK {
+        let status = response.status();
+        let body = response.text().expect("read failed response body");
+        panic!("tools/list returned {status}: {body}");
+    }
     let (tools_list, notifications) = read_sse_until_response(response, json!(2), |_| {});
     assert!(notifications.is_empty());
     let tool_names = tools_list["result"]["tools"]
@@ -2204,7 +2228,11 @@ fn mcp_serve_http_requires_auth_reuses_sessions_and_supports_delete() {
     assert_eq!(deleted.status(), reqwest::StatusCode::NO_CONTENT);
 
     let deleted_trust = get_admin_session_trust(&client, &base_url, token, &session_id);
-    assert_eq!(deleted_trust.status(), reqwest::StatusCode::OK);
+    if deleted_trust.status() != reqwest::StatusCode::OK {
+        let status = deleted_trust.status();
+        let body = deleted_trust.text().expect("read failed response body");
+        panic!("deleted session trust returned {status}: {body}");
+    }
     let deleted_trust: Value = deleted_trust.json().expect("deleted trust json");
     assert_eq!(
         deleted_trust["lifecycle"]["state"].as_str(),
@@ -2250,7 +2278,7 @@ fn mcp_serve_http_session_trust_reports_lifecycle_and_reconnect_contract() {
     fs::create_dir_all(&dir).expect("create temp dir");
     let token = "test-token";
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let (listen, _server) = spawn_with_bind_retry(
@@ -2357,7 +2385,7 @@ fn mcp_serve_http_session_trust_reports_request_stream_lease_while_post_stream_i
     let token = "test-token";
     let _server = spawn_http_server(&dir, listen, token);
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -2435,7 +2463,7 @@ fn mcp_serve_http_idle_expiry_reaps_sessions_and_blocks_reuse() {
         Some(50),
     );
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -2510,7 +2538,7 @@ fn mcp_serve_http_admin_drain_shutdown_and_delete_have_distinct_terminal_states(
         Some(50),
     );
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -2644,7 +2672,7 @@ fn mcp_serve_http_terminal_tombstones_survive_restart_and_block_reuse() {
             Some(50),
         );
         let client = Client::builder()
-            .timeout(Duration::from_secs(5))
+            .timeout(HTTP_CLIENT_TIMEOUT)
             .build()
             .expect("build reqwest client");
         let base_url = format!("http://{listen}");
@@ -2680,7 +2708,7 @@ fn mcp_serve_http_terminal_tombstones_survive_restart_and_block_reuse() {
             Some(50),
         );
         let client = Client::builder()
-            .timeout(Duration::from_secs(5))
+            .timeout(HTTP_CLIENT_TIMEOUT)
             .build()
             .expect("build reqwest client");
         let base_url = format!("http://{listen}");
@@ -2721,7 +2749,7 @@ fn mcp_serve_http_terminal_tombstones_survive_restart_and_block_reuse() {
             Some(50),
         );
         let client = Client::builder()
-            .timeout(Duration::from_secs(5))
+            .timeout(HTTP_CLIENT_TIMEOUT)
             .build()
             .expect("build reqwest client");
         let base_url = format!("http://{listen}");
@@ -2746,7 +2774,7 @@ fn mcp_serve_http_terminal_tombstones_survive_restart_and_block_reuse() {
         Some(50),
     );
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -2809,7 +2837,7 @@ fn mcp_serve_http_ready_sessions_survive_restart_and_resume_authenticated_calls(
             Some(50),
         );
         let client = Client::builder()
-            .timeout(Duration::from_secs(5))
+            .timeout(HTTP_CLIENT_TIMEOUT)
             .build()
             .expect("build reqwest client");
         let base_url = format!("http://{listen}");
@@ -2833,7 +2861,7 @@ fn mcp_serve_http_ready_sessions_survive_restart_and_resume_authenticated_calls(
         Some(50),
     );
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -2900,7 +2928,7 @@ fn mcp_serve_http_ready_sessions_reissue_capabilities_after_policy_tightening() 
             "Chio",
         );
         let client = Client::builder()
-            .timeout(Duration::from_secs(5))
+            .timeout(HTTP_CLIENT_TIMEOUT)
             .build()
             .expect("build reqwest client");
         let base_url = format!("http://{listen}");
@@ -2921,7 +2949,7 @@ fn mcp_serve_http_ready_sessions_reissue_capabilities_after_policy_tightening() 
         "Chio",
     );
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -2991,7 +3019,7 @@ fn mcp_serve_http_restores_sessions_with_fresh_capabilities_after_ttl_expiry() {
             "Chio",
         );
         let client = Client::builder()
-            .timeout(Duration::from_secs(5))
+            .timeout(HTTP_CLIENT_TIMEOUT)
             .build()
             .expect("build reqwest client");
         let base_url = format!("http://{listen}");
@@ -3013,7 +3041,7 @@ fn mcp_serve_http_restores_sessions_with_fresh_capabilities_after_ttl_expiry() {
         "Chio",
     );
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -3064,7 +3092,7 @@ fn mcp_serve_http_drops_restored_sessions_when_auth_mode_changes() {
             "Chio",
         );
         let client = Client::builder()
-            .timeout(Duration::from_secs(5))
+            .timeout(HTTP_CLIENT_TIMEOUT)
             .build()
             .expect("build reqwest client");
         let base_url = format!("http://{listen}");
@@ -3088,7 +3116,7 @@ fn mcp_serve_http_drops_restored_sessions_when_auth_mode_changes() {
         Some(&session_db_path),
     );
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -3107,7 +3135,7 @@ fn mcp_serve_http_isolates_multiple_sessions() {
     let token = "test-token";
     let _server = spawn_http_server(&dir, listen, token);
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -3189,7 +3217,7 @@ fn mcp_serve_http_get_stream_owns_session_notifications_when_attached() {
     let token = "test-token";
     let _server = spawn_http_server(&dir, listen, token);
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -3318,7 +3346,7 @@ fn mcp_serve_http_get_stream_replays_retained_notifications_and_rejects_stale_cu
     let token = "test-token";
     let _server = spawn_http_server(&dir, listen, token);
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -3481,7 +3509,7 @@ fn mcp_serve_http_get_stream_receives_late_wrapped_notifications_after_post_fini
     let token = "test-token";
     let _server = spawn_http_server(&dir, listen, token);
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -3548,7 +3576,7 @@ fn mcp_serve_http_returns_error_when_wrapped_stream_ends_mid_call() {
     let token = "test-token";
     let _server = spawn_http_server(&dir, listen, token);
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -3594,7 +3622,7 @@ fn mcp_serve_http_cancels_same_session_tasks_and_blocks_cross_session_cancel() {
     let token = "test-token";
     let _server = spawn_http_server(&dir, listen, token);
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -3697,7 +3725,7 @@ fn mcp_serve_http_shared_hosted_owner_reuses_one_upstream_subprocess_and_keeps_s
     let startup_marker_path = dir.join("upstream-startups.log");
     let _server = spawn_http_server_with_shared_owner(&dir, listen, token, &startup_marker_path);
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -3783,8 +3811,14 @@ fn mcp_serve_http_shared_hosted_owner_reuses_one_upstream_subprocess_and_keeps_s
     let (slow_b_result, slow_b_events) = slow_b.join().expect("shared owner slow call B");
     assert!(slow_a_events.is_empty());
     assert!(slow_b_events.is_empty());
-    assert_eq!(slow_a_result["result"]["isError"], false);
-    assert_eq!(slow_b_result["result"]["isError"], false);
+    assert_eq!(
+        slow_a_result["result"]["isError"], false,
+        "session A response: {slow_a_result:#}"
+    );
+    assert_eq!(
+        slow_b_result["result"]["isError"], false,
+        "session B response: {slow_b_result:#}"
+    );
 
     let create_task = post_json(
         &client,
@@ -3864,7 +3898,7 @@ fn mcp_serve_http_shared_hosted_owner_broadcasts_global_notifications() {
     let startup_marker_path = dir.join("upstream-startups.log");
     let _server = spawn_http_server_with_shared_owner(&dir, listen, token, &startup_marker_path);
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -3956,7 +3990,7 @@ fn mcp_serve_http_supports_nested_sampling_over_sse() {
     let token = "test-token";
     let _server = spawn_http_server(&dir, listen, token);
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -4031,7 +4065,7 @@ fn mcp_serve_http_parent_cancellation_during_tasks_result_marks_task_cancelled()
     let token = "test-token";
     let _server = spawn_http_server(&dir, listen, token);
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -4158,7 +4192,7 @@ fn mcp_serve_http_admin_receipt_queries_return_tool_and_child_receipts() {
     let token = "test-token";
     let _server = spawn_http_server(&dir, listen, token);
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -4270,7 +4304,7 @@ fn mcp_serve_http_admin_revocation_queries_and_direct_revoke_work() {
     fs::create_dir_all(&dir).expect("create temp dir");
     let token = "test-token";
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let (listen, _server) = spawn_with_bind_retry(
@@ -4342,7 +4376,7 @@ fn mcp_serve_http_admin_revocation_denies_future_calls_for_session() {
     fs::create_dir_all(&dir).expect("create temp dir");
     let token = "test-token";
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let (listen, _server) = spawn_with_bind_retry(
@@ -4426,7 +4460,7 @@ fn mcp_serve_http_admin_authority_rotation_only_affects_future_sessions() {
     let token = "test-token";
     let _server = spawn_http_server(&dir, listen, token);
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -4509,7 +4543,7 @@ fn mcp_serve_http_shared_authority_rotation_propagates_across_nodes() {
     let _server_a = spawn_http_server_with_authority_db(&dir, listen_a, token, &authority_db_path);
     let _server_b = spawn_http_server_with_authority_db(&dir, listen_b, token, &authority_db_path);
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url_a = format!("http://{listen_a}");
@@ -4603,13 +4637,12 @@ fn mcp_serve_http_control_service_centralizes_receipts_revocations_and_authority
     fs::create_dir_all(&node_b_dir).expect("create node B dir");
 
     let receipt_db_path = dir.join("control-receipts.sqlite3");
-    let revocation_db_path = dir.join("control-revocations.sqlite3");
     let authority_db_path = dir.join("control-authority.sqlite3");
-    let budget_db_path = dir.join("control-budgets.sqlite3");
+    let joint_authority_db_path = dir.join("control-joint-authority.sqlite3");
     let auth_token = "edge-token";
     let control_token = "control-token";
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
 
@@ -4621,9 +4654,8 @@ fn mcp_serve_http_control_service_centralizes_receipts_revocations_and_authority
                 listen,
                 control_token,
                 &receipt_db_path,
-                &revocation_db_path,
                 &authority_db_path,
-                &budget_db_path,
+                &joint_authority_db_path,
             )
         },
         wait_for_control_service_result,
@@ -4707,8 +4739,8 @@ fn mcp_serve_http_control_service_centralizes_receipts_revocations_and_authority
     let (tool_call, notifications) = read_sse_until_response(tool_call, json!(41), |_| {});
     assert!(notifications.is_empty());
     assert_eq!(
-        tool_call["result"]["structuredContent"]["echo"],
-        "distributed hello"
+        tool_call["result"]["structuredContent"]["echo"], "distributed hello",
+        "control-backed tool response: {tool_call:#}"
     );
 
     let control_receipts = get_control_tool_receipts(
@@ -4867,7 +4899,7 @@ fn mcp_serve_http_dedicated_jwt_sessions_require_exact_bearer_continuity_and_sep
         admin_token,
     );
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -4959,7 +4991,7 @@ fn mcp_serve_http_shared_owner_jwt_sessions_keep_weak_compatibility_continuity()
     let admin_token = "admin-secret";
     let jwt_signing_key = Keypair::generate();
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let (listen, _server) = spawn_with_bind_retry(
@@ -5067,7 +5099,7 @@ fn mcp_serve_http_identity_federation_derives_stable_subjects_from_jwt_principal
         Some(&federation_seed_path),
     );
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -5287,7 +5319,7 @@ fn mcp_serve_http_admin_health_reports_runtime_state() {
         Some(&federation_seed_path),
     );
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -5337,7 +5369,7 @@ fn mcp_serve_http_oidc_discovery_verifies_jwt_and_uses_azure_ad_profile_mapping(
     let (idp_root, issuer, discovery_url) =
         write_oidc_discovery_fixture(&dir, idp_listen, "tenant/v2.0", &oidc_signing_key);
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let mut idp_server = spawn_static_http_fixture_server(&idp_root, idp_listen);
@@ -5491,7 +5523,7 @@ fn mcp_serve_http_oidc_discovery_verifies_rs256_tokens() {
         }),
     );
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let mut idp_server = spawn_static_http_fixture_server(&idp_root, idp_listen);
@@ -5570,7 +5602,7 @@ fn mcp_serve_http_oidc_discovery_verifies_es256_tokens() {
         }),
     );
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let mut idp_server = spawn_static_http_fixture_server(&idp_root, idp_listen);
@@ -5685,7 +5717,7 @@ fn mcp_serve_http_token_introspection_verifies_opaque_tokens_and_derives_stable_
         STANDARD.encode(format!("{client_id}:{client_secret}"))
     );
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let mut introspection_server = spawn_introspection_server(
@@ -5802,7 +5834,7 @@ fn mcp_serve_http_rejects_session_reuse_when_authenticated_principal_changes() {
         admin_token,
     );
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -5875,7 +5907,7 @@ fn mcp_serve_http_rejects_jwt_with_wrong_audience() {
         admin_token,
     );
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -5970,7 +6002,7 @@ fn mcp_serve_http_serves_oauth_authorization_server_metadata_for_local_issuer() 
         token_endpoint,
     );
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     wait_for_server(&client, &base_url);
@@ -6034,7 +6066,7 @@ fn mcp_serve_http_requires_both_accept_types_and_json_content_type() {
     let token = "test-token";
     let _server = spawn_http_server(&dir, listen, token);
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -6089,7 +6121,7 @@ fn mcp_serve_http_sets_explicit_response_mode_headers() {
     let token = "test-token";
     let _server = spawn_http_server(&dir, listen, token);
     let client = Client::builder()
-        .timeout(Duration::from_secs(5))
+        .timeout(HTTP_CLIENT_TIMEOUT)
         .build()
         .expect("build reqwest client");
     let base_url = format!("http://{listen}");
@@ -6199,118 +6231,5 @@ fn mcp_serve_http_sets_explicit_response_mode_headers() {
     assert_eq!(get_stream.status(), reqwest::StatusCode::OK);
 }
 
-#[test]
-fn mcp_serve_http_rejects_initialize_with_session_header_without_issuing_session() {
-    skip_when_loopback_denied!(
-        mcp_serve_http_rejects_initialize_with_session_header_without_issuing_session
-    );
-    let dir = unique_test_dir();
-    fs::create_dir_all(&dir).expect("create temp dir");
-    let listen = reserve_listen_addr();
-    let token = "test-token";
-    let _server = spawn_http_server(&dir, listen, token);
-    let client = Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .expect("build reqwest client");
-    let base_url = format!("http://{listen}");
-    wait_for_server(&client, &base_url);
-
-    let response = post_raw(
-        &client,
-        &base_url,
-        Some(token),
-        Some("bogus-session"),
-        "application/json, text/event-stream",
-        "application/json",
-        &json!({
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": {
-                "protocolVersion": "2025-11-25",
-                "capabilities": {},
-                "clientInfo": {
-                    "name": "integration-test",
-                    "version": "0.1.0"
-                }
-            }
-        }),
-    );
-
-    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
-    assert!(response.headers().get("MCP-Session-Id").is_none());
-}
-
-#[test]
-fn mcp_serve_http_rejects_initialize_without_request_id() {
-    skip_when_loopback_denied!(mcp_serve_http_rejects_initialize_without_request_id);
-    let dir = unique_test_dir();
-    fs::create_dir_all(&dir).expect("create temp dir");
-    let listen = reserve_listen_addr();
-    let token = "test-token";
-    let _server = spawn_http_server(&dir, listen, token);
-    let client = Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .expect("build reqwest client");
-    let base_url = format!("http://{listen}");
-    wait_for_server(&client, &base_url);
-
-    let response = post_raw(
-        &client,
-        &base_url,
-        Some(token),
-        None,
-        "application/json, text/event-stream",
-        "application/json",
-        &json!({
-            "jsonrpc": "2.0",
-            "method": "initialize",
-            "params": {
-                "protocolVersion": "2025-11-25",
-                "capabilities": {},
-                "clientInfo": {
-                    "name": "integration-test",
-                    "version": "0.1.0"
-                }
-            }
-        }),
-    );
-
-    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
-    assert!(response.headers().get("MCP-Session-Id").is_none());
-}
-
-#[test]
-fn mcp_serve_http_rejects_malformed_jsonrpc_body() {
-    skip_when_loopback_denied!(mcp_serve_http_rejects_malformed_jsonrpc_body);
-    let dir = unique_test_dir();
-    fs::create_dir_all(&dir).expect("create temp dir");
-    let listen = reserve_listen_addr();
-    let token = "test-token";
-    let _server = spawn_http_server(&dir, listen, token);
-    let client = Client::builder()
-        .timeout(Duration::from_secs(5))
-        .build()
-        .expect("build reqwest client");
-    let base_url = format!("http://{listen}");
-    wait_for_server(&client, &base_url);
-
-    let response = post_bytes(
-        &client,
-        &base_url,
-        Some(token),
-        None,
-        "application/json, text/event-stream",
-        "application/json",
-        br#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25""#,
-    );
-    assert_eq!(response.status(), reqwest::StatusCode::BAD_REQUEST);
-    let body: Value = response.json().expect("parse malformed request response");
-    assert_eq!(body["error"]["code"], -32700);
-    assert!(body["error"]["message"]
-        .as_str()
-        .expect("parse error message")
-        .contains("invalid JSON"));
-}
+#[path = "mcp_serve_http/malformed_initialize.rs"]
+mod malformed_initialize;

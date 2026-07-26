@@ -1,8 +1,7 @@
 chio_alert_dispatch_latency_seconds|histogram|route,outcome|0.25,0.5,1.0,2.5,5.0,10.0|PagerDuty or OpsGenie alert dispatch latency in seconds.
 chio_alert_dispatch_total|counter|route,outcome||Total PagerDuty or OpsGenie alert dispatch outcomes.
+chio_ambiguous_dispatch_retained_hold_total|counter|reconciliation||Total budget or payment holds retained after an ambiguous post-dispatch outcome, labeled by whether durable reconciliation is available.
 chio_anchor_round_latency_seconds|histogram|witness,outcome|0.1,0.5,1.0,2.5,5.0,10.0|Anchor round latency in seconds.
-chio_budget_holds_expired_total|counter|||Total capability budget holds swept to disposition=expired by the orphaned-hold sweeper.
-chio_budget_open_holds|gauge|||Capability budget holds currently in disposition=open.
 chio_capability_revocation_lag_seconds|histogram|authority|1,5,15,30,60,120,300|Capability revocation propagation lag in seconds.
 chio_dispatch_failure_total|counter|surface,outcome||Total tool-dispatch failures that did not bypass mediation.
 chio_dlq_depth|gauge|exporter||Dead-letter queue depth by exporter.
@@ -52,7 +51,7 @@ chio_receipt_seconds_since_last_checkpoint|gauge|||Seconds since the receipt-sto
 chio_receipt_uncheckpointed_seq_range|gauge|||Uncheckpointed receipt entry_seq range (end - start) on the local store.
 chio_receipt_write_latency_seconds|histogram|store,outcome|0.01,0.025,0.05,0.1,0.25,0.5,1.0|Receipt write latency at the local store boundary in seconds.
 chio_receipt_write_total|counter|outcome||Total receipt write outcomes after policy or guard evaluation.
-chio_settlement_unresolved_total|counter|||Total money-bearing receipts whose settlement outcome could not be resolved (routed to retry or dead-letter, or surfaced as a loud incident).
+chio_settlement_unresolved_total|counter|||Total settlement observer routing invocations with an unresolved outcome.
 chio_sidecar_requests_total|counter|outcome||Total sidecar request outcomes at the mediation edge.
 chio_signing_queue_block_total|counter|reason||Total receipt signing requests blocked by bounded queue capacity or byte budget.
 chio_soc_export_lag_seconds|histogram|exporter,severity|30,60,120,300,600,1800|SOC export lag in seconds from receipt persistence to sink acknowledgement.

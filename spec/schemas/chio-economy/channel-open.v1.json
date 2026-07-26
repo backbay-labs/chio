@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-economy/channel-open/v1",
+  "title": "Chio Channel Open V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "payerSignature", "payeeSignature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "channelId",
+        "openIntentDigest",
+        "fundingAcknowledgementDigest",
+        "initialStateDigest",
+        "openedAtUnixMs"
+      ],
+      "properties": {
+        "schema": { "const": "chio.channel.open.v1" },
+        "channelId": { "$ref": "#/$defs/digest" },
+        "openIntentDigest": { "$ref": "#/$defs/digest" },
+        "fundingAcknowledgementDigest": { "$ref": "#/$defs/digest" },
+        "initialStateDigest": { "$ref": "#/$defs/digest" },
+        "openedAtUnixMs": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "payerSignature": { "$ref": "#/$defs/channelSignature" },
+    "payeeSignature": { "$ref": "#/$defs/channelSignature" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "positiveInteger": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "text": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "publicKey": { "type": "string", "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$", "maxLength": 16384 },
+    "signature": { "type": "string", "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$", "maxLength": 16384 },
+    "channelSignature": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["signerId", "keyEpoch", "signerKey", "signature"],
+      "properties": {
+        "signerId": { "$ref": "#/$defs/text" },
+        "keyEpoch": { "$ref": "#/$defs/positiveInteger" },
+        "signerKey": { "$ref": "#/$defs/publicKey" },
+        "signature": { "$ref": "#/$defs/signature" }
+      }
+    }
+  }
+}

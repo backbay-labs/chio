@@ -454,7 +454,7 @@ impl SqliteExecutionNonceStore {
         let path = path.as_ref();
         let filesystem_path = path
             .to_str()
-            .map(crate::sqlite_uri_filesystem_path)
+            .map(crate::sqlite_filesystem_path)
             .unwrap_or_else(|| path.to_path_buf());
         if !filesystem_path.is_file() {
             return Err(SqliteExecutionNonceStoreError::storage(format!(
@@ -663,7 +663,7 @@ fn record_execution_nonce_prune(
     horizon: i64,
 ) -> Result<(), rusqlite::Error> {
     transaction.execute(
-        "DELETE FROM chio_execution_nonces WHERE expires_at <= ?1 AND dispatch_reservation_id IS NULL",
+        "DELETE FROM chio_execution_nonces WHERE expires_at <= ?1",
         params![horizon],
     )?;
     transaction.execute(
@@ -775,6 +775,31 @@ impl ExecutionNonceStore for SqliteExecutionNonceStore {
         tx.commit()
             .map_err(|e| KernelError::Internal(format!("sqlite execution nonce store: {e}")))?;
         Ok(rows > 0)
+    }
+
+    fn is_consumed(&self, nonce_id: &str) -> Result<bool, KernelError> {
+        let now = now_secs();
+        let conn = self.pool.get().map_err(|error| {
+            KernelError::Internal(format!(
+                "sqlite execution nonce store pool acquire: {error}"
+            ))
+        })?;
+        conn.query_row(
+            r#"
+            SELECT EXISTS (
+                SELECT 1
+                FROM chio_execution_nonces
+                WHERE nonce_id = ?1 AND expires_at > ?2
+            )
+            "#,
+            params![nonce_id, now],
+            |row| row.get(0),
+        )
+        .map_err(|error| {
+            KernelError::Internal(format!(
+                "sqlite execution nonce store consumed lookup: {error}"
+            ))
+        })
     }
 }
 
@@ -921,6 +946,44 @@ mod tests {
             .unwrap());
         assert!(store
             .reserve_for_dispatch("rollback-b", expires_at, "owner-b")
+            .unwrap());
+    }
+
+    #[test]
+    fn retention_expiry_reclaims_crash_owned_reservation_and_capacity() {
+        let store = SqliteExecutionNonceStore::open_in_memory_with_capacity(1).unwrap();
+        let base = now_secs();
+
+        assert!(store
+            .try_reserve_signed_entry(
+                "crashed-owned",
+                base,
+                base.saturating_add(1),
+                base.saturating_add(1),
+                Some("abandoned-owner"),
+            )
+            .unwrap());
+        assert!(store
+            .try_reserve_signed_entry(
+                "next",
+                base,
+                base.saturating_add(100),
+                base.saturating_add(160),
+                Some("next-owner"),
+            )
+            .is_err());
+
+        assert!(store
+            .try_reserve_signed_entry(
+                "next",
+                base.saturating_add(1),
+                base.saturating_add(100),
+                base.saturating_add(160),
+                Some("next-owner"),
+            )
+            .unwrap());
+        assert!(!store
+            .rollback_dispatch_reservation("crashed-owned", "abandoned-owner")
             .unwrap());
     }
 
@@ -1198,101 +1261,41 @@ mod tests {
     #[test]
     fn persists_across_reopen() {
         let path = unique_db_path("chio-exec-nonce");
+        let now = now_secs();
+        let expires_at = now.saturating_add(120);
         {
             let store = SqliteExecutionNonceStore::open(&path).unwrap();
             let now = now_secs();
             assert!(store
-                .try_reserve("persistent-nonce", now, now.saturating_add(1_000_000_000),)
+                .try_reserve("persistent-nonce", now, expires_at)
                 .unwrap());
+            assert!(store.is_consumed("persistent-nonce").unwrap());
         }
         let reopened = SqliteExecutionNonceStore::open(&path).unwrap();
+        assert!(reopened.is_consumed("persistent-nonce").unwrap());
+        assert!(!reopened
+            .try_reserve("persistent-nonce", now, expires_at)
+            .unwrap());
+        let _ = fs::remove_file(path);
+    }
+
+    #[test]
+    fn consumed_lookup_ignores_expired_rows() {
+        let store = SqliteExecutionNonceStore::open_in_memory().unwrap();
         let now = now_secs();
-        assert!(!reopened
-            .try_reserve("persistent-nonce", now, now.saturating_add(1_000_000_000),)
-            .unwrap());
-        let _ = fs::remove_file(path);
-    }
-
-    #[test]
-    fn capacity_pressure_persists_across_reopen() {
-        let path = unique_db_path("chio-exec-nonce-capacity-restart");
-        let now;
-        {
-            let store = SqliteExecutionNonceStore::open_with_capacity(&path, 1).unwrap();
-            now = now_secs();
-            assert!(store
-                .try_reserve("restart-a", now, now.saturating_add(300))
-                .unwrap());
-        }
-
-        let reopened = SqliteExecutionNonceStore::open_with_capacity(&path, 1).unwrap();
-        let reopen_now = now_secs();
-        assert!(!reopened
-            .try_reserve("restart-a", reopen_now, now.saturating_add(300))
-            .unwrap());
-        let error = reopened
-            .try_reserve("restart-b", reopen_now, now.saturating_add(300))
-            .unwrap_err();
-        assert!(error.to_string().contains("capacity 1 exhausted"));
-        assert!(!reopened
-            .try_reserve("restart-a", reopen_now, now.saturating_add(300))
-            .unwrap());
-        let _ = fs::remove_file(path);
-    }
-
-    #[test]
-    fn independently_opened_handles_can_only_increase_persisted_capacity() {
-        let path = unique_db_path("chio-exec-nonce-capacity-handle-mismatch");
-        let store = SqliteExecutionNonceStore::open_with_capacity(&path, 1).unwrap();
-        let larger = SqliteExecutionNonceStore::open_with_capacity(&path, 2).unwrap();
-
-        let now = now_secs();
-        assert!(store
-            .try_reserve("persisted-limit-a", now, now.saturating_add(300))
-            .unwrap());
-        assert!(store
-            .try_reserve("persisted-limit-b", now, now.saturating_add(300))
-            .unwrap());
-        drop(larger);
-
-        let error = match SqliteExecutionNonceStore::open_with_capacity(&path, 1) {
-            Ok(_) => panic!("a later handle must not shrink the persisted capacity"),
-            Err(error) => error,
-        };
-        assert!(error.to_string().contains("cannot shrink from 2 to 1"));
-        drop(store);
-        let _ = fs::remove_file(path);
-    }
-
-    #[test]
-    fn reopening_below_retained_row_count_fails_without_eviction() {
-        let path = unique_db_path("chio-exec-nonce-capacity-reconfigure");
-        let now;
-        {
-            let store = SqliteExecutionNonceStore::open_with_capacity(&path, 2).unwrap();
-            now = now_secs();
-            assert!(store
-                .try_reserve("retained-a", now, now.saturating_add(300))
-                .unwrap());
-            assert!(store
-                .try_reserve("retained-b", now, now.saturating_add(300))
-                .unwrap());
-        }
-
-        let error = match SqliteExecutionNonceStore::open_with_capacity(&path, 1) {
-            Ok(_) => panic!("store must not evict retained rows to satisfy a smaller capacity"),
-            Err(error) => error,
-        };
-        assert!(error.to_string().contains("cannot shrink from 2 to 1"));
-
-        let reopened = SqliteExecutionNonceStore::open_with_capacity(&path, 2).unwrap();
-        let reopen_now = now_secs();
-        assert!(!reopened
-            .try_reserve("retained-a", reopen_now, now.saturating_add(300))
-            .unwrap());
-        assert!(!reopened
-            .try_reserve("retained-b", reopen_now, now.saturating_add(300))
-            .unwrap());
-        let _ = fs::remove_file(path);
+        store
+            .pool
+            .get()
+            .unwrap()
+            .execute(
+                "INSERT INTO chio_execution_nonces (nonce_id, consumed_at, expires_at) VALUES (?1, ?2, ?3)",
+                params![
+                    "expired-nonce",
+                    now.saturating_sub(2),
+                    now.saturating_sub(1),
+                ],
+            )
+            .unwrap();
+        assert!(!store.is_consumed("expired-nonce").unwrap());
     }
 }

@@ -157,6 +157,7 @@ mod tests {
             issued_at: 1000,
             expires_at: 2000,
             delegation_chain: vec![],
+            aggregate_invocation_budget: None,
         };
         CapabilityToken::sign(body, kp).unwrap()
     }
@@ -222,7 +223,13 @@ mod tests {
             capability_token: Box::new(make_token(&kp)),
             server_id: "srv".to_string(),
             tool: "echo".to_string(),
-            params: serde_json::json!({"text": "hello"}),
+            params: Box::new(serde_json::json!({"text": "hello"})),
+            governed_intent: None,
+            approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
+            execution_nonce: None,
         };
 
         // Serialize to a buffer (using canonical JSON, same as KernelMessage path).
@@ -260,6 +267,7 @@ mod tests {
                 value: serde_json::json!({"output": "world"}),
             },
             receipt: Box::new(receipt),
+            execution_nonce: None,
         };
 
         // Use a shared buffer as the "pipe".
@@ -278,6 +286,7 @@ mod tests {
                 id,
                 result,
                 receipt,
+                ..
             } => Some((id, result, receipt)),
             _ => None,
         }

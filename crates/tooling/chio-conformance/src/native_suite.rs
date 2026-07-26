@@ -426,13 +426,14 @@ pub fn fixture_messages_for_request(request: &AgentMessage) -> Vec<KernelMessage
                     "rcpt-revoked-001",
                     &capability_token.id,
                     tool,
-                    params.clone(),
+                    params.as_ref().clone(),
                     Decision::Deny {
                         reason: "capability revoked".to_string(),
                         guard: "revocation_store".to_string(),
                     },
                     None,
                 )),
+                execution_nonce: None,
             }]
         }
         AgentMessage::ToolCallRequest {
@@ -475,10 +476,11 @@ pub fn fixture_messages_for_request(request: &AgentMessage) -> Vec<KernelMessage
                     "rcpt-governed-001",
                     &capability_token.id,
                     tool,
-                    params.clone(),
+                    params.as_ref().clone(),
                     Decision::Allow,
                     metadata,
                 )),
+                execution_nonce: None,
             }]
         }
         AgentMessage::ToolCallRequest {
@@ -501,10 +503,11 @@ pub fn fixture_messages_for_request(request: &AgentMessage) -> Vec<KernelMessage
                     "rcpt-ok-001",
                     &capability_token.id,
                     tool,
-                    params.clone(),
+                    params.as_ref().clone(),
                     Decision::Allow,
                     None,
                 )),
+                execution_nonce: None,
             }]
         }
     }
@@ -829,7 +832,6 @@ fn capture_runtime_revocation_trace_with_store(
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     })
     .with_capability_trust_roots(vec![(kernel_key.public_key(), parent_scope_hash.clone())]);
     kernel.set_receipt_store(Box::new(SqliteReceiptStore::open(receipt_store_path)?))?;
@@ -847,6 +849,8 @@ fn capture_runtime_revocation_trace_with_store(
             }],
             timestamp: now,
             scope_hash: Some(parent_scope_hash.clone()),
+            aggregate_budget: None,
+            cumulative_approval: None,
         },
         &kernel_key,
     )?;
@@ -865,6 +869,7 @@ fn capture_runtime_revocation_trace_with_store(
                 issued_at: now,
                 expires_at: now.saturating_add(120).min(parent.expires_at),
                 delegation_chain: vec![link],
+                aggregate_invocation_budget: None,
             },
             caveats: Vec::new(),
             scope_attenuations: Vec::new(),
@@ -995,6 +1000,9 @@ fn trace_request(
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     }
@@ -1539,6 +1547,7 @@ fn build_capability(
             issued_at: 1_700_000_000,
             expires_at: 1_800_000_000,
             delegation_chain,
+            aggregate_invocation_budget: None,
         },
         &authority_keypair(),
     )
@@ -1606,6 +1615,8 @@ fn build_delegation_pair() -> (CapabilityToken, CapabilityToken) {
             ],
             timestamp: 1_700_000_100,
             scope_hash: Some(child_scope_hash),
+            aggregate_budget: None,
+            cumulative_approval: None,
         },
         &parent_subject,
     )
@@ -1637,6 +1648,7 @@ fn build_governed_intent() -> GovernedTransactionIntent {
             "currency": "USD",
             "seller": "supplier-001"
         })),
+        body: Default::default(),
     }
 }
 
@@ -1655,11 +1667,17 @@ fn build_governed_request() -> AgentMessage {
         )),
         server_id: "conformance".to_string(),
         tool: "governed_transfer".to_string(),
-        params: serde_json::json!({
+        params: Box::new(serde_json::json!({
             "amount": 1250,
             "currency": "USD",
             "seller": "supplier-001"
-        }),
+        })),
+        governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
+        execution_nonce: None,
     }
 }
 
@@ -1674,7 +1692,13 @@ fn build_revoked_request() -> AgentMessage {
         )),
         server_id: "conformance".to_string(),
         tool: "echo".to_string(),
-        params: serde_json::json!({"text": "hello"}),
+        params: Box::new(serde_json::json!({"text": "hello"})),
+        governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
+        execution_nonce: None,
     }
 }
 

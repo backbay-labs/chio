@@ -30,19 +30,10 @@ pub(crate) fn cmd_receipt_explain(
     if backend.json_output {
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
-        println!(
-            "receipt: {}",
-            report["receipt_id"].as_str().unwrap_or(args.receipt_id)
-        );
+        println!("receipt: {}", report["receipt_id"].as_str().unwrap_or(args.receipt_id));
         println!("schema: {}", report["schema"].as_str().unwrap_or("unknown"));
-        println!(
-            "identity: {}",
-            report["identity"].as_str().unwrap_or("unknown")
-        );
-        println!(
-            "decision: {}",
-            report["decision"].as_str().unwrap_or("unknown")
-        );
+        println!("identity: {}", report["identity"].as_str().unwrap_or("unknown"));
+        println!("decision: {}", report["decision"].as_str().unwrap_or("unknown"));
         if let Some(reason) = report.get("reason").and_then(|value| value.as_str()) {
             println!("reason: {reason}");
         }
@@ -73,6 +64,7 @@ pub(crate) fn cmd_receipt_explain(
     Ok(())
 }
 
+
 pub(crate) fn is_bilateral_artifacts_value(value: &serde_json::Value) -> bool {
     let Some(obj) = value.as_object() else {
         return false;
@@ -95,14 +87,17 @@ pub(crate) fn render_bilateral_explain(
     args: &ReceiptExplainArgs<'_>,
     backend: &QueryBackend<'_>,
 ) -> Result<(), CliError> {
-    let dual =
-        bilateral_field(value, "dual_signed_receipt", "dualSignedReceipt").ok_or_else(|| {
+    let dual = bilateral_field(value, "dual_signed_receipt", "dualSignedReceipt").ok_or_else(
+        || {
             CliError::cli_other_error(
                 "bilateral artifact missing dual_signed_receipt section".to_string(),
             )
-        })?;
+        },
+    )?;
     let dsse = bilateral_field(value, "dsse_envelope", "dsseEnvelope").ok_or_else(|| {
-        CliError::cli_other_error("bilateral artifact missing dsse_envelope section".to_string())
+        CliError::cli_other_error(
+            "bilateral artifact missing dsse_envelope section".to_string(),
+        )
     })?;
 
     let dual_section = explain_dual_signed_receipt(dual)?;
@@ -175,9 +170,7 @@ pub(crate) fn explain_dual_signed_receipt(
     }))
 }
 
-pub(crate) fn explain_dsse_envelope(
-    dsse: &serde_json::Value,
-) -> Result<serde_json::Value, CliError> {
+pub(crate) fn explain_dsse_envelope(dsse: &serde_json::Value) -> Result<serde_json::Value, CliError> {
     // DsseEnvelope is `serde(rename_all = "camelCase")` so wire keys are
     // camelCase: `payloadType`, `payload`, `signatures`, optional `schema`.
     let payload_type = dsse
@@ -289,7 +282,10 @@ pub(crate) fn inspect_bilateral_envelope_trace(
     }
 
     // Step 3: payload base64 decodes.
-    let payload_b64 = dsse.get("payload").and_then(|v| v.as_str()).unwrap_or("");
+    let payload_b64 = dsse
+        .get("payload")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let payload_bytes = {
         use base64::engine::general_purpose::STANDARD as BASE64_STANDARD;
         use base64::Engine;
@@ -323,7 +319,12 @@ pub(crate) fn inspect_bilateral_envelope_trace(
     if predicate_type == bilateral_dsse::PREDICATE_TYPE_BILATERAL
         || predicate_type == "https://in-toto.io/attestation/bilateral-cosign-invocation/v1"
     {
-        step(4, "predicate_type_recognised", "ok", predicate_type);
+        step(
+            4,
+            "predicate_type_recognised",
+            "ok",
+            predicate_type,
+        );
     } else {
         step(
             4,
@@ -437,7 +438,9 @@ pub(crate) fn inspect_bilateral_envelope_trace(
     }
 
     // Step 10: keyids match the predicate's tool_server fingerprints.
-    let predicate = stmt_value.as_ref().and_then(|s| s.get("predicate"));
+    let predicate = stmt_value
+        .as_ref()
+        .and_then(|s| s.get("predicate"));
     let fp_a = predicate
         .and_then(|p| p.get("tool_server_a"))
         .and_then(|s| s.get("passport_key_fingerprint"))
@@ -594,18 +597,17 @@ pub(crate) fn print_bilateral_human(report: &serde_json::Value, with_trace: bool
     );
     let payload_hex = dsse["payload_hex"].as_str().unwrap_or("");
     if payload_hex.len() > 96 {
-        println!(
-            "  payload_hex:   {}... ({} bytes)",
-            &payload_hex[..96],
-            payload_hex.len() / 2
-        );
+        println!("  payload_hex:   {}... ({} bytes)", &payload_hex[..96], payload_hex.len() / 2);
     } else {
         println!("  payload_hex:   {}", payload_hex);
     }
     if let Some(sigs) = dsse["signatures"].as_array() {
         println!("  signatures:");
         for sig in sigs {
-            println!("    - keyid: {}", sig["keyid"].as_str().unwrap_or("?"));
+            println!(
+                "    - keyid: {}",
+                sig["keyid"].as_str().unwrap_or("?")
+            );
             let s = sig["sig"].as_str().unwrap_or("");
             if s.len() > 32 {
                 println!("      sig:   {}... ({} chars)", &s[..32], s.len());
@@ -623,10 +625,20 @@ pub(crate) fn print_bilateral_human(report: &serde_json::Value, with_trace: bool
     if with_trace {
         if let Some(trace) = report.get("bilateral_inspection_trace") {
             println!("--- bilateral envelope inspection trace ---");
-            println!("  WARNING: this is an inspection trace, not a verifier trace.");
-            println!("  Ed25519 signatures are NOT cryptographically verified here.");
-            println!("  spec: {}", trace["spec"].as_str().unwrap_or("?"));
-            println!("  scope: {}", trace["scope_note"].as_str().unwrap_or("?"));
+            println!(
+                "  WARNING: this is an inspection trace, not a verifier trace."
+            );
+            println!(
+                "  Ed25519 signatures are NOT cryptographically verified here."
+            );
+            println!(
+                "  spec: {}",
+                trace["spec"].as_str().unwrap_or("?")
+            );
+            println!(
+                "  scope: {}",
+                trace["scope_note"].as_str().unwrap_or("?")
+            );
             if let Some(steps) = trace["steps"].as_array() {
                 for entry in steps {
                     let idx = entry["step"].as_u64().unwrap_or(0);
@@ -669,6 +681,7 @@ pub(crate) fn load_receipt_for_explain(
                 until: None,
                 min_cost: None,
                 max_cost: None,
+                cost_currency: None,
                 cursor,
                 limit: Some(RECEIPT_EXPLAIN_PAGE_LIMIT),
                 agent_subject: None,
@@ -688,7 +701,11 @@ pub(crate) fn load_receipt_for_explain(
                 None => break,
             }
         }
-        return finish_receipt_for_explain(receipt_id, matches, "control plane receipt query");
+        return finish_receipt_for_explain(
+            receipt_id,
+            matches,
+            "control plane receipt query",
+        );
     }
     let path = backend.receipt_db_path.ok_or_else(|| {
         CliError::cli_other_error(
@@ -715,6 +732,7 @@ pub(crate) fn load_receipt_for_explain(
             until: None,
             min_cost: None,
             max_cost: None,
+            cost_currency: None,
             cursor,
             limit: RECEIPT_EXPLAIN_PAGE_LIMIT,
             agent_subject: None,
@@ -883,9 +901,7 @@ pub(crate) fn explain_receipt_value(
     }))
 }
 
-pub(crate) fn explain_decision_label(
-    decision: Option<&chio_core::receipt::decision::Decision>,
-) -> &'static str {
+pub(crate) fn explain_decision_label(decision: Option<&chio_core::receipt::decision::Decision>) -> &'static str {
     match decision {
         Some(chio_core::receipt::decision::Decision::Allow) => "allow",
         Some(chio_core::receipt::decision::Decision::Deny { .. }) => "deny",
@@ -910,9 +926,7 @@ pub(crate) fn decision_details(
     }
 }
 
-pub(crate) fn repair_hint(
-    decision: Option<&chio_core::receipt::decision::Decision>,
-) -> Option<&'static str> {
+pub(crate) fn repair_hint(decision: Option<&chio_core::receipt::decision::Decision>) -> Option<&'static str> {
     match decision {
         Some(chio_core::receipt::decision::Decision::Deny { .. }) => {
             Some("inspect the guard and policy_hash, then mint or narrow a matching capability")
@@ -1048,13 +1062,15 @@ mod receipt_explain_tests {
 
     #[test]
     fn receipt_explain_reports_semantic_authorization_fields() -> Result<(), CliError> {
-        let mediated = signed_explain_receipt(chio_core::receipt::decision::Decision::Allow, None);
-        let mediated_explain =
-            explain_receipt_value(&mediated.id, serde_json::to_value(&mediated)?, 1, 1)?;
-        assert_eq!(
-            mediated_explain["receipt_kind"].as_str(),
-            Some("mediated_decision")
-        );
+        let mediated =
+            signed_explain_receipt(chio_core::receipt::decision::Decision::Allow, None);
+        let mediated_explain = explain_receipt_value(
+            &mediated.id,
+            serde_json::to_value(&mediated)?,
+            1,
+            1,
+        )?;
+        assert_eq!(mediated_explain["receipt_kind"].as_str(), Some("mediated_decision"));
         assert_eq!(mediated_explain["boundary_class"].as_str(), Some("prevent"));
         assert_eq!(mediated_explain["result"].as_str(), Some("Authorized"));
         assert_eq!(mediated_explain["authorized"].as_bool(), Some(true));
@@ -1065,15 +1081,14 @@ mod receipt_explain_tests {
             },
             Some(chio_core::receipt::metadata::ReceiptSemanticFields::trace_detect_only()),
         );
-        let trace_explain = explain_receipt_value(&trace.id, serde_json::to_value(&trace)?, 1, 1)?;
-        assert_eq!(
-            trace_explain["receipt_kind"].as_str(),
-            Some("trace_observation")
-        );
-        assert_eq!(
-            trace_explain["boundary_class"].as_str(),
-            Some("detect_only")
-        );
+        let trace_explain = explain_receipt_value(
+            &trace.id,
+            serde_json::to_value(&trace)?,
+            1,
+            1,
+        )?;
+        assert_eq!(trace_explain["receipt_kind"].as_str(), Some("trace_observation"));
+        assert_eq!(trace_explain["boundary_class"].as_str(), Some("detect_only"));
         assert_eq!(trace_explain["result"].as_str(), Some("Observed"));
         assert_eq!(trace_explain["authorized"].as_bool(), Some(false));
 

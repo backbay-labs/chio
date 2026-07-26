@@ -125,8 +125,9 @@ pub fn run_traffic_replay(
 ) -> Result<TrafficReplayReport, ExecuteError> {
     // 1. Require tenant verification before any replay comparison work.
     let tenant_pubkey = match args.tenant_pubkey.as_deref() {
-        Some(path) => load_tenant_pubkey(path)
-            .map_err(|e| ExecuteError::Other(format!("failed to load tenant pubkey: {e}")))?,
+        Some(path) => load_tenant_pubkey(path).map_err(|e| {
+            ExecuteError::Other(format!("failed to load tenant pubkey: {e}"))
+        })?,
         None => return Err(ExecuteError::MissingTenantPubkey),
     };
 
@@ -181,8 +182,10 @@ pub fn run_traffic_replay(
                     .replay_receipt_id(&frame_id)
                     .map_err(ExecuteError::Partition)?;
                 let captured_verdict = record.frame.verdict;
-                let (captured_guard, captured_reason) = captured_guard_reason(&record.frame);
-                if let Err(err) = validate_frame(&record.frame, &args.schema, Some(&tenant_pubkey))
+                let (captured_guard, captured_reason) =
+                    captured_guard_reason(&record.frame);
+                if let Err(err) =
+                    validate_frame(&record.frame, &args.schema, Some(&tenant_pubkey))
                 {
                     errors = errors.saturating_add(1);
                     outcomes.push(TrafficFrameOutcome {
@@ -404,9 +407,13 @@ fn recompute_decision(
         tool_name: invocation.tool_name.clone(),
         arguments,
         governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         execution_nonce: None,
         model_metadata: None,
-        extra_metadata: None,
+                extra_metadata: None,
     }));
 
     match kernel.evaluate_session_operation(&context, &operation) {
@@ -449,14 +456,18 @@ fn replay_guard_reason(
     }
 }
 
-fn captured_guard_reason(frame: &chio_tee_frame::Frame) -> (Option<String>, Option<String>) {
+fn captured_guard_reason(
+    frame: &chio_tee_frame::Frame,
+) -> (Option<String>, Option<String>) {
     if matches!(frame.verdict, chio_tee_frame::Verdict::Allow) {
         return (None, None);
     }
     split_captured_deny_reason(frame.deny_reason.as_deref())
 }
 
-fn split_captured_deny_reason(reason: Option<&str>) -> (Option<String>, Option<String>) {
+fn split_captured_deny_reason(
+    reason: Option<&str>,
+) -> (Option<String>, Option<String>) {
     let Some(raw) = reason.map(str::trim).filter(|value| !value.is_empty()) else {
         return (None, None);
     };
@@ -493,7 +504,7 @@ mod replay_execute_tests {
     }
 
     fn canonical_invocation() -> serde_json::Value {
-        use chio_tool_call_fabric::{Principal, ProvenanceStamp, ProviderId, ToolInvocation};
+        use chio_tool_call_fabric::{Principal, ProviderId, ProvenanceStamp, ToolInvocation};
         use std::time::SystemTime;
         let invocation = ToolInvocation {
             provider: ProviderId::OpenAi,
@@ -618,7 +629,10 @@ capabilities: {}
         path
     }
 
-    fn traffic_args(ndjson_path: PathBuf, tenant_pubkey: PathBuf) -> TrafficArgs {
+    fn traffic_args(
+        ndjson_path: PathBuf,
+        tenant_pubkey: PathBuf,
+    ) -> TrafficArgs {
         TrafficArgs {
             from: ndjson_path,
             schema: "chio-tee-frame.v1".to_string(),
@@ -680,9 +694,7 @@ capabilities: {}
         assert_eq!(report.outcomes.len(), 3);
         // All outcomes are namespaced under the same run-id.
         for o in &report.outcomes {
-            assert!(o
-                .replay_receipt_id
-                .starts_with(&format!("replay:{}:", report.run_id)));
+            assert!(o.replay_receipt_id.starts_with(&format!("replay:{}:", report.run_id)));
         }
     }
 
@@ -859,7 +871,8 @@ capabilities: {}
 
     #[test]
     fn replay_diff_reason_attribution_splits_guard_reason_codes() {
-        let (guard, reason) = split_captured_deny_reason(Some("guard:pii.email_in_response"));
+        let (guard, reason) =
+            split_captured_deny_reason(Some("guard:pii.email_in_response"));
         assert_eq!(guard.as_deref(), Some("pii"));
         assert_eq!(reason.as_deref(), Some("email_in_response"));
     }

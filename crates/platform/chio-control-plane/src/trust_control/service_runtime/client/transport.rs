@@ -95,6 +95,29 @@ impl TrustControlClient {
         )
     }
 
+    pub(crate) fn post_json_capped<B: Serialize, T: for<'de> Deserialize<'de>>(
+        &self,
+        path: &str,
+        body: &B,
+        response_limit: u64,
+    ) -> Result<T, CliError> {
+        let json = serde_json::to_value(body).map_err(|error| {
+            CliError::cli_other_error(format!(
+                "failed to serialize trust control request: {error}"
+            ))
+        })?;
+        self.request_json_capped(
+            |client, url, token| {
+                client
+                    .post(url)
+                    .set(AUTHORIZATION.as_str(), &format!("Bearer {token}"))
+                    .send_json(json.clone())
+            },
+            path,
+            response_limit,
+        )
+    }
+
     pub(crate) fn post_internal_json<B: Serialize, T: for<'de> Deserialize<'de>>(
         &self,
         path: &str,
@@ -272,6 +295,19 @@ impl TrustControlClient {
         T: for<'de> Deserialize<'de>,
         F: Fn(&Agent, &str, &str) -> Result<ureq::Response, ureq::Error>,
     {
+        self.request_json_capped(request, path, MAX_PEER_RESPONSE_BYTES)
+    }
+
+    fn request_json_capped<T, F>(
+        &self,
+        request: F,
+        path: &str,
+        response_limit: u64,
+    ) -> Result<T, CliError>
+    where
+        T: for<'de> Deserialize<'de>,
+        F: Fn(&Agent, &str, &str) -> Result<ureq::Response, ureq::Error>,
+    {
         let endpoint_order = self.endpoint_order();
         let mut last_error = None;
         for index in endpoint_order {
@@ -279,7 +315,7 @@ impl TrustControlClient {
             match request(&self.http, &url, &self.token) {
                 Ok(response) => {
                     self.mark_preferred(index);
-                    return read_capped_json(response.into_reader(), MAX_PEER_RESPONSE_BYTES);
+                    return read_capped_json(response.into_reader(), response_limit);
                 }
                 Err(ureq::Error::Status(status, response)) if should_retry_status(status) => {
                     last_error = Some(CliError::cli_other_error(format!(

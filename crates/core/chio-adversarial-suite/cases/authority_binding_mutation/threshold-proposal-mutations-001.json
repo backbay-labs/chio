@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "id": "threshold-proposal-mutations-001",
+  "class": "authority_binding_mutation",
+  "expected_verdict": "DENY",
+  "expected_reason": "threshold_proposal_binding_mutated",
+  "threat_id": "kernel_impersonation",
+  "pending": false,
+  "artifact": {
+    "primitive": "threshold_approval_proposal",
+    "mutations": [
+      "future",
+      "expired",
+      "proposal_deadline",
+      "eligible_set_digest",
+      "governed_intent_hash",
+      "authorizing_capability_digest"
+    ]
+  }
+}

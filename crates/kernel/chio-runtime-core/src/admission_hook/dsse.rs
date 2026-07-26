@@ -48,12 +48,13 @@ pub(super) fn verify_treaty_dsse_evidence(
             "bilateral DSSE evidence is missing treaty binding refs",
         );
     };
+    let expected_consistency_model = bilateral_dsse_consistency_model(review.consistency_model)?;
     if treaty.treaty_id != review.treaty_scope.treaty_id
         || treaty.treaty_scope_sha256 != treaty_scope_sha256(review.treaty_scope)?
         || treaty.ladder_intersection_sha256 != review.ladder_intersection_sha256
         || treaty.continuation_sha256 != review.continuation_sha256
         || treaty.action_class_id != review.action_class_id
-        || treaty.consistency_model != review.consistency_model
+        || treaty.consistency_model != expected_consistency_model
         || treaty.request_sha256 != review.request.tool_args_sha256
     {
         return rejected(
@@ -138,7 +139,9 @@ pub(super) fn verify_treaty_dsse_evidence(
         }
     }
     if let Some(invocation) = invocation {
-        if treaty.consistency_model != invocation.consistency_model
+        let invocation_consistency_model =
+            bilateral_dsse_consistency_model(&invocation.consistency_model)?;
+        if treaty.consistency_model != invocation_consistency_model
             || treaty.outcome_sha256 != invocation.outcome_sha256
             || treaty.local_receipt_sha256 != invocation.local_receipt_sha256
             || treaty.remote_receipt_sha256 != invocation.remote_receipt_sha256

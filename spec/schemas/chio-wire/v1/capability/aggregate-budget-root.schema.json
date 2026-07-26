@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/capability/aggregate-budget-root.schema.json",
+  "title": "Chio Aggregate Budget Root Binding",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "root_capability_id",
+        "root_capability_hash",
+        "root_issuer",
+        "root_subject",
+        "max_invocations",
+        "root_expires_at",
+        "root_scope_hash"
+      ],
+      "properties": {
+        "schema": { "const": "chio.aggregate-budget-root.v1" },
+        "root_capability_id": { "type": "string", "minLength": 1 },
+        "root_capability_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+        "root_issuer": { "$ref": "#/$defs/aggregateRootPublicKey" },
+        "root_subject": { "$ref": "#/$defs/aggregateRootPublicKey" },
+        "max_invocations": { "type": "integer", "minimum": 0, "maximum": 4294967295 },
+        "root_expires_at": { "type": "integer", "minimum": 0 },
+        "root_scope_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "algorithm": { "$ref": "#/$defs/aggregateRootSigningAlgorithm" },
+    "signature": { "$ref": "#/$defs/aggregateRootSignature" }
+  },
+  "$defs": {
+    "aggregateRootPublicKey": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
+    },
+    "aggregateRootSigningAlgorithm": { "enum": ["ed25519", "p256", "p384", "hybrid"] },
+    "aggregateRootSignature": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+|hybrid:([0-9a-f]{128}|p256:[0-9a-f]+|p384:[0-9a-f]+):[0-9a-f]{6618}:(ed25519|p256|p384)\\+mldsa65)$"
+    }
+  }
+}

@@ -76,6 +76,25 @@ type ChioHTTPRequest struct {
 	Timestamp    int64             `json:"timestamp"`
 }
 
+// ChioToolCallRequest is the strongly typed native tool-call envelope.
+//
+// The generated OpenAPI alias for the JSON Schema union remains intentionally
+// broad, so this SDK-owned model preserves the security-sensitive Chio fields
+// without selecting one approval or interpreting supplemental bytes.
+type ChioToolCallRequest struct {
+	Type                      string                               `json:"type"`
+	ID                        string                               `json:"id"`
+	CapabilityToken           CapabilityToken                      `json:"capability_token"`
+	ServerID                  string                               `json:"server_id"`
+	Tool                      string                               `json:"tool"`
+	Params                    json.RawMessage                      `json:"params"`
+	GovernedIntent            *AgentGovernedTransactionIntent      `json:"governed_intent,omitempty"`
+	ApprovalToken             *CapabilityGovernedApprovalToken     `json:"approval_token,omitempty"`
+	ApprovalTokens            []CapabilityGovernedApprovalToken    `json:"approval_tokens,omitempty"`
+	ThresholdApprovalProposal *CapabilityThresholdApprovalProposal `json:"threshold_approval_proposal,omitempty"`
+	SupplementalAuthorization *CapabilitySupplementalAuthorization `json:"supplemental_authorization,omitempty"`
+}
+
 // Verdict represents the kernel's evaluation decision.
 type Verdict struct {
 	Verdict    string `json:"verdict"`

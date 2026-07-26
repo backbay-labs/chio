@@ -42,7 +42,8 @@ pub use analyze::{
     Finding, FindingKind, GlobRelation, RefinementStatus, RuleRef, Witness,
 };
 pub use compiler::{
-    compile_policy, compile_policy_with_memory_budget, compile_policy_with_source, CompileError,
+    compile_policy, compile_policy_with_approver_directory, compile_policy_with_memory_budget,
+    compile_policy_with_source, compile_policy_with_source_and_approver_directory, CompileError,
     CompiledPolicy,
 };
 pub use conditions::{evaluate_condition, Condition, RuntimeContext};

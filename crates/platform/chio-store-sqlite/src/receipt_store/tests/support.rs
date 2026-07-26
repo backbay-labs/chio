@@ -59,6 +59,19 @@ pub(super) fn unique_db_path(prefix: &str) -> std::path::PathBuf {
     std::env::temp_dir().join(format!("{prefix}-{nonce}.sqlite3"))
 }
 
+pub(super) fn temp_db(prefix: &str) -> std::io::Result<(tempfile::TempDir, std::path::PathBuf)> {
+    let directory = tempfile::Builder::new().prefix(prefix).tempdir()?;
+    let path = directory.path().join("receipts.sqlite3");
+    Ok((directory, path))
+}
+
+pub(super) fn restore_transparency_projection_guards(
+    connection: &rusqlite::Connection,
+) -> Result<(), ReceiptStoreError> {
+    crate::receipt_store::support::drop_transparency_projection_guards(connection)?;
+    crate::receipt_store::support::ensure_transparency_projection_guards(connection)
+}
+
 pub(super) fn sample_receipt() -> ChioReceipt {
     let keypair = Keypair::generate();
     ChioReceipt::sign(
@@ -206,6 +219,54 @@ pub(super) fn sample_receipt_with_id(id: &str) -> ChioReceipt {
 pub(super) fn sample_receipt_with_id_and_timestamp(id: &str, timestamp: u64) -> ChioReceipt {
     let keypair = receipt_test_keypair();
     sample_receipt_with_keypair(id, timestamp, &keypair)
+}
+
+pub(super) fn sample_financial_receipt(
+    id: &str,
+    cost_charged: u64,
+) -> chio_core::error::Result<ChioReceipt> {
+    let keypair = receipt_test_keypair();
+    ChioReceipt::sign(
+        ChioReceiptBody {
+            id: id.to_string(),
+            timestamp: 1,
+            capability_id: "cap-cost".to_string(),
+            tool_server: "shell".to_string(),
+            tool_name: "bash".to_string(),
+            action: ToolCallAction::from_parameters(serde_json::json!({ "receipt": id }))?,
+            decision: Some(Decision::Allow),
+            receipt_kind: Default::default(),
+            boundary_class: Default::default(),
+            observation_outcome: None,
+            tool_origin: Default::default(),
+            redaction_mode: Default::default(),
+            actor_chain: Vec::new(),
+            content_hash: format!("content-{id}"),
+            policy_hash: "policy-cost".to_string(),
+            evidence: Vec::new(),
+            metadata: Some(serde_json::json!({
+                "financial": FinancialReceiptMetadata {
+                    grant_index: 0,
+                    cost_charged,
+                    currency: "USD".to_string(),
+                    budget_remaining: u64::MAX - cost_charged,
+                    budget_total: u64::MAX,
+                    delegation_depth: 0,
+                    root_budget_holder: "root-agent".to_string(),
+                    payment_reference: None,
+                    settlement_status: SettlementStatus::Settled,
+                    cost_breakdown: None,
+                    oracle_evidence: None,
+                    attempted_cost: None,
+                }
+            })),
+            trust_level: chio_core::receipt::kinds::TrustLevel::default(),
+            tenant_id: Some("tenant-cost".to_string()),
+            kernel_key: keypair.public_key(),
+            bbs_projection_version: None,
+        },
+        &keypair,
+    )
 }
 
 pub(super) fn sample_receipt_with_keypair(

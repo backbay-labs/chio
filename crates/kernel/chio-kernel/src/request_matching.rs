@@ -26,20 +26,7 @@ pub(super) fn begin_session_request_in_sessions(
     cancellable: bool,
 ) -> Result<SessionRequestStart, KernelError> {
     let session = session_from_map(sessions, &context.session_id)?;
-    match session.track_request(context, operation_kind, cancellable) {
-        Ok(start) => Ok(start),
-        Err(SessionError::ParentRequestCancelled {
-            parent_request_id,
-            reason,
-            ..
-        }) => Err(KernelError::RequestCancelled {
-            request_id: parent_request_id,
-            reason: reason.unwrap_or_else(|| {
-                "parent session request cancelled before nested child dispatch".to_string()
-            }),
-        }),
-        Err(error) => Err(error.into()),
-    }
+    Ok(session.track_request(context, operation_kind, cancellable)?)
 }
 
 pub(super) fn begin_child_request_in_sessions(
@@ -60,8 +47,26 @@ pub(super) fn begin_child_request_in_sessions(
         parent_request_id: Some(parent_context.request_id.clone()),
         progress_token,
     };
-    let start =
-        begin_session_request_in_sessions(sessions, &child_context, operation_kind, cancellable)?;
+    let start = match begin_session_request_in_sessions(
+        sessions,
+        &child_context,
+        operation_kind,
+        cancellable,
+    ) {
+        Err(KernelError::Session(SessionError::ParentRequestCancelled {
+            parent_request_id,
+            reason,
+            ..
+        })) => {
+            return Err(KernelError::RequestCancelled {
+                request_id: parent_request_id,
+                reason: reason.unwrap_or_else(|| {
+                    "parent session request cancelled before nested child could start".to_string()
+                }),
+            });
+        }
+        result => result?,
+    };
     Ok((child_context, start))
 }
 
@@ -427,6 +432,7 @@ fn constraint_matches(
         Constraint::MaxArgsSize(max) => Ok(arguments.to_string().len() <= *max),
         Constraint::GovernedIntentRequired
         | Constraint::RequireApprovalAbove { .. }
+        | Constraint::RequireCumulativeApprovalAbove { .. }
         | Constraint::SellerExact(_)
         | Constraint::MinimumRuntimeAssurance(_)
         | Constraint::MinimumAutonomyTier(_) => Ok(true),
@@ -503,6 +509,7 @@ mod tests {
                 issued_at: 1,
                 expires_at: u64::MAX,
                 delegation_chain: Vec::new(),
+                aggregate_invocation_budget: None,
             },
             &issuer,
         )

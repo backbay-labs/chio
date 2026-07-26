@@ -74,6 +74,7 @@ pub(crate) async fn handle_list_tool_receipts(
         until: None,
         min_cost: None,
         max_cost: None,
+        cost_currency: None,
         cursor: None,
         limit: list_limit(query.limit),
         agent_subject: None,
@@ -277,12 +278,16 @@ pub(crate) async fn handle_query_receipts(
         until: query.until,
         min_cost: query.min_cost,
         max_cost: query.max_cost,
+        cost_currency: query.cost_currency.clone(),
         cursor: query.cursor,
         limit: list_limit(query.limit),
         agent_subject: query.agent_subject.clone(),
         tenant_filter: None,
         read_context: Some(principal.receipt_read_context()),
     };
+    if let Err(error) = kernel_query.validated_cost_currency() {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error);
+    }
     let result = match store.query_receipts(&kernel_query) {
         Ok(result) => result,
         Err(error) => {
@@ -487,7 +492,7 @@ pub(crate) async fn handle_operator_report(
         Ok(store) => store,
         Err(response) => return response,
     };
-    let budget_store = match open_budget_store(&state.config) {
+    let budget_store = match state.budget_store() {
         Ok(store) => store,
         Err(response) => return response,
     };
@@ -513,7 +518,7 @@ pub(crate) async fn handle_comptroller_surface_report(
         Ok(store) => store,
         Err(response) => return response,
     };
-    let budget_store = match open_budget_store(&state.config) {
+    let budget_store = match state.budget_store() {
         Ok(store) => store,
         Err(response) => return response,
     };
@@ -900,8 +905,8 @@ pub(crate) async fn handle_get_delegation_chain(
         Err(response) => return response,
     };
     match store.get_combined_delegation_chain(&capability_id) {
-        Ok(chain) => Json(chain).into_response(),
-        Err(error) => plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()),
+        Ok(chain) => Json(project_combined_delegation_chain(chain)).into_response(),
+        Err(error) => trust_http_error_from_receipt_store(error).into_response(),
     }
 }
 

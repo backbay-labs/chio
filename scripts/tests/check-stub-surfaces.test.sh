@@ -158,4 +158,23 @@ assert_rc "$(run_checker "$sidecar_deny" "$work/sidecar-deny.out" "$work/sidecar
 grep -F "crates/products/chio-api-protect/src/proxy/sidecar.rs:1" "$work/sidecar-deny.err" >/dev/null
 grep -F "production stub-surface hit is not allowlisted" "$work/sidecar-deny.err" >/dev/null
 
+supply_chain_names="$work/supply-chain-names"
+init_case "$supply_chain_names"
+write_file "$supply_chain_names/supply-chain/config.toml" \
+  "[[exemptions.bollard-stubs]]" \
+  "[[exemptions.proc-macro-hack]]"
+track_case "$supply_chain_names"
+assert_rc "$(run_checker "$supply_chain_names" "$work/supply-chain-names.out" "$work/supply-chain-names.err")" 0 \
+  "reviewed cargo-vet package names pass"
+
+supply_chain_unrelated="$work/supply-chain-unrelated"
+init_case "$supply_chain_unrelated"
+write_file "$supply_chain_unrelated/supply-chain/config.toml" \
+  "[[exemptions.proc-macro-hack]] # TODO: bypass package review"
+track_case "$supply_chain_unrelated"
+assert_rc "$(run_checker "$supply_chain_unrelated" "$work/supply-chain-unrelated.out" "$work/supply-chain-unrelated.err")" 1 \
+  "cargo-vet package-name exception rejects trailing text"
+grep -F "does not match reviewed allowlist patterns" \
+  "$work/supply-chain-unrelated.err" >/dev/null
+
 echo "check-stub-surfaces.test.sh: all assertions passed"

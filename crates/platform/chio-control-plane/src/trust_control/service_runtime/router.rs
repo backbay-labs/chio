@@ -25,6 +25,7 @@ const EVIDENCE_IMPORT_MAX_BODY_BYTES: usize = 64 * 1024 * 1024;
 /// room for the surrounding receipt envelope, while still bounding the buffered
 /// `Json` decode so an oversized body cannot grow without limit.
 const RECEIPT_APPEND_MAX_BODY_BYTES: usize = 128 * 1024 * 1024;
+const ADMISSION_AUTHORITY_MAX_BODY_BYTES: usize = 384 * 1024 * 1024;
 
 pub(crate) fn build_router(state: TrustServiceState) -> Router {
     // Seed the fixed alert-pack label sets at zero before this serve process can
@@ -37,6 +38,11 @@ pub(crate) fn build_router(state: TrustServiceState) -> Router {
     chio_metrics_spec::runtime::preregister_known_label_sets();
 
     let router = trust_control_health::install_health_routes(Router::new())
+        .route(
+            INTERNAL_ADMISSION_AUTHORITY_PATH,
+            post(super::admission_authority::handle_admission_authority)
+                .layer(DefaultBodyLimit::max(ADMISSION_AUTHORITY_MAX_BODY_BYTES)),
+        )
         .route(
             AUTHORITY_PATH,
             get(handle_authority_status).post(handle_rotate_authority),
@@ -158,6 +164,33 @@ pub(crate) fn build_router(state: TrustServiceState) -> Router {
         .route(
             OPEN_MARKET_PENALTY_EVALUATE_PATH,
             post(handle_evaluate_open_market_penalty),
+        )
+        .route(
+            FISCAL_RUNTIME_STATUS_PATH,
+            get(handle_fiscal_runtime_status),
+        )
+        .route(FISCAL_PROPOSALS_PATH, post(handle_fiscal_proposal_persist))
+        .route(
+            FISCAL_PROPOSAL_ADMIT_PATH,
+            post(handle_fiscal_proposal_admit),
+        )
+        .route(FISCAL_APPROVALS_PATH, post(handle_fiscal_approval_persist))
+        .route(
+            FISCAL_ACTIVATIONS_PATH,
+            post(handle_fiscal_activation_commit),
+        )
+        .route(FISCAL_RESOLVE_PATH, post(handle_fiscal_resolve))
+        .route(
+            FISCAL_MARKETPLACE_PRICE_PATH,
+            post(handle_fiscal_marketplace_price),
+        )
+        .route(
+            FISCAL_MARKETPLACE_CREDIT_LIMIT_PATH,
+            post(handle_fiscal_marketplace_credit_limit),
+        )
+        .route(
+            FISCAL_PROPOSAL_PREVIEW_PATH,
+            post(handle_fiscal_proposal_preview),
         )
         .route(
             PASSPORT_ISSUER_METADATA_PATH,
@@ -283,10 +316,50 @@ pub(crate) fn build_router(state: TrustServiceState) -> Router {
         .route(BUDGET_INCREMENT_PATH, post(handle_try_increment_budget))
         .route(BUDGET_AUTHORIZE_EXPOSURE_PATH, post(handle_try_charge_cost))
         .route(
+            BUDGET_CAPTURE_INVOCATION_PATH,
+            post(handle_capture_invocation),
+        )
+        .route(
             BUDGET_RELEASE_EXPOSURE_PATH,
             post(handle_reverse_charge_cost),
         )
         .route(BUDGET_RECONCILE_SPEND_PATH, post(handle_reduce_charge_cost))
+        .route(
+            STRUCTURED_BUDGET_AUTHORIZE_PATH,
+            post(handle_structured_budget_authorize),
+        )
+        .route(
+            STRUCTURED_BUDGET_AUTHORIZE_CUMULATIVE_PATH,
+            post(handle_structured_budget_authorize_cumulative),
+        )
+        .route(
+            STRUCTURED_BUDGET_CUMULATIVE_OPERATION_PATH,
+            post(handle_structured_budget_cumulative_operation),
+        )
+        .route(
+            STRUCTURED_BUDGET_CANCEL_CAPTURED_PATH,
+            post(handle_structured_budget_cancel_captured),
+        )
+        .route(
+            STRUCTURED_BUDGET_CAPTURE_INVOCATION_PATH,
+            post(handle_structured_budget_capture_invocation),
+        )
+        .route(
+            STRUCTURED_BUDGET_FENCED_REVERSE_PATH,
+            post(handle_structured_budget_reverse),
+        )
+        .route(
+            STRUCTURED_BUDGET_RELEASE_PATH,
+            post(handle_structured_budget_release),
+        )
+        .route(
+            STRUCTURED_BUDGET_RECONCILE_PATH,
+            post(handle_structured_budget_reconcile),
+        )
+        .route(
+            STRUCTURED_BUDGET_CAPTURE_SPEND_PATH,
+            post(handle_structured_budget_capture_spend),
+        )
         .route(
             INTERNAL_CLUSTER_STATUS_PATH,
             get(handle_internal_cluster_status),
@@ -631,158 +704,5 @@ async fn handle_trust_control_metrics(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::super::super::*;
-    use super::handle_trust_control_metrics;
-    use chio_test_support::prelude::*;
-    use std::collections::BTreeMap;
-    use std::sync::{Arc, Mutex};
-    use std::time::Duration;
-
-    fn metrics_state(service_token: &str) -> TrustServiceState {
-        let config = TrustServiceConfig {
-            listen: "127.0.0.1:0".parse().test_unwrap(),
-            service_token: service_token.to_string(),
-            tenant_read_tokens: BTreeMap::new(),
-            receipt_db_path: None,
-            revocation_db_path: None,
-            authority_seed_path: None,
-            authority_db_path: None,
-            budget_db_path: None,
-            enterprise_providers_file: None,
-            federation_policies_file: None,
-            scim_lifecycle_file: None,
-            verifier_policies_file: None,
-            verifier_challenge_db_path: None,
-            passport_statuses_file: None,
-            passport_issuance_offers_file: None,
-            certification_registry_file: None,
-            certification_discovery_file: None,
-            issuance_policy: None,
-            runtime_assurance_policy: None,
-            advertise_url: None,
-            allow_local_peer_urls: true,
-            certification_public_metadata_ttl_seconds: 300,
-            peer_urls: Vec::new(),
-            cluster_sync_interval: Duration::from_millis(25),
-            roster_policy: None,
-            memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
-        };
-        TrustServiceState {
-            config,
-            enterprise_provider_registry: None,
-            verifier_policy_registry: None,
-            federation_admission_rate_limiter: Arc::new(Mutex::new(
-                FederationAdmissionRateLimiter::default(),
-            )),
-            cluster: None,
-            cluster_progress: None,
-        }
-    }
-
-    /// The /metrics route shares the trust-control listener and must fail closed.
-    /// An unauthenticated scrape is rejected with 401 rather than exposing
-    /// operational counters and guard labels.
-    #[tokio::test]
-    async fn trust_control_metrics_rejects_unauthenticated_request() {
-        let state = metrics_state("service-secret");
-        let response = handle_trust_control_metrics(State(state), HeaderMap::new()).await;
-        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
-    }
-
-    /// A scrape presenting the configured service token is served (200).
-    #[tokio::test]
-    async fn trust_control_metrics_accepts_valid_service_token() {
-        let state = metrics_state("service-secret");
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            AUTHORIZATION,
-            HeaderValue::from_static("Bearer service-secret"),
-        );
-        let response = handle_trust_control_metrics(State(state), headers).await;
-        assert_eq!(response.status(), StatusCode::OK);
-    }
-
-    /// Building the trust-control serve router must seed the fixed alert-pack
-    /// label sets, so a fresh, healthy-but-quiet control plane renders the
-    /// fail-open / dispatch-failure / capability-revocation families at zero and
-    /// the shipped absent_over_time backstops fire only on a true scrape gap, not
-    /// on a control plane that simply has not had an event yet.
-    #[tokio::test]
-    async fn build_router_seeds_alert_pack_series_for_absent_over_time_backstops() {
-        let state = metrics_state("service-secret");
-        let _router = super::build_router(state);
-
-        let mut body = String::new();
-        chio_metrics_spec::runtime::render_alert_pack_families(&mut body);
-        assert!(
-            body.contains("chio_dispatch_failure_total{surface=\"http_authority\",outcome=\"error\"}"),
-            "the dispatch-failure family must be present at zero after building the serve router: {body}"
-        );
-        assert!(
-            body.contains("chio_fail_open_suspected_total{surface=\"tower\"}"),
-            "the fail-open family must be present at zero after building the serve router: {body}"
-        );
-        assert!(
-            body.contains("chio_capability_revocation_lag_seconds"),
-            "the capability-revocation-lag family must be present after building the serve router: {body}"
-        );
-    }
-
-    /// A stream receipt embeds one digest per retained chunk, so a valid receipt
-    /// append routinely exceeds the service-wide 1 MiB request cap. The two
-    /// receipt-append routes carry their own larger body limit so replicating or
-    /// importing such a receipt reaches the handler instead of being rejected with
-    /// 413, while a route without the override stays capped: the relaxation is
-    /// route-specific, not a global loosening.
-    #[tokio::test]
-    async fn receipt_append_routes_accept_bodies_above_the_service_body_cap() {
-        use axum::body::Body;
-        use axum::http::Request;
-        use chio_http_serve::{apply_server_hygiene, ServeHygieneConfig};
-        use tower::ServiceExt;
-
-        // Mirror the service-wide 1 MiB body cap the trust-control serve site
-        // applies around the router.
-        let hygiene = ServeHygieneConfig {
-            max_body_bytes: Some(1024 * 1024),
-            request_timeout: None,
-            ..ServeHygieneConfig::default()
-        };
-        let build = || apply_server_hygiene(super::build_router(metrics_state("secret")), &hygiene);
-
-        // Over the 1 MiB service cap but well under the receipt cap. The bytes are
-        // not a valid receipt, so the handler's own decode still rejects them, but
-        // NOT with 413: the point is the larger route limit lets the request reach
-        // the handler at all.
-        let oversized = vec![b'x'; 2 * 1024 * 1024];
-
-        for path in [TOOL_RECEIPTS_PATH, CHILD_RECEIPTS_PATH] {
-            let request = Request::builder()
-                .method("POST")
-                .uri(path)
-                .header("content-type", "application/json")
-                .body(Body::from(oversized.clone()))
-                .test_unwrap();
-            let response = build().oneshot(request).await.test_unwrap();
-            assert_ne!(
-                response.status(),
-                StatusCode::PAYLOAD_TOO_LARGE,
-                "{path} must accept a receipt body above the 1 MiB service cap"
-            );
-        }
-
-        let request = Request::builder()
-            .method("POST")
-            .uri(ISSUE_CAPABILITY_PATH)
-            .header("content-type", "application/json")
-            .body(Body::from(oversized))
-            .test_unwrap();
-        let response = build().oneshot(request).await.test_unwrap();
-        assert_eq!(
-            response.status(),
-            StatusCode::PAYLOAD_TOO_LARGE,
-            "a route without the receipt-append override must still cap at 1 MiB"
-        );
-    }
-}
+#[path = "router_tests.rs"]
+mod tests;

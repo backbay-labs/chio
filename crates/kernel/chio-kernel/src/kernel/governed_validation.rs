@@ -9,7 +9,145 @@ use chio_appraisal::VerifiedRuntimeAttestationRecord;
 
 use super::*;
 
+#[path = "governed_validation/verified_outcome.rs"]
+mod verified_outcome;
+
+use verified_outcome::validate_verified_outcome_request;
+
 impl ChioKernel {
+    pub(crate) fn threshold_approval_requirement(
+        &self,
+        request: &ToolCallRequest,
+        now: u64,
+    ) -> Result<chio_core::capability::threshold_approval::ThresholdApprovalRequirement, KernelError>
+    {
+        let peer = self
+            .capability_negotiation_for_remote(request.federated_origin_kernel_id.as_deref(), now)
+            .map_err(KernelError::GovernedTransactionDenied)?;
+        if !peer.supports(chio_core::capability::features::THRESHOLD_GOVERNED_APPROVALS) {
+            return Err(KernelError::GovernedTransactionDenied(
+                "threshold governed approvals were not negotiated".to_string(),
+            ));
+        }
+        let resolver = self
+            .threshold_approval_requirement_resolver
+            .as_ref()
+            .ok_or_else(|| {
+                KernelError::GovernedTransactionDenied(
+                    "threshold approval requirement resolver is unavailable".to_string(),
+                )
+            })?;
+        let requirement = resolver
+            .resolve_requirement(
+                &self.config.policy_hash,
+                &request.server_id,
+                &request.tool_name,
+            )
+            .map_err(|error| {
+                KernelError::GovernedTransactionDenied(format!(
+                    "threshold approval requirement resolution failed: {error}"
+                ))
+            })?
+            .ok_or_else(|| {
+                KernelError::GovernedTransactionDenied(
+                    "request has no matching threshold approval policy requirement".to_string(),
+                )
+            })?;
+        requirement
+            .validate()
+            .map_err(KernelError::GovernedTransactionDenied)?;
+        if requirement.policy_hash != self.config.policy_hash {
+            return Err(KernelError::GovernedTransactionDenied(
+                "threshold approval requirement is stale for the active policy".to_string(),
+            ));
+        }
+        Ok(requirement)
+    }
+
+    pub(crate) fn validate_active_response_intent(
+        &self,
+        request: &ToolCallRequest,
+        cap: &CapabilityToken,
+        intent: &chio_core::capability::governance::GovernedTransactionIntent,
+        now: u64,
+    ) -> Result<(), KernelError> {
+        use chio_core::capability::governance::{
+            GovernedTransactionIntentBody, ACTIVE_RESPONSE_PLAN_TOOL_NAME,
+            ACTIVE_RESPONSE_SERVER_ID,
+        };
+
+        let GovernedTransactionIntentBody::ActiveResponsePlan(plan) = &intent.body else {
+            return Ok(());
+        };
+        let peer = self
+            .capability_negotiation_for_remote(request.federated_origin_kernel_id.as_deref(), now)
+            .map_err(KernelError::GovernedTransactionDenied)?;
+        if !peer.supports(chio_core::capability::features::GOVERNED_ACTIVE_RESPONSE_PLAN) {
+            return Err(KernelError::GovernedTransactionDenied(
+                "governed active-response plans were not negotiated".to_string(),
+            ));
+        }
+        plan.validate()
+            .map_err(|error| KernelError::GovernedTransactionDenied(error.to_string()))?;
+        let capability_hash = sha256_hex(&canonical_json_bytes(cap).map_err(|error| {
+            KernelError::GovernedTransactionDenied(format!(
+                "operator capability is not canonical: {error}"
+            ))
+        })?);
+        if intent.id != plan.plan_id
+            || request.request_id != plan.plan_id
+            || intent.server_id != ACTIVE_RESPONSE_SERVER_ID
+            || intent.tool_name != ACTIVE_RESPONSE_PLAN_TOOL_NAME
+            || plan.operator_capability_id != cap.id
+            || plan.operator_capability_hash != capability_hash
+            || plan.operator_capability_expires_at != cap.expires_at
+            || plan.executor_subject != cap.subject
+            || now >= plan.expires_at
+        {
+            return Err(KernelError::GovernedTransactionDenied(
+                "active-response intent does not match its request or operator capability"
+                    .to_string(),
+            ));
+        }
+        let plan_body_effects = plan
+            .canonical_plan_body
+            .get("effects")
+            .ok_or_else(|| {
+                KernelError::GovernedTransactionDenied(
+                    "active-response plan body must contain an effects list".to_string(),
+                )
+            })
+            .and_then(|effects| {
+                serde_json::from_value::<
+                    Vec<chio_core::capability::governance::GovernedResponseEffect>,
+                >(effects.clone())
+                .map_err(|_| {
+                    KernelError::GovernedTransactionDenied(
+                        "active-response plan body effects list is invalid".to_string(),
+                    )
+                })
+            })?;
+        if plan_body_effects != plan.ordered_effects {
+            return Err(KernelError::GovernedTransactionDenied(
+                "active-response plan body effects do not match ordered effects".to_string(),
+            ));
+        }
+        for effect in &plan.ordered_effects {
+            let covered = cap.scope.grants.iter().any(|grant| {
+                grant.server_id == ACTIVE_RESPONSE_SERVER_ID
+                    && grant.tool_name == effect.tool_name()
+                    && grant.operations.contains(&Operation::Invoke)
+            });
+            if !covered {
+                return Err(KernelError::GovernedTransactionDenied(format!(
+                    "operator capability does not grant active-response effect {}",
+                    effect.tool_name()
+                )));
+            }
+        }
+        Ok(())
+    }
+
     fn governed_requirements(
         grant: &ToolGrant,
     ) -> (
@@ -81,6 +219,7 @@ impl ChioKernel {
                 | Constraint::ContentReviewTier(_)
                 | Constraint::MaxTransactionAmountUsd(_)
                 | Constraint::RequireDualApproval(_)
+                | Constraint::RequireCumulativeApprovalAbove { .. }
                 | Constraint::ModelConstraint { .. }
                 | Constraint::MemoryStoreAllowlist(_)
                 | Constraint::MemoryWriteDenyPatterns(_) => {}
@@ -128,6 +267,20 @@ impl ChioKernel {
         }
 
         Err("approval signer public key not found among trusted authorities".to_string())
+    }
+
+    fn trusted_governance_authorities(&self) -> Vec<chio_core::PublicKey> {
+        let kernel_pk = self.config.keypair.public_key();
+        let mut trusted = self.config.ca_public_keys.clone();
+        for authority_pk in self.capability_authority.trusted_public_keys() {
+            if !trusted.contains(&authority_pk) {
+                trusted.push(authority_pk);
+            }
+        }
+        if !trusted.contains(&kernel_pk) {
+            trusted.push(kernel_pk);
+        }
+        trusted
     }
 
     fn verify_governed_runtime_attestation(
@@ -189,7 +342,7 @@ impl ChioKernel {
         Ok(())
     }
 
-    fn validate_governed_approval_token_non_consuming(
+    fn validate_governed_approval_token_pure(
         &self,
         request: &ToolCallRequest,
         cap: &CapabilityToken,
@@ -232,9 +385,9 @@ impl ChioKernel {
                 ))
             })?;
 
-        // Step 7: Cap approval token lifetime so approval authority remains
-        // intentionally short-lived. Replay entries independently follow each
-        // accepted token's signed expiry.
+        // Step 7: Cap approval token lifetime. Tokens with expires_at more
+        // than MAX_APPROVAL_TTL_SECS beyond issued_at are rejected to prevent
+        // long-lived tokens from outliving the replay store's eviction window.
         const MAX_APPROVAL_TTL_SECS: u64 = 3600; // 1 hour max
         let token_lifetime = approval_token
             .expires_at
@@ -248,87 +401,254 @@ impl ChioKernel {
         Ok(())
     }
 
-    #[cfg(test)]
-    fn consume_governed_approval_token(
+    pub(crate) fn validate_governed_approval_for_dispatch_non_consuming(
         &self,
-        approval_token: &GovernedApprovalToken,
-        intent_hash: &str,
+        request: &ToolCallRequest,
+        cap: &CapabilityToken,
+        now: u64,
+    ) -> Result<Option<String>, KernelError> {
+        let Some(approval_token) = request.approval_token.as_ref() else {
+            return Ok(None);
+        };
+        let intent = request.governed_intent.as_ref().ok_or_else(|| {
+            KernelError::GovernedTransactionDenied(
+                "approval token requires a governed transaction intent".to_string(),
+            )
+        })?;
+        let intent_hash = intent.binding_hash().map_err(|error| {
+            KernelError::GovernedTransactionDenied(format!(
+                "failed to hash governed transaction intent: {error}"
+            ))
+        })?;
+        self.validate_governed_approval_token_pure(
+            request,
+            cap,
+            &intent_hash,
+            approval_token,
+            now,
+        )?;
+        Ok(Some(intent_hash))
+    }
+
+    #[cfg(test)]
+    pub(crate) fn consume_governed_approval_for_dispatch(
+        &self,
+        request: &ToolCallRequest,
     ) -> Result<(), KernelError> {
-        if let Some(replay_store) = self.approval_replay_store.as_deref() {
-            let reservation_id = format!("test-consume-{}", approval_token.id);
-            let is_fresh = replay_store
-                .reserve_for_dispatch(
-                    &approval_token.subject.to_hex(),
-                    &approval_token.request_id,
-                    intent_hash,
-                    approval_token.expires_at,
-                    &reservation_id,
+        let intent_hash = self
+            .validate_governed_approval_for_dispatch_non_consuming(
+                request,
+                &request.capability,
+                current_unix_timestamp(),
+            )?
+            .ok_or_else(|| {
+                KernelError::GovernedTransactionDenied(
+                    "governed approval token is required".to_string(),
                 )
-                .map_err(|_| {
-                    KernelError::GovernedTransactionDenied(
-                        "approval replay store unavailable; denying as fail-closed".to_string(),
-                    )
-                })?;
-            if !is_fresh {
-                return Err(KernelError::GovernedTransactionDenied(
-                    "approval token has already been consumed (replay detected)".to_string(),
-                ));
-            }
-            let committed = replay_store
-                .commit_dispatch_reservation(
-                    &approval_token.subject.to_hex(),
-                    &approval_token.request_id,
-                    intent_hash,
-                    &reservation_id,
-                )
-                .map_err(|_| {
-                    KernelError::GovernedTransactionDenied(
-                        "approval replay store commit unavailable; marker retained fail-closed"
-                            .to_string(),
-                    )
-                })?;
-            if !committed {
-                return Err(KernelError::GovernedTransactionDenied(
-                    "approval replay reservation ownership lost during commit; denying fail-closed"
-                        .to_string(),
-                ));
-            }
-        } else {
-            return Err(KernelError::GovernedTransactionDenied(
+            })?;
+        let approval_token = request.approval_token.as_ref().ok_or_else(|| {
+            KernelError::GovernedTransactionDenied(
+                "governed approval token is required".to_string(),
+            )
+        })?;
+        let store = self.approval_replay_store.as_deref().ok_or_else(|| {
+            KernelError::GovernedTransactionDenied(
                 "approval replay store not configured; denying as fail-closed".to_string(),
+            )
+        })?;
+        let subject_id = approval_token.subject.to_hex();
+        let reservation_id = uuid::Uuid::now_v7().as_hyphenated().to_string();
+        if !store.reserve_for_dispatch(
+            &subject_id,
+            &approval_token.request_id,
+            &intent_hash,
+            approval_token.expires_at,
+            &reservation_id,
+        )? || !store.commit_dispatch_reservation(
+            &subject_id,
+            &approval_token.request_id,
+            &intent_hash,
+            &reservation_id,
+        )? {
+            return Err(KernelError::GovernedTransactionDenied(
+                "approval token has already been consumed (replay detected)".to_string(),
             ));
         }
-
         Ok(())
+    }
+
+    pub(crate) fn validate_threshold_approval_set(
+        &self,
+        request: &ToolCallRequest,
+        cap: &CapabilityToken,
+        intent_hash: &str,
+        now: u64,
+    ) -> Result<VerifiedThresholdApprovalSet, KernelError> {
+        use std::collections::HashSet;
+
+        const MAX_APPROVAL_TOKENS: usize =
+            chio_core::capability::threshold_approval::MAX_THRESHOLD_APPROVAL_TOKENS;
+        if request.approval_tokens.is_empty() || request.approval_tokens.len() > MAX_APPROVAL_TOKENS
+        {
+            return Err(KernelError::GovernedTransactionDenied(format!(
+                "threshold approval set must contain between 1 and {MAX_APPROVAL_TOKENS} tokens"
+            )));
+        }
+        let requirement = self.threshold_approval_requirement(request, now)?;
+        let proposal = request
+            .threshold_approval_proposal
+            .as_ref()
+            .ok_or_else(|| {
+                KernelError::GovernedTransactionDenied(
+                    "threshold approval set omitted its signed proposal".to_string(),
+                )
+            })?;
+        proposal
+            .validate_at(now)
+            .map_err(|error| KernelError::GovernedTransactionDenied(error.to_string()))?;
+        if !self
+            .trusted_governance_authorities()
+            .contains(&proposal.body.policy_authority)
+        {
+            return Err(KernelError::GovernedTransactionDenied(
+                "threshold proposal signer is not a trusted policy authority".to_string(),
+            ));
+        }
+        if !proposal
+            .verify_signature()
+            .map_err(|error| KernelError::GovernedTransactionDenied(error.to_string()))?
+        {
+            return Err(KernelError::GovernedTransactionDenied(
+                "threshold proposal signature did not verify".to_string(),
+            ));
+        }
+        let capability_digest = sha256_hex(&canonical_json_bytes(cap).map_err(|error| {
+            KernelError::GovernedTransactionDenied(format!(
+                "authorizing capability is not canonical: {error}"
+            ))
+        })?);
+        let proposal_body = &proposal.body;
+        let expected_deadline = proposal_body
+            .proposal_created_at
+            .checked_add(requirement.timeout_seconds)
+            .ok_or_else(|| {
+                KernelError::GovernedTransactionDenied(
+                    "threshold proposal deadline overflowed".to_string(),
+                )
+            })?
+            .min(cap.expires_at)
+            .min(
+                request
+                    .governed_intent
+                    .as_ref()
+                    .and_then(|intent| intent.governed_operation_expires_at())
+                    .unwrap_or(u64::MAX),
+            );
+        if proposal_body.request_id != request.request_id
+            || proposal_body.governed_intent_hash != intent_hash
+            || proposal_body.subject != cap.subject
+            || proposal_body.authorizing_capability_digest != capability_digest
+            || proposal_body.policy_hash != requirement.policy_hash
+            || proposal_body.threshold != requirement.threshold
+            || proposal_body.eligible_set_digest != requirement.eligible_set_digest
+            || proposal_body.proposal_deadline != expected_deadline
+        {
+            return Err(KernelError::GovernedTransactionDenied(
+                "threshold proposal does not match the request, capability, or active policy"
+                    .to_string(),
+            ));
+        }
+        let proposal_hash = proposal
+            .artifact_digest()
+            .map_err(|error| KernelError::GovernedTransactionDenied(error.to_string()))?;
+        let mut token_ids = HashSet::new();
+        let mut token_digests = HashSet::new();
+        let mut approvers = HashSet::new();
+        for token in &request.approval_tokens {
+            token
+                .validate_time(now)
+                .map_err(|error| KernelError::GovernedTransactionDenied(error.to_string()))?;
+            if token.id.is_empty()
+                || token.id.trim() != token.id
+                || token.request_id != request.request_id
+                || token.governed_intent_hash != intent_hash
+                || token.subject != cap.subject
+                || token.decision != GovernedApprovalDecision::Approved
+                || token.threshold_proposal_hash.as_deref() != Some(proposal_hash.as_str())
+                || token.issued_at < proposal_body.proposal_created_at
+                || token.issued_at >= proposal_body.proposal_deadline
+                || token.expires_at > proposal_body.proposal_deadline
+            {
+                return Err(KernelError::GovernedTransactionDenied(
+                    "threshold approval token does not match the signed proposal".to_string(),
+                ));
+            }
+            if !requirement
+                .eligible_approvers
+                .iter()
+                .any(|eligible| eligible.public_key == token.approver)
+            {
+                return Err(KernelError::GovernedTransactionDenied(
+                    "threshold approval token signer is not eligible".to_string(),
+                ));
+            }
+            if !token
+                .verify_signature()
+                .map_err(|error| KernelError::GovernedTransactionDenied(error.to_string()))?
+            {
+                return Err(KernelError::GovernedTransactionDenied(
+                    "threshold approval token signature did not verify".to_string(),
+                ));
+            }
+            let token_digest = token
+                .artifact_digest()
+                .map_err(|error| KernelError::GovernedTransactionDenied(error.to_string()))?;
+            if !token_ids.insert(token.id.clone())
+                || !token_digests.insert(token_digest)
+                || !approvers.insert(token.approver.to_hex())
+            {
+                return Err(KernelError::GovernedTransactionDenied(
+                    "threshold approval tokens, digests, and signers must be distinct".to_string(),
+                ));
+            }
+        }
+        if approvers.len()
+            < usize::try_from(requirement.threshold).map_err(|_| {
+                KernelError::GovernedTransactionDenied(
+                    "threshold approval quorum does not fit this platform".to_string(),
+                )
+            })?
+        {
+            return Err(KernelError::GovernedTransactionDenied(
+                "threshold approval set does not satisfy the required quorum".to_string(),
+            ));
+        }
+        let verified = chio_core::capability::governance::VerifiedApprovalSetBody::new(
+            token_digests.into_iter().collect(),
+            proposal,
+        )
+        .map_err(|error| KernelError::GovernedTransactionDenied(error.to_string()))?;
+        let replay = ThresholdApprovalReplayReservationV1::new(
+            proposal.clone(),
+            request.approval_tokens.clone(),
+            verified.clone(),
+        )
+        .map_err(|error| KernelError::GovernedTransactionDenied(error.to_string()))?;
+        Ok(VerifiedThresholdApprovalSet {
+            requirement,
+            body: verified,
+            replay,
+        })
     }
 
     fn validate_metered_billing_context(
         intent: &chio_core::capability::governance::GovernedTransactionIntent,
-        charge_result: Option<&BudgetChargeResult>,
-        payment_adapter_configured: bool,
+        charge_currency: Option<&str>,
         now: u64,
     ) -> Result<(), KernelError> {
         let Some(metered) = intent.metered_billing.as_ref() else {
             return Ok(());
         };
-
-        // A governed intent that mandates prepayment must not execute unless a
-        // payment adapter is configured to prepay it. This is the primary
-        // fail-closed denial and fires for every MustPrepay intent regardless of
-        // charge_result. authorize_payment_if_needed independently fail-closes for
-        // MustPrepay (it authorizes the quoted cost through the adapter, or denies
-        // when none is present), so an unpaid MustPrepay execution has no path.
-        // The charge currency is checked below against quote.quoted_cost.currency.
-        if metered.settlement_mode
-            == chio_core::capability::governance::MeteredSettlementMode::MustPrepay
-            && !payment_adapter_configured
-        {
-            return Err(KernelError::GovernedTransactionDenied(
-                "governed intent mandates prepayment (settlement_mode=MustPrepay) but no payment \
-                 adapter is configured; denying fail-closed"
-                    .to_string(),
-            ));
-        }
 
         let quote = &metered.quote;
         if quote.quote_id.trim().is_empty() {
@@ -359,16 +679,9 @@ impl ChioKernel {
                 "metered billing quote expires_at must be after issued_at".to_string(),
             ));
         }
-        // Enforce the quote's validity window regardless of whether an expiry is
-        // present. `is_valid_at` gates on `now >= issued_at` as well as the
-        // optional expiry, so an open-ended (no-expiry) quote whose `issued_at`
-        // is in the future is rejected here rather than authorizing a prepay
-        // before the quote is valid. Fail-closed on the money path.
         if !quote.is_valid_at(now) {
             return Err(KernelError::GovernedTransactionDenied(
-                "metered billing quote is not valid at the current time (issued in the future \
-                 or expired)"
-                    .to_string(),
+                "metered billing quote is not valid at the current time".to_string(),
             ));
         }
         if metered.max_billed_units == Some(0) {
@@ -386,6 +699,7 @@ impl ChioKernel {
                     .to_string(),
             ));
         }
+        validate_verified_outcome_request(metered)?;
         if let Some(intent_amount) = intent.max_amount.as_ref() {
             if intent_amount.currency != quote.quoted_cost.currency {
                 return Err(KernelError::GovernedTransactionDenied(
@@ -394,8 +708,8 @@ impl ChioKernel {
                 ));
             }
         }
-        if let Some(charge) = charge_result {
-            if charge.currency != quote.quoted_cost.currency {
+        if let Some(currency) = charge_currency {
+            if currency != quote.quoted_cost.currency {
                 return Err(KernelError::GovernedTransactionDenied(
                     "metered billing quote currency does not match the grant currency".to_string(),
                 ));
@@ -405,10 +719,6 @@ impl ChioKernel {
         Ok(())
     }
 
-    /// Units that a MustPrepay intent will actually prepay, if the intent mandates
-    /// prepayment. This is `quote.quoted_cost`: the amount that is authorized and
-    /// prepaid regardless of any smaller provisional budget charge, so it gates the
-    /// approval and max-amount checks in both the with-charge and no-charge paths.
     fn mustprepay_prepaid_units(
         intent: &chio_core::capability::governance::GovernedTransactionIntent,
     ) -> Option<u64> {
@@ -1001,15 +1311,17 @@ impl ChioKernel {
         self.validate_governed_autonomy_bond(request, cap, bond_id, now)
     }
 
-    pub(crate) fn validate_governed_transaction(
+    pub(crate) fn validate_governed_transaction_pure(
         &self,
         request: &ToolCallRequest,
         cap: &CapabilityToken,
         grant: &ToolGrant,
-        charge_result: Option<&BudgetChargeResult>,
-        parent_context: Option<&OperationContext>,
-        now: u64,
+        context: GovernedValidationContext<'_>,
     ) -> Result<Option<ValidatedGovernedAdmission>, KernelError> {
+        let GovernedValidationContext {
+            parent_context,
+            now,
+        } = context;
         let (
             intent_required,
             approval_threshold_units,
@@ -1017,8 +1329,10 @@ impl ChioKernel {
             minimum_runtime_assurance,
             minimum_autonomy_tier,
         ) = Self::governed_requirements(grant);
-        let governed_request_present =
-            request.governed_intent.is_some() || request.approval_token.is_some();
+        let governed_request_present = request.governed_intent.is_some()
+            || request.approval_token.is_some()
+            || !request.approval_tokens.is_empty()
+            || request.threshold_approval_proposal.is_some();
 
         if !intent_required
             && approval_threshold_units.is_none()
@@ -1039,6 +1353,16 @@ impl ChioKernel {
         if intent.server_id != request.server_id || intent.tool_name != request.tool_name {
             return Err(KernelError::GovernedTransactionDenied(
                 "governed transaction intent target does not match the tool call".to_string(),
+            ));
+        }
+
+        self.validate_active_response_intent(request, cap, intent, now)?;
+        if matches!(
+            &intent.body,
+            chio_core::capability::governance::GovernedTransactionIntentBody::ActiveResponsePlan(_)
+        ) {
+            return Err(KernelError::GovernedTransactionDenied(
+                "active-response plans require the approval-only admission API".to_owned(),
             ));
         }
 
@@ -1072,6 +1396,20 @@ impl ChioKernel {
                     "governed commerce approval requires an explicit max_amount bound".to_string(),
                 ));
             }
+            if commerce
+                .settlement_destination_ref
+                .as_deref()
+                .is_some_and(|destination| {
+                    destination.is_empty()
+                        || destination.trim() != destination
+                        || destination.chars().count() > 2_048
+                        || destination.chars().any(char::is_control)
+                })
+            {
+                return Err(KernelError::GovernedTransactionDenied(
+                    "governed commerce settlement destination is invalid".to_string(),
+                ));
+            }
         }
 
         if let Some(required_seller) = required_seller.as_deref() {
@@ -1103,20 +1441,33 @@ impl ChioKernel {
             now,
         )?;
 
-        Self::validate_metered_billing_context(
-            intent,
-            charge_result,
-            self.payment_adapter.is_some(),
-            now,
-        )?;
+        let projected_cost = grant
+            .max_cost_per_invocation
+            .as_ref()
+            .map(|amount| (amount.units, amount.currency.as_str()));
+        let charge_currency = projected_cost.map(|(_, currency)| currency).or_else(|| {
+            grant
+                .max_total_cost
+                .as_ref()
+                .map(|amount| amount.currency.as_str())
+        });
+        Self::validate_metered_billing_context(intent, charge_currency, now)?;
+        if Self::mustprepay_prepaid_units(intent).is_some() && self.payment_adapter.is_none() {
+            return Err(KernelError::GovernedTransactionDenied(
+                "governed intent mandates prepayment (settlement_mode=MustPrepay) but no payment adapter is configured"
+                    .to_string(),
+            ));
+        }
 
-        if let (Some(intent_amount), Some(charge)) = (intent.max_amount.as_ref(), charge_result) {
-            if intent_amount.currency != charge.currency {
+        if let (Some(intent_amount), Some((cost_units, currency))) =
+            (intent.max_amount.as_ref(), projected_cost)
+        {
+            if intent_amount.currency != currency {
                 return Err(KernelError::GovernedTransactionDenied(
                     "governed intent currency does not match the grant currency".to_string(),
                 ));
             }
-            if intent_amount.units < charge.cost_charged {
+            if intent_amount.units < cost_units {
                 return Err(KernelError::GovernedTransactionDenied(
                     "governed intent amount is lower than the provisional invocation charge"
                         .to_string(),
@@ -1124,13 +1475,28 @@ impl ChioKernel {
             }
         }
 
-        // A MustPrepay intent authorizes and prepays its quote, so the quote (not a
-        // smaller provisional charge or declared ceiling) is the amount actually
-        // committed. It gates the max_amount and approval checks in both the
-        // with-charge and no-charge paths; a declared max_amount below it under-states
-        // the prepaid cost and is rejected fail-closed. The quote currency is already
-        // reconciled against max_amount in metered validation.
         let mustprepay_prepaid_units = Self::mustprepay_prepaid_units(intent);
+        if let Some(prepaid_units) = mustprepay_prepaid_units {
+            // The pre-execution budget debit is the per-invocation ceiling, so a grant that
+            // declares only a cumulative ceiling debits nothing and never advances its own
+            // total. Prepayment against that shape cannot be accounted across calls.
+            if grant.max_cost_per_invocation.is_none() && grant.max_total_cost.is_some() {
+                return Err(KernelError::GovernedTransactionDenied(
+                    "MustPrepay against a cumulative-only grant cannot be accounted; declare max_cost_per_invocation"
+                        .to_string(),
+                ));
+            }
+            for (limit_name, limit) in [
+                ("per-invocation", grant.max_cost_per_invocation.as_ref()),
+                ("cumulative", grant.max_total_cost.as_ref()),
+            ] {
+                if limit.is_some_and(|amount| prepaid_units > amount.units) {
+                    return Err(KernelError::GovernedTransactionDenied(format!(
+                        "MustPrepay quoted cost exceeds the grant {limit_name} cost limit"
+                    )));
+                }
+            }
+        }
         if let (Some(intent_amount), Some(prepaid_units)) =
             (intent.max_amount.as_ref(), mustprepay_prepaid_units)
         {
@@ -1141,187 +1507,143 @@ impl ChioKernel {
             }
         }
 
-        let requested_units = {
-            // Base gate amount: the provisional charge when one applies, otherwise the
-            // declared monetary ceiling.
-            let base = charge_result
-                .map(|charge| charge.cost_charged)
-                .or_else(|| intent.max_amount.as_ref().map(|amount| amount.units));
-            // A MustPrepay intent prepays its quote, so the gate must reflect at least
-            // the quoted cost even when a smaller provisional charge or ceiling is
-            // present. Fail-closed: take the larger of the two.
-            match (base, mustprepay_prepaid_units) {
-                (Some(base), Some(prepaid)) => base.max(prepaid),
-                (base, prepaid) => base.or(prepaid).unwrap_or(0),
-            }
+        let base_units = projected_cost
+            .map(|(cost_units, _)| cost_units)
+            .or_else(|| intent.max_amount.as_ref().map(|amount| amount.units));
+        let requested_units = match (base_units, mustprepay_prepaid_units) {
+            (Some(base), Some(prepaid)) => base.max(prepaid),
+            (base, prepaid) => base.or(prepaid).unwrap_or(0),
         };
+        let economy_value_requires_payee =
+            projected_cost.is_some_and(|(cost_units, _)| cost_units > 0) && commerce.is_some();
+        if economy_value_requires_payee
+            && commerce
+                .and_then(|commerce| commerce.settlement_destination_ref.as_ref())
+                .is_none()
+        {
+            return Err(KernelError::GovernedTransactionDenied(
+                "governed economy value requires an explicit settlement destination".to_string(),
+            ));
+        }
         let approval_required = approval_threshold_units
             .map(|threshold_units| requested_units >= threshold_units)
-            .unwrap_or(false);
+            .unwrap_or(false)
+            || economy_value_requires_payee;
 
-        if let Some(approval_token) = request.approval_token.as_ref() {
-            self.validate_governed_approval_token_non_consuming(
+        if request.approval_token.is_some() && !request.approval_tokens.is_empty() {
+            return Err(KernelError::GovernedTransactionDenied(
+                "request must not supply both singular and threshold approval tokens".to_string(),
+            ));
+        }
+        if request.threshold_approval_proposal.is_some() && request.approval_tokens.is_empty() {
+            return Err(KernelError::GovernedTransactionDenied(
+                "threshold approval proposal requires an approval token set".to_string(),
+            ));
+        }
+        let (approval_artifact_digest, approval_reservation) = if let Some(approval_token) =
+            request.approval_token.as_ref()
+        {
+            self.validate_governed_approval_token_pure(
                 request,
                 cap,
                 &intent_hash,
                 approval_token,
                 now,
             )?;
-        } else if approval_required {
+            let digest = approval_token
+                .artifact_digest()
+                .map_err(|error| KernelError::GovernedTransactionDenied(error.to_string()))?;
+            (
+                Some(digest.clone()),
+                Some(VerifiedApprovalReservation {
+                    threshold_proposal_hash: digest.clone(),
+                    approval_set_hash: digest,
+                    threshold_replay: None,
+                }),
+            )
+        } else if !request.approval_tokens.is_empty() {
+            let verified = self.validate_threshold_approval_set(request, cap, &intent_hash, now)?;
+            let digest = verified
+                .body
+                .approval_set_hash()
+                .map_err(|error| KernelError::GovernedTransactionDenied(error.to_string()))?;
+            (
+                Some(digest.clone()),
+                Some(VerifiedApprovalReservation {
+                    threshold_proposal_hash: verified.body.threshold_proposal_hash.clone(),
+                    approval_set_hash: digest,
+                    threshold_replay: Some(verified.replay),
+                }),
+            )
+        } else {
+            (None, None)
+        };
+        if approval_required && approval_artifact_digest.is_none() {
             return Err(KernelError::GovernedTransactionDenied(format!(
                 "approval token required for governed transaction intent {}",
                 intent.id
             )));
         }
+
+        let verified_payee_binding = match (
+            economy_value_requires_payee,
+            commerce,
+            approval_artifact_digest.as_ref(),
+        ) {
+            (true, Some(commerce), Some(approval_artifact_digest)) => {
+                let settlement_destination_ref = commerce
+                    .settlement_destination_ref
+                    .as_ref()
+                    .ok_or_else(|| {
+                        KernelError::GovernedTransactionDenied(
+                            "governed economy value requires an explicit settlement destination"
+                                .to_string(),
+                        )
+                    })?;
+                Some(
+                    VerifiedGovernedPayeeBinding::new(
+                        commerce.seller.clone(),
+                        settlement_destination_ref.clone(),
+                        intent_hash.clone(),
+                        approval_artifact_digest.clone(),
+                    )
+                    .map_err(|error| KernelError::GovernedTransactionDenied(error.to_string()))?,
+                )
+            }
+            _ => None,
+        };
 
         Ok(Some(ValidatedGovernedAdmission {
             call_chain_proof: validated_upstream_call_chain_proof,
             verified_runtime_attestation,
+            verified_payee_binding,
+            approval_reservation,
         }))
     }
 
-    pub(crate) fn revalidate_governed_transaction_after_runtime_readiness(
+    pub(crate) fn reserve_validated_governed_approval(
         &self,
-        request: &ToolCallRequest,
-        cap: &CapabilityToken,
-        grant: &ToolGrant,
-        charge_result: Option<&BudgetChargeResult>,
-        parent_context: Option<&OperationContext>,
-        now: u64,
+        _request: &ToolCallRequest,
+        validated: Option<&ValidatedGovernedAdmission>,
+        durable_admission: Option<&mut DurableToolAdmission>,
+        trusted_now_unix_ms: u64,
     ) -> Result<(), KernelError> {
-        let (
-            intent_required,
-            approval_threshold_units,
-            required_seller,
-            minimum_runtime_assurance,
-            minimum_autonomy_tier,
-        ) = Self::governed_requirements(grant);
-        let governed_request_present =
-            request.governed_intent.is_some() || request.approval_token.is_some();
-        if !intent_required
-            && approval_threshold_units.is_none()
-            && required_seller.is_none()
-            && minimum_runtime_assurance.is_none()
-            && minimum_autonomy_tier.is_none()
-            && !governed_request_present
-        {
+        let Some(validated) = validated else {
+            return Ok(());
+        };
+        let Some(reservation) = validated.approval_reservation.as_ref() else {
+            return Ok(());
+        };
+        if reservation.threshold_replay.is_none() {
             return Ok(());
         }
-
-        let intent = request.governed_intent.as_ref().ok_or_else(|| {
+        let admission = durable_admission.ok_or_else(|| {
             KernelError::GovernedTransactionDenied(
-                "governed transaction intent required by grant or request".to_string(),
+                "threshold approval requires a durable admission operation".to_string(),
             )
         })?;
-        if intent.server_id != request.server_id || intent.tool_name != request.tool_name {
-            return Err(KernelError::GovernedTransactionDenied(
-                "governed transaction intent target does not match the tool call".to_string(),
-            ));
-        }
-
-        let verified_runtime_attestation =
-            self.verify_governed_request_runtime_attestation(request, now)?;
-        let _ =
-            self.validate_governed_call_chain_context(request, cap, intent, parent_context, now)?;
-        if let Some(required_tier) = minimum_runtime_assurance {
-            Self::validate_runtime_assurance(
-                verified_runtime_attestation.as_ref(),
-                required_tier,
-                "grant",
-            )?;
-        }
-        self.validate_governed_autonomy(
-            request,
-            cap,
-            intent,
-            minimum_autonomy_tier,
-            verified_runtime_attestation.as_ref(),
-            now,
-        )?;
-        Self::validate_metered_billing_context(
-            intent,
-            charge_result,
-            self.payment_adapter.is_some(),
-            now,
-        )?;
-
-        let requested_units = charge_result
-            .map(|charge| charge.cost_charged)
-            .or_else(|| intent.max_amount.as_ref().map(|amount| amount.units))
-            .unwrap_or(0);
-        let approval_required = approval_threshold_units
-            .map(|threshold_units| requested_units >= threshold_units)
-            .unwrap_or(false);
-        if let Some(approval_token) = request.approval_token.as_ref() {
-            let intent_hash = intent.binding_hash().map_err(|error| {
-                KernelError::GovernedTransactionDenied(format!(
-                    "failed to hash governed transaction intent: {error}"
-                ))
-            })?;
-            self.validate_governed_approval_token_non_consuming(
-                request,
-                cap,
-                &intent_hash,
-                approval_token,
-                now,
-            )?;
-        } else if approval_required {
-            return Err(KernelError::GovernedTransactionDenied(format!(
-                "approval token required for governed transaction intent {}",
-                intent.id
-            )));
-        }
+        self.reserve_durable_approval_set(admission, reservation, trusted_now_unix_ms)?;
         Ok(())
-    }
-
-    #[cfg(test)]
-    pub(crate) fn consume_governed_approval_for_dispatch(
-        &self,
-        request: &ToolCallRequest,
-    ) -> Result<(), KernelError> {
-        let Some(approval_token) = request.approval_token.as_ref() else {
-            return Ok(());
-        };
-        let intent = request.governed_intent.as_ref().ok_or_else(|| {
-            KernelError::GovernedTransactionDenied(
-                "approval token requires a governed transaction intent".to_string(),
-            )
-        })?;
-        let intent_hash = intent.binding_hash().map_err(|error| {
-            KernelError::GovernedTransactionDenied(format!(
-                "failed to hash governed transaction intent: {error}"
-            ))
-        })?;
-        self.consume_governed_approval_token(approval_token, &intent_hash)
-    }
-
-    pub(crate) fn validate_governed_approval_for_dispatch_non_consuming(
-        &self,
-        request: &ToolCallRequest,
-        cap: &CapabilityToken,
-        now: u64,
-    ) -> Result<Option<String>, KernelError> {
-        let Some(approval_token) = request.approval_token.as_ref() else {
-            return Ok(None);
-        };
-        let intent = request.governed_intent.as_ref().ok_or_else(|| {
-            KernelError::GovernedTransactionDenied(
-                "approval token requires a governed transaction intent".to_string(),
-            )
-        })?;
-        let intent_hash = intent.binding_hash().map_err(|error| {
-            KernelError::GovernedTransactionDenied(format!(
-                "failed to hash governed transaction intent: {error}"
-            ))
-        })?;
-        self.validate_governed_approval_token_non_consuming(
-            request,
-            cap,
-            &intent_hash,
-            approval_token,
-            now,
-        )?;
-        Ok(Some(intent_hash))
     }
 
     pub(crate) fn governed_call_chain_receipt_evidence(
@@ -1388,105 +1710,5 @@ impl ChioKernel {
             continuation_token_id,
             session_anchor_id,
         }))
-    }
-}
-
-#[cfg(test)]
-mod mustprepay_gate_tests {
-    use super::*;
-    use chio_core::capability::governance::{
-        GovernedTransactionIntent, MeteredBillingContext, MeteredBillingQuote,
-        MeteredSettlementMode,
-    };
-    use chio_core::capability::scope::MonetaryAmount;
-
-    fn must_prepay_intent() -> GovernedTransactionIntent {
-        GovernedTransactionIntent {
-            id: "intent-1".to_string(),
-            server_id: "srv-1".to_string(),
-            tool_name: "tool-1".to_string(),
-            purpose: "test".to_string(),
-            max_amount: None,
-            commerce: None,
-            metered_billing: Some(MeteredBillingContext {
-                settlement_mode: MeteredSettlementMode::MustPrepay,
-                quote: MeteredBillingQuote {
-                    quote_id: "q-1".to_string(),
-                    provider: "meter".to_string(),
-                    billing_unit: "1k_tokens".to_string(),
-                    quoted_units: 10,
-                    quoted_cost: MonetaryAmount {
-                        units: 100,
-                        currency: "USD".to_string(),
-                    },
-                    issued_at: 1_000,
-                    expires_at: None,
-                },
-                max_billed_units: None,
-            }),
-            runtime_attestation: None,
-            call_chain: None,
-            autonomy: None,
-            context: None,
-        }
-    }
-
-    #[test]
-    fn mustprepay_without_adapter_and_no_charge_is_denied() {
-        // The uncovered path: MustPrepay + charge_result None + no adapter.
-        let intent = must_prepay_intent();
-        let result = ChioKernel::validate_metered_billing_context(&intent, None, false, 1_500);
-        let error = result.expect_err("MustPrepay with no adapter and no charge must be denied");
-        assert!(matches!(error, KernelError::GovernedTransactionDenied(_)));
-        assert!(error.to_string().contains("MustPrepay"));
-    }
-
-    #[test]
-    fn mustprepay_with_adapter_passes_metered_validation() {
-        let intent = must_prepay_intent();
-        ChioKernel::validate_metered_billing_context(&intent, None, true, 1_500)
-            .expect("MustPrepay with an adapter configured should pass metered validation");
-    }
-
-    #[test]
-    fn non_mustprepay_without_adapter_is_allowed() {
-        let mut intent = must_prepay_intent();
-        if let Some(metered) = intent.metered_billing.as_mut() {
-            metered.settlement_mode = MeteredSettlementMode::AllowThenSettle;
-        }
-        ChioKernel::validate_metered_billing_context(&intent, None, false, 1_500)
-            .expect("non-prepay mode without an adapter must not be gated");
-    }
-
-    #[test]
-    fn future_dated_open_ended_quote_is_rejected() {
-        // An open-ended quote (no expires_at) whose issued_at is in the future
-        // must not authorize a prepay before the quote is valid. The validity
-        // check applies even without an expiry, so a future-dated reserve fails
-        // closed instead of settling early.
-        let mut intent = must_prepay_intent();
-        if let Some(metered) = intent.metered_billing.as_mut() {
-            metered.quote.issued_at = 2_000;
-            metered.quote.expires_at = None;
-        }
-        let result = ChioKernel::validate_metered_billing_context(&intent, None, true, 1_500);
-        let error = result.expect_err("a future-dated open-ended quote must be rejected");
-        assert!(matches!(error, KernelError::GovernedTransactionDenied(_)));
-        assert!(
-            error.to_string().contains("not valid"),
-            "denial must cite the quote validity window: {error}"
-        );
-    }
-
-    #[test]
-    fn open_ended_quote_issued_in_the_past_is_accepted() {
-        // A normal open-ended quote (issued_at <= now, no expiry) still passes.
-        let mut intent = must_prepay_intent();
-        if let Some(metered) = intent.metered_billing.as_mut() {
-            metered.quote.issued_at = 1_000;
-            metered.quote.expires_at = None;
-        }
-        ChioKernel::validate_metered_billing_context(&intent, None, true, 1_500)
-            .expect("an open-ended quote issued in the past must be accepted");
     }
 }

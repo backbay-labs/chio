@@ -88,7 +88,6 @@ fn metrics_kernel_with_web3_evidence(
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
         allow_ephemeral_receipt_log: true,
         allow_ephemeral_revocation_store: true,
     };
@@ -215,6 +214,7 @@ fn capability_for_tool(
             issued_at: now.saturating_sub(30),
             expires_at: now + 300,
             delegation_chain: Vec::new(),
+            aggregate_invocation_budget: None,
         },
         issuer,
     )
@@ -304,6 +304,10 @@ fn mcp_edge_emits_chio_receipt_write_total() -> Result<(), Box<dyn Error>> {
             agent_id: agent.public_key().to_hex(),
             execution_nonce: None,
             governed_intent: None,
+            approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             route_selection_metadata: None,
             peer_supports_chio_tool_streaming: false,
@@ -359,6 +363,10 @@ fn mcp_edge_emits_chio_receipt_write_total() -> Result<(), Box<dyn Error>> {
             agent_id: error_agent.public_key().to_hex(),
             execution_nonce: None,
             governed_intent: None,
+            approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             route_selection_metadata: None,
             peer_supports_chio_tool_streaming: false,
@@ -413,6 +421,9 @@ fn acp_edge_emits_chio_receipt_write_total() -> Result<(), Box<dyn Error>> {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
     };
 
@@ -466,6 +477,9 @@ fn acp_edge_emits_chio_receipt_write_total() -> Result<(), Box<dyn Error>> {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         },
     );
@@ -523,6 +537,9 @@ fn a2a_edge_emits_chio_receipt_write_total() -> Result<(), Box<dyn Error>> {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
     };
 
@@ -575,6 +592,9 @@ fn a2a_edge_emits_chio_receipt_write_total() -> Result<(), Box<dyn Error>> {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         },
     );
@@ -638,6 +658,7 @@ fn http_core_emits_kernel_decision_latency_and_guard_evaluations() -> Result<(),
         requested_arguments: None,
         execution_nonce: None,
         model_metadata: None,
+        unsupported_authorization_extension: None,
         policy: chio_http_core::HttpAuthorityPolicy::SessionAllow,
     })?;
 
@@ -1364,6 +1385,9 @@ fn drive_and_render(name: &str) -> Result<Option<String>, Box<dyn Error>> {
     } else if name == chio_metrics_spec::CHIO_RECEIPT_SECONDS_SINCE_LAST_CHECKPOINT {
         families::RECEIPT_CHECKPOINT_AGE_SECONDS.set(&[], 30);
         families::RECEIPT_CHECKPOINT_AGE_SECONDS.render(&mut out);
+    } else if name == chio_metrics_spec::CHIO_AMBIGUOUS_DISPATCH_RETAINED_HOLD_TOTAL {
+        families::AMBIGUOUS_DISPATCH_RETAINED_HOLD.incr(&["none"]);
+        families::AMBIGUOUS_DISPATCH_RETAINED_HOLD.render(&mut out);
     } else {
         return existing_infra_driver(name);
     }
@@ -1403,6 +1427,7 @@ fn existing_infra_driver(name: &str) -> Result<Option<String>, Box<dyn Error>> {
             requested_arguments: None,
             execution_nonce: None,
             model_metadata: None,
+            unsupported_authorization_extension: None,
             policy: chio_http_core::HttpAuthorityPolicy::SessionAllow,
         })?;
         return Ok(Some(chio_http_core::render_http_core_metrics_prometheus()));
@@ -1458,6 +1483,10 @@ fn existing_infra_driver(name: &str) -> Result<Option<String>, Box<dyn Error>> {
                 agent_id: agent.public_key().to_hex(),
                 execution_nonce: None,
                 governed_intent: None,
+                approval_token: None,
+                approval_tokens: Vec::new(),
+                threshold_approval_proposal: None,
+                supplemental_authorization: None,
                 model_metadata: None,
                 route_selection_metadata: None,
                 peer_supports_chio_tool_streaming: false,

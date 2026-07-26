@@ -1,10 +1,11 @@
 //! Prometheus text exposition for guard metrics.
 
 use chio_metrics_spec::{
-    CHIO_GUARD_DENY_TOTAL, CHIO_GUARD_EVAL_DURATION_SECONDS, CHIO_GUARD_FUEL_CONSUMED_TOTAL,
+    CHIO_AMBIGUOUS_DISPATCH_RETAINED_HOLD_TOTAL, CHIO_GUARD_DENY_TOTAL,
+    CHIO_GUARD_EVAL_DURATION_SECONDS, CHIO_GUARD_FUEL_CONSUMED_TOTAL,
     CHIO_GUARD_HOST_CALL_DURATION_SECONDS, CHIO_GUARD_MODULE_BYTES, CHIO_GUARD_RELOAD_TOTAL,
-    CHIO_GUARD_VERDICT_TOTAL, CHIO_SIGNING_QUEUE_BLOCK_TOTAL, GUARD_EVAL_DURATION_BUCKETS_SECONDS,
-    GUARD_HOST_CALL_DURATION_BUCKETS_SECONDS,
+    CHIO_GUARD_VERDICT_TOTAL, CHIO_SETTLEMENT_UNRESOLVED_TOTAL, CHIO_SIGNING_QUEUE_BLOCK_TOTAL,
+    GUARD_EVAL_DURATION_BUCKETS_SECONDS, GUARD_HOST_CALL_DURATION_BUCKETS_SECONDS,
 };
 
 pub use chio_metrics_spec::MetricKind as PrometheusMetricKind;
@@ -111,24 +112,17 @@ const RUNTIME_METRIC_FAMILIES: &[GuardMetricFamily] = &[
         buckets: &[],
     },
     GuardMetricFamily {
-        name: chio_metrics_spec::CHIO_SETTLEMENT_UNRESOLVED_TOTAL,
-        help: "Total money-bearing receipts whose settlement outcome could not be resolved.",
+        name: CHIO_SETTLEMENT_UNRESOLVED_TOTAL,
+        help: "Total settlement observer routing invocations with an unresolved outcome.",
         kind: PrometheusMetricKind::Counter,
         labels: &[],
         buckets: &[],
     },
     GuardMetricFamily {
-        name: chio_metrics_spec::CHIO_BUDGET_OPEN_HOLDS,
-        help: "Capability budget holds currently in disposition=open.",
-        kind: PrometheusMetricKind::Gauge,
-        labels: &[],
-        buckets: &[],
-    },
-    GuardMetricFamily {
-        name: chio_metrics_spec::CHIO_BUDGET_HOLDS_EXPIRED_TOTAL,
-        help: "Total capability budget holds swept to disposition=expired.",
+        name: CHIO_AMBIGUOUS_DISPATCH_RETAINED_HOLD_TOTAL,
+        help: "Total budget or payment holds retained after an ambiguous post-dispatch outcome, labeled by whether durable reconciliation is available.",
         kind: PrometheusMetricKind::Counter,
-        labels: &[],
+        labels: &["reconciliation"],
         buckets: &[],
     },
 ];
@@ -156,17 +150,19 @@ pub fn guard_metrics_endpoint(path: &str) -> Option<MetricsEndpointResponse> {
 /// Render the kernel `/metrics` body from the chio-metrics-spec runtime
 /// families. The kernel renders the guard families and the two OTEL-drop
 /// families (whose sole producers are chio-wasm-guards and the OTLP ingress,
-/// which cannot be depended on by the kernel) plus the signing-queue block
-/// family, so every sample is a real, correctly-labeled counter rather than a
-/// hardcoded zero placeholder.
+/// which cannot be depended on by the kernel), the signing-queue block family,
+/// the settlement unresolved family, the ambiguous-dispatch retained-hold
+/// family, and receipt watchdog gauges. Every sample comes from its shared
+/// runtime family rather than a fixed zero.
 #[must_use]
 pub fn render_guard_metrics_prometheus() -> String {
     let mut output = String::new();
     chio_metrics_spec::runtime::render_guard_families(&mut output);
     chio_metrics_spec::runtime::render_otel_drop_families(&mut output);
     chio_metrics_spec::runtime::families::SIGNING_QUEUE_BLOCK.render(&mut output);
+    chio_metrics_spec::runtime::families::SETTLEMENT_UNRESOLVED.render(&mut output);
+    chio_metrics_spec::runtime::families::AMBIGUOUS_DISPATCH_RETAINED_HOLD.render(&mut output);
     chio_metrics_spec::runtime::render_receipt_watchdog_gauges(&mut output);
-    chio_metrics_spec::runtime::render_money_path_families(&mut output);
     output
 }
 

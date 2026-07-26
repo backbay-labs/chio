@@ -77,7 +77,6 @@ fn kernel_config(keypair: Keypair) -> KernelConfig {
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     }
 }
 
@@ -98,12 +97,10 @@ fn governed_dispatch_replay_is_denied_after_store_reopen() {
     let agent = Keypair::generate();
 
     let mut first_kernel = ChioKernel::new(kernel_config(kernel_keypair.clone()));
+    first_kernel.enable_unsafe_ephemeral_financial_dispatch_for_development();
     first_kernel.set_governed_approval_replay_store(Box::new(
         SqliteGovernedApprovalReplayStore::open(&path).test_expect("replay store opens"),
     ));
-    first_kernel.register_tool_server(Box::new(CostServer {
-        id: server.to_string(),
-    }));
 
     let amount = MonetaryAmount {
         units: 10,
@@ -147,6 +144,7 @@ fn governed_dispatch_replay_is_denied_after_store_reopen() {
         call_chain: None,
         autonomy: None,
         context: None,
+        body: Default::default(),
     };
     let now = now_secs();
     let approval_token = GovernedApprovalToken::sign(
@@ -156,6 +154,7 @@ fn governed_dispatch_replay_is_denied_after_store_reopen() {
             subject: capability.subject.clone(),
             governed_intent_hash: intent.binding_hash().test_expect("intent hashes"),
             request_id: request_id.to_string(),
+            threshold_proposal_hash: None,
             issued_at: now.saturating_sub(1),
             expires_at: now.saturating_add(300),
             decision: GovernedApprovalDecision::Approved,
@@ -174,17 +173,45 @@ fn governed_dispatch_replay_is_denied_after_store_reopen() {
         execution_nonce: None,
         governed_intent: Some(intent),
         approval_token: Some(approval_token),
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
 
+    let pre_dispatch_denial = first_kernel
+        .evaluate_tool_call_blocking(&request)
+        .test_expect("missing server denial evaluates");
+    assert_eq!(pre_dispatch_denial.verdict, Verdict::Deny);
+    assert!(
+        pre_dispatch_denial
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("not registered")),
+        "{:?}",
+        pre_dispatch_denial.reason
+    );
+    first_kernel.register_tool_server(Box::new(CostServer {
+        id: server.to_string(),
+    }));
+
     let first_response = first_kernel
         .evaluate_tool_call_blocking(&request)
         .test_expect("first dispatch evaluates");
-    assert_eq!(first_response.verdict, Verdict::Allow);
+    assert_eq!(
+        first_response.verdict,
+        Verdict::Allow,
+        "{}",
+        first_response
+            .reason
+            .as_deref()
+            .unwrap_or("kernel supplied no reason")
+    );
     drop(first_kernel);
 
     let mut reopened_kernel = ChioKernel::new(kernel_config(kernel_keypair));
+    reopened_kernel.enable_unsafe_ephemeral_financial_dispatch_for_development();
     reopened_kernel.set_governed_approval_replay_store(Box::new(
         SqliteGovernedApprovalReplayStore::open(&path).test_expect("replay store reopens"),
     ));

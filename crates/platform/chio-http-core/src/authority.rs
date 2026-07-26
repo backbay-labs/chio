@@ -110,6 +110,7 @@ pub struct HttpAuthorityInput<'a> {
     pub requested_tool_name: Option<&'a str>,
     pub requested_arguments: Option<&'a Value>,
     pub model_metadata: Option<&'a ModelMetadata>,
+    pub unsupported_authorization_extension: Option<&'a str>,
     pub execution_nonce: Option<&'a SignedExecutionNonce>,
     pub policy: HttpAuthorityPolicy,
 }
@@ -269,11 +270,18 @@ impl Guard for HttpProjectionGuard {
 /// revocation stores before the kernel is Arc-wrapped, and it is fallible
 /// because attaching a receipt store hydrates checkpoint counters and can fail.
 /// Both ephemeral opt-ins default to `false` (fail-closed).
+struct DurableAdmissionStores {
+    store: Arc<dyn chio_kernel::QualifiedAdmissionProjectionStore>,
+    outcome_store: Arc<dyn chio_kernel::tool_outcome::QualifiedToolOutcomeStore>,
+    fence: chio_kernel::admission_operation::StoreMutationFence,
+}
+
 #[derive(Default)]
 pub struct HttpAuthorityBuilder {
     approval_store: Option<Arc<dyn ApprovalStore>>,
     receipt_store: Option<Arc<dyn ReceiptStore>>,
     revocation_store: Option<Arc<dyn RevocationStore>>,
+    durable_admission: Option<DurableAdmissionStores>,
     trusted_capability_issuers: Vec<PublicKey>,
     allow_ephemeral_receipt_log: bool,
     allow_ephemeral_revocation_store: bool,
@@ -289,6 +297,21 @@ impl HttpAuthorityBuilder {
     #[must_use]
     pub fn revocation_store(mut self, store: Arc<dyn RevocationStore>) -> Self {
         self.revocation_store = Some(store);
+        self
+    }
+
+    #[must_use]
+    pub fn durable_admission_stores(
+        mut self,
+        store: Arc<dyn chio_kernel::QualifiedAdmissionProjectionStore>,
+        outcome_store: Arc<dyn chio_kernel::tool_outcome::QualifiedToolOutcomeStore>,
+        fence: chio_kernel::admission_operation::StoreMutationFence,
+    ) -> Self {
+        self.durable_admission = Some(DurableAdmissionStores {
+            store,
+            outcome_store,
+            fence,
+        });
         self
     }
 
@@ -347,6 +370,11 @@ impl HttpAuthorityBuilder {
         }
         if let Some(store) = self.revocation_store {
             kernel.set_revocation_store_handle(store);
+        }
+        if let Some(durable) = self.durable_admission {
+            kernel
+                .set_durable_admission_store(durable.store, durable.outcome_store, durable.fence)
+                .map_err(|error| HttpAuthorityError::Kernel(error.to_string()))?;
         }
         kernel.register_tool_server(Box::new(HttpAuthorizationServer));
         kernel.add_guard(Box::new(HttpProjectionGuard));
@@ -538,7 +566,6 @@ impl HttpAuthority {
             retention_config: None,
             memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
             deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-            dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
         }
     }
 
@@ -632,27 +659,31 @@ impl HttpAuthority {
             .identity_hash()
             .map_err(|e| HttpAuthorityError::CallerIdentity(e.to_string()))?;
         let binding = capability_binding(&input, &caller_identity_hash);
-        let presented_capability = if let Some(reason) = binding.invalid_reason.clone() {
-            PresentedCapabilityState {
-                capability_id: None,
-                invalid_reason: Some(reason),
-            }
-        } else {
-            validate_presented_capability(
-                input.capability_id_hint,
-                input.presented_capability,
-                self.trusted_capability_issuers(),
-                binding.requested_tool_server.as_deref(),
-                binding.requested_tool_name.as_deref(),
-                binding.requested_arguments.as_ref(),
-                input.model_metadata,
-                &|capability_id| {
-                    self.kernel
-                        .is_capability_revoked(capability_id)
-                        .map_err(|error| HttpAuthorityError::Kernel(error.to_string()))
-                },
-            )
-        };
+        let unsupported_reason = input.unsupported_authorization_extension.map(|field| {
+            format!("HTTP authority projection does not support authorization field {field}")
+        });
+        let presented_capability =
+            if let Some(reason) = unsupported_reason.or_else(|| binding.invalid_reason.clone()) {
+                PresentedCapabilityState {
+                    capability_id: None,
+                    invalid_reason: Some(reason),
+                }
+            } else {
+                validate_presented_capability(
+                    input.capability_id_hint,
+                    input.presented_capability,
+                    self.trusted_capability_issuers(),
+                    binding.requested_tool_server.as_deref(),
+                    binding.requested_tool_name.as_deref(),
+                    binding.requested_arguments.as_ref(),
+                    input.model_metadata,
+                    &|capability_id| {
+                        self.kernel
+                            .is_capability_revoked(capability_id)
+                            .map_err(|error| HttpAuthorityError::Kernel(error.to_string()))
+                    },
+                )
+            };
 
         let chio_request = ChioHttpRequest {
             request_id: input.request_id.clone(),
@@ -670,6 +701,11 @@ impl HttpAuthority {
             tool_name: binding.requested_tool_name.clone(),
             arguments: binding.requested_arguments.clone(),
             model_metadata: input.model_metadata.cloned(),
+            governed_intent: None,
+            approval_token: None,
+            approval_tokens: None,
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             execution_nonce: input.execution_nonce.cloned(),
             timestamp: chrono::Utc::now().timestamp() as u64,
         };
@@ -928,6 +964,9 @@ impl HttpAuthority {
             execution_nonce: execution_nonce.cloned(),
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             federated_origin_kernel_id: None,
         };
@@ -963,6 +1002,7 @@ impl HttpAuthority {
             issued_at,
             expires_at: issued_at.saturating_add(HTTP_AUTHORITY_TTL_SECS),
             delegation_chain: vec![],
+            aggregate_invocation_budget: None,
         };
         CapabilityToken::sign(body, self.keypair.as_ref())
             .map_err(|error| HttpAuthorityError::Kernel(error.to_string()))

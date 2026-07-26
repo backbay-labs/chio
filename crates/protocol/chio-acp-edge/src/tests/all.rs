@@ -7,7 +7,15 @@ mod tests {
         Arc, Mutex, MutexGuard,
     };
 
-    use chio_core::capability::{scope::{ChioScope, Operation, ToolGrant}, token::{CapabilityTokenBody}};
+    use chio_core::capability::{
+        governance::{
+            GovernedApprovalDecision, GovernedApprovalToken, GovernedApprovalTokenBody,
+            ThresholdApprovalProposal, ThresholdApprovalProposalBody,
+            THRESHOLD_APPROVAL_PROPOSAL_SCHEMA,
+        },
+        scope::{ChioScope, Operation, ToolGrant},
+        token::CapabilityTokenBody,
+    };
     use chio_core::crypto::Keypair;
     use chio_kernel::{
         dpop, ChioKernel, KernelConfig, KernelError, NestedFlowBridge, RuntimeAdmissionContext,
@@ -15,7 +23,6 @@ mod tests {
         DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
     };
     use chio_manifest::LatencyHint;
-
     static METRICS_TEST_LOCK: Mutex<()> = Mutex::new(());
     fn metrics_test_guard() -> MutexGuard<'static, ()> {
         match METRICS_TEST_LOCK.lock() {
@@ -127,7 +134,7 @@ mod tests {
         }
     }
 
-    fn test_manifest() -> ToolManifest {
+    pub(super) fn test_manifest() -> ToolManifest {
         ToolManifest {
             schema: "chio.manifest.v1".to_string(),
             server_id: "test-srv".to_string(),
@@ -409,7 +416,7 @@ mod tests {
         }
     }
 
-    fn test_kernel_config() -> KernelConfig {
+    pub(super) fn test_kernel_config() -> KernelConfig {
         let keypair = Keypair::generate();
         KernelConfig {
             ca_public_keys: vec![keypair.public_key()],
@@ -428,11 +435,10 @@ mod tests {
             retention_config: None,
             memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
             deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-            dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
         }
     }
 
-    fn capability_for_tool(
+    pub(super) fn capability_for_tool(
         issuer: &Keypair,
         subject: &Keypair,
         server_id: &str,
@@ -471,10 +477,108 @@ mod tests {
                 issued_at: now.saturating_sub(30),
                 expires_at: now + 300,
                 delegation_chain: vec![],
+                aggregate_invocation_budget: None,
             },
             issuer,
         )
         .test_expect("capability should sign")
+    }
+
+    pub(super) fn threshold_artifacts(
+        subject: &Keypair,
+        request_id: &str,
+    ) -> (Vec<GovernedApprovalToken>, ThresholdApprovalProposal) {
+        let policy_authority = Keypair::generate();
+        let approvers = [Keypair::generate(), Keypair::generate()];
+        let intent_hash = "a".repeat(64);
+        let proposal = ThresholdApprovalProposal::sign(
+            ThresholdApprovalProposalBody {
+                schema: THRESHOLD_APPROVAL_PROPOSAL_SCHEMA.to_string(),
+                proposal_id: format!("proposal-{request_id}"),
+                request_id: request_id.to_string(),
+                governed_intent_hash: intent_hash.clone(),
+                subject: subject.public_key(),
+                authorizing_capability_digest: "b".repeat(64),
+                policy_hash: "c".repeat(64),
+                threshold: 2,
+                eligible_set_digest: "d".repeat(64),
+                proposal_created_at: 100,
+                proposal_deadline: 200,
+                policy_authority: policy_authority.public_key(),
+            },
+            &policy_authority,
+        )
+        .test_expect("threshold proposal should sign");
+        let proposal_hash = proposal
+            .artifact_digest()
+            .test_expect("threshold proposal should hash");
+        let approvals = approvers
+            .iter()
+            .enumerate()
+            .map(|(index, approver)| {
+                GovernedApprovalToken::sign(
+                    GovernedApprovalTokenBody {
+                        id: format!("approval-{request_id}-{index}"),
+                        approver: approver.public_key(),
+                        subject: subject.public_key(),
+                        governed_intent_hash: intent_hash.clone(),
+                        request_id: request_id.to_string(),
+                        threshold_proposal_hash: Some(proposal_hash.clone()),
+                        issued_at: 100,
+                        expires_at: 200,
+                        decision: GovernedApprovalDecision::Approved,
+                    },
+                    approver,
+                )
+                .test_expect("approval should sign")
+            })
+            .collect();
+        (approvals, proposal)
+    }
+
+    #[test]
+    fn acp_projection_preserves_complete_approval_set_and_opaque_extension() {
+        let issuer = Keypair::generate();
+        let subject = Keypair::generate();
+        let capability = capability_for_tool(&issuer, &subject, "srv", "run");
+        let (approvals, proposal) = threshold_artifacts(&subject, "acp-auth-set");
+        let supplemental =
+            chio_core::capability::supplemental_authorization::OpaqueSupplementalAuthorization {
+                signed_extension: "opaque-acp-extension".to_string(),
+            };
+        let execution = AcpKernelExecutionContext {
+            capability,
+            agent_id: subject.public_key().to_hex(),
+            dpop_proof: None,
+            execution_nonce: None,
+            governed_intent: None,
+            approval_token: None,
+            approval_tokens: approvals.clone(),
+            threshold_approval_proposal: Some(proposal.clone()),
+            supplemental_authorization: Some(supplemental.clone()),
+            model_metadata: None,
+        };
+        let projected = ChioAcpEdge::build_execution_request(
+            "run",
+            serde_json::json!({"value": 7}),
+            &execution,
+            &CapabilityBinding {
+                target_protocol: DiscoveryProtocol::Native,
+                server_id: "srv".to_string(),
+                tool_name: "run".to_string(),
+            },
+            DiscoveryProtocol::Native,
+            AcpRequestIds {
+                origin_request_id: "acp-auth-set".to_string(),
+                kernel_request_id: "acp-auth-set".to_string(),
+            },
+        )
+        .test_expect("ACP request should project");
+
+        assert_eq!(projected.approval_tokens, approvals);
+        assert_eq!(projected.threshold_approval_proposal, Some(proposal));
+        assert_eq!(projected.supplemental_authorization, Some(supplemental));
+        assert_eq!(projected.kernel_request_id, "acp-auth-set");
     }
 
     fn dpop_proof_for_request(
@@ -773,6 +877,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
         let request = PermissionRequest {
@@ -805,6 +912,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
         let request = PermissionRequest {
@@ -847,6 +957,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
         let request = PermissionRequest {
@@ -895,6 +1008,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
         let request = PermissionRequest {
@@ -952,6 +1068,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -988,6 +1107,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
         let request = PermissionRequest {
@@ -1087,6 +1209,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -1130,6 +1255,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -1141,6 +1269,99 @@ mod tests {
             error.to_string(),
             "invalid request: ACP execution agent_id must not be empty"
         );
+    }
+
+    #[test]
+    fn invoke_rejects_supplemental_authorization_without_stable_request_id() {
+        let edge = ChioAcpEdge::new(AcpEdgeConfig::default(), vec![test_manifest()]).test_unwrap();
+        let config = test_kernel_config();
+        let issuer = config.keypair.clone();
+        let mut kernel = ChioKernel::new(config);
+        kernel.register_tool_server(Box::new(test_server()));
+
+        let subject = Keypair::generate();
+        let execution = AcpKernelExecutionContext {
+            capability: capability_for_tool(&issuer, &subject, "test-srv", "read_file"),
+            agent_id: subject.public_key().to_hex(),
+            dpop_proof: None,
+            execution_nonce: None,
+            governed_intent: None,
+            approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: Some(
+                chio_core::capability::supplemental_authorization::OpaqueSupplementalAuthorization {
+                    signed_extension: "opaque-extension".to_string(),
+                },
+            ),
+            model_metadata: None,
+        };
+
+        let error = edge
+            .invoke("read_file", json!({"path": "/tmp"}), &kernel, &execution)
+            .test_expect_err("supplemental authorization must require a stable request id");
+
+        assert_eq!(
+            error.to_string(),
+            "invalid request: ACP request-bound authorization artifacts and execution nonces \
+             require invoke_with_request_id or start_stream_with_request_id"
+        );
+
+        edge.invoke_with_request_id(
+            "caller-chosen-request",
+            "read_file",
+            json!({"path": "/tmp"}),
+            &kernel,
+            &execution,
+        )
+        .test_expect("stable request id path must accept request-bound artifacts");
+    }
+
+    #[test]
+    fn invoke_rejects_singular_approval_token_without_stable_request_id() {
+        let edge = ChioAcpEdge::new(AcpEdgeConfig::default(), vec![test_manifest()]).test_unwrap();
+        let config = test_kernel_config();
+        let issuer = config.keypair.clone();
+        let mut kernel = ChioKernel::new(config);
+        kernel.register_tool_server(Box::new(test_server()));
+
+        let subject = Keypair::generate();
+        let (approvals, _proposal) = threshold_artifacts(&subject, "acp-singular-auth");
+        let approval_token = approvals
+            .into_iter()
+            .next()
+            .test_expect("threshold artifacts must yield at least one approval token");
+        let execution = AcpKernelExecutionContext {
+            capability: capability_for_tool(&issuer, &subject, "test-srv", "read_file"),
+            agent_id: subject.public_key().to_hex(),
+            dpop_proof: None,
+            execution_nonce: None,
+            governed_intent: None,
+            approval_token: Some(approval_token.clone()),
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
+            model_metadata: None,
+        };
+
+        let error = edge
+            .invoke("read_file", json!({"path": "/tmp"}), &kernel, &execution)
+            .test_expect_err("a singular approval token must require a stable request id");
+
+        assert_eq!(
+            error.to_string(),
+            "invalid request: ACP request-bound authorization artifacts and execution nonces \
+             require invoke_with_request_id or start_stream_with_request_id"
+        );
+
+        edge.invoke_with_request_id(
+            "caller-chosen-request",
+            "read_file",
+            json!({"path": "/tmp"}),
+            &kernel,
+            &execution,
+        )
+        .test_expect("stable request id path must accept a singular approval token");
     }
 
     #[test]
@@ -1159,6 +1380,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -1188,6 +1412,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -1229,6 +1456,9 @@ mod tests {
                     execution_nonce: None,
                     governed_intent: None,
                     approval_token: None,
+                    approval_tokens: Vec::new(),
+                    threshold_approval_proposal: None,
+                    supplemental_authorization: None,
                     model_metadata: None,
                 },
                 "approval required",
@@ -1274,6 +1504,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
         let before_error = receipt_write_total(RECEIPT_WRITE_OUTCOME_ERROR);
@@ -1330,6 +1563,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
         let before_error = receipt_write_total(RECEIPT_WRITE_OUTCOME_ERROR);
@@ -1361,6 +1597,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -1417,6 +1656,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -1454,6 +1696,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -1546,6 +1791,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
         let response = edge.handle_jsonrpc(
@@ -1592,6 +1840,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
         let response = edge.handle_jsonrpc(
@@ -1636,6 +1887,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -1674,6 +1928,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -1712,6 +1969,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -1750,6 +2010,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -1789,6 +2052,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
         let response = edge.handle_jsonrpc(
@@ -1826,6 +2092,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -1865,6 +2134,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -1904,6 +2176,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -1942,6 +2217,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -1978,6 +2256,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2013,6 +2294,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2048,6 +2332,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
         let response = edge.handle_jsonrpc(
@@ -2077,6 +2364,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2115,6 +2405,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2253,6 +2546,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2335,6 +2631,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2399,6 +2698,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2438,6 +2740,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2510,6 +2815,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2549,6 +2857,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2588,6 +2899,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2627,6 +2941,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2685,6 +3002,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2725,6 +3045,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 
@@ -2805,6 +3128,9 @@ mod tests {
             execution_nonce: None,
             governed_intent: None,
             approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
         };
 

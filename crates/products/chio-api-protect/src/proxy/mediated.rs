@@ -1,6 +1,9 @@
 use super::*;
 
-use chio_core_types::capability::governance::GovernedTransactionIntent;
+use chio_core_types::capability::governance::{
+    GovernedTransactionIntent, ThresholdApprovalProposal,
+};
+use chio_core_types::capability::supplemental_authorization::OpaqueSupplementalAuthorization;
 use chio_kernel::budget_store::BudgetStore;
 use chio_kernel::dpop::{DpopConfig, DpopNonceStore, DpopProof};
 use chio_kernel::execution_nonce::{
@@ -12,59 +15,9 @@ use chio_kernel::{
     DEFAULT_MAX_STREAM_TOTAL_BYTES,
 };
 
-/// A configured budget store together with whether it supports the pre-execution
-/// hold APIs the mediated reservation path depends on.
-///
-/// The local SQLite store implements `get_budget_hold`, `mark_hold_reserved`, and
-/// `reap_expired_reserved_holds`, so a reserved hold can be resolved by nonce on
-/// `/v1/reconcile` and reclaimed by the TTL reaper. The remote control-plane
-/// store forwards only charge/reverse/reconcile and falls back to the no-op trait
-/// defaults for those hold APIs, so a reservation minted against it could never
-/// be reconciled by nonce or reaped. Tracking hold-capability at the point of
-/// construction lets the mediated routes fail closed rather than mint an
-/// unreconcilable reserved nonce.
-pub(crate) struct ConfiguredBudgetStore {
-    pub(crate) store: Arc<dyn BudgetStore>,
-    pub(crate) hold_capable: bool,
-}
-
-/// Build the sidecar's budget store, preferring the hold-capable local SQLite
-/// store (`--budget-db`) over the remote control-plane store (`--control-url`)
-/// when both are configured; falling back to the remote store; else `None` (the
-/// mediated route then denies fail-closed).
-///
-/// Only the local SQLite store is hold-capable. The mediated authorization and
-/// reconcile routes need a hold-capable store to persist and resolve a durable
-/// reserved hold, so when both are configured the local store is chosen and
-/// mediation keeps working; a remote-only deployment stays not hold-capable and
-/// those routes reject fail-closed rather than mint an unreconcilable reserved
-/// nonce.
-pub(crate) fn build_budget_store(
-    config: &ProtectConfig,
-) -> Result<Option<ConfiguredBudgetStore>, ProtectError> {
-    if let Some(path) = config.budget_db.as_deref() {
-        let store = chio_store_sqlite::budget_store::SqliteBudgetStore::open(path)
-            .map_err(|error| ProtectError::Config(error.to_string()))?;
-        return Ok(Some(ConfiguredBudgetStore {
-            store: Arc::new(store),
-            hold_capable: true,
-        }));
-    }
-    if let Some(control_url) = config.control_url.as_deref() {
-        let token = config.control_token.as_deref().unwrap_or("");
-        let store =
-            chio_control_plane::trust_control::service_runtime::budget::build_remote_budget_store(
-                control_url,
-                token,
-            )
-            .map_err(|error| ProtectError::Config(error.to_string()))?;
-        return Ok(Some(ConfiguredBudgetStore {
-            store: Arc::from(store),
-            hold_capable: false,
-        }));
-    }
-    Ok(None)
-}
+#[path = "mediated/budget_configuration.rs"]
+mod budget_configuration;
+pub(crate) use budget_configuration::build_budget_store;
 
 /// Load the durable revocation store's revoked capability ids so operator
 /// revocations recorded through `chio trust revoke --revocation-db <path>` are
@@ -152,6 +105,7 @@ pub(crate) fn build_mediation_kernel(
     trusted_capability_issuers: &[PublicKey],
     tool_servers: Vec<Box<dyn ToolServerConnection>>,
     payment_adapter: Option<Box<dyn chio_kernel::PaymentAdapter>>,
+    durable_admission: Option<DurableAdmissionStores>,
 ) -> Result<ChioKernel, ProtectError> {
     let mut ca_public_keys = vec![signer.public_key()];
     for issuer in trusted_capability_issuers {
@@ -170,6 +124,12 @@ pub(crate) fn build_mediation_kernel(
         max_stream_duration_secs: DEFAULT_MAX_STREAM_DURATION_SECS,
         max_stream_total_bytes: DEFAULT_MAX_STREAM_TOTAL_BYTES,
         require_web3_evidence: false,
+        // A money-bearing mediated deployment should enable durable admission (the
+        // durable receipt db path wired through evaluator.rs and proxy/state.rs) so
+        // that an ambiguous post-dispatch outcome has its retained budget or payment
+        // hold reconciled by the recovery sweep. The ephemeral log has no sweep, so
+        // any hold retained on this non-durable kernel is surfaced instead by
+        // chio_ambiguous_dispatch_retained_hold_total{reconciliation="none"}.
         allow_ephemeral_receipt_log: true,
         // Revocation is enforced sidecar-side over the durable revoked set (the
         // revoked-ancestor walk below); this kernel's internal store is
@@ -179,17 +139,17 @@ pub(crate) fn build_mediation_kernel(
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-        // The dispatch-intent payment journal is off on this reserve-only kernel.
-        // Its money-path durability is the reserved-hold TTL reaper plus settle
-        // by reconcile-by-nonce, not the in-process HoldPlaced -> Authorized ->
-        // Settled journal that the dispatching kernels (`chio mcp serve`, `chio
-        // run`) use: this kernel reserves a hold and mints a nonce but never
-        // dispatches or settles in-process, so it never writes the HoldPlaced row
-        // an Authorized advance would require. A MustPrepay prepayment is still
-        // authorized through the adapter before a nonce is minted.
-        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     });
     kernel.set_budget_store_handle(budget_store);
+    if let Some(durable) = durable_admission {
+        kernel
+            .set_durable_admission_store(durable.store, durable.outcome_store, durable.fence)
+            .map_err(|error| {
+                ProtectError::Config(format!(
+                    "failed to install durable admission stores on the mediation kernel: {error}"
+                ))
+            })?;
+    }
     let nonce_cfg = ExecutionNonceConfig {
         require_nonce: true,
         ..ExecutionNonceConfig::default()
@@ -215,13 +175,7 @@ pub(crate) fn build_mediation_kernel(
     // reserve-for-caller path mints a nonce. Absent an adapter the gate denies
     // MustPrepay fail-closed, so only a configured adapter enables prepayment.
     if let Some(payment_adapter) = payment_adapter {
-        kernel
-            .set_payment_adapter(payment_adapter)
-            .map_err(|error| {
-                ProtectError::Config(format!(
-                    "failed to install payment adapter on the mediation kernel: {error}"
-                ))
-            })?;
+        kernel.set_payment_adapter(payment_adapter);
     }
     for server in tool_servers {
         kernel.register_tool_server(server);
@@ -268,10 +222,22 @@ pub(crate) struct SidecarEvaluateToolCallMediatedRequest {
     /// alongside `governed_intent` so an approval-gated grant can be authorized.
     #[serde(default)]
     approval_token: Option<GovernedApprovalToken>,
+    /// Reserved threshold approval fields. The mediated product does not yet
+    /// configure a threshold policy resolver, so either field is rejected at the
+    /// HTTP boundary instead of being advertised as an unusable kernel feature.
+    #[serde(default)]
+    approval_tokens: Vec<GovernedApprovalToken>,
+    #[serde(default)]
+    threshold_approval_proposal: Option<ThresholdApprovalProposal>,
     /// Optional DPoP proof-of-possession. Forwarded so a grant carrying
     /// `dpop_required` can verify the proof instead of denying fail-closed.
     #[serde(default)]
     dpop_proof: Option<DpopProof>,
+    /// Reserved opaque extension. The mediated product has no configured
+    /// supplemental verifier, so presenting this field is rejected at the HTTP
+    /// boundary.
+    #[serde(default)]
+    supplemental_authorization: Option<OpaqueSupplementalAuthorization>,
     /// A signed execution nonce. This endpoint MINTS nonces; it does not settle
     /// presented ones. The field is parsed only so a caller that mistakenly
     /// presents a nonce here is rejected explicitly (fail-closed) rather than
@@ -299,6 +265,18 @@ pub(crate) async fn sidecar_evaluate_tool_call_mediated_handler(
                 .into_response();
         }
     };
+    if parsed.supplemental_authorization.is_some() {
+        return sidecar_bad_request(
+            "supplemental_authorization is unavailable: no supplemental verifier is configured",
+        )
+        .into_response();
+    }
+    if !parsed.approval_tokens.is_empty() || parsed.threshold_approval_proposal.is_some() {
+        return sidecar_bad_request(
+            "threshold approvals are unavailable on the mediated endpoint: no threshold policy resolver is configured",
+        )
+        .into_response();
+    }
     // This endpoint is a pre-execution authorization gate: it mints an execution
     // nonce for the caller to present downstream. It does not consume or settle a
     // presented nonce. Reject one fail-closed so a caller cannot mistake this for
@@ -319,8 +297,8 @@ pub(crate) async fn sidecar_evaluate_tool_call_mediated_handler(
         );
     };
     // A mediated reservation requires a hold-capable budget store. The remote
-    // control-plane store forwards only charge/reverse/reconcile and falls back to
-    // the no-op hold-API defaults, so a reservation minted against it could never
+    // control-plane store forwards only charge/reverse/reconcile and rejects the
+    // unsupported hold APIs, so a reservation minted against it could never
     // be reconciled by nonce or reclaimed by the TTL reaper. Reject fail-closed
     // rather than mint an unreconcilable reserved nonce.
     if !state.mediation_hold_capable {
@@ -511,6 +489,9 @@ pub(crate) async fn sidecar_evaluate_tool_call_mediated_handler(
         execution_nonce: None,
         governed_intent: parsed.governed_intent,
         approval_token: parsed.approval_token,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -723,6 +704,9 @@ mod tests {
     use chio_test_support::prelude::*;
     use tower::ServiceExt;
 
+    #[path = "mediated_boundary_tests.rs"]
+    mod boundary_tests;
+
     /// Build an ephemeral kernel used only to mint capabilities in tests. It
     /// shares the budget store with the state's mediation kernel; cost is never
     /// resolved through an injected tool server, so capabilities carry their own
@@ -733,8 +717,15 @@ mod tests {
         trusted_capability_issuers: &[PublicKey],
     ) -> Arc<ChioKernel> {
         Arc::new(
-            build_mediation_kernel(signer, budget, trusted_capability_issuers, Vec::new(), None)
-                .test_unwrap(),
+            build_mediation_kernel(
+                signer,
+                budget,
+                trusted_capability_issuers,
+                Vec::new(),
+                None,
+                None,
+            )
+            .test_unwrap(),
         )
     }
 
@@ -915,6 +906,7 @@ mod tests {
                 &trusted_capability_issuers,
                 Vec::new(),
                 payment_adapter,
+                None,
             )
             .test_unwrap(),
         );
@@ -1079,6 +1071,7 @@ mod tests {
             call_chain: None,
             autonomy: None,
             context: None,
+            body: Default::default(),
         }
     }
 
@@ -1113,6 +1106,7 @@ mod tests {
                 expires_at: Some(now + 300),
             },
             max_billed_units: Some(2),
+            verified_outcome: None,
         });
         intent
     }
@@ -1134,6 +1128,7 @@ mod tests {
                 subject: subject.clone(),
                 governed_intent_hash: intent.binding_hash().test_unwrap(),
                 request_id: request_id.to_string(),
+                threshold_proposal_hash: None,
                 issued_at: now.saturating_sub(1),
                 expires_at: now + 300,
                 decision: GovernedApprovalDecision::Approved,
@@ -1386,44 +1381,6 @@ mod tests {
     }
 
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-    async fn mediated_presented_execution_nonce_is_rejected() {
-        let signer = Keypair::generate();
-        let agent = Keypair::generate();
-        let budget: Arc<dyn BudgetStore> = Arc::new(InMemoryBudgetStore::new());
-        let kernel = issuing_kernel(&signer, Arc::clone(&budget), &[]);
-        let cap =
-            issue_cost_bearing_capability(&kernel, &agent, "cost-srv", "compute", 100, 1000, "USD");
-        let cap_value = serde_json::to_value(&cap).unwrap();
-        let state = mediated_test_state(signer, Arc::clone(&budget), Vec::new());
-
-        // Obtain a genuine minted nonce from a first authorization.
-        let body = serde_json::json!({
-            "capability": cap_value,
-            "tool_server": "cost-srv",
-            "tool_name": "compute",
-            "parameters": { "invoice": "inv-1" }
-        });
-        let (_, authorized) = post_evaluate(Arc::clone(&state), &body).await;
-        let minted_nonce = authorized["execution_nonce"].clone();
-        assert!(minted_nonce.is_object());
-
-        // Presenting that nonce back to /v1/evaluate is rejected
-        // fail-closed. This endpoint mints nonces; it does not settle them, so
-        // the sidecar never consumes the downstream nonce (which would make the
-        // real tool server reject the caller as a replay).
-        let settle_body = serde_json::json!({
-            "capability": cap_value,
-            "tool_server": "cost-srv",
-            "tool_name": "compute",
-            "parameters": { "invoice": "inv-1" },
-            "execution_nonce": minted_nonce
-        });
-        let (status, json) = post_evaluate(Arc::clone(&state), &settle_body).await;
-        assert_eq!(status, StatusCode::BAD_REQUEST);
-        assert_ne!(json["status"], "authorized");
-    }
-
-    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn mediated_revoked_capability_is_rejected() {
         let signer = Keypair::generate();
         let agent = Keypair::generate();
@@ -1503,6 +1460,8 @@ mod tests {
                 attenuations: vec![],
                 timestamp: now,
                 scope_hash: None,
+                aggregate_budget: None,
+                cumulative_approval: None,
             },
             delegator,
         )
@@ -1515,6 +1474,7 @@ mod tests {
             issued_at: now,
             expires_at: now + 3600,
             delegation_chain: vec![link],
+            aggregate_invocation_budget: None,
         };
         CapabilityToken::sign(body, issuer).test_unwrap()
     }
@@ -1622,7 +1582,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn mediated_authorization_admits_caller_named_server_id() {
         // The operator does not pre-register tool servers; the mediated route
-        // registers a placeholder under whatever server id the caller names, so
+        // registers the caller's server id for the authorization attempt, so
         // an authorization for an arbitrary server is authorized rather than
         // denied `ToolNotRegistered` by the kernel's pre-dispatch registration
         // check.
@@ -1785,7 +1745,7 @@ mod tests {
             Some(MEDIATED_CONTROL_TOKEN.to_string()),
             None,
             true,
-            Some(Box::new(chio_kernel::SimPaymentAdapter::new())),
+            Some(Box::new(chio_kernel::payment::SimPaymentAdapter::new())),
             None,
         );
 
@@ -2527,7 +2487,7 @@ mod tests {
     /// settlement behavior is delegated to the deterministic sim adapter.
     #[derive(Clone, Default)]
     struct RecordingPaymentAdapter {
-        inner: chio_kernel::SimPaymentAdapter,
+        inner: chio_kernel::payment::SimPaymentAdapter,
         captures: Arc<std::sync::atomic::AtomicUsize>,
         releases: Arc<std::sync::atomic::AtomicUsize>,
         refunds: Arc<std::sync::atomic::AtomicUsize>,
@@ -2538,7 +2498,12 @@ mod tests {
             &self,
             request: &chio_kernel::PaymentAuthorizeRequest,
         ) -> Result<chio_kernel::PaymentAuthorization, chio_kernel::PaymentError> {
-            self.inner.authorize(request)
+            let authorization = self.inner.authorize(request)?;
+            if authorization.state.is_final() {
+                self.captures
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            }
+            Ok(authorization)
         }
 
         fn capture(
@@ -2619,8 +2584,10 @@ mod tests {
 
         // The reserved hold stays OPEN with its budget committed: the caller holds a
         // real reservation backing the downstream execution.
-        let hold_id = format!("budget-hold:persist-fail:{cap_id}:0");
-        let hold = budget.get_budget_hold(&hold_id).unwrap();
+        let hold_id = json["execution_nonce"]["nonce"]["reserved_hold_id"]
+            .as_str()
+            .expect("the returned nonce must name its reserved hold");
+        let hold = budget.get_budget_hold(hold_id).unwrap();
         assert!(
             hold.map(|hold| hold.disposition.is_open()).unwrap_or(false),
             "a returned reservation must keep its reserved hold open"
@@ -2738,8 +2705,10 @@ mod tests {
             1,
             "the returned invocation reservation stays consumed against the grant"
         );
-        let hold_id = format!("budget-hold:invoke-persist-fail:{cap_id}:0");
-        let hold = budget.get_budget_hold(&hold_id).unwrap();
+        let hold_id = nonce_json["nonce"]["reserved_hold_id"]
+            .as_str()
+            .expect("the returned nonce must name its reserved hold");
+        let hold = budget.get_budget_hold(hold_id).unwrap();
         assert!(
             hold.map(|hold| hold.disposition.is_open()).unwrap_or(false),
             "the returned invocation reservation must keep its reserved hold open"
@@ -2770,14 +2739,13 @@ mod tests {
         let budget: Arc<dyn BudgetStore> = Arc::new(InMemoryBudgetStore::new());
         let kernel = issuing_kernel(&signer, Arc::clone(&budget), &[]);
         let cap = issue_governed_capability(&kernel, &agent, "cost-srv", "compute", 100, "USD", 50);
-        let cap_id = cap.id.clone();
         let cap_value = serde_json::to_value(&cap).unwrap();
         let approver = signer.clone();
 
         let captures = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let refunds = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let adapter = RecordingPaymentAdapter {
-            inner: chio_kernel::SimPaymentAdapter::new(),
+            inner: chio_kernel::payment::SimPaymentAdapter::new(),
             captures: Arc::clone(&captures),
             releases: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             refunds: Arc::clone(&refunds),
@@ -2834,8 +2802,10 @@ mod tests {
         );
 
         // The reservation is intact: the reserved hold stays open.
-        let hold_id = format!("budget-hold:{request_id}:{cap_id}:0");
-        let hold = budget.get_budget_hold(&hold_id).unwrap();
+        let hold_id = json["execution_nonce"]["nonce"]["reserved_hold_id"]
+            .as_str()
+            .expect("the returned nonce must name its reserved hold");
+        let hold = budget.get_budget_hold(hold_id).unwrap();
         assert!(
             hold.map(|hold| hold.disposition.is_open()).unwrap_or(false),
             "the captured MustPrepay reservation must stay open, backing the returned nonce"
@@ -3168,7 +3138,8 @@ mod tests {
         let budget: Arc<dyn BudgetStore> =
             Arc::new(chio_kernel::budget_store::InMemoryBudgetStore::new());
         let kernel =
-            build_mediation_kernel(&signer, Arc::clone(&budget), &[], Vec::new(), None).unwrap();
+            build_mediation_kernel(&signer, Arc::clone(&budget), &[], Vec::new(), None, None)
+                .unwrap();
         // Strict nonce mode is what routes every mediated request through the
         // authorization-reserve path. DPoP verification state is installed here
         // too; the `mediated_dpop_capability_requires_valid_proof` integration

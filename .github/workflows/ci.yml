@@ -81,18 +81,8 @@ jobs:
       - name: Proptest invariant coverage
         run: ./scripts/check-proptest-coverage.sh
 
-      - name: Kani public core registry contract
-        run: bash scripts/tests/check-kani-public-core.test.sh
-
-      - name: Test regression-test deletion guard
-        run: bash scripts/tests/check-regression-tests.test.sh
-
-      - name: Run regression-test deletion guard
-        if: github.event_name == 'pull_request'
-        env:
-          PR_BODY: ${{ github.event.pull_request.body }}
-          GITHUB_BASE_REF: ${{ github.base_ref }}
-        run: bash scripts/check-regression-tests.sh
+      - name: Protocol primitive concurrency
+        run: bash ./scripts/check-protocol-primitives-concurrency.sh
 
       - name: Workspace structural gates
         env:

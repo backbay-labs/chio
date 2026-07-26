@@ -67,6 +67,11 @@ pub struct VerifiedBilateralCoSignInvocation {
     pub resolved_governance_receipt: Option<ResolvedGovernanceReceipt>,
     /// The verdict both kernels agreed on (step 13).
     pub joint_verdict: String,
+    /// Present only when the strict predicate declared n_of_m.
+    ///
+    /// This proves threshold authorization. The effect still requires its
+    /// rollback-independent current-resource and idempotent-effect gate.
+    pub frost_authorization: Option<crate::frost::VerifiedFrostAuthorization>,
 }
 
 /// Strict Chio verifier wrapper over the local bilateral DSSE verifier.

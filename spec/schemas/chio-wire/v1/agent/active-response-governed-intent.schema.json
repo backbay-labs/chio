@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-wire/v1/agent/active-response-governed-intent.schema.json",
+  "title": "Chio Governed Active Response Intent Body",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "plan_schema",
+    "plan_id",
+    "operator_capability_id",
+    "operator_capability_hash",
+    "operator_capability_expires_at",
+    "executor_subject",
+    "canonical_plan_body",
+    "plan_body_hash",
+    "target_binding",
+    "ordered_effects",
+    "expires_at",
+    "rollback_binding"
+  ],
+  "properties": {
+    "plan_schema": { "const": "chio.governed-response-plan.v1" },
+    "plan_id": { "type": "string", "minLength": 1 },
+    "operator_capability_id": { "type": "string", "minLength": 1 },
+    "operator_capability_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "operator_capability_expires_at": { "type": "integer", "minimum": 1 },
+    "executor_subject": {
+      "type": "string",
+      "pattern": "^([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}|hybrid:([0-9a-f]{64}|p256:[0-9a-f]{130}|p384:[0-9a-f]{194}):[0-9a-f]{3904}:(ed25519|p256|p384)\\+mldsa65)$"
+    },
+    "canonical_plan_body": { "type": "object" },
+    "plan_body_hash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "target_binding": { "type": "object" },
+    "ordered_effects": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 32,
+      "items": {
+        "enum": [
+          "throttle_session",
+          "restrict_egress",
+          "suspend_session",
+          "suspend_capability_set",
+          "freeze_issuance"
+        ]
+      }
+    },
+    "expires_at": { "type": "integer", "minimum": 1 },
+    "rollback_binding": { "type": "object" }
+  }
+}

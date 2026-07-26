@@ -91,6 +91,7 @@ fn attenuated_token_with_inflated_parent_scope_hash_is_rejected() {
         // Direct issue: empty delegation chain. The chain-binding rule
         // therefore requires parent_scope_hash == trust_root_scope_hash.
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let token = CapabilityToken::sign_attenuated(
         CapabilityTokenAttenuationBody {
@@ -155,6 +156,7 @@ fn attenuated_token_with_honest_trust_root_parent_scope_hash_verifies() {
         issued_at: 100,
         expires_at: 200,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let token = CapabilityToken::sign_attenuated(
         CapabilityTokenAttenuationBody {

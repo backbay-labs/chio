@@ -1,0 +1,6 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-parametric/v1/policy.schema.json",
+  "title": "Chio Parametric Policy V1",
+  "$ref": "https://chio.world/schemas/chio-parametric/v1/defs.schema.json#/$defs/signedParametricPolicy"
+}

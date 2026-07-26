@@ -101,6 +101,117 @@ impl UnderwritingQuotedExposure {
     }
 }
 
+#[derive(Debug, Serialize)]
+pub(crate) struct CombinedDelegationChainEntry {
+    capability_id: String,
+    subject_key: String,
+    issuer_key: String,
+    issued_at: u64,
+    expires_at: u64,
+    grants_json: String,
+    delegation_depth: u64,
+    parent_capability_id: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    federated_parent_capability_id: Option<String>,
+    provenance: chio_kernel::CapabilitySnapshotProvenance,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    signed_capability: Option<chio_core::capability::token::CapabilityToken>,
+    snapshot_delegation_depth: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    snapshot_parent_capability_id: Option<String>,
+}
+
+pub(crate) fn project_combined_delegation_chain(
+    chain: Vec<CapabilitySnapshot>,
+) -> Vec<CombinedDelegationChainEntry> {
+    let mut effective_parent = None;
+    chain
+        .into_iter()
+        .zip(0_u64..)
+        .map(|(snapshot, delegation_depth)| {
+            let CapabilitySnapshot {
+                capability_id,
+                subject_key,
+                issuer_key,
+                issued_at,
+                expires_at,
+                grants_json,
+                delegation_depth: snapshot_delegation_depth,
+                parent_capability_id: snapshot_parent_capability_id,
+                federated_parent_capability_id,
+                provenance,
+                signed_capability,
+            } = snapshot;
+            let entry = CombinedDelegationChainEntry {
+                capability_id,
+                subject_key,
+                issuer_key,
+                issued_at,
+                expires_at,
+                grants_json,
+                delegation_depth,
+                parent_capability_id: effective_parent.take(),
+                federated_parent_capability_id,
+                provenance,
+                signed_capability,
+                snapshot_delegation_depth,
+                snapshot_parent_capability_id,
+            };
+            effective_parent = Some(entry.capability_id.clone());
+            entry
+        })
+        .collect()
+}
+
+#[cfg(test)]
+mod combined_delegation_chain_tests {
+    use super::*;
+    use chio_test_support::prelude::*;
+
+    fn snapshot(
+        capability_id: &str,
+        snapshot_parent: Option<&str>,
+        federated_parent: Option<&str>,
+        snapshot_depth: u64,
+    ) -> CapabilitySnapshot {
+        CapabilitySnapshot {
+            capability_id: capability_id.to_string(),
+            subject_key: "subject".to_string(),
+            issuer_key: "issuer".to_string(),
+            issued_at: 1,
+            expires_at: 2,
+            grants_json: "{}".to_string(),
+            delegation_depth: snapshot_depth,
+            parent_capability_id: snapshot_parent.map(ToString::to_string),
+            federated_parent_capability_id: federated_parent.map(ToString::to_string),
+            provenance: chio_kernel::CapabilitySnapshotProvenance::LegacyProjection,
+            signed_capability: None,
+        }
+    }
+
+    #[test]
+    fn projection_exposes_effective_chain_without_erasing_snapshot_lineage() {
+        let value = serde_json::to_value(project_combined_delegation_chain(vec![
+            snapshot("root", None, None, 0),
+            snapshot("federated", None, Some("root"), 0),
+            snapshot("signed-child", Some("federated"), None, 1),
+        ]))
+        .test_expect("serialize combined delegation chain");
+        let entries = value
+            .as_array()
+            .test_expect("combined delegation chain array");
+
+        assert_eq!(entries[1]["parent_capability_id"], "root");
+        assert_eq!(entries[1]["delegation_depth"], 1);
+        assert!(entries[1].get("snapshot_parent_capability_id").is_none());
+        assert_eq!(entries[1]["snapshot_delegation_depth"], 0);
+        assert_eq!(entries[2]["parent_capability_id"], "federated");
+        assert_eq!(entries[2]["delegation_depth"], 2);
+        assert_eq!(entries[2]["snapshot_parent_capability_id"], "federated");
+        assert_eq!(entries[2]["snapshot_delegation_depth"], 1);
+    }
+}
+
 #[derive(Debug, Default, Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ChildReceiptQuery {

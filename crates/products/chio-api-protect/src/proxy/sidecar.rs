@@ -286,6 +286,7 @@ pub(crate) async fn sidecar_mint_handler(
             issued_at,
             expires_at,
             delegation_chain: Vec::new(),
+            aggregate_invocation_budget: None,
         },
         &state.signer_keypair,
     ) {
@@ -618,6 +619,7 @@ pub(crate) async fn sidecar_capabilities_alias_handler(
             issued_at,
             expires_at,
             delegation_chain: Vec::new(),
+            aggregate_invocation_budget: None,
         },
         &state.signer_keypair,
     ) {

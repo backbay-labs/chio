@@ -660,28 +660,24 @@ fn wait_for_cluster_leader_convergence(
     converged_leader.expect("converged leader url")
 }
 
-/// Polls until the internal status exposes an authority term accepted by `accepts`.
+/// Polls `try_internal_cluster_status` against `base_url` until it returns `Some`.
 ///
-/// Leader and quorum convergence can precede publication of `authorityLease.term`, especially
-/// during initial bring-up, leader failover, and follower restart.
-fn wait_for_authority_term<F>(
+/// The internal cluster status endpoint can transiently fail with HTTP errors during cluster
+/// state transitions (initial bring-up, leader failover, follower restart) even when the node's
+/// `/health` endpoint is already up. Single-shot callers that immediately panic on `None` are
+/// the source of intermittent flakes.
+/// This helper bounds the wait with a deadline and returns the first non-`None` snapshot.
+fn wait_for_internal_cluster_status(
     client: &Client,
     base_url: &str,
     token: &str,
     label: &str,
-    mut accepts: F,
-) -> u64
-where
-    F: FnMut(u64) -> bool,
-{
+) -> Value {
     let timeout = Duration::from_secs(30);
     let deadline = Instant::now() + timeout;
     while Instant::now() < deadline {
-        if let Some(term) = try_internal_cluster_status(client, base_url, token)
-            .and_then(|status| status["authorityLease"]["term"].as_u64())
-            .filter(|term| accepts(*term))
-        {
-            return term;
+        if let Some(status) = try_internal_cluster_status(client, base_url, token) {
+            return status;
         }
         thread::sleep(Duration::from_millis(50));
     }
@@ -691,7 +687,7 @@ where
         "clusterStatus": try_internal_cluster_status(client, base_url, token),
     });
     panic!(
-        "authority term `{label}` did not satisfy its predicate before timeout\n{}",
+        "internal cluster status `{label}` did not become available before timeout\n{}",
         serde_json::to_string_pretty(&diagnostics).expect("serialize timeout diagnostics")
     );
 }
@@ -760,6 +756,7 @@ fn sample_capability(id: &str, subject_kp: &Keypair, issuer_kp: &Keypair) -> Cap
             issued_at: 1_000,
             expires_at: 9_000,
             delegation_chain: vec![],
+            aggregate_invocation_budget: None,
         },
         issuer_kp,
     )
@@ -2094,13 +2091,11 @@ fn trust_control_cluster_rejects_stale_authority_term_after_failover_and_restart
         "initial authority leader convergence",
     );
     assert_eq!(initial_leader, url_a);
-    let initial_term = wait_for_authority_term(
-        &client,
-        &url_b,
-        service_token,
-        "initial authority term",
-        |_| true,
-    );
+    let initial_status =
+        wait_for_internal_cluster_status(&client, &url_b, service_token, "initial cluster status");
+    let initial_term = initial_status["authorityLease"]["term"]
+        .as_u64()
+        .expect("initial authority lease term");
 
     drop(server_a.take());
 
@@ -2127,13 +2122,16 @@ fn trust_control_cluster_rejects_stale_authority_term_after_failover_and_restart
         || cluster_status_diagnostics(&client, &majority_urls, service_token),
     );
 
-    let failover_term = wait_for_authority_term(
+    let failover_status = wait_for_internal_cluster_status(
         &client,
         &url_b,
         service_token,
-        "failover term after leader loss",
-        |term| term > initial_term,
+        "failover status after leader loss",
     );
+    let failover_term = failover_status["authorityLease"]["term"]
+        .as_u64()
+        .expect("failover authority term");
+    assert!(failover_term > initial_term);
 
     let _restarted_a = spawn_trust_service(
         addr_a,
@@ -2158,13 +2156,16 @@ fn trust_control_cluster_rejects_stale_authority_term_after_failover_and_restart
         &urls,
         "restarted cluster reconverges after old leader returns",
     );
-    wait_for_authority_term(
+    let restarted_status = wait_for_internal_cluster_status(
         &client,
         &restarted_leader,
         service_token,
-        "restarted cluster term",
-        |term| term >= failover_term,
+        "restarted cluster status",
     );
+    let restarted_term = restarted_status["authorityLease"]["term"]
+        .as_u64()
+        .expect("restarted authority term");
+    assert!(restarted_term >= failover_term);
 
     let generation_before = get_json(
         &client,
@@ -2811,6 +2812,23 @@ fn trust_control_cluster_snapshot_replays_holds_and_mutation_events() {
     );
     assert_eq!(release["releasedExposureUnits"].as_u64(), Some(30));
     assert_expected_write_visibility_metadata(&release, &warm_leader_url);
+
+    let capture = post_json(
+        &client,
+        &format!("{url_b}/v1/budgets/capture-invocation"),
+        service_token,
+        &json!({
+            "capabilityId": "cap-snapshot-hold",
+            "grantIndex": 0,
+            "holdId": "cap-snapshot-hold-1",
+            "eventId": "cap-snapshot-hold-1:capture-invocation"
+        }),
+    );
+    assert!(matches!(
+        capture["decision"].as_str(),
+        Some("captured" | "already_captured")
+    ));
+    assert_expected_write_visibility_metadata(&capture, &warm_leader_url);
     assert_budget_invocation_count(
         &client,
         &warm_leader_url,
@@ -2887,6 +2905,7 @@ fn trust_control_cluster_snapshot_replays_holds_and_mutation_events() {
         vec![
             "cap-snapshot-hold-1:authorize",
             "cap-snapshot-hold-1:release",
+            "cap-snapshot-hold-1:capture-invocation",
         ]
     );
     drop(late_store);
@@ -2936,6 +2955,7 @@ fn trust_control_cluster_snapshot_replays_holds_and_mutation_events() {
         vec![
             "cap-snapshot-hold-1:authorize".to_string(),
             "cap-snapshot-hold-1:release".to_string(),
+            "cap-snapshot-hold-1:capture-invocation".to_string(),
             "cap-snapshot-hold-1:reconcile".to_string(),
         ]
     );

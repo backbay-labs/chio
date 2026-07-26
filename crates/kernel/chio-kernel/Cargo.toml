@@ -23,6 +23,7 @@ name = "chio_kernel"
 default = ["delegation"]
 dhat-heap = []
 sustained-p99-nightly = []
+admission-test-support = []
 otel = ["dep:opentelemetry-semantic-conventions"]
 tokio-console-smoke = ["tokio/tracing"]
 # Hybrid signing path: pulls the pq cargo feature on chio-core-types so
@@ -53,7 +54,7 @@ chio-weights = { workspace = true }
 chrono = { workspace = true, features = ["serde"] }
 chio-kernel-core = { workspace = true }
 chio-credit = { workspace = true }
-chio-federation = { workspace = true, features = ["typestate"] }
+chio-federation = { workspace = true }
 chio-link = { path = "../../economy/chio-link", default-features = false }
 chio-log-redact = { workspace = true }
 chio-metrics-spec = { workspace = true }
@@ -91,12 +92,12 @@ criterion = { workspace = true }
 dhat = { workspace = true }
 jsonschema = { workspace = true }
 loom = { workspace = true }
+tempfile = { workspace = true }
+toml = { workspace = true }
 # proptest = "1.10" (via workspace.dependencies). Used by:
 # - tests/property_budget_store.rs
-# - tests/property_reservation_ledger.rs
 # - tests/replay_proptest.rs (replay-invariance suite)
 proptest = { workspace = true }
-toml = { workspace = true }
 
 [[bench]]
 name = "cap_verify_ed25519"

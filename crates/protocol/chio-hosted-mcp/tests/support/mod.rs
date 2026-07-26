@@ -119,7 +119,7 @@ where
     F: FnOnce(&Path, SocketAddr) -> ServerGuard,
 {
     let dir = unique_test_dir();
-    fs::create_dir_all(&dir).expect("create temp dir");
+    create_private_test_directory(&dir);
     let listen = reserve_listen_addr();
     let client = build_client();
     let base_url = format!("http://{listen}");
@@ -507,6 +507,23 @@ fn unique_test_dir() -> PathBuf {
     ))
 }
 
+pub fn create_private_test_directory(path: &Path) {
+    let mut builder = fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(path).expect("create private test dir");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+            .expect("secure private test dir");
+    }
+}
+
 fn reserve_listen_addr() -> SocketAddr {
     let listener = TcpListener::bind("127.0.0.1:0").expect("bind temp listener");
     let addr = listener.local_addr().expect("listener addr");
@@ -553,7 +570,7 @@ pub fn base_remote_config(dir: &Path, listen: SocketAddr) -> RemoteServeHttpConf
         auth_code_ttl_secs: 300,
         auth_access_token_ttl_secs: 600,
         receipt_db_path: Some(dir.join("remote-receipts.sqlite3")),
-        revocation_db_path: Some(dir.join("remote-revocations.sqlite3")),
+        revocation_db_path: None,
         authority_seed_path: Some(dir.join("remote-authority.seed")),
         authority_db_path: None,
         budget_db_path: None,

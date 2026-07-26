@@ -3,7 +3,8 @@ use chio_federation::{
     treaty::compute_ladder_intersection, treaty::evaluate_cross_boundary_admission,
     treaty::governance_ladder_manifest_sha256, treaty::ladder_intersection_sha256,
     treaty::CrossBoundaryAdmissionInput, treaty::CrossBoundaryEvidenceRef,
-    treaty::GovernanceLadderActionClass, treaty::GovernanceLadderManifest, treaty::TreatyScope,
+    treaty::GovernanceLadderActionClass, treaty::GovernanceLadderManifest,
+    treaty::GovernanceLadderQuorum, treaty::TreatyScope,
     treaty::CHIO_FEDERATION_GOVERNANCE_LADDER_MANIFEST_SCHEMA,
     treaty::CHIO_FEDERATION_LADDER_INTERSECTION_SCHEMA,
     treaty::CHIO_FEDERATION_TREATY_SCOPE_SCHEMA,
@@ -34,7 +35,7 @@ fn chio_treaty_intersection_rejects_destructive_crdt() -> Result<(), Box<dyn std
     let manifest_b = treaty_manifest("kernel.vendor", treaty_action("receipt_backed", true));
     let scope = treaty_scope(&manifest_a, &manifest_b)?;
     let mut manifest_b = manifest_b;
-    manifest_b.action_classes[0].consistency_model = "crdt_commutative".to_string();
+    manifest_b.action_classes[0].consistency_model = "crdt-commutative".to_string();
 
     let error =
         match compute_ladder_intersection(&scope, &[manifest_a, manifest_b], 1_800_000_001_000) {
@@ -66,6 +67,30 @@ fn chio_treaty_manifest_rejects_alias_shadowing_later_canonical_action(
     };
 
     assert_eq!(error.code(), "chio_federation_ladder_alias_conflict");
+    Ok(())
+}
+
+#[test]
+fn chio_treaty_uses_canonical_n_of_m_vocabulary_and_quorum_metadata(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut canonical = treaty_action("receipt_backed", true);
+    canonical.co_sign = "n_of_m".to_string();
+    canonical.consistency_model = "quorum-required".to_string();
+    canonical.co_sign_quorum = Some(GovernanceLadderQuorum {
+        n: 2,
+        m: 3,
+        scope: "treaty".to_string(),
+    });
+    let manifest = treaty_manifest("kernel.quorum", canonical);
+    governance_ladder_manifest_sha256(&manifest)?;
+
+    let mut legacy = manifest;
+    legacy.action_classes[0].co_sign = "quorum_required".to_string();
+    let error = match governance_ladder_manifest_sha256(&legacy) {
+        Ok(_) => panic!("legacy quorum_required co-sign vocabulary must reject"),
+        Err(error) => error,
+    };
+    assert_eq!(error.code(), "chio_federation_ladder_invalid_cosign_mode");
     Ok(())
 }
 
@@ -113,8 +138,9 @@ fn treaty_action(mode: &str, destructive: bool) -> GovernanceLadderActionClass {
         action_class_id: "workflow.destructive.vendor_call".to_string(),
         mode: mode.to_string(),
         destructive,
-        consistency_model: "totally_ordered".to_string(),
+        consistency_model: "totally-ordered".to_string(),
         co_sign: "bilateral_required".to_string(),
+        co_sign_quorum: None,
         evidence_required: vec!["receipt_lineage".to_string()],
         aliases: Vec::new(),
     }

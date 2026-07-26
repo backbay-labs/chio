@@ -436,6 +436,7 @@ mod tests {
                 issued_at: now.saturating_sub(60),
                 expires_at: now + 3600,
                 delegation_chain: Vec::new(),
+                aggregate_invocation_budget: None,
             },
             issuer,
         )

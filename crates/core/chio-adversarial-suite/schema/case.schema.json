@@ -34,7 +34,8 @@
         "scope_superset",
         "revocation_rollback",
         "anchor_grafted",
-        "sigstore_bundle_payload_mismatch"
+        "sigstore_bundle_payload_mismatch",
+        "authority_binding_mutation"
       ]
     },
     "expected_verdict": {

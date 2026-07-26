@@ -634,6 +634,7 @@ fn unsupported_constraint_name(constraint: &Constraint) -> &'static str {
         Constraint::MaxArgsSize(_) => "max_args_size",
         Constraint::GovernedIntentRequired => "governed_intent_required",
         Constraint::RequireApprovalAbove { .. } => "require_approval_above",
+        Constraint::RequireCumulativeApprovalAbove { .. } => "require_cumulative_approval_above",
         Constraint::SellerExact(_) => "seller_exact",
         Constraint::MinimumRuntimeAssurance(_) => "minimum_runtime_assurance",
         Constraint::MinimumAutonomyTier(_) => "minimum_autonomy_tier",
@@ -722,6 +723,32 @@ mod tests {
             error,
             NormalizationError::UnsupportedConstraint {
                 kind: "table_allowlist".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn normalized_scope_rejects_cumulative_approval_until_enforced() {
+        let scope = ChioScope {
+            grants: vec![grant(vec![Constraint::RequireCumulativeApprovalAbove {
+                threshold: MonetaryAmount {
+                    units: 10,
+                    currency: "USD".to_string(),
+                },
+                approval_budget_id: "budget-1".to_string(),
+                approval_budget_epoch: 1,
+                cumulative_approval_root_binding: None,
+            }])],
+            resource_grants: vec![],
+            prompt_grants: vec![],
+        };
+
+        let error = NormalizedScope::try_from(&scope)
+            .expect_err("cumulative approval requires atomic enforcement");
+        assert_eq!(
+            error,
+            NormalizationError::UnsupportedConstraint {
+                kind: "require_cumulative_approval_above".to_string(),
             }
         );
     }

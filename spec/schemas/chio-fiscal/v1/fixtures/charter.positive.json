@@ -1,0 +1,34 @@
+{
+  "body": {
+    "approvalThreshold": 2,
+    "approvalTtlSeconds": 50,
+    "charterId": "8e486b91278e696d27603e62e2192af0667d5417891379a354b4113be30bb375",
+    "expiresAt": 1000,
+    "governedDomains": [
+      "tier_limits",
+      "marketplace_discount_per_hundred",
+      "decision_premium_basis_points",
+      "insurance_premium_schedule",
+      "open_market_fee_and_bond_schedule"
+    ],
+    "governingOperatorId": "operator.example",
+    "issuedAt": 10,
+    "issuedBy": "operator.example",
+    "proposalTtlSeconds": 100,
+    "schema": "chio.fiscal.charter.v1",
+    "sequence": 1,
+    "signerSet": [
+      {
+        "keyId": "34750f98bd59fcfc946da45aaabe933be154a4b5094e1c4abf42866505f3c97e",
+        "publicKey": "8a88e3dd7409f195fd52db2d3cba5d72ca6709bf1d94121bf3748801b40f6f5c"
+      },
+      {
+        "keyId": "6a3803d5f059902a1c6dafbc9ba4729212f7caac08634cc3ae76b27529f03827",
+        "publicKey": "8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394"
+      }
+    ],
+    "timelockSeconds": 10
+  },
+  "signature": "b05c8d978b085fced45692c082d80df977c56e12257fafbabe3ab3c466a645684e793c64c6d2e41a59d553dea43e4f85cf7fb046c3ef7439dbd5b0d023c5f700",
+  "signerKey": "fd1724385aa0c75b64fb78cd602fa1d991fdebf76b13c58ed702eac835e9f618"
+}

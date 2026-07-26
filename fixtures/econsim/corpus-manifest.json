@@ -1,0 +1,59 @@
+{
+  "schema": "chio.econsim.corpus-manifest.v1",
+  "scenarios": [
+    {
+      "class": "sybil-pricing-ring",
+      "seed": 104729,
+      "steps": [
+        "repeat one authenticated feed identity",
+        "compose the real reputation score",
+        "evaluate the tier 3 gate"
+      ]
+    },
+    {
+      "class": "collusion-bid-ring",
+      "seed": 130363,
+      "steps": [
+        "forge an unbound token issuer",
+        "forge a reservation authority",
+        "underfund total invocation liability"
+      ]
+    },
+    {
+      "class": "credit-exhaustion",
+      "seed": 155921,
+      "steps": [
+        "resolve the complete signed authority set",
+        "reserve exposure to the effective ceiling",
+        "attempt one additional durable reservation"
+      ]
+    },
+    {
+      "class": "oracle-divergence",
+      "seed": 180749,
+      "steps": [
+        "submit over-threshold divergent rates",
+        "submit a future-dated rate",
+        "submit stale signed quote evidence"
+      ]
+    },
+    {
+      "class": "fee-structuring",
+      "seed": 205759,
+      "steps": [
+        "release two concurrent 60-unit reservations",
+        "serialize against one 100-unit cumulative threshold",
+        "require approval for exactly one reservation"
+      ]
+    },
+    {
+      "class": "settlement-dos",
+      "seed": 230761,
+      "steps": [
+        "classify retryable settlement outcomes",
+        "advance deterministic retry attempts",
+        "reach dead letter with capped backoff"
+      ]
+    }
+  ]
+}

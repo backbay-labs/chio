@@ -65,7 +65,7 @@ notes = "Models publication ordering between emergency-stop state and its reason
 
 [[harness]]
 crate = "chio-kernel"
-test = "loom_concurrency::loom_budget_atomic_decrement"
+test = "loom_concurrency::protocol_primitives_last_unit_contention"
 max_preemptions = 3
 lane = "nightly"
 scope = "bounded_abstract_model"

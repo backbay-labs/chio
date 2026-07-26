@@ -32,18 +32,25 @@ use chio_core_types::receipt::{
     kinds::ToolOrigin, kinds::TrustLevel,
 };
 use chio_http_core::{
-    client_builder_with_contract, handle_batch_respond, handle_get_approval, handle_list_pending,
-    handle_respond, http_status_metadata_decision, http_status_metadata_final, send_with_contract,
-    ApprovalAdmin, ApprovalHandlerError, BatchRespondRequest, CallerIdentity, ChioHttpRequest,
-    EvaluateResponse, HealthResponse, HttpEgressContract, HttpMethod, HttpReceipt, HttpReceiptBody,
-    PendingQuery, RespondRequest, SidecarStatus, Verdict, VerifyReceiptResponse,
+    client_builder_with_contract, handle_batch_respond, handle_create_threshold_proposal,
+    handle_deliver_threshold_approval, handle_get_approval, handle_get_threshold_proposal,
+    handle_list_pending, handle_respond, handle_submit_threshold_approval,
+    http_status_metadata_decision, http_status_metadata_final, send_with_contract, ApprovalAdmin,
+    ApprovalHandlerError, BatchRespondRequest, CallerIdentity, ChioHttpRequest,
+    CreateThresholdProposalRequest, EvaluateResponse, HealthResponse, HttpEgressContract,
+    HttpMethod, HttpReceipt, HttpReceiptBody, PendingQuery, RespondRequest, SidecarStatus,
+    SubmitThresholdApprovalRequest, Verdict, VerifyReceiptResponse,
 };
-use chio_kernel::{ApprovalOutcome, ApprovalRequest, ApprovalStore, InMemoryApprovalStore};
+use chio_kernel::{
+    ApprovalOutcome, ApprovalRequest, ApprovalStore, InMemoryApprovalStore,
+    InMemoryThresholdApprovalCollectorStore, ThresholdApprovalCollector,
+    ThresholdApprovalCollectorStore,
+};
 use chio_openapi::{ChioExtensions, DefaultPolicy};
 use chio_store_sqlite::SqliteApprovalStore;
 
 use crate::error::ProtectError;
-use crate::evaluator::{RequestEvaluator, RouteEntry};
+use crate::evaluator::{DurableAdmissionStores, RequestEvaluator, RouteEntry};
 use crate::spec_discovery::{default_upstream_egress_contract, discover_spec, load_spec_from_file};
 
 #[path = "proxy/approval.rs"]

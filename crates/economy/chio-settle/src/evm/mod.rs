@@ -14,6 +14,7 @@ use chio_core::credit::{
     CapitalExecutionInstructionAction, CapitalExecutionRailKind, CreditBondLifecycleState,
     SignedCapitalExecutionInstruction, SignedCreditBond,
 };
+use chio_core::crypto::sha256_hex;
 use chio_core::hashing::Hash;
 use chio_core::merkle::leaf_hash;
 use chio_core::receipt::body::ChioReceipt;
@@ -39,8 +40,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 
 use crate::{
-    ops::ensure_settlement_completion_flow_binding, SettlementChainConfig, SettlementCommitment,
-    SettlementError,
+    channel::{
+        verify_channel_release_preparation_parts, ChannelReleasePreparationFacts,
+        VerifiedChannelReleaseAuthorizationV1,
+    },
+    ops::ensure_settlement_completion_flow_binding,
+    SettlementChainConfig, SettlementCommitment, SettlementError,
 };
 
 mod decode;

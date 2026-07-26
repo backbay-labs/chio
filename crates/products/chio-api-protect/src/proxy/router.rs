@@ -14,6 +14,22 @@ pub(crate) fn build_app(state: Arc<ProxyState>) -> Router {
         )
         .route("/approvals/{id}/respond", post(respond_approval_handler))
         .route("/approvals/{id}", get(get_approval_handler))
+        .route(
+            "/approvals/threshold/proposals",
+            post(create_threshold_proposal_handler),
+        )
+        .route(
+            "/approvals/threshold/proposals/{id}",
+            get(get_threshold_proposal_handler),
+        )
+        .route(
+            "/approvals/threshold/proposals/{id}/respond",
+            post(submit_threshold_approval_handler),
+        )
+        .route(
+            "/approvals/threshold/proposals/{id}/deliver",
+            post(deliver_threshold_approval_handler),
+        )
         .route_layer(middleware::from_fn_with_state(
             Arc::clone(&state),
             require_sidecar_control_middleware,

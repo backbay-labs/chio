@@ -7,25 +7,19 @@ use dashmap::DashMap;
 use crate::budget_store::BudgetCommitMetadata;
 use crate::*;
 
-mod budget_sweep;
+#[path = "admission_coordinator.rs"]
+mod admission_coordinator;
 mod credential_reservation;
-mod dispatch_intent;
 mod error;
 mod kernel_drop_guard;
 mod kernel_scopes;
 mod kernel_struct;
-#[cfg(debug_assertions)]
-mod ledger_audit;
-mod payment_reconcile;
 mod verified_treaty;
 
-pub use budget_sweep::{
-    BudgetHoldSweepHandle, DEFAULT_HOLD_EXPIRY_HORIZON_SECS, DEFAULT_HOLD_SWEEP_INTERVAL_SECS,
-};
 pub use construction::KernelBuildError;
-pub use dispatch_intent::DefaultDispatchIntentReconciler;
 pub use error::{
-    HotPathStage, KernelError, OverloadResource, ReplayClockDirection, StructuredErrorReport,
+    HotPathStage, KernelError, OverloadResource, ReplayClockDirection,
+    SettlementRuntimeConfigError, StructuredErrorReport,
 };
 pub use kernel_struct::{
     ChioKernel, HotPathDeadlineConfig, HybridSigningConfig, KernelConfig, MemoryBudgetConfig,
@@ -34,25 +28,19 @@ pub use kernel_struct::{
     DEFAULT_RECEIPT_WRITER_POLL_MS, DEFAULT_RECEIPT_WRITER_STALL_MS, DEFAULT_RETENTION_DAYS,
     DEFAULT_RUNTIME_ADMISSION_READINESS_TIMEOUT_MS, MIN_RECEIPT_APPEND_BUDGET_MS,
 };
-pub use payment_reconcile::{
-    MonetaryDispatchIntentReconciler, PaymentReconcileOutcome, PaymentReconcileReport,
-};
 pub use verified_treaty::{
     FederationTreatyAdmissionBinding, FederationTreatyVerification,
     VerifiedFederationTreatyMaterial,
 };
 
-pub(crate) use dispatch::{dispatch_admission_error_reason, RuntimeReadinessRevalidation};
-pub(crate) use kernel_drop_guard::{
-    reserved_runtime_admission_ids, PostAdmissionDropGuard, PostAdmissionReceiptContext,
-    PreDispatchCleanup, PreDispatchCleanupOutcome,
+pub(crate) use admission_coordinator::{
+    DurableAdmissionRuntime, DurableToolAdmission, DurableToolReturnInput,
 };
-#[cfg(test)]
-pub(crate) use kernel_scopes::scope_receipt_tenant_id;
+pub(crate) use kernel_drop_guard::{PostAdmissionDropGuard, PostAdmissionReceiptContext};
 pub(crate) use kernel_scopes::{
     current_scoped_receipt_federation_admission, current_scoped_receipt_tenant_id,
-    extract_tenant_id_from_auth_context, EvaluationReceiptContext, ReceiptFederationAdmission,
-    ScopedKernelDispatchIntent, ScopedKernelReceiptFederationAdmission,
+    extract_tenant_id_from_auth_context, scope_receipt_federation_admission,
+    scope_receipt_tenant_id, ReceiptFederationAdmission, ScopedKernelReceiptFederationAdmission,
     ScopedKernelReceiptTenantId,
 };
 pub(crate) use kernel_struct::{
@@ -168,11 +156,6 @@ pub trait RuntimeAdmissionHook: Send + Sync {
 
     /// Poll readiness after admission state has been reserved but before tool
     /// dispatch is marked as started. The default is immediately ready.
-    ///
-    /// Hooks with asynchronous admission dependencies may return `Pending` and
-    /// must arrange a wakeup. Dropping the evaluation while this method is
-    /// pending takes the pre-dispatch cleanup path, so reserved state is
-    /// released before any tool side effect is possible.
     fn poll_ready_before_dispatch(
         &self,
         _request: &ToolCallRequest,
@@ -193,22 +176,14 @@ pub trait RuntimeAdmissionHook: Send + Sync {
     }
 
     /// Return true when mutable admission state must be checked even if the
-    /// readiness poll completes immediately. The default preserves compatibility
-    /// for hooks that only implement the original admission callback.
+    /// readiness poll completes immediately.
     fn requires_dispatch_revalidation(&self) -> bool {
         false
     }
 
     /// Revalidate mutable admission state without acquiring another
-    /// reservation. The kernel invokes this when
-    /// [`Self::requires_dispatch_revalidation`] returns true, after readiness
-    /// has returned `Pending` at least once, and after payment authorization or
-    /// any single-use dispatch credential reservation. The default preserves
-    /// the original admission verdict so legacy and immutable hooks remain
-    /// compatible when another component forces a final readiness pass. Mutable
-    /// hooks opt in with [`Self::requires_dispatch_revalidation`] and override
-    /// this method; any error from an opted-in implementation remains
-    /// fail-closed.
+    /// reservation. Mutable hooks opt in through
+    /// [`Self::requires_dispatch_revalidation`].
     fn revalidate_before_dispatch(
         &self,
         _context: &RuntimeAdmissionRevalidationContext<'_>,
@@ -217,9 +192,6 @@ pub trait RuntimeAdmissionHook: Send + Sync {
     }
 
     /// Remove request-scoped readiness state, including any retained waker.
-    /// This callback must be idempotent and must not release the admission
-    /// reservation. The kernel invokes it on readiness success, timeout, and
-    /// cancellation of the evaluation future.
     fn unregister_ready_before_dispatch(
         &self,
         _request: &ToolCallRequest,
@@ -227,9 +199,6 @@ pub trait RuntimeAdmissionHook: Send + Sync {
     ) {
     }
 
-    /// Release reservations from an allowed decision when the kernel exits
-    /// before dispatch. A denied decision owns the final disposition of any
-    /// reservations it acquired and is never released again by the kernel.
     fn release_reserved(&self, _metadata: &serde_json::Value) -> Result<(), KernelError> {
         Ok(())
     }
@@ -258,6 +227,149 @@ pub(crate) struct ValidatedGovernedCallChainProof {
 pub(crate) struct ValidatedGovernedAdmission {
     call_chain_proof: Option<ValidatedGovernedCallChainProof>,
     verified_runtime_attestation: Option<VerifiedRuntimeAttestationRecord>,
+    verified_payee_binding: Option<VerifiedGovernedPayeeBinding>,
+    approval_reservation: Option<VerifiedApprovalReservation>,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct VerifiedApprovalReservation {
+    pub(crate) threshold_proposal_hash: String,
+    pub(crate) approval_set_hash: String,
+    pub(crate) threshold_replay: Option<ThresholdApprovalReplayReservationV1>,
+}
+
+#[derive(Debug)]
+pub(crate) struct VerifiedThresholdApprovalSet {
+    pub(crate) requirement: chio_core::capability::threshold_approval::ThresholdApprovalRequirement,
+    pub(crate) body: chio_core::capability::governance::VerifiedApprovalSetBody,
+    pub(crate) replay: ThresholdApprovalReplayReservationV1,
+}
+
+pub(crate) fn run_payment_adapter_operation<T>(
+    operation_name: &'static str,
+    operation: impl FnOnce() -> Result<T, PaymentError>,
+) -> Result<T, PaymentError> {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(operation)) {
+        Ok(result) => result,
+        Err(_) => Err(PaymentError::RailError(format!(
+            "payment adapter {operation_name} panicked; outcome unknown"
+        ))),
+    }
+}
+
+pub(crate) fn validate_payment_adapter_identifier(
+    identifier: &str,
+    field_name: &'static str,
+) -> Result<(), PaymentError> {
+    if identifier.is_empty() || identifier.trim() != identifier {
+        return Err(PaymentError::RailError(format!(
+            "payment adapter returned an invalid {field_name}; outcome unknown"
+        )));
+    }
+    Ok(())
+}
+
+pub(crate) enum BudgetAdmissionOutcome {
+    Authorized {
+        grant_index: usize,
+        mutation: Box<PreExecutionBudgetMutation>,
+    },
+    PendingApproval {
+        grant_index: usize,
+        proposal: Box<chio_core::capability::governance::ThresholdApprovalProposal>,
+    },
+}
+
+#[cfg(test)]
+impl BudgetAdmissionOutcome {
+    pub(crate) fn into_authorized(
+        self,
+    ) -> Result<(usize, PreExecutionBudgetMutation), KernelError> {
+        match self {
+            Self::Authorized {
+                grant_index,
+                mutation,
+            } => Ok((grant_index, *mutation)),
+            Self::PendingApproval { .. } => Err(KernelError::Internal(
+                "budget admission remained pending approval".to_owned(),
+            )),
+        }
+    }
+}
+
+pub(crate) struct GovernedValidationContext<'a> {
+    parent_context: Option<&'a OperationContext>,
+    now: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct VerifiedGovernedPayeeBinding {
+    beneficiary_id: String,
+    settlement_destination_ref: String,
+    payee_binding_digest: String,
+    economic_intent_digest: String,
+    pre_action_authority_digest: String,
+}
+
+impl VerifiedGovernedPayeeBinding {
+    pub(in crate::kernel) fn new(
+        beneficiary_id: String,
+        settlement_destination_ref: String,
+        economic_intent_digest: String,
+        pre_action_authority_digest: String,
+    ) -> Result<Self, chio_credit::obligation::ObligationError> {
+        let payee_binding_digest = chio_credit::obligation::derive_obligation_payee_binding_digest(
+            &beneficiary_id,
+            &settlement_destination_ref,
+        )?;
+        Ok(Self {
+            beneficiary_id,
+            settlement_destination_ref,
+            payee_binding_digest,
+            economic_intent_digest,
+            pre_action_authority_digest,
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn for_test(
+        beneficiary_id: &str,
+        settlement_destination_ref: &str,
+        economic_intent_digest: &str,
+        pre_action_authority_digest: &str,
+    ) -> Result<Self, chio_credit::obligation::ObligationError> {
+        Self::new(
+            beneficiary_id.to_owned(),
+            settlement_destination_ref.to_owned(),
+            economic_intent_digest.to_owned(),
+            pre_action_authority_digest.to_owned(),
+        )
+    }
+
+    #[must_use]
+    pub(crate) fn beneficiary_id(&self) -> &str {
+        &self.beneficiary_id
+    }
+
+    #[must_use]
+    pub(crate) fn settlement_destination_ref(&self) -> &str {
+        &self.settlement_destination_ref
+    }
+
+    #[must_use]
+    pub(crate) fn payee_binding_digest(&self) -> &str {
+        &self.payee_binding_digest
+    }
+
+    #[must_use]
+    pub(crate) fn economic_intent_digest(&self) -> &str {
+        &self.economic_intent_digest
+    }
+
+    #[must_use]
+    pub(crate) fn pre_action_authority_digest(&self) -> &str {
+        &self.pre_action_authority_digest
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -467,8 +579,7 @@ pub trait Guard: Send + Sync {
     fn evaluate(&self, ctx: &GuardContext) -> Result<GuardDecision, KernelError>;
 
     /// Return true when mutable guard state must be checked immediately before
-    /// dispatch even if runtime readiness never suspended. The default preserves
-    /// compatibility for guards without a non-consuming revalidation path.
+    /// dispatch even if runtime readiness never suspended.
     fn requires_dispatch_revalidation(&self) -> bool {
         false
     }
@@ -484,11 +595,7 @@ pub trait Guard: Send + Sync {
     }
 
     /// Revalidate mutable guard state without consuming a second quota,
-    /// approval, or rate-limit token. This default is a no-op so legacy and
-    /// immutable guards remain compatible when another component forces a
-    /// final readiness pass. Mutable guards opt in with
-    /// [`Self::requires_dispatch_revalidation`] and override this method; any
-    /// error from an opted-in implementation remains fail-closed.
+    /// approval, or rate-limit token.
     fn revalidate_before_dispatch(&self, _ctx: &GuardContext) -> Result<(), KernelError> {
         Ok(())
     }
@@ -693,7 +800,6 @@ pub(crate) struct MatchingGrant<'a> {
 /// Result of a monetary budget charge attempt.
 ///
 /// Carries the accounting info needed to populate FinancialReceiptMetadata.
-#[derive(Clone)]
 pub(crate) struct BudgetChargeResult {
     grant_index: usize,
     cost_charged: u64,
@@ -703,11 +809,32 @@ pub(crate) struct BudgetChargeResult {
     new_committed_cost_units: u64,
     budget_hold_id: String,
     authorize_metadata: BudgetCommitMetadata,
+    invocation_capture: Option<Box<crate::budget_store::BudgetHoldMutationDecision>>,
 }
 
 impl BudgetChargeResult {
+    /// The rail/store hold id for the monetary budget charge, so a cleanup
+    /// fault can name the stuck budget hold that needs manual recovery.
     fn reverse_event_id(&self) -> String {
-        format!("{}:reverse", self.budget_hold_id)
+        let authorize_event_id = self
+            .authorize_metadata
+            .event_id
+            .as_deref()
+            .unwrap_or(&self.budget_hold_id);
+        let authorize_commit_index = self.authorize_metadata.budget_commit_index.unwrap_or(0);
+        format!("{authorize_event_id}:rollback:{authorize_commit_index}")
+    }
+
+    fn capture_invocation_event_id(&self) -> String {
+        let authorize_commit_index = self.authorize_metadata.budget_commit_index.unwrap_or(0);
+        format!(
+            "{}:capture-invocation:{authorize_commit_index}",
+            self.budget_hold_id
+        )
+    }
+
+    fn cancel_captured_before_dispatch_event_id(&self) -> String {
+        self.reverse_event_id()
     }
 
     fn reconcile_event_id(&self) -> String {
@@ -718,23 +845,36 @@ impl BudgetChargeResult {
 pub(crate) enum PreExecutionBudgetMutation {
     None,
     Invocation { grant_index: usize },
+    InvocationHold(BudgetChargeResult),
     Charge(BudgetChargeResult),
 }
 
 impl PreExecutionBudgetMutation {
-    #[cfg(debug_assertions)]
-    fn grant_index(&self) -> Option<usize> {
-        match self {
-            Self::Invocation { grant_index } => Some(*grant_index),
-            Self::Charge(charge) => Some(charge.grant_index),
-            Self::None => None,
-        }
-    }
-
     fn charge_result(&self) -> Option<&BudgetChargeResult> {
         match self {
             Self::Charge(charge) => Some(charge),
+            Self::None | Self::Invocation { .. } | Self::InvocationHold(_) => None,
+        }
+    }
+
+    fn durable_hold_result(&self) -> Option<&BudgetChargeResult> {
+        match self {
+            Self::Charge(charge) | Self::InvocationHold(charge) => Some(charge),
             Self::None | Self::Invocation { .. } => None,
+        }
+    }
+
+    fn durable_hold_result_mut(&mut self) -> Option<&mut BudgetChargeResult> {
+        match self {
+            Self::Charge(charge) | Self::InvocationHold(charge) => Some(charge),
+            Self::Invocation { .. } | Self::None => None,
+        }
+    }
+
+    fn into_charge_result(self) -> Option<BudgetChargeResult> {
+        match self {
+            Self::Charge(charge) => Some(charge),
+            Self::None | Self::Invocation { .. } | Self::InvocationHold(_) => None,
         }
     }
 }
@@ -854,6 +994,7 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
             None,
             false,
         )?;
+
         let result = (|| {
             let session = session_from_map(self.sessions, &child_context.session_id)?;
             session.validate_context(&child_context)?;
@@ -869,7 +1010,14 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
                 .replace_roots(roots.clone());
             Ok(roots)
         })();
-        self.latch_matching_cancellation(&result, Some(&child_context.request_id))?;
+        if matches!(
+            &result,
+            Err(KernelError::RequestCancelled { request_id, .. })
+                if request_id == &child_context.request_id
+        ) {
+            session_from_map(self.sessions, &child_context.session_id)?
+                .request_cancellation(&child_context.request_id)?;
+        }
         self.complete_child_request_with_receipt(
             &child_context,
             OperationKind::ListRoots,
@@ -893,6 +1041,7 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
             None,
             true,
         )?;
+
         let result = (|| {
             validate_sampling_request_in_sessions(
                 self.sessions,
@@ -904,7 +1053,14 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
             self.client
                 .create_message(self.parent_context, &child_context, &operation)
         })();
-        self.latch_matching_cancellation(&result, Some(&child_context.request_id))?;
+        if matches!(
+            &result,
+            Err(KernelError::RequestCancelled { request_id, .. })
+                if request_id == &child_context.request_id
+        ) {
+            session_from_map(self.sessions, &child_context.session_id)?
+                .request_cancellation(&child_context.request_id)?;
+        }
         self.complete_child_request_with_receipt(
             &child_context,
             OperationKind::CreateMessage,
@@ -928,6 +1084,7 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
             None,
             true,
         )?;
+
         let result = (|| {
             validate_elicitation_request_in_sessions(
                 self.sessions,
@@ -938,7 +1095,14 @@ impl<C: NestedFlowClient> NestedFlowBridge for SessionNestedFlowBridge<'_, C> {
             self.client
                 .create_elicitation(self.parent_context, &child_context, &operation)
         })();
-        self.latch_matching_cancellation(&result, Some(&child_context.request_id))?;
+        if matches!(
+            &result,
+            Err(KernelError::RequestCancelled { request_id, .. })
+                if request_id == &child_context.request_id
+        ) {
+            session_from_map(self.sessions, &child_context.session_id)?
+                .request_cancellation(&child_context.request_id)?;
+        }
         self.complete_child_request_with_receipt(
             &child_context,
             OperationKind::CreateElicitation,
@@ -1218,7 +1382,6 @@ fn tool_grant_covers_target(grant: &ToolGrant, server_id: &str, tool_name: &str)
 
 /// Parameters for building a receipt.
 pub(crate) struct ReceiptParams<'a> {
-    evaluation_context: &'a EvaluationReceiptContext,
     request_id: Option<&'a str>,
     capability_id: &'a str,
     tool_name: &'a str,
@@ -1237,9 +1400,11 @@ pub(crate) struct ReceiptParams<'a> {
     /// `Mediated` (the safest baseline) when integration adapters do not
     /// override it.
     trust_level: chio_core::receipt::kinds::TrustLevel,
-    /// Multi-tenant receipt isolation: explicit tenant tag for this receipt.
-    /// The evaluation context carries the authenticated session tenant through
-    /// every response builder without process-global or thread-local state.
+    /// Multi-tenant receipt isolation: explicit tenant tag for
+    /// this receipt. `None` in virtually every call site -- the evaluate
+    /// path plumbs the resolved tenant through
+    /// [`scope_receipt_tenant_id`] so `build_and_sign_receipt` can pick it
+    /// up without adding a parameter to every builder signature.
     ///
     /// MUST be derived from session / auth context, not caller-provided
     /// request fields (see `STRUCTURAL-SECURITY-FIXES.md` section 6).

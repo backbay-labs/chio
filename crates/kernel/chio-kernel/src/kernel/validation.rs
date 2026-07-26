@@ -6,23 +6,22 @@
 
 use chio_log_redact::redacted;
 
-use self::responses::{AllowResponseNonce, FinalizeToolOutputCostContext, ReceiptResponseContext};
+use self::responses::{AllowResponseNonce, FinalizeToolOutputCostContext};
 use super::*;
+use crate::admission_operation::{
+    AdmissionAttachment, AdmissionDigest, AdmissionIdentifier, AdmissionOperationState,
+};
 use crate::budget_store::{
-    BudgetAuthorizeHoldDecision, BudgetAuthorizeHoldRequest, BudgetEventAuthority,
-    BudgetHoldMutationDecision, BudgetReconcileHoldDecision, BudgetReconcileHoldRequest,
-    BudgetReverseHoldDecision, BudgetReverseHoldRequest,
+    ApprovalRequiredBudgetHold, BudgetAuthorizeCumulativeApprovalRequest,
+    BudgetAuthorizeHoldDecision, BudgetAuthorizeHoldRequest,
+    BudgetCancelCapturedBeforeDispatchRequest, BudgetCaptureInvocationRequest,
+    BudgetCapturedBeforeDispatchCancellationDecision, BudgetCumulativeApprovalAccountKey,
+    BudgetCumulativeApprovalAuthorizationDecision, BudgetCumulativeApprovalRequest,
+    BudgetEventAuthority, BudgetHoldMutationDecision, BudgetInvocationCaptureDecision,
+    BudgetInvocationQuota, BudgetQuotaKey, BudgetQuotaProfile, BudgetReconcileHoldDecision,
+    BudgetReconcileHoldRequest, BudgetReverseHoldDecision, BudgetReverseHoldRequest,
 };
 
-/// A settled MustPrepay prepayment captured before a reserve-for-caller execution
-/// nonce is minted, paired with the rail reference that funded it.
-///
-/// The `authorization` is retained so a reservation tear-down can refund the
-/// capture (the payer must not stay charged for a reservation that was denied).
-/// The `payment_reference` is the rail transaction id of the capture (or the
-/// authorization id when the rail settled at authorize time); it is carried onto
-/// the reserved budget hold so the downstream `/v1/reconcile` receipt can name
-/// the transaction that paid for the spend.
 pub(crate) struct ReservedPrepayment {
     pub(crate) authorization: PaymentAuthorization,
     pub(crate) payment_reference: Option<String>,
@@ -38,9 +37,17 @@ impl ChioKernel {
         scope: ChioScope,
         ttl_seconds: u64,
     ) -> Result<CapabilityToken, KernelError> {
-        let capability = self
-            .capability_authority
-            .issue_capability(subject, scope, ttl_seconds)?;
+        crate::ensure_capability_issuance_supported(&scope)?;
+        let capability =
+            self.capability_authority
+                .issue_capability(subject, scope.clone(), ttl_seconds)?;
+        crate::validate_issued_capability_response(
+            &capability,
+            subject,
+            &scope,
+            ttl_seconds,
+            &self.capability_authority.authority_public_key(),
+        )?;
 
         info!(
             capability_id = %capability.id,
@@ -308,18 +315,74 @@ impl ChioKernel {
         let peer_profile = self.capability_negotiation_for_remote(remote_kernel_id, now)?;
         let trust_resolver = self.capability_trust_root_resolver_snapshot();
         let mut budgets = chio_kernel_core::NoopBudgetRegistry;
+        let direct_root = self.negotiated_capability_root(cap, &peer_profile)?;
 
-        chio_kernel_core::verify_capability_full(
+        chio_kernel_core::verify_capability_full_with_root(
             cap,
             &trusted,
             &clock,
             capability_crypto_floor(self.capability_crypto_floor),
-            &peer_profile,
+            chio_kernel_core::CapabilityFeatureContext {
+                peer: &peer_profile,
+                direct_root: direct_root.as_ref(),
+            },
             &trust_resolver,
             &mut budgets,
         )
-        .map(|_| ())
-        .map_err(|error| chio_kernel_core::KernelCoreError::InvalidCapability(error).deny_reason())
+        .map_err(|error| {
+            chio_kernel_core::KernelCoreError::InvalidCapability(error).deny_reason()
+        })?;
+        Ok(())
+    }
+
+    /// Resolve the signed root token that the negotiated family-budget verifiers
+    /// require for a delegated capability.
+    ///
+    /// Migration prerequisite: once a peer negotiates either family budget feature,
+    /// every delegated capability from that peer needs a receipt-store snapshot
+    /// carrying `signed_capability` for its root. Snapshots written before signed
+    /// token retention carry no signed token, so enabling a feature against a store
+    /// that still holds them denies those capabilities with "has no signed token
+    /// evidence", which is distinct from the missing-row and tamper reasons.
+    /// Backfill signed root snapshots before turning either feature on.
+    pub(crate) fn negotiated_capability_root(
+        &self,
+        cap: &CapabilityToken,
+        peer: &chio_core::capability::features::CapabilityNegotiation,
+    ) -> Result<Option<CapabilityToken>, String> {
+        let features = &peer.features;
+        let lineage_required = features
+            .get(chio_core::capability::features::AGGREGATE_INVOCATION_BUDGET)
+            .copied()
+            .unwrap_or(false)
+            || features
+                .get(chio_core::capability::features::CUMULATIVE_APPROVAL_BUDGET)
+                .copied()
+                .unwrap_or(false);
+        if !lineage_required || cap.delegation_chain.is_empty() {
+            return Ok(None);
+        }
+
+        let root_id = cap
+            .delegation_chain
+            .first()
+            .map(|link| link.capability_id.as_str())
+            .ok_or_else(|| "delegated capability has no root delegation link".to_string())?;
+        let snapshot = self
+            .with_receipt_store(|store| Ok(store.get_capability_snapshot(root_id)?))
+            .map_err(|error| format!("failed to resolve signed capability root: {error}"))?
+            .flatten()
+            .ok_or_else(|| format!("missing signed capability root snapshot for {root_id}"))?;
+        let signed_root = snapshot.signed_capability.ok_or_else(|| {
+            format!("capability root snapshot {root_id} has no signed token evidence")
+        })?;
+        if signed_root.id != root_id {
+            return Err(format!(
+                "signed capability root {} does not match requested root {root_id}",
+                signed_root.id
+            ));
+        }
+        Ok(Some(signed_root))
     }
 
     /// The hosted `evaluate_tool_call_*` paths route the full chain
@@ -362,14 +425,8 @@ impl ChioKernel {
     /// oversubscribing sibling bypass the parent cap.
     pub(crate) fn admit_capability_budget(&self, cap: &CapabilityToken) -> Result<bool, String> {
         if let Some(parent_link) = cap.delegation_chain.last() {
-            use chio_kernel_core::BudgetRegistry;
-            // A delegated reserve-for-caller hold left open by a prior process
-            // still consumes its parent's sibling-sum share, but that admission
-            // was lost when this kernel rebuilt its in-memory registry. Deny this
-            // delegated admission fail-closed until every such hold has closed, so
-            // a sibling is never admitted against the parent as if the still-open
-            // reservation consumed nothing.
             self.enforce_restart_reserved_hold_gate()?;
+            use chio_kernel_core::BudgetRegistry;
             let proposed_share = cap
                 .budget_share_bps
                 .unwrap_or(chio_kernel_core::MAX_BUDGET_SHARE_BPS);
@@ -413,10 +470,6 @@ impl ChioKernel {
                     return Err("budget registry lock poisoned; failing closed".to_string());
                 }
             };
-            #[cfg(debug_assertions)]
-            let holders_before = budgets
-                .split(parent_link.capability_id.as_str())
-                .and_then(|split| split.child_holders(cap.id.as_str()));
             budgets
                 .release_child(
                     parent_link.capability_id.as_str(),
@@ -424,22 +477,6 @@ impl ChioKernel {
                     proposed_share,
                 )
                 .map_err(|err| err.to_string())?;
-            #[cfg(debug_assertions)]
-            if let Some(split) = budgets.split(parent_link.capability_id.as_str()) {
-                let expected_holders = holders_before.and_then(|holders| {
-                    let remaining = holders.saturating_sub(1);
-                    (remaining != 0).then_some(remaining)
-                });
-                debug_assert_eq!(
-                    split.child_holders(cap.id.as_str()),
-                    expected_holders,
-                    "child budget release did not consume exactly one holder lease"
-                );
-                debug_assert!(
-                    split.current_total_child_bps() <= u32::from(split.parent_share_bps),
-                    "released child budget left the sibling sum above its parent share"
-                );
-            }
         }
 
         Ok(())
@@ -454,9 +491,6 @@ impl ChioKernel {
         }
     }
 
-    /// Budget hold ids that currently hold a reserve-for-caller sibling share
-    /// open. The TTL reaper uses this to release the parent's headroom for the
-    /// exact holds it settles.
     pub(crate) fn tracked_reserved_sibling_hold_ids(&self) -> Vec<String> {
         self.lock_reserved_sibling_shares()
             .keys()
@@ -464,9 +498,6 @@ impl ChioKernel {
             .collect()
     }
 
-    /// Record that a reserve-for-caller hold keeps `cap`'s sibling-sum share
-    /// admitted until the hold closes, keyed by the hold id. Roots hold no
-    /// sibling share (empty delegation chain) and record nothing.
     pub(crate) fn record_reserved_sibling_share(&self, hold_id: &str, cap: &CapabilityToken) {
         let Some(parent_link) = cap.delegation_chain.last() else {
             return;
@@ -484,12 +515,6 @@ impl ChioKernel {
         );
     }
 
-    /// Release the sibling-sum share a reserve-for-caller hold kept admitted,
-    /// once the hold has closed (reconciled by nonce or reaped). Idempotent: an
-    /// unknown hold id is a no-op. A registry release error is logged rather
-    /// than propagated so hold settlement is never blocked by admission
-    /// bookkeeping (release cannot mismatch because the exact admitted share was
-    /// recorded).
     pub(crate) fn release_reserved_sibling_share_for_hold(&self, hold_id: &str) {
         let Some(entry) = self.lock_reserved_sibling_shares().remove(hold_id) else {
             return;
@@ -514,34 +539,13 @@ impl ChioKernel {
 
     fn lock_restart_reserved_hold_gate(
         &self,
-    ) -> std::sync::MutexGuard<'_, crate::kernel::RestartReservedHoldGate> {
+    ) -> std::sync::MutexGuard<'_, RestartReservedHoldGate> {
         match self.restart_reserved_hold_gate.lock() {
             Ok(guard) => guard,
             Err(poisoned) => poisoned.into_inner(),
         }
     }
 
-    /// Rebuild the delegated reserve-for-caller accounting from the durable
-    /// budget store after a restart, arming the fail-closed gate consulted on
-    /// every delegated admission.
-    ///
-    /// A delegated reservation keeps its child's sibling-sum share admitted
-    /// against the parent while its durable hold stays open, but that admission
-    /// lives only in this process's in-memory registry. A mediation kernel built
-    /// fresh over a populated budget store therefore starts with an empty
-    /// sibling-sum map even though open delegated reservations from the prior
-    /// process are still consuming their parents' budget. The durable hold record
-    /// carries neither the immediate parent capability id nor the child and
-    /// parent shares, so the in-memory reservation cannot be reconstructed. Rather
-    /// than admit a sibling against an unaccounted reservation, the kernel gates
-    /// delegated admission fail-closed until every such open hold has closed.
-    ///
-    /// Fail-closed: a store read error aborts here so kernel startup can refuse to
-    /// serve mediation over a store it could not inspect. When the store reports
-    /// no open holds the gate stays clear; when it can enumerate its reserved
-    /// holds the gate tracks exactly those still open; when it cannot enumerate
-    /// them yet reports open holds the gate denies until the open-hold count
-    /// drains to zero.
     pub fn arm_restart_reserved_hold_gate(&self) -> Result<(), KernelError> {
         let gate = match self
             .with_budget_store(|store| Ok(store.list_open_delegated_reserved_hold_ids()?))?
@@ -549,17 +553,17 @@ impl ChioKernel {
             Some(hold_ids) => {
                 let pending: std::collections::HashSet<String> = hold_ids.into_iter().collect();
                 if pending.is_empty() {
-                    crate::kernel::RestartReservedHoldGate::Clear
+                    RestartReservedHoldGate::Clear
                 } else {
-                    crate::kernel::RestartReservedHoldGate::PendingHolds(pending)
+                    RestartReservedHoldGate::PendingHolds(pending)
                 }
             }
             None => {
                 let open = self.with_budget_store(|store| Ok(store.count_open_holds()?))?;
                 if open == 0 {
-                    crate::kernel::RestartReservedHoldGate::Clear
+                    RestartReservedHoldGate::Clear
                 } else {
-                    crate::kernel::RestartReservedHoldGate::PendingOpaqueCount
+                    RestartReservedHoldGate::PendingOpaqueCount
                 }
             }
         };
@@ -567,26 +571,18 @@ impl ChioKernel {
         Ok(())
     }
 
-    /// Deny a delegated admission fail-closed while a delegated reserve-for-caller
-    /// hold from a prior process is still open and unaccounted (see
-    /// [`Self::arm_restart_reserved_hold_gate`]). Returns `Ok(())` once the gate is
-    /// clear so the admission proceeds. Idempotently drains holds that have since
-    /// closed, clearing the gate exactly when the last one settles so mediation
-    /// resumes without a restart. Fail-closed on a store read error and on any
-    /// hold that stays open.
     fn enforce_restart_reserved_hold_gate(&self) -> Result<(), String> {
         let mut gate = self.lock_restart_reserved_hold_gate();
         match &*gate {
-            crate::kernel::RestartReservedHoldGate::Clear => Ok(()),
-            crate::kernel::RestartReservedHoldGate::PendingHolds(pending) => {
+            RestartReservedHoldGate::Clear => Ok(()),
+            RestartReservedHoldGate::PendingHolds(pending) => {
                 let mut still_open = std::collections::HashSet::new();
                 for hold_id in pending {
                     let open = self
                         .with_budget_store(|store| {
-                            Ok(match store.get_budget_hold(hold_id)? {
-                                Some(hold) => hold.disposition.is_open(),
-                                None => false,
-                            })
+                            Ok(store
+                                .get_budget_hold(hold_id)?
+                                .is_some_and(|hold| hold.disposition.is_open()))
                         })
                         .map_err(|error| error.to_string())?;
                     if open {
@@ -594,31 +590,26 @@ impl ChioKernel {
                     }
                 }
                 if still_open.is_empty() {
-                    *gate = crate::kernel::RestartReservedHoldGate::Clear;
+                    *gate = RestartReservedHoldGate::Clear;
                     Ok(())
                 } else {
                     let count = still_open.len();
-                    *gate = crate::kernel::RestartReservedHoldGate::PendingHolds(still_open);
+                    *gate = RestartReservedHoldGate::PendingHolds(still_open);
                     Err(format!(
-                        "delegated reserve-for-caller hold(s) from a prior process remain open \
-                         ({count}); a sibling cannot be admitted until they are reconciled or \
-                         reaped, because their sibling-sum share cannot be rebuilt from the \
-                         durable record"
+                        "delegated reserved holds from a prior process remain open ({count})"
                     ))
                 }
             }
-            crate::kernel::RestartReservedHoldGate::PendingOpaqueCount => {
+            RestartReservedHoldGate::PendingOpaqueCount => {
                 let open = self
                     .with_budget_store(|store| Ok(store.count_open_holds()?))
                     .map_err(|error| error.to_string())?;
                 if open == 0 {
-                    *gate = crate::kernel::RestartReservedHoldGate::Clear;
+                    *gate = RestartReservedHoldGate::Clear;
                     Ok(())
                 } else {
                     Err(format!(
-                        "open budget hold(s) from a prior process remain ({open}) and the store \
-                         cannot enumerate reserved holds; a delegated sibling cannot be admitted \
-                         until they are reconciled or reaped"
+                        "open budget holds from a prior process remain ({open}) and cannot be enumerated"
                     ))
                 }
             }
@@ -672,6 +663,17 @@ impl ChioKernel {
             }
         };
         let trust_resolver = self.capability_trust_root_resolver_snapshot();
+        let direct_root = match self.negotiated_capability_root(capability, &peer_profile) {
+            Ok(root) => root,
+            Err(reason) => {
+                return chio_kernel_core::EvaluationVerdict {
+                    verdict: chio_kernel_core::Verdict::Deny,
+                    reason: Some(reason),
+                    matched_grant_index: None,
+                    verified: None,
+                };
+            }
+        };
         let mut budgets = match self.budget_registry.lock() {
             Ok(guard) => guard,
             Err(_poisoned) => {
@@ -687,7 +689,7 @@ impl ChioKernel {
                 };
             }
         };
-        chio_kernel_core::evaluate_with_full_floor(
+        chio_kernel_core::evaluate_with_full_floor_and_root(
             chio_kernel_core::EvaluateInput {
                 request,
                 capability,
@@ -698,6 +700,7 @@ impl ChioKernel {
             },
             capability_crypto_floor(self.capability_crypto_floor),
             &peer_profile,
+            direct_root.as_ref(),
             &trust_resolver,
             &mut *budgets,
         )
@@ -737,20 +740,11 @@ impl ChioKernel {
     /// delegation chain. If any ancestor is revoked, the capability is
     /// rejected.
     pub(crate) fn check_revocation(&self, cap: &CapabilityToken) -> Result<(), KernelError> {
-        let token_revoked = self.with_revocation_store(|store| Ok(store.is_revoked(&cap.id)?))?;
-        if chio_kernel_core::revocation_lookup_denies(
-            chio_kernel_core::RevocationCheckTarget::PresentedToken,
-            token_revoked,
-        ) {
+        if self.with_revocation_store(|store| Ok(store.is_revoked(&cap.id)?))? {
             return Err(KernelError::CapabilityRevoked(cap.id.clone()));
         }
         for link in &cap.delegation_chain {
-            let ancestor_revoked =
-                self.with_revocation_store(|store| Ok(store.is_revoked(&link.capability_id)?))?;
-            if chio_kernel_core::revocation_lookup_denies(
-                chio_kernel_core::RevocationCheckTarget::Ancestor,
-                ancestor_revoked,
-            ) {
+            if self.with_revocation_store(|store| Ok(store.is_revoked(&link.capability_id)?))? {
                 return Err(KernelError::DelegationChainRevoked(
                     link.capability_id.clone(),
                 ));
@@ -987,7 +981,7 @@ impl ChioKernel {
         BudgetEventAuthority {
             authority_id: format!("kernel:{}", self.config.keypair.public_key().to_hex()),
             lease_id: "single-node".to_string(),
-            lease_epoch: 0,
+            lease_epoch: 1,
         }
     }
 
@@ -1069,6 +1063,27 @@ impl ChioKernel {
             serde_json::Value::Object(authorize),
         );
 
+        if let Some(capture) = charge.invocation_capture.as_ref() {
+            let mut invocation_capture = serde_json::Map::new();
+            if let Some(event_id) = capture.metadata.event_id.as_ref() {
+                invocation_capture.insert("event_id".to_string(), serde_json::json!(event_id));
+            }
+            if let Some(commit_index) = capture.metadata.budget_commit_index {
+                invocation_capture.insert(
+                    "budget_commit_index".to_string(),
+                    serde_json::json!(commit_index),
+                );
+            }
+            invocation_capture.insert(
+                "invocation_count_after".to_string(),
+                serde_json::json!(capture.invocation_count_after),
+            );
+            budget_authority.insert(
+                "invocation_capture".to_string(),
+                serde_json::Value::Object(invocation_capture),
+            );
+        }
+
         if let Some((disposition, terminal_event)) = terminal_event {
             let mut terminal = serde_json::Map::new();
             terminal.insert("disposition".to_string(), serde_json::json!(disposition));
@@ -1120,27 +1135,435 @@ impl ChioKernel {
         merge_metadata_objects(extra_metadata, Some(budget_metadata))
     }
 
+    pub(crate) fn retained_admission_receipt_metadata(
+        &self,
+        budget_mutation: &PreExecutionBudgetMutation,
+        runtime_metadata: Option<serde_json::Value>,
+    ) -> Option<serde_json::Value> {
+        let retained =
+            self.mark_runtime_admission_reservations_retained_fail_closed(runtime_metadata);
+        match budget_mutation.charge_result() {
+            Some(charge) => self.merge_budget_receipt_metadata(
+                retained,
+                self.budget_execution_receipt_metadata(charge, None, None),
+            ),
+            None => retained,
+        }
+    }
+
+    pub(crate) fn ambiguous_invocation_capture_receipt_metadata(
+        &self,
+        budget_mutation: &PreExecutionBudgetMutation,
+        runtime_metadata: Option<serde_json::Value>,
+    ) -> Option<serde_json::Value> {
+        let retained =
+            self.mark_runtime_admission_reservations_retained_fail_closed(runtime_metadata);
+        let Some(charge) = budget_mutation.charge_result() else {
+            return retained;
+        };
+        let mut budget_metadata = self.budget_execution_receipt_metadata(charge, None, None);
+        if let Some(budget_authority) = budget_metadata
+            .get_mut("budget_authority")
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            budget_authority.insert(
+                "invocation_capture".to_string(),
+                serde_json::json!({
+                    "event_id": charge.capture_invocation_event_id(),
+                    "invocation_capture_ambiguous": true,
+                    "admission_retained": true,
+                }),
+            );
+        }
+        self.merge_budget_receipt_metadata(retained, budget_metadata)
+    }
+
+    pub(crate) fn ambiguous_cancellation_receipt_metadata(
+        &self,
+        charge: &BudgetChargeResult,
+        runtime_metadata: Option<serde_json::Value>,
+    ) -> Option<serde_json::Value> {
+        let mut budget_metadata = self.budget_execution_receipt_metadata(charge, None, None);
+        if let Some(budget_authority) = budget_metadata
+            .get_mut("budget_authority")
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            if let Some(capture) = budget_authority
+                .get_mut("invocation_capture")
+                .and_then(serde_json::Value::as_object_mut)
+            {
+                capture.insert(
+                    "admission_retained".to_string(),
+                    serde_json::Value::Bool(true),
+                );
+            }
+            budget_authority.insert(
+                "cancel_captured_before_dispatch".to_string(),
+                serde_json::json!({
+                    "event_id": charge.cancel_captured_before_dispatch_event_id(),
+                    "cancellation_ambiguous": true,
+                    "pre_dispatch_admission_release_attempted": true,
+                }),
+            );
+        }
+        self.merge_budget_receipt_metadata(runtime_metadata, budget_metadata)
+    }
+
+    pub(crate) fn captured_admission_retained_receipt_metadata(
+        &self,
+        charge: &BudgetChargeResult,
+        runtime_metadata: Option<serde_json::Value>,
+    ) -> Option<serde_json::Value> {
+        let mut budget_metadata = self.budget_execution_receipt_metadata(charge, None, None);
+        if let Some(capture) = budget_metadata
+            .get_mut("budget_authority")
+            .and_then(serde_json::Value::as_object_mut)
+            .and_then(|authority| authority.get_mut("invocation_capture"))
+            .and_then(serde_json::Value::as_object_mut)
+        {
+            capture.insert(
+                "admission_retained".to_string(),
+                serde_json::Value::Bool(true),
+            );
+        }
+        self.merge_budget_receipt_metadata(runtime_metadata, budget_metadata)
+    }
+
+    pub(crate) fn ambiguous_dispatch_receipt_metadata(
+        &self,
+        budget_mutation: &PreExecutionBudgetMutation,
+        payment_authorization: Option<&PaymentAuthorization>,
+        runtime_metadata: Option<serde_json::Value>,
+    ) -> Option<serde_json::Value> {
+        let retained = self.retained_admission_receipt_metadata(budget_mutation, runtime_metadata);
+        match payment_authorization {
+            Some(authorization) => merge_metadata_objects(
+                retained,
+                Some(serde_json::json!({
+                    "financial": {
+                        "payment_reference": authorization.authorization_id,
+                        "payment_authorization_retained": true
+                    }
+                })),
+            ),
+            None => retained,
+        }
+    }
+
+    /// Record that an ambiguous post-dispatch outcome retained a budget or
+    /// payment hold. On a durable kernel the recovery sweep reconciles the hold
+    /// later; on a non-durable kernel there is no sweep, so the hold is retained
+    /// until an operator acts. The `reconciliation` label separates the two.
+    /// Only a genuine retention is counted; a pure deny that released everything
+    /// is not.
+    pub(crate) fn note_retained_ambiguous_hold(&self, retained: bool) {
+        if !retained {
+            return;
+        }
+        let reconciliation = if self.durable_admission_runtime.is_some() {
+            "durable"
+        } else {
+            "none"
+        };
+        chio_metrics_spec::runtime::families::AMBIGUOUS_DISPATCH_RETAINED_HOLD
+            .incr(&[reconciliation]);
+    }
+
+    fn cumulative_approval_request_for_grant(
+        &self,
+        request: &ToolCallRequest,
+        matching: &MatchingGrant<'_>,
+        admission: Option<&DurableToolAdmission>,
+        now: u64,
+    ) -> Result<Option<BudgetCumulativeApprovalRequest>, KernelError> {
+        let cumulative_constraint_count = matching
+            .grant
+            .constraints
+            .iter()
+            .filter(|constraint| {
+                matches!(
+                    constraint,
+                    Constraint::RequireCumulativeApprovalAbove { .. }
+                )
+            })
+            .count();
+        if cumulative_constraint_count == 0 {
+            return Ok(None);
+        }
+        if cumulative_constraint_count != 1 {
+            return Err(KernelError::GovernedTransactionDenied(
+                "a matching grant must contain exactly one cumulative approval constraint"
+                    .to_owned(),
+            ));
+        }
+        let admission = admission.ok_or_else(|| {
+            KernelError::DurableAdmission(
+                "cumulative approval requires a durable admission operation".to_owned(),
+            )
+        })?;
+        let peer = self
+            .capability_negotiation_for_remote(request.federated_origin_kernel_id.as_deref(), now)
+            .map_err(KernelError::GovernedTransactionDenied)?;
+        if !peer.supports(chio_core::capability::features::CUMULATIVE_APPROVAL_BUDGET) {
+            return Err(KernelError::GovernedTransactionDenied(
+                "cumulative approval budgets were not negotiated".to_owned(),
+            ));
+        }
+        let direct_root = self
+            .negotiated_capability_root(&request.capability, &peer)
+            .map_err(KernelError::GovernedTransactionDenied)?;
+        let verified =
+            chio_core::capability::cumulative_approval::verify_cumulative_approval_constraints(
+                &request.capability,
+                &self.trusted_issuer_keys(),
+                direct_root.as_ref(),
+            )
+            .map_err(|error| KernelError::GovernedTransactionDenied(error.to_string()))?;
+        let mut matching_constraints = verified
+            .into_iter()
+            .filter(|constraint| constraint.grant_index == matching.index);
+        let constraint = matching_constraints.next().ok_or_else(|| {
+            KernelError::GovernedTransactionDenied(
+                "cumulative approval verification omitted the matching grant".to_owned(),
+            )
+        })?;
+        if matching_constraints.next().is_some() {
+            return Err(KernelError::GovernedTransactionDenied(
+                "cumulative approval verification produced an ambiguous grant".to_owned(),
+            ));
+        }
+        let intent = request.governed_intent.as_ref().ok_or_else(|| {
+            KernelError::GovernedTransactionDenied(
+                "cumulative approval requires a governed transaction intent".to_owned(),
+            )
+        })?;
+        if intent.server_id != request.server_id || intent.tool_name != request.tool_name {
+            return Err(KernelError::GovernedTransactionDenied(
+                "cumulative approval intent target does not match the request".to_owned(),
+            ));
+        }
+        let requested_authorized = intent.max_amount.clone().ok_or_else(|| {
+            KernelError::GovernedTransactionDenied(
+                "cumulative approval intent requires a maximum amount".to_owned(),
+            )
+        })?;
+        if requested_authorized.currency != constraint.threshold.currency {
+            return Err(KernelError::GovernedTransactionDenied(
+                "cumulative approval intent currency does not match the capability".to_owned(),
+            ));
+        }
+        Ok(Some(BudgetCumulativeApprovalRequest {
+            operation_id: admission.operation_id().to_owned(),
+            account_key: BudgetCumulativeApprovalAccountKey {
+                authority_id: constraint.authority_id.to_hex(),
+                owner_id: constraint.owner_id,
+                approval_budget_id: constraint.approval_budget_id,
+                approval_budget_epoch: constraint.approval_budget_epoch,
+                root_grant_hash: constraint.root_grant_hash,
+                delegation_root_id: constraint.delegation_root_id,
+                root_binding_digest: constraint.root_binding_digest,
+                currency: constraint.threshold.currency.clone(),
+            },
+            authority_threshold: constraint.authority_threshold,
+            effective_threshold: constraint.threshold,
+            requested_authorized,
+        }))
+    }
+
+    fn ensure_cumulative_approval_proposal(
+        &self,
+        request: &ToolCallRequest,
+        required: &ApprovalRequiredBudgetHold,
+        admission: &mut DurableToolAdmission,
+        trusted_now_unix_ms: u64,
+    ) -> Result<chio_core::capability::governance::ThresholdApprovalProposal, KernelError> {
+        if admission.operation.state() == AdmissionOperationState::ApprovalRequired {
+            if admission
+                .operation
+                .budget_hold_id()
+                .is_none_or(|hold_id| hold_id.as_str() != required.hold_id)
+            {
+                return Err(KernelError::DurableAdmission(
+                    "retained approval proposal changed its budget hold".to_owned(),
+                ));
+            }
+            return admission
+                .operation
+                .threshold_proposal()
+                .cloned()
+                .ok_or_else(|| {
+                    KernelError::DurableAdmission(
+                        "approval-required operation omitted its stored proposal".to_owned(),
+                    )
+                });
+        }
+        let now = trusted_now_unix_ms / 1_000;
+        let requirement = self.threshold_approval_requirement(request, now)?;
+        let intent = request.governed_intent.as_ref().ok_or_else(|| {
+            KernelError::GovernedTransactionDenied(
+                "cumulative approval requires a governed transaction intent".to_owned(),
+            )
+        })?;
+        let intent_hash = intent
+            .binding_hash()
+            .map_err(|error| KernelError::GovernedTransactionDenied(error.to_string()))?;
+        let capability_digest = sha256_hex(
+            &canonical_json_bytes(&request.capability)
+                .map_err(|error| KernelError::GovernedTransactionDenied(error.to_string()))?,
+        );
+        let proposal_created_at = required.metadata.recorded_at_unix_seconds.ok_or_else(|| {
+            KernelError::DurableAdmission(
+                "cumulative approval authorization omitted its durable timestamp".to_owned(),
+            )
+        })?;
+        let proposal_deadline =
+            chio_core::capability::governance::ThresholdApprovalProposalBody::proposal_deadline(
+                proposal_created_at,
+                requirement.timeout_seconds,
+                request.capability.expires_at,
+                intent.governed_operation_expires_at(),
+            )
+            .map_err(|error| KernelError::GovernedTransactionDenied(error.to_string()))?;
+        let proposal = chio_core::capability::governance::ThresholdApprovalProposal::sign(
+            chio_core::capability::governance::ThresholdApprovalProposalBody {
+                schema: chio_core::capability::governance::THRESHOLD_APPROVAL_PROPOSAL_SCHEMA
+                    .to_owned(),
+                proposal_id: admission.operation_id().to_owned(),
+                request_id: request.request_id.clone(),
+                governed_intent_hash: intent_hash,
+                subject: request.capability.subject.clone(),
+                authorizing_capability_digest: capability_digest,
+                policy_hash: requirement.policy_hash,
+                threshold: requirement.threshold,
+                eligible_set_digest: requirement.eligible_set_digest,
+                proposal_created_at,
+                proposal_deadline,
+                policy_authority: self.config.keypair.public_key(),
+            },
+            &self.config.keypair,
+        )
+        .map_err(|error| KernelError::GovernedTransactionDenied(error.to_string()))?;
+        let proposal_hash = AdmissionDigest::try_new(
+            "threshold_proposal_hash",
+            proposal
+                .artifact_digest()
+                .map_err(|error| KernelError::GovernedTransactionDenied(error.to_string()))?,
+        )?;
+        admission.operation = self.apply_admission_command(
+            admission.operation.clone(),
+            vec![
+                AdmissionAttachment::ThresholdProposalHash(proposal_hash),
+                AdmissionAttachment::BudgetHoldId(AdmissionIdentifier::try_new(
+                    "budget_hold_id",
+                    required.hold_id.clone(),
+                )?),
+                AdmissionAttachment::ThresholdProposal(Box::new(proposal.clone())),
+            ],
+            AdmissionOperationState::ApprovalRequired,
+            trusted_now_unix_ms,
+        )?;
+        Ok(proposal)
+    }
+
+    fn authorize_cumulative_approval(
+        &self,
+        request: &ToolCallRequest,
+        grant_index: usize,
+        required: &ApprovalRequiredBudgetHold,
+        admission: &mut DurableToolAdmission,
+        trusted_now_unix_ms: u64,
+    ) -> Result<crate::budget_store::BudgetHoldMutationDecision, KernelError> {
+        let proposal = self.ensure_cumulative_approval_proposal(
+            request,
+            required,
+            admission,
+            trusted_now_unix_ms,
+        )?;
+        if request.threshold_approval_proposal.as_ref() != Some(&proposal) {
+            return Err(KernelError::GovernedTransactionDenied(
+                "threshold approval request does not carry the stored proposal".to_owned(),
+            ));
+        }
+        let intent_hash = request
+            .governed_intent
+            .as_ref()
+            .ok_or_else(|| {
+                KernelError::GovernedTransactionDenied(
+                    "cumulative approval requires a governed transaction intent".to_owned(),
+                )
+            })?
+            .binding_hash()
+            .map_err(|error| KernelError::GovernedTransactionDenied(error.to_string()))?;
+        let verified = self.validate_threshold_approval_set(
+            request,
+            &request.capability,
+            &intent_hash,
+            trusted_now_unix_ms / 1_000,
+        )?;
+        let approval_set_digest = verified
+            .body
+            .approval_set_hash()
+            .map_err(|error| KernelError::GovernedTransactionDenied(error.to_string()))?;
+        let decision = self.with_budget_store(|store| {
+            Ok(
+                store.authorize_cumulative_approval(BudgetAuthorizeCumulativeApprovalRequest {
+                    capability_id: request.capability.id.clone(),
+                    grant_index,
+                    operation_id: admission.operation_id().to_owned(),
+                    hold_id: required.hold_id.clone(),
+                    admission_binding: required.admission_binding.clone(),
+                    approval_set_digest,
+                    event_id: format!("{}:authorize-cumulative", required.hold_id),
+                    authority: required.metadata.authority.clone(),
+                })?,
+            )
+        })?;
+        let mutation = match decision {
+            BudgetCumulativeApprovalAuthorizationDecision::Authorized(mutation)
+            | BudgetCumulativeApprovalAuthorizationDecision::AlreadyAuthorized(mutation) => {
+                mutation
+            }
+        };
+        admission.operation = self.apply_admission_command(
+            admission.operation.clone(),
+            Vec::new(),
+            AdmissionOperationState::BudgetAuthorized,
+            trusted_now_unix_ms,
+        )?;
+        Ok(mutation)
+    }
+
     /// Check and decrement the invocation budget for a capability.
     ///
     /// Returns the matched grant index and the exact pre-execution budget mutation.
-    /// A strict in-process nonce preflight uses a temporary hold because it
-    /// reverses before retry. A reserve-for-caller preflight keeps the canonical
-    /// durable hold open, so its caller passes `false` here.
     pub(crate) fn check_and_increment_budget(
         &self,
         request: &ToolCallRequest,
         cap: &CapabilityToken,
         matching_grants: &[MatchingGrant<'_>],
-        use_temporary_nonce_preflight_hold: bool,
-    ) -> Result<(usize, PreExecutionBudgetMutation), KernelError> {
+        nonce_preflight: bool,
+        mut durable_admission: Option<&mut DurableToolAdmission>,
+        trusted_now_unix_ms: u64,
+    ) -> Result<BudgetAdmissionOutcome, KernelError> {
         let mut saw_exhausted_budget = false;
+        let mut eligible_grant_seen = false;
 
         for matching in matching_grants {
+            if durable_admission
+                .as_deref()
+                .is_some_and(|admission| !admission.permits_matching_grant(matching))
+            {
+                continue;
+            }
+            eligible_grant_seen = true;
             let grant = matching.grant;
             let has_monetary =
                 grant.max_cost_per_invocation.is_some() || grant.max_total_cost.is_some();
 
-            if has_monetary {
+            if has_monetary
+                || (nonce_preflight && grant.max_invocations.is_some())
+                || durable_admission.is_some()
+            {
                 // Use worst-case max_cost_per_invocation as the pre-execution debit.
                 let cost_units = grant
                     .max_cost_per_invocation
@@ -1156,85 +1579,158 @@ impl ChioKernel {
                 let max_total = grant.max_total_cost.as_ref().map(|m| m.units);
                 let max_per = grant.max_cost_per_invocation.as_ref().map(|m| m.units);
                 let budget_total = max_total.unwrap_or(u64::MAX);
-                let budget_hold_id = if use_temporary_nonce_preflight_hold {
-                    format!(
-                        "budget-nonce-preflight-hold:{}:{}:{}",
-                        request.request_id, cap.id, matching.index
-                    )
-                } else {
-                    format!(
-                        "budget-hold:{}:{}:{}",
-                        request.request_id, cap.id, matching.index
-                    )
-                };
-                let authorize_event_id = format!("{budget_hold_id}:authorize");
-                let authority = self.local_budget_event_authority();
+                let (budget_hold_id, authorize_event_id, admission_binding, authority) =
+                    if let Some(admission) = durable_admission.as_deref() {
+                        let (binding, authority) = self.durable_budget_binding(admission, cap)?;
+                        (
+                            admission.budget_hold_id(matching.index),
+                            admission.budget_authorize_event_id(matching.index),
+                            Some(binding),
+                            authority,
+                        )
+                    } else {
+                        let budget_hold_id = if nonce_preflight {
+                            format!(
+                                "nonce-preflight-budget-hold:{}:{}:{}",
+                                request.request_id, cap.id, matching.index
+                            )
+                        } else {
+                            format!(
+                                "budget-hold:{}:{}:{}",
+                                request.request_id, cap.id, matching.index
+                            )
+                        };
+                        (
+                            budget_hold_id.clone(),
+                            format!("{budget_hold_id}:authorize"),
+                            None,
+                            self.local_budget_event_authority(),
+                        )
+                    };
 
-                // The recoverable money record commits in the SAME
-                // transaction as the hold write, before the rail is touched:
-                // a crash in any later window resolves through the journal
-                // instead of leaving moved funds with no trace.
-                // A reverse-for-retry nonce preflight cannot touch the rail and
-                // reverses its temporary budget hold before returning. Writing a
-                // payment row here would collide with the execution retry that
-                // uses the same request id and actually needs crash recovery.
-                let payment_journal_enabled =
-                    self.payment_journal_active() && !use_temporary_nonce_preflight_hold;
-                let payment_journal = payment_journal_enabled.then(|| {
-                    let now_ms = std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map(|elapsed| elapsed.as_millis().min(u64::MAX as u128) as u64)
-                        .unwrap_or(0);
-                    let rail = self
-                        .payment_adapter
-                        .as_ref()
-                        .map(|adapter| adapter.rail_id().to_string())
-                        .unwrap_or_default();
-                    // Resolved exactly as the terminal receipt and the
-                    // dispatch intent resolve it (request-scoped entry
-                    // first, thread-local scope otherwise), so a recovered
-                    // charge's reconciliation receipt is never dropped from
-                    // the owning tenant's receipt view.
-                    let tenant_id = self
-                        .receipt_tenant_id_for_request(Some(&request.request_id))
-                        .unwrap_or_else(current_scoped_receipt_tenant_id);
-                    crate::payment::PaymentJournalRecord {
-                        request_id: request.request_id.clone(),
-                        capability_id: cap.id.clone(),
-                        grant_index: matching.index as u32,
-                        hold_id: Some(budget_hold_id.clone()),
-                        rail,
-                        authorization_id: None,
-                        transaction_id: None,
-                        amount_units: cost_units,
-                        settle_action: None,
-                        settle_amount_units: None,
-                        currency: currency.clone(),
-                        state: crate::payment::PaymentJournalState::HoldPlaced,
-                        created_at_unix_ms: now_ms,
-                        tenant_id,
+                let mut invocation_quotas = Vec::with_capacity(3);
+                if let Some(admission) = durable_admission.as_deref() {
+                    if admission.aggregate_quota().is_some()
+                        || admission.supplemental_quota().is_some()
+                    {
+                        if let Some(max_invocations) = grant.max_invocations {
+                            invocation_quotas.push(BudgetInvocationQuota {
+                                key: BudgetQuotaKey::grant(
+                                    cap.id.clone(),
+                                    u32::try_from(matching.index).map_err(|_| {
+                                        KernelError::DurableAdmission(
+                                            "matching grant index exceeds u32".to_string(),
+                                        )
+                                    })?,
+                                ),
+                                max_invocations,
+                            });
+                        }
                     }
-                });
-
-                let decision = self.with_budget_store(|store| {
-                    Ok(store.authorize_budget_hold(BudgetAuthorizeHoldRequest {
-                        capability_id: cap.id.clone(),
-                        grant_index: matching.index,
-                        max_invocations: grant.max_invocations,
-                        requested_exposure_units: cost_units,
-                        max_cost_per_invocation: max_per,
-                        max_total_cost_units: max_total,
-                        hold_id: Some(budget_hold_id.clone()),
-                        event_id: Some(authorize_event_id),
-                        authority: Some(authority.clone()),
-                        payment_journal: payment_journal.clone(),
-                    })?)
-                })?;
+                    if let Some(aggregate) = admission.aggregate_quota() {
+                        invocation_quotas.push(aggregate.clone());
+                    }
+                    if let Some(supplemental) = admission.supplemental_quota() {
+                        invocation_quotas.push(BudgetInvocationQuota {
+                            key: BudgetQuotaKey {
+                                profile: BudgetQuotaProfile::SupplementalBrokerCapabilityExecution,
+                                owner_id: supplemental.owner_id().to_string(),
+                                grant_index: None,
+                            },
+                            max_invocations: supplemental.max_invocations(),
+                        });
+                    }
+                }
+                invocation_quotas.sort_by(|left, right| left.key.cmp(&right.key));
+                let cumulative_approval = self.cumulative_approval_request_for_grant(
+                    request,
+                    matching,
+                    durable_admission.as_deref(),
+                    trusted_now_unix_ms / 1_000,
+                )?;
+                let authorization_request = BudgetAuthorizeHoldRequest {
+                    capability_id: cap.id.clone(),
+                    grant_index: matching.index,
+                    max_invocations: grant.max_invocations,
+                    invocation_quotas,
+                    cumulative_approval,
+                    admission_binding,
+                    requested_exposure_units: cost_units,
+                    max_cost_per_invocation: max_per,
+                    max_total_cost_units: max_total,
+                    hold_id: Some(budget_hold_id.clone()),
+                    event_id: Some(authorize_event_id),
+                    authority: Some(authority.clone()),
+                };
+                let decision = if let Some(admission) = durable_admission.as_deref_mut() {
+                    let payment_journal = if admission.requires_payment() {
+                        let adapter = self.payment_adapter.as_ref().ok_or_else(|| {
+                            KernelError::DurableAdmission(
+                                "durable monetary authorization lost its payment adapter"
+                                    .to_owned(),
+                            )
+                        })?;
+                        let rail_mode = adapter.rail_mode().ok_or_else(|| {
+                            KernelError::DurableAdmission(
+                                "durable monetary authorization lost its payment rail mode"
+                                    .to_owned(),
+                            )
+                        })?;
+                        let journal = crate::payment::PaymentJournalRecord {
+                            operation_id: admission.operation_id().to_owned(),
+                            journal_version: 1,
+                            request_namespace_digest: admission
+                                .operation()
+                                .binding()
+                                .request_namespace_digest()
+                                .as_str()
+                                .to_owned(),
+                            request_id: admission
+                                .operation()
+                                .binding()
+                                .request_id()
+                                .as_str()
+                                .to_owned(),
+                            capability_id: cap.id.clone(),
+                            grant_index: u32::try_from(matching.index).map_err(|_| {
+                                KernelError::DurableAdmission(
+                                    "payment grant index exceeds the durable journal range"
+                                        .to_owned(),
+                                )
+                            })?,
+                            hold_id: Some(budget_hold_id.clone()),
+                            rail: adapter.rail_id().to_owned(),
+                            rail_mode,
+                            authorization_id: None,
+                            transaction_id: None,
+                            amount_units: cost_units,
+                            settle_action: None,
+                            settle_amount_units: None,
+                            release_authority: None,
+                            currency: currency.clone(),
+                            state: crate::payment::PaymentJournalState::HoldPlaced,
+                            created_at_unix_ms: trusted_now_unix_ms.max(1),
+                        };
+                        journal
+                            .validate()
+                            .map_err(|error| KernelError::DurableAdmission(error.to_string()))?;
+                        Some(journal)
+                    } else {
+                        None
+                    };
+                    self.authorize_durable_budget_hold(
+                        admission,
+                        authorization_request,
+                        payment_journal,
+                        trusted_now_unix_ms,
+                    )?
+                } else {
+                    self.with_budget_store(|store| {
+                        Ok(store.authorize_budget_hold(authorization_request)?)
+                    })?
+                };
                 match decision {
                     BudgetAuthorizeHoldDecision::Authorized(authorized) => {
-                        if authorized.metadata.replayed_event {
-                            return Err(KernelError::BudgetAuthorizeReplay(cap.id.clone()));
-                        }
                         let charge = BudgetChargeResult {
                             grant_index: matching.index,
                             cost_charged: cost_units,
@@ -1245,41 +1741,134 @@ impl ChioKernel {
                                 .hold_id
                                 .unwrap_or_else(|| budget_hold_id.clone()),
                             authorize_metadata: authorized.metadata,
+                            invocation_capture: None,
                         };
-                        return Ok((matching.index, PreExecutionBudgetMutation::Charge(charge)));
+                        let mutation = if has_monetary {
+                            PreExecutionBudgetMutation::Charge(charge)
+                        } else {
+                            PreExecutionBudgetMutation::InvocationHold(charge)
+                        };
+                        return Ok(BudgetAdmissionOutcome::Authorized {
+                            grant_index: matching.index,
+                            mutation: Box::new(mutation),
+                        });
                     }
-                    BudgetAuthorizeHoldDecision::Denied(denied) => {
-                        if denied.metadata.replayed_event {
-                            return Err(KernelError::BudgetAuthorizeReplay(cap.id.clone()));
-                        }
+                    BudgetAuthorizeHoldDecision::Denied(_) => {
                         saw_exhausted_budget = true;
+                    }
+                    BudgetAuthorizeHoldDecision::ApprovalRequired(required) => {
+                        let admission = durable_admission.as_deref_mut().ok_or_else(|| {
+                            KernelError::DurableAdmission(
+                                "cumulative approval lost its durable operation".to_owned(),
+                            )
+                        })?;
+                        let proposal = self.ensure_cumulative_approval_proposal(
+                            request,
+                            &required,
+                            admission,
+                            trusted_now_unix_ms,
+                        )?;
+                        if request.approval_tokens.is_empty() {
+                            return Ok(BudgetAdmissionOutcome::PendingApproval {
+                                grant_index: matching.index,
+                                proposal: Box::new(proposal),
+                            });
+                        }
+                        let authorized = self.authorize_cumulative_approval(
+                            request,
+                            matching.index,
+                            &required,
+                            admission,
+                            trusted_now_unix_ms,
+                        )?;
+                        let charge = BudgetChargeResult {
+                            grant_index: matching.index,
+                            cost_charged: cost_units,
+                            currency,
+                            budget_total,
+                            new_committed_cost_units: authorized.committed_cost_units_after,
+                            budget_hold_id: authorized
+                                .hold_id
+                                .unwrap_or_else(|| budget_hold_id.clone()),
+                            authorize_metadata: authorized.metadata,
+                            invocation_capture: None,
+                        };
+                        let mutation = if has_monetary {
+                            PreExecutionBudgetMutation::Charge(charge)
+                        } else {
+                            PreExecutionBudgetMutation::InvocationHold(charge)
+                        };
+                        return Ok(BudgetAdmissionOutcome::Authorized {
+                            grant_index: matching.index,
+                            mutation: Box::new(mutation),
+                        });
+                    }
+                    BudgetAuthorizeHoldDecision::AlreadyCaptured(captured) => {
+                        if !durable_admission
+                            .as_deref()
+                            .is_some_and(DurableToolAdmission::can_resume_captured_hold)
+                        {
+                            return Err(KernelError::CapturedBudgetReplay(cap.id.clone()));
+                        }
+                        let charge = BudgetChargeResult {
+                            grant_index: matching.index,
+                            cost_charged: cost_units,
+                            currency,
+                            budget_total,
+                            new_committed_cost_units: captured.committed_cost_units_after,
+                            budget_hold_id: captured
+                                .hold_id
+                                .clone()
+                                .unwrap_or_else(|| budget_hold_id.clone()),
+                            authorize_metadata: captured.metadata.clone(),
+                            invocation_capture: Some(Box::new(captured)),
+                        };
+                        let mutation = if has_monetary {
+                            PreExecutionBudgetMutation::Charge(charge)
+                        } else {
+                            PreExecutionBudgetMutation::InvocationHold(charge)
+                        };
+                        return Ok(BudgetAdmissionOutcome::Authorized {
+                            grant_index: matching.index,
+                            mutation: Box::new(mutation),
+                        });
                     }
                 }
             } else {
                 if grant.max_invocations.is_none() {
-                    return Ok((matching.index, PreExecutionBudgetMutation::None));
+                    return Ok(BudgetAdmissionOutcome::Authorized {
+                        grant_index: matching.index,
+                        mutation: Box::new(PreExecutionBudgetMutation::None),
+                    });
                 }
 
                 if self.with_budget_store(|store| {
                     Ok(store.try_increment(&cap.id, matching.index, grant.max_invocations)?)
                 })? {
-                    return Ok((
-                        matching.index,
-                        PreExecutionBudgetMutation::Invocation {
+                    return Ok(BudgetAdmissionOutcome::Authorized {
+                        grant_index: matching.index,
+                        mutation: Box::new(PreExecutionBudgetMutation::Invocation {
                             grant_index: matching.index,
-                        },
-                    ));
+                        }),
+                    });
                 }
                 saw_exhausted_budget = true;
             }
         }
 
-        if saw_exhausted_budget {
+        if durable_admission.is_some() && !eligible_grant_seen {
+            Err(KernelError::DurableAdmission(
+                "retained budget hold does not identify a matching grant".to_string(),
+            ))
+        } else if saw_exhausted_budget {
             Err(KernelError::BudgetExhausted(cap.id.clone()))
         } else {
             // No matching grant had any limit -- allow with the first grant's index.
             let first_index = matching_grants.first().map(|m| m.index).unwrap_or(0);
-            Ok((first_index, PreExecutionBudgetMutation::None))
+            Ok(BudgetAdmissionOutcome::Authorized {
+                grant_index: first_index,
+                mutation: Box::new(PreExecutionBudgetMutation::None),
+            })
         }
     }
 
@@ -1289,23 +1878,73 @@ impl ChioKernel {
         charge: &BudgetChargeResult,
     ) -> Result<BudgetReverseHoldDecision, KernelError> {
         let authority = charge.authorize_metadata.authority.clone();
-        let reversed = self.with_budget_store(|store| {
+        self.with_budget_store(|store| {
             Ok(store.reverse_budget_hold(BudgetReverseHoldRequest {
                 capability_id: capability_id.to_string(),
                 grant_index: charge.grant_index,
                 reversed_exposure_units: charge.cost_charged,
                 hold_id: Some(charge.budget_hold_id.clone()),
                 event_id: Some(charge.reverse_event_id()),
+                expected_cumulative_approval_state: None,
                 authority,
             })?)
+        })
+    }
+
+    pub(crate) fn capture_invocation(
+        &self,
+        cap: &CapabilityToken,
+        budget_mutation: &mut PreExecutionBudgetMutation,
+    ) -> Result<BudgetInvocationCaptureDecision, KernelError> {
+        let charge = budget_mutation.durable_hold_result_mut().ok_or_else(|| {
+            KernelError::Internal(
+                "invocation capture requires an authorized budget hold".to_string(),
+            )
         })?;
-        #[cfg(debug_assertions)]
-        self.debug_assert_terminal_reservation_conservation(
-            capability_id,
-            charge.grant_index,
-            &charge.budget_hold_id,
-        );
-        Ok(reversed)
+        let authority = charge.authorize_metadata.authority.clone();
+        let decision = self.with_budget_store(|store| {
+            Ok(
+                store.capture_invocation_reservations(BudgetCaptureInvocationRequest {
+                    capability_id: cap.id.clone(),
+                    grant_index: charge.grant_index,
+                    hold_id: charge.budget_hold_id.clone(),
+                    event_id: charge.capture_invocation_event_id(),
+                    trusted_time: None,
+                    authority,
+                })?,
+            )
+        })?;
+        let capture = match &decision {
+            BudgetInvocationCaptureDecision::Captured(capture)
+            | BudgetInvocationCaptureDecision::AlreadyCaptured(capture) => capture,
+        };
+        charge.invocation_capture = Some(Box::new(capture.clone()));
+        Ok(decision)
+    }
+
+    pub(crate) fn cancel_captured_monetary_before_dispatch(
+        &self,
+        capability_id: &str,
+        charge: &BudgetChargeResult,
+    ) -> Result<BudgetHoldMutationDecision, KernelError> {
+        let authority = charge.authorize_metadata.authority.clone();
+        let decision = self.with_budget_store(|store| {
+            Ok(store.cancel_captured_before_dispatch(
+                BudgetCancelCapturedBeforeDispatchRequest {
+                    capability_id: capability_id.to_string(),
+                    grant_index: charge.grant_index,
+                    hold_id: charge.budget_hold_id.clone(),
+                    event_id: charge.cancel_captured_before_dispatch_event_id(),
+                    authority,
+                },
+            )?)
+        })?;
+        Ok(match decision {
+            BudgetCapturedBeforeDispatchCancellationDecision::Cancelled(mutation)
+            | BudgetCapturedBeforeDispatchCancellationDecision::AlreadyCancelled(mutation) => {
+                mutation
+            }
+        })
     }
 
     pub(crate) fn reverse_pre_execution_budget_mutation(
@@ -1313,9 +1952,12 @@ impl ChioKernel {
         cap: &CapabilityToken,
         budget_mutation: &PreExecutionBudgetMutation,
     ) -> Result<Option<BudgetReverseHoldDecision>, KernelError> {
-        let reversed = match budget_mutation {
+        match budget_mutation {
             PreExecutionBudgetMutation::Charge(charge) => {
                 self.reverse_budget_charge(&cap.id, charge).map(Some)
+            }
+            PreExecutionBudgetMutation::InvocationHold(hold) => {
+                self.reverse_budget_charge(&cap.id, hold).map(Some)
             }
             PreExecutionBudgetMutation::Invocation { grant_index } => {
                 self.with_budget_store(|store| {
@@ -1324,134 +1966,6 @@ impl ChioKernel {
                 Ok(None)
             }
             PreExecutionBudgetMutation::None => Ok(None),
-        }?;
-        #[cfg(debug_assertions)]
-        if let Some(grant_index) = budget_mutation.grant_index() {
-            self.debug_assert_reservation_conservation(&cap.id, grant_index);
-        }
-        Ok(reversed)
-    }
-
-    /// Whether the registered tool server for `server_id` measures the realized
-    /// cost of an invocation it dispatches.
-    ///
-    /// An absent server defaults to `true` (measured), preserving
-    /// reconcile-and-settle behavior for every real server. The server is
-    /// always present here because dispatch resolved it before finalization, so
-    /// the default is unreachable in practice.
-    pub(crate) fn tool_server_measures_realized_cost(&self, server_id: &str) -> bool {
-        self.tool_servers
-            .get(server_id)
-            .is_none_or(|server| server.measures_realized_cost())
-    }
-
-    /// Finalize a tool output whose realized cost was not measured on this path.
-    ///
-    /// A tool server that reports `measures_realized_cost() == false` did not
-    /// execute the target tool, so no realized cost exists here. The kernel must
-    /// not sign a settled, reconciled authoritative spend for it: instead it
-    /// reverses the pre-execution hold (nothing was spent on this path) and
-    /// emits a provisional allow receipt whose budget authority carries a
-    /// `reversed` terminal and whose settlement stays `pending`. Such a receipt
-    /// is rejected by `is_authoritative_spend_receipt` (the hold is not
-    /// reconciled). Real reconciliation happens at the execution site.
-    fn finalize_unmeasured_cost_provisional_allow(
-        &self,
-        context: ReceiptResponseContext<'_>,
-        output: ToolServerOutput,
-        elapsed: Duration,
-        charge: BudgetChargeResult,
-        runtime_admission_metadata: Option<serde_json::Value>,
-    ) -> Result<ToolCallResponse, KernelError> {
-        let ReceiptResponseContext {
-            request,
-            evaluation_context,
-            timestamp,
-            extra_metadata,
-            ..
-        } = context;
-        let cap = &request.capability;
-        let reverse = self.reverse_budget_charge(&cap.id, &charge)?;
-        let running_committed_cost_units = reverse.committed_cost_units_after;
-        let budget_remaining = charge
-            .budget_total
-            .saturating_sub(running_committed_cost_units);
-        let delegation_depth = cap.delegation_chain.len() as u32;
-        let root_budget_holder = cap.issuer.to_hex();
-
-        let financial_meta = FinancialReceiptMetadata {
-            grant_index: charge.grant_index as u32,
-            cost_charged: 0,
-            currency: charge.currency.clone(),
-            budget_remaining,
-            budget_total: charge.budget_total,
-            delegation_depth,
-            root_budget_holder,
-            payment_reference: None,
-            settlement_status: SettlementStatus::Pending,
-            cost_breakdown: None,
-            oracle_evidence: None,
-            attempted_cost: None,
-        };
-        let financial_json = Some(serde_json::json!({ "financial": financial_meta }));
-
-        let limited_output = self.apply_stream_limits(output, elapsed)?;
-        let tool_call_output = match &limited_output {
-            ToolServerOutput::Value(value) => ToolCallOutput::Value(value.clone()),
-            ToolServerOutput::Stream(ToolServerStreamResult::Complete(stream)) => {
-                ToolCallOutput::Stream(stream.clone())
-            }
-            ToolServerOutput::Stream(ToolServerStreamResult::Incomplete { stream, .. }) => {
-                ToolCallOutput::Stream(stream.clone())
-            }
-        };
-
-        // The nonce id is intentionally omitted from the budget authority so the
-        // receipt makes no `mediated_spend` profile claim: this is a provisional
-        // confirmation, not an authoritative spend.
-        let budget_metadata =
-            self.budget_execution_receipt_metadata(&charge, Some(("reversed", &reverse)), None);
-        let merged = merge_metadata_objects(
-            financial_json,
-            self.merge_budget_receipt_metadata(extra_metadata, budget_metadata),
-        );
-
-        match limited_output {
-            ToolServerOutput::Value(_)
-            | ToolServerOutput::Stream(ToolServerStreamResult::Complete(_)) => self
-                .build_allow_response_with_metadata(
-                    ReceiptResponseContext {
-                        request,
-                        evaluation_context,
-                        timestamp,
-                        matched_grant_index: Some(charge.grant_index),
-                        extra_metadata: merged,
-                    },
-                    tool_call_output,
-                    runtime_admission_metadata,
-                    // This provisional allow already reversed the budget hold and
-                    // did not execute the tool at the kernel, so there is no
-                    // reserved hold to reconcile and nothing to authorize
-                    // downstream. Emit no execution nonce: a spendable nonce here
-                    // would carry no reserved hold, letting a gate deployment
-                    // execute against a refunded hold and spend outside the cap.
-                    AllowResponseNonce::Suppressed,
-                ),
-            ToolServerOutput::Stream(ToolServerStreamResult::Incomplete { reason, .. }) => self
-                .build_incomplete_response_with_output_and_metadata(
-                    ReceiptResponseContext {
-                        request,
-                        evaluation_context,
-                        timestamp,
-                        matched_grant_index: Some(charge.grant_index),
-                        extra_metadata: self.merge_retained_runtime_admission_metadata(
-                            merged,
-                            runtime_admission_metadata,
-                        ),
-                    },
-                    Some(tool_call_output),
-                    &reason,
-                ),
         }
     }
 
@@ -1462,7 +1976,7 @@ impl ChioKernel {
         realized_cost_units: u64,
     ) -> Result<BudgetReconcileHoldDecision, KernelError> {
         let authority = charge.authorize_metadata.authority.clone();
-        let reconciled = self.with_budget_store(|store| {
+        self.with_budget_store(|store| {
             Ok(store.reconcile_budget_hold(BudgetReconcileHoldRequest {
                 capability_id: capability_id.to_string(),
                 grant_index: charge.grant_index,
@@ -1472,136 +1986,209 @@ impl ChioKernel {
                 event_id: Some(charge.reconcile_event_id()),
                 authority,
             })?)
-        })?;
-        #[cfg(debug_assertions)]
-        self.debug_assert_terminal_reservation_conservation(
-            capability_id,
-            charge.grant_index,
-            &charge.budget_hold_id,
+        })
+    }
+
+    pub(crate) fn tool_server_measures_realized_cost(&self, server_id: &str) -> bool {
+        self.tool_servers
+            .get(server_id)
+            .is_none_or(|server| server.measures_realized_cost())
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn finalize_unmeasured_cost_provisional_allow(
+        &self,
+        request: &ToolCallRequest,
+        output: ToolServerOutput,
+        elapsed: Duration,
+        timestamp: u64,
+        charge: BudgetChargeResult,
+        extra_metadata: Option<serde_json::Value>,
+        verified_payee_binding: Option<&VerifiedGovernedPayeeBinding>,
+    ) -> Result<ToolCallResponse, KernelError> {
+        let cap = &request.capability;
+        let reverse = if charge.invocation_capture.is_some() {
+            self.cancel_captured_monetary_before_dispatch(&cap.id, &charge)?
+        } else {
+            self.reverse_budget_charge(&cap.id, &charge)?
+        };
+        let financial = FinancialReceiptMetadata {
+            grant_index: charge.grant_index as u32,
+            cost_charged: 0,
+            currency: charge.currency.clone(),
+            budget_remaining: charge
+                .budget_total
+                .saturating_sub(reverse.committed_cost_units_after),
+            budget_total: charge.budget_total,
+            delegation_depth: cap.delegation_chain.len() as u32,
+            root_budget_holder: cap.issuer.to_hex(),
+            payment_reference: None,
+            settlement_status: SettlementStatus::Pending,
+            cost_breakdown: None,
+            oracle_evidence: None,
+            attempted_cost: None,
+        };
+        let limited_output = self.apply_stream_limits(output, elapsed)?;
+        let tool_call_output = match &limited_output {
+            ToolServerOutput::Value(value) => ToolCallOutput::Value(value.clone()),
+            ToolServerOutput::Stream(ToolServerStreamResult::Complete(stream))
+            | ToolServerOutput::Stream(ToolServerStreamResult::Incomplete { stream, .. }) => {
+                ToolCallOutput::Stream(stream.clone())
+            }
+        };
+        let budget_metadata =
+            self.budget_execution_receipt_metadata(&charge, Some(("reversed", &reverse)), None);
+        let metadata = merge_metadata_objects(
+            Some(serde_json::json!({ "financial": financial })),
+            self.merge_budget_receipt_metadata(extra_metadata, budget_metadata),
         );
-        Ok(reconciled)
+
+        match limited_output {
+            ToolServerOutput::Value(_)
+            | ToolServerOutput::Stream(ToolServerStreamResult::Complete(_)) => self
+                .build_allow_response_with_metadata_and_payee_binding(
+                    request,
+                    tool_call_output,
+                    timestamp,
+                    Some(charge.grant_index),
+                    metadata,
+                    verified_payee_binding,
+                    AllowResponseNonce::Suppressed,
+                ),
+            ToolServerOutput::Stream(ToolServerStreamResult::Incomplete { reason, .. }) => self
+                .build_incomplete_response_with_output_metadata_and_payee_binding(
+                    request,
+                    Some(tool_call_output),
+                    &reason,
+                    timestamp,
+                    Some(charge.grant_index),
+                    self.mark_runtime_admission_reservations_retained_fail_closed(metadata),
+                    verified_payee_binding,
+                ),
+        }
     }
 
     #[allow(clippy::too_many_arguments)]
     pub(crate) fn finalize_budgeted_tool_output_with_cost_and_metadata(
         &self,
         request: &ToolCallRequest,
-        evaluation_context: &EvaluationReceiptContext,
         output: ToolServerOutput,
         elapsed: Duration,
         timestamp: u64,
         matched_grant_index: usize,
         cost_context: FinalizeToolOutputCostContext<'_>,
         extra_metadata: Option<serde_json::Value>,
+        verified_payee_binding: Option<&VerifiedGovernedPayeeBinding>,
     ) -> Result<ToolCallResponse, KernelError> {
         let FinalizeToolOutputCostContext {
             charge_result,
             reported_cost,
             payment_authorization,
             cap,
-            runtime_admission_metadata,
-            budget_reconcile_decision,
         } = cost_context;
         let Some(charge) = charge_result else {
-            // When a payment was authorized but the grant carries no monetary ceiling,
-            // the realized spend is the prepaid quote. Settle the authorization so the
-            // invocation is recorded as a completed prepayment; fail closed if it
-            // cannot be settled rather than admit the tool against a perpetual hold.
-            let Some(auth) = payment_authorization.as_ref() else {
-                return self.finalize_tool_output_with_metadata(
-                    ReceiptResponseContext {
+            if let Some(authorization) = payment_authorization.as_ref() {
+                let (quoted_units, quoted_currency) = Self::mustprepay_quoted_amount(request)
+                    .ok_or_else(|| {
+                        KernelError::GovernedTransactionDenied(
+                            "payment authorization omitted its MustPrepay quote".to_string(),
+                        )
+                    })?;
+                let settlement = if authorization.state.is_final() {
+                    ReceiptSettlement::from_authorization(authorization)
+                } else {
+                    let adapter = self.payment_adapter.as_ref().ok_or_else(|| {
+                        KernelError::Internal(
+                            "payment authorization present without configured adapter".to_string(),
+                        )
+                    })?;
+                    let result = match adapter.capture(
+                        &authorization.authorization_id,
+                        quoted_units,
+                        &quoted_currency,
+                        &request.request_id,
+                    ) {
+                        Ok(result) => result,
+                        Err(error) => {
+                            let _ = adapter
+                                .release(&authorization.authorization_id, &request.request_id);
+                            return self.build_deny_response_with_metadata(
+                                request,
+                                &format!(
+                                    "MustPrepay authorization could not be settled after execution: {error}"
+                                ),
+                                timestamp,
+                                Some(matched_grant_index),
+                                extra_metadata,
+                            );
+                        }
+                    };
+                    if result.settlement_status != crate::payment::RailSettlementStatus::Settled {
+                        let _ =
+                            adapter.release(&authorization.authorization_id, &request.request_id);
+                    }
+                    ReceiptSettlement::from_payment_result(&result)
+                };
+                if settlement.settlement_status != SettlementStatus::Settled {
+                    return self.build_deny_response_with_metadata(
                         request,
-                        evaluation_context,
+                        "MustPrepay authorization could not be settled after execution",
                         timestamp,
-                        matched_grant_index: Some(matched_grant_index),
+                        Some(matched_grant_index),
                         extra_metadata,
-                    },
+                    );
+                }
+                let (payment_reference, settlement_status) = settlement.into_receipt_parts();
+                let financial = FinancialReceiptMetadata {
+                    grant_index: matched_grant_index as u32,
+                    cost_charged: quoted_units,
+                    currency: quoted_currency,
+                    budget_remaining: 0,
+                    budget_total: quoted_units,
+                    delegation_depth: cap.delegation_chain.len() as u32,
+                    root_budget_holder: cap.issuer.to_hex(),
+                    payment_reference,
+                    settlement_status,
+                    cost_breakdown: None,
+                    oracle_evidence: None,
+                    attempted_cost: None,
+                };
+                let metadata = merge_metadata_objects(
+                    extra_metadata,
+                    Some(serde_json::json!({ "financial": financial })),
+                );
+                return self.finalize_tool_output_with_metadata_and_payee_binding(
+                    request,
                     output,
                     elapsed,
-                    runtime_admission_metadata,
-                );
-            };
-            let Some(settlement) =
-                self.settle_prepaid_authorization_without_charge(request, auth)?
-            else {
-                return self.build_deny_response_with_metadata(
-                    request,
-                    evaluation_context,
-                    "MustPrepay authorization could not be settled after execution",
                     timestamp,
-                    Some(matched_grant_index),
-                    extra_metadata,
+                    matched_grant_index,
+                    metadata,
+                    verified_payee_binding,
                 );
-            };
-            let (payment_reference, settlement_status) = settlement.into_receipt_parts();
-            // A grant with no monetary ceiling carries no budget charge, so the
-            // realized spend is the prepaid quote. Populate the full financial
-            // envelope from the quote (amount, currency, settlement, lineage) so
-            // the receipt deserializes as `FinancialReceiptMetadata` and reflects
-            // the completed prepaid spend, not a partial fragment that receipt
-            // queries and dashboards cannot read.
-            let (quoted_units, quoted_currency) =
-                Self::mustprepay_quoted_amount(request).unwrap_or_else(|| (0, "USD".to_string()));
-            let financial_meta = FinancialReceiptMetadata {
-                grant_index: matched_grant_index as u32,
-                cost_charged: quoted_units,
-                currency: quoted_currency,
-                budget_remaining: 0,
-                budget_total: quoted_units,
-                delegation_depth: cap.delegation_chain.len() as u32,
-                root_budget_holder: cap.issuer.to_hex(),
-                payment_reference,
-                settlement_status,
-                cost_breakdown: None,
-                oracle_evidence: None,
-                attempted_cost: None,
-            };
-            let payment_meta = serde_json::json!({ "financial": financial_meta });
-            // The kernel-built `financial` block is authoritative and must win over
-            // any `financial` keys carried in caller/route `extra_metadata`, so the
-            // settled-prepayment status that `require_earned_mediated_trust_level`
-            // reads at the sign site reflects the real settlement and can never be
-            // forged by a caller-supplied override. Pass it as the winning (second)
-            // argument, matching the reconciled-hold path (see
-            // `merge_budget_receipt_metadata`).
-            let metadata = merge_metadata_objects(extra_metadata, Some(payment_meta));
-            return self.finalize_tool_output_with_metadata(
-                ReceiptResponseContext {
-                    request,
-                    evaluation_context,
-                    timestamp,
-                    matched_grant_index: Some(matched_grant_index),
-                    extra_metadata: metadata,
-                },
+            }
+            return self.finalize_tool_output_with_metadata_and_payee_binding(
+                request,
                 output,
                 elapsed,
-                runtime_admission_metadata,
+                timestamp,
+                matched_grant_index,
+                extra_metadata,
+                verified_payee_binding,
             );
         };
 
-        // A tool server that does not measure realized cost (a pre-execution
-        // authorization gate that dispatches a pass-through while the real tool
-        // runs elsewhere) never yields a settled, reconciled authoritative
-        // spend: nothing executed here, so there is no realized cost to
-        // reconcile. Reverse the pre-execution hold and emit a provisional
-        // receipt. Guarded on the absence of a payment authorization because
-        // such gates carry no prepayment; a prepaid invocation always runs
-        // through the measured settlement path below.
         if payment_authorization.is_none()
             && !self.tool_server_measures_realized_cost(&request.server_id)
         {
             return self.finalize_unmeasured_cost_provisional_allow(
-                ReceiptResponseContext {
-                    request,
-                    evaluation_context,
-                    timestamp,
-                    matched_grant_index: Some(charge.grant_index),
-                    extra_metadata,
-                },
+                request,
                 output,
                 elapsed,
+                timestamp,
                 charge,
-                runtime_admission_metadata,
+                extra_metadata,
+                verified_payee_binding,
             );
         }
 
@@ -1657,8 +2244,9 @@ impl ChioKernel {
 
         let payment_already_settled = payment_authorization
             .as_ref()
-            .is_some_and(|authorization| authorization.settled);
-        let cost_overrun = !cross_currency_failed && actual_cost > charge.cost_charged;
+            .is_some_and(|authorization| authorization.state.is_final());
+        let cost_overrun =
+            !cross_currency_failed && actual_cost > charge.cost_charged && charge.cost_charged > 0;
 
         if cost_overrun {
             warn!(
@@ -1669,51 +2257,25 @@ impl ChioKernel {
             );
         }
 
-        let mut payment_operation = None;
-        let mut payment_result = None;
-        let mut payment_failure_code = None;
-        let mut observed_payment_status = None;
-        let mut payment_definitively_failed = false;
-        if let Some(authorization) = payment_authorization
-            .as_ref()
-            .filter(|authorization| !authorization.settled)
-            .filter(|_| !cross_currency_failed && !cost_overrun)
-        {
-            let adapter = self.payment_adapter.as_ref().ok_or_else(|| {
-                KernelError::Internal(
-                    "payment authorization present without configured adapter".to_string(),
-                )
-            })?;
-            let operation = if actual_cost == 0 {
-                "release"
+        let realized_budget_units =
+            if cross_currency_failed || payment_already_settled || cost_overrun {
+                charge.cost_charged
             } else {
-                "capture"
+                actual_cost.min(charge.cost_charged)
             };
-            payment_operation = Some(operation);
-            // Commit the terminal action before the rail call. If the process
-            // exits during the call, reconciliation can replay this exact
-            // operation with the same idempotency reference.
-            let settle = if actual_cost == 0 {
-                crate::payment::PaymentSettleIntent {
-                    action: crate::payment::PaymentSettleAction::Release,
-                    amount_units: None,
-                }
+        let reconcile = self.reconcile_budget_charge(&cap.id, &charge, realized_budget_units)?;
+        let running_committed_cost_units = reconcile.committed_cost_units_after;
+
+        let payment_result = if let Some(authorization) = payment_authorization.as_ref() {
+            if authorization.state.is_final() || cross_currency_failed || cost_overrun {
+                None
             } else {
-                crate::payment::PaymentSettleIntent {
-                    action: crate::payment::PaymentSettleAction::Capture,
-                    amount_units: Some(actual_cost),
-                }
-            };
-            self.advance_payment_journal_if_active(
-                &request.request_id,
-                crate::payment::PaymentJournalState::Authorized,
-                crate::payment::PaymentJournalState::Settling,
-                None,
-                None,
-                Some(settle),
-            )?;
-            let attempt = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                if actual_cost == 0 {
+                let adapter = self.payment_adapter.as_ref().ok_or_else(|| {
+                    KernelError::Internal(
+                        "payment authorization present without configured adapter".to_string(),
+                    )
+                })?;
+                Some(if actual_cost == 0 {
                     adapter.release(&authorization.authorization_id, &request.request_id)
                 } else {
                     adapter.capture(
@@ -1722,141 +2284,46 @@ impl ChioKernel {
                         &charge.currency,
                         &request.request_id,
                     )
-                }
-            }));
-            match attempt {
-                Err(_) => {
-                    payment_failure_code = Some("adapter_panic");
-                    warn!(
-                        request_id = %request.request_id,
-                        operation,
-                        "post-execution payment adapter panicked; retaining full authorization exposure"
-                    );
-                }
-                Ok(Err(error)) => {
-                    payment_definitively_failed = !error.outcome_unknown();
-                    payment_failure_code = Some(match &error {
-                        PaymentError::NotConfigured(_) => "operation_not_configured",
-                        _ if error.outcome_unknown() => "rail_outcome_unknown",
-                        _ => "rail_rejected",
-                    });
-                    warn!(
-                        request_id = %request.request_id,
-                        operation,
-                        reason = %redacted!(&error),
-                        "post-execution payment operation was not acknowledged; retaining full authorization exposure"
-                    );
-                }
-                Ok(Ok(result)) => {
-                    observed_payment_status = Some(result.settlement_status);
-                    let rail_reported_failure =
-                        result.settlement_status == RailSettlementStatus::Failed;
-                    let identifier_valid = crate::payment::validate_payment_rail_identifier(
-                        "settlement transaction identifier",
-                        &result.transaction_id,
-                    );
-                    let status_valid = match operation {
-                        "capture" => matches!(
-                            result.settlement_status,
-                            RailSettlementStatus::Captured | RailSettlementStatus::Settled
-                        ),
-                        "release" => result.settlement_status == RailSettlementStatus::Released,
-                        _ => false,
-                    };
-                    if let Err(error) = identifier_valid {
-                        payment_definitively_failed = rail_reported_failure;
-                        payment_failure_code = Some("invalid_transaction_identifier");
-                        warn!(
-                            request_id = %request.request_id,
-                            operation,
-                            reason = %redacted!(&error),
-                            "post-execution payment acknowledgement had an invalid identifier; retaining full authorization exposure"
-                        );
-                    } else if !status_valid {
-                        payment_definitively_failed = rail_reported_failure;
-                        payment_failure_code = Some(if rail_reported_failure {
-                            "settlement_failed"
-                        } else {
-                            "unexpected_settlement_status"
-                        });
-                        warn!(
-                            request_id = %request.request_id,
-                            operation,
-                            observed_status = ?result.settlement_status,
-                            "post-execution payment acknowledgement had an unexpected status; retaining full authorization exposure"
-                        );
-                    } else {
-                        self.advance_payment_journal_if_active(
-                            &request.request_id,
-                            crate::payment::PaymentJournalState::Settling,
-                            crate::payment::PaymentJournalState::Settled,
-                            None,
-                            Some(&result.transaction_id),
-                            None,
-                        )?;
-                        payment_result = Some(result);
-                    }
-                }
+                })
             }
-        }
-
-        let payment_acknowledged = payment_result.is_some();
-        let may_close_budget_hold = payment_authorization.is_none()
-            || payment_already_settled
-            || cross_currency_failed
-            || cost_overrun
-            || payment_acknowledged;
-        let reconcile = if may_close_budget_hold {
-            let realized_budget_units =
-                if cross_currency_failed || payment_already_settled || cost_overrun {
-                    charge.cost_charged
-                } else {
-                    actual_cost.min(charge.cost_charged)
-                };
-            let reconcile =
-                self.reconcile_budget_charge(&cap.id, &charge, realized_budget_units)?;
-            if budget_reconcile_decision.set(reconcile.clone()).is_err() {
-                return Err(KernelError::Internal(
-                    "budget reconciliation disposition was already recorded".to_string(),
-                ));
-            }
-            Some(reconcile)
         } else {
             None
         };
-        let running_committed_cost_units = reconcile
-            .as_ref()
-            .map_or(charge.new_committed_cost_units, |decision| {
-                decision.committed_cost_units_after
-            });
 
         let settlement = if cross_currency_failed || cost_overrun {
-            let payment_reference = payment_authorization.as_ref().and_then(|authorization| {
-                ReceiptSettlement::from_authorization(authorization).payment_reference
-            });
             ReceiptSettlement {
-                payment_reference,
+                payment_reference: payment_authorization
+                    .as_ref()
+                    .map(|authorization| authorization.authorization_id.clone()),
                 settlement_status: SettlementStatus::Failed,
             }
         } else if let Some(authorization) = payment_authorization.as_ref() {
-            if authorization.settled {
+            if authorization.state.is_final() {
                 ReceiptSettlement::from_authorization(authorization)
-            } else if let Some(result) = payment_result.as_ref() {
-                ReceiptSettlement::from_payment_result(result)
-            } else if payment_definitively_failed {
-                ReceiptSettlement {
-                    payment_reference: Some(authorization.authorization_id.clone()),
-                    settlement_status: SettlementStatus::Failed,
+            } else if let Some(payment_result) = payment_result.as_ref() {
+                match payment_result {
+                    Ok(result) => ReceiptSettlement::from_payment_result(result),
+                    Err(error) => {
+                        warn!(
+                            request_id = %request.request_id,
+                            reason = %redacted!(&error),
+                            "post-execution payment settlement failed"
+                        );
+                        ReceiptSettlement {
+                            payment_reference: Some(authorization.authorization_id.clone()),
+                            settlement_status: SettlementStatus::Failed,
+                        }
+                    }
                 }
             } else {
                 warn!(
                     request_id = %request.request_id,
                     authorization_id = %authorization.authorization_id,
-                    "unsettled authorization completed without a valid payment acknowledgement"
+                    "unsettled authorization completed without a payment result"
                 );
                 ReceiptSettlement {
                     payment_reference: Some(authorization.authorization_id.clone()),
-                    settlement_status: SettlementStatus::Pending,
+                    settlement_status: SettlementStatus::Failed,
                 }
             }
         } else {
@@ -1874,31 +2341,13 @@ impl ChioKernel {
         let delegation_depth = cap.delegation_chain.len() as u32;
         let root_budget_holder = cap.issuer.to_hex();
         let (payment_reference, settlement_status) = settlement.into_receipt_parts();
-        let settlement_attempt = payment_operation.map(|operation| {
-            serde_json::json!({
-                "operation": operation,
-                "outcome": match payment_result.as_ref() {
-                    Some(result) if result.is_local_bookkeeping() => "locally_bookkept",
-                    Some(_) => "acknowledged",
-                    None if payment_definitively_failed => "failed",
-                    None => "pending"
-                },
-                "failure_code": payment_failure_code,
-                "observed_status": observed_payment_status,
-                "transaction_id": payment_result
-                    .as_ref()
-                    .map(|result| result.transaction_id.as_str())
-            })
-        });
         let payment_breakdown = payment_authorization.as_ref().map(|authorization| {
             serde_json::json!({
                 "payment": {
                     "authorization_id": authorization.authorization_id,
-                    "settlement_transaction_id": authorization.settlement_transaction_id,
                     "adapter_metadata": authorization.metadata,
                     "preauthorized_units": charge.cost_charged,
-                    "recorded_units": recorded_cost,
-                    "settlement_attempt": settlement_attempt
+                    "recorded_units": recorded_cost
                 }
             })
         });
@@ -1935,27 +2384,30 @@ impl ChioKernel {
             }
         };
 
-        // For cost-bearing allows without a presented nonce, mint the execution
-        // nonce before signing the receipt so the nonce id can be recorded in
-        // the budget-authority metadata. The same nonce is placed on the
-        // response so receipt metadata and response carry the same id.
         let preminted_execution_nonce = if request.execution_nonce.is_none() {
             if let Some(nonce_config) = self.execution_nonce_config.as_ref() {
-                let action =
-                    ToolCallAction::from_parameters(request.arguments.clone()).map_err(|e| {
+                let action = ToolCallAction::from_parameters(request.arguments.clone()).map_err(
+                    |error| {
                         KernelError::ReceiptSigningFailed(format!(
-                            "failed to hash parameters for nonce binding: {e}"
+                            "failed to hash parameters for nonce binding: {error}"
                         ))
-                    })?;
+                    },
+                )?;
                 let now = i64::try_from(current_unix_timestamp()).unwrap_or(i64::MAX);
-                let binding = self.nonce_binding_for(request, cap, &action.parameter_hash);
-                let signed = crate::execution_nonce::mint_execution_nonce(
+                let binding = crate::execution_nonce::NonceBinding {
+                    subject_id: cap.subject.to_hex(),
+                    request_id: request.request_id.clone(),
+                    capability_id: cap.id.clone(),
+                    tool_server: request.server_id.clone(),
+                    tool_name: request.tool_name.clone(),
+                    parameter_hash: action.parameter_hash,
+                };
+                Some(Box::new(crate::execution_nonce::mint_execution_nonce(
                     &self.config.keypair,
                     binding,
                     nonce_config,
                     now,
-                )?;
-                Some(Box::new(signed))
+                )?))
             } else {
                 None
             }
@@ -1963,66 +2415,67 @@ impl ChioKernel {
             None
         };
         let financial_json = Some(serde_json::json!({ "financial": financial_meta }));
-        let merged_extra_metadata = if let Some(reconcile) = reconcile.as_ref() {
-            let execution_nonce_id = preminted_execution_nonce
-                .as_deref()
-                .map(|nonce| nonce.nonce_id())
-                .or_else(|| {
-                    request
-                        .execution_nonce
-                        .as_ref()
-                        .map(|nonce| nonce.nonce_id())
-                });
-            let budget_metadata = self.budget_execution_receipt_metadata(
-                &charge,
-                Some(("reconciled", reconcile)),
-                execution_nonce_id,
-            );
-            self.merge_budget_receipt_metadata(extra_metadata, budget_metadata)
-        } else {
-            self.retain_post_dispatch_state(
-                extra_metadata,
-                None,
-                Some(&charge),
-                None,
-                payment_authorization.as_ref(),
-            )
-        };
-        let merged_extra_metadata = merge_metadata_objects(financial_json, merged_extra_metadata);
 
         match limited_output {
             ToolServerOutput::Value(_)
-            | ToolServerOutput::Stream(ToolServerStreamResult::Complete(_)) => self
-                .build_allow_response_with_metadata(
-                    ReceiptResponseContext {
-                        request,
-                        evaluation_context,
-                        timestamp,
-                        matched_grant_index: Some(charge.grant_index),
-                        extra_metadata: merged_extra_metadata.clone(),
-                    },
+            | ToolServerOutput::Stream(ToolServerStreamResult::Complete(_)) => {
+                let budget_metadata = self.budget_execution_receipt_metadata(
+                    &charge,
+                    Some(("reconciled", &reconcile)),
+                    preminted_execution_nonce
+                        .as_deref()
+                        .map(|nonce| nonce.nonce_id())
+                        .or_else(|| {
+                            request
+                                .execution_nonce
+                                .as_ref()
+                                .map(|nonce| nonce.nonce_id())
+                        }),
+                );
+                let merged_extra_metadata = merge_metadata_objects(
+                    financial_json,
+                    self.merge_budget_receipt_metadata(extra_metadata, budget_metadata),
+                );
+                self.build_allow_response_with_metadata_and_payee_binding(
+                    request,
                     tool_call_output,
-                    runtime_admission_metadata,
+                    timestamp,
+                    Some(charge.grant_index),
+                    merged_extra_metadata,
+                    verified_payee_binding,
                     match preminted_execution_nonce {
                         Some(nonce) => AllowResponseNonce::Preminted(nonce),
                         None => AllowResponseNonce::MintForAllow,
                     },
-                ),
-            ToolServerOutput::Stream(ToolServerStreamResult::Incomplete { reason, .. }) => self
-                .build_incomplete_response_with_output_and_metadata(
-                    ReceiptResponseContext {
-                        request,
-                        evaluation_context,
-                        timestamp,
-                        matched_grant_index: Some(charge.grant_index),
-                        extra_metadata: self.merge_retained_runtime_admission_metadata(
-                            merged_extra_metadata,
-                            runtime_admission_metadata,
-                        ),
-                    },
+                )
+            }
+            ToolServerOutput::Stream(ToolServerStreamResult::Incomplete { reason, .. }) => {
+                let budget_metadata = self.budget_execution_receipt_metadata(
+                    &charge,
+                    Some(("reconciled", &reconcile)),
+                    None,
+                );
+                let merged_extra_metadata = merge_metadata_objects(
+                    financial_json,
+                    self.merge_budget_receipt_metadata(extra_metadata, budget_metadata),
+                );
+                self.build_incomplete_response_with_output_metadata_and_payee_binding(
+                    request,
                     Some(tool_call_output),
                     &reason,
-                ),
+                    timestamp,
+                    Some(charge.grant_index),
+                    // The tool ran (a side effect may have committed) but the
+                    // stream ended incomplete, so any runtime-admission lease
+                    // consumed at admission is retained, not released. Mark it
+                    // so the burned lease is recoverable from the receipt,
+                    // matching the RequestIncomplete error arm.
+                    self.mark_runtime_admission_reservations_retained_fail_closed(
+                        merged_extra_metadata,
+                    ),
+                    verified_payee_binding,
+                )
+            }
         }
     }
 
@@ -2107,14 +2560,10 @@ impl ChioKernel {
         &self,
         request: &ToolCallRequest,
         charge_result: Option<&BudgetChargeResult>,
-        payment_authorization_credential_reserved: bool,
-    ) -> Result<Option<PaymentAuthorization>, crate::payment::PaymentAuthorizationFailure> {
-        // Derive the authorization amount. A MustPrepay intent prepays its quoted
-        // cost, so the quote funds the prepayment whenever it is present, even when
-        // a provisional monetary budget hold accompanies it: that hold covers
-        // metered budget accounting, not the price the payer must prepay. Only a
-        // non-MustPrepay metered charge authorizes the charged amount, and a request
-        // with neither needs no payment.
+        durable_admission: Option<&DurableToolAdmission>,
+        trusted_now_unix_ms: u64,
+        verified_payee_binding: Option<&VerifiedGovernedPayeeBinding>,
+    ) -> Result<Option<PaymentAuthorization>, PaymentError> {
         let (amount_units, currency) = if let Some(amount) = Self::mustprepay_quoted_amount(request)
         {
             amount
@@ -2123,23 +2572,68 @@ impl ChioKernel {
         } else {
             return Ok(None);
         };
-
         let Some(adapter) = self.payment_adapter.as_ref() else {
-            // The governed gate denies MustPrepay without an adapter earlier, but
-            // the payment boundary is fail-closed as defense-in-depth: a MustPrepay
-            // intent (which may also carry a provisional charge) must never reach
-            // here without an adapter and be admitted unpaid.
             if Self::is_governed_mustprepay_request(request) {
-                return Err(crate::payment::PaymentAuthorizationFailure::before_rail(
-                    "MustPrepay intent reached payment authorization without a configured adapter",
+                return Err(PaymentError::RailError(
+                    "MustPrepay intent reached payment authorization without a configured adapter"
+                        .to_string(),
                 ));
             }
             return Ok(None);
         };
-        if self.execution_nonce_required() && !payment_authorization_credential_reserved {
-            return Err(crate::payment::PaymentAuthorizationFailure::before_rail(
-                "external payment authorization requires a freshly reserved execution nonce or governed approval",
-            ));
+        let durable_journal = durable_admission
+            .filter(|_| charge_result.is_some())
+            .map(|admission| {
+                self.load_durable_payment_journal(admission)
+                    .map_err(|error| PaymentError::RailError(error.to_string()))
+            })
+            .transpose()?;
+        if let Some(journal) = durable_journal.as_ref() {
+            let rail_mode = adapter.rail_mode().ok_or_else(|| {
+                PaymentError::RailError("durable payment adapter omitted its rail mode".to_owned())
+            })?;
+            if adapter.rail_id() != journal.rail || rail_mode != journal.rail_mode {
+                return Err(PaymentError::RailError(
+                    "durable payment adapter does not match the persisted rail profile".to_owned(),
+                ));
+            }
+            match (journal.state, journal.rail_mode) {
+                (
+                    crate::payment::PaymentJournalState::Authorized,
+                    crate::payment::PaymentRailMode::ReversibleHold,
+                ) => {
+                    return Ok(Some(PaymentAuthorization {
+                        authorization_id: journal.authorization_id.clone().ok_or_else(|| {
+                            PaymentError::RailError(
+                                "authorized payment journal omitted authorization_id".to_owned(),
+                            )
+                        })?,
+                        state: crate::payment::PaymentAuthorizationState::Held,
+                        metadata: serde_json::json!({ "durable_replay": true }),
+                    }));
+                }
+                (
+                    crate::payment::PaymentJournalState::Settled,
+                    crate::payment::PaymentRailMode::PrepaidFinal,
+                ) => {
+                    return Ok(Some(PaymentAuthorization {
+                        authorization_id: journal.authorization_id.clone().ok_or_else(|| {
+                            PaymentError::RailError(
+                                "settled prepayment journal omitted authorization_id".to_owned(),
+                            )
+                        })?,
+                        state: crate::payment::PaymentAuthorizationState::PrepaidFinal,
+                        metadata: serde_json::json!({ "durable_replay": true }),
+                    }));
+                }
+                (crate::payment::PaymentJournalState::HoldPlaced, _) => {}
+                _ => {
+                    return Err(PaymentError::RailError(format!(
+                        "payment journal cannot authorize from state {:?}",
+                        journal.state
+                    )));
+                }
+            }
         }
 
         let governed = request
@@ -2157,169 +2651,129 @@ impl ChioKernel {
                         approval_token_id: request
                             .approval_token
                             .as_ref()
-                            .map(|token| token.id.clone()),
+                            .map(|token| token.id.clone())
+                            .or_else(|| {
+                                request
+                                    .threshold_approval_proposal
+                                    .as_ref()
+                                    .map(|proposal| proposal.body.proposal_id.clone())
+                            }),
                     })
                     .map_err(|error| {
-                        crate::payment::PaymentAuthorizationFailure::before_rail(format!(
+                        PaymentError::RailError(format!(
                             "failed to hash governed intent for payment authorization: {error}"
                         ))
                     })
             })
             .transpose()?;
-        let commerce = request.governed_intent.as_ref().and_then(|intent| {
-            intent
-                .commerce
+        let commerce = if amount_units == 0 {
+            None
+        } else if let Some(commerce) = request
+            .governed_intent
+            .as_ref()
+            .and_then(|intent| intent.commerce.as_ref())
+        {
+            let binding = verified_payee_binding.ok_or_else(|| {
+                PaymentError::RailError(
+                    "governed commerce payment omitted verified payee binding".to_owned(),
+                )
+            })?;
+            let approval_artifact_digest = request
+                .approval_artifact_digest()
+                .map_err(|error| PaymentError::RailError(error.to_string()))?
+                .ok_or_else(|| {
+                    PaymentError::RailError(
+                        "governed commerce payment omitted verified approval".to_owned(),
+                    )
+                })?;
+            let intent_hash = governed
                 .as_ref()
-                .map(|commerce| CommercePaymentContext {
-                    seller: commerce.seller.clone(),
-                    shared_payment_token_id: commerce.shared_payment_token_id.clone(),
-                    max_amount: intent.max_amount.clone(),
-                })
-        });
+                .map(|context| context.intent_hash.as_str());
+            if binding.beneficiary_id() != commerce.seller
+                || commerce.settlement_destination_ref.as_deref()
+                    != Some(binding.settlement_destination_ref())
+                || intent_hash != Some(binding.economic_intent_digest())
+                || binding.pre_action_authority_digest() != approval_artifact_digest.as_str()
+            {
+                return Err(PaymentError::RailError(
+                    "governed commerce payment does not match verified payee binding".to_owned(),
+                ));
+            }
+            Some(CommercePaymentContext {
+                seller: binding.beneficiary_id().to_owned(),
+                settlement_destination_ref: binding.settlement_destination_ref().to_owned(),
+                payee_binding_digest: binding.payee_binding_digest().to_owned(),
+                pre_action_authority_digest: binding.pre_action_authority_digest().to_owned(),
+                shared_payment_token_id: commerce.shared_payment_token_id.clone(),
+                max_amount: request
+                    .governed_intent
+                    .as_ref()
+                    .and_then(|intent| intent.max_amount.clone()),
+            })
+        } else {
+            if verified_payee_binding.is_some() {
+                return Err(PaymentError::RailError(
+                    "verified payee binding has no governed commerce context".to_owned(),
+                ));
+            }
+            None
+        };
+        let payee = verified_payee_binding.map_or_else(
+            || request.server_id.clone(),
+            |binding| binding.beneficiary_id().to_owned(),
+        );
 
-        let authorize_request = PaymentAuthorizeRequest {
+        let authorization_request = PaymentAuthorizeRequest {
             amount_units,
-            currency: currency.clone(),
+            currency,
             payer: request.agent_id.clone(),
-            payee: request.server_id.clone(),
-            reference: request.request_id.clone(),
+            payee,
+            reference: durable_journal.as_ref().map_or_else(
+                || request.request_id.clone(),
+                |journal| journal.operation_id.clone(),
+            ),
             governed,
             commerce,
         };
-        let authorization = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            adapter.authorize(&authorize_request)
-        })) {
-            Ok(Ok(mut authorization)) => {
-                crate::payment::validate_payment_rail_identifier(
-                    "authorization identifier",
-                    &authorization.authorization_id,
+        let authorization = run_payment_adapter_operation("authorize", || {
+            adapter.authorize(&authorization_request)
+        })?;
+        validate_payment_adapter_identifier(&authorization.authorization_id, "authorization_id")?;
+        if let (Some(admission), Some(journal)) = (durable_admission, durable_journal.as_ref()) {
+            if !journal.rail_mode.accepts(authorization.state) {
+                return Err(PaymentError::RailError(
+                    "payment authorization state does not match the persisted rail mode".to_owned(),
+                ));
+            }
+            let transition = match authorization.state {
+                crate::payment::PaymentAuthorizationState::Held => {
+                    crate::payment::PaymentJournalTransition::AuthorizationHeld {
+                        authorization_id: authorization.authorization_id.clone(),
+                    }
+                }
+                crate::payment::PaymentAuthorizationState::PrepaidFinal => {
+                    crate::payment::PaymentJournalTransition::PrepaymentSettled {
+                        authorization_id: authorization.authorization_id.clone(),
+                    }
+                }
+            };
+            let advanced = self
+                .advance_durable_payment_journal(
+                    admission,
+                    journal,
+                    &transition,
+                    trusted_now_unix_ms,
                 )
-                .map_err(crate::payment::PaymentAuthorizationFailure::invalid_authorization_id)?;
-                match authorization.settlement_transaction_id.as_deref() {
-                    Some(transaction_id) => {
-                        crate::payment::validate_payment_rail_identifier(
-                            "settlement transaction identifier",
-                            transaction_id,
-                        )
-                        .map_err(
-                            crate::payment::PaymentAuthorizationFailure::invalid_authorization_id,
-                        )?;
-                    }
-                    None if authorization.settled => {
-                        authorization.settlement_transaction_id =
-                            Some(authorization.authorization_id.clone());
-                    }
-                    None => {}
-                }
-                authorization
-            }
-            Ok(Err(error)) => {
-                return Err(crate::payment::PaymentAuthorizationFailure::from_adapter_error(error));
-            }
-            Err(_) => {
-                return Err(crate::payment::PaymentAuthorizationFailure::adapter_panicked());
-            }
-        };
-
-        // Advance the journal HoldPlaced -> Authorized only when a monetary charge
-        // actually wrote a HoldPlaced row. A no-ceiling MustPrepay grant is not
-        // monetary (no per-invocation or total ceiling), so admission takes the
-        // non-monetary branch and writes NO HoldPlaced row; its prepayment is
-        // journal-free by design and settles through the no-ceiling settle path.
-        // Advancing unconditionally would fail closed against the missing
-        // predecessor row and deny a just-captured prepayment, releasing (not
-        // refunding) an already-settled capture, i.e. money loss. A present
-        // `charge_result` is exactly the has-monetary case whose HoldPlaced row
-        // exists whenever the journal is active; when the journal is off the advance
-        // is a no-op regardless.
-        if charge_result.is_some() {
-            // Persist the authorization id before returning. If that transition
-            // fails, try to undo the rail hold. A missing or malformed rollback
-            // acknowledgement is treated as unknown so the durable HoldPlaced row
-            // and local budget exposure remain available for reconciliation.
-            if let Err(error) = self.advance_payment_journal_if_active(
-                &request.request_id,
-                crate::payment::PaymentJournalState::HoldPlaced,
-                crate::payment::PaymentJournalState::Authorized,
-                Some(&authorization.authorization_id),
-                authorization.settlement_transaction_id.as_deref(),
-                None,
-            ) {
-                let rollback_operation = if authorization.settled {
-                    "refund"
-                } else {
-                    "release"
-                };
-                let rollback = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    if let Some(transaction_id) = authorization
-                        .settlement_transaction_id
-                        .as_deref()
-                        .filter(|_| authorization.settled)
-                    {
-                        adapter.refund(transaction_id, amount_units, &currency, &request.request_id)
-                    } else {
-                        adapter.release(&authorization.authorization_id, &request.request_id)
-                    }
-                }));
-                match rollback {
-                    Ok(Ok(result)) => {
-                        let identifier_valid = crate::payment::validate_payment_rail_identifier(
-                            "rollback transaction identifier",
-                            &result.transaction_id,
-                        );
-                        let status_valid = match rollback_operation {
-                            "refund" => result.settlement_status == RailSettlementStatus::Refunded,
-                            "release" => result.settlement_status == RailSettlementStatus::Released,
-                            _ => false,
-                        };
-                        if identifier_valid.is_ok() && status_valid {
-                            return Err(crate::payment::PaymentAuthorizationFailure::before_rail(
-                                format!(
-                                    "payment journal advance to authorized failed after the rail authorization was rolled back by {rollback_operation}: {error}"
-                                ),
-                            ));
-                        }
-                        warn!(
-                            request_id = %request.request_id,
-                            rollback_operation,
-                            identifier_valid = identifier_valid.is_ok(),
-                            observed_status = ?result.settlement_status,
-                            "rail rollback after failed payment journal advance returned an invalid acknowledgement"
-                        );
-                    }
-                    Ok(Err(rollback_error)) => {
-                        warn!(
-                            request_id = %request.request_id,
-                            rollback_operation,
-                            reason = %redacted!(&rollback_error),
-                            "rail rollback after failed payment journal advance was not acknowledged"
-                        );
-                    }
-                    Err(_) => {
-                        warn!(
-                            request_id = %request.request_id,
-                            rollback_operation,
-                            "payment adapter panicked while rolling back after a failed journal advance"
-                        );
-                    }
-                }
-                return Err(
-                    crate::payment::PaymentAuthorizationFailure::from_adapter_error(
-                        PaymentError::Unavailable(format!(
-                            "payment journal advance to authorized failed and the rail rollback was not validly acknowledged: {error}"
-                        )),
-                    ),
-                );
+                .map_err(|error| PaymentError::RailError(error.to_string()))?;
+            if advanced.authorization_id.as_deref() != Some(&authorization.authorization_id) {
+                return Err(PaymentError::RailError(
+                    "durable payment journal changed authorization identity".to_owned(),
+                ));
             }
         }
         Ok(Some(authorization))
     }
 
-    /// Prepaid quote amount for a MustPrepay intent, if one applies.
-    ///
-    /// This is the authorization amount when the grant carries no monetary
-    /// ceiling, so the same figure settles the hold after execution and is the
-    /// amount refunded when a settled-at-authorize invocation is aborted.
     pub(crate) fn mustprepay_quoted_amount(request: &ToolCallRequest) -> Option<(u64, String)> {
         request
             .governed_intent
@@ -2337,182 +2791,109 @@ impl ChioKernel {
             })
     }
 
-    /// Whether `request` carries a governed MustPrepay intent, i.e. one whose
-    /// metered billing mandates prepayment before the tool executes.
     pub(crate) fn is_governed_mustprepay_request(request: &ToolCallRequest) -> bool {
         Self::mustprepay_quoted_amount(request).is_some()
     }
 
-    /// Settle an acknowledged MustPrepay authorization before a
-    /// reserve-for-caller authorization nonce is minted.
-    ///
-    /// The reserve-for-caller path never dispatches the tool on this kernel: the
-    /// caller presents the minted nonce to a downstream tool server, which
-    /// reconciles the reserved budget hold without re-entering payment
-    /// authorization. A MustPrepay intent therefore has no later settlement point,
-    /// so the prepayment must be authorized AND settled here, before the nonce
-    /// exists. Otherwise a reserved nonce would let the caller execute a MustPrepay
-    /// spend downstream with no payment ever occurring.
-    ///
-    /// The prepayment is settled at the intent's quoted cost (the amount that will
-    /// actually be prepaid), independently of the reserved budget hold that stays
-    /// open for `max_total_cost` accounting and is reconciled downstream.
-    ///
-    /// Payment authorization and its replay credential are handled by the
-    /// evaluation path before this method runs. Keeping that boundary visible is
-    /// necessary because a clean authorization decline may roll the approval
-    /// reservation back, while an ambiguous or acknowledged authorization must
-    /// retain it. This method only captures the acknowledged authorization and
-    /// returns the settled prepayment used by the existing stamp/refund flow.
-    pub(crate) fn settle_reserved_mustprepay_prepayment(
+    pub(crate) fn ensure_reserved_mustprepay_prepaid(
         &self,
         request: &ToolCallRequest,
-        authorization: &PaymentAuthorization,
-    ) -> Result<ReservedPrepayment, KernelError> {
-        match self.settle_prepaid_authorization_without_charge_inner(
-            request,
-            authorization,
-            false,
-        )? {
-            // The prepayment is now captured. Report it as settled so a later
-            // reservation tear-down refunds it rather than releasing an already
-            // captured hold, and carry the rail reference so the downstream
-            // reconcile receipt can name the transaction that funded the spend.
-            Some(settlement) => {
-                let payment_reference = settlement.payment_reference;
-                let mut settled_authorization = authorization.clone();
-                settled_authorization.settled = true;
-                settled_authorization.settlement_transaction_id = payment_reference.clone();
-                Ok(ReservedPrepayment {
-                    authorization: settled_authorization,
-                    payment_reference,
-                })
-            }
-            None => Err(KernelError::GovernedTransactionDenied(
-                "MustPrepay prepayment could not be settled before reserving an execution nonce"
-                    .to_string(),
-            )),
+        charge_result: Option<&BudgetChargeResult>,
+        durable_admission: Option<&DurableToolAdmission>,
+        trusted_now_unix_ms: u64,
+        verified_payee_binding: Option<&VerifiedGovernedPayeeBinding>,
+    ) -> Result<Option<ReservedPrepayment>, KernelError> {
+        if !Self::is_governed_mustprepay_request(request) {
+            return Ok(None);
         }
-    }
+        let authorization = self
+            .authorize_payment_if_needed(
+                request,
+                charge_result,
+                durable_admission,
+                trusted_now_unix_ms,
+                verified_payee_binding,
+            )
+            .map_err(|error| {
+                KernelError::GovernedTransactionDenied(format!(
+                    "MustPrepay prepayment authorization failed before reserving an execution nonce: {error}"
+                ))
+            })?
+            .ok_or_else(|| {
+                KernelError::GovernedTransactionDenied(
+                    "MustPrepay reservation omitted its payment authorization".to_string(),
+                )
+            })?;
 
-    /// Settle a prepaid authorization for a MustPrepay call whose grant carries
-    /// no monetary ceiling (no budget charge to reconcile).
-    ///
-    /// An adapter that already settled the hold is folded through unchanged. An
-    /// unsettled hold is captured at the prepaid quote amount. Returns `None`
-    /// when the hold cannot be settled so the caller fails closed.
-    fn settle_prepaid_authorization_without_charge(
-        &self,
-        request: &ToolCallRequest,
-        authorization: &PaymentAuthorization,
-    ) -> Result<Option<ReceiptSettlement>, KernelError> {
-        self.settle_prepaid_authorization_without_charge_inner(request, authorization, true)
-    }
-
-    fn settle_prepaid_authorization_without_charge_inner(
-        &self,
-        request: &ToolCallRequest,
-        authorization: &PaymentAuthorization,
-        release_on_failure: bool,
-    ) -> Result<Option<ReceiptSettlement>, KernelError> {
-        if authorization.settled {
-            return Ok(Some(ReceiptSettlement::from_authorization(authorization)));
+        if authorization.state.is_final() {
+            return Ok(Some(ReservedPrepayment {
+                payment_reference: Some(authorization.authorization_id.clone()),
+                authorization,
+            }));
         }
+
+        let (amount_units, currency) =
+            Self::mustprepay_quoted_amount(request).ok_or_else(|| {
+                KernelError::GovernedTransactionDenied(
+                    "MustPrepay reservation omitted its quoted amount".to_string(),
+                )
+            })?;
         let adapter = self.payment_adapter.as_ref().ok_or_else(|| {
-            KernelError::Internal(
-                "payment authorization present without configured adapter".to_string(),
+            KernelError::GovernedTransactionDenied(
+                "MustPrepay reservation omitted its payment adapter".to_string(),
             )
         })?;
-        let Some((amount_units, currency)) = Self::mustprepay_quoted_amount(request) else {
-            warn!(
-                request_id = %request.request_id,
-                authorization_id = %authorization.authorization_id,
-                "prepaid authorization lacks a resolvable quote amount; denying fail-closed"
-            );
-            if release_on_failure {
-                Self::release_unsettled_prepaid_hold(&**adapter, request, authorization);
-            }
-            return Ok(None);
-        };
-        match adapter.capture(
+        let result = match adapter.capture(
             &authorization.authorization_id,
             amount_units,
             &currency,
             &request.request_id,
         ) {
-            Ok(result) => {
-                let settlement = ReceiptSettlement::from_payment_result(&result);
-                if settlement.settlement_status == SettlementStatus::Settled {
-                    Ok(Some(settlement))
-                } else {
-                    warn!(
-                        request_id = %request.request_id,
-                        authorization_id = %authorization.authorization_id,
-                        "prepaid authorization capture did not settle; denying fail-closed"
-                    );
-                    if release_on_failure {
-                        Self::release_unsettled_prepaid_hold(&**adapter, request, authorization);
-                    }
-                    Ok(None)
-                }
-            }
+            Ok(result) => result,
             Err(error) => {
-                warn!(
-                    request_id = %request.request_id,
-                    reason = %redacted!(&error),
-                    "prepaid authorization capture failed; denying fail-closed"
-                );
-                if release_on_failure {
-                    Self::release_unsettled_prepaid_hold(&**adapter, request, authorization);
-                }
-                Ok(None)
+                let _ = adapter.release(&authorization.authorization_id, &request.request_id);
+                return Err(KernelError::GovernedTransactionDenied(format!(
+                    "MustPrepay prepayment capture failed before reserving an execution nonce: {error}"
+                )));
             }
+        };
+        if result.settlement_status != crate::payment::RailSettlementStatus::Settled {
+            let _ = adapter.release(&authorization.authorization_id, &request.request_id);
+            return Err(KernelError::GovernedTransactionDenied(
+                "MustPrepay prepayment capture was not confirmed settled".to_string(),
+            ));
         }
+        Ok(Some(ReservedPrepayment {
+            authorization: PaymentAuthorization {
+                state: crate::payment::PaymentAuthorizationState::PrepaidFinal,
+                ..authorization
+            },
+            payment_reference: Some(result.transaction_id),
+        }))
     }
 
-    /// Best-effort void of an unsettled prepaid hold when a MustPrepay call fails
-    /// closed after execution, so the payer's funds are not left frozen at the
-    /// facilitator until the authorization expires. Logs on failure and never
-    /// propagates: the call is denied regardless of whether the release lands.
-    fn release_unsettled_prepaid_hold(
-        adapter: &dyn PaymentAdapter,
-        request: &ToolCallRequest,
-        authorization: &PaymentAuthorization,
-    ) {
-        if let Err(error) = adapter.release(&authorization.authorization_id, &request.request_id) {
-            warn!(
-                request_id = %request.request_id,
-                authorization_id = %authorization.authorization_id,
-                reason = %redacted!(&error),
-                "failed to release unsettled prepaid authorization on fail-closed deny"
-            );
-        }
-    }
-
-    /// Refund a captured MustPrepay prepayment when a reserve-for-caller
-    /// reservation tears down after the prepayment settled but before the caller
-    /// receives a usable nonce (the reservation stamp reversed the budget hold, or
-    /// the reserved receipt failed to persist). The prepayment was captured at the
-    /// quoted cost before the nonce could be minted, so without this the payer
-    /// would stay charged for a reservation that was denied. Refunds the prepaid
-    /// quote through the same unwind path a mid-execution abort uses, with no
-    /// budget charge to reverse. Logs on failure and never propagates: the
-    /// reservation is denied regardless, and the original tear-down error is the
-    /// one surfaced to the caller.
     pub(crate) fn refund_reserved_mustprepay_prepayment(
         &self,
         request: &ToolCallRequest,
-        cap: &CapabilityToken,
         prepayment: &PaymentAuthorization,
     ) {
-        if let Err(error) =
-            self.unwind_aborted_monetary_invocation(request, cap, None, Some(prepayment))
-        {
+        let Some((amount_units, currency)) = Self::mustprepay_quoted_amount(request) else {
+            return;
+        };
+        let Some(adapter) = self.payment_adapter.as_ref() else {
+            return;
+        };
+        if let Err(error) = adapter.refund(
+            &prepayment.authorization_id,
+            amount_units,
+            &currency,
+            &request.request_id,
+        ) {
             warn!(
                 request_id = %request.request_id,
                 authorization_id = %prepayment.authorization_id,
                 reason = %redacted!(&error),
-                "failed to refund captured MustPrepay prepayment after reserve tear-down"
+                "failed to refund captured MustPrepay prepayment after reservation failure"
             );
         }
     }

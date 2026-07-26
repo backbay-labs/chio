@@ -387,6 +387,9 @@ fn evaluate_scenario(scenario: &VerdictScenario) -> Result<VerdictTuple, String>
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -431,7 +434,6 @@ fn kernel_config() -> KernelConfig {
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     }
 }
 
@@ -656,6 +658,7 @@ fn nonce_binding(
 ) -> NonceBinding {
     NonceBinding {
         subject_id: capability.subject.to_hex(),
+        request_id: request.request_id.clone(),
         capability_id: capability.id.clone(),
         tool_server: request.server_id.clone(),
         tool_name: request.tool_name.clone(),

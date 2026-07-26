@@ -4,25 +4,11 @@ use std::time::Duration;
 
 use crate::mcp_cli::payment_config::PaymentAdapterConfig;
 
-/// Resolve the operator's payment adapter for the kernel-mediated sidecar route
-/// from the environment. Reuses the shared `CHIO_PAYMENT_ADAPTER` selection: an
-/// absent variable or `sim` leaves the sidecar with no adapter (governed
-/// MustPrepay stays denied fail-closed), `http-x402`/`http-acp` install the
-/// configured facilitator rail, and an unrecognized kind fails closed at load.
 pub(crate) fn resolve_sidecar_payment_adapter(
 ) -> Result<Option<Box<dyn chio_kernel::PaymentAdapter>>, CliError> {
     let config = PaymentAdapterConfig::from_env().map_err(|error| {
         CliError::cli_other_error(format!("invalid payment adapter configuration: {error}"))
     })?;
-    sidecar_payment_adapter_from_config(config)
-}
-
-/// Build the boxed payment adapter for a resolved adapter selection, validating
-/// its shape at load time (house rule: invalid configuration rejects at load).
-/// `None` yields no adapter, so governed MustPrepay stays denied fail-closed.
-fn sidecar_payment_adapter_from_config(
-    config: Option<PaymentAdapterConfig>,
-) -> Result<Option<Box<dyn chio_kernel::PaymentAdapter>>, CliError> {
     match config {
         Some(config) => {
             config.validate().map_err(|error| {
@@ -36,6 +22,48 @@ fn sidecar_payment_adapter_from_config(
     }
 }
 
+fn open_cli_durable_admission_runtime(
+    mode: chio_kernel::admission_operation::DurableAdmissionMode,
+    admission_db_path: Option<&Path>,
+    receipt_db_path: Option<&Path>,
+    revocation_db_path: Option<&Path>,
+    authority_db_path: Option<&Path>,
+    budget_db_path: Option<&Path>,
+    control_url: Option<&str>,
+    control_token: Option<&str>,
+) -> Result<Option<DurableAdmissionRuntime>, CliError> {
+    validate_durable_admission_participant_paths(
+        mode,
+        control_url,
+        revocation_db_path,
+        budget_db_path,
+    )?;
+    if mode != chio_kernel::admission_operation::DurableAdmissionMode::Off {
+        if let Some(admission_db_path) = admission_db_path {
+            let mut paths = vec![("durable admission database", admission_db_path)];
+            for (label, path) in [
+                ("receipt database", receipt_db_path),
+                ("revocation database", revocation_db_path),
+                ("capability authority database", authority_db_path),
+                ("budget database", budget_db_path),
+            ] {
+                if let Some(path) = path {
+                    paths.push((label, path));
+                }
+            }
+            validate_distinct_database_paths(&paths)?;
+        }
+    }
+    match (mode, admission_db_path, control_url) {
+        (chio_kernel::admission_operation::DurableAdmissionMode::Off, _, _) => Ok(None),
+        (_, Some(identity_path), Some(url)) => {
+            let token = require_control_token(control_token)?;
+            DurableAdmissionRuntime::open_remote(identity_path, url, token).map(Some)
+        }
+        _ => open_durable_admission_runtime(mode, admission_db_path),
+    }
+}
+
 pub(crate) fn cmd_run(
     policy_path: &Path,
     command: &[String],
@@ -45,7 +73,7 @@ pub(crate) fn cmd_run(
     authority_seed_path: Option<&Path>,
     authority_db_path: Option<&Path>,
     budget_db_path: Option<&Path>,
-    _session_db_path: Option<&Path>,
+    session_db_path: Option<&Path>,
     control_url: Option<&str>,
     control_token: Option<&str>,
 ) -> Result<(), CliError> {
@@ -54,6 +82,16 @@ pub(crate) fn cmd_run(
     let default_capabilities = loaded_policy.default_capabilities.clone();
     let issuance_policy = loaded_policy.issuance_policy.clone();
     let runtime_assurance_policy = loaded_policy.runtime_assurance_policy.clone();
+    let durable_admission = open_cli_durable_admission_runtime(
+        loaded_policy.kernel.durable_admission_mode,
+        session_db_path,
+        receipt_db_path,
+        revocation_db_path,
+        authority_db_path,
+        budget_db_path,
+        control_url,
+        control_token,
+    )?;
 
     info!(
         policy_path = %policy_path.display(),
@@ -63,11 +101,21 @@ pub(crate) fn cmd_run(
         "loaded policy"
     );
 
-    let kernel_kp = Keypair::generate();
+    let kernel_kp = durable_admission
+        .as_ref()
+        .map(DurableAdmissionRuntime::kernel_keypair)
+        .unwrap_or_else(Keypair::generate);
     let mut kernel = build_kernel(loaded_policy, &kernel_kp);
     configure_receipt_store(&mut kernel, receipt_db_path, control_url, control_token)?;
-    configure_revocation_store(&mut kernel, revocation_db_path, control_url, control_token)?;
-    opt_in_ephemeral_revocation_for_local_session(&mut kernel, revocation_db_path, control_url);
+    if durable_admission.is_none() {
+        configure_revocation_store(&mut kernel, revocation_db_path, control_url, control_token)?;
+        opt_in_ephemeral_revocation_for_local_session(
+            &mut kernel,
+            revocation_db_path,
+            control_url,
+        );
+    }
+    attach_durable_admission_runtime(&mut kernel, durable_admission.as_ref())?;
     configure_capability_authority(
         &mut kernel,
         &kernel_kp,
@@ -80,7 +128,9 @@ pub(crate) fn cmd_run(
         issuance_policy,
         runtime_assurance_policy,
     )?;
-    configure_budget_store(&mut kernel, budget_db_path, control_url, control_token)?;
+    if durable_admission.is_none() {
+        configure_budget_store(&mut kernel, budget_db_path, control_url, control_token)?;
+    }
 
     let agent_kp = Keypair::generate();
     let agent_pk = agent_kp.public_key();
@@ -263,8 +313,27 @@ pub(crate) struct McpEdgeStores<'a> {
     pub authority_seed_path: Option<&'a Path>,
     pub authority_db_path: Option<&'a Path>,
     pub budget_db_path: Option<&'a Path>,
+    pub durable_admission: Option<&'a DurableAdmissionRuntime>,
     pub control_url: Option<&'a str>,
     pub control_token: Option<&'a str>,
+}
+
+fn attach_durable_admission_runtime(
+    kernel: &mut ChioKernel,
+    runtime: Option<&DurableAdmissionRuntime>,
+) -> Result<(), CliError> {
+    if kernel.durable_admission_mode()
+        == chio_kernel::admission_operation::DurableAdmissionMode::Off
+    {
+        return Ok(());
+    }
+    runtime
+        .ok_or_else(|| {
+            CliError::cli_other_error(
+                "durable admission runtime is unavailable for an enabled policy".to_string(),
+            )
+        })?
+        .attach(kernel)
 }
 
 /// Build the kernel that backs the long-running `chio mcp serve` edge.
@@ -292,12 +361,15 @@ pub(crate) fn build_mcp_edge_kernel(
         stores.control_url,
         stores.control_token,
     )?;
-    configure_revocation_store(
-        &mut kernel,
-        stores.revocation_db_path,
-        stores.control_url,
-        stores.control_token,
-    )?;
+    if stores.durable_admission.is_none() {
+        configure_revocation_store(
+            &mut kernel,
+            stores.revocation_db_path,
+            stores.control_url,
+            stores.control_token,
+        )?;
+    }
+    attach_durable_admission_runtime(&mut kernel, stores.durable_admission)?;
     configure_capability_authority(
         &mut kernel,
         kernel_kp,
@@ -310,12 +382,14 @@ pub(crate) fn build_mcp_edge_kernel(
         issuance_policy,
         runtime_assurance_policy,
     )?;
-    configure_budget_store(
-        &mut kernel,
-        stores.budget_db_path,
-        stores.control_url,
-        stores.control_token,
-    )?;
+    if stores.durable_admission.is_none() {
+        configure_budget_store(
+            &mut kernel,
+            stores.budget_db_path,
+            stores.control_url,
+            stores.control_token,
+        )?;
+    }
     Ok(kernel)
 }
 
@@ -343,11 +417,7 @@ pub(crate) fn cmd_api_protect(
     allow_ephemeral_receipts: bool,
     upstream_timeout_secs: Option<u64>,
 ) -> Result<(), CliError> {
-    require_durable_or_ephemeral_optin(
-        receipt_store,
-        allow_ephemeral_receipts,
-        authority_seed_path,
-    )?;
+    require_durable_or_ephemeral_optin(receipt_store, allow_ephemeral_receipts, authority_seed_path)?;
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -372,8 +442,7 @@ pub(crate) fn cmd_api_protect(
             spec_content: None,
             spec_path: spec_path.map(|path| path.display().to_string()),
             listen_addr: listen_addr.to_string(),
-            receipt_db: durable_receipt_db_path(receipt_store)
-                .map(|path| path.display().to_string()),
+            receipt_db: durable_receipt_db_path(receipt_store).map(|path| path.display().to_string()),
             // The boot gate above already required an explicit opt-in when the
             // receipt store is missing or in-memory, so mirror the operator's
             // choice into the proxy's own durable-by-default gate.
@@ -429,11 +498,7 @@ pub(crate) fn cmd_start(
     allow_ephemeral_receipts: bool,
     print_config: bool,
 ) -> Result<(), CliError> {
-    require_durable_or_ephemeral_optin(
-        receipt_store,
-        allow_ephemeral_receipts,
-        authority_seed_path,
-    )?;
+    require_durable_or_ephemeral_optin(receipt_store, allow_ephemeral_receipts, authority_seed_path)?;
     let runtime = tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()
@@ -452,19 +517,6 @@ pub(crate) fn cmd_start(
             .transpose()?
             .map(|keypair| keypair.seed_hex());
         let trusted_capability_issuers = parse_trusted_capability_issuers_from_env()?;
-        // The mediated `/v1/evaluate` route reserves a durable budget hold and
-        // mints an execution nonce the trusted tool server settles on
-        // `/v1/reconcile`. That works only when a hold-capable local SQLite
-        // budget store (`--budget-db`) backs it AND a sidecar-control token gates
-        // reconcile: a remote `--control-url` store cannot persist a reserved
-        // hold, and a missing control token rejects every reconcile, so either
-        // alone leaves mediation failing closed. `chio start` keeps other optional
-        // stores in-memory so the first run leaves no on-disk artifacts, and does
-        // not fabricate a default budget store here. Advertise the route only when
-        // both backers are present; otherwise the banner omits it rather than
-        // advertising one that always fails closed.
-        let mediation_available =
-            sidecar_mediation_available(budget_db, sidecar_control_token.as_deref());
         let payment_adapter = resolve_sidecar_payment_adapter()?;
         let config = ProtectConfig {
             // The chio-start shape never proxies upstream traffic; the
@@ -501,9 +553,9 @@ pub(crate) fn cmd_start(
             .run_with_observer(move |bound_addr| {
                 let base_url = format!("http://{bound_addr}");
                 println!("chio sidecar listening on {base_url}");
-                for line in start_sidecar_route_banner(mediation_available) {
-                    println!("{line}");
-                }
+                println!(
+                    "  routes: /chio/* (health, evaluate, verify), /v1/capabilities/{{,mint,validate,attenuate,release}}, /v1/evaluate, /v1/receipts{{,/verify}}, /approvals/*"
+                );
                 if print_config {
                     println!();
                     println!("# chio-hermes quickstart -- copy into your shell:");
@@ -519,56 +571,6 @@ pub(crate) fn cmd_start(
                 CliError::transport_error(format!("failed to start chio sidecar: {error}"))
             })
     })
-}
-
-/// Whether the sidecar can actually serve the mediated `/v1/evaluate` route,
-/// and therefore whether the startup banner advertises it. Mediation reserves a
-/// durable budget hold and mints an execution nonce that the trusted tool server
-/// later settles on `/v1/reconcile`, so it works only when BOTH backing pieces
-/// are present:
-///
-/// - a hold-capable budget store, which only the local SQLite `--budget-db`
-///   provides. A remote `--control-url` store forwards charge/reverse/reconcile
-///   and falls back to the no-op hold APIs, so it cannot persist a reserved hold
-///   and every mediated authorization rejects fail-closed. This mirrors the
-///   proxy's `build_budget_store` hold-capability determination
-///   (hold-capable exactly when `--budget-db` is configured).
-/// - a sidecar-control token, without which every `/v1/reconcile` is rejected by
-///   the reconcile control gate and a minted reservation could only expire and
-///   forfeit budget.
-///
-/// Requiring both keeps the advertised surface matched to what the running
-/// configuration can actually authorize, rather than listing a route that always
-/// denies.
-pub(crate) fn sidecar_mediation_available(
-    budget_db: Option<&Path>,
-    sidecar_control_token: Option<&str>,
-) -> bool {
-    budget_db.is_some() && sidecar_control_token.is_some()
-}
-
-/// Build the `chio start` route banner. The mediated `/v1/evaluate` route is
-/// advertised only when `mediation_available` (see `sidecar_mediation_available`):
-/// a hold-capable local budget store (`--budget-db`) AND a sidecar-control token
-/// must both be configured. When it is absent the banner omits the route and
-/// explains how to enable it, so the advertised surface always matches the
-/// running configuration instead of listing a route that always fails closed.
-pub(crate) fn start_sidecar_route_banner(mediation_available: bool) -> Vec<String> {
-    let evaluate_route = if mediation_available {
-        ", /v1/evaluate"
-    } else {
-        ""
-    };
-    let mut lines = vec![format!(
-        "  routes: /chio/* (health, evaluate, verify), /v1/capabilities/{{,mint,validate,attenuate,release}}{evaluate_route}, /v1/receipts{{,/verify}}, /approvals/*"
-    )];
-    if !mediation_available {
-        lines.push(
-            "  note: mediated /v1/evaluate is disabled without a hold-capable budget store and a sidecar-control token; pass --budget-db <path> and set CHIO_SIDECAR_CONTROL_TOKEN to enable tool-call budget mediation"
-                .to_string(),
-        );
-    }
-    lines
 }
 
 pub(crate) fn parse_trusted_capability_issuers_from_env(
@@ -621,7 +623,7 @@ pub(crate) fn cmd_check(
     authority_seed_path: Option<&Path>,
     authority_db_path: Option<&Path>,
     budget_db_path: Option<&Path>,
-    _session_db_path: Option<&Path>,
+    session_db_path: Option<&Path>,
     control_url: Option<&str>,
     control_token: Option<&str>,
 ) -> Result<(), CliError> {
@@ -631,12 +633,32 @@ pub(crate) fn cmd_check(
     let default_capabilities = loaded_policy.default_capabilities.clone();
     let issuance_policy = loaded_policy.issuance_policy.clone();
     let runtime_assurance_policy = loaded_policy.runtime_assurance_policy.clone();
+    let durable_admission = open_cli_durable_admission_runtime(
+        loaded_policy.kernel.durable_admission_mode,
+        session_db_path,
+        receipt_db_path,
+        revocation_db_path,
+        authority_db_path,
+        budget_db_path,
+        control_url,
+        control_token,
+    )?;
 
-    let kernel_kp = Keypair::generate();
+    let kernel_kp = durable_admission
+        .as_ref()
+        .map(DurableAdmissionRuntime::kernel_keypair)
+        .unwrap_or_else(Keypair::generate);
     let mut kernel = build_kernel(loaded_policy, &kernel_kp);
     configure_receipt_store(&mut kernel, receipt_db_path, control_url, control_token)?;
-    configure_revocation_store(&mut kernel, revocation_db_path, control_url, control_token)?;
-    opt_in_ephemeral_revocation_for_local_session(&mut kernel, revocation_db_path, control_url);
+    if durable_admission.is_none() {
+        configure_revocation_store(&mut kernel, revocation_db_path, control_url, control_token)?;
+        opt_in_ephemeral_revocation_for_local_session(
+            &mut kernel,
+            revocation_db_path,
+            control_url,
+        );
+    }
+    attach_durable_admission_runtime(&mut kernel, durable_admission.as_ref())?;
     configure_capability_authority(
         &mut kernel,
         &kernel_kp,
@@ -649,7 +671,9 @@ pub(crate) fn cmd_check(
         issuance_policy,
         runtime_assurance_policy,
     )?;
-    configure_budget_store(&mut kernel, budget_db_path, control_url, control_token)?;
+    if durable_admission.is_none() {
+        configure_budget_store(&mut kernel, budget_db_path, control_url, control_token)?;
+    }
 
     kernel.register_tool_server(Box::new(CheckToolServer {
         id: server.to_string(),
@@ -685,9 +709,13 @@ pub(crate) fn cmd_check(
         tool_name: tool.to_string(),
         arguments: params.clone(),
         governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         execution_nonce: None,
         model_metadata: None,
-        extra_metadata: None,
+                extra_metadata: None,
     }));
 
     let response = match kernel.evaluate_session_operation(&context, &operation)? {
@@ -857,7 +885,7 @@ pub(crate) fn cmd_mcp_serve(
     authority_seed_path: Option<&Path>,
     authority_db_path: Option<&Path>,
     budget_db_path: Option<&Path>,
-    _session_db_path: Option<&Path>,
+    session_db_path: Option<&Path>,
     control_url: Option<&str>,
     control_token: Option<&str>,
 ) -> Result<(), CliError> {
@@ -896,6 +924,16 @@ pub(crate) fn cmd_mcp_serve(
     let loaded_policy = load_policy(resolved_policy_path)?;
     let policy_identity = loaded_policy.identity.clone();
     let default_capabilities = loaded_policy.default_capabilities.clone();
+    let durable_admission = open_cli_durable_admission_runtime(
+        loaded_policy.kernel.durable_admission_mode,
+        session_db_path,
+        receipt_db_path,
+        revocation_db_path,
+        authority_db_path,
+        budget_db_path,
+        control_url,
+        control_token,
+    )?;
 
     info!(
         policy_path = %resolved_policy_path.display(),
@@ -907,7 +945,10 @@ pub(crate) fn cmd_mcp_serve(
         "loaded policy for MCP edge"
     );
 
-    let kernel_kp = Keypair::generate();
+    let kernel_kp = durable_admission
+        .as_ref()
+        .map(DurableAdmissionRuntime::kernel_keypair)
+        .unwrap_or_else(Keypair::generate);
     let mut kernel = build_mcp_edge_kernel(
         loaded_policy,
         &kernel_kp,
@@ -917,6 +958,7 @@ pub(crate) fn cmd_mcp_serve(
             authority_seed_path,
             authority_db_path,
             budget_db_path,
+            durable_admission: durable_admission.as_ref(),
             control_url,
             control_token,
         },
@@ -1286,12 +1328,19 @@ pub(crate) fn cmd_trust_serve(
     passport_issuance_offers_file: Option<&Path>,
     certification_registry_file: Option<&Path>,
     certification_discovery_file: Option<&Path>,
+    fiscal_genesis_policy: Option<&Path>,
+    fiscal_anchor_url: Option<&str>,
+    fiscal_anchor_token: Option<&str>,
+    fiscal_admission_authority_id: &str,
+    fiscal_admission_signer_key_epoch: u64,
+    fiscal_admission_signing_seed: Option<&Path>,
+    fiscal_anchor_timeout_seconds: u64,
     receipt_db_path: Option<&Path>,
     revocation_db_path: Option<&Path>,
     authority_seed_path: Option<&Path>,
     authority_db_path: Option<&Path>,
     budget_db_path: Option<&Path>,
-    _session_db_path: Option<&Path>,
+    session_db_path: Option<&Path>,
     advertise_url: Option<&str>,
     allow_local_peer_urls: bool,
     certification_public_metadata_ttl_seconds: u64,
@@ -1319,6 +1368,31 @@ pub(crate) fn cmd_trust_serve(
         .map(|loaded| (loaded.issuance_policy, loaded.runtime_assurance_policy))
         .unwrap_or((None, None));
     let roster_policy = roster_policy_file.map(load_roster_policy).transpose()?;
+    let fiscal_runtime = match (
+        fiscal_genesis_policy,
+        fiscal_anchor_url,
+        fiscal_anchor_token,
+        fiscal_admission_signing_seed,
+    ) {
+        (Some(policy), Some(anchor_url), Some(anchor_token), Some(admission_seed)) => Some(
+            trust_control::TrustFiscalRuntimeConfig::from_policy_file(
+                policy,
+                anchor_url.to_owned(),
+                anchor_token.to_owned(),
+                std::time::Duration::from_secs(fiscal_anchor_timeout_seconds),
+                fiscal_admission_authority_id.to_owned(),
+                fiscal_admission_signer_key_epoch,
+                admission_seed.to_path_buf(),
+            )?,
+        ),
+        (None, None, None, None) => None,
+        _ => {
+            return Err(CliError::cli_other_error(
+                "fiscal runtime requires --fiscal-genesis-policy, --fiscal-anchor-url, --fiscal-anchor-token, and --fiscal-admission-signing-seed together"
+                    .to_owned(),
+            ));
+        }
+    };
     trust_control::serve(trust_control::TrustServiceConfig {
         listen,
         service_token: service_token.to_string(),
@@ -1328,6 +1402,8 @@ pub(crate) fn cmd_trust_serve(
         authority_seed_path: authority_seed_path.map(Path::to_path_buf),
         authority_db_path: authority_db_path.map(Path::to_path_buf),
         budget_db_path: budget_db_path.map(Path::to_path_buf),
+        joint_authority_db_path: session_db_path.map(Path::to_path_buf),
+        fiscal_runtime,
         enterprise_providers_file: enterprise_providers_file.map(Path::to_path_buf),
         federation_policies_file: federation_policies_file.map(Path::to_path_buf),
         scim_lifecycle_file: scim_lifecycle_file.map(Path::to_path_buf),
@@ -1651,103 +1727,5 @@ mod runtime_local_error_domain_tests {
         assert!(contract.allowed_schemes.contains("http"));
         assert!(contract.allowed_authority_set.contains("127.0.0.1:18080"));
         assert!(!contract.deny_loopback);
-    }
-
-    #[test]
-    fn sidecar_payment_adapter_threads_configured_rail_and_fails_closed() {
-        // A configured http facilitator rail resolves to an installable adapter
-        // that cmd_start / cmd_api_protect thread into the sidecar proxy via
-        // `ProtectProxy::with_payment_adapter`.
-        let configured = sidecar_payment_adapter_from_config(Some(PaymentAdapterConfig::HttpX402 {
-            base_url: "https://facilitator.example".to_string(),
-            bearer_token: Some("token".to_string()),
-        }));
-        assert!(
-            matches!(configured, Ok(Some(_))),
-            "a configured http payment rail must thread an installable adapter into the sidecar"
-        );
-
-        // Absent / `sim` selection (from_env yields None) leaves the sidecar with
-        // no adapter, so governed MustPrepay stays denied fail-closed.
-        let default = sidecar_payment_adapter_from_config(None);
-        assert!(
-            matches!(default, Ok(None)),
-            "no configured adapter must leave governed MustPrepay denied fail-closed"
-        );
-
-        // A malformed rail (blank base_url) rejects at load rather than starting a
-        // sidecar whose payment rail can never authorize.
-        let rejected = sidecar_payment_adapter_from_config(Some(PaymentAdapterConfig::HttpAcp {
-            base_url: "   ".to_string(),
-            bearer_token: None,
-        }));
-        assert!(
-            rejected.is_err(),
-            "a malformed payment rail must fail closed at load"
-        );
-    }
-
-    #[test]
-    fn start_banner_advertises_evaluate_only_when_budget_store_present() {
-        let with_store = start_sidecar_route_banner(true);
-        assert_eq!(
-            with_store.len(),
-            1,
-            "banner should be a single routes line when mediation is available"
-        );
-        assert!(
-            with_store[0].contains(", /v1/evaluate,"),
-            "advertised routes must list /v1/evaluate when a budget store backs it: {}",
-            with_store[0]
-        );
-
-        let without_store = start_sidecar_route_banner(false);
-        assert!(
-            !without_store[0].contains("/v1/evaluate"),
-            "routes line must not advertise /v1/evaluate without a budget store: {}",
-            without_store[0]
-        );
-        assert!(
-            without_store
-                .iter()
-                .any(|line| line.contains("mediated /v1/evaluate is disabled")
-                    && line.contains("--budget-db")
-                    && line.contains("CHIO_SIDECAR_CONTROL_TOKEN")),
-            "banner must explain how to enable mediation when it is unavailable: {without_store:?}"
-        );
-    }
-
-    #[test]
-    fn mediation_advertised_only_with_hold_capable_store_and_control_token() {
-        let budget = Path::new("/var/lib/chio/budget.sqlite");
-
-        // Both backers present: a hold-capable local budget store and a
-        // sidecar-control token. Only then can a reservation be reconciled, so
-        // only then is /v1/evaluate advertised.
-        assert!(
-            sidecar_mediation_available(Some(budget), Some("control-token")),
-            "a hold-capable --budget-db with a control token must advertise mediation"
-        );
-
-        // A remote-only `--control-url` store is not hold-capable, so even with a
-        // control token every mediated authorization rejects fail-closed: do not
-        // advertise it.
-        assert!(
-            !sidecar_mediation_available(None, Some("control-token")),
-            "a remote-only store (no --budget-db) must not advertise mediation"
-        );
-
-        // A hold-capable store with no control token cannot settle a reservation
-        // (reconcile is rejected), so do not advertise it either.
-        assert!(
-            !sidecar_mediation_available(Some(budget), None),
-            "a hold-capable store without a control token must not advertise mediation"
-        );
-
-        // Neither backer present.
-        assert!(
-            !sidecar_mediation_available(None, None),
-            "no backing store or token must not advertise mediation"
-        );
     }
 }

@@ -53,6 +53,7 @@ fn make_request(request_id: &str, tenant_id: &str) -> KernelRequest {
         issued_at: 1,
         expires_at: 4_102_444_800,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let capability = CapabilityToken::sign(body, &issuer_keypair)
         .unwrap_or_else(|error| panic!("capability signing failed: {error}"));
@@ -67,6 +68,9 @@ fn make_request(request_id: &str, tenant_id: &str) -> KernelRequest {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };

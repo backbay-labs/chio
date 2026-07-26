@@ -6,10 +6,11 @@ use chio_core_types::capability::{attenuation::ScopeHash, features::CapabilityNe
 use chio_core_types::crypto::{Ed25519Backend, Keypair, PublicKey, SigningBackend};
 use chio_core_types::receipt::{body::chio_receipt_id, body::ChioReceipt, decision::Decision};
 use chio_kernel_core::{
-    evaluate_with_full_floor as core_evaluate_with_full_floor, sign_receipt as core_sign_receipt,
-    sign_receipt_relaying_trusted_body as core_relay_trusted_body, verify_capability_full,
-    BudgetRegistry, BudgetSplitError, EvaluateInput, InMemoryBudgetRegistry,
-    PortableToolCallRequest,
+    evaluate_with_full_floor_and_root as core_evaluate_with_full_floor,
+    sign_receipt as core_sign_receipt,
+    sign_receipt_relaying_trusted_body as core_relay_trusted_body,
+    verify_capability_full_with_root, BudgetRegistry, BudgetSplitError, CapabilityFeatureContext,
+    EvaluateInput, InMemoryBudgetRegistry, PortableToolCallRequest,
 };
 
 use crate::wire::{
@@ -62,6 +63,12 @@ pub fn evaluate_pure(
     input: EvaluateRequestJson,
     clock: &dyn chio_kernel_core::Clock,
 ) -> Result<EvaluationVerdictJson, BindingError> {
+    if input.request.has_unsupported_authorization_extensions() {
+        return Err(BindingError::new(
+            "unsupported_authorization_extension",
+            "browser portable evaluation cannot authenticate governed approvals or supplemental authorization",
+        ));
+    }
     let trusted = decode_trusted_issuers(&input.trusted_issuers_hex)?;
     let portable_request: PortableToolCallRequest = input.request.into();
     let peer_profile = input
@@ -92,6 +99,7 @@ pub fn evaluate_pure(
                 },
                 chio_core_types::capability::crypto_floor::CapabilityCryptoFloor::AllowClassical,
                 &peer_profile,
+                input.direct_root_capability.as_ref(),
                 &trust_resolver,
                 &mut budgets,
             )
@@ -107,6 +115,7 @@ pub fn evaluate_pure(
             },
             chio_core_types::capability::crypto_floor::CapabilityCryptoFloor::AllowClassical,
             &peer_profile,
+            input.direct_root_capability.as_ref(),
             &trust_resolver,
             &mut budgets,
         ),
@@ -227,22 +236,28 @@ pub fn verify_capability_pure(
     let result = match input.clock_override_unix_secs {
         Some(pinned) => {
             let fixed = chio_kernel_core::FixedClock::new(pinned);
-            verify_capability_full(
+            verify_capability_full_with_root(
                 &input.token,
                 &trusted,
                 &fixed,
                 crypto_floor,
-                &peer_profile,
+                CapabilityFeatureContext {
+                    peer: &peer_profile,
+                    direct_root: input.direct_root_capability.as_ref(),
+                },
                 &trust_resolver,
                 &mut budgets,
             )
         }
-        None => verify_capability_full(
+        None => verify_capability_full_with_root(
             &input.token,
             &trusted,
             clock,
             crypto_floor,
-            &peer_profile,
+            CapabilityFeatureContext {
+                peer: &peer_profile,
+                direct_root: input.direct_root_capability.as_ref(),
+            },
             &trust_resolver,
             &mut budgets,
         ),

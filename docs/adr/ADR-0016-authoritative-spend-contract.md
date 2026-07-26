@@ -23,9 +23,10 @@ Two code-only realities are hereby reconciled with the docs: the
 
 ## Decision
 
-1. `chio.execution_nonce.v1` is frozen as-is: a signed body of
-   `{schema, nonce_id, issued_at, expires_at, bound_to{subject_id, capability_id,
-   tool_server, tool_name, parameter_hash}}` plus an Ed25519 `signature`.
+1. `chio.execution_nonce.v1` is a signed body of
+   `{schema, nonce_id, issued_at, expires_at, bound_to{subject_id, request_id,
+   capability_id, tool_server, tool_name, parameter_hash}}` plus an Ed25519
+   `signature`. A missing or empty `request_id` is rejected fail-closed.
 2. The atomic hold lifecycle (authorize worst-case exposure, reconcile down to
    realized spend, reverse on deny) is normative. `BudgetGuaranteeLevel`
    (`single_node_atomic`, `ha_linearizable`, `partition_escrowed`,

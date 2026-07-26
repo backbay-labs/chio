@@ -1,0 +1,217 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-economy/clearing-round-transition-proof/v1",
+  "title": "Chio Clearing Round Transition Proof V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "roundId",
+    "governanceScopeId",
+    "roundCoreDigest",
+    "inputManifestDigest",
+    "sourceState",
+    "targetState",
+    "sourceRoundHeadDigest",
+    "sourceRoundVersion",
+    "sourceRoundFence",
+    "nextRoundVersion",
+    "nextRoundFence",
+    "trustedClockHighWater",
+    "reservationRoot",
+    "reservationCount",
+    "reservationHeadRoot",
+    "reservations",
+    "transition"
+  ],
+  "properties": {
+    "schema": { "const": "chio.clearing.round-transition-proof.v1" },
+    "roundId": { "$ref": "#/$defs/text" },
+    "governanceScopeId": { "$ref": "#/$defs/text" },
+    "roundCoreDigest": { "$ref": "#/$defs/digest" },
+    "inputManifestDigest": { "$ref": "#/$defs/digest" },
+    "sourceState": { "$ref": "#/$defs/state" },
+    "targetState": { "$ref": "#/$defs/state" },
+    "sourceRoundHeadDigest": { "$ref": "#/$defs/digest" },
+    "sourceRoundVersion": { "$ref": "#/$defs/positiveInteger" },
+    "sourceRoundFence": { "$ref": "#/$defs/positiveInteger" },
+    "nextRoundVersion": { "$ref": "#/$defs/positiveInteger" },
+    "nextRoundFence": { "$ref": "#/$defs/positiveInteger" },
+    "trustedClockHighWater": { "$ref": "#/$defs/positiveInteger" },
+    "reservationRoot": { "$ref": "#/$defs/digest" },
+    "reservationCount": { "type": "integer", "minimum": 1, "maximum": 126 },
+    "reservationHeadRoot": { "$ref": "#/$defs/digest" },
+    "reservations": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 126,
+      "items": { "$ref": "#/$defs/reservation" }
+    },
+    "transition": { "$ref": "#/$defs/transition" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "text": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "positiveInteger": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "state": {
+      "enum": [
+        "reserved",
+        "proposed",
+        "finalizing",
+        "finalized",
+        "dispatching",
+        "reconciling",
+        "satisfied",
+        "aborting",
+        "aborted",
+        "incident"
+      ]
+    },
+    "resourceKey": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["resourceFamily", "scopeId", "resourceId"],
+      "properties": {
+        "resourceFamily": { "const": "obligation_disposition" },
+        "scopeId": { "$ref": "#/$defs/text" },
+        "resourceId": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "reservation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceSequence", "resourceKey", "expectedHeadDigest", "expectedResourceVersion", "expectedLifecycleFence", "atom", "disposition"],
+      "properties": {
+        "sourceSequence": { "$ref": "#/$defs/positiveInteger" },
+        "resourceKey": { "$ref": "#/$defs/resourceKey" },
+        "expectedHeadDigest": { "$ref": "#/$defs/digest" },
+        "expectedResourceVersion": { "$ref": "#/$defs/positiveInteger" },
+        "expectedLifecycleFence": { "$ref": "#/$defs/positiveInteger" },
+        "atom": { "$ref": "https://chio-protocol.dev/schemas/chio-economy/obligation-atom/v1" },
+        "disposition": { "$ref": "https://chio-protocol.dev/schemas/chio-economy/obligation-disposition/v1" }
+      }
+    },
+    "frost": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["authorizationSlotId", "authorizationId", "actionDigest", "signedEnvelopeDigest"],
+      "properties": {
+        "authorizationSlotId": { "$ref": "#/$defs/digest" },
+        "authorizationId": { "$ref": "#/$defs/digest" },
+        "actionDigest": { "$ref": "#/$defs/digest" },
+        "signedEnvelopeDigest": { "$ref": "#/$defs/digest" }
+      }
+    },
+    "transition": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "output_manifest_digest", "authority_digest"],
+          "properties": {
+            "kind": { "const": "propose" },
+            "output_manifest_digest": { "$ref": "#/$defs/digest" },
+            "authority_digest": { "$ref": "#/$defs/digest" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "acceptance_root", "acceptance_count", "authority_digest"],
+          "properties": {
+            "kind": { "const": "begin_finalization" },
+            "acceptance_root": { "$ref": "#/$defs/digest" },
+            "acceptance_count": { "$ref": "#/$defs/positiveInteger" },
+            "authority_digest": { "$ref": "#/$defs/digest" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "finalization_digest", "frost"],
+          "properties": {
+            "kind": { "const": "finalize" },
+            "finalization_digest": { "$ref": "#/$defs/digest" },
+            "frost": { "$ref": "#/$defs/frost" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "abort_digest", "zero_dispatch_proof_digest", "authority_digest"],
+          "properties": {
+            "kind": { "const": "begin_abort" },
+            "abort_digest": { "$ref": "#/$defs/digest" },
+            "zero_dispatch_proof_digest": { "$ref": "#/$defs/digest" },
+            "authority_digest": { "$ref": "#/$defs/digest" },
+            "frost_burn_checkpoint_digest": { "$ref": "#/$defs/digest" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "abort_digest", "zero_dispatch_proof_digest", "authority_digest"],
+          "properties": {
+            "kind": { "const": "abort" },
+            "abort_digest": { "$ref": "#/$defs/digest" },
+            "zero_dispatch_proof_digest": { "$ref": "#/$defs/digest" },
+            "authority_digest": { "$ref": "#/$defs/digest" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "operation_id", "intent_id", "intent_digest", "effect_slot_id", "effect_slot_digest", "authority_digest"],
+          "properties": {
+            "kind": { "const": "begin_dispatch" },
+            "operation_id": { "$ref": "#/$defs/digest" },
+            "intent_id": { "$ref": "#/$defs/text" },
+            "intent_digest": { "$ref": "#/$defs/digest" },
+            "effect_slot_id": { "$ref": "#/$defs/digest" },
+            "effect_slot_digest": { "$ref": "#/$defs/digest" },
+            "authority_digest": { "$ref": "#/$defs/digest" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "reconciliation_digest", "intent_id", "intent_digest", "effect_slot_id", "observed_status", "attempt_number", "authority_digest"],
+          "properties": {
+            "kind": { "const": "begin_reconciliation" },
+            "reconciliation_digest": { "$ref": "#/$defs/digest" },
+            "intent_id": { "$ref": "#/$defs/text" },
+            "intent_digest": { "$ref": "#/$defs/digest" },
+            "effect_slot_id": { "$ref": "#/$defs/digest" },
+            "observed_status": { "enum": ["settled", "permanent_no_effect"] },
+            "attempt_number": { "$ref": "#/$defs/positiveInteger" },
+            "authority_digest": { "$ref": "#/$defs/digest" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "satisfaction_digest", "authority_digest"],
+          "properties": {
+            "kind": { "const": "satisfy" },
+            "satisfaction_digest": { "$ref": "#/$defs/digest" },
+            "authority_digest": { "$ref": "#/$defs/digest" }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "reconciliation_digest", "intent_id", "intent_digest", "effect_slot_id", "attempt_number", "authority_digest"],
+          "properties": {
+            "kind": { "const": "incident" },
+            "reconciliation_digest": { "$ref": "#/$defs/digest" },
+            "intent_id": { "$ref": "#/$defs/text" },
+            "intent_digest": { "$ref": "#/$defs/digest" },
+            "effect_slot_id": { "$ref": "#/$defs/digest" },
+            "attempt_number": { "$ref": "#/$defs/positiveInteger" },
+            "authority_digest": { "$ref": "#/$defs/digest" }
+          }
+        }
+      ]
+    }
+  }
+}

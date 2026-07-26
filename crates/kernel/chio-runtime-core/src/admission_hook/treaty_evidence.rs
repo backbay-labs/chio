@@ -158,7 +158,7 @@ pub(super) fn verify_treaty_reference_from_store<S: RuntimeAdmissionStore>(
         if let Some((invocation, _invocation_sha256)) = bilateral_invocation.as_ref() {
             let consistency_model = action
                 .map(|action| action.consistency_model.as_str())
-                .unwrap_or("totally_ordered");
+                .unwrap_or("totally-ordered");
             let treaty_evidence = TreatyEvidenceReview {
                 treaty_scope: &treaty_scope,
                 bundle: &bundle,
@@ -185,7 +185,7 @@ pub(super) fn verify_treaty_reference_from_store<S: RuntimeAdmissionStore>(
                 ladder_intersection_sha256: &treaty_ref.ladder_intersection_sha256,
                 consistency_model: action
                     .map(|action| action.consistency_model.as_str())
-                    .unwrap_or("totally_ordered"),
+                    .unwrap_or("totally-ordered"),
                 continuation_sha256,
             };
             verify_treaty_dsse_evidence(
@@ -377,6 +377,9 @@ fn verify_bilateral_invocation_evidence(
     lineage_bundle: Option<&ReceiptLineageBundle>,
 ) -> Result<String, ChioRuntimeError> {
     validate_bilateral_invocation(invocation)?;
+    let invocation_consistency_model =
+        bilateral_dsse_consistency_model(&invocation.consistency_model)?;
+    let expected_consistency_model = bilateral_dsse_consistency_model(review.consistency_model)?;
     if review.treaty_scope.participant_kernel_ids.len() != 2
         || invocation.signer_kernel_ids.len() != 2
     {
@@ -389,7 +392,7 @@ fn verify_bilateral_invocation_evidence(
         || invocation.ladder_intersection_sha256 != review.ladder_intersection_sha256
         || invocation.continuation_sha256 != review.continuation_sha256
         || invocation.action_class_id != review.action_class_id
-        || invocation.consistency_model != review.consistency_model
+        || invocation_consistency_model != expected_consistency_model
         || invocation.capability_id != review.request.capability_id
         || invocation.request_sha256 != review.request.tool_args_sha256
     {

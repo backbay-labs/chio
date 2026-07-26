@@ -4,42 +4,14 @@
 //! hook invocation, the tool-dispatch entrypoints, and child-receipt
 //! recording.
 
-use super::*;
 use crate::budget_store::BudgetReverseHoldDecision;
 use chio_log_redact::redacted;
 
-pub(crate) struct GuardRunError {
-    pub(crate) error: KernelError,
-    pub(crate) evidence: Vec<chio_core::receipt::metadata::GuardEvidence>,
-}
+use super::*;
 
-pub(crate) fn dispatch_admission_error_reason(error: &KernelError) -> String {
-    match error {
-        KernelError::GuardDenied(reason) if reason == EMERGENCY_STOP_DENY_REASON => reason.clone(),
-        _ => error.to_string(),
-    }
-}
-
-impl GuardRunError {
-    fn new(error: KernelError, evidence: Vec<chio_core::receipt::metadata::GuardEvidence>) -> Self {
-        Self { error, evidence }
-    }
-}
-
-struct ChildReceiptRecordError {
-    error: KernelError,
-    disposition: ChildReceiptAppendDisposition,
-}
-
-#[derive(Clone, Copy, Eq, PartialEq)]
-enum ChildReceiptAppendDisposition {
-    NotAttempted,
-    OutcomeUnknown,
-}
-
-const DEADLINE_PENDING: u8 = 0;
-const DEADLINE_ELAPSED: u8 = 1;
-const DEADLINE_CANCELLED: u8 = 2;
+const READINESS_DEADLINE_PENDING: u8 = 0;
+const READINESS_DEADLINE_ELAPSED: u8 = 1;
+const READINESS_DEADLINE_CANCELLED: u8 = 2;
 
 struct RuntimeAdmissionDeadlineState {
     outcome: std::sync::atomic::AtomicU8,
@@ -49,18 +21,18 @@ struct RuntimeAdmissionDeadlineState {
 impl RuntimeAdmissionDeadlineState {
     fn new() -> Self {
         Self {
-            outcome: std::sync::atomic::AtomicU8::new(DEADLINE_PENDING),
+            outcome: std::sync::atomic::AtomicU8::new(READINESS_DEADLINE_PENDING),
             waker: std::sync::Mutex::new(None),
         }
     }
 
     fn poll(&self, cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), KernelError>> {
         let outcome = self.outcome.load(std::sync::atomic::Ordering::SeqCst);
-        if outcome == DEADLINE_ELAPSED {
+        if outcome == READINESS_DEADLINE_ELAPSED {
             self.clear_waker();
             return std::task::Poll::Ready(Ok(()));
         }
-        if outcome == DEADLINE_CANCELLED {
+        if outcome == READINESS_DEADLINE_CANCELLED {
             self.clear_waker();
             return std::task::Poll::Ready(Err(KernelError::Internal(
                 "cancelled runtime admission readiness deadline was polled".to_string(),
@@ -72,11 +44,11 @@ impl RuntimeAdmissionDeadlineState {
             Err(poisoned) => poisoned.into_inner(),
         };
         let outcome = self.outcome.load(std::sync::atomic::Ordering::SeqCst);
-        if outcome == DEADLINE_ELAPSED {
+        if outcome == READINESS_DEADLINE_ELAPSED {
             waker.take();
             return std::task::Poll::Ready(Ok(()));
         }
-        if outcome == DEADLINE_CANCELLED {
+        if outcome == READINESS_DEADLINE_CANCELLED {
             waker.take();
             return std::task::Poll::Ready(Err(KernelError::Internal(
                 "cancelled runtime admission readiness deadline was polled".to_string(),
@@ -95,8 +67,8 @@ impl RuntimeAdmissionDeadlineState {
         if self
             .outcome
             .compare_exchange(
-                DEADLINE_PENDING,
-                DEADLINE_ELAPSED,
+                READINESS_DEADLINE_PENDING,
+                READINESS_DEADLINE_ELAPSED,
                 std::sync::atomic::Ordering::SeqCst,
                 std::sync::atomic::Ordering::SeqCst,
             )
@@ -115,8 +87,8 @@ impl RuntimeAdmissionDeadlineState {
 
     fn cancel(&self) {
         let _ = self.outcome.compare_exchange(
-            DEADLINE_PENDING,
-            DEADLINE_CANCELLED,
+            READINESS_DEADLINE_PENDING,
+            READINESS_DEADLINE_CANCELLED,
             std::sync::atomic::Ordering::SeqCst,
             std::sync::atomic::Ordering::SeqCst,
         );
@@ -137,8 +109,6 @@ impl RuntimeAdmissionDeadlineState {
 
 type RuntimeAdmissionDeadlineKey = (Instant, u64);
 
-// One process-wide worker orders monotonic deadlines. Registrations remove
-// their exact map entry on drop so cancelled waits do not accumulate state.
 struct RuntimeAdmissionDeadlineSchedule {
     next_id: u64,
     entries: std::collections::BTreeMap<
@@ -186,7 +156,7 @@ impl RuntimeAdmissionDeadlineScheduler {
             let next_deadline = schedule
                 .entries
                 .first_key_value()
-                .map(|((deadline, _id), _state)| *deadline);
+                .map(|((deadline, _), _)| *deadline);
             let Some(next_deadline) = next_deadline else {
                 schedule = match shared.changed.wait(schedule) {
                     Ok(guard) => guard,
@@ -194,10 +164,9 @@ impl RuntimeAdmissionDeadlineScheduler {
                 };
                 continue;
             };
-
             let now = Instant::now();
             if next_deadline <= now {
-                let expired = schedule.entries.pop_first().map(|(_key, state)| state);
+                let expired = schedule.entries.pop_first().map(|(_, state)| state);
                 drop(schedule);
                 if let Some(expired) = expired {
                     expired.expire();
@@ -208,12 +177,11 @@ impl RuntimeAdmissionDeadlineScheduler {
                 };
                 continue;
             }
-
             schedule = match shared
                 .changed
                 .wait_timeout(schedule, next_deadline.saturating_duration_since(now))
             {
-                Ok((guard, _result)) => guard,
+                Ok((guard, _)) => guard,
                 Err(poisoned) => poisoned.into_inner().0,
             };
         }
@@ -230,9 +198,7 @@ impl RuntimeAdmissionDeadlineScheduler {
         };
         let id = schedule.next_id;
         schedule.next_id = schedule.next_id.checked_add(1).ok_or_else(|| {
-            KernelError::Internal(
-                "runtime admission readiness deadline identifier space exhausted".to_string(),
-            )
+            KernelError::Internal("runtime admission readiness token space exhausted".to_string())
         })?;
         let key = (deadline, id);
         schedule.entries.insert(key, state);
@@ -352,6 +318,20 @@ struct RuntimeAdmissionReadinessRegistration<'a> {
     token: RuntimeAdmissionReadinessToken,
 }
 
+pub(crate) struct PreDispatchMonetaryUnwindFailure {
+    pub(crate) error: Box<KernelError>,
+    pub(crate) evidence: Option<PreDispatchPaymentUnwindEvidence>,
+}
+
+impl From<KernelError> for PreDispatchMonetaryUnwindFailure {
+    fn from(error: KernelError) -> Self {
+        Self {
+            error: Box::new(error),
+            evidence: None,
+        }
+    }
+}
+
 impl Drop for RuntimeAdmissionReadinessRegistration<'_> {
     fn drop(&mut self) {
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -367,26 +347,22 @@ impl Drop for RuntimeAdmissionReadinessRegistration<'_> {
     }
 }
 
-pub(crate) struct RuntimeReadinessRevalidation<'a> {
-    pub(crate) request: &'a ToolCallRequest,
-    pub(crate) dpop_required: bool,
-    pub(crate) matched_grant: &'a ToolGrant,
-    pub(crate) matched_grant_index: usize,
-    pub(crate) charge_result: Option<&'a BudgetChargeResult>,
-    pub(crate) parent_context: Option<&'a OperationContext>,
-    pub(crate) session_id: Option<&'a SessionId>,
-    pub(crate) session_filesystem_roots: Option<&'a [String]>,
-    pub(crate) receipt_admission: &'a ReceiptFederationAdmission,
-    pub(crate) runtime_admission_metadata: Option<&'a serde_json::Value>,
-    pub(crate) readiness_waited: bool,
-    pub(crate) force_mutable_state_revalidation: bool,
-    /// The strict reserve-for-caller payment preflight has not minted its
-    /// execution nonce yet and intentionally targets a downstream server that
-    /// need not be registered on this kernel. Every other mutable admission
-    /// check still runs before the payment rail is touched.
-    pub(crate) reserve_for_caller_preflight: bool,
-    pub(crate) now_unix_secs: u64,
-    pub(crate) now_unix_ms: u64,
+pub(crate) struct GuardRunError {
+    pub(crate) error: KernelError,
+    pub(crate) evidence: Vec<chio_core::receipt::metadata::GuardEvidence>,
+}
+
+impl GuardRunError {
+    fn new(error: KernelError, evidence: Vec<chio_core::receipt::metadata::GuardEvidence>) -> Self {
+        Self { error, evidence }
+    }
+}
+
+pub(crate) fn dispatch_admission_error_reason(error: &KernelError) -> String {
+    match error {
+        KernelError::GuardDenied(reason) if reason == EMERGENCY_STOP_DENY_REASON => reason.clone(),
+        _ => error.to_string(),
+    }
 }
 
 /// Owned copy of a guard invocation, so the sequential guard core can run inside
@@ -593,20 +569,20 @@ pub(crate) fn dispatch_runtime_available() -> bool {
 /// On a current-thread runtime there is no spare worker to promote, and with no
 /// timer driver the timeout wrapper would panic, so the call runs inline: under
 /// the timeout when a timer is present, and directly otherwise.
-pub(crate) async fn dispatch_nested_call_within_budget<F>(
+pub(crate) async fn dispatch_nested_call_within_budget<F, T>(
     call: F,
     budget: std::time::Duration,
-) -> Result<ToolServerOutput, KernelError>
+) -> Result<T, KernelError>
 where
-    F: std::future::Future<Output = Result<ToolServerOutput, KernelError>>,
+    F: std::future::Future<Output = Result<T, KernelError>>,
 {
-    async fn bounded<F>(
+    async fn bounded<F, T>(
         call: F,
         budget: std::time::Duration,
         timer_available: bool,
-    ) -> Result<ToolServerOutput, KernelError>
+    ) -> Result<T, KernelError>
     where
-        F: std::future::Future<Output = Result<ToolServerOutput, KernelError>>,
+        F: std::future::Future<Output = Result<T, KernelError>>,
     {
         if timer_available {
             match tokio::time::timeout(budget, call).await {
@@ -670,14 +646,14 @@ impl ChioKernel {
         let deadline = RuntimeAdmissionDeadline::new(deadline_at);
         futures::pin_mut!(readiness, deadline);
         match futures::future::select(readiness, deadline).await {
-            futures::future::Either::Left((readiness_result, _deadline)) => {
+            futures::future::Either::Left((readiness_result, _)) => {
                 if Instant::now() >= deadline_at {
                     let timeout_ms = u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX);
                     return Err(KernelError::RuntimeAdmissionReadinessTimeout { timeout_ms });
                 }
                 readiness_result
             }
-            futures::future::Either::Right((deadline_result, _readiness)) => {
+            futures::future::Either::Right((deadline_result, _)) => {
                 deadline_result?;
                 let timeout_ms = u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX);
                 Err(KernelError::RuntimeAdmissionReadinessTimeout { timeout_ms })
@@ -685,38 +661,44 @@ impl ChioKernel {
         }
     }
 
-    pub(crate) fn revalidate_tool_call_after_runtime_readiness(
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn revalidate_immediately_before_dispatch(
         &self,
         request: &ToolCallRequest,
         dpop_required: bool,
-        now: u64,
-    ) -> Result<(), String> {
+        matched_grant: &ToolGrant,
+        matched_grant_index: usize,
+        parent_context: Option<&OperationContext>,
+        session_id: Option<&SessionId>,
+        session_filesystem_roots: Option<&[String]>,
+        receipt_admission: &ReceiptFederationAdmission,
+        runtime_admission_metadata: Option<&serde_json::Value>,
+        reserve_for_caller_preflight: bool,
+        revalidate_all: bool,
+        now_unix_secs: u64,
+        now_unix_ms: u64,
+    ) -> Result<(), KernelError> {
         if self.is_emergency_stopped() {
-            return Err(EMERGENCY_STOP_DENY_REASON.to_string());
+            return Err(KernelError::GuardDenied(
+                EMERGENCY_STOP_DENY_REASON.to_string(),
+            ));
         }
-
-        // The full verifier covers issuer trust, signature, the current time
-        // window, chain binding, and the negotiated remote profile. Use one
-        // fresh clock rather than repeating the standalone time check.
         self.verify_capability_full_pre_admit(
             &request.capability,
             request.federated_origin_kernel_id.as_deref(),
-            now,
+            now_unix_secs,
         )
-        .map_err(|reason| format!("capability revalidation failed: {reason}"))?;
-
-        // This deliberately avoids check_tool_call_revocation_admission: the
-        // initial admission already emitted its trace event, and this mutable
-        // state recheck must not report a second admission transition.
-        self.check_revocation(&request.capability)
-            .map_err(|error| error.to_string())?;
-        self.validate_delegation_admission(&request.capability)
-            .map_err(|error| error.to_string())?;
-
+        .map_err(|reason| {
+            KernelError::GuardDenied(format!("capability revalidation failed: {reason}"))
+        })?;
+        self.check_revocation(&request.capability)?;
+        self.validate_delegation_admission(&request.capability)?;
         if dpop_required {
             let proof = request.dpop_proof.as_ref().ok_or_else(|| {
-                "grant requires DPoP proof but none was provided during dispatch revalidation"
-                    .to_string()
+                KernelError::DpopVerificationFailed(
+                    "grant requires DPoP proof but none was provided during dispatch revalidation"
+                        .to_string(),
+                )
             })?;
             self.verify_dpop_for_permission_preview(
                 proof,
@@ -724,28 +706,22 @@ impl ChioKernel {
                 &request.server_id,
                 &request.tool_name,
                 &request.arguments,
-            )
-            .map_err(|error| error.to_string())?;
+            )?;
         }
-
-        Ok(())
-    }
-
-    fn revalidate_receipt_boundary_after_runtime_readiness(
-        &self,
-        request: &ToolCallRequest,
-        admitted: &ReceiptFederationAdmission,
-        now: u64,
-        reserve_for_caller_preflight: bool,
-    ) -> Result<(), KernelError> {
-        let current = self.kernel_receipt_admission_for_remote(
+        if !reserve_for_caller_preflight {
+            let _ = self.validate_execution_nonce_non_consuming(
+                request,
+                &request.capability,
+                now_unix_secs,
+            )?;
+        }
+        let current_receipt_admission = self.kernel_receipt_admission_for_remote(
             request.federated_origin_kernel_id.as_deref(),
-            now,
+            now_unix_secs,
         )?;
-        if current != *admitted {
+        if current_receipt_admission != *receipt_admission {
             return Err(KernelError::Internal(
-                "receipt federation admission changed while runtime readiness was pending"
-                    .to_string(),
+                "receipt federation admission changed before dispatch".to_string(),
             ));
         }
         self.validate_web3_evidence_prerequisites()?;
@@ -756,43 +732,42 @@ impl ChioKernel {
             request.federated_origin_kernel_id.as_deref(),
         )?;
         self.ensure_receipt_persistence_ready()?;
-        self.record_observed_capability_snapshot(&request.capability)
-    }
+        self.validate_governed_transaction_pure(
+            request,
+            &request.capability,
+            matched_grant,
+            GovernedValidationContext {
+                parent_context,
+                now: now_unix_secs,
+            },
+        )?;
 
-    fn revalidate_guards_after_runtime_readiness(
-        &self,
-        revalidation: &RuntimeReadinessRevalidation<'_>,
-        revalidate_all: bool,
-    ) -> Result<(), KernelError> {
-        let current_session_roots = revalidation
-            .session_id
-            .map(|session_id| self.session_enforceable_filesystem_root_paths_owned(session_id))
+        let current_session_roots = session_id
+            .map(|id| self.session_enforceable_filesystem_root_paths_owned(id))
             .transpose()?;
         if let Some(current_roots) = current_session_roots.as_deref() {
-            if Some(current_roots) != revalidation.session_filesystem_roots {
+            if Some(current_roots) != session_filesystem_roots {
                 return Err(KernelError::GuardDenied(
-                    "session filesystem roots changed while runtime readiness was pending"
-                        .to_string(),
+                    "session filesystem roots changed before dispatch".to_string(),
                 ));
             }
         }
-        let session_filesystem_roots = current_session_roots
-            .as_deref()
-            .or(revalidation.session_filesystem_roots);
-        let context = GuardContext {
-            request: revalidation.request,
-            scope: &revalidation.request.capability.scope,
-            agent_id: &revalidation.request.agent_id,
-            server_id: &revalidation.request.server_id,
-            session_filesystem_roots,
-            matched_grant_index: Some(revalidation.matched_grant_index),
+        let guard_context = GuardContext {
+            request,
+            scope: &request.capability.scope,
+            agent_id: &request.agent_id,
+            server_id: &request.server_id,
+            session_filesystem_roots: current_session_roots
+                .as_deref()
+                .or(session_filesystem_roots),
+            matched_grant_index: Some(matched_grant_index),
         };
         for guard in self.guards.iter() {
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 if revalidate_all {
-                    guard.revalidate_before_dispatch(&context)
+                    guard.revalidate_before_dispatch(&guard_context)
                 } else {
-                    guard.revalidate_required_before_dispatch(&context)
+                    guard.revalidate_required_before_dispatch(&guard_context)
                 }
             }));
             match result {
@@ -809,146 +784,29 @@ impl ChioKernel {
                 }
             }
         }
-        Ok(())
-    }
-
-    fn revalidate_runtime_hook_after_readiness(
-        &self,
-        revalidation: &RuntimeReadinessRevalidation<'_>,
-        revalidate_all: bool,
-    ) -> Result<(), KernelError> {
-        let Some(hook) = self.runtime_admission_hook.as_ref() else {
-            return Ok(());
-        };
-        if !revalidate_all && !hook.requires_dispatch_revalidation() {
-            return Ok(());
-        }
-        let context = RuntimeAdmissionRevalidationContext {
-            request: revalidation.request,
-            admission_metadata: revalidation.runtime_admission_metadata,
-            now_unix_secs: revalidation.now_unix_secs,
-            now_unix_ms: revalidation.now_unix_ms,
-            matched_grant_index: Some(revalidation.matched_grant_index),
-            local_kernel_id: self.federation_local_kernel_id(),
-        };
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            hook.revalidate_before_dispatch(&context)
-        })) {
-            Ok(result) => result,
-            Err(_) => Err(KernelError::Internal(
-                "runtime admission dispatch revalidation panicked (fail-closed)".to_string(),
-            )),
-        }
-    }
-
-    fn ensure_session_request_not_cancelled(
-        &self,
-        session_id: Option<&SessionId>,
-        request_id: &str,
-    ) -> Result<(), KernelError> {
-        let Some(session_id) = session_id else {
-            return Ok(());
-        };
-        let request_id = RequestId::new(request_id.to_string());
-        self.with_session(session_id, |session| {
-            let Some(inflight) = session.inflight().get(&request_id) else {
-                return Err(KernelError::RequestCancelled {
-                    request_id,
-                    reason: "session request completed while runtime readiness was pending"
-                        .to_string(),
-                });
-            };
-            if inflight.cancellation_requested {
-                return Err(KernelError::RequestCancelled {
-                    request_id: request_id.clone(),
-                    reason: inflight.cancellation_reason.unwrap_or_else(|| {
-                        "session request cancelled while runtime readiness was pending".to_string()
-                    }),
-                });
+        if let Some(hook) = self.runtime_admission_hook.as_ref() {
+            if revalidate_all || hook.requires_dispatch_revalidation() {
+                let context = RuntimeAdmissionRevalidationContext {
+                    request,
+                    admission_metadata: runtime_admission_metadata,
+                    now_unix_secs,
+                    now_unix_ms,
+                    matched_grant_index: Some(matched_grant_index),
+                    local_kernel_id: self.federation_local_kernel_id(),
+                };
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    hook.revalidate_before_dispatch(&context)
+                })) {
+                    Ok(result) => result?,
+                    Err(_) => {
+                        return Err(KernelError::Internal(
+                            "runtime admission dispatch revalidation panicked (fail-closed)"
+                                .to_string(),
+                        ));
+                    }
+                }
             }
-            if inflight.session_anchor_id != session.session_anchor().id() {
-                return Err(KernelError::RequestCancelled {
-                    request_id,
-                    reason: "session authorization changed while runtime readiness was pending"
-                        .to_string(),
-                });
-            }
-            Ok(())
-        })
-    }
-
-    pub(crate) fn mark_session_request_dispatch_started(
-        &self,
-        session_id: Option<&SessionId>,
-        request_id: &str,
-    ) -> Result<(), KernelError> {
-        let Some(session_id) = session_id else {
-            return Ok(());
-        };
-        let request_id = RequestId::new(request_id.to_string());
-        self.with_session(session_id, |session| {
-            session
-                .try_mark_request_dispatch_started(&request_id)
-                .map_err(|failure| KernelError::RequestCancelled {
-                    request_id: request_id.clone(),
-                    reason: match failure {
-                        crate::session::DispatchStartFailure::RequestNotInflight => {
-                            "session request completed before dispatch".to_string()
-                        }
-                        crate::session::DispatchStartFailure::CancellationRequested { reason } => {
-                            reason.unwrap_or_else(|| {
-                                "session request cancelled before dispatch".to_string()
-                            })
-                        }
-                        crate::session::DispatchStartFailure::SessionAnchorChanged => {
-                            "session authorization changed before dispatch".to_string()
-                        }
-                    },
-                })
-        })
-    }
-
-    pub(crate) fn revalidate_runtime_readiness_boundary(
-        &self,
-        revalidation: RuntimeReadinessRevalidation<'_>,
-    ) -> Result<(), KernelError> {
-        let session_request_id = revalidation
-            .parent_context
-            .map_or(revalidation.request.request_id.as_str(), |context| {
-                context.request_id.as_str()
-            });
-        self.ensure_session_request_not_cancelled(revalidation.session_id, session_request_id)?;
-        self.revalidate_tool_call_after_runtime_readiness(
-            revalidation.request,
-            revalidation.dpop_required,
-            revalidation.now_unix_secs,
-        )
-        .map_err(KernelError::GuardDenied)?;
-        if !revalidation.reserve_for_caller_preflight {
-            let _ = self.validate_execution_nonce_non_consuming(
-                revalidation.request,
-                &revalidation.request.capability,
-                revalidation.now_unix_secs,
-            )?;
         }
-        self.revalidate_receipt_boundary_after_runtime_readiness(
-            revalidation.request,
-            revalidation.receipt_admission,
-            revalidation.now_unix_secs,
-            revalidation.reserve_for_caller_preflight,
-        )?;
-        self.revalidate_governed_transaction_after_runtime_readiness(
-            revalidation.request,
-            &revalidation.request.capability,
-            revalidation.matched_grant,
-            revalidation.charge_result,
-            revalidation.parent_context,
-            revalidation.now_unix_secs,
-        )?;
-        let revalidate_all =
-            revalidation.readiness_waited || revalidation.force_mutable_state_revalidation;
-        self.revalidate_guards_after_runtime_readiness(&revalidation, revalidate_all)?;
-        self.revalidate_runtime_hook_after_readiness(&revalidation, revalidate_all)?;
         Ok(())
     }
 
@@ -967,6 +825,9 @@ impl ChioKernel {
     }
 
     pub(crate) fn has_local_receipt_id(&self, receipt_id: &str) -> Result<bool, KernelError> {
+        if self.load_durable_admission_receipt(receipt_id)?.is_some() {
+            return Ok(true);
+        }
         // Store-authoritative: a durable store is a point lookup by id, not an
         // O(n) mirror scan. On a store MISS fall back to the local mirror below: a
         // store may implement append without point loads (for example an
@@ -1024,6 +885,9 @@ impl ChioKernel {
         &self,
         receipt_id: &str,
     ) -> Result<Option<LocalReceiptArtifact>, KernelError> {
+        if let Some(receipt) = self.load_durable_admission_receipt(receipt_id)? {
+            return Ok(Some(LocalReceiptArtifact::Tool(Box::new(receipt))));
+        }
         // Consult the durable store first; on a MISS fall back to the local
         // mirror (append-only / remote stores may not implement point loads, so
         // a receipt appended and mirrored locally must still resolve). A store
@@ -1098,186 +962,132 @@ impl ChioKernel {
             .any(|candidate| candidate == *signer)
     }
 
-    /// Preserve every authorization and budget exposure after dispatch begins.
-    /// The tool-server outcome is not trustworthy enough to prove that no side
-    /// effect occurred, so releasing any hold here would reopen replay and
-    /// spending capacity. The signed terminal receipt carries the retained ids
-    /// for explicit operator reconciliation.
-    pub(crate) fn retain_post_dispatch_state(
-        &self,
-        receipt_metadata: Option<serde_json::Value>,
-        runtime_admission_metadata: Option<serde_json::Value>,
-        charge_result: Option<&BudgetChargeResult>,
-        budget_reconcile_decision: Option<&crate::budget_store::BudgetReconcileHoldDecision>,
-        payment_authorization: Option<&PaymentAuthorization>,
-    ) -> Option<serde_json::Value> {
-        let mut metadata = self.merge_retained_runtime_admission_metadata(
-            receipt_metadata,
-            runtime_admission_metadata,
-        );
-        if let Some(charge) = charge_result {
-            metadata = self.merge_budget_receipt_metadata(
-                metadata,
-                self.budget_execution_receipt_metadata(
-                    charge,
-                    budget_reconcile_decision.map(|decision| ("reconciled", decision)),
-                    None,
-                ),
-            );
-        }
-
-        let mut retained = serde_json::Map::new();
-        retained.insert(
-            "post_dispatch_outcome_unknown".to_string(),
-            serde_json::Value::Bool(true),
-        );
-        if let Some(charge) = charge_result.filter(|_| budget_reconcile_decision.is_none()) {
-            retained.insert(
-                "retained_budget_hold_id".to_string(),
-                serde_json::json!(&charge.budget_hold_id),
-            );
-            retained.insert(
-                "retained_budget_exposure_units".to_string(),
-                serde_json::json!(charge.cost_charged),
-            );
-        }
-        if let Some(authorization) = payment_authorization {
-            retained.insert(
-                "retained_payment_authorization_id".to_string(),
-                serde_json::json!(&authorization.authorization_id),
-            );
-            retained.insert(
-                "retained_payment_authorization_settled".to_string(),
-                serde_json::json!(authorization.settled),
-            );
-        }
-        merge_metadata_objects(
-            metadata,
-            Some(serde_json::json!({ "chio_runtime": retained })),
-        )
-    }
-
-    pub(crate) fn unwind_aborted_payment(
-        &self,
-        request: &ToolCallRequest,
-        charge: Option<&BudgetChargeResult>,
-        authorization: &PaymentAuthorization,
-        credential_disposition: PaymentCredentialDisposition,
-    ) -> Result<PreDispatchPaymentUnwindEvidence, KernelError> {
-        crate::payment::validate_payment_rail_identifier(
-            "authorization identifier",
-            &authorization.authorization_id,
-        )
-        .map_err(KernelError::Internal)?;
-        let settled_transaction_id = if authorization.settled {
-            let transaction_id = authorization
-                .settlement_transaction_id
-                .as_deref()
-                .unwrap_or(&authorization.authorization_id);
-            crate::payment::validate_payment_rail_identifier(
-                "settlement transaction identifier",
-                transaction_id,
-            )
-            .map_err(KernelError::Internal)?;
-            Some(transaction_id)
-        } else {
-            None
-        };
-        let adapter = self.payment_adapter.as_ref().ok_or_else(|| {
-            KernelError::Internal(
-                "payment authorization present without configured adapter".to_string(),
-            )
-        })?;
-        // MustPrepay authorizes the quote even when a smaller provisional
-        // budget charge also exists. Refund exactly what the rail funded;
-        // otherwise use the ordinary monetary charge.
-        let refund_terms = Self::mustprepay_quoted_amount(request)
-            .or_else(|| charge.map(|charge| (charge.cost_charged, charge.currency.clone())));
-        let unwind_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            if authorization.settled {
-                let transaction_id = settled_transaction_id.ok_or_else(|| {
-                    PaymentError::RailError(
-                        "settled authorization is missing its refund transaction identifier"
-                            .to_string(),
-                    )
-                })?;
-                let (amount_units, currency) = refund_terms.as_ref().ok_or_else(|| {
-                    PaymentError::RailError(
-                        "settled authorization is missing its refund amount".to_string(),
-                    )
-                })?;
-                adapter.refund(transaction_id, *amount_units, currency, &request.request_id)
-            } else {
-                adapter.release(&authorization.authorization_id, &request.request_id)
-            }
-        }))
-        .map_err(|_| {
-            KernelError::Internal(
-                "payment adapter panicked while unwinding aborted tool invocation".to_string(),
-            )
-        })?;
-        let result = unwind_result.map_err(|error| {
-            KernelError::Internal(format!(
-                "failed to unwind payment after aborted tool invocation: {error}"
-            ))
-        })?;
-        if result.is_local_bookkeeping() {
-            return Err(KernelError::Internal(
-                "payment unwind used local bookkeeping without a remote rail acknowledgement; retaining authorization exposure for reconciliation"
-                    .to_string(),
-            ));
-        }
-        let (expected_status, settlement_status) = if authorization.settled {
-            (
-                RailSettlementStatus::Refunded,
-                PreDispatchPaymentUnwindStatus::Refunded,
-            )
-        } else {
-            (
-                RailSettlementStatus::Released,
-                PreDispatchPaymentUnwindStatus::Released,
-            )
-        };
-        if result.settlement_status != expected_status {
-            return Err(KernelError::Internal(format!(
-                "payment unwind returned unexpected status {:?}; expected {expected_status:?}",
-                result.settlement_status
-            )));
-        }
-        crate::payment::validate_payment_rail_identifier(
-            "unwind transaction identifier",
-            &result.transaction_id,
-        )
-        .map_err(KernelError::Internal)?;
-        Ok(PreDispatchPaymentUnwindEvidence {
-            authorization_id: authorization.authorization_id.clone(),
-            transaction_id: result.transaction_id,
-            settlement_status,
-            credential_disposition,
-        })
-    }
-
-    pub(crate) fn unwind_aborted_monetary_invocation(
+    pub(crate) fn unwind_pre_dispatch_monetary_invocation(
         &self,
         request: &ToolCallRequest,
         cap: &CapabilityToken,
         charge_result: Option<&BudgetChargeResult>,
         payment_authorization: Option<&PaymentAuthorization>,
     ) -> Result<Option<BudgetReverseHoldDecision>, KernelError> {
+        self.unwind_pre_dispatch_monetary_invocation_with_evidence(
+            request,
+            cap,
+            charge_result,
+            payment_authorization,
+            PaymentCredentialDisposition::NonePresent,
+        )
+        .map(|(reverse, _)| reverse)
+        .map_err(|failure| *failure.error)
+    }
+
+    pub(crate) fn unwind_pre_dispatch_monetary_invocation_with_evidence(
+        &self,
+        request: &ToolCallRequest,
+        cap: &CapabilityToken,
+        charge_result: Option<&BudgetChargeResult>,
+        payment_authorization: Option<&PaymentAuthorization>,
+        credential_disposition: PaymentCredentialDisposition,
+    ) -> Result<
+        (
+            Option<BudgetReverseHoldDecision>,
+            Option<PreDispatchPaymentUnwindEvidence>,
+        ),
+        PreDispatchMonetaryUnwindFailure,
+    > {
+        let mut unwind_evidence = None;
         if let Some(authorization) = payment_authorization {
-            self.unwind_aborted_payment(
-                request,
-                charge_result,
-                authorization,
-                PaymentCredentialDisposition::NonePresent,
-            )?;
+            let adapter = self.payment_adapter.as_ref().ok_or_else(|| {
+                KernelError::Internal(
+                    "payment authorization present without configured adapter".to_string(),
+                )
+            })?;
+            let refund_amount = ChioKernel::mustprepay_quoted_amount(request).or_else(|| {
+                charge_result.map(|charge| (charge.cost_charged, charge.currency.clone()))
+            });
+            let (unwind_result, expected_status) = if authorization.state.is_final() {
+                let (amount_units, currency) = refund_amount.ok_or_else(|| {
+                    KernelError::Internal(
+                        "final payment authorization omitted a refundable amount".to_string(),
+                    )
+                })?;
+                (
+                    run_payment_adapter_operation("refund", || {
+                        adapter.refund(
+                            &authorization.authorization_id,
+                            amount_units,
+                            &currency,
+                            &request.request_id,
+                        )
+                    }),
+                    RailSettlementStatus::Refunded,
+                )
+            } else {
+                (
+                    run_payment_adapter_operation("release", || {
+                        adapter.release(&authorization.authorization_id, &request.request_id)
+                    }),
+                    RailSettlementStatus::Released,
+                )
+            };
+            match unwind_result {
+                Ok(result) if result.settlement_status == expected_status => {
+                    validate_payment_adapter_identifier(
+                        &result.transaction_id,
+                        "unwind transaction_id",
+                    )
+                    .map_err(|_| {
+                        KernelError::Internal(
+                            "payment unwind returned an invalid transaction identifier".to_string(),
+                        )
+                    })?;
+                    unwind_evidence = Some(PreDispatchPaymentUnwindEvidence {
+                        authorization_id: authorization.authorization_id.clone(),
+                        transaction_id: result.transaction_id,
+                        settlement_status: if expected_status == RailSettlementStatus::Refunded {
+                            PreDispatchPaymentUnwindStatus::Refunded
+                        } else {
+                            PreDispatchPaymentUnwindStatus::Released
+                        },
+                        credential_disposition,
+                    });
+                }
+                Ok(_) => {
+                    return Err(KernelError::Internal(
+                        "payment unwind returned an unconfirmed status".to_string(),
+                    )
+                    .into());
+                }
+                Err(_) => {
+                    return Err(KernelError::Internal(
+                        "payment unwind acknowledgement was not confirmed".to_string(),
+                    )
+                    .into());
+                }
+            }
         }
 
         let Some(charge) = charge_result else {
-            return Ok(None);
+            return Ok((None, unwind_evidence));
         };
 
-        Ok(Some(self.reverse_budget_charge(&cap.id, charge)?))
+        let reverse = if charge.invocation_capture.is_some() {
+            Some(
+                self.cancel_captured_monetary_before_dispatch(&cap.id, charge)
+                    .map_err(|error| PreDispatchMonetaryUnwindFailure {
+                        error: Box::new(error),
+                        evidence: unwind_evidence.clone(),
+                    })?,
+            )
+        } else {
+            Some(
+                self.reverse_budget_charge(&cap.id, charge)
+                    .map_err(|error| PreDispatchMonetaryUnwindFailure {
+                        error: Box::new(error),
+                        evidence: unwind_evidence.clone(),
+                    })?,
+            )
+        };
+        Ok((reverse, unwind_evidence))
     }
 
     pub(crate) fn record_observed_capability_snapshot(
@@ -1636,21 +1446,55 @@ impl ChioKernel {
             matched_grant_index,
             local_kernel_id: self.federation_local_kernel_id(),
         };
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| hook.evaluate(&context))) {
-            Err(_) => RuntimeAdmissionDecision::deny(
-                "runtime admission hook panicked (fail-closed)",
-                Some(serde_json::json!({
-                    "runtime_admission": {
-                        "accepted": false,
-                        "failure_code": "runtime_admission_hook_panic"
+        match hook.evaluate(&context) {
+            Ok(mut decision) => {
+                if decision.allowed {
+                    match decision.verified_treaty_material.take() {
+                        Some(material) => {
+                            decision.metadata = merge_metadata_objects(
+                                decision.metadata,
+                                Some(material.receipt_metadata()),
+                            );
+                            if let Err(error) = self.install_verified_treaty_material_for_request(
+                                &request.request_id,
+                                material,
+                            ) {
+                                return RuntimeAdmissionDecision::deny(
+                                    format!(
+                                        "verified federation treaty material could not be retained (fail-closed): {error}"
+                                    ),
+                                    decision.metadata,
+                                );
+                            }
+                        }
+                        None if request.federated_origin_kernel_id.is_some() => {
+                            let mut metadata = decision.metadata;
+                            if let Some(runtime) = metadata
+                                .as_mut()
+                                .and_then(serde_json::Value::as_object_mut)
+                                .and_then(|metadata| metadata.get_mut("chio_runtime"))
+                                .and_then(serde_json::Value::as_object_mut)
+                            {
+                                runtime.remove("federation_treaty_dsse");
+                            }
+                            return RuntimeAdmissionDecision::deny(
+                                "verified federation treaty material missing from allowed runtime admission",
+                                metadata,
+                            );
+                        }
+                        None => {}
                     }
-                })),
-            ),
-            Ok(Ok(decision)) => decision,
-            Ok(Err(error)) => RuntimeAdmissionDecision::deny(
-                format!("runtime admission hook error (fail-closed): {error}"),
+                }
+                decision
+            }
+            Err(error) => RuntimeAdmissionDecision::deny(
+                format!(
+                    "runtime admission hook \"{}\" error (fail-closed): {error}",
+                    hook.name()
+                ),
                 Some(serde_json::json!({
                     "runtime_admission": {
+                        "hook": hook.name(),
                         "accepted": false,
                         "failure_code": "runtime_admission_hook_error"
                     }
@@ -1669,45 +1513,7 @@ impl ChioKernel {
         let Some(hook) = self.runtime_admission_hook.as_ref() else {
             return Ok(());
         };
-        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            hook.release_reserved(metadata)
-        }))
-        .map_err(|_| {
-            KernelError::Internal(
-                "runtime admission hook panicked while releasing reservations".to_string(),
-            )
-        })?
-    }
-
-    /// Release pre-dispatch runtime reservations while preserving a receipt-safe
-    /// projection of the admission evidence. A release failure is retained in
-    /// metadata instead of short-circuiting after budget admission, so the
-    /// signed response locates the still-held reservation.
-    pub(crate) fn release_runtime_admission_reservations_for_pre_dispatch_denial(
-        &self,
-        metadata: Option<serde_json::Value>,
-    ) -> Option<serde_json::Value> {
-        let projected =
-            project_runtime_admission_receipt_metadata(metadata.as_ref()).unwrap_or(None);
-        match self.release_runtime_admission_reservations(metadata.as_ref()) {
-            Ok(()) => projected,
-            Err(error) => {
-                let reason = redacted!(&error).to_string();
-                warn!(
-                    reason = %redacted!(&reason),
-                    "runtime admission reservation release failed on pre-dispatch denial"
-                );
-                merge_metadata_objects(
-                    projected,
-                    Some(serde_json::json!({
-                        "chio_runtime": {
-                            "reservation_release_failed": true,
-                            "reservation_release_failure_reason": reason,
-                        }
-                    })),
-                )
-            }
-        }
+        hook.release_reserved(metadata)
     }
 
     /// Record, in receipt metadata, that runtime-admission reservations
@@ -1770,41 +1576,76 @@ impl ChioKernel {
                 serde_json::Value::Bool(true),
             );
         }
-        let marked = merge_metadata_objects(
+        merge_metadata_objects(
             metadata,
             Some(serde_json::json!({ "chio_runtime": retained })),
-        );
-        #[cfg(debug_assertions)]
-        self.debug_assert_runtime_reservations_retained(marked.as_ref());
-        marked
+        )
     }
 
-    pub(crate) fn merge_retained_runtime_admission_metadata(
+    pub(crate) fn release_runtime_admission_reservations_for_pre_dispatch_denial(
         &self,
-        receipt_metadata: Option<serde_json::Value>,
-        runtime_admission_metadata: Option<serde_json::Value>,
-    ) -> Option<serde_json::Value> {
-        let projected =
-            match project_runtime_admission_receipt_metadata(runtime_admission_metadata.as_ref()) {
-                Ok(projected) => projected,
-                Err(error) => {
-                    let reason = redacted!(&error).to_string();
-                    warn!(
-                        reason = %redacted!(&reason),
-                        "runtime admission metadata projection failed while retaining reservations"
-                    );
-                    Some(serde_json::json!({
-                        "chio_runtime": {
-                            "reservations_retained_fail_closed": true,
-                            "projection_failed": true,
-                            "projection_failure_reason": reason,
-                            "raw_runtime_admission_metadata": runtime_admission_metadata,
+        metadata: Option<serde_json::Value>,
+    ) -> (Option<serde_json::Value>, bool) {
+        let Some(metadata_value) = metadata else {
+            return (None, true);
+        };
+        let Some(hook) = self.runtime_admission_hook.as_ref() else {
+            return (Some(metadata_value), true);
+        };
+
+        match hook.release_reserved(&metadata_value) {
+            Ok(()) => (Some(metadata_value), true),
+            Err(error) => {
+                warn!(
+                    hook = hook.name(),
+                    reason = %redacted!(&error),
+                    "runtime admission reservation release failed on pre-dispatch denial"
+                );
+                (
+                    merge_metadata_objects(
+                        Some(metadata_value),
+                        Some(serde_json::json!({
+                            "chio_runtime": {
+                                "reservation_release_failed": true,
+                                "reservation_retained": true
+                            }
+                        })),
+                    ),
+                    false,
+                )
+            }
+        }
+    }
+
+    pub(crate) fn mark_session_request_dispatch_started(
+        &self,
+        session_id: Option<&SessionId>,
+        request_id: &str,
+    ) -> Result<(), KernelError> {
+        let Some(session_id) = session_id else {
+            return Ok(());
+        };
+        let request_id = RequestId::new(request_id.to_string());
+        self.with_session(session_id, |session| {
+            session
+                .try_mark_request_dispatch_started(&request_id)
+                .map_err(|failure| KernelError::RequestCancelled {
+                    request_id: request_id.clone(),
+                    reason: match failure {
+                        crate::session::DispatchStartFailure::RequestNotInflight => {
+                            "session request completed before dispatch".to_string()
                         }
-                    }))
-                }
-            };
-        let retained = self.mark_runtime_admission_reservations_retained_fail_closed(projected);
-        merge_metadata_objects(receipt_metadata, retained)
+                        crate::session::DispatchStartFailure::CancellationRequested { reason } => {
+                            reason.unwrap_or_else(|| {
+                                "session request cancelled before dispatch".to_string()
+                            })
+                        }
+                        crate::session::DispatchStartFailure::SessionAnchorChanged => {
+                            "session authorization changed before dispatch".to_string()
+                        }
+                    },
+                })
+        })
     }
 
     /// Forward the validated request and optionally report actual invocation
@@ -1812,12 +1653,29 @@ impl ChioKernel {
     /// dispatch entry point (`ToolEvaluator::dispatch`), so a custom evaluator or
     /// phase-level caller cannot bypass the deadline and hang indefinitely on a
     /// wedged tool server; it matches the budget the full evaluate path enforces.
+    #[cfg(test)]
     pub(crate) async fn dispatch_tool_call_with_cost(
         &self,
         request: &ToolCallRequest,
         has_monetary_grant: bool,
     ) -> Result<(ToolServerOutput, Option<ToolInvocationCost>), KernelError> {
-        self.require_presented_execution_nonce(request, &request.capability)?;
+        self.validate_required_execution_nonce(request, &request.capability)?;
+        let request_has_monetary_grant = resolve_required_matching_grants(
+            &request.capability,
+            &request.tool_name,
+            &request.server_id,
+            &request.arguments,
+            request.model_metadata.as_ref(),
+        )?
+        .iter()
+        .any(|matching| {
+            matching.grant.max_cost_per_invocation.is_some()
+                || matching.grant.max_total_cost.is_some()
+        });
+        if has_monetary_grant || request_has_monetary_grant {
+            return Err(KernelError::DirectDispatchUnavailable);
+        }
+        self.reserve_presented_execution_nonce(request)?;
         self.dispatch_within_budget(request, has_monetary_grant)
             .await
     }
@@ -1840,8 +1698,29 @@ impl ChioKernel {
     /// limit). With no runtime at all it runs inline without a timeout (there is
     /// no async transport to hang on, and the timeout wrapper would panic without
     /// a timer driver).
+    #[cfg(test)]
     pub(crate) async fn dispatch_within_budget(
         &self,
+        request: &ToolCallRequest,
+        has_monetary_grant: bool,
+    ) -> Result<(ToolServerOutput, Option<ToolInvocationCost>), KernelError> {
+        let server = self
+            .tool_servers
+            .get(&request.server_id)
+            .cloned()
+            .ok_or_else(|| {
+                KernelError::ToolNotRegistered(format!(
+                    "server \"{}\" / tool \"{}\"",
+                    request.server_id, request.tool_name
+                ))
+            })?;
+        self.dispatch_resolved_server_within_budget(server, request, has_monetary_grant)
+            .await
+    }
+
+    pub(crate) async fn dispatch_resolved_server_within_budget(
+        &self,
+        server: Arc<dyn ToolServerConnection>,
         request: &ToolCallRequest,
         has_monetary_grant: bool,
     ) -> Result<(ToolServerOutput, Option<ToolInvocationCost>), KernelError> {
@@ -1850,9 +1729,13 @@ impl ChioKernel {
             .deadlines
             .dispatch_budget_for(&request.server_id)
         else {
-            return self
-                .dispatch_tool_call_with_cost_after_nonce_check(request, has_monetary_grant)
-                .await;
+            return Self::invoke_resolved_server(
+                server,
+                request.tool_name.clone(),
+                request.arguments.clone(),
+                has_monetary_grant,
+            )
+            .await;
         };
 
         let timer_available = dispatch_timer_available();
@@ -1861,8 +1744,12 @@ impl ChioKernel {
             Ok(tokio::runtime::RuntimeFlavor::MultiThread)
         );
         if !multi_thread {
-            let call =
-                self.dispatch_tool_call_with_cost_after_nonce_check(request, has_monetary_grant);
+            let call = Self::invoke_resolved_server(
+                server,
+                request.tool_name.clone(),
+                request.arguments.clone(),
+                has_monetary_grant,
+            );
             if timer_available {
                 return match tokio::time::timeout(budget, call).await {
                     Ok(result) => result,
@@ -1872,15 +1759,6 @@ impl ChioKernel {
             return call.await;
         }
 
-        let server = match self.tool_servers.get(&request.server_id) {
-            Some(server) => Arc::clone(server),
-            None => {
-                return Err(KernelError::ToolNotRegistered(format!(
-                    "server \"{}\" / tool \"{}\"",
-                    request.server_id, request.tool_name
-                )));
-            }
-        };
         let tool_name = request.tool_name.clone();
         let arguments = request.arguments.clone();
         let handle = tokio::runtime::Handle::current();
@@ -1937,26 +1815,6 @@ impl ChioKernel {
                 ))),
             }
         }
-    }
-
-    pub(crate) async fn dispatch_tool_call_with_cost_after_nonce_check(
-        &self,
-        request: &ToolCallRequest,
-        has_monetary_grant: bool,
-    ) -> Result<(ToolServerOutput, Option<ToolInvocationCost>), KernelError> {
-        let server = self.tool_servers.get(&request.server_id).ok_or_else(|| {
-            KernelError::ToolNotRegistered(format!(
-                "server \"{}\" / tool \"{}\"",
-                request.server_id, request.tool_name
-            ))
-        })?;
-        Self::invoke_resolved_server(
-            Arc::clone(server),
-            request.tool_name.clone(),
-            request.arguments.clone(),
-            has_monetary_grant,
-        )
-        .await
     }
 
     /// Drive one already-resolved tool-server invocation to completion. Taken
@@ -2024,76 +1882,29 @@ impl ChioKernel {
         }
     }
 
-    /// Persist already-signed child receipts using commit-bounded durable
-    /// appends under the kernel-wide receipt write lock, then the in-process log.
+    /// Persist a single already-signed child receipt: a commit-bounded durable
+    /// append under the kernel-wide receipt write lock, then the in-process log.
     /// Child receipts hold that lock, so an unbounded wait would let a wedged
     /// writer pin every subsequent receipt write; the bounded append fails
     /// closed on timeout. The in-process log is appended only after the durable
     /// append succeeds, so a failed append never records a child receipt that is
     /// absent from the durable log.
-    pub(crate) fn record_child_receipts(
-        &self,
-        receipts: &mut Vec<ChildRequestReceipt>,
-        unknown_outcomes: &mut Vec<ChildRequestReceipt>,
-    ) -> Result<(), KernelError> {
-        let mut recorded = 0;
-        while recorded < receipts.len() {
-            if let Err(failure) = self.record_child_receipt(&receipts[recorded]) {
-                receipts.drain(..recorded);
-                match failure.disposition {
-                    ChildReceiptAppendDisposition::NotAttempted => {}
-                    ChildReceiptAppendDisposition::OutcomeUnknown => {
-                        if !receipts.is_empty() {
-                            unknown_outcomes.push(receipts.remove(0));
-                        }
-                    }
-                }
-                return Err(failure.error);
-            }
-            recorded += 1;
-        }
-        receipts.clear();
-        Ok(())
-    }
-
-    fn record_child_receipt(
+    pub(crate) fn record_child_receipt(
         &self,
         receipt: &ChildRequestReceipt,
-    ) -> Result<(), ChildReceiptRecordError> {
-        let receipt_store_write =
-            self.receipt_store_write_lock
-                .lock()
-                .map_err(|_| ChildReceiptRecordError {
-                    error: KernelError::Internal("receipt store write lock poisoned".to_string()),
-                    disposition: ChildReceiptAppendDisposition::NotAttempted,
-                })?;
-        let append_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            self.with_receipt_store(|store| {
-                Ok(store.append_child_receipt_with_timeout(
-                    receipt,
-                    self.config.deadlines.receipt_append_budget(),
-                )?)
-            })
-        }));
-        match append_result {
-            Ok(Ok(_stored_seq)) => {}
-            Ok(Err(error)) => {
-                return Err(ChildReceiptRecordError {
-                    error,
-                    disposition: ChildReceiptAppendDisposition::OutcomeUnknown,
-                });
-            }
-            Err(_) => {
-                return Err(ChildReceiptRecordError {
-                    error: KernelError::Internal(
-                        "child receipt append panicked after persistence began".to_string(),
-                    ),
-                    disposition: ChildReceiptAppendDisposition::OutcomeUnknown,
-                });
-            }
-        }
-        self.append_child_receipt_to_local_log(receipt.clone());
+    ) -> Result<(), KernelError> {
+        let receipt_store_write = self
+            .receipt_store_write_lock
+            .lock()
+            .map_err(|_| KernelError::Internal("receipt store write lock poisoned".to_string()))?;
+        self.with_receipt_store(|store| {
+            Ok(store.append_child_receipt_with_timeout(
+                receipt,
+                self.config.deadlines.receipt_append_budget(),
+            )?)
+        })?;
         drop(receipt_store_write);
+        self.append_child_receipt_to_local_log(receipt.clone());
         Ok(())
     }
 
@@ -2109,174 +1920,6 @@ impl ChioKernel {
             Ok(mut log) => log.append(receipt),
             Err(poisoned) => poisoned.into_inner().append(receipt),
         }
-    }
-}
-
-#[cfg(test)]
-mod runtime_admission_deadline_tests {
-    use super::*;
-
-    struct SchedulerLockCheckingWaker {
-        shared: std::sync::Arc<RuntimeAdmissionDeadlineSchedulerShared>,
-        called: std::sync::atomic::AtomicBool,
-        lock_available: std::sync::atomic::AtomicBool,
-    }
-
-    impl SchedulerLockCheckingWaker {
-        fn record_wake(&self) {
-            self.lock_available.store(
-                self.shared.schedule.try_lock().is_ok(),
-                std::sync::atomic::Ordering::SeqCst,
-            );
-            self.called.store(true, std::sync::atomic::Ordering::SeqCst);
-        }
-    }
-
-    impl std::task::Wake for SchedulerLockCheckingWaker {
-        fn wake(self: std::sync::Arc<Self>) {
-            self.record_wake();
-        }
-
-        fn wake_by_ref(self: &std::sync::Arc<Self>) {
-            self.record_wake();
-        }
-    }
-
-    #[test]
-    fn shared_readiness_scheduler_expires_concurrent_waits_on_one_worker() {
-        let deadlines = (0..32)
-            .map(|_| RuntimeAdmissionDeadline::new(Instant::now() + Duration::from_millis(10)))
-            .collect::<Vec<_>>();
-        let results = futures::executor::block_on(futures::future::join_all(deadlines));
-        assert!(results.iter().all(Result::is_ok));
-        assert_eq!(
-            RUNTIME_ADMISSION_DEADLINE_WORKER_STARTS.load(std::sync::atomic::Ordering::SeqCst),
-            1,
-            "all concurrent readiness deadlines must share one worker"
-        );
-    }
-
-    #[test]
-    fn shared_readiness_scheduler_drops_cancelled_waits_without_retention() {
-        let mut deadlines = (0..32)
-            .map(|_| {
-                Box::pin(RuntimeAdmissionDeadline::new(
-                    Instant::now() + Duration::from_secs(30),
-                ))
-            })
-            .collect::<Vec<_>>();
-        let waker = futures::task::noop_waker();
-        let mut context = std::task::Context::from_waker(&waker);
-        for deadline in &mut deadlines {
-            assert!(matches!(
-                std::future::Future::poll(deadline.as_mut(), &mut context),
-                std::task::Poll::Pending
-            ));
-        }
-        let states = deadlines
-            .iter()
-            .map(|deadline| std::sync::Arc::downgrade(&deadline.state))
-            .collect::<Vec<_>>();
-
-        drop(deadlines);
-
-        assert!(states.iter().all(|state| state.upgrade().is_none()));
-        assert_eq!(
-            RUNTIME_ADMISSION_DEADLINE_WORKER_STARTS.load(std::sync::atomic::Ordering::SeqCst),
-            1,
-            "cancellation must not start additional deadline workers"
-        );
-    }
-
-    #[test]
-    fn normal_readiness_completion_cancels_long_deadline_without_retention() {
-        let deadline = RuntimeAdmissionDeadline::new(Instant::now() + Duration::from_secs(30));
-        let state = std::sync::Arc::downgrade(&deadline.state);
-        let mut first_poll = true;
-        let readiness = std::future::poll_fn(move |cx| {
-            if first_poll {
-                first_poll = false;
-                cx.waker().wake_by_ref();
-                std::task::Poll::Pending
-            } else {
-                std::task::Poll::Ready(())
-            }
-        });
-
-        let result = futures::executor::block_on(futures::future::select(readiness, deadline));
-        let readiness_won = match result {
-            futures::future::Either::Left(((), deadline)) => {
-                drop(deadline);
-                true
-            }
-            futures::future::Either::Right((_deadline_result, _readiness)) => false,
-        };
-
-        assert!(
-            readiness_won,
-            "readiness must resolve before the long deadline"
-        );
-        assert!(state.upgrade().is_none());
-    }
-
-    #[test]
-    fn readiness_scheduler_identifier_overflow_inserts_no_deadline() {
-        let scheduler = std::sync::Arc::new(RuntimeAdmissionDeadlineScheduler {
-            shared: std::sync::Arc::new(RuntimeAdmissionDeadlineSchedulerShared {
-                schedule: std::sync::Mutex::new(RuntimeAdmissionDeadlineSchedule {
-                    next_id: u64::MAX,
-                    entries: std::collections::BTreeMap::new(),
-                }),
-                changed: std::sync::Condvar::new(),
-            }),
-        });
-        let registration = scheduler.register(
-            Instant::now(),
-            std::sync::Arc::new(RuntimeAdmissionDeadlineState::new()),
-        );
-
-        assert!(matches!(registration, Err(KernelError::Internal(_))));
-        let entry_count = match scheduler.shared.schedule.lock() {
-            Ok(schedule) => schedule.entries.len(),
-            Err(poisoned) => poisoned.into_inner().entries.len(),
-        };
-        assert_eq!(entry_count, 0);
-    }
-
-    #[test]
-    fn readiness_scheduler_releases_schedule_lock_before_waking() -> Result<(), KernelError> {
-        let scheduler = runtime_admission_deadline_scheduler()?;
-        let checker = std::sync::Arc::new(SchedulerLockCheckingWaker {
-            shared: std::sync::Arc::clone(&scheduler.shared),
-            called: std::sync::atomic::AtomicBool::new(false),
-            lock_available: std::sync::atomic::AtomicBool::new(false),
-        });
-        let waker = std::task::Waker::from(std::sync::Arc::clone(&checker));
-        let mut context = std::task::Context::from_waker(&waker);
-        let mut deadline = Box::pin(RuntimeAdmissionDeadline::new(
-            Instant::now() + Duration::from_millis(10),
-        ));
-        assert!(matches!(
-            std::future::Future::poll(deadline.as_mut(), &mut context),
-            std::task::Poll::Pending
-        ));
-
-        let wait_until = Instant::now() + Duration::from_secs(1);
-        while !checker.called.load(std::sync::atomic::Ordering::SeqCst)
-            && Instant::now() < wait_until
-        {
-            std::thread::sleep(Duration::from_millis(1));
-        }
-        drop(deadline);
-
-        assert!(checker.called.load(std::sync::atomic::Ordering::SeqCst));
-        assert!(
-            checker
-                .lock_available
-                .load(std::sync::atomic::Ordering::SeqCst),
-            "deadline worker must release the scheduler lock before waking"
-        );
-        Ok(())
     }
 }
 

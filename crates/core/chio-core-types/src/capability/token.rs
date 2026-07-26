@@ -14,12 +14,21 @@ use crate::signer_binding::{
     ensure_backend_matches_embedded_key, ensure_keypair_matches_embedded_key,
 };
 
+use super::aggregate_invocation::{
+    build_family_root_binding, build_family_root_binding_with_backend,
+    validate_aggregate_budget_shape, validate_direct_family_binding, AggregateInvocationBudget,
+    AggregateInvocationScope,
+};
 use super::attenuation::{
     scope_hash, validate_attenuation_proof, verify_attenuation_witness, Attenuation,
-    AttenuationProof, DelegationLink, ScopeHash,
+    AttenuationProof, AttenuationWitness, DelegationLink, ScopeHash,
 };
 use super::caveat::Caveat;
 use super::crypto_floor::{CapabilityCryptoFloor, CapabilityFloorVerifyError};
+use super::cumulative_approval::{
+    bind_family_roots, bind_family_roots_with_backend, cumulative_approval_delegation_marker,
+    validate_cumulative_approval_body, validate_cumulative_approval_token,
+};
 use super::features::{self, CapabilityNegotiation};
 use super::scope::ChioScope;
 use super::validation::validate_budget_share_bps;
@@ -38,6 +47,66 @@ fn is_none_or_empty<T>(value: &Option<Vec<T>>) -> bool {
 
 fn is_none_or_empty_attenuation_proof(value: &Option<AttenuationProof>) -> bool {
     value.is_none()
+}
+
+fn validate_cumulative_approval_projections(
+    scope: &ChioScope,
+    delegation_chain: &[DelegationLink],
+    witness: Option<&AttenuationWitness>,
+) -> Result<()> {
+    let expected = cumulative_approval_delegation_marker(scope)?;
+    let mut previous = None;
+    for link in delegation_chain {
+        if let Some(marker) = link.cumulative_approval.as_ref() {
+            marker.validate()?;
+        }
+        if let Some(previous_marker) = previous {
+            match (previous_marker, link.cumulative_approval.as_ref()) {
+                (Some(parent), Some(child)) if !child.is_subset_of(parent) => {
+                    return Err(Error::AttenuationViolation {
+                        reason: "delegation chain created or mutated a cumulative approval marker"
+                            .to_string(),
+                    });
+                }
+                (None, Some(_)) => {
+                    return Err(Error::AttenuationViolation {
+                        reason: "delegation chain created a cumulative approval marker below an unbound hop"
+                            .to_string(),
+                    });
+                }
+                _ => {}
+            }
+        }
+        previous = Some(link.cumulative_approval.as_ref());
+    }
+    if delegation_chain
+        .last()
+        .is_some_and(|link| link.cumulative_approval != expected)
+    {
+        return Err(Error::AttenuationViolation {
+            reason: "final delegation link changed or omitted cumulative approval markers"
+                .to_string(),
+        });
+    }
+    if let Some(witness) = witness {
+        if witness.cumulative_approval != expected {
+            return Err(Error::AttenuationViolation {
+                reason: "attenuation witness changed or omitted cumulative approval markers"
+                    .to_string(),
+            });
+        }
+        if delegation_chain
+            .last()
+            .is_some_and(|link| link.cumulative_approval != witness.cumulative_approval)
+        {
+            return Err(Error::AttenuationViolation {
+                reason:
+                    "attenuation witness cumulative approval markers do not match the signed link"
+                        .to_string(),
+            });
+        }
+    }
+    Ok(())
 }
 
 /// A Chio capability token. Scoped, time-bounded, cryptographically signed.
@@ -68,6 +137,9 @@ pub struct CapabilityToken {
     /// Ordered list of delegation links from the root CA to this token.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub delegation_chain: Vec<DelegationLink>,
+    /// Optional invocation ceiling shared by this capability or its delegation family.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aggregate_invocation_budget: Option<AggregateInvocationBudget>,
     /// Signing algorithm. Absent means Ed25519 (the default).
     #[serde(default, skip_serializing_if = "is_default_optional_algorithm")]
     pub algorithm: Option<SigningAlgorithm>,
@@ -105,6 +177,8 @@ pub struct CapabilityTokenBody {
     pub expires_at: u64,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub delegation_chain: Vec<DelegationLink>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub aggregate_invocation_budget: Option<AggregateInvocationBudget>,
 }
 
 /// Schema-aware capability-token signing input used by newly-issued tokens.
@@ -149,6 +223,7 @@ impl CapabilityToken {
             issued_at: self.issued_at,
             expires_at: self.expires_at,
             delegation_chain: self.delegation_chain.clone(),
+            aggregate_invocation_budget: self.aggregate_invocation_budget.clone(),
         }
     }
 
@@ -172,11 +247,83 @@ impl CapabilityToken {
             && self.scope_attenuations.as_ref().is_none_or(Vec::is_empty)
             && self.attenuation_proof.is_none()
             && self.budget_share_bps.is_none()
+            && self.aggregate_invocation_budget.is_none()
+            && !self.scope.has_cumulative_approval()
     }
 
     /// Reject unknown schema IDs and budget amplification.
     pub fn validate_schema(&self) -> Result<()> {
         ensure_schema_matches(&self.schema, CHIO_CAPABILITY_SCHEMA, "capability token")?;
+        validate_aggregate_budget_shape(&self.scope, self.aggregate_invocation_budget.as_ref())?;
+        validate_cumulative_approval_token(self)?;
+        validate_cumulative_approval_projections(
+            &self.scope,
+            &self.delegation_chain,
+            self.attenuation_proof
+                .as_ref()
+                .map(|proof| &proof.normalized_subset_proof),
+        )?;
+        if let Some(budget) = self.aggregate_invocation_budget.as_ref() {
+            if budget.scope == AggregateInvocationScope::Capability
+                && (self
+                    .delegation_chain
+                    .iter()
+                    .any(|link| link.aggregate_budget.is_some())
+                    || self.attenuation_proof.as_ref().is_some_and(|proof| {
+                        proof.normalized_subset_proof.aggregate_budget.is_some()
+                    }))
+            {
+                return Err(Error::AttenuationViolation {
+                    reason: "capability-scoped aggregate budget carries delegation-family evidence"
+                        .to_string(),
+                });
+            }
+            if let Some(binding) = budget.root_binding.as_ref() {
+                if binding.body.max_invocations != budget.max_invocations {
+                    return Err(Error::AttenuationViolation {
+                        reason: "aggregate budget maximum does not match its root binding"
+                            .to_string(),
+                    });
+                }
+                if !binding.verify_signature()? {
+                    return Err(Error::SignatureVerificationFailed);
+                }
+                let marker = binding.delegation_marker()?;
+                if self
+                    .delegation_chain
+                    .iter()
+                    .any(|link| link.aggregate_budget.as_ref() != Some(&marker))
+                {
+                    return Err(Error::AttenuationViolation {
+                        reason: "delegation chain changed or omitted the aggregate budget marker"
+                            .to_string(),
+                    });
+                }
+                if let Some(proof) = self.attenuation_proof.as_ref() {
+                    if proof.normalized_subset_proof.aggregate_budget.as_ref() != Some(&marker) {
+                        return Err(Error::AttenuationViolation {
+                            reason:
+                                "attenuation witness changed or omitted the aggregate budget marker"
+                                    .to_string(),
+                        });
+                    }
+                }
+            }
+        } else if self
+            .delegation_chain
+            .iter()
+            .any(|link| link.aggregate_budget.is_some())
+            || self
+                .attenuation_proof
+                .as_ref()
+                .is_some_and(|proof| proof.normalized_subset_proof.aggregate_budget.is_some())
+        {
+            return Err(Error::AttenuationViolation {
+                reason: "capability without a family budget carries aggregate delegation evidence"
+                    .to_string(),
+            });
+        }
+        validate_direct_family_binding(self)?;
         if !self.caveats.is_empty() {
             return Err(Error::AttenuationViolation {
                 reason:
@@ -337,6 +484,8 @@ impl CapabilityToken {
     /// default Ed25519 algorithm.
     pub fn sign(body: CapabilityTokenBody, keypair: &Keypair) -> Result<Self> {
         ensure_keypair_matches_embedded_key(&body.issuer, keypair, "capability token", "issuer")?;
+        validate_aggregate_budget_shape(&body.scope, body.aggregate_invocation_budget.as_ref())?;
+        validate_cumulative_approval_body(&body)?;
         let signing_body = CapabilityTokenSigningBody {
             schema: CHIO_CAPABILITY_SCHEMA.to_string(),
             body: body.clone(),
@@ -346,7 +495,7 @@ impl CapabilityToken {
             budget_share_bps: None,
         };
         let (signature, _bytes) = keypair.sign_canonical(&signing_body)?;
-        Ok(Self {
+        let token = Self {
             schema: CHIO_CAPABILITY_SCHEMA.to_string(),
             id: body.id,
             issuer: body.issuer,
@@ -355,18 +504,61 @@ impl CapabilityToken {
             issued_at: body.issued_at,
             expires_at: body.expires_at,
             delegation_chain: body.delegation_chain,
+            aggregate_invocation_budget: body.aggregate_invocation_budget,
             algorithm: None,
             caveats: Vec::new(),
             scope_attenuations: None,
             attenuation_proof: None,
             budget_share_bps: None,
             signature,
-        })
+        };
+        token.validate_schema()?;
+        Ok(token)
+    }
+
+    /// Issue a direct delegation-family aggregate root with a CA-authenticated binding.
+    pub fn sign_aggregate_family_root(
+        mut body: CapabilityTokenBody,
+        max_invocations: u32,
+        keypair: &Keypair,
+    ) -> Result<Self> {
+        if !body.delegation_chain.is_empty() || body.aggregate_invocation_budget.is_some() {
+            return Err(Error::AttenuationViolation {
+                reason: "aggregate family-root issuance requires an unbound direct token body"
+                    .to_string(),
+            });
+        }
+        ensure_keypair_matches_embedded_key(&body.issuer, keypair, "capability token", "issuer")?;
+        let root_binding = build_family_root_binding(&body, max_invocations, keypair)?;
+        body.aggregate_invocation_budget = Some(AggregateInvocationBudget {
+            scope: AggregateInvocationScope::DelegationFamily,
+            max_invocations,
+            root_binding: Some(root_binding),
+        });
+        Self::sign(body, keypair)
+    }
+
+    /// Issue a direct cumulative-approval family root with CA-authenticated bindings.
+    pub fn sign_cumulative_approval_family_root(
+        body: CapabilityTokenBody,
+        keypair: &Keypair,
+    ) -> Result<Self> {
+        Self::sign_cumulative_approval_family_root_at_epoch(body, 0, keypair)
+    }
+
+    /// Issue a direct cumulative-approval family root at a named signer key epoch.
+    pub fn sign_cumulative_approval_family_root_at_epoch(
+        mut body: CapabilityTokenBody,
+        signer_key_epoch: u64,
+        keypair: &Keypair,
+    ) -> Result<Self> {
+        bind_family_roots(&mut body, signer_key_epoch, keypair)?;
+        Self::sign(body, keypair)
     }
 
     /// Sign an attenuated capability token with caveats and an attenuation proof.
     pub fn sign_attenuated(
-        body: CapabilityTokenAttenuationBody,
+        mut body: CapabilityTokenAttenuationBody,
         keypair: &Keypair,
     ) -> Result<Self> {
         ensure_keypair_matches_embedded_key(
@@ -396,6 +588,54 @@ impl CapabilityToken {
         if let Some(share) = body.budget_share_bps {
             validate_budget_share_bps(share)?;
         }
+        validate_aggregate_budget_shape(
+            &body.body.scope,
+            body.body.aggregate_invocation_budget.as_ref(),
+        )?;
+        validate_cumulative_approval_body(&body.body)?;
+        validate_cumulative_approval_projections(
+            &body.body.scope,
+            &body.body.delegation_chain,
+            Some(&body.attenuation_proof.normalized_subset_proof),
+        )?;
+        let aggregate_marker = body
+            .body
+            .aggregate_invocation_budget
+            .as_ref()
+            .and_then(|budget| budget.root_binding.as_ref())
+            .map(|binding| binding.delegation_marker())
+            .transpose()?;
+        if let Some(marker) = aggregate_marker.as_ref() {
+            if body
+                .body
+                .delegation_chain
+                .iter()
+                .any(|link| link.aggregate_budget.as_ref() != Some(marker))
+            {
+                return Err(Error::AttenuationViolation {
+                    reason: "delegation chain changed or omitted the aggregate budget marker"
+                        .to_string(),
+                });
+            }
+            body.attenuation_proof
+                .normalized_subset_proof
+                .aggregate_budget = Some(marker.clone());
+        } else if body
+            .body
+            .delegation_chain
+            .iter()
+            .any(|link| link.aggregate_budget.is_some())
+            || body
+                .attenuation_proof
+                .normalized_subset_proof
+                .aggregate_budget
+                .is_some()
+        {
+            return Err(Error::AttenuationViolation {
+                reason: "capability without a family budget carries aggregate delegation evidence"
+                    .to_string(),
+            });
+        }
         let signing_body = CapabilityTokenSigningBody {
             schema: CHIO_CAPABILITY_SCHEMA.to_string(),
             body: body.body.clone(),
@@ -405,7 +645,7 @@ impl CapabilityToken {
             budget_share_bps: body.budget_share_bps,
         };
         let (signature, _bytes) = keypair.sign_canonical(&signing_body)?;
-        Ok(Self {
+        let token = Self {
             schema: CHIO_CAPABILITY_SCHEMA.to_string(),
             id: body.body.id,
             issuer: body.body.issuer,
@@ -414,13 +654,16 @@ impl CapabilityToken {
             issued_at: body.body.issued_at,
             expires_at: body.body.expires_at,
             delegation_chain: body.body.delegation_chain,
+            aggregate_invocation_budget: body.body.aggregate_invocation_budget,
             algorithm: None,
             caveats: body.caveats,
             scope_attenuations: Some(body.scope_attenuations),
             attenuation_proof: Some(body.attenuation_proof),
             budget_share_bps: body.budget_share_bps,
             signature,
-        })
+        };
+        token.validate_schema()?;
+        Ok(token)
     }
 
     /// Sign a capability token body with an arbitrary [`SigningBackend`].
@@ -437,6 +680,8 @@ impl CapabilityToken {
         backend: &dyn SigningBackend,
     ) -> Result<Self> {
         ensure_backend_matches_embedded_key(&body.issuer, backend, "capability token", "issuer")?;
+        validate_aggregate_budget_shape(&body.scope, body.aggregate_invocation_budget.as_ref())?;
+        validate_cumulative_approval_body(&body)?;
         let signing_body = CapabilityTokenSigningBody {
             schema: CHIO_CAPABILITY_SCHEMA.to_string(),
             body: body.clone(),
@@ -446,7 +691,7 @@ impl CapabilityToken {
             budget_share_bps: None,
         };
         let (signature, _bytes) = sign_canonical_with_backend(backend, &signing_body)?;
-        Ok(Self {
+        let token = Self {
             schema: CHIO_CAPABILITY_SCHEMA.to_string(),
             id: body.id,
             issuer: body.issuer,
@@ -455,13 +700,56 @@ impl CapabilityToken {
             issued_at: body.issued_at,
             expires_at: body.expires_at,
             delegation_chain: body.delegation_chain,
+            aggregate_invocation_budget: body.aggregate_invocation_budget,
             algorithm: Some(backend.algorithm()),
             caveats: Vec::new(),
             scope_attenuations: None,
             attenuation_proof: None,
             budget_share_bps: None,
             signature,
-        })
+        };
+        token.validate_schema()?;
+        Ok(token)
+    }
+
+    /// Backend-agnostic direct delegation-family aggregate-root issuance.
+    pub fn sign_aggregate_family_root_with_backend(
+        mut body: CapabilityTokenBody,
+        max_invocations: u32,
+        backend: &dyn SigningBackend,
+    ) -> Result<Self> {
+        if !body.delegation_chain.is_empty() || body.aggregate_invocation_budget.is_some() {
+            return Err(Error::AttenuationViolation {
+                reason: "aggregate family-root issuance requires an unbound direct token body"
+                    .to_string(),
+            });
+        }
+        ensure_backend_matches_embedded_key(&body.issuer, backend, "capability token", "issuer")?;
+        let root_binding = build_family_root_binding_with_backend(&body, max_invocations, backend)?;
+        body.aggregate_invocation_budget = Some(AggregateInvocationBudget {
+            scope: AggregateInvocationScope::DelegationFamily,
+            max_invocations,
+            root_binding: Some(root_binding),
+        });
+        Self::sign_with_backend(body, backend)
+    }
+
+    /// Backend-agnostic cumulative-approval family-root issuance.
+    pub fn sign_cumulative_approval_family_root_with_backend(
+        body: CapabilityTokenBody,
+        backend: &dyn SigningBackend,
+    ) -> Result<Self> {
+        Self::sign_cumulative_approval_family_root_with_backend_at_epoch(body, 0, backend)
+    }
+
+    /// Backend-agnostic cumulative-approval family-root issuance at a key epoch.
+    pub fn sign_cumulative_approval_family_root_with_backend_at_epoch(
+        mut body: CapabilityTokenBody,
+        signer_key_epoch: u64,
+        backend: &dyn SigningBackend,
+    ) -> Result<Self> {
+        bind_family_roots_with_backend(&mut body, signer_key_epoch, backend)?;
+        Self::sign_with_backend(body, backend)
     }
 
     /// Verify the token's signature against its issuer key.

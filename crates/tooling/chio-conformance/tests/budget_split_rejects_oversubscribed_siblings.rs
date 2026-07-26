@@ -70,6 +70,7 @@ fn build_child(
         issued_at: 100,
         expires_at: 200,
         delegation_chain,
+        aggregate_invocation_budget: None,
     };
     CapabilityToken::sign_attenuated(
         CapabilityTokenAttenuationBody {
@@ -108,6 +109,8 @@ fn parent_at_5000_bps_cannot_mint_two_children_at_4000_bps_each() {
             attenuations: vec![],
             timestamp: 100,
             scope_hash: Some(scope_hash(&parent_scope).unwrap()),
+            aggregate_budget: None,
+            cumulative_approval: None,
         };
         let link = DelegationLink::sign(body, &parent_kp).expect("delegation link signs");
         vec![link]
@@ -131,6 +134,8 @@ fn parent_at_5000_bps_cannot_mint_two_children_at_4000_bps_each() {
                 attenuations: vec![],
                 timestamp: 100,
                 scope_hash: Some(scope_hash(&parent_scope).unwrap()),
+                aggregate_budget: None,
+                cumulative_approval: None,
             };
             vec![DelegationLink::sign(body, &parent_kp).expect("link a")]
         },

@@ -215,7 +215,6 @@ async fn sidecar_evaluate_returns_strict_execution_nonce_for_retry() {
         .test_expect("strict sidecar preflight should return retry nonce");
 
     let mut retry_body = body;
-    retry_body.request_id = "req-sidecar-nonce-retry".to_string();
     retry_body.execution_nonce = Some(nonce);
     let retry_request = Request::builder()
         .method("POST")

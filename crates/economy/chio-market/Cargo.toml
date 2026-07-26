@@ -15,12 +15,14 @@ name = "chio_market"
 chio-appraisal = { workspace = true }
 chio-core-types = { workspace = true }
 chio-credit = { workspace = true }
+chio-fiscal = { workspace = true }
 chio-underwriting = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
-serde_json = { workspace = true }
+chio-spec-validate = { workspace = true }
 
 [lints]
 workspace = true

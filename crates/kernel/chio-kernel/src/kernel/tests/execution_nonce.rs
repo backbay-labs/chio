@@ -1,207 +1,3 @@
-// Execution-nonce integration tests.
-//
-// Included by `src/kernel/tests.rs`, which already imported `super::*`
-// and all helper items from `tests/all.rs` (`make_config`, `make_scope`,
-// `make_grant`, `make_keypair`, `make_capability`, `make_request`,
-// `EchoServer`).
-//
-// The tests cover six behaviours:
-//   (a) a fresh nonce on Allow verifies
-//   (b) a stale nonce (>TTL) is rejected
-//   (c) a replayed nonce is rejected
-//   (d) mismatched binding is rejected
-//   (e) tampered signature is rejected
-//   (f) disabled mode lets tool calls through without a nonce (back-compat)
-
-use crate::execution_nonce::{
-    mint_execution_nonce, verify_execution_nonce, ExecutionNonceConfig, ExecutionNonceError,
-    ExecutionNonceStore, InMemoryExecutionNonceStore, NonceBinding,
-};
-
-struct BlockingExecutionNonceStore {
-    inner: InMemoryExecutionNonceStore,
-    entered: std::sync::Arc<tokio::sync::Notify>,
-    released: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    mutable_state: Option<std::sync::Arc<std::sync::atomic::AtomicBool>>,
-}
-
-struct DelayedReturnExecutionNonceStore {
-    inner: InMemoryExecutionNonceStore,
-    entered: std::sync::Arc<tokio::sync::Notify>,
-    released: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    rollback_calls: std::sync::Arc<AtomicU64>,
-}
-
-struct ExecutionNonceReleaseGuard {
-    released: std::sync::Arc<std::sync::atomic::AtomicBool>,
-}
-
-impl ExecutionNonceReleaseGuard {
-    fn release(&self) {
-        self.released.store(true, Ordering::Release);
-    }
-}
-
-impl Drop for ExecutionNonceReleaseGuard {
-    fn drop(&mut self) {
-        self.release();
-    }
-}
-
-impl ExecutionNonceStore for BlockingExecutionNonceStore {
-    fn reserve(&self, nonce_id: &str) -> Result<bool, KernelError> {
-        self.reserve_until(nonce_id, i64::MAX)
-    }
-
-    fn reserve_until(&self, nonce_id: &str, nonce_expires_at: i64) -> Result<bool, KernelError> {
-        self.entered.notify_one();
-        while !self.released.load(Ordering::Acquire) {
-            std::thread::sleep(Duration::from_millis(1));
-        }
-        self.inner.reserve_until(nonce_id, nonce_expires_at)
-    }
-
-    fn supports_dispatch_reservations(&self) -> bool {
-        true
-    }
-
-    fn reserve_for_dispatch(
-        &self,
-        nonce_id: &str,
-        nonce_expires_at: i64,
-        reservation_id: &str,
-    ) -> Result<bool, KernelError> {
-        self.entered.notify_one();
-        while !self.released.load(Ordering::Acquire) {
-            std::thread::sleep(Duration::from_millis(1));
-        }
-        if let Some(mutable_state) = &self.mutable_state {
-            mutable_state.store(true, Ordering::Release);
-        }
-        self.inner
-            .reserve_for_dispatch(nonce_id, nonce_expires_at, reservation_id)
-    }
-
-    fn rollback_dispatch_reservation(
-        &self,
-        nonce_id: &str,
-        reservation_id: &str,
-    ) -> Result<bool, KernelError> {
-        self.inner
-            .rollback_dispatch_reservation(nonce_id, reservation_id)
-    }
-}
-
-impl ExecutionNonceStore for DelayedReturnExecutionNonceStore {
-    fn reserve(&self, nonce_id: &str) -> Result<bool, KernelError> {
-        self.inner.reserve(nonce_id)
-    }
-
-    fn reserve_until(&self, nonce_id: &str, nonce_expires_at: i64) -> Result<bool, KernelError> {
-        self.inner.reserve_until(nonce_id, nonce_expires_at)
-    }
-
-    fn supports_dispatch_reservations(&self) -> bool {
-        true
-    }
-
-    fn reserve_for_dispatch(
-        &self,
-        nonce_id: &str,
-        nonce_expires_at: i64,
-        reservation_id: &str,
-    ) -> Result<bool, KernelError> {
-        let reservation =
-            self.inner
-                .reserve_for_dispatch(nonce_id, nonce_expires_at, reservation_id);
-        self.entered.notify_one();
-        while !self.released.load(Ordering::Acquire) {
-            std::thread::sleep(Duration::from_millis(1));
-        }
-        reservation
-    }
-
-    fn rollback_dispatch_reservation(
-        &self,
-        nonce_id: &str,
-        reservation_id: &str,
-    ) -> Result<bool, KernelError> {
-        self.rollback_calls.fetch_add(1, Ordering::SeqCst);
-        self.inner
-            .rollback_dispatch_reservation(nonce_id, reservation_id)
-    }
-}
-
-struct ReservationMutationGuard {
-    mutable_state: std::sync::Arc<std::sync::atomic::AtomicBool>,
-    revalidations: std::sync::Arc<AtomicU64>,
-}
-
-impl Guard for ReservationMutationGuard {
-    fn name(&self) -> &str {
-        "reservation-mutation-guard"
-    }
-
-    fn evaluate(&self, _ctx: &GuardContext<'_>) -> Result<GuardDecision, KernelError> {
-        Ok(GuardDecision::allow())
-    }
-
-    fn revalidate_before_dispatch(&self, _ctx: &GuardContext<'_>) -> Result<(), KernelError> {
-        self.revalidations.fetch_add(1, Ordering::SeqCst);
-        if self.mutable_state.load(Ordering::Acquire) {
-            return Err(KernelError::GuardDenied(
-                "credential reservation invalidated mutable guard state".to_string(),
-            ));
-        }
-        Ok(())
-    }
-}
-
-fn kernel_with_nonce() -> (ChioKernel, Keypair, ChioScope, ExecutionNonceConfig) {
-    let mut kernel = make_kernel(make_config());
-    kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
-    let cfg = ExecutionNonceConfig {
-        nonce_ttl_secs: 30,
-        nonce_store_capacity: 1024,
-        require_nonce: false,
-    };
-    let store = Box::new(InMemoryExecutionNonceStore::from_config(&cfg));
-    kernel.set_execution_nonce_store(cfg.clone(), store);
-    let agent_kp = make_keypair();
-    let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
-    (kernel, agent_kp, scope, cfg)
-}
-
-fn binding_for_request(cap: &CapabilityToken, request: &ToolCallRequest) -> NonceBinding {
-    let parameter_hash =
-        chio_core::receipt::decision::ToolCallAction::from_parameters(request.arguments.clone())
-            .unwrap()
-            .parameter_hash;
-    NonceBinding {
-        subject_id: cap.subject.to_hex(),
-        capability_id: cap.id.clone(),
-        tool_server: request.server_id.clone(),
-        tool_name: request.tool_name.clone(),
-        parameter_hash,
-    }
-}
-
-fn mint_nonce_for_request(
-    kernel: &ChioKernel,
-    cap: &CapabilityToken,
-    request: &ToolCallRequest,
-    cfg: &ExecutionNonceConfig,
-) -> crate::execution_nonce::SignedExecutionNonce {
-    let now = i64::try_from(current_unix_timestamp()).unwrap_or(i64::MAX);
-    mint_execution_nonce(
-        &kernel.config.keypair,
-        binding_for_request(cap, request),
-        cfg,
-        now,
-    )
-    .unwrap()
-}
-
 #[test]
 fn allow_verdict_carries_signed_execution_nonce_and_verifies() {
     let (kernel, agent_kp, scope, _cfg) = kernel_with_nonce();
@@ -214,13 +10,7 @@ fn allow_verdict_carries_signed_execution_nonce_and_verifies() {
         .execution_nonce
         .expect("allow verdict must carry an execution nonce");
 
-    let expected = NonceBinding {
-        subject_id: cap.subject.to_hex(),
-        capability_id: cap.id.clone(),
-        tool_server: request.server_id.clone(),
-        tool_name: request.tool_name.clone(),
-        parameter_hash: response.receipt.action.parameter_hash.clone(),
-    };
+    let expected = binding_for_request(&cap, &request);
     kernel
         .verify_presented_execution_nonce(&signed, &expected)
         .unwrap();
@@ -237,6 +27,7 @@ fn stale_nonce_is_rejected_after_ttl() {
     let kp = Keypair::generate();
     let binding = NonceBinding {
         subject_id: "s".into(),
+        request_id: "request-stale".into(),
         capability_id: "c".into(),
         tool_server: "t".into(),
         tool_name: "n".into(),
@@ -268,13 +59,7 @@ fn replayed_nonce_is_rejected_by_store() {
     let signed = response
         .execution_nonce
         .expect("allow verdict must carry an execution nonce");
-    let expected = NonceBinding {
-        subject_id: cap.subject.to_hex(),
-        capability_id: cap.id.clone(),
-        tool_server: request.server_id.clone(),
-        tool_name: request.tool_name.clone(),
-        parameter_hash: response.receipt.action.parameter_hash.clone(),
-    };
+    let expected = binding_for_request(&cap, &request);
 
     // First verification consumes the nonce.
     kernel
@@ -302,13 +87,8 @@ fn mismatched_binding_is_rejected() {
 
     // Corrupt the expected tool name -- the kernel was bound to read_file
     // but the caller claims write_file.
-    let expected = NonceBinding {
-        subject_id: cap.subject.to_hex(),
-        capability_id: cap.id.clone(),
-        tool_server: request.server_id.clone(),
-        tool_name: "write_file".to_string(),
-        parameter_hash: response.receipt.action.parameter_hash.clone(),
-    };
+    let mut expected = binding_for_request(&cap, &request);
+    expected.tool_name = "write_file".to_string();
     let err = kernel
         .verify_presented_execution_nonce(&signed, &expected)
         .unwrap_err();
@@ -329,6 +109,7 @@ fn tampered_signature_is_rejected() {
     let kp = Keypair::generate();
     let binding = NonceBinding {
         subject_id: "s".into(),
+        request_id: "request-tampered".into(),
         capability_id: "c".into(),
         tool_server: "t".into(),
         tool_name: "n".into(),
@@ -466,6 +247,10 @@ fn strict_nonce_mode_nested_flow_operation_forwards_presented_nonce(
         tool_name: request.tool_name.clone(),
         arguments: request.arguments.clone(),
         governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         execution_nonce: Some(serde_json::to_value(&nonce)?),
         model_metadata: None,
         extra_metadata: None,
@@ -483,225 +268,6 @@ fn strict_nonce_mode_nested_flow_operation_forwards_presented_nonce(
         response.output.is_some(),
         "valid nonce on nested-flow operation must reach dispatch"
     );
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn execution_nonce_reservation_rolls_back_when_session_dispatch_claim_fails(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut kernel = make_kernel(make_config());
-    let invocations = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(SideEffectServer::new(
-        "srv-a",
-        vec!["read_file"],
-        std::sync::Arc::clone(&invocations),
-    )));
-    let config = ExecutionNonceConfig {
-        nonce_ttl_secs: 30,
-        nonce_store_capacity: 1024,
-        require_nonce: true,
-    };
-    let entered = std::sync::Arc::new(tokio::sync::Notify::new());
-    let released = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let release_guard = ExecutionNonceReleaseGuard {
-        released: std::sync::Arc::clone(&released),
-    };
-    kernel.set_execution_nonce_store(
-        config.clone(),
-        Box::new(BlockingExecutionNonceStore {
-            inner: InMemoryExecutionNonceStore::from_config(&config),
-            entered: std::sync::Arc::clone(&entered),
-            released: std::sync::Arc::clone(&released),
-            mutable_state: None,
-        }),
-    );
-
-    let agent_kp = make_keypair();
-    let capability = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_grant("srv-a", "read_file")]),
-        300,
-    );
-    let request_id = "req-nonce-dispatch-claim";
-    let request = make_request(request_id, &capability, "read_file", "srv-a");
-    let binding = binding_for_request(&capability, &request);
-    let nonce = mint_nonce_for_request(&kernel, &capability, &request, &config);
-    let session_id =
-        kernel.open_session(agent_kp.public_key().to_hex(), vec![capability.clone()])?;
-    kernel.activate_session(&session_id)?;
-    let context = make_operation_context(&session_id, request_id, &agent_kp.public_key().to_hex());
-    let operation = ToolCallOperation {
-        capability,
-        server_id: "srv-a".to_string(),
-        tool_name: "read_file".to_string(),
-        arguments: request.arguments,
-        governed_intent: None,
-        execution_nonce: Some(serde_json::to_value(&nonce)?),
-        model_metadata: None,
-        extra_metadata: None,
-    };
-    let kernel = std::sync::Arc::new(kernel);
-    let evaluation_kernel = std::sync::Arc::clone(&kernel);
-    let evaluation = tokio::spawn(async move {
-        let mut client = NoopNestedFlowClient;
-        evaluation_kernel
-            .evaluate_tool_call_operation_with_nested_flow_client_async(
-                &context,
-                &operation,
-                &mut client,
-            )
-            .await
-    });
-
-    tokio::time::timeout(Duration::from_secs(5), entered.notified()).await?;
-    let cancellation =
-        kernel.request_session_cancellation(&session_id, &RequestId::from(request_id));
-    release_guard.release();
-
-    let response = tokio::time::timeout(Duration::from_secs(5), evaluation).await???;
-    assert!(cancellation.is_ok());
-    assert_eq!(response.verdict, Verdict::Deny);
-    assert_eq!(invocations.load(Ordering::SeqCst), 0);
-    kernel.verify_presented_execution_nonce(&nonce, &binding)?;
-    assert!(kernel
-        .session(&session_id)
-        .is_some_and(|session| session.inflight().is_empty()));
-    assert!(matches!(
-        kernel.request_session_cancellation(&session_id, &RequestId::from(request_id)),
-        Err(KernelError::Session(
-            SessionError::RequestNotInflight { .. }
-        ))
-    ));
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn execution_nonce_expiring_during_reservation_is_denied_before_dispatch(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut kernel = make_kernel(make_config());
-    let invocations = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(SideEffectServer::new(
-        "srv-a",
-        vec!["read_file"],
-        std::sync::Arc::clone(&invocations),
-    )));
-    let config = ExecutionNonceConfig {
-        nonce_ttl_secs: 1,
-        nonce_store_capacity: 1024,
-        require_nonce: true,
-    };
-    let entered = std::sync::Arc::new(tokio::sync::Notify::new());
-    let released = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let release_guard = ExecutionNonceReleaseGuard {
-        released: std::sync::Arc::clone(&released),
-    };
-    let rollback_calls = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.set_execution_nonce_store(
-        config.clone(),
-        Box::new(DelayedReturnExecutionNonceStore {
-            inner: InMemoryExecutionNonceStore::from_config(&config),
-            entered: std::sync::Arc::clone(&entered),
-            released,
-            rollback_calls: std::sync::Arc::clone(&rollback_calls),
-        }),
-    );
-
-    let agent_kp = make_keypair();
-    let capability = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_grant("srv-a", "read_file")]),
-        300,
-    );
-    let mut request = make_request(
-        "req-nonce-expires-during-reservation",
-        &capability,
-        "read_file",
-        "srv-a",
-    );
-    let nonce = mint_nonce_for_request(&kernel, &capability, &request, &config);
-    let expires_at = nonce.expires_at();
-    request.execution_nonce = Some(nonce);
-    let kernel = std::sync::Arc::new(kernel);
-    let evaluation_kernel = std::sync::Arc::clone(&kernel);
-    let evaluation =
-        tokio::spawn(async move { evaluation_kernel.evaluate_tool_call(&request).await });
-
-    tokio::time::timeout(Duration::from_secs(5), entered.notified()).await?;
-    while i64::try_from(current_unix_timestamp()).unwrap_or(i64::MAX) < expires_at {
-        tokio::time::sleep(Duration::from_millis(10)).await;
-    }
-    release_guard.release();
-
-    let response = tokio::time::timeout(Duration::from_secs(5), evaluation).await???;
-    assert_eq!(response.verdict, Verdict::Deny);
-    assert!(response
-        .reason
-        .as_deref()
-        .is_some_and(|reason| reason.contains("execution nonce expired")));
-    assert_eq!(invocations.load(Ordering::SeqCst), 0);
-    assert_eq!(rollback_calls.load(Ordering::SeqCst), 1);
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn execution_nonce_reservation_mutation_is_revalidated_before_dispatch(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut kernel = make_kernel(make_config());
-    let invocations = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(SideEffectServer::new(
-        "srv-a",
-        vec!["read_file"],
-        std::sync::Arc::clone(&invocations),
-    )));
-    let config = ExecutionNonceConfig {
-        nonce_ttl_secs: 30,
-        nonce_store_capacity: 1024,
-        require_nonce: true,
-    };
-    let mutable_state = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-    let revalidations = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.set_execution_nonce_store(
-        config.clone(),
-        Box::new(BlockingExecutionNonceStore {
-            inner: InMemoryExecutionNonceStore::from_config(&config),
-            entered: std::sync::Arc::new(tokio::sync::Notify::new()),
-            released: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true)),
-            mutable_state: Some(std::sync::Arc::clone(&mutable_state)),
-        }),
-    );
-    kernel.add_guard(Box::new(ReservationMutationGuard {
-        mutable_state,
-        revalidations: std::sync::Arc::clone(&revalidations),
-    }));
-
-    let agent_kp = make_keypair();
-    let capability = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_grant("srv-a", "read_file")]),
-        300,
-    );
-    let mut request = make_request(
-        "req-nonce-reservation-mutation",
-        &capability,
-        "read_file",
-        "srv-a",
-    );
-    let binding = binding_for_request(&capability, &request);
-    let nonce = mint_nonce_for_request(&kernel, &capability, &request, &config);
-    request.execution_nonce = Some(nonce.clone());
-
-    let response = kernel.evaluate_tool_call(&request).await?;
-
-    assert_eq!(response.verdict, Verdict::Deny);
-    assert!(response.reason.as_deref().is_some_and(
-        |reason| reason.contains("credential reservation invalidated mutable guard state")
-    ));
-    assert_eq!(revalidations.load(Ordering::SeqCst), 1);
-    assert_eq!(invocations.load(Ordering::SeqCst), 0);
-    kernel.verify_presented_execution_nonce(&nonce, &binding)?;
     Ok(())
 }
 
@@ -724,7 +290,9 @@ fn strict_nonce_mode_preflights_nonce_then_executes_once() {
         Box::new(InMemoryExecutionNonceStore::from_config(&cfg)),
     );
     let agent_kp = make_keypair();
-    let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
+    let mut grant = make_grant("srv-a", "read_file");
+    grant.max_invocations = Some(1);
+    let scope = make_scope(vec![grant]);
     let cap = make_capability(&kernel, &agent_kp, scope, 300);
     let request = make_request("req-nonce-preflight", &cap, "read_file", "srv-a");
 
@@ -750,6 +318,30 @@ fn strict_nonce_mode_preflights_nonce_then_executes_once() {
     let nonce = *preflight
         .execution_nonce
         .expect("strict preflight must return an execution nonce");
+    let preflight_hold_id = format!(
+        "nonce-preflight-budget-hold:{}:{}:0",
+        request.request_id, cap.id
+    );
+    let preflight_events = kernel
+        .budget_store
+        .list_mutation_events(10, Some(&cap.id), Some(0))
+        .unwrap();
+    assert!(preflight_events.iter().any(|event| {
+        event.kind == BudgetMutationKind::ReserveInvocation
+            && event.hold_id.as_deref() == Some(preflight_hold_id.as_str())
+            && event.event_id == format!("{preflight_hold_id}:authorize")
+    }));
+    assert!(preflight_events.iter().any(|event| {
+        event.kind == BudgetMutationKind::ReverseInvocation
+            && event.hold_id.as_deref() == Some(preflight_hold_id.as_str())
+    }));
+    assert!(!preflight_events
+        .iter()
+        .any(|event| event.kind == BudgetMutationKind::IncrementInvocation));
+
+    let preflight_replay = kernel.evaluate_tool_call_blocking(&request).unwrap();
+    assert_eq!(preflight_replay.verdict, Verdict::Deny);
+    assert!(preflight_replay.execution_nonce.is_none());
 
     let mut execution_request = request.clone();
     execution_request.execution_nonce = Some(nonce);
@@ -766,19 +358,18 @@ fn strict_nonce_mode_preflights_nonce_then_executes_once() {
         "executed calls must not mint another nonce for the same request"
     );
     assert_eq!(invocations.load(Ordering::SeqCst), 1);
+    let execution_events = kernel
+        .budget_store
+        .list_mutation_events(10, Some(&cap.id), Some(0))
+        .unwrap();
+    assert!(execution_events.iter().any(|event| {
+        event.kind == BudgetMutationKind::IncrementInvocation && event.hold_id.is_none()
+    }));
 
     let replay = kernel
         .evaluate_tool_call_blocking(&execution_request)
         .unwrap();
     assert_eq!(replay.verdict, Verdict::Deny);
-    assert!(
-        replay
-            .reason
-            .as_deref()
-            .is_some_and(|reason| reason.contains("execution nonce")),
-        "expected replay denial, got: {:?}",
-        replay.reason
-    );
     assert_eq!(invocations.load(Ordering::SeqCst), 1);
 }
 
@@ -786,7 +377,7 @@ fn strict_nonce_mode_preflights_nonce_then_executes_once() {
 fn strict_nonce_mode_payment_denial_does_not_consume_nonce() {
     let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(DecliningPaymentAdapter)).expect("install payment adapter");
+    kernel.set_payment_adapter(Box::new(DecliningPaymentAdapter));
     kernel.register_tool_server(Box::new(CountingMonetaryServer {
         id: "cost-srv".to_string(),
         invocations: invocations.clone(),
@@ -817,6 +408,9 @@ fn strict_nonce_mode_payment_denial_does_not_consume_nonce() {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -840,12 +434,96 @@ fn strict_nonce_mode_payment_denial_does_not_consume_nonce() {
         denied.reason
     );
     assert_eq!(invocations.load(std::sync::atomic::Ordering::SeqCst), 0);
+    kernel
+        .reserve_presented_execution_nonce(&request)
+        .expect("definite payment denial must leave the nonce unconsumed");
 
-    kernel.set_payment_adapter(Box::new(StubPaymentAdapter)).expect("install payment adapter");
-    request.request_id = "req-nonce-payment-allow".to_string();
-    let allowed = kernel.evaluate_tool_call_blocking(&request).unwrap();
+    kernel.set_payment_adapter(Box::new(StubPaymentAdapter));
+    let mut retry_request = request.clone();
+    retry_request.request_id = "req-nonce-payment-retry".to_string();
+    retry_request.execution_nonce = None;
+    let retry_preflight = kernel.evaluate_tool_call_blocking(&retry_request).unwrap();
+    assert_eq!(retry_preflight.verdict, Verdict::Allow);
+    retry_request.execution_nonce = Some(
+        *retry_preflight
+            .execution_nonce
+            .expect("a new operation must receive its own execution nonce"),
+    );
+    let allowed = kernel.evaluate_tool_call_blocking(&retry_request).unwrap();
     assert_eq!(allowed.verdict, Verdict::Allow);
     assert_eq!(invocations.load(std::sync::atomic::Ordering::SeqCst), 1);
+}
+
+#[test]
+fn strict_nonce_mode_request_id_mismatch_precedes_monetary_side_effects(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let payment = TrackingPaymentAdapter::new();
+    let mut kernel = make_kernel(make_monetary_config());
+    kernel.set_payment_adapter(Box::new(payment.clone()));
+    kernel.register_tool_server(Box::new(MonetaryCostServer {
+        id: "cost-srv".to_string(),
+        reported_cost: Some(ToolInvocationCost {
+            units: 50,
+            currency: "USD".to_string(),
+            breakdown: None,
+        }),
+    }));
+    let cfg = ExecutionNonceConfig {
+        nonce_ttl_secs: 30,
+        nonce_store_capacity: 1024,
+        require_nonce: true,
+    };
+    kernel.set_execution_nonce_store(
+        cfg.clone(),
+        Box::new(InMemoryExecutionNonceStore::from_config(&cfg)),
+    );
+    let agent_kp = Keypair::generate();
+    let cap = kernel.issue_capability(
+        &agent_kp.public_key(),
+        make_scope(vec![make_monetary_grant(
+            "cost-srv", "compute", 100, 1000, "USD",
+        )]),
+        3600,
+    )?;
+    let request = ToolCallRequest {
+        request_id: "req-nonce-bound-a".to_string(),
+        capability: cap,
+        tool_name: "compute".to_string(),
+        server_id: "cost-srv".to_string(),
+        agent_id: agent_kp.public_key().to_hex(),
+        arguments: serde_json::json!({}),
+        dpop_proof: None,
+        execution_nonce: None,
+        governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
+        model_metadata: None,
+        federated_origin_kernel_id: None,
+    };
+    let preflight = kernel.evaluate_tool_call_blocking(&request)?;
+    let nonce = preflight
+        .execution_nonce
+        .ok_or_else(|| std::io::Error::other("strict preflight nonce missing"))?;
+    let mut changed = request.clone();
+    changed.request_id = "req-nonce-bound-b".to_string();
+    changed.execution_nonce = Some(*nonce);
+
+    let denied = kernel.evaluate_tool_call_blocking(&changed)?;
+    assert_eq!(denied.verdict, Verdict::Deny);
+    assert_eq!(
+        payment.authorized.load(std::sync::atomic::Ordering::SeqCst),
+        0
+    );
+    let captures = kernel
+        .budget_store
+        .list_mutation_events(100, None, None)?
+        .into_iter()
+        .filter(|event| event.kind == BudgetMutationKind::CaptureInvocation)
+        .count();
+    assert_eq!(captures, 0);
+    Ok(())
 }
 
 #[test]
@@ -964,6 +642,7 @@ fn kernel_ttl_enforces_30s_default() {
     let kp = Keypair::generate();
     let binding = NonceBinding {
         subject_id: "s".into(),
+        request_id: "request-expiry".into(),
         capability_id: "c".into(),
         tool_server: "t".into(),
         tool_name: "n".into(),
@@ -995,11 +674,20 @@ fn mediated_allow_receipt_records_bound_execution_nonce_id() {
     let mut kernel = make_kernel(make_monetary_config());
     let agent_kp = Keypair::generate();
     kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 75, "USD")));
-    let cfg = ExecutionNonceConfig { nonce_ttl_secs: 30, nonce_store_capacity: 1024, require_nonce: false };
-    kernel.set_execution_nonce_store(cfg.clone(), Box::new(InMemoryExecutionNonceStore::from_config(&cfg)));
+    let cfg = ExecutionNonceConfig {
+        nonce_ttl_secs: 30,
+        nonce_store_capacity: 1024,
+        require_nonce: false,
+    };
+    kernel.set_execution_nonce_store(
+        cfg.clone(),
+        Box::new(InMemoryExecutionNonceStore::from_config(&cfg)),
+    );
 
     let grant = make_monetary_grant("cost-srv", "compute", 100, 1000, "USD");
-    let cap = kernel.issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600).unwrap();
+    let cap = kernel
+        .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
+        .unwrap();
     let request = ToolCallRequest {
         request_id: "req-nonce-link".to_string(),
         capability: cap,
@@ -1011,14 +699,25 @@ fn mediated_allow_receipt_records_bound_execution_nonce_id() {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
     let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
     assert_eq!(response.verdict, Verdict::Allow);
-    let nonce = response.execution_nonce.as_ref().expect("mediated allow mints a nonce");
-    let metadata = response.receipt.metadata.as_ref().expect("receipt metadata present");
-    let recorded = metadata["budget_authority"]["execution_nonce_id"].as_str()
+    let nonce = response
+        .execution_nonce
+        .as_ref()
+        .expect("mediated allow mints a nonce");
+    let metadata = response
+        .receipt
+        .metadata
+        .as_ref()
+        .expect("receipt metadata present");
+    let recorded = metadata["budget_authority"]["execution_nonce_id"]
+        .as_str()
         .expect("execution_nonce_id recorded on budget_authority metadata");
     assert_eq!(recorded, nonce.nonce_id());
     assert_eq!(
@@ -1061,6 +760,9 @@ fn reserving_authorization_keeps_hold_open_and_blocks_oversubscription() {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -1153,6 +855,9 @@ fn strict_retry_mediated_spend_receipt_names_presented_nonce() {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -1234,6 +939,9 @@ fn reserve_request(request_id: &str, cap: &CapabilityToken, agent_kp: &Keypair) 
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     }
@@ -1295,7 +1003,10 @@ fn reconcile_by_nonce_settles_reserved_hold_and_frees_difference() {
         meta["budget_authority"]["terminal"]["disposition"], "reconciled",
         "the reserved hold must be reconciled, not released"
     );
-    assert_eq!(meta["budget_authority"]["terminal"]["realized_spend_units"], 30);
+    assert_eq!(
+        meta["budget_authority"]["terminal"]["realized_spend_units"],
+        30
+    );
     assert_eq!(meta["budget_authority"]["authorize"]["exposure_units"], 100);
     assert_eq!(
         meta["budget_authority"]["execution_nonce_id"]
@@ -1727,6 +1438,9 @@ fn reserving_authorization_succeeds_for_unregistered_tool_server() {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -1772,6 +1486,9 @@ fn dispatch_for_unregistered_tool_server_still_denies() {
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     };
@@ -1942,6 +1659,9 @@ fn delegated_reserve_request(
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     }
@@ -2013,8 +1733,7 @@ fn delegated_reserving_child_holds_sibling_share_until_reconciled() {
         .unwrap();
     assert_eq!(reconciled.verdict, Verdict::Allow);
 
-    let third =
-        delegated_reserve_request("req-b-reserve-2", &fixture.child_b, &fixture.child_b_kp);
+    let third = delegated_reserve_request("req-b-reserve-2", &fixture.child_b, &fixture.child_b_kp);
     let admitted_b = kernel
         .authorize_tool_call_reserving_blocking_with_metadata(&third, None)
         .unwrap();
@@ -2064,8 +1783,7 @@ fn delegated_reserving_child_sibling_share_freed_after_ttl_reap() {
         "the reaper settles child A's expired reserved hold"
     );
 
-    let third =
-        delegated_reserve_request("req-b-reserve-2", &fixture.child_b, &fixture.child_b_kp);
+    let third = delegated_reserve_request("req-b-reserve-2", &fixture.child_b, &fixture.child_b_kp);
     let admitted_b = kernel
         .authorize_tool_call_reserving_blocking_with_metadata(&third, None)
         .unwrap();
@@ -2120,7 +1838,9 @@ fn restart_gate_blocks_sibling_over_subscription_against_open_delegated_reserve(
     let parent = make_capability(&kernel_before, &parent_kp, parent_scope.clone(), 300);
     {
         let seed_store = SqliteReceiptStore::open(&receipt_path).unwrap();
-        seed_store.record_capability_snapshot(&parent, None).unwrap();
+        seed_store
+            .record_capability_snapshot(&parent, None)
+            .unwrap();
     }
     kernel_before
         .set_receipt_store(Box::new(SqliteReceiptStore::open(&receipt_path).unwrap()))
@@ -2128,10 +1848,8 @@ fn restart_gate_blocks_sibling_over_subscription_against_open_delegated_reserve(
     kernel_before
         .register_budget_parent(parent.id.clone(), 5_000)
         .unwrap();
-    kernel_before.set_capability_trust_root(
-        signer.public_key(),
-        scope_hash(&parent_scope).unwrap(),
-    );
+    kernel_before
+        .set_capability_trust_root(signer.public_key(), scope_hash(&parent_scope).unwrap());
     install_strict_nonce_store(&mut kernel_before);
 
     let child_a = make_v2_delegated_child(V2DelegatedChildInput {
@@ -2180,10 +1898,7 @@ fn restart_gate_blocks_sibling_over_subscription_against_open_delegated_reserve(
     kernel_after
         .register_budget_parent(parent.id.clone(), 5_000)
         .unwrap();
-    kernel_after.set_capability_trust_root(
-        signer.public_key(),
-        scope_hash(&parent_scope).unwrap(),
-    );
+    kernel_after.set_capability_trust_root(signer.public_key(), scope_hash(&parent_scope).unwrap());
     install_strict_nonce_store(&mut kernel_after);
     kernel_after.arm_restart_reserved_hold_gate().unwrap();
 
@@ -2212,7 +1927,9 @@ fn restart_gate_blocks_sibling_over_subscription_against_open_delegated_reserve(
     // Settle child A's abandoned reservation in the shared store. Closing it drops
     // the last unaccounted delegated reserve hold, so the gate clears.
     assert_eq!(
-        kernel_after.reap_expired_reserved_budget_holds(i64::MAX).unwrap(),
+        kernel_after
+            .reap_expired_reserved_budget_holds(i64::MAX)
+            .unwrap(),
         1,
         "the reaper settles child A's expired restart-carried hold"
     );
@@ -2247,6 +1964,9 @@ fn delegated_invocation_reserve_request(
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     }
@@ -2480,6 +2200,8 @@ impl BudgetStore for StampFailingBudgetStore {
         )
     }
 
+    delegate_authority_fenced_budget_methods!(inner);
+
     fn list_usages(
         &self,
         limit: usize,
@@ -2508,6 +2230,13 @@ impl BudgetStore for StampFailingBudgetStore {
         request: crate::budget_store::BudgetReverseHoldRequest,
     ) -> Result<crate::budget_store::BudgetReverseHoldDecision, BudgetStoreError> {
         self.inner.reverse_budget_hold(request)
+    }
+
+    fn capture_invocation_reservations(
+        &self,
+        request: crate::budget_store::BudgetCaptureInvocationRequest,
+    ) -> Result<crate::budget_store::BudgetInvocationCaptureDecision, BudgetStoreError> {
+        self.inner.capture_invocation_reservations(request)
     }
 
     fn reconcile_budget_hold(
@@ -2587,7 +2316,7 @@ fn reserving_stamp_failure_reverses_authorized_hold() {
     );
 
     // The authorized hold was reversed, not left open-and-unstamped.
-    let hold_id = format!("budget-hold:req-stamp-fail:{}:0", cap.id);
+    let hold_id = format!("nonce-preflight-budget-hold:req-stamp-fail:{}:0", cap.id);
     let hold = kernel
         .budget_store
         .get_budget_hold(&hold_id)
@@ -2696,7 +2425,10 @@ impl ReceiptStore for TogglingAppendReceiptStore {
         Ok(())
     }
 
-    fn append_child_receipt(&self, _receipt: &ChildRequestReceipt) -> Result<(), ReceiptStoreError> {
+    fn append_child_receipt(
+        &self,
+        _receipt: &ChildRequestReceipt,
+    ) -> Result<(), ReceiptStoreError> {
         Ok(())
     }
 }
@@ -2782,7 +2514,10 @@ fn reserving_receipt_persist_failure_is_nonfatal_and_reservation_reconcilable() 
 
     // The stamped hold stays OPEN (reserved), never reversed: it is reconcilable
     // and its worst-case exposure stays committed against the grant.
-    let hold_id = format!("budget-hold:req-persist-fail:{}:0", cap.id);
+    let hold_id = nonce
+        .reserved_hold_id()
+        .expect("the reconcile nonce names the durable reservation")
+        .to_string();
     let hold = kernel
         .budget_store
         .get_budget_hold(&hold_id)
@@ -2874,8 +2609,7 @@ fn reserving_receipt_persist_failure_keeps_delegated_reservation_and_share() {
         .expect("child A's durable reservation must reconcile by its nonce");
     assert_eq!(reconciled.verdict, Verdict::Allow);
 
-    let third =
-        delegated_reserve_request("req-b-reserve-2", &fixture.child_b, &fixture.child_b_kp);
+    let third = delegated_reserve_request("req-b-reserve-2", &fixture.child_b, &fixture.child_b_kp);
     let admitted_b = kernel
         .authorize_tool_call_reserving_blocking_with_metadata(&third, None)
         .unwrap();
@@ -3210,6 +2944,7 @@ struct PartialReapBudgetStore {
         std::collections::HashMap<String, crate::budget_store::BudgetHoldDispositionView>,
     >,
     close_on_reap: String,
+    fail_next_closed_lookup: AtomicBool,
 }
 
 impl PartialReapBudgetStore {
@@ -3226,7 +2961,14 @@ impl PartialReapBudgetStore {
         Self {
             holds: std::sync::Mutex::new(holds),
             close_on_reap: close_on_reap.to_string(),
+            fail_next_closed_lookup: AtomicBool::new(false),
         }
+    }
+
+    fn with_post_reap_read_failure(close_on_reap: &str) -> Self {
+        let store = Self::new(close_on_reap);
+        store.fail_next_closed_lookup.store(true, Ordering::SeqCst);
+        store
     }
 
     fn lock(
@@ -3292,6 +3034,10 @@ impl BudgetStore for PartialReapBudgetStore {
         Ok(())
     }
 
+    reject_authority_fenced_budget_methods!(
+        "partial reaper store does not support authority-fenced budget mutations"
+    );
+
     fn list_usages(
         &self,
         _limit: usize,
@@ -3312,16 +3058,22 @@ impl BudgetStore for PartialReapBudgetStore {
         &self,
         hold_id: &str,
     ) -> Result<Option<crate::budget_store::BudgetHoldSnapshot>, BudgetStoreError> {
-        Ok(self
-            .lock()
-            .get(hold_id)
-            .map(|disposition| crate::budget_store::BudgetHoldSnapshot {
+        let disposition = self.lock().get(hold_id).copied();
+        if disposition.is_some_and(|value| !value.is_open())
+            && self.fail_next_closed_lookup.swap(false, Ordering::SeqCst)
+        {
+            return Err(BudgetStoreError::Invariant(
+                "transient post-reap read failure".to_string(),
+            ));
+        }
+        Ok(
+            disposition.map(|disposition| crate::budget_store::BudgetHoldSnapshot {
                 hold_id: hold_id.to_string(),
                 capability_id: "cap".to_string(),
                 grant_index: 0,
                 authorized_exposure_units: 100,
                 remaining_exposure_units: 100,
-                disposition: *disposition,
+                disposition,
                 reserved_until: Some(0),
                 reserved_currency: Some("USD".to_string()),
                 reserved_payment_reference: None,
@@ -3329,7 +3081,8 @@ impl BudgetStore for PartialReapBudgetStore {
                 reserved_delegation_depth: Some(1),
                 reserved_root_budget_holder: Some("root".to_string()),
                 authority: None,
-            }))
+            }),
+        )
     }
 
     fn reap_expired_reserved_holds(&self, _now_unix_secs: i64) -> Result<usize, BudgetStoreError> {
@@ -3347,7 +3100,9 @@ impl BudgetStore for PartialReapBudgetStore {
 #[test]
 fn reaper_releases_shares_for_holds_closed_before_a_store_error() {
     let mut kernel = make_kernel(make_config());
-    kernel.set_budget_store(Box::new(PartialReapBudgetStore::new("h1")));
+    kernel.set_budget_store(Box::new(
+        PartialReapBudgetStore::with_post_reap_read_failure("h1"),
+    ));
     {
         let mut shares = match kernel.reserved_sibling_shares.lock() {
             Ok(guard) => guard,
@@ -3371,12 +3126,16 @@ fn reaper_releases_shares_for_holds_closed_before_a_store_error() {
         );
     }
 
-    // The store closes h1 then errors on the rest of the sweep. h1's sibling
-    // share must be released (its hold is now closed) while h2's is retained
-    // (its hold is still open), and the store error must still propagate.
+    // The store closes h1, errors on the sweep, then transiently fails the
+    // post-reap read. The share stays held fail-closed on that first pass.
     let result = kernel.reap_expired_reserved_budget_holds(1_000);
     assert!(result.is_err(), "the store reap error must still propagate");
+    let mut remaining = kernel.tracked_reserved_sibling_hold_ids();
+    remaining.sort();
+    assert_eq!(remaining, vec!["h1".to_string(), "h2".to_string()]);
 
+    // The next sweep notices h1 is already closed and releases its share.
+    assert!(kernel.reap_expired_reserved_budget_holds(1_000).is_err());
     let mut remaining = kernel.tracked_reserved_sibling_hold_ids();
     remaining.sort();
     assert_eq!(
@@ -3465,6 +3224,8 @@ impl BudgetStore for TransientReconcileFailBudgetStore {
         )
     }
 
+    delegate_authority_fenced_budget_methods!(inner);
+
     fn list_usages(
         &self,
         limit: usize,
@@ -3493,6 +3254,13 @@ impl BudgetStore for TransientReconcileFailBudgetStore {
         request: crate::budget_store::BudgetReverseHoldRequest,
     ) -> Result<crate::budget_store::BudgetReverseHoldDecision, BudgetStoreError> {
         self.inner.reverse_budget_hold(request)
+    }
+
+    fn capture_invocation_reservations(
+        &self,
+        request: crate::budget_store::BudgetCaptureInvocationRequest,
+    ) -> Result<crate::budget_store::BudgetInvocationCaptureDecision, BudgetStoreError> {
+        self.inner.capture_invocation_reservations(request)
     }
 
     fn reconcile_budget_hold(

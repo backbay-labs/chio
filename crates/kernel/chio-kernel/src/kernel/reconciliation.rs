@@ -19,7 +19,10 @@ use chio_log_redact::redacted;
 
 use super::*;
 
-use crate::budget_store::{BudgetHoldSnapshot, BudgetReconcileHoldRequest};
+use crate::budget_store::{
+    BudgetCaptureInvocationRequest, BudgetHoldSnapshot, BudgetInvocationCaptureDecision,
+    BudgetReconcileHoldRequest,
+};
 use crate::execution_nonce::{
     consume_execution_nonce, verify_execution_nonce_without_consume, SignedExecutionNonce,
 };
@@ -53,21 +56,31 @@ impl ChioKernel {
         // only, for the holds the store actually forfeits. The predicate mirrors
         // the store reaper's contract (open + reserved_until <= now).
         let tracked = self.tracked_reserved_sibling_hold_ids();
-        let expiring = self.with_budget_store(|store| {
+        let (expiring, already_closed) = self.with_budget_store(|store| {
             let mut expiring = Vec::new();
+            let mut already_closed = Vec::new();
             for hold_id in &tracked {
-                if let Some(hold) = store.get_budget_hold(hold_id)? {
-                    if hold.disposition.is_open()
-                        && hold
-                            .reserved_until
-                            .is_some_and(|until| until <= now_unix_secs)
+                match store.get_budget_hold(hold_id)? {
+                    Some(hold)
+                        if hold.disposition.is_open()
+                            && hold
+                                .reserved_until
+                                .is_some_and(|until| until <= now_unix_secs) =>
                     {
                         expiring.push(hold_id.clone());
                     }
+                    Some(hold) if !hold.disposition.is_open() => {
+                        already_closed.push(hold_id.clone());
+                    }
+                    None => already_closed.push(hold_id.clone()),
+                    Some(_) => {}
                 }
             }
-            Ok(expiring)
+            Ok((expiring, already_closed))
         })?;
+        for hold_id in already_closed {
+            self.release_reserved_sibling_share_for_hold(&hold_id);
+        }
         // Run the store reap but do NOT propagate its error yet. If the store
         // settled some holds before failing partway through the sweep, those
         // closed holds' sibling shares must still be released, or a closed hold's
@@ -175,6 +188,9 @@ impl ChioKernel {
             let Some(hold) = store.get_budget_hold(reserved_hold_id)? else {
                 return Ok(());
             };
+            if hold.authorized_exposure_units == 0 {
+                return Ok(());
+            }
             match hold.reserved_currency.as_deref() {
                 Some(reserved) if reserved == realized_cost.currency => Ok(()),
                 Some(reserved) => Err(KernelError::Internal(format!(
@@ -187,7 +203,6 @@ impl ChioKernel {
                 // its currency when reserved, so a missing currency alongside a
                 // non-zero exposure is a corrupted reserved hold and stays
                 // fail-closed.
-                None if hold.authorized_exposure_units == 0 => Ok(()),
                 None => Err(KernelError::Internal(format!(
                     "reconcile-by-nonce cannot validate realized currency for reserved hold `{reserved_hold_id}`: no reserved grant currency recorded"
                 ))),
@@ -248,15 +263,31 @@ impl ChioKernel {
                     Some(usage) => usage.committed_cost_units()?,
                     None => exposed,
                 };
-                let reconcile = store.reconcile_budget_hold(BudgetReconcileHoldRequest {
+                let capture = store.capture_invocation_reservations(BudgetCaptureInvocationRequest {
                     capability_id: hold.capability_id.clone(),
                     grant_index: hold.grant_index,
-                    exposed_cost_units: exposed,
-                    realized_spend_units: realized,
-                    hold_id: Some(hold.hold_id.clone()),
-                    event_id: Some(format!("{}:reconcile", hold.hold_id)),
+                    hold_id: hold.hold_id.clone(),
+                    event_id: format!("{}:capture-invocation", hold.hold_id),
+                    trusted_time: None,
                     authority: hold.authority.clone(),
                 })?;
+                let capture = match capture {
+                    BudgetInvocationCaptureDecision::Captured(mutation)
+                    | BudgetInvocationCaptureDecision::AlreadyCaptured(mutation) => mutation,
+                };
+                let reconcile = if exposed == 0 {
+                    capture
+                } else {
+                    store.reconcile_budget_hold(BudgetReconcileHoldRequest {
+                        capability_id: hold.capability_id.clone(),
+                        grant_index: hold.grant_index,
+                        exposed_cost_units: exposed,
+                        realized_spend_units: realized,
+                        hold_id: Some(hold.hold_id.clone()),
+                        event_id: Some(format!("{}:reconcile", hold.hold_id)),
+                        authority: hold.authority.clone(),
+                    })?
+                };
                 Ok((
                     hold,
                     committed_before,
@@ -304,10 +335,10 @@ impl ChioKernel {
         // currency and never validated the realized currency, so normalize it to the
         // inert value rather than land an unchecked caller-supplied string on a
         // signed artifact (the step-3 guarantee).
-        let receipt_currency = if hold.reserved_currency.is_some() {
-            realized_cost.currency.clone()
-        } else {
+        let receipt_currency = if hold.authorized_exposure_units == 0 {
             INVOCATION_RECONCILE_RECEIPT_CURRENCY.to_string()
+        } else {
+            realized_cost.currency.clone()
         };
 
         // Reconstruct the authorize lineage from the reserved hold so the
@@ -320,7 +351,7 @@ impl ChioKernel {
             metering_profile,
             budget_commit_index: None,
             event_id: Some(format!("{}:authorize", hold.hold_id)),
-            replayed_event: false,
+            recorded_at_unix_seconds: Some(now_unix),
         };
         let charge = BudgetChargeResult {
             grant_index: hold.grant_index,
@@ -330,6 +361,7 @@ impl ChioKernel {
             new_committed_cost_units: committed_before,
             budget_hold_id: hold.hold_id.clone(),
             authorize_metadata,
+            invocation_capture: None,
         };
         let budget_metadata = self.budget_execution_receipt_metadata(
             &charge,
@@ -382,7 +414,6 @@ impl ChioKernel {
         );
 
         let receipt_content = receipt_content_for_output(None, None)?;
-        let evaluation_context = EvaluationReceiptContext::default();
         let receipt = self.build_and_sign_receipt(ReceiptParams {
             request_id: presented_nonce.reserving_request_id(),
             capability_id: &bound_capability_id,
@@ -396,7 +427,6 @@ impl ChioKernel {
             timestamp: now_unix,
             trust_level: chio_core::receipt::kinds::TrustLevel::Mediated,
             tenant_id: None,
-            evaluation_context: &evaluation_context,
         })?;
 
         let request_id = presented_nonce

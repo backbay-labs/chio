@@ -8,10 +8,10 @@
 //! intentionally enter the synchronous bridge.
 //!
 //! Futures dropped after budget admission are handled by the post-admission
-//! drop guard: a cancellation receipt is recorded whenever
-//! dispatch was in flight and runtime-admission reservations get an explicit
-//! fail-closed disposition. Hard process death mid-dispatch remains the
-//! charter of the dispatch-intent journal.
+//! drop guard: a cancellation receipt is recorded whenever dispatch was in
+//! flight and runtime-admission reservations get an explicit fail-closed
+//! disposition. Hard process death mid-dispatch remains the charter of the
+//! dispatch-intent journal.
 
 use crate::kernel::ChioKernel;
 use crate::{
@@ -70,22 +70,21 @@ pub trait ToolEvaluator: Send + Sync {
         Ok(response.verdict)
     }
 
-    /// Dispatch the validated request to the appropriate tool server.
+    /// Direct phase dispatch is unavailable because it cannot retain the
+    /// admission operation, compensation, outcome, and receipt as one durable
+    /// lifecycle. Use [`ToolEvaluator::evaluate`] instead.
     ///
-    /// The default body routes through
-    /// [`ChioKernel::dispatch_tool_call_with_cost`], which enforces the
-    /// configured dispatch budget and uses this dispatch order: try streaming
-    /// first, use `invoke_with_cost` only for monetary grants, and report `None`
-    /// cost for non-monetary grants.
+    /// This default denies every direct dispatch, not only monetary ones.
+    /// Implementors that override `dispatch` are unaffected; those that relied on
+    /// the default should read `docs/migrations/kernel-embedder-surface.md`.
     async fn dispatch(
         &self,
         kernel: &ChioKernel,
         request: &ToolCallRequest,
         has_monetary_grant: bool,
     ) -> Result<(ToolServerOutput, Option<ToolInvocationCost>), KernelError> {
-        kernel
-            .dispatch_tool_call_with_cost(request, has_monetary_grant)
-            .await
+        let _ = (kernel, request, has_monetary_grant);
+        Err(KernelError::DirectDispatchUnavailable)
     }
 
     /// Sign the receipt for the (allow or deny) outcome of a tool call.

@@ -83,6 +83,7 @@ delegation_v2 = ["delegation"]
 chio-test-support = { workspace = true }
 jsonschema = { version = "0.46.0", default-features = false }
 proptest = { workspace = true }
+regress = "0.10.5"
 # Pulled in by the `_generated_check` integration test so the canonical
 # `// DO NOT EDIT` header is asserted byte-for-byte against
 # `chio_spec_codegen::GENERATED_HEADER` (the source of truth) rather than

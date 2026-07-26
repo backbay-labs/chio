@@ -2,7 +2,9 @@ use super::*;
 
 use std::collections::HashMap;
 
-use chio_kernel::budget_store::{BudgetReconcileHoldRequest, BudgetReverseHoldRequest};
+use chio_kernel::budget_store::{
+    BudgetCaptureInvocationRequest, BudgetReconcileHoldRequest, BudgetReverseHoldRequest,
+};
 
 /// Outcome of a startup reap pass over orphaned open holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -12,14 +14,31 @@ pub struct ReapSummary {
 }
 
 /// An open reserved hold past its TTL deadline:
-/// `(hold_id, capability_id, grant_index, remaining_exposure_units, authority)`.
-type ExpiredReservedHold = (String, String, u32, u64, Option<BudgetEventAuthority>);
+/// `(hold_id, capability_id, grant_index, remaining_exposure_units,
+/// invocation_captured, authority)`.
+type ExpiredReservedHold = (String, String, u32, u64, bool, Option<BudgetEventAuthority>);
 
 /// A hold still `open` at startup:
-/// `(hold_id, capability_id, grant_index, remaining_exposure_units, authority)`.
-type OpenHold = (String, String, u32, u64, Option<BudgetEventAuthority>);
+/// `(hold_id, capability_id, grant_index, remaining_exposure_units,
+/// invocation_captured, authority)`.
+type OpenHold = (String, String, u32, u64, bool, Option<BudgetEventAuthority>);
 
 impl SqliteBudgetStore {
+    fn sqlite_like_prefix_pattern(prefix: &str) -> String {
+        let mut pattern = String::with_capacity(prefix.len() + 1);
+        for ch in prefix.chars() {
+            match ch {
+                '%' | '_' | '\\' => {
+                    pattern.push('\\');
+                    pattern.push(ch);
+                }
+                _ => pattern.push(ch),
+            }
+        }
+        pattern.push('%');
+        pattern
+    }
+
     /// Reconcile or reverse every hold still `open` at startup. Holds present in
     /// `realized_by_hold` (arbitrated by the ADR-0013 durable receipt log) are
     /// reconciled to their realized spend; holds absent from it (never durably
@@ -36,24 +55,51 @@ impl SqliteBudgetStore {
             reconciled: 0,
             reversed: 0,
         };
-        for (hold_id, capability_id, grant_index, exposure, authority) in open_holds {
+        let mut first_error = None;
+        for (hold_id, capability_id, grant_index, exposure, captured, authority) in open_holds {
             // Kernel-authored holds carry a BudgetEventAuthority lease that the
             // reconcile/reverse authority check enforces. Present each hold's stored
             // authority so orphaned kernel holds are reclaimed rather than rejected;
             // a hold whose authority columns cannot be loaded fails closed in
             // `list_open_holds` rather than silently reaping with no authority.
-            match realized_by_hold.get(&hold_id) {
+            let result = (|| match realized_by_hold.get(&hold_id) {
                 Some(&realized) => {
-                    self.reconcile_budget_hold(BudgetReconcileHoldRequest {
-                        capability_id: capability_id.clone(),
-                        grant_index: grant_index as usize,
-                        exposed_cost_units: exposure,
-                        realized_spend_units: realized.min(exposure),
-                        hold_id: Some(hold_id.clone()),
-                        event_id: Some(format!("{hold_id}:reap-reconcile")),
-                        authority,
-                    })?;
-                    summary.reconciled += 1;
+                    if !captured {
+                        self.capture_invocation_reservations(BudgetCaptureInvocationRequest {
+                            capability_id: capability_id.clone(),
+                            grant_index: grant_index as usize,
+                            hold_id: hold_id.clone(),
+                            event_id: format!("{hold_id}:reap-capture-invocation"),
+                            trusted_time: None,
+                            authority: authority.clone(),
+                        })?;
+                    }
+                    if exposure > 0 {
+                        self.reconcile_budget_hold(BudgetReconcileHoldRequest {
+                            capability_id: capability_id.clone(),
+                            grant_index: grant_index as usize,
+                            exposed_cost_units: exposure,
+                            realized_spend_units: realized.min(exposure),
+                            hold_id: Some(hold_id.clone()),
+                            event_id: Some(format!("{hold_id}:reap-reconcile")),
+                            authority,
+                        })?;
+                    }
+                    Ok(true)
+                }
+                None if captured => {
+                    if exposure > 0 {
+                        self.reconcile_budget_hold(BudgetReconcileHoldRequest {
+                            capability_id: capability_id.clone(),
+                            grant_index: grant_index as usize,
+                            exposed_cost_units: exposure,
+                            realized_spend_units: exposure,
+                            hold_id: Some(hold_id.clone()),
+                            event_id: Some(format!("{hold_id}:reap-unknown-outcome")),
+                            authority,
+                        })?;
+                    }
+                    Ok(true)
                 }
                 None => {
                     self.reverse_budget_hold(BudgetReverseHoldRequest {
@@ -63,12 +109,27 @@ impl SqliteBudgetStore {
                         hold_id: Some(hold_id.clone()),
                         event_id: Some(format!("{hold_id}:reap-reverse")),
                         authority,
+                        expected_cumulative_approval_state: None,
                     })?;
-                    summary.reversed += 1;
+                    Ok(false)
+                }
+            })();
+            match result {
+                Ok(true) => summary.reconciled += 1,
+                Ok(false) => summary.reversed += 1,
+                Err(error) => {
+                    tracing::warn!(
+                        hold_id,
+                        error = %error,
+                        "orphan budget hold cleanup failed"
+                    );
+                    if first_error.is_none() {
+                        first_error = Some(error);
+                    }
                 }
             }
         }
-        Ok(summary)
+        first_error.map_or(Ok(summary), Err)
     }
 
     /// Settle every reserved hold that is still `open` and whose `reserved_until`
@@ -89,23 +150,36 @@ impl SqliteBudgetStore {
     ) -> Result<usize, BudgetStoreError> {
         let expired = self.list_expired_reserved_holds(now_unix_secs)?;
         let mut settled = 0usize;
-        for (hold_id, capability_id, grant_index, remaining, authority) in expired {
-            self.reconcile_budget_hold(BudgetReconcileHoldRequest {
-                capability_id,
-                grant_index: grant_index as usize,
-                exposed_cost_units: remaining,
-                realized_spend_units: remaining,
-                hold_id: Some(hold_id.clone()),
-                event_id: Some(format!("{hold_id}:ttl-reap-settle")),
-                authority,
-            })?;
+        for (hold_id, capability_id, grant_index, remaining, captured, authority) in expired {
+            if !captured {
+                self.capture_invocation_reservations(BudgetCaptureInvocationRequest {
+                    capability_id: capability_id.clone(),
+                    grant_index: grant_index as usize,
+                    hold_id: hold_id.clone(),
+                    event_id: format!("{hold_id}:ttl-reap-capture-invocation"),
+                    trusted_time: None,
+                    authority: authority.clone(),
+                })?;
+            }
+            if remaining > 0 {
+                self.reconcile_budget_hold(BudgetReconcileHoldRequest {
+                    capability_id,
+                    grant_index: grant_index as usize,
+                    exposed_cost_units: remaining,
+                    realized_spend_units: remaining,
+                    hold_id: Some(hold_id.clone()),
+                    event_id: Some(format!("{hold_id}:ttl-reap-settle")),
+                    authority,
+                })?;
+            }
             settled += 1;
         }
         Ok(settled)
     }
 
     /// Open reserved holds past their expiry:
-    /// `(hold_id, capability_id, grant_index, remaining_exposure_units, authority)`.
+    /// `(hold_id, capability_id, grant_index, remaining_exposure_units,
+    /// invocation_captured, authority)`.
     fn list_expired_reserved_holds(
         &self,
         now_unix_secs: i64,
@@ -116,17 +190,18 @@ impl SqliteBudgetStore {
             .map_err(|_| BudgetStoreError::Invariant("budget store mutex poisoned".to_string()))?;
         let mut statement = connection.prepare(
             "SELECT hold_id, capability_id, grant_index, remaining_exposure_units, \
-             authority_id, lease_id, lease_epoch \
+             invocation_captured, authority_id, lease_id, lease_epoch \
              FROM budget_authorization_holds \
              WHERE disposition = 'open' AND reserved_until IS NOT NULL AND reserved_until <= ?1",
         )?;
         let rows = statement.query_map([now_unix_secs], |row| {
-            let authority = sqlite_budget_event_authority(row.get(4)?, row.get(5)?, row.get(6)?)?;
+            let authority = sqlite_budget_event_authority(row.get(5)?, row.get(6)?, row.get(7)?)?;
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, i64>(2)? as u32,
                 row.get::<_, i64>(3)? as u64,
+                row.get::<_, i64>(4)? > 0,
                 authority,
             ))
         })?;
@@ -195,31 +270,30 @@ impl SqliteBudgetStore {
             .connection
             .lock()
             .map_err(|_| BudgetStoreError::Invariant("budget store mutex poisoned".to_string()))?;
-        let now = unix_now();
-        let inserted = connection.execute(
-            "INSERT OR IGNORE INTO budget_authorization_holds ( \
-                 hold_id, capability_id, grant_index, \
-                 authorized_exposure_units, remaining_exposure_units, invocation_count_debited, \
-                 disposition, authority_id, lease_id, lease_epoch, \
-                 created_at, updated_at, reserved_until, reserved_currency, \
-                 reserved_payment_reference, reserved_budget_total, \
-                 reserved_delegation_depth, reserved_root_budget_holder \
-             ) VALUES (?1, ?2, ?3, 0, 0, 1, 'open', NULL, NULL, NULL, ?4, ?4, ?5, NULL, NULL, \
-                 ?6, ?7, ?8)",
+        let updated = connection.execute(
+            "UPDATE budget_authorization_holds \
+             SET reserved_until = ?4, reserved_currency = NULL, \
+                 reserved_payment_reference = NULL, reserved_budget_total = ?5, \
+                 reserved_delegation_depth = ?6, reserved_root_budget_holder = ?7, \
+                 updated_at = ?8 \
+             WHERE hold_id = ?1 AND capability_id = ?2 AND grant_index = ?3 \
+                 AND authorized_exposure_units = 0 AND remaining_exposure_units = 0 \
+                 AND invocation_count_debited = 1 AND invocation_captured = 0 \
+                 AND disposition = 'open'",
             params![
                 hold_id,
                 capability_id,
                 grant_index as i64,
-                now,
                 reserved_until_unix_secs,
                 envelope.budget_total.map(|value| value as i64),
                 envelope.delegation_depth as i64,
                 envelope.root_budget_holder,
+                unix_now(),
             ],
         )?;
-        if inserted == 0 {
+        if updated == 0 {
             return Err(BudgetStoreError::Invariant(format!(
-                "budget hold `{hold_id}` already exists"
+                "budget hold `{hold_id}` is not an open invocation authorization"
             )));
         }
         Ok(())
@@ -251,7 +325,6 @@ impl SqliteBudgetStore {
                             HoldDisposition::Released => BudgetHoldDispositionView::Released,
                             HoldDisposition::Reversed => BudgetHoldDispositionView::Reversed,
                             HoldDisposition::Reconciled => BudgetHoldDispositionView::Reconciled,
-                            HoldDisposition::Expired => BudgetHoldDispositionView::Expired,
                         })
                         .ok_or_else(|| {
                             rusqlite::Error::FromSqlConversionFailure(
@@ -332,8 +405,9 @@ impl SqliteBudgetStore {
         &self,
         request_id: &str,
     ) -> Result<bool, BudgetStoreError> {
-        let prefix = format!("budget-hold:{request_id}:");
-        let pattern = Self::sqlite_like_prefix_pattern(&prefix);
+        let pattern = Self::sqlite_like_prefix_pattern(&format!("budget-hold:{request_id}:"));
+        let nonce_pattern =
+            Self::sqlite_like_prefix_pattern(&format!("nonce-preflight-budget-hold:{request_id}:"));
         let connection = self
             .connection
             .lock()
@@ -341,8 +415,8 @@ impl SqliteBudgetStore {
         Ok(connection
             .query_row(
                 "SELECT 1 FROM budget_authorization_holds \
-                 WHERE hold_id LIKE ?1 ESCAPE '\\' LIMIT 1",
-                params![pattern],
+                 WHERE hold_id LIKE ?1 ESCAPE '\\' OR hold_id LIKE ?2 ESCAPE '\\' LIMIT 1",
+                params![pattern, nonce_pattern],
                 |_| Ok(()),
             )
             .optional()?
@@ -359,16 +433,17 @@ impl SqliteBudgetStore {
             .map_err(|_| BudgetStoreError::Invariant("budget store mutex poisoned".to_string()))?;
         let mut statement = connection.prepare(
             "SELECT hold_id, capability_id, grant_index, remaining_exposure_units, \
-             authority_id, lease_id, lease_epoch \
+             invocation_captured, authority_id, lease_id, lease_epoch \
              FROM budget_authorization_holds WHERE disposition = 'open'",
         )?;
         let rows = statement.query_map([], |row| {
-            let authority = sqlite_budget_event_authority(row.get(4)?, row.get(5)?, row.get(6)?)?;
+            let authority = sqlite_budget_event_authority(row.get(5)?, row.get(6)?, row.get(7)?)?;
             Ok((
                 row.get::<_, String>(0)?,
                 row.get::<_, String>(1)?,
                 row.get::<_, i64>(2)? as u32,
                 row.get::<_, i64>(3)? as u64,
+                row.get::<_, i64>(4)? != 0,
                 authority,
             ))
         })?;
@@ -385,7 +460,8 @@ impl SqliteBudgetStore {
 mod tests {
     use super::*;
     use chio_kernel::budget_store::{
-        BudgetAuthorizeHoldDecision, BudgetAuthorizeHoldRequest, BudgetStore,
+        BudgetAuthorizeHoldDecision, BudgetAuthorizeHoldRequest, BudgetHoldDispositionView,
+        BudgetStore,
     };
     use std::collections::HashMap;
 
@@ -397,6 +473,42 @@ mod tests {
 
     fn authorize(store: &SqliteBudgetStore, hold_id: &str, cap: &str) {
         authorize_with_authority(store, hold_id, cap, None);
+    }
+
+    fn authorize_invocation(store: &SqliteBudgetStore, hold_id: &str, cap: &str) {
+        let decision = store
+            .authorize_budget_hold(BudgetAuthorizeHoldRequest {
+                capability_id: cap.to_string(),
+                grant_index: 0,
+                max_invocations: Some(1),
+                requested_exposure_units: 0,
+                max_cost_per_invocation: None,
+                max_total_cost_units: None,
+                hold_id: Some(hold_id.to_string()),
+                event_id: Some(format!("{hold_id}:authorize")),
+                authority: None,
+                invocation_quotas: Vec::new(),
+                cumulative_approval: None,
+                admission_binding: None,
+            })
+            .unwrap();
+        assert!(matches!(
+            decision,
+            BudgetAuthorizeHoldDecision::Authorized(_)
+        ));
+    }
+
+    fn capture_invocation(store: &SqliteBudgetStore, hold_id: &str, cap: &str) {
+        store
+            .capture_invocation_reservations(BudgetCaptureInvocationRequest {
+                capability_id: cap.to_string(),
+                grant_index: 0,
+                hold_id: hold_id.to_string(),
+                event_id: format!("{hold_id}:capture-invocation"),
+                trusted_time: None,
+                authority: None,
+            })
+            .unwrap();
     }
 
     fn authorize_with_authority(
@@ -416,7 +528,9 @@ mod tests {
                 hold_id: Some(hold_id.to_string()),
                 event_id: Some(format!("{hold_id}:authorize")),
                 authority,
-                payment_journal: None,
+                invocation_quotas: Vec::new(),
+                cumulative_approval: None,
+                admission_binding: None,
             })
             .unwrap();
         assert!(matches!(
@@ -463,6 +577,7 @@ mod tests {
                 &ReservedHoldEnvelope::default(),
             )
             .unwrap();
+        capture_invocation(&store, "hold-done", "cap-c");
         store
             .reconcile_budget_hold(BudgetReconcileHoldRequest {
                 capability_id: "cap-c".to_string(),
@@ -536,6 +651,41 @@ mod tests {
                 .disposition,
             BudgetHoldDispositionView::Reconciled
         );
+    }
+
+    #[test]
+    fn ttl_reaper_settles_expired_hold_after_invocation_capture() {
+        use chio_kernel::budget_store::BudgetHoldDispositionView;
+
+        let store = open_temp_store();
+        authorize(&store, "hold-captured-expired", "cap-captured-expired");
+        store
+            .mark_hold_reserved_until(
+                "hold-captured-expired",
+                100,
+                "USD",
+                None,
+                &ReservedHoldEnvelope::default(),
+            )
+            .unwrap();
+        capture_invocation(&store, "hold-captured-expired", "cap-captured-expired");
+
+        let settled = store.reap_expired_reserved_holds(1_000).unwrap();
+        assert_eq!(settled, 1);
+        let hold = store
+            .budget_hold_snapshot("hold-captured-expired")
+            .unwrap()
+            .unwrap();
+        assert_eq!(hold.disposition, BudgetHoldDispositionView::Reconciled);
+        assert_eq!(
+            store
+                .get_usage("cap-captured-expired", 0)
+                .unwrap()
+                .unwrap()
+                .total_cost_realized_spend,
+            100
+        );
+        assert_eq!(store.reap_expired_reserved_holds(1_000).unwrap(), 0);
     }
 
     #[test]
@@ -673,6 +823,35 @@ mod tests {
     }
 
     #[test]
+    fn reaper_forfeits_captured_orphan_at_worst_case() {
+        let store = open_temp_store();
+        authorize(&store, "hold-captured", "cap-captured");
+        capture_invocation(&store, "hold-captured", "cap-captured");
+
+        let summary = store.reap_holds_by_map(&HashMap::new()).unwrap();
+
+        assert_eq!(summary.reconciled, 1);
+        assert_eq!(summary.reversed, 0);
+        assert_eq!(
+            store
+                .get_usage("cap-captured", 0)
+                .unwrap()
+                .unwrap()
+                .committed_cost_units()
+                .unwrap(),
+            100
+        );
+        assert_eq!(
+            store
+                .budget_hold_snapshot("hold-captured")
+                .unwrap()
+                .unwrap()
+                .disposition,
+            BudgetHoldDispositionView::Reconciled
+        );
+    }
+
+    #[test]
     fn reserve_invocation_hold_is_reversible_and_returns_the_invocation() {
         use chio_kernel::budget_store::{
             BudgetHoldDispositionView, BudgetReverseHoldRequest, BudgetStore,
@@ -681,7 +860,7 @@ mod tests {
         let store = open_temp_store();
         // Debit the single invocation exactly as the reserve path does, then adopt
         // it into a durable zero-exposure reserved hold.
-        assert!(store.try_increment("cap-inv", 0, Some(1)).unwrap());
+        authorize_invocation(&store, "hold-inv", "cap-inv");
         store
             .reserve_invocation_hold(
                 "hold-inv",
@@ -733,6 +912,7 @@ mod tests {
                 hold_id: Some("hold-inv".to_string()),
                 event_id: Some("hold-inv:reverse".to_string()),
                 authority: snapshot.authority,
+                expected_cumulative_approval_state: None,
             })
             .unwrap();
         assert_eq!(
@@ -770,7 +950,7 @@ mod tests {
         use chio_kernel::budget_store::{BudgetHoldDispositionView, BudgetStore};
 
         let store = open_temp_store();
-        assert!(store.try_increment("cap-inv", 0, Some(1)).unwrap());
+        authorize_invocation(&store, "hold-inv", "cap-inv");
         store
             .reserve_invocation_hold(
                 "hold-inv",
@@ -903,6 +1083,7 @@ mod tests {
                 },
             )
             .unwrap();
+        capture_invocation(&store, "hold-c-closed", "cap-c");
         store
             .reconcile_budget_hold(BudgetReconcileHoldRequest {
                 capability_id: "cap-c".to_string(),

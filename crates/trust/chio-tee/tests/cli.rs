@@ -33,6 +33,7 @@ fn capability(kp: &Keypair, id: &str) -> CapabilityToken {
         issued_at: 0,
         expires_at: u64::MAX,
         delegation_chain: Vec::new(),
+        aggregate_invocation_budget: None,
     };
     CapabilityToken::sign(body, kp).expect("sign capability")
 }
@@ -48,7 +49,13 @@ fn observation(
         capability_token: Box::new(capability(kp, id)),
         server_id: "srv-1".to_string(),
         tool: "send_email".to_string(),
-        params: params.clone(),
+        params: Box::new(params.clone()),
+        governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
+        execution_nonce: None,
     };
     let canonical = canonical_json_string(&params).expect("canonical params");
     let parameter_hash = sha256_hex(canonical.as_bytes());

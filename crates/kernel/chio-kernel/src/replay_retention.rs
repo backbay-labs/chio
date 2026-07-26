@@ -187,6 +187,7 @@ impl ReplayRetention {
     }
 
     /// Retain until an exclusive signed Unix-second validity boundary.
+    #[allow(dead_code)]
     pub(crate) fn signed_until_unix_i64(expires_at: i64) -> Self {
         let absolute_deadline = if let Ok(seconds) = u64::try_from(expires_at) {
             UNIX_EPOCH.checked_add(Duration::from_secs(seconds))

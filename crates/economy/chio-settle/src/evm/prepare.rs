@@ -39,6 +39,19 @@ const BOND_PROOF_LEAF_TYPE: &str = "ChioBondProof(uint256 chainId,address vault,
 const BOND_ACTION_RELEASE: u8 = 0;
 const BOND_ACTION_IMPAIR: u8 = 1;
 const MAX_IMPAIR_BENEFICIARIES: usize = 16;
+pub(super) const GUARDED_MONEY_EXIT_SELECTORS: [[u8; 4]; 11] = [
+    IChioRootRegistry::publishRootCall::SELECTOR,
+    IChioRootRegistry::publishRootBatchCall::SELECTOR,
+    IChioEscrow::releaseWithProofCall::SELECTOR,
+    IChioEscrow::releaseWithProofDetailedCall::SELECTOR,
+    IChioEscrow::partialReleaseWithProofCall::SELECTOR,
+    IChioEscrow::partialReleaseWithProofDetailedCall::SELECTOR,
+    IChioEscrow::releaseWithSignatureCall::SELECTOR,
+    IChioEscrow::refundCall::SELECTOR,
+    IChioBondVault::releaseBondDetailedCall::SELECTOR,
+    IChioBondVault::impairBondDetailedCall::SELECTOR,
+    IChioBondVault::expireReleaseCall::SELECTOR,
+];
 
 #[derive(Debug, Clone, Copy)]
 pub enum PreparedBondProofRoot<'a> {
@@ -55,11 +68,17 @@ impl PreparedBondProofRoot<'_> {
     }
 }
 
-pub(crate) fn scale_token_minor_units_to_chio_amount(
+pub fn scale_token_minor_units_to_chio_amount(
     units: u128,
     currency: &str,
     config: &SettlementChainConfig,
 ) -> Result<MonetaryAmount, SettlementError> {
+    config.validate()?;
+    if currency.len() != 3 || !currency.bytes().all(|byte| byte.is_ascii_uppercase()) {
+        return Err(SettlementError::InvalidInput(
+            "currency must be an uppercase ISO 4217 code".to_string(),
+        ));
+    }
     let chio_decimals = u32::from(config.policy.chio_minor_unit_decimals);
     let token_decimals = u32::from(config.policy.token_minor_unit_decimals);
     let chio_units = if token_decimals >= chio_decimals {
@@ -86,6 +105,11 @@ pub(crate) fn scale_token_minor_units_to_chio_amount(
     };
     let amount = u64::try_from(chio_units)
         .map_err(|_| SettlementError::InvalidInput("Chio amount does not fit u64".to_string()))?;
+    if amount > (1_u64 << 53) - 1 {
+        return Err(SettlementError::InvalidInput(
+            "Chio amount exceeds the I-JSON safe integer range".to_string(),
+        ));
+    }
     Ok(MonetaryAmount {
         units: amount,
         currency: currency.to_string(),
@@ -318,6 +342,73 @@ pub fn prepare_merkle_release(
             gas_limit: None,
         },
     })
+}
+
+pub fn prepare_authorized_channel_merkle_release(
+    config: &SettlementChainConfig,
+    dispatch: &Web3SettlementDispatchArtifact,
+    anchor_proof: &AnchorInclusionProof,
+    anchor_content: &SettlementAnchorContentBinding,
+    authorization: &VerifiedChannelReleaseAuthorizationV1,
+) -> Result<Option<PreparedAuthorizedChannelMerkleReleaseV1>, SettlementError> {
+    config.validate()?;
+    validate_web3_settlement_dispatch(dispatch)
+        .map_err(|error| SettlementError::InvalidDispatch(error.to_string()))?;
+    validate_merkle_dispatch_config(config, dispatch)?;
+    let dispatch_digest = sha256_hex(
+        &canonical_json_bytes(dispatch)
+            .map_err(|error| SettlementError::Serialization(error.to_string()))?,
+    );
+    let release_amount = authorization
+        .close()
+        .effective_state()
+        .body()
+        .cumulative_owed
+        .clone();
+    let facts = ChannelReleasePreparationFacts {
+        dispatch_digest,
+        chain_id: config.chain_id.clone(),
+        escrow_contract: config.escrow_contract.clone(),
+        escrow_id: dispatch.escrow_id.clone(),
+        token_address: config.settlement_token_address.clone(),
+        token_symbol: config.settlement_token_symbol.clone(),
+        beneficiary_address: dispatch.beneficiary_address.clone(),
+        operator: config.operator_address.clone(),
+        operator_key_hash: dispatch.operator_key_hash.clone(),
+        protocol_minor_unit_decimals: config.policy.chio_minor_unit_decimals,
+        token_decimals: config.policy.token_minor_unit_decimals,
+        escrow_bound: dispatch.settlement_amount.clone(),
+        release_amount: release_amount.clone(),
+        release_token_base_units: authorization
+            .binding()
+            .expected_release_token_base_units()
+            .to_owned(),
+    };
+    verify_channel_release_preparation_parts(authorization, &facts).map_err(|_| {
+        SettlementError::Verification("channel release authority mismatch".to_owned())
+    })?;
+    if release_amount.units == 0 {
+        return Ok(None);
+    }
+    let amount = if release_amount == dispatch.settlement_amount {
+        EscrowExecutionAmount::Full
+    } else {
+        EscrowExecutionAmount::Partial(release_amount.clone())
+    };
+    let release = prepare_merkle_release(config, dispatch, anchor_proof, anchor_content, amount)?;
+    if release.observed_amount != release_amount
+        || release.settlement_amount_minor_units.to_string()
+            != authorization.binding().expected_release_token_base_units()
+    {
+        return Err(SettlementError::Verification(
+            "prepared release does not match channel release authority".to_owned(),
+        ));
+    }
+    Ok(Some(PreparedAuthorizedChannelMerkleReleaseV1 {
+        release,
+        authorization: authorization.binding().clone(),
+        authorization_digest: authorization.authorization_digest().to_owned(),
+    }))
 }
 
 fn ensure_escrow_anchor_matches_config(
@@ -576,7 +667,7 @@ pub fn prepare_merkle_release_root_publication(
     release: &PreparedMerkleRelease,
     checkpoint_seq: u64,
     batch_seq: u64,
-) -> Result<PreparedEvmCall, SettlementError> {
+) -> Result<PreparedRootPublication, SettlementError> {
     config.validate()?;
     validate_web3_settlement_dispatch(dispatch)
         .map_err(|error| SettlementError::InvalidDispatch(error.to_string()))?;
@@ -596,11 +687,13 @@ pub fn prepare_merkle_release_root_publication(
         treeSize: 1,
         operatorKeyHash: parse_b256_hex(&dispatch.operator_key_hash, "dispatch.operator_key_hash")?,
     };
-    Ok(PreparedEvmCall {
-        from_address: config.operator_address.clone(),
-        to_address: config.root_registry_contract.clone(),
-        data: encode_call(call),
-        gas_limit: None,
+    Ok(PreparedRootPublication {
+        call: PreparedEvmCall {
+            from_address: config.operator_address.clone(),
+            to_address: config.root_registry_contract.clone(),
+            data: encode_call(call),
+            gas_limit: None,
+        },
     })
 }
 
@@ -1433,7 +1526,7 @@ pub fn prepare_bond_proof_root_publication(
     prepared_root: PreparedBondProofRoot<'_>,
     checkpoint_seq: u64,
     batch_seq: u64,
-) -> Result<PreparedEvmCall, SettlementError> {
+) -> Result<PreparedRootPublication, SettlementError> {
     config.validate()?;
     if prepared_root.chain_id() != config.chain_id {
         return Err(SettlementError::InvalidInput(
@@ -1461,11 +1554,13 @@ pub fn prepare_bond_proof_root_publication(
         treeSize: 1,
         operatorKeyHash: operator_key_hash,
     };
-    Ok(PreparedEvmCall {
-        from_address: config.operator_address.clone(),
-        to_address: config.root_registry_contract.clone(),
-        data: encode_call(call),
-        gas_limit: None,
+    Ok(PreparedRootPublication {
+        call: PreparedEvmCall {
+            from_address: config.operator_address.clone(),
+            to_address: config.root_registry_contract.clone(),
+            data: encode_call(call),
+            gas_limit: None,
+        },
     })
 }
 
@@ -1509,7 +1604,31 @@ pub async fn estimate_call_gas(
     )
 }
 
-pub async fn submit_call(
+pub async fn submit_call<T: PreparedEvmSubmission + ?Sized>(
+    config: &SettlementChainConfig,
+    prepared: &T,
+) -> Result<String, SettlementError> {
+    let call = prepared_submission_call(prepared);
+    reject_guarded_money_exit_selector(call)?;
+    submit_raw_call(config, call).await
+}
+
+fn reject_guarded_money_exit_selector(call: &PreparedEvmCall) -> Result<(), SettlementError> {
+    let data = decode_hex_bytes(&call.data)?;
+    if data.get(..4).is_some_and(|selector| {
+        GUARDED_MONEY_EXIT_SELECTORS
+            .iter()
+            .any(|guarded| selector == guarded)
+    }) {
+        return Err(SettlementError::Unsupported(
+            "root publication, escrow release, escrow refund, and bond exits require a durable publisher"
+                .to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+async fn submit_raw_call(
     config: &SettlementChainConfig,
     call: &PreparedEvmCall,
 ) -> Result<String, SettlementError> {

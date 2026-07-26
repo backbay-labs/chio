@@ -224,6 +224,44 @@ fn duplicate_tool_receipt_id_with_different_bytes_conflicts() {
 }
 
 #[test]
+fn duplicate_tool_receipt_rejects_divergent_cost_projection(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let path = unique_db_path("chio-receipts-duplicate-cost-projection");
+    let store = SqliteReceiptStore::open(&path)?;
+    let receipt = sample_financial_receipt("rcpt-duplicate-cost-projection", u64::MAX)?;
+    let raw_json = serde_json::to_string(&receipt)?;
+    let mut connection = store.connection()?;
+
+    {
+        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        append_chio_receipt_tx(&tx, &receipt, &raw_json)?;
+        tx.commit()?;
+    }
+    connection.execute_batch("DROP TRIGGER chio_tool_receipts_reject_update")?;
+    connection.execute(
+        "UPDATE chio_tool_receipts SET cost_charged_be = ?1 WHERE receipt_id = ?2",
+        rusqlite::params![0_u64.to_be_bytes().as_slice(), receipt.id.as_str()],
+    )?;
+
+    let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    let error = match append_chio_receipt_tx(&tx, &receipt, &raw_json) {
+        Ok(_) => {
+            return Err(
+                std::io::Error::other("divergent duplicate cost projection was accepted").into(),
+            )
+        }
+        Err(error) => error,
+    };
+    assert!(error.to_string().contains("different cost projection"));
+    tx.rollback()?;
+
+    drop(connection);
+    drop(store);
+    let _ = fs::remove_file(path);
+    Ok(())
+}
+
+#[test]
 fn duplicate_child_receipt_bytes_return_existing_claim_log_seq() {
     let path = unique_db_path("chio-receipts-duplicate-child");
     let store = SqliteReceiptStore::open(&path).test_unwrap();

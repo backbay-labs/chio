@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio/fincred/credit-scorecard/v1.schema.json",
+  "allOf": [
+    { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/credential" },
+    {
+      "properties": {
+        "schema": { "const": "chio.fincred.credit-scorecard.v1" },
+        "family": { "const": "credit_scorecard" },
+        "type": { "const": ["VerifiableCredential", "ChioCreditScorecardCredential"] },
+        "credentialSubject": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["family", "claims"],
+          "properties": {
+            "family": { "const": "credit_scorecard" },
+            "claims": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["id", "band", "confidence", "overallScore", "probationary", "importedSignals"],
+              "properties": {
+                "id": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/did" },
+                "band": { "enum": ["prime", "standard", "guarded", "probationary", "restricted"] },
+                "confidence": { "enum": ["low", "medium", "high"] },
+                "overallScore": { "type": "number", "minimum": 0, "maximum": 1 },
+                "probationary": { "type": "boolean" },
+                "importedSignals": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": ["importedSignalCount", "acceptedImportedSignalCount"],
+                  "properties": {
+                    "importedSignalCount": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/iJsonInteger" },
+                    "acceptedImportedSignalCount": { "$ref": "https://chio.world/schemas/financial-credential-defs/v1.schema.json#/$defs/iJsonInteger" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

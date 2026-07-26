@@ -34,8 +34,11 @@ pub(crate) use self::query_matching::{
     unix_now,
 };
 pub(crate) use self::schema::{
-    backfill_tool_receipt_attribution_columns, ensure_receipt_lineage_statement_columns,
-    ensure_tool_receipt_attribution_columns,
+    audit_receipt_cost_projection, backfill_tool_receipt_attribution_columns,
+    ensure_receipt_lineage_statement_columns, ensure_tool_receipt_attribution_columns,
+    migrate_archive_receipt_cost_projection, migrate_receipt_cost_projection,
+    receipt_cost_projection, verify_archive_receipt_cost_projection,
+    verify_receipt_cost_projection,
 };
 pub(crate) use self::state_converters::{
     credit_bond_disposition_label, credit_bond_lifecycle_state_label,

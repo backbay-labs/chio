@@ -46,6 +46,7 @@ struct CountingMonetaryServer {
 struct PendingMonetaryServer {
     id: String,
     started: std::sync::Arc<tokio::sync::Notify>,
+    invocations: std::sync::Arc<std::sync::atomic::AtomicUsize>,
 }
 
 struct StaticPriceOracle {
@@ -223,6 +224,8 @@ impl ToolServerConnection for PendingMonetaryServer {
         _arguments: serde_json::Value,
         _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
     ) -> Result<serde_json::Value, KernelError> {
+        self.invocations
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         self.started.notify_one();
         std::future::pending::<Result<serde_json::Value, KernelError>>().await
     }
@@ -282,27 +285,7 @@ fn make_monetary_config() -> KernelConfig {
         retention_config: None,
         memory_budget: crate::MemoryBudgetConfig::defaults(),
         deadlines: crate::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: crate::DispatchIntentJournalMode::Off,
     }
-}
-
-fn attach_fresh_payment_execution_nonce(
-    kernel: &mut ChioKernel,
-    capability: &CapabilityToken,
-    request: &mut ToolCallRequest,
-) {
-    let config = ExecutionNonceConfig {
-        nonce_ttl_secs: 300,
-        nonce_store_capacity: 1024,
-        require_nonce: false,
-    };
-    if kernel.execution_nonce_store.is_none() {
-        kernel.set_execution_nonce_store(
-            config.clone(),
-            Box::new(InMemoryExecutionNonceStore::from_config(&config)),
-        );
-    }
-    request.execution_nonce = Some(mint_nonce_for_request(kernel, capability, request, &config));
 }
 
 struct SiblingSumMonetaryFixture {
@@ -635,6 +618,7 @@ fn make_governed_intent(
             "invoice_id": "inv-1001",
             "operator": "finance-ops",
         })),
+        body: Default::default(),
     }
 }
 
@@ -645,6 +629,7 @@ struct GovernedAcpIntentFixture<'a> {
     purpose: &'a str,
     seller: &'a str,
     shared_payment_token_id: &'a str,
+    settlement_destination_ref: Option<&'a str>,
     units: u64,
     currency: &'a str,
 }
@@ -662,6 +647,7 @@ fn make_governed_acp_intent(fixture: GovernedAcpIntentFixture<'_>) -> GovernedTr
         commerce: Some(chio_core::capability::governance::GovernedCommerceContext {
             seller: fixture.seller.to_string(),
             shared_payment_token_id: fixture.shared_payment_token_id.to_string(),
+            settlement_destination_ref: fixture.settlement_destination_ref.map(str::to_string),
         }),
         metered_billing: None,
         runtime_attestation: None,
@@ -671,6 +657,7 @@ fn make_governed_acp_intent(fixture: GovernedAcpIntentFixture<'_>) -> GovernedTr
             "invoice_id": "inv-2002",
             "operator": "commerce-ops",
         })),
+        body: Default::default(),
     }
 }
 
@@ -852,6 +839,7 @@ fn make_metered_billing_context(
             expires_at: Some(now + 300),
         },
         max_billed_units: Some(units + 4),
+        verified_outcome: None,
     }
 }
 
@@ -1077,6 +1065,7 @@ fn make_governed_approval_token(
             subject: subject.clone(),
             governed_intent_hash: intent.binding_hash().unwrap(),
             request_id: request_id.to_string(),
+            threshold_proposal_hash: None,
             issued_at: now.saturating_sub(1),
             expires_at: now + 300,
             decision: GovernedApprovalDecision::Approved,
@@ -1094,104 +1083,6 @@ struct TrackingPaymentAdapter {
     captured: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     released: std::sync::Arc<std::sync::atomic::AtomicUsize>,
     refunded: std::sync::Arc<std::sync::atomic::AtomicUsize>,
-    settled: bool,
-}
-
-struct PanickingCapturePaymentAdapter;
-
-#[derive(Clone)]
-struct MalformedSettlementPaymentAdapter {
-    result: PaymentResult,
-}
-
-impl PaymentAdapter for PanickingCapturePaymentAdapter {
-    fn authorize(
-        &self,
-        _request: &PaymentAuthorizeRequest,
-    ) -> Result<PaymentAuthorization, PaymentError> {
-        Ok(PaymentAuthorization {
-            authorization_id: "auth-panic-capture".to_string(),
-            settled: false,
-            settlement_transaction_id: None,
-            metadata: serde_json::json!({ "adapter": "panic-capture" }),
-        })
-    }
-
-    fn capture(
-        &self,
-        _authorization_id: &str,
-        _amount_units: u64,
-        _currency: &str,
-        _reference: &str,
-    ) -> Result<PaymentResult, PaymentError> {
-        panic!("payment capture panicked")
-    }
-
-    fn release(
-        &self,
-        _authorization_id: &str,
-        _reference: &str,
-    ) -> Result<PaymentResult, PaymentError> {
-        Err(PaymentError::RailError(
-            "release must not run after dispatch".to_string(),
-        ))
-    }
-
-    fn refund(
-        &self,
-        _transaction_id: &str,
-        _amount_units: u64,
-        _currency: &str,
-        _reference: &str,
-    ) -> Result<PaymentResult, PaymentError> {
-        Err(PaymentError::RailError(
-            "refund must not run after dispatch".to_string(),
-        ))
-    }
-}
-
-impl PaymentAdapter for MalformedSettlementPaymentAdapter {
-    fn authorize(
-        &self,
-        _request: &PaymentAuthorizeRequest,
-    ) -> Result<PaymentAuthorization, PaymentError> {
-        Ok(PaymentAuthorization {
-            authorization_id: "auth-malformed-settlement".to_string(),
-            settled: false,
-            settlement_transaction_id: None,
-            metadata: serde_json::json!({ "adapter": "malformed-settlement" }),
-        })
-    }
-
-    fn capture(
-        &self,
-        _authorization_id: &str,
-        _amount_units: u64,
-        _currency: &str,
-        _reference: &str,
-    ) -> Result<PaymentResult, PaymentError> {
-        Ok(self.result.clone())
-    }
-
-    fn release(
-        &self,
-        _authorization_id: &str,
-        _reference: &str,
-    ) -> Result<PaymentResult, PaymentError> {
-        Ok(self.result.clone())
-    }
-
-    fn refund(
-        &self,
-        _transaction_id: &str,
-        _amount_units: u64,
-        _currency: &str,
-        _reference: &str,
-    ) -> Result<PaymentResult, PaymentError> {
-        Err(PaymentError::RailError(
-            "refund must not run in malformed settlement tests".to_string(),
-        ))
-    }
 }
 
 impl TrackingPaymentAdapter {
@@ -1201,14 +1092,6 @@ impl TrackingPaymentAdapter {
             captured: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             released: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             refunded: std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0)),
-            settled: false,
-        }
-    }
-
-    fn settled() -> Self {
-        Self {
-            settled: true,
-            ..Self::new()
         }
     }
 }
@@ -1222,8 +1105,7 @@ impl PaymentAdapter for TrackingPaymentAdapter {
             .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         Ok(PaymentAuthorization {
             authorization_id: "auth_tracking".to_string(),
-            settled: self.settled,
-            settlement_transaction_id: self.settled.then(|| "txn_tracking".to_string()),
+            state: PaymentAuthorizationState::Held,
             metadata: serde_json::json!({ "adapter": "tracking" }),
         })
     }
@@ -1275,368 +1157,8 @@ impl PaymentAdapter for TrackingPaymentAdapter {
     }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn dropping_async_evaluate_after_dispatch_retains_budget_payment_and_receipt() {
-    let started = std::sync::Arc::new(tokio::sync::Notify::new());
-    let payment = TrackingPaymentAdapter::new();
-    let mut kernel = make_kernel(make_monetary_config());
-    assert!(
-        kernel
-            .set_payment_adapter(Box::new(payment.clone()))
-            .is_ok(),
-        "payment adapter installation must succeed"
-    );
-    kernel.register_tool_server(Box::new(PendingMonetaryServer {
-        id: "cost-srv".to_string(),
-        started: std::sync::Arc::clone(&started),
-    }));
-
-    struct AbortEvidenceGuard;
-    impl Guard for AbortEvidenceGuard {
-        fn name(&self) -> &str {
-            "abort-evidence"
-        }
-
-        fn evaluate(&self, _ctx: &GuardContext) -> Result<GuardDecision, KernelError> {
-            Ok(GuardDecision::allow_with_evidence(vec![GuardEvidence {
-                guard_name: "abort-evidence".to_string(),
-                verdict: true,
-                details: Some("pre-invocation evidence recorded before abort".to_string()),
-            }]))
-        }
-
-        fn revalidate_before_dispatch(&self, _ctx: &GuardContext) -> Result<(), KernelError> {
-            Ok(())
-        }
-    }
-    kernel.add_guard(Box::new(AbortEvidenceGuard));
-
-    let agent_kp = Keypair::generate();
-    let grant = make_monetary_grant("cost-srv", "compute", 100, 1000, "USD");
-    let cap = kernel
-        .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
-        .unwrap();
-    let mut request = ToolCallRequest {
-        request_id: "req-drop-after-admission".to_string(),
-        capability: cap.clone(),
-        tool_name: "compute".to_string(),
-        server_id: "cost-srv".to_string(),
-        agent_id: agent_kp.public_key().to_hex(),
-        arguments: serde_json::json!({}),
-        dpop_proof: None,
-        execution_nonce: None,
-        governed_intent: None,
-        approval_token: None,
-        model_metadata: None,
-        federated_origin_kernel_id: None,
-    };
-    attach_fresh_payment_execution_nonce(&mut kernel, &cap, &mut request);
-
-    let kernel = std::sync::Arc::new(kernel);
-    let eval = {
-        let kernel = std::sync::Arc::clone(&kernel);
-        tokio::spawn(async move { kernel.evaluate_tool_call(&request).await })
-    };
-
-    tokio::time::timeout(Duration::from_secs(1), started.notified())
-        .await
-        .expect("pending monetary tool should be invoked before abort");
-    eval.abort();
-    let join = eval
-        .await
-        .expect_err("aborted evaluation should not complete");
-    assert!(join.is_cancelled());
-
-    let usage = kernel.budget_store.get_usage(&cap.id, 0).unwrap().unwrap();
-    assert_eq!(usage.invocation_count, 1);
-    assert_eq!(usage.total_cost_exposed, 100);
-    assert_eq!(usage.total_cost_realized_spend, 0);
-    assert_eq!(usage.committed_cost_units().unwrap(), 100);
-    assert_eq!(
-        payment.authorized.load(std::sync::atomic::Ordering::SeqCst),
-        1
-    );
-    assert_eq!(
-        payment.released.load(std::sync::atomic::Ordering::SeqCst),
-        0
-    );
-    assert_eq!(
-        payment.refunded.load(std::sync::atomic::Ordering::SeqCst),
-        0
-    );
-
-    let receipt_log = kernel.receipt_log();
-    assert_eq!(receipt_log.len(), 1);
-    let receipt = receipt_log.get(0).unwrap();
-    assert!(receipt.is_cancelled());
-    assert_eq!(receipt.evidence.len(), 1);
-    assert_eq!(receipt.evidence[0].guard_name, "abort-evidence");
-    let metadata = receipt.metadata.as_ref().unwrap();
-    let runtime = &metadata["chio_runtime"];
-    assert_eq!(runtime["post_dispatch_outcome_unknown"], true);
-    assert_eq!(runtime["retained_budget_exposure_units"], 100);
-    assert_eq!(
-        runtime["retained_payment_authorization_id"],
-        "auth_tracking"
-    );
-    assert_eq!(runtime["retained_payment_authorization_settled"], false);
-    assert!(runtime["retained_budget_hold_id"]
-        .as_str()
-        .is_some_and(|hold_id| !hold_id.is_empty()));
-}
-
-#[test]
-fn capture_panic_retains_full_authorization_and_budget_exposure() {
-    let mut kernel = make_kernel(make_monetary_config());
-    assert!(
-        kernel
-            .set_payment_adapter(Box::new(PanickingCapturePaymentAdapter))
-            .is_ok(),
-        "payment adapter installation must succeed"
-    );
-    kernel.register_tool_server(Box::new(MonetaryCostServer::new("cost-srv", 40, "USD")));
-
-    let agent_kp = Keypair::generate();
-    let grant = make_monetary_grant("cost-srv", "compute", 100, 100, "USD");
-    let cap = kernel
-        .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
-        .unwrap();
-    let mut request = ToolCallRequest {
-        request_id: "req-capture-panic-after-budget-reconcile".to_string(),
-        capability: cap.clone(),
-        tool_name: "compute".to_string(),
-        server_id: "cost-srv".to_string(),
-        agent_id: agent_kp.public_key().to_hex(),
-        arguments: serde_json::json!({}),
-        dpop_proof: None,
-        execution_nonce: None,
-        governed_intent: None,
-        approval_token: None,
-        model_metadata: None,
-        federated_origin_kernel_id: None,
-    };
-    attach_fresh_payment_execution_nonce(&mut kernel, &cap, &mut request);
-
-    let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
-    assert_eq!(response.verdict, Verdict::Allow);
-    let usage = kernel.budget_store.get_usage(&cap.id, 0).unwrap().unwrap();
-    assert_eq!(usage.total_cost_exposed, 100);
-    assert_eq!(usage.total_cost_realized_spend, 0);
-    assert_eq!(usage.committed_cost_units().unwrap(), 100);
-
-    let receipt_log = kernel.receipt_log();
-    assert_eq!(receipt_log.len(), 1);
-    let receipt = receipt_log.get(0).unwrap();
-    assert!(receipt.is_allowed());
-    assert!(receipt.verify_signature().unwrap());
-    assert_eq!(
-        receipt.trust_level,
-        chio_core::receipt::kinds::TrustLevel::Mediated,
-        "an authorization decision retains the frozen mediated-decision semantics"
-    );
-    let metadata = receipt.metadata.as_ref().unwrap();
-    assert!(metadata["budget_authority"].get("terminal").is_none());
-    assert!(metadata["budget_authority"]
-        .get("mediated_spend")
-        .is_none());
-    let admitted = [kernel.config.keypair.public_key()];
-    let presented_nonce = request.execution_nonce.as_ref().unwrap();
-    assert!(
-        chio_core_types::receipt::authoritative_spend::is_authoritative_spend_receipt(
-            receipt,
-            &admitted,
-            presented_nonce,
-        )
-        .is_err(),
-        "an unresolved retained exposure must not qualify as authoritative spend"
-    );
-    assert_eq!(metadata["financial"]["settlement_status"], "pending");
-    assert_eq!(metadata["financial"]["budget_remaining"], 0);
-    assert_eq!(
-        metadata["financial"]["cost_breakdown"]["payment"]["settlement_attempt"]["failure_code"],
-        "adapter_panic"
-    );
-    let runtime = &metadata["chio_runtime"];
-    assert_eq!(runtime["post_dispatch_outcome_unknown"], true);
-    assert_eq!(
-        runtime["retained_payment_authorization_id"],
-        "auth-panic-capture"
-    );
-    assert_eq!(runtime["retained_budget_exposure_units"], 100);
-    assert!(runtime["retained_budget_hold_id"]
-        .as_str()
-        .is_some_and(|hold_id| !hold_id.is_empty()));
-
-    let mut retry = request.clone();
-    retry.request_id = "req-capture-panic-budget-retry".to_string();
-    retry.execution_nonce = None;
-    attach_fresh_payment_execution_nonce(&mut kernel, &cap, &mut retry);
-    let denied = kernel.evaluate_tool_call_blocking(&retry).unwrap();
-    assert_eq!(denied.verdict, Verdict::Deny);
-    assert!(denied
-        .reason
-        .as_deref()
-        .is_some_and(|reason| reason.contains("budget")));
-}
-
-#[test]
-fn malformed_or_failed_settlement_acknowledgements_retain_full_exposure() {
-    let cases = [
-        (
-            "capture-invalid-id",
-            40,
-            PaymentResult {
-                transaction_id: String::new(),
-                settlement_status: RailSettlementStatus::Settled,
-                metadata: serde_json::json!({}),
-            },
-            "invalid_transaction_identifier",
-            "pending",
-        ),
-        (
-            "capture-wrong-status",
-            40,
-            PaymentResult {
-                transaction_id: "tx-capture-wrong-status".to_string(),
-                settlement_status: RailSettlementStatus::Released,
-                metadata: serde_json::json!({}),
-            },
-            "unexpected_settlement_status",
-            "pending",
-        ),
-        (
-            "capture-failed",
-            40,
-            PaymentResult {
-                transaction_id: "tx-capture-failed".to_string(),
-                settlement_status: RailSettlementStatus::Failed,
-                metadata: serde_json::json!({}),
-            },
-            "settlement_failed",
-            "failed",
-        ),
-        (
-            "release-invalid-id",
-            0,
-            PaymentResult {
-                transaction_id: " release-padded ".to_string(),
-                settlement_status: RailSettlementStatus::Released,
-                metadata: serde_json::json!({}),
-            },
-            "invalid_transaction_identifier",
-            "pending",
-        ),
-        (
-            "release-wrong-status",
-            0,
-            PaymentResult {
-                transaction_id: "tx-release-wrong-status".to_string(),
-                settlement_status: RailSettlementStatus::Settled,
-                metadata: serde_json::json!({}),
-            },
-            "unexpected_settlement_status",
-            "pending",
-        ),
-        (
-            "release-failed",
-            0,
-            PaymentResult {
-                transaction_id: "tx-release-failed".to_string(),
-                settlement_status: RailSettlementStatus::Failed,
-                metadata: serde_json::json!({}),
-            },
-            "settlement_failed",
-            "failed",
-        ),
-    ];
-
-    for (case, actual_cost, payment_result, expected_failure_code, expected_settlement_status) in
-        cases
-    {
-        let mut kernel = make_kernel(make_monetary_config());
-        assert!(
-            kernel
-                .set_payment_adapter(Box::new(MalformedSettlementPaymentAdapter {
-                    result: payment_result,
-                }))
-                .is_ok(),
-            "payment adapter installation must succeed for case {case}"
-        );
-        kernel.register_tool_server(Box::new(MonetaryCostServer::new(
-            "cost-srv",
-            actual_cost,
-            "USD",
-        )));
-
-        let agent_kp = Keypair::generate();
-        let grant = make_monetary_grant("cost-srv", "compute", 100, 100, "USD");
-        let cap = kernel
-            .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
-            .unwrap();
-        let mut request = ToolCallRequest {
-            request_id: format!("req-{case}"),
-            capability: cap.clone(),
-            tool_name: "compute".to_string(),
-            server_id: "cost-srv".to_string(),
-            agent_id: agent_kp.public_key().to_hex(),
-            arguments: serde_json::json!({}),
-            dpop_proof: None,
-            execution_nonce: None,
-            governed_intent: None,
-            approval_token: None,
-            model_metadata: None,
-            federated_origin_kernel_id: None,
-        };
-        attach_fresh_payment_execution_nonce(&mut kernel, &cap, &mut request);
-
-        let response = kernel.evaluate_tool_call_blocking(&request).unwrap();
-        assert_eq!(response.verdict, Verdict::Allow, "case {case}");
-        assert_eq!(
-            response.receipt.trust_level,
-            chio_core::receipt::kinds::TrustLevel::Mediated,
-            "an authorization decision retains mediated-decision semantics for case {case}"
-        );
-        let usage = kernel.budget_store.get_usage(&cap.id, 0).unwrap().unwrap();
-        assert_eq!(usage.total_cost_exposed, 100, "case {case}");
-        assert_eq!(usage.total_cost_realized_spend, 0, "case {case}");
-        let metadata = response.receipt.metadata.as_ref().unwrap();
-        assert!(
-            metadata["budget_authority"].get("terminal").is_none(),
-            "an unresolved payment must not claim a reconciled terminal for case {case}"
-        );
-        assert!(
-            metadata["budget_authority"]
-                .get("mediated_spend")
-                .is_none(),
-            "an unresolved payment must not claim the authoritative spend profile for case {case}"
-        );
-        let admitted = [kernel.config.keypair.public_key()];
-        let presented_nonce = request.execution_nonce.as_ref().unwrap();
-        assert!(
-            chio_core_types::receipt::authoritative_spend::is_authoritative_spend_receipt(
-                &response.receipt,
-                &admitted,
-                presented_nonce,
-            )
-            .is_err(),
-            "an unresolved retained exposure must not qualify as authoritative spend for case {case}"
-        );
-        assert_eq!(
-            metadata["financial"]["settlement_status"], expected_settlement_status,
-            "case {case}"
-        );
-        assert_eq!(
-            metadata["financial"]["cost_breakdown"]["payment"]["settlement_attempt"]
-                ["failure_code"],
-            expected_failure_code,
-            "case {case}"
-        );
-        assert_eq!(
-            metadata["chio_runtime"]["retained_budget_exposure_units"], 100,
-            "case {case}"
-        );
-    }
-}
+#[path = "support_monetary_durability.rs"]
+mod support_monetary_durability;
 
 fn make_dpop_grant(server: &str, tool: &str) -> ToolGrant {
     ToolGrant {
@@ -1674,7 +1196,6 @@ fn make_dpop_kernel_and_cap(
         retention_config: None,
         memory_budget: crate::MemoryBudgetConfig::defaults(),
         deadlines: crate::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: crate::DispatchIntentJournalMode::Off,
     };
     let mut kernel = make_kernel(config);
     kernel.register_tool_server(Box::new(EchoServer::new(server, vec![tool])));
@@ -1763,31 +1284,6 @@ impl BudgetStore for ReverseFailingBudgetStore {
         )
     }
 
-    fn try_charge_cost_with_ids_and_authority_outcome(
-        &self,
-        capability_id: &str,
-        grant_index: usize,
-        max_invocations: Option<u32>,
-        cost_units: u64,
-        max_cost_per_invocation: Option<u64>,
-        max_total_cost_units: Option<u64>,
-        hold_id: Option<&str>,
-        event_id: Option<&str>,
-        authority: Option<&crate::budget_store::BudgetEventAuthority>,
-    ) -> Result<crate::budget_store::BudgetAuthorizeMutationOutcome, BudgetStoreError> {
-        self.inner.try_charge_cost_with_ids_and_authority_outcome(
-            capability_id,
-            grant_index,
-            max_invocations,
-            cost_units,
-            max_cost_per_invocation,
-            max_total_cost_units,
-            hold_id,
-            event_id,
-            authority,
-        )
-    }
-
     fn reverse_charge_cost(
         &self,
         _capability_id: &str,
@@ -1824,6 +1320,85 @@ impl BudgetStore for ReverseFailingBudgetStore {
         )
     }
 
+    fn try_charge_cost_with_ids_and_authority(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        max_invocations: Option<u32>,
+        cost_units: u64,
+        max_cost_per_invocation: Option<u64>,
+        max_total_cost_units: Option<u64>,
+        hold_id: Option<&str>,
+        event_id: Option<&str>,
+        authority: Option<&crate::budget_store::BudgetEventAuthority>,
+    ) -> Result<bool, BudgetStoreError> {
+        self.inner.try_charge_cost_with_ids_and_authority(
+            capability_id,
+            grant_index,
+            max_invocations,
+            cost_units,
+            max_cost_per_invocation,
+            max_total_cost_units,
+            hold_id,
+            event_id,
+            authority,
+        )
+    }
+
+    fn reverse_charge_cost_with_ids_and_authority(
+        &self,
+        _capability_id: &str,
+        _grant_index: usize,
+        _cost_units: u64,
+        _hold_id: Option<&str>,
+        _event_id: Option<&str>,
+        _authority: Option<&crate::budget_store::BudgetEventAuthority>,
+    ) -> Result<(), BudgetStoreError> {
+        Err(BudgetStoreError::Invariant(
+            "reverse store unreachable".to_string(),
+        ))
+    }
+
+    fn reduce_charge_cost_with_ids_and_authority(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        cost_units: u64,
+        hold_id: Option<&str>,
+        event_id: Option<&str>,
+        authority: Option<&crate::budget_store::BudgetEventAuthority>,
+    ) -> Result<(), BudgetStoreError> {
+        self.inner.reduce_charge_cost_with_ids_and_authority(
+            capability_id,
+            grant_index,
+            cost_units,
+            hold_id,
+            event_id,
+            authority,
+        )
+    }
+
+    fn settle_charge_cost_with_ids_and_authority(
+        &self,
+        capability_id: &str,
+        grant_index: usize,
+        exposed_cost_units: u64,
+        realized_cost_units: u64,
+        hold_id: Option<&str>,
+        event_id: Option<&str>,
+        authority: Option<&crate::budget_store::BudgetEventAuthority>,
+    ) -> Result<(), BudgetStoreError> {
+        self.inner.settle_charge_cost_with_ids_and_authority(
+            capability_id,
+            grant_index,
+            exposed_cost_units,
+            realized_cost_units,
+            hold_id,
+            event_id,
+            authority,
+        )
+    }
+
     fn list_usages(
         &self,
         limit: usize,
@@ -1838,5 +1413,21 @@ impl BudgetStore for ReverseFailingBudgetStore {
         grant_index: usize,
     ) -> Result<Option<BudgetUsageRecord>, BudgetStoreError> {
         self.inner.get_usage(capability_id, grant_index)
+    }
+
+    fn authorize_budget_hold(
+        &self,
+        request: crate::budget_store::BudgetAuthorizeHoldRequest,
+    ) -> Result<crate::budget_store::BudgetAuthorizeHoldDecision, BudgetStoreError> {
+        self.inner.authorize_budget_hold(request)
+    }
+
+    fn reverse_budget_hold(
+        &self,
+        _request: crate::budget_store::BudgetReverseHoldRequest,
+    ) -> Result<crate::budget_store::BudgetReverseHoldDecision, BudgetStoreError> {
+        Err(BudgetStoreError::Invariant(
+            "reverse store unreachable".to_string(),
+        ))
     }
 }

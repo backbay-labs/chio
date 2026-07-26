@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-economy/clearing-round-lifecycle/v1",
+  "title": "Chio Clearing Round Lifecycle V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "roundId",
+    "governanceScopeId",
+    "roundCoreDigest",
+    "inputManifestDigest",
+    "reservationRoot",
+    "reservationCount",
+    "state",
+    "rowVersion",
+    "fence",
+    "lastTransitionDigest"
+  ],
+  "properties": {
+    "schema": { "const": "chio.clearing.round-lifecycle.v1" },
+    "roundId": { "$ref": "#/$defs/text" },
+    "governanceScopeId": { "$ref": "#/$defs/text" },
+    "roundCoreDigest": { "$ref": "#/$defs/digest" },
+    "inputManifestDigest": { "$ref": "#/$defs/digest" },
+    "reservationRoot": { "$ref": "#/$defs/digest" },
+    "reservationCount": { "type": "integer", "minimum": 1, "maximum": 126 },
+    "state": {
+      "enum": [
+        "reserved",
+        "proposed",
+        "finalizing",
+        "finalized",
+        "dispatching",
+        "reconciling",
+        "satisfied",
+        "aborting",
+        "aborted",
+        "incident"
+      ]
+    },
+    "rowVersion": { "$ref": "#/$defs/positiveInteger" },
+    "fence": { "$ref": "#/$defs/positiveInteger" },
+    "outputManifestDigest": { "$ref": "#/$defs/digest" },
+    "participantAcceptanceRoot": { "$ref": "#/$defs/digest" },
+    "participantAcceptanceCount": { "type": "integer", "minimum": 1, "maximum": 1024 },
+    "finalizationDigest": { "$ref": "#/$defs/digest" },
+    "abortDigest": { "$ref": "#/$defs/digest" },
+    "firstDispatchOperationId": { "$ref": "#/$defs/digest" },
+    "intentProgress": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 251,
+      "items": { "$ref": "#/$defs/intentProgress" }
+    },
+    "lastTransitionDigest": { "$ref": "#/$defs/digest" }
+  },
+  "$defs": {
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "text": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "positiveInteger": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "intentProgress": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["intentId", "intentDigest", "attemptCount", "noEffectCount", "ambiguityCount", "reconciliationCount"],
+      "properties": {
+        "intentId": { "$ref": "#/$defs/text" },
+        "intentDigest": { "$ref": "#/$defs/digest" },
+        "attemptCount": { "$ref": "#/$defs/positiveInteger" },
+        "noEffectCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "ambiguityCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "reconciliationCount": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+        "reconciliationChainDigest": { "$ref": "#/$defs/digest" },
+        "activeEffectSlotId": { "$ref": "#/$defs/digest" },
+        "unknownEffectSlotId": { "$ref": "#/$defs/digest" },
+        "completedEffectSlotId": { "$ref": "#/$defs/digest" }
+      }
+    }
+  }
+}

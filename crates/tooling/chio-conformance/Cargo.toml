@@ -45,6 +45,10 @@ path = "src/bin/chio_native_conformance_runner.rs"
 name = "chio-native-conformance-fixture"
 path = "src/bin/chio_native_conformance_fixture.rs"
 
+[[bin]]
+name = "chio-econsim-runner"
+path = "src/bin/chio_econsim_runner.rs"
+
 [features]
 # Default resolves fixture paths relative to the workspace root, pointing at
 # the tests/conformance/{scenarios,peers,fixtures}
@@ -120,6 +124,10 @@ serde_yaml = { workspace = true }
 # browser kernel through its native (non-wasm32) cargo test surface.
 chio-kernel-browser = { workspace = true }
 chio-federation = { workspace = true, features = ["demo"] }
+chio-credit = { workspace = true }
+frost-ed25519 = { workspace = true }
+rand_chacha = { workspace = true }
+rand_core = { workspace = true }
 # Attenuation chain-binding conformance test exercises
 # verify_capability_with_floor_and_trust_root via chio-kernel-core directly.
 # Sibling-sum budget conformance tests exercise
@@ -206,7 +214,7 @@ iroh = { version = "1.0", default-features = false, features = ["tls-ring"] }
 # federation-transport families through their real public production paths:
 # `chio-pheromone-relay` supplies the `SqlitePheromoneRelayStore` outbox the
 # `drain_outbox_over_iroh` helper drains (driving `outbox_total`), and
-# `chio-revocation-oracle` supplies the `SignedEpochRoot` type the stub
+# `chio-revocation-oracle` supplies the `SignedEpochRoot` type the test
 # `RevocationRootSink` / `RevocationCatchupHistory` seams name so a real
 # `RevocationHandler` accept can be driven over loopback QUIC (driving
 # `lane_total` and `accept_duration_seconds`).

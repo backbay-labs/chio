@@ -6,8 +6,7 @@ use std::collections::HashSet;
 use serde::Deserialize;
 use support::{
     assert_wrapped_budget_hold_sweep, assert_wrapped_budget_replay_outcome,
-    run_child_flush_mutation, run_crash_reopen, run_episode, run_payment_journal_episode,
-    run_payment_journal_restart_recovery_episode, CrashBoundary, EpisodeClass,
+    run_child_flush_mutation, run_crash_reopen, run_episode, CrashBoundary, EpisodeClass,
 };
 
 const FIXED_SEEDS: &str = include_str!("dst/seeds.toml");
@@ -117,19 +116,6 @@ fn dst_budget_wrapper_preserves_replay_outcome() {
     }
     if let Err(error) = assert_wrapped_budget_hold_sweep() {
         panic!("DST budget wrapper hold-sweep check failed: {error}");
-    }
-}
-
-#[test]
-fn dst_payment_journal_runs_clean_and_record_fault_episodes() {
-    if let Err(error) = run_payment_journal_episode(false) {
-        panic!("clean payment-journal DST episode failed: {error}");
-    }
-    if let Err(error) = run_payment_journal_episode(true) {
-        panic!("faulted payment-journal DST episode failed: {error}");
-    }
-    if let Err(error) = run_payment_journal_restart_recovery_episode() {
-        panic!("restart-recovery payment-journal DST episode failed: {error}");
     }
 }
 

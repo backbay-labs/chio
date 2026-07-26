@@ -11,83 +11,12 @@ struct AllowingRuntimeAdmissionHook {
     calls: std::sync::Arc<AtomicU64>,
 }
 
-struct InvalidReceiptMetadataRuntimeAdmissionHook {
-    releases: std::sync::Arc<AtomicU64>,
-}
-
 struct MetadataInspectingRuntimeAdmissionHook {
     calls: std::sync::Arc<AtomicU64>,
 }
 
 struct LiveReceiptAllowingRuntimeAdmissionHook {
     calls: std::sync::Arc<AtomicU64>,
-}
-
-struct ControllableReadinessAdmissionHook {
-    calls: std::sync::Arc<AtomicU64>,
-    releases: std::sync::Arc<AtomicU64>,
-    readiness_polls: std::sync::Arc<AtomicU64>,
-    readiness_started: std::sync::Arc<tokio::sync::Notify>,
-    ready: AtomicBool,
-    readiness_registrations: Mutex<
-        std::collections::HashMap<
-            RuntimeAdmissionReadinessToken,
-            (std::task::Waker, std::sync::Arc<()>),
-        >,
-    >,
-    readiness_unregistrations: AtomicU64,
-}
-
-impl ControllableReadinessAdmissionHook {
-    fn new() -> Self {
-        Self {
-            calls: std::sync::Arc::new(AtomicU64::new(0)),
-            releases: std::sync::Arc::new(AtomicU64::new(0)),
-            readiness_polls: std::sync::Arc::new(AtomicU64::new(0)),
-            readiness_started: std::sync::Arc::new(tokio::sync::Notify::new()),
-            ready: AtomicBool::new(false),
-            readiness_registrations: Mutex::new(std::collections::HashMap::new()),
-            readiness_unregistrations: AtomicU64::new(0),
-        }
-    }
-
-    fn allow_dispatch(&self) {
-        self.ready.store(true, Ordering::SeqCst);
-        let registrations = match self.readiness_registrations.lock() {
-            Ok(mut guard) => std::mem::take(&mut *guard),
-            Err(poisoned) => std::mem::take(&mut *poisoned.into_inner()),
-        };
-        for (waker, _probe) in registrations.into_values() {
-            waker.wake();
-        }
-    }
-
-    fn readiness_registration_probes(&self) -> Vec<std::sync::Weak<()>> {
-        match self.readiness_registrations.lock() {
-            Ok(guard) => guard
-                .values()
-                .map(|(_waker, probe)| std::sync::Arc::downgrade(probe))
-                .collect(),
-            Err(poisoned) => poisoned
-                .into_inner()
-                .values()
-                .map(|(_waker, probe)| std::sync::Arc::downgrade(probe))
-                .collect(),
-        }
-    }
-}
-
-#[derive(Default)]
-struct CountingRevocationAdmissionTraceObserver {
-    admissions: AtomicU64,
-}
-
-impl RuntimeTraceObserver for CountingRevocationAdmissionTraceObserver {
-    fn observe(&self, event: RuntimeTraceEvent) {
-        if matches!(event, RuntimeTraceEvent::RevocationAdmission { .. }) {
-            self.admissions.fetch_add(1, Ordering::SeqCst);
-        }
-    }
 }
 
 struct ReleaseTrackingRuntimeAdmissionHook {
@@ -107,13 +36,6 @@ struct FailingReleaseRuntimeAdmissionHook {
     lease_id: &'static str,
 }
 
-struct DenyingRetainedReservationAdmissionHook {
-    calls: std::sync::Arc<AtomicU64>,
-    releases: std::sync::Arc<AtomicU64>,
-    retained: std::sync::Arc<AtomicBool>,
-    expected_request_id: &'static str,
-}
-
 struct FailingAfterSideEffectServer {
     id: String,
     tools: Vec<String>,
@@ -124,15 +46,6 @@ struct UrlElicitationBeforeSideEffectServer {
     id: String,
     tools: Vec<String>,
     stream_attempts: std::sync::Arc<AtomicU64>,
-}
-
-struct MetadataIsolationReadinessHook {
-    calls: std::sync::Arc<AtomicU64>,
-    releases: std::sync::Arc<AtomicU64>,
-    released_metadata: std::sync::Arc<Mutex<Vec<serde_json::Value>>>,
-    revalidated_metadata: std::sync::Arc<Mutex<Vec<Option<serde_json::Value>>>>,
-    admission_metadata: Option<serde_json::Value>,
-    ready: bool,
 }
 
 struct CancellationAfterSideEffectServer {
@@ -159,11 +72,13 @@ struct IncompleteStreamAfterSideEffectServer {
     side_effects: std::sync::Arc<AtomicU64>,
 }
 
-// A registered server that returns a misleading typed error after dispatch is
-// polled. The kernel must not treat the untrusted error variant as provenance.
-struct ToolNotRegisteredAfterDispatchServer {
+// A registered server passes pre-dispatch validation, performs a side effect,
+// then returns ToolNotRegistered from dispatch. An unregistered server would be
+// denied before runtime admission and never reach the generic dispatch-error arm.
+struct ToolNotRegisteredDispatchServer {
     id: String,
     tools: Vec<String>,
+    side_effects: std::sync::Arc<AtomicU64>,
 }
 
 struct NoopNestedFlowClient;
@@ -213,41 +128,6 @@ impl RuntimeAdmissionHook for AllowingRuntimeAdmissionHook {
                 "observe_only": true
             }
         }))))
-    }
-}
-
-impl RuntimeAdmissionHook for InvalidReceiptMetadataRuntimeAdmissionHook {
-    fn name(&self) -> &str {
-        "test-invalid-receipt-metadata-admission"
-    }
-
-    fn evaluate(
-        &self,
-        _context: &RuntimeAdmissionContext<'_>,
-    ) -> Result<RuntimeAdmissionDecision, KernelError> {
-        Ok(RuntimeAdmissionDecision::allow(Some(serde_json::json!({
-            "chio_runtime": {
-                "admission_id": "adm-invalid-receipt-metadata",
-                "accepted": true,
-                "reserved_destructive_lease_id": "lease-invalid-receipt-metadata",
-                "failure_code": null
-            },
-            "provenance": {
-                "otel": {
-                    "trace_id": "not-a-trace-id",
-                    "span_id": "0123456789abcdef"
-                }
-            }
-        }))))
-    }
-
-    fn release_reserved(&self, metadata: &serde_json::Value) -> Result<(), KernelError> {
-        assert_eq!(
-            metadata["chio_runtime"]["reserved_destructive_lease_id"],
-            "lease-invalid-receipt-metadata"
-        );
-        self.releases.fetch_add(1, Ordering::SeqCst);
-        Ok(())
     }
 }
 
@@ -309,110 +189,6 @@ impl RuntimeAdmissionHook for LiveReceiptAllowingRuntimeAdmissionHook {
             }
         }))))
     }
-}
-
-impl RuntimeAdmissionHook for ControllableReadinessAdmissionHook {
-    fn name(&self) -> &str {
-        "test-controllable-readiness-admission"
-    }
-
-    fn evaluate(
-        &self,
-        context: &RuntimeAdmissionContext<'_>,
-    ) -> Result<RuntimeAdmissionDecision, KernelError> {
-        self.calls.fetch_add(1, Ordering::SeqCst);
-        Ok(RuntimeAdmissionDecision::allow(Some(serde_json::json!({
-            "chio_runtime": {
-                "admission_id": format!("adm-{}", context.request.request_id),
-                "accepted": true,
-                "reserved_destructive_lease_id": format!(
-                    "lease-{}",
-                    context.request.request_id
-                ),
-                "failure_code": null
-            }
-        }))))
-    }
-
-    fn poll_ready_before_dispatch_with_token(
-        &self,
-        _request: &ToolCallRequest,
-        token: RuntimeAdmissionReadinessToken,
-        cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<()> {
-        self.readiness_polls.fetch_add(1, Ordering::SeqCst);
-        self.readiness_started.notify_one();
-        if self.ready.load(Ordering::SeqCst) {
-            return std::task::Poll::Ready(());
-        }
-
-        let mut registrations = match self.readiness_registrations.lock() {
-            Ok(guard) => guard,
-            Err(poisoned) => poisoned.into_inner(),
-        };
-        registrations
-            .entry(token)
-            .and_modify(|(waker, _probe)| waker.clone_from(cx.waker()))
-            .or_insert_with(|| (cx.waker().clone(), std::sync::Arc::new(())));
-        if self.ready.load(Ordering::SeqCst) {
-            registrations.remove(&token);
-            std::task::Poll::Ready(())
-        } else {
-            std::task::Poll::Pending
-        }
-    }
-
-    fn unregister_ready_before_dispatch(
-        &self,
-        _request: &ToolCallRequest,
-        token: RuntimeAdmissionReadinessToken,
-    ) {
-        match self.readiness_registrations.lock() {
-            Ok(mut guard) => {
-                guard.remove(&token);
-            }
-            Err(poisoned) => {
-                poisoned.into_inner().remove(&token);
-            }
-        }
-        self.readiness_unregistrations
-            .fetch_add(1, Ordering::SeqCst);
-    }
-
-    fn revalidate_before_dispatch(
-        &self,
-        _context: &RuntimeAdmissionRevalidationContext<'_>,
-    ) -> Result<(), KernelError> {
-        Ok(())
-    }
-
-    fn release_reserved(&self, _metadata: &serde_json::Value) -> Result<(), KernelError> {
-        self.releases.fetch_add(1, Ordering::SeqCst);
-        Ok(())
-    }
-}
-
-fn assert_readiness_denial_released_pre_dispatch_state(
-    kernel: &ChioKernel,
-    cap: &CapabilityToken,
-    hook: &ControllableReadinessAdmissionHook,
-    invocations: &AtomicU64,
-) -> Result<(), Box<dyn std::error::Error>> {
-    assert_eq!(hook.calls.load(Ordering::SeqCst), 1);
-    assert!(hook.readiness_polls.load(Ordering::SeqCst) >= 1);
-    assert_eq!(invocations.load(Ordering::SeqCst), 0);
-    assert_eq!(
-        hook.releases.load(Ordering::SeqCst),
-        1,
-        "pre-dispatch denial must release runtime admission reservations"
-    );
-    let retry =
-        kernel.with_budget_store(|store| Ok(store.try_increment(&cap.id, 0, Some(1))?))?;
-    assert!(
-        retry,
-        "pre-dispatch denial must reverse the invocation budget increment"
-    );
-    Ok(())
 }
 
 impl RuntimeAdmissionHook for ReleaseTrackingRuntimeAdmissionHook {
@@ -489,39 +265,6 @@ impl RuntimeAdmissionHook for FailingReleaseRuntimeAdmissionHook {
         Err(KernelError::Internal(
             "runtime reservation release failed".to_string(),
         ))
-    }
-}
-
-impl RuntimeAdmissionHook for DenyingRetainedReservationAdmissionHook {
-    fn name(&self) -> &str {
-        "test-denying-retained-reservation-admission"
-    }
-
-    fn evaluate(
-        &self,
-        context: &RuntimeAdmissionContext<'_>,
-    ) -> Result<RuntimeAdmissionDecision, KernelError> {
-        self.calls.fetch_add(1, Ordering::SeqCst);
-        assert_eq!(context.request.request_id, self.expected_request_id);
-        assert!(self.retained.load(Ordering::SeqCst));
-        Ok(RuntimeAdmissionDecision::deny(
-            "runtime admission denied after ambiguous release",
-            Some(serde_json::json!({
-                "chio_runtime": {
-                    "admission_id": context.request.request_id,
-                    "accepted": false,
-                    "reserved_destructive_lease_id": "lease-denied-retained",
-                    "reservation_release_failed": true,
-                    "reservation_release_failure_reason": "release callback panicked"
-                }
-            })),
-        ))
-    }
-
-    fn release_reserved(&self, _metadata: &serde_json::Value) -> Result<(), KernelError> {
-        self.releases.fetch_add(1, Ordering::SeqCst);
-        self.retained.store(false, Ordering::SeqCst);
-        Ok(())
     }
 }
 
@@ -678,55 +421,6 @@ impl ToolServerConnection for UrlElicitationBeforeSideEffectServer {
     }
 }
 
-impl RuntimeAdmissionHook for MetadataIsolationReadinessHook {
-    fn name(&self) -> &str {
-        "test-metadata-isolation-readiness-admission"
-    }
-
-    fn evaluate(
-        &self,
-        _context: &RuntimeAdmissionContext<'_>,
-    ) -> Result<RuntimeAdmissionDecision, KernelError> {
-        self.calls.fetch_add(1, Ordering::SeqCst);
-        Ok(RuntimeAdmissionDecision::allow(
-            self.admission_metadata.clone(),
-        ))
-    }
-
-    fn poll_ready_before_dispatch(
-        &self,
-        _request: &ToolCallRequest,
-        _cx: &mut std::task::Context<'_>,
-    ) -> std::task::Poll<()> {
-        if self.ready {
-            std::task::Poll::Ready(())
-        } else {
-            std::task::Poll::Pending
-        }
-    }
-
-    fn revalidate_before_dispatch(
-        &self,
-        context: &RuntimeAdmissionRevalidationContext<'_>,
-    ) -> Result<(), KernelError> {
-        let metadata = context.admission_metadata.cloned();
-        match self.revalidated_metadata.lock() {
-            Ok(mut revalidated) => revalidated.push(metadata),
-            Err(poisoned) => poisoned.into_inner().push(metadata),
-        }
-        Ok(())
-    }
-
-    fn release_reserved(&self, metadata: &serde_json::Value) -> Result<(), KernelError> {
-        self.releases.fetch_add(1, Ordering::SeqCst);
-        match self.released_metadata.lock() {
-            Ok(mut released) => released.push(metadata.clone()),
-            Err(poisoned) => poisoned.into_inner().push(metadata.clone()),
-        }
-        Ok(())
-    }
-}
-
 #[async_trait::async_trait]
 impl ToolServerConnection for CancellationAfterSideEffectServer {
     fn server_id(&self) -> &str {
@@ -848,17 +542,18 @@ impl ToolServerConnection for IncompleteStreamAfterSideEffectServer {
     }
 }
 
-impl ToolNotRegisteredAfterDispatchServer {
-    fn new(id: &str, tools: Vec<&str>) -> Self {
+impl ToolNotRegisteredDispatchServer {
+    fn new(id: &str, tools: Vec<&str>, side_effects: std::sync::Arc<AtomicU64>) -> Self {
         Self {
             id: id.to_string(),
             tools: tools.into_iter().map(String::from).collect(),
+            side_effects,
         }
     }
 }
 
 #[async_trait::async_trait]
-impl ToolServerConnection for ToolNotRegisteredAfterDispatchServer {
+impl ToolServerConnection for ToolNotRegisteredDispatchServer {
     fn server_id(&self) -> &str {
         &self.id
     }
@@ -873,6 +568,7 @@ impl ToolServerConnection for ToolNotRegisteredAfterDispatchServer {
         _arguments: serde_json::Value,
         _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
     ) -> Result<Option<ToolServerStreamResult>, KernelError> {
+        self.side_effects.fetch_add(1, Ordering::SeqCst);
         Err(KernelError::ToolNotRegistered(format!(
             "tool \"{tool_name}\" withdrawn from server roster before dispatch"
         )))
@@ -981,29 +677,6 @@ fn assert_package_valid_allow_receipt(
     Ok(())
 }
 
-fn assert_no_runtime_retention_claim(
-    metadata: &serde_json::Value,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let Some(runtime) = metadata
-        .get("chio_runtime")
-        .and_then(serde_json::Value::as_object)
-    else {
-        return Ok(());
-    };
-    for key in [
-        "reservations_retained_fail_closed",
-        "retained_destructive_lease_id",
-        "retained_treaty_continuation_id",
-        "retained_swarm_continuation_id",
-    ] {
-        assert!(
-            !runtime.contains_key(key),
-            "untrusted metadata must not create runtime retention claim {key}"
-        );
-    }
-    Ok(())
-}
-
 #[test]
 fn chio_runtime_admission_hook_denies_before_tool_dispatch_and_records_metadata(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -1038,7 +711,6 @@ fn chio_runtime_admission_hook_denies_before_tool_dispatch_and_records_metadata(
     let response = kernel.evaluate_tool_call_blocking(&request)?;
 
     assert_eq!(response.verdict, Verdict::Deny);
-    assert!(response.receipt.verify_signature()?);
     assert_eq!(
         response.reason.as_deref(),
         Some("chio runtime admission denied")
@@ -1055,136 +727,6 @@ fn chio_runtime_admission_hook_denies_before_tool_dispatch_and_records_metadata(
         metadata["chio_runtime"]["failure_code"],
         "test_runtime_deny"
     );
-    Ok(())
-}
-
-#[test]
-fn runtime_admission_denial_does_not_retry_ambiguous_reservation_release(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut kernel = make_kernel(make_config());
-    let invocations = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(SideEffectServer::new(
-        "srv-chio-runtime",
-        vec!["destructive_update"],
-        std::sync::Arc::clone(&invocations),
-    )));
-
-    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
-    let releases = std::sync::Arc::new(AtomicU64::new(0));
-    let retained = std::sync::Arc::new(AtomicBool::new(true));
-    kernel.set_runtime_admission_hook(std::sync::Arc::new(
-        DenyingRetainedReservationAdmissionHook {
-            calls: std::sync::Arc::clone(&admission_calls),
-            releases: std::sync::Arc::clone(&releases),
-            retained: std::sync::Arc::clone(&retained),
-            expected_request_id: "req-runtime-deny-retained",
-        },
-    ));
-
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_grant("srv-chio-runtime", "destructive_update")]),
-        300,
-    );
-    let request = make_request_with_arguments(
-        "req-runtime-deny-retained",
-        &cap,
-        "destructive_update",
-        "srv-chio-runtime",
-        serde_json::json!({"record": "vendor-ledger-7"}),
-    );
-
-    let response = kernel.evaluate_tool_call_blocking(&request)?;
-
-    assert_eq!(response.verdict, Verdict::Deny);
-    assert_eq!(admission_calls.load(Ordering::SeqCst), 1);
-    assert_eq!(invocations.load(Ordering::SeqCst), 0);
-    assert_eq!(releases.load(Ordering::SeqCst), 0);
-    assert!(retained.load(Ordering::SeqCst));
-    let metadata = response
-        .receipt
-        .metadata
-        .ok_or_else(|| std::io::Error::other("deny metadata missing"))?;
-    assert_eq!(
-        metadata["chio_runtime"]["reserved_destructive_lease_id"],
-        "lease-denied-retained"
-    );
-    assert_eq!(metadata["chio_runtime"]["reservation_release_failed"], true);
-    Ok(())
-}
-
-#[test]
-fn nested_runtime_admission_denial_does_not_retry_ambiguous_reservation_release(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut kernel = make_kernel(make_config());
-    let invocations = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(SideEffectServer::new(
-        "srv-chio-runtime",
-        vec!["destructive_update"],
-        std::sync::Arc::clone(&invocations),
-    )));
-
-    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
-    let releases = std::sync::Arc::new(AtomicU64::new(0));
-    let retained = std::sync::Arc::new(AtomicBool::new(true));
-    kernel.set_runtime_admission_hook(std::sync::Arc::new(
-        DenyingRetainedReservationAdmissionHook {
-            calls: std::sync::Arc::clone(&admission_calls),
-            releases: std::sync::Arc::clone(&releases),
-            retained: std::sync::Arc::clone(&retained),
-            expected_request_id: "req-nested-runtime-deny-retained",
-        },
-    ));
-
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_grant("srv-chio-runtime", "destructive_update")]),
-        300,
-    );
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()])?;
-    kernel.activate_session(&session_id)?;
-    let context = make_operation_context(
-        &session_id,
-        "req-nested-runtime-deny-retained",
-        &agent_kp.public_key().to_hex(),
-    );
-    kernel.begin_session_request(&context, OperationKind::ToolCall, true)?;
-    let request = make_request_with_arguments(
-        "req-nested-runtime-deny-retained",
-        &cap,
-        "destructive_update",
-        "srv-chio-runtime",
-        serde_json::json!({"record": "vendor-ledger-7"}),
-    );
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-    let response = runtime.block_on(async {
-        let mut client = NoopNestedFlowClient;
-        kernel
-            .evaluate_tool_call_with_nested_flow_client_async(&context, &request, &mut client, None)
-            .await
-    })?;
-
-    assert_eq!(response.verdict, Verdict::Deny);
-    assert!(response.receipt.verify_signature()?);
-    assert_eq!(admission_calls.load(Ordering::SeqCst), 1);
-    assert_eq!(invocations.load(Ordering::SeqCst), 0);
-    assert_eq!(releases.load(Ordering::SeqCst), 0);
-    assert!(retained.load(Ordering::SeqCst));
-    let metadata = response
-        .receipt
-        .metadata
-        .ok_or_else(|| std::io::Error::other("deny metadata missing"))?;
-    assert_eq!(
-        metadata["chio_runtime"]["reserved_destructive_lease_id"],
-        "lease-denied-retained"
-    );
-    assert_eq!(metadata["chio_runtime"]["reservation_release_failed"], true);
     Ok(())
 }
 
@@ -1230,6 +772,7 @@ fn chio_governed_request_without_runtime_hook_fails_closed(
                 "bundleSha256": "a".repeat(64)
             }
         })),
+        body: Default::default(),
     });
 
     let response = kernel.evaluate_tool_call_blocking(&request)?;
@@ -1293,6 +836,7 @@ fn chio_treaty_request_without_runtime_hook_fails_closed() -> Result<(), Box<dyn
                 "actionClassId": "workflow.destructive.vendor_call"
             }
         })),
+        body: Default::default(),
     });
 
     let response = kernel.evaluate_tool_call_blocking(&request)?;
@@ -1495,6 +1039,7 @@ fn chio_swarm_request_without_runtime_hook_fails_closed() -> Result<(), Box<dyn 
                 }
             }
         })),
+        body: Default::default(),
     });
 
     let response = kernel.evaluate_tool_call_blocking(&request)?;
@@ -1567,7 +1112,12 @@ fn session_tool_call_preserves_chio_swarm_runtime_context() -> Result<(), Box<dy
                     }
                 }
             })),
+            body: Default::default(),
         }),
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         execution_nonce: None,
         model_metadata: None,
         extra_metadata: None,
@@ -1636,757 +1186,6 @@ fn chio_runtime_admission_hook_allows_dispatch_and_records_metadata(
     assert_eq!(metadata["chio_runtime"]["admission_id"], "adm-allowed");
     assert_eq!(metadata["chio_runtime"]["accepted"], true);
     assert_eq!(metadata["chio_runtime"]["observe_only"], true);
-    Ok(())
-}
-
-#[test]
-fn runtime_admission_metadata_with_foreign_namespace_denies_before_dispatch(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut kernel = make_kernel(make_config());
-    let invocations = std::sync::Arc::new(AtomicU64::new(0));
-    let releases = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(SideEffectServer::new(
-        "srv-chio-runtime",
-        vec!["destructive_update"],
-        std::sync::Arc::clone(&invocations),
-    )));
-    kernel.set_runtime_admission_hook(std::sync::Arc::new(
-        InvalidReceiptMetadataRuntimeAdmissionHook {
-            releases: std::sync::Arc::clone(&releases),
-        },
-    ));
-
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_grant("srv-chio-runtime", "destructive_update")]),
-        300,
-    );
-    let request = make_request_with_arguments(
-        "req-invalid-runtime-admission-metadata",
-        &cap,
-        "destructive_update",
-        "srv-chio-runtime",
-        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
-    );
-
-    let response = kernel.evaluate_tool_call_blocking(&request)?;
-
-    assert_eq!(response.verdict, Verdict::Deny);
-    assert_eq!(
-        response.reason.as_deref(),
-        Some("runtime admission metadata rejected")
-    );
-    assert_eq!(invocations.load(Ordering::SeqCst), 0);
-    assert_eq!(releases.load(Ordering::SeqCst), 1);
-    assert!(response.receipt.verify_signature()?);
-    let metadata = response
-        .receipt
-        .metadata
-        .as_ref()
-        .ok_or_else(|| std::io::Error::other("deny metadata missing"))?;
-    assert!(metadata.get("provenance").is_none());
-    assert_eq!(
-        metadata["chio_runtime"]["admission_id"],
-        "adm-invalid-receipt-metadata"
-    );
-    assert_eq!(kernel.receipt_log().len(), 1);
-    Ok(())
-}
-
-#[test]
-fn runtime_admission_readiness_timeout_rejects_invalid_durations(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut kernel = make_kernel(make_config());
-    let zero = kernel.set_runtime_admission_readiness_timeout(Duration::ZERO);
-    assert!(matches!(zero, Err(KernelError::InvalidConstraint(_))));
-    let fractional = kernel.set_runtime_admission_readiness_timeout(Duration::from_micros(1_500));
-    assert!(matches!(fractional, Err(KernelError::InvalidConstraint(_))));
-    let overflow = kernel.set_runtime_admission_readiness_timeout(Duration::from_secs(u64::MAX));
-    assert!(matches!(overflow, Err(KernelError::InvalidConstraint(_))));
-    kernel.set_runtime_admission_readiness_timeout(Duration::from_millis(1))?;
-    Ok(())
-}
-
-#[test]
-fn runtime_admission_readiness_revalidation_covers_expiry_and_emergency_stop(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let kernel = make_kernel(make_config());
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_grant("srv-chio-runtime", "destructive_update")]),
-        300,
-    );
-    let request = make_request_with_arguments(
-        "req-chio-runtime-readiness-security-recheck",
-        &cap,
-        "destructive_update",
-        "srv-chio-runtime",
-        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
-    );
-
-    let expiry_error = kernel
-        .revalidate_tool_call_after_runtime_readiness(
-            &request,
-            false,
-            cap.expires_at.saturating_add(1),
-        )
-        .err()
-        .ok_or_else(|| std::io::Error::other("expired capability was re-admitted"))?;
-    assert!(expiry_error.contains("expired"));
-
-    kernel.emergency_stop("test post-readiness stop")?;
-    let emergency_error = kernel
-        .revalidate_tool_call_after_runtime_readiness(&request, false, current_unix_timestamp())
-        .err()
-        .ok_or_else(|| std::io::Error::other("emergency-stopped kernel re-admitted request"))?;
-    assert_eq!(emergency_error, EMERGENCY_STOP_DENY_REASON);
-    Ok(())
-}
-
-#[test]
-fn runtime_admission_readiness_dpop_revalidation_is_fresh_but_non_consuming(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let agent_kp = make_keypair();
-    let server = "srv-chio-runtime-dpop";
-    let tool = "destructive_update";
-    let (kernel, cap) = make_dpop_kernel_and_cap(&agent_kp, server, tool);
-    let arguments = serde_json::json!({"record": "vendor-ledger-7", "value": "closed"});
-    let proof = make_dpop_proof(
-        &agent_kp,
-        &cap,
-        server,
-        tool,
-        &arguments,
-        "nonce-readiness-recheck",
-    );
-    let request = ToolCallRequest {
-        request_id: "req-chio-runtime-readiness-dpop".to_string(),
-        capability: cap.clone(),
-        tool_name: tool.to_string(),
-        server_id: server.to_string(),
-        agent_id: agent_kp.public_key().to_hex(),
-        arguments: arguments.clone(),
-        dpop_proof: Some(proof),
-        execution_nonce: None,
-        governed_intent: None,
-        approval_token: None,
-        model_metadata: None,
-        federated_origin_kernel_id: None,
-    };
-    kernel.revalidate_tool_call_after_runtime_readiness(
-        &request,
-        true,
-        current_unix_timestamp(),
-    )?;
-    kernel.revalidate_tool_call_after_runtime_readiness(
-        &request,
-        true,
-        current_unix_timestamp(),
-    )?;
-    kernel.verify_dpop_for_request(&request, &cap)?;
-    let replay_error = kernel
-        .verify_dpop_for_request(&request, &cap)
-        .err()
-        .ok_or_else(|| std::io::Error::other("replayed DPoP proof was accepted"))?;
-    assert!(replay_error.to_string().contains("replay"));
-
-    let mut stale_body = make_dpop_proof(
-        &agent_kp,
-        &cap,
-        server,
-        tool,
-        &arguments,
-        "nonce-readiness-stale",
-    )
-    .body;
-    stale_body.issued_at = 0;
-    let mut stale_request = request.clone();
-    stale_request.dpop_proof = Some(dpop::DpopProof::sign(stale_body, &agent_kp)?);
-    let stale_error = kernel
-        .revalidate_tool_call_after_runtime_readiness(
-            &stale_request,
-            true,
-            current_unix_timestamp(),
-        )
-        .err()
-        .ok_or_else(|| std::io::Error::other("stale DPoP proof was re-admitted"))?;
-    assert!(stale_error.contains("DPoP proof verification failed"));
-    Ok(())
-}
-
-#[test]
-fn runtime_admission_readiness_timeout_works_without_tokio_time_driver(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut kernel = make_kernel(make_config());
-    kernel.set_runtime_admission_readiness_timeout(Duration::from_millis(25))?;
-    let invocations = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(SideEffectServer::new(
-        "srv-chio-runtime",
-        vec!["destructive_update"],
-        std::sync::Arc::clone(&invocations),
-    )));
-    let hook = std::sync::Arc::new(ControllableReadinessAdmissionHook::new());
-    kernel.set_runtime_admission_hook(hook.clone());
-
-    let agent_kp = make_keypair();
-    let mut grant = make_grant("srv-chio-runtime", "destructive_update");
-    grant.max_invocations = Some(1);
-    let cap = make_capability(&kernel, &agent_kp, make_scope(vec![grant]), 300);
-    let request = make_request_with_arguments(
-        "req-chio-runtime-no-time-driver",
-        &cap,
-        "destructive_update",
-        "srv-chio-runtime",
-        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
-    );
-    let runtime = tokio::runtime::Builder::new_current_thread().build()?;
-
-    let response = runtime.block_on(kernel.evaluate_tool_call(&request))?;
-
-    assert_eq!(response.verdict, Verdict::Deny);
-    assert_eq!(
-        response.reason.as_deref(),
-        Some("runtime admission readiness timed out after 25ms")
-    );
-    assert_readiness_denial_released_pre_dispatch_state(
-        &kernel,
-        &cap,
-        hook.as_ref(),
-        invocations.as_ref(),
-    )?;
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn runtime_admission_pending_readiness_dispatches_after_ready_and_unregisters(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut kernel = make_kernel(make_config());
-    let invocations = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(SideEffectServer::new(
-        "srv-chio-runtime",
-        vec!["destructive_update"],
-        std::sync::Arc::clone(&invocations),
-    )));
-    let hook = std::sync::Arc::new(ControllableReadinessAdmissionHook::new());
-    kernel.set_runtime_admission_hook(hook.clone());
-
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_grant("srv-chio-runtime", "destructive_update")]),
-        300,
-    );
-    let request = make_request_with_arguments(
-        "req-chio-runtime-ready-after-pending",
-        &cap,
-        "destructive_update",
-        "srv-chio-runtime",
-        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
-    );
-
-    let evaluate = kernel.evaluate_tool_call(&request);
-    let make_ready = async {
-        tokio::time::timeout(Duration::from_secs(2), hook.readiness_started.notified())
-            .await
-            .map_err(|_| KernelError::Internal("runtime readiness was never polled".to_string()))?;
-        let probes = hook.readiness_registration_probes();
-        if probes.len() != 1 || probes[0].upgrade().is_none() {
-            return Err(KernelError::Internal(
-                "runtime readiness registration was not retained while pending".to_string(),
-            ));
-        }
-        hook.allow_dispatch();
-        Ok::<_, KernelError>(probes)
-    };
-    let (response, probes) = tokio::join!(evaluate, make_ready);
-    let response = response?;
-    let probes = probes?;
-
-    assert_eq!(response.verdict, Verdict::Allow);
-    assert_eq!(invocations.load(Ordering::SeqCst), 1);
-    assert_eq!(hook.calls.load(Ordering::SeqCst), 1);
-    assert!(hook.readiness_polls.load(Ordering::SeqCst) >= 1);
-    assert_eq!(hook.readiness_unregistrations.load(Ordering::SeqCst), 1);
-    assert!(hook.readiness_registration_probes().is_empty());
-    assert!(probes.into_iter().all(|probe| probe.upgrade().is_none()));
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn dropping_public_session_evaluation_while_readiness_pending_clears_request(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut kernel = make_kernel(make_config());
-    let invocations = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(SideEffectServer::new(
-        "srv-chio-runtime",
-        vec!["destructive_update"],
-        std::sync::Arc::clone(&invocations),
-    )));
-    let hook = std::sync::Arc::new(ControllableReadinessAdmissionHook::new());
-    kernel.set_runtime_admission_hook(hook.clone());
-
-    let agent_kp = make_keypair();
-    let capability = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_grant("srv-chio-runtime", "destructive_update")]),
-        300,
-    );
-    let session_id =
-        kernel.open_session(agent_kp.public_key().to_hex(), vec![capability.clone()])?;
-    kernel.activate_session(&session_id)?;
-    let context = make_operation_context(
-        &session_id,
-        "req-readiness-drop-session-wrapper",
-        &agent_kp.public_key().to_hex(),
-    );
-    let operation = ToolCallOperation {
-        capability,
-        server_id: "srv-chio-runtime".to_string(),
-        tool_name: "destructive_update".to_string(),
-        arguments: serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
-        governed_intent: None,
-        execution_nonce: None,
-        model_metadata: None,
-        extra_metadata: None,
-    };
-    let mut client = NoopNestedFlowClient;
-    let mut evaluation = Box::pin(
-        kernel.evaluate_tool_call_operation_with_nested_flow_client_async(
-            &context,
-            &operation,
-            &mut client,
-        ),
-    );
-    tokio::select! {
-        biased;
-        response = &mut evaluation => panic!("evaluation unexpectedly completed: {response:?}"),
-        _ = hook.readiness_started.notified() => {}
-    }
-    let probes = hook.readiness_registration_probes();
-    assert_eq!(probes.len(), 1);
-    assert!(kernel
-        .session(&session_id)
-        .is_some_and(|session| !session.inflight().is_empty()));
-
-    drop(evaluation);
-
-    assert!(kernel
-        .session(&session_id)
-        .is_some_and(|session| session.inflight().is_empty()));
-    assert_eq!(hook.readiness_unregistrations.load(Ordering::SeqCst), 1);
-    assert!(probes.into_iter().all(|probe| probe.upgrade().is_none()));
-    assert_eq!(hook.releases.load(Ordering::SeqCst), 1);
-    assert_eq!(invocations.load(Ordering::SeqCst), 0);
-    assert!(matches!(
-        kernel.request_session_cancellation(&session_id, &context.request_id),
-        Err(KernelError::Session(
-            SessionError::RequestNotInflight { .. }
-        ))
-    ));
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn session_cancellation_reason_survives_runtime_readiness_boundary(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut kernel = make_kernel(make_config());
-    let invocations = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(SideEffectServer::new(
-        "srv-chio-runtime",
-        vec!["destructive_update"],
-        std::sync::Arc::clone(&invocations),
-    )));
-    let hook = std::sync::Arc::new(ControllableReadinessAdmissionHook::new());
-    kernel.set_runtime_admission_hook(hook.clone());
-
-    let agent_kp = make_keypair();
-    let capability = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_grant("srv-chio-runtime", "destructive_update")]),
-        300,
-    );
-    let session_id =
-        kernel.open_session(agent_kp.public_key().to_hex(), vec![capability.clone()])?;
-    kernel.activate_session(&session_id)?;
-    let context = make_operation_context(
-        &session_id,
-        "req-readiness-cancel-reason",
-        &agent_kp.public_key().to_hex(),
-    );
-    let operation = ToolCallOperation {
-        capability,
-        server_id: "srv-chio-runtime".to_string(),
-        tool_name: "destructive_update".to_string(),
-        arguments: serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
-        governed_intent: None,
-        execution_nonce: None,
-        model_metadata: None,
-        extra_metadata: None,
-    };
-    let mut client = NoopNestedFlowClient;
-    let mut evaluation = Box::pin(
-        kernel.evaluate_tool_call_operation_with_nested_flow_client_async(
-            &context,
-            &operation,
-            &mut client,
-        ),
-    );
-    tokio::select! {
-        biased;
-        response = &mut evaluation => panic!("evaluation unexpectedly completed: {response:?}"),
-        _ = hook.readiness_started.notified() => {}
-    }
-
-    kernel.request_session_cancellation_with_reason(
-        &session_id,
-        &context.request_id,
-        "client cancelled during readiness",
-    )?;
-    hook.allow_dispatch();
-    let response = evaluation.await?;
-
-    assert_eq!(invocations.load(Ordering::SeqCst), 0);
-    assert!(matches!(
-        &response.terminal_state,
-        OperationTerminalState::Cancelled { reason }
-            if reason.contains("client cancelled during readiness")
-    ));
-    let terminal = kernel
-        .session(&session_id)
-        .and_then(|session| session.terminal().get(&context.request_id))
-        .expect("cancelled terminal state");
-    assert!(matches!(
-        terminal,
-        OperationTerminalState::Cancelled { reason }
-            if reason.contains("client cancelled during readiness")
-    ));
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn dropping_public_session_evaluation_during_dispatch_clears_dispatch_claim(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut kernel = make_kernel(make_config());
-    let started = std::sync::Arc::new(tokio::sync::Notify::new());
-    kernel.register_tool_server(Box::new(PendingMonetaryServer {
-        id: "srv-pending-session-drop".to_string(),
-        started: std::sync::Arc::clone(&started),
-    }));
-
-    let agent_kp = make_keypair();
-    let capability = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_grant("srv-pending-session-drop", "compute")]),
-        300,
-    );
-    let session_id =
-        kernel.open_session(agent_kp.public_key().to_hex(), vec![capability.clone()])?;
-    kernel.activate_session(&session_id)?;
-    let context = make_operation_context(
-        &session_id,
-        "req-dispatch-drop-session-wrapper",
-        &agent_kp.public_key().to_hex(),
-    );
-    let operation = ToolCallOperation {
-        capability,
-        server_id: "srv-pending-session-drop".to_string(),
-        tool_name: "compute".to_string(),
-        arguments: serde_json::json!({"work": "pending"}),
-        governed_intent: None,
-        execution_nonce: None,
-        model_metadata: None,
-        extra_metadata: None,
-    };
-    let mut client = NoopNestedFlowClient;
-    let mut evaluation = Box::pin(
-        kernel.evaluate_tool_call_operation_with_nested_flow_client_async(
-            &context,
-            &operation,
-            &mut client,
-        ),
-    );
-    tokio::select! {
-        biased;
-        response = &mut evaluation => panic!("evaluation unexpectedly completed: {response:?}"),
-        _ = started.notified() => {}
-    }
-    kernel.request_session_cancellation_with_reason(
-        &session_id,
-        &context.request_id,
-        "client cancelled pending dispatch",
-    )?;
-    assert!(kernel
-        .session(&session_id)
-        .and_then(|session| session.inflight().get(&context.request_id))
-        .is_some_and(|request| request.cancellation_requested));
-
-    drop(evaluation);
-
-    let session = kernel.session(&session_id).expect("session remains available");
-    assert!(session.inflight().is_empty());
-    assert_eq!(
-        session.terminal().get(&context.request_id),
-        Some(OperationTerminalState::Cancelled {
-            reason: "client cancelled pending dispatch".to_string(),
-        })
-    );
-    assert!(matches!(
-        kernel.request_session_cancellation(&session_id, &context.request_id),
-        Err(KernelError::Session(
-            SessionError::RequestNotInflight { .. }
-        ))
-    ));
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn runtime_admission_rechecks_revocation_after_readiness_wait(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut kernel = make_kernel(make_config());
-    let invocations = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(SideEffectServer::new(
-        "srv-chio-runtime",
-        vec!["destructive_update"],
-        std::sync::Arc::clone(&invocations),
-    )));
-    let hook = std::sync::Arc::new(ControllableReadinessAdmissionHook::new());
-    kernel.set_runtime_admission_hook(hook.clone());
-    let trace = std::sync::Arc::new(CountingRevocationAdmissionTraceObserver::default());
-    kernel.set_runtime_trace_observer(trace.clone());
-
-    let agent_kp = make_keypair();
-    let mut grant = make_grant("srv-chio-runtime", "destructive_update");
-    grant.max_invocations = Some(1);
-    let cap = make_capability(&kernel, &agent_kp, make_scope(vec![grant]), 300);
-    let request = make_request_with_arguments(
-        "req-chio-runtime-revoked-while-pending",
-        &cap,
-        "destructive_update",
-        "srv-chio-runtime",
-        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
-    );
-
-    let evaluate = kernel.evaluate_tool_call(&request);
-    let revoke = async {
-        tokio::time::timeout(Duration::from_secs(2), hook.readiness_started.notified())
-            .await
-            .map_err(|_| KernelError::Internal("runtime readiness was never polled".to_string()))?;
-        let result = kernel.revoke_capability(&cap.id);
-        hook.allow_dispatch();
-        result
-    };
-    let (response, revocation) = tokio::join!(evaluate, revoke);
-    revocation?;
-    let response = response?;
-
-    assert_eq!(response.verdict, Verdict::Deny);
-    assert_eq!(
-        response.reason.as_deref(),
-        Some(
-            format!(
-                "guard denied the request: capability has been revoked: {}",
-                cap.id
-            )
-            .as_str()
-        )
-    );
-    assert_eq!(
-        trace.admissions.load(Ordering::SeqCst),
-        1,
-        "post-readiness revocation recheck must not emit a duplicate admission trace"
-    );
-    assert_readiness_denial_released_pre_dispatch_state(
-        &kernel,
-        &cap,
-        hook.as_ref(),
-        invocations.as_ref(),
-    )?;
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn nested_runtime_admission_rechecks_revocation_after_readiness_wait(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut kernel = make_kernel(make_config());
-    let invocations = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(SideEffectServer::new(
-        "srv-chio-runtime",
-        vec!["destructive_update"],
-        std::sync::Arc::clone(&invocations),
-    )));
-    let hook = std::sync::Arc::new(ControllableReadinessAdmissionHook::new());
-    kernel.set_runtime_admission_hook(hook.clone());
-
-    let agent_kp = make_keypair();
-    let mut grant = make_grant("srv-chio-runtime", "destructive_update");
-    grant.max_invocations = Some(1);
-    let cap = make_capability(&kernel, &agent_kp, make_scope(vec![grant]), 300);
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()])?;
-    kernel.activate_session(&session_id)?;
-    let context = make_operation_context(
-        &session_id,
-        "req-chio-runtime-nested-revoked-while-pending",
-        &agent_kp.public_key().to_hex(),
-    );
-    let operation = ToolCallOperation {
-        capability: cap.clone(),
-        server_id: "srv-chio-runtime".to_string(),
-        tool_name: "destructive_update".to_string(),
-        arguments: serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
-        governed_intent: None,
-        execution_nonce: None,
-        model_metadata: None,
-        extra_metadata: None,
-    };
-    let mut client = NoopNestedFlowClient;
-
-    let evaluate = kernel.evaluate_tool_call_operation_with_nested_flow_client_async(
-        &context,
-        &operation,
-        &mut client,
-    );
-    let revoke = async {
-        tokio::time::timeout(Duration::from_secs(2), hook.readiness_started.notified())
-            .await
-            .map_err(|_| {
-                KernelError::Internal("nested runtime readiness was never polled".to_string())
-            })?;
-        let result = kernel.revoke_capability(&cap.id);
-        hook.allow_dispatch();
-        result
-    };
-    let (response, revocation) = tokio::join!(evaluate, revoke);
-    revocation?;
-    let response = response?;
-
-    assert_eq!(response.verdict, Verdict::Deny);
-    assert_eq!(
-        response.reason.as_deref(),
-        Some(
-            format!(
-                "guard denied the request: capability has been revoked: {}",
-                cap.id
-            )
-            .as_str()
-        )
-    );
-    assert_readiness_denial_released_pre_dispatch_state(
-        &kernel,
-        &cap,
-        hook.as_ref(),
-        invocations.as_ref(),
-    )?;
-    Ok(())
-}
-
-#[test]
-fn runtime_admission_readiness_timeout_releases_pre_dispatch_state(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut kernel = make_kernel(make_config());
-    kernel.set_runtime_admission_readiness_timeout(Duration::from_millis(25))?;
-    let invocations = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(SideEffectServer::new(
-        "srv-chio-runtime",
-        vec!["destructive_update"],
-        std::sync::Arc::clone(&invocations),
-    )));
-    let hook = std::sync::Arc::new(ControllableReadinessAdmissionHook::new());
-    kernel.set_runtime_admission_hook(hook.clone());
-
-    let agent_kp = make_keypair();
-    let mut grant = make_grant("srv-chio-runtime", "destructive_update");
-    grant.max_invocations = Some(1);
-    let cap = make_capability(&kernel, &agent_kp, make_scope(vec![grant]), 300);
-    let request = make_request_with_arguments(
-        "req-chio-runtime-readiness-timeout",
-        &cap,
-        "destructive_update",
-        "srv-chio-runtime",
-        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
-    );
-
-    let response = kernel.evaluate_tool_call_blocking(&request)?;
-
-    assert_eq!(response.verdict, Verdict::Deny);
-    assert_eq!(
-        response.reason.as_deref(),
-        Some("runtime admission readiness timed out after 25ms")
-    );
-    assert_readiness_denial_released_pre_dispatch_state(
-        &kernel,
-        &cap,
-        hook.as_ref(),
-        invocations.as_ref(),
-    )?;
-    Ok(())
-}
-
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn nested_runtime_admission_readiness_timeout_releases_pre_dispatch_state(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut kernel = make_kernel(make_config());
-    kernel.set_runtime_admission_readiness_timeout(Duration::from_millis(25))?;
-    let invocations = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(SideEffectServer::new(
-        "srv-chio-runtime",
-        vec!["destructive_update"],
-        std::sync::Arc::clone(&invocations),
-    )));
-    let hook = std::sync::Arc::new(ControllableReadinessAdmissionHook::new());
-    kernel.set_runtime_admission_hook(hook.clone());
-
-    let agent_kp = make_keypair();
-    let mut grant = make_grant("srv-chio-runtime", "destructive_update");
-    grant.max_invocations = Some(1);
-    let cap = make_capability(&kernel, &agent_kp, make_scope(vec![grant]), 300);
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()])?;
-    kernel.activate_session(&session_id)?;
-    let context = make_operation_context(
-        &session_id,
-        "req-chio-runtime-nested-readiness-timeout",
-        &agent_kp.public_key().to_hex(),
-    );
-    let operation = ToolCallOperation {
-        capability: cap.clone(),
-        server_id: "srv-chio-runtime".to_string(),
-        tool_name: "destructive_update".to_string(),
-        arguments: serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
-        governed_intent: None,
-        execution_nonce: None,
-        model_metadata: None,
-        extra_metadata: None,
-    };
-    let mut client = NoopNestedFlowClient;
-
-    let response = tokio::time::timeout(
-        Duration::from_secs(2),
-        kernel.evaluate_tool_call_operation_with_nested_flow_client_async(
-            &context,
-            &operation,
-            &mut client,
-        ),
-    )
-    .await??;
-
-    assert_eq!(response.verdict, Verdict::Deny);
-    assert_eq!(
-        response.reason.as_deref(),
-        Some("runtime admission readiness timed out after 25ms")
-    );
-    assert_readiness_denial_released_pre_dispatch_state(
-        &kernel,
-        &cap,
-        hook.as_ref(),
-        invocations.as_ref(),
-    )?;
     Ok(())
 }
 
@@ -2475,6 +1274,10 @@ fn chio_runtime_admission_hook_receives_nested_flow_route_metadata_before_dispat
         tool_name: "destructive_update".to_string(),
         arguments: serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
         governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         execution_nonce: None,
         model_metadata: None,
         extra_metadata: Some(serde_json::json!({
@@ -2577,7 +1380,7 @@ fn chio_runtime_admission_does_not_release_destructive_lease_after_dispatch_fail
 }
 
 #[test]
-fn server_url_elicitation_is_typed_error_and_releases_runtime_reservations(
+fn chio_runtime_admission_releases_reservations_on_non_durable_url_elicitation(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut kernel = make_kernel(make_config());
     let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
@@ -2613,19 +1416,25 @@ fn server_url_elicitation_is_typed_error_and_releases_runtime_reservations(
         serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
     );
 
-    let result = kernel.evaluate_tool_call_blocking(&request);
-    assert!(matches!(
-        result,
-        Err(KernelError::UrlElicitationsRequired { .. })
-    ));
+    let error = kernel
+        .evaluate_tool_call_blocking(&request)
+        .expect_err("URL elicitation must surface to the caller");
+
+    assert!(matches!(error, KernelError::UrlElicitationsRequired { .. }));
     assert_eq!(admission_calls.load(Ordering::SeqCst), 1);
     assert_eq!(stream_attempts.load(Ordering::SeqCst), 1);
     assert_eq!(
         releases.load(Ordering::SeqCst),
         1,
-        "the typed pre-effect URL result must release runtime reservations"
+        "non-durable URL elicitation must release runtime reservations for retry"
     );
-    assert_eq!(kernel.receipt_log().len(), 0);
+    let receipt_log = kernel.receipt_log();
+    assert_eq!(receipt_log.len(), 1);
+    let receipt = receipt_log
+        .get(0)
+        .ok_or_else(|| std::io::Error::other("URL elicitation cleanup receipt missing"))?;
+    assert!(receipt.is_denied());
+    assert!(receipt.verify_signature()?);
     Ok(())
 }
 
@@ -2777,10 +1586,9 @@ fn chio_post_admission_drop_guard_retains_non_monetary_runtime_reservations(
         &mutation,
         None,
         PostAdmissionReceiptContext {
-            evaluation_context: EvaluationReceiptContext::default(),
-            extra_metadata: Some(metadata.clone()),
-            runtime_admission_metadata: Some(metadata),
+            extra_metadata: Some(metadata),
             pre_invocation_guard_evidence: Vec::new(),
+            verified_payee_binding: None,
         },
         true,
     );
@@ -2833,6 +1641,9 @@ fn chio_runtime_admission_releases_reservations_on_pre_dispatch_budget_denial(
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     })?;
@@ -2865,6 +1676,9 @@ fn chio_runtime_admission_releases_reservations_on_pre_dispatch_budget_denial(
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     })?;
@@ -2921,6 +1735,9 @@ fn chio_runtime_release_failure_does_not_mask_pre_dispatch_budget_denial(
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     })?;
@@ -2952,6 +1769,9 @@ fn chio_runtime_release_failure_does_not_mask_pre_dispatch_budget_denial(
         execution_nonce: None,
         governed_intent: None,
         approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         federated_origin_kernel_id: None,
     })?;
@@ -2979,10 +1799,281 @@ fn chio_runtime_release_failure_does_not_mask_pre_dispatch_budget_denial(
         "lease-release-failure-budget-deny"
     );
     assert_eq!(metadata["chio_runtime"]["reservation_release_failed"], true);
-    assert_eq!(
-        metadata["chio_runtime"]["reservation_release_failure_reason"],
-        "internal error: runtime reservation release failed"
+    assert_eq!(metadata["chio_runtime"]["reservation_retained"], true);
+    assert!(metadata["chio_runtime"]
+        .get("reservation_release_failure_reason")
+        .is_none());
+    Ok(())
+}
+
+#[test]
+fn chio_runtime_release_failure_surfaces_cleanup_failure_on_pending_approval() {
+    let (mut kernel, mut request, _store, invocations) =
+        durable_admission_fixture("req-chio-runtime-release-failure-pending");
+    let approver_a = CoreKeypair::generate();
+    let approver_b = CoreKeypair::generate();
+    let requirement = ThresholdApprovalRequirement::new(
+        kernel.config.policy_hash.clone(),
+        2,
+        vec![
+            ThresholdApproverIdentity {
+                identifier: "approver-a".to_owned(),
+                public_key: approver_a.public_key(),
+            },
+            ThresholdApproverIdentity {
+                identifier: "approver-b".to_owned(),
+                public_key: approver_b.public_key(),
+            },
+        ],
+        "cumulative-approval-directory-v1".to_owned(),
+        300,
+    )
+    .expect("threshold requirement");
+    kernel.set_threshold_approval_requirement_resolver(StdArc::new(FixedThresholdRequirement(
+        requirement,
+    )));
+    let mut body = request.capability.body();
+    body.scope.grants[0]
+        .constraints
+        .push(Constraint::RequireCumulativeApprovalAbove {
+            threshold: MonetaryAmount {
+                units: 100,
+                currency: "USD".to_owned(),
+            },
+            approval_budget_id: "budget-pending-release".to_owned(),
+            approval_budget_epoch: 7,
+            cumulative_approval_root_binding: None,
+        });
+    request.capability = CapabilityToken::sign(body, &kernel.config.keypair)
+        .expect("cumulative capability must sign");
+    request.governed_intent = Some(GovernedTransactionIntent {
+        id: "cumulative-approval-release-intent".to_owned(),
+        server_id: request.server_id.clone(),
+        tool_name: request.tool_name.clone(),
+        purpose: "authorize a bounded ledger mutation".to_owned(),
+        max_amount: Some(MonetaryAmount {
+            units: 100,
+            currency: "USD".to_owned(),
+        }),
+        commerce: None,
+        metered_billing: None,
+        runtime_attestation: None,
+        call_chain: None,
+        autonomy: None,
+        context: None,
+        body: Default::default(),
+    });
+
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    let releases = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(FailingReleaseRuntimeAdmissionHook {
+        calls: std::sync::Arc::clone(&admission_calls),
+        releases: std::sync::Arc::clone(&releases),
+        expected_request_id: "req-chio-runtime-release-failure-pending",
+        admission_id: "adm-release-failure-pending",
+        lease_id: "lease-release-failure-pending",
+    }));
+
+    let response = kernel
+        .evaluate_tool_call_blocking(&request)
+        .expect("pending-approval evaluation");
+
+    // The runtime lease was reserved before the budget check parked the call for
+    // cumulative approval, and its release could not be confirmed. A retained
+    // lease cannot be parked for approval, so the outcome fails closed instead
+    // of returning a bare pending verdict.
+    assert_ne!(
+        response.verdict,
+        Verdict::PendingApproval,
+        "a stuck runtime lease must not surface as a bare pending approval"
     );
+    assert_eq!(
+        response.verdict,
+        Verdict::Deny,
+        "unexpected verdict: {:?}",
+        response.reason
+    );
+    assert_eq!(admission_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(
+        releases.load(Ordering::SeqCst),
+        1,
+        "runtime release must be attempted before surfacing the cleanup failure"
+    );
+    assert_eq!(invocations.load(Ordering::SeqCst), 0);
+    let metadata = response
+        .receipt
+        .metadata
+        .expect("cleanup-failure metadata present");
+    assert_eq!(metadata["chio_runtime"]["reservation_release_failed"], true);
+    assert_eq!(metadata["chio_runtime"]["reservation_retained"], true);
+    assert_eq!(
+        metadata["chio_runtime"]["reserved_destructive_lease_id"],
+        "lease-release-failure-pending"
+    );
+}
+
+#[test]
+fn nested_runtime_release_failure_denies_pending_approval() {
+    let request_id = "req-chio-runtime-nested-release-failure-pending";
+    let (mut kernel, mut request, _store, invocations) =
+        durable_admission_fixture(request_id);
+    let approver_a = CoreKeypair::generate();
+    let approver_b = CoreKeypair::generate();
+    let requirement = ThresholdApprovalRequirement::new(
+        kernel.config.policy_hash.clone(),
+        2,
+        vec![
+            ThresholdApproverIdentity {
+                identifier: "approver-a".to_owned(),
+                public_key: approver_a.public_key(),
+            },
+            ThresholdApproverIdentity {
+                identifier: "approver-b".to_owned(),
+                public_key: approver_b.public_key(),
+            },
+        ],
+        "cumulative-approval-directory-v1".to_owned(),
+        300,
+    )
+    .expect("threshold requirement");
+    kernel.set_threshold_approval_requirement_resolver(StdArc::new(FixedThresholdRequirement(
+        requirement,
+    )));
+    let mut body = request.capability.body();
+    body.scope.grants[0]
+        .constraints
+        .push(Constraint::RequireCumulativeApprovalAbove {
+            threshold: MonetaryAmount {
+                units: 100,
+                currency: "USD".to_owned(),
+            },
+            approval_budget_id: "budget-nested-pending-release".to_owned(),
+            approval_budget_epoch: 7,
+            cumulative_approval_root_binding: None,
+        });
+    request.capability = CapabilityToken::sign(body, &kernel.config.keypair)
+        .expect("cumulative capability must sign");
+    request.governed_intent = Some(GovernedTransactionIntent {
+        id: "cumulative-approval-nested-release-intent".to_owned(),
+        server_id: request.server_id.clone(),
+        tool_name: request.tool_name.clone(),
+        purpose: "authorize a bounded ledger mutation".to_owned(),
+        max_amount: Some(MonetaryAmount {
+            units: 100,
+            currency: "USD".to_owned(),
+        }),
+        commerce: None,
+        metered_billing: None,
+        runtime_attestation: None,
+        call_chain: None,
+        autonomy: None,
+        context: None,
+        body: Default::default(),
+    });
+
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    let releases = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(FailingReleaseRuntimeAdmissionHook {
+        calls: std::sync::Arc::clone(&admission_calls),
+        releases: std::sync::Arc::clone(&releases),
+        expected_request_id: request_id,
+        admission_id: "adm-nested-release-failure-pending",
+        lease_id: "lease-nested-release-failure-pending",
+    }));
+
+    let session_id = kernel
+        .open_session(
+            request.agent_id.clone(),
+            vec![request.capability.clone()],
+        )
+        .expect("nested session should open");
+    kernel
+        .activate_session(&session_id)
+        .expect("nested session should activate");
+    let context = make_operation_context(&session_id, request_id, &request.agent_id);
+    let operation = ToolCallOperation {
+        capability: request.capability,
+        server_id: request.server_id,
+        tool_name: request.tool_name,
+        arguments: request.arguments,
+        governed_intent: request.governed_intent,
+        approval_token: request.approval_token,
+        approval_tokens: request.approval_tokens,
+        threshold_approval_proposal: request.threshold_approval_proposal,
+        supplemental_authorization: request.supplemental_authorization,
+        execution_nonce: None,
+        model_metadata: request.model_metadata,
+        extra_metadata: None,
+    };
+    let mut client = NoopNestedFlowClient;
+    let response = kernel
+        .evaluate_tool_call_operation_with_nested_flow_client(&context, &operation, &mut client)
+        .expect("nested pending-approval evaluation");
+
+    assert_eq!(response.verdict, Verdict::Deny, "{:?}", response.reason);
+    assert_eq!(admission_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(releases.load(Ordering::SeqCst), 1);
+    assert_eq!(invocations.load(Ordering::SeqCst), 0);
+    let metadata = response
+        .receipt
+        .metadata
+        .expect("cleanup-failure metadata present");
+    assert_eq!(metadata["chio_runtime"]["reservation_release_failed"], true);
+    assert_eq!(metadata["chio_runtime"]["reservation_retained"], true);
+    assert_eq!(
+        metadata["chio_runtime"]["reserved_destructive_lease_id"],
+        "lease-nested-release-failure-pending"
+    );
+}
+
+#[test]
+fn exhausted_grant_receipt_retains_failed_runtime_release_evidence(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut kernel = make_kernel(make_config());
+    kernel.register_tool_server(Box::new(EchoServer::new(
+        "runtime-release-srv",
+        vec!["read"],
+    )));
+
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    let releases = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(FailingReleaseRuntimeAdmissionHook {
+        calls: std::sync::Arc::clone(&admission_calls),
+        releases: std::sync::Arc::clone(&releases),
+        expected_request_id: "req-exhausted-runtime-release-failure",
+        admission_id: "adm-exhausted-runtime-release-failure",
+        lease_id: "lease-exhausted-runtime-release-failure",
+    }));
+
+    let mut grant = make_grant("runtime-release-srv", "read");
+    grant.max_invocations = Some(0);
+    let agent = make_keypair();
+    let capability = make_capability(&kernel, &agent, make_scope(vec![grant]), 300);
+    let response = kernel.evaluate_tool_call_blocking(&make_request_with_arguments(
+        "req-exhausted-runtime-release-failure",
+        &capability,
+        "read",
+        "runtime-release-srv",
+        serde_json::json!({}),
+    ))?;
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert!(response
+        .reason
+        .as_deref()
+        .is_some_and(|reason| reason.contains("budget exhausted")));
+    assert_eq!(admission_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(releases.load(Ordering::SeqCst), 1);
+    let metadata = response
+        .receipt
+        .metadata
+        .ok_or_else(|| std::io::Error::other("deny metadata missing"))?;
+    assert_eq!(
+        metadata["chio_runtime"]["reserved_destructive_lease_id"],
+        "lease-exhausted-runtime-release-failure"
+    );
+    assert_eq!(metadata["chio_runtime"]["reservation_release_failed"], true);
+    assert_eq!(metadata["chio_runtime"]["reservation_retained"], true);
     Ok(())
 }
 
@@ -3045,75 +2136,71 @@ fn chio_runtime_live_parent_and_vendor_calls_expose_package_valid_receipts(
     Ok(())
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn drop_guard_post_dispatch_ambiguity_records_pending_reversal() {
-    let started = std::sync::Arc::new(tokio::sync::Notify::new());
-    let mut kernel = make_kernel(make_monetary_config());
+#[test]
+fn drop_guard_reverse_failure_records_cleanup_fault() {
+    let mut kernel = make_kernel(make_config());
     kernel.set_budget_store(Box::new(ReverseFailingBudgetStore::new()));
-    kernel.register_tool_server(Box::new(PendingMonetaryServer {
-        id: "cost-srv".to_string(),
-        started: std::sync::Arc::clone(&started),
-    }));
-
-    let agent_kp = Keypair::generate();
-    let grant = make_monetary_grant("cost-srv", "compute", 100, 1000, "USD");
-    let cap = kernel
-        .issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 3600)
-        .unwrap();
-    let request = ToolCallRequest {
-        request_id: "req-drop-reverse-failure".to_string(),
-        capability: cap,
-        tool_name: "compute".to_string(),
-        server_id: "cost-srv".to_string(),
-        agent_id: agent_kp.public_key().to_hex(),
-        arguments: serde_json::json!({}),
-        dpop_proof: None,
-        execution_nonce: None,
-        governed_intent: None,
-        approval_token: None,
-        model_metadata: None,
-        federated_origin_kernel_id: None,
-    };
-
-    let kernel = std::sync::Arc::new(kernel);
-    let eval = {
-        let kernel = std::sync::Arc::clone(&kernel);
-        tokio::spawn(async move { kernel.evaluate_tool_call(&request).await })
-    };
-
-    if tokio::time::timeout(Duration::from_secs(1), started.notified())
-        .await
-        .is_err()
-    {
-        if eval.is_finished() {
-            panic!(
-                "pending monetary evaluation completed before invocation: {:?}",
-                eval.await
-            );
-        }
-        panic!("pending monetary tool should be invoked before abort");
-    }
-    eval.abort();
-    assert!(
-        eval.await.expect_err("aborted evaluation should not complete").is_cancelled()
+    let agent_kp = make_keypair();
+    let cap = make_capability(
+        &kernel,
+        &agent_kp,
+        make_scope(vec![make_grant("srv-chio-runtime", "destructive_update")]),
+        300,
     );
+    let request = make_request_with_arguments(
+        "req-drop-reverse-failure",
+        &cap,
+        "destructive_update",
+        "srv-chio-runtime",
+        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
+    );
+    authorize_fabricated_drop_hold(&kernel, &cap.id).unwrap();
+    let mutation = PreExecutionBudgetMutation::Charge(make_fabricated_drop_charge());
+
+    drop(PostAdmissionDropGuard::new(
+        &kernel,
+        &request,
+        &cap,
+        Some(0),
+        &mutation,
+        None,
+        PostAdmissionReceiptContext {
+            extra_metadata: None,
+            pre_invocation_guard_evidence: Vec::new(),
+            verified_payee_binding: None,
+        },
+        false,
+    ));
 
     let receipt_log = kernel.receipt_log();
-    assert_eq!(receipt_log.len(), 1, "drop guard must emit exactly one cancellation receipt");
+    assert_eq!(
+        receipt_log.len(),
+        1,
+        "drop guard must emit exactly one cancellation receipt"
+    );
     let receipt = receipt_log.get(0).unwrap();
-    assert!(receipt.is_cancelled(), "drop guard receipt must be a cancellation");
+    assert!(
+        receipt.is_cancelled(),
+        "drop guard receipt must be a cancellation"
+    );
     let metadata = receipt
         .metadata
         .as_ref()
         .expect("cancellation receipt must carry metadata");
     assert_eq!(
-        metadata["budget_authority"]["terminal"]["disposition"],
-        "pending_reversal",
-        "an unreconciled post-dispatch hold must carry a pending_reversal terminal disposition so recovery can close it"
+        metadata["chio_runtime"]["pre_dispatch_cleanup_failed"], true,
+        "reverse failure must be visible as a pre-dispatch cleanup fault"
     );
     assert!(
-        metadata["budget_authority"]["hold_id"].is_string(),
-        "pending_reversal receipt must identify the hold"
+        metadata["chio_runtime"]["pre_dispatch_cleanup_faults"]
+            .as_array()
+            .is_some_and(|faults| faults.iter().any(|fault| {
+                fault["step"] == "monetary_unwind"
+                    && fault["hold_ids"]
+                        .as_array()
+                        .is_some_and(|ids| ids.iter().any(|id| id == "hold-drop-guard-tests"))
+            })),
+        "cleanup fault receipt must identify the failed monetary hold"
     );
 }
 
@@ -3135,8 +2222,9 @@ fn make_fabricated_drop_charge() -> BudgetChargeResult {
                 crate::budget_store::BudgetMeteringProfile::MaxCostPreauthorizeThenReconcileActual,
             budget_commit_index: None,
             event_id: None,
-            replayed_event: false,
+            recorded_at_unix_seconds: None,
         },
+        invocation_capture: None,
     }
 }
 
@@ -3157,13 +2245,15 @@ fn authorize_fabricated_drop_hold(
                     capability_id: capability_id.to_string(),
                     grant_index: 0,
                     max_invocations: None,
+                    invocation_quotas: Vec::new(),
+                    cumulative_approval: None,
+                    admission_binding: None,
                     requested_exposure_units: 5,
                     max_cost_per_invocation: Some(100),
                     max_total_cost_units: Some(1_000),
                     hold_id: Some("hold-drop-guard-tests".to_string()),
                     event_id: Some("hold-drop-guard-tests:authorize".to_string()),
                     authority: None,
-                    payment_journal: None,
                 })?;
             assert!(
                 matches!(
@@ -3229,10 +2319,9 @@ fn drop_pre_dispatch_releases_reservations_no_receipt() -> Result<(), Box<dyn st
         &mutation,
         None,
         PostAdmissionReceiptContext {
-            evaluation_context: EvaluationReceiptContext::default(),
-            extra_metadata: Some(metadata.clone()),
-            runtime_admission_metadata: Some(metadata),
+            extra_metadata: Some(metadata),
             pre_invocation_guard_evidence: Vec::new(),
+            verified_payee_binding: None,
         },
         true,
     ));
@@ -3256,7 +2345,7 @@ fn drop_pre_dispatch_monetary_unwinds_without_receipt() -> Result<(), Box<dyn st
     // hold is reversed, reservations released, and no receipt is recorded.
     let mut kernel = make_kernel(make_config());
     let payment = TrackingPaymentAdapter::new();
-    kernel.set_payment_adapter(Box::new(payment.clone()))?;
+    kernel.set_payment_adapter(Box::new(payment.clone()));
     let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
     let releases = std::sync::Arc::new(AtomicU64::new(0));
     kernel.set_runtime_admission_hook(std::sync::Arc::new(ReleaseTrackingRuntimeAdmissionHook {
@@ -3297,8 +2386,7 @@ fn drop_pre_dispatch_monetary_unwinds_without_receipt() -> Result<(), Box<dyn st
     let mutation = PreExecutionBudgetMutation::Charge(make_fabricated_drop_charge());
     let authorization = PaymentAuthorization {
         authorization_id: "auth-monetary-pre-dispatch-drop".to_string(),
-        settled: false,
-        settlement_transaction_id: None,
+        state: PaymentAuthorizationState::Held,
         metadata: serde_json::json!({ "adapter": "tracking" }),
     };
 
@@ -3310,10 +2398,9 @@ fn drop_pre_dispatch_monetary_unwinds_without_receipt() -> Result<(), Box<dyn st
         &mutation,
         Some(&authorization),
         PostAdmissionReceiptContext {
-            evaluation_context: EvaluationReceiptContext::default(),
-            extra_metadata: Some(metadata.clone()),
-            runtime_admission_metadata: Some(metadata),
+            extra_metadata: Some(metadata),
             pre_invocation_guard_evidence: Vec::new(),
+            verified_payee_binding: None,
         },
         true,
     ));
@@ -3374,10 +2461,9 @@ fn drop_pre_dispatch_reverses_invocation_budget() -> Result<(), Box<dyn std::err
         &mutation,
         None,
         PostAdmissionReceiptContext {
-            evaluation_context: EvaluationReceiptContext::default(),
             extra_metadata: None,
-            runtime_admission_metadata: None,
             pre_invocation_guard_evidence: Vec::new(),
+            verified_payee_binding: None,
         },
         true,
     ));
@@ -3432,10 +2518,9 @@ fn drop_pre_dispatch_releases_admitted_child_budget() -> Result<(), Box<dyn std:
         &mutation,
         None,
         PostAdmissionReceiptContext {
-            evaluation_context: EvaluationReceiptContext::default(),
             extra_metadata: None,
-            runtime_admission_metadata: None,
             pre_invocation_guard_evidence: Vec::new(),
+            verified_payee_binding: None,
         },
         // Genuinely-new admission (child_a inserted above): the drop MUST
         // release it, so child_b can admit. Verifies no under-release leak.
@@ -3510,10 +2595,9 @@ fn drop_pre_dispatch_overlapping_readmit_keeps_sibling_denied(
         &mutation,
         None,
         PostAdmissionReceiptContext {
-            evaluation_context: EvaluationReceiptContext::default(),
             extra_metadata: None,
-            runtime_admission_metadata: None,
             pre_invocation_guard_evidence: Vec::new(),
+            verified_payee_binding: None,
         },
         true,
     ));
@@ -3582,10 +2666,9 @@ fn drop_pre_dispatch_records_receipt_on_cleanup_fault() -> Result<(), Box<dyn st
         &mutation,
         None,
         PostAdmissionReceiptContext {
-            evaluation_context: EvaluationReceiptContext::default(),
-            extra_metadata: Some(metadata.clone()),
-            runtime_admission_metadata: Some(metadata),
+            extra_metadata: Some(metadata),
             pre_invocation_guard_evidence: Vec::new(),
+            verified_payee_binding: None,
         },
         true,
     ));
@@ -3628,76 +2711,6 @@ fn drop_pre_dispatch_records_receipt_on_cleanup_fault() -> Result<(), Box<dyn st
             .any(|fault| fault["step"] == "runtime_admission_release"),
         "the fault list must name the failing runtime-admission release step: {faults:?}"
     );
-    Ok(())
-}
-
-#[test]
-fn execution_nonce_preflight_cleanup_fault_denies_without_minting_nonce(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut kernel = make_kernel(make_config());
-    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
-    let releases = std::sync::Arc::new(AtomicU64::new(0));
-    let invocations = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.set_runtime_admission_hook(std::sync::Arc::new(FailingReleaseRuntimeAdmissionHook {
-        calls: std::sync::Arc::clone(&admission_calls),
-        releases: std::sync::Arc::clone(&releases),
-        expected_request_id: "req-nonce-preflight-cleanup-fault",
-        admission_id: "adm-nonce-preflight-cleanup-fault",
-        lease_id: "lease-nonce-preflight-cleanup-fault",
-    }));
-    kernel.register_tool_server(Box::new(SideEffectServer::new(
-        "srv-a",
-        vec!["read_file"],
-        std::sync::Arc::clone(&invocations),
-    )));
-    let nonce_config = ExecutionNonceConfig {
-        nonce_ttl_secs: 30,
-        nonce_store_capacity: 1024,
-        require_nonce: true,
-    };
-    kernel.set_execution_nonce_store(
-        nonce_config.clone(),
-        Box::new(InMemoryExecutionNonceStore::from_config(&nonce_config)),
-    );
-
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_grant("srv-a", "read_file")]),
-        300,
-    );
-    let request = make_request(
-        "req-nonce-preflight-cleanup-fault",
-        &cap,
-        "read_file",
-        "srv-a",
-    );
-
-    let response = kernel.evaluate_tool_call_blocking(&request)?;
-
-    assert_eq!(response.verdict, Verdict::Deny);
-    assert_eq!(
-        response.reason.as_deref(),
-        Some("execution nonce preflight cleanup failed")
-    );
-    assert!(response.execution_nonce.is_none());
-    assert_eq!(admission_calls.load(Ordering::SeqCst), 1);
-    assert_eq!(releases.load(Ordering::SeqCst), 1);
-    assert_eq!(invocations.load(Ordering::SeqCst), 0);
-    assert!(response.receipt.verify_signature()?);
-    let metadata = response
-        .receipt
-        .metadata
-        .as_ref()
-        .ok_or_else(|| std::io::Error::other("deny metadata missing"))?;
-    assert_eq!(
-        metadata["chio_runtime"]["pre_dispatch_cleanup_failed"],
-        true
-    );
-    assert_eq!(metadata["execution_nonce"]["stage"], "preflight");
-    assert_eq!(metadata["execution_nonce"]["tool_dispatched"], false);
-    assert_eq!(kernel.receipt_log().len(), 1);
     Ok(())
 }
 
@@ -3897,152 +2910,6 @@ struct NestedChildOpServer {
     tools: Vec<String>,
     child_ops: std::sync::Arc<AtomicU64>,
     park: bool,
-}
-
-#[derive(Clone, Copy)]
-enum ChildWriteFailure {
-    Never,
-    AppendThenError(u64),
-    Always,
-}
-
-struct LifecycleFaultReceiptStore {
-    events: std::sync::Arc<Mutex<Vec<String>>>,
-    child_attempts: AtomicU64,
-    child_failure: ChildWriteFailure,
-    receipt_seq: Option<u64>,
-    checkpoint_fails: bool,
-    parent_error_after_record: AtomicBool,
-}
-
-impl LifecycleFaultReceiptStore {
-    fn new(
-        events: std::sync::Arc<Mutex<Vec<String>>>,
-        child_failure: ChildWriteFailure,
-        receipt_seq: Option<u64>,
-        checkpoint_fails: bool,
-    ) -> Self {
-        Self {
-            events,
-            child_attempts: AtomicU64::new(0),
-            child_failure,
-            receipt_seq,
-            checkpoint_fails,
-            parent_error_after_record: AtomicBool::new(false),
-        }
-    }
-
-    fn fail_next_parent_after_record(self) -> Self {
-        self.parent_error_after_record.store(true, Ordering::SeqCst);
-        self
-    }
-
-    fn record_event(&self, event: String) -> Result<(), ReceiptStoreError> {
-        self.events
-            .lock()
-            .map_err(|_| ReceiptStoreError::Conflict("receipt event lock poisoned".to_string()))?
-            .push(event);
-        Ok(())
-    }
-
-    fn append_parent(&self, receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
-        let kind = match receipt.decision.as_ref() {
-            Some(Decision::Allow) => "allow",
-            Some(Decision::Deny { .. }) => "deny",
-            Some(Decision::Cancelled { .. }) => "cancelled",
-            Some(Decision::Incomplete { .. }) => "incomplete",
-            None => "none",
-        };
-        self.record_event(format!("parent:{kind}:recorded"))?;
-        if self.parent_error_after_record.swap(false, Ordering::SeqCst) {
-            return Err(ReceiptStoreError::Conflict(
-                "parent receipt acknowledgement failed after append".to_string(),
-            ));
-        }
-        Ok(())
-    }
-
-    fn append_child(&self, receipt: &ChildRequestReceipt) -> Result<(), ReceiptStoreError> {
-        let attempt = self.child_attempts.fetch_add(1, Ordering::SeqCst);
-        let (fails, outcome) = match self.child_failure {
-            ChildWriteFailure::Never => (false, "recorded"),
-            ChildWriteFailure::AppendThenError(failed_attempt) if attempt == failed_attempt => {
-                (true, "recorded_then_failed")
-            }
-            ChildWriteFailure::AppendThenError(_) => (false, "recorded"),
-            ChildWriteFailure::Always => (true, "failed"),
-        };
-        self.record_event(format!("child:{}:{outcome}", receipt.request_id.as_str()))?;
-        if fails {
-            Err(ReceiptStoreError::Conflict(
-                "child receipt write unavailable".to_string(),
-            ))
-        } else {
-            Ok(())
-        }
-    }
-}
-
-impl ReceiptStore for LifecycleFaultReceiptStore {
-    fn append_chio_receipt(&self, receipt: &ChioReceipt) -> Result<(), ReceiptStoreError> {
-        self.append_parent(receipt)
-    }
-
-    fn append_chio_receipt_returning_seq(
-        &self,
-        receipt: &ChioReceipt,
-    ) -> Result<Option<u64>, ReceiptStoreError> {
-        self.append_parent(receipt)?;
-        Ok(self.receipt_seq)
-    }
-
-    fn append_child_receipt(&self, receipt: &ChildRequestReceipt) -> Result<(), ReceiptStoreError> {
-        self.append_child(receipt)
-    }
-
-    fn append_child_receipt_returning_seq(
-        &self,
-        receipt: &ChildRequestReceipt,
-    ) -> Result<Option<u64>, ReceiptStoreError> {
-        self.append_child(receipt)?;
-        Ok(self.receipt_seq)
-    }
-
-    fn create_next_receipt_checkpoint(
-        &self,
-        _max_batch: u64,
-        _keypair: &Keypair,
-    ) -> Result<ReceiptCheckpointCreateReport, ReceiptStoreError> {
-        if self.checkpoint_fails {
-            return Err(ReceiptStoreError::Canonical(
-                "checkpoint creation failed after append".to_string(),
-            ));
-        }
-        Err(ReceiptStoreError::Conflict(
-            "checkpoint creation was not configured".to_string(),
-        ))
-    }
-}
-
-fn signed_drop_guard_child_receipt(
-    kernel: &ChioKernel,
-    parent_request_id: &str,
-    child_request_id: &str,
-) -> Result<ChildRequestReceipt, KernelError> {
-    let mut context = OperationContext::new(
-        SessionId::new("session-drop-guard-receipts"),
-        RequestId::new(child_request_id),
-        "agent-drop-guard-receipts".to_string(),
-    );
-    context.parent_request_id = Some(RequestId::new(parent_request_id));
-    build_child_request_receipt(
-        &kernel.config.policy_hash,
-        &kernel.config.keypair,
-        &context,
-        OperationKind::ListRoots,
-        OperationTerminalState::Completed,
-        serde_json::json!({"outcome": "completed"}),
-    )
 }
 
 impl NestedChildOpServer {
@@ -4266,9 +3133,10 @@ fn nested_flow_child_receipt_timeout_records_cancellation() -> Result<(), Box<dy
     Ok(())
 }
 
-/// A durable store whose bounded child-receipt append times out on its first
-/// call and would succeed if retried. Parent (chio) receipt appends always
-/// succeed.
+/// A durable store whose bounded child-receipt append fails closed on its first
+/// call and succeeds afterward, modeling a commit writer that is momentarily
+/// saturated during the normal record path but has drained before the drop-path
+/// flush retries. Parent (chio) receipt appends always succeed.
 struct ChildAppendFailsOnceStore {
     child_appends: std::sync::Arc<AtomicU64>,
 }
@@ -4298,10 +3166,12 @@ impl ReceiptStore for ChildAppendFailsOnceStore {
     }
 }
 
-// A timeout after an append begins has an ambiguous outcome. Retrying could
-// duplicate a child receipt that committed before the timeout, so the drop path
-// must preserve the signed child receipt as outcome-unknown evidence in the
-// parent cancellation without attempting the append again.
+// A commit writer that times out the buffered child-receipt append on the
+// normal record path, then drains, must not lose the already-signed child
+// receipt. The still-armed drop path retries the flush, so the completed child
+// operation lands on the append-only log. Draining the guard buffer before the
+// append succeeded would leave the drop-path retry with nothing to flush and
+// strand the child receipt.
 #[test]
 fn nested_flow_transient_child_append_timeout_preserves_child_receipt(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -4362,8 +3232,8 @@ fn nested_flow_transient_child_append_timeout_preserves_child_receipt(
     );
     assert_eq!(
         child_appends.load(Ordering::SeqCst),
-        1,
-        "an ambiguous child append must not be retried"
+        2,
+        "the normal path times out once and the drop path retries the append"
     );
     let receipt_log = kernel.receipt_log();
     assert_eq!(
@@ -4378,25 +3248,11 @@ fn nested_flow_transient_child_append_timeout_preserves_child_receipt(
             .is_cancelled(),
         "the terminal receipt must be a signed cancellation"
     );
-    let receipt = receipt_log
-        .get(0)
-        .ok_or_else(|| std::io::Error::other("terminal receipt missing"))?;
-    let runtime = receipt
-        .metadata
-        .as_ref()
-        .and_then(|metadata| metadata.get("chio_runtime"))
-        .ok_or_else(|| std::io::Error::other("child persistence metadata missing"))?;
-    assert_eq!(runtime["unpersisted_child_receipt_count"], 0);
-    assert_eq!(runtime["append_outcome_unknown_child_receipt_count"], 1);
-    let preserved: ChildRequestReceipt =
-        serde_json::from_value(runtime["append_outcome_unknown_signed_child_receipts"][0].clone())?;
-    assert_eq!(preserved.parent_request_id, context.request_id);
-    assert!(preserved.verify_signature()?);
     let child_receipt_log = kernel.child_receipt_log();
     assert_eq!(
         child_receipt_log.len(),
-        0,
-        "an outcome-unknown child append must not be mirrored as confirmed durable"
+        1,
+        "the buffered child receipt must be preserved and flushed on the drop-path retry, not lost"
     );
     Ok(())
 }
@@ -4614,407 +3470,6 @@ fn nested_flow_drop_post_dispatch_flushes_buffered_child_receipt(
         1,
         "the buffered signed child receipt must be flushed on post-dispatch drop, not discarded"
     );
-    Ok(())
-}
-
-#[test]
-fn child_receipt_ambiguous_append_is_not_retried_but_unattempted_suffix_is(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let events = std::sync::Arc::new(Mutex::new(Vec::new()));
-    let mut kernel = make_kernel(make_config());
-    kernel.set_receipt_store(Box::new(LifecycleFaultReceiptStore::new(
-        std::sync::Arc::clone(&events),
-        ChildWriteFailure::AppendThenError(1),
-        None,
-        false,
-    )))?;
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_grant("srv-chio-runtime", "destructive_update")]),
-        300,
-    );
-    let request = make_request_with_arguments(
-        "req-child-partial-retry",
-        &cap,
-        "destructive_update",
-        "srv-chio-runtime",
-        serde_json::json!({"record": "vendor-ledger-7"}),
-    );
-    let first =
-        signed_drop_guard_child_receipt(&kernel, &request.request_id, "req-child-partial-first")?;
-    let second =
-        signed_drop_guard_child_receipt(&kernel, &request.request_id, "req-child-partial-second")?;
-    let third =
-        signed_drop_guard_child_receipt(&kernel, &request.request_id, "req-child-partial-third")?;
-    let budget_mutation = PreExecutionBudgetMutation::None;
-    let mut guard = PostAdmissionDropGuard::new(
-        &kernel,
-        &request,
-        &cap,
-        None,
-        &budget_mutation,
-        None,
-        PostAdmissionReceiptContext {
-            evaluation_context: EvaluationReceiptContext::default(),
-            extra_metadata: None,
-            runtime_admission_metadata: None,
-            pre_invocation_guard_evidence: Vec::new(),
-        },
-        false,
-    );
-    guard.child_receipts_mut().extend([first, second, third]);
-    guard.mark_dispatch_started();
-    assert!(guard.flush_child_receipts().is_err());
-    drop(guard);
-
-    let recorded_events = events
-        .lock()
-        .map_err(|_| std::io::Error::other("receipt event lock poisoned"))?
-        .clone();
-    assert_eq!(
-        recorded_events,
-        vec![
-            "child:req-child-partial-first:recorded",
-            "child:req-child-partial-second:recorded_then_failed",
-            "child:req-child-partial-third:recorded",
-            "parent:cancelled:recorded",
-        ]
-    );
-    assert_eq!(kernel.child_receipt_log().len(), 2);
-    assert_eq!(kernel.receipt_log().len(), 1);
-    let parent = kernel
-        .receipt_log()
-        .get(0)
-        .cloned()
-        .ok_or_else(|| std::io::Error::other("parent cancellation receipt missing"))?;
-    assert!(parent.is_cancelled());
-    let runtime = parent
-        .metadata
-        .as_ref()
-        .and_then(|metadata| metadata.get("chio_runtime"))
-        .ok_or_else(|| std::io::Error::other("child persistence metadata missing"))?;
-    assert_eq!(runtime["unpersisted_child_receipt_count"], 0);
-    assert_eq!(runtime["append_outcome_unknown_child_receipt_count"], 1);
-    let unknown: ChildRequestReceipt =
-        serde_json::from_value(runtime["append_outcome_unknown_signed_child_receipts"][0].clone())?;
-    assert_eq!(unknown.request_id.as_str(), "req-child-partial-second");
-    assert!(unknown.verify_signature()?);
-    Ok(())
-}
-
-#[test]
-fn child_receipt_append_error_is_signed_into_parent_cancellation(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let events = std::sync::Arc::new(Mutex::new(Vec::new()));
-    let mut kernel = make_kernel(make_config());
-    kernel.set_receipt_store(Box::new(LifecycleFaultReceiptStore::new(
-        std::sync::Arc::clone(&events),
-        ChildWriteFailure::Always,
-        None,
-        false,
-    )))?;
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_grant("srv-chio-runtime", "destructive_update")]),
-        300,
-    );
-    let request = make_request_with_arguments(
-        "req-child-persistent-failure",
-        &cap,
-        "destructive_update",
-        "srv-chio-runtime",
-        serde_json::json!({"record": "vendor-ledger-7"}),
-    );
-    let child =
-        signed_drop_guard_child_receipt(&kernel, &request.request_id, "req-child-persistent")?;
-    let budget_mutation = PreExecutionBudgetMutation::None;
-    let mut guard = PostAdmissionDropGuard::new(
-        &kernel,
-        &request,
-        &cap,
-        None,
-        &budget_mutation,
-        None,
-        PostAdmissionReceiptContext {
-            evaluation_context: EvaluationReceiptContext::default(),
-            extra_metadata: None,
-            runtime_admission_metadata: None,
-            pre_invocation_guard_evidence: Vec::new(),
-        },
-        false,
-    );
-    guard.child_receipts_mut().push(child);
-    guard.mark_dispatch_started();
-    assert!(guard.flush_child_receipts().is_err());
-    drop(guard);
-
-    let parent = kernel
-        .receipt_log()
-        .get(0)
-        .cloned()
-        .ok_or_else(|| std::io::Error::other("parent cancellation receipt missing"))?;
-    assert!(parent.is_cancelled());
-    let runtime = parent
-        .metadata
-        .as_ref()
-        .and_then(|metadata| metadata.get("chio_runtime"))
-        .ok_or_else(|| std::io::Error::other("child persistence metadata missing"))?;
-    assert_eq!(runtime["child_receipt_persistence_failed"], true);
-    assert_eq!(runtime["unpersisted_child_receipt_count"], 0);
-    assert_eq!(runtime["append_outcome_unknown_child_receipt_count"], 1);
-    let embedded: ChildRequestReceipt =
-        serde_json::from_value(runtime["append_outcome_unknown_signed_child_receipts"][0].clone())?;
-    assert_eq!(embedded.request_id.as_str(), "req-child-persistent");
-    assert!(embedded.verify_signature()?);
-    assert_eq!(kernel.child_receipt_log().len(), 0);
-    let recorded_events = events
-        .lock()
-        .map_err(|_| std::io::Error::other("receipt event lock poisoned"))?
-        .clone();
-    assert_eq!(
-        recorded_events,
-        vec![
-            "child:req-child-persistent:failed",
-            "parent:cancelled:recorded",
-        ]
-    );
-    Ok(())
-}
-
-// Checkpoint construction belongs to the store's background signer. A
-// synchronous checkpoint hook configured to fail must not run after the child
-// append or turn the confirmed child receipt into an outcome-unknown retry.
-#[test]
-fn checkpoint_failure_after_child_append_does_not_retry_committed_child(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let events = std::sync::Arc::new(Mutex::new(Vec::new()));
-    let mut config = make_config();
-    config.checkpoint_batch_size = 1;
-    let mut kernel = make_kernel(config);
-    kernel.set_receipt_store(Box::new(LifecycleFaultReceiptStore::new(
-        std::sync::Arc::clone(&events),
-        ChildWriteFailure::Never,
-        Some(1),
-        true,
-    )))?;
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_grant("srv-chio-runtime", "destructive_update")]),
-        300,
-    );
-    let request = make_request_with_arguments(
-        "req-child-checkpoint-failure",
-        &cap,
-        "destructive_update",
-        "srv-chio-runtime",
-        serde_json::json!({"record": "vendor-ledger-7"}),
-    );
-    let child =
-        signed_drop_guard_child_receipt(&kernel, &request.request_id, "req-child-checkpoint")?;
-    let budget_mutation = PreExecutionBudgetMutation::None;
-    let mut guard = PostAdmissionDropGuard::new(
-        &kernel,
-        &request,
-        &cap,
-        None,
-        &budget_mutation,
-        None,
-        PostAdmissionReceiptContext {
-            evaluation_context: EvaluationReceiptContext::default(),
-            extra_metadata: None,
-            runtime_admission_metadata: None,
-            pre_invocation_guard_evidence: Vec::new(),
-        },
-        false,
-    );
-    guard.child_receipts_mut().push(child);
-    guard.mark_dispatch_started();
-    guard.flush_child_receipts()?;
-    drop(guard);
-
-    assert_eq!(kernel.child_receipt_log().len(), 1);
-    assert_eq!(kernel.receipt_log().len(), 1);
-    let recorded_events = events
-        .lock()
-        .map_err(|_| std::io::Error::other("receipt event lock poisoned"))?
-        .clone();
-    assert_eq!(
-        recorded_events,
-        vec![
-            "child:req-child-checkpoint:recorded",
-            "parent:cancelled:recorded",
-        ]
-    );
-    Ok(())
-}
-
-#[test]
-fn parent_append_acknowledgement_failure_does_not_add_cancellation(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let events = std::sync::Arc::new(Mutex::new(Vec::new()));
-    let mut kernel = make_kernel(make_config());
-    let store = LifecycleFaultReceiptStore::new(
-        std::sync::Arc::clone(&events),
-        ChildWriteFailure::Never,
-        None,
-        false,
-    )
-    .fail_next_parent_after_record();
-    kernel.set_receipt_store(Box::new(store))?;
-    kernel.register_tool_server(Box::new(EchoServer::new(
-        "srv-chio-runtime",
-        vec!["destructive_update"],
-    )));
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_grant("srv-chio-runtime", "destructive_update")]),
-        300,
-    );
-    let request = make_request_with_arguments(
-        "req-parent-append-acknowledgement-failure",
-        &cap,
-        "destructive_update",
-        "srv-chio-runtime",
-        serde_json::json!({"record": "vendor-ledger-7"}),
-    );
-
-    assert!(kernel.evaluate_tool_call_blocking(&request).is_err());
-    assert!(kernel.receipt_log().is_empty());
-    let recorded_events = events
-        .lock()
-        .map_err(|_| std::io::Error::other("receipt event lock poisoned"))?
-        .clone();
-    assert_eq!(recorded_events, vec!["parent:allow:recorded"]);
-    Ok(())
-}
-
-// Parent receipt persistence has the same off-path checkpoint boundary. A
-// configured synchronous checkpoint failure cannot replace a durable allow
-// with an error or a contradictory cancellation receipt.
-#[test]
-fn parent_checkpoint_failure_after_append_does_not_add_cancellation(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let events = std::sync::Arc::new(Mutex::new(Vec::new()));
-    let mut config = make_config();
-    config.checkpoint_batch_size = 1;
-    let mut kernel = make_kernel(config);
-    kernel.set_receipt_store(Box::new(LifecycleFaultReceiptStore::new(
-        std::sync::Arc::clone(&events),
-        ChildWriteFailure::Never,
-        Some(1),
-        true,
-    )))?;
-    kernel.register_tool_server(Box::new(EchoServer::new(
-        "srv-chio-runtime",
-        vec!["destructive_update"],
-    )));
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_grant("srv-chio-runtime", "destructive_update")]),
-        300,
-    );
-    let request = make_request_with_arguments(
-        "req-parent-checkpoint-failure",
-        &cap,
-        "destructive_update",
-        "srv-chio-runtime",
-        serde_json::json!({"record": "vendor-ledger-7"}),
-    );
-
-    let response = kernel.evaluate_tool_call_blocking(&request)?;
-    assert_eq!(response.receipt.decision.as_ref(), Some(&Decision::Allow));
-    let receipt_log = kernel.receipt_log();
-    assert_eq!(receipt_log.len(), 1);
-    assert_eq!(
-        receipt_log
-            .get(0)
-            .and_then(|receipt| receipt.decision.as_ref()),
-        Some(&Decision::Allow)
-    );
-    let recorded_events = events
-        .lock()
-        .map_err(|_| std::io::Error::other("receipt event lock poisoned"))?
-        .clone();
-    assert_eq!(recorded_events, vec!["parent:allow:recorded"]);
-    Ok(())
-}
-
-// The nested-flow entrypoint must preserve the same background-checkpoint
-// boundary as the direct entrypoint.
-#[test]
-fn nested_parent_checkpoint_failure_after_append_does_not_add_cancellation(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let events = std::sync::Arc::new(Mutex::new(Vec::new()));
-    let mut config = make_config();
-    config.checkpoint_batch_size = 1;
-    let mut kernel = make_kernel(config);
-    kernel.set_receipt_store(Box::new(LifecycleFaultReceiptStore::new(
-        std::sync::Arc::clone(&events),
-        ChildWriteFailure::Never,
-        Some(1),
-        true,
-    )))?;
-    kernel.register_tool_server(Box::new(EchoServer::new(
-        "srv-chio-runtime",
-        vec!["destructive_update"],
-    )));
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_grant("srv-chio-runtime", "destructive_update")]),
-        300,
-    );
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()])?;
-    kernel.activate_session(&session_id)?;
-    let context = make_operation_context(
-        &session_id,
-        "req-nested-parent-checkpoint-failure",
-        &agent_kp.public_key().to_hex(),
-    );
-    kernel.begin_session_request(&context, OperationKind::ToolCall, true)?;
-    let request = make_request_with_arguments(
-        "req-nested-parent-checkpoint-failure",
-        &cap,
-        "destructive_update",
-        "srv-chio-runtime",
-        serde_json::json!({"record": "vendor-ledger-7"}),
-    );
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-    let result = runtime.block_on(async {
-        let mut client = NoopNestedFlowClient;
-        kernel
-            .evaluate_tool_call_with_nested_flow_client_async(&context, &request, &mut client, None)
-            .await
-    });
-
-    let response = result?;
-    assert_eq!(response.receipt.decision.as_ref(), Some(&Decision::Allow));
-    let receipt_log = kernel.receipt_log();
-    assert_eq!(receipt_log.len(), 1);
-    assert_eq!(
-        receipt_log
-            .get(0)
-            .and_then(|receipt| receipt.decision.as_ref()),
-        Some(&Decision::Allow)
-    );
-    let recorded_events = events
-        .lock()
-        .map_err(|_| std::io::Error::other("receipt event lock poisoned"))?
-        .clone();
-    assert_eq!(recorded_events, vec!["parent:allow:recorded"]);
     Ok(())
 }
 
@@ -5307,69 +3762,6 @@ fn incomplete_stream_output_marks_reservations_retained() -> Result<(), Box<dyn 
 }
 
 #[test]
-fn caller_metadata_cannot_claim_incomplete_stream_retention(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut kernel = make_kernel(make_config());
-    let side_effects = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(IncompleteStreamAfterSideEffectServer::new(
-        "srv-chio-runtime",
-        vec!["destructive_update"],
-        std::sync::Arc::clone(&side_effects),
-    )));
-
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_grant("srv-chio-runtime", "destructive_update")]),
-        300,
-    );
-    let request = make_request(
-        "req-caller-incomplete-stream-retention",
-        &cap,
-        "destructive_update",
-        "srv-chio-runtime",
-    );
-
-    let response = kernel.evaluate_tool_call_blocking_with_metadata(
-        &request,
-        Some(serde_json::json!({
-            "chio_runtime": {
-                "reserved_destructive_lease_id": "caller-controlled-lease",
-                "reservations_retained_fail_closed": true,
-                "retained_destructive_lease_id": "caller-controlled-lease",
-                "retained_budget_hold_id": "caller-controlled-budget-hold",
-                "retained_payment_authorization_id": "caller-controlled-payment"
-            },
-            "financial": {
-                "cost_charged": 0,
-                "currency": "FAKE"
-            },
-            "attribution": {
-                "subject_key": "caller-controlled-subject"
-            },
-            "custom_context": "preserved"
-        })),
-    )?;
-
-    assert_eq!(side_effects.load(Ordering::SeqCst), 1);
-    assert!(response.receipt.is_incomplete());
-    let metadata = response
-        .receipt
-        .metadata
-        .as_ref()
-        .ok_or_else(|| std::io::Error::other("incomplete receipt metadata missing"))?;
-    assert_no_runtime_retention_claim(metadata)?;
-    assert!(metadata.get("financial").is_none());
-    assert_ne!(
-        metadata["attribution"]["subject_key"],
-        "caller-controlled-subject"
-    );
-    assert_eq!(metadata["custom_context"], "preserved");
-    Ok(())
-}
-
-#[test]
 fn post_invocation_block_marks_reservations_retained() -> Result<(), Box<dyn std::error::Error>> {
     // A runtime-admitted call dispatches successfully (a destructive side
     // effect commits) and returns a value, but a POST-invocation output guard
@@ -5412,15 +3804,7 @@ fn post_invocation_block_marks_reservations_retained() -> Result<(), Box<dyn std
         serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
     );
 
-    let response = kernel.evaluate_tool_call_blocking_with_metadata(
-        &request,
-        Some(serde_json::json!({
-            "chio_runtime": {
-                "reserved_swarm_continuation_id": "caller-controlled-swarm",
-                "retained_swarm_continuation_id": "caller-controlled-swarm"
-            }
-        })),
-    )?;
+    let response = kernel.evaluate_tool_call_blocking(&request)?;
 
     assert_eq!(response.verdict, Verdict::Deny);
     assert_eq!(
@@ -5449,111 +3833,18 @@ fn post_invocation_block_marks_reservations_retained() -> Result<(), Box<dyn std
         metadata["chio_runtime"]["retained_treaty_continuation_id"],
         "continuation-post-invocation-block"
     );
-    assert!(metadata["chio_runtime"]
-        .get("retained_swarm_continuation_id")
-        .is_none());
     Ok(())
 }
 
 #[test]
-fn caller_metadata_cannot_claim_post_invocation_retention() -> Result<(), Box<dyn std::error::Error>>
-{
+fn connector_tool_not_registered_after_side_effect_retains_admission(
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut kernel = make_kernel(make_config());
     let side_effects = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(SucceedingAfterSideEffectServer::new(
+    kernel.register_tool_server(Box::new(ToolNotRegisteredDispatchServer::new(
         "srv-chio-runtime",
         vec!["destructive_update"],
         std::sync::Arc::clone(&side_effects),
-    )));
-    kernel.add_post_invocation_hook(Box::new(BlockingPostInvocationHook));
-
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_grant("srv-chio-runtime", "destructive_update")]),
-        300,
-    );
-    let request = make_request(
-        "req-caller-post-invocation-retention",
-        &cap,
-        "destructive_update",
-        "srv-chio-runtime",
-    );
-
-    let response = kernel.evaluate_tool_call_blocking_with_metadata(
-        &request,
-        Some(serde_json::json!({
-            "chio_runtime": {
-                "reserved_treaty_continuation_id": "caller-controlled-continuation"
-            }
-        })),
-    )?;
-
-    assert_eq!(side_effects.load(Ordering::SeqCst), 1);
-    assert_eq!(response.verdict, Verdict::Deny);
-    let metadata = response
-        .receipt
-        .metadata
-        .as_ref()
-        .ok_or_else(|| std::io::Error::other("deny receipt metadata missing"))?;
-    assert_no_runtime_retention_claim(metadata)?;
-    Ok(())
-}
-
-#[test]
-fn caller_metadata_cannot_claim_retention_after_final_revocation(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let kernel = make_kernel(make_config());
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_grant("srv-chio-runtime", "destructive_update")]),
-        300,
-    );
-    let request = make_request(
-        "req-caller-final-revocation-retention",
-        &cap,
-        "destructive_update",
-        "srv-chio-runtime",
-    );
-    kernel.revoke_capability(&cap.id)?;
-
-    let response = kernel.build_allow_response_with_metadata(
-        ReceiptResponseContext {
-            request: &request,
-            evaluation_context: &EvaluationReceiptContext::default(),
-            timestamp: current_unix_timestamp(),
-            matched_grant_index: Some(0),
-            extra_metadata: Some(serde_json::json!({
-                "chio_runtime": {
-                    "reserved_swarm_continuation_id": "caller-controlled-swarm"
-                }
-            })),
-        },
-        ToolCallOutput::Value(serde_json::json!({"status": "committed"})),
-        None,
-        crate::kernel::responses::AllowResponseNonce::MintForAllow,
-    )?;
-
-    assert_eq!(response.verdict, Verdict::Deny);
-    let metadata = response
-        .receipt
-        .metadata
-        .as_ref()
-        .ok_or_else(|| std::io::Error::other("revocation deny metadata missing"))?;
-    assert_no_runtime_retention_claim(metadata)?;
-    Ok(())
-}
-
-#[test]
-fn server_supplied_tool_not_registered_retains_post_dispatch_state(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut kernel = make_kernel(make_config());
-    kernel.register_tool_server(Box::new(ToolNotRegisteredAfterDispatchServer::new(
-        "srv-chio-runtime",
-        vec!["destructive_update"],
     )));
     let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
     let releases = std::sync::Arc::new(AtomicU64::new(0));
@@ -5591,8 +3882,9 @@ fn server_supplied_tool_not_registered_retains_post_dispatch_state(
     assert_eq!(
         releases.load(Ordering::SeqCst),
         0,
-        "an untrusted server cannot make post-dispatch state reversible by choosing an error variant"
+        "connector errors after tool entry must retain reservations"
     );
+    assert_eq!(side_effects.load(Ordering::SeqCst), 1);
     let metadata = response
         .receipt
         .metadata
@@ -5605,17 +3897,17 @@ fn server_supplied_tool_not_registered_retains_post_dispatch_state(
         runtime["retained_destructive_lease_id"],
         "lease-tool-not-registered"
     );
-    assert_eq!(runtime["post_dispatch_outcome_unknown"], true);
     Ok(())
 }
 
 #[test]
-fn server_supplied_tool_not_registered_retains_invocation_budget(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn dispatch_not_registered_retains_full_budget_state() -> Result<(), Box<dyn std::error::Error>> {
     let mut kernel = make_kernel(make_config());
-    kernel.register_tool_server(Box::new(ToolNotRegisteredAfterDispatchServer::new(
+    let side_effects = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(ToolNotRegisteredDispatchServer::new(
         "srv-chio-runtime",
         vec!["destructive_update"],
+        std::sync::Arc::clone(&side_effects),
     )));
 
     let agent_kp = make_keypair();
@@ -5640,22 +3932,25 @@ fn server_supplied_tool_not_registered_retains_invocation_budget(
     let response = kernel.evaluate_tool_call_blocking(&request)?;
     assert_eq!(response.verdict, Verdict::Deny);
 
+    assert_eq!(side_effects.load(Ordering::SeqCst), 1);
     let slot_reusable =
         kernel.with_budget_store(|store| Ok(store.try_increment(&cap.id, 0, Some(1))?))?;
     assert!(
         !slot_reusable,
-        "post-dispatch invocation exposure must remain consumed despite the server-supplied error type"
+        "post-entry connector errors must retain the invocation increment"
     );
     Ok(())
 }
 
 #[test]
-fn nested_server_supplied_tool_not_registered_retains_invocation_budget(
+fn dispatch_not_registered_retains_full_budget_state_nested_flow(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let mut kernel = make_kernel(make_config());
-    kernel.register_tool_server(Box::new(ToolNotRegisteredAfterDispatchServer::new(
+    let side_effects = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(ToolNotRegisteredDispatchServer::new(
         "srv-chio-runtime",
         vec!["destructive_update"],
+        std::sync::Arc::clone(&side_effects),
     )));
 
     let agent_kp = make_keypair();
@@ -5696,28 +3991,19 @@ fn nested_server_supplied_tool_not_registered_retains_invocation_budget(
     })?;
     assert_eq!(response.verdict, Verdict::Deny);
 
+    assert_eq!(side_effects.load(Ordering::SeqCst), 1);
     let slot_reusable =
         kernel.with_budget_store(|store| Ok(store.try_increment(&cap.id, 0, Some(1))?))?;
     assert!(
         !slot_reusable,
-        "nested post-dispatch invocation exposure must remain consumed despite the server-supplied error type"
+        "nested post-entry connector errors must retain the invocation increment"
     );
     Ok(())
 }
 
 #[test]
-fn url_elicitation_required_releases_full_budget_state() -> Result<(), Box<dyn std::error::Error>> {
-    // UrlElicitationsRequired uses a dedicated no-side-effect cleanup path. The
-    // tool never runs; the client
-    // completes the URL elicitations and re-sends a FRESH tool call that
-    // re-admits from scratch, so ALL pre-dispatch budget state must be reversed.
-    // A max_invocations grant consumes an invocation slot at admission, and
-    // unwind_aborted_monetary_invocation is a no-op for a non-monetary
-    // Invocation mutation, so the slot must be released here or the authorize
-    // -> retry could never re-admit under the same grant. The async arm returns
-    // Err(UrlElicitationsRequired) (so the elicitations payload propagates to
-    // the edge), not a Deny response, so the slot reusability is asserted
-    // directly against the budget store.
+fn non_durable_url_elicitation_releases_full_budget_state() -> Result<(), Box<dyn std::error::Error>>
+{
     let mut kernel = make_kernel(make_config());
     let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
     kernel.register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
@@ -5725,6 +4011,16 @@ fn url_elicitation_required_releases_full_budget_state() -> Result<(), Box<dyn s
         vec!["destructive_update"],
         std::sync::Arc::clone(&stream_attempts),
     )));
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    let releases = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(ReleaseTrackingRuntimeAdmissionHook {
+        calls: std::sync::Arc::clone(&admission_calls),
+        releases: std::sync::Arc::clone(&releases),
+        expected_request_id: "req-url-elicitation-full-budget-async",
+        admission_id: "adm-url-elicitation-full-budget-async",
+        lease_id: "lease-url-elicitation-full-budget-async",
+        continuation_id: Some("continuation-url-elicitation-full-budget-async"),
+    }));
 
     let agent_kp = make_keypair();
     let cap = make_capability(
@@ -5756,26 +4052,20 @@ fn url_elicitation_required_releases_full_budget_state() -> Result<(), Box<dyn s
         "dispatch must have been attempted so the error came from dispatch, not admission"
     );
 
-    // The single invocation slot consumed at admission must be free again: no
-    // side effect occurred, so the pre-execution increment is reversed and a
-    // retry (after the client completes the elicitations) re-admits.
     let slot_reusable =
         kernel.with_budget_store(|store| Ok(store.try_increment(&cap.id, 0, Some(1))?))?;
     assert!(
         slot_reusable,
-        "UrlElicitationsRequired precedes any side effect, so the invocation increment must be reversed for the retry to re-admit"
+        "non-durable URL elicitation must release the invocation slot"
     );
+    assert_eq!(admission_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(releases.load(Ordering::SeqCst), 1);
     Ok(())
 }
 
 #[test]
-fn url_elicitation_required_releases_full_budget_state_nested_flow(
+fn non_durable_url_elicitation_releases_full_budget_state_nested_flow(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Mirror of url_elicitation_required_releases_full_budget_state for the
-    // nested-flow evaluation arm, which carried the same leak: it released only
-    // the runtime-admission reservations on a UrlElicitationsRequired dispatch
-    // error, leaking the pre-execution budget mutation (and the sibling-sum
-    // capability admission).
     let mut kernel = make_kernel(make_config());
     let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
     kernel.register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
@@ -5783,6 +4073,16 @@ fn url_elicitation_required_releases_full_budget_state_nested_flow(
         vec!["destructive_update"],
         std::sync::Arc::clone(&stream_attempts),
     )));
+    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
+    let releases = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.set_runtime_admission_hook(std::sync::Arc::new(ReleaseTrackingRuntimeAdmissionHook {
+        calls: std::sync::Arc::clone(&admission_calls),
+        releases: std::sync::Arc::clone(&releases),
+        expected_request_id: "req-url-elicitation-full-budget-nested",
+        admission_id: "adm-url-elicitation-full-budget-nested",
+        lease_id: "lease-url-elicitation-full-budget-nested",
+        continuation_id: Some("continuation-url-elicitation-full-budget-nested"),
+    }));
 
     let agent_kp = make_keypair();
     let cap = make_capability(
@@ -5830,19 +4130,19 @@ fn url_elicitation_required_releases_full_budget_state_nested_flow(
         "dispatch must have been attempted so the error came from dispatch, not admission"
     );
 
-    // The nested-flow arm must also reverse the invocation increment on a
-    // UrlElicitationsRequired dispatch error so the slot is reusable.
     let slot_reusable =
         kernel.with_budget_store(|store| Ok(store.try_increment(&cap.id, 0, Some(1))?))?;
     assert!(
         slot_reusable,
-        "the nested-flow UrlElicitationsRequired must reverse the invocation increment so a retry re-admits"
+        "nested non-durable URL elicitation must release the invocation slot"
     );
+    assert_eq!(admission_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(releases.load(Ordering::SeqCst), 1);
     Ok(())
 }
 
 /// Sibling-sum delegation fixture whose child capabilities target a tool server
-/// that returns `UrlElicitationsRequired` before any side effect. Parent share
+/// that returns `UrlElicitationsRequired` after dispatch entry. Parent share
 /// is 5000 bps and each child claims 4000 bps, so child_a alone fits but
 /// child_a + child_b oversubscribes the parent. Mirrors
 /// `make_sibling_sum_invocation_fixture` but swaps the tool server so the
@@ -5915,14 +4215,12 @@ fn make_sibling_sum_url_fixture(prefix: &str) -> SiblingSumInvocationFixture {
 }
 
 #[test]
-fn url_elicitation_idempotent_readmit_preserves_sibling_budget(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn non_durable_url_elicitation_releases_sibling_budget() -> Result<(), Box<dyn std::error::Error>> {
     // Refcount: admit_capability_budget takes a holder lease per evaluation. An
     // earlier evaluation holds child_a's edge (lease 1). A second overlapping
-    // evaluation that hits UrlElicitationsRequired takes a second lease and releases
-    // only that one on cleanup (holders 2 -> 1); it must NOT free child_a's edge
-    // while the earlier holder remains, or the oversubscribing sibling child_b would
-    // admit while child_a is still valid.
+    // evaluation that reaches dispatch takes a second lease and retains it when
+    // URL elicitation is returned. Releasing the earlier lease must leave the
+    // dispatch lease in place.
     let SiblingSumInvocationFixture {
         kernel,
         child_a,
@@ -5938,9 +4236,7 @@ fn url_elicitation_idempotent_readmit_preserves_sibling_budget(
         .map_err(std::io::Error::other)?;
     assert!(first, "the first admission must acquire child_a's lease");
 
-    // Second overlapping evaluation on the SAME child_a hits
-    // UrlElicitationsRequired; its internal admit takes (and its cleanup drops)
-    // a second lease, leaving the earlier holder's share intact.
+    // The overlapping evaluation takes a second lease before dispatch.
     let request = make_request_with_arguments(
         "req-url-idempotent-readmit-async",
         &child_a,
@@ -5954,23 +4250,17 @@ fn url_elicitation_idempotent_readmit_preserves_sibling_budget(
         "the delegated child must reach dispatch and surface UrlElicitationsRequired: {result:?}"
     );
 
-    // child_a's edge is still held by the earlier evaluation, so the
-    // oversubscribing sibling child_b (4000 + 4000 > 5000 parent share) must
-    // still be DENIED.
-    let readmit_b = kernel.admit_capability_budget(&child_b);
-    assert!(
-        readmit_b.is_err(),
-        "the second evaluation's cleanup must drop only its own lease, leaving child_a held so child_b stays oversubscribed: {readmit_b:?}"
-    );
+    kernel
+        .release_admitted_capability_budget(&child_a)
+        .map_err(std::io::Error::other)?;
+    assert!(kernel.admit_capability_budget(&child_b).is_ok());
     Ok(())
 }
 
 #[test]
-fn url_elicitation_idempotent_readmit_preserves_sibling_budget_nested_flow(
+fn non_durable_url_elicitation_releases_sibling_budget_nested_flow(
 ) -> Result<(), Box<dyn std::error::Error>> {
-    // Nested-flow mirror of the async idempotent-readmit test: the nested arm's
-    // UrlElicitationsRequired cleanup must also drop only its own holder lease,
-    // leaving the earlier holder's sibling reservation intact.
+    // The nested-flow arm must retain its holder lease after dispatch entry.
     let SiblingSumInvocationFixture {
         kernel,
         child_a,
@@ -6016,903 +4306,10 @@ fn url_elicitation_idempotent_readmit_preserves_sibling_budget_nested_flow(
         "the nested delegated child must surface UrlElicitationsRequired: {result:?}"
     );
 
-    let readmit_b = kernel.admit_capability_budget(&child_b);
-    assert!(
-        readmit_b.is_err(),
-        "the nested second evaluation's cleanup must drop only its own lease, leaving child_a held: {readmit_b:?}"
-    );
-    Ok(())
-}
-
-#[test]
-fn url_elicitation_release_failure_continues_full_budget_cleanup(
-) -> Result<(), Box<dyn std::error::Error>> {
-    // A runtime-reservation release failure during the UrlElicitationsRequired
-    // cleanup must be RECORDED and the remaining cleanup (the invocation-slot
-    // reversal) must still run. The response must stay Err(UrlElicitationsRequired)
-    // (not an internal cleanup error) so the elicitations payload still reaches the
-    // edge.
-    let mut kernel = make_kernel(make_config());
-    let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
-        "srv-chio-runtime",
-        vec!["destructive_update"],
-        std::sync::Arc::clone(&stream_attempts),
-    )));
-    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
-    let releases = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.set_runtime_admission_hook(std::sync::Arc::new(FailingReleaseRuntimeAdmissionHook {
-        calls: std::sync::Arc::clone(&admission_calls),
-        releases: std::sync::Arc::clone(&releases),
-        expected_request_id: "req-url-elicitation-release-failure-async",
-        admission_id: "adm-url-elicitation-release-failure",
-        lease_id: "lease-url-elicitation-release-failure",
-    }));
-
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_invocation_limited_grant(
-            "srv-chio-runtime",
-            "destructive_update",
-            1,
-        )]),
-        300,
-    );
-    let request = make_request_with_arguments(
-        "req-url-elicitation-release-failure-async",
-        &cap,
-        "destructive_update",
-        "srv-chio-runtime",
-        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
-    );
-
-    let result = kernel.evaluate_tool_call_blocking(&request);
-    assert!(
-        matches!(result, Err(KernelError::UrlElicitationsRequired { .. })),
-        "a runtime-release failure must not replace the elicitation with an internal cleanup error: {result:?}"
-    );
-    assert_eq!(
-        stream_attempts.load(Ordering::SeqCst),
-        1,
-        "dispatch must have been attempted so the error came from dispatch, not admission"
-    );
-    assert_eq!(
-        releases.load(Ordering::SeqCst),
-        1,
-        "the failing runtime-admission release must be attempted"
-    );
-    let slot_reusable =
-        kernel.with_budget_store(|store| Ok(store.try_increment(&cap.id, 0, Some(1))?))?;
-    assert!(
-        slot_reusable,
-        "cleanup must CONTINUE past the runtime-release failure and reverse the invocation slot"
-    );
-    // The arm returns Err(UrlElicitationsRequired) and records no terminal receipt,
-    // so a failed runtime-admission release would otherwise leave the stuck lease
-    // with NO append-only entry. A signed fault receipt naming the stuck lease must
-    // be recorded.
-    assert_url_elicitation_release_fault_recorded(
-        &kernel,
-        "lease-url-elicitation-release-failure",
-    )?;
-    Ok(())
-}
-
-#[test]
-fn url_elicitation_release_failure_continues_full_budget_cleanup_nested_flow(
-) -> Result<(), Box<dyn std::error::Error>> {
-    // Nested-flow mirror of the async continue-on-release-failure test.
-    let mut kernel = make_kernel(make_config());
-    let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
-        "srv-chio-runtime",
-        vec!["destructive_update"],
-        std::sync::Arc::clone(&stream_attempts),
-    )));
-    let admission_calls = std::sync::Arc::new(AtomicU64::new(0));
-    let releases = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.set_runtime_admission_hook(std::sync::Arc::new(FailingReleaseRuntimeAdmissionHook {
-        calls: std::sync::Arc::clone(&admission_calls),
-        releases: std::sync::Arc::clone(&releases),
-        expected_request_id: "req-url-elicitation-release-failure-nested",
-        admission_id: "adm-url-elicitation-release-failure-nested",
-        lease_id: "lease-url-elicitation-release-failure-nested",
-    }));
-
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_invocation_limited_grant(
-            "srv-chio-runtime",
-            "destructive_update",
-            1,
-        )]),
-        300,
-    );
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()])?;
-    kernel.activate_session(&session_id)?;
-    let context = make_operation_context(
-        &session_id,
-        "req-url-elicitation-release-failure-nested",
-        &agent_kp.public_key().to_hex(),
-    );
-    kernel.begin_session_request(&context, OperationKind::ToolCall, true)?;
-    let request = make_request_with_arguments(
-        "req-url-elicitation-release-failure-nested",
-        &cap,
-        "destructive_update",
-        "srv-chio-runtime",
-        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
-    );
-
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-    let result = rt.block_on(async {
-        let mut client = NoopNestedFlowClient;
-        kernel
-            .evaluate_tool_call_with_nested_flow_client_async(&context, &request, &mut client, None)
-            .await
-    });
-    assert!(
-        matches!(result, Err(KernelError::UrlElicitationsRequired { .. })),
-        "the nested runtime-release failure must not mask the elicitation error: {result:?}"
-    );
-    assert_eq!(
-        releases.load(Ordering::SeqCst),
-        1,
-        "the failing runtime-admission release must be attempted"
-    );
-    let slot_reusable =
-        kernel.with_budget_store(|store| Ok(store.try_increment(&cap.id, 0, Some(1))?))?;
-    assert!(
-        slot_reusable,
-        "the nested cleanup must CONTINUE past the release failure and reverse the invocation slot"
-    );
-    // Nested mirror: the stuck lease must land a signed fault receipt on the
-    // append-only log even though the arm returns Err(UrlElicitationsRequired).
-    assert_url_elicitation_release_fault_recorded(
-        &kernel,
-        "lease-url-elicitation-release-failure-nested",
-    )?;
-    Ok(())
-}
-
-/// Assert that a failed runtime-admission release during a URL-elicitation
-/// pre-dispatch unwind recorded a signed cancellation fault receipt naming the
-/// stuck `lease_id`. Shared by the async and nested-flow release-failure tests.
-fn assert_url_elicitation_release_fault_recorded(
-    kernel: &ChioKernel,
-    lease_id: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let receipt_log = kernel.receipt_log();
-    let receipts = receipt_log.receipts();
-    let fault_receipt = receipts
-        .iter()
-        .find(|receipt| {
-            receipt.is_cancelled()
-                && receipt.metadata.as_ref().is_some_and(|metadata| {
-                    metadata["chio_runtime"]["reservation_release_failed"] == true
-                })
-        })
-        .ok_or_else(|| {
-            std::io::Error::other(
-                "a failed URL-elicitation runtime-admission release must record a signed fault receipt",
-            )
-        })?;
-    let receipt_metadata = fault_receipt
-        .metadata
-        .as_ref()
-        .ok_or_else(|| std::io::Error::other("fault receipt metadata missing"))?;
-    // The stuck lease id must survive so an operator can locate the reservation.
-    assert_eq!(
-        receipt_metadata["chio_runtime"]["reserved_destructive_lease_id"],
-        lease_id
-    );
-    let faults = receipt_metadata["chio_runtime"]["pre_dispatch_cleanup_faults"]
-        .as_array()
-        .ok_or_else(|| std::io::Error::other("fault list missing"))?;
-    assert!(
-        faults.iter().any(|fault| {
-            fault["step"] == "url_elicitation_runtime_admission_release"
-                && fault["hold_ids"]
-                    .as_array()
-                    .is_some_and(|ids| ids.iter().any(|id| id == lease_id))
-        }),
-        "the fault must name the URL-elicitation release step and the stuck lease id: {faults:?}"
-    );
-    Ok(())
-}
-
-/// A [`BudgetStore`] wrapper that fails the pre-execution BUDGET reversal
-/// (`reverse_charge_cost`) so a URL-elicitation cleanup exercises the
-/// record-and-continue budget path. All other operations delegate to a real
-/// in-memory store so admission still increments the invocation slot.
-struct FailingReverseBudgetStore {
-    inner: InMemoryBudgetStore,
-}
-
-impl FailingReverseBudgetStore {
-    fn new() -> Self {
-        Self {
-            inner: InMemoryBudgetStore::new(),
-        }
-    }
-}
-
-impl BudgetStore for FailingReverseBudgetStore {
-    fn try_increment(
-        &self,
-        capability_id: &str,
-        grant_index: usize,
-        max_invocations: Option<u32>,
-    ) -> Result<bool, BudgetStoreError> {
-        self.inner
-            .try_increment(capability_id, grant_index, max_invocations)
-    }
-
-    fn try_charge_cost(
-        &self,
-        capability_id: &str,
-        grant_index: usize,
-        max_invocations: Option<u32>,
-        cost_units: u64,
-        max_cost_per_invocation: Option<u64>,
-        max_total_cost_units: Option<u64>,
-    ) -> Result<bool, BudgetStoreError> {
-        self.inner.try_charge_cost(
-            capability_id,
-            grant_index,
-            max_invocations,
-            cost_units,
-            max_cost_per_invocation,
-            max_total_cost_units,
-        )
-    }
-
-    fn try_charge_cost_with_ids_and_authority_outcome(
-        &self,
-        capability_id: &str,
-        grant_index: usize,
-        max_invocations: Option<u32>,
-        cost_units: u64,
-        max_cost_per_invocation: Option<u64>,
-        max_total_cost_units: Option<u64>,
-        hold_id: Option<&str>,
-        event_id: Option<&str>,
-        authority: Option<&crate::budget_store::BudgetEventAuthority>,
-    ) -> Result<crate::budget_store::BudgetAuthorizeMutationOutcome, BudgetStoreError> {
-        self.inner.try_charge_cost_with_ids_and_authority_outcome(
-            capability_id,
-            grant_index,
-            max_invocations,
-            cost_units,
-            max_cost_per_invocation,
-            max_total_cost_units,
-            hold_id,
-            event_id,
-            authority,
-        )
-    }
-
-    fn reverse_charge_cost(
-        &self,
-        _capability_id: &str,
-        _grant_index: usize,
-        _cost_units: u64,
-    ) -> Result<(), BudgetStoreError> {
-        // Injected transient budget-store fault on the reversal path.
-        Err(BudgetStoreError::Invariant(
-            "injected reverse_charge_cost failure".to_string(),
-        ))
-    }
-
-    fn reduce_charge_cost(
-        &self,
-        capability_id: &str,
-        grant_index: usize,
-        cost_units: u64,
-    ) -> Result<(), BudgetStoreError> {
-        self.inner
-            .reduce_charge_cost(capability_id, grant_index, cost_units)
-    }
-
-    fn settle_charge_cost(
-        &self,
-        capability_id: &str,
-        grant_index: usize,
-        exposed_cost_units: u64,
-        realized_cost_units: u64,
-    ) -> Result<(), BudgetStoreError> {
-        self.inner.settle_charge_cost(
-            capability_id,
-            grant_index,
-            exposed_cost_units,
-            realized_cost_units,
-        )
-    }
-
-    fn list_usages(
-        &self,
-        limit: usize,
-        capability_id: Option<&str>,
-    ) -> Result<Vec<BudgetUsageRecord>, BudgetStoreError> {
-        self.inner.list_usages(limit, capability_id)
-    }
-
-    fn get_usage(
-        &self,
-        capability_id: &str,
-        grant_index: usize,
-    ) -> Result<Option<BudgetUsageRecord>, BudgetStoreError> {
-        self.inner.get_usage(capability_id, grant_index)
-    }
-}
-
-/// Assert that a failed BUDGET reversal during a URL-elicitation pre-dispatch
-/// unwind recorded a signed cancellation fault receipt naming the `step` and
-/// the stuck `hold_id`. Shared by the async and nested-flow tests.
-fn assert_url_elicitation_budget_cleanup_fault_recorded(
-    kernel: &ChioKernel,
-    step: &str,
-    hold_id: &str,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let receipt_log = kernel.receipt_log();
-    let found = receipt_log.receipts().iter().any(|receipt| {
-        receipt.is_cancelled()
-            && receipt.metadata.as_ref().is_some_and(|metadata| {
-                metadata["chio_runtime"]["pre_dispatch_cleanup_failed"] == true
-                    && metadata["chio_runtime"]["pre_dispatch_cleanup_faults"]
-                        .as_array()
-                        .is_some_and(|faults| {
-                            faults.iter().any(|fault| {
-                                fault["step"] == step
-                                    && fault["hold_ids"]
-                                        .as_array()
-                                        .is_some_and(|ids| ids.iter().any(|id| id == hold_id))
-                            })
-                        })
-            })
-    });
-    assert!(
-        found,
-        "a failed URL-elicitation budget reversal must record a signed fault receipt naming step `{step}` and the stuck hold `{hold_id}`"
-    );
-    Ok(())
-}
-
-#[test]
-fn url_elicitation_budget_reversal_failure_preserves_elicitation_async(
-) -> Result<(), Box<dyn std::error::Error>> {
-    // A transient BUDGET-store failure while reversing the pre-execution invocation
-    // slot during a UrlElicitationsRequired cleanup must be RECORDED and the arm
-    // must still return Err(UrlElicitationsRequired) (not the internal budget error)
-    // so the elicitations payload still reaches the edge. A bare `?` on
-    // reverse_pre_execution_budget_mutation would instead replace the elicitation
-    // error with the budget error.
-    let mut kernel = make_kernel(make_config());
-    let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
-        "srv-chio-runtime",
-        vec!["destructive_update"],
-        std::sync::Arc::clone(&stream_attempts),
-    )));
-    kernel.set_budget_store_handle(std::sync::Arc::new(FailingReverseBudgetStore::new()));
-
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_invocation_limited_grant(
-            "srv-chio-runtime",
-            "destructive_update",
-            1,
-        )]),
-        300,
-    );
-    let request = make_request_with_arguments(
-        "req-url-elicitation-budget-reversal-failure-async",
-        &cap,
-        "destructive_update",
-        "srv-chio-runtime",
-        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
-    );
-
-    let result = kernel.evaluate_tool_call_blocking(&request);
-    assert!(
-        matches!(result, Err(KernelError::UrlElicitationsRequired { .. })),
-        "a budget-reversal failure must not replace the elicitation with an internal cleanup error: {result:?}"
-    );
-    assert_eq!(
-        stream_attempts.load(Ordering::SeqCst),
-        1,
-        "dispatch must have been attempted so the error came from dispatch, not admission"
-    );
-    assert_url_elicitation_budget_cleanup_fault_recorded(
-        &kernel,
-        "url_elicitation_budget_reversal",
-        &cap.id,
-    )?;
-    Ok(())
-}
-
-#[test]
-fn url_elicitation_budget_reversal_failure_preserves_elicitation_nested_flow(
-) -> Result<(), Box<dyn std::error::Error>> {
-    // Nested-flow mirror of the async budget-reversal-failure test (both arms).
-    let mut kernel = make_kernel(make_config());
-    let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
-        "srv-chio-runtime",
-        vec!["destructive_update"],
-        std::sync::Arc::clone(&stream_attempts),
-    )));
-    kernel.set_budget_store_handle(std::sync::Arc::new(FailingReverseBudgetStore::new()));
-
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_invocation_limited_grant(
-            "srv-chio-runtime",
-            "destructive_update",
-            1,
-        )]),
-        300,
-    );
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()])?;
-    kernel.activate_session(&session_id)?;
-    let context = make_operation_context(
-        &session_id,
-        "req-url-elicitation-budget-reversal-failure-nested",
-        &agent_kp.public_key().to_hex(),
-    );
-    kernel.begin_session_request(&context, OperationKind::ToolCall, true)?;
-    let request = make_request_with_arguments(
-        "req-url-elicitation-budget-reversal-failure-nested",
-        &cap,
-        "destructive_update",
-        "srv-chio-runtime",
-        serde_json::json!({"record": "vendor-ledger-7", "value": "closed"}),
-    );
-
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-    let result = rt.block_on(async {
-        let mut client = NoopNestedFlowClient;
-        kernel
-            .evaluate_tool_call_with_nested_flow_client_async(&context, &request, &mut client, None)
-            .await
-    });
-    assert!(
-        matches!(result, Err(KernelError::UrlElicitationsRequired { .. })),
-        "the nested budget-reversal failure must not mask the elicitation error: {result:?}"
-    );
-    assert_eq!(
-        stream_attempts.load(Ordering::SeqCst),
-        1,
-        "dispatch must have been attempted so the error came from dispatch, not admission"
-    );
-    assert_url_elicitation_budget_cleanup_fault_recorded(
-        &kernel,
-        "url_elicitation_budget_reversal",
-        &cap.id,
-    )?;
-    Ok(())
-}
-#[test]
-fn monetary_url_elicitation_releases_budget_and_payment_exposure(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let payment = TrackingPaymentAdapter::new();
-    let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(payment.clone()))?;
-    let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
-        "cost-srv",
-        vec!["compute"],
-        std::sync::Arc::clone(&stream_attempts),
-    )));
-
-    let agent_kp = make_keypair();
-    let grant = make_monetary_grant("cost-srv", "compute", 100, 100, "USD");
-    let cap = kernel.issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 300)?;
-    let mut request = ToolCallRequest {
-        request_id: "req-monetary-url-unknown".to_string(),
-        capability: cap.clone(),
-        tool_name: "compute".to_string(),
-        server_id: "cost-srv".to_string(),
-        agent_id: agent_kp.public_key().to_hex(),
-        arguments: serde_json::json!({}),
-        dpop_proof: None,
-        execution_nonce: None,
-        governed_intent: None,
-        approval_token: None,
-        model_metadata: None,
-        federated_origin_kernel_id: None,
-    };
-    attach_fresh_payment_execution_nonce(&mut kernel, &cap, &mut request);
-
-    let result = kernel.evaluate_tool_call_blocking(&request);
-    assert!(matches!(
-        result,
-        Err(KernelError::UrlElicitationsRequired { .. })
-    ));
-    assert_eq!(stream_attempts.load(Ordering::SeqCst), 1);
-    let usage = kernel
-        .with_budget_store(|store| Ok(store.get_usage(&cap.id, 0)?))?
-        .ok_or_else(|| std::io::Error::other("reversed monetary usage missing"))?;
-    assert_eq!(usage.invocation_count, 0);
-    assert_eq!(usage.total_cost_exposed, 0);
-    assert_eq!(usage.total_cost_realized_spend, 0);
-    assert_eq!(usage.committed_cost_units()?, 0);
-    assert_eq!(payment.authorized.load(Ordering::SeqCst), 1);
-    assert_eq!(payment.released.load(Ordering::SeqCst), 1);
-    assert_eq!(payment.refunded.load(Ordering::SeqCst), 0);
-    assert_eq!(kernel.receipt_log().len(), 0);
-    Ok(())
-}
-
-#[test]
-fn nested_monetary_server_error_retains_budget_and_payment_exposure(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let payment = TrackingPaymentAdapter::new();
-    let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(payment.clone()))?;
-    kernel.register_tool_server(Box::new(FailingMonetaryServer {
-        id: "cost-srv".to_string(),
-    }));
-
-    let agent_kp = make_keypair();
-    let grant = make_monetary_grant("cost-srv", "compute", 100, 100, "USD");
-    let cap = kernel.issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 300)?;
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()])?;
-    kernel.activate_session(&session_id)?;
-    let context = make_operation_context(
-        &session_id,
-        "req-nested-monetary-server-error",
-        &agent_kp.public_key().to_hex(),
-    );
-    kernel.begin_session_request(&context, OperationKind::ToolCall, true)?;
-    let mut request = ToolCallRequest {
-        request_id: context.request_id.to_string(),
-        capability: cap.clone(),
-        tool_name: "compute".to_string(),
-        server_id: "cost-srv".to_string(),
-        agent_id: agent_kp.public_key().to_hex(),
-        arguments: serde_json::json!({}),
-        dpop_proof: None,
-        execution_nonce: None,
-        governed_intent: None,
-        approval_token: None,
-        model_metadata: None,
-        federated_origin_kernel_id: None,
-    };
-    attach_fresh_payment_execution_nonce(&mut kernel, &cap, &mut request);
-
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-    let response = runtime.block_on(async {
-        let mut client = NoopNestedFlowClient;
-        kernel
-            .evaluate_tool_call_with_nested_flow_client_async(&context, &request, &mut client, None)
-            .await
-    })?;
-    assert_eq!(response.verdict, Verdict::Deny);
-    let usage = kernel
-        .with_budget_store(|store| Ok(store.get_usage(&cap.id, 0)?))?
-        .ok_or_else(|| std::io::Error::other("retained nested monetary usage missing"))?;
-    assert_eq!(usage.invocation_count, 1);
-    assert_eq!(usage.total_cost_exposed, 100);
-    assert_eq!(usage.total_cost_realized_spend, 0);
-    assert_eq!(payment.authorized.load(Ordering::SeqCst), 1);
-    assert_eq!(payment.released.load(Ordering::SeqCst), 0);
-    assert_eq!(payment.refunded.load(Ordering::SeqCst), 0);
-    let metadata = response
-        .receipt
-        .metadata
-        .as_ref()
-        .ok_or_else(|| std::io::Error::other("nested deny receipt metadata missing"))?;
-    let runtime = &metadata["chio_runtime"];
-    assert_eq!(runtime["post_dispatch_outcome_unknown"], true);
-    assert_eq!(runtime["retained_budget_exposure_units"], 100);
-    assert_eq!(
-        runtime["retained_payment_authorization_id"],
-        "auth_tracking"
-    );
-    assert_eq!(runtime["retained_payment_authorization_settled"], false);
-    Ok(())
-}
-
-#[test]
-fn settled_payment_authorization_is_refunded_on_typed_url_elicitation(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let payment = TrackingPaymentAdapter::settled();
-    let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(payment.clone()))?;
-    let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
-        "cost-srv",
-        vec!["compute"],
-        std::sync::Arc::clone(&stream_attempts),
-    )));
-
-    let agent_kp = make_keypair();
-    let grant = make_monetary_grant("cost-srv", "compute", 100, 100, "USD");
-    let cap = kernel.issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 300)?;
-    let mut request = ToolCallRequest {
-        request_id: "req-settled-payment-url-unknown".to_string(),
-        capability: cap.clone(),
-        tool_name: "compute".to_string(),
-        server_id: "cost-srv".to_string(),
-        agent_id: agent_kp.public_key().to_hex(),
-        arguments: serde_json::json!({}),
-        dpop_proof: None,
-        execution_nonce: None,
-        governed_intent: None,
-        approval_token: None,
-        model_metadata: None,
-        federated_origin_kernel_id: None,
-    };
-    attach_fresh_payment_execution_nonce(&mut kernel, &cap, &mut request);
-
-    let result = kernel.evaluate_tool_call_blocking(&request);
-    assert!(matches!(
-        result,
-        Err(KernelError::UrlElicitationsRequired { .. })
-    ));
-    assert_eq!(stream_attempts.load(Ordering::SeqCst), 1);
-    assert_eq!(payment.authorized.load(Ordering::SeqCst), 1);
-    assert_eq!(payment.released.load(Ordering::SeqCst), 0);
-    assert_eq!(payment.refunded.load(Ordering::SeqCst), 1);
-    assert_eq!(kernel.receipt_log().len(), 0);
-    Ok(())
-}
-
-#[test]
-fn caller_reserved_ids_do_not_trigger_release_when_hook_reserved_nothing(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut kernel = make_kernel(make_config());
-    kernel.set_runtime_admission_readiness_timeout(Duration::from_millis(10))?;
-    let invocations = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(SideEffectServer::new(
-        "srv-chio-runtime",
-        vec!["destructive_update"],
-        std::sync::Arc::clone(&invocations),
-    )));
-    let calls = std::sync::Arc::new(AtomicU64::new(0));
-    let releases = std::sync::Arc::new(AtomicU64::new(0));
-    let released_metadata = std::sync::Arc::new(Mutex::new(Vec::new()));
-    let revalidated_metadata = std::sync::Arc::new(Mutex::new(Vec::new()));
-    kernel.set_runtime_admission_hook(std::sync::Arc::new(MetadataIsolationReadinessHook {
-        calls: std::sync::Arc::clone(&calls),
-        releases: std::sync::Arc::clone(&releases),
-        released_metadata: std::sync::Arc::clone(&released_metadata),
-        revalidated_metadata,
-        admission_metadata: None,
-        ready: false,
-    }));
-
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_invocation_limited_grant(
-            "srv-chio-runtime",
-            "destructive_update",
-            1,
-        )]),
-        300,
-    );
-    let request = make_request(
-        "req-caller-reserved-id-no-hook-reservation",
-        &cap,
-        "destructive_update",
-        "srv-chio-runtime",
-    );
-    let response = kernel.evaluate_tool_call_blocking_with_metadata(
-        &request,
-        Some(serde_json::json!({
-            "chio_runtime": {
-                "reserved_destructive_lease_id": "caller-controlled-lease"
-            }
-        })),
-    )?;
-
-    assert_eq!(response.verdict, Verdict::Deny);
-    assert_eq!(calls.load(Ordering::SeqCst), 1);
-    assert_eq!(releases.load(Ordering::SeqCst), 0);
-    assert_eq!(invocations.load(Ordering::SeqCst), 0);
-    let released = match released_metadata.lock() {
-        Ok(released) => released.clone(),
-        Err(poisoned) => poisoned.into_inner().clone(),
-    };
-    assert!(released.is_empty());
-    Ok(())
-}
-
-#[test]
-fn release_receives_only_trusted_hook_reservation_metadata(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let mut kernel = make_kernel(make_config());
-    kernel.set_runtime_admission_readiness_timeout(Duration::from_millis(10))?;
-    let invocations = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(SideEffectServer::new(
-        "srv-chio-runtime",
-        vec!["destructive_update"],
-        std::sync::Arc::clone(&invocations),
-    )));
-    let calls = std::sync::Arc::new(AtomicU64::new(0));
-    let releases = std::sync::Arc::new(AtomicU64::new(0));
-    let released_metadata = std::sync::Arc::new(Mutex::new(Vec::new()));
-    let revalidated_metadata = std::sync::Arc::new(Mutex::new(Vec::new()));
-    let trusted_metadata = serde_json::json!({
-        "chio_runtime": {
-            "admission_id": "trusted-admission",
-            "accepted": true,
-            "reserved_destructive_lease_id": "trusted-lease"
-        }
-    });
-    kernel.set_runtime_admission_hook(std::sync::Arc::new(MetadataIsolationReadinessHook {
-        calls: std::sync::Arc::clone(&calls),
-        releases: std::sync::Arc::clone(&releases),
-        released_metadata: std::sync::Arc::clone(&released_metadata),
-        revalidated_metadata,
-        admission_metadata: Some(trusted_metadata.clone()),
-        ready: false,
-    }));
-
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_invocation_limited_grant(
-            "srv-chio-runtime",
-            "destructive_update",
-            1,
-        )]),
-        300,
-    );
-    let request = make_request(
-        "req-caller-injected-extra-reserved-id",
-        &cap,
-        "destructive_update",
-        "srv-chio-runtime",
-    );
-    let response = kernel.evaluate_tool_call_blocking_with_metadata(
-        &request,
-        Some(serde_json::json!({
-            "chio_runtime": {
-                "reserved_treaty_continuation_id": "caller-controlled-continuation"
-            }
-        })),
-    )?;
-
-    assert_eq!(response.verdict, Verdict::Deny);
-    assert_eq!(calls.load(Ordering::SeqCst), 1);
-    assert_eq!(releases.load(Ordering::SeqCst), 1);
-    assert_eq!(invocations.load(Ordering::SeqCst), 0);
-    let released = match released_metadata.lock() {
-        Ok(released) => released.clone(),
-        Err(poisoned) => poisoned.into_inner().clone(),
-    };
-    assert_eq!(released, vec![trusted_metadata]);
-    Ok(())
-}
-
-#[test]
-fn revalidation_receives_only_trusted_hook_reservation_metadata(
-) -> Result<(), Box<dyn std::error::Error>> {
-    let payment = TrackingPaymentAdapter::new();
-    let mut kernel = make_kernel(make_monetary_config());
-    kernel.set_payment_adapter(Box::new(payment))?;
-    kernel.register_tool_server(Box::new(MonetaryCostServer::no_cost("cost-srv")));
-    let calls = std::sync::Arc::new(AtomicU64::new(0));
-    let releases = std::sync::Arc::new(AtomicU64::new(0));
-    let released_metadata = std::sync::Arc::new(Mutex::new(Vec::new()));
-    let revalidated_metadata = std::sync::Arc::new(Mutex::new(Vec::new()));
-    let trusted_metadata = serde_json::json!({
-        "chio_runtime": {
-            "admission_id": "trusted-revalidation-admission",
-            "accepted": true,
-            "reserved_destructive_lease_id": "trusted-revalidation-lease"
-        }
-    });
-    kernel.set_runtime_admission_hook(std::sync::Arc::new(MetadataIsolationReadinessHook {
-        calls: std::sync::Arc::clone(&calls),
-        releases: std::sync::Arc::clone(&releases),
-        released_metadata,
-        revalidated_metadata: std::sync::Arc::clone(&revalidated_metadata),
-        admission_metadata: Some(trusted_metadata.clone()),
-        ready: true,
-    }));
-
-    let agent_kp = make_keypair();
-    let grant = make_monetary_grant("cost-srv", "compute", 100, 1_000, "USD");
-    let cap = kernel.issue_capability(&agent_kp.public_key(), make_scope(vec![grant]), 300)?;
-    let mut request = ToolCallRequest {
-        request_id: "req-caller-injected-revalidation-id".to_string(),
-        capability: cap.clone(),
-        tool_name: "compute".to_string(),
-        server_id: "cost-srv".to_string(),
-        agent_id: agent_kp.public_key().to_hex(),
-        arguments: serde_json::json!({}),
-        dpop_proof: None,
-        execution_nonce: None,
-        governed_intent: None,
-        approval_token: None,
-        model_metadata: None,
-        federated_origin_kernel_id: None,
-    };
-    attach_fresh_payment_execution_nonce(&mut kernel, &cap, &mut request);
-    let response = kernel.evaluate_tool_call_blocking_with_metadata(
-        &request,
-        Some(serde_json::json!({
-            "chio_runtime": {
-                "reserved_treaty_continuation_id": "caller-controlled-revalidation-id"
-            },
-            "financial": {
-                "cost_charged": 0,
-                "currency": "FAKE",
-                "budget_total": 0,
-                "settlement_status": "settled"
-            },
-            "budget_authority": {
-                "hold_id": "caller-controlled-budget-hold"
-            },
-            "governed_transaction": {
-                "intent_hash": "caller-controlled-intent"
-            },
-            "attribution": {
-                "subject_key": "caller-controlled-subject"
-            },
-            "custom_context": "preserved"
-        })),
-    )?;
-
-    assert_eq!(response.verdict, Verdict::Allow);
-    assert_eq!(calls.load(Ordering::SeqCst), 1);
-    assert_eq!(releases.load(Ordering::SeqCst), 0);
-    let revalidated = match revalidated_metadata.lock() {
-        Ok(revalidated) => revalidated.clone(),
-        Err(poisoned) => poisoned.into_inner().clone(),
-    };
-    assert!(!revalidated.is_empty());
-    assert!(
-        revalidated
-            .iter()
-            .all(|metadata| metadata.as_ref() == Some(&trusted_metadata)),
-        "revalidation must never receive caller-injected reservation ids"
-    );
-    let receipt_metadata = response
-        .receipt
-        .metadata
-        .as_ref()
-        .ok_or_else(|| std::io::Error::other("allow receipt metadata missing"))?;
-    assert_eq!(receipt_metadata["financial"]["cost_charged"], 100);
-    assert_eq!(receipt_metadata["financial"]["currency"], "USD");
-    assert_eq!(receipt_metadata["financial"]["budget_total"], 1_000);
-    assert_ne!(
-        receipt_metadata["budget_authority"]["hold_id"],
-        "caller-controlled-budget-hold"
-    );
-    assert_eq!(
-        receipt_metadata["attribution"]["subject_key"],
-        agent_kp.public_key().to_hex()
-    );
-    assert!(receipt_metadata.get("governed_transaction").is_none());
-    assert_eq!(receipt_metadata["custom_context"], "preserved");
-    assert_eq!(
-        receipt_metadata["chio_runtime"]["reserved_destructive_lease_id"],
-        "trusted-revalidation-lease"
-    );
-    assert!(receipt_metadata["chio_runtime"]
-        .get("reserved_treaty_continuation_id")
-        .is_none());
+    kernel
+        .release_admitted_capability_budget(&child_a)
+        .map_err(std::io::Error::other)?;
+    assert!(kernel.admit_capability_budget(&child_b).is_ok());
     Ok(())
 }
 
@@ -6942,7 +4339,7 @@ fn drop_pre_dispatch_cleanup_fault_receipt_includes_monetary_hold_id(
     );
 
     // Charge WITHOUT authorizing the matching hold: the monetary reversal fails
-    // and records a budget_reversal fault (no mark_dispatch_started, so this is
+    // and records a monetary_unwind fault (no mark_dispatch_started, so this is
     // the pre-dispatch drop branch).
     let mutation = PreExecutionBudgetMutation::Charge(make_fabricated_drop_charge());
     drop(PostAdmissionDropGuard::new(
@@ -6953,10 +4350,9 @@ fn drop_pre_dispatch_cleanup_fault_receipt_includes_monetary_hold_id(
         &mutation,
         None,
         PostAdmissionReceiptContext {
-            evaluation_context: EvaluationReceiptContext::default(),
             extra_metadata: None,
-            runtime_admission_metadata: None,
             pre_invocation_guard_evidence: Vec::new(),
+            verified_payee_binding: None,
         },
         true,
     ));
@@ -6979,14 +4375,14 @@ fn drop_pre_dispatch_cleanup_fault_receipt_includes_monetary_hold_id(
         .ok_or_else(|| std::io::Error::other("fault list missing"))?;
     let monetary_fault = faults
         .iter()
-        .find(|fault| fault["step"] == "budget_reversal")
-        .ok_or_else(|| std::io::Error::other("budget_reversal fault entry missing"))?;
+        .find(|fault| fault["step"] == "monetary_unwind")
+        .ok_or_else(|| std::io::Error::other("monetary_unwind fault entry missing"))?;
     let hold_ids = monetary_fault["hold_ids"]
         .as_array()
-        .ok_or_else(|| std::io::Error::other("budget_reversal fault must carry hold_ids"))?;
+        .ok_or_else(|| std::io::Error::other("monetary_unwind fault must carry hold_ids"))?;
     assert!(
         hold_ids.iter().any(|id| id == "hold-drop-guard-tests"),
-        "the budget_reversal fault must name the budget hold id: {hold_ids:?}"
+        "the monetary_unwind fault must name the budget hold id: {hold_ids:?}"
     );
     Ok(())
 }
@@ -7050,175 +4446,5 @@ fn retained_marker_requires_a_real_reservation() -> Result<(), Box<dyn std::erro
         runtime_real["retained_destructive_lease_id"], "lease-real-42",
         "the stuck lease id must be copied for operator recovery"
     );
-    Ok(())
-}
-/// A [`PaymentAdapter`] that authorizes cleanly but FAILS on release, so a
-/// monetary UrlElicitationsRequired cleanup exercises the payment-release
-/// failure arm of `unwind_aborted_monetary_invocation`. The authorization id is
-/// deterministic so a test can assert it lands in the recorded fault's `hold_ids`.
-struct FailingReleasePaymentAdapter;
-
-impl PaymentAdapter for FailingReleasePaymentAdapter {
-    fn authorize(
-        &self,
-        _request: &PaymentAuthorizeRequest,
-    ) -> Result<PaymentAuthorization, PaymentError> {
-        Ok(PaymentAuthorization {
-            authorization_id: "auth_failing_release".to_string(),
-            settled: false,
-            settlement_transaction_id: None,
-            metadata: serde_json::json!({ "adapter": "failing-release" }),
-        })
-    }
-
-    fn capture(
-        &self,
-        _authorization_id: &str,
-        _amount_units: u64,
-        _currency: &str,
-        _reference: &str,
-    ) -> Result<PaymentResult, PaymentError> {
-        Err(PaymentError::RailError(
-            "capture should not run".to_string(),
-        ))
-    }
-
-    fn release(
-        &self,
-        _authorization_id: &str,
-        _reference: &str,
-    ) -> Result<PaymentResult, PaymentError> {
-        Err(PaymentError::RailError(
-            "injected payment release failure".to_string(),
-        ))
-    }
-
-    fn refund(
-        &self,
-        _transaction_id: &str,
-        _amount_units: u64,
-        _currency: &str,
-        _reference: &str,
-    ) -> Result<PaymentResult, PaymentError> {
-        Err(PaymentError::RailError("refund should not run".to_string()))
-    }
-}
-
-#[test]
-fn url_elicitation_monetary_reversal_failure_records_monetary_hold_ids_async(
-) -> Result<(), Box<dyn std::error::Error>> {
-    // When a MONETARY request hits UrlElicitationsRequired and the payment release
-    // fails during cleanup, the append-only fault must name the stuck MONETARY hold
-    // (the payment authorization id), not just the capability id, so an operator can
-    // locate the hold to recover from the signed fault alone.
-    let mut kernel = make_kernel(make_monetary_config());
-    let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
-        "cost-srv",
-        vec!["compute"],
-        std::sync::Arc::clone(&stream_attempts),
-    )));
-    kernel.set_payment_adapter(Box::new(FailingReleasePaymentAdapter))?;
-
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_monetary_grant(
-            "cost-srv", "compute", 100, 1_000, "USD",
-        )]),
-        300,
-    );
-    let mut request = make_request_with_arguments(
-        "req-url-elicitation-monetary-reversal-failure-async",
-        &cap,
-        "compute",
-        "cost-srv",
-        serde_json::json!({}),
-    );
-    attach_fresh_payment_execution_nonce(&mut kernel, &cap, &mut request);
-
-    let result = kernel.evaluate_tool_call_blocking(&request);
-    assert!(
-        matches!(result, Err(KernelError::UrlElicitationsRequired { .. })),
-        "a monetary reversal failure must not replace the elicitation: {result:?}"
-    );
-    assert_eq!(
-        stream_attempts.load(Ordering::SeqCst),
-        1,
-        "dispatch must have been attempted so the reversal ran on the monetary arm"
-    );
-    // The stuck payment authorization id must land in the fault hold_ids.
-    assert_url_elicitation_budget_cleanup_fault_recorded(
-        &kernel,
-        "url_elicitation_budget_reversal",
-        "auth_failing_release",
-    )?;
-    Ok(())
-}
-
-#[test]
-fn url_elicitation_monetary_reversal_failure_records_monetary_hold_ids_nested_flow(
-) -> Result<(), Box<dyn std::error::Error>> {
-    // Nested-flow mirror of the async monetary-reversal-failure test: the
-    // nested arm must ALSO name the stuck payment authorization id in the fault.
-    let mut kernel = make_kernel(make_monetary_config());
-    let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
-    kernel.register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
-        "cost-srv",
-        vec!["compute"],
-        std::sync::Arc::clone(&stream_attempts),
-    )));
-    kernel.set_payment_adapter(Box::new(FailingReleasePaymentAdapter))?;
-
-    let agent_kp = make_keypair();
-    let cap = make_capability(
-        &kernel,
-        &agent_kp,
-        make_scope(vec![make_monetary_grant(
-            "cost-srv", "compute", 100, 1_000, "USD",
-        )]),
-        300,
-    );
-    let session_id = kernel.open_session(agent_kp.public_key().to_hex(), vec![cap.clone()])?;
-    kernel.activate_session(&session_id)?;
-    let context = make_operation_context(
-        &session_id,
-        "req-url-elicitation-monetary-reversal-failure-nested",
-        &agent_kp.public_key().to_hex(),
-    );
-    kernel.begin_session_request(&context, OperationKind::ToolCall, true)?;
-    let mut request = make_request_with_arguments(
-        "req-url-elicitation-monetary-reversal-failure-nested",
-        &cap,
-        "compute",
-        "cost-srv",
-        serde_json::json!({}),
-    );
-    attach_fresh_payment_execution_nonce(&mut kernel, &cap, &mut request);
-
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()?;
-    let result = rt.block_on(async {
-        let mut client = NoopNestedFlowClient;
-        kernel
-            .evaluate_tool_call_with_nested_flow_client_async(&context, &request, &mut client, None)
-            .await
-    });
-    assert!(
-        matches!(result, Err(KernelError::UrlElicitationsRequired { .. })),
-        "the nested monetary reversal failure must not mask the elicitation: {result:?}"
-    );
-    assert_eq!(
-        stream_attempts.load(Ordering::SeqCst),
-        1,
-        "dispatch must have been attempted so the reversal ran on the monetary arm"
-    );
-    assert_url_elicitation_budget_cleanup_fault_recorded(
-        &kernel,
-        "url_elicitation_budget_reversal",
-        "auth_failing_release",
-    )?;
     Ok(())
 }

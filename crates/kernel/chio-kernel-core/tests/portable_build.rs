@@ -59,6 +59,7 @@ fn make_capability_with_constraints(
         issued_at: ISSUED_AT,
         expires_at: EXPIRES_AT,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     CapabilityToken::sign(body, issuer).unwrap()
 }
@@ -105,6 +106,7 @@ fn make_attenuated_capability(subject: &Keypair, issuer: &Keypair) -> Capability
         issued_at: ISSUED_AT,
         expires_at: EXPIRES_AT,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     CapabilityToken::sign_attenuated(
         CapabilityTokenAttenuationBody {
@@ -454,6 +456,7 @@ fn resolve_matching_grants_fails_closed_when_target_match_has_unsupported_constr
             issued_at: ISSUED_AT,
             expires_at: EXPIRES_AT,
             delegation_chain: vec![],
+            aggregate_invocation_budget: None,
         },
         &issuer,
     )
@@ -518,6 +521,7 @@ fn resolve_matching_grants_ignores_unsupported_constraints_on_unrelated_grants()
             issued_at: ISSUED_AT,
             expires_at: EXPIRES_AT,
             delegation_chain: vec![],
+            aggregate_invocation_budget: None,
         },
         &issuer,
     )

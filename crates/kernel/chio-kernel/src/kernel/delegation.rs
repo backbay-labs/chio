@@ -27,10 +27,7 @@
 use std::sync::Arc;
 
 use chio_core_types::capability::token::CapabilityToken;
-use chio_kernel_core::{
-    revocation_lookup_denies, RevocationCheckTarget, RevocationSnapshot, RevocationView,
-    RevocationViewSubject,
-};
+use chio_kernel_core::{RevocationSnapshot, RevocationView, RevocationViewSubject};
 
 use crate::kernel::{current_unix_timestamp, KernelError};
 
@@ -74,8 +71,7 @@ fn consult_revocation_view_at(
 
     for link in &cap.delegation_chain {
         let subject = RevocationViewSubject::new(link.capability_id.clone());
-        let ancestor_revoked = snapshot.is_revoked(&subject);
-        if revocation_lookup_denies(RevocationCheckTarget::Ancestor, ancestor_revoked) {
+        if snapshot.is_revoked(&subject) {
             return Err(KernelError::DelegationChainRevoked(
                 link.capability_id.clone(),
             ));
@@ -83,8 +79,7 @@ fn consult_revocation_view_at(
     }
 
     let leaf_subject = RevocationViewSubject::new(cap.id.clone());
-    let token_revoked = snapshot.is_revoked(&leaf_subject);
-    if revocation_lookup_denies(RevocationCheckTarget::PresentedToken, token_revoked) {
+    if snapshot.is_revoked(&leaf_subject) {
         return Err(KernelError::CapabilityRevoked(cap.id.clone()));
     }
 
@@ -156,6 +151,8 @@ mod tests {
                 attenuations: vec![],
                 timestamp: 1500,
                 scope_hash: None,
+                aggregate_budget: None,
+                cumulative_approval: None,
             };
             let link = DelegationLink::sign(body, &last_kp).unwrap();
             chain.push(link);
@@ -169,6 +166,7 @@ mod tests {
             issued_at: 1000,
             expires_at: 2000,
             delegation_chain: chain,
+            aggregate_invocation_budget: None,
         };
         CapabilityToken::sign(body, &kp).unwrap()
     }

@@ -176,6 +176,22 @@ fn write_safe_output_fixture() -> tempfile::NamedTempFile {
     tmp
 }
 
+fn private_store_paths() -> (tempfile::TempDir, PathBuf, PathBuf) {
+    let dir = tempfile::Builder::new()
+        .prefix("chio-code-agent-stores-")
+        .tempdir()
+        .expect("private store directory");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(dir.path(), std::fs::Permissions::from_mode(0o700))
+            .expect("restrict private store directory");
+    }
+    let receipt_db = dir.path().join("receipts.sqlite3");
+    let session_db = dir.path().join("sessions.sqlite3");
+    (dir, receipt_db, session_db)
+}
+
 /// The preset denies a `.env` write.
 ///
 /// We pipe the bundled YAML through `chio check` and assert the guard
@@ -186,7 +202,7 @@ fn write_safe_output_fixture() -> tempfile::NamedTempFile {
 #[test]
 fn preset_denies_dotenv_write_via_chio_check() {
     let preset = write_preset_to_temp();
-    let receipt_db = tempfile::NamedTempFile::new().expect("receipt-db tempfile");
+    let (_store_dir, receipt_db, session_db) = private_store_paths();
     let output_fixture = write_safe_output_fixture();
     let output = Command::new(chio_cli_binary())
         .args(["--format", "json", "check", "--policy"])
@@ -194,7 +210,9 @@ fn preset_denies_dotenv_write_via_chio_check() {
         .args(["--mode", "full", "--output-fixture"])
         .arg(output_fixture.path())
         .arg("--receipt-db")
-        .arg(receipt_db.path())
+        .arg(&receipt_db)
+        .arg("--session-db")
+        .arg(&session_db)
         .args([
             "--server",
             "fs",
@@ -229,7 +247,7 @@ fn preset_denies_dotenv_write_via_chio_check() {
 #[test]
 fn preset_allows_safe_file_read_via_chio_check() {
     let preset = write_preset_to_temp();
-    let receipt_db = tempfile::NamedTempFile::new().expect("receipt-db tempfile");
+    let (_store_dir, receipt_db, session_db) = private_store_paths();
     let output_fixture = write_safe_output_fixture();
     let output = Command::new(chio_cli_binary())
         .args(["--format", "json", "check", "--policy"])
@@ -237,7 +255,9 @@ fn preset_allows_safe_file_read_via_chio_check() {
         .args(["--mode", "full", "--output-fixture"])
         .arg(output_fixture.path())
         .arg("--receipt-db")
-        .arg(receipt_db.path())
+        .arg(&receipt_db)
+        .arg("--session-db")
+        .arg(&session_db)
         .args([
             "--server",
             "fs",
@@ -349,13 +369,15 @@ fn check_full_mode_requires_explicit_output_fixture() {
 fn check_full_mode_uses_output_fixture_for_output_sensitive_policy() {
     let policy = write_output_sensitive_policy();
     let output_fixture = write_safe_output_fixture();
-    let receipt_db = tempfile::NamedTempFile::new().expect("receipt-db tempfile");
+    let (_store_dir, receipt_db, session_db) = private_store_paths();
 
     let output = Command::new(chio_cli_binary())
         .args(["--format", "json", "check", "--policy"])
         .arg(policy.path())
         .arg("--receipt-db")
-        .arg(receipt_db.path())
+        .arg(&receipt_db)
+        .arg("--session-db")
+        .arg(&session_db)
         .args(["--mode", "full", "--output-fixture"])
         .arg(output_fixture.path())
         .args([

@@ -15,9 +15,9 @@ use chio_core::receipt::{
 };
 use chio_kernel::receipt_store::{ReceiptCheckpointCreateReport, ReceiptStore, ReceiptStoreError};
 use chio_kernel::{
-    mint_execution_nonce, ChioKernel, ExecutionNonceConfig, InMemoryExecutionNonceStore,
-    KernelConfig, NonceBinding, DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,
-    DEFAULT_MAX_STREAM_TOTAL_BYTES,
+    ChioKernel, ExecutionNonceConfig, InMemoryExecutionNonceStore, KernelConfig,
+    DEFAULT_CHECKPOINT_BATCH_SIZE,
+    DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
 };
 use serde_json::json;
 
@@ -59,6 +59,7 @@ fn make_capability_token(
             issued_at,
             expires_at,
             delegation_chain: Vec::new(),
+            aggregate_invocation_budget: None,
         },
         issuer,
     )
@@ -83,7 +84,6 @@ fn test_kernel_config(issuer: &Keypair) -> KernelConfig {
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     }
 }
 

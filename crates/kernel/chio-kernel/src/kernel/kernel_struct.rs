@@ -48,6 +48,7 @@ pub const DEFAULT_RECEIPT_APPEND_BUDGET_MS: u64 = 5_000;
 pub const MIN_RECEIPT_APPEND_BUDGET_MS: u64 = 250;
 pub const DEFAULT_RECEIPT_WRITER_POLL_MS: u64 = 1_000;
 pub const DEFAULT_RECEIPT_WRITER_STALL_MS: u64 = 10_000;
+pub const DEFAULT_RUNTIME_ADMISSION_READINESS_TIMEOUT_MS: u64 = 30_000;
 
 impl Default for HotPathDeadlineConfig {
     fn default() -> Self {
@@ -306,12 +307,6 @@ pub struct KernelConfig {
     /// Wall-clock budgets for the mediation hot path. Construction input only,
     /// not a wire payload, so this changes no signed or transmitted bytes.
     pub deadlines: HotPathDeadlineConfig,
-
-    /// Which call classes must durably journal a dispatch intent before any
-    /// effect. Existing deployments construct this Off until an operator opts
-    /// in; the enum's own default (SideEffecting) is the fail-safe posture
-    /// for anyone deriving a value rather than spelling one.
-    pub dispatch_intent_journal: crate::receipt_store::DispatchIntentJournalMode,
 }
 
 impl KernelConfig {
@@ -385,7 +380,6 @@ pub(crate) fn receipt_crypto_floor(
 
 pub const DEFAULT_MAX_STREAM_DURATION_SECS: u64 = 300;
 pub const DEFAULT_MAX_STREAM_TOTAL_BYTES: u64 = 256 * 1024 * 1024;
-pub const DEFAULT_RUNTIME_ADMISSION_READINESS_TIMEOUT_MS: u64 = 30_000;
 /// Default cap on the number of chunks RETAINED from one streamed tool result.
 /// Bounds the accumulator `Vec<ToolCallChunk>` length and the per-chunk
 /// receipt-signing preimage even when every chunk is tiny and the byte cap is
@@ -536,6 +530,13 @@ fn read_process_rss_bytes() -> Option<u64> {
 /// signing key, address, or internal state to the agent.
 pub struct ChioKernel {
     pub(super) config: KernelConfig,
+    pub(super) durable_admission_mode: crate::admission_operation::DurableAdmissionMode,
+    pub(super) durable_admission_runtime: Option<DurableAdmissionRuntime>,
+    /// Explicit compatibility escape for development fixtures that exercise the
+    /// legacy non-durable financial lifecycle. Production construction leaves
+    /// this false, so a financial hold cannot cross a connector boundary without
+    /// durable recovery coverage.
+    pub(super) unsafe_ephemeral_financial_dispatch: bool,
     /// Guards are stored behind `Arc` so a single guard can be cloned into a
     /// `spawn_blocking` task without moving the whole pipeline, letting the
     /// deadline wrapper bound a blocking guard off the async worker.
@@ -569,15 +570,6 @@ pub struct ChioKernel {
     /// joined when this field is dropped (kernel drop). `None` when
     /// retention is unconfigured or before a store is attached.
     pub(super) retention_maintenance: Option<crate::receipt_store::RetentionMaintenanceHandle>,
-    /// Dispatch-intent recovery worker, spawned at store attach for stores
-    /// that coordinate sibling writer instances. Re-runs intent
-    /// reconciliation on a fixed cadence so a sibling that crashes while
-    /// this kernel stays up has its orphaned intents claimed and surfaced
-    /// (the attach-time pass correctly defers a live sibling's rows, and no
-    /// later attach may ever come). Joined when this field is dropped
-    /// (kernel drop). `None` for stores without sibling writers or before a
-    /// store is attached.
-    pub(super) dispatch_intent_recovery: Option<crate::receipt_store::DispatchIntentRecoveryHandle>,
     pub(super) payment_adapter: Option<Box<dyn PaymentAdapter>>,
     pub(super) price_oracle: Option<Box<dyn PriceOracle>>,
     pub(super) runtime_admission_hook: Option<Arc<dyn RuntimeAdmissionHook>>,
@@ -606,9 +598,13 @@ pub struct ChioKernel {
     /// trait object so SQLite-backed stores can be plugged in.
     pub(super) execution_nonce_store: Option<Box<dyn crate::execution_nonce::ExecutionNonceStore>>,
     /// Replay store for governed approval tokens. Key:
-    /// `(request_id, governed_intent_hash)`.
+    /// `(subject_id, request_id, governed_intent_hash)`.
     pub(super) approval_replay_store:
         Option<Box<dyn crate::governed_approval_replay::GovernedApprovalReplayStore>>,
+    pub(super) threshold_approval_requirement_resolver:
+        Option<Arc<dyn crate::threshold_approval::ThresholdApprovalRequirementResolver>>,
+    pub(super) supplemental_quota_verifier:
+        Option<crate::supplemental_quota::SupplementalQuotaVerifierRuntime>,
     /// Emergency kill switch. When `true`, every evaluate entry point returns
     /// `Verdict::Deny` without performing capability validation or guard
     /// evaluation. Flipped by `emergency_stop` / `emergency_resume`.
@@ -684,16 +680,8 @@ pub struct ChioKernel {
         Option<std::sync::Arc<dyn crate::federation_artifact_store::FederationArtifactStore>>,
     /// Request-keyed tenant scope for receipts. Async evaluate futures
     /// can resume on a different worker after dispatch, so the scope is
-    /// stored in this map rather than a thread-local. The value is the
-    /// RESOLVED tenant, including `None` for a tenantless request: the entry
-    /// itself proves the request's tenant is known, so no reader falls back
-    /// to a thread-local that may carry a concurrent sibling task's tenant.
-    pub(super) receipt_tenant_ids: Arc<DashMap<String, Option<String>>>,
-    /// Request-keyed dispatch-intent handles. Receipts carry no request id
-    /// and the evaluate future can migrate workers at the dispatch await, so
-    /// the pre-dispatch intent binding travels in this map (exactly like the
-    /// tenant scope above) for the terminal receipt sink to consume.
-    pub(super) dispatch_intents: Arc<DashMap<String, crate::receipt_store::DispatchIntentHandle>>,
+    /// stored in this map rather than a thread-local.
+    pub(super) receipt_tenant_ids: Arc<DashMap<String, String>>,
     /// Request-keyed copy of the receipt-version admission snapshot.
     /// Async evaluate futures may resume on a different Tokio worker
     /// after dispatch. This map keeps the admitted version and peer state
@@ -711,25 +699,7 @@ pub struct ChioKernel {
     /// handles can pass the signing handle to in-flight evaluators without
     /// cloning the whole kernel.
     pub(super) signing_task: std::sync::Arc<signing_task::SigningTaskHandle>,
-    /// Settlement observer slot. When `Some`, the kernel invokes the
-    /// hook against every finalized receipt that carries a non-zero
-    /// manifest price. Settlement runs strictly post-signing and never
-    /// blocks dispatch; failures are surfaced through the retry/dead-
-    /// letter machinery, not through this option.
-    pub(super) settlement_observer: Option<std::sync::Arc<dyn chio_settle::SettlementHook>>,
-    /// Durable sink for unresolved settlement outcomes. When `Some`, the
-    /// observer routing consumer persists a bounded attempt row for
-    /// retryable outcomes and an idempotent dead-letter row for terminal
-    /// failures. When `None`, unresolved outcomes are logged loud and
-    /// counted, never silently dropped.
-    pub(super) settlement_retry_store:
-        Option<std::sync::Arc<dyn crate::settlement_retry::SettlementRetryStore>>,
-    /// Retry policy the routing consumer classifies settlement outcomes
-    /// against.
-    pub(super) settlement_retry_policy: chio_settle::RetryPolicy,
-    /// Background sweeper for orphaned budget holds. `None` until an
-    /// operator opts in via `start_budget_hold_sweeper`; joined on drop.
-    pub(super) budget_hold_sweep: Option<super::budget_sweep::BudgetHoldSweepHandle>,
+    pub(super) settlement_observer: Option<crate::settlement_routing::SettlementObserverRuntime>,
     /// Recursive-delegation oracle handle. When `Some`, the verifier consults this
     /// arc-swap-backed snapshot on every delegated dispatch and denies
     /// the capability if any link in the chain (or the leaf) is in the

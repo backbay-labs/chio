@@ -47,11 +47,6 @@ fn ensure_chio_binary(repo_root: &PathBuf) {
         return;
     }
 
-    let chio_binary = repo_root.join("target/debug/chio");
-    if chio_binary.exists() {
-        return;
-    }
-
     let status = Command::new("cargo")
         .current_dir(repo_root)
         .arg("build")

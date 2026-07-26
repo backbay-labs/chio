@@ -1,0 +1,24 @@
+{
+  "body": {
+    "actionDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "authorizationId": "728746abe1f4ab10f2165d77120a1ff71e61801e44f74baa901e2ab11cd6927f",
+    "domain": "chio.frost.settle-commitment.v1",
+    "expiresAt": 400,
+    "issuedAt": 200,
+    "keyEpoch": 4,
+    "ladderActionClass": "settle.commitment",
+    "ladderContractDigest": "3ef2e40643ecb1be402f5d93e7a5ea3da49292bfe7bc4e2ce38f09cec80cc366",
+    "quorumM": 3,
+    "quorumN": 2,
+    "quorumScope": "treaty",
+    "resourceFence": 11,
+    "resourceId": "settlement.set-974",
+    "resourceVersion": 7,
+    "rosterDigest": "d08ce85abb2cbbfe3ea44252e1d0735617e63ea4010fc0b69e80c5dc6332a7ea",
+    "schema": "chio.frost.authorization-body.v1",
+    "scopeId": "treaty.atlantic.v1"
+  },
+  "groupSignature": "b5bb90cbbb5b6a54bae24dfc8afc4745a9270535ee33a9054057d3ac152f4e9d6d7720d9db0221a59f6de526869723552c0fe7da9b5861eb2553c0fbed2fcc0d",
+  "schema": "chio.frost.authorization.v1",
+  "suiteId": "FROST-ED25519-SHA512-v1"
+}

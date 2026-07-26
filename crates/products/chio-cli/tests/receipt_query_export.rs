@@ -105,23 +105,12 @@ fn test_operator_report_endpoint() {
             issued_at: 1_000,
             expires_at: 10_000,
             delegation_chain: vec![],
+            aggregate_invocation_budget: None,
         },
         &issuer_kp,
     )
     .expect("sign root capability");
-    let child = CapabilityToken::sign(
-        CapabilityTokenBody {
-            id: "cap-op-child".to_string(),
-            issuer: issuer_kp.public_key(),
-            subject: leaf_kp.public_key(),
-            scope,
-            issued_at: 1_100,
-            expires_at: 10_000,
-            delegation_chain: vec![],
-        },
-        &issuer_kp,
-    )
-    .expect("sign child capability");
+    let child = make_delegated_capability_token("cap-op-child", &leaf_kp, &root_kp, &root);
 
     let rc_op_1 = make_financial_receipt_signed_by(
         &checkpoint_kp,
@@ -185,17 +174,7 @@ fn test_operator_report_endpoint() {
 
     {
         let budgets = SqliteBudgetStore::open(&budget_db_path).expect("open budget store");
-        budgets
-            .upsert_usage(&BudgetUsageRecord {
-                capability_id: "cap-op-child".to_string(),
-                grant_index: 0,
-                invocation_count: 2,
-                updated_at: 3_100,
-                seq: 1,
-                total_cost_exposed: 850,
-                total_cost_realized_spend: 0,
-            })
-            .expect("upsert budget usage");
+        seed_budget_exposure(&budgets, "cap-op-child", 850);
     }
 
     let listen = reserve_listen_addr();
@@ -885,23 +864,12 @@ fn test_comptroller_surface_report_endpoint() {
             issued_at: 1_000,
             expires_at: 10_000,
             delegation_chain: vec![],
+            aggregate_invocation_budget: None,
         },
         &issuer_kp,
     )
     .expect("sign root capability");
-    let child = CapabilityToken::sign(
-        CapabilityTokenBody {
-            id: "cap-cs-child".to_string(),
-            issuer: issuer_kp.public_key(),
-            subject: leaf_kp.public_key(),
-            scope,
-            issued_at: 1_100,
-            expires_at: 10_000,
-            delegation_chain: vec![],
-        },
-        &issuer_kp,
-    )
-    .expect("sign child capability");
+    let child = make_delegated_capability_token("cap-cs-child", &leaf_kp, &root_kp, &root);
 
     let rc_cs_1 = make_financial_receipt_signed_by(
         &checkpoint_kp,
@@ -965,17 +933,7 @@ fn test_comptroller_surface_report_endpoint() {
 
     {
         let budgets = SqliteBudgetStore::open(&budget_db_path).expect("open budget store");
-        budgets
-            .upsert_usage(&BudgetUsageRecord {
-                capability_id: "cap-cs-child".to_string(),
-                grant_index: 0,
-                invocation_count: 2,
-                updated_at: 3_100,
-                seq: 1,
-                total_cost_exposed: 850,
-                total_cost_realized_spend: 0,
-            })
-            .expect("upsert budget usage");
+        seed_budget_exposure(&budgets, "cap-cs-child", 850);
     }
 
     let listen = reserve_listen_addr();

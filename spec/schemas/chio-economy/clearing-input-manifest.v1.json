@@ -1,0 +1,80 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio-protocol.dev/schemas/chio-economy/clearing-input-manifest/v1",
+  "title": "Chio Clearing Input Manifest V1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["body", "signerKey", "signature"],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "authorityId",
+        "keyEpoch",
+        "sourceId",
+        "epoch",
+        "rangeStartSequence",
+        "rangeEndSequence",
+        "startCheckpointDigest",
+        "endCheckpointDigest",
+        "entries",
+        "hasMore",
+        "issuedAtUnixMs",
+        "expiresAtUnixMs"
+      ],
+      "properties": {
+        "schema": { "const": "chio.clearing.input-manifest.v1" },
+        "authorityId": { "$ref": "#/$defs/text" },
+        "keyEpoch": { "$ref": "#/$defs/positiveInteger" },
+        "sourceId": { "$ref": "#/$defs/text" },
+        "epoch": { "$ref": "#/$defs/positiveInteger" },
+        "rangeStartSequence": { "$ref": "#/$defs/positiveInteger" },
+        "rangeEndSequence": { "$ref": "#/$defs/positiveInteger" },
+        "startCheckpointDigest": { "$ref": "#/$defs/digest" },
+        "endCheckpointDigest": { "$ref": "#/$defs/digest" },
+        "entries": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 126,
+          "items": { "$ref": "#/$defs/entry" }
+        },
+        "hasMore": { "const": false },
+        "nextCursor": { "$ref": "#/$defs/text" },
+        "issuedAtUnixMs": { "$ref": "#/$defs/positiveInteger" },
+        "expiresAtUnixMs": { "$ref": "#/$defs/positiveInteger" }
+      }
+    },
+    "signerKey": { "$ref": "#/$defs/cryptoMaterial" },
+    "signature": { "$ref": "#/$defs/cryptoMaterial" }
+  },
+  "$defs": {
+    "positiveInteger": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+    "digest": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "text": { "type": "string", "minLength": 1, "maxLength": 2048 },
+    "cryptoMaterial": { "type": "string", "minLength": 1, "maxLength": 16384 },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "sourceSequence",
+        "obligationId",
+        "atomDigest",
+        "dispositionDigest",
+        "dispositionVersion",
+        "lifecycleFence",
+        "roundId"
+      ],
+      "properties": {
+        "sourceSequence": { "$ref": "#/$defs/positiveInteger" },
+        "obligationId": { "$ref": "#/$defs/digest" },
+        "atomDigest": { "$ref": "#/$defs/digest" },
+        "dispositionDigest": { "$ref": "#/$defs/digest" },
+        "dispositionVersion": { "$ref": "#/$defs/positiveInteger" },
+        "lifecycleFence": { "$ref": "#/$defs/positiveInteger" },
+        "roundId": { "$ref": "#/$defs/text" }
+      }
+    }
+  }
+}

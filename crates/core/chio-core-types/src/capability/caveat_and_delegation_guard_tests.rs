@@ -50,6 +50,7 @@ fn capability_caveats_reject_fail_closed_until_admission_enforces_them() {
         issued_at: 10,
         expires_at: 20,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     let caveat = Caveat {
         kind: CaveatKind::RestrictAudience,
@@ -102,6 +103,7 @@ fn delegate_parent_token(
         issued_at,
         expires_at,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     CapabilityToken::sign(body, parent_kp).unwrap()
 }

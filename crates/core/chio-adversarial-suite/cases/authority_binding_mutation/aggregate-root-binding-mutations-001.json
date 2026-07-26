@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "id": "aggregate-root-binding-mutations-001",
+  "class": "authority_binding_mutation",
+  "expected_verdict": "DENY",
+  "expected_reason": "aggregate_root_binding_mutated",
+  "threat_id": "delegation_chain_abuse",
+  "pending": false,
+  "artifact": {
+    "primitive": "aggregate_budget_root_binding",
+    "mutations": [
+      "root_capability_id",
+      "root_capability_hash",
+      "root_issuer",
+      "root_subject",
+      "root_scope_hash",
+      "root_expires_at",
+      "signature",
+      "root_binding_digest"
+    ]
+  }
+}

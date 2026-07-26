@@ -132,12 +132,7 @@ pub(crate) struct Cli {
     #[arg(long, global = true)]
     pub(crate) budget_db: Option<PathBuf>,
 
-    /// Settlement driver: `none` (default; the settle drive is inert) or
-    /// `ops` (run the reference settlement hook when driving due attempts).
-    #[arg(long, global = true, default_value = "none")]
-    pub(crate) settlement_driver: String,
-
-    /// Optional SQLite database path for durable remote MCP session tombstones.
+    /// Optional SQLite database path for durable admission, trust authority, and remote MCP session state.
     #[arg(long, global = true)]
     pub(crate) session_db: Option<PathBuf>,
 
@@ -272,14 +267,7 @@ mod cli_env_tests {
         // The advertised nested spelling is the single supported one: the flat
         // `retention-repair` form must not linger and diverge from the guidance.
         assert!(
-            parse_cli([
-                "chio",
-                "receipt",
-                "retention-repair",
-                "--archive",
-                "a.sqlite3"
-            ])
-            .is_err(),
+            parse_cli(["chio", "receipt", "retention-repair", "--archive", "a.sqlite3"]).is_err(),
             "the flat `retention-repair` spelling must not be accepted"
         );
     }
@@ -343,36 +331,6 @@ mod cli_env_tests {
         }
 
         restore_env("CHIO_GUARD_REGISTRY_PASSWORD", prior);
-    }
-
-    #[test]
-    fn trust_trace_verify_requires_an_explicit_trusted_key() {
-        let missing_key = parse_cli(["chio", "trust", "trace-verify", "--log", "receipts.ndjson"]);
-        assert!(missing_key.is_err());
-
-        let parsed = parse_cli([
-            "chio",
-            "trust",
-            "trace-verify",
-            "--log",
-            "receipts.ndjson",
-            "--trusted-key",
-            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-        ])
-        .unwrap_or_else(|error| panic!("CLI parse failed: {error}"));
-
-        match parsed.command {
-            Commands::Trust {
-                command:
-                    TrustCommands::TraceVerify {
-                        log, trusted_keys, ..
-                    },
-            } => {
-                assert_eq!(log, PathBuf::from("receipts.ndjson"));
-                assert_eq!(trusted_keys.len(), 1);
-            }
-            _ => panic!("expected trust trace-verify command"),
-        }
     }
 }
 
@@ -571,13 +529,6 @@ pub(crate) enum Commands {
     Settle {
         #[command(subcommand)]
         command: SettleCommands,
-    },
-
-    /// Inspect and release capability budget holds in the durable budget
-    /// store (see the global `--budget-db`).
-    Budget {
-        #[command(subcommand)]
-        command: BudgetCommands,
     },
 
     /// Query, diff, or list anchored roots in the lineage DAG.

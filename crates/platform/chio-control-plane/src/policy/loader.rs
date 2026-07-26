@@ -15,6 +15,26 @@ use super::util::{
     hash_bytes, hash_json_value, runtime_hash_for_chio_yaml, runtime_hash_for_hushspec,
 };
 
+struct HexApproverDirectory;
+
+impl chio_kernel::threshold_approval::ApproverDirectory for HexApproverDirectory {
+    fn resolve_approver(
+        &self,
+        identifier: &str,
+    ) -> Result<chio_kernel::threshold_approval::ResolvedApproverIdentity, String> {
+        let public_key = chio_core::PublicKey::from_hex(identifier)
+            .map_err(|error| format!("approver identifier is not a public key: {error}"))?;
+        if public_key.to_hex() != identifier {
+            return Err("approver public key identifier is not canonical".to_owned());
+        }
+        Ok(chio_kernel::threshold_approval::ResolvedApproverIdentity {
+            identifier: identifier.to_owned(),
+            public_key,
+            directory_version: "self-authenticating-public-key-v1".to_owned(),
+        })
+    }
+}
+
 /// Load a policy from a YAML file.
 ///
 /// Auto-detects whether the file is a HushSpec policy (contains `hushspec:`
@@ -30,6 +50,7 @@ pub fn load_policy(path: &Path) -> Result<LoadedPolicy, PolicyError> {
     }
 
     let policy: ChioPolicy = serde_yml::from_str(&contents)?;
+    policy.kernel.validate()?;
     let default_capabilities = build_runtime_default_capabilities(&policy)?;
     let runtime_hash = runtime_hash_for_chio_yaml(&policy, &default_capabilities)?;
 
@@ -45,6 +66,7 @@ pub fn load_policy(path: &Path) -> Result<LoadedPolicy, PolicyError> {
         post_invocation_pipeline: build_post_invocation_pipeline(&policy.guards)?,
         issuance_policy: None,
         runtime_assurance_policy: None,
+        threshold_approval: None,
     })
 }
 
@@ -63,7 +85,11 @@ fn load_hushspec_policy(path: &Path, source_hash: String) -> Result<LoadedPolicy
     let source_dir = path.parent();
     let auxiliary_assets = hushspec_auxiliary_asset_digests(&spec, source_dir)?;
     let source_hash = hushspec_source_hash_with_assets(&source_hash, &auxiliary_assets)?;
-    let compiled = chio_policy::compile_policy_with_source(&spec, Some(path))?;
+    let compiled = chio_policy::compile_policy_with_source_and_approver_directory(
+        &spec,
+        Some(path),
+        &HexApproverDirectory,
+    )?;
     let kernel = KernelPolicyConfig::default();
     let default_capabilities =
         build_default_capabilities_from_scope(&compiled.default_scope, kernel.max_capability_ttl);
@@ -71,6 +97,19 @@ fn load_hushspec_policy(path: &Path, source_hash: String) -> Result<LoadedPolicy
     let runtime_assurance_policy = materialize_runtime_assurance_policy(&spec)?;
     let runtime_hash =
         runtime_hash_for_hushspec(&kernel, &default_capabilities, &spec, &auxiliary_assets)?;
+    let threshold_approval = compiled
+        .threshold_approval
+        .map(|requirement| {
+            chio_core::capability::threshold_approval::ThresholdApprovalRequirement::new(
+                runtime_hash.clone(),
+                requirement.threshold,
+                requirement.eligible_approvers,
+                requirement.directory_version,
+                requirement.timeout_seconds,
+            )
+        })
+        .transpose()
+        .map_err(PolicyError::Invalid)?;
 
     Ok(LoadedPolicy {
         format: PolicyFormat::HushSpec,
@@ -84,6 +123,7 @@ fn load_hushspec_policy(path: &Path, source_hash: String) -> Result<LoadedPolicy
         post_invocation_pipeline: compiled.post_invocation,
         issuance_policy,
         runtime_assurance_policy,
+        threshold_approval,
     })
 }
 
@@ -156,5 +196,6 @@ fn hushspec_source_hash_with_assets(
 /// Parse a policy from a YAML string.
 pub fn parse_policy(yaml: &str) -> Result<ChioPolicy, PolicyError> {
     let policy: ChioPolicy = serde_yml::from_str(yaml)?;
+    policy.kernel.validate()?;
     Ok(policy)
 }

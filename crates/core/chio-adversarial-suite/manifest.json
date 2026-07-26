@@ -1,8 +1,17 @@
 {
   "schema_version": 1,
   "producer": "chio-adversarial-suite",
-  "case_count": 40,
+  "case_count": 42,
   "cases": [
+    {
+      "id": "aggregate-root-binding-mutations-001",
+      "class": "authority_binding_mutation",
+      "expected_verdict": "DENY",
+      "expected_reason": "aggregate_root_binding_mutated",
+      "threat_id": "delegation_chain_abuse",
+      "path": "cases/authority_binding_mutation/aggregate-root-binding-mutations-001.json",
+      "content_sha256": "e43d792afa15b2956472f533d0d4d54fb586a94b865f4afbdb0510f92528a1d3"
+    },
     {
       "id": "anchor-grafted-001",
       "class": "anchor_grafted",
@@ -362,6 +371,15 @@
       "threat_id": "kernel_impersonation",
       "path": "cases/sigstore_bundle_payload_mismatch/sigstore-bundle-payload-mismatch-005.json",
       "content_sha256": "bc7de137ed1ba550e8fedfe91b3bfd33105c0afa1d1a6d25f92f3972a4150919"
+    },
+    {
+      "id": "threshold-proposal-mutations-001",
+      "class": "authority_binding_mutation",
+      "expected_verdict": "DENY",
+      "expected_reason": "threshold_proposal_binding_mutated",
+      "threat_id": "kernel_impersonation",
+      "path": "cases/authority_binding_mutation/threshold-proposal-mutations-001.json",
+      "content_sha256": "8a5ade9414ba06180e08a2c7cb6067ce257875ed0e2d7ec88fe622f2184ea1b1"
     }
   ]
 }

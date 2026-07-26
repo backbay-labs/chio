@@ -56,6 +56,7 @@ fn make_token_body(issuer_kp: &Keypair) -> CapabilityTokenBody {
         issued_at: 1_000_000,
         expires_at: 2_000_000,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     }
 }
 
@@ -129,6 +130,8 @@ fn make_delegation_link(delegator_kp: &Keypair, delegatee_kp: &Keypair) -> Deleg
         attenuations: vec![],
         timestamp: 1_000_100,
         scope_hash: None,
+        aggregate_budget: None,
+        cumulative_approval: None,
     };
     DelegationLink::sign(body, delegator_kp).unwrap()
 }

@@ -1,0 +1,36 @@
+{
+  "allowedDomains": [
+    "chio.frost.settle-commitment.v1"
+  ],
+  "authorityScope": "treaty",
+  "ceremonyTranscriptDigest": "4444444444444444444444444444444444444444444444444444444444444444",
+  "groupPublicKey": "15d21ccd7ee42959562fc8aa63224c8851fb3ec85a3faf66040d380fb9738673",
+  "keyEpoch": 4,
+  "keyOrigin": "distributed_dkg",
+  "participantCount": 3,
+  "participants": [
+    {
+      "participantId": "operator-1",
+      "verificationShare": "fc2c9b8e335c132d9ebe0403c9317aac480bbbf8cbdb1bc3730bb68eb60dadf9"
+    },
+    {
+      "participantId": "operator-2",
+      "verificationShare": "f7c3031debffbaf121022409d057e6e1034a532636301d12e26beddff58d05c7"
+    },
+    {
+      "participantId": "operator-3",
+      "verificationShare": "2cff4148a2f965801fb1f25f1d2a4e5df2f75b3a57cd06f30471c2c774419a41"
+    }
+  ],
+  "predecessorRosterDigest": "5555555555555555555555555555555555555555555555555555555555555555",
+  "rosterAuthorityKeyId": "authority.treaty.v1",
+  "rosterAuthoritySignature": "8e2a5f8b6eaf78a5c2c2fb6634885f4a05a2099ef62bfc8764418def15e833c688913288a76dde82ac16320eaea4499b1c46782222ca9533fef8f8728b9d590b",
+  "rosterDigest": "df4789e1884f576b73aaa0609be408dd9f44681c72cf30d374ca8dc06153d721",
+  "rosterId": "3338bafe137cc11e24137c9434a5e6f74b266863067895c36597ed74565063ca",
+  "schema": "chio.frost.roster.v1",
+  "scopeId": "treaty.atlantic.v1",
+  "suiteId": "FROST-ED25519-SHA512-v1",
+  "threshold": 2,
+  "validFrom": 100,
+  "validUntil": 1000
+}

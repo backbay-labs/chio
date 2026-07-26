@@ -111,8 +111,8 @@ pub use patch_integrity::PatchIntegrityGuard;
 pub use path_allowlist::PathAllowlistGuard;
 pub use pipeline::GuardPipeline;
 pub use post_invocation::{
-    sanitize_json, PipelineOutcome, PostInvocationHook, PostInvocationPipeline,
-    PostInvocationVerdict, SanitizerHook,
+    sanitize_json, PipelineOutcome, PostInvocationHook, PostInvocationHookIdentity,
+    PostInvocationPipeline, PostInvocationVerdict, SanitizerHook,
 };
 pub use prompt_injection::{
     Detection as PromptInjectionDetection, PromptInjectionConfig, PromptInjectionGuard,

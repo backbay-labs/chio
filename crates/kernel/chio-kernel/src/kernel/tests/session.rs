@@ -358,6 +358,10 @@ fn session_operation_tool_call_tracks_and_clears_inflight() {
         tool_name: "read_file".to_string(),
         arguments: serde_json::json!({"path": "/app/src/main.rs"}),
         governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         execution_nonce: None,
         model_metadata: None,
                 extra_metadata: None,
@@ -371,6 +375,57 @@ fn session_operation_tool_call_tracks_and_clears_inflight() {
     .expect("expected tool call response");
     assert_eq!(response.verdict, Verdict::Allow);
 
+    assert!(kernel.session(&session_id).unwrap().inflight().is_empty());
+}
+
+#[test]
+fn session_operation_forwards_supplemental_authorization_to_kernel_validation() {
+    let mut kernel = make_kernel(make_config());
+    kernel.register_tool_server(Box::new(EchoServer::new("srv-a", vec!["read_file"])));
+
+    let agent_kp = make_keypair();
+    let scope = make_scope(vec![make_grant("srv-a", "read_file")]);
+    let cap = make_capability(&kernel, &agent_kp, scope, 300);
+    let session_id = kernel
+        .open_session(agent_kp.public_key().to_hex(), vec![cap.clone()])
+        .unwrap();
+    kernel.activate_session(&session_id).unwrap();
+
+    let context = make_operation_context(
+        &session_id,
+        "req-session-supplemental",
+        &agent_kp.public_key().to_hex(),
+    );
+    let operation = SessionOperation::ToolCall(Box::new(ToolCallOperation {
+        capability: cap,
+        server_id: "srv-a".to_string(),
+        tool_name: "read_file".to_string(),
+        arguments: serde_json::json!({"path": "/app/src/main.rs"}),
+        governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: Some(
+            chio_core::capability::supplemental_authorization::OpaqueSupplementalAuthorization {
+                signed_extension: "b3BhcXVl".to_string(),
+            },
+        ),
+        execution_nonce: None,
+        model_metadata: None,
+        extra_metadata: None,
+    }));
+
+    let response = session_tool_call(
+        kernel
+            .evaluate_session_operation(&context, &operation)
+            .unwrap(),
+    )
+    .expect("expected signed tool-call denial");
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert!(response.reason.as_deref().is_some_and(|reason| {
+        reason.contains("supplemental authorization requires an installed verifier")
+    }));
     assert!(kernel.session(&session_id).unwrap().inflight().is_empty());
 }
 
@@ -397,6 +452,10 @@ fn session_operation_tool_call_malformed_nonce_clears_inflight() {
         tool_name: "read_file".to_string(),
         arguments: serde_json::json!({"path": "/app/src/main.rs"}),
         governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         execution_nonce: Some(serde_json::json!("not-a-signed-nonce")),
         model_metadata: None,
         extra_metadata: None,
@@ -969,6 +1028,10 @@ fn tool_call_nested_flow_bridge_roundtrips_sampling() {
         tool_name: "sample_via_client".to_string(),
         arguments: serde_json::json!({}),
         governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         execution_nonce: None,
         model_metadata: None,
                 extra_metadata: None,
@@ -1065,6 +1128,10 @@ fn tool_call_nested_flow_bridge_roundtrips_elicitation() {
         tool_name: "elicit_via_client".to_string(),
         arguments: serde_json::json!({}),
         governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         execution_nonce: None,
         model_metadata: None,
                 extra_metadata: None,
@@ -1150,6 +1217,10 @@ fn tool_call_nested_flow_bridge_updates_session_roots() {
         tool_name: "roots_via_client".to_string(),
         arguments: serde_json::json!({}),
         governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         execution_nonce: None,
         model_metadata: None,
                 extra_metadata: None,
@@ -1229,6 +1300,10 @@ fn tool_call_nested_flow_bridge_propagates_parent_cancellation() {
         tool_name: "sample_via_client".to_string(),
         arguments: serde_json::json!({}),
         governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         execution_nonce: None,
         model_metadata: None,
                 extra_metadata: None,
@@ -1327,6 +1402,10 @@ fn tool_call_nested_flow_bridge_propagates_child_cancellation() {
         tool_name: "sample_via_client".to_string(),
         arguments: serde_json::json!({}),
         governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         execution_nonce: None,
         model_metadata: None,
                 extra_metadata: None,
@@ -1433,6 +1512,10 @@ fn tool_call_nested_flow_rejects_malformed_execution_nonce_without_inflight_leak
         tool_name: "sample_via_client".to_string(),
         arguments: serde_json::json!({}),
         governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         execution_nonce: Some(serde_json::json!("not-a-signed-execution-nonce")),
         model_metadata: None,
         extra_metadata: None,
@@ -1543,6 +1626,10 @@ fn tool_call_nested_flow_bridge_filters_resource_notifications_to_session_subscr
         tool_name: "notify_resources_via_client".to_string(),
         arguments: serde_json::json!({}),
         governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         execution_nonce: None,
         model_metadata: None,
                 extra_metadata: None,

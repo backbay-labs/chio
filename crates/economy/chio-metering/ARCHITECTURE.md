@@ -1,77 +1,45 @@
-# chio-metering architecture
+# chio-metering Architecture
 
-## Overview
-
-`chio-metering` is a pure, storage-agnostic library: every entry point takes
-caller-supplied data (a `CostMetadata` slice, a `SpendSnapshot`) and returns
-an aggregate, a decision, or a projection, with no I/O and no state held
-between calls; it forbids unsafe code. The crate holds two independent budget
-models side by side rather than layering one on the other: `budget` is a flat
-enforcer scoped to a single session, agent, or tool, while `budget_hierarchy`
-is a tree of nodes where every ancestor caps a draft spend. `cost`, `query`,
-and `export` operate on the same `CostMetadata` record from three angles:
-attribution, aggregation, and billing projection.
-
-## Module map
-
-| Path | Responsibility |
-|------|----------------|
-| `src/lib.rs` | Public module declarations and crate-root re-exports. |
-| `src/cost.rs` | `CostMetadata` and `CostDimension`: per-receipt cost dimensions and derived totals (`total_compute_time_ms`, `total_data_bytes`, `compute_total_monetary_cost`). |
-| `src/budget.rs` | `BudgetEnforcer` and `BudgetPolicy`: flat total/session/agent/tool spend tracking (`check`, `record`). |
-| `src/budget_hierarchy.rs` | `BudgetTree`: tree-shaped budget policy, construction validation, ancestor/descendant traversal, snapshot-based `evaluate`, and JSON (de)serialization. |
-| `src/query.rs` | `execute_cost_query`: in-memory filter, group, and summarize over a `CostMetadata` slice. |
-| `src/export.rs` | `create_billing_export`: flattens `CostMetadata` into `BillingRecord`/`BillingExport`. |
+`chio-metering` owns cost attribution and budget-decision data structures for
+receipt economics. It is intentionally storage-agnostic: callers provide
+receipt cost metadata, current spend snapshots, and export timestamps, while
+this crate performs deterministic aggregation, validation, and policy checks.
 
 ## Boundaries
 
-- No persistence: `budget_hierarchy` takes a `SpendSnapshot` the caller reads
-  from its own store (SQLite, Redis, in-memory); this crate never reads or
-  writes one.
-- No exchange-rate conversion: `budget::BudgetEnforcer::check` assumes
-  `cost_units` is already denominated in the policy currency, and
-  `budget_hierarchy::evaluate` fails closed on a spend cap when the draft
-  carries a positive spend in a different or unstated currency (it denies
-  rather than converting). Nothing in this crate calls an oracle;
-  cross-currency conversion is the caller's responsibility and must run
-  before evaluation.
-- No receipt signing or kernel execution: this crate produces metadata and
-  decisions for the kernel and guards to act on, not receipts themselves.
-- No external billing transport: `export::create_billing_export` returns a
-  `BillingExport` value; writing it to CSV, JSON-lines, or a billing API is
-  left to the caller.
+- `chio-core` owns shared monetary amount types consumed by cost metadata and
+  budget policies.
+- `cost` owns per-receipt cost dimensions and derived totals for compute time,
+  data volume, API spend, warehouse queries, and custom dimensions.
+- `query` owns in-memory filtering, result limiting, grouping, and cumulative
+  summaries for receipt cost records.
+- `export` owns the flattened billing-record projection and export batch totals.
+- `budget` owns flat per-session, per-agent, per-tool, and total budget counters.
+- `budget_hierarchy` owns tree-shaped organizational budget configuration,
+  construction validation, ancestor traversal, and snapshot-based evaluation.
+- This crate does not own persistence, exchange-rate conversion, receipt
+  signing, kernel execution, or external billing transport.
 
-## Invariants and failure modes
+## Trust Invariants
 
-- `BudgetTree::insert` and `BudgetTree::deserialize` reject invalid shape
-  before a tree exists: duplicate node ids, a missing parent, a cycle in the
-  parent chain, or a `max_spend_units` limit with no (or blank) `currency`.
-- `BudgetTree::evaluate` never mutates the `SpendSnapshot` it is given; it
-  borrows `&SpendSnapshot` and returns a `BudgetDecision`.
-- `BudgetTree::evaluate` walks every ancestor from leaf to root without
-  stopping at the first violation; when multiple ancestors are in violation,
-  the reported `BudgetDenyReason` names the one closest to the root, so the
-  broadest policy boundary surfaces first.
-- A disabled `BudgetNode` (`enabled: false`) denies every draft charged to it
-  or any descendant with `BudgetDenyReason::NodeDisabled`, regardless of
-  limits.
-- An `id` absent from the tree denies with `BudgetDenyReason::UnknownNode`
-  rather than panicking.
-- Spend aggregation (`AggregateSpend::saturating_add`), cost totals in
-  `CostMetadata`, query summaries, and flat budget counters all saturate at
-  `u64::MAX` instead of overflowing.
-- Multi-currency aggregates (`CostMetadata::compute_total_monetary_cost`,
-  `query::execute_cost_query`, `export::create_billing_export`) drop the
-  monetary total to `None` rather than mixing currencies; the first currency
-  encountered wins the partial sum and later ones are excluded from it.
+- Invalid budget-tree shape rejects at construction or deserialization time.
+- Spend limits that set `max_spend_units` must include a non-empty currency, so
+  monetary caps cannot silently become inert.
+- A spend-capped node denies drafts whose currency is absent or mismatched. A
+  snapshot currency must match when present and may be absent only at zero.
+- Budget evaluation never mutates caller-provided snapshots.
+- Hierarchical monetary aggregation rejects overflow. Query totals, billing
+  totals, and flat budget counters saturate instead of wrapping.
+- Mixed-currency summaries omit aggregate monetary totals unless every included
+  monetary record uses the same currency.
+- Hierarchical budget evaluation walks from leaf to root and returns the
+  broadest offending policy scope.
 
-## Dependencies
+## Testing Focus
 
-Internal: `chio-core` supplies `MonetaryAmount`
-(`chio_core::capability::scope::MonetaryAmount`), used by `cost`, `budget`,
-`query`, and `export`. `budget_hierarchy` does not depend on `chio-core`: it
-represents spend as a raw `u64` unit count plus an optional currency string
-(`AggregateSpend`, `BudgetLimits`), a separate representation from
-`MonetaryAmount` used by the rest of the crate. External: `serde`/`serde_json`
-for artifact and tree serialization, `thiserror` for `BudgetError`, and
-`chrono` for Unix-to-ISO-8601 timestamp formatting in `export`.
+Unit tests cover cost metadata serialization, saturating totals, flat budget
+violations, query filters, query grouping, export records, hierarchy insertion,
+hierarchy serialization, ancestor traversal, disabled nodes, and construction
+validation. Integration tests exercise hierarchy enforcement around parent
+caps, rolling-window reset behavior, multiple dimensions, and unknown node
+denial, including currency mismatches and monetary overflow.

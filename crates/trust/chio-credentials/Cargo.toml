@@ -13,7 +13,9 @@ name = "chio_credentials"
 
 [dependencies]
 chio-core = { workspace = true }
+chio-credit = { workspace = true }
 chio-did = { workspace = true }
+chio-fincred = { workspace = true }
 chio-reputation = { workspace = true }
 chio-revocation-oracle = { workspace = true }
 serde = { workspace = true, features = ["derive"] }
@@ -45,6 +47,7 @@ fuzz = ["dep:arbitrary"]
 dudect = ["dep:dudect-bencher"]
 
 [dev-dependencies]
+chio-spec-validate = { workspace = true }
 chio-test-support = { workspace = true }
 proptest = { workspace = true }
 

@@ -2,7 +2,7 @@
 #
 # Source: spec/schemas/chio-wire/v1/**/*.schema.json
 # Tool:   datamodel-code-generator==0.34.0 (see xtask/codegen-tools.lock.toml)
-# Schema sha256: 9d7b17b15b33f7dcc9d52da37c9fb906c57911cdfd78424c344f5ce58b160468
+# Schema sha256: 63696e53010dca489dd90f0f71166c42511e6e9734e364a6e3cd564e8d04693b
 #
 # Manual edits will be overwritten by the next regeneration; the
 # spec-drift CI lane enforces this header on every file
@@ -10,32 +10,69 @@
 
 from __future__ import annotations
 
+from .aggregate_budget_root_schema import AggregateRootPublicKey, AggregateRootSignature, AggregateRootSigningAlgorithm, Body, ChioAggregateBudgetRootBinding
+from .aggregate_invocation_budget_schema import ChioAggregateInvocationBudget, ChioAggregateInvocationBudget1, ChioAggregateInvocationBudget2
 from .capabilities_schema import ChioCapabilityNegotiationV1
+from .cumulative_approval_root_schema import Body, ChioCumulativeApprovalRootBinding, CumulativeRootMonetaryAmount, CumulativeRootPublicKey, CumulativeRootSignature, CumulativeRootSigningAlgorithm
+from .governed_approval_token_schema import Algorithm, ChioGovernedApprovalToken, Decision, GovernedApprovalPublicKey, GovernedApprovalSignature
 from .grant_schema import ChioCapabilityGrant, Constraint, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ToolGrant
 from .revocation_schema import ChioCapabilityRevocationEntry
-from .token_schema import Algorithm, Attenuation, AttenuationProof, AttenuationWitness, Caveat, ChioCapabilitytoken, ChioScope, Constraint, DelegationLink, GrantKind, GrantSubsetRelation, Kind, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ScopeAttenuation, Subset, ToolGrant
+from .supplemental_authorization_schema import ChioOpaqueSupplementalAuthorization
+from .threshold_approval_proposal_schema import Algorithm, ChioThresholdApprovalProposal, ThresholdProposalPublicKey, ThresholdProposalSignature
+from .token_schema import Algorithm, Attenuation, AttenuationProof, AttenuationWitness, Caveat, ChioCapabilitytoken, ChioScope, Constraint, CumulativeApprovalDelegableConstraint, CumulativeApprovalDirectConstraint, DelegationLink, GenericConstraint, GrantKind, GrantSubsetRelation, Kind, LegacyApprovalConstraint, MonetaryAmount, Operation, PromptGrant, ResourceGrant, ScopeAttenuation, Subset, ToolGrant, Value, Value1, Value2
+from .verified_approval_set_schema import ChioVerifiedApprovalSetBody, TokenDigest
 
 __all__ = [
+    "AggregateRootPublicKey",
+    "AggregateRootSignature",
+    "AggregateRootSigningAlgorithm",
     "Algorithm",
     "Attenuation",
     "AttenuationProof",
     "AttenuationWitness",
+    "Body",
     "Caveat",
+    "ChioAggregateBudgetRootBinding",
+    "ChioAggregateInvocationBudget",
+    "ChioAggregateInvocationBudget1",
+    "ChioAggregateInvocationBudget2",
     "ChioCapabilityGrant",
     "ChioCapabilityNegotiationV1",
     "ChioCapabilityRevocationEntry",
     "ChioCapabilitytoken",
+    "ChioCumulativeApprovalRootBinding",
+    "ChioGovernedApprovalToken",
+    "ChioOpaqueSupplementalAuthorization",
     "ChioScope",
+    "ChioThresholdApprovalProposal",
+    "ChioVerifiedApprovalSetBody",
     "Constraint",
+    "CumulativeApprovalDelegableConstraint",
+    "CumulativeApprovalDirectConstraint",
+    "CumulativeRootMonetaryAmount",
+    "CumulativeRootPublicKey",
+    "CumulativeRootSignature",
+    "CumulativeRootSigningAlgorithm",
+    "Decision",
     "DelegationLink",
+    "GenericConstraint",
+    "GovernedApprovalPublicKey",
+    "GovernedApprovalSignature",
     "GrantKind",
     "GrantSubsetRelation",
     "Kind",
+    "LegacyApprovalConstraint",
     "MonetaryAmount",
     "Operation",
     "PromptGrant",
     "ResourceGrant",
     "ScopeAttenuation",
     "Subset",
+    "ThresholdProposalPublicKey",
+    "ThresholdProposalSignature",
+    "TokenDigest",
     "ToolGrant",
+    "Value",
+    "Value1",
+    "Value2",
 ]

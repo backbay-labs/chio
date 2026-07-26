@@ -17,6 +17,7 @@ Directory layout:
 - `kernel/`
   - `tool_call_chunk.schema.json`
   - `tool_call_response.schema.json`
+  - `execution_nonce.schema.json`
   - `capability_list.schema.json`
   - `capability_revoked.schema.json`
   - `heartbeat.schema.json`

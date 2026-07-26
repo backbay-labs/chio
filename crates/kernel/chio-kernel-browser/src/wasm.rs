@@ -115,6 +115,7 @@ pub fn verify_capability(token_json: &str, authority_pub_hex: &str) -> Result<Js
         trusted_issuers_hex,
         clock_override_unix_secs: None,
         peer_capabilities: Some(CapabilityNegotiation::t1_default()),
+        direct_root_capability: None,
         capability_trust_roots: BTreeMap::new(),
         parent_budget_snapshots: Vec::new(),
     };

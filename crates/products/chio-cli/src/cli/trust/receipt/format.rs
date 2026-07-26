@@ -11,8 +11,6 @@ pub(crate) const CHIO_CLI_RECEIPT_CHECKPOINT_VERIFY_SCHEMA: &str =
 pub(crate) const CHIO_CLI_RECEIPT_AUDIT_SCHEMA: &str = "chio.cli.receipt.audit.v1";
 pub(crate) const CHIO_CLI_RECEIPT_RETENTION_REPAIR_SCHEMA: &str =
     "chio.cli.receipt.retention.repair.v1";
-pub(crate) const CHIO_CLI_RECEIPT_RESOLVE_DEAD_LETTER_SCHEMA: &str =
-    "chio.cli.receipt.resolve_dead_letter.v1";
 
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -68,6 +66,14 @@ pub(crate) fn push_writer_counters_human(
     ));
     lines.push(format!("writer_failed_total: {}", writer.failed_total));
     lines.push(format!(
+        "writer_timed_out_total: {}",
+        writer.timed_out_total
+    ));
+    lines.push(format!(
+        "writer_timed_out_inflight: {}",
+        writer.timed_out_inflight
+    ));
+    lines.push(format!(
         "writer_saturated_total: {}",
         writer.saturated_total
     ));
@@ -85,6 +91,7 @@ pub(crate) fn push_writer_counters_human(
 pub(crate) fn render_receipt_health_human(
     report: &chio_kernel::ReceiptStoreHealthReport,
 ) -> String {
+    let writer_level = format!("{:?}", report.writer_level).to_ascii_lowercase();
     let mut lines = vec![
         format!(
             "status: {}",
@@ -103,6 +110,8 @@ pub(crate) fn render_receipt_health_human(
             "checkpointed_entry_seq: {}",
             report.latest_checkpointed_entry_seq
         ),
+        format!("writer_level: {writer_level}"),
+        format!("writer_restart_total: {}", report.writer_restart_total),
     ];
     if let (Some(start), Some(end)) = (
         report.uncheckpointed_start_seq,
@@ -119,23 +128,6 @@ pub(crate) fn render_receipt_health_human(
         "retention_watermark_entry_seq: {}",
         optional_u64(report.retention_watermark_entry_seq)
     ));
-    lines.push(format!(
-        "open_dispatch_intents: {}",
-        report.open_dispatch_intents
-    ));
-    lines.push(format!(
-        "dead_letter_dispatch_intents: {}",
-        report.dead_letter_dispatch_intents
-    ));
-    if report.dead_letter_dispatch_intents > 0 {
-        lines.push(
-            "hint: each dead-letter incident means an effect may have occurred with no \
-             receipt. After confirming the actual outcome (e.g. against the rail or the \
-             upstream tool server), resolve it with `chio receipt resolve-dead-letter \
-             --request-id <id> --note <note>`."
-                .to_string(),
-        );
-    }
     if let Some(error) = report.checkpoint_error.as_deref() {
         lines.push(format!("checkpoint_error: {error}"));
     }
@@ -262,31 +254,5 @@ pub(crate) fn render_receipt_retention_repair_human(removed: u64, writable: bool
             "retention repair removed {removed} extra claim-log row(s), but the store still has \
              drift and is not writable; further recovery is required\n"
         )
-    }
-}
-
-/// JSON report for `chio receipt resolve-dead-letter`. `resolved: true` on
-/// every success, since the store method itself refuses (fail-closed) rather
-/// than returning any other outcome for a missing or non-dead-letter row.
-#[derive(serde::Serialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct DeadLetterResolutionReport {
-    pub(crate) request_id: String,
-    pub(crate) tenant_id: Option<String>,
-    pub(crate) resolved: bool,
-}
-
-pub(crate) fn render_receipt_resolve_dead_letter_human(
-    report: &DeadLetterResolutionReport,
-) -> String {
-    match report.tenant_id.as_deref() {
-        Some(tenant) => format!(
-            "resolved dead-letter dispatch intent for request `{}` (tenant `{tenant}`)\n",
-            report.request_id
-        ),
-        None => format!(
-            "resolved dead-letter dispatch intent for request `{}`\n",
-            report.request_id
-        ),
     }
 }

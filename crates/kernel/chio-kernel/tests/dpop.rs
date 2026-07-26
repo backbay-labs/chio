@@ -31,6 +31,7 @@ fn make_capability(agent_kp: &Keypair) -> CapabilityToken {
         issued_at: now,
         expires_at: now + 3600,
         delegation_chain: vec![],
+        aggregate_invocation_budget: None,
     };
     CapabilityToken::sign(body, &issuer_kp).expect("sign capability")
 }
@@ -353,40 +354,38 @@ fn dpop_nonce_replay_within_ttl_rejected() {
 }
 
 // ---------------------------------------------------------------------------
-// Test 6: Future-issued proof follows its signed freshness horizon
+// Test 6: Signed proof validity retains a nonce beyond the local store TTL
 // ---------------------------------------------------------------------------
 
 #[test]
-fn dpop_future_issued_nonce_uses_signed_horizon_not_store_ttl() {
+fn dpop_nonce_replay_after_local_ttl_is_rejected() {
     let agent_kp = Keypair::generate();
     let cap = make_capability(&agent_kp);
 
-    let config = DpopConfig {
-        proof_ttl_secs: 2,
-        max_clock_skew_secs: 10,
-        nonce_store_capacity: 8,
-    };
-    // The store's fallback TTL is deliberately shorter than the accepted
-    // proof. Signed proof verification must ignore this local pairing.
+    let config = default_config();
+    // A zero local TTL must not shorten the signed proof-validity horizon.
     let store = DpopNonceStore::new(config.nonce_store_capacity, Duration::from_secs(0));
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_secs();
-    let body = DpopProofBody {
+    let reused_nonce = "nonce-after-ttl-001";
+
+    // First use.
+    let body1 = DpopProofBody {
         schema: DPOP_SCHEMA.to_string(),
         capability_id: cap.id.clone(),
         tool_server: "srv-a".to_string(),
         tool_name: "read_file".to_string(),
         action_hash: sha256_hex(b"{}"),
-        nonce: "nonce-future-issued-001".to_string(),
-        issued_at: now + 5,
+        nonce: reused_nonce.to_string(),
+        issued_at: now,
         agent_key: agent_kp.public_key(),
     };
-    let proof = DpopProof::sign(body, &agent_kp).expect("sign proof");
+    let proof1 = DpopProof::sign(body1, &agent_kp).expect("sign proof 1");
     let result1 = verify_dpop_proof(
-        &proof,
+        &proof1,
         &cap,
         "srv-a",
         "read_file",
@@ -396,8 +395,20 @@ fn dpop_future_issued_nonce_uses_signed_horizon_not_store_ttl() {
     );
     assert!(result1.is_ok(), "first use should succeed: {result1:?}");
 
+    // The second use remains a replay while the signed proof is valid.
+    let body2 = DpopProofBody {
+        schema: DPOP_SCHEMA.to_string(),
+        capability_id: cap.id.clone(),
+        tool_server: "srv-a".to_string(),
+        tool_name: "read_file".to_string(),
+        action_hash: sha256_hex(b"{}"),
+        nonce: reused_nonce.to_string(),
+        issued_at: now,
+        agent_key: agent_kp.public_key(),
+    };
+    let proof2 = DpopProof::sign(body2, &agent_kp).expect("sign proof 2");
     let result2 = verify_dpop_proof(
-        &proof,
+        &proof2,
         &cap,
         "srv-a",
         "read_file",
@@ -405,9 +416,12 @@ fn dpop_future_issued_nonce_uses_signed_horizon_not_store_ttl() {
         &store,
         &config,
     );
+    let err_msg = result2
+        .expect_err("nonce reuse during the proof-validity horizon must fail closed")
+        .to_string();
     assert!(
-        result2.is_err(),
-        "future-issued proof must remain replay-blocked through its signed horizon"
+        err_msg.contains("nonce replayed"),
+        "unexpected error message: {err_msg}"
     );
 }
 

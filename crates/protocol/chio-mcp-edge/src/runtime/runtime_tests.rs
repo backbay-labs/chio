@@ -21,6 +21,9 @@ use chio_kernel::{
 use std::io::Cursor;
 use std::sync::{Arc, Mutex};
 
+#[path = "runtime_tests/channel_roots.rs"]
+mod channel_roots;
+
 static METRICS_TEST_LOCK: Mutex<()> = Mutex::new(());
 
 fn metrics_test_guard() -> std::sync::MutexGuard<'static, ()> {
@@ -461,7 +464,6 @@ fn make_kernel() -> (ChioKernel, Keypair) {
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     };
     let mut kernel = ChioKernel::new(config);
     kernel.register_tool_server(Box::new(EchoServer));
@@ -490,7 +492,6 @@ fn make_web3_required_kernel() -> (ChioKernel, Keypair) {
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     };
     let mut kernel = ChioKernel::new(config);
     kernel.register_tool_server(Box::new(EchoServer));
@@ -521,7 +522,6 @@ fn make_kernel_error_bridge_fixture(
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     };
     let mut kernel = ChioKernel::new(config);
     kernel.register_tool_server(server);
@@ -555,6 +555,10 @@ fn make_kernel_error_bridge_fixture(
         agent_id: agent.public_key().to_hex(),
         execution_nonce: None,
         governed_intent: None,
+        approval_token: None,
+        approval_tokens: Vec::new(),
+        threshold_approval_proposal: None,
+        supplemental_authorization: None,
         model_metadata: None,
         route_selection_metadata: None,
         peer_supports_chio_tool_streaming: false,
@@ -923,6 +927,9 @@ fn normalize_dynamic_transport_fields(value: &mut Value) {
             if let Some(owner_session_id) = map.get_mut("ownerSessionId") {
                 *owner_session_id = json!("$session");
             }
+            if let Some(owner_request_id) = map.get_mut("ownerRequestId") {
+                *owner_request_id = json!("$request");
+            }
             // The two transports capture wall-clock timestamps independently;
             // a tick across a second boundary between the stdio and channel
             // runs causes assert_eq! to flake. The shape comparison is what
@@ -1025,6 +1032,10 @@ fn execute_bridge_mcp_tool_call_preserves_model_metadata() {
             agent_id: agent.public_key().to_hex(),
             execution_nonce: None,
             governed_intent: None,
+            approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: Some(ModelMetadata {
                 model_id: "gpt-5".to_string(),
                 safety_tier: Some(ModelSafetyTier::High),
@@ -1057,6 +1068,10 @@ fn pending_approval_receipt_write_uses_pending_outcome_label() {
             agent_id: agent.public_key().to_hex(),
             execution_nonce: None,
             governed_intent: None,
+            approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             route_selection_metadata: None,
             peer_supports_chio_tool_streaming: false,
@@ -1119,6 +1134,31 @@ fn tools_call_jsonrpc_path_records_receipt_write_allow() {
         crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ALLOW) > before_allow,
         "MCP JSON-RPC allow path must advance receipt write metrics"
     );
+}
+
+#[test]
+fn tools_call_allows_sequential_reuse_of_an_identical_jsonrpc_id_and_body() {
+    let mut edge = make_edge_with_config(10, false);
+    initialize_edge(&mut edge);
+    let request = json!({
+        "jsonrpc": "2.0",
+        "id": 2,
+        "method": "tools/call",
+        "params": {
+            "name": "read_file",
+            "arguments": { "path": "/tmp/demo.txt" }
+        }
+    });
+
+    let first = edge
+        .handle_jsonrpc(request.clone())
+        .expect("first tools/call response");
+    let second = edge
+        .handle_jsonrpc(request)
+        .expect("second tools/call response");
+
+    assert_eq!(first["result"]["isError"], false, "{first}");
+    assert_eq!(second["result"]["isError"], false, "{second}");
 }
 
 #[test]
@@ -1335,6 +1375,10 @@ fn kernel_error_records_receipt_write_error_outcome() {
             agent_id: agent.public_key().to_hex(),
             execution_nonce: None,
             governed_intent: None,
+            approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: None,
             route_selection_metadata: None,
             peer_supports_chio_tool_streaming: false,
@@ -1354,15 +1398,13 @@ fn kernel_error_records_receipt_write_error_outcome() {
 }
 
 #[test]
-fn execute_bridge_mcp_tool_call_blocking_skips_receipt_write_error_for_request_cancelled() {
-    let _metrics_guard = metrics_test_guard();
+fn execute_bridge_mcp_tool_call_blocking_preserves_request_cancelled_terminal_state() {
     let (kernel, request) = make_kernel_error_bridge_fixture(
         Box::new(CancelledServer),
         "cancel-srv",
         "cancel",
         "mcp-cancelled-blocking",
     );
-    let before_error = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR);
     // execute_bridge_mcp_tool_call drives the kernel's sync tool-dispatch
     // bridge, which requires a multi-thread runtime (the documented host
     // requirement); a current-thread runtime cannot drive the async tool server.
@@ -1380,11 +1422,6 @@ fn execute_bridge_mcp_tool_call_blocking_skips_receipt_write_error_for_request_c
         OperationTerminalState::Cancelled { reason }
             if reason == "cancelled by direct bridge test"
     ));
-    assert_eq!(
-        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR),
-        before_error,
-        "direct MCP cancellation must not feed receipt write infrastructure errors"
-    );
 }
 
 #[test]
@@ -1421,15 +1458,13 @@ fn execute_bridge_mcp_tool_call_blocking_propagates_pre_effect_url_error() {
 }
 
 #[test]
-fn execute_bridge_mcp_tool_call_async_skips_receipt_write_error_for_request_cancelled() {
-    let _metrics_guard = metrics_test_guard();
+fn execute_bridge_mcp_tool_call_async_preserves_request_cancelled_terminal_state() {
     let (kernel, request) = make_kernel_error_bridge_fixture(
         Box::new(CancelledServer),
         "cancel-srv",
         "cancel",
         "mcp-cancelled-async",
     );
-    let before_error = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR);
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -1444,11 +1479,6 @@ fn execute_bridge_mcp_tool_call_async_skips_receipt_write_error_for_request_canc
         OperationTerminalState::Cancelled { reason }
             if reason == "cancelled by direct bridge test"
     ));
-    assert_eq!(
-        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR),
-        before_error,
-        "async MCP cancellation must not feed receipt write infrastructure errors"
-    );
 }
 
 #[test]
@@ -1500,6 +1530,10 @@ async fn execute_bridge_mcp_tool_call_async_preserves_model_metadata() {
             agent_id: agent.public_key().to_hex(),
             execution_nonce: None,
             governed_intent: None,
+            approval_token: None,
+            approval_tokens: Vec::new(),
+            threshold_approval_proposal: None,
+            supplemental_authorization: None,
             model_metadata: Some(ModelMetadata {
                 model_id: "gpt-5".to_string(),
                 safety_tier: Some(ModelSafetyTier::High),
@@ -1616,7 +1650,6 @@ fn make_pre_effect_url_elicitation_edge() -> ChioMcpEdge {
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     };
     let mut kernel = ChioKernel::new(config);
     kernel.register_tool_server(Box::new(PreEffectUrlElicitationServer));
@@ -1689,7 +1722,6 @@ fn make_event_edge(server: Arc<AsyncEventServer>) -> ChioMcpEdge {
         retention_config: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
         deadlines: chio_kernel::HotPathDeadlineConfig::default(),
-        dispatch_intent_journal: chio_kernel::DispatchIntentJournalMode::Off,
     };
     let mut kernel = ChioKernel::new(config);
     kernel.register_tool_server(Box::new(AsyncEventServerConnection(server)));
@@ -1797,6 +1829,16 @@ fn initialize_then_initialized_enters_ready_state() {
         initialize["result"]["capabilities"]["experimental"][CHIO_PROTOCOL_CAPABILITY_KEY]
             ["downgradeBehavior"],
         "reject"
+    );
+    assert_eq!(
+        initialize["result"]["capabilities"]["experimental"][CHIO_PROTOCOL_CAPABILITY_KEY]
+            ["requestIdentity"]["stableRequestIdMetaField"],
+        "chioRequestId"
+    );
+    assert_eq!(
+        initialize["result"]["capabilities"]["experimental"][CHIO_PROTOCOL_CAPABILITY_KEY]
+            ["requestIdentity"]["requestBoundArtifactsRequireStableId"],
+        true
     );
     assert_eq!(
         initialize["result"]["capabilities"]["tasks"]["list"],
@@ -2961,7 +3003,6 @@ fn tasks_cancel_marks_working_task_cancelled_and_result_returns_error_payload() 
 
 #[test]
 fn request_cancelled_errors_record_cancelled_task_terminal_state() {
-    let _metrics_guard = metrics_test_guard();
     let mut edge = make_edge(10);
     let _ = edge.handle_jsonrpc(json!({
         "jsonrpc": "2.0",
@@ -2987,7 +3028,6 @@ fn request_cancelled_errors_record_cancelled_task_terminal_state() {
         .unwrap();
     let task_id = "mcp-edge-task-cancelled".to_string();
     let mut task = EdgeTask::new(task_id.clone(), session_id, context, operation, None, 0);
-    let before_error = crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR);
 
     let outcome = edge.tool_call_error_outcome(
         &task.session_id,
@@ -2999,11 +3039,6 @@ fn request_cancelled_errors_record_cancelled_task_terminal_state() {
     );
     task.record_outcome(outcome);
 
-    assert_eq!(
-        crate::receipt_write_total(crate::RECEIPT_WRITE_OUTCOME_ERROR),
-        before_error,
-        "request cancellation must not feed receipt write infrastructure errors"
-    );
     assert_eq!(task.status, EdgeTaskStatus::Cancelled);
     assert_eq!(
         task.status_message.as_deref(),
@@ -4175,10 +4210,7 @@ fn create_message_roundtrips_through_client_with_child_lineage() {
         .inflight()
         .get(&RequestId::new("tool-parent"))
         .is_some());
-    assert!(session
-        .inflight()
-        .get(&RequestId::new("mcp-edge-req-1"))
-        .is_none());
+    assert_eq!(session.inflight().len(), 1);
 }
 
 #[test]
@@ -4260,13 +4292,224 @@ fn create_message_denies_tool_use_when_not_negotiated() {
         other => panic!("unexpected error: {other}"),
     }
     assert!(output.is_empty());
-    assert!(edge
-        .kernel
-        .session(&session_id)
-        .unwrap()
-        .inflight()
-        .get(&RequestId::new("mcp-edge-req-1"))
-        .is_none());
+    assert_eq!(
+        edge.kernel.session(&session_id).unwrap().inflight().len(),
+        1
+    );
+}
+
+#[test]
+fn external_request_identity_is_unique_without_a_caller_stable_id() {
+    let first = build_operation_context(
+        &json!(41),
+        SessionId::new("stable-session-a"),
+        "agent",
+        "tools/call",
+        &json!({}),
+    )
+    .unwrap();
+    let replay = build_operation_context(
+        &json!(41),
+        SessionId::new("stable-session-a"),
+        "agent",
+        "tools/call",
+        &json!({}),
+    )
+    .unwrap();
+    let other_session = build_operation_context(
+        &json!(41),
+        SessionId::new("stable-session-b"),
+        "agent",
+        "tools/call",
+        &json!({}),
+    )
+    .unwrap();
+    let other_request = build_operation_context(
+        &json!(42),
+        SessionId::new("stable-session-a"),
+        "agent",
+        "tools/call",
+        &json!({}),
+    )
+    .unwrap();
+
+    assert_ne!(first.request_id, replay.request_id);
+    assert_ne!(first.request_id, other_session.request_id);
+    assert_ne!(first.request_id, other_request.request_id);
+    assert!(first.request_id.as_str().starts_with("mcp-edge-req-"));
+}
+
+#[test]
+fn caller_supplied_request_identity_is_stable_across_sessions() {
+    let first = build_operation_context(
+        &json!(41),
+        SessionId::new("caller-session-a"),
+        "agent",
+        "tools/call",
+        &json!({
+            "_meta": {
+                "chioRequestId": "caller-stable-request"
+            }
+        }),
+    )
+    .expect("caller request ID should build");
+    let replay = build_operation_context(
+        &json!(99),
+        SessionId::new("caller-session-b"),
+        "agent",
+        "tools/call",
+        &json!({
+            "_meta": {
+                "chioRequestId": "caller-stable-request",
+                "progressToken": "retry"
+            }
+        }),
+    )
+    .expect("caller request ID replay should build");
+
+    assert_eq!(first.request_id.as_str(), "caller-stable-request");
+    assert_eq!(first.request_id, replay.request_id);
+}
+
+#[test]
+fn caller_supplied_request_identity_rejects_invalid_values() {
+    for invalid in [
+        Value::Null,
+        json!(""),
+        json!(" padded"),
+        json!("control\ncharacter"),
+        json!("x".repeat(2_049)),
+    ] {
+        let error = build_operation_context(
+            &json!(41),
+            SessionId::new("caller-session"),
+            "agent",
+            "tools/call",
+            &json!({
+                "_meta": {
+                    "chioRequestId": invalid
+                }
+            }),
+        )
+        .expect_err("invalid caller request ID must be rejected");
+        assert_eq!(error["error"]["code"], JSONRPC_INVALID_PARAMS);
+    }
+}
+
+#[test]
+fn request_bound_artifacts_require_a_caller_supplied_request_identity() {
+    let mut edge = make_edge(10);
+    initialize_edge(&mut edge);
+    let params = json!({
+        "name": "read_file",
+        "arguments": { "path": "/tmp/demo.txt" },
+        "_meta": {
+            "supplementalAuthorization": {
+                "signed_extension": "opaque"
+            }
+        }
+    });
+    let error = edge
+        .prepare_tool_call_request(&json!(2), &params)
+        .expect_err("request-bound artifacts must require a stable request ID");
+    assert_eq!(error["error"]["code"], JSONRPC_INVALID_PARAMS);
+    assert!(error["error"]["message"]
+        .as_str()
+        .is_some_and(|message| message.contains("_meta.chioRequestId")));
+
+    let mut stable_params = params;
+    stable_params["_meta"]["chioRequestId"] = json!("mcp-stable-authorization-request");
+    let (_session_id, context, operation) = edge
+        .prepare_tool_call_request(&json!(2), &stable_params)
+        .expect("stable request ID path should accept request-bound artifacts");
+    assert_eq!(
+        context.request_id.as_str(),
+        "mcp-stable-authorization-request"
+    );
+    assert!(operation.supplemental_authorization.is_some());
+}
+
+#[test]
+fn external_request_identity_separates_reused_jsonrpc_ids() {
+    let session_id = SessionId::new("reuse-session");
+    let tool_call = build_operation_context(
+        &json!(1),
+        session_id.clone(),
+        "agent",
+        "tools/call",
+        &json!({ "name": "read_file" }),
+    )
+    .unwrap();
+    let other_method = build_operation_context(
+        &json!(1),
+        session_id.clone(),
+        "agent",
+        "resources/read",
+        &json!({ "name": "read_file" }),
+    )
+    .unwrap();
+    let other_params = build_operation_context(
+        &json!(1),
+        session_id.clone(),
+        "agent",
+        "tools/call",
+        &json!({ "name": "write_file" }),
+    )
+    .unwrap();
+
+    assert_ne!(tool_call.request_id, other_method.request_id);
+    assert_ne!(tool_call.request_id, other_params.request_id);
+    assert_ne!(other_method.request_id, other_params.request_id);
+}
+
+#[test]
+fn execution_nonce_retry_uses_the_nonce_bound_request_identity() {
+    let session_id = SessionId::new("nonce-retry-session");
+    let preflight = build_operation_context(
+        &json!(7),
+        session_id.clone(),
+        "agent",
+        "tools/call",
+        &json!({ "name": "read_file", "arguments": { "path": "/tmp/demo.txt" } }),
+    )
+    .unwrap();
+    let retry = build_operation_context_for_retry(
+        &json!(7),
+        session_id.clone(),
+        "agent",
+        "tools/call",
+        &json!({
+            "name": "read_file",
+            "arguments": { "path": "/tmp/demo.txt" },
+            "_meta": { "chioExecutionNonce": { "nonce": "opaque" } }
+        }),
+        Some(preflight.request_id.as_str()),
+    )
+    .unwrap();
+
+    assert_eq!(preflight.request_id, retry.request_id);
+}
+
+#[test]
+fn configured_session_identity_is_used_during_initialization() {
+    let mut edge = make_edge(10);
+    let expected = SessionId::new("stable-hosted-session");
+    edge.set_initial_session_id(expected.clone()).unwrap();
+
+    let response = edge.handle_jsonrpc(json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "initialize",
+        "params": {}
+    }));
+
+    assert!(response
+        .and_then(|value| value.get("result").cloned())
+        .is_some());
+    assert!(matches!(
+        edge.state,
+        EdgeState::WaitingForInitialized { ref session_id } if session_id == &expected
+    ));
 }
 
 #[test]
@@ -4386,79 +4629,4 @@ fn serve_stdio_refreshes_roots_after_list_changed_notification() {
     assert_eq!(session.roots().len(), 1);
     assert_eq!(session.roots()[0].uri, "file:///workspace/project-b");
     assert_eq!(session.roots()[0].name.as_deref(), Some("Project B"));
-}
-
-#[test]
-fn refresh_roots_with_channel_defers_unrelated_requests() {
-    let mut edge = make_edge(10);
-    let _ = edge.handle_jsonrpc(json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "capabilities": {
-                "roots": {
-                    "listChanged": true
-                }
-            }
-        }
-    }));
-    let _ = edge.handle_jsonrpc(json!({
-        "jsonrpc": "2.0",
-        "method": "notifications/initialized",
-        "params": {}
-    }));
-
-    let session_id = match &edge.state {
-        EdgeState::Ready { session_id } => session_id.clone(),
-        _ => panic!("expected ready state"),
-    };
-
-    let (client_tx, client_rx) = mpsc::channel();
-    client_tx
-        .send(ClientInbound::Message(json!({
-            "jsonrpc": "2.0",
-            "id": 9,
-            "method": "tools/call",
-            "params": {
-                "name": "read_file",
-                "arguments": {
-                    "path": "/tmp/example.txt"
-                }
-            }
-        })))
-        .unwrap();
-    client_tx
-        .send(ClientInbound::Message(json!({
-            "jsonrpc": "2.0",
-            "id": "edge-client-1",
-            "result": {
-                "roots": [{
-                    "uri": "file:///workspace/project",
-                    "name": "Project"
-                }]
-            }
-        })))
-        .unwrap();
-    drop(client_tx);
-
-    let mut output = Vec::new();
-    edge.refresh_roots_from_client_with_channel(&session_id, &client_rx, &mut output)
-        .unwrap();
-
-    let lines = String::from_utf8(output).unwrap();
-    let messages = lines
-        .lines()
-        .map(|line| serde_json::from_str::<Value>(line).unwrap())
-        .collect::<Vec<_>>();
-    assert_eq!(messages.len(), 1);
-    assert_eq!(messages[0]["method"], "roots/list");
-
-    assert_eq!(edge.deferred_client_messages.len(), 1);
-    assert_eq!(edge.deferred_client_messages[0]["method"], "tools/call");
-
-    let session = edge.kernel.session(&session_id).unwrap();
-    assert_eq!(session.roots().len(), 1);
-    assert_eq!(session.roots()[0].uri, "file:///workspace/project");
-    assert_eq!(session.roots()[0].name.as_deref(), Some("Project"));
 }
