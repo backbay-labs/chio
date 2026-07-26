@@ -209,8 +209,8 @@
   "rebuildCommand": "bash scripts/check-programmable-sovereignty-artifact.sh --full",
   "schema": "chio.programmable-sovereignty.artifact-manifest.v1",
   "source": {
-    "commit": "14aa1a341f093d68b42d83061e0704373bf33e8e",
-    "contentSetSha256": "ca070d94cfff764f09c09d45ad673ab6971596a78abfdead1b201c5db63831fc",
+    "commit": "220ed0089f75b06cd0f18e2d96226eff1e0ceefd",
+    "contentSetSha256": "4b963c43d4f312f3b928597ea1caa210ef110f62e9e5e6bdfa614f2e341a0bef",
     "snapshotMode": "recorded source commit plus self-contained content-addressed snapshot"
   },
   "sourceFiles": [
@@ -232,15 +232,15 @@
     },
     {
       "path": "docs/papers/programmable-sovereignty/paper-usenix.tex",
-      "sha256": "2204cadd70106e3b7f2e1a719353fce5fa1b3ad3f6dea959d0f1e4561339fe32"
+      "sha256": "6eb478ab3fc42af277a9d213bed850055af437ac0348f93d584f1860cb8371bb"
     },
     {
       "path": "docs/papers/programmable-sovereignty/paper-usenix.pdf",
-      "sha256": "47d9e719b0504c946781d9beb81ef5a6031664153d8fb141f8dc34977bc9c4ba"
+      "sha256": "0add221a03be5288e7fa5158e0ed6268ec499c0fa02af14f1a0a6fbda8ef5667"
     },
     {
       "path": "docs/papers/programmable-sovereignty/paper.tex",
-      "sha256": "aba9ed651e476237d60e2edd6ed9f1d9762e0662ce00f75a5a6e6ebd06a671c0"
+      "sha256": "5ca43e1c3c73e688145f0f7df6d6d1f1c6867062abb4c3802a38176b877471bb"
     },
     {
       "path": "docs/papers/programmable-sovereignty/sections/01-introduction.tex",
@@ -382,7 +382,7 @@
   "supplementaryFiles": [
     {
       "path": "docs/papers/programmable-sovereignty/supplementary/source-commit.txt",
-      "sha256": "eb6234d41aac4e9183cb7826ca209be7bdd9097015b4564cac5781ceeb9cba1d"
+      "sha256": "8cb523dd9f63504f365d069a4e0e367453bb64b5ef5a2a5399173a288df57adc"
     },
     {
       "path": "docs/papers/programmable-sovereignty/supplementary/proof-manifest.toml",
