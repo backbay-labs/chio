@@ -1,0 +1,83 @@
+{
+  "anchorInclusion": "withheld_outside_core_claim",
+  "commit": "51e46336b1f1d52908fc7b14cf34d9476935958f",
+  "components": [
+    {
+      "component": "receipt_sign",
+      "note": "buyer-closure-shaped Ed25519 receipt",
+      "p50_us": 240.70225510204082,
+      "p99_us": 633.0592321428571,
+      "samples": 30
+    },
+    {
+      "component": "receipt_verify",
+      "note": "buyer-closure-shaped Ed25519 receipt",
+      "p50_us": 346.66192105263156,
+      "p99_us": 392.13561943319837,
+      "samples": 30
+    },
+    {
+      "component": "receipt_append_sqlite",
+      "note": "production SQLite receipt store",
+      "p50_us": 6847.478,
+      "p99_us": 8798.524800000001,
+      "samples": 30
+    },
+    {
+      "component": "treaty_predispatch_deny",
+      "note": "runtime admission hook; invocation counter unchanged",
+      "p50_us": 570.6751666666667,
+      "p99_us": 654.3152916666667,
+      "samples": 30
+    },
+    {
+      "component": "strict_bilateral_dsse_verify",
+      "note": "two signatures, embedded receipt, treaty bindings",
+      "p50_us": 340.82435087719296,
+      "p99_us": 472.93104210526315,
+      "samples": 30
+    },
+    {
+      "component": "cross_boundary_admission_allow",
+      "note": "receiver treaty scope and verified evidence",
+      "p50_us": 20.15562376237624,
+      "p99_us": 22.407129812981296,
+      "samples": 30
+    },
+    {
+      "component": "buyer_proof_package_verify",
+      "note": "offline three-vendor receiver verification",
+      "p50_us": 52350.886,
+      "p99_us": 62965.184,
+      "samples": 30
+    }
+  ],
+  "criterionSamples": 30,
+  "negativeMatrix": {
+    "cases": 20,
+    "elapsedMs": 160433.506598,
+    "explicitNonTestableAssumptions": 1
+  },
+  "paths": {
+    "full_receiver_admission": {
+      "p50_ms": 2376.111112,
+      "p99_ms": 2640.48028,
+      "samples": 20
+    },
+    "producer_without_buyer_review": {
+      "p50_ms": 2160.782006,
+      "p99_ms": 2384.751745,
+      "samples": 20
+    }
+  },
+  "profile": "release",
+  "proofPackageBytes": 51843,
+  "samples": 20,
+  "schema": "chio.programmable-sovereignty.bilateral-admission-results.v1",
+  "stores": {
+    "endToEnd": "SQLite",
+    "receiptAppend": "SQLite"
+  },
+  "warmups": 2,
+  "worktreeDirty": true
+}

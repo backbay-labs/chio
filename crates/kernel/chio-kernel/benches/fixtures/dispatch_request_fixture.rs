@@ -2,6 +2,8 @@
 
 use std::cell::RefCell;
 use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 
 use chio_core::capability::{
     scope::{ChioScope, Operation, ToolGrant},
@@ -16,7 +18,8 @@ use chio_core::session::{OperationContext, RequestId, SessionId};
 use chio_kernel::{
     capability_matches_request, BudgetStore, ChioKernel, Guard, GuardContext, GuardDecision,
     InMemoryBudgetStore, InMemoryRevocationStore, KernelConfig, KernelError, NestedFlowBridge,
-    ReceiptLog, RevocationStore, Session, ToolCallRequest, ToolServerConnection, Verdict,
+    ReceiptLog, RevocationStore, RuntimeAdmissionContext, RuntimeAdmissionDecision,
+    RuntimeAdmissionHook, Session, ToolCallRequest, ToolServerConnection, Verdict,
     DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,
     DEFAULT_MAX_STREAM_TOTAL_BYTES,
 };
@@ -28,8 +31,10 @@ const DENY_TOOL_NAME: &str = "dispatch_deny";
 
 pub struct DispatchAllowFixture {
     kernel: ChioKernel,
+    deny_kernel: ChioKernel,
     request: ToolCallRequest,
     deny_request: ToolCallRequest,
+    deny_tool_invocations: Arc<AtomicU64>,
     runtime: Runtime,
     receipt_keypair: Keypair,
     receipt_body: ChioReceiptBody,
@@ -52,12 +57,19 @@ pub struct DispatchAllowFixture {
 impl DispatchAllowFixture {
     pub fn new() -> Self {
         let mut kernel = ChioKernel::new(make_config());
-        kernel.register_tool_server(Box::new(BenchToolServer));
+        kernel.register_tool_server(Box::new(BenchToolServer::new(Arc::new(AtomicU64::new(0)))));
 
         let subject = Keypair::generate();
-        let capability = issue_capability(&kernel, &subject);
+        let capability = issue_capability(&kernel, &subject, TOOL_NAME);
         let request = make_request(&capability);
-        let deny_request = make_deny_request(&capability);
+        let mut deny_kernel = ChioKernel::new(make_config());
+        let deny_tool_invocations = Arc::new(AtomicU64::new(0));
+        deny_kernel.register_tool_server(Box::new(BenchToolServer::new(Arc::clone(
+            &deny_tool_invocations,
+        ))));
+        deny_kernel.set_runtime_admission_hook(Arc::new(DenyingBenchRuntimeAdmissionHook));
+        let deny_capability = issue_capability(&deny_kernel, &subject, DENY_TOOL_NAME);
+        let deny_request = make_deny_request(&deny_capability);
         let runtime = match Builder::new_current_thread().enable_all().build() {
             Ok(runtime) => runtime,
             Err(error) => panic!("failed to build dispatch_allow benchmark runtime: {error}"),
@@ -105,8 +117,10 @@ impl DispatchAllowFixture {
 
         let fixture = Self {
             kernel,
+            deny_kernel,
             request,
             deny_request,
+            deny_tool_invocations,
             runtime,
             receipt_keypair,
             receipt_body,
@@ -156,8 +170,15 @@ impl DispatchAllowFixture {
             "five-guard fixture must allow request"
         );
         assert!(
-            fixture.receipt_sign_once(),
-            "receipt signing fixture must verify"
+            fixture
+                .receipt_sign_once()
+                .verify_signature()
+                .unwrap_or(false),
+            "newly signed receipt fixture must verify"
+        );
+        assert!(
+            fixture.receipt_verify_once(),
+            "receipt verification fixture must accept the signed receipt"
         );
         assert!(
             fixture.receipt_append_once() > 0,
@@ -198,12 +219,17 @@ impl DispatchAllowFixture {
     }
 
     pub fn dispatch_deny_once(&self) -> bool {
+        let invocations_before = self.deny_tool_invocations.load(Ordering::SeqCst);
         let response = self
             .runtime
-            .block_on(self.kernel.evaluate_tool_call(&self.deny_request));
+            .block_on(self.deny_kernel.evaluate_tool_call(&self.deny_request));
 
         match response {
-            Ok(response) => response.verdict == Verdict::Deny && response.reason.is_some(),
+            Ok(response) => {
+                response.verdict == Verdict::Deny
+                    && response.reason.as_deref() == Some("chio treaty admission denied")
+                    && self.deny_tool_invocations.load(Ordering::SeqCst) == invocations_before
+            }
             Err(error) => panic!("dispatch_deny benchmark request failed: {error}"),
         }
     }
@@ -262,10 +288,18 @@ impl DispatchAllowFixture {
             .all(|guard| self.evaluate_guard(guard))
     }
 
-    pub fn receipt_sign_once(&self) -> bool {
+    pub fn receipt_sign_once(&self) -> ChioReceipt {
         sign_receipt(&self.receipt_body, &self.receipt_keypair)
-            .verify_signature()
-            .unwrap_or(false)
+    }
+
+    pub fn receipt_verify_once(&self) -> bool {
+        self.signed_receipt.verify_signature().unwrap_or(false)
+    }
+
+    pub fn signed_receipt_with_id(&self, id: String) -> ChioReceipt {
+        let mut body = self.receipt_body.clone();
+        body.id = id;
+        sign_receipt(&body, &self.receipt_keypair)
     }
 
     pub fn receipt_append_once(&self) -> usize {
@@ -324,11 +358,11 @@ fn make_config() -> KernelConfig {
     }
 }
 
-fn issue_capability(kernel: &ChioKernel, subject: &Keypair) -> CapabilityToken {
+fn issue_capability(kernel: &ChioKernel, subject: &Keypair, tool_name: &str) -> CapabilityToken {
     let scope = ChioScope {
         grants: vec![ToolGrant {
             server_id: SERVER_ID.to_string(),
-            tool_name: TOOL_NAME.to_string(),
+            tool_name: tool_name.to_string(),
             operations: vec![Operation::Invoke],
             constraints: vec![],
             max_invocations: None,
@@ -446,11 +480,33 @@ fn make_receipt_body(keypair: &Keypair, capability: &CapabilityToken) -> ChioRec
             verdict: true,
             details: None,
         }],
-        metadata: None,
+        // This metadata is taken from the buyer-closure receipt shape. Keeping
+        // the treaty, lineage, admission, and retained-dispatch bindings in the
+        // signing preimage prevents the microbenchmark from measuring a
+        // materially smaller synthetic receipt.
+        metadata: Some(buyer_closure_metadata()),
         trust_level: chio_core::receipt::kinds::TrustLevel::default(),
         tenant_id: None,
         kernel_key: keypair.public_key(),
         bbs_projection_version: None,
+    }
+}
+
+fn buyer_closure_metadata() -> serde_json::Value {
+    let package: serde_json::Value = match serde_json::from_str(include_str!(
+        "../../../../../examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json"
+    )) {
+        Ok(package) => package,
+        Err(error) => panic!("failed to parse buyer-closure proof package fixture: {error}"),
+    };
+    match package
+        .get("toolReceipts")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|receipts| receipts.first())
+        .and_then(|receipt| receipt.get("metadata"))
+    {
+        Some(metadata) => metadata.clone(),
+        None => panic!("buyer-closure proof package fixture has no receipt metadata"),
     }
 }
 
@@ -491,7 +547,39 @@ impl Guard for BenchGuard {
     }
 }
 
-struct BenchToolServer;
+struct DenyingBenchRuntimeAdmissionHook;
+
+impl RuntimeAdmissionHook for DenyingBenchRuntimeAdmissionHook {
+    fn name(&self) -> &str {
+        "bench-treaty-admission"
+    }
+
+    fn evaluate(
+        &self,
+        _context: &RuntimeAdmissionContext<'_>,
+    ) -> Result<RuntimeAdmissionDecision, KernelError> {
+        Ok(RuntimeAdmissionDecision::deny(
+            "chio treaty admission denied",
+            Some(serde_json::json!({
+                "chio_runtime": {
+                    "admission_id": "bench-treaty-deny",
+                    "accepted": false,
+                    "failure_code": "chio_treaty_policy_denied"
+                }
+            })),
+        ))
+    }
+}
+
+struct BenchToolServer {
+    invocations: Arc<AtomicU64>,
+}
+
+impl BenchToolServer {
+    fn new(invocations: Arc<AtomicU64>) -> Self {
+        Self { invocations }
+    }
+}
 
 #[async_trait::async_trait]
 impl ToolServerConnection for BenchToolServer {
@@ -500,7 +588,7 @@ impl ToolServerConnection for BenchToolServer {
     }
 
     fn tool_names(&self) -> Vec<String> {
-        vec![TOOL_NAME.to_string()]
+        vec![TOOL_NAME.to_string(), DENY_TOOL_NAME.to_string()]
     }
 
     async fn invoke(
@@ -509,6 +597,7 @@ impl ToolServerConnection for BenchToolServer {
         arguments: serde_json::Value,
         _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
     ) -> Result<serde_json::Value, KernelError> {
+        self.invocations.fetch_add(1, Ordering::SeqCst);
         Ok(serde_json::json!({
             "tool": tool_name,
             "allowed": true,

@@ -11,6 +11,9 @@ case "${1:-}" in
   "--negative-only")
     MODE="negative-only"
     ;;
+  "--matrix-only")
+    MODE="matrix-only"
+    ;;
   "--runtime-only")
     MODE="runtime-only"
     ;;
@@ -27,24 +30,37 @@ case "${1:-}" in
     MODE="buyer-only"
     ;;
   *)
-    echo "usage: check-chio-live-treaty-buyer-closure.sh [--schema-only|--negative-only|--runtime-only|--dsse-only|--lineage-only|--proof-only|--buyer-only]" >&2
+    echo "usage: check-chio-live-treaty-buyer-closure.sh [--schema-only|--negative-only|--matrix-only|--runtime-only|--dsse-only|--lineage-only|--proof-only|--buyer-only]" >&2
     exit 2
     ;;
 esac
 
 if [[ $# -gt 1 ]]; then
-  echo "usage: check-chio-live-treaty-buyer-closure.sh [--schema-only|--negative-only|--runtime-only|--dsse-only|--lineage-only|--proof-only|--buyer-only]" >&2
+  echo "usage: check-chio-live-treaty-buyer-closure.sh [--schema-only|--negative-only|--matrix-only|--runtime-only|--dsse-only|--lineage-only|--proof-only|--buyer-only]" >&2
   exit 2
 fi
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+negative_fixture="$repo_root/examples/chio-3vendor/fixtures/treaty-runtime-negative-corpus.json"
 
 run_cargo_test_filter() {
   local package="$1"
   local filter="$2"
   shift 2
+  local profile_args=()
+  case "${CHIO_TEST_PROFILE:-debug}" in
+    "debug")
+      ;;
+    "release")
+      profile_args+=(--release)
+      ;;
+    *)
+      echo "CHIO_TEST_PROFILE must be 'debug' or 'release'" >&2
+      return 2
+      ;;
+  esac
   local output
-  if ! output="$(cargo test -p "$package" "$filter" "$@" 2>&1)"; then
+  if ! output="$(cargo test "${profile_args[@]}" -p "$package" "$filter" "$@" 2>&1)"; then
     printf '%s\n' "$output"
     return 1
   fi
@@ -91,6 +107,96 @@ run_runtime_negative_matrix() {
   run_runtime_treaty_test treaty_cross_boundary_admission_rejects_unverified_or_forged_intersection
 }
 
+run_declared_threat_matrix() {
+  local rows
+  rows="$(
+    python - "$negative_fixture" <<'PY'
+import json
+import sys
+
+fixture_path = sys.argv[1]
+with open(fixture_path, encoding="utf-8") as fixture_file:
+    fixture = json.load(fixture_file)
+
+cases = fixture.get("cases", [])
+assumptions = fixture.get("assumptions", [])
+if len(cases) < 20:
+    raise SystemExit(f"threat matrix has {len(cases)} executable cases; expected at least 20")
+if not assumptions:
+    raise SystemExit("threat matrix must state its non-testable assumptions")
+
+threat_ids = [case.get("threatId") for case in cases]
+case_ids = [case.get("caseId") for case in cases]
+if len(set(threat_ids)) != len(threat_ids):
+    raise SystemExit("threat matrix contains duplicate threatId values")
+if len(set(case_ids)) != len(case_ids):
+    raise SystemExit("threat matrix contains duplicate caseId values")
+
+allowed_phases = {"pre_dispatch", "post_dispatch_review"}
+allowed_target_kinds = {"lib", "integration"}
+for case in cases:
+    if case.get("phase") not in allowed_phases:
+        raise SystemExit(f"{case.get('threatId')}: invalid phase")
+    if case.get("targetKind") not in allowed_target_kinds:
+        raise SystemExit(f"{case.get('threatId')}: invalid targetKind")
+    if case.get("dispatchExpected") is not False:
+        raise SystemExit(f"{case.get('threatId')}: negative case must deny dispatch")
+    fields = (
+        case["threatId"],
+        case["package"],
+        case["targetKind"],
+        case["targetName"],
+        case["testFilter"],
+        case["expectedCode"],
+        case["phase"],
+    )
+    if any("\t" in field or "\n" in field for field in fields):
+        raise SystemExit(f"{case.get('threatId')}: matrix fields must be single-line")
+    print("\t".join(fields))
+PY
+  )"
+
+  local count=0
+  local threat_id
+  local package
+  local target_kind
+  local target_name
+  local test_filter
+  local expected_code
+  local phase
+  while IFS=$'\t' read -r threat_id package target_kind target_name test_filter expected_code phase; do
+    [[ -n "$threat_id" ]] || continue
+    printf 'running %s (%s, expected %s): %s\n' \
+      "$threat_id" "$phase" "$expected_code" "$test_filter"
+    case "$target_kind" in
+      "lib")
+        run_cargo_test_filter "$package" "$test_filter" --lib
+        ;;
+      "integration")
+        run_cargo_test_filter "$package" "$test_filter" --test "$target_name"
+        ;;
+      *)
+        echo "$threat_id: unsupported target kind '$target_kind'" >&2
+        return 1
+        ;;
+    esac
+    count=$((count + 1))
+  done <<<"$rows"
+
+  local assumption_count
+  assumption_count="$(
+    python - "$negative_fixture" <<'PY'
+import json
+import sys
+
+with open(sys.argv[1], encoding="utf-8") as fixture_file:
+    print(len(json.load(fixture_file)["assumptions"]))
+PY
+  )"
+  printf 'bilateral threat matrix passed: %d executable cases; %d explicit non-testable assumption(s)\n' \
+    "$count" "$assumption_count"
+}
+
 run_runtime() {
   run_runtime_store_test sqlite_runtime_orchestration_store_persists_treaty_evidence_idempotently
   run_runtime_negative_matrix
@@ -118,9 +224,7 @@ run_buyer() {
 
 run_negative() {
   bash "$repo_root/scripts/check-chio-treaty-buyer-hero-loop.sh" --negative-only
-  run_runtime_negative_matrix
-  run_runtime_buyer_review_test buyer_review_package_rejects_missing_strict_dsse_envelope
-  run_runtime_buyer_review_test buyer_review_package_rejects_non_strict_dsse_envelope
+  run_declared_threat_matrix
 }
 
 case "$MODE" in
@@ -129,6 +233,9 @@ case "$MODE" in
     ;;
   "negative-only")
     run_negative
+    ;;
+  "matrix-only")
+    run_declared_threat_matrix
     ;;
   "runtime-only")
     run_runtime

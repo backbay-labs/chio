@@ -3,6 +3,17 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::validation::{validate_non_empty, validate_state_label};
 use crate::*;
 
+mod predicate;
+
+pub use predicate::{
+    bounded_treaty_constitution_refines_on, bounded_treaty_receipt_view_from_verified_artifacts,
+    evaluate_bounded_treaty_constitution, evaluate_bounded_treaty_predicate,
+    evaluate_bounded_treaty_predicate_document, evaluate_bounded_treaty_predicate_json,
+    BoundedAdmissionDecision, BoundedEvidenceDigest, BoundedTreatyConstitution,
+    BoundedTreatyPredicate, BoundedTreatyPredicateAtom, BoundedTreatyPredicateDocument,
+    BoundedTreatyReceiptView, CHIO_BOUNDED_TREATY_PREDICATE_SCHEMA,
+};
+
 pub fn governance_ladder_manifest_from_json(
     json: &str,
 ) -> Result<GovernanceLadderManifest, ChioRuntimeError> {

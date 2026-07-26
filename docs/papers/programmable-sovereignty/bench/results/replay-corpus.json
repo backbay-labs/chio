@@ -1,0 +1,12 @@
+{
+  "bilateralThreatMatrix": {
+    "cases": 20,
+    "elapsedSeconds": 85,
+    "explicitNonTestableAssumptions": 1
+  },
+  "genericReplay": {
+    "cases": 50,
+    "elapsedSeconds": 22
+  },
+  "schema": "chio.programmable-sovereignty.replay-results.v1"
+}

@@ -1,44 +1,72 @@
-\section{Limitations and Threats to Validity}
+\section{Limitations}
 \label{sec:limits}
 
-The proof model is bounded. Table~\ref{tab:assumptions} names the cryptographic, library, operational, and legal assumptions used outside it; Lean theorems hold as claims about explicit Chio models, not about the deployed stack.
-
 \begin{table*}[t]
-\caption{Assumption ledger: axiomatic foundations and operational discipline.}
+\caption{Assumptions outside the bounded Lean model.}
 \label{tab:assumptions}
 \scriptsize
-\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{.24\textwidth}>{\raggedright\arraybackslash}p{.38\textwidth}>{\raggedright\arraybackslash}X@{}}
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{.24\textwidth}>{\raggedright\arraybackslash}p{.35\textwidth}>{\raggedright\arraybackslash}X@{}}
 \toprule
-Assumption & Used for & Residual risk \\
+Assumption & Required for & Failure consequence \\
 \midrule
-\multicolumn{3}{@{}l}{\textit{Foundational (cryptographic / library / legal)}} \\
-Ed25519 and SHA-256 behave as specified. & Receipt signatures, subject digests, canonical hash bindings, Merkle commitments. & Cryptographic break or misuse below the proof model invalidates evidence integrity. \\
-Canonical JSON implementation matches RFC~8785 intent. & Stable receipt identity and DSSE subject digests. & Library defects can create split identities even when Lean predicates are correct. \\
-Legal entities remain outside the kernel. & Regulator-facing interpretation of Chio polities. & Human law can reject, reinterpret, or override any receipt-local governance claim. \\
-\midrule
-\multicolumn{3}{@{}l}{\textit{Operational discipline (failure modes are policy violations, not breaks)}} \\
-Verifier-owned stores are actually verifier-owned. & Treaty refs, trust bundles, peer pins, revocation epochs, governance receipts, and bilateral cosigners drawn from distinct principals. & Operational shortcuts can reintroduce sender-controlled trust; two-key DSSE under a single actor collapses to one-of-one (kernel-independence attestation is left as a future substrate primitive). \\
-Trust-store-admission predicate is non-amendable. & Closing the constitutional-ratchet attack at the meta layer (the predicate that gates audit-trust). & A meta-stability theorem closing trajectory attacks is future work; the present construction binds the predicate as a non-amendable axiom. \\
-Lean theorem inventory is maintained with code changes. & Mapping proof names to protocol properties and implementation symbols. & Stale inventory can make proof coverage look broader than it is. \\
-Public witness clients verify the statement they claim to verify. & Anchor inclusion and equivocation resistance. & Rekor, OTS, Solana, and EVM lanes have different maturity and finality assumptions. \\
+Ed25519, SHA-256, and DSSE behave as specified
+& Signature, digest, and envelope integrity
+& Forgery or ambiguous identity invalidates evidence binding \\
+Canonical JSON matches RFC~8785
+& Stable statement and receipt bytes \cite{rfc8785}
+& Equivalent data can acquire inconsistent identities \\
+Receiver kernel and stores are trustworthy
+& Correct resolution, clocks, continuation state, and non-dispatch
+& A compromised receiver can admit, suppress, or misrecord calls \\
+Authorized keys have the intended organizational custody
+& Interpretation of bilateral control
+& One actor with two keys satisfies the cryptographic profile \\
 \bottomrule
 \end{tabularx}
 \end{table*}
 
-The remaining limits are:
+The formal results are bounded to \codepath{ReceiptView}, the stated atom
+language, and explicit finite domains. They abstract cryptography,
+canonicalization, clocks, and storage. Generated differential cases provide
+alignment evidence but no completeness guarantee, proof extraction, or
+whole-runtime verification.
 
-\begin{itemize}[noitemsep,topsep=2pt,leftmargin=1.2em]
-  \item \textbf{Declarative scope only.} A Chio polity has final authority over admission to its own receipt log; it cannot tax, conscript, expel a person, or compel an external court, and Montevideo territoriality holds only in the event-space sense.
-  \item \textbf{Bounded paper model and inventory.} The four paper-model theorems encode treaty predicate intersection, ladder-floor stability, and amendment as backward refinement; they do not verify the whole Rust implementation. Curated inventory entries map proof-tree declarations to protocol properties and Rust symbols; coverage rests on inventory links, not raw declaration counts.
-  \item \textbf{Anchor lane unevenness.} Rekor SET verification is implemented; Rekor Merkle inclusion-proof verification is follow-up code; the Bitcoin-via-OTS lane is verify-real for parsing and commitment linkage and advisory for load-bearing public-witness policy; the Solana memo lane checks root and checkpoint matching, not chain finality.
-  \item \textbf{Benchmark gaps.} Dispatch, treaty intersection, selective disclosure, and replay corpus have script-backed numbers; receipt signing, verification, and anchor inclusion are withheld until dedicated harnesses exist.
-  \item \textbf{TEE and federation surfaces.} The MAA TEE verifier is label-only; TDX, SEV-SNP, and Nitro lanes are implemented; the federation crate carries legacy stub surfaces alongside the strict Chio path. Receipt cosigning gives offline auditability but not online kernel attestation, so a TEE-rooted kernel is a strict strengthening complementary to cosigning.
-  \item \textbf{Conflict semantics and amendment expressiveness.} A polity can refuse admission, split logs, or deny treaty entry; it cannot seize another polity's receipts or treasury unless those assets were already inside its predicates. Backward refinement preserves admitted history; emergency powers, debt restructuring, amnesty, expulsion, and retroactive statutes require explicit crisis artifacts that break refinement.
-  \item \textbf{Legal scope.} Corporate form, data protection, consumer protection, sanctions, insolvency, and venue are institutional questions a Chio polity produces evidence for, not questions it resolves.
-  \item \textbf{No end-user surface.} The paper defines the substrate and evidence path; it does not deliver a constitutional interface, dispute console, treaty negotiation tool, or regulator portal.
-  \item \textbf{Key custody and partition reconciliation.} Per-kernel Ed25519 signing assumes a key-management story (HSM, KMS, TEE-bound key handles) the paper does not specify; rotation, revocation, and compromise recovery for fleets of thousands of kernels are outside the construction. Partition-contingency mode is named in the ladder, but the reconnect protocol (how forked polities exchange reconciliation evidence and resume admission) is not specified; an unsolvable merge collapses partition-contingency to a one-way door.
-  \item \textbf{Portability, interop, and schema evolution.} Receipt schemas are Chio-specific (e.g., \codepath{chio.bilateral-cosign-invocation.v1}); a cross-implementation profile is the prerequisite for any second receiver to admit a Chio receipt without trusting the Chio implementation. Kernels at different schema versions currently deny on \codepath{unsupported_treaty_scope_schema} without distinguishing schema mismatch from constitutional denial; a versioned-predicate profile and a distinct \codepath{schema_mismatch} denial code are required for multi-tenant deployment.
-  \item \textbf{Regulator accreditation gap.} No current attestation framework (SOC~2, ISO~27001, PCAOB, sectoral) cites Lean-attested receipt evidence; until one maps receipts to existing control language, Chio is an evidence producer with no accredited consumer.
-  \item \textbf{Override authority and observability.} Fail-closed admission produces a denial receipt rather than a fallback path; the paper does not define which capability authorizes admit-under-protest, what crisis artifact it produces, or how the override is audited. The receipt log is the audit channel; live observability (metrics, traces, denial-rate alerts) requires a non-leaking telemetry path the substrate does not specify.
-  \item \textbf{Cryptographic-suite migration and PQC trajectory.} The substrate pins Ed25519, BBS, and SHA-256; cross-polity rotation lacks a defined protocol for re-anchoring existing receipt corpora, and the BBS lane will need re-evaluation under post-quantum mandates. The likely substitution is salted-hash formats (SD-JWT VC, ISO mdoc) signed under PQC algorithms, the path ETSI TR~119~476-1 and the EUDI ARF take, not a transparent-SNARK upgrade of BBS.
-\end{itemize}
+The syntactic Rust evaluator is strict and resource-bounded, but the production
+hook still uses explicit admission checks as its authoritative policy. There is
+no production amendment path consuming a finite refinement witness. Schema
+evolution, cross-implementation interoperability, and negotiation between
+different predicate versions remain open protocol work.
+
+Two valid signatures prove control of two configured keys. They do not prove
+two organizations, independent policy evaluation, uncompromised key custody,
+or execution inside an attested kernel. HSM-, KMS-, or TEE-backed keys could
+strengthen this assumption, but those deployments are not evaluated.
+
+The evaluation is deterministic and single-host. It does not exercise
+wide-area transport, mTLS setup, partitions, concurrent load, large receipt
+stores, hardware security modules, trusted execution environments, or crash
+recovery during continuation consumption. Its \PSPathSampleCount{} end-to-end
+and \PSCriterionSampleCount{} component samples are too small for operational
+tail-latency claims. The measured path uses SQLite and includes process and
+schema-validation costs specific to the harness.
+
+Not every internal runtime decision is encoded as the same signed bilateral
+artifact. Hook-level denials have stable failure codes and observable
+non-dispatch; verifier-only failures terminate before a runtime dispatch
+surface exists. The paper therefore claims auditable named failures where the
+tested path produces them, not that every error in the system necessarily
+becomes a universally signed denial receipt.
+
+The generic \PSGenericReplayCases-fixture replay corpus and the
+\PSBilateralReplayCases-case bilateral corpus establish different properties.
+Neither proves coverage of an unbounded adversary.
+Public-anchor inclusion is withheld, and no live transparency service is
+needed for the local admission result. The buyer proof package establishes
+internal artifact consistency, not remote process integrity or public
+non-equivocation.
+
+Finally, receipt-bounded sovereignty is a technical metaphor with an explicit
+limit. The mechanism cannot confer legal jurisdiction, corporate authority,
+regulatory accreditation, territorial rights, or recognition by an external
+institution. It can produce evidence for such institutions, which remain free
+to reject or reinterpret it.

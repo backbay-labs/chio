@@ -1,19 +1,16 @@
 /-
-  Syntactic predicate language for Chio constitutional admission.
+  Bounded syntactic predicate language for Chio treaty admission.
 
-  The `Constitution` type in `Intersection.lean` stores predicates as
-  `List (ReceiptId -> Bool)`, i.e., opaque closures Lean cannot inspect.
-  That makes `BackwardRefines` unconstructable for any non-trivial polity
-  and renders the decidability claim a category error.
+  `Intersection.lean` retains the paper's legacy closure model. Arbitrary
+  implication between opaque closures is not decidable. This module instead
+  defines a finite predicate syntax over an explicit receipt view, an
+  interpreter, and a decidable refinement check over a declared finite domain.
 
-  Following the Cedar approach, this module provides a syntactic ADT for
-  predicates plus a `denote` interpreter, so refinement is decidable on
-  syntax rather than on closures.
-
-  `Predicate` is not yet wired into the polity model: that swap requires a
-  bridge soundness theorem to the existing `BackwardRefines` closure
-  relation, which is not proved here. This module does not modify
-  `Intersection.lean`.
+  The bridge below lifts syntactic constitutions into the closure model through
+  an explicit receipt resolver. It proves pointwise semantic agreement and
+  soundness for semantic refinement. It does not claim that a finite domain is
+  complete for every possible receipt or that the production Rust verifier is
+  extracted from Lean.
 -/
 
 import Chio.Treaty.Intersection
@@ -22,23 +19,53 @@ set_option autoImplicit false
 
 namespace Chio.Treaty.PredicateLang
 
-/-- Receipt identifier, mirroring `Intersection.lean`. -/
+/-- Receipt identifier, mirroring the production receipt identity field. -/
 abbrev ReceiptId := String
+
+/-- Admission decision recorded by the bounded receipt view. -/
+inductive AdmissionDecision where
+  | allow
+  | deny
+  deriving Repr, BEq, DecidableEq, Inhabited
+
+/-- Named evidence digest bound to an admission decision. -/
+structure EvidenceDigest where
+  evidenceClass : String
+  digest : String
+  deriving Repr, BEq, DecidableEq, Inhabited
+
+/--
+  The finite semantic surface used by the paper model. Cryptographic
+  verification, canonicalization, time, storage, and evidence resolution happen
+  before this view is constructed and remain explicit assumptions.
+-/
+structure ReceiptView where
+  receiptId : ReceiptId
+  receiptHash : String
+  actionClass : String
+  participantKernelIds : List String
+  ladderModeRank : Nat
+  liveContinuationIds : List String
+  decision : AdmissionDecision
+  failureCode : Option String
+  evidenceDigests : List EvidenceDigest
+  deriving Repr, BEq, DecidableEq, Inhabited
 
 /--
   Atomic predicate tags. Each tag corresponds to one checkable
-  field of the canonical receipt body. The list is finite and the
-  paper's bilateral-DSSE verifier checks a fixed subset of these
-  in `bilateral_verifier.rs`.
+  field in `ReceiptView`. The language is deliberately finite.
 -/
 inductive AtomTag where
   | scopeContains (target : ReceiptId)
-  | participantKeyEquals (key : String)
+  | participantKernelIdEquals (kernelId : String)
   | actionClassIn (cls : String)
   | ladderModeAtLeastRank (rank : Nat)
   | receiptHashEquals (hash : String)
   | continuationLive (continuationId : String)
-  deriving Repr, BEq, DecidableEq
+  | decisionEquals (decision : AdmissionDecision)
+  | failureCodeEquals (code : String)
+  | evidenceDigestEquals (evidenceClass digest : String)
+  deriving Repr, BEq, DecidableEq, Inhabited
 
 /-- Syntactic constitutional predicates over receipts. -/
 inductive Predicate where
@@ -50,40 +77,46 @@ inductive Predicate where
   | neg (p : Predicate)
   deriving Repr, BEq, DecidableEq, Inhabited
 
-/--
-  Interpret an atomic tag against a receipt identifier. The
-  production runtime checks more fields than this denotation
-  captures (e.g., participant key matches the kernel keypair, not
-  the receipt id); this denotation is a model bridge, not the
-  production check.
--/
-def denoteAtom (tag : AtomTag) (rid : ReceiptId) : Bool :=
+/-- Interpret one atomic predicate against the bounded receipt view. -/
+def denoteAtom (tag : AtomTag) (receipt : ReceiptView) : Bool :=
   match tag with
-  | .scopeContains target => rid == target
-  | .receiptHashEquals h => rid == h
-  | _ => false
+  | .scopeContains target => receipt.receiptId == target
+  | .participantKernelIdEquals kernelId =>
+      receipt.participantKernelIds.elem kernelId
+  | .actionClassIn cls => receipt.actionClass == cls
+  | .ladderModeAtLeastRank rank => decide (rank ≤ receipt.ladderModeRank)
+  | .receiptHashEquals hash => receipt.receiptHash == hash
+  | .continuationLive continuationId =>
+      receipt.liveContinuationIds.elem continuationId
+  | .decisionEquals decision => receipt.decision == decision
+  | .failureCodeEquals code => receipt.failureCode == some code
+  | .evidenceDigestEquals evidenceClass digest =>
+      receipt.evidenceDigests.any (fun evidence =>
+        evidence.evidenceClass == evidenceClass &&
+        evidence.digest == digest)
 
-/-- Interpret a predicate as a Boolean function of receipt id. -/
-def denote : Predicate -> ReceiptId -> Bool
-  | .atom tag, rid => denoteAtom tag rid
+/-- Interpret a predicate as a Boolean function of the bounded receipt view. -/
+def denote : Predicate -> ReceiptView -> Bool
+  | .atom tag, receipt => denoteAtom tag receipt
   | .top, _ => true
   | .bot, _ => false
-  | .conj p q, rid => denote p rid && denote q rid
-  | .disj p q, rid => denote p rid || denote q rid
-  | .neg p, rid => !(denote p rid)
+  | .conj p q, receipt => denote p receipt && denote q receipt
+  | .disj p q, receipt => denote p receipt || denote q receipt
+  | .neg p, receipt => !(denote p receipt)
 
 /--
   Syntactic backward-refinement over a finite receipt sample.
   `refinesOn p q sample = true` iff every receipt in `sample` that
-  satisfies `p` also satisfies `q`. In production, `sample` is the
-  already-admitted-history of the polity (a Merkle-rooted set).
+  satisfies `p` also satisfies `q`. Selection and completeness of the sample
+  are obligations outside this model.
 -/
-def refinesOn (p q : Predicate) (sample : List ReceiptId) : Bool :=
-  sample.all (fun rid => decide (!(denote p rid) || denote q rid))
+def refinesOn (p q : Predicate) (sample : List ReceiptView) : Bool :=
+  sample.all (fun receipt =>
+    decide (!(denote p receipt) || denote q receipt))
 
 /-- Refinement is reflexive on every sample. -/
 theorem refinesOn_refl
-    (p : Predicate) (sample : List ReceiptId) :
+    (p : Predicate) (sample : List ReceiptView) :
     refinesOn p p sample = true := by
   unfold refinesOn
   apply List.all_eq_true.mpr
@@ -92,7 +125,7 @@ theorem refinesOn_refl
 
 /-- Top admits every receipt (so any predicate refines top). -/
 theorem refinesOn_top
-    (p : Predicate) (sample : List ReceiptId) :
+    (p : Predicate) (sample : List ReceiptView) :
     refinesOn p .top sample = true := by
   unfold refinesOn
   apply List.all_eq_true.mpr
@@ -101,7 +134,7 @@ theorem refinesOn_top
 
 /-- Bot admits no receipt, so bot refines every predicate. -/
 theorem refinesOn_bot
-    (p : Predicate) (sample : List ReceiptId) :
+    (p : Predicate) (sample : List ReceiptView) :
     refinesOn .bot p sample = true := by
   unfold refinesOn
   apply List.all_eq_true.mpr
@@ -115,7 +148,7 @@ theorem refinesOn_bot
   in `Intersection.lean`'s `treatyPredicateIntersection`.
 -/
 theorem refinesOn_conj_intro
-    (r p q : Predicate) (sample : List ReceiptId)
+    (r p q : Predicate) (sample : List ReceiptView)
     (hp : refinesOn r p sample = true)
     (hq : refinesOn r q sample = true) :
     refinesOn r (.conj p q) sample = true := by
@@ -135,7 +168,7 @@ theorem refinesOn_conj_intro
   by structural recursion on `Predicate`, unlike the closures-based
   `BackwardRefines`, which is not.
 -/
-instance (p q : Predicate) (sample : List ReceiptId) :
+instance (p q : Predicate) (sample : List ReceiptView) :
     Decidable (refinesOn p q sample = true) :=
   inferInstance
 
@@ -165,8 +198,106 @@ structure SyntacticConstitution where
   deriving Repr, BEq, DecidableEq, Inhabited
 
 /-- Admission of a receipt under a syntactic constitution. -/
-def admits (c : SyntacticConstitution) (rid : ReceiptId) : Bool :=
-  c.predicates.all (fun p => denote p rid)
+def admits (c : SyntacticConstitution) (receipt : ReceiptView) : Bool :=
+  c.predicates.all (fun predicate => denote predicate receipt)
+
+/-- Decidable constitution refinement over the declared finite domain. -/
+def refinesOnConstitution
+    (new old : SyntacticConstitution)
+    (domain : List ReceiptView) : Bool :=
+  domain.all (fun receipt =>
+    decide (!(admits new receipt) || admits old receipt))
+
+/-- Semantic refinement over every receipt view, not claimed decidable here. -/
+def SynBackwardRefines
+    (new old : SyntacticConstitution) : Prop :=
+  forall receipt : ReceiptView,
+    admits new receipt = true -> admits old receipt = true
+
+/-- Semantic refinement restricted to one declared finite domain. -/
+def SynBackwardRefinesOn
+    (new old : SyntacticConstitution)
+    (domain : List ReceiptView) : Prop :=
+  forall receipt, receipt ∈ domain ->
+    admits new receipt = true -> admits old receipt = true
+
+/--
+  A successful Boolean refinement check is sound for every member of the
+  declared domain.
+-/
+theorem bridge_decidable_soundness
+    (new old : SyntacticConstitution)
+    (domain : List ReceiptView)
+    (hRefines : refinesOnConstitution new old domain = true) :
+    SynBackwardRefinesOn new old domain := by
+  intro receipt hMember hNew
+  have hAtReceipt :=
+    List.all_eq_true.mp hRefines receipt hMember
+  simp [hNew] at hAtReceipt
+  exact hAtReceipt
+
+/--
+  The Boolean check is complete for its declared finite domain. This theorem
+  does not promote a finite domain to all possible receipts.
+-/
+theorem refinesOnConstitution_iff
+    (new old : SyntacticConstitution)
+    (domain : List ReceiptView) :
+    refinesOnConstitution new old domain = true ↔
+      SynBackwardRefinesOn new old domain := by
+  constructor
+  · exact bridge_decidable_soundness new old domain
+  · intro h
+    apply List.all_eq_true.mpr
+    intro receipt hMember
+    cases hNew : admits new receipt
+    · simp
+    · simpa using h receipt hMember hNew
+
+/--
+  Lift a syntactic constitution into the legacy closure model through an
+  explicit resolver from receipt identifiers to bounded receipt views.
+-/
+def toClosure
+    (resolve : Chio.Treaty.ReceiptId -> ReceiptView)
+    (constitution : SyntacticConstitution) :
+    Chio.Treaty.Constitution :=
+  {
+    predicates :=
+      constitution.predicates.map (fun predicate receiptId =>
+        denote predicate (resolve receiptId))
+  }
+
+/-- The syntactic and lifted closure interpreters agree pointwise. -/
+theorem bridge_pointwise
+    (resolve : Chio.Treaty.ReceiptId -> ReceiptView)
+    (constitution : SyntacticConstitution)
+    (receiptId : Chio.Treaty.ReceiptId) :
+    Chio.Treaty.constitutionAllows (toClosure resolve constitution) receiptId =
+      admits constitution (resolve receiptId) := by
+  cases constitution with
+  | mk predicates =>
+      induction predicates with
+      | nil => rfl
+      | cons predicate rest ih =>
+          change
+            (denote predicate (resolve receiptId) &&
+              Chio.Treaty.constitutionAllows
+                (toClosure resolve { predicates := rest }) receiptId) =
+            (denote predicate (resolve receiptId) &&
+              admits { predicates := rest } (resolve receiptId))
+          rw [ih]
+
+/-- Global syntactic refinement soundly lifts into the closure relation. -/
+theorem bridge_soundness
+    (resolve : Chio.Treaty.ReceiptId -> ReceiptView)
+    (new old : SyntacticConstitution)
+    (hRefines : SynBackwardRefines new old) :
+    Chio.Treaty.BackwardRefines
+      (toClosure resolve new) (toClosure resolve old) := by
+  intro receiptId hNew
+  rw [bridge_pointwise] at hNew ⊢
+  exact hRefines (resolve receiptId) hNew
 
 /--
   Essential admission: every receipt in the sample that satisfies
@@ -177,10 +308,10 @@ def admits (c : SyntacticConstitution) (rid : ReceiptId) : Bool :=
 def admitsEssential
     (c : SyntacticConstitution)
     (essential : Predicate)
-    (sample : List ReceiptId) : Prop :=
-  forall rid, rid ∈ sample ->
-    denote essential rid = true ->
-    admits c rid = true
+    (sample : List ReceiptView) : Prop :=
+  forall receipt, receipt ∈ sample ->
+    denote essential receipt = true ->
+    admits c receipt = true
 
 /--
   Two-step composition: if amendment `c0 -> c1` preserves essential
@@ -188,7 +319,7 @@ def admitsEssential
   then the composed chain `c0 -> c2` preserves essential admission.
 -/
 theorem essential_preserved_two_step
-    (essential : Predicate) (sample : List ReceiptId)
+    (essential : Predicate) (sample : List ReceiptView)
     (c0 c1 c2 : SyntacticConstitution)
     (h01 : admitsEssential c0 essential sample ->
            admitsEssential c1 essential sample)
@@ -207,7 +338,7 @@ theorem essential_preserved_two_step
   preservation theorem for essential admission.
 -/
 theorem essential_preserved_chain
-    (essential : Predicate) (sample : List ReceiptId)
+    (essential : Predicate) (sample : List ReceiptView)
     (chain : List SyntacticConstitution)
     (steps :
       forall (i : Nat),
@@ -236,7 +367,7 @@ theorem essential_preserved_chain
   admission is exactly the constitutional-ratchet step.
 -/
 theorem ratchet_attack_requires_dropping_essential
-    (essential : Predicate) (sample : List ReceiptId)
+    (essential : Predicate) (sample : List ReceiptView)
     (cprev cnext : SyntacticConstitution)
     (h_essential_lost :
       admitsEssential cprev essential sample ∧
@@ -333,10 +464,10 @@ theorem meta_amendment_requires_dropping_designated
   the semantic admission obligation follows.
 -/
 theorem containsPredicate_implies_satisfied
-    (c : SyntacticConstitution) (p : Predicate) (rid : ReceiptId)
+    (c : SyntacticConstitution) (p : Predicate) (receipt : ReceiptView)
     (hContains : containsPredicate c p)
-    (hAdmits : admits c rid = true) :
-    denote p rid = true := by
+    (hAdmits : admits c receipt = true) :
+    denote p receipt = true := by
   unfold admits at hAdmits
   unfold containsPredicate at hContains
   exact (List.all_eq_true.mp hAdmits) p hContains

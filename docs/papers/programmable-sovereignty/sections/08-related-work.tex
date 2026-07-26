@@ -1,27 +1,44 @@
 \section{Related Work}
 
-Capability operating systems established the security lineage. KeyKOS and EROS treated capabilities as the primitive access-control substrate \cite{hardy1985keykos,shapiro1999eros}. Capsicum adapted capability discipline to UNIX processes \cite{watson2010capsicum}. seL4 showed how microkernel authority can be connected to machine-checked implementation proofs \cite{klein2009sel4,sewell2013sel4}. Chio borrows the discipline but changes the object of control: the protected act is an agent tool call whose decision becomes a signed receipt.
+\paragraph{Capabilities and agent isolation.}
+KeyKOS, EROS, object-capability systems, Capsicum, and seL4 established
+explicit, attenuable authority and small enforcement boundaries
+\cite{hardy1985keykos,shapiro1999eros,miller2006composition,murray2010ocap,watson2010capsicum,klein2009sel4}.
+Chio applies that discipline to agent tool calls and retains a signed artifact
+of the admission decision. IsolateGPT separates agent applications behind
+information-flow gates, while SAGA distributes user-controlled authorization
+tokens \cite{isolategptNDSS2025,sagaNDSS2025}. Recent analyses identify
+confused-deputy and authority-boundary failures as central risks in agentic
+systems \cite{agenticFoundations2025}. Receiver-owned bilateral admission is
+complementary: it governs the call after authority crosses an organizational
+boundary.
 
-The evidentiary target differs from classic operating-system capabilities. KeyKOS, EROS, Capsicum, and seL4 enforce authority inside a machine or kernel boundary; Chio emits a signed receipt at the same kernel call that enforces the capability, and a third-party verifier replays the same predicate the enforcer evaluated. The treaty binds local and remote receipts rather than only naming principals, which is the structural difference from per-machine capability discipline.
+\paragraph{Authenticated evidence.}
+DSSE authenticates a typed payload without making its internal policy
+semantics universal \cite{dsse}. in-toto and SLSA use signed statements to
+describe software supply-chain provenance
+\cite{torres2019intoto,slsa}; transparency logs make authenticated statements
+auditable over time \cite{rfc9162,sigstoreSecurity}. Our bilateral statement
+instead binds an invocation and the receiver's admission evidence. It can cite
+supply-chain provenance, but provenance alone does not establish a live treaty,
+continuation, policy verdict, or receipt binding.
 
-Object-capability languages and formalisms supply the vocabulary for attenuation. Miller's thesis, Murray's analysis, and Drossopoulou and Noble's policy work all treat authority as an explicit, attenuable relation rather than a global permission table \cite{miller2006composition,murray2010ocap,drossopoulou2013policy,drossopoulou2011authority}. EIP-7702 and ERC-4337 ship the capability-attenuation idea at scale: tens of millions of Ethereum smart accounts now carry session-keyed delegation with budget and expiry as on-chain policy \cite{eip7702}. Where these works treat attenuation as a program-internal property or as a chain-settled policy, Chio promotes each attenuation step to an artifact a non-participant can verify against a constitutional predicate, with no chain dependency for the admission decision itself.
+\paragraph{Verified authorization.}
+Cedar combines a formal policy semantics with a production Rust evaluator and
+differential testing \cite{cedarOOPSLA2024,cedarFSE2024}. Large verified
+systems such as seL4, IronFleet, and Project Everest connect stronger
+implementation claims to explicit refinement arguments
+\cite{klein2009sel4,hawblitzel2015ironfleet,projectEverest}. Our Lean~4 model
+\cite{demoura2021lean4} is intentionally weaker: it proves properties of a
+bounded syntax and checks an independent Rust implementation by differential
+tests. We do not claim refinement of the runtime.
 
-Fuchsia's capability routing work is another useful contrast \cite{fuchsiaCapabilities}. It gives componentized software a disciplined way to route authority. Chio's problem is less about component topology and more about cross-organization evidence: once a tool call crosses a vendor or buyer boundary, the verifier needs a receipt graph, not just local component routing.
-
-The agentic-systems security literature is now formalizing the same authority-boundary failures. IsolateGPT proposes per-app isolation with information-flow gates for LLM-based agents \cite{isolategptNDSS2025}; SAGA distributes access-control tokens from a user-controlled Provider \cite{sagaNDSS2025}; subsequent work names confused-deputy and authority-boundary failures as the load-bearing class \cite{agenticFoundations2025}. The constructions compose with Chio rather than compete: an IsolateGPT-style gate is a local-policy predicate inside a Chio constitution; SAGA's Provider distributes tokens while Chio places admission at the receiving kernel under a verifier-owned predicate. A TEE-attested kernel (Intel TDX, AMD SEV-SNP, NVIDIA H100 confidential compute) gives stronger online guarantees because the kernel itself is attested, while Chio's receipt cosigning gives stronger offline auditability because admission decisions replay from canonical bytes; the two strengthenings are complementary rather than competing.
-
-Verified systems work supplies the assurance pattern but not the governance object. CompCert proves semantic preservation for compilation \cite{leroy2009compcert}; VST proves C programs against separation-logic specs \cite{appel2015vst}; IronFleet combines TLA-style refinement with implementation proofs for distributed systems \cite{hawblitzel2015ironfleet}; Project Everest applies F* to secure communication software \cite{projectEverest}; Lean 4 supplies the theorem-prover and programming-language base used here \cite{demoura2021lean4}. Two production analogs are most informative. AWS Cedar verifies per-principal policy decisions inside a single authority, with a Lean specification, a differential-tested Rust runtime, and a verification-guided development loop \cite{cedarOOPSLA2024,cedarFSE2024}. SampCert verifies differential-privacy sampling primitives with a 12{,}000-line Lean corpus deployed inside AWS Clean Rooms \cite{sampcertPLDI2025}. Cedar and SampCert establish a Lean-plus-Rust industrial pattern over individual primitives; Chio's theorems range over admission across two kernels each holding its own constitution, with treaty intersection and amendment refinement as the additional obligations the single-primitive case does not face.
-
-Transparency and supply-chain systems define adjacent evidence formats. Certificate Transparency, Rekor, DSSE, in-toto, and SLSA make signed artifacts discoverable and verifiable \cite{rfc9162,sigstoreSecurity,dsse,torres2019intoto,slsa}. Chio uses DSSE and Rekor-compatible ideas but signs action admission, not only artifact provenance. A bilateral Chio envelope says two named kernels independently signed the same invocation predicate after local policy evaluation.
-
-The distinction is precise. A supply-chain provenance statement says how an artifact was built; a Chio bilateral statement says how an action was admitted under two policy contexts. The latter may cite the former (for instance when a tool binary or policy bundle needs build provenance), but build provenance alone cannot prove that a buyer admitted a vendor's receipt under a live treaty continuation.
-
-Selective disclosure work gives the privacy building block. BBS group signatures and Camenisch-Lysyanskaya credential systems underpin modern anonymous credential designs \cite{boneh2004bbs,camenisch2001credentials}; the CFRG BBS draft standardizes message-vector signing and proof verification \cite{bbsDraft}. The EU Digital Identity Wallet's Architecture and Reference Framework mandates SD-JWT VC and ISO mdoc as the first-line attestation formats; ETSI TR 119 476-1 v1.3.1 catalogues SD-JWT, mdoc, BBS+, BBS\#, and zk-SNARK overlays as candidate selective-disclosure schemes rather than endorsing any one~\cite{etsiSelectiveDisclosure2025}. Threshold-BBS+ constructions remove the single-issuer-key assumption that the CFRG draft inherits \cite{doernerThresholdBBS2023,nofGoyalNonInteractiveThresholdBBS2025}. Chio admits the Ed25519 record into log corpora and uses BBS only at presentation, separating storage from disclosure to avoid the audit-replay-vs-unlinkability tension; the choice is one cell of a larger design space and is fit for 2026 deployment but will need re-evaluation once post-quantum mandates land (salted-hash formats signed under PQC algorithms are ETSI's recommended migration, not transparent-SNARK substitution).
-
-Governance systems supply the contrast class. Compound and Polkadot OpenGov bind protocol changes to token or stake-weighted processes \cite{compoundGov,polkadotOpenGov}; Helios provides public auditability for elections \cite{adida2008helios}; Kleros and Aragon Court move dispute resolution into crypto-economic juries \cite{kleros2019,aragonCourt}. Optimism's Token House plus Citizens' House and ZKsync's Security Council are the closest production analogs of "polity with electorate plus emergency-amendment path", with ZKsync's first-year report recording 4 emergency activations alongside 11 approved proposals \cite{optimismGov,zksyncSecurityCouncil2025}. PBFT and Stellar show two assumptions for replicated or federated agreement \cite{castro1999pbft,mazieres2015stellar}; Cosmos IBC carries messages across consensus zones with on-chain verification of source-chain commitments \cite{ibcCosmos}, and Chio's bilateral treaty admission is the policy-layer analog where the receiving kernel runs a predicate over a co-signed receipt rather than a chain-rooted Merkle proof. Smart-contract verification (Move Prover, Solidity verifiers) shows that proof-carrying upgrades exist in production for first-order contract properties \cite{schneiderFMBC2025}. Chio's amendment path adds the obligation absent from all of these: a Lean term witnessing backward refinement before enactment, with emergency overrides surfaced as labeled crisis artifacts rather than ad-hoc Council bypasses.
-
-The governance comparison turns on what a vote can do. Token-weighted systems decide bytes, parameters, or social mandate. Chio's amendment path requires a proof that the new predicate set refines the old for admitted history; a vote may choose a candidate, but cannot by itself enact a constitution that fails the refinement requirement. This separates ``on-chain governance'' from proof-carrying constitutional change.
-
-Political and legal literature constrains the vocabulary. Ostrom's polycentric governance work makes local, rule-bound institutions a serious object of study \cite{ostrom1990commons,ostrom2009lecture}. Hirschman's exit and voice frame maps cleanly to Chio citizenship and revocation \cite{hirschman1970exit}. Montevideo supplies the declarative statehood vocabulary the paper narrows to digital receipt territory \cite{montevideo}. Srinivasan's network-state book supplies the motivating but overbroad claim \cite{srinivasanNetworkState}; Walch and De~Filippi and Wright warn that blockchain vocabulary outruns legal reality \cite{walch2017lexicon,defilippi2018blockchain}. Chio enforces that warning by binding every state-language claim to a code citation, a named theorem, or an empirical script.
-
-The result sits closer to Ostrom than to a network-state manifesto. A Chio polity is a local rule system with explicit boundaries, monitoring, graduated rejection, conflict artifacts, and exit through revocation or non-admission. The delta from Ostrom is mechanical inspection: predicates, receipts, and proof terms replace deliberative consensus as the medium of institutional authority.
+\paragraph{Cross-domain agreement.}
+PBFT and federated Byzantine agreement establish replicated decisions under
+quorum assumptions \cite{castro1999pbft,mazieres2015stellar}. IBC verifies
+commitments across consensus zones \cite{ibcCosmos}. Bilateral admission solves
+a different problem. It does not converge histories or provide consensus; it
+lets one receiver decide whether a statement co-signed under two policy
+contexts is sufficient for one local dispatch. A consensus or transparency
+layer can strengthen later audit without becoming part of the local safety
+condition.
