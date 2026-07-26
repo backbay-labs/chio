@@ -73,6 +73,54 @@ notes = "Models two concurrent charges against a one-unit atomic budget."
 
 [[harness]]
 crate = "chio-kernel"
+test = "loom_concurrency::protocol_primitives_three_key_all_or_nothing_admission"
+max_preemptions = 3
+lane = "nightly"
+scope = "bounded_abstract_model"
+notes = "Models overlapping composite quota reservations as one all-or-nothing admission."
+
+[[harness]]
+crate = "chio-kernel"
+test = "loom_concurrency::protocol_primitives_immutable_maximum_race"
+max_preemptions = 3
+lane = "nightly"
+scope = "bounded_abstract_model"
+notes = "Models concurrent definitions of one quota key with an immutable maximum."
+
+[[harness]]
+crate = "chio-kernel"
+test = "loom_concurrency::loom_cumulative_approval_serializes_concurrent_threshold_crossing"
+max_preemptions = 3
+lane = "nightly"
+scope = "bounded_abstract_model"
+notes = "Models concurrent reservations crossing one cumulative approval threshold."
+
+[[harness]]
+crate = "chio-kernel"
+test = "loom_concurrency::protocol_primitives_capture_versus_reverse"
+max_preemptions = 3
+lane = "nightly"
+scope = "bounded_abstract_model"
+notes = "Models capture and pre-dispatch reverse racing for one authorized reservation."
+
+[[harness]]
+crate = "chio-kernel"
+test = "loom_concurrency::protocol_primitives_idempotent_compensation"
+max_preemptions = 3
+lane = "nightly"
+scope = "bounded_abstract_model"
+notes = "Models duplicate compensation attempts applying exactly one reversal."
+
+[[harness]]
+crate = "chio-kernel"
+test = "loom_concurrency::loom_approval_attachment_and_pending_reverse_have_one_winner"
+max_preemptions = 3
+lane = "nightly"
+scope = "bounded_abstract_model"
+notes = "Models approval attachment and pending reversal racing for one operation."
+
+[[harness]]
+crate = "chio-kernel"
 test = "loom_concurrency::loom_post_admission_drop_guards_race_on_receipt_store_write_lock"
 max_preemptions = 3
 lane = "nightly"
@@ -86,3 +134,11 @@ max_preemptions = 3
 lane = "nightly"
 scope = "bounded_abstract_model"
 notes = "Models the disarmed guard as a no-op under a competing receipt append."
+
+[[harness]]
+crate = "chio-kernel"
+test = "loom_concurrency::receipt_writer_liveness_no_lost_wakeup"
+max_preemptions = 3
+lane = "nightly"
+scope = "bounded_abstract_model"
+notes = "Models receipt-writer liveness publication without torn or lost terminal verdicts."

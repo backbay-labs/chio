@@ -1,4 +1,4 @@
-8edb30fdfa985e5ff59b6b5226d6ef55134bd4c521a2241afba39cb2368db7ba  spec/schemas/MANIFEST.sha256
+405395d4ce6eae449c46dc01bf6fc2da3b6b772f197aa298d62d985665222089  spec/schemas/MANIFEST.sha256
 59854984853104df5c353e2f681a15fc7924742f9a2e468c29af248dce45ce03  spec/schemas/VERSION
 e90c7bc3c555c335559650c71f7fda1e3c13d134a5ff8ceaa0041000536c2ea9  spec/schemas/chio-agent-web/v1/external-projection-manifest.schema.json
 1cd24132ad8f98fad89bb62aa756304c2dee0b51aacd69c922e0f786dce2abec  spec/schemas/chio-agent-web/v1/interop-verifier-report.schema.json
@@ -401,4 +401,5 @@ ff4f655a0f0c7afda5c0674f3afde1e3961f1d58292584ed39f8bb5b96e30c8b  spec/schemas/c
 3374b9d40520b66cae420da1f9c8bb07fed6bfbd62ae918615e2f88b6e1b7700  spec/schemas/chio-workflow/v1/preflight-report.schema.json
 f109672e496e5e3bb56c5a3d61ed882b922d8bbade45899975d1852921f7890e  spec/schemas/financial-credential-defs.v1.schema.json
 049d7788253b57ddf472ebed0e8e6cb1a26e2249e9645e9e18cfdc3606a2b669  spec/schemas/fiscal-defs.v1.schema.json
-76f4adab502924d8faf0ea6bc679a689e4f261ac33c215370aeb98e99c9891b7  spec/schemas/registry.json
+216ca7d9c174f728a1931f84791858702bb365cb5f5acba24c5e936bc923955e  spec/schemas/policy/analysis-report.schema.json
+7ccecf68ebd6dcbd0b4e5c40c167fa2f776e0b2dd351ee11be0005be076a0909  spec/schemas/registry.json

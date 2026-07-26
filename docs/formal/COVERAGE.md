@@ -41,7 +41,7 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 | `chio-kernel-core::receipts.rs` | - | - | 1 | 5 | - | - | - | - | - | - |
 | `chio-kernel-core::revocation_view.rs` | - | - | - | 1 | - | - | - | - | - | - |
 | `chio-kernel-core::scope.rs` | - | - | 2 | 2 | - | - | - | - | - | - |
-| `chio-kernel::*` | 1 | - | - | - | - | - | 1 | 3 | 5 | 5 |
+| `chio-kernel::*` | 1 | - | - | - | - | - | 1 | 3 | 6 | 6 |
 | `chio-kernel::kernel/construction.rs` | - | - | - | - | - | - | - | - | 1 | - |
 | `chio-kernel::kernel/delegation.rs` | - | - | - | - | 1 | - | - | - | - | - |
 | `chio-kernel::kernel/kernel_drop_guard.rs` | - | - | - | - | - | - | - | - | 1 | - |
@@ -53,6 +53,9 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 | `chio-openapi-mcp-bridge::*` | - | - | - | - | - | - | 1 | - | - | - |
 | `chio-policy::*` | - | - | - | - | - | - | 2 | 2 | - | - |
 | `chio-revocation-oracle::*` | - | - | - | - | - | - | 1 | - | - | - |
+| `chio-store-sqlite::*` | - | - | - | - | - | - | - | - | 3 | - |
+| `chio-store-sqlite::budget_store/composite.rs` | - | - | - | - | - | - | - | - | 2 | - |
+| `chio-store-sqlite::budget_store/composite/transitions/terminal.rs` | - | - | - | - | - | - | - | - | 1 | - |
 | `chio-trace-validate::*` | - | - | - | - | 1 | - | - | - | - | - |
 | `chio-underwriting::*` | - | - | - | - | - | - | 1 | - | - | - |
 | `chio-wasm-guards::*` | - | - | - | - | - | - | 4 | - | - | - |
@@ -402,9 +405,11 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 - `.loom/harnesses.toml::chio-kernel/loom_concurrency::loom_revocation_race_eval` (lane=nightly, max_preemptions=3, scope=bounded_abstract_model)
 - `.loom/harnesses.toml::chio-kernel/loom_concurrency::loom_session_create_lookup_terminal_same_id` (lane=nightly, max_preemptions=3, scope=bounded_abstract_model)
 - `.loom/harnesses.toml::chio-kernel/loom_concurrency::protocol_primitives_last_unit_contention` (lane=nightly, max_preemptions=3, scope=bounded_abstract_model)
+- `.loom/harnesses.toml::chio-kernel/loom_concurrency::receipt_writer_liveness_no_lost_wakeup` (lane=nightly, max_preemptions=3, scope=bounded_abstract_model)
 
 **dst**
 
+- `.dst/harnesses.toml::chio-kernel/dst_drop_injection::dst_budget_wrapper_preserves_replay_outcome` (scope=single_process_single_store)
 - `.dst/harnesses.toml::chio-kernel/dst_drop_injection::dst_child_receipt_flush_regression_is_killed` (scope=single_process_single_store)
 - `.dst/harnesses.toml::chio-kernel/dst_drop_injection::dst_fixed_seed_corpus` (scope=single_process_single_store)
 - `.dst/harnesses.toml::chio-kernel/dst_drop_injection::dst_replay_seed` (scope=single_process_single_store)
@@ -483,6 +488,27 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 
 - `fuzz/target-map.toml::revocation_oracle_merkle`
 
+### `chio-store-sqlite::*`
+
+**loom**
+
+- `.loom/harnesses.toml::chio-kernel/loom_concurrency::loom_approval_attachment_and_pending_reverse_have_one_winner` (lane=nightly, max_preemptions=3, scope=bounded_abstract_model)
+- `.loom/harnesses.toml::chio-kernel/loom_concurrency::loom_cumulative_approval_serializes_concurrent_threshold_crossing` (lane=nightly, max_preemptions=3, scope=bounded_abstract_model)
+- `.loom/harnesses.toml::chio-kernel/loom_concurrency::protocol_primitives_capture_versus_reverse` (lane=nightly, max_preemptions=3, scope=bounded_abstract_model)
+
+### `chio-store-sqlite::budget_store/composite.rs`
+
+**loom**
+
+- `.loom/harnesses.toml::chio-kernel/loom_concurrency::protocol_primitives_immutable_maximum_race` (lane=nightly, max_preemptions=3, scope=bounded_abstract_model)
+- `.loom/harnesses.toml::chio-kernel/loom_concurrency::protocol_primitives_three_key_all_or_nothing_admission` (lane=nightly, max_preemptions=3, scope=bounded_abstract_model)
+
+### `chio-store-sqlite::budget_store/composite/transitions/terminal.rs`
+
+**loom**
+
+- `.loom/harnesses.toml::chio-kernel/loom_concurrency::protocol_primitives_idempotent_compensation` (lane=nightly, max_preemptions=3, scope=bounded_abstract_model)
+
 ### `chio-trace-validate::*`
 
 **tla**
@@ -533,6 +559,7 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 - `.cargo/mutants.toml::chio-guards`: `chio-guards::agent_velocity.rs`, `chio-guards::behavioral_profile.rs`, `chio-guards::behavioral_sequence.rs`, `chio-guards::browser_automation.rs`, `chio-guards::code_execution.rs`, `chio-guards::computer_use.rs`, `chio-guards::content_review.rs`, `chio-guards::data_flow.rs`, `chio-guards::egress_allowlist.rs`, `chio-guards::embedding_anomaly.rs`, `chio-guards::forbidden_path.rs`, `chio-guards::input_injection.rs`, `chio-guards::internal_network.rs`, `chio-guards::jailbreak.rs`, `chio-guards::jailbreak_detector.rs`, `chio-guards::mcp_tool.rs`, `chio-guards::memory_governance.rs`, `chio-guards::patch_integrity.rs`, `chio-guards::path_allowlist.rs`, `chio-guards::path_normalization.rs`, `chio-guards::pipeline.rs`, `chio-guards::post_invocation.rs`, `chio-guards::prompt_injection.rs`, `chio-guards::remote_desktop.rs`, `chio-guards::response_sanitization/detectors.rs`, `chio-guards::response_sanitization/formatting.rs`, `chio-guards::response_sanitization/overlap.rs`, `chio-guards::response_sanitization/sanitizer.rs`, `chio-guards::response_sanitization/simple.rs`, `chio-guards::response_sanitization/types.rs`, `chio-guards::response_sanitization/validators.rs`, `chio-guards::response_sanitization/vault.rs`, `chio-guards::secret_leak.rs`, `chio-guards::shell_command.rs`, `chio-guards::text_utils.rs`, `chio-guards::velocity.rs`
 - `.cargo/mutants.toml::chio-kernel-core`: `chio-kernel-core::capability_verify.rs`, `chio-kernel-core::evaluate.rs`, `chio-kernel-core::guard.rs`, `chio-kernel-core::normalized.rs`, `chio-kernel-core::passport_verify.rs`, `chio-kernel-core::receipts.rs`, `chio-kernel-core::scope.rs`
 - `.cargo/mutants.toml::chio-policy`: `chio-policy::compiler/budgets.rs`, `chio-policy::compiler/detection.rs`, `chio-policy::compiler/patterns.rs`, `chio-policy::compiler/rules.rs`, `chio-policy::compiler/scope.rs`, `chio-policy::conditions.rs`, `chio-policy::detection.rs`, `chio-policy::evaluate.rs`, `chio-policy::merge.rs`, `chio-policy::receipt.rs`, `chio-policy::regex_safety.rs`, `chio-policy::resolve.rs`, `chio-policy::validate.rs`
+- `.dst/harnesses.toml::chio-kernel/dst_drop_injection::dst_budget_wrapper_preserves_replay_outcome`: `chio-kernel::budget_store/in_memory/trait_impl.rs`, `chio-store-sqlite::budget_store/trait_impl.rs`
 - `.dst/harnesses.toml::chio-kernel/dst_drop_injection::dst_child_receipt_flush_regression_is_killed`: `chio-kernel::kernel/evaluation/nested_flow_evaluation.rs`, `chio-kernel::kernel/kernel_drop_guard.rs`
 - `.dst/harnesses.toml::chio-kernel/dst_drop_injection::dst_fixed_seed_corpus`: `chio-kernel::budget_store/in_memory.rs`, `chio-kernel::kernel/evaluation/async_evaluation_core.rs`, `chio-kernel::kernel/kernel_drop_guard.rs`, `chio-kernel::kernel/responses/receipt_persistence.rs`
 - `.dst/harnesses.toml::chio-kernel/dst_drop_injection::dst_replay_seed`: `chio-kernel::kernel/evaluation/async_evaluation_core.rs`, `chio-kernel::kernel/kernel_drop_guard.rs`
@@ -540,10 +567,14 @@ Theorem inventory and differential-test artifacts without a machine-readable Rus
 - `.dst/harnesses.toml::chio-kernel/dst_drop_injection::dst_wide_sweep`: `chio-kernel::kernel/evaluation/async_evaluation_core.rs`, `chio-kernel::kernel/kernel_drop_guard.rs`, `chio-kernel::kernel/responses/receipt_persistence.rs`
 - `.kani/harnesses.toml::chio-kernel-core/verify_inclusion_step_equivalence`: `chio-kernel-core::formal_aeneas.rs`
 - `.kani/harnesses.toml::chio-kernel-core/verify_oracle_inclusion_walk_parity`: `chio-core-types::merkle_steps.rs`
+- `.loom/harnesses.toml::chio-kernel/loom_concurrency::loom_approval_attachment_and_pending_reverse_have_one_winner`: `chio-store-sqlite::budget_store/composite/transitions/approval.rs`, `chio-store-sqlite::budget_store/composite/transitions/terminal.rs`
+- `.loom/harnesses.toml::chio-kernel/loom_concurrency::loom_cumulative_approval_serializes_concurrent_threshold_crossing`: `chio-store-sqlite::budget_store/composite.rs`, `chio-store-sqlite::budget_store/composite/transitions/approval.rs`
 - `.loom/harnesses.toml::chio-kernel/loom_concurrency::loom_parent_signs_receipt_while_child_spawns`: `chio-kernel::kernel/dispatch.rs`, `chio-kernel::kernel/responses/receipt_persistence.rs`
 - `.loom/harnesses.toml::chio-kernel/loom_concurrency::loom_post_admission_drop_guards_race_on_receipt_store_write_lock`: `chio-kernel::kernel/dispatch.rs`, `chio-kernel::kernel/kernel_drop_guard.rs`, `chio-kernel::kernel/responses/receipt_persistence.rs`
 - `.loom/harnesses.toml::chio-kernel/loom_concurrency::loom_revocation_race_eval`: `chio-kernel::kernel/delegation.rs`, `chio-kernel::revocation_runtime.rs`
 - `.loom/harnesses.toml::chio-kernel/loom_concurrency::loom_session_create_lookup_terminal_same_id`: `chio-kernel::request_matching.rs`, `chio-kernel::session.rs`
+- `.loom/harnesses.toml::chio-kernel/loom_concurrency::protocol_primitives_capture_versus_reverse`: `chio-store-sqlite::budget_store/composite/transitions/capture.rs`, `chio-store-sqlite::budget_store/composite/transitions/terminal.rs`
+- `.loom/harnesses.toml::chio-kernel/loom_concurrency::receipt_writer_liveness_no_lost_wakeup`: `chio-kernel::kernel/construction.rs`, `chio-kernel::kernel/receipt_writer_watchdog.rs`
 - `audits/mutation/per-crate-configs/chio-anchor.toml`: `chio-anchor::automation.rs`, `chio-anchor::bitcoin.rs`, `chio-anchor::bundle.rs`, `chio-anchor::discovery.rs`, `chio-anchor::evm/egress.rs`, `chio-anchor::evm/hashing.rs`, `chio-anchor::evm/preparation.rs`, `chio-anchor::evm/publication.rs`, `chio-anchor::evm/records.rs`, `chio-anchor::evm/rpc.rs`, `chio-anchor::evm/types.rs`, `chio-anchor::evm/validation.rs`, `chio-anchor::evm/verification.rs`, `chio-anchor::functions.rs`, `chio-anchor::lib.rs`, `chio-anchor::ops.rs`, `chio-anchor::solana.rs`
 - `audits/mutation/per-crate-configs/chio-attest-verify.toml`: `chio-attest-verify::lib.rs`, `chio-attest-verify::sigstore/bundle_verify.rs`, `chio-attest-verify::sigstore/compat.rs`, `chio-attest-verify::sigstore/core.rs`, `chio-attest-verify::sigstore/identity.rs`, `chio-attest-verify::sigstore/mod.rs`, `chio-attest-verify::sigstore/parse.rs`, `chio-attest-verify::sigstore/policy.rs`, `chio-attest-verify::sigstore/validators.rs`
 - `audits/mutation/per-crate-configs/chio-guards.toml`: `chio-guards::behavioral_sequence.rs`, `chio-guards::data_flow.rs`, `chio-guards::egress_allowlist.rs`, `chio-guards::embedding_anomaly.rs`, `chio-guards::forbidden_path.rs`, `chio-guards::path_allowlist.rs`, `chio-guards::path_normalization.rs`, `chio-guards::pipeline.rs`, `chio-guards::secret_leak.rs`, `chio-guards::text_utils.rs`
@@ -891,7 +922,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 
 - Generator version: `3`
 - Regenerate: `cargo xtask gen proof-coverage`
-- Input digest: `9bd2f27fcbe35f0e4205507177a70c2aa241822633921fdbc950390eebabeb11`
+- Input digest: `ea98c381237a0ec6b67b7a734c7a6a7aede23e52b8e1370e2280ff92beab1c8e`
 - Git commit: `@GIT_COMMIT@` (resolved in coverage.json and Proof Room packages)
 - Row identity: file rows use package-relative Rust paths; crate-only artifacts use `package::*`.
 
@@ -899,9 +930,9 @@ These drift-checked manual mirrors and contract twins are review navigation only
 
 - `.cargo/config.toml`: `d1100dc750bd88e2b0484657c792c8ce257c1ab3392a0aad54fcf49f20dae5c4`
 - `.cargo/mutants.toml`: `14feb40a4e4468ab17b8eb6fc8af6f12e6117c2ada73a2696009f7de8102b5b4`
-- `.dst/harnesses.toml`: `483b738539a5a474295ea7d568b6b4362afd8b1d4f66001e24899f72039ba4df`
+- `.dst/harnesses.toml`: `02c022579994294816ab40683c211766ef131b18a6cd13c2c5692f91fd62f1a1`
 - `.kani/harnesses.toml`: `94aad2994e9b491ad71db8d4e4acafa4573d829b5f22613d722ac1ca6e23e10c`
-- `.loom/harnesses.toml`: `b1cf2e0c9303db2c24666365962ea38d410c654e617a2572dc415432dbf3570c`
+- `.loom/harnesses.toml`: `07b7f087e6e7f484c16be0d7cd079def72dcc35e536e02bf241337fc915b562b`
 - `Cargo.lock`: `a84486d5ba223cbf6f4a046d64c70339ca280cc590d2f0fa7fed73d3ababb264`
 - `Cargo.toml`: `30d2765c24d6f9a83f7c31c57d8006a3301fe99f92f204390f216d3040fe3ec3`
 - `audits/evidence/mutants/chio-weights/2026-05-08.json`: `452aaf5734039a489967a629ec3c6b1b9d1351e06ec1f8e76c136ae389477ca7`
@@ -1036,7 +1067,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `crates/trust/chio-revocation-oracle/src/api.rs`: `b1bfcf2fa979f132693ef895f40512b53a5797b8ca2dbe609c3524eac58d0375`
 - `crates/trust/chio-revocation-oracle/src/freshness.rs`: `d699d5c59f1c5a660d9c06f294bb2ac1ee2c0fcd00cd9eebbe043df74ba733b8`
 - `docs/fuzzing/trust-boundary-mutants-baseline.toml`: `7331fb69499474ca22b14b6fb5a6f9a966eae2e2a26d3433d9030a4c985efee9`
-- `formal/MAPPING.md`: `ac971a0664bb490eb83b7608d0731b08ac747e40a7d2eff296920976f5908179`
+- `formal/MAPPING.md`: `c8c551be682a7695d12509b2321929b9b511ec7f3abde893a4e549e6145ed02d`
 - `formal/aeneas/pilot.toml`: `86627b363717b47ced94caeb826185d400cf70fe357a55fe34d02ea70670956c`
 - `formal/aeneas/production.toml`: `2a3e3189ae4d283ddd6392ca373da61452c55252247be8050e068239745ef93e`
 - `formal/aeneas/verified_core.rs`: `44ef85fbe6c537e8c65a483a67c167f502ca1a108a25293414b27ab2a85046b8`
@@ -1131,4 +1162,4 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `scripts/proof-mutants.sh`: `b6a8709ff3d15e8e58521ed60efda0e344733a81b1902dc314928cdedec479a7`
 - `scripts/spec-mutants.py`: `ca80a1a94c5731933f3bab3258bd0f4bbfa61f754bb8de82e73950ae1d417cb0`
 - `tools/install-apalache.sh`: `3f50745f56521685d30d18669bddb64a4bff060b40c121b30cdbf61fe26f4cc5`
-- `xtask/src/proof_coverage.rs`: `4279dd034a66e657d8c9bb66b2f67ab49cee2c47b0c72506c0686208d953edf4`
+- `xtask/src/proof_coverage.rs`: `079f86fec97e8061e21fbcf5b8fe29d8c9cfe60c45a9ca872af73becf6d5ee4e`

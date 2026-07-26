@@ -22,6 +22,11 @@ lane = "pr"
 ignored = false
 
 [[test]]
+name = "dst_budget_wrapper_preserves_replay_outcome"
+lane = "pr"
+ignored = false
+
+[[test]]
 name = "dst_wide_sweep"
 lane = "nightly"
 ignored = true
