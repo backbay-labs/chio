@@ -1,72 +1,73 @@
 {
   "anchorInclusion": "withheld_outside_core_claim",
-  "commit": "cbd86bc5163139f46c944b7313e4dd34c5a0b11c",
+  "benchmarkInputTreeSha256": "bc81e2795fc391e9b0fc5d26b3b5eb5c035fa70773cbca1e377ca9d6e506b388",
+  "commit": "e233ec2ab9b003e88a2b6b5c994f0f5b85223de7",
   "components": [
     {
       "component": "receipt_sign",
       "note": "buyer-closure-shaped Ed25519 receipt",
-      "p50_us": 242.7023908730159,
-      "p99_us": 530.7934464285714,
+      "p50_us": 246.23672839506173,
+      "p99_us": 518.2597638888889,
       "samples": 30
     },
     {
       "component": "receipt_verify",
       "note": "buyer-closure-shaped Ed25519 receipt",
-      "p50_us": 350.8856666666667,
-      "p99_us": 409.4002546296296,
+      "p50_us": 353.04678666666666,
+      "p99_us": 669.3911851851851,
       "samples": 30
     },
     {
       "component": "receipt_append_sqlite",
       "note": "production SQLite receipt store",
-      "p50_us": 7065.591809523809,
-      "p99_us": 9712.347699999998,
+      "p50_us": 8806.08747368421,
+      "p99_us": 12143.2124,
       "samples": 30
     },
     {
       "component": "treaty_predispatch_deny",
       "note": "full kernel path; real hook, SQLite denial receipt, invocation counter",
-      "p50_us": 10558.661352941175,
-      "p99_us": 17719.03241666667,
+      "p50_us": 13304.158375,
+      "p99_us": 32348.54825,
       "samples": 30
     },
     {
       "component": "strict_bilateral_dsse_verify",
       "note": "two signatures, embedded receipt, treaty bindings",
-      "p50_us": 341.0049230769231,
-      "p99_us": 662.3600480769231,
+      "p50_us": 386.0280867346939,
+      "p99_us": 683.6060634920635,
       "samples": 30
     },
     {
       "component": "cross_boundary_admission_allow",
       "note": "receiver treaty scope and verified evidence",
-      "p50_us": 21.409624587458747,
-      "p99_us": 23.866086175284195,
+      "p50_us": 32.12028837209302,
+      "p99_us": 57.040871511627905,
       "samples": 30
     },
     {
       "component": "buyer_proof_package_verify",
       "note": "offline three-vendor receiver verification",
-      "p50_us": 50180.04,
-      "p99_us": 52976.116,
+      "p50_us": 79401.66,
+      "p99_us": 115383.499,
       "samples": 30
     }
   ],
   "criterionSamples": 30,
   "negativeMatrix": {
     "cases": 20,
-    "elapsedMs": 104014.421935,
+    "elapsedMs": 221138.014283,
     "explicitNonTestableAssumptions": 1
   },
   "paths": {
     "full_receiver_admission": {
-      "p50_ms": 2334.57236,
-      "p99_ms": 2527.642637,
+      "p50_ms": 3359.753395,
+      "p99_ms": 3849.310803,
       "samples": 20
     },
     "producer_without_buyer_review": {
-      "p50_ms": 2045.539907,
-      "p99_ms": 2112.1292,
+      "p50_ms": 2875.533376,
+      "p99_ms": 3177.946933,
       "samples": 20
     }
   },
