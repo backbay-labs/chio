@@ -1,5 +1,8 @@
 //! Receiver-owned cross-boundary admission over a verified treaty intersection.
 
+#[path = "fixtures/treaty_admission_fixture.rs"]
+mod treaty_admission_fixture;
+
 use chio_core_types::crypto::Keypair;
 use chio_runtime_core::{
     compute_ladder_intersection, evaluate_cross_boundary_admission,
@@ -8,6 +11,7 @@ use chio_runtime_core::{
     CHIO_GOVERNANCE_LADDER_MANIFEST_SCHEMA, CHIO_TREATY_SCOPE_SCHEMA,
 };
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use treaty_admission_fixture::TreatyPredispatchDenyFixture;
 
 fn action() -> GovernanceLadderActionClass {
     GovernanceLadderActionClass {
@@ -41,6 +45,19 @@ fn manifest(kernel_id: &str) -> GovernanceLadderManifest {
 }
 
 pub fn bench(c: &mut Criterion) {
+    let treaty_deny_fixture = match TreatyPredispatchDenyFixture::new() {
+        Ok(fixture) => fixture,
+        Err(error) => panic!("failed to build real treaty admission hook fixture: {error}"),
+    };
+    c.bench_function("treaty_predispatch_deny", |b| {
+        b.iter(|| {
+            assert!(
+                black_box(treaty_deny_fixture.evaluate_once()),
+                "real treaty admission hook did not return the expected policy denial"
+            );
+        });
+    });
+
     let manifests = vec![
         manifest("did:chio:buyer-kernel"),
         manifest("did:chio:vendor-a"),

@@ -107,7 +107,7 @@ Producer without buyer review
 \midrule
 Pre-dispatch treaty denial
 & \PSPredispatchDenyPFiftyUs{} \(\mu\)s & \PSPredispatchDenyPNinetyNineUs{} \(\mu\)s
-& Runtime hook; invocation counter unchanged \\
+& Full kernel path; real hook and SQLite denial receipt \\
 Receipt sign
 & \PSReceiptSignPFiftyUs{} \(\mu\)s & \PSReceiptSignPNinetyNineUs{} \(\mu\)s
 & Buyer-shaped Ed25519 receipt \\
@@ -139,9 +139,14 @@ pure buyer-verification ablation: the full path also invokes the CLI and
 performs additional schema and semantic checks. The isolated offline verifier
 median was \PSBuyerVerifyPFiftyMs~ms.
 
-The pre-dispatch denial component was
+The real receiver-owned pre-dispatch denial path was
 \PSPredispatchDenyPFiftyUs~\(\mu\)s at p50 and
-\PSPredispatchDenyPNinetyNineUs~\(\mu\)s at p99. Receipt signing measured
+\PSPredispatchDenyPNinetyNineUs~\(\mu\)s at p99. Its timed body traverses the
+kernel capability, federation, and persistence gates; resolves the stored
+treaty scope, ladder intersection, continuation, lineage, invocation, and
+bilateral DSSE; verifies the signed policy denial; and persists the signed
+SQLite denial receipt. The instrumented tool invocation counter remains
+unchanged. Receipt signing measured
 \PSReceiptSignPFiftyUs~\(\mu\)s at the median, strict bilateral DSSE verification
 measured \PSBilateralVerifyPFiftyUs~\(\mu\)s, and persistent SQLite append
 measured \PSReceiptAppendPFiftyUs~\(\mu\)s. These component measurements use

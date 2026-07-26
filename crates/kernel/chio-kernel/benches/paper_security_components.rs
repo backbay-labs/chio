@@ -27,15 +27,6 @@ pub fn bench(c: &mut Criterion) {
         });
     });
 
-    c.bench_function("treaty_predispatch_deny", |b| {
-        b.iter(|| {
-            assert!(
-                black_box(fixture.dispatch_deny_once()),
-                "treaty denial reached the tool or returned the wrong failure"
-            );
-        });
-    });
-
     let directory = match tempdir() {
         Ok(directory) => directory,
         Err(error) => panic!("failed to create receipt append benchmark directory: {error}"),

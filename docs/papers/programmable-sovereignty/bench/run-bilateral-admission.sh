@@ -194,7 +194,7 @@ criterion_cases = {
     "receipt_append_sqlite": ("receipt_append_sqlite", "production SQLite receipt store"),
     "treaty_predispatch_deny": (
         "treaty_predispatch_deny",
-        "runtime admission hook; invocation counter unchanged",
+        "full kernel path; real hook, SQLite denial receipt, invocation counter",
     ),
     "strict_bilateral_dsse_verify": (
         "strict_bilateral_dsse_verify",

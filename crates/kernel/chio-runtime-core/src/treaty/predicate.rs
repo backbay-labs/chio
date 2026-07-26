@@ -137,7 +137,10 @@ pub fn evaluate_bounded_treaty_predicate_json(
     json: &str,
     receipt: &BoundedTreatyReceiptView,
 ) -> bool {
-    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+    let Ok(canonical) = chio_core_types::canonical_json_bytes_from_str(json) else {
+        return false;
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&canonical) else {
         return false;
     };
     if !document_json_shape_is_strict(&value) {
@@ -255,6 +258,7 @@ pub fn bounded_treaty_receipt_view_from_verified_artifacts(
 
     let continuation_sha256 = canonical_sha256(continuation)?;
     if invocation.continuation_sha256 != continuation_sha256
+        || invocation.capability_id != continuation.capability_id
         || continuation.action_class_id != report.action_class_id
         || now_unix_ms < continuation.issued_at_unix_ms
         || now_unix_ms >= continuation.expires_at_unix_ms

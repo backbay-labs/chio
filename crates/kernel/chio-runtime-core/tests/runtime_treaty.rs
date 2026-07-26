@@ -248,6 +248,22 @@ fn bounded_treaty_predicate_serialization_denies_unknown_or_unsupported_input(
         &serde_json::to_string(&unsupported_version)?,
         &receipt
     ));
+
+    let duplicate_predicate = format!(
+        r#"{{"schema":"{CHIO_BOUNDED_TREATY_PREDICATE_SCHEMA}","predicate":{{"op":"bot"}},"predicate":{{"op":"top"}}}}"#
+    );
+    assert!(!evaluate_bounded_treaty_predicate_json(
+        &duplicate_predicate,
+        &receipt
+    ));
+
+    let duplicate_nested_operation = format!(
+        r#"{{"schema":"{CHIO_BOUNDED_TREATY_PREDICATE_SCHEMA}","predicate":{{"op":"bot","op":"top"}}}}"#
+    );
+    assert!(!evaluate_bounded_treaty_predicate_json(
+        &duplicate_nested_operation,
+        &receipt
+    ));
     Ok(())
 }
 
@@ -369,6 +385,24 @@ fn bounded_treaty_view_binds_runtime_artifacts_and_rejects_wrong_treaty(
         1_800_000_010_000,
     )
     .is_err());
+
+    let mut wrong_capability = invocation.clone();
+    wrong_capability.capability_id = "capability:attacker:001".to_string();
+    let err = match bounded_treaty_receipt_view_from_verified_artifacts(
+        &scope,
+        &report,
+        &wrong_capability,
+        &continuation,
+        1_800_000_010_000,
+    ) {
+        Ok(_) => {
+            return Err(
+                io::Error::other("an invocation for another capability was accepted").into(),
+            );
+        }
+        Err(err) => err,
+    };
+    assert_eq!(err.code(), "chio_treaty_continuation_hash_mismatch");
 
     let mut wrong_treaty = invocation;
     wrong_treaty.treaty_id = "treaty-attacker".to_string();
