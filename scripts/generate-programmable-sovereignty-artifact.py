@@ -87,20 +87,23 @@ THEOREMS = [
         "name": "treaty_admission_agrees",
         "module": "Chio.Treaty.BridgeEquivalence",
         "declaration": (
-            "Chio.Treaty.BridgeEquivalence.Legacy."
+            "Chio.Treaty.BridgeEquivalence.Resolved."
             "treaty_admission_agrees"
         ),
         "path": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
         "axioms": ["propext"],
         "claimClass": "bounded_theorem",
-        "scope": "Syntactic and legacy treaty admission agree pointwise.",
+        "scope": (
+            "Syntactic and identifier-indexed treaty admission "
+            "agree pointwise."
+        ),
     },
     {
         "id": "PS-F06",
         "name": "bounded_amendment_sound",
         "module": "Chio.Treaty.BridgeEquivalence",
         "declaration": (
-            "Chio.Treaty.BridgeEquivalence.Legacy."
+            "Chio.Treaty.BridgeEquivalence.Resolved."
             "bounded_amendment_sound"
         ),
         "path": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",

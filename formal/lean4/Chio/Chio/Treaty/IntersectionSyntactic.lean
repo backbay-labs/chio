@@ -1,10 +1,10 @@
 /-
   Decidable bounded treaty and amendment model.
 
-  Unlike the legacy closure model, this module represents scope and
-  constitutional rules with `PredicateLang.Predicate`. Admission is executable
-  on an explicit `ReceiptView`. Amendment refinement is decidable on the
-  declared finite receipt domain carried by the delta.
+  This module represents scope and constitutional rules with
+  `PredicateLang.Predicate`. Admission is executable on an explicit
+  `ReceiptView`. Amendment refinement is decidable on the declared finite
+  receipt domain carried by the delta.
 
   The finite-domain boundary is part of every amendment statement. Nothing in
   this module claims that checking one finite domain proves refinement for all

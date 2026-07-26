@@ -1,10 +1,10 @@
 /-
   Bounded syntactic predicate language for Chio treaty admission.
 
-  `Intersection.lean` retains the paper's legacy closure model. Arbitrary
-  implication between opaque closures is not decidable. This module instead
-  defines a finite predicate syntax over an explicit receipt view, an
-  interpreter, and a decidable refinement check over a declared finite domain.
+  `Intersection.lean` defines identifier-indexed closure semantics. Arbitrary
+  implication between opaque closures is not decidable. This module defines a
+  finite predicate syntax over an explicit receipt view, an interpreter, and a
+  decidable refinement check over a declared finite domain.
 
   The bridge below lifts syntactic constitutions into the closure model through
   an explicit receipt resolver. It proves pointwise semantic agreement and
@@ -255,8 +255,8 @@ theorem refinesOnConstitution_iff
     · simpa using h receipt hMember hNew
 
 /--
-  Lift a syntactic constitution into the legacy closure model through an
-  explicit resolver from receipt identifiers to bounded receipt views.
+  Lift a syntactic constitution into identifier-indexed closure semantics
+  through an explicit resolver to bounded receipt views.
 -/
 def toClosure
     (resolve : Chio.Treaty.ReceiptId -> ReceiptView)

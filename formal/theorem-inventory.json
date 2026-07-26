@@ -770,7 +770,7 @@
       "claimClass": "bounded_model",
       "status": "proved",
       "mapsTo": ["P7"],
-      "notes": "Legacy closure model showing bilateral treaty admission is equivalent to the intersection of treaty, left-polity, and right-polity predicates. This row does not establish decidability of implication between opaque closures."
+      "notes": "Identifier-indexed closure semantics showing bilateral treaty admission is equivalent to the intersection of treaty, left-polity, and right-polity predicates. This row does not establish decidability of implication between opaque closures."
     },
     {
       "id": "proof.treaty_admission_stable_under_ladder_floor",
@@ -792,7 +792,7 @@
       "claimClass": "bounded_model",
       "status": "proved",
       "mapsTo": ["P3"],
-      "notes": "Legacy closure model tying enactable constitutional amendments to an explicit backward-refinement proof witness. The universal witness is not claimed decidable or production-linked."
+      "notes": "Identifier-indexed closure semantics tying enactable constitutional amendments to an explicit backward-refinement proof witness. The universal witness is not claimed decidable or production-linked."
     },
     {
       "id": "proof.amendment_without_refinement_rejected",
@@ -803,7 +803,7 @@
       "claimClass": "bounded_model",
       "status": "proved",
       "mapsTo": ["P3"],
-      "notes": "Legacy closure model showing a candidate with no backward-refinement proof witness is rejected. The production Rust runtime does not enact amendments through this type."
+      "notes": "Identifier-indexed closure semantics showing a candidate with no backward-refinement proof witness is rejected. The production Rust runtime does not enact amendments through this type."
     },
     {
       "id": "proof.freestanding_accept_set_theorem",
@@ -869,7 +869,7 @@
       "claimClass": "bounded_model",
       "status": "proved",
       "mapsTo": ["P7"],
-      "notes": "A syntactic constitution lifted through an explicit receipt resolver agrees pointwise with the legacy closure interpreter."
+      "notes": "A syntactic constitution lifted through an explicit receipt resolver agrees pointwise with the identifier-indexed closure interpreter."
     },
     {
       "id": "treaty.bridge.soundness",
@@ -880,7 +880,7 @@
       "claimClass": "bounded_model",
       "status": "proved",
       "mapsTo": ["P7"],
-      "notes": "Global semantic refinement over explicit receipt views soundly lifts into the legacy closure relation. This theorem does not claim that global refinement is decidable."
+      "notes": "Global semantic refinement over explicit receipt views soundly lifts into the identifier-indexed closure relation. This theorem does not claim that global refinement is decidable."
     },
     {
       "id": "treaty.bridge.decidable_soundness",
@@ -950,7 +950,7 @@
     },
     {
       "id": "treaty.bridge.equivalence_polity_admits",
-      "leanName": "Chio.Treaty.BridgeEquivalence.Legacy.polity_admission_agrees",
+      "leanName": "Chio.Treaty.BridgeEquivalence.Resolved.polity_admission_agrees",
       "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
       "kind": "theorem",
       "rootImported": true,
@@ -961,7 +961,7 @@
     },
     {
       "id": "treaty.bridge.equivalence_treaty_admits",
-      "leanName": "Chio.Treaty.BridgeEquivalence.Legacy.treaty_admission_agrees",
+      "leanName": "Chio.Treaty.BridgeEquivalence.Resolved.treaty_admission_agrees",
       "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
       "kind": "theorem",
       "rootImported": true,
@@ -972,18 +972,18 @@
     },
     {
       "id": "treaty.bridge.equivalence_mode_admits",
-      "leanName": "Chio.Treaty.BridgeEquivalence.Legacy.treaty_admission_under_mode_agrees",
+      "leanName": "Chio.Treaty.BridgeEquivalence.Resolved.treaty_admission_under_mode_agrees",
       "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
       "kind": "theorem",
       "rootImported": true,
       "claimClass": "bounded_model",
       "status": "proved",
       "mapsTo": ["P7"],
-      "notes": "The syntactic and lifted legacy treaty models agree pointwise when composed with the same ladder mode."
+      "notes": "The syntactic and resolved closure treaty models agree pointwise when composed with the same ladder mode."
     },
     {
       "id": "treaty.bridge.bounded_amendment_sound",
-      "leanName": "Chio.Treaty.BridgeEquivalence.Legacy.bounded_amendment_sound",
+      "leanName": "Chio.Treaty.BridgeEquivalence.Resolved.bounded_amendment_sound",
       "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
       "kind": "theorem",
       "rootImported": true,

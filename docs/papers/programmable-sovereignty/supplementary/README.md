@@ -26,7 +26,7 @@ or treats as an assumption.
   paper, their modules, model scopes, claim classes, and Lean axiom reports.
 - `theorem-inventory.json` supplies the same theorem inventory for automated
   review.
-- `lean-source.tar.gz` is a deterministic archive of the current Lean project.
+- `lean-source.tar.gz` is a deterministic archive of the Lean project.
   It contains no build cache, symbolic links, extended attributes, or
   machine-local files.
 
@@ -57,7 +57,7 @@ The full command additionally rebuilds the proof root, differential tests,
 runtime and federation tests, live buyer closure, bilateral and replay
 experiments, and the submission PDF. Fresh measurement outputs are written to
 a private temporary directory so reproduction does not silently replace the
-retained paper results.
+recorded paper results.
 
 The evaluated benchmark is machine-local. A new run should be expected to
 produce different latency samples while preserving schemas, case counts,
@@ -67,8 +67,9 @@ non-dispatch assertions, and proof-package structure.
 
 The Lean archive models a strict predicate syntax over `ReceiptView` and
 explicit finite domains. It proves structural treaty intersection, ladder
-reduction, finite-domain no-widening, and pointwise agreement with the legacy
-closure representation. It does not model cryptography, canonical JSON,
-clocks, storage, organizational key control, or the production Rust runtime.
+reduction, finite-domain no-widening, and pointwise agreement with
+identifier-indexed closure semantics. It does not model cryptography, canonical
+JSON, clocks, storage, organizational key control, or the production Rust
+runtime.
 The independent Rust differential suite is alignment evidence, not extraction
 or an implementation-refinement proof.

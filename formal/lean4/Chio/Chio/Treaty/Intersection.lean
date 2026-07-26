@@ -1,5 +1,5 @@
 /-
-  Legacy closure model for the programmable-sovereignty paper.
+  Identifier-indexed closure semantics for treaty admission.
 
   The production treaty verifier is Rust code. This Lean file captures the
   paper's mathematical core: treaty admission is the intersection of treaty,
@@ -7,10 +7,10 @@
   that intersection; amendment enactment requires a backward-refinement proof.
 
   Constitutions here contain opaque closures. Universal implication between
-  such closures is not decidable. New paper claims use
-  `Treaty/IntersectionSyntactic.lean`, whose finite predicate language and
-  declared receipt domain make the bounded decision procedure explicit. This
-  module remains as the semantic target of the pointwise bridge.
+  such closures is not decidable. `Treaty/IntersectionSyntactic.lean` defines a
+  finite predicate language and declared receipt domain for the bounded
+  decision procedure. This module is the semantic target of the pointwise
+  bridge.
 -/
 
 set_option autoImplicit false

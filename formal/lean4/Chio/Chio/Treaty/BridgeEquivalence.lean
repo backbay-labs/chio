@@ -1,12 +1,12 @@
 /-
-  Pointwise equivalence between syntactic treaty admission and the legacy
-  closure model.
+  Pointwise equivalence between syntactic treaty admission and
+  identifier-indexed closure semantics.
 
-  The bridge is parameterized by a resolver from legacy receipt identifiers to
-  explicit bounded receipt views. It proves that lifting changes
-  representation, not the admission decision. Amendment refinement remains
-  explicitly bounded in `IntersectionSyntactic`; this module does not convert a
-  finite-domain witness into a universal closure witness.
+  The bridge is parameterized by a resolver from receipt identifiers to
+  explicit bounded receipt views. It proves that lifting changes representation,
+  not the admission decision. Amendment refinement remains explicitly bounded
+  in `IntersectionSyntactic`; this module does not convert a finite-domain
+  witness into a universal closure witness.
 -/
 
 import Chio.Treaty.IntersectionSyntactic
@@ -15,7 +15,7 @@ set_option autoImplicit false
 
 namespace Chio.Treaty.BridgeEquivalence
 
-namespace Legacy
+namespace Resolved
 
 open Chio.Treaty.PredicateLang
 open Chio.Treaty.IntersectionSyntactic
@@ -101,6 +101,6 @@ theorem bounded_amendment_sound
   bridge_decidable_soundness
     delta.new delta.old delta.domain delta.proofTerm
 
-end Legacy
+end Resolved
 
 end Chio.Treaty.BridgeEquivalence

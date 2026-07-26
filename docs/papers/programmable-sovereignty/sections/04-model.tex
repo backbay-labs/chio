@@ -105,18 +105,18 @@ nontrivial narrowing that constructs such a delta and a widening candidate
 that evaluates to false.
 
 This property is no-widening on \(D\). It does not establish refinement outside
-\(D\), preserve receipts that the old constitution happened to admit, or
-justify a claim about all possible future schemas. A narrower constitution can
-reject old allows while satisfying the theorem. The current Rust runtime also
-has no amendment-enactment path consuming \codepath{ConstitutionalDelta};
-amendment is therefore a model-level extension, not a production contribution.
+\(D\), require \(K'\) to preserve every receipt admitted by \(K\), or justify a
+claim about all possible future schemas. A narrower \(K'\) can reject receipts
+admitted by \(K\) while satisfying the theorem. The Rust runtime has no
+amendment-enactment path consuming \codepath{ConstitutionalDelta}; amendment is
+therefore a model-level extension, not a production contribution.
 
 \subsection{Bridges and Assurance Boundary}
 
-The earlier Lean representation used opaque predicates over receipt
-identifiers. Given an explicit resolver from an identifier to a
-\codepath{ReceiptView}, \codepath{toClosure} lifts a syntactic constitution
-into that representation. \thm{bridge_pointwise},
+A second Lean representation uses opaque predicates over receipt identifiers.
+Given an explicit resolver from an identifier to a \codepath{ReceiptView},
+\codepath{toClosure} lifts a syntactic constitution into that representation.
+\thm{bridge_pointwise},
 \thm{treaty_admission_agrees}, and
 \thm{treaty_admission_under_mode_agrees} prove pointwise agreement after the
 lift. They do not turn a finite domain into a universal one.
@@ -147,7 +147,7 @@ Result & Model claim & Implementation relation \\
 & Boolean no-widening is exact on declared \(D\)
 & Model only \\
 \thm{treaty_admission_agrees}
-& Syntactic and legacy forms agree pointwise
+& Syntactic and identifier-indexed forms agree pointwise
 & Model only \\
 \bottomrule
 \end{tabularx}
