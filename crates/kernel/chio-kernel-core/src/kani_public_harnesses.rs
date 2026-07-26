@@ -26,8 +26,9 @@ use crate::formal_core::{
     budget_charge_admits, budget_increment_admits, composite_quota_authorize,
     family_binding_preserved, guard_pipeline_allows, monetary_cap_is_subset_by_parts,
     optional_u32_cap_is_subset, quota_maximum_compatible, receipt_fields_coupled,
-    required_true_is_preserved, revocation_snapshot_denies, threshold_distinct_eligible_signers,
-    time_window_valid, BudgetAdmissionProjectionError, GuardStep,
+    required_true_is_preserved, revocation_lookup_denies, revocation_snapshot_denies,
+    threshold_distinct_eligible_signers, time_window_valid, BudgetAdmissionProjectionError,
+    GuardStep, RevocationCheckTarget,
 };
 use crate::guard::PortableToolCallRequest;
 use crate::normalized::{NormalizedOperation, NormalizedScope, NormalizedToolGrant};
