@@ -539,6 +539,11 @@ pub(crate) struct Web3CheckpointStatementBody {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     previous_checkpoint_sha256: Option<String>,
     kernel_key: PublicKey,
+    // Must mirror every signed field of the kernel checkpoint body: this
+    // struct reconstructs the canonical bytes the kernel signed, so an omitted
+    // field makes the signature unverifiable rather than merely unbound.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    chain_root: Option<Hash>,
 }
 
 pub(crate) fn checkpoint_statement_body(
@@ -554,5 +559,6 @@ pub(crate) fn checkpoint_statement_body(
         issued_at: statement.issued_at,
         previous_checkpoint_sha256: statement.previous_checkpoint_sha256.clone(),
         kernel_key: statement.kernel_key.clone(),
+        chain_root: statement.chain_root,
     }
 }

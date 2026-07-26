@@ -25,7 +25,7 @@ use crate::ReceiptStoreError;
 pub const CHECKPOINT_SCHEMA: &str = "chio.checkpoint_statement.v1";
 pub const CHECKPOINT_PUBLICATION_SCHEMA: &str = "chio.checkpoint_publication.v1";
 pub const CHECKPOINT_WITNESS_SCHEMA: &str = "chio.checkpoint_witness.v1";
-pub const CHECKPOINT_CONSISTENCY_PROOF_SCHEMA: &str = "chio.checkpoint_consistency_proof.v2";
+pub const CHECKPOINT_CONSISTENCY_PROOF_SCHEMA: &str = "chio.checkpoint_consistency_proof.v1";
 pub const CHECKPOINT_EQUIVOCATION_SCHEMA: &str = "chio.checkpoint_equivocation.v1";
 
 #[must_use]
@@ -210,11 +210,22 @@ pub struct CheckpointConsistencyProof {
     /// RFC 6962 consistency path from the earlier chain tree to the later
     /// chain tree.
     pub chain_proof_hashes: Vec<Hash>,
+    /// Inclusion proof binding the earlier checkpoint's own chain leaf to
+    /// `from_chain_root` at the last position of that tree.
+    pub from_leaf_inclusion: MerkleProof,
     /// Inclusion proof binding the later checkpoint's own chain leaf to
-    /// `to_chain_root` at the last position. Without it a key holder could
-    /// commit a chain tree whose leaves are unrelated to the bodies the proof
-    /// names and still produce a verifying consistency path.
+    /// `to_chain_root` at the last position. Without both endpoints bound, a
+    /// key holder could commit chain trees whose leaves are unrelated to the
+    /// bodies the proof names and still produce a verifying consistency path.
     pub to_leaf_inclusion: MerkleProof,
+}
+
+/// Whether `leaf` is committed by `root` as the final leaf of a `size`-leaf
+/// chain tree, per the supplied inclusion proof.
+fn chain_leaf_is_committed(inclusion: &MerkleProof, size: usize, leaf: Hash, root: &Hash) -> bool {
+    inclusion.tree_size == size
+        && inclusion.leaf_index + 1 == size
+        && inclusion.verify_hash(leaf, root)
 }
 
 /// Classifies a conflicting checkpoint observation.
@@ -536,6 +547,8 @@ pub fn build_checkpoint_consistency_proof(
     }
     let chain_proof_hashes = tree.consistency_proof(from_size)?;
     let to_leaf_inclusion = tree.inclusion_proof(to_size - 1)?;
+    let from_leaf_inclusion = MerkleTree::from_hashes(chain_leaf_hashes[..from_size].to_vec())?
+        .inclusion_proof(from_size - 1)?;
 
     Ok(CheckpointConsistencyProof {
         schema: CHECKPOINT_CONSISTENCY_PROOF_SCHEMA.to_string(),
@@ -551,6 +564,7 @@ pub fn build_checkpoint_consistency_proof(
         from_chain_root,
         to_chain_root,
         chain_proof_hashes,
+        from_leaf_inclusion,
         to_leaf_inclusion,
     })
 }
@@ -603,20 +617,29 @@ pub fn verify_checkpoint_consistency_proof(
         return Ok(false);
     }
 
+    // Both committed chains must end in their own checkpoint's leaf. Binding
+    // only the later endpoint would leave a pair starting after checkpoint 1
+    // open: a key holder could commit an arbitrary tree as the earlier root,
+    // extend it with the later real leaf, and produce paths that verify while
+    // the earlier root never contained the earlier body.
+    let from_size = chain_tree_size(previous)?;
     let to_size = chain_tree_size(current)?;
-    // The committed chain must actually end in this checkpoint's own leaf,
-    // otherwise the roots could commit leaves unrelated to the named bodies.
-    if proof.to_leaf_inclusion.tree_size != to_size
-        || proof.to_leaf_inclusion.leaf_index != to_size - 1
-        || !proof
-            .to_leaf_inclusion
-            .verify_hash(checkpoint_chain_leaf_hash(&current.body)?, &to_chain_root)
-    {
+    if !chain_leaf_is_committed(
+        &proof.from_leaf_inclusion,
+        from_size,
+        checkpoint_chain_leaf_hash(&previous.body)?,
+        &from_chain_root,
+    ) || !chain_leaf_is_committed(
+        &proof.to_leaf_inclusion,
+        to_size,
+        checkpoint_chain_leaf_hash(&current.body)?,
+        &to_chain_root,
+    ) {
         return Ok(false);
     }
 
     Ok(verify_consistency_proof(
-        chain_tree_size(previous)?,
+        from_size,
         to_size,
         &from_chain_root,
         &to_chain_root,
@@ -1805,6 +1828,92 @@ mod tests {
             !verify_checkpoint_consistency_proof(&first, &second, &wrong_index)
                 .expect("verify wrong index"),
             "the checkpoint leaf must be proven at the last position"
+        );
+    }
+
+    /// A pair starting after checkpoint 1 must bind BOTH endpoints. The forged
+    /// chain here has correct sizes and a genuine prefix relation, and its
+    /// later endpoint really does commit the later body, so every other check
+    /// passes: only binding the earlier leaf catches that checkpoint 2's
+    /// signed root never contained checkpoint 2.
+    #[test]
+    fn checkpoint_consistency_proof_binds_the_earlier_endpoint_too() {
+        let kp = Keypair::generate();
+        let first = build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &kp).expect("first");
+        let second = build_checkpoint_with_previous(
+            2,
+            4,
+            6,
+            &make_receipt_bytes(3),
+            &kp,
+            Some(&first),
+            &chain_leaves(&[&first]),
+        )
+        .expect("second");
+        let third = build_checkpoint_with_previous(
+            3,
+            7,
+            9,
+            &make_receipt_bytes(3),
+            &kp,
+            Some(&second),
+            &chain_leaves(&[&first, &second]),
+        )
+        .expect("third");
+        let honest_leaves = chain_leaves(&[&first, &second, &third]);
+        let honest =
+            build_checkpoint_consistency_proof(&second, &third, &honest_leaves).expect("honest");
+
+        // Same sizes as the honest chain, but the second leaf is junk instead
+        // of checkpoint 2's body; checkpoint 3's real leaf is still appended.
+        let forged_from = vec![honest_leaves[0], leaf_hash(b"never-checkpoint-two")];
+        let mut forged_to = forged_from.clone();
+        forged_to.push(honest_leaves[2]);
+        let forged_from_tree = MerkleTree::from_hashes(forged_from).expect("forged from tree");
+        let forged_to_tree = MerkleTree::from_hashes(forged_to).expect("forged to tree");
+
+        let mut forged_second = second.clone();
+        forged_second.body.chain_root = Some(forged_from_tree.root());
+        forged_second.signature = kp.sign(
+            &canonical_json_bytes(&forged_second.body).expect("canonical forged second body"),
+        );
+        let mut forged_third = third.clone();
+        forged_third.body.previous_checkpoint_sha256 =
+            Some(checkpoint_body_sha256(&forged_second.body).expect("forged second digest"));
+        forged_third.body.chain_root = Some(forged_to_tree.root());
+        forged_third.signature = kp
+            .sign(&canonical_json_bytes(&forged_third.body).expect("canonical forged third body"));
+
+        let forged = CheckpointConsistencyProof {
+            from_checkpoint_sha256: checkpoint_body_sha256(&forged_second.body)
+                .expect("forged from digest"),
+            to_checkpoint_sha256: checkpoint_body_sha256(&forged_third.body)
+                .expect("forged to digest"),
+            from_chain_root: forged_from_tree.root(),
+            to_chain_root: forged_to_tree.root(),
+            chain_proof_hashes: forged_to_tree.consistency_proof(2).expect("forged path"),
+            from_leaf_inclusion: forged_from_tree
+                .inclusion_proof(1)
+                .expect("forged from leaf"),
+            to_leaf_inclusion: forged_to_tree.inclusion_proof(2).expect("forged to leaf"),
+            ..honest
+        };
+
+        // The later endpoint and the consistency path are internally valid.
+        assert!(
+            verify_consistency_proof(
+                2,
+                3,
+                &forged.from_chain_root,
+                &forged.to_chain_root,
+                &forged.chain_proof_hashes,
+            ),
+            "the forged chain is genuinely prefix-related, so only leaf binding can catch it"
+        );
+        assert!(
+            !verify_checkpoint_consistency_proof(&forged_second, &forged_third, &forged)
+                .expect("verify forged mid-chain pair"),
+            "an earlier root that does not commit the earlier body must not verify"
         );
     }
 

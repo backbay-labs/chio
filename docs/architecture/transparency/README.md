@@ -128,11 +128,15 @@ no leaves, there was nothing between two batch roots to prove, so the signed
 body now carries a `chain_root`: an RFC 6962 root over one leaf per checkpoint
 binding its sequence, entry range, and batch root, which transitively commits
 every checkpointed entry and is rebuildable forever from retained checkpoint
-rows. `CheckpointConsistencyProof` is versioned to
-`chio.checkpoint_consistency_proof.v2`, carries the node hashes, and
+rows. `CheckpointConsistencyProof` now carries the node hashes plus an
+inclusion proof binding the later checkpoint's own chain leaf, and
 `verify_checkpoint_consistency_proof` verifies them against the two signed
 commitments; a pair without commitments is unverifiable (an error), never
-true. The store cross-checks every commitment against the persisted chain on
+true. The record keeps its `chio.checkpoint_consistency_proof.v1` schema id
+and evolves in place, because Chio-owned schemas stay at v1 for the whole
+pre-release line (`scripts/check-chio-owned-v1-only.sh`); proofs serialized
+against the older shape no longer parse, which is correct given they proved
+nothing. The store cross-checks every commitment against the persisted chain on
 the operator path and rejects divergent clock-skew siblings. A rewritten
 history that re-signs with the real kernel key is rejected in
 `crates/tooling/chio-conformance/tests/checkpoint_consistency_forged_chain_root_rejected.rs`.

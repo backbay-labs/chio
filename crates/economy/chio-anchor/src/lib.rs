@@ -332,9 +332,9 @@ mod tests {
     use super::{
         attach_bitcoin_anchor, build_anchor_discovery_artifact,
         build_anchor_discovery_artifact_with_runtime, build_anchor_inclusion_proof,
-        build_anchor_inclusion_proof_from_evidence_bundle, inspect_ots_proof,
-        kernel_checkpoint_from_statement, prepare_ots_submission, prepare_root_publication,
-        prepare_solana_memo_publication, verify_bitcoin_anchor_for_proof,
+        build_anchor_inclusion_proof_from_evidence_bundle, checkpoint_statement_from_kernel,
+        inspect_ots_proof, kernel_checkpoint_from_statement, prepare_ots_submission,
+        prepare_root_publication, prepare_solana_memo_publication, verify_bitcoin_anchor_for_proof,
         verify_checkpoint_publication_records, verify_ots_proof_for_submission,
         verify_proof_bundle, verify_proof_bundle_with_discovery, AnchorEmergencyControls,
         AnchorEmergencyMode, AnchorLaneHealthStatus, AnchorLaneKind, AnchorLaneRuntimeStatus,
@@ -368,6 +368,36 @@ mod tests {
         let mut bytes = Vec::new();
         ots.to_writer(&mut bytes).test_unwrap();
         BASE64_STANDARD.encode(bytes)
+    }
+
+    /// A kernel-signed checkpoint must still verify after crossing the web3
+    /// statement bridge. `Web3CheckpointStatementBody` reconstructs the bytes
+    /// the kernel signed, so any signed field the bridge drops (the chain
+    /// commitment did) makes real checkpoints unverifiable while fixtures that
+    /// sign the reconstruction stay green.
+    #[test]
+    fn kernel_signed_checkpoint_survives_the_web3_statement_bridge() {
+        let keypair = chio_core::Keypair::generate();
+        let checkpoint = chio_kernel::checkpoint::build_checkpoint(
+            1,
+            1,
+            2,
+            &[b"receipt-one".to_vec(), b"receipt-two".to_vec()],
+            &keypair,
+        )
+        .test_unwrap();
+        assert!(
+            checkpoint.body.chain_root.is_some(),
+            "the first checkpoint of a chain carries a chain commitment"
+        );
+
+        let statement = checkpoint_statement_from_kernel(&checkpoint);
+        assert_eq!(statement.chain_root, checkpoint.body.chain_root);
+        chio_core::web3::anchors::verify_checkpoint_statement(&statement)
+            .test_expect("statement signature verifies across the bridge");
+
+        let restored = kernel_checkpoint_from_statement(&statement);
+        assert_eq!(restored, checkpoint, "the bridge round-trips losslessly");
     }
 
     fn sample_evidence_bundle() -> EvidenceExportBundle {
