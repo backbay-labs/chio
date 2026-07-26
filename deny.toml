@@ -368,14 +368,6 @@ name = "toml_edit"
 name = "wasm-streams"
 
 [[bans.skip]]
-# last-checked = 2026-07-10. Legacy proc-macro-error remains in transitive
-# codegen paths while proc-macro-error 1.x is pulled by newer stacks.
-name = "proc-macro-error"
-
-[[bans.skip]]
-name = "proc-macro-error-attr"
-
-[[bans.skip]]
 # last-checked = 2026-05-03. `syn` 1.x is a known proc-macro
 # lingerer; lockfile currently pins both 1.0.x and 2.0.x. Force-bump
 # audit when `darling` and `serde_derive` align on `syn` 2.x.
@@ -403,9 +395,6 @@ name = "wit-bindgen"
 
 [[bans.skip]]
 name = "wit-parser"
-
-[[bans.skip]]
-name = "ahash"
 
 [[bans.skip]]
 name = "axum"
@@ -635,14 +624,6 @@ name = "lru"
 name = "pem-rfc7468"
 
 [[bans.skip]]
-# last-checked = 2026-07-16. Legacy sigstore code generation retains the
-# proc-macro-error 0.4 family while other macros use 1.x.
-name = "proc-macro-error"
-
-[[bans.skip]]
-name = "proc-macro-error-attr"
-
-[[bans.skip]]
 # last-checked = 2026-07-16. Iroh and direct TLS consumers have not yet
 # converged on one rustls-platform-verifier release.
 name = "rustls-platform-verifier"
@@ -697,6 +678,9 @@ name = "windows_aarch64_msvc"
 
 [[bans.skip]]
 name = "windows_i686_gnu"
+
+[[bans.skip]]
+name = "windows_i686_gnullvm"
 
 [[bans.skip]]
 name = "windows_i686_msvc"
