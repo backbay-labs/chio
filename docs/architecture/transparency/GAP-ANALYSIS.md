@@ -124,11 +124,14 @@ What exists in `crates/kernel/chio-kernel/src/checkpoint.rs`:
   `ConflictingPredecessorWitness` (lines 195-201), detected by
   `detect_checkpoint_equivocation` (line 440).
 
+Fixed on 2026-07-26 (program finding F1, items 8 and 20 below): `merkle.rs`
+implements RFC 6962 consistency proofs, the signed body carries a
+`chain_root` committing the checkpoint chain, and
+`verify_checkpoint_consistency_proof` verifies real node hashes against the
+two signed commitments.
+
 What is missing:
 
-- The consistency proof is a tautology (program finding F1): no Merkle node
-  hashes, no constraint on tree growth, and no consistency-proof code in
-  `crates/core/chio-core-types/src/merkle.rs` at all.
 - Detection only compares checkpoints the caller already holds. Detecting
   that an operator showed one history to auditor X and another to auditor Y
   needs independent parties each holding a view, plus a protocol for
@@ -198,9 +201,11 @@ publication records present, and `is_trust_anchored()`, which reduces to an
 enum comparison (`chio-kernel/src/evidence_export.rs:206-209`). Nothing
 verifies the anchor.
 
-Feeding all of it, the transparency state itself is asserted from a string
-match (program finding F2), so the strongest state is reachable with no valid
-cryptographic input.
+Feeding all of it, the transparency state itself was asserted from a string
+match (program finding F2, fixed 2026-07-26: promotion to `trust_anchored`
+now requires a verified inclusion proof against a pinned-key checkpoint, and
+surfaces without artifacts or pinned keys cannot reach the anchored tier).
+The enum gaps above remain item 10.
 
 ## 8. Registry promotion mechanics
 
@@ -262,8 +267,8 @@ Stage column carries scheduling, and the program README defines stage order.
 | 5 | Bound the uncheckpointed tail: time-based flush; forbid `max_batch == 0` under an append-only profile | 2 | internal | M | `receipt_store.rs:2008-2067`, `evidence_export.rs:223` |
 | 6 | Child-receipt inclusion proofs in evidence exports | 2 | internal | M | `chio-store-sqlite/src/evidence_export.rs:281` |
 | 7 | Tenant and capability join paths for `chio_child_receipts`, so omission becomes impossible rather than silent | 2 | internal | M | `bootstrap/open.rs:795`, `chio-kernel/src/evidence_export.rs:42-51` |
-| 8 | Real RFC 6962 consistency proofs: node-hash proofs in `merkle.rs`, carried and verified by the checkpoint layer | 1 | internal | M | `checkpoint.rs:361-399`, `merkle.rs` |
-| 9 | Verifier-side qualification: replace presence-based transparency state with cryptographic verification | 1 | internal | M | `minimal.rs:641-663` |
+| 8 | Real RFC 6962 consistency proofs: node-hash proofs in `merkle.rs`, carried and verified by the checkpoint layer (done 2026-07-26) | 1 | internal | M | `checkpoint.rs`, `merkle.rs` |
+| 9 | Verifier-side qualification: replace presence-based transparency state with cryptographic verification (done 2026-07-26) | 1 | internal | M | `minimal.rs` |
 | 10 | Continuity-class plumbing: `append_only` in every enum, one reconciled definition across the three surfaces | 3 | internal | M | `evidence_export.rs:138-142`, `verifier-policy.schema.json:47-54`, `verifier_policy.rs:18`, `proof_package.rs:23-25` |
 | 11 | Witness tree-head pinning and consistency: mandatory inclusion proofs, pinned tree heads, head-to-head consistency checks | 4 | internal | M | `rekor.rs:546-624` |
 | 12 | Wire checkpoint issuance to publication: the checkpoint to `AnchorBatch` to witness pipeline gains a production caller and becomes mandatory under an append-only profile | 4 | internal | M | `chio-anchor/src/batch.rs`, `chio-anchor/src/automation.rs` |
@@ -274,7 +279,7 @@ Stage column carries scheduling, and the program README defines stage order.
 | 17 | Replication and availability operations: topology, freshness windows, service levels | 5 | substrate | M | ops, `docs/security/public-witness-semantics.md` |
 | 18 | Independent monitors and cross-view comparison: exchange observed heads, run detection across views | 5 | mixed | L | `checkpoint.rs:440-508`, new federation surface |
 | 19 | Spec and docs update: section 6.5 language, bounded-profile guarantee classes, and the stale Rekor text in three files | 5 | internal | S | `spec/PROTOCOL.md`, `CHIO_BOUNDED_OPERATIONAL_PROFILE.md`, `public-witness-semantics.md` |
-| 20 | `deny_unknown_fields` on the signed checkpoint body, with a rejection test (program finding F3) | 1 | internal | S | `checkpoint.rs:59-61` |
+| 20 | `deny_unknown_fields` on the signed checkpoint body, with a rejection test (program finding F3; done 2026-07-26) | 1 | internal | S | `checkpoint.rs` |
 
 ## 12. The tally
 
@@ -285,3 +290,5 @@ fall. The largest single item (3, the receipt-family projection) is purely
 internal and larger than any substrate integration on its own. This is the
 arithmetic behind the program's ordering: the substrate decision comes last
 because it is the smallest and least-blocking part of the gate.
+
+Items 8, 9, and 20 (program Stage 1) landed on 2026-07-26.

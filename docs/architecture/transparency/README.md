@@ -26,11 +26,12 @@ peer-to-peer git network, a C2SP witness quorum, a TUF repository, or a
 directory served over HTTPS. Substrate selection is the last decision in this
 program, not the first.
 
-The single most consequential finding is item F1 below: the function named
-`verify_checkpoint_consistency_proof` does not verify a consistency proof.
-Until that is real, no publication or witnessing scheme built on top of it can
-mean anything, because a witness would be cosigning a root whose relationship
-to its predecessor is unconstrained.
+The single most consequential finding was item F1 below: the function named
+`verify_checkpoint_consistency_proof` did not verify a consistency proof, so
+any publication or witnessing scheme built on top of it would have cosigned a
+root whose relationship to its predecessor was unconstrained. F1 through F3
+were fixed on 2026-07-26 (Stage 1 below); the remaining stages build on
+primitives that are now real.
 
 ## 2. What the four gate conditions actually require
 
@@ -115,16 +116,26 @@ with no append-only relationship to its predecessor would produce a
 "consistency proof" that verifies. The name promises RFC 6962 section 2.1.2 and
 the implementation delivers a structural equality check.
 
-The root cause is one layer down: `crates/core/chio-core-types/src/merkle.rs`
-implements RFC 6962 leaf and node hashing and `inclusion_proof`, and contains no
-consistency-proof code at all. The word "consistency" does not appear in the
-file.
+The root cause was one layer down: `crates/core/chio-core-types/src/merkle.rs`
+implemented RFC 6962 leaf and node hashing and `inclusion_proof`, and
+contained no consistency-proof code at all.
 
-*Required:* implement RFC 6962 `PROOF(m, D[n])` and its verifier in
-`merkle.rs`, carry the node hashes in `CheckpointConsistencyProof`, and make
-`verify_checkpoint_consistency_proof` check them against the two roots. Treat
-the schema change as breaking and version it. Until this lands, F1 blocks every
-other item in this program.
+*Fixed (2026-07-26).* `merkle.rs` implements RFC 6962 consistency proofs
+(`MerkleTree::consistency_proof` and the pure verifier
+`verify_consistency_proof`), cross-checked against an independent reference
+generator for every size pair up to 48. Because per-batch receipt trees share
+no leaves, there was nothing between two batch roots to prove, so the signed
+body now carries a `chain_root`: an RFC 6962 root over one leaf per checkpoint
+binding its sequence, entry range, and batch root, which transitively commits
+every checkpointed entry and is rebuildable forever from retained checkpoint
+rows. `CheckpointConsistencyProof` is versioned to
+`chio.checkpoint_consistency_proof.v2`, carries the node hashes, and
+`verify_checkpoint_consistency_proof` verifies them against the two signed
+commitments; a pair without commitments is unverifiable (an error), never
+true. The store cross-checks every commitment against the persisted chain on
+the operator path and rejects divergent clock-skew siblings. A rewritten
+history that re-signs with the real kernel key is rejected in
+`crates/tooling/chio-conformance/tests/checkpoint_consistency_forged_chain_root_rejected.rs`.
 
 ### F2 (high): `trust_anchored` is asserted from a string match
 
@@ -149,14 +160,22 @@ fn evidence_graph_transparency_state(nodes: &[Value]) -> &'static str {
         }
 ```
 
-Anyone able to influence the evidence graph can obtain the strongest
-transparency state Chio reports by supplying a node with the right label and no
-valid contents. This inverts the fail-closed posture: an unverifiable input
-produces the *most* trusted output.
+Anyone able to influence the evidence graph could obtain the strongest
+transparency state Chio reports by supplying a node with the right label and
+no valid contents, inverting the fail-closed posture: an unverifiable input
+produced the *most* trusted output.
 
-*Required:* verify the inclusion proof against a checkpoint root signed by a
-pinned key before returning `trust_anchored`; on any failure return the
-preview tier, never the anchored tier.
+*Fixed (2026-07-26).* A labeled node is now a promotion candidate, never a
+promotion. The anchored tier requires the node's digest-bound artifact to
+carry a Merkle inclusion proof whose recomputed root is committed by a
+checkpoint statement signed by one of the verifier's pinned keys, with the
+proven leaf equal to the RFC 6962 leaf hash of an artifact the same evidence
+graph digest-binds. On any failure the candidate counts toward the preview
+tier. Surfaces without artifact bytes or pinned keys (including the
+bytes-only `transaction_evidence_graph_transparency_state`) can no longer
+return `trust_anchored` at all. The label-only, untrusted-signer,
+tampered-root, and unbound-subject cases are pinned by tests in
+`crates/platform/chio-transaction-passport/tests/transaction_passport.rs`.
 
 ### F3 (medium): the signed checkpoint body accepts unknown fields
 
@@ -179,7 +198,12 @@ pub struct AnchorBatchBody {
 Signed artifacts that tolerate unknown fields invite version-skew and
 field-smuggling ambiguity between producers and verifiers.
 
-*Required:* add `deny_unknown_fields` and add a round-trip rejection test.
+*Fixed (2026-07-26).* `KernelCheckpointBody` and the `KernelCheckpoint`
+wrapper both deny unknown fields, with rejection tests in the kernel and a
+conformance negative
+(`crates/tooling/chio-conformance/tests/checkpoint_statement_unknown_field_rejected.rs`).
+Legacy bodies without the new optional `chain_root` field still parse and
+re-serialize byte-identically, so stored signatures survive.
 
 ### F4: retention deletes checkpointed log entries
 
@@ -212,13 +236,15 @@ be evaluated until the artifact can express it.
 Strictly ordered. Each stage is independently valuable and none of stages 1
 through 3 depends on a substrate choice.
 
-**Stage 1: make the primitives real (blocks everything).**
+**Stage 1: make the primitives real (blocks everything). Complete
+(2026-07-26).**
 Implement RFC 6962 consistency proofs in `merkle.rs` with test vectors; carry
 node hashes in `CheckpointConsistencyProof` and verify them (F1); fix the
 `trust_anchored` promotion to require cryptographic verification (F2); add
-`deny_unknown_fields` to the signed checkpoint body (F3). Exit criterion: a
-tampered successor root fails verification in a conformance test that fails
-loudly before the fix.
+`deny_unknown_fields` to the signed checkpoint body (F3). Exit criterion, met:
+a tampered successor root fails verification in
+`checkpoint_consistency_forged_chain_root_rejected.rs`, which fails loudly
+against the pre-fix verifier.
 
 **Stage 2: complete the commitment.**
 Close claim-completeness and child-receipt-completeness. Child receipts are
