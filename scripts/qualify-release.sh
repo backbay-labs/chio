@@ -40,7 +40,31 @@ mkdir -p \
 install -m 0644 target/formal/proof-report.json "${formal_root}/proof-report.json"
 install -m 0644 target/formal/coverage.json "${formal_root}/coverage.json"
 
-./scripts/lane-gate.sh --fleet
+required_formal_lane_count="$(
+  python3 - <<'PY'
+import tomllib
+
+with open("releases.toml", "rb") as release_config:
+    document = tomllib.load(release_config)
+
+gates = document.get("gates")
+if not isinstance(gates, dict) or not gates:
+    raise SystemExit("releases.toml does not define any formal gates")
+
+postures = [gate.get("posture") for gate in gates.values() if isinstance(gate, dict)]
+if len(postures) != len(gates) or any(
+    posture not in {"advisory", "required"} for posture in postures
+):
+    raise SystemExit("releases.toml contains an invalid formal gate posture")
+
+print(sum(posture == "required" for posture in postures))
+PY
+)"
+if [[ "$required_formal_lane_count" -gt 0 ]]; then
+  ./scripts/lane-gate.sh --fleet
+else
+  echo "release qualification: no formal lanes are required; fleet check skipped"
+fi
 cargo test -p chio-provider-conformance \
   --features fixtures-gemini,fixtures-mistral,fixtures-groq,fixtures-ollama,fixtures-cohere \
   --test replay_gemini \

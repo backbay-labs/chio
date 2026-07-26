@@ -137,17 +137,17 @@ fn seal_collected_proof_bundle_with_fixture_id(
     verification_mode: SealVerificationMode,
 ) -> Result<serde_json::Value, CliError> {
     let passport_path = bundle.join("transaction-passport.json");
-    let report = match verification_mode {
+    let (report, replay_commit_report) = match verification_mode {
         SealVerificationMode::ConsumeReplays => {
             let read_only_report = verify_transaction_passport_file(&passport_path)?;
             enforce_collect_kind_requirements(kind, &read_only_report)?;
-            super::verify_transaction_passport_file_and_consume_agent_web_replays(
-                &passport_path,
-                &read_only_report,
-            )?
+            (read_only_report.clone(), Some(read_only_report))
         }
         SealVerificationMode::IsolatedFixture => {
-            fixture::verify_fixture_transaction_passport_file(&passport_path)?
+            (
+                fixture::verify_fixture_transaction_passport_file(&passport_path)?,
+                None,
+            )
         }
     };
     enforce_collect_kind_requirements(kind, &report)?;
@@ -158,6 +158,12 @@ fn seal_collected_proof_bundle_with_fixture_id(
     }
     write_json_line_file(&verifier_report_path, &report)?;
     write_collected_proof_room_bundle(bundle, &report, kind, public_fixture_id)?;
+    if let Some(read_only_report) = replay_commit_report {
+        super::verify_transaction_passport_file_and_consume_agent_web_replays(
+            &passport_path,
+            &read_only_report,
+        )?;
+    }
     Ok(report)
 }
 

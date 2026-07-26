@@ -1399,20 +1399,23 @@ impl ChioKernel {
         // Because the guard keeps the not-yet-persisted receipts, a mid-flush
         // append failure cannot lose an already-signed child receipt; recording
         // through a drained buffer would instead drop it. On success the guard is
-        // disarmed with an empty buffer, so the disarmed drop flushes nothing and
-        // no receipt is double-recorded.
+        // kept armed through credential commit. A commit failure therefore
+        // records a terminal ambiguous receipt. On success it is disarmed with
+        // an empty child buffer, so no receipt is double-recorded.
         post_admission_drop_guard.record_buffered_child_receipts()?;
-        post_admission_drop_guard.disarm();
-        drop(post_admission_drop_guard);
         let (tool_output, reported_cost) = match tool_output_result {
             Ok(output) => {
                 let _credential_disposition = credential_reservation.commit()?;
+                post_admission_drop_guard.disarm();
+                drop(post_admission_drop_guard);
                 output
             }
             Err(error @ KernelError::UrlElicitationsRequired { .. })
                 if nested_interaction_observed =>
             {
                 let _credential_disposition = credential_reservation.commit()?;
+                post_admission_drop_guard.disarm();
+                drop(post_admission_drop_guard);
                 let reason =
                     format!("URL elicitation requested after a nested interaction: {error}");
                 let metadata = self.ambiguous_dispatch_receipt_metadata(
@@ -1436,6 +1439,8 @@ impl ChioKernel {
                 );
             }
             Err(error @ KernelError::UrlElicitationsRequired { .. }) => {
+                post_admission_drop_guard.disarm();
+                drop(post_admission_drop_guard);
                 let credential_cleanup = if payment_authorization.is_some() {
                     credential_reservation.commit().map(|_| ())
                 } else {
@@ -1502,6 +1507,8 @@ impl ChioKernel {
                 return Err(error);
             }
             Err(KernelError::RequestCancelled { request_id, reason }) => {
+                post_admission_drop_guard.disarm();
+                drop(post_admission_drop_guard);
                 let metadata = self.ambiguous_dispatch_receipt_metadata(
                     &budget_mutation,
                     payment_authorization.as_ref(),
@@ -1536,6 +1543,8 @@ impl ChioKernel {
                 );
             }
             Err(KernelError::HotPathDeadlineExceeded { stage, budget_ms }) => {
+                post_admission_drop_guard.disarm();
+                drop(post_admission_drop_guard);
                 let reason = format!("hot-path deadline exceeded at {stage}: budget {budget_ms}ms");
                 let metadata = self.ambiguous_dispatch_receipt_metadata(
                     &budget_mutation,
@@ -1567,6 +1576,8 @@ impl ChioKernel {
                 );
             }
             Err(KernelError::RequestIncomplete(reason)) => {
+                post_admission_drop_guard.disarm();
+                drop(post_admission_drop_guard);
                 let metadata = self.ambiguous_dispatch_receipt_metadata(
                     &budget_mutation,
                     payment_authorization.as_ref(),
@@ -1596,6 +1607,8 @@ impl ChioKernel {
                 );
             }
             Err(error) => {
+                post_admission_drop_guard.disarm();
+                drop(post_admission_drop_guard);
                 let msg = error.to_string();
                 let deny_metadata = self.ambiguous_dispatch_receipt_metadata(
                     &budget_mutation,

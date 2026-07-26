@@ -170,6 +170,20 @@ fn published_v2_proof_envelope_schema_requires_scope_and_unique_receipts() {
         &duplicate_receipts,
         "v2 proof envelope with duplicate receipt references",
     );
+
+    for invalid_receipt_ref in [
+        "receipt-agent-web-UPPERCASE",
+        "receipt-agent-web-valid/../../artifact",
+        "receipt-node-id",
+    ] {
+        let mut noncanonical_receipt = read_workspace_json(&envelope_path);
+        noncanonical_receipt["receipt_refs"] = json!([invalid_receipt_ref]);
+        assert_schema_rejects_value(
+            &envelope_schema,
+            &noncanonical_receipt,
+            "v2 proof envelope with a noncanonical receipt reference",
+        );
+    }
 }
 
 #[test]

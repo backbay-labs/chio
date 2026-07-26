@@ -4,7 +4,7 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
 
 use chio_agent_web_interop::{
@@ -84,7 +84,6 @@ impl SqliteAgentWebReplayStore {
             PRAGMA synchronous = FULL;
             "#,
         )?;
-        let current_wall_time = current_wall_time()?;
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let entries_exist = transaction.query_row(
             r#"
@@ -181,9 +180,11 @@ impl SqliteAgentWebReplayStore {
             [],
             |row| row.get::<_, Option<i64>>(0),
         )?;
-        let migration_high_water = latest_consumed_at.map_or(current_wall_time, |consumed_at| {
-            consumed_at.max(current_wall_time)
-        });
+        // An empty store has not observed verifier time yet. Seed it at zero so
+        // the first authenticated verifier observation establishes the durable
+        // high-water. Migrated rows still carry their historical consumed time,
+        // which prevents reopening an already observed rollback window.
+        let migration_high_water = latest_consumed_at.unwrap_or(0);
         transaction.execute(
             r#"
             INSERT INTO chio_agent_web_replay_clock (singleton, wall_clock_high_water)
@@ -501,22 +502,6 @@ fn count_as_usize(count: i64, description: &str) -> Result<usize, SqliteAgentWeb
     })
 }
 
-fn current_wall_time() -> Result<i64, SqliteAgentWebReplayStoreError> {
-    i64::try_from(
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|error| {
-                SqliteAgentWebReplayStoreError(format!(
-                    "system clock is before Unix epoch: {error}"
-                ))
-            })?
-            .as_secs(),
-    )
-    .map_err(|error| {
-        SqliteAgentWebReplayStoreError(format!("system time is out of range: {error}"))
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use std::{
@@ -574,6 +559,25 @@ mod tests {
             error,
             AgentWebReplayStoreError::Replayed("webhook-1".to_string())
         );
+    }
+
+    #[test]
+    fn first_verifier_observation_seeds_an_empty_store_clock() {
+        let tempdir = tempfile::tempdir().test_expect("tempdir creates");
+        let store = SqliteAgentWebReplayStore::open(tempdir.path().join("replay.sqlite"))
+            .test_expect("replay store opens");
+
+        store
+            .check_and_insert(1, &[replay_entry("first", 20)])
+            .test_expect("first verifier observation establishes high-water");
+        let error = store
+            .check_and_insert(0, &[])
+            .test_expect_err("later rollback below verifier observation rejects");
+        assert!(matches!(
+            error,
+            AgentWebReplayStoreError::Unavailable(message)
+                if message.contains("clock rollback detected")
+        ));
     }
 
     #[test]

@@ -601,6 +601,62 @@ fn make_governed_payment_failure_fixture(
     }
 }
 
+fn make_governed_dispatch_commit_failure_fixture(
+    request_id: &str,
+    replay_mode: ApprovalReplayFailureMode,
+) -> PaymentAmbiguityFixture {
+    let counters = PaymentAmbiguityCounters::default();
+    let invocations = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let mut kernel = make_kernel(make_monetary_config());
+    kernel.set_governed_approval_replay_store(Box::new(FailingApprovalReplayStore {
+        mode: replay_mode,
+    }));
+    kernel.register_tool_server(Box::new(CountingMonetaryServer {
+        id: "governed-dispatch-failure-server".to_string(),
+        invocations: std::sync::Arc::clone(&invocations),
+    }));
+    let agent = make_keypair();
+    let capability = make_capability(
+        &kernel,
+        &agent,
+        make_scope(vec![make_grant(
+            "governed-dispatch-failure-server",
+            "compute",
+        )]),
+        300,
+    );
+    let mut intent = make_governed_intent(
+        &format!("intent-{request_id}"),
+        "governed-dispatch-failure-server",
+        "compute",
+        "exercise governed replay-store failure after dispatch",
+        1,
+        "USD",
+    );
+    intent.max_amount = None;
+    let approval_token = make_governed_approval_token(
+        &kernel.config.keypair,
+        &agent.public_key(),
+        &intent,
+        request_id,
+    );
+    let mut request = make_request(
+        request_id,
+        &capability,
+        "compute",
+        "governed-dispatch-failure-server",
+    );
+    request.governed_intent = Some(intent);
+    request.approval_token = Some(approval_token);
+    PaymentAmbiguityFixture {
+        kernel,
+        capability,
+        request,
+        counters,
+        invocations,
+    }
+}
+
 async fn evaluate_nested_payment_ambiguity_request(
     kernel: &ChioKernel,
     session_id: &SessionId,
@@ -880,6 +936,79 @@ async fn nested_governed_commit_error_during_ambiguous_authorization_is_signed_u
             .load(std::sync::atomic::Ordering::SeqCst),
         0
     );
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn hosted_governed_commit_error_after_dispatch_records_terminal_receipt(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = make_governed_dispatch_commit_failure_fixture(
+        "hosted-governed-post-dispatch-commit-error",
+        ApprovalReplayFailureMode::CommitError,
+    );
+
+    let result = fixture.kernel.evaluate_tool_call(&fixture.request).await;
+    assert!(result.is_err(), "credential commit failure must surface");
+    assert_eq!(
+        fixture
+            .invocations
+            .load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "tool dispatch must complete before the injected commit failure"
+    );
+    let receipts = fixture.kernel.receipt_log();
+    assert_eq!(
+        receipts.len(),
+        1,
+        "post-dispatch credential failure must record one terminal receipt"
+    );
+    let receipt = receipts
+        .get(0)
+        .ok_or_else(|| std::io::Error::other("terminal receipt missing"))?;
+    assert!(receipt.is_cancelled());
+    assert!(receipt.verify_signature()?);
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn nested_governed_commit_error_after_dispatch_records_terminal_receipt(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = make_governed_dispatch_commit_failure_fixture(
+        "nested-governed-post-dispatch-commit-error",
+        ApprovalReplayFailureMode::CommitError,
+    );
+    let session_id = fixture.kernel.open_session(
+        fixture.request.agent_id.clone(),
+        vec![fixture.capability.clone()],
+    )?;
+    fixture.kernel.activate_session(&session_id)?;
+
+    let result = evaluate_nested_payment_ambiguity_request(
+        &fixture.kernel,
+        &session_id,
+        &fixture.request,
+        "nested-governed-post-dispatch-commit-error-parent",
+    )
+    .await;
+    assert!(result.is_err(), "credential commit failure must surface");
+    assert_eq!(
+        fixture
+            .invocations
+            .load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "nested tool dispatch must complete before the injected commit failure"
+    );
+    let receipts = fixture.kernel.receipt_log();
+    assert_eq!(
+        receipts.len(),
+        1,
+        "nested post-dispatch credential failure must record one terminal receipt"
+    );
+    let receipt = receipts
+        .get(0)
+        .ok_or_else(|| std::io::Error::other("terminal receipt missing"))?;
+    assert!(receipt.is_cancelled());
+    assert!(receipt.verify_signature()?);
     Ok(())
 }
 

@@ -1667,14 +1667,19 @@ impl ChioKernel {
         let dispatch_result = self
             .dispatch_resolved_server_within_budget(server, request, has_monetary)
             .await;
-        post_admission_drop_guard.disarm();
-        drop(post_admission_drop_guard);
+        // Keep the terminal-receipt guard armed until credentials commit. The
+        // tool may already have executed, so a failed replay-marker commit must
+        // produce a signed ambiguous receipt instead of returning silently.
         let (tool_output, reported_cost) = match dispatch_result {
             Ok(result) => {
                 let _credential_disposition = credential_reservation.commit()?;
+                post_admission_drop_guard.disarm();
+                drop(post_admission_drop_guard);
                 result
             }
             Err(error @ KernelError::UrlElicitationsRequired { .. }) => {
+                post_admission_drop_guard.disarm();
+                drop(post_admission_drop_guard);
                 let credential_cleanup = if payment_authorization.is_some() {
                     credential_reservation.commit().map(|_| ())
                 } else {
@@ -1740,6 +1745,8 @@ impl ChioKernel {
                 return Err(error);
             }
             Err(KernelError::RequestCancelled { reason, .. }) => {
+                post_admission_drop_guard.disarm();
+                drop(post_admission_drop_guard);
                 let metadata = self.ambiguous_dispatch_receipt_metadata(
                     &budget_mutation,
                     payment_authorization.as_ref(),
@@ -1768,6 +1775,8 @@ impl ChioKernel {
                 );
             }
             Err(KernelError::HotPathDeadlineExceeded { stage, budget_ms }) => {
+                post_admission_drop_guard.disarm();
+                drop(post_admission_drop_guard);
                 let reason = format!("hot-path deadline exceeded at {stage}: budget {budget_ms}ms");
                 let metadata = self.ambiguous_dispatch_receipt_metadata(
                     &budget_mutation,
@@ -1799,6 +1808,8 @@ impl ChioKernel {
                 );
             }
             Err(KernelError::RequestIncomplete(reason)) => {
+                post_admission_drop_guard.disarm();
+                drop(post_admission_drop_guard);
                 let metadata = self.ambiguous_dispatch_receipt_metadata(
                     &budget_mutation,
                     payment_authorization.as_ref(),
@@ -1828,6 +1839,8 @@ impl ChioKernel {
                 );
             }
             Err(e) => {
+                post_admission_drop_guard.disarm();
+                drop(post_admission_drop_guard);
                 let msg = e.to_string();
                 let deny_metadata = self.ambiguous_dispatch_receipt_metadata(
                     &budget_mutation,

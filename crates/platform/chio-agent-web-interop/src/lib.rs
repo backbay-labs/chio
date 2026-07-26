@@ -727,6 +727,7 @@ fn verify_agent_web_interop_with_trust_mode(
     let mut limitations = Vec::new();
     let mut envelope_ids = BTreeSet::new();
     let mut pending_replay_entries = Vec::new();
+    let mut replay_entry_subjects = BTreeMap::<(String, String), String>::new();
 
     for envelope_node in graph
         .nodes
@@ -783,7 +784,12 @@ fn verify_agent_web_interop_with_trust_mode(
         if let Some(replay_entry) =
             validate_external_subject(&envelope, &manifest_entry.manifest, external_bytes, trust)?
         {
-            pending_replay_entries.push(replay_entry);
+            retain_replay_entry_for_subject(
+                &mut replay_entry_subjects,
+                &mut pending_replay_entries,
+                &external_node.id,
+                replay_entry,
+            )?;
         }
         if matches!(
             envelope.source_protocol.as_str(),
@@ -869,6 +875,30 @@ fn verify_agent_web_interop_with_trust_mode(
     Ok(report)
 }
 
+fn retain_replay_entry_for_subject(
+    replay_entry_subjects: &mut BTreeMap<(String, String), String>,
+    pending_replay_entries: &mut Vec<AgentWebReplayEntry>,
+    external_subject_node_id: &str,
+    replay_entry: AgentWebReplayEntry,
+) -> Result<(), TransactionPassportError> {
+    let replay_key = (
+        replay_entry.replay_scope().as_str().to_string(),
+        replay_entry.webhook_id().to_string(),
+    );
+    match replay_entry_subjects.get(&replay_key) {
+        Some(subject_node_id) if subject_node_id == external_subject_node_id => Ok(()),
+        Some(_) => Err(claim_failed(format!(
+            "Standard Webhooks id {} is reused across external subjects",
+            replay_entry.webhook_id()
+        ))),
+        None => {
+            replay_entry_subjects.insert(replay_key, external_subject_node_id.to_string());
+            pending_replay_entries.push(replay_entry);
+            Ok(())
+        }
+    }
+}
+
 fn validate_receipt_refs(
     graph: &evidence::AgentWebEvidenceGraph,
     bundle: &AgentWebInteropBundle,
@@ -905,6 +935,66 @@ fn validate_receipt_refs(
         )?;
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod replay_entry_tests {
+    use super::*;
+
+    fn replay_entry(webhook_id: &str) -> AgentWebReplayEntry {
+        let Ok(scope) = AgentWebReplayScope::parse(format!("{:064x}", 1)) else {
+            panic!("test replay scope must parse");
+        };
+        let Ok(entry) = AgentWebReplayEntry::new(scope, webhook_id, 20) else {
+            panic!("test replay entry must validate");
+        };
+        entry
+    }
+
+    #[test]
+    fn one_external_subject_is_reserved_once_across_envelopes() {
+        let mut subjects = BTreeMap::new();
+        let mut entries = Vec::new();
+
+        assert!(retain_replay_entry_for_subject(
+            &mut subjects,
+            &mut entries,
+            "subject-one",
+            replay_entry("webhook-one"),
+        )
+        .is_ok());
+        assert!(retain_replay_entry_for_subject(
+            &mut subjects,
+            &mut entries,
+            "subject-one",
+            replay_entry("webhook-one"),
+        )
+        .is_ok());
+        assert_eq!(entries.len(), 1);
+    }
+
+    #[test]
+    fn one_replay_key_cannot_name_distinct_external_subjects() {
+        let mut subjects = BTreeMap::new();
+        let mut entries = Vec::new();
+
+        assert!(retain_replay_entry_for_subject(
+            &mut subjects,
+            &mut entries,
+            "subject-one",
+            replay_entry("webhook-one"),
+        )
+        .is_ok());
+        let error = retain_replay_entry_for_subject(
+            &mut subjects,
+            &mut entries,
+            "subject-two",
+            replay_entry("webhook-one"),
+        );
+        assert!(error.is_err_and(|error| error
+            .to_string()
+            .contains("reused across external subjects")));
+    }
 }
 
 fn validate_agent_web_receipt(

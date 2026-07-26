@@ -1,5 +1,7 @@
 use super::*;
 
+static AGENT_WEB_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 struct TestEnvGuard(Vec<(&'static str, Option<std::ffi::OsString>)>);
 
 impl TestEnvGuard {
@@ -31,53 +33,7 @@ fn proof_test_ok<T, E: std::fmt::Display>(result: Result<T, E>, context: &str) -
     }
 }
 
-#[test]
-fn agent_web_receipt_scope_uses_schema_not_fixture_filename() {
-    assert!(is_agent_web_evidence_graph_node_parts(
-        "receipt",
-        "receipts/webhook-allow.json",
-        Some("chio.receipt.v1"),
-    ));
-}
-
-#[test]
-fn enterprise_artifact_loader_includes_retained_jurisdiction_receipts() {
-    assert!(is_enterprise_evidence_graph_role(
-        "adjudication-jurisdiction-receipt"
-    ));
-    assert!(is_enterprise_artifact_role(
-        "adjudication-jurisdiction-receipt"
-    ));
-}
-
-#[test]
-fn trust_market_artifact_loader_includes_retained_receipts() {
-    assert!(is_trust_market_evidence_graph_role("receipt"));
-    assert!(is_trust_market_artifact_role("receipt"));
-}
-
-#[test]
-fn runtime_artifact_loader_includes_policy_activation_receipt() {
-    assert!(is_runtime_artifact_role("policy-activation-receipt"));
-}
-
-#[test]
-fn later_root_claim_failure_does_not_reserve_agent_web_replay_ids() {
-    static ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-    let _env_lock = match ENV_LOCK.lock() {
-        Ok(guard) => guard,
-        Err(poisoned) => poisoned.into_inner(),
-    };
-    let tempdir = proof_test_ok(tempfile::tempdir(), "create tempdir");
-    let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
-        .join("fixtures/proof-room/agent-web/valid-webhook-cloudevents");
-    let bundle = tempdir.path().join("bundle");
-    proof_test_ok(
-        fixture::copy_dir_contents(&source, &bundle),
-        "copy Agent Web fixture",
-    );
-    let replay_store_path = tempdir.path().join("agent-web-replay.sqlite");
+fn agent_web_replay_test_env(replay_store_path: &std::path::Path) -> TestEnvGuard {
     let host_now = proof_test_ok(
         std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH),
         "read host clock",
@@ -129,8 +85,63 @@ fn later_root_claim_failure_does_not_reserve_agent_web_replay_ids() {
             "CHIO_AGENT_WEB_REPLAY_STORE_PATH",
             replay_store_path.as_os_str(),
         ),
+        (
+            collect::PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX_ENV,
+            std::ffi::OsStr::new(
+                "1111111111111111111111111111111111111111111111111111111111111111",
+            ),
+        ),
     ];
-    let _env = TestEnvGuard::set(&env_values);
+    TestEnvGuard::set(&env_values)
+}
+
+#[test]
+fn agent_web_receipt_scope_uses_schema_not_fixture_filename() {
+    assert!(is_agent_web_evidence_graph_node_parts(
+        "receipt",
+        "receipts/webhook-allow.json",
+        Some("chio.receipt.v1"),
+    ));
+}
+
+#[test]
+fn enterprise_artifact_loader_includes_retained_jurisdiction_receipts() {
+    assert!(is_enterprise_evidence_graph_role(
+        "adjudication-jurisdiction-receipt"
+    ));
+    assert!(is_enterprise_artifact_role(
+        "adjudication-jurisdiction-receipt"
+    ));
+}
+
+#[test]
+fn trust_market_artifact_loader_includes_retained_receipts() {
+    assert!(is_trust_market_evidence_graph_role("receipt"));
+    assert!(is_trust_market_artifact_role("receipt"));
+}
+
+#[test]
+fn runtime_artifact_loader_includes_policy_activation_receipt() {
+    assert!(is_runtime_artifact_role("policy-activation-receipt"));
+}
+
+#[test]
+fn later_root_claim_failure_does_not_reserve_agent_web_replay_ids() {
+    let _env_lock = match AGENT_WEB_ENV_LOCK.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let tempdir = proof_test_ok(tempfile::tempdir(), "create tempdir");
+    let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../..")
+        .join("fixtures/proof-room/agent-web/valid-webhook-cloudevents");
+    let bundle = tempdir.path().join("bundle");
+    proof_test_ok(
+        fixture::copy_dir_contents(&source, &bundle),
+        "copy Agent Web fixture",
+    );
+    let replay_store_path = tempdir.path().join("agent-web-replay.sqlite");
+    let _env = agent_web_replay_test_env(&replay_store_path);
     let passport_path = bundle.join("transaction-passport.json");
     let expected_report = proof_test_ok(
         verify_transaction_passport_file(&passport_path),
@@ -167,6 +178,60 @@ fn later_root_claim_failure_does_not_reserve_agent_web_replay_ids() {
         ),
         "retry after later failure must still reserve replay ids",
     );
+}
+
+#[test]
+fn proof_collect_consumes_replays_only_after_sealing_succeeds() {
+    let _env_lock = match AGENT_WEB_ENV_LOCK.lock() {
+        Ok(guard) => guard,
+        Err(poisoned) => poisoned.into_inner(),
+    };
+    let tempdir = proof_test_ok(tempfile::tempdir(), "create tempdir");
+    let source = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../..")
+        .join("fixtures/proof-room/agent-web/valid-webhook-cloudevents");
+    let bundle = tempdir.path().join("bundle");
+    proof_test_ok(
+        fixture::copy_dir_contents(&source, &bundle),
+        "copy Agent Web fixture",
+    );
+    let replay_store_path = tempdir.path().join("agent-web-replay.sqlite");
+    let _env = agent_web_replay_test_env(&replay_store_path);
+
+    let verifier_path = bundle.join("verifier");
+    proof_test_ok(
+        std::fs::remove_dir_all(&verifier_path),
+        "remove fixture verifier directory",
+    );
+    proof_test_ok(
+        std::fs::write(&verifier_path, b"not a directory"),
+        "block verifier report directory",
+    );
+    let sealing_error = collect::seal_collected_proof_bundle(
+        ProofCollectKind::AgentWebEnvelope,
+        &bundle,
+    );
+    assert!(
+        sealing_error.is_err(),
+        "unwritable verifier output must fail sealing"
+    );
+
+    proof_test_ok(
+        std::fs::remove_file(&verifier_path),
+        "remove verifier path blocker",
+    );
+    proof_test_ok(
+        collect::seal_collected_proof_bundle(ProofCollectKind::AgentWebEnvelope, &bundle),
+        "retry after sealing failure",
+    );
+
+    let replay_error = collect::seal_collected_proof_bundle(
+        ProofCollectKind::AgentWebEnvelope,
+        &bundle,
+    );
+    assert!(replay_error.is_err_and(|error| error
+        .to_string()
+        .contains("replayed Standard Webhooks id")));
 }
 
 #[test]
