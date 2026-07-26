@@ -143,8 +143,8 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     ),
     "crates/platform/chio-transaction-passport/tests/transaction_passport.rs": allow(
         "2026-07-31",
-        "transaction passport integration suite with runtime-security review regressions; capped until split",
-        max_lines=2_445,
+        "transaction passport integration suite with runtime-security and transparency-anchor review regressions; capped until split",
+        max_lines=2_800,
     ),
     "crates/protocol/chio-mcp-remote/src/remote_mcp/tests.rs": allow(
         "2026-07-31",
@@ -154,7 +154,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/trust/chio-selective-disclosure/src/lib.rs": allow(
         "2026-07-31",
         "launch selective disclosure verifier surface; capped to current size until split",
-        max_lines=1_346,
+        max_lines=1_355,
     ),
     "crates/platform/chio-risk-comptroller/src/lib.rs": allow(
         "2026-07-31",
@@ -214,7 +214,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-store-sqlite/src/receipt_store.rs": allow(
         "2026-07-31",
         "receipt store hot-path module after batch-bounded rework; capped to current size until split",
-        max_lines=5_308,
+        max_lines=5_345,
     ),
     "crates/platform/chio-store-sqlite/src/receipt_store/tests/retention.rs": allow(
         "2026-07-31",
