@@ -739,14 +739,25 @@ import Chio.Treaty.BridgeEquivalence
 
 def lean_archive_bytes() -> bytes:
     project = REPO / "formal/lean4/Chio"
-    files = [
+    project_files = [
         project / "lean-toolchain",
         project / "lakefile.lean",
         project / "lake-manifest.json",
         project / "Chio.lean",
         *sorted((project / "Chio").rglob("*.lean")),
     ]
-    for path in files:
+    vendor = REPO / "formal/lean4/vendor/aeneas"
+    vendor_files = [
+        vendor / "lean-toolchain",
+        vendor / "lakefile.lean",
+        vendor / "LICENSE.md",
+        vendor / "VENDOR.toml",
+        vendor / "Aeneas.lean",
+        vendor / "AeneasMeta.lean",
+        *sorted((vendor / "Aeneas").rglob("*.lean")),
+        *sorted((vendor / "AeneasMeta").rglob("*.lean")),
+    ]
+    for path in [*project_files, *vendor_files]:
         if not path.is_file():
             fail(f"Lean archive input missing: {path.relative_to(REPO)}")
 
@@ -773,7 +784,14 @@ def lean_archive_bytes() -> bytes:
                         "chio-lean/" + path.relative_to(project).as_posix(),
                         path.read_bytes(),
                     )
-                    for path in files
+                    for path in project_files
+                ],
+                *[
+                    (
+                        "vendor/aeneas/" + path.relative_to(vendor).as_posix(),
+                        path.read_bytes(),
+                    )
+                    for path in vendor_files
                 ],
             ]
             for name, data in sorted(entries):
