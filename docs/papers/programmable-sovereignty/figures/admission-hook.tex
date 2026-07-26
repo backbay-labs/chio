@@ -1,30 +1,24 @@
 \begin{tikzpicture}[
-  node distance=0.85cm and 1.0cm,
-  box/.style={draw, rounded corners=2pt, align=center, inner sep=4pt, font=\footnotesize},
-  decision/.style={draw, diamond, aspect=1.8, align=center, inner sep=1pt, font=\scriptsize},
-  allowterm/.style={draw, rounded corners=2pt, align=center, inner sep=4pt, font=\footnotesize, fill=black!5},
-  denyterm/.style={draw, double, rounded corners=2pt, align=center, inner sep=4pt, font=\footnotesize},
-  arr/.style={-Latex, line width=.4pt}
+  node distance=.72cm and .85cm,
+  box/.style={draw, rounded corners=2pt, align=center, inner sep=5pt, font=\footnotesize, text width=3.0cm},
+  decision/.style={draw, diamond, aspect=2.3, align=center, inner sep=1.5pt, font=\scriptsize, text width=2.1cm},
+  allowterm/.style={draw, rounded corners=2pt, align=center, inner sep=5pt, font=\footnotesize, fill=black!7, text width=2.5cm},
+  denyterm/.style={draw, double, rounded corners=2pt, align=center, inner sep=5pt, font=\footnotesize, text width=2.5cm},
+  arr/.style={-Latex, line width=.5pt}
 ]
-\node[box] (req) {Tool call\\request};
-\node[decision, right=of req] (parse) {Chio\\context\\parseable?};
-\node[denyterm, above right=of parse] (denyparse) {Deny:\\malformed\\context};
-\node[decision, below right=of parse] (fed) {Chio\\context\\present?};
-\node[allowterm, right=of fed, yshift=0.9cm] (plain) {Non-Chio\\allow path};
-\node[decision, below right=of fed] (treaty) {Treaty ref\\valid?};
-\node[denyterm, below=of treaty] (denytreaty) {Deny:\\missing or\\invalid treaty};
-\node[box, right=of treaty] (store) {Verifier-owned\\artifact store};
-\node[decision, right=of store] (eval) {Admission\\accepted?};
-\node[allowterm, above right=of eval] (allow) {Allow + signed\\receipt metadata};
-\node[denyterm, below right=of eval] (deny) {Deny before\\dispatch};
-\draw[arr] (req) -- (parse);
-\draw[arr] (parse) -- node[above, font=\scriptsize]{no} (denyparse);
-\draw[arr] (parse) -- node[left, font=\scriptsize]{yes} (fed);
-\draw[arr] (fed) -- node[above, font=\scriptsize]{no} (plain);
-\draw[arr] (fed) -- node[left, font=\scriptsize]{yes} (treaty);
-\draw[arr] (treaty) -- node[above, font=\scriptsize]{yes} (store);
-\draw[arr] (treaty) -- node[left, font=\scriptsize]{no} (denytreaty);
-\draw[arr] (store) -- (eval);
-\draw[arr] (eval) -- node[above, font=\scriptsize]{yes} (allow);
-\draw[arr] (eval) -- node[right, font=\scriptsize]{no} (deny);
+\node[box] (request) {Federated tool request\\after core capability checks};
+\node[box, below=of request] (resolve) {Resolve treaty, continuation, lineage, receipts, and keys from receiver stores};
+\node[decision, below=of resolve] (bound) {Fresh and mutually bound?};
+\node[denyterm, right=of bound, xshift=.65cm] (denybind) {Deny with named binding or freshness code};
+\node[box, below=of bound] (verify) {Verify canonical DSSE, two configured keys, policy, lease, and governance};
+\node[decision, below=of verify] (admit) {Receiver policy accepts?};
+\node[denyterm, right=of admit, xshift=.65cm] (denypolicy) {Deny before dispatch};
+\node[allowterm, below=of admit] (dispatch) {Dispatch tool and bind receipt evidence};
+\draw[arr] (request) -- (resolve);
+\draw[arr] (resolve) -- (bound);
+\draw[arr] (bound) -- node[above, font=\scriptsize]{no} (denybind);
+\draw[arr] (bound) -- node[left, font=\scriptsize]{yes} (verify);
+\draw[arr] (verify) -- (admit);
+\draw[arr] (admit) -- node[above, font=\scriptsize]{no} (denypolicy);
+\draw[arr] (admit) -- node[left, font=\scriptsize]{yes} (dispatch);
 \end{tikzpicture}

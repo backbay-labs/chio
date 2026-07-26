@@ -1,62 +1,74 @@
-# Supplementary Materials
+# Supplementary Artifact
 
-Paper: "Programmable Sovereignty: Lean-Attestable Constitutions Over
-Capability-Bounded Federated Receipts"
-Venue: USENIX Security 2027 (Cycle 1)
+Paper: "Proof-Carrying Bilateral Admission for Cross-Organization Agent Tool
+Calls"
 
-This package makes the Lean 4 substrate behind the paper's formal claims
-auditable by artifact reviewers. It contains a self-contained tarball of
-the Lean sources, a TOML manifest and JSON inventory that name each
-parent-paper theorem and its axiom dependencies, and these instructions.
+Target: USENIX Security 2027, Cycle 1
 
-## Files
+Snapshot date: 2026-07-25
 
-- `lean-source.tar.gz` Lean 4 project that compiles the four parent-paper
-  theorems. Includes `lean-toolchain`, `lakefile.lean`, `lake-manifest.json`,
-  the `Chio.lean` root module, the full `Chio/` subtree (Core, Capability,
-  Proofs, Spec, Treaty), and a build README.
-- `proof-manifest.toml` Submission-time snapshot of the four theorems,
-  their Lean modules and fully qualified declarations, the paper section
-  in which each is stated, and the axiom set reported by `#print axioms`.
-- `theorem-inventory.json` Same content, JSON-shaped for tool consumption.
+This package records the exact boundary of the paper's formal, implementation,
+and experimental claims. The artifact manifest pins the source snapshot,
+production symbols, behavioral tests, theorem declarations and axiom lists,
+positive and negative corpora, benchmark scripts and outputs, and the
+submission page limit. It also records every surface that the paper withholds
+or treats as an assumption.
 
-## Parent-paper theorems
+## Contents
 
-All four are proved in `Chio/Treaty/Intersection.lean`:
+- `artifact-manifest.json` is the content-addressed index for the complete
+  paper artifact. It names symbols rather than mutable line numbers.
+- `source-commit.txt` records the repository commit from which the submission
+  artifact was assembled. Verification uses the manifest's per-path hashes
+  and aggregate content digest, so it remains self-contained after a squash
+  merge or in a source archive that does not carry the original commit object.
+- `proof-manifest.toml` lists the six bounded theorem declarations used by the
+  paper, their modules, model scopes, claim classes, and Lean axiom reports.
+- `theorem-inventory.json` supplies the same theorem inventory for automated
+  review.
+- `lean-source.tar.gz` is a deterministic archive of the current Lean project.
+  It contains no build cache, symbolic links, extended attributes, or
+  machine-local files.
 
-1. `treaty_admission_iff_predicate_intersection` (Section 4, treaty
-   intersection)
-2. `treaty_admission_stable_under_ladder_floor` (Section 4, ladder-floor
-   stability)
-3. `amendment_admissible_iff_backward_refinement` (Section 4, amendment
-   refinement)
-4. `amendment_without_refinement_rejected` (Section 4, amendment
-   refinement)
+## Fast Verification
 
-## Verifying the build
+From the repository root:
 
-With `elan` installed, the tarball builds with two commands:
-
-```
-tar xzf lean-source.tar.gz
-cd chio-lean && lake build
+```sh
+bash scripts/check-programmable-sovereignty-artifact.sh
 ```
 
-A cold cache takes roughly 3-5 minutes. The build succeeds without
-warnings, without `sorry`, and without any project-local `axiom`.
+This command regenerates the artifact in check mode, verifies every file,
+symbol, theorem, script, result, and hash, extracts the Lean archive into a
+private temporary directory, and runs `lake build` there. If the recorded
+source commit is available locally, the checker also compares the current
+snapshot with that commit. The content-addressed checks do not require the
+commit object to remain reachable.
 
-## Verifying the axioms
+## Full Reproduction
 
-The axiom set reported by Lean's `#print axioms` for each theorem is
-recorded in `proof-manifest.toml` (and `theorem-inventory.json`). To
-reproduce, append the four `#print axioms <name>` lines documented in
-the tarball README to `Chio/Treaty/Intersection.lean` and run
-`lake env lean Chio/Treaty/Intersection.lean`.
+From the repository root:
 
-Only standard Lean kernel axioms appear:
-- `treaty_admission_iff_predicate_intersection` depends on `propext`.
-- `treaty_admission_stable_under_ladder_floor` depends on `propext`.
-- `amendment_admissible_iff_backward_refinement` depends on no axioms.
-- `amendment_without_refinement_rejected` depends on no axioms.
+```sh
+bash scripts/check-programmable-sovereignty-artifact.sh --full
+```
 
-No project-specific axioms are introduced.
+The full command additionally rebuilds the proof root, differential tests,
+runtime and federation tests, live buyer closure, bilateral and replay
+experiments, and the submission PDF. Fresh measurement outputs are written to
+a private temporary directory so reproduction does not silently replace the
+retained paper results.
+
+The evaluated benchmark is machine-local. A new run should be expected to
+produce different latency samples while preserving schemas, case counts,
+non-dispatch assertions, and proof-package structure.
+
+## Formal Boundary
+
+The Lean archive models a strict predicate syntax over `ReceiptView` and
+explicit finite domains. It proves structural treaty intersection, ladder
+reduction, finite-domain no-widening, and pointwise agreement with the legacy
+closure representation. It does not model cryptography, canonical JSON,
+clocks, storage, organizational key control, or the production Rust runtime.
+The independent Rust differential suite is alignment evidence, not extraction
+or an implementation-refinement proof.

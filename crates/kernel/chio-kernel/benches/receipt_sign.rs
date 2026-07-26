@@ -1,4 +1,4 @@
-//! Baseline bench: canonical receipt signing.
+//! Canonical signing of the receipt shape emitted by the buyer closure.
 
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 

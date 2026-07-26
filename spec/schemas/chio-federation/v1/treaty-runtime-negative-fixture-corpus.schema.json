@@ -4,7 +4,7 @@
   "title": "Chio Federation Treaty Runtime Negative Fixture Corpus",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema", "cases"],
+  "required": ["schema", "cases", "assumptions"],
   "properties": {
     "schema": { "const": "chio.federation.treaty-runtime-negative-fixture-corpus.v1" },
     "cases": {
@@ -12,13 +12,52 @@
       "items": {
         "type": "object",
         "additionalProperties": false,
-        "required": ["caseId", "expectedCode"],
+        "required": [
+          "threatId",
+          "caseId",
+          "expectedCode",
+          "phase",
+          "package",
+          "targetKind",
+          "targetName",
+          "testFilter",
+          "dispatchExpected"
+        ],
         "properties": {
+          "threatId": {
+            "type": "string",
+            "pattern": "^PS-TH-[0-9]{2}$"
+          },
           "caseId": { "type": "string", "minLength": 1 },
           "expectedCode": {
             "type": "string",
             "minLength": 1
-          }
+          },
+          "phase": {
+            "enum": ["pre_dispatch", "post_dispatch_review"]
+          },
+          "package": { "type": "string", "minLength": 1 },
+          "targetKind": { "enum": ["integration", "lib"] },
+          "targetName": { "type": "string", "minLength": 1 },
+          "testFilter": { "type": "string", "minLength": 1 },
+          "dispatchExpected": { "const": false }
+        }
+      }
+    },
+    "assumptions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["assumptionId", "capability", "status", "rationale"],
+        "properties": {
+          "assumptionId": {
+            "type": "string",
+            "pattern": "^PS-A-[0-9]{2}$"
+          },
+          "capability": { "type": "string", "minLength": 1 },
+          "status": { "const": "not_cryptographically_testable" },
+          "rationale": { "type": "string", "minLength": 1 }
         }
       }
     }

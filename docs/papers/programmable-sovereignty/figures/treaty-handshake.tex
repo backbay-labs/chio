@@ -1,20 +1,22 @@
 \begin{tikzpicture}[
-  node distance=0.85cm and 1.05cm,
-  box/.style={draw, rounded corners=2pt, align=center, inner sep=4pt, font=\footnotesize},
-  arr/.style={-Latex, line width=.4pt}
+  node distance=.8cm and 1.15cm,
+  box/.style={draw, rounded corners=2pt, align=center, inner sep=6pt, font=\footnotesize, text width=3.0cm},
+  sig/.style={draw, rounded corners=2pt, align=center, inner sep=6pt, font=\footnotesize, fill=black!6, text width=2.7cm},
+  store/.style={draw, dashed, rounded corners=2pt, align=center, inner sep=6pt, font=\footnotesize, text width=3.5cm},
+  arr/.style={-Latex, line width=.5pt}
 ]
-\node[box] (a) {Kernel A\\local policy};
-\node[box, right=of a] (scope) {Treaty scope\\and ladder hash};
-\node[box, right=of scope] (b) {Kernel B\\local policy};
-\node[box, below=of scope] (pred) {Strict bilateral\\predicate};
-\node[box, below left=of pred] (siga) {A signs\\DSSE PAE};
-\node[box, below right=of pred] (sigb) {B signs\\DSSE PAE};
-\node[box, below=of pred, yshift=-1.0cm] (ver) {Buyer verifier checks\\two keys, subject, lease, governance, treaty refs};
-\draw[arr] (a) -- (scope);
-\draw[arr] (b) -- (scope);
-\draw[arr] (scope) -- (pred);
-\draw[arr] (pred) -- (siga);
-\draw[arr] (pred) -- (sigb);
-\draw[arr] (siga) -- (ver);
-\draw[arr] (sigb) -- (ver);
+\node[box] (left) {Participant A\\policy and key};
+\node[box, right=of left] (predicate) {Canonical bilateral predicate\\request, outcome, treaty, continuation, lineage, receipts};
+\node[box, right=of predicate] (right) {Participant B\\policy and key};
+\node[sig, below left=of predicate] (siga) {Signature A\\over DSSE PAE};
+\node[sig, below right=of predicate] (sigb) {Signature B\\over identical PAE};
+\node[store, below=1.15cm of predicate] (receiver) {Receiver-owned resolution and verification\\expected keys, scope, manifests, leases, governance, receipts};
+\node[box, below=of receiver] (verdict) {Pre-dispatch receiver verdict};
+\draw[arr] (left) -- (predicate);
+\draw[arr] (right) -- (predicate);
+\draw[arr] (predicate) -- (siga);
+\draw[arr] (predicate) -- (sigb);
+\draw[arr] (siga) -- (receiver);
+\draw[arr] (sigb) -- (receiver);
+\draw[arr] (receiver) -- (verdict);
 \end{tikzpicture}

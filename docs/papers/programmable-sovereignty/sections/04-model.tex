@@ -1,92 +1,159 @@
-\section{Programmable Sovereignty: Formal Model}
+\section{Bounded Formal Model}
 \label{sec:model}
 
-The model abstracts away networking, cryptography, and storage; those lower layers are audited assumptions in the proof manifest. What remains is the institutional core, expressed as decidable predicates.
+The formal development isolates the admission logic from the mechanisms that
+construct its inputs. It does not model cryptography, canonical serialization,
+clock correctness, network transport, durable storage, or organizational key
+custody. Those mechanisms must establish the fields of a bounded receipt view
+before any theorem in this section applies.
 
-\paragraph{Trace semantics.}
-Let $R$ be the set of receipt identifiers and $E$ the set of evidence artifacts addressable by digest. A local execution trace is a sequence
+\subsection{Receipts, Predicates, and Polities}
+
+A receipt view is the tuple
 \[
-  \sigma = \langle (r_0,E_0,d_0),\ldots,(r_n,E_n,d_n)\rangle
+\begin{aligned}
+r = (&\mathit{id},\mathit{hash},\mathit{action},
+      \mathit{participants},\\
+     &\mathit{modeRank},\mathit{liveContinuations},
+      \mathit{decision},\\
+     &\mathit{failureCode},\mathit{evidenceDigests}).
+\end{aligned}
 \]
-where each $r_i\in R$ is a receipt, $E_i\subseteq E$ is the evidence set presented at admission, and $d_i\in\{\mathsf{allow},\mathsf{deny}\}$ is the receiving kernel's decision. A polity $P$ accepts $\sigma$ iff every allowed element satisfies $P$'s admission predicate and every denied element carries a failure code permitted by the constitution. Denial is part of the constitutional record: a polity that suppresses denials can no longer account for which attempted acts were rejected at its boundary.
+The fields are finite data: strings, natural numbers, lists, and an
+allow-or-deny decision. In particular, denial is represented rather than
+inferred from the absence of an allow. A predicate can therefore require a
+specific denial code or an evidence digest just as it can require an action
+class or participant.
 
-Access control asks whether a call may proceed; constitutional admission asks whether the polity accounts for it. The separation is what makes cross-kernel events first-class: a rejected continuation, a stale treaty, a missing co-signature, or a privacy-proof mismatch is a constitutional event even when no tool ran.
-
-\paragraph{Polities.}
-A polity is a triple $(T,C,K)$ where $T$ is a \emph{PolityScope} (a closed predicate over receipt identifiers), $C$ is a Merkle-rooted citizenship roster, and $K$ is a constitution given as a finite list of predicates, each backed in production by a Rust check symbol and a theorem-inventory entry. In the Lean paper model:
-\begin{equation*}
-\begin{aligned}
-\mathsf{polityAdmits}(P,r) = {} & P.\mathsf{scope}(r) \\
-  {} \wedge {} & \mathsf{allPredicates}(P.\mathsf{constitution}, r).
-\end{aligned}
-\end{equation*}
-A polity's authority is therefore strictly local: it can accept or reject receipts at its own log boundary. Territory is the signed hash-pinned tuple over capability namespaces, receipt schemas, ladder manifests, and denied predicates, not land.
-
-The citizenship roster $C$ is similarly weak. It gives a finite set of keys, kernels, or authorities standing inside a receipt-admission scope; it does not grant personhood or political rights in the human sense. A constitution may bind amendment proposals to citizen quorum, require citizen attestation for treasury exits, or admit a foreign kernel into treaty standing without citizenship. Each rule is a predicate over receipt admission and governance artifacts.
-
-The polity's authority extends to refusing foreign evidence until the treaty predicate is satisfied; that refusal is the programmable surface. It does not extend to forcing another polity to accept a receipt, compelling a public witness to publish a root, or obliging a state court to recognize a judgment.
-
-\paragraph{Admission.}
-The admission relation $(s,r)\models(T,K)$ holds iff $r$ is in scope $T$ and every constitutional predicate in $K$ accepts on $(s,r)$. The runtime counterpart is pre-dispatch: \codepath{crates/kernel/chio-runtime-core/src/admission_hook.rs:88} (\codepath{fn evaluate}) routes admission, denying malformed Chio admission context on the early-return branch and federated origin without treaty context at \codepath{:168}; on a parseable context it calls the runtime admission evaluator before returning allow or deny. The relation is decidable: predicates are finite, the schema uses concrete discriminants, and validation returns a Boolean or an error mapped to deny.
-
-Fail-closed behavior is a semantic requirement, not an engineering preference. If parsing an admission artifact can fail open, the parser becomes an unrecorded legislature that admits receipts outside the predicate set. The model therefore treats every validation error as a denial with evidence: the denial receipt must be available to auditors so that failure modes do not disappear from the polity's history.
-
-\paragraph{Attenuation.}
-Capability delegation is a refinement relation. If $cap'$ descends from $cap$, then every invocation allowed under $cap'$ is allowed under $cap$ with equal or stricter budget and lifetime. The proof inventory names this surface with \thm{proof.delegation_step_allow_requires_attenuation}, \thm{proof.delegation_step_allow_requires_expiry_monotonicity}, and \thm{theorem.budget.sibling_sum_soundness}. Sibling-sum soundness is the economic counterpart: two child delegations cannot jointly spend more than the parent share.
-
-Attenuation gives the model an audit property. A polity member can delegate narrower authority without losing the ability to audit the child path against the parent grant. If the child path exceeds the parent's scope, the proof obligation fails at the level of admitted receipt semantics; if the child path stays within scope but a budget allocator permits sibling overspend, treasury predicates can be bypassed. Budget soundness therefore belongs in the constitutional model, not in an accounting appendix.
-
-\paragraph{Treaties.}
-A bilateral treaty $\tau$ between polities $P_1$ and $P_2$ is a pair $(T_\tau,K_\tau)$ together with references to both parties' constitutions; Figure~\ref{fig:treaty} sketches the bilateral handshake. The Lean theorem \thm{treaty_admission_iff_predicate_intersection} states:
-\begin{equation*}
-\begin{aligned}
-\forall \tau,\, r.\ & \mathsf{treatyAdmits}(\tau,r) \\
-  & \Leftrightarrow \mathsf{treatyPredInter}(\tau,r).
-\end{aligned}
-\end{equation*}
-Here $\mathsf{treatyPredInter}$ is the Boolean conjunction of treaty scope, treaty constitution, and both polities' \emph{polityAdmits} relations restricted to their scopes. The proof in \codepath{formal/lean4/Chio/Chio/Treaty/Intersection.lean:120} cases on the treaty record, then on each polity, unfolds the four definitions \emph{treatyAdmits}, \emph{treatyPredicateIntersection}, \emph{polityAdmits}, and \emph{constitutionAllows}, and discharges the resulting Boolean equality by associativity. The corollary is that admission cannot be widened by re-arranging conjuncts: any sound implementation that returns true on $\mathsf{treatyAdmits}$ must also return true on $\mathsf{treatyPredInter}$. This is the load-bearing theorem for cross-kernel admission, since it pins both polities' independent decisions to the same Boolean conjunct set. The production counterpart at \codepath{crates/kernel/chio-runtime-core/src/treaty.rs:261} validates treaty scope, freshness, manifest coverage, declared participant hashes, action-class coverage, mode joins, destructive floors, and co-sign ranks before any required evidence is accepted.
-
-Treaty admission is not federation by name. Two polities can list each other as participants and still deny every cross-boundary action if their predicates fail to intersect. A treaty can admit a narrow action class without merging citizenship rosters, treasuries, policy files, or receipt stores. The shape is closer to a typed interface than to a social graph.
-
-\paragraph{Ladder stability.}
-The theorem \thm{treaty_admission_stable_under_ladder_floor} states:
-\begin{equation*}
-\begin{aligned}
-\forall \tau,\, m,\, r.\ & m.\mathsf{atLeast}(\tau.\mathsf{modeFloor}) \Rightarrow {} \\
-  & \mathsf{treatyAdmitsUnderMode}(\tau,m,r) \\
-  & \quad = \mathsf{treatyAdmits}(\tau,r).
-\end{aligned}
-\end{equation*}
-The proof unfolds \emph{treatyAdmitsUnderMode}, rewrites the leading conjunct using the floor hypothesis, and applies Boolean reduction. The consequence is that ladder checks compose with the treaty predicate without changing its decision: a presented mode at or above the floor is invisible to admission, and a mode below the floor short-circuits to deny without even consulting the predicate. This is also load-bearing for cross-kernel admission, because it guarantees the ladder-floor and the treaty predicate cannot disagree on admissibility once the floor is satisfied. The production counterpart appears in the mode-rank check at \codepath{crates/kernel/chio-runtime-core/src/treaty.rs:729} (\codepath{ladder_mode_rank}) and the co-sign-rank check at \codepath{:760} (\codepath{co_sign_requirement_rank}), with the floor enforcement consolidated in \codepath{validate_ladder_intersection} at \codepath{:410}. The theorem is bounded to the current five-mode ladder; a sixth mode forces coordinated changes to schema, validators, and proof model (\S\ref{sec:limits}).
-
-\paragraph{Threat model.}
-The adversary can control the agent process, choose malformed tool arguments, replay old treaty references, omit evidence, present receipts from a different treaty, reorder JSON fields, use stale ladder manifests, reuse signer keys, or attempt to smuggle trust roots through request metadata. The adversary may also operate an honest-looking but non-admitted foreign polity, or attempt to inject pins, revocation entries, or peer keys into a verifier's trust store; provisioning of those stores is itself a treaty-admitted, governance-receipted action and is outside the adversary's reach by assumption. The adversary cannot break Ed25519, BBS, SHA-256 collision resistance, or the correctness of canonical JSON within the assumptions in Table~\ref{tab:assumptions}. The adversary cannot force the verifier to use sender-owned trust stores because the runtime checks verifier-owned store artifacts. Two kernels operated by a single actor satisfy two-key DSSE but not party-independence, which the present construction treats as an operational-discipline assumption (\S\ref{sec:limits}).
-
-The model discharges three obligations: single-amendment backward refinement (as a type-level invariant on \emph{enactAmendment}), bilateral treaty admission as predicate intersection, and ladder-floor stability of treaty admission. Three downstream obligations follow that the model does not discharge and that the substrate makes load-bearing in a federated deployment. Trajectory invariants for amendment: a constitutional-ratchet attack composes individually valid refinements into an adversary-only predicate, and ruling it out requires an essential-predicate invariant in addition to per-step refinement. Implementation refinement: a constant-time admission ladder, finite-arithmetic budget proofs, and wire-uniform error responses are protocol-level requirements whose discharge belongs to the Rust-Lean refinement program rather than to the bounded model (Section~\ref{sec:limits}). Treaty composition across more than two participants: associativity and acyclicity of composed treaties become load-bearing when the graph admits cycles, and an external anchor witness is the substrate primitive that closes them.
-
-The model does not solve byzantine consensus across all polities. It solves the problem of a receiver deciding whether to admit a receipt under its own constitution and treaty predicates. If two polities fork their histories, Chio exposes the fork and makes future admission conditional on reconciliation evidence; it does not impose a single world history without an additional consensus layer.
-
-\paragraph{Amendments.}
-An amendment from $K$ to $K'$ is admissible only with a backward-refinement witness:
+The syntax is
 \[
-\forall r.\;\mathsf{allPredicates}(K',r) \Rightarrow \mathsf{allPredicates}(K,r).
+ p ::= \top \mid \bot \mid \mathsf{atom}(a)
+       \mid p \land p \mid p \lor p \mid \neg p.
 \]
-This is the ``votes on theorems, not bytes'' rule (Figure~\ref{fig:amendment}). A vote may approve a proposed constitution, but enactment is rejected when the delta proof fails. The invariant is type-level rather than runtime-level: \emph{enactAmendment} takes a \emph{ConstitutionalDelta}, which by construction carries \emph{proofTerm}~:~\emph{BackwardRefines}~\emph{new}~\emph{old}. A verdict claiming enactment without the refinement witness cannot be constructed by the well-typed runtime path, because \emph{enactAmendment} does not type-check absent the delta. Two named theorems make the structure explicit: \thm{amendment_admissible_iff_backward_refinement} records that candidate admissibility entails both proof presence and a \emph{BackwardRefines} witness, and \thm{amendment_without_refinement_rejected} establishes that a candidate with proof presence set to false evaluates to \emph{AmendmentVerdict.rejected}. The substantive content shifts from a Boolean check on a trusted caller to a type-level requirement that enactment carry the refinement proof (\codepath{formal/lean4/Chio/Chio/Treaty/Intersection.lean:84} for the \emph{ConstitutionalDelta} structure and \codepath{:109} for \emph{enactAmendment}). The two theorems are refinement bridges rather than the load-bearing treaty-intersection proof; their work is to anchor the type-level invariant in the proof inventory.
+Atoms inspect exactly one of the following relations: receipt identity, receipt
+hash equality, participant-kernel membership, action-class equality, ladder
+rank at least a constant, live-continuation membership, decision equality,
+failure-code equality, or evidence-class and digest equality. The interpreter
+\(\mathsf{denote}(p,r)\) is total and Boolean. This restriction is
+intentional. It gives every production-named atom a concrete meaning without
+pretending that implication between arbitrary host-language closures is
+decidable.
 
-Backward refinement is conservative by design. Many real constitutions permit discontinuity: revolutions, emergency powers, amnesties, retroactive statutes, judicial reinterpretation, debt restructuring, expulsion, founder override, regulator preemption, treaty repudiation. Chio represents such events only as explicit crisis artifacts. The normal amendment path requires $K'$ to imply $K$ on receipts already admitted under $K$, and auditors verify mechanically whether a new constitution narrows admission, preserves already-admitted history, or introduces an unproved break.
+A constitution \(K=[p_1,\ldots,p_n]\) admits \(r\) when every predicate
+does:
+\[
+  \mathsf{admits}(K,r) = \bigwedge_{p\in K}\mathsf{denote}(p,r).
+\]
+A polity is the pair \(P=(T,K)\), where \(T\) is a predicate defining the
+local receipt-admission scope. Thus
+\[
+  \mathsf{polityAdmits}(P,r) =
+  \mathsf{denote}(T,r)\land\mathsf{admits}(K,r).
+\]
+The model contains no membership roster, territorial jurisdiction, or
+authority over another log. Its subject is one receiver's classification of
+receipts at its own boundary.
 
-\begin{figure}
-  \centering
-  \resizebox{\columnwidth}{!}{\input{figures/treaty-handshake}}
-  \caption{Bilateral treaty admission. Both kernels sign the same strict predicate over receipt and treaty bindings.}
-  \Description{Handshake showing local request binding, treaty scope, ladder intersection, bilateral DSSE co-signing, and admission before receipt append.}
-  \label{fig:treaty}
-\end{figure}
+\subsection{Bilateral Intersection}
 
-\begin{figure}
-  \centering
-  \resizebox{\columnwidth}{!}{\input{figures/amendment-lifecycle}}
-  \caption{Amendment lifecycle. Enactment is type-conditioned on a \emph{ConstitutionalDelta} carrying a refinement witness ($\text{proofTerm}:K'\Rightarrow K$); without one, the only constructable verdict path is \emph{rejectAmendment}. The split is structural, not a runtime decision: the no-delta enact path does not type-check.}
-  \Description{Lifecycle from old constitution to governance vote and candidate constitution, then a structural split into two constructibility paths. The with-delta path passes through a ConstitutionalDelta bearing the refinement proof into enactAmendment, terminating in Enacted (fill-shaded). The no-witness path passes through rejectAmendment, terminating in Rejected (double border). The split is type-level, not a runtime decision.}
-  \label{fig:amendment}
-\end{figure}
+A bilateral treaty
+\(\tau=(T_\tau,K_\tau,P_L,P_R,f_\tau)\) contains treaty scope and
+constitutional predicates, the two participant polities, and a minimum ladder
+mode \(f_\tau\). Admission is defined by the grouped expression
+\[
+\begin{split}
+\mathsf{treatyAdmits}(\tau,r) = {}&
+ \mathsf{denote}(T_\tau,r)\\
+ &{}\land\mathsf{admits}(K_\tau,r)\\
+ &{}\land\mathsf{polityAdmits}(P_L,r)\\
+ &{}\land\mathsf{polityAdmits}(P_R,r).
+\end{split}
+\]
+\thm{treaty_admission_iff_predicate_intersection} proves that this expression
+is equivalent to its fully expanded six-conjunct form. The theorem is
+structural, but that is precisely its role: neither participant's scope or
+constitution disappears when the predicates are regrouped for evaluation.
+It says nothing about whether Rust constructed the intended receipt view or
+verified the signatures that bind it.
+
+Mode admission prepends a finite ladder check:
+\[
+ \mathsf{underMode}(\tau,m,r) =
+ \mathsf{atLeast}(m,f_\tau)\land\mathsf{treatyAdmits}(\tau,r).
+\]
+\thm{treaty_admission_stable_under_ladder_floor} proves that, under the
+hypothesis \(\mathsf{atLeast}(m,f_\tau)=\mathsf{true}\), mode admission
+reduces to treaty admission. A mode below the floor denies. The theorem is
+bounded to the ladder representation imported by the model.
+
+\subsection{Finite-Domain No-Widening}
+
+For constitutions \(K'\), \(K\), and an explicitly declared finite domain
+\(D\), define
+\[
+ \mathsf{Refines}_{D}(K',K)
+   \equiv \forall r\in D.\;
+   \mathsf{admits}(K',r)\Rightarrow\mathsf{admits}(K,r).
+\]
+The executable checker evaluates this implication for every member of \(D\).
+\thm{refinesOnConstitution_iff} proves that the Boolean result is equivalent
+to \(\mathsf{Refines}_{D}\), and
+\thm{bridge_decidable_soundness} exposes its soundness direction. A
+\codepath{ConstitutionalDelta} carries \(K\), \(K'\), \(D\), and the successful
+check as a construction-time witness. The development contains both a
+nontrivial narrowing that constructs such a delta and a widening candidate
+that evaluates to false.
+
+This property is no-widening on \(D\). It does not establish refinement outside
+\(D\), preserve receipts that the old constitution happened to admit, or
+justify a claim about all possible future schemas. A narrower constitution can
+reject old allows while satisfying the theorem. The current Rust runtime also
+has no amendment-enactment path consuming \codepath{ConstitutionalDelta};
+amendment is therefore a model-level extension, not a production contribution.
+
+\subsection{Bridges and Assurance Boundary}
+
+The earlier Lean representation used opaque predicates over receipt
+identifiers. Given an explicit resolver from an identifier to a
+\codepath{ReceiptView}, \codepath{toClosure} lifts a syntactic constitution
+into that representation. \thm{bridge_pointwise},
+\thm{treaty_admission_agrees}, and
+\thm{treaty_admission_under_mode_agrees} prove pointwise agreement after the
+lift. They do not turn a finite domain into a universal one.
+
+The Rust predicate evaluator was written independently from the Lean
+interpreter. Differential tests apply a mechanical conversion from generated
+Rust values into a second Rust specification that mirrors the Lean
+definitions. They cover every atom form and 1,024 generated cases each for
+compound predicates, constitutional admission, and finite refinement. This is
+useful evidence against representation drift. It is neither extraction from
+Lean nor a proof of equivalence between Lean and production Rust.
+
+\begin{table}[t]
+\caption{Formal results and their implementation status.}
+\label{tab:theorems}
+\scriptsize
+\begin{tabularx}{\columnwidth}{@{}>{\raggedright\arraybackslash}p{.29\columnwidth}>{\raggedright\arraybackslash}p{.31\columnwidth}>{\raggedright\arraybackslash}X@{}}
+\toprule
+Result & Model claim & Implementation relation \\
+\midrule
+\thm{treaty_admission_iff_predicate_intersection}
+& Six bounded predicates remain conjunctive
+& Production counterpart plus differential cases \\
+\thm{treaty_admission_stable_under_ladder_floor}
+& A satisfied finite floor reduces to treaty admission
+& Production ladder validator counterpart \\
+\thm{refinesOnConstitution_iff}
+& Boolean no-widening is exact on declared \(D\)
+& Model only \\
+\thm{treaty_admission_agrees}
+& Syntactic and legacy forms agree pointwise
+& Model only \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+All listed theorems are imported by the proof root, inventoried, and checked
+without \codepath{sorry} or added axioms. Their assurance boundary ends at the
+explicit data structures above. The implementation evidence for constructing
+and enforcing those structures is independent and is described next.

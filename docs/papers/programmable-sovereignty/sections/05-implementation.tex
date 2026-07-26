@@ -1,73 +1,130 @@
 \section{Implementation}
 \label{sec:implementation}
 
-The implementation has six load-bearing components: a runtime kernel that exposes a pre-dispatch admission hook and a treaty primitive; a federation layer that performs strict bilateral DSSE verification; a selective-disclosure module over a BBS message vector; a multi-lane anchor for public-witness evidence; a fixture-backed three-vendor case-study generator; and the Lean proof root. Each implementation citation below resolves to a \codepath{file:line}, and each citation falls into one of three categories: a runtime obligation that discharges a Lean theorem, a tested executable path, or a fixture. Table~\ref{tab:artifacts} indexes the artifacts; Table~\ref{tab:theorems} maps them to Lean theorems.
+The implementation follows the receiver's control flow. A core kernel first
+validates ordinary capability authority. Federated context then enters a
+runtime admission hook, which parses request metadata, resolves referenced
+artifacts from receiver-owned stores, validates treaty and continuation state,
+verifies the bilateral statement, and either returns a named denial or permits
+tool dispatch. The runtime harness assembles the resulting receipts into a
+proof package that an offline buyer verifier can replay.
+
+\subsection{Receiver-Owned Resolution}
+
+\codepath{ChioRuntimeAdmissionHook::evaluate} is the production boundary.
+Requests with no Chio context retain the local compatibility path. Once Chio
+context is present, malformed or incomplete context denies. In particular,
+\codepath{treaty_ref_from_request} rejects request-carried trust roots, peer
+directories, signing keys, revocations, and dynamic trust bundles. The hook
+accepts identifiers for such material, then resolves the material through its
+own \codepath{RuntimeAdmissionStores}.
+
+Resolution precedes policy evaluation. The receiver loads treaty scope,
+participant manifests, pinned keys, revocation state, continuation state,
+governance receipts, and referenced execution receipts. It checks schema and
+semantic hashes, validity intervals, participant uniqueness, action-class
+coverage, and the receiver's minimum ladder mode. Reserved continuation state
+is consumed for an admitted dispatch and released after denial or abort.
+Consequently, a sender cannot upgrade its authority by attaching a more
+permissive policy bundle to the request.
+
+\subsection{Bilateral Statement}
+
+\codepath{verify_chio_bilateral_invocation} verifies a strict DSSE profile.
+Both signatures cover the same pre-authentication encoding of one canonical
+statement. The statement binds the invocation identifier, treaty identifier,
+ladder-intersection hash, continuation hash, action and consistency classes,
+capability identifier, request and outcome hashes, lineage, local and remote
+receipt hashes, and signer identifiers. The envelope verifier rejects an
+unknown payload type, an incorrect signature count, duplicate key identifiers,
+noncanonical JSON, an unrecognized statement or predicate type, missing
+subjects, and reuse of one public key.
+
+The operational verifier then checks those authenticated names against
+receiver-owned state: configured peer pins, live manifests, revocation epoch,
+receipt signatures and hashes, capability lease, policy verdicts, and the
+governance evidence required by receipt-backed action classes. The
+\codepath{BilateralCoSigningError::code} mapping assigns stable diagnostic
+codes to failures that cross the artifact boundary. Distinct configured keys
+establish two-key authorization. Organizational independence is an operational
+assumption because one actor can control both keys.
+
+\subsection{Pre-Dispatch Enforcement}
+
+The admission hook runs after core capability checks and before the
+\codepath{ToolServer} invocation. It treats parser, store, freshness,
+cryptographic, lineage, policy, and continuation errors as denials. The
+dispatch-path test server increments a counter only on invocation, and denial
+samples assert that it stays unchanged. Direct verifier tests make no dispatch
+observation.
+
+The production hook's explicit checks remain authoritative. This work also
+adds a versioned bounded predicate module,
+\codepath{chio.federation.bounded-treaty-predicate.v1}. Its parser denies
+unknown versions, tags, and fields and enforces a 64 KiB serialized-input
+limit, a 1 KiB atom-string limit, and depth and node limits of 32 and 1,024.
+\codepath{bounded_treaty_receipt_view_from_verified_artifacts} requires an
+independently authenticated canonical report digest, checks that the action is
+inside the treaty scope, and cross-checks report, invocation, and continuation
+bindings before constructing the evaluator's input. The module supports
+differential testing and a restricted library interface. It has not replaced
+the hook's explicit checks, so the paper does not rely on it as an alternative
+production allow path.
+
+\subsection{Runtime and Offline Review}
+
+\codepath{run_runtime_loopback_scenario} drives a deterministic three-party
+loopback through the real runtime path and persistent SQLite receipt stores. It
+produces the treaty scope, ladder intersection, continuation, lineage,
+bilateral DSSE statement, local and remote receipts, and buyer audit package.
+The producer-only mode stops after generating and schema-validating those
+artifacts. The full mode invokes the buyer CLI, validates the package schema,
+and performs semantic review. The offline
+\codepath{verify_package} path re-resolves the linked
+artifacts and checks their hashes and signatures without access to vendor
+internals.
+
+The negative matrix uses the same public verification surfaces. Each selected
+test emits its observed diagnostic for comparison with the corpus. Envelope
+cases call the strict verifier; store and policy cases call the admission hook
+directly. None instantiates a tool server, so the matrix demonstrates named
+denials while a separate dispatch-path test supplies the counter observation.
 
 \begin{table*}[t]
-\caption{Load-bearing implementation artifacts used by the paper.}
+\caption{Load-bearing artifacts and the boundary of each claim.}
 \label{tab:artifacts}
 \scriptsize
-\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{.24\textwidth}>{\raggedright\arraybackslash}p{.38\textwidth}>{\raggedright\arraybackslash}X@{}}
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{.25\textwidth}>{\raggedright\arraybackslash}p{.35\textwidth}>{\raggedright\arraybackslash}X@{}}
 \toprule
-Artifact & Enforced statement & Evidence boundary \\
+Symbol or artifact & Role & Evidence boundary \\
 \midrule
-\codepath{TreatyScope} & Participants, public keys, ladder-manifest hashes, allowed action classes, validity window, revocation epoch, and trust bundle are bound before intersection. & Schema and semantic hash checks are in the runtime; treaty law outside these fields is not represented. \\
-\codepath{LadderIntersection} & For each allowed action class, the joint mode, consistency model, co-sign rule, evidence set, and per-participant mode are materialized. & Correct only for the finite ladder schema accepted by the current validators. \\
-\codepath{CrossKernelContinuation} & Cross-kernel child work is linked to parent receipt, session anchor, capability id, action class, target tool, nonce, and validity window. & Prevents replay only when the receiving runtime consumes or releases continuation state correctly. \\
-\codepath{BilateralInvocation} & Local and remote receipts, request and outcome hashes, lineage statement, continuation, action class, consistency model, and signer ids are jointly bound. & Verifies joint intent; it does not prove the underlying human commercial contract. \\
-\codepath{SelectiveDisclosureProof} & A verifier can check disclosed projection fields against an issuer key without receiving every receipt field. & Privacy proof is secondary to the authoritative Ed25519 receipt. \\
-\codepath{AnchorWitnessPolicy} & Public witness lanes must verify active inclusion or use explicitly cached verifier-owned evidence. & Rekor SET verification is stronger than OTS advisory mode; lane-specific limitations remain. \\
+\codepath{ChioRuntimeAdmissionHook::evaluate}
+& Receiver-owned resolution and pre-dispatch verdict
+& Production Rust, focused tests, live loopback \\
+\codepath{verify_chio_bilateral_invocation}
+& Strict DSSE and operational binding verification
+& Two configured keys; organizational control is assumed \\
+\codepath{CrossKernelContinuation}
+& Parent receipt, capability, nonce, action, target, and lifetime binding
+& Replay safety depends on receiver store correctness \\
+\codepath{bounded_treaty_receipt_view_from_verified_artifacts}
+& Constructs the restricted syntactic evaluator view
+& Library and differential target, not a replacement hook \\
+\codepath{run_runtime_loopback_scenario}
+& Producer execution and proof-package assembly
+& Deterministic single-host three-party case study \\
+\codepath{verify_package}
+& Offline receiver-side replay
+& Verifies the emitted package, not remote process integrity \\
+\codepath{PS-TH-01}--\codepath{PS-TH-20}
+& Named bilateral negative corpus
+& Executable cases plus one separate non-testable assumption \\
 \bottomrule
 \end{tabularx}
 \end{table*}
 
-\paragraph{Treaty primitive.}
-The treaty module \codepath{crates/kernel/chio-runtime-core/src/treaty.rs} discharges the runtime side of \thm{treaty_admission_iff_predicate_intersection}. It hashes treaty scope with canonical JSON, computes semantic hashes that exclude validity windows for stable intersection identity, and binds bilateral invocations over schema, invocation id, treaty id, ladder-intersection hash, continuation hash, action class, consistency model, capability id, request hash, outcome hash, local and remote receipt hashes, and signer ids (\codepath{crates/kernel/chio-runtime-core/src/treaty.rs:81}). \codepath{validate_treaty_scope} rejects unsupported schemas, invalid windows, missing participants, duplicate participants, hash mismatches, and malformed trust bundle references (\codepath{crates/kernel/chio-runtime-core/src/treaty.rs:188}). \codepath{compute_ladder_intersection} then checks participant manifests and constructs the joint action-class table.
-
-The treaty module turns political metaphors into ordinary data validation. A treaty with one participant rejects; with duplicate participant keys, rejects; with a governance ladder hash unequal to the canonical hash of the manifest, rejects; with an action class absent from one participant's manifest, rejects; with a destructive action whose joined mode falls below receipt-backed, rejects. A programmable constitution fails as a schema-and-predicate matter before it becomes a governance debate.
-
-The semantic-hash split separates stable identity from liveness. Treaty-scope semantic identity excludes the validity window so that short-lived renewals carry the same policy identity while admission still enforces freshness. Stable identity belongs to the predicate set; liveness belongs to the admission context.
-
-\paragraph{Admission hook.}
-\codepath{crates/kernel/chio-runtime-core/src/admission_hook.rs} implements \codepath{RuntimeAdmissionHook}. It permits non-Chio requests only when no Chio runtime context is present; otherwise malformed context denies. Malformed treaty context denies with \codepath{invalid_chio_treaty_context} or a missing-field code such as \codepath{missing_treaty_scope_id}. Request-level smuggling of trust roots, peer directories, signing keys, or dynamic trust bundles is rejected by \codepath{treaty_ref_from_request} (\codepath{crates/kernel/chio-runtime-core/src/admission_hook/treaty_ref.rs:24}). Treaty DSSE evidence is verified against verifier-owned store artifacts; signer sets must equal treaty participants and public keys must be independent (\codepath{crates/kernel/chio-runtime-core/src/admission_hook/dsse.rs:87}). The hook releases reserved continuation state after runtime denial or abort, closing a replay edge tested in \codepath{crates/kernel/chio-runtime-core/tests/runtime_admission.rs}.
-
-The hook is the point at which the model is falsifiable against real code. Allowing federated origin without treaty context would make the treaty-intersection theorem irrelevant to cross-kernel execution. Allowing request metadata to smuggle a trust root would collapse the verifier-owned-store assumption. Failing to release reserved continuation state on denial would create a state leak and ambiguous replay behavior. Each of these is a concrete place where agent middleware turns formal policy into advisory logging.
-
-The hook is asymmetric: non-Chio local requests use the old path when no Chio context is present, and once Chio context appears, malformed or incomplete context denies. Backward compatibility is preserved; partial federation is not a bypass. The receiver's kernel decides when a request has crossed into the constitutional path.
-
-\paragraph{Strict DSSE verifier.}
-\codepath{crates/trust/chio-federation/src/bilateral_dsse.rs} defines the strict predicate and envelope used by every cross-organization invocation. \codepath{verify_chio_bilateral_dsse_envelope} rejects wrong payload type, wrong signature count, noncanonical JSON, wrong statement type, wrong predicate type, missing subject, and reused signer keys (\codepath{crates/trust/chio-federation/src/bilateral_dsse.rs:1167}). \codepath{crates/trust/chio-federation/src/bilateral_verifier.rs} layers operational checks on top: peer pins, fresh ladder manifests, revocation epoch, receipt resolution and signature, tool argument hash, policy verdict agreement, capability lease, governance receipt for receipt-backed classes, and treaty binding refs (\codepath{crates/trust/chio-federation/src/bilateral_verifier.rs:872}). Together, the envelope check and the operational check ensure that admission depends on the predicate the protocol names, not on a strict subset that a sender could satisfy with degenerate data.
-
-The strict verifier refuses ``signed JSON'' as an adequate security boundary. A DSSE envelope with the wrong predicate is not a near miss; a payload signed by the same key twice is not two-party consent; a receipt with a valid signature but the wrong request hash is not admissible under the treaty; receipt-backed classes require a governance receipt even when the ordinary receipt is otherwise valid. The error taxonomy is part of the protocol because downstream audit must know which constitutional precondition failed.
-
-\paragraph{Buyer audit and three-vendor loop.}
-The three-vendor example is a generator in \codepath{examples/chio-3vendor/src/main.rs} that emits buyer-auditor proof packages, workflow-intersection JSON, signed negative packages, pheromone artifacts, and runtime-spine fixtures. The example is gated by integration tests that re-run the closure on every change to any of its bound components.
-
-Buyer closure is the concrete example of scoped sovereignty. The buyer demands the specific evidence package required for admission, not every internal receipt; the package binds local and remote receipts to treaty scope, ladder intersection, continuation, and lineage. A system that cannot generate signed denials cannot prove it rejects stale, mismatched, or replayed evidence; the generator produces both positive and negative packages in the same canonical schema.
-
-The example demonstrates that the runtime and federation crates agree on artifact shape, emit repeatable fixtures, and exercise negative cases. Because every bound component (treaty scope, ladder intersection, bilateral DSSE, admission hook, buyer audit) is exercised, a regression in any one breaks the integration gate.
-
-\paragraph{Proof inventory.}
-The Lean proof root contains the theorem and lemma declarations the runtime depends on, including the ones introduced for this work, with no admitted goals (\codepath{sorry}) and no extra axioms (\codepath{axiom}). A curated inventory bridges formal names to protocol properties and Rust symbols; the curated subset is the audited coverage the paper defends.
-
-Cryptographic primitives, canonical-JSON implementation correctness, TLS, SQLite, public-chain finality, and several other lower layers are outside the Lean proof root (Table~\ref{tab:assumptions}). Selected constitutional predicates and protocol invariants have named Lean theorems, no unchecked placeholders, and inventory entries linking those theorems to protocol properties.
-
-\begin{table*}[t]
-\caption{Selected proof-to-code map. The first four rows are theorems introduced in this work.}
-\label{tab:theorems}
-\scriptsize
-\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{.28\textwidth}>{\raggedright\arraybackslash}p{.35\textwidth}>{\raggedright\arraybackslash}X@{}}
-\toprule
-Theorem & Informal statement & Code or property \\
-\midrule
-\thm{treaty_admission_iff_predicate_intersection} & Treaty admission equals treaty, left-polity, and right-polity predicate intersection. & \codepath{crates/kernel/chio-runtime-core/src/treaty.rs:261} \\
-\thm{treaty_admission_stable_under_ladder_floor} & Satisfied ladder floor preserves treaty admission. & \codepath{crates/kernel/chio-runtime-core/src/treaty.rs:410} (\codepath{validate_ladder_intersection}) \\
-\thm{amendment_admissible_iff_backward_refinement} & Amendment admission iff new predicates imply old predicates. & Polity amendment model \\
-\thm{amendment_without_refinement_rejected} & Missing proof rejects enactment. & Crisis admission invariant \\
-\thm{proof.delegation_step_allow_requires_attenuation} & Delegation allow implies attenuation. & Capability delegation \\
-\thm{theorem.budget.sibling_sum_soundness} & Child budget sum stays within parent share. & \codepath{BudgetSplit::try_admit_child} \\
-\thm{proof.receipt_sign_then_verify} & Signed symbolic receipt verifies. & Receipt signing \\
-\thm{proof.verified_receipt_lineage_sound} & Verified lineage requires both receipts and linkage. & Buyer lineage audit \\
-\bottomrule
-\end{tabularx}
-\end{table*}
+The proof root, theorem inventory, differential corpus, runtime tests, matrix,
+benchmark outputs, and source snapshot are tied together by the supplementary
+artifact manifest. The manifest names symbols and files rather than source line
+numbers, which makes movement within a file harmless while still failing if a
+load-bearing surface disappears.

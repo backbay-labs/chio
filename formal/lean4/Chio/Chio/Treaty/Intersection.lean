@@ -1,10 +1,16 @@
 /-
-  Bounded treaty and amendment model for the programmable-sovereignty paper.
+  Legacy closure model for the programmable-sovereignty paper.
 
   The production treaty verifier is Rust code. This Lean file captures the
   paper's mathematical core: treaty admission is the intersection of treaty,
   left-polity, and right-polity predicates; ladder-mode checks compose with
   that intersection; amendment enactment requires a backward-refinement proof.
+
+  Constitutions here contain opaque closures. Universal implication between
+  such closures is not decidable. New paper claims use
+  `Treaty/IntersectionSyntactic.lean`, whose finite predicate language and
+  declared receipt domain make the bounded decision procedure explicit. This
+  module remains as the semantic target of the pointwise bridge.
 -/
 
 set_option autoImplicit false

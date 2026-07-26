@@ -202,6 +202,126 @@ fn monetary_cap_is_subset(
     }
 }
 
+/// Independent reference representation of the bounded Lean admission view.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SpecTreatyAdmissionDecision {
+    Allow,
+    Deny,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SpecTreatyEvidenceDigest {
+    pub evidence_class: String,
+    pub digest: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SpecTreatyReceiptView {
+    pub receipt_id: String,
+    pub receipt_hash: String,
+    pub action_class: String,
+    pub participant_kernel_ids: Vec<String>,
+    pub ladder_mode_rank: u64,
+    pub live_continuation_ids: Vec<String>,
+    pub decision: SpecTreatyAdmissionDecision,
+    pub failure_code: Option<String>,
+    pub evidence_digests: Vec<SpecTreatyEvidenceDigest>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SpecTreatyPredicateAtom {
+    ScopeContains(String),
+    ParticipantKernelIdEquals(String),
+    ActionClassIn(String),
+    LadderModeAtLeastRank(u64),
+    ReceiptHashEquals(String),
+    ContinuationLive(String),
+    DecisionEquals(SpecTreatyAdmissionDecision),
+    FailureCodeEquals(String),
+    EvidenceDigestEquals {
+        evidence_class: String,
+        digest: String,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SpecTreatyPredicate {
+    Atom(SpecTreatyPredicateAtom),
+    Top,
+    Bot,
+    Conj(Box<SpecTreatyPredicate>, Box<SpecTreatyPredicate>),
+    Disj(Box<SpecTreatyPredicate>, Box<SpecTreatyPredicate>),
+    Neg(Box<SpecTreatyPredicate>),
+}
+
+impl SpecTreatyPredicate {
+    /// Independent executable interpretation of `PredicateLang.denote`.
+    #[must_use]
+    pub fn denote(&self, receipt: &SpecTreatyReceiptView) -> bool {
+        match self {
+            Self::Atom(atom) => atom.denote(receipt),
+            Self::Top => true,
+            Self::Bot => false,
+            Self::Conj(left, right) => left.denote(receipt) && right.denote(receipt),
+            Self::Disj(left, right) => left.denote(receipt) || right.denote(receipt),
+            Self::Neg(predicate) => !predicate.denote(receipt),
+        }
+    }
+}
+
+impl SpecTreatyPredicateAtom {
+    fn denote(&self, receipt: &SpecTreatyReceiptView) -> bool {
+        match self {
+            Self::ScopeContains(target) => receipt.receipt_id == *target,
+            Self::ParticipantKernelIdEquals(kernel_id) => {
+                receipt.participant_kernel_ids.contains(kernel_id)
+            }
+            Self::ActionClassIn(class) => receipt.action_class == *class,
+            Self::LadderModeAtLeastRank(rank) => *rank <= receipt.ladder_mode_rank,
+            Self::ReceiptHashEquals(hash) => receipt.receipt_hash == *hash,
+            Self::ContinuationLive(continuation_id) => {
+                receipt.live_continuation_ids.contains(continuation_id)
+            }
+            Self::DecisionEquals(decision) => receipt.decision == *decision,
+            Self::FailureCodeEquals(code) => receipt.failure_code.as_ref() == Some(code),
+            Self::EvidenceDigestEquals {
+                evidence_class,
+                digest,
+            } => receipt.evidence_digests.iter().any(|evidence| {
+                evidence.evidence_class == *evidence_class && evidence.digest == *digest
+            }),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SpecTreatyConstitution {
+    pub predicates: Vec<SpecTreatyPredicate>,
+}
+
+impl SpecTreatyConstitution {
+    /// Independent executable interpretation of `PredicateLang.admits`.
+    #[must_use]
+    pub fn admits(&self, receipt: &SpecTreatyReceiptView) -> bool {
+        self.predicates
+            .iter()
+            .all(|predicate| predicate.denote(receipt))
+    }
+
+    /// Independent finite-domain interpretation of
+    /// `PredicateLang.refinesOnConstitution`.
+    #[must_use]
+    pub fn refines_on(
+        &self,
+        old: &SpecTreatyConstitution,
+        domain: &[SpecTreatyReceiptView],
+    ) -> bool {
+        domain
+            .iter()
+            .all(|receipt| !self.admits(receipt) || old.admits(receipt))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

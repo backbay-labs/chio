@@ -1,53 +1,183 @@
 \section{Evaluation}
 \label{sec:evaluation}
 
-Each reported number is produced by a script in \codepath{bench/}; absent measurements are marked rather than estimated. The baseline machine is a MacBook Pro 18,4 (Apple M1 Max, 10 cores, 32~GB RAM) running Darwin 25.4.0.
+We ask four questions. RQ1 tests whether the implementation rejects the
+attacks implied by the threat model before dispatch. RQ2 tests whether the
+bounded Lean and Rust semantics remain aligned. RQ3 measures the complete
+receiver path and its principal components. RQ4 examines replayability and
+artifact size.
 
-Scripts live at \codepath{papers/programmable-sovereignty/bench/} and write \TeX{} results under \codepath{bench/results/} alongside the raw log or CSV. Hand-written harnesses compile temporary Rust projects against the source tree referenced by \codepath{CHIO_SOURCE} (set to a workspace checkout, or absent for the repository root); the dispatch and replay scripts redirect \codepath{CARGO_TARGET_DIR} into a temporary directory so measurement does not mutate the source tree. The four exercised paths are dispatch admission, treaty intersection, selective-disclosure verification, and replay-corpus stability (Table~\ref{tab:evaluation}).
+\subsection{Method}
+
+Experiments ran on Linux/aarch64 with eight Arm Neoverse-N1 cores and
+49.2~GB RAM, using rustc~1.93.0 and Cargo~1.93.0. All reported bilateral
+measurements use the release profile. Each result document records the tested
+commit and whether the source tree was clean when the experiment began; the
+artifact manifest pins the result and source hashes. The end-to-end harness
+uses persistent SQLite stores on one host. It includes process startup,
+artifact production, CLI execution, schema validation, and semantic review,
+rather than approximating those costs with an in-process function.
+
+\codepath{run-bilateral-admission.sh} performs two warmups,
+\PSPathSampleCount{} end-to-end samples per path, and
+\PSCriterionSampleCount{} Criterion samples per component. It retains raw CSV,
+machine and toolchain metadata, a JSON summary, and generated \TeX{} input.
+\codepath{run-replay-corpus.sh} reports the generic replay suite and bilateral
+matrix separately. No result below is transcribed from a console log.
+
+\subsection{RQ1: Do Attacks Deny Before Dispatch?}
+
+The corpus contains \PSThreatCaseCount{} stable cases, \codepath{PS-TH-01} through
+\codepath{PS-TH-20}. Each entry names the exact test target, expected failure
+code, and expected phase. The matrix runner rejects duplicate identifiers,
+empty selections, unexpected codes, and any entry whose expected dispatch
+value is not false.
+
+\begin{table}[t]
+\caption{Bilateral negative matrix. All \PSThreatCaseCount{} cases passed.}
+\label{tab:threat-matrix}
+\scriptsize
+\begin{tabularx}{\columnwidth}{@{}>{\raggedright\arraybackslash}p{.31\columnwidth}>{\raggedright\arraybackslash}p{.25\columnwidth}>{\raggedright\arraybackslash}X@{}}
+\toprule
+Attack family & Cases & Rejected evidence \\
+\midrule
+Binding substitution
+& 01, 03, 05--07
+& Treaty, intersection, receipt, request, outcome \\
+Signature and syntax
+& 08--12, 18
+& Missing or duplicate signature, reused key, predicate, canonical form, schema \\
+Freshness and continuity
+& 02, 13, 15
+& Treaty, lease, continuation replay \\
+Receiver trust and evidence
+& 04, 14, 16, 17
+& Lineage, governance, smuggled trust \\
+Policy outcome
+& 19, 20
+& Disagreement and unanimous deny \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+All \PSThreatCaseCount{} cases returned their named denial in both matrix runs.
+The runner compares each test's machine-readable code with the corpus, so a
+wrong diagnostic fails. These targets call validators or the admission hook
+without creating a tool server; the matrix claim is therefore the named
+rejection at the declared phase. A separate dispatch-capable benchmark
+observed an unchanged invocation counter. The release matrix took
+\PSNegativeMatrixSeconds~s, a reproducibility wall time, not denial latency.
+
+The corpus also declares \codepath{PS-A-01}: one actor may control two distinct
+keys that the receiver has authorized as the treaty participants. Cryptography
+cannot distinguish that deployment from two organizations. We record it as a
+non-testable operational assumption rather than a passing attack case.
+
+\subsection{RQ2: Are the Bounded Semantics Aligned?}
+
+The Lean gate rebuilds the root import, rejects \codepath{sorry} and
+unregistered axioms, and checks the theorem inventory. Independent Rust tests
+exercise every atomic predicate form. They then run 1,024 generated cases for
+each of three properties: compound predicate denotation, constitutional
+admission, and finite-domain refinement. The Rust specification, the
+production bounded evaluator, and the mechanical view conversion agreed on
+all tested cases.
+
+This result detects many representation and Boolean-composition errors. It
+does not prove the Rust code equivalent to Lean, establish completeness of the
+generator, or verify the runtime admission hook. The production tests and RQ1
+cover the latter boundary independently.
+
+\subsection{RQ3: What Does Admission Cost?}
 
 \begin{table*}[t]
-\caption{Measurement status on the baseline machine. Withheld rows have a target surface but no dedicated measurement harness; the cells are marked rather than estimated.}
+\caption{Release-profile results. End-to-end paths use \PSPathSampleCount{} samples; components use \PSCriterionSampleCount{}.}
 \label{tab:evaluation}
 \scriptsize
-\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{.20\textwidth}>{\raggedright\arraybackslash}p{.25\textwidth}>{\raggedright\arraybackslash}p{.38\textwidth}>{\raggedright\arraybackslash}X@{}}
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{.31\textwidth}>{\raggedleft\arraybackslash}p{.13\textwidth}>{\raggedleft\arraybackslash}p{.13\textwidth}>{\raggedright\arraybackslash}X@{}}
 \toprule
-Metric & Script & Result & Status \\
+Measured path & p50 & p99 & Included work \\
 \midrule
-Kernel dispatch allow & \codepath{bench/run-dispatch-allow.sh} & \input{bench/results/dispatch-allow-inline.tex} & measured \\
-Treaty intersection p50/p99 & \codepath{bench/run-treaty-intersection.sh} & \input{bench/results/treaty-intersection-inline.tex} & measured \\
-Selective-disclosure proof size and verify p50/p99 (BBS) & \codepath{bench/run-selective-disclosure.sh} & \input{bench/results/selective-disclosure-inline.tex} & measured \\
-Receipt sign p50/p99 & (none) & [unreported] & withheld \\
-Receipt verify p50/p99 & (none) & [unreported] & withheld \\
-Anchor inclusion per lane & (none) & [unreported] & withheld \\
-Replay corpus manifest stability & \codepath{bench/run-replay-corpus.sh} & \input{bench/results/replay-corpus-inline.tex} & measured \\
+Full receiver admission
+& \PSFullAdmissionPFiftyMs{} ms & \PSFullAdmissionPNinetyNineMs{} ms
+& Producer, SQLite, buyer CLI, schema and semantic review \\
+Producer without buyer review
+& \PSProducerPFiftyMs{} ms & \PSProducerPNinetyNineMs{} ms
+& Runtime loopback, SQLite, package production and schema validation \\
+\midrule
+Pre-dispatch treaty denial
+& \PSPredispatchDenyPFiftyUs{} \(\mu\)s & \PSPredispatchDenyPNinetyNineUs{} \(\mu\)s
+& Full kernel path; real hook and SQLite denial receipt \\
+Receipt sign
+& \PSReceiptSignPFiftyUs{} \(\mu\)s & \PSReceiptSignPNinetyNineUs{} \(\mu\)s
+& Buyer-shaped Ed25519 receipt \\
+Receipt verify
+& \PSReceiptVerifyPFiftyUs{} \(\mu\)s & \PSReceiptVerifyPNinetyNineUs{} \(\mu\)s
+& Buyer-shaped Ed25519 receipt \\
+Strict bilateral DSSE verify
+& \PSBilateralVerifyPFiftyUs{} \(\mu\)s & \PSBilateralVerifyPNinetyNineUs{} \(\mu\)s
+& Two signatures and embedded treaty bindings \\
+Cross-boundary admission allow
+& \PSCrossBoundaryPFiftyUs{} \(\mu\)s & \PSCrossBoundaryPNinetyNineUs{} \(\mu\)s
+& Receiver treaty scope and verified evidence \\
+SQLite receipt append
+& \PSReceiptAppendPFiftyUs{} \(\mu\)s & \PSReceiptAppendPNinetyNineUs{} \(\mu\)s
+& Production receipt store; signing outside timed body \\
+Offline buyer-package verify
+& \PSBuyerVerifyPFiftyUs{} \(\mu\)s & \PSBuyerVerifyPNinetyNineUs{} \(\mu\)s
+& Three-party proof-package verification \\
 \bottomrule
 \end{tabularx}
 \end{table*}
 
-\paragraph{Treaty intersection.}
-The treaty-intersection harness constructs two governance ladder manifests with $N$ overlapping action classes, calls \codepath{compute_ladder_intersection}, and reports per-iteration percentiles. The exercised paths are real: schema checks, freshness checks, manifest hash binding, destructive floor handling, mode ranks, consistency model validation, and co-sign rank joins. Growth is approximately linear in $N$ because the implementation walks every allowed class and every participant manifest, hashes manifests, and builds per-class joined state. The p99 outlier at $N{=}100$ is reported, not smoothed.
+Full receiver admission had a \PSFullAdmissionPFiftySec~s median and
+\PSFullAdmissionPNinetyNineSec~s p99. The path is dominated by orchestration, process,
+validation, and storage work rather than the bilateral cryptographic check.
+The two end-to-end distributions differ by
+\PSBuyerPathMedianDifferenceMs~ms at the median, but that difference is not a
+pure buyer-verification ablation: the full path also invokes the CLI and
+performs additional schema and semantic checks. The isolated offline verifier
+median was \PSBuyerVerifyPFiftyMs~ms.
 
-\paragraph{Selective disclosure.}
-The selective-disclosure harness enables the \codepath{bbs} feature, constructs a real \codepath{ChioReceiptBody}, projects it into a BBS vector, signs the projection, derives a disclosure proof for three fields, verifies it against an issuer registry, and records proof size and verification latency. This measures the opt-in privacy path, not the authoritative Ed25519 receipt signature.
+The real receiver-owned pre-dispatch denial path was
+\PSPredispatchDenyPFiftyUs~\(\mu\)s at p50 and
+\PSPredispatchDenyPNinetyNineUs~\(\mu\)s at p99. Its timed body traverses the
+kernel capability, federation, and persistence gates; resolves the stored
+treaty scope, ladder intersection, continuation, lineage, invocation, and
+bilateral DSSE; verifies the signed policy denial; and persists the signed
+SQLite denial receipt. The instrumented tool invocation counter remains
+unchanged. Receipt signing measured
+\PSReceiptSignPFiftyUs~\(\mu\)s at the median, strict bilateral DSSE verification
+measured \PSBilateralVerifyPFiftyUs~\(\mu\)s, and persistent SQLite append
+measured \PSReceiptAppendPFiftyUs~\(\mu\)s. These component measurements use
+production-shaped data and production functions, but they do not sum to the
+end-to-end result because the full loop includes work absent from the
+microbenchmarks.
 
-BBS verification is slower than dispatch and treaty intersection by orders of magnitude; the cost is pairing-heavy cryptography in a debug-profile harness. The selective-disclosure path is executable end-to-end, has a measurable proof size, and is suitable for audit or treaty-boundary insertion rather than per-dispatch use.
+\subsection{RQ4: Replay and Evidence Volume}
 
-\paragraph{Dispatch.}
-The dispatch script reuses the production Criterion bench for \codepath{dispatch_allow}. The receipt-sign and receipt-append benches are excluded: their bodies black-box a constant, so reporting them would measure Criterion overhead, not Chio.
+The emitted buyer proof package was \PSProofPackageBytes{} bytes
+(\PSProofPackageKiB~KiB). The replay script validated
+\PSGenericReplayCases{} generic kernel-capability fixtures in
+\PSGenericReplaySeconds~s and, in a separate run, the
+\PSBilateralReplayCases{} bilateral negative cases in
+\PSBilateralReplaySeconds~s. The first corpus covers generic
+capability verdict stability; it is not evidence for bilateral admission. The
+second covers the named failures in Table~\ref{tab:threat-matrix}. Reporting
+them separately prevents the larger generic count from inflating the treaty
+evaluation.
 
-Receipt-shaped benchmark scaffolds exist whose bodies black-box a constant; reporting their output would manufacture a number. Receipt signing, receipt verification, and anchor inclusion require dedicated measurement harnesses before any latency claim becomes admissible (\S\ref{sec:limits}).
+Public-anchor inclusion is withheld. The protocol can carry anchor evidence,
+but this evaluation does not measure a live transparency service or claim that
+one is required for local admission.
 
-\paragraph{Replay.}
-The replay script runs the kernel-capability golden target with \codepath{CHIO_BLESS=0}. Locally this validates 50 fixtures distributed with the runtime, across ten capability-side families (allow simple / metered / with-delegation; deny expired / revoked / scope-mismatch; guard-rewrite; replay-attack; tampered canonical-JSON; tampered signature) via \codepath{cargo test -p chio-replay-gate --test golden_byte_equivalence}. The reported test wall-time is 1.07~s; surrounding workspace compilation dominates wall-clock when run cold. The test asserts \emph{manifest-stable across machines}: each fixture's expected verdict is canonicalised against a stored golden manifest, so the property is reproducibility of canonical verdicts rather than re-execution of the kernel on adversarial input. Additional fixture families (corpus smoke, replay proptests, cross-version replay) are exercised separately.
+\subsection{Threats to Measurement Validity}
 
-The 50-fixture corpus does \emph{not} exercise the Chio buyer-closure paths the rest of this paper defends: zero fixtures touch the strict bilateral-DSSE rejection codes named in \S\ref{sec:implementation}, the constitutional-ratchet attack class, or the multi-lane anchor witness-quorum surfaces. Those families are explicit follow-up work for a Chio-specific replay corpus (\S\ref{sec:limits}).
-
-\paragraph{Case study.}
-In the three-vendor loop, the buyer owns the verifier context and proof package. Vendor receipts are not imported merely because they are signed; they must bind treaty scope, ladder intersection, continuation, lineage, bilateral invocation, and strict DSSE evidence. The admission hook consumes a treaty continuation before dispatch and releases it on denial; a replayed continuation is denied, which makes buyer audit an enforcement path, not a report-generation path.
-
-This construction inverts ordinary audit export. Ordinary export hands the buyer a bundle after the fact and asks for trust; the Chio path puts the buyer's verifier context into the admission decision, so stale leases, wrong policy verdicts, missing governance receipts, and mismatched request hashes deny before the receiving action runs. The primary security property is pre-dispatch admission under buyer-owned predicates; the after-the-fact audit package becomes corroborating evidence.
-
-The buyer-closure generator emits signed positive packages and signed negative packages. A positive package witnesses an admitted vendor-to-vendor action with treaty scope, ladder intersection, continuation, lineage, bilateral invocation, and strict DSSE evidence bound to one canonical subject digest. A negative package witnesses a denied path (stale lease, mismatched request hash, replayed continuation, missing governance receipt) in the same canonical schema. Every admission decision the buyer made is replayable; every denial is auditable in the same format as an allow; and a downstream reviewer replays the loop without privileged access to vendor internals.
-
-\paragraph{Reproducibility hazards.}
-Measurements are machine-local; generalization requires fresh runs on stated hardware. The dispatch number uses a Criterion sample count chosen for reproducibility on the baseline machine. The hand-written harnesses use debug builds and serve as transparent executable checks, not tuned microbenchmarks; release-profile re-runs are noted as a limitation in \S\ref{sec:limits}.
+The deterministic, single-host loopback removes network variance and makes
+artifact comparison reproducible, but it does not estimate wide-area latency
+or behavior under partial failure. \PSPathSampleCount{} path samples and
+\PSCriterionSampleCount{} component samples characterize this machine, not a
+deployment population. Criterion percentiles describe benchmark samples
+rather than service-level objectives. The retained result metadata records
+source cleanliness before execution. A clean reconstruction gate in the
+artifact package verifies the precise source set used here.

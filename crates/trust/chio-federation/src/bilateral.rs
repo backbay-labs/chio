@@ -314,6 +314,54 @@ pub enum BilateralCoSigningError {
     ReceiptMismatch,
 }
 
+impl BilateralCoSigningError {
+    /// Stable diagnostic code for wire-profile and signer failures.
+    #[must_use]
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::CanonicalJson(message) if message.starts_with("dsse.malformed:") => {
+                "dsse.malformed"
+            }
+            Self::CanonicalJson(message) if message.starts_with("payload base64:") => {
+                "dsse.malformed"
+            }
+            Self::CanonicalJson(message) if message.starts_with("statement.malformed:") => {
+                "statement.malformed"
+            }
+            Self::CanonicalJson(message) if message.starts_with("payload json:") => {
+                "statement.malformed"
+            }
+            Self::CanonicalJson(message) if message.starts_with("statement.schema_invalid:") => {
+                "statement.schema_invalid"
+            }
+            Self::CanonicalJson(message) if message.starts_with("predicate.type_unrecognised:") => {
+                "predicate.type_unrecognised"
+            }
+            Self::CanonicalJson(message)
+                if message.contains("requires independent Org A and Org B signer keys") =>
+            {
+                "signer.independence_required"
+            }
+            Self::CanonicalJson(message) if message.starts_with("predicate.schema_invalid:") => {
+                "predicate.schema_invalid"
+            }
+            Self::CanonicalJson(message) if message.starts_with("subject.digest_mismatch:") => {
+                "subject.digest_mismatch"
+            }
+            Self::CanonicalJson(_) => "canonical_json.invalid",
+            Self::OrgASignatureInvalid => "signature.server_a_invalid",
+            Self::OrgBSignatureInvalid => "signature.server_b_invalid",
+            Self::UnknownPeer(_) => "peer.unknown",
+            Self::PeerExpired(_) => "peer.expired",
+            Self::TransportFailure(_) => "transport.failed",
+            Self::PeerRejected(_) => "peer.rejected",
+            Self::UnsupportedSchema(_) => "schema.unsupported",
+            Self::PeerIdentityMismatch => "peer.identity_mismatch",
+            Self::ReceiptMismatch => "subject.digest_mismatch",
+        }
+    }
+}
+
 /// Trait implemented by an object that can obtain a co-signature from a
 /// remote kernel. Production deployments plug an mTLS-backed RPC client
 /// in here; in-process tests use [`InProcessCoSigner`].

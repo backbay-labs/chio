@@ -1,0 +1,10 @@
+component,p50_us,p99_us,samples,note
+receipt_sign,242.422,309.318,30,buyer-closure-shaped Ed25519 receipt
+receipt_verify,370.163,476.491,30,buyer-closure-shaped Ed25519 receipt
+receipt_append_sqlite,7011.802,10477.089,30,production SQLite receipt store
+treaty_predispatch_deny,13405.539,22826.188,30,"full kernel path; real hook, SQLite denial receipt, invocation counter"
+strict_bilateral_dsse_verify,340.225,366.795,30,"two signatures, embedded receipt, treaty bindings"
+cross_boundary_admission_allow,22.070,28.077,30,receiver treaty scope and verified evidence
+buyer_proof_package_verify,49875.059,52293.652,30,offline three-vendor receiver verification
+producer_without_buyer_review,1983824.498,2054601.054,20,release binaries; process and schema-validation costs included
+full_receiver_admission,2288145.000,2428387.185,20,release binaries; process and schema-validation costs included

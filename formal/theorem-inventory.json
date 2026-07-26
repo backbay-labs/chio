@@ -770,7 +770,7 @@
       "claimClass": "bounded_model",
       "status": "proved",
       "mapsTo": ["P7"],
-      "notes": "Bounded treaty model showing bilateral treaty admission is equivalent to the intersection of treaty, left-polity, and right-polity predicates."
+      "notes": "Legacy closure model showing bilateral treaty admission is equivalent to the intersection of treaty, left-polity, and right-polity predicates. This row does not establish decidability of implication between opaque closures."
     },
     {
       "id": "proof.treaty_admission_stable_under_ladder_floor",
@@ -792,7 +792,7 @@
       "claimClass": "bounded_model",
       "status": "proved",
       "mapsTo": ["P3"],
-      "notes": "Bounded amendment model tying enactable constitutional amendments to an explicit backward-refinement proof witness."
+      "notes": "Legacy closure model tying enactable constitutional amendments to an explicit backward-refinement proof witness. The universal witness is not claimed decidable or production-linked."
     },
     {
       "id": "proof.amendment_without_refinement_rejected",
@@ -803,7 +803,7 @@
       "claimClass": "bounded_model",
       "status": "proved",
       "mapsTo": ["P3"],
-      "notes": "Bounded amendment model showing a candidate with no backward-refinement proof witness is rejected."
+      "notes": "Legacy closure model showing a candidate with no backward-refinement proof witness is rejected. The production Rust runtime does not enact amendments through this type."
     },
     {
       "id": "proof.freestanding_accept_set_theorem",
@@ -859,6 +859,138 @@
       "status": "proved",
       "mapsTo": ["P7"],
       "notes": "Bounded lane-quorum model showing a witness with undeclared contributing lanes fails closed before quorum counting."
+    },
+    {
+      "id": "treaty.bridge.pointwise",
+      "leanName": "Chio.Treaty.PredicateLang.bridge_pointwise",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P7"],
+      "notes": "A syntactic constitution lifted through an explicit receipt resolver agrees pointwise with the legacy closure interpreter."
+    },
+    {
+      "id": "treaty.bridge.soundness",
+      "leanName": "Chio.Treaty.PredicateLang.bridge_soundness",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P7"],
+      "notes": "Global semantic refinement over explicit receipt views soundly lifts into the legacy closure relation. This theorem does not claim that global refinement is decidable."
+    },
+    {
+      "id": "treaty.bridge.decidable_soundness",
+      "leanName": "Chio.Treaty.PredicateLang.bridge_decidable_soundness",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "A successful Boolean refinement check implies semantic no-widening for every receipt in the declared finite domain, with no claim outside that domain."
+    },
+    {
+      "id": "treaty.bridge.bounded_complete",
+      "leanName": "Chio.Treaty.PredicateLang.refinesOnConstitution_iff",
+      "file": "formal/lean4/Chio/Chio/Treaty/PredicateLang.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "The Boolean constitution-refinement check is equivalent to semantic no-widening on its declared finite receipt domain."
+    },
+    {
+      "id": "treaty.syntactic.admission_iff_intersection",
+      "leanName": "Chio.Treaty.IntersectionSyntactic.treaty_admission_iff_predicate_intersection",
+      "file": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P7"],
+      "notes": "Treaty admission over the explicit bounded receipt view equals the conjunction of treaty scope, treaty constitution, and both participant polity predicates."
+    },
+    {
+      "id": "treaty.syntactic.ladder_floor_stable",
+      "leanName": "Chio.Treaty.IntersectionSyntactic.treaty_admission_stable_under_ladder_floor",
+      "file": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P7"],
+      "notes": "A satisfied floor in the bounded five-mode ladder reduces admission to the syntactic treaty predicate."
+    },
+    {
+      "id": "treaty.syntactic.amendment_iff_refinement",
+      "leanName": "Chio.Treaty.IntersectionSyntactic.amendment_admissible_iff_bounded_refinement",
+      "file": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "Candidate admissibility supplies semantic no-widening for every receipt in the candidate's declared finite domain."
+    },
+    {
+      "id": "treaty.syntactic.no_witness_rejected",
+      "leanName": "Chio.Treaty.IntersectionSyntactic.amendment_without_refinement_rejected",
+      "file": "formal/lean4/Chio/Chio/Treaty/IntersectionSyntactic.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "A bounded amendment candidate with proof presence set to false evaluates to rejection."
+    },
+    {
+      "id": "treaty.bridge.equivalence_polity_admits",
+      "leanName": "Chio.Treaty.BridgeEquivalence.Legacy.polity_admission_agrees",
+      "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P7"],
+      "notes": "Lifting a syntactic polity through an explicit resolver preserves its pointwise admission decision."
+    },
+    {
+      "id": "treaty.bridge.equivalence_treaty_admits",
+      "leanName": "Chio.Treaty.BridgeEquivalence.Legacy.treaty_admission_agrees",
+      "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P7"],
+      "notes": "Lifting a syntactic bilateral treaty through an explicit resolver preserves its pointwise admission decision."
+    },
+    {
+      "id": "treaty.bridge.equivalence_mode_admits",
+      "leanName": "Chio.Treaty.BridgeEquivalence.Legacy.treaty_admission_under_mode_agrees",
+      "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P7"],
+      "notes": "The syntactic and lifted legacy treaty models agree pointwise when composed with the same ladder mode."
+    },
+    {
+      "id": "treaty.bridge.bounded_amendment_sound",
+      "leanName": "Chio.Treaty.BridgeEquivalence.Legacy.bounded_amendment_sound",
+      "file": "formal/lean4/Chio/Chio/Treaty/BridgeEquivalence.lean",
+      "kind": "theorem",
+      "rootImported": true,
+      "claimClass": "bounded_model",
+      "status": "proved",
+      "mapsTo": ["P3"],
+      "notes": "A syntactic constitutional delta establishes semantic no-widening exactly on the finite receipt domain it carries."
     }
   ]
 }
