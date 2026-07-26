@@ -4,14 +4,14 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
 
 use chio_agent_web_interop::{
     AgentWebReplayEntry, AgentWebReplayStore, AgentWebReplayStoreError,
     DEFAULT_AGENT_WEB_REPLAY_GLOBAL_CAPACITY, DEFAULT_AGENT_WEB_REPLAY_PER_SCOPE_CAPACITY,
 };
-use rusqlite::{params, Connection, TransactionBehavior};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 
 const LEGACY_UNSCOPED_REPLAY_SCOPE: &str = "__chio_legacy_unscoped_replay_scope__";
 
@@ -84,7 +84,6 @@ impl SqliteAgentWebReplayStore {
             PRAGMA synchronous = FULL;
             "#,
         )?;
-        let current_wall_time = current_wall_time()?;
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let entries_exist = transaction.query_row(
             r#"
@@ -181,21 +180,20 @@ impl SqliteAgentWebReplayStore {
             [],
             |row| row.get::<_, Option<i64>>(0),
         )?;
-        let migration_high_water = latest_consumed_at.map_or(current_wall_time, |consumed_at| {
-            consumed_at.max(current_wall_time)
-        });
-        transaction.execute(
-            r#"
-            INSERT INTO chio_agent_web_replay_clock (singleton, wall_clock_high_water)
-            VALUES (1, ?1)
-            ON CONFLICT(singleton) DO UPDATE SET
-                wall_clock_high_water = MAX(
-                    chio_agent_web_replay_clock.wall_clock_high_water,
-                    excluded.wall_clock_high_water
-                )
-            "#,
-            params![migration_high_water],
-        )?;
+        if let Some(migration_high_water) = latest_consumed_at {
+            transaction.execute(
+                r#"
+                INSERT INTO chio_agent_web_replay_clock (singleton, wall_clock_high_water)
+                VALUES (1, ?1)
+                ON CONFLICT(singleton) DO UPDATE SET
+                    wall_clock_high_water = MAX(
+                        chio_agent_web_replay_clock.wall_clock_high_water,
+                        excluded.wall_clock_high_water
+                    )
+                "#,
+                params![migration_high_water],
+            )?;
+        }
         transaction.commit()?;
         Ok(())
     }
@@ -203,15 +201,19 @@ impl SqliteAgentWebReplayStore {
     fn validate_retained_capacity(&self) -> Result<(), SqliteAgentWebReplayStoreError> {
         let mut connection = self.connection()?;
         let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let high_water = transaction.query_row(
-            "SELECT wall_clock_high_water FROM chio_agent_web_replay_clock WHERE singleton = 1",
-            [],
-            |row| row.get::<_, i64>(0),
-        )?;
-        transaction.execute(
-            "DELETE FROM chio_agent_web_replays WHERE expires_at < ?1",
-            params![high_water],
-        )?;
+        let high_water = transaction
+            .query_row(
+                "SELECT wall_clock_high_water FROM chio_agent_web_replay_clock WHERE singleton = 1",
+                [],
+                |row| row.get::<_, i64>(0),
+            )
+            .optional()?;
+        if let Some(high_water) = high_water {
+            transaction.execute(
+                "DELETE FROM chio_agent_web_replays WHERE expires_at < ?1",
+                params![high_water],
+            )?;
+        }
         let retained_rows =
             transaction.query_row("SELECT COUNT(*) FROM chio_agent_web_replays", [], |row| {
                 row.get::<_, i64>(0)
@@ -299,19 +301,31 @@ impl AgentWebReplayStore for SqliteAgentWebReplayStore {
                 [],
                 |row| row.get::<_, i64>(0),
             )
+            .optional()
             .map_err(|error| AgentWebReplayStoreError::Unavailable(error.to_string()))?;
-        if now < wall_clock_high_water {
-            return Err(AgentWebReplayStoreError::Unavailable(format!(
-                "verifier clock rollback detected: {now} is before high-water {wall_clock_high_water}"
-            )));
-        }
-        if now > wall_clock_high_water {
-            transaction
-                .execute(
-                    "UPDATE chio_agent_web_replay_clock SET wall_clock_high_water = ?1 WHERE singleton = 1",
-                    params![now],
-                )
-                .map_err(|error| AgentWebReplayStoreError::Unavailable(error.to_string()))?;
+        match wall_clock_high_water {
+            Some(high_water) if now < high_water => {
+                return Err(AgentWebReplayStoreError::Unavailable(format!(
+                    "verifier clock rollback detected: {now} is before high-water {high_water}"
+                )));
+            }
+            Some(high_water) if now > high_water => {
+                transaction
+                    .execute(
+                        "UPDATE chio_agent_web_replay_clock SET wall_clock_high_water = ?1 WHERE singleton = 1",
+                        params![now],
+                    )
+                    .map_err(|error| AgentWebReplayStoreError::Unavailable(error.to_string()))?;
+            }
+            None => {
+                transaction
+                    .execute(
+                        "INSERT INTO chio_agent_web_replay_clock (singleton, wall_clock_high_water) VALUES (1, ?1)",
+                        params![now],
+                    )
+                    .map_err(|error| AgentWebReplayStoreError::Unavailable(error.to_string()))?;
+            }
+            Some(_) => {}
         }
 
         let mut expires_at_values = Vec::with_capacity(entries.len());
@@ -501,22 +515,6 @@ fn count_as_usize(count: i64, description: &str) -> Result<usize, SqliteAgentWeb
     })
 }
 
-fn current_wall_time() -> Result<i64, SqliteAgentWebReplayStoreError> {
-    i64::try_from(
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|error| {
-                SqliteAgentWebReplayStoreError(format!(
-                    "system clock is before Unix epoch: {error}"
-                ))
-            })?
-            .as_secs(),
-    )
-    .map_err(|error| {
-        SqliteAgentWebReplayStoreError(format!("system time is out of range: {error}"))
-    })
-}
-
 #[cfg(test)]
 mod tests {
     use std::{
@@ -574,6 +572,38 @@ mod tests {
             error,
             AgentWebReplayStoreError::Replayed("webhook-1".to_string())
         );
+    }
+
+    #[test]
+    fn fresh_store_seeds_clock_from_first_verifier_observation() {
+        let tempdir = tempfile::tempdir().test_expect("tempdir creates");
+        let store = SqliteAgentWebReplayStore::open(tempdir.path().join("replay.sqlite"))
+            .test_expect("replay store opens");
+        let verifier_now = unix_now().saturating_sub(5);
+
+        store
+            .check_and_insert(
+                verifier_now,
+                &[replay_entry("first-observation", verifier_now + 20)],
+            )
+            .test_expect("first verifier observation seeds a fresh replay clock");
+    }
+
+    #[test]
+    fn empty_reopen_preserves_first_verifier_observation() {
+        let tempdir = tempfile::tempdir().test_expect("tempdir creates");
+        let path = tempdir.path().join("replay.sqlite");
+        let verifier_now = unix_now().saturating_sub(5);
+        let store = SqliteAgentWebReplayStore::open(&path).test_expect("replay store opens");
+        store
+            .check_and_insert(verifier_now, &[])
+            .test_expect("first verifier observation seeds the replay clock");
+        drop(store);
+
+        let reopened = SqliteAgentWebReplayStore::open(&path).test_expect("replay store reopens");
+        reopened
+            .check_and_insert(verifier_now, &[])
+            .test_expect("store open does not advance the verifier clock");
     }
 
     #[test]

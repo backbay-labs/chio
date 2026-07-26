@@ -727,6 +727,7 @@ fn verify_agent_web_interop_with_trust_mode(
     let mut limitations = Vec::new();
     let mut envelope_ids = BTreeSet::new();
     let mut pending_replay_entries = Vec::new();
+    let mut pending_replay_subjects = BTreeSet::new();
 
     for envelope_node in graph
         .nodes
@@ -783,7 +784,12 @@ fn verify_agent_web_interop_with_trust_mode(
         if let Some(replay_entry) =
             validate_external_subject(&envelope, &manifest_entry.manifest, external_bytes, trust)?
         {
-            pending_replay_entries.push(replay_entry);
+            queue_replay_entry_once_per_subject(
+                &mut pending_replay_entries,
+                &mut pending_replay_subjects,
+                &external_node.id,
+                replay_entry,
+            );
         }
         if matches!(
             envelope.source_protocol.as_str(),
@@ -867,6 +873,22 @@ fn verify_agent_web_interop_with_trust_mode(
         trust.commit_standard_webhooks_replays(&pending_replay_entries)?;
     }
     Ok(report)
+}
+
+fn queue_replay_entry_once_per_subject(
+    pending_entries: &mut Vec<AgentWebReplayEntry>,
+    pending_subjects: &mut BTreeSet<(String, AgentWebReplayScope, String)>,
+    external_subject_node_id: &str,
+    replay_entry: AgentWebReplayEntry,
+) {
+    let subject_key = (
+        external_subject_node_id.to_string(),
+        replay_entry.replay_scope().clone(),
+        replay_entry.webhook_id().to_string(),
+    );
+    if pending_subjects.insert(subject_key) {
+        pending_entries.push(replay_entry);
+    }
 }
 
 fn validate_receipt_refs(

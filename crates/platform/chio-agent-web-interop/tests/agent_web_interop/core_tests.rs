@@ -159,6 +159,27 @@ fn published_v2_proof_envelope_schema_requires_scope_and_unique_receipts() {
         "v2 proof envelope without a passport scope digest",
     );
 
+    for (label, invalid_ref) in [
+        ("receipt node id", "receipt-node-agent-web-webhook-allow"),
+        (
+            "receipt digest",
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        ),
+        (
+            "receipt artifact path",
+            "receipts/receipt-agent-web-webhook-allow.json",
+        ),
+        ("uppercase receipt ref", "receipt-agent-web-Webhook-allow"),
+    ] {
+        let mut invalid_receipt_ref = envelope.clone();
+        invalid_receipt_ref["receipt_refs"] = json!([invalid_ref]);
+        assert_schema_rejects_value(
+            &envelope_schema,
+            &invalid_receipt_ref,
+            &format!("v2 proof envelope with {label}"),
+        );
+    }
+
     let mut duplicate_receipts = envelope;
     let receipt_ref = duplicate_receipts["receipt_refs"][0]
         .as_str()
@@ -1313,6 +1334,162 @@ fn agent_web_interop_persists_webhook_replay_after_successful_verification() {
         .test_expect_err("second verification must observe the stored replay marker");
 
     assert!(error.to_string().contains("replayed Standard Webhooks id"));
+}
+
+#[test]
+fn consuming_verifier_deduplicates_one_webhook_subject_across_envelopes() {
+    let mut bundle = agent_web_bundle(AgentWebCase::Valid);
+    let graph: serde_json::Value = serde_json::from_slice(&bundle.evidence_graph_bytes)
+        .test_expect("Agent Web evidence graph parses");
+    let nodes = graph["nodes"]
+        .as_array()
+        .test_expect("Agent Web evidence graph has nodes");
+    let original_envelope_node_id = nodes
+        .iter()
+        .find(|node| node["path"].as_str() == Some("standard-webhooks-envelope.json"))
+        .and_then(|node| node["id"].as_str())
+        .test_expect("standard webhooks envelope node exists")
+        .to_string();
+    let original_receipt_node_id = nodes
+        .iter()
+        .find(|node| node["path"].as_str() == Some("receipts/receipt-agent-web-webhook-allow.json"))
+        .and_then(|node| node["id"].as_str())
+        .test_expect("standard webhooks receipt node exists")
+        .to_string();
+    let mut duplicate_edges = graph["edges"]
+        .as_array()
+        .test_expect("Agent Web evidence graph has edges")
+        .iter()
+        .filter(|edge| edge["from"].as_str() == Some(original_envelope_node_id.as_str()))
+        .cloned()
+        .collect::<Vec<_>>();
+    assert_eq!(duplicate_edges.len(), 3);
+
+    let mut duplicate_envelope: serde_json::Value = serde_json::from_slice(
+        bundle
+            .artifacts
+            .get("standard-webhooks-envelope.json")
+            .test_expect("standard webhooks envelope exists"),
+    )
+    .test_expect("standard webhooks envelope parses");
+    let duplicate_receipt_ref = "receipt-agent-web-webhook-allow-duplicate";
+    duplicate_envelope["receipt_refs"] = json!([duplicate_receipt_ref]);
+    duplicate_envelope["limitations"]
+        .as_array_mut()
+        .test_expect("standard webhooks envelope limitations are an array")
+        .push(json!(
+            "One authenticated delivery is projected through a second envelope."
+        ));
+    sign_agent_web_envelope_with_key(
+        &mut duplicate_envelope,
+        &agent_web_fixture_sidecar_keypair(),
+    );
+    let duplicate_envelope_id = duplicate_envelope["envelope_id"]
+        .as_str()
+        .test_expect("duplicate envelope has a content-addressed id")
+        .to_string();
+    let projection_manifest_sha256 = duplicate_envelope["projection_manifest_sha256"]
+        .as_str()
+        .test_expect("duplicate envelope binds its manifest digest")
+        .to_string();
+    let source_protocol = duplicate_envelope["source_protocol"]
+        .as_str()
+        .test_expect("duplicate envelope names its source protocol")
+        .to_string();
+    let source_protocol_version = duplicate_envelope["source_protocol_version"]
+        .as_str()
+        .test_expect("duplicate envelope names its source protocol version")
+        .to_string();
+    let external_subject_digest = duplicate_envelope["external_subject_digest"]
+        .as_str()
+        .test_expect("duplicate envelope binds its external subject")
+        .to_string();
+    let duplicate_envelope_node_id = append_agent_web_json_artifact(
+        &mut bundle,
+        "duplicate-standard-webhooks-envelope.json",
+        "agent-web-proof-envelope",
+        "chio.agent-web-proof-envelope.v2",
+        duplicate_envelope,
+    );
+
+    let passport_scope_sha256 =
+        chio_agent_web_interop::agent_web_passport_scope_sha256(&bundle.passport)
+            .test_expect("Agent Web passport scope hashes");
+    let receipt_intent = AgentWebReceiptIntent {
+        passport_id: bundle.passport.id.clone(),
+        passport_issuer: bundle.passport.issuer.clone(),
+        passport_scope_sha256,
+        envelope_id: duplicate_envelope_id,
+        projection_manifest_sha256,
+        source_protocol,
+        source_protocol_version,
+    };
+    let duplicate_receipt: serde_json::Value =
+        serde_json::from_slice(&signed_agent_web_receipt_bytes(
+            AgentWebCase::Valid,
+            duplicate_receipt_ref,
+            &external_subject_digest,
+            &bundle.passport.verifier_policy_sha256,
+            true,
+            &receipt_intent,
+        ))
+        .test_expect("duplicate Agent Web receipt parses");
+    let duplicate_receipt_node_id = append_agent_web_json_artifact(
+        &mut bundle,
+        "receipts/receipt-agent-web-webhook-allow-duplicate.json",
+        "receipt",
+        "chio.receipt.v1",
+        duplicate_receipt,
+    );
+
+    for edge in &mut duplicate_edges {
+        edge["from"] = json!(duplicate_envelope_node_id.clone());
+        if edge["to"].as_str() == Some(original_receipt_node_id.as_str()) {
+            edge["to"] = json!(duplicate_receipt_node_id.clone());
+        }
+    }
+    let mut extended_graph: serde_json::Value =
+        serde_json::from_slice(&bundle.evidence_graph_bytes)
+            .test_expect("extended Agent Web evidence graph parses");
+    extended_graph["edges"]
+        .as_array_mut()
+        .test_expect("extended Agent Web evidence graph has edges")
+        .extend(duplicate_edges);
+    bundle.evidence_graph_bytes = json_bytes(extended_graph);
+    bundle.passport.evidence_graph_sha256 =
+        chio_core_types::sha256_hex(&bundle.evidence_graph_bytes);
+    sign_transaction_passport(&mut bundle.passport);
+
+    let (passport_key, kernel_key, sidecar_key) = default_role_keys();
+    let capture = Arc::new(CapturingReplayStore::default());
+    let replay_store: Arc<dyn AgentWebReplayStore> = capture.clone();
+    let trust = agent_web_trust_with_role_keys(
+        vec![passport_key],
+        vec![kernel_key],
+        vec![sidecar_key],
+        Some(replay_store),
+        STANDARD_WEBHOOKS_VERIFIER_NOW,
+    );
+    let report = verify_agent_web_interop_with_trust_and_consume_replays(&bundle, &trust)
+        .test_expect("both envelopes for one authenticated delivery verify");
+
+    assert_eq!(
+        report
+            .projections
+            .iter()
+            .filter(|projection| projection.source_protocol == "standard-webhooks")
+            .count(),
+        2
+    );
+    assert_eq!(
+        capture
+            .entries
+            .lock()
+            .test_expect("capture store lock remains available")
+            .len(),
+        1,
+        "one authenticated subject reserves one replay marker"
+    );
 }
 
 #[test]

@@ -1402,17 +1402,25 @@ impl ChioKernel {
         // disarmed with an empty buffer, so the disarmed drop flushes nothing and
         // no receipt is double-recorded.
         post_admission_drop_guard.record_buffered_child_receipts()?;
+        let dispatched_or_nested_effect = tool_output_result.is_ok()
+            || matches!(
+                &tool_output_result,
+                Err(KernelError::UrlElicitationsRequired { .. })
+                    if nested_interaction_observed
+            );
+        if dispatched_or_nested_effect {
+            if let Err(error) = credential_reservation.commit() {
+                post_admission_drop_guard.mark_dispatch_credential_commit_failed();
+                return Err(error);
+            }
+        }
         post_admission_drop_guard.disarm();
         drop(post_admission_drop_guard);
         let (tool_output, reported_cost) = match tool_output_result {
-            Ok(output) => {
-                let _credential_disposition = credential_reservation.commit()?;
-                output
-            }
+            Ok(output) => output,
             Err(error @ KernelError::UrlElicitationsRequired { .. })
                 if nested_interaction_observed =>
             {
-                let _credential_disposition = credential_reservation.commit()?;
                 let reason =
                     format!("URL elicitation requested after a nested interaction: {error}");
                 let metadata = self.ambiguous_dispatch_receipt_metadata(

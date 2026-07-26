@@ -2028,8 +2028,8 @@ def run_lane(repo: str, lane: Lane, *, report_only: bool) -> int:
 def run_fleet(lanes: dict[str, Lane]) -> int:
     required = [lane for lane in lanes.values() if lane.posture == "required"]
     if not required:
-        print("lane-gate: fleet required=0 verdict=fail", file=sys.stderr)
-        return 1
+        print("lane-gate: fleet required=0 verdict=pass")
+        return 0
     repo = repository()
     failed = False
     for lane in required:

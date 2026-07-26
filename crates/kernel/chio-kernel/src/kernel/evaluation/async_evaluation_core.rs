@@ -1667,13 +1667,16 @@ impl ChioKernel {
         let dispatch_result = self
             .dispatch_resolved_server_within_budget(server, request, has_monetary)
             .await;
+        if dispatch_result.is_ok() {
+            if let Err(error) = credential_reservation.commit() {
+                post_admission_drop_guard.mark_dispatch_credential_commit_failed();
+                return Err(error);
+            }
+        }
         post_admission_drop_guard.disarm();
         drop(post_admission_drop_guard);
         let (tool_output, reported_cost) = match dispatch_result {
-            Ok(result) => {
-                let _credential_disposition = credential_reservation.commit()?;
-                result
-            }
+            Ok(result) => result,
             Err(error @ KernelError::UrlElicitationsRequired { .. }) => {
                 let credential_cleanup = if payment_authorization.is_some() {
                     credential_reservation.commit().map(|_| ())

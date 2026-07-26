@@ -508,13 +508,13 @@ pub(crate) fn sign_agent_web_receipts(
 
 #[derive(Clone)]
 pub(crate) struct AgentWebReceiptIntent {
-    passport_id: String,
-    passport_issuer: String,
-    passport_scope_sha256: String,
-    envelope_id: String,
-    projection_manifest_sha256: String,
-    source_protocol: String,
-    source_protocol_version: String,
+    pub(crate) passport_id: String,
+    pub(crate) passport_issuer: String,
+    pub(crate) passport_scope_sha256: String,
+    pub(crate) envelope_id: String,
+    pub(crate) projection_manifest_sha256: String,
+    pub(crate) source_protocol: String,
+    pub(crate) source_protocol_version: String,
 }
 
 fn agent_web_receipt_intents(
