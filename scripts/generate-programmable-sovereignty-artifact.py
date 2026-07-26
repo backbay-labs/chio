@@ -380,7 +380,11 @@ def git_output(*args: str) -> str:
     return result.stdout.strip()
 
 
-def resolve_source_commit(explicit: str | None) -> str:
+def resolve_source_commit(
+    explicit: str | None,
+    *,
+    require_local_object: bool,
+) -> str:
     candidate = explicit
     if candidate is None and SOURCE_COMMIT_FILE.is_file():
         candidate = SOURCE_COMMIT_FILE.read_text().strip()
@@ -389,23 +393,11 @@ def resolve_source_commit(explicit: str | None) -> str:
     if re.fullmatch(r"[0-9a-f]{40}", candidate) is None:
         fail("source commit is not a full SHA")
     try:
-        resolved = git_output("rev-parse", f"{candidate}^{{commit}}")
-        subprocess.run(
-            [
-                "git",
-                "-C",
-                str(REPO),
-                "merge-base",
-                "--is-ancestor",
-                resolved,
-                "HEAD",
-            ],
-            check=True,
-            capture_output=True,
-        )
+        return git_output("rev-parse", f"{candidate}^{{commit}}")
     except subprocess.CalledProcessError:
-        fail("source commit does not name an ancestor of HEAD")
-    return resolved
+        if require_local_object:
+            fail("source commit is not available in local repository history")
+        return candidate
 
 
 def snapshot_paths() -> list[str]:
@@ -438,7 +430,28 @@ def snapshot_paths() -> list[str]:
     return sorted(set(paths))
 
 
-def validate_pinned_snapshot(source_commit: str) -> None:
+def validate_pinned_snapshot(
+    source_commit: str,
+    *,
+    require_local_object: bool,
+) -> None:
+    commit_available = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(REPO),
+            "cat-file",
+            "-e",
+            f"{source_commit}^{{commit}}",
+        ],
+        check=False,
+        capture_output=True,
+    ).returncode == 0
+    if not commit_available:
+        if require_local_object:
+            fail("source commit is not available in local repository history")
+        return
+
     for relative in snapshot_paths():
         try:
             committed = subprocess.run(
@@ -461,7 +474,11 @@ def validate_pinned_snapshot(source_commit: str) -> None:
             )
 
 
-def validate_inputs(source_commit: str) -> None:
+def validate_inputs(
+    source_commit: str,
+    *,
+    require_local_source_object: bool,
+) -> None:
     for theorem in THEOREMS:
         text = file_bytes(theorem["path"]).decode("utf-8")
         if re.search(
@@ -506,7 +523,10 @@ def validate_inputs(source_commit: str) -> None:
         fail("bilateral admission results are not release-profile")
     if results.get("negativeMatrix", {}).get("cases") != 20:
         fail("benchmark summary does not report 20 negative cases")
-    validate_pinned_snapshot(source_commit)
+    validate_pinned_snapshot(
+        source_commit,
+        require_local_object=require_local_source_object,
+    )
 
 
 def proof_manifest_bytes() -> bytes:
@@ -728,7 +748,8 @@ def manifest_bytes(
         "source": {
             "commit": source_commit,
             "snapshotMode": (
-                "pinned source commit plus content-addressed artifact"
+                "recorded source commit plus self-contained "
+                "content-addressed snapshot"
             ),
             "contentSetSha256": content_digest.hexdigest(),
         },
@@ -797,15 +818,21 @@ def main() -> int:
     parser.add_argument(
         "--source-commit",
         help=(
-            "pin an explicit full source commit; generation records it in "
+            "record an explicit full source commit; generation writes it to "
             "supplementary/source-commit.txt"
         ),
     )
     args = parser.parse_args()
 
-    source_commit = resolve_source_commit(args.source_commit)
+    source_commit = resolve_source_commit(
+        args.source_commit,
+        require_local_object=not args.check,
+    )
     source_commit_bytes = f"{source_commit}\n".encode()
-    validate_inputs(source_commit)
+    validate_inputs(
+        source_commit,
+        require_local_source_object=not args.check,
+    )
     proof_bytes = proof_manifest_bytes()
     inventory_bytes = theorem_inventory_bytes()
     archive_bytes = lean_archive_bytes()

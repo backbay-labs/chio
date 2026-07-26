@@ -16,6 +16,12 @@ use chio_runtime_core::{
 use std::io;
 use support::treaty::{treaty_action_class, treaty_manifest, treaty_scope};
 
+fn emit_threat_matrix_code(code: &str) {
+    if std::env::var_os("CHIO_THREAT_MATRIX_EMIT_CODE").is_some() {
+        println!("CHIO_THREAT_MATRIX_CODE={code}");
+    }
+}
+
 #[test]
 fn bilateral_dsse_consistency_models_use_wire_vocabulary() {
     for (runtime, wire) in [
@@ -331,6 +337,28 @@ fn bounded_treaty_view_binds_runtime_artifacts_and_rejects_wrong_treaty(
     assert_eq!(view.decision, BoundedAdmissionDecision::Allow);
     assert_eq!(view.evidence_digests.len(), 2);
 
+    for invalid_now in [
+        scope.issued_at_unix_ms.saturating_sub(1),
+        scope.expires_at_unix_ms,
+    ] {
+        let err = match bounded_treaty_receipt_view_from_verified_artifacts(
+            &scope,
+            &report,
+            &invocation,
+            &continuation,
+            invalid_now,
+        ) {
+            Ok(_) => {
+                return Err(io::Error::other(
+                    "a bounded view outside the treaty window was accepted",
+                )
+                .into());
+            }
+            Err(err) => err,
+        };
+        assert_eq!(err.code(), "chio_treaty_stale");
+    }
+
     let mut mismatched = invocation.clone();
     mismatched.action_class_id = "workflow.read_only".to_string();
     assert!(bounded_treaty_receipt_view_from_verified_artifacts(
@@ -344,14 +372,21 @@ fn bounded_treaty_view_binds_runtime_artifacts_and_rejects_wrong_treaty(
 
     let mut wrong_treaty = invocation;
     wrong_treaty.treaty_id = "treaty-attacker".to_string();
-    let err = bounded_treaty_receipt_view_from_verified_artifacts(
+    let err = match bounded_treaty_receipt_view_from_verified_artifacts(
         &scope,
         &report,
         &wrong_treaty,
         &continuation,
         1_800_000_010_000,
-    )
-    .expect_err("a signed invocation for another treaty must be rejected");
+    ) {
+        Ok(_) => {
+            return Err(
+                io::Error::other("a signed invocation for another treaty was accepted").into(),
+            );
+        }
+        Err(err) => err,
+    };
+    emit_threat_matrix_code(err.code());
     assert_eq!(err.code(), "chio_treaty_scope_hash_mismatch");
     Ok(())
 }
@@ -758,6 +793,9 @@ fn treaty_cross_boundary_admission_rejects_stale_treaty_or_future_intersection(
         now_unix_ms: 1_800_000_010_000,
     })?;
     assert!(!denied.accepted);
+    if let Some(code) = denied.failure_code.as_deref() {
+        emit_threat_matrix_code(code);
+    }
     assert_eq!(denied.failure_code.as_deref(), Some("chio_treaty_stale"));
     Ok(())
 }
@@ -943,6 +981,9 @@ fn treaty_cross_boundary_admission_rejects_unverified_or_forged_intersection(
         now_unix_ms: 1_800_000_010_000,
     })?;
     assert!(!forged.accepted);
+    if let Some(code) = forged.failure_code.as_deref() {
+        emit_threat_matrix_code(code);
+    }
     assert_eq!(
         forged.failure_code.as_deref(),
         Some("chio_treaty_intersection_mismatch")

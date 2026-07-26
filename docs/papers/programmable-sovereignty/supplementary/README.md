@@ -18,8 +18,10 @@ or treats as an assumption.
 
 - `artifact-manifest.json` is the content-addressed index for the complete
   paper artifact. It names symbols rather than mutable line numbers.
-- `source-commit.txt` names the immutable repository commit from which the
-  content-addressed submission artifact was assembled.
+- `source-commit.txt` records the repository commit from which the submission
+  artifact was assembled. Verification uses the manifest's per-path hashes
+  and aggregate content digest, so it remains self-contained after a squash
+  merge or in a source archive that does not carry the original commit object.
 - `proof-manifest.toml` lists the six bounded theorem declarations used by the
   paper, their modules, model scopes, claim classes, and Lean axiom reports.
 - `theorem-inventory.json` supplies the same theorem inventory for automated
@@ -38,7 +40,10 @@ bash scripts/check-programmable-sovereignty-artifact.sh
 
 This command regenerates the artifact in check mode, verifies every file,
 symbol, theorem, script, result, and hash, extracts the Lean archive into a
-private temporary directory, and runs `lake build` there.
+private temporary directory, and runs `lake build` there. If the recorded
+source commit is available locally, the checker also compares the current
+snapshot with that commit. The content-addressed checks do not require the
+commit object to remain reachable.
 
 ## Full Reproduction
 

@@ -217,6 +217,12 @@ pub fn bounded_treaty_receipt_view_from_verified_artifacts(
     validate_bilateral_invocation(invocation)?;
     validate_cross_kernel_continuation(continuation)?;
 
+    if now_unix_ms < treaty_scope.issued_at_unix_ms
+        || now_unix_ms >= treaty_scope.expires_at_unix_ms
+    {
+        return rejected("chio_treaty_stale", "bounded treaty view scope is not live");
+    }
+
     let expected_scope_sha256 = treaty_scope_sha256(treaty_scope)?;
     if report.treaty_scope_sha256 != expected_scope_sha256
         || report.treaty_id != treaty_scope.treaty_id

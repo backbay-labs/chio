@@ -41,7 +41,7 @@ if [[ $# -gt 1 ]]; then
 fi
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-negative_fixture="$repo_root/examples/chio-3vendor/fixtures/treaty-runtime-negative-corpus.json"
+negative_fixture="${CHIO_TREATY_NEGATIVE_FIXTURE:-$repo_root/examples/chio-3vendor/fixtures/treaty-runtime-negative-corpus.json}"
 
 run_cargo_test_filter() {
   local package="$1"
@@ -93,6 +93,57 @@ run_runtime_kernel_hook_test() {
 
 run_runtime_store_test() {
   run_cargo_test_filter chio-runtime-core "$1" --test runtime_store
+}
+
+run_matrix_test_and_verify_code() {
+  local package="$1"
+  local target_kind="$2"
+  local target_name="$3"
+  local test_filter="$4"
+  local expected_code="$5"
+  local output
+
+  case "$target_kind" in
+    "lib")
+      if ! output="$(
+        CHIO_THREAT_MATRIX_EMIT_CODE=1 \
+          run_cargo_test_filter "$package" "$test_filter" --lib -- --nocapture 2>&1
+      )"; then
+        printf '%s\n' "$output"
+        return 1
+      fi
+      ;;
+    "integration")
+      if ! output="$(
+        CHIO_THREAT_MATRIX_EMIT_CODE=1 \
+          run_cargo_test_filter "$package" "$test_filter" --test "$target_name" -- --nocapture 2>&1
+      )"; then
+        printf '%s\n' "$output"
+        return 1
+      fi
+      ;;
+    *)
+      echo "unsupported target kind '$target_kind'" >&2
+      return 1
+      ;;
+  esac
+
+  printf '%s\n' "$output"
+  local observed_codes=()
+  mapfile -t observed_codes < <(
+    grep -oE 'CHIO_THREAT_MATRIX_CODE=[a-z0-9_.-]+' <<<"$output" \
+      | cut -d= -f2
+  )
+  if [[ "${#observed_codes[@]}" -ne 1 ]]; then
+    printf 'expected exactly one machine-readable failure code from %s; observed %d\n' \
+      "$test_filter" "${#observed_codes[@]}" >&2
+    return 1
+  fi
+  if [[ "${observed_codes[0]}" != "$expected_code" ]]; then
+    printf 'failure code mismatch for %s: expected %s, observed %s\n' \
+      "$test_filter" "$expected_code" "${observed_codes[0]}" >&2
+    return 1
+  fi
 }
 
 run_runtime_negative_matrix() {
@@ -168,18 +219,11 @@ PY
     [[ -n "$threat_id" ]] || continue
     printf 'running %s (%s, expected %s): %s\n' \
       "$threat_id" "$phase" "$expected_code" "$test_filter"
-    case "$target_kind" in
-      "lib")
-        run_cargo_test_filter "$package" "$test_filter" --lib
-        ;;
-      "integration")
-        run_cargo_test_filter "$package" "$test_filter" --test "$target_name"
-        ;;
-      *)
-        echo "$threat_id: unsupported target kind '$target_kind'" >&2
-        return 1
-        ;;
-    esac
+    if ! run_matrix_test_and_verify_code \
+      "$package" "$target_kind" "$target_name" "$test_filter" "$expected_code"; then
+      echo "$threat_id: threat-matrix diagnostic verification failed" >&2
+      return 1
+    fi
     count=$((count + 1))
   done <<<"$rows"
 

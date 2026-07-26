@@ -60,12 +60,13 @@ Policy outcome
 \end{tabularx}
 \end{table}
 
-All \PSThreatCaseCount{} cases returned their named denial in both the ordinary matrix run and
-the release-profile evaluation. Hook-level cases additionally observed an
-unchanged tool-invocation counter. Envelope-only cases have no tool server to
-count, so their claim is restricted to verifier rejection. The release matrix
-took \PSNegativeMatrixSeconds~s, a suite wall time reported for reproducibility, not a denial
-latency measurement.
+All \PSThreatCaseCount{} cases returned their named denial in both matrix runs.
+The runner compares each test's machine-readable code with the corpus, so a
+wrong diagnostic fails. These targets call validators or the admission hook
+without creating a tool server; the matrix claim is therefore the named
+rejection at the declared phase. A separate dispatch-capable benchmark
+observed an unchanged invocation counter. The release matrix took
+\PSNegativeMatrixSeconds~s, a reproducibility wall time, not denial latency.
 
 The corpus also declares \codepath{PS-A-01}: one actor may control two distinct
 keys that the receiver has authorized as the treaty participants. Cryptography

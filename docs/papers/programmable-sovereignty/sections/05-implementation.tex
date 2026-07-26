@@ -54,9 +54,9 @@ assumption because one actor can control both keys.
 The admission hook runs after core capability checks and before the
 \codepath{ToolServer} invocation. It treats parser, store, freshness,
 cryptographic, lineage, policy, and continuation errors as denials. The
-side-effect test server used in the evaluation increments a counter only on
-invocation; every denial sample asserts that the counter is unchanged. This
-gives the phrase ``pre-dispatch'' an observable implementation meaning.
+dispatch-path test server increments a counter only on invocation, and denial
+samples assert that it stays unchanged. Direct verifier tests make no dispatch
+observation.
 
 The production hook's explicit checks remain authoritative. This work also
 adds a versioned bounded predicate module,
@@ -82,11 +82,11 @@ and performs semantic review. The offline
 artifacts and checks their hashes and signatures without access to vendor
 internals.
 
-The negative matrix uses the same public verification surfaces. Pure envelope
-cases call the strict verifier directly; store and policy cases exercise the
-runtime hook and its non-dispatch assertion. This distinction avoids
-manufacturing a dispatch observation for a failure that occurs before a
-runtime request exists.
+The negative matrix uses the same public verification surfaces. Each selected
+test emits its observed diagnostic for comparison with the corpus. Envelope
+cases call the strict verifier; store and policy cases call the admission hook
+directly. None instantiates a tool server, so the matrix demonstrates named
+denials while a separate dispatch-path test supplies the counter observation.
 
 \begin{table*}[t]
 \caption{Load-bearing artifacts and the boundary of each claim.}
