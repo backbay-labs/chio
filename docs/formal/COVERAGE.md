@@ -926,7 +926,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 
 - Generator version: `3`
 - Regenerate: `cargo xtask gen proof-coverage`
-- Input digest: `7a3fef2208bb399f786e50144f8eef733771cc401ad58cc4178821c428777bb3`
+- Input digest: `ef3cfd0f0f1b671b4c2938e0c2c0342365bb0564475ecdaca1df828f2c7e34df`
 - Git commit: `@GIT_COMMIT@` (resolved in coverage.json and Proof Room packages)
 - Row identity: file rows use package-relative Rust paths; crate-only artifacts use `package::*`.
 
@@ -1083,7 +1083,7 @@ These drift-checked manual mirrors and contract twins are review navigation only
 - `formal/apalache/MCReceiptBeforeAllow.cfg`: `71fb93fb3263978fb8568ba2ab3cc6211edf453fc640386acbd205c1467a86e7`
 - `formal/apalache/MCRevocationCutCompleteness.cfg`: `51a0e07e246317382f2922ccf560d1e5ebe0c14f002a6220e2eb1b88d79677fc`
 - `formal/apalache/MonotoneLogApalache.tla`: `b77d34434a091b8a991841500daf6a42ca3f1817f440c9e86f8769fadf074759`
-- `formal/apalache/PostAdmissionDropGuard.tla`: `90fbdcfc5f34b79a86b0fcedcd7b693228ea2e6eaf6c2b6be41f282b58af735c`
+- `formal/apalache/PostAdmissionDropGuard.tla`: `af1885262c28bb5b1df041d1cb7d344739ee2c223be4ea0b3e51fcf7f8dce929`
 - `formal/apalache/ReceiptBeforeAllow.tla`: `710a30c3c6481b44b9e2419b5f4d1b2bd9b14f2ca7118d58ef2ca035ffdcc487`
 - `formal/apalache/RevocationCutCompleteness.tla`: `0cfb9ccdc7fe7d9daf7cab2f73fa39b423d86a0f6793c75d4d332e40f4f602a9`
 - `formal/apalache/_negative_tests/Common.tla`: `4a82138d298b02577c8d17759939a97e173c0b483a52ce497636e1647de20ae4`
