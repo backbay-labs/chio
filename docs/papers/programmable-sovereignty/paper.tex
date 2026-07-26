@@ -27,9 +27,10 @@
 \begin{document}
 
 \begin{abstract}
-Cross-organization agent calls need more than a signed vendor receipt. A valid
-signature authenticates bytes, but it does not show that those bytes name the
-receiver's expected treaty, request, outcome, continuation, or policy. We
+A receiver cannot authorize a cross-organization agent call from a vendor
+signature alone. The signature authenticates bytes, but it does not show that
+those bytes name the receiver's expected treaty, request, outcome,
+continuation, or policy. We
 present receiver-owned bilateral admission, a protocol that performs that
 check before the receiving kernel invokes a tool. The receiver resolves treaty
 state and authorized keys from its own stores, verifies two distinct

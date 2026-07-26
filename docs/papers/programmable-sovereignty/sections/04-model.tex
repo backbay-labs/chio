@@ -68,10 +68,10 @@ Its forward direction,
 successful check. Both theorems are checked by Lean~4 without project-specific
 axioms.
 
-The result is exactly as strong as \(D\). An empty list passes vacuously, and a
-list that omits a relevant receipt says nothing about that receipt. The model
-therefore proves the checker correct for its input; it does not prove that a
-caller supplied a complete deployment domain.
+This guarantee is limited to \(D\). An empty list passes vacuously, and a list
+that omits a relevant receipt says nothing about that receipt. The model proves
+the checker correct for its input; it does not prove that a caller supplied a
+complete deployment domain.
 
 \subsection{Relation to Rust}
 
