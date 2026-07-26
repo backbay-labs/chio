@@ -8,8 +8,8 @@ use crate::types::{
 use crate::{canonical_sha256, rejected, ChioRuntimeError};
 
 use super::{
-    bilateral_dsse_consistency_model, ladder_mode_rank, treaty_scope_sha256,
-    validate_bilateral_invocation, validate_cross_boundary_admission_report,
+    bilateral_dsse_consistency_model, bilateral_invocation_binding_sha256, ladder_mode_rank,
+    treaty_scope_sha256, validate_bilateral_invocation, validate_cross_boundary_admission_report,
     validate_cross_kernel_continuation, validate_treaty_scope,
 };
 
@@ -238,6 +238,27 @@ pub fn bounded_treaty_receipt_view_from_verified_artifacts(
         return rejected(
             "chio_treaty_admission_report_hash_mismatch",
             "bounded treaty view admission report does not match its authenticated binding",
+        );
+    }
+
+    let invocation_sha256 = bilateral_invocation_binding_sha256(invocation)?;
+    let mut invocation_evidence = report
+        .verified_evidence
+        .iter()
+        .filter(|evidence| evidence.evidence_class == "bilateral_invocation");
+    let Some(bound_invocation) = invocation_evidence.next() else {
+        return rejected(
+            "chio_treaty_bilateral_hash_mismatch",
+            "bounded treaty view admission report is missing bilateral invocation evidence",
+        );
+    };
+    if invocation_evidence.next().is_some()
+        || !bound_invocation.verified
+        || bound_invocation.artifact_sha256 != invocation_sha256
+    {
+        return rejected(
+            "chio_treaty_bilateral_hash_mismatch",
+            "bounded treaty view invocation does not match the admission report evidence",
         );
     }
 

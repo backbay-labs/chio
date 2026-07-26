@@ -182,6 +182,7 @@ pub const CHIO_RUNTIME_FAILURE_CODES: &[&str] = &[
     "chio_treaty_bilateral_mismatch",
     "chio_treaty_continuation_hash_mismatch",
     "chio_treaty_continuation_mismatch",
+    "chio_treaty_continuation_origin_mismatch",
     "chio_treaty_continuation_replay",
     "chio_treaty_continuation_stale",
     "chio_treaty_dsse_binding_mismatch",

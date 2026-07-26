@@ -1,17 +1,19 @@
 mod support;
 
 use chio_runtime_core::{
-    bilateral_dsse_consistency_model, bounded_treaty_constitution_refines_on,
-    bounded_treaty_receipt_view_from_verified_artifacts, compute_ladder_intersection,
-    evaluate_bounded_treaty_constitution, evaluate_bounded_treaty_predicate,
-    evaluate_bounded_treaty_predicate_json, evaluate_cross_boundary_admission, ladder_co_sign_mode,
-    treaty_scope_sha256, validate_cross_boundary_admission_report,
-    validate_governance_ladder_manifest, validate_ladder_intersection, BilateralInvocation,
-    BoundedAdmissionDecision, BoundedEvidenceDigest, BoundedTreatyConstitution,
-    BoundedTreatyPredicate, BoundedTreatyPredicateAtom, BoundedTreatyReceiptView,
-    CrossBoundaryAdmissionInput, CrossBoundaryAdmissionReport, CrossBoundaryEvidenceRef,
-    CrossKernelContinuation, GovernanceLadderQuorum, CHIO_BOUNDED_TREATY_PREDICATE_SCHEMA,
+    bilateral_dsse_consistency_model, bilateral_invocation_binding_sha256,
+    bounded_treaty_constitution_refines_on, bounded_treaty_receipt_view_from_verified_artifacts,
+    compute_ladder_intersection, evaluate_bounded_treaty_constitution,
+    evaluate_bounded_treaty_predicate, evaluate_bounded_treaty_predicate_json,
+    evaluate_cross_boundary_admission, ladder_co_sign_mode, treaty_scope_sha256,
+    validate_cross_boundary_admission_report, validate_governance_ladder_manifest,
+    validate_ladder_intersection, BilateralInvocation, BoundedAdmissionDecision,
+    BoundedEvidenceDigest, BoundedTreatyConstitution, BoundedTreatyPredicate,
+    BoundedTreatyPredicateAtom, BoundedTreatyReceiptView, CrossBoundaryAdmissionInput,
+    CrossBoundaryAdmissionReport, CrossBoundaryEvidenceRef, CrossKernelContinuation,
+    GovernanceLadderQuorum, CHIO_BOUNDED_TREATY_PREDICATE_SCHEMA,
     CHIO_FEDERATION_BILATERAL_INVOCATION_SCHEMA, CHIO_FEDERATION_CROSS_KERNEL_CONTINUATION_SCHEMA,
+    CHIO_RUNTIME_FAILURE_CODES,
 };
 use std::io;
 use support::treaty::{treaty_action_class, treaty_manifest, treaty_scope};
@@ -131,6 +133,22 @@ fn accepted_admission_report() -> CrossBoundaryAdmissionReport {
         expected_ladder_intersection_sha256: Some("b".repeat(64)),
         checks: vec!["chio_treaty.cross_boundary_admission".to_string()],
     }
+}
+
+fn bind_report_to_invocation(
+    report: &mut CrossBoundaryAdmissionReport,
+    invocation: &BilateralInvocation,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let invocation_sha256 = bilateral_invocation_binding_sha256(invocation)?;
+    let Some(evidence) = report
+        .verified_evidence
+        .iter_mut()
+        .find(|evidence| evidence.evidence_class == "bilateral_invocation")
+    else {
+        return Err(io::Error::other("test report lacks bilateral invocation evidence").into());
+    };
+    evidence.artifact_sha256 = invocation_sha256;
+    Ok(())
 }
 
 fn bounded_view() -> BoundedTreatyReceiptView {
@@ -374,6 +392,7 @@ fn bounded_treaty_view_binds_runtime_artifacts_and_rejects_wrong_treaty(
         remote_receipt_sha256: "8".repeat(64),
         signer_kernel_ids: scope.participant_kernel_ids.clone(),
     };
+    bind_report_to_invocation(&mut report, &invocation)?;
     let report_sha256 = sha256_hex(&canonical_json_bytes(&report)?);
 
     let view = bounded_treaty_receipt_view_from_verified_artifacts(
@@ -419,10 +438,13 @@ fn bounded_treaty_view_binds_runtime_artifacts_and_rejects_wrong_treaty(
 
     let mut mismatched = invocation.clone();
     mismatched.action_class_id = "workflow.read_only".to_string();
+    let mut mismatched_report = report.clone();
+    bind_report_to_invocation(&mut mismatched_report, &mismatched)?;
+    let mismatched_report_sha256 = sha256_hex(&canonical_json_bytes(&mismatched_report)?);
     assert!(bounded_treaty_receipt_view_from_verified_artifacts(
         &scope,
-        &report,
-        &report_sha256,
+        &mismatched_report,
+        &mismatched_report_sha256,
         &mismatched,
         &continuation,
         1_800_000_010_000,
@@ -431,10 +453,14 @@ fn bounded_treaty_view_binds_runtime_artifacts_and_rejects_wrong_treaty(
 
     let mut wrong_capability = invocation.clone();
     wrong_capability.capability_id = "capability:attacker:001".to_string();
+    let mut wrong_capability_report = report.clone();
+    bind_report_to_invocation(&mut wrong_capability_report, &wrong_capability)?;
+    let wrong_capability_report_sha256 =
+        sha256_hex(&canonical_json_bytes(&wrong_capability_report)?);
     let err = match bounded_treaty_receipt_view_from_verified_artifacts(
         &scope,
-        &report,
-        &report_sha256,
+        &wrong_capability_report,
+        &wrong_capability_report_sha256,
         &wrong_capability,
         &continuation,
         1_800_000_010_000,
@@ -468,9 +494,28 @@ fn bounded_treaty_view_binds_runtime_artifacts_and_rejects_wrong_treaty(
     };
     assert_eq!(err.code(), "chio_treaty_admission_report_hash_mismatch");
 
+    let mut substituted_invocation = invocation.clone();
+    substituted_invocation.local_receipt_sha256 = "9".repeat(64);
+    let err = match bounded_treaty_receipt_view_from_verified_artifacts(
+        &scope,
+        &report,
+        &report_sha256,
+        &substituted_invocation,
+        &continuation,
+        1_800_000_010_000,
+    ) {
+        Ok(_) => {
+            return Err(io::Error::other(
+                "an invocation outside the admission report binding was accepted",
+            )
+            .into());
+        }
+        Err(err) => err,
+    };
+    assert_eq!(err.code(), "chio_treaty_bilateral_hash_mismatch");
+
     let mut out_of_scope_report = report.clone();
     out_of_scope_report.action_class_id = "workflow.read_only".to_string();
-    let out_of_scope_report_sha256 = sha256_hex(&canonical_json_bytes(&out_of_scope_report)?);
     let mut out_of_scope_continuation = continuation.clone();
     out_of_scope_continuation.action_class_id = out_of_scope_report.action_class_id.clone();
     let out_of_scope_continuation_sha256 =
@@ -478,6 +523,8 @@ fn bounded_treaty_view_binds_runtime_artifacts_and_rejects_wrong_treaty(
     let mut out_of_scope_invocation = invocation.clone();
     out_of_scope_invocation.action_class_id = out_of_scope_report.action_class_id.clone();
     out_of_scope_invocation.continuation_sha256 = out_of_scope_continuation_sha256;
+    bind_report_to_invocation(&mut out_of_scope_report, &out_of_scope_invocation)?;
+    let out_of_scope_report_sha256 = sha256_hex(&canonical_json_bytes(&out_of_scope_report)?);
     let err = match bounded_treaty_receipt_view_from_verified_artifacts(
         &scope,
         &out_of_scope_report,
@@ -497,10 +544,13 @@ fn bounded_treaty_view_binds_runtime_artifacts_and_rejects_wrong_treaty(
 
     let mut wrong_treaty = invocation;
     wrong_treaty.treaty_id = "treaty-attacker".to_string();
+    let mut wrong_treaty_report = report.clone();
+    bind_report_to_invocation(&mut wrong_treaty_report, &wrong_treaty)?;
+    let wrong_treaty_report_sha256 = sha256_hex(&canonical_json_bytes(&wrong_treaty_report)?);
     let err = match bounded_treaty_receipt_view_from_verified_artifacts(
         &scope,
-        &report,
-        &report_sha256,
+        &wrong_treaty_report,
+        &wrong_treaty_report_sha256,
         &wrong_treaty,
         &continuation,
         1_800_000_010_000,
@@ -514,6 +564,7 @@ fn bounded_treaty_view_binds_runtime_artifacts_and_rejects_wrong_treaty(
     };
     emit_threat_matrix_code(err.code());
     assert_eq!(err.code(), "chio_treaty_scope_hash_mismatch");
+    assert!(CHIO_RUNTIME_FAILURE_CODES.contains(&"chio_treaty_continuation_origin_mismatch"));
     Ok(())
 }
 
