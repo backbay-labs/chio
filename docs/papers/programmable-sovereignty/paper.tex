@@ -18,7 +18,7 @@
 \input{bench/results/replay-corpus-inline}
 \Urlmuskip=0mu plus 1mu
 
-\title{Proof-Carrying Bilateral Admission for Cross-Organization Agent Tool Calls}
+\title{Receiver-Owned Bilateral Admission for Cross-Organization Agent Tool Calls}
 
 \author{Anonymous for external review}
 \affiliation{\institution{Anonymous Institution}}
@@ -27,27 +27,29 @@
 \begin{document}
 
 \begin{abstract}
-A receiving kernel cannot decide whether to admit an agent action from another
-organization based on the vendor signature alone. A correctly signed receipt
-may still describe the wrong request, outcome, treaty, continuation, or
-receiver policy.
-We present receiver-owned bilateral admission, a protocol that checks these
-claims before the receiving kernel invokes a tool. The receiver loads treaty
-state and authorized keys from its own stores, verifies two distinct keys over
-the same canonical DSSE predicate, and binds that predicate to the request,
-outcome, treaty scope, continuation, lineage, and both parties' receipts. The
-Rust implementation rejects missing, stale, replayed, and mismatched claims
-before dispatch. We model the admission rules in Lean~4 over a bounded receipt
-view and prove treaty intersection, ladder-floor stability, and sound
-no-widening over finite domains. An independent Rust reference evaluator
-matched the production evaluator on exhaustive atom cases and 1,024 generated
-cases for each compound property. In a three-vendor SQLite loopback on an
-eight-core Arm server, full receiver admission took
-\PSFullAdmissionPFiftySec~s p50 and \PSFullAdmissionPNinetyNineSec~s p99 over
-\PSPathSampleCount{} runs. Pre-dispatch denial took
-\PSPredispatchDenyPFiftyUs~$\mu$s p50 and
-\PSPredispatchDenyPNinetyNineUs~$\mu$s p99 over
-\PSCriterionSampleCount{} samples, with zero tool invocations. All
+Cross-organization agent calls need more than a signed vendor receipt. A valid
+signature authenticates bytes, but it does not show that those bytes name the
+receiver's expected treaty, request, outcome, continuation, or policy. We
+present receiver-owned bilateral admission, a protocol that performs that
+check before the receiving kernel invokes a tool. The receiver resolves treaty
+state and authorized keys from its own stores, verifies two distinct
+configured keys over one canonical DSSE predicate, and checks that every
+referenced request, outcome, continuation, lineage statement, and receipt
+belongs to the same invocation. The Rust implementation rejects missing,
+stale, replayed, and mismatched evidence before dispatch. A Lean~4 model gives
+executable semantics to the bounded receipt predicates and proves that its
+finite-domain refinement checker accepts exactly when the candidate predicate
+admits no receipt in the supplied domain that the current predicate rejects. An
+independently written Rust reference evaluator matched the runtime
+evaluator on every atom and on 1,024 generated cases for each of three
+compound properties. On an eight-core Arm server, the full pre-dispatch treaty
+denial path, including a signed SQLite denial receipt, measured
+\PSPredispatchDenyPFiftyMs~ms p50 and
+\PSPredispatchDenyPNinetyNineMs~ms p99 over
+\PSCriterionSampleCount{} samples, with zero tool invocations. A separate
+three-vendor local workflow that produced and verified the complete buyer
+package measured \PSBuyerWorkflowPFiftySec~s p50 and
+\PSBuyerWorkflowPNinetyNineSec~s p99 over \PSPathSampleCount{} runs. All
 \PSThreatCaseCount{} named negative cases passed.
 \end{abstract}
 

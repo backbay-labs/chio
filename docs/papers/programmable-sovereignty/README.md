@@ -1,6 +1,6 @@
-# Proof-Carrying Bilateral Admission
+# Receiver-Owned Bilateral Admission
 
-LaTeX source and reproducibility materials for "Proof-Carrying Bilateral
+LaTeX source and reproducibility materials for "Receiver-Owned Bilateral
 Admission for Cross-Organization Agent Tool Calls," targeting USENIX Security
 2027, Cycle 1.
 
@@ -28,8 +28,6 @@ For proofs, focused tests, experiments, and the PDF in one pass:
 bash scripts/check-programmable-sovereignty-artifact.sh --full
 ```
 
-The manuscript's strongest allowed wording is maintained in
-`CLAIM_LEDGER.md`. In particular, Lean proves properties of an explicit bounded
-model, the Rust relation is differential alignment, two keys do not establish
-two organizations, and programmable sovereignty denotes authority only over a
-receiver's local receipt-admission boundary.
+`CLAIM_LEDGER.md` maps each result to its evidence and limits. Lean proves the
+finite-domain checker theorem. The Rust evidence is differential testing, and
+two configured keys do not establish two independent organizations.

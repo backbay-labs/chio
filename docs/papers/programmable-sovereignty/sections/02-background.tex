@@ -1,7 +1,16 @@
 \section{Security Context and Threat Model}
 
 \paragraph{Capability mediation.}
-Capability systems replace ambient authority with explicit, attenuable references. KeyKOS and EROS made this discipline an operating-system primitive; Capsicum brought capability mode to UNIX; seL4 connected a microkernel authority model to machine-checked functional correctness \cite{hardy1985keykos,shapiro1999eros,watson2010capsicum,klein2009sel4}. Object-capability work explains authority as reachability and attenuation rather than membership in a global access-control list \cite{miller2006composition,murray2010ocap}. Chio applies that discipline to agent tool calls: the untrusted agent supplies a signed capability, while a trusted kernel validates it and mediates the tool server.
+Capability systems replace ambient authority with explicit, attenuable
+references. KeyKOS and EROS made this discipline an operating-system
+primitive. Capsicum brought capability mode to UNIX, and seL4 connected a
+microkernel authority model to machine-checked functional correctness
+\cite{hardy1985keykos,shapiro1999eros,watson2010capsicum,klein2009sel4}.
+Object-capability work explains authority as reachability and attenuation
+rather than membership in a global access-control list
+\cite{miller2006composition,murray2010ocap}. Chio applies that discipline to
+agent tool calls: the untrusted agent supplies a signed capability, while a
+trusted kernel validates it and mediates the tool server.
 
 \paragraph{Agent isolation and cross-domain authority.}
 IsolateGPT confines agent applications behind information-flow gates; SAGA distributes user-controlled authorization tokens; recent agent-security work identifies confused-deputy and authority-boundary failures as a central systems problem \cite{isolategptNDSS2025,sagaNDSS2025,agenticFoundations2025}. These systems primarily protect a local principal. Bilateral admission begins when the evidence crosses an administrative boundary and the receiver must decide whether a foreign action belongs to its own authorized history.

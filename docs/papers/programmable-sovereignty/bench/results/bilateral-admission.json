@@ -1,25 +1,24 @@
 {
-  "anchorInclusion": "withheld_outside_core_claim",
   "benchmarkInputTreeSha256": "3c256429df9e64ed12eaf3826ee8630d2757813aeb2e7937a504c41bae1d84e1",
   "commit": "3c62eaab04177ff411b7747b6ed6b61bf566217c",
   "components": [
     {
       "component": "receipt_sign",
-      "note": "buyer-closure-shaped Ed25519 receipt",
+      "note": "Ed25519 over the evaluated receipt shape",
       "p50_us": 242.4222769230769,
       "p99_us": 309.3176282051282,
       "samples": 30
     },
     {
       "component": "receipt_verify",
-      "note": "buyer-closure-shaped Ed25519 receipt",
+      "note": "Ed25519 over the evaluated receipt shape",
       "p50_us": 370.16291570881225,
       "p99_us": 476.4909572649573,
       "samples": 30
     },
     {
       "component": "receipt_append_sqlite",
-      "note": "production SQLite receipt store",
+      "note": "SQLite receipt store",
       "p50_us": 7011.802384615385,
       "p99_us": 10477.08875,
       "samples": 30
@@ -60,7 +59,7 @@
     "explicitNonTestableAssumptions": 1
   },
   "paths": {
-    "full_receiver_admission": {
+    "complete_buyer_workflow": {
       "p50_ms": 2288.145,
       "p99_ms": 2428.387185,
       "samples": 20

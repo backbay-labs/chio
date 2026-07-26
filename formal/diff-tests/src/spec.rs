@@ -255,7 +255,7 @@ pub enum SpecTreatyPredicate {
 }
 
 impl SpecTreatyPredicate {
-    /// Independent executable interpretation of `PredicateLang.denote`.
+    /// Independent executable interpretation of `ReceiptPredicate.evaluate`.
     #[must_use]
     pub fn denote(&self, receipt: &SpecTreatyReceiptView) -> bool {
         match self {
@@ -300,7 +300,7 @@ pub struct SpecTreatyConstitution {
 }
 
 impl SpecTreatyConstitution {
-    /// Independent executable interpretation of `PredicateLang.admits`.
+    /// Independent executable interpretation of `ReceiptPredicate.admits`.
     #[must_use]
     pub fn admits(&self, receipt: &SpecTreatyReceiptView) -> bool {
         self.predicates
@@ -309,7 +309,7 @@ impl SpecTreatyConstitution {
     }
 
     /// Independent finite-domain interpretation of
-    /// `PredicateLang.refinesOnConstitution`.
+    /// `ReceiptPredicate.refinesOn`.
     #[must_use]
     pub fn refines_on(
         &self,

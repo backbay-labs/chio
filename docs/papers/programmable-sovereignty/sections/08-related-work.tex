@@ -28,17 +28,16 @@ Cedar combines a formal policy semantics with a production Rust evaluator and
 differential testing \cite{cedarOOPSLA2024,cedarFSE2024}. Large verified
 systems such as seL4, IronFleet, and Project Everest connect stronger
 implementation claims to explicit refinement arguments
-\cite{klein2009sel4,hawblitzel2015ironfleet,projectEverest}. Our Lean~4 model
-\cite{demoura2021lean4} is intentionally weaker: it proves properties of a
-bounded syntax and checks an independent Rust implementation by differential
-tests. We do not claim refinement of the runtime.
+\cite{klein2009sel4,hawblitzel2015ironfleet,projectEverest}. Our Lean~4
+development \cite{demoura2021lean4} specifies a bounded receipt-predicate
+syntax and proves its finite-domain refinement check. The Rust evidence is a
+differential test between independent evaluators, not a refinement proof for
+the runtime.
 
 \paragraph{Cross-domain agreement.}
 PBFT and federated Byzantine agreement establish replicated decisions under
 quorum assumptions \cite{castro1999pbft,mazieres2015stellar}. IBC verifies
 commitments across consensus zones \cite{ibcCosmos}. Bilateral admission solves
-a different problem. It does not converge histories or provide consensus; it
-lets one receiver decide whether a statement co-signed under two policy
-contexts is sufficient for one local dispatch. A consensus or transparency
-layer can strengthen later audit without becoming part of the local safety
-condition.
+a receiver-side authorization problem rather than replicated consensus. It
+lets one receiver decide whether a co-signed statement is sufficient for one
+local dispatch. It neither converges histories nor makes a global decision.

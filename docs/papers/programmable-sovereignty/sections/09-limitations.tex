@@ -2,7 +2,7 @@
 \label{sec:limits}
 
 \begin{table*}[t]
-\caption{Assumptions outside the bounded Lean model.}
+\caption{Assumptions outside the evaluated receiver.}
 \label{tab:assumptions}
 \scriptsize
 \begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{.24\textwidth}>{\raggedright\arraybackslash}p{.35\textwidth}>{\raggedright\arraybackslash}X@{}}
@@ -11,62 +11,46 @@ Assumption & Required for & Failure consequence \\
 \midrule
 Ed25519, SHA-256, and DSSE behave as specified
 & Signature, digest, and envelope integrity
-& Forgery or ambiguous identity invalidates evidence binding \\
+& Forgery or ambiguous identity invalidates the bindings \\
 Canonical JSON matches RFC~8785
 & Stable statement and receipt bytes \cite{rfc8785}
-& Equivalent data can acquire inconsistent identities \\
+& Equivalent data can acquire different identities \\
 Receiver kernel and stores are trustworthy
 & Correct resolution, clocks, continuation state, and non-dispatch
-& A compromised receiver can admit, suppress, or misrecord calls \\
+& A compromised receiver can admit or misrecord calls \\
 Authorized keys have the intended organizational custody
-& Interpretation of bilateral control
-& One actor with two keys satisfies the cryptographic profile \\
+& Interpreting two signatures as bilateral control
+& One actor with two keys satisfies the cryptographic checks \\
 \bottomrule
 \end{tabularx}
 \end{table*}
 
-The formal results are bounded to \codepath{ReceiptView}, the stated atom
-language, and explicit finite domains. They abstract cryptography,
-canonicalization, clocks, and storage. Generated differential cases provide
-alignment evidence but no completeness guarantee, proof extraction, or
-whole-runtime verification.
+The Lean theorem applies to the receipt fields, predicate forms, and finite
+domain defined in Section~\ref{sec:model}. It proves the checker correct for
+that supplied domain. Completeness of the domain, parsing, canonicalization,
+cryptography, clocks, stores, complexity-limit enforcement, and the receiver
+hook remain outside the theorem. The differential corpus stays within those
+limits and cannot establish universal implementation equivalence.
 
-The syntactic Rust evaluator is strict and resource-bounded, but the production
-hook still uses explicit admission checks as its authoritative policy. There is
-no production amendment path consuming a finite refinement witness. Schema
-evolution, cross-implementation interoperability, and negotiation between
-different predicate versions remain open protocol work.
+Two valid signatures establish control of two configured keys. Organizational
+independence, honest policy evaluation, uncompromised key custody, and execution
+inside an attested kernel require additional deployment controls. HSM-, KMS-,
+or TEE-backed keys could strengthen key custody, but we did not evaluate those
+configurations.
 
-Two valid signatures prove control of two configured keys. They do not prove
-two organizations, independent policy evaluation, uncompromised key custody,
-or execution inside an attested kernel. HSM-, KMS-, or TEE-backed keys could
-strengthen this assumption, but those deployments are not evaluated.
+The performance results come from a deterministic single-host setup with
+SQLite. The experiments exclude wide-area transport, mTLS setup, partitions,
+concurrent load, large receipt stores, hardware security modules, trusted
+execution environments, and crash recovery during continuation consumption.
+The sample counts are too small to support operational tail-latency targets.
 
-The evaluation is deterministic and single-host. It does not exercise
-wide-area transport, mTLS setup, partitions, concurrent load, large receipt
-stores, hardware security modules, trusted execution environments, or crash
-recovery during continuation consumption. Its \PSPathSampleCount{} end-to-end
-and \PSCriterionSampleCount{} component samples are too small for operational
-tail-latency claims. The measured path uses SQLite and includes process and
-schema-validation costs specific to the harness.
+The 20 negative cases cover named attacks, not an unbounded adversary. Some
+failures occur in the envelope verifier before a dispatch-capable runtime
+surface exists. The full denial benchmark supplies the signed SQLite receipt
+and zero-invocation observation for the complete pre-dispatch path; it should
+not be generalized to every internal error in Chio.
 
-Not every internal runtime decision is encoded as the same signed bilateral
-artifact. Hook-level denials have stable failure codes and observable
-non-dispatch; verifier-only failures terminate before a runtime dispatch
-surface exists. The paper therefore claims auditable named failures where the
-tested path produces them, not that every error in the system necessarily
-becomes a universally signed denial receipt.
-
-The generic \PSGenericReplayCases-fixture replay corpus and the
-\PSBilateralReplayCases-case bilateral corpus establish different properties.
-Neither proves coverage of an unbounded adversary.
-Public-anchor inclusion is withheld, and no live transparency service is
-needed for the local admission result. The buyer proof package establishes
-internal artifact consistency, not remote process integrity or public
-non-equivocation.
-
-Finally, receipt-bounded sovereignty is a technical metaphor with an explicit
-limit. The mechanism cannot confer legal jurisdiction, corporate authority,
-regulatory accreditation, territorial rights, or recognition by an external
-institution. It can produce evidence for such institutions, which remain free
-to reject or reinterpret it.
+Finally, the buyer package establishes internal consistency under its
+configured keys. It cannot prove remote process integrity, prevent an
+authorized kernel from lying, or compel another organization to accept the
+same evidence.

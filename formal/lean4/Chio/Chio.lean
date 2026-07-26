@@ -28,6 +28,7 @@ import Chio.Proofs.SiblingSumBudget
 import Chio.Proofs.ReservationLedger
 import Chio.Guards.WasmBoundary
 import Chio.Capability.Delegation
+import Chio.Treaty.ReceiptPredicate
 import Chio.Treaty.Intersection
 import Chio.Treaty.PredicateLang
 import Chio.Treaty.IntersectionSyntactic
