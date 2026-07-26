@@ -27,3 +27,5 @@ Current ADR set:
 13. [ADR-0013 Async Receipt Durability](ADR-0013-async-receipt-durability.md)
 14. [ADR-0014 Iroh As Federation Transport (Deferred To Year-2)](ADR-0014-iroh-federation-transport.md)
 15. [ADR-0015 Predeclared Non-Discretionary Escrow Circuit Breakers](ADR-0015-predeclared-escrow-circuit-breakers.md)
+16. [ADR-0016 Authoritative Spend Contract](ADR-0016-authoritative-spend-contract.md)
+17. [ADR-0017 Radicle Is A Carrier, Never An Authority (Adoption Deferred)](ADR-0017-radicle-carrier-not-authority.md)
