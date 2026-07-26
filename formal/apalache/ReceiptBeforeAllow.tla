@@ -17,7 +17,7 @@
 (* Code mapping (full cross-reference in formal/MAPPING.md):               *)
 (*   - crates/kernel/chio-kernel/src/kernel/responses/                     *)
 (*       allow_responses.rs                                                *)
-(*       ChioKernel::build_allow_response_with_metadata                    *)
+(*       ChioKernel::build_allow_response_with_metadata_and_payee_binding  *)
 (*       ChioKernel::build_execution_nonce_preflight_allow_response_with_metadata *)
 (*   - crates/kernel/chio-kernel/src/kernel/responses/                     *)
 (*       receipt_persistence.rs                                            *)
