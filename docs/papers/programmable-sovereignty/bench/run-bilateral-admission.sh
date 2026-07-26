@@ -271,7 +271,7 @@ assumptions = len(threat_fixture["assumptions"])
 negative_ms = int(negative_elapsed_ns) / 1_000_000.0
 
 with open(component_csv, "w", newline="", encoding="utf-8") as component_file:
-    writer = csv.writer(component_file)
+    writer = csv.writer(component_file, lineterminator="\n")
     writer.writerow(["component", "p50_us", "p99_us", "samples", "note"])
     for component in components:
         writer.writerow(

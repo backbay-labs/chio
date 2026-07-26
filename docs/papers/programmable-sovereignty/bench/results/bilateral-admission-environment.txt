@@ -1,5 +1,5 @@
-51e46336b1f1d52908fc7b14cf34d9476935958f
-worktree=dirty
+c42954df5ce9b6a05061a1185ab614c1832458c9
+worktree=clean
 rustc 1.93.0 (254b59607 2026-01-19)
 binary: rustc
 commit-hash: 254b59607d4417e9dffbc307138ae5c86280fe4c
@@ -45,8 +45,8 @@ Vulnerability Tsa:                       Not affected
 Vulnerability Tsx async abort:           Not affected
 Vulnerability Vmscape:                   Not affected
 MemTotal:       49223632 kB
-MemFree:        17003136 kB
-MemAvailable:   41170048 kB
+MemFree:         1694856 kB
+MemAvailable:   36397388 kB
 profile=release
 end_to_end_samples=20
 end_to_end_warmups=2

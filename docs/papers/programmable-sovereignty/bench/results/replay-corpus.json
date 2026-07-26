@@ -1,12 +1,14 @@
 {
   "bilateralThreatMatrix": {
     "cases": 20,
-    "elapsedSeconds": 85,
+    "elapsedSeconds": 203,
     "explicitNonTestableAssumptions": 1
   },
+  "commit": "c42954df5ce9b6a05061a1185ab614c1832458c9",
   "genericReplay": {
     "cases": 50,
-    "elapsedSeconds": 22
+    "elapsedSeconds": 39
   },
-  "schema": "chio.programmable-sovereignty.replay-results.v1"
+  "schema": "chio.programmable-sovereignty.replay-results.v1",
+  "worktreeDirty": false
 }
