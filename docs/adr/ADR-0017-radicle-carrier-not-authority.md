@@ -136,9 +136,11 @@ deliberately does not.
 - *Radicle Collaborative Objects for the checkpoint chain.* A CRDT converges
   divergent writes; fork detection requires conflicts to survive. The
   experiment confirmed COBs surface conflicts automatically in merged state,
-  which is genuinely useful, but it also confirmed COBs are invisible to
-  `radicle-httpd` and every web gateway and require a helper binary on every
-  interpreting node, where replication succeeds but evaluation hard-fails.
+  which is genuinely useful, and it confirmed they require a helper binary on
+  every interpreting node, where replication succeeds but evaluation
+  hard-fails. Whether `radicle-httpd` exposes them was NOT tested: it was
+  absent from the 1.9.1 release tarball, so its ref filtering remains an open
+  question in the carrier spec rather than experimental evidence.
 - *In-process `radicle-cob` alone.* It resolves and builds (44 new packages,
   +14.5s on a clean build, 6 Windows-only `[[bans.skip]]` waivers), but it
   statically links 5.5 MB of vendored libgit2 while `cargo deny check licenses`

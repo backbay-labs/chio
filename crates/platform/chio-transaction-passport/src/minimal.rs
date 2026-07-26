@@ -382,7 +382,7 @@ fn verify_minimal_passport_artifacts_with_anchor_inputs(
         evidence_graph_nodes(&evidence_graph_value)?,
         artifacts,
         trusted_checkpoint_signer_keys,
-    );
+    )?;
 
     Ok(TransactionVerifierReport::verified(passport, passport_path)
         .with_transparency_state(transparency_state))
@@ -537,7 +537,7 @@ fn verify_passport_root_and_claim_set_artifacts_bound(
         evidence_graph_nodes(&evidence_graph)?,
         artifacts,
         trusted_checkpoint_signer_keys,
-    );
+    )?;
     Ok(TransactionVerifierReport::verified(passport, passport_path)
         .with_transparency_state(transparency_state.to_string())
         .with_claim_results(claim_results))
@@ -558,7 +558,7 @@ pub fn transaction_evidence_graph_transparency_state(
         evidence_graph_nodes(&evidence_graph)?,
         &BTreeMap::new(),
         &[],
-    )
+    )?
     .to_string())
 }
 
@@ -744,7 +744,7 @@ fn enforce_verifier_policy_gates(
     }
 
     let transparency_state =
-        evidence_graph_transparency_state(nodes, artifacts, trusted_checkpoint_signer_keys);
+        evidence_graph_transparency_state(nodes, artifacts, trusted_checkpoint_signer_keys)?;
     if !policy.accepted_transparency_states().is_empty()
         && !policy
             .accepted_transparency_states()
@@ -797,6 +797,18 @@ struct CheckpointStatementArtifact {
     signature: String,
 }
 
+/// Outcome of examining one transparency-inclusion-proof node.
+enum TransparencyAnchor {
+    /// The anchor verified against a pinned checkpoint signer.
+    Verified,
+    /// This verifier lacks the inputs to judge the anchor (no pinned
+    /// checkpoint keys, or the artifact bytes are not in this bundle), so the
+    /// node supports the preview tier and nothing stronger.
+    NotEvaluable,
+    /// The anchor was checkable and did not hold.
+    Invalid(String),
+}
+
 /// Transparency state of an evidence graph, promoted to `trust_anchored` only
 /// after cryptographic verification.
 ///
@@ -804,13 +816,17 @@ struct CheckpointStatementArtifact {
 /// promotion: the anchored tier requires the digest-bound artifact to carry a
 /// Merkle inclusion proof whose root is committed by a checkpoint statement
 /// signed by one of `trusted_checkpoint_signer_keys`, with the proven leaf
-/// bound to an artifact in this graph. On any failure the candidate counts
-/// toward the preview tier, never the anchored tier.
+/// bound to this transaction's receipt.
+///
+/// A candidate this verifier cannot judge degrades to the preview tier. A
+/// candidate it can judge and that fails is an error, not a downgrade:
+/// silently reporting preview would let malformed transparency evidence ride
+/// through a policy that accepts the preview tier.
 fn evidence_graph_transparency_state(
     nodes: &[Value],
     artifacts: &BTreeMap<String, Vec<u8>>,
     trusted_checkpoint_signer_keys: &[PublicKey],
-) -> &'static str {
+) -> Result<&'static str, TransactionPassportError> {
     let mut has_transparency_preview = false;
     for node in nodes {
         let role = node.get("role").and_then(Value::as_str).unwrap_or_default();
@@ -821,11 +837,16 @@ fn evidence_graph_transparency_state(
         if role == "transparency-inclusion-proof"
             || schema == TRANSPARENCY_INCLUSION_PROOF_SCHEMA_ID
         {
-            if transparency_anchor_verifies(node, nodes, artifacts, trusted_checkpoint_signer_keys)
+            match transparency_anchor_state(node, nodes, artifacts, trusted_checkpoint_signer_keys)
             {
-                return "trust_anchored";
+                TransparencyAnchor::Verified => return Ok("trust_anchored"),
+                TransparencyAnchor::NotEvaluable => has_transparency_preview = true,
+                TransparencyAnchor::Invalid(reason) => {
+                    return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
+                        format!("transparency inclusion proof is invalid: {reason}"),
+                    ))
+                }
             }
-            has_transparency_preview = true;
             continue;
         }
         if role.contains("transparency") || schema.contains("transparency") {
@@ -833,97 +854,109 @@ fn evidence_graph_transparency_state(
         }
     }
     if has_transparency_preview {
-        "transparency_preview"
+        Ok("transparency_preview")
     } else {
-        "not_present"
+        Ok("not_present")
     }
 }
 
 /// Cryptographic gate for `trust_anchored`. Every check fails closed.
-fn transparency_anchor_verifies(
+fn transparency_anchor_state(
     node: &Value,
     nodes: &[Value],
     artifacts: &BTreeMap<String, Vec<u8>>,
     trusted_checkpoint_signer_keys: &[PublicKey],
-) -> bool {
+) -> TransparencyAnchor {
     if trusted_checkpoint_signer_keys.is_empty() {
-        return false;
+        return TransparencyAnchor::NotEvaluable;
     }
-    let Some(path) = node.get("path").and_then(Value::as_str) else {
-        return false;
+    let (Some(path), Some(node_sha256)) = (
+        node.get("path").and_then(Value::as_str),
+        node.get("sha256").and_then(Value::as_str),
+    ) else {
+        return TransparencyAnchor::Invalid("node is missing path or sha256".to_string());
     };
-    let Some(node_sha256) = node.get("sha256").and_then(Value::as_str) else {
-        return false;
-    };
+    // A bundle that does not carry the artifact cannot be judged here; the
+    // digest binding of graph artifacts is enforced separately.
     let Some(bytes) = artifacts.get(path) else {
-        return false;
+        return TransparencyAnchor::NotEvaluable;
     };
     if super::sha256_hex(bytes) != node_sha256 {
-        return false;
+        return TransparencyAnchor::Invalid(format!("{path} does not match its declared digest"));
     }
     let Ok(artifact) = serde_json::from_slice::<TransparencyInclusionProofArtifact>(bytes) else {
-        return false;
+        return TransparencyAnchor::Invalid(format!("{path} is not a readable inclusion proof"));
     };
     if artifact.schema != TRANSPARENCY_INCLUSION_PROOF_SCHEMA_ID {
-        return false;
+        return TransparencyAnchor::Invalid(format!(
+            "unsupported inclusion proof schema {}",
+            artifact.schema
+        ));
     }
+    // Proofs published without an anchoring checkpoint statement (the shape
+    // the base schema defines) are simply unanchored, not malformed.
     let Some(statement) = artifact.checkpoint_statement else {
-        return false;
+        return TransparencyAnchor::NotEvaluable;
     };
+
+    let invalid = |reason: &str| TransparencyAnchor::Invalid(reason.to_string());
 
     // The checkpoint statement must be signed by a pinned key over its
     // canonical body, and must commit the root the proof targets.
     let Some(body) = statement.body.as_object() else {
-        return false;
+        return invalid("checkpoint statement body is not an object");
     };
     if body.get("schema").and_then(Value::as_str) != Some(CHECKPOINT_STATEMENT_SCHEMA_ID) {
-        return false;
+        return invalid("checkpoint statement carries an unsupported schema");
     }
-    let Some(kernel_key_hex) = body.get("kernel_key").and_then(Value::as_str) else {
-        return false;
+    let Some(kernel_key) = body
+        .get("kernel_key")
+        .and_then(Value::as_str)
+        .and_then(|hex| PublicKey::from_hex(hex).ok())
+    else {
+        return invalid("checkpoint statement kernel_key is unreadable");
     };
-    let Ok(kernel_key) = PublicKey::from_hex(kernel_key_hex) else {
-        return false;
-    };
+    // An anchor from a signer this verifier does not pin is outside what it
+    // can judge rather than corrupt evidence.
     if !trusted_checkpoint_signer_keys.contains(&kernel_key) {
-        return false;
+        return TransparencyAnchor::NotEvaluable;
     }
     let Ok(signature) = Signature::from_hex(&statement.signature) else {
-        return false;
+        return invalid("checkpoint statement signature is unreadable");
     };
     let Ok(body_bytes) = canonical_json_bytes(&statement.body) else {
-        return false;
+        return invalid("checkpoint statement body is not canonicalizable");
     };
     if !kernel_key.verify(&body_bytes, &signature) {
-        return false;
+        return invalid("checkpoint statement signature does not verify");
     }
     let Some(committed_root) = body
         .get("merkle_root")
         .and_then(Value::as_str)
         .and_then(|hex| Hash::from_hex(hex).ok())
     else {
-        return false;
+        return invalid("checkpoint statement merkle_root is unreadable");
     };
     let Some(committed_tree_size) = body.get("tree_size").and_then(Value::as_u64) else {
-        return false;
+        return invalid("checkpoint statement tree_size is unreadable");
     };
 
     // The proof must target exactly the committed tree, and its audit path
     // must recompute the committed root from the leaf.
     let Ok(root_hash) = Hash::from_hex(&artifact.root_hash) else {
-        return false;
+        return invalid("inclusion proof root_hash is unreadable");
     };
     if root_hash != committed_root || artifact.tree_size != committed_tree_size {
-        return false;
+        return invalid("inclusion proof does not target the committed checkpoint tree");
     }
     let Ok(leaf) = Hash::from_hex(&artifact.leaf_hash) else {
-        return false;
+        return invalid("inclusion proof leaf_hash is unreadable");
     };
     let (Ok(tree_size), Ok(leaf_index)) = (
         usize::try_from(artifact.tree_size),
         usize::try_from(artifact.leaf_index),
     ) else {
-        return false;
+        return invalid("inclusion proof tree position is out of range");
     };
     let Ok(audit_path) = artifact
         .inclusion_path
@@ -931,7 +964,7 @@ fn transparency_anchor_verifies(
         .map(|hex| Hash::from_hex(hex))
         .collect::<Result<Vec<_>, _>>()
     else {
-        return false;
+        return invalid("inclusion proof audit path is unreadable");
     };
     let proof = MerkleProof {
         tree_size,
@@ -939,7 +972,7 @@ fn transparency_anchor_verifies(
         audit_path,
     };
     if !proof.verify_hash(leaf, &root_hash) {
-        return false;
+        return invalid("inclusion proof does not recompute the committed root");
     }
 
     // The proven leaf must be the RFC 6962 leaf hash of THIS transaction's
@@ -951,24 +984,30 @@ fn transparency_anchor_verifies(
         candidate.get("role").and_then(Value::as_str) == Some(RECEIPT_EVIDENCE_ROLE)
     });
     let (Some(receipt_node), None) = (receipt_nodes.next(), receipt_nodes.next()) else {
-        return false;
+        return invalid("graph does not carry exactly one receipt to anchor");
     };
     let Some(receipt_sha256) = receipt_node.get("sha256").and_then(Value::as_str) else {
-        return false;
+        return invalid("receipt node is missing sha256");
     };
     if receipt_sha256 != artifact.artifact_ref {
-        return false;
+        return invalid("inclusion proof subject is not this transaction's receipt");
     }
     let Some(receipt_path) = receipt_node.get("path").and_then(Value::as_str) else {
-        return false;
+        return invalid("receipt node is missing path");
     };
     let Some(subject_bytes) = artifacts.get(receipt_path) else {
-        return false;
+        return TransparencyAnchor::NotEvaluable;
     };
     if super::sha256_hex(subject_bytes) != artifact.artifact_ref {
-        return false;
+        return invalid("receipt bytes do not match the proven subject digest");
     }
-    leaf == leaf_hash(subject_bytes)
+    if leaf == leaf_hash(subject_bytes) {
+        TransparencyAnchor::Verified
+    } else {
+        TransparencyAnchor::Invalid(
+            "proven leaf is not the RFC 6962 leaf hash of the receipt".to_string(),
+        )
+    }
 }
 
 fn validate_claim_set_bytes(

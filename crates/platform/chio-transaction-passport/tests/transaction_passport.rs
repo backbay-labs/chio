@@ -2657,7 +2657,7 @@ fn standalone_minimal_passport_rejects_transparency_anchor_with_tampered_root() 
     assert!(
         error
             .to_string()
-            .contains("transparency state not accepted by verifier policy: transparency_preview"),
+            .contains("inclusion proof does not target the committed checkpoint tree"),
         "{error}"
     );
 }
@@ -2676,7 +2676,7 @@ fn standalone_minimal_passport_rejects_transparency_anchor_with_unbound_subject(
     assert!(
         error
             .to_string()
-            .contains("transparency state not accepted by verifier policy: transparency_preview"),
+            .contains("inclusion proof subject is not this transaction's receipt"),
         "{error}"
     );
 }
@@ -2738,7 +2738,54 @@ fn standalone_minimal_passport_rejects_anchor_over_a_non_receipt_artifact() {
     assert!(
         error
             .to_string()
-            .contains("transparency state not accepted by verifier policy: transparency_preview"),
+            .contains("inclusion proof subject is not this transaction's receipt"),
         "{error}"
+    );
+}
+
+#[test]
+fn standalone_minimal_passport_denies_a_checkable_but_invalid_transparency_anchor() {
+    // A malformed anchor this verifier CAN judge is an evaluation error, not a
+    // silent downgrade: reporting the preview tier would let it ride through a
+    // policy that accepts preview.
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|artifact| {
+            artifact["inclusion_path"] = json!([format!("0x{}", "11".repeat(32))]);
+        });
+
+    let error =
+        verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+            .test_expect_err("a checkable invalid anchor must deny");
+
+    assert!(
+        error
+            .to_string()
+            .contains("transparency inclusion proof is invalid"),
+        "{error}"
+    );
+}
+
+#[test]
+fn standalone_minimal_passport_keeps_preview_when_the_anchor_is_not_evaluable() {
+    // With no pinned checkpoint keys the verifier cannot judge the anchor, so
+    // the graph settles at the preview tier instead of erroring. The fixture
+    // policy demands the anchored tier, so the denial names the tier reached
+    // rather than a proof defect.
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|_| {});
+
+    let error = verify_standalone_anchored_with_checkpoint_keys(
+        &artifacts,
+        &evidence_graph_bytes,
+        &verifier_policy_bytes,
+        &[],
+    )
+    .test_expect_err("the fixture policy requires the anchored tier");
+
+    assert!(
+        error
+            .to_string()
+            .contains("transparency state not accepted by verifier policy: transparency_preview"),
+        "an unjudgeable anchor must degrade rather than error: {error}"
     );
 }

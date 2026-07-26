@@ -72,6 +72,16 @@ Which of these must be committed for claim-complete to hold is a protocol
 decision, not a coding task (item 2 below), and that decision sizes the
 largest item in the program (item 3).
 
+Item 2 must first classify each registry name as standalone, embedded, or
+derived, because the table above counts registry names rather than independent
+artifacts. At least `chio.admission-receipt.v1` is already covered: it is
+`AdmissionReceiptMetadataV1` stored under `ADMISSION_RECEIPT_METADATA_KEY`
+inside `ChioReceipt.metadata`, which is part of `ChioReceiptIdInput`, signed
+with the receipt, and already inside the `chio.receipt.v1` canonical bytes used
+as a checkpoint leaf. Sizing a separate projection path per registry name would
+double-count coverage that exists, so the 80-to-85-percent split should be
+re-derived once the classification is done.
+
 ## 3. The uncheckpointed tail
 
 Checkpointing is count-triggered only (the ADR-0008 trigger), and a zero

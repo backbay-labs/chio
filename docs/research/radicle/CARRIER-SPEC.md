@@ -91,10 +91,19 @@ inputs into a third party's hands.
 
 1. Enumerate all peer namespaces, not just the canonical branch.
 2. Extract every checkpoint blob.
-3. Recompute `sha256(canonical(body))` for each.
-4. Group by `(kernel_key, tree_size)` and by `(kernel_key, checkpoint_seq)`.
-5. Any group with more than one distinct body digest is an equivocation.
-6. Verify both kernel signatures to make the finding transferable.
+3. Discard any blob whose `kernel_key` is not the pinned kernel key (or whose
+   derived `log_id` is not the monitored log) BEFORE grouping. Signature
+   validity alone only says a blob was signed by the key it carries, so in an
+   open repository any peer could publish two self-signed conflicting bodies
+   and manufacture a finding against an untrusted identity.
+4. Recompute `sha256(canonical(body))` for each survivor.
+5. Group by `(kernel_key, checkpoint_seq)` and by cumulative log position
+   (`batch_end_seq`, what `checkpoint_log_tree_size` derives). Do not group by
+   `body.tree_size`: that is one batch's leaf count, so routine equal-sized
+   batches would collide and raise false forks. The same applies to any
+   publication path or filename key.
+6. Any group with more than one distinct body digest is an equivocation.
+7. Verify both kernel signatures to make the finding transferable.
 
 ## 6. Operational requirements
 
@@ -105,8 +114,12 @@ These are not optional; the experiment showed the property fails without them.
   at startup and must fail closed if misconfigured.
 - **At least one non-colluding party must actively re-publish** received
   checkpoints under its own key. Passive seeding is insufficient: a passive
-  mirror follows a force-push and loses the prior value. This witness role is
-  what `CHECKPOINT_WITNESS_SCHEMA` appears designed for.
+  mirror follows a force-push and loses the prior value. This role needs a new
+  carrier-level republication record: `CHECKPOINT_WITNESS_SCHEMA` cannot serve
+  it, because `CheckpointWitness` is derived deterministically from two kernel
+  checkpoints and carries no peer identity, namespace ref, peer signature, or
+  publication evidence, so it cannot distinguish an independent republication
+  from the original publisher's ordinary successor checkpoint.
 - **Cross-namespace retrieval must be explicit.** A default `git clone` takes
   only `refs/heads/*` and sees the canonicalized view; the fetch must use
   `+refs/namespaces/*:refs/namespaces/*`.

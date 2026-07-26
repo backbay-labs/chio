@@ -58,9 +58,12 @@ receipts provable, not merely committed. The commitment already exists: child
 receipts are projected into the claim log and become Merkle leaves exactly
 like tool receipts. What is missing is the proof surface: inclusion proofs are
 exported for tool receipts only, and tenant- or capability-scoped exports omit
-child receipts entirely, recording the omission in an internal enum rather
-than in anything a verifier sees. So a verifier confirming a parent receipt
-still learns nothing about what the flow actually did.
+child receipts entirely. The omission itself is declared outward
+(`EvidenceExportBundle` serializes `child_receipt_scope`, and
+`OmittedNoJoinPath` appears as `omitted_no_join_path`), so the gap is not a
+hidden omission but the absence of child inclusion proofs and of any
+per-parent completeness or enumeration commitment. A verifier confirming a
+parent receipt still cannot prove which children the flow had.
 
 **Qualified under the declared verifier policy.** The declared verifier policy
 exists (`chio.transaction.verifier-policy.v1`), but it must be able to state
@@ -129,7 +132,9 @@ body now carries a `chain_root`: an RFC 6962 root over one leaf per checkpoint
 binding its sequence, entry range, and batch root, which transitively commits
 every checkpointed entry and is rebuildable forever from retained checkpoint
 rows. `CheckpointConsistencyProof` now carries the node hashes plus an
-inclusion proof binding the later checkpoint's own chain leaf, and
+inclusion proof binding EACH endpoint's own chain leaf to its own root
+(binding only the later one would let a key holder commit an arbitrary tree as
+the earlier root for any pair starting after checkpoint 1), and
 `verify_checkpoint_consistency_proof` verifies them against the two signed
 commitments; a pair without commitments is unverifiable (an error), never
 true. The record keeps its `chio.checkpoint_consistency_proof.v1` schema id
@@ -173,9 +178,12 @@ produced the *most* trusted output.
 promotion. The anchored tier requires the node's digest-bound artifact to
 carry a Merkle inclusion proof whose recomputed root is committed by a
 checkpoint statement signed by one of the verifier's pinned keys, with the
-proven leaf equal to the RFC 6962 leaf hash of an artifact the same evidence
-graph digest-binds. On any failure the candidate counts toward the preview
-tier. Surfaces without artifact bytes or pinned keys (including the
+proven leaf equal to the RFC 6962 leaf hash of this transaction's receipt.
+A candidate this verifier cannot judge (no pinned checkpoint keys, artifact
+bytes absent, or no anchoring checkpoint statement) degrades to the preview
+tier; a candidate it can judge and that fails is an error, because reporting
+preview would let malformed transparency evidence ride through a policy that
+accepts the preview tier. Surfaces without artifact bytes or pinned keys (including the
 bytes-only `transaction_evidence_graph_transparency_state`) can no longer
 return `trust_anchored` at all. The label-only, untrusted-signer,
 tampered-root, and unbound-subject cases are pinned by tests in
@@ -273,10 +281,18 @@ the same accept or deny verdict from artifact plus policy alone.
 **Stage 4: witness cosigning.**
 Adopt C2SP `tlog-checkpoint` and `tlog-cosignature`. This is the step that
 converts discoverable equivocation into unpresentable equivocation. C2SP is the
-only candidate evaluated that natively defines ML-DSA-44 cosignatures and
-therefore survives `ReceiptCryptoFloor::PqRequired`; Sigsum is hard-wired to
-Ed25519 and fails the same floor Radicle fails. Exit criterion: a verifier
-rejects a checkpoint lacking a valid quorum, offline.
+only candidate evaluated that specifies a post-quantum cosignature at all
+(ML-DSA-44, signed-note type 0x06), which is why it is preferred over Sigsum's
+hard-wired Ed25519.
+
+That is a direction, not a floor claim. `ReceiptCryptoFloor::PqRequired` admits
+only `SigningAlgorithm::Hybrid`, which this tree defines as a classical
+signature plus ML-DSA-65, and no ML-DSA-44 signer or verifier exists here;
+checkpoints themselves are still issued through an Ed25519 keypair. Stage 4
+therefore owes an explicit witness-algorithm policy and a checkpoint-signing
+migration, and must not assume C2SP's standalone ML-DSA-44 already satisfies
+the receipt floor. Exit criterion: a verifier rejects a checkpoint lacking a
+valid quorum, offline.
 
 **Stage 5: choose a publication substrate.**
 Only now does this decision have consequences, and by this point stages 1
