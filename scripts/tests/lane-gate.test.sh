@@ -472,6 +472,7 @@ def archive(name, documents):
 valid_105 = report("a" * 40, 105, 2, 105)
 archive("valid-105.zip", {"report.json": valid_105})
 archive("valid-104.zip", {"report.json": report("b" * 40, 104, 2, 104)})
+archive("valid-106.zip", {"report.json": report("f" * 40, 106, 1, 106)})
 
 stale_commit = deepcopy(valid_105)
 stale_commit["commit"] = "c" * 40
@@ -769,13 +770,13 @@ if [[ "${MOCK_SCORED_MODE:-valid}" == "input-symlink" ]]; then
 fi
 case "${1:-}" in
   cat-file)
-    if [[ "${2:-}" == "-t" && "${3:-}" =~ ^(a{40}|b{40}|c{40}|d{40}|e{40})$ ]]; then
+    if [[ "${2:-}" == "-t" && "${3:-}" =~ ^(a{40}|b{40}|c{40}|d{40}|e{40}|f{40})$ ]]; then
       arguments[2]="${selected}"
     fi
     ;;
   ls-tree)
     for index in "${!arguments[@]}"; do
-      if [[ "${arguments[${index}]}" =~ ^(a{40}|b{40}|c{40}|d{40}|e{40})$ ]]; then
+      if [[ "${arguments[${index}]}" =~ ^(a{40}|b{40}|c{40}|d{40}|e{40}|f{40})$ ]]; then
         arguments[${index}]="${selected}"
       fi
     done
@@ -826,7 +827,12 @@ endpoint="${*: -1}"
 case "${endpoint}" in
   *'/actions/workflows/nightly.yml/runs?'*)
     timestamp="${MOCK_RUN_TIMESTAMP:-2026-07-10T10:00:00Z}"
+    newer_success=""
+    if [[ "${MOCK_NEWER_SUCCESS:-0}" == "1" ]]; then
+      newer_success='{"id":106,"run_attempt":1,"run_number":106,"head_sha":"ffffffffffffffffffffffffffffffffffffffff","event":"schedule","conclusion":"success","created_at":"2026-07-10T10:30:00Z","html_url":"https://example.invalid/106"},'
+    fi
     printf '%s\n' "{\"workflow_runs\":[
+  ${newer_success}
   {\"id\":105,\"run_attempt\":2,\"run_number\":105,\"head_sha\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"event\":\"schedule\",\"conclusion\":\"success\",\"created_at\":\"${timestamp}\",\"html_url\":\"https://example.invalid/105\"},
   {\"id\":104,\"run_attempt\":2,\"run_number\":104,\"head_sha\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"event\":\"schedule\",\"conclusion\":\"success\",\"created_at\":\"2026-07-10T09:00:00Z\",\"html_url\":\"https://example.invalid/104\"},
   {\"id\":103,\"run_attempt\":1,\"run_number\":103,\"head_sha\":\"cccccccccccccccccccccccccccccccccccccccc\",\"event\":\"workflow_dispatch\",\"conclusion\":\"success\",\"created_at\":\"2026-07-10T08:00:00Z\",\"html_url\":\"https://example.invalid/103\"},
@@ -853,6 +859,21 @@ JSON
   *'/actions/workflows/temporal.yml/runs?'*)
     printf '%s\n' '{"workflow_runs":[]}'
     ;;
+  *'/actions/workflows/nightly.yml')
+    printf '%s\n' '{"id":77,"path":".github/workflows/nightly.yml"}'
+    ;;
+  *'/actions/runs/106')
+    printf '%s\n' '{"id":106,"workflow_id":77,"run_attempt":1,"run_number":106,"head_sha":"ffffffffffffffffffffffffffffffffffffffff","event":"schedule","status":"completed","conclusion":"success","created_at":"2026-07-10T10:30:00Z","html_url":"https://example.invalid/106"}'
+    ;;
+  *'/actions/runs/105')
+    printf '%s\n' '{"id":105,"workflow_id":77,"run_attempt":2,"run_number":105,"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","event":"schedule","status":"completed","conclusion":"success","created_at":"2026-07-10T10:00:00Z","html_url":"https://example.invalid/105"}'
+    ;;
+  *'/actions/runs/104')
+    printf '%s\n' '{"id":104,"workflow_id":77,"run_attempt":2,"run_number":104,"head_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","event":"schedule","status":"completed","conclusion":"success","created_at":"2026-07-10T09:00:00Z","html_url":"https://example.invalid/104"}'
+    ;;
+  *'/actions/runs/106/jobs?'*)
+    printf '%s\n' '{"jobs":[{"name":"target job","run_attempt":1,"conclusion":"success"},{"name":"strict job","run_attempt":1,"conclusion":"success"}]}'
+    ;;
   *'/actions/runs/105/jobs?'*)
     printf '%s\n' "{\"jobs\":[
   {\"name\":\"other job\",\"run_attempt\":2,\"conclusion\":\"failure\"},
@@ -874,6 +895,12 @@ JSON
     ;;
   *'/actions/runs/202/artifacts?'*)
     printf '%s\n' "{\"total_count\":1,\"artifacts\":[{\"name\":\"lane-executed-pull-request-202-${MOCK_EXECUTION_ATTEMPT:-3}\",\"expired\":false}]}"
+    ;;
+  *'/actions/runs/106/artifacts?'*)
+    fixture="${MOCK_FIXTURE_DIR}/valid-106.zip"
+    digest="$(sha256sum "${fixture}" | cut -d' ' -f1)"
+    size="$(stat -c %s "${fixture}")"
+    printf '%s\n' "{\"total_count\":1,\"artifacts\":[{\"id\":5106,\"name\":\"scored-nightly-106-1\",\"expired\":false,\"size_in_bytes\":${size},\"digest\":\"sha256:${digest}\",\"workflow_run\":{\"id\":106,\"head_sha\":\"ffffffffffffffffffffffffffffffffffffffff\"}}]}"
     ;;
   *'/actions/runs/105/artifacts?'*)
     fixture="${MOCK_FIXTURE_DIR}/valid-105.zip"
@@ -942,6 +969,9 @@ JSON
       *) printf 'unexpected archive mode: %s\n' "${MOCK_SCORED_MODE}" >&2; exit 2 ;;
     esac
     cat "${fixture}"
+    ;;
+  *'/actions/artifacts/5106/zip')
+    cat "${MOCK_FIXTURE_DIR}/valid-106.zip"
     ;;
   *'/actions/artifacts/5104/zip')
     cat "${MOCK_FIXTURE_DIR}/valid-104.zip"
@@ -1205,6 +1235,15 @@ if LANE_GATE_CONFIG="${invalid_promotion_config}" \
 fi
 grep -Fq 'promotion_evidence.run_ids must contain exactly 2 runs' \
   "${tmp_dir}/invalid-promotion.out"
+
+MOCK_NEWER_SUCCESS=1 LANE_EXIT=0 bash scripts/lane-gate.sh scheduled \
+  >"${tmp_dir}/promotion-history-advanced.out"
+grep -Fq 'current=current_job_succeeded verdict=pass' \
+  "${tmp_dir}/promotion-history-advanced.out"
+MOCK_NEWER_SUCCESS=1 bash scripts/lane-gate.sh --fleet \
+  >"${tmp_dir}/promotion-history-advanced-fleet.out"
+grep -Fq 'fleet required=1 verdict=pass' \
+  "${tmp_dir}/promotion-history-advanced-fleet.out"
 
 if LANE_EXIT=1 bash scripts/lane-gate.sh scheduled >"${tmp_dir}/required.out" 2>&1; then
   echo "required lane accepted a failed current run" >&2

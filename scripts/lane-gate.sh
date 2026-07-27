@@ -1975,17 +1975,50 @@ def current_result(lane: Lane) -> tuple[bool, str]:
     return True, "current_job_succeeded"
 
 
-def promotion_evidence_matches(history: History) -> bool:
+def single_api_object(endpoint: str) -> dict[str, Any]:
+    documents = gh_api(endpoint)
+    if len(documents) != 1:
+        raise ApiIntegrityError(
+            f"lane-gate: GitHub API returned ambiguous objects for {endpoint}"
+        )
+    return documents[0]
+
+
+def promotion_evidence_matches(repo: str, history: History) -> bool:
     evidence = history.lane.promotion_evidence
     if evidence is None:
         return history.lane.posture != "required"
-    expected_run_ids = tuple(
-        run.run_id for run in history.successes[: history.lane.required_streak]
-    )
-    if evidence.run_ids != expected_run_ids:
+    report = "".join(f"{run_id}\n" for run_id in evidence.run_ids).encode("ascii")
+    if hashlib.sha256(report).hexdigest() != evidence.report_sha256:
         return False
-    report = "".join(f"{run_id}\n" for run_id in expected_run_ids).encode("ascii")
-    return hashlib.sha256(report).hexdigest() == evidence.report_sha256
+
+    lane = history.lane
+    workflow = quote(lane.workflow, safe="")
+    workflow_endpoint = f"repos/{repo}/actions/workflows/{workflow}"
+    workflow_id = single_api_object(workflow_endpoint).get("id")
+    if isinstance(workflow_id, bool) or not isinstance(workflow_id, int):
+        raise ApiIntegrityError(
+            f"lane-gate: workflow {lane.workflow} is missing an integer id"
+        )
+
+    promotion_runs: list[dict[str, Any]] = []
+    for run_id in evidence.run_ids:
+        run_endpoint = f"repos/{repo}/actions/runs/{run_id}"
+        run = single_api_object(run_endpoint)
+        if run.get("id") != run_id or run.get("workflow_id") != workflow_id:
+            return False
+        if (
+            run.get("event") != lane.event
+            or run.get("status") != "completed"
+            or not run_targets_base(run, lane)
+        ):
+            return False
+        run_evidence, reason = evidence_for_run(repo, lane, run)
+        if reason is not None or run_evidence.conclusion != "success":
+            return False
+        promotion_runs.append(run)
+
+    return promotion_runs == sorted(promotion_runs, key=run_sort_key, reverse=True)
 
 
 def handle_api_error(lane: Lane, error: ApiError) -> int:
@@ -2013,7 +2046,7 @@ def run_lane(repo: str, lane: Lane, *, report_only: bool) -> int:
     if report_only:
         print_history(history, "report")
         return 0
-    if lane.posture == "required" and not promotion_evidence_matches(history):
+    if lane.posture == "required" and not promotion_evidence_matches(repo, history):
         print_history(history, "fail", "promotion_evidence_mismatch")
         return 1
     current_ok, current = current_result(lane)
@@ -2042,7 +2075,7 @@ def run_fleet(lanes: dict[str, Lane]) -> int:
             and len(history.successes) >= lane.required_streak
             and history.successes[0].run_id == history.latest.run_id
             and history.freshness == "fresh"
-            and promotion_evidence_matches(history)
+            and promotion_evidence_matches(repo, history)
         )
         print_history(history, "pass" if latest_ok else "fail")
         failed = failed or not latest_ok

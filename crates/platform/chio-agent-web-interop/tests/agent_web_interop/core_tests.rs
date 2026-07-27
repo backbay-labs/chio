@@ -9,11 +9,8 @@ use chio_agent_web_interop::{
 };
 use chio_core_types::{Keypair, PublicKey};
 use chio_test_support::prelude::*;
-use hmac::{Hmac, Mac};
 use serde_json::json;
 use sha2::Sha256;
-
-type HmacSha256 = Hmac<Sha256>;
 
 #[derive(Debug, Default)]
 struct CapturingReplayStore {
@@ -1527,11 +1524,13 @@ fn consuming_verifier_derives_opaque_scope_only_for_authenticated_delivery() {
         .lock()
         .test_expect("capture store lock remains available");
     assert_eq!(captured.len(), 1);
-    let mut scope_mac = HmacSha256::new_from_slice(STANDARD_WEBHOOKS_VERIFIER_SECRET)
-        .test_expect("fixture verifier secret initializes HMAC");
-    scope_mac.update(b"chio.agent-web.replay-scope.v1\0");
-    scope_mac.update(STANDARD_WEBHOOKS_ENDPOINT_URL_DIGEST.as_bytes());
-    let expected_scope = hex::encode(scope_mac.finalize().into_bytes());
+    let mut scope_hasher = <Sha256 as sha2::Digest>::new();
+    sha2::Digest::update(&mut scope_hasher, b"chio.agent-web.replay-scope.v2\0");
+    sha2::Digest::update(
+        &mut scope_hasher,
+        STANDARD_WEBHOOKS_ENDPOINT_URL_DIGEST.as_bytes(),
+    );
+    let expected_scope = hex::encode(sha2::Digest::finalize(scope_hasher));
     assert_eq!(captured[0].replay_scope().as_str(), expected_scope);
     drop(captured);
 

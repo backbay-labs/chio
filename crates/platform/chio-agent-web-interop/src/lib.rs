@@ -69,9 +69,10 @@ pub const DEFAULT_AGENT_WEB_REPLAY_PER_SCOPE_CAPACITY: usize = 4_096;
 pub const AGENT_WEB_REPLAY_SCOPE_HEX_LENGTH: usize = 64;
 pub const MAX_STANDARD_WEBHOOK_ID_BYTES: usize = 512;
 
-/// Opaque identity for one authenticated Standard Webhooks sender and endpoint.
+/// Opaque identity for one authenticated Standard Webhooks endpoint.
 ///
-/// Values are domain-separated HMAC outputs. The raw verifier secret is never
+/// Values are domain-separated hashes of the signed endpoint digest. They stay
+/// stable across verifier-secret rotation, and the raw endpoint URL is never
 /// exposed to replay-store implementations.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct AgentWebReplayScope(String);
