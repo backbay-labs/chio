@@ -40,9 +40,11 @@ assert_fails() {
 copy_fixture() {
   local root="$1"
   mkdir -p \
+    "$root/.kani" \
     "$root/scripts" \
     "$root/formal/rust-verification/creusot-core/src" \
     "$root/crates/kernel/chio-kernel-core/src"
+  cp "$REPO_ROOT/.kani/harnesses.toml" "$root/.kani/"
   cp "$REPO_ROOT/scripts/check-creusot-body-sync.sh" "$root/scripts/"
   cp "$REPO_ROOT/scripts/check-rust-verification-gates.sh" "$root/scripts/"
   cp "$REPO_ROOT/formal/rust-verification/creusot-contracts.toml" \

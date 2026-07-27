@@ -3,9 +3,20 @@ set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 
+expected_pr_harness_count="$(
+  python3 - <<'PY'
+from pathlib import Path
+import tomllib
+
+public = tomllib.loads(
+    Path("formal/rust-verification/kani-public-harnesses.toml").read_text()
+)
+print(len(public["lanes"]["pr"]["harnesses"]))
+PY
+)"
 mapfile -t pr_harnesses < <(scripts/check-kani-public-core.sh --lane pr --list)
-if [[ "${#pr_harnesses[@]}" -ne 25 ]]; then
-  echo "expected 25 public core PR harnesses, found ${#pr_harnesses[@]}" >&2
+if [[ "${#pr_harnesses[@]}" -ne "$expected_pr_harness_count" ]]; then
+  echo "expected ${expected_pr_harness_count} public core PR harnesses, found ${#pr_harnesses[@]}" >&2
   exit 1
 fi
 

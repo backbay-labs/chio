@@ -227,7 +227,7 @@ jobs:
         # Always run when the diff step ran (regardless of breaking_count)
         # so a clean push rewrites a stale sticky to an all-clear message
         # rather than leaving the previous warning in place.
-        if: always() && steps.diff.outcome == 'success'
+        if: always() && (steps.diff.outcome == 'success' || steps.diff.outcome == 'failure')
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
         env:
           SUMMARY_MD: ${{ steps.diff.outputs.summary }}

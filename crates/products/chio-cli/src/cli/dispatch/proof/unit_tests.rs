@@ -232,6 +232,17 @@ fn proof_collect_consumes_replays_only_after_sealing_succeeds() {
     assert!(replay_error.is_err_and(|error| error
         .to_string()
         .contains("replayed Standard Webhooks id")));
+    for relative_path in [
+        "bundle-signature.dsse.json",
+        ".bundle-signature.dsse.json.pending",
+        "manifest.json",
+        "verifier/report.json",
+    ] {
+        assert!(
+            !bundle.join(relative_path).exists(),
+            "replay failure must remove uncommitted output {relative_path}"
+        );
+    }
 }
 
 #[test]

@@ -795,7 +795,124 @@ fn authoritative_receipt(
             "authoritative receipt sequence {max_seq} is not unique"
         )));
     }
+    authenticate_authoritative_receipt_order(proof_package, record)?;
     Ok(record)
+}
+
+fn authenticate_authoritative_receipt_order(
+    proof_package: &MercuryProofPackage,
+    record: &MercuryProofReceiptRecord,
+) -> Result<(), MercuryContractError> {
+    if proof_package
+        .chio_bundle
+        .uncheckpointed_receipts
+        .iter()
+        .any(|uncheckpointed| {
+            uncheckpointed.seq == record.seq && uncheckpointed.receipt_id == record.receipt_id
+        })
+    {
+        return Err(MercuryContractError::Validation(format!(
+            "authoritative receipt sequence {} is not checkpoint-authenticated",
+            record.seq
+        )));
+    }
+
+    let tool_receipt = proof_package
+        .chio_bundle
+        .tool_receipts
+        .iter()
+        .find(|candidate| candidate.seq == record.seq && candidate.receipt.id == record.receipt_id)
+        .ok_or_else(|| {
+            MercuryContractError::Validation(format!(
+                "authoritative receipt sequence {} does not match a tool receipt",
+                record.seq
+            ))
+        })?;
+    let mut matching_proofs = proof_package
+        .chio_bundle
+        .inclusion_proofs
+        .iter()
+        .filter(|proof| proof.receipt_seq == record.seq);
+    let proof = matching_proofs.next().ok_or_else(|| {
+        MercuryContractError::Validation(format!(
+            "authoritative receipt sequence {} is not checkpoint-authenticated",
+            record.seq
+        ))
+    })?;
+    if matching_proofs.next().is_some() {
+        return Err(MercuryContractError::Validation(format!(
+            "authoritative receipt sequence {} has multiple inclusion proofs",
+            record.seq
+        )));
+    }
+
+    let mut matching_checkpoints = proof_package
+        .chio_bundle
+        .checkpoints
+        .iter()
+        .filter(|checkpoint| checkpoint.body.checkpoint_seq == proof.checkpoint_seq);
+    let checkpoint = matching_checkpoints.next().ok_or_else(|| {
+        MercuryContractError::Validation(format!(
+            "authoritative receipt sequence {} references missing checkpoint {}",
+            record.seq, proof.checkpoint_seq
+        ))
+    })?;
+    if matching_checkpoints.next().is_some() {
+        return Err(MercuryContractError::Validation(format!(
+            "authoritative receipt sequence {} references duplicate checkpoint {}",
+            record.seq, proof.checkpoint_seq
+        )));
+    }
+    if !is_supported_checkpoint_schema(&checkpoint.body.schema)
+        || !verify_checkpoint_signature(checkpoint)
+            .map_err(|error| MercuryContractError::Validation(error.to_string()))?
+    {
+        return Err(MercuryContractError::Validation(format!(
+            "authoritative receipt sequence {} is not bound to a valid signed checkpoint",
+            record.seq
+        )));
+    }
+    if proof.merkle_root != checkpoint.body.merkle_root
+        || proof.leaf_index != proof.proof.leaf_index
+    {
+        return Err(MercuryContractError::Validation(format!(
+            "authoritative receipt sequence {} has an invalid checkpoint proof binding",
+            record.seq
+        )));
+    }
+    let leaf_offset = u64::try_from(proof.leaf_index).map_err(|_| {
+        MercuryContractError::Validation(format!(
+            "authoritative receipt sequence {} has an out-of-range checkpoint leaf index",
+            record.seq
+        ))
+    })?;
+    let checkpoint_receipt_seq = checkpoint
+        .body
+        .batch_start_seq
+        .checked_add(leaf_offset)
+        .ok_or_else(|| {
+            MercuryContractError::Validation(format!(
+                "authoritative receipt sequence {} checkpoint sequence binding overflowed",
+                record.seq
+            ))
+        })?;
+    if proof.receipt_seq != checkpoint_receipt_seq
+        || proof.receipt_seq > checkpoint.body.batch_end_seq
+    {
+        return Err(MercuryContractError::Validation(format!(
+            "authoritative receipt sequence {} does not match signed checkpoint leaf sequence {}",
+            record.seq, checkpoint_receipt_seq
+        )));
+    }
+    let canonical_receipt = canonical_json_bytes(&tool_receipt.receipt)
+        .map_err(|error| MercuryContractError::Json(error.to_string()))?;
+    if !proof.verify(&canonical_receipt, &checkpoint.body.merkle_root) {
+        return Err(MercuryContractError::Validation(format!(
+            "authoritative receipt sequence {} failed checkpoint inclusion verification",
+            record.seq
+        )));
+    }
+    Ok(())
 }
 
 fn ordered_receipt_ids(proof_package: &MercuryProofPackage) -> Vec<String> {
@@ -3125,6 +3242,54 @@ mod tests {
             error
                 .to_string()
                 .contains("authoritative receipt sequence 2 is not unique"),
+            "unexpected error: {error}"
+        );
+    }
+
+    #[test]
+    fn inquiry_rejects_uncheckpointed_max_sequence_authority() {
+        let checkpoint_keypair = Keypair::generate();
+        let older = sample_receipt(1);
+        let newer = sample_receipt(2);
+        let newer_receipt_id = newer.id.clone();
+        let mut bundle = sample_bundle_with_records(
+            vec![
+                EvidenceToolReceiptRecord {
+                    seq: 1,
+                    receipt: older,
+                },
+                EvidenceToolReceiptRecord {
+                    seq: 2,
+                    receipt: newer,
+                },
+            ],
+            Vec::new(),
+            &checkpoint_keypair,
+        );
+        bundle
+            .inclusion_proofs
+            .retain(|proof| proof.receipt_seq == 1);
+        bundle.uncheckpointed_receipts = vec![EvidenceUncheckpointedReceipt {
+            seq: 2,
+            receipt_id: newer_receipt_id,
+        }];
+        let proof_package = build_sample_proof_package(bundle).expect("proof package");
+
+        let error = MercuryInquiryPackage::build(
+            proof_package,
+            MercuryInquiryPackageArgs {
+                created_at: 1_775_137_901,
+                audience: "compliance".to_string(),
+                redaction_profile: Some("internal-default".to_string()),
+                verifier_equivalent: true,
+            },
+        )
+        .expect_err("uncheckpointed maximum sequence");
+
+        assert!(
+            error
+                .to_string()
+                .contains("authoritative receipt sequence 2 is not checkpoint-authenticated"),
             "unexpected error: {error}"
         );
     }

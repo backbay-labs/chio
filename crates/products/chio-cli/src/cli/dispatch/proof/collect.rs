@@ -4,6 +4,9 @@ use std::{collections::BTreeSet, fs, io::Write, path::Path};
 const PROOF_ROOM_BUNDLE_SCHEMA: &str = "chio.proof-room.bundle.v1";
 const PROOF_ROOM_VERIFIER_REPORT_SCHEMA: &str = "chio.proof-room.verifier-report.v1";
 const PROOF_ROOM_DSSE_PAYLOAD_TYPE: &str = "application/vnd.chio.proof-room.bundle.v1+json";
+const PROOF_ROOM_BUNDLE_SIGNATURE_PATH: &str = "bundle-signature.dsse.json";
+const PROOF_ROOM_PENDING_BUNDLE_SIGNATURE_PATH: &str =
+    ".bundle-signature.dsse.json.pending";
 const PROOF_ROOM_TRUST_ROOTS_PATH: &str = "artifacts/authority/trust-roots.json";
 const PROOF_ROOM_TRUST_ROOTS_SCHEMA: &str = "chio.proof.first-run.trust-roots.v1";
 pub(super) const PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX_ENV: &str =
@@ -151,23 +154,69 @@ fn seal_collected_proof_bundle_with_fixture_id(
         }
     };
     enforce_collect_kind_requirements(kind, &verification_report)?;
+    let signature_path = match verification_mode {
+        SealVerificationMode::ConsumeReplays => {
+            invalidate_collected_proof_room_bundle(bundle)?;
+            bundle.join(PROOF_ROOM_PENDING_BUNDLE_SIGNATURE_PATH)
+        }
+        SealVerificationMode::IsolatedFixture => {
+            bundle.join(PROOF_ROOM_BUNDLE_SIGNATURE_PATH)
+        }
+    };
     let report = collected_verifier_report(bundle, verification_report)?;
     let verifier_report_path = bundle.join("verifier/report.json");
     if let Some(parent) = verifier_report_path.parent() {
         fs::create_dir_all(parent)?;
     }
     write_json_line_file(&verifier_report_path, &report)?;
-    write_collected_proof_room_bundle(bundle, &report, kind, public_fixture_id)?;
+    write_collected_proof_room_bundle(
+        bundle,
+        &report,
+        kind,
+        public_fixture_id,
+        &signature_path,
+    )?;
     sync_collected_proof_room_bundle(bundle)?;
     if let Some(read_only_report) = replay_snapshot {
-        let consumed_report =
+        let consume_result =
             super::verify_transaction_passport_file_and_consume_agent_web_replays(
                 &passport_path,
                 &read_only_report,
-            )?;
-        enforce_collect_kind_requirements(kind, &consumed_report)?;
+            )
+            .and_then(|consumed_report| {
+                enforce_collect_kind_requirements(kind, &consumed_report)
+            });
+        if let Err(error) = consume_result {
+            return match invalidate_collected_proof_room_bundle(bundle) {
+                Ok(()) => Err(error),
+                Err(invalidation_error) => Err(CliError::cli_other_error(format!(
+                    "{error}; failed to invalidate the uncommitted proof bundle: {invalidation_error}"
+                ))),
+            };
+        }
+        fs::rename(
+            bundle.join(PROOF_ROOM_PENDING_BUNDLE_SIGNATURE_PATH),
+            bundle.join(PROOF_ROOM_BUNDLE_SIGNATURE_PATH),
+        )?;
+        sync_collected_proof_room_bundle(bundle)?;
     }
     Ok(report)
+}
+
+fn invalidate_collected_proof_room_bundle(bundle: &Path) -> Result<(), CliError> {
+    for relative_path in [
+        PROOF_ROOM_BUNDLE_SIGNATURE_PATH,
+        PROOF_ROOM_PENDING_BUNDLE_SIGNATURE_PATH,
+        "manifest.json",
+        "verifier/report.json",
+    ] {
+        match fs::remove_file(bundle.join(relative_path)) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => return Err(CliError::from(error)),
+        }
+    }
+    Ok(())
 }
 
 fn sync_collected_proof_room_bundle(path: &Path) -> Result<(), CliError> {
@@ -238,6 +287,7 @@ fn write_collected_proof_room_bundle(
     verifier_report: &serde_json::Value,
     kind: ProofCollectKind,
     public_fixture_id: Option<&str>,
+    signature_path: &Path,
 ) -> Result<(), CliError> {
     let keypair = proof_collect_bundle_signer_from_env()?;
     fs::create_dir_all(bundle.join("roots"))?;
@@ -333,11 +383,11 @@ fn write_collected_proof_room_bundle(
         "excluded_artifacts": [],
         "signature": {
             "kind": "detached-dsse",
-            "signature_ref": "bundle-signature.dsse.json"
+            "signature_ref": PROOF_ROOM_BUNDLE_SIGNATURE_PATH
         }
     });
     write_json_line_file(&bundle.join("manifest.json"), &manifest)?;
-    write_bundle_signature(bundle, &keypair)
+    write_bundle_signature_to_path(bundle, &keypair, signature_path)
 }
 
 fn write_collected_bundle_readme(
@@ -1147,6 +1197,18 @@ pub(super) fn write_bundle_signature(
     bundle: &Path,
     keypair: &chio_core::Keypair,
 ) -> Result<(), CliError> {
+    write_bundle_signature_to_path(
+        bundle,
+        keypair,
+        &bundle.join(PROOF_ROOM_BUNDLE_SIGNATURE_PATH),
+    )
+}
+
+fn write_bundle_signature_to_path(
+    bundle: &Path,
+    keypair: &chio_core::Keypair,
+    signature_path: &Path,
+) -> Result<(), CliError> {
     let manifest_bytes = fs::read(bundle.join("manifest.json"))?;
     let signed_payload = dsse_pre_auth_encoding(PROOF_ROOM_DSSE_PAYLOAD_TYPE, &manifest_bytes);
     let signature = serde_json::json!({
@@ -1163,7 +1225,7 @@ pub(super) fn write_bundle_signature(
             }
         ]
     });
-    write_json_line_file(&bundle.join("bundle-signature.dsse.json"), &signature)
+    write_json_line_file(signature_path, &signature)
 }
 
 pub(super) fn proof_collect_bundle_signer_from_env() -> Result<chio_core::Keypair, CliError> {
