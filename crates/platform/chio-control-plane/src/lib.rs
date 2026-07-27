@@ -20,7 +20,9 @@ pub mod attestation;
 pub mod certify;
 mod durable_admission;
 pub use chio_enterprise_export as enterprise_export;
-pub(crate) use durable_admission::{durable_admission_lock_root, write_private_file_atomically};
+pub(crate) use durable_admission::{
+    create_private_directory, durable_admission_lock_root, write_private_file_atomically,
+};
 pub use durable_admission::{
     durable_admission_sidecar_path, open_durable_admission_runtime,
     validate_distinct_database_paths, validate_durable_admission_participant_paths,
@@ -874,6 +876,8 @@ mod tests {
     #[test]
     fn durable_admission_runtime_shares_one_owner_on_a_distinct_sidecar() {
         let directory = tempfile::tempdir().expect("create durable admission test directory");
+        create_private_directory(directory.path())
+            .expect("secure durable admission test directory");
         let session_database = directory.path().join("sessions.sqlite3");
         let admission_database =
             durable_admission_sidecar_path(&session_database).expect("derive admission sidecar");
@@ -904,6 +908,8 @@ mod tests {
     #[test]
     fn durable_admission_runtime_rejects_a_lost_signing_seed() {
         let directory = tempfile::tempdir().expect("create durable admission test directory");
+        create_private_directory(directory.path())
+            .expect("secure durable admission test directory");
         let admission_database = directory.path().join("admission.sqlite3");
         let runtime = DurableAdmissionRuntime::open(&admission_database)
             .expect("open durable admission runtime");

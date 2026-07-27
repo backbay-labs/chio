@@ -19,7 +19,12 @@
       "type": "object",
       "required": ["schema"],
       "properties": {
-        "schema": { "const": "chio.checkpoint_statement.v1" }
+        "schema": {
+          "enum": [
+            "chio.checkpoint_statement.v1",
+            "chio.checkpoint_statement.v2"
+          ]
+        }
       }
     },
     "chain_anchor": { "type": "object" },

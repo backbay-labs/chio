@@ -2467,15 +2467,26 @@ fn transparency_anchored_fixture(
     // The log kernel key is deliberately NOT the passport root key: an issuer
     // that signs the checkpoints anchoring its own evidence is self-attesting.
     let root_key = transparency_checkpoint_keypair();
+    let checkpoint_chain_leaf = json!({
+        "checkpoint_seq": 1,
+        "batch_start_seq": 1,
+        "batch_end_seq": 1,
+        "merkle_root": leaf_hex
+    });
+    let chain_root = chio_core_types::merkle::leaf_hash(
+        &chio_core_types::canonical_json_bytes(&checkpoint_chain_leaf)
+            .test_expect("canonical checkpoint chain leaf"),
+    );
     let statement_body = json!({
-        "schema": "chio.checkpoint_statement.v1",
+        "schema": "chio.checkpoint_statement.v2",
         "checkpoint_seq": 1,
         "batch_start_seq": 1,
         "batch_end_seq": 1,
         "tree_size": 1,
         "merkle_root": leaf_hex,
         "issued_at": 1_749_000_000u64,
-        "kernel_key": root_key.public_key().to_hex()
+        "kernel_key": root_key.public_key().to_hex(),
+        "chain_root": format!("0x{}", chain_root.to_hex())
     });
     let statement_signature = root_key
         .sign(
@@ -2715,6 +2726,17 @@ fn standalone_minimal_passport_rejects_anchor_over_a_non_receipt_artifact() {
             let kernel = transparency_checkpoint_keypair();
             let mut body = artifact["checkpoint_statement"]["body"].clone();
             body["merkle_root"] = json!(leaf_hex);
+            let checkpoint_chain_leaf = json!({
+                "checkpoint_seq": body["checkpoint_seq"],
+                "batch_start_seq": body["batch_start_seq"],
+                "batch_end_seq": body["batch_end_seq"],
+                "merkle_root": body["merkle_root"]
+            });
+            let chain_root = chio_core_types::merkle::leaf_hash(
+                &chio_core_types::canonical_json_bytes(&checkpoint_chain_leaf)
+                    .test_expect("canonical policy checkpoint chain leaf"),
+            );
+            body["chain_root"] = json!(format!("0x{}", chain_root.to_hex()));
             let signature = kernel
                 .sign(
                     &chio_core_types::canonical_json_bytes(&body)
@@ -2761,6 +2783,108 @@ fn standalone_minimal_passport_denies_a_checkable_but_invalid_transparency_ancho
         error
             .to_string()
             .contains("transparency inclusion proof is invalid"),
+        "{error}"
+    );
+}
+
+#[test]
+fn standalone_minimal_passport_validates_every_transparency_candidate() {
+    let (mut artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|_| {});
+    let mut invalid_artifact: Value = serde_json::from_slice(
+        artifacts
+            .get("transparency-inclusion-proof.json")
+            .test_expect("valid inclusion artifact exists"),
+    )
+    .test_expect("valid inclusion artifact parses");
+    invalid_artifact["inclusion_path"] = json!([format!("0x{}", "11".repeat(32))]);
+    let invalid_bytes =
+        serde_json::to_vec(&invalid_artifact).test_expect("invalid inclusion artifact serializes");
+    let invalid_digest = sha256_hex(&invalid_bytes);
+    artifacts.insert(
+        "transparency-inclusion-proof-invalid.json".to_string(),
+        invalid_bytes,
+    );
+
+    let mut graph: Value =
+        serde_json::from_slice(&evidence_graph_bytes).test_expect("evidence graph parses");
+    graph["nodes"]
+        .as_array_mut()
+        .test_expect("graph nodes are an array")
+        .push(json!({
+            "id": invalid_digest,
+            "schema": "chio.transparency.inclusion-proof.v1",
+            "path": "transparency-inclusion-proof-invalid.json",
+            "sha256": invalid_digest,
+            "role": "transparency-inclusion-proof"
+        }));
+    let evidence_graph_bytes = serde_json::to_vec(&graph).test_expect("evidence graph serializes");
+
+    let error =
+        verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+            .test_expect_err("a later invalid candidate must deny after a valid candidate");
+    assert!(
+        error
+            .to_string()
+            .contains("transparency inclusion proof is invalid"),
+        "{error}"
+    );
+}
+
+#[test]
+fn standalone_minimal_passport_rejects_signed_checkpoint_missing_required_body_fields() {
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|artifact| {
+            let mut body = artifact["checkpoint_statement"]["body"].clone();
+            body.as_object_mut()
+                .test_expect("checkpoint body is an object")
+                .remove("checkpoint_seq");
+            let signature = transparency_checkpoint_keypair()
+                .sign(
+                    &chio_core_types::canonical_json_bytes(&body)
+                        .test_expect("canonical malformed checkpoint body"),
+                )
+                .to_hex();
+            artifact["checkpoint_statement"] = json!({
+                "body": body,
+                "signature": signature
+            });
+        });
+
+    let error =
+        verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+            .test_expect_err("a signed partial checkpoint body must deny");
+    assert!(
+        error
+            .to_string()
+            .contains("checkpoint statement body is invalid"),
+        "{error}"
+    );
+}
+
+#[test]
+fn standalone_minimal_passport_rejects_signed_checkpoint_unknown_body_fields() {
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|artifact| {
+            let mut body = artifact["checkpoint_statement"]["body"].clone();
+            body["smuggled"] = json!("field");
+            let signature = transparency_checkpoint_keypair()
+                .sign(
+                    &chio_core_types::canonical_json_bytes(&body)
+                        .test_expect("canonical field-smuggled checkpoint body"),
+                )
+                .to_hex();
+            artifact["checkpoint_statement"] = json!({
+                "body": body,
+                "signature": signature
+            });
+        });
+
+    let error =
+        verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+            .test_expect_err("a signed field-smuggled checkpoint body must deny");
+    assert!(
+        error.to_string().contains("unknown field `smuggled`"),
         "{error}"
     );
 }

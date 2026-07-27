@@ -35,7 +35,7 @@ impl DurableAdmissionRuntime {
         }
 
         let lock_root = durable_admission_lock_root(path)?;
-        fs::create_dir_all(&lock_root)?;
+        create_private_directory(&lock_root)?;
         SqliteAuthorityStore::provision(path, &lock_root)?;
         let authority = SqliteAuthorityStore::open_serving(path, &lock_root)?;
         let budget = authority.budget_store();
@@ -188,6 +188,16 @@ pub fn validate_distinct_database_paths(paths: &[(&str, &Path)]) -> Result<(), C
 
 pub(crate) fn durable_admission_lock_root(path: &Path) -> Result<PathBuf, CliError> {
     sibling_path(path, ".locks", "durable admission database")
+}
+
+pub(crate) fn create_private_directory(path: &Path) -> Result<(), std::io::Error> {
+    fs::create_dir_all(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(())
 }
 
 pub(super) fn write_private_file_atomically(path: &Path, contents: &[u8]) -> Result<(), CliError> {

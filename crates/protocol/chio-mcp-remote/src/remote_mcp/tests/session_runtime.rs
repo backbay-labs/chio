@@ -39,6 +39,12 @@ fn remote_session_factory_holds_one_durable_admission_sidecar() {
         std::process::id()
     ));
     std::fs::create_dir_all(&directory).expect("create remote admission directory");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
+            .expect("secure remote admission directory");
+    }
     let policy_path = directory.join("policy.yaml");
     std::fs::write(
         &policy_path,
@@ -76,6 +82,12 @@ fn remote_session_factory_rejects_admission_sidecar_aliases() {
         std::process::id()
     ));
     std::fs::create_dir_all(&directory).expect("create remote admission directory");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(&directory, std::fs::Permissions::from_mode(0o700))
+            .expect("secure remote admission directory");
+    }
     let policy_path = directory.join("policy.yaml");
     std::fs::write(
         &policy_path,

@@ -416,7 +416,11 @@ pub(crate) fn verify_transaction_passport_family_report_with_options(
             &family_reports,
             verify_transaction_passport_signature,
         )?;
-        merge_source_family_verifier_reports(&context, family_reports)?
+        merge_source_family_verifier_reports(
+            &context,
+            family_reports,
+            verify_transaction_passport_signature,
+        )?
     };
     ensure_source_policy_required_claims_verified(&requirements.required_claims, &report)?;
     attach_source_runtime_proof_parity_report(&context, &mut report)?;
@@ -954,6 +958,7 @@ pub(crate) fn verify_source_standalone_risk_report_with_keys(
 pub(crate) fn merge_source_family_verifier_reports(
     context: &SourceVerifierContext,
     family_reports: Vec<serde_json::Value>,
+    verify_transaction_passport_signature: bool,
 ) -> Result<serde_json::Value, String> {
     let verified_claim_ids = source_family_verified_claims(&family_reports);
     let verified_claims = verified_claim_ids
@@ -962,9 +967,17 @@ pub(crate) fn merge_source_family_verifier_reports(
         .map(serde_json::Value::String)
         .collect::<Vec<_>>();
     let claim_results = source_claim_results(&verified_claims);
+    let trusted_checkpoint_signer_keys = if verify_transaction_passport_signature {
+        crate::transaction_trusted_checkpoint_keys_from_env()
+            .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?
+    } else {
+        Vec::new()
+    };
     let transparency_state =
-        chio_transaction_passport::transaction_evidence_graph_transparency_state(
+        chio_transaction_passport::transaction_evidence_graph_transparency_state_with_anchors(
             &context.evidence_graph_bytes,
+            &context.artifacts,
+            &trusted_checkpoint_signer_keys,
         )
         .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
 
@@ -1028,24 +1041,35 @@ pub(crate) fn verify_source_root_claim_set_artifacts(
     verify_transaction_passport_signature: bool,
 ) -> Result<(), String> {
     let externally_verified_claims = source_family_verified_claims(family_reports);
-    let mut root_artifacts = BTreeMap::new();
-    root_artifacts.insert(
-        context.passport.claim_set_path.clone(),
-        context.claim_set_bytes.clone(),
-    );
     if verify_transaction_passport_signature {
         let trusted_root_signer_keys = crate::transaction_trusted_root_keys_from_env()
             .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
-        chio_transaction_passport::verify_passport_root_and_claim_set_artifacts_with_external_claims(
+        let trusted_checkpoint_signer_keys =
+            crate::transaction_trusted_checkpoint_keys_from_env()
+                .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
+        let mut root_artifacts = context.artifacts.clone();
+        root_artifacts.insert(
+            context.passport.claim_set_path.clone(),
+            context.claim_set_bytes.clone(),
+        );
+        chio_transaction_passport::verify_passport_root_and_claim_set_artifacts_with_transparency_anchors(
             &context.passport,
             context.passport_report_path.clone(),
             &context.evidence_graph_bytes,
             &context.verifier_policy_bytes,
             &root_artifacts,
-            &trusted_root_signer_keys,
+            chio_transaction_passport::TransactionTrustAnchors {
+                passport_root_signers: &trusted_root_signer_keys,
+                checkpoint_signers: &trusted_checkpoint_signer_keys,
+            },
             &externally_verified_claims,
         )
     } else {
+        let mut root_artifacts = BTreeMap::new();
+        root_artifacts.insert(
+            context.passport.claim_set_path.clone(),
+            context.claim_set_bytes.clone(),
+        );
         chio_transaction_passport::verify_passport_root_and_claim_set_artifacts_unchecked_signature_with_external_claims(
             &context.passport,
             context.passport_report_path.clone(),
@@ -1241,13 +1265,19 @@ pub(crate) fn verify_transaction_passport_file_with_options(
         .map(|name| name.to_string_lossy().into_owned())
         .unwrap_or_else(|| path.to_string_lossy().into_owned());
     let report = if verify_transaction_passport_signature {
-        chio_transaction_passport::verify_standalone_minimal_passport_artifacts(
+        let trusted_checkpoint_signer_keys = crate::transaction_trusted_checkpoint_keys_from_env()
+            .map_err(|error| format!("proof-room.source-verifier.failed: {error}"))?;
+        chio_transaction_passport::
+            verify_standalone_minimal_passport_artifacts_with_transparency_anchors(
             &passport,
             passport_report_path.clone(),
             &evidence_graph_bytes,
             &verifier_policy_bytes,
             &artifacts,
-            &trusted_root_signer_keys,
+            chio_transaction_passport::TransactionTrustAnchors {
+                passport_root_signers: &trusted_root_signer_keys,
+                checkpoint_signers: &trusted_checkpoint_signer_keys,
+            },
         )
     } else {
         chio_transaction_passport::verify_standalone_minimal_passport_artifacts_unchecked_signature(

@@ -4,7 +4,7 @@
 //! to a Merkle root. Inclusion proofs allow verifying that a specific receipt
 //! was part of a batch without replaying the entire log.
 //!
-//! Schema: "chio.checkpoint_statement.v1"
+//! Issuance schema: "chio.checkpoint_statement.v2"
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -22,15 +22,25 @@ use serde::{Deserialize, Serialize};
 
 use crate::ReceiptStoreError;
 
-pub const CHECKPOINT_SCHEMA: &str = "chio.checkpoint_statement.v1";
+/// Legacy checkpoint statement without a checkpoint-chain commitment.
+pub const CHECKPOINT_SCHEMA_V1: &str = "chio.checkpoint_statement.v1";
+/// Checkpoint statement that may carry the signed checkpoint-chain commitment.
+pub const CHECKPOINT_SCHEMA_V2: &str = "chio.checkpoint_statement.v2";
+/// Schema used for new checkpoint issuance.
+pub const CHECKPOINT_SCHEMA: &str = CHECKPOINT_SCHEMA_V2;
 pub const CHECKPOINT_PUBLICATION_SCHEMA: &str = "chio.checkpoint_publication.v1";
 pub const CHECKPOINT_WITNESS_SCHEMA: &str = "chio.checkpoint_witness.v1";
-pub const CHECKPOINT_CONSISTENCY_PROOF_SCHEMA: &str = "chio.checkpoint_consistency_proof.v1";
+/// Legacy metadata-only continuity record.
+pub const CHECKPOINT_CONSISTENCY_PROOF_SCHEMA_V1: &str = "chio.checkpoint_consistency_proof.v1";
+/// Cryptographic checkpoint-chain consistency proof.
+pub const CHECKPOINT_CONSISTENCY_PROOF_SCHEMA_V2: &str = "chio.checkpoint_consistency_proof.v2";
+/// Schema used for new consistency-proof issuance.
+pub const CHECKPOINT_CONSISTENCY_PROOF_SCHEMA: &str = CHECKPOINT_CONSISTENCY_PROOF_SCHEMA_V2;
 pub const CHECKPOINT_EQUIVOCATION_SCHEMA: &str = "chio.checkpoint_equivocation.v1";
 
 #[must_use]
 pub fn is_supported_checkpoint_schema(schema: &str) -> bool {
-    schema == CHECKPOINT_SCHEMA
+    matches!(schema, CHECKPOINT_SCHEMA_V1 | CHECKPOINT_SCHEMA_V2)
 }
 
 /// Error type for checkpoint operations.
@@ -83,8 +93,8 @@ pub struct KernelCheckpointBody {
     /// through this checkpoint, one leaf per checkpoint binding its sequence,
     /// entry range, and batch root (see [`checkpoint_chain_leaf_hash`]). This
     /// is the commitment that consistency proofs verify against. Absent on
-    /// checkpoints issued before the chain commitment existed and on detached
-    /// checkpoints built without chain context.
+    /// v1 checkpoints and on detached v2 checkpoints built without chain
+    /// context.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub chain_root: Option<Hash>,
 }
@@ -203,28 +213,35 @@ pub struct CheckpointConsistencyProof {
     pub appended_entry_start_seq: u64,
     /// Last entry sequence appended by the later checkpoint.
     pub appended_entry_end_seq: u64,
-    /// Signed chain commitment of the earlier checkpoint.
-    pub from_chain_root: Hash,
-    /// Signed chain commitment of the later checkpoint.
-    pub to_chain_root: Hash,
+    /// Signed chain commitment of the earlier checkpoint. Absent on legacy v1
+    /// metadata-only records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_chain_root: Option<Hash>,
+    /// Signed chain commitment of the later checkpoint. Absent on legacy v1
+    /// metadata-only records.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_chain_root: Option<Hash>,
     /// RFC 6962 consistency path from the earlier chain tree to the later
     /// chain tree.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub chain_proof_hashes: Vec<Hash>,
     /// Inclusion proof binding the earlier checkpoint's own chain leaf to
     /// `from_chain_root` at the last position of that tree.
-    pub from_leaf_inclusion: MerkleProof,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub from_leaf_inclusion: Option<MerkleProof>,
     /// Inclusion proof binding the later checkpoint's own chain leaf to
     /// `to_chain_root` at the last position. Without both endpoints bound, a
     /// key holder could commit chain trees whose leaves are unrelated to the
     /// bodies the proof names and still produce a verifying consistency path.
-    pub to_leaf_inclusion: MerkleProof,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub to_leaf_inclusion: Option<MerkleProof>,
 }
 
 /// Whether `leaf` is committed by `root` as the final leaf of a `size`-leaf
 /// chain tree, per the supplied inclusion proof.
 fn chain_leaf_is_committed(inclusion: &MerkleProof, size: usize, leaf: Hash, root: &Hash) -> bool {
     inclusion.tree_size == size
-        && inclusion.leaf_index + 1 == size
+        && size.checked_sub(1) == Some(inclusion.leaf_index)
         && inclusion.verify_hash(leaf, root)
 }
 
@@ -639,11 +656,11 @@ pub fn build_checkpoint_consistency_proof(
         to_log_tree_size: checkpoint_log_tree_size(&current.body),
         appended_entry_start_seq: current.body.batch_start_seq,
         appended_entry_end_seq: current.body.batch_end_seq,
-        from_chain_root,
-        to_chain_root,
+        from_chain_root: Some(from_chain_root),
+        to_chain_root: Some(to_chain_root),
         chain_proof_hashes,
-        from_leaf_inclusion,
-        to_leaf_inclusion,
+        from_leaf_inclusion: Some(from_leaf_inclusion),
+        to_leaf_inclusion: Some(to_leaf_inclusion),
     })
 }
 
@@ -671,15 +688,6 @@ pub fn verify_checkpoint_consistency_proof(
             previous_log_id
         )));
     }
-    if proof.schema != CHECKPOINT_CONSISTENCY_PROOF_SCHEMA {
-        return Err(CheckpointError::Invalid(format!(
-            "unsupported consistency proof schema {}",
-            proof.schema
-        )));
-    }
-    let from_chain_root = require_chain_root(previous)?;
-    let to_chain_root = require_chain_root(current)?;
-
     let metadata_matches = proof.log_id == current_log_id
         && proof.from_checkpoint_seq == previous.body.checkpoint_seq
         && proof.to_checkpoint_seq == current.body.checkpoint_seq
@@ -688,12 +696,43 @@ pub fn verify_checkpoint_consistency_proof(
         && proof.from_log_tree_size == checkpoint_log_tree_size(&previous.body)
         && proof.to_log_tree_size == checkpoint_log_tree_size(&current.body)
         && proof.appended_entry_start_seq == current.body.batch_start_seq
-        && proof.appended_entry_end_seq == current.body.batch_end_seq
-        && proof.from_chain_root == from_chain_root
-        && proof.to_chain_root == to_chain_root;
+        && proof.appended_entry_end_seq == current.body.batch_end_seq;
     if !metadata_matches {
         return Ok(false);
     }
+
+    if proof.schema == CHECKPOINT_CONSISTENCY_PROOF_SCHEMA_V1 {
+        if previous.body.schema != CHECKPOINT_SCHEMA_V1
+            || current.body.schema != CHECKPOINT_SCHEMA_V1
+        {
+            return Err(CheckpointError::Invalid(
+                "legacy v1 consistency records apply only to v1 checkpoints".to_string(),
+            ));
+        }
+        return Ok(proof.from_chain_root.is_none()
+            && proof.to_chain_root.is_none()
+            && proof.chain_proof_hashes.is_empty()
+            && proof.from_leaf_inclusion.is_none()
+            && proof.to_leaf_inclusion.is_none());
+    }
+    if proof.schema != CHECKPOINT_CONSISTENCY_PROOF_SCHEMA_V2 {
+        return Err(CheckpointError::Invalid(format!(
+            "unsupported consistency proof schema {}",
+            proof.schema
+        )));
+    }
+    let from_chain_root = require_chain_root(previous)?;
+    let to_chain_root = require_chain_root(current)?;
+    if proof.from_chain_root != Some(from_chain_root) || proof.to_chain_root != Some(to_chain_root)
+    {
+        return Ok(false);
+    }
+    let (Some(from_leaf_inclusion), Some(to_leaf_inclusion)) = (
+        proof.from_leaf_inclusion.as_ref(),
+        proof.to_leaf_inclusion.as_ref(),
+    ) else {
+        return Ok(false);
+    };
 
     // Both committed chains must end in their own checkpoint's leaf. Binding
     // only the later endpoint would leave a pair starting after checkpoint 1
@@ -703,12 +742,12 @@ pub fn verify_checkpoint_consistency_proof(
     let from_size = chain_tree_size(previous)?;
     let to_size = chain_tree_size(current)?;
     if !chain_leaf_is_committed(
-        &proof.from_leaf_inclusion,
+        from_leaf_inclusion,
         from_size,
         checkpoint_chain_leaf_hash(&previous.body)?,
         &from_chain_root,
     ) || !chain_leaf_is_committed(
-        &proof.to_leaf_inclusion,
+        to_leaf_inclusion,
         to_size,
         checkpoint_chain_leaf_hash(&current.body)?,
         &to_chain_root,
@@ -901,41 +940,26 @@ pub fn build_checkpoint_transparency(
         })
         .collect::<BTreeSet<_>>();
 
-    // Chain leaves are derivable only for the contiguous, unique run of
-    // sequences starting at 1; a consistency proof needs every leaf up to its
-    // later checkpoint, so pairs beyond that run (or without signed chain
-    // commitments) yield witness records but no proof.
-    // Runs are per log: a set may carry checkpoints from several independent
-    // logs whose sequences interleave, and mixing their leaves would build a
-    // chain that belongs to neither.
-    let mut by_log_seq = BTreeMap::<(String, u64), Vec<&KernelCheckpoint>>::new();
+    // The signed chain commitment is global across checkpoint signing-key
+    // rotation. Derive its leaves from the contiguous, unique sequence run
+    // beginning at 1, then restrict proof endpoints to a common log identity.
+    // This preserves proofs between checkpoints signed by the post-rotation
+    // key without incorrectly requiring that key to have issued sequence 1.
+    let mut by_seq = BTreeMap::<u64, Vec<&KernelCheckpoint>>::new();
     for checkpoint in checkpoints {
-        by_log_seq
-            .entry((
-                checkpoint_log_id(checkpoint),
-                checkpoint.body.checkpoint_seq,
-            ))
+        by_seq
+            .entry(checkpoint.body.checkpoint_seq)
             .or_default()
             .push(checkpoint);
     }
-    let mut chain_leaf_hashes_by_log = BTreeMap::<String, Vec<Hash>>::new();
-    for (log_id, _) in by_log_seq.keys() {
-        if chain_leaf_hashes_by_log.contains_key(log_id) {
-            continue;
-        }
-        let mut chain_leaf_hashes = Vec::new();
-        let mut next_seq = 1u64;
-        while let Some([single]) = by_log_seq
-            .get(&(log_id.clone(), next_seq))
-            .map(Vec::as_slice)
-        {
-            chain_leaf_hashes.push(checkpoint_chain_leaf_hash(&single.body)?);
-            let Some(following) = next_seq.checked_add(1) else {
-                break;
-            };
-            next_seq = following;
-        }
-        chain_leaf_hashes_by_log.insert(log_id.clone(), chain_leaf_hashes);
+    let mut chain_leaf_hashes = Vec::new();
+    let mut next_seq = 1u64;
+    while let Some([single]) = by_seq.get(&next_seq).map(Vec::as_slice) {
+        chain_leaf_hashes.push(checkpoint_chain_leaf_hash(&single.body)?);
+        let Some(following) = next_seq.checked_add(1) else {
+            break;
+        };
+        next_seq = following;
     }
 
     let mut witnesses = Vec::new();
@@ -961,10 +985,7 @@ pub fn build_checkpoint_transparency(
                 && checkpoint.body.chain_root.is_some()
             {
                 let to_size = chain_tree_size(checkpoint)?;
-                if let Some(chain_leaf_hashes) = chain_leaf_hashes_by_log
-                    .get(&log_id)
-                    .filter(|leaves| leaves.len() >= to_size)
-                {
+                if chain_leaf_hashes.len() >= to_size {
                     consistency_proofs.push(build_checkpoint_consistency_proof(
                         previous,
                         checkpoint,
@@ -1201,6 +1222,23 @@ pub fn build_checkpoint_with_chain_frontier(
 ) -> Result<KernelCheckpoint, CheckpointError> {
     let tree = MerkleTree::from_leaves(receipt_canonical_bytes_batch)?;
     let merkle_root = tree.root();
+    let covered_entries = batch_end_seq
+        .checked_sub(batch_start_seq)
+        .and_then(|count| count.checked_add(1))
+        .ok_or_else(|| {
+            CheckpointError::Invalid(format!(
+                "invalid checkpoint entry range {batch_start_seq}-{batch_end_seq}"
+            ))
+        })?;
+    if usize::try_from(covered_entries).ok() != Some(tree.leaf_count()) {
+        return Err(CheckpointError::Invalid(format!(
+            "receipt batch length {} does not match covered entry count {} for range {}-{}",
+            tree.leaf_count(),
+            covered_entries,
+            batch_start_seq,
+            batch_end_seq
+        )));
+    }
 
     let own_chain_leaf = checkpoint_chain_leaf_hash_from_parts(
         checkpoint_seq,
@@ -1331,6 +1369,19 @@ pub fn validate_checkpoint(checkpoint: &KernelCheckpoint) -> Result<(), Checkpoi
             checkpoint.body.batch_start_seq,
             checkpoint.body.batch_end_seq
         )));
+    }
+    if checkpoint.body.schema == CHECKPOINT_SCHEMA_V1 && checkpoint.body.chain_root.is_some() {
+        return Err(CheckpointError::Invalid(
+            "v1 checkpoint statements cannot carry chain_root".to_string(),
+        ));
+    }
+    if checkpoint.body.schema == CHECKPOINT_SCHEMA_V2
+        && checkpoint.body.checkpoint_seq == 1
+        && checkpoint.body.chain_root.is_none()
+    {
+        return Err(CheckpointError::Invalid(
+            "v2 checkpoint 1 must carry chain_root".to_string(),
+        ));
     }
     if let Some(chain_root) = checkpoint.body.chain_root {
         if checkpoint.body.checkpoint_seq == 1

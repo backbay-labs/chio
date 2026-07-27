@@ -152,6 +152,13 @@ while IFS= read -r line; do
     continue
   fi
 
+  # Checkpoint statements and consistency proofs are signed cryptographic
+  # formats. Their v2 schemas prevent rolling readers from interpreting the
+  # new chain commitment and proof paths with legacy v1 semantics.
+  if [[ "$text" =~ chio\.checkpoint_(statement|consistency_proof)\.v2|CHECKPOINT_(CONSISTENCY_PROOF_)?SCHEMA_V2|CHIO_CHECKPOINT_STATEMENT_SCHEMA_V2 ]]; then
+    continue
+  fi
+
   failures+=("$line")
 done <"$tmp"
 

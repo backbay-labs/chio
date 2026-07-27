@@ -194,6 +194,11 @@ pub fn run_conformance_harness(
         fs::remove_dir_all(&options.results_dir)?;
     }
     fs::create_dir_all(&options.results_dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&options.results_dir, fs::Permissions::from_mode(0o700))?;
+    }
     if let Some(parent) = options.report_output.parent() {
         fs::create_dir_all(parent)?;
     }
@@ -201,6 +206,11 @@ pub fn run_conformance_harness(
     let artifacts_dir = options.results_dir.join("artifacts");
     let logs_dir = artifacts_dir.join("logs");
     fs::create_dir_all(&logs_dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&artifacts_dir, fs::Permissions::from_mode(0o700))?;
+    }
 
     let listen = match options.listen {
         Some(listen) => listen,

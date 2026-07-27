@@ -18,8 +18,9 @@ pub use ids::{
 };
 pub use minimal::{
     sign_transaction_passport, transaction_evidence_graph_transparency_state,
-    verify_minimal_passport_artifacts, verify_minimal_passport_schema,
-    verify_minimal_passport_schema_at, verify_passport_root_and_claim_set_artifacts,
+    transaction_evidence_graph_transparency_state_with_anchors, verify_minimal_passport_artifacts,
+    verify_minimal_passport_schema, verify_minimal_passport_schema_at,
+    verify_passport_root_and_claim_set_artifacts,
     verify_passport_root_and_claim_set_artifacts_unchecked_signature_with_external_claims,
     verify_passport_root_and_claim_set_artifacts_with_external_claims,
     verify_passport_root_and_claim_set_artifacts_with_transparency_anchors,

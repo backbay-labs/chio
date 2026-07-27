@@ -29,7 +29,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let target_dir = env::var_os("CARGO_TARGET_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| project_root.join(".chio").join("target"));
-    fs::create_dir_all(receipt_db.parent().expect("receipt db parent"))?;
+    let state_dir = receipt_db.parent().expect("receipt db parent");
+    fs::create_dir_all(state_dir)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(state_dir, fs::Permissions::from_mode(0o700))?;
+    }
     fs::create_dir_all(&target_dir)?;
 
     let chio_bin = env::var("CHIO_BIN").unwrap_or_else(|_| "chio".to_string());

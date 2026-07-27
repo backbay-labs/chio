@@ -49,9 +49,10 @@ struct Fixture {
 
 fn fixture() -> Fixture {
     let temp = tempfile::tempdir().expect("tempdir");
+    crate::create_private_directory(temp.path()).expect("secure database parent");
     let database = temp.path().join("authority.db");
     let lock_root = temp.path().join("locks");
-    fs::create_dir(&lock_root).expect("create lock root");
+    crate::create_private_directory(&lock_root).expect("create lock root");
     SqliteAuthorityStore::provision(&database, &lock_root).expect("provision authority");
     let authority =
         SqliteAuthorityStore::open_serving(&database, &lock_root).expect("open authority");
@@ -926,10 +927,11 @@ fn bounded_stage_expired_without_operation_binding_quarantines() -> TestResult {
 #[test]
 fn old_same_epoch_snapshot_cannot_erase_an_economic_stage() -> TestResult {
     let temp = tempfile::tempdir()?;
+    crate::create_private_directory(temp.path())?;
     let database = temp.path().join("authority.db");
     let snapshot = temp.path().join("before-economic-stage.db");
     let lock_root = temp.path().join("locks");
-    fs::create_dir(&lock_root)?;
+    crate::create_private_directory(&lock_root)?;
     SqliteAuthorityStore::provision(&database, &lock_root)?;
     let authority = SqliteAuthorityStore::open_serving(&database, &lock_root)?;
     fs::copy(&database, &snapshot)?;

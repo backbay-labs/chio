@@ -120,6 +120,12 @@ where
 {
     let dir = unique_test_dir();
     fs::create_dir_all(&dir).expect("create temp dir");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&dir, fs::Permissions::from_mode(0o700))
+            .expect("secure temp directory");
+    }
     let listen = reserve_listen_addr();
     let client = build_client();
     let base_url = format!("http://{listen}");

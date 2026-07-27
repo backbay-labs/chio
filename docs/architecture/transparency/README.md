@@ -20,11 +20,13 @@
 
 That cap is honest and it should stay until it is earned. A ten-agent
 evaluation went looking for an external substrate that would lift it and found
-that no substrate can: roughly 80 to 85 percent of the required work is
-internal to Chio and is identical whether checkpoints are published to a
-peer-to-peer git network, a C2SP witness quorum, a TUF repository, or a
-directory served over HTTPS. Substrate selection is the last decision in this
-program, not the first.
+that no substrate can. Most of the required categories are internal to Chio
+and are identical whether checkpoints are published to a peer-to-peer git
+network, a C2SP witness quorum, a TUF repository, or a directory served over
+HTTPS. The earlier percentage estimate was based on registry-name counts and
+is withdrawn now that the gap analysis distinguishes standalone, embedded, and
+derived artifacts. Substrate selection is the last decision in this program,
+not the first.
 
 The single most consequential finding was item F1 below: the function named
 `verify_checkpoint_consistency_proof` did not verify a consistency proof, so
@@ -137,17 +139,19 @@ inclusion proof binding EACH endpoint's own chain leaf to its own root
 the earlier root for any pair starting after checkpoint 1), and
 `verify_checkpoint_consistency_proof` verifies them against the two signed
 commitments; a pair without commitments is unverifiable (an error), never
-true. The record keeps its `chio.checkpoint_consistency_proof.v1` schema id
-and evolves in place, because Chio-owned schemas stay at v1 for the whole
-pre-release line (`scripts/check-chio-owned-v1-only.sh`); proofs serialized
-against the older shape no longer parse, which is correct given they proved
-nothing. The store cross-checks every commitment against the persisted chain on
-the operator path and rejects divergent clock-skew siblings. Issuance stays
-batch-bounded: the writer keeps an append-only Merkle frontier of the chain on
-its verified head, so a checkpoint costs O(log n) chain hashes and rebuilds
-the frontier from the database only after a resync or restart, while still
-reproducing the predecessor's signed `chain_root` before signing. A rewritten
-history that re-signs with the real kernel key is rejected in
+true. New statements use `chio.checkpoint_statement.v2`, and real
+cryptographic proofs use `chio.checkpoint_consistency_proof.v2`. Explicit v1
+parsers and legacy verification remain for old statements and metadata-only
+records, while v2 fields cannot be smuggled under a v1 schema. This version
+boundary is required for rolling verifiers because both records are signed or
+security-interpreted wire formats. The store cross-checks every commitment
+against the persisted chain on the operator path and rejects divergent
+clock-skew siblings. Issuance stays batch-bounded: the writer keeps an
+append-only Merkle frontier of the chain on its verified head, so a checkpoint
+costs O(log n) chain hashes and rebuilds the frontier from the database only
+after a resync or restart, while still reproducing the predecessor's signed
+`chain_root` before signing. A rewritten history that re-signs with the real
+kernel key is rejected in
 `crates/tooling/chio-conformance/tests/checkpoint_consistency_forged_chain_root_rejected.rs`.
 
 ### F2 (high): `trust_anchored` is asserted from a string match
@@ -187,10 +191,16 @@ A candidate this verifier cannot judge (no pinned checkpoint keys, artifact
 bytes absent, or no anchoring checkpoint statement) degrades to the preview
 tier; a candidate it can judge and that fails is an error, because reporting
 preview would let malformed transparency evidence ride through a policy that
-accepts the preview tier. Surfaces without artifact bytes or pinned keys (including the
-bytes-only `transaction_evidence_graph_transparency_state`) can no longer
+accepts the preview tier. Every candidate is evaluated before promotion, and
+the signed checkpoint body is parsed with all required fields and unknown-field
+rejection before it qualifies. `chio proof verify` and Proof Room accept
+separate checkpoint signer pins through
+`CHIO_TRANSACTION_TRUSTED_CHECKPOINT_KEYS`; the passport root set remains a
+different trust role. Surfaces without artifact bytes or pinned keys (including
+the bytes-only `transaction_evidence_graph_transparency_state`) can no longer
 return `trust_anchored` at all. The label-only, untrusted-signer,
-tampered-root, and unbound-subject cases are pinned by tests in
+tampered-root, partial-body, field-smuggling, multiple-candidate, and
+unbound-subject cases are pinned by tests in
 `crates/platform/chio-transaction-passport/tests/transaction_passport.rs`.
 
 ### F3 (medium): the signed checkpoint body accepts unknown fields
@@ -218,8 +228,9 @@ field-smuggling ambiguity between producers and verifiers.
 wrapper both deny unknown fields, with rejection tests in the kernel and a
 conformance negative
 (`crates/tooling/chio-conformance/tests/checkpoint_statement_unknown_field_rejected.rs`).
-Legacy bodies without the new optional `chain_root` field still parse and
-re-serialize byte-identically, so stored signatures survive.
+Legacy v1 bodies without `chain_root` still parse and re-serialize
+byte-identically, so stored signatures survive. New bodies carrying the field
+use v2.
 
 ### F4: retention deletes checkpointed log entries
 

@@ -115,6 +115,16 @@ fn run_runtime_loopback_scenario_with_static_baseline(
             store_dir.display()
         ))
     })?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(store_dir, fs::Permissions::from_mode(0o700)).map_err(|error| {
+            RuntimeLoopbackError::message(format!(
+                "failed to secure Chio runtime store directory {}: {error}",
+                store_dir.display()
+            ))
+        })?;
+    }
     fs::create_dir_all(out_dir).map_err(|error| {
         RuntimeLoopbackError::message(format!(
             "failed to create Chio runtime output directory {}: {error}",
@@ -136,6 +146,18 @@ fn run_runtime_loopback_scenario_with_static_baseline(
             authority_lock_root.display()
         ))
     })?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&authority_lock_root, fs::Permissions::from_mode(0o700)).map_err(
+            |error| {
+                RuntimeLoopbackError::message(format!(
+                    "failed to secure Chio runtime authority lock directory {}: {error}",
+                    authority_lock_root.display()
+                ))
+            },
+        )?;
+    }
     let authority = {
         let _identity_scope = chio_store_sqlite::scope_fixed_authority_ids_for_current_thread(
             RUNTIME_LOOPBACK_AUTHORITY_STORE_UUID,

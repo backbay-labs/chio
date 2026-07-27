@@ -32,25 +32,26 @@ fail-closed (`canonical_bytes_from_claim_log_row`,
 `crates/platform/chio-store-sqlite/src/receipt_store/support/checkpoint_projection.rs:654`).
 
 The signed-artifact registry (`spec/schemas/registry.json`, 339 artifact
-schemas) defines fifteen receipt-family schemas. One is committed:
+schemas) defines fifteen receipt-family schema names. Classifying their wire
+form before counting coverage produces this inventory:
 
-| Registry schema | Committed as leaves |
-| --- | --- |
-| `chio.receipt.v1` | yes |
-| `chio.receipt_lineage_statement.v1` | no |
-| `chio.federation.receipt-lineage-statement.v1` | no |
-| `chio.federation.receipt-lineage-bundle.v1` | no |
-| `chio.governance-receipt.v1` | no |
-| `chio.admission-receipt.v1` | no |
-| `chio.policy.activation-receipt.v1` | no |
-| `chio.runtime.terminal-receipt.v1` | no |
-| `chio.swarm.join-receipt.v1` | no |
-| `chio.swarm.route-plan-receipt.v1` | no |
-| `chio.swarm.terminal-graph-receipt.v1` | no |
-| `chio.web3-settlement-execution-receipt.v1` | no |
-| `chio.web3-settlement-execution-receipt.v2` | no |
-| `chio.risk.adjudication-jurisdiction-receipt.v1` | no |
-| `chio.proof-room.receipt-evidence.v1` | no |
+| Registry schema | Form | Current checkpoint coverage |
+| --- | --- | --- |
+| `chio.receipt.v1` | standalone canonical receipt | direct leaf |
+| `chio.receipt_lineage_statement.v1` | standalone signed statement | none |
+| `chio.federation.receipt-lineage-statement.v1` | standalone signed statement | none |
+| `chio.federation.receipt-lineage-bundle.v1` | derived aggregate over standalone statements | none |
+| `chio.governance-receipt.v1` | standalone signed receipt | none |
+| `chio.admission-receipt.v1` | embedded metadata in `chio.receipt.v1` | covered by its parent leaf |
+| `chio.policy.activation-receipt.v1` | standalone signed receipt | none |
+| `chio.runtime.terminal-receipt.v1` | standalone signed receipt | none |
+| `chio.swarm.join-receipt.v1` | standalone signed receipt | none |
+| `chio.swarm.route-plan-receipt.v1` | standalone signed receipt | none |
+| `chio.swarm.terminal-graph-receipt.v1` | standalone signed receipt | none |
+| `chio.web3-settlement-execution-receipt.v1` | standalone signed receipt | none |
+| `chio.web3-settlement-execution-receipt.v2` | standalone signed receipt | none |
+| `chio.risk.adjudication-jurisdiction-receipt.v1` | standalone signed receipt | none |
+| `chio.proof-room.receipt-evidence.v1` | derived receipt projection with its own signature | none |
 
 Child request receipts (`ChildRequestReceipt`,
 `crates/core/chio-core-types/src/receipt/lineage.rs`) are the second committed
@@ -68,19 +69,18 @@ to. The rest hold signed or evidentiary state committed to no root, including
 `underwriting_decisions`, `underwriting_appeals`, and the `federated_*` share
 tables.
 
-Which of these must be committed for claim-complete to hold is a protocol
-decision, not a coding task (item 2 below), and that decision sizes the
-largest item in the program (item 3).
-
-Item 2 must first classify each registry name as standalone, embedded, or
-derived, because the table above counts registry names rather than independent
-artifacts. At least `chio.admission-receipt.v1` is already covered: it is
+The classification removes one false gap: `chio.admission-receipt.v1` is
 `AdmissionReceiptMetadataV1` stored under `ADMISSION_RECEIPT_METADATA_KEY`
 inside `ChioReceipt.metadata`, which is part of `ChioReceiptIdInput`, signed
-with the receipt, and already inside the `chio.receipt.v1` canonical bytes used
-as a checkpoint leaf. Sizing a separate projection path per registry name would
-double-count coverage that exists, so the 80-to-85-percent split should be
-re-derived once the classification is done.
+with the receipt, and already inside the canonical bytes used as a checkpoint
+leaf. Derived aggregates and projections also must not be counted as additional
+source receipts without first deciding whether committing their inputs is
+sufficient under the claim-completeness definition.
+
+Which remaining standalone artifacts must be committed is a protocol decision,
+not a coding task (item 2 below), and that decision sizes item 3. The earlier
+80-to-85-percent estimate is therefore withdrawn rather than reusing
+registry-name counts as an effort estimate.
 
 ## 3. The uncheckpointed tail
 

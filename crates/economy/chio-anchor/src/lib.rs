@@ -36,7 +36,7 @@ pub mod fuzz;
 use chio_core::web3::anchors::{
     validate_anchor_inclusion_proof, verify_anchor_inclusion_proof, AnchorInclusionProof,
     Web3ChainAnchorRecord, Web3CheckpointStatement, Web3ReceiptInclusion,
-    CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA, CHIO_CHECKPOINT_STATEMENT_SCHEMA,
+    CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA,
 };
 use chio_core::web3::identity::SignedWeb3IdentityBinding;
 use chio_kernel::checkpoint::{KernelCheckpoint, KernelCheckpointBody, ReceiptInclusionProof};
@@ -148,7 +148,7 @@ pub struct AnchorServiceConfig {
 
 pub fn checkpoint_statement_from_kernel(checkpoint: &KernelCheckpoint) -> Web3CheckpointStatement {
     Web3CheckpointStatement {
-        schema: CHIO_CHECKPOINT_STATEMENT_SCHEMA.to_string(),
+        schema: checkpoint.body.schema.clone(),
         checkpoint_seq: checkpoint.body.checkpoint_seq,
         batch_start_seq: checkpoint.body.batch_start_seq,
         batch_end_seq: checkpoint.body.batch_end_seq,

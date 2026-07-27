@@ -1,4 +1,5 @@
 use std::error::Error;
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -58,6 +59,16 @@ struct PaymentCalls {
 struct FailOnceOutcomeStore {
     inner: SqliteToolOutcomeStore,
     fail_record: AtomicBool,
+}
+
+fn create_private_directory(path: &Path) -> Result<(), std::io::Error> {
+    std::fs::create_dir_all(path)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))?;
+    }
+    Ok(())
 }
 
 #[async_trait::async_trait]
@@ -512,9 +523,10 @@ fn now_unix_ms() -> Result<u64, Box<dyn Error>> {
 fn sqlite_restart_terminalizes_an_unrecorded_dispatch_without_moving_funds(
 ) -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;
+    create_private_directory(temp.path())?;
     let database = temp.path().join("authority.db");
     let lock_root = temp.path().join("locks");
-    std::fs::create_dir(&lock_root)?;
+    create_private_directory(&lock_root)?;
     SqliteAuthorityStore::provision(&database, &lock_root)?;
     let kernel_keypair = Keypair::generate();
     let invocations = Arc::new(AtomicU64::new(0));
@@ -629,9 +641,10 @@ fn sqlite_restart_terminalizes_an_unrecorded_dispatch_without_moving_funds(
 fn sqlite_restart_completes_a_committed_capture_without_request_replay(
 ) -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;
+    create_private_directory(temp.path())?;
     let database = temp.path().join("authority.db");
     let lock_root = temp.path().join("locks");
-    std::fs::create_dir(&lock_root)?;
+    create_private_directory(&lock_root)?;
     SqliteAuthorityStore::provision(&database, &lock_root)?;
     let kernel_keypair = Keypair::generate();
     let invocations = Arc::new(AtomicU64::new(0));
@@ -716,9 +729,10 @@ fn sqlite_restart_completes_a_committed_capture_without_request_replay(
 fn sqlite_restart_completes_a_committed_release_without_request_replay(
 ) -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;
+    create_private_directory(temp.path())?;
     let database = temp.path().join("authority.db");
     let lock_root = temp.path().join("locks");
-    std::fs::create_dir(&lock_root)?;
+    create_private_directory(&lock_root)?;
     SqliteAuthorityStore::provision(&database, &lock_root)?;
     let kernel_keypair = Keypair::generate();
     let invocations = Arc::new(AtomicU64::new(0));
@@ -811,9 +825,10 @@ fn sqlite_restart_completes_a_committed_release_without_request_replay(
 fn sqlite_durable_admission_atomically_publishes_receipt_and_terminal_outcome(
 ) -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;
+    create_private_directory(temp.path())?;
     let database = temp.path().join("authority.db");
     let lock_root = temp.path().join("locks");
-    std::fs::create_dir(&lock_root)?;
+    create_private_directory(&lock_root)?;
     SqliteAuthorityStore::provision(&database, &lock_root)?;
     let kernel_keypair = Keypair::generate();
     let invocations = Arc::new(AtomicU64::new(0));
@@ -886,9 +901,10 @@ fn sqlite_durable_admission_atomically_publishes_receipt_and_terminal_outcome(
 fn sqlite_durable_zero_charge_persists_release_evidence_and_reopens_cleanly(
 ) -> Result<(), Box<dyn Error>> {
     let temp = tempfile::tempdir()?;
+    create_private_directory(temp.path())?;
     let database = temp.path().join("authority.db");
     let lock_root = temp.path().join("locks");
-    std::fs::create_dir(&lock_root)?;
+    create_private_directory(&lock_root)?;
     SqliteAuthorityStore::provision(&database, &lock_root)?;
     let kernel_keypair = Keypair::generate();
 

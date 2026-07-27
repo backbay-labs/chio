@@ -19,7 +19,7 @@ pub(crate) async fn serve_async(config: TrustServiceConfig) -> Result<(), CliErr
     let joint_authority_store = match config.joint_authority_db_path.as_deref() {
         Some(path) => {
             let lock_root = crate::durable_admission_lock_root(path)?;
-            std::fs::create_dir_all(&lock_root)?;
+            crate::create_private_directory(&lock_root)?;
             SqliteAuthorityStore::provision(path, &lock_root)?;
             Some(Arc::new(SqliteAuthorityStore::open_serving(
                 path, &lock_root,

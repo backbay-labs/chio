@@ -152,7 +152,7 @@ pub use checkpoint::{
     build_checkpoint, build_checkpoint_with_previous, build_inclusion_proof,
     checkpoint_body_sha256, is_supported_checkpoint_schema, verify_checkpoint_continuity,
     verify_checkpoint_signature, CheckpointError, KernelCheckpoint, KernelCheckpointBody,
-    ReceiptInclusionProof, CHECKPOINT_SCHEMA,
+    ReceiptInclusionProof, CHECKPOINT_SCHEMA, CHECKPOINT_SCHEMA_V1, CHECKPOINT_SCHEMA_V2,
 };
 pub use chio_core::credit::{
     ensure_capital_execution_custodian_authority, ensure_capital_execution_owner_authority,

@@ -9,7 +9,7 @@ use chio_core_types::{
     PublicKey,
 };
 use chrono::{DateTime, Utc};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::error::TransactionPassportError;
@@ -562,6 +562,25 @@ pub fn transaction_evidence_graph_transparency_state(
     .to_string())
 }
 
+/// Transparency state derived with artifact bytes and separately pinned
+/// checkpoint signer keys. This is the product integration surface for merged
+/// family reports whose passport verification happens in a separate step.
+pub fn transaction_evidence_graph_transparency_state_with_anchors(
+    evidence_graph_bytes: &[u8],
+    artifacts: &BTreeMap<String, Vec<u8>>,
+    trusted_checkpoint_signer_keys: &[PublicKey],
+) -> Result<String, TransactionPassportError> {
+    let evidence_graph: Value = serde_json::from_slice(evidence_graph_bytes).map_err(|error| {
+        TransactionPassportError::InvalidEvidenceGraphArtifact(error.to_string())
+    })?;
+    Ok(evidence_graph_transparency_state(
+        evidence_graph_nodes(&evidence_graph)?,
+        artifacts,
+        trusted_checkpoint_signer_keys,
+    )?
+    .to_string())
+}
+
 fn verify_signed_root_graph_binding(
     passport: &TransactionPassport,
     evidence_graph_bytes: &[u8],
@@ -769,7 +788,8 @@ fn issuer_key_part(issuer: &str) -> &str {
 }
 
 const TRANSPARENCY_INCLUSION_PROOF_SCHEMA_ID: &str = "chio.transparency.inclusion-proof.v1";
-const CHECKPOINT_STATEMENT_SCHEMA_ID: &str = "chio.checkpoint_statement.v1";
+const CHECKPOINT_STATEMENT_SCHEMA_V1_ID: &str = "chio.checkpoint_statement.v1";
+const CHECKPOINT_STATEMENT_SCHEMA_V2_ID: &str = "chio.checkpoint_statement.v2";
 const RECEIPT_EVIDENCE_ROLE: &str = "receipt";
 
 /// Payload of a `chio.transparency.inclusion-proof.v1` artifact as consumed
@@ -795,6 +815,99 @@ struct TransparencyInclusionProofArtifact {
 struct CheckpointStatementArtifact {
     body: Value,
     signature: String,
+}
+
+/// Strict wire mirror of a kernel checkpoint body. This crate deliberately
+/// does not depend on `chio-kernel`, so it validates the same signed fields
+/// locally after signature verification.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CheckpointStatementBody {
+    schema: String,
+    checkpoint_seq: u64,
+    batch_start_seq: u64,
+    batch_end_seq: u64,
+    tree_size: u64,
+    merkle_root: Hash,
+    issued_at: u64,
+    kernel_key: PublicKey,
+    #[serde(default)]
+    previous_checkpoint_sha256: Option<String>,
+    #[serde(default)]
+    chain_root: Option<Hash>,
+}
+
+#[derive(Serialize)]
+struct CheckpointStatementChainLeaf {
+    checkpoint_seq: u64,
+    batch_start_seq: u64,
+    batch_end_seq: u64,
+    merkle_root: Hash,
+}
+
+impl CheckpointStatementBody {
+    fn validate(&self) -> Result<(), String> {
+        if !matches!(
+            self.schema.as_str(),
+            CHECKPOINT_STATEMENT_SCHEMA_V1_ID | CHECKPOINT_STATEMENT_SCHEMA_V2_ID
+        ) {
+            return Err(format!(
+                "checkpoint statement carries unsupported schema {}",
+                self.schema
+            ));
+        }
+        if self.checkpoint_seq == 0 {
+            return Err(
+                "checkpoint statement checkpoint_seq must be greater than zero".to_string(),
+            );
+        }
+        if self.batch_start_seq == 0 {
+            return Err(
+                "checkpoint statement batch_start_seq must be greater than zero".to_string(),
+            );
+        }
+        let covered_entries = self
+            .batch_end_seq
+            .checked_sub(self.batch_start_seq)
+            .and_then(|count| count.checked_add(1))
+            .ok_or_else(|| "checkpoint statement entry range is invalid".to_string())?;
+        if self.tree_size == 0 || self.tree_size != covered_entries {
+            return Err(format!(
+                "checkpoint statement tree_size {} does not match covered entry count {}",
+                self.tree_size, covered_entries
+            ));
+        }
+        if self.schema == CHECKPOINT_STATEMENT_SCHEMA_V1_ID && self.chain_root.is_some() {
+            return Err("v1 checkpoint statements cannot carry chain_root".to_string());
+        }
+        if self.schema == CHECKPOINT_STATEMENT_SCHEMA_V2_ID && self.checkpoint_seq == 1 {
+            let Some(chain_root) = self.chain_root else {
+                return Err("v2 checkpoint 1 must carry chain_root".to_string());
+            };
+            let chain_leaf = CheckpointStatementChainLeaf {
+                checkpoint_seq: self.checkpoint_seq,
+                batch_start_seq: self.batch_start_seq,
+                batch_end_seq: self.batch_end_seq,
+                merkle_root: self.merkle_root,
+            };
+            let chain_leaf_bytes = canonical_json_bytes(&chain_leaf).map_err(|error| {
+                format!("checkpoint chain leaf is not canonicalizable: {error}")
+            })?;
+            if chain_root != leaf_hash(&chain_leaf_bytes) {
+                return Err(
+                    "chain_root of the first checkpoint does not commit its own chain leaf"
+                        .to_string(),
+                );
+            }
+        }
+        if let Some(previous) = self.previous_checkpoint_sha256.as_deref() {
+            validate_sha256_hex(previous).map_err(|()| {
+                "checkpoint statement previous_checkpoint_sha256 is invalid".to_string()
+            })?;
+        }
+        let _issued_at = self.issued_at;
+        Ok(())
+    }
 }
 
 /// Outcome of examining one transparency-inclusion-proof node.
@@ -828,6 +941,7 @@ fn evidence_graph_transparency_state(
     trusted_checkpoint_signer_keys: &[PublicKey],
 ) -> Result<&'static str, TransactionPassportError> {
     let mut has_transparency_preview = false;
+    let mut has_verified_anchor = false;
     for node in nodes {
         let role = node.get("role").and_then(Value::as_str).unwrap_or_default();
         let schema = node
@@ -839,7 +953,7 @@ fn evidence_graph_transparency_state(
         {
             match transparency_anchor_state(node, nodes, artifacts, trusted_checkpoint_signer_keys)
             {
-                TransparencyAnchor::Verified => return Ok("trust_anchored"),
+                TransparencyAnchor::Verified => has_verified_anchor = true,
                 TransparencyAnchor::NotEvaluable => has_transparency_preview = true,
                 TransparencyAnchor::Invalid(reason) => {
                     return Err(TransactionPassportError::InvalidEvidenceGraphArtifact(
@@ -853,7 +967,9 @@ fn evidence_graph_transparency_state(
             has_transparency_preview = true;
         }
     }
-    if has_transparency_preview {
+    if has_verified_anchor {
+        Ok("trust_anchored")
+    } else if has_transparency_preview {
         Ok("transparency_preview")
     } else {
         Ok("not_present")
@@ -906,9 +1022,6 @@ fn transparency_anchor_state(
     let Some(body) = statement.body.as_object() else {
         return invalid("checkpoint statement body is not an object");
     };
-    if body.get("schema").and_then(Value::as_str) != Some(CHECKPOINT_STATEMENT_SCHEMA_ID) {
-        return invalid("checkpoint statement carries an unsupported schema");
-    }
     let Some(kernel_key) = body
         .get("kernel_key")
         .and_then(Value::as_str)
@@ -930,16 +1043,22 @@ fn transparency_anchor_state(
     if !kernel_key.verify(&body_bytes, &signature) {
         return invalid("checkpoint statement signature does not verify");
     }
-    let Some(committed_root) = body
-        .get("merkle_root")
-        .and_then(Value::as_str)
-        .and_then(|hex| Hash::from_hex(hex).ok())
-    else {
-        return invalid("checkpoint statement merkle_root is unreadable");
+    let checkpoint_body: CheckpointStatementBody = match serde_json::from_value(statement.body) {
+        Ok(checkpoint_body) => checkpoint_body,
+        Err(error) => {
+            return TransparencyAnchor::Invalid(format!(
+                "checkpoint statement body is invalid: {error}"
+            ))
+        }
     };
-    let Some(committed_tree_size) = body.get("tree_size").and_then(Value::as_u64) else {
-        return invalid("checkpoint statement tree_size is unreadable");
+    if checkpoint_body.kernel_key != kernel_key {
+        return invalid("checkpoint statement kernel_key changed during parsing");
+    }
+    if let Err(reason) = checkpoint_body.validate() {
+        return TransparencyAnchor::Invalid(reason);
     };
+    let committed_root = checkpoint_body.merkle_root;
+    let committed_tree_size = checkpoint_body.tree_size;
 
     // The proof must target exactly the committed tree, and its audit path
     // must recompute the committed root from the leaf.

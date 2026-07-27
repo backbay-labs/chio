@@ -54,7 +54,7 @@ fn checkpoint_consistency_proof_with_forged_chain_root_is_rejected() {
 
     let mut forged = honest.clone();
     forged.to_checkpoint_sha256 = checkpoint_body_sha256(&rewritten.body).unwrap();
-    forged.to_chain_root = rewritten.body.chain_root.unwrap();
+    forged.to_chain_root = rewritten.body.chain_root;
 
     assert!(
         !verify_checkpoint_consistency_proof(&first, &rewritten, &forged).unwrap(),

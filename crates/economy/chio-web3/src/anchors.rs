@@ -15,7 +15,9 @@ use crate::merkle::{leaf_hash, MerkleProof};
 use crate::receipt::body::ChioReceipt;
 use crate::validation::{ensure_non_empty, evm_addresses_match};
 
-pub const CHIO_CHECKPOINT_STATEMENT_SCHEMA: &str = "chio.checkpoint_statement.v1";
+pub const CHIO_CHECKPOINT_STATEMENT_SCHEMA_V1: &str = "chio.checkpoint_statement.v1";
+pub const CHIO_CHECKPOINT_STATEMENT_SCHEMA_V2: &str = "chio.checkpoint_statement.v2";
+pub const CHIO_CHECKPOINT_STATEMENT_SCHEMA: &str = CHIO_CHECKPOINT_STATEMENT_SCHEMA_V2;
 pub const CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA: &str = "chio.anchor-inclusion-proof.v1";
 pub const CHIO_ORACLE_CONVERSION_EVIDENCE_SCHEMA: &str = "chio.oracle-conversion-evidence.v1";
 pub const CHIO_LINK_ORACLE_AUTHORITY: &str = "chio_link_runtime_v1";
@@ -312,9 +314,19 @@ pub fn validate_anchor_inclusion_proof(
             "receipt inclusion merkle_root must match checkpoint statement".to_string(),
         ));
     }
-    if proof.checkpoint_statement.schema != CHIO_CHECKPOINT_STATEMENT_SCHEMA {
+    if !matches!(
+        proof.checkpoint_statement.schema.as_str(),
+        CHIO_CHECKPOINT_STATEMENT_SCHEMA_V1 | CHIO_CHECKPOINT_STATEMENT_SCHEMA_V2
+    ) {
         return Err(Web3ContractError::UnsupportedSchema(
             proof.checkpoint_statement.schema.clone(),
+        ));
+    }
+    if proof.checkpoint_statement.schema == CHIO_CHECKPOINT_STATEMENT_SCHEMA_V1
+        && proof.checkpoint_statement.chain_root.is_some()
+    {
+        return Err(Web3ContractError::InvalidProof(
+            "v1 checkpoint statements cannot carry chain_root".to_string(),
         ));
     }
     if proof.checkpoint_statement.batch_start_seq > proof.checkpoint_statement.batch_end_seq {

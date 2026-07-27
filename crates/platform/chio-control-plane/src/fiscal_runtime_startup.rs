@@ -156,9 +156,10 @@ mod tests {
                 FiscalBootstrapState::CharterPinned,
             )?;
             let temp = tempfile::tempdir()?;
+            crate::create_private_directory(temp.path())?;
             let database = temp.path().join("authority.db");
             let lock_root = temp.path().join("locks");
-            std::fs::create_dir(&lock_root)?;
+            crate::create_private_directory(&lock_root)?;
             SqliteAuthorityStore::provision(&database, &lock_root)?;
             let authority = SqliteAuthorityStore::open_serving(&database, &lock_root)?;
             let fence = authority.mutation_fence();
@@ -252,9 +253,10 @@ mod tests {
             FiscalBootstrapState::CharterPinned,
         )?;
         let temp = tempfile::tempdir()?;
+        crate::create_private_directory(temp.path())?;
         let database = temp.path().join("authority.db");
         let lock_root = temp.path().join("locks");
-        std::fs::create_dir(&lock_root)?;
+        crate::create_private_directory(&lock_root)?;
         SqliteAuthorityStore::provision(&database, &lock_root)?;
         let authority = SqliteAuthorityStore::open_serving(&database, &lock_root)?;
         let fence = authority.mutation_fence();
