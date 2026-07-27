@@ -199,8 +199,8 @@
   "rebuildCommand": "bash scripts/check-programmable-sovereignty-artifact.sh --full",
   "schema": "chio.programmable-sovereignty.artifact-manifest.v1",
   "source": {
-    "commit": "be2729b9c31ba82d6cda7bc2be5de93ef285c2fb",
-    "contentSetSha256": "db3de8e001bb145d3778a29cd87e26fbc396e431b28f76dbca1b672e20ac1915",
+    "commit": "e62b5ef7a7fdcda4697f2f4aa8787ac16530447a",
+    "contentSetSha256": "c730e97af07d843ac0e76d76e71e35799dc1a276eb2adb037b4d3d48f623d9af",
     "snapshotMode": "recorded source commit plus self-contained content-addressed snapshot"
   },
   "sourceFiles": [
@@ -360,7 +360,7 @@
   "supplementaryFiles": [
     {
       "path": "docs/papers/programmable-sovereignty/supplementary/source-commit.txt",
-      "sha256": "5a8580618cf5c4521ee5a7a1b1a87903a24da615b7fa8f76bc5f7b5a07540c52"
+      "sha256": "8ebe9e8a165aef888e1989f4857d9e8e886b3267750c4341a41da616e5d816b7"
     },
     {
       "path": "docs/papers/programmable-sovereignty/supplementary/proof-manifest.toml",
