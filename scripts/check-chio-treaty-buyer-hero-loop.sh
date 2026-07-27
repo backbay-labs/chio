@@ -8,17 +8,17 @@ case "${1:-}" in
   "--schema-only")
     MODE="schema-only"
     ;;
-  "--negative-only" | "--runtime-only" | "--packet-only" | "--explain-only")
+  "--negative-only" | "--runtime-only" | "--producer-only" | "--packet-only" | "--explain-only")
     MODE="${1#--}"
     ;;
   *)
-    echo "usage: check-chio-treaty-buyer-hero-loop.sh [--schema-only|--negative-only|--runtime-only|--packet-only|--explain-only]" >&2
+    echo "usage: check-chio-treaty-buyer-hero-loop.sh [--schema-only|--negative-only|--runtime-only|--producer-only|--packet-only|--explain-only]" >&2
     exit 2
     ;;
 esac
 
 if [[ $# -gt 1 ]]; then
-  echo "usage: check-chio-treaty-buyer-hero-loop.sh [--schema-only|--negative-only|--runtime-only|--packet-only|--explain-only]" >&2
+  echo "usage: check-chio-treaty-buyer-hero-loop.sh [--schema-only|--negative-only|--runtime-only|--producer-only|--packet-only|--explain-only]" >&2
   exit 2
 fi
 
@@ -313,15 +313,21 @@ run_buyer_review() {
     "$out_dir/buyer-review-report.json"
 }
 
-runtime_spine_out_dir=""
+runtime_spine_out_dir="${CHIO_HERO_OUTPUT_DIR:-}"
+runtime_spine_produced=0
 
-run_runtime_loopback_with_artifacts() {
-  if [[ -n "$runtime_spine_out_dir" ]]; then
+run_runtime_loopback_producer() {
+  if [[ "$runtime_spine_produced" == "1" ]]; then
     return 0
   fi
   local scenario
   scenario="$(prepare_runtime_loopback_scenario)"
-  runtime_spine_out_dir="$tmpdir/loopback-out"
+  if [[ -z "$runtime_spine_out_dir" ]]; then
+    runtime_spine_out_dir="$tmpdir/loopback-out"
+  elif [[ "$runtime_spine_out_dir" != /* ]]; then
+    echo "CHIO_HERO_OUTPUT_DIR must be an absolute path" >&2
+    exit 2
+  fi
   run_chio runtime run-loopback \
     --scenario "$scenario" \
     --static-package "$repo_root/examples/chio-3vendor/fixtures/buyer-auditor-proof-package.json" \
@@ -330,6 +336,11 @@ run_runtime_loopback_with_artifacts() {
     --now-unix-ms "$LOOPBACK_NOW_UNIX_MS" \
     --out-dir "$runtime_spine_out_dir"
   validate_runtime_loopback_outputs "$runtime_spine_out_dir"
+  runtime_spine_produced=1
+}
+
+run_runtime_loopback_with_artifacts() {
+  run_runtime_loopback_producer
   run_buyer_review "$runtime_spine_out_dir"
   run_runtime_semantic_checks "$runtime_spine_out_dir"
   if grep -R "runtime_proof_semantic_regeneration_pending" "$runtime_spine_out_dir" >/dev/null; then
@@ -354,6 +365,11 @@ fi
 
 if [[ "$MODE" == "packet-only" ]]; then
   run_runtime_loopback_with_artifacts
+  exit 0
+fi
+
+if [[ "$MODE" == "producer-only" ]]; then
+  run_runtime_loopback_producer
   exit 0
 fi
 

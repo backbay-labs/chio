@@ -5,6 +5,12 @@ use chio_core_types::receipt::{
     kinds::TrustLevel,
 };
 
+fn emit_threat_matrix_code(code: &str) {
+    if std::env::var_os("CHIO_THREAT_MATRIX_EMIT_CODE").is_some() {
+        println!("CHIO_THREAT_MATRIX_CODE={code}");
+    }
+}
+
 fn sample_receipt(kp: &Keypair) -> ChioReceipt {
     let body = ChioReceiptBody {
         id: "rcpt-bilateral-b4-sample".to_string(),
@@ -472,6 +478,8 @@ fn strict_chio_signer_rejects_identical_signer_keys() {
         },
     )
     .expect_err("strict Chio DSSE needs two independent signer keys");
+    emit_threat_matrix_code(err.code());
+    assert_eq!(err.code(), "signer.independence_required");
     assert!(err.to_string().contains("independent"));
 }
 
@@ -523,6 +531,8 @@ fn strict_chio_verifier_rejects_duplicate_signature_keyids() {
     let err =
         verify_chio_bilateral_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key())
             .expect_err("strict Chio rejects duplicate signature key IDs");
+    emit_threat_matrix_code(err.code());
+    assert_eq!(err.code(), "dsse.malformed");
     assert!(err.to_string().contains("duplicate signature keyid"));
 }
 
@@ -546,6 +556,29 @@ fn round_trip_preserves_pae_bytes() {
     let (_stmt, bytes) = envelope.decode_statement().unwrap();
     let pae_b = pae(&envelope.payload_type, &bytes);
     assert_eq!(pae_a, pae_b);
+}
+
+#[test]
+fn payload_decode_failures_report_the_protocol_stage() {
+    let invalid_base64 = DsseEnvelope {
+        payload_type: PAYLOAD_TYPE_IN_TOTO.to_string(),
+        payload: "%%%".to_string(),
+        signatures: Vec::new(),
+    };
+    let error = invalid_base64
+        .decode_statement()
+        .expect_err("invalid payload base64 must fail");
+    assert_eq!(error.code(), "dsse.malformed");
+
+    let invalid_statement = DsseEnvelope {
+        payload_type: PAYLOAD_TYPE_IN_TOTO.to_string(),
+        payload: BASE64_STANDARD.encode(b"{"),
+        signatures: Vec::new(),
+    };
+    let error = invalid_statement
+        .decode_statement()
+        .expect_err("malformed statement JSON must fail");
+    assert_eq!(error.code(), "statement.malformed");
 }
 
 #[test]
@@ -667,8 +700,62 @@ fn mismatched_payload_type_fails_verification() {
     )
     .unwrap();
     envelope.payload_type = "application/json".to_string();
-    let result = verify_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key());
-    assert!(result.is_err());
+    let err = verify_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key())
+        .expect_err("unsupported DSSE payload type must fail");
+    emit_threat_matrix_code(err.code());
+    assert_eq!(err.code(), "dsse.malformed");
+    assert!(err.to_string().contains("dsse.malformed"));
+}
+
+#[test]
+fn verifier_rejects_missing_signature() {
+    let kp_a = Keypair::generate();
+    let kp_b = Keypair::generate();
+    let receipt = sample_receipt(&kp_b);
+    let mut envelope = sign_dsse_envelope(
+        &receipt,
+        &kp_a,
+        &kp_b,
+        "kernel.org-a",
+        "kernel.org-b",
+        "file_read",
+        1_734_000_000_000,
+    )
+    .unwrap();
+    envelope.signatures.pop();
+
+    let err = verify_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key())
+        .expect_err("bilateral DSSE with one signature must fail");
+    emit_threat_matrix_code(err.code());
+    assert_eq!(err.code(), "dsse.malformed");
+    assert!(err.to_string().contains("expected exactly 2 signatures"));
+}
+
+#[test]
+fn verifier_rejects_wrong_predicate_type_even_if_resigned() {
+    let kp_a = Keypair::generate();
+    let kp_b = Keypair::generate();
+    let receipt = sample_receipt(&kp_b);
+    let mut envelope = sign_dsse_envelope(
+        &receipt,
+        &kp_a,
+        &kp_b,
+        "kernel.org-a",
+        "kernel.org-b",
+        "file_read",
+        1_734_000_000_000,
+    )
+    .unwrap();
+    let (mut statement, _) = envelope.decode_statement().unwrap();
+    statement.predicate_type = "https://attacker.invalid/predicate/v1".to_string();
+    let statement_bytes = statement.canonical_bytes().unwrap();
+    resign_payload(&mut envelope, &kp_a, &kp_b, &statement_bytes);
+
+    let err = verify_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key())
+        .expect_err("unexpected predicate type must fail");
+    emit_threat_matrix_code(err.code());
+    assert_eq!(err.code(), "predicate.type_unrecognised");
+    assert!(err.to_string().contains("predicate.type_unrecognised"));
 }
 
 #[test]
@@ -712,6 +799,8 @@ fn verifier_rejects_noncanonical_statement_payload_even_if_resigned() {
 
     let err = verify_dsse_envelope(&envelope, &kp_a.public_key(), &kp_b.public_key())
         .expect_err("non-canonical payload bytes must be rejected");
+    emit_threat_matrix_code(err.code());
+    assert_eq!(err.code(), "statement.malformed");
     assert!(err.to_string().contains("not canonical JSON"));
 }
 

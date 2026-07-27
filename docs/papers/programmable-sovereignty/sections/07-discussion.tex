@@ -1,22 +1,46 @@
 \section{Discussion}
 \label{sec:discussion}
 
-Chio instantiates receipt-bounded polities whose laws are executable predicates and whose external relations are admission contracts. Treaty scope and ladder intersection, cross-kernel continuation, strict bilateral-invocation binding, fail-closed admission, BBS selective disclosure, multi-lane anchoring, and bounded Lean treaty and amendment models realise that property.
+\paragraph{The meaning of programmable sovereignty.}
+The system grants no sovereignty in public or international law. It gives a
+receiver final technical authority over one narrow object: whether a foreign
+agent call crosses its tool-dispatch boundary and enters its receipt history.
+Within that boundary, the receiver selects the trust stores, resolves the
+evidence, applies the predicates, and records the outcome. We call this
+\emph{receipt-bounded sovereignty}. The modifier is essential because another
+organization remains free to reject the same evidence under its own policy.
 
-The polity claim is declarative, not Westphalian. A Chio polity has final authority over its receipt-admission boundary; it has none over physical persons, land, or external courts. Its territory is a receipt namespace, its citizens are DIDs or kernels admitted into that namespace, its border is the runtime admission hook, its courts are verdict artifacts over receipts, and its diplomacy is recognition of peer predicates rather than diplomatic immunity. Montevideo Article~1 lists permanent population, defined territory, government, and capacity to enter relations; Article~3 says political existence is independent of recognition by other states~\cite{montevideo,crawfordStatehood}. The formal model exposes analogs for each criterion (citizenship roster, receipt-scope territory, constitutional predicates, treaty intersection) but does not claim the human territorial reading. The constitutive-recognition pushback against Article~3 also stands: most diplomatic practice uses constitutive recognition, and Chio cannot supply it. The regulator-facing sentence is therefore that a Chio polity is a machine-checkable governance committee over a declared receipt log, optionally wrapped by a legal entity.
+\paragraph{Why the receiver owns resolution.}
+A signature authenticates bytes, not the authority used to interpret them. If
+the sender can supply the peer keys, revocation state, treaty manifest, or
+policy bundle, a perfectly valid signature can authenticate a self-appointed
+trust domain. Receiver-owned resolution makes those references capabilities
+to local state rather than serialized policy arguments. The resulting
+asymmetry is desirable: bilateral signing establishes agreement on one
+statement, while each side retains unilateral control of admission.
 
-The deeper framing is Hartian, and the scope of the claim matters. Hart distinguished three conditions for a rule of recognition to exist as law: it must be a criterion officials apply to identify which rules count as law of the system (\textit{The Concept of Law}, p.~94), it must be applied as a settled practice (p.~110), and officials must accept it from the internal point of view as a common standard (p.~116). Chio's admission predicate $K$ instantiates the first condition concretely: a machine-checkable test that any party can replay over the same canonical bytes to determine whether a receipt belongs to the polity's history. The second and third conditions are sociological obligations Chio does not discharge -- kernels execute $K$ deterministically, which is mechanical rather than practice, and operators accept $K$ as a software dependency rather than as authority. A candidate analog for Hart's officials is the cosigner network and its key-publication / denial-honoring behavior, but the present construction does not develop that analog. Raz's authority-as-content-independent-reasons-for-action~\cite{razAuthority} maps onto capability tokens whose validity is constitutive of the authority rather than reasons for obeying it, and Schauer's rules-vs-standards distinction~\cite{schauerRules} maps onto predicates-vs-judicial-discretion with Chio at the extreme rule-bound end -- the Dworkin critique on principles, where no predicate decides and judicial reinterpretation is needed, applies in full. The construction is therefore not a new theory of sovereignty but a positivist contribution narrower than the term suggests: a constructive instance of \emph{condition (a)} of the Hartian rule of recognition~\cite{hartLaw} over cross-organizational tool invocations.
+\paragraph{Two keys and two organizations.}
+The protocol proves possession of two distinct authorized private keys over
+identical bytes. It cannot prove that independent organizations controlled the
+keys or evaluated policy independently. Deployments that require that stronger
+claim need identity governance, separated key custody, or attested execution.
+The paper keeps this distinction visible because collapsing it would turn an
+operational assumption into a cryptographic theorem.
 
-External jurisdictions remain asymmetric. The design models the EU as a \codepath{Supranational} external peer by stacking GDPR or procurement predicates on admission; the asymmetry is that those predicates bind Chio's kernel, not the EU's. The relation becomes bilateral only when an external institution supplies a DID, a trust bundle, and a co-signing key. Until then, integration is one-way compliance evidence, which is the input the substrate is engineered to produce. The relevant regulatory text is now finalized for portions of this surface: the EU AI Act General-Purpose AI Code of Practice came into force in August 2025 with transparency and safety chapters that name the logging and incident-record obligations Chio's receipts are shaped to discharge \cite{euAIActGPAICode}, and the NIST AI RMF Agentic Profile defines a parallel set of obligations for the US federal supplier surface \cite{nistAIRMFAgentic}.
+\paragraph{Amendment as a bounded extension.}
+Finite-domain no-widening illustrates how a polity could require a checkable
+predicate relation before accepting a new constitution. The theorem is useful
+for configuration sets whose admissible receipt domain is enumerated. It is
+not a production amendment protocol and it does not preserve old allows. A
+real amendment mechanism would need domain versioning, witness transport,
+enactment and rollback state, and an explicit procedure for discontinuous
+changes. Those requirements are deliberately outside the demonstrated
+bilateral admission path.
 
-An enterprise can encode procurement, privacy, or sanctions predicates without asking a regulator to run a Chio kernel, and produce signed evidence that it refused nonconforming receipts. The evidence shares the canonical schema of admitted receipts; the relation becomes bilateral when the external institution participates with its own DID and co-signing key.
-
-Próspera, FTX, and Tornado Cash mark the failure modes the construction is designed against. Próspera shows that charter-city autonomy can collapse into sovereign conflict and arbitration. FTX shows that exchange governance theater without verifiable custody and receipts is not institutional discipline. Tornado Cash shows that immutable code and governance artifacts can exceed statutory categories. Chio's answer is not immunity but locality: every asserted authority is local, typed, signed, and attackable.
-
-On-chain governance decides bytes, parameters, or social mandate; Chio's amendment path decides whether the new predicate set refines the old one for admitted history. A vote may approve a candidate constitution; enactment is gated on a Lean term, and a vote that overrides the gate is recorded as a crisis artifact rather than absorbed silently. This is the load-bearing difference between programmable governance as commonly deployed and proof-carrying constitutional change.
-
-The economics layer is downstream of admission. Chio ships market, settlement, credit, underwriting, and anchoring components, but programmable sovereignty does not depend on an endogenous token or market before admission semantics are sound; the ordering is authority first, receipts second, settlement third. A future interoperable profile needs the receipt fields, canonicalization rules, treaty-binding digest, and rejection codes any receiving organization must require before admitting a foreign tool call.
-
-The construction is complementary to pre-deployment AI safety work. Capability evaluations (METR (formerly ARC Evals), UK AISI Inspect) and frontier-safety frameworks (Anthropic RSP, OpenAI Preparedness, DeepMind Frontier Safety) bound what a model is likely to do; they produce no tamper-evident record of what a deployed agent actually did across a vendor boundary. Alignment-faking~\cite{hubingerAlignmentFaking2024} and situational-awareness~\cite{berglundSituationalAwareness2023} research sharpen this gap: a model that behaves under evaluation and differently in deployment leaves no checkable artifact unless the runtime emits one. Chio's receipt graph is that artifact. The treaty-binding digest pins joint action intent across two organizations, so a scheming agent cannot retroactively deny a cross-vendor call's predicate set. Constitutional AI~\cite{baiConstitutionalAI2022} conditions outputs at training; Chio gates whether they cross a trust boundary at deployment.
-
-The adoption path is incremental. One enterprise runs receipt-backed admission for its own high-risk tools, adds selective disclosure so internal teams can prove policy compliance without exporting tenant data, and admits a narrow partner action under a bilateral treaty scope. Federated courts, treasuries, and public witnesses are downstream of those steps, which keeps the hardest political claims downstream of executable evidence.
+\paragraph{Evidence after enforcement.}
+The same bindings that make a decision enforceable also make it reviewable.
+The buyer package is therefore a consequence of the admission design, not a
+substitute for it. Offline verification can show that the package is internally
+consistent and authorized by its keys; it cannot recover a compromised
+receiver kernel, prove remote process integrity, or compel a third party to
+recognize the result.

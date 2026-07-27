@@ -42,12 +42,11 @@ structure KernelSig where
   sig : SignatureBytes
   deriving Repr, BEq, DecidableEq, Inhabited
 
-/-- A bilateral DSSE envelope: a receipt id, a scope predicate, and
+/-- A bilateral DSSE envelope: a bounded receipt view, a scope predicate, and
     two signature slices (one issuer-side, one kernel-side). The
-    short-paper model treats `receiptId` as the canonical receipt
-    identifier and `scope` as the policy that gates this envelope. -/
+    model treats `scope` as the policy that gates this envelope. -/
 structure BilateralEnvelope where
-  receiptId : PredicateLang.ReceiptId
+  receipt : PredicateLang.ReceiptView
   scope : PredicateLang.Predicate
   issuerSig : IssuerSig
   kernelSig : KernelSig
@@ -65,7 +64,7 @@ structure TrustStore where
       allowlist,
   (ii) the envelope's kernel key id is in the trust store's kernel
        allowlist, and
-  (iii) the scope predicate denotes true on the receipt id.
+    (iii) the scope predicate denotes true on the bounded receipt view.
 
   Signature byte validity is abstracted away: the trust-store membership
   conjuncts encode "we have a valid signature under a key we recognize",
@@ -76,7 +75,7 @@ def accept
     (store : TrustStore) (env : BilateralEnvelope) : Bool :=
   decide (env.issuerSig.keyId ∈ store.issuerKeys) &&
   decide (env.kernelSig.keyId ∈ store.kernelKeys) &&
-  PredicateLang.denote env.scope env.receiptId
+  PredicateLang.denote env.scope env.receipt
 
 /--
   Freestanding accept-set theorem (short-paper §4): a bilateral
@@ -90,7 +89,7 @@ theorem freestanding_accept_set_theorem
     accept store env = true ↔
     (env.issuerSig.keyId ∈ store.issuerKeys ∧
      env.kernelSig.keyId ∈ store.kernelKeys ∧
-     PredicateLang.denote env.scope env.receiptId = true) := by
+     PredicateLang.denote env.scope env.receipt = true) := by
   unfold accept
   simp [Bool.and_eq_true, and_assoc]
 
@@ -115,7 +114,7 @@ theorem accept_monotone_in_issuer_store
   Corollary 2: accept-set conjunction over scope predicates. If an
   envelope with a scope of `conj p q` is accepted, then the issuer
   and kernel key conjuncts hold and both scope predicates denote true
-  for the same receipt id. This states the freestanding predicate
+  for the same receipt view. This states the freestanding predicate
   decomposition without pretending the original signatures can be
   reused for a byte-distinct rebound envelope.
 -/
@@ -126,13 +125,13 @@ theorem accept_conj_scope_decompose
     (hAccept : accept store env = true) :
     env.issuerSig.keyId ∈ store.issuerKeys ∧
     env.kernelSig.keyId ∈ store.kernelKeys ∧
-    PredicateLang.denote p env.receiptId = true ∧
-    PredicateLang.denote q env.receiptId = true := by
+    PredicateLang.denote p env.receipt = true ∧
+    PredicateLang.denote q env.receipt = true := by
   rw [freestanding_accept_set_theorem] at hAccept
   have hIssuer : env.issuerSig.keyId ∈ store.issuerKeys := hAccept.1
   have hKernel : env.kernelSig.keyId ∈ store.kernelKeys := hAccept.2.1
   rw [hScope] at hAccept
-  have hConj : PredicateLang.denote (.conj p q) env.receiptId = true := hAccept.2.2
+  have hConj : PredicateLang.denote (.conj p q) env.receipt = true := hAccept.2.2
   simp [PredicateLang.denote] at hConj
   exact ⟨hIssuer, hKernel, hConj.1, hConj.2⟩
 

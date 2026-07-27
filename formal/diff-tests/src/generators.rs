@@ -11,7 +11,9 @@ use chio_kernel_core::normalized::{
 
 use crate::spec::{
     SpecChioScope, SpecConstraint, SpecMonetaryAmount, SpecOperation, SpecPromptGrant,
-    SpecResourceGrant, SpecRuntimeAssuranceTier, SpecToolGrant,
+    SpecResourceGrant, SpecRuntimeAssuranceTier, SpecToolGrant, SpecTreatyAdmissionDecision,
+    SpecTreatyConstitution, SpecTreatyEvidenceDigest, SpecTreatyPredicate, SpecTreatyPredicateAtom,
+    SpecTreatyReceiptView,
 };
 
 const SERVER_IDS: &[&str] = &[
@@ -70,6 +72,34 @@ const PROMPT_NAMES: &[&str] = &["triage", "investigate", "summarize", "risk_*", 
 
 const CURRENCIES: &[&str] = &["USD", "EUR"];
 
+const TREATY_RECEIPT_IDS: &[&str] = &["receipt-a", "receipt-b", "", "receipt-duplicate"];
+const TREATY_HASHES: &[&str] = &["hash-a", "hash-b", "", "digest-mismatch"];
+const TREATY_ACTION_CLASSES: &[&str] = &[
+    "workflow.read_only",
+    "workflow.destructive.vendor_call",
+    "workflow.unknown",
+    "",
+];
+const TREATY_KERNEL_IDS: &[&str] = &["kernel-a", "kernel-b", "kernel-duplicate", ""];
+const TREATY_CONTINUATIONS: &[&str] = &[
+    "continuation-live",
+    "continuation-stale",
+    "continuation-duplicate",
+    "",
+];
+const TREATY_FAILURE_CODES: &[&str] = &[
+    "chio_treaty_missing_required_evidence",
+    "chio_treaty_stale",
+    "unknown_failure",
+    "",
+];
+const TREATY_EVIDENCE_CLASSES: &[&str] = &[
+    "bilateral_dsse",
+    "receipt_lineage",
+    "governance_receipt",
+    "unknown",
+];
+
 fn pool_server(idx: usize) -> String {
     SERVER_IDS[idx % SERVER_IDS.len()].to_string()
 }
@@ -96,6 +126,146 @@ fn pool_prompt_name(idx: usize) -> String {
 
 fn pool_currency(idx: usize) -> String {
     CURRENCIES[idx % CURRENCIES.len()].to_string()
+}
+
+fn pool_value(values: &[&str], idx: usize) -> String {
+    values[idx % values.len()].to_string()
+}
+
+pub fn arb_spec_treaty_admission_decision() -> impl Strategy<Value = SpecTreatyAdmissionDecision> {
+    prop_oneof![
+        Just(SpecTreatyAdmissionDecision::Allow),
+        Just(SpecTreatyAdmissionDecision::Deny),
+    ]
+}
+
+pub fn arb_spec_treaty_evidence_digest() -> impl Strategy<Value = SpecTreatyEvidenceDigest> {
+    (
+        0usize..TREATY_EVIDENCE_CLASSES.len(),
+        0usize..TREATY_HASHES.len(),
+    )
+        .prop_map(|(class, digest)| SpecTreatyEvidenceDigest {
+            evidence_class: pool_value(TREATY_EVIDENCE_CLASSES, class),
+            digest: pool_value(TREATY_HASHES, digest),
+        })
+}
+
+pub fn arb_spec_treaty_receipt_view() -> impl Strategy<Value = SpecTreatyReceiptView> {
+    (
+        (
+            0usize..TREATY_RECEIPT_IDS.len(),
+            0usize..TREATY_HASHES.len(),
+            0usize..TREATY_ACTION_CLASSES.len(),
+            prop::collection::vec(0usize..TREATY_KERNEL_IDS.len(), 0..5),
+            prop_oneof![
+                Just(0u64),
+                Just(1),
+                Just(2),
+                Just(3),
+                Just(4),
+                Just(u64::MAX)
+            ],
+        ),
+        (
+            prop::collection::vec(0usize..TREATY_CONTINUATIONS.len(), 0..5),
+            arb_spec_treaty_admission_decision(),
+            prop_oneof![
+                Just(None),
+                (0usize..TREATY_FAILURE_CODES.len())
+                    .prop_map(|index| Some(pool_value(TREATY_FAILURE_CODES, index))),
+            ],
+            prop::collection::vec(arb_spec_treaty_evidence_digest(), 0..5),
+        ),
+    )
+        .prop_map(
+            |(
+                (receipt_id, receipt_hash, action_class, participant_kernel_ids, ladder_mode_rank),
+                (live_continuation_ids, decision, failure_code, evidence_digests),
+            )| SpecTreatyReceiptView {
+                receipt_id: pool_value(TREATY_RECEIPT_IDS, receipt_id),
+                receipt_hash: pool_value(TREATY_HASHES, receipt_hash),
+                action_class: pool_value(TREATY_ACTION_CLASSES, action_class),
+                participant_kernel_ids: participant_kernel_ids
+                    .into_iter()
+                    .map(|index| pool_value(TREATY_KERNEL_IDS, index))
+                    .collect(),
+                ladder_mode_rank,
+                live_continuation_ids: live_continuation_ids
+                    .into_iter()
+                    .map(|index| pool_value(TREATY_CONTINUATIONS, index))
+                    .collect(),
+                decision,
+                failure_code,
+                evidence_digests,
+            },
+        )
+}
+
+pub fn arb_spec_treaty_predicate_atom() -> impl Strategy<Value = SpecTreatyPredicateAtom> {
+    prop_oneof![
+        (0usize..TREATY_RECEIPT_IDS.len()).prop_map(|index| {
+            SpecTreatyPredicateAtom::ScopeContains(pool_value(TREATY_RECEIPT_IDS, index))
+        }),
+        (0usize..TREATY_KERNEL_IDS.len()).prop_map(|index| {
+            SpecTreatyPredicateAtom::ParticipantKernelIdEquals(pool_value(TREATY_KERNEL_IDS, index))
+        }),
+        (0usize..TREATY_ACTION_CLASSES.len()).prop_map(|index| {
+            SpecTreatyPredicateAtom::ActionClassIn(pool_value(TREATY_ACTION_CLASSES, index))
+        }),
+        prop_oneof![
+            Just(0u64),
+            Just(1),
+            Just(2),
+            Just(3),
+            Just(4),
+            Just(u64::MAX)
+        ]
+        .prop_map(SpecTreatyPredicateAtom::LadderModeAtLeastRank),
+        (0usize..TREATY_HASHES.len()).prop_map(|index| {
+            SpecTreatyPredicateAtom::ReceiptHashEquals(pool_value(TREATY_HASHES, index))
+        }),
+        (0usize..TREATY_CONTINUATIONS.len()).prop_map(|index| {
+            SpecTreatyPredicateAtom::ContinuationLive(pool_value(TREATY_CONTINUATIONS, index))
+        }),
+        arb_spec_treaty_admission_decision().prop_map(SpecTreatyPredicateAtom::DecisionEquals),
+        (0usize..TREATY_FAILURE_CODES.len()).prop_map(|index| {
+            SpecTreatyPredicateAtom::FailureCodeEquals(pool_value(TREATY_FAILURE_CODES, index))
+        }),
+        (
+            0usize..TREATY_EVIDENCE_CLASSES.len(),
+            0usize..TREATY_HASHES.len()
+        )
+            .prop_map(
+                |(class, digest)| SpecTreatyPredicateAtom::EvidenceDigestEquals {
+                    evidence_class: pool_value(TREATY_EVIDENCE_CLASSES, class),
+                    digest: pool_value(TREATY_HASHES, digest),
+                }
+            ),
+    ]
+}
+
+pub fn arb_spec_treaty_predicate() -> impl Strategy<Value = SpecTreatyPredicate> {
+    let leaf = prop_oneof![
+        arb_spec_treaty_predicate_atom().prop_map(SpecTreatyPredicate::Atom),
+        Just(SpecTreatyPredicate::Top),
+        Just(SpecTreatyPredicate::Bot),
+    ];
+    leaf.prop_recursive(4, 64, 2, |inner| {
+        prop_oneof![
+            (inner.clone(), inner.clone()).prop_map(|(left, right)| {
+                SpecTreatyPredicate::Conj(Box::new(left), Box::new(right))
+            }),
+            (inner.clone(), inner.clone()).prop_map(|(left, right)| {
+                SpecTreatyPredicate::Disj(Box::new(left), Box::new(right))
+            }),
+            inner.prop_map(|predicate| SpecTreatyPredicate::Neg(Box::new(predicate))),
+        ]
+    })
+}
+
+pub fn arb_spec_treaty_constitution() -> impl Strategy<Value = SpecTreatyConstitution> {
+    prop::collection::vec(arb_spec_treaty_predicate(), 0..5)
+        .prop_map(|predicates| SpecTreatyConstitution { predicates })
 }
 
 pub fn arb_spec_operation() -> impl Strategy<Value = SpecOperation> {

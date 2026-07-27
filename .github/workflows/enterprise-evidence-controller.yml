@@ -365,8 +365,7 @@ jobs:
           [[ "${dispatch_nonce}" =~ ^[0-9a-f]{64}$ ]]
           display_title="Enterprise Linux capture N=${PR_NUMBER} E=${HEAD_SHA} M=${MERGE_COMMIT_SHA} S=${AUTHORIZED_SOURCE_SHA} K=${dispatch_nonce}"
           dispatch_started_at="$(date --utc +%Y-%m-%dT%H:%M:%SZ)"
-          payload="$(jq -cS -n \
-            --arg ref "${default_branch}" \
+          intent_inputs="$(jq -cS -n \
             --arg authorized_source_sha "${AUTHORIZED_SOURCE_SHA}" \
             --arg base_ref "${BASE_REF}" \
             --arg base_repository "${BASE_REPOSITORY}" \
@@ -387,26 +386,58 @@ jobs:
             --arg source_repository "${HEAD_REPOSITORY}" \
             --arg source_sha "${HEAD_SHA}" \
             '{
+              authorized_source_sha: $authorized_source_sha,
+              base_ref: $base_ref,
+              base_repository: $base_repository,
+              base_sha: $base_sha,
+              controller_actor: $controller_actor,
+              controller_blob_sha: $controller_blob_sha,
+              controller_dispatch_nonce: $controller_dispatch_nonce,
+              controller_issued_at_unix_ms: $controller_issued_at_unix_ms,
+              controller_run_attempt: $controller_run_attempt,
+              controller_run_id: $controller_run_id,
+              controller_workflow_id: $controller_workflow_id,
+              labels_digest: $labels_digest,
+              merge_commit_sha: $merge_commit_sha,
+              merge_tree_sha: $merge_tree_sha,
+              mode: $mode,
+              pr_number: $pr_number,
+              security_definition_sha: $security_definition_sha,
+              source_repository: $source_repository,
+              source_sha: $source_sha
+            }')"
+          dispatch_context="$(jq -cS '{
+            base_ref,
+            base_repository,
+            base_sha,
+            controller_actor,
+            controller_blob_sha,
+            controller_issued_at_unix_ms,
+            controller_run_attempt,
+            controller_run_id,
+            controller_workflow_id,
+            labels_digest,
+            merge_tree_sha,
+            mode,
+            security_definition_sha,
+            source_repository
+          }' <<< "${intent_inputs}")"
+          payload="$(jq -cS -n \
+            --arg ref "${default_branch}" \
+            --arg authorized_source_sha "${AUTHORIZED_SOURCE_SHA}" \
+            --arg controller_dispatch_nonce "${dispatch_nonce}" \
+            --arg dispatch_context "${dispatch_context}" \
+            --arg merge_commit_sha "${MERGE_COMMIT_SHA}" \
+            --arg pr_number "${PR_NUMBER}" \
+            --arg source_sha "${HEAD_SHA}" \
+            '{
               ref: $ref,
               inputs: {
                 authorized_source_sha: $authorized_source_sha,
-                base_ref: $base_ref,
-                base_repository: $base_repository,
-                base_sha: $base_sha,
-                controller_actor: $controller_actor,
-                controller_blob_sha: $controller_blob_sha,
                 controller_dispatch_nonce: $controller_dispatch_nonce,
-                controller_issued_at_unix_ms: $controller_issued_at_unix_ms,
-                controller_run_attempt: $controller_run_attempt,
-                controller_run_id: $controller_run_id,
-                controller_workflow_id: $controller_workflow_id,
-                labels_digest: $labels_digest,
+                dispatch_context: $dispatch_context,
                 merge_commit_sha: $merge_commit_sha,
-                merge_tree_sha: $merge_tree_sha,
-                mode: $mode,
                 pr_number: $pr_number,
-                security_definition_sha: $security_definition_sha,
-                source_repository: $source_repository,
                 source_sha: $source_sha
               }
             }')"
@@ -496,7 +527,7 @@ jobs:
               --arg default_commit_sha "${default_commit_sha}" \
               --arg dispatch_nonce "${dispatch_nonce}" \
               --arg repository "${GITHUB_REPOSITORY}" \
-              --argjson inputs "$(jq -cS '.inputs' <<< "${payload}")" \
+              --argjson inputs "${intent_inputs}" \
               '{
                 capture_run_attempt: "1",
                 capture_run_id: $capture_run_id,

@@ -53,6 +53,12 @@ use std::io;
 mod support;
 use support::treaty::{treaty_action_class, treaty_manifest, treaty_scope};
 
+fn emit_threat_matrix_code(code: &str) {
+    if std::env::var_os("CHIO_THREAT_MATRIX_EMIT_CODE").is_some() {
+        println!("CHIO_THREAT_MATRIX_CODE={code}");
+    }
+}
+
 fn profile() -> RuntimeAdmissionProfile {
     RuntimeAdmissionProfile {
         schema: CHIO_RUNTIME_ADMISSION_PROFILE_SCHEMA.to_string(),
@@ -486,6 +492,9 @@ fn treaty_runtime_hook_denies_missing_lineage_evidence_ref(
     let metadata = decision
         .metadata
         .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+    if let Some(code) = metadata["chio_runtime"]["failure_code"].as_str() {
+        emit_threat_matrix_code(code);
+    }
     assert_eq!(
         metadata["chio_runtime"]["failure_code"],
         "chio_treaty_missing_required_evidence"
@@ -523,6 +532,9 @@ fn treaty_runtime_hook_denies_request_smuggled_trust_root() -> Result<(), Box<dy
     let metadata = decision
         .metadata
         .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+    if let Some(code) = metadata["chio_runtime"]["failure_code"].as_str() {
+        emit_threat_matrix_code(code);
+    }
     assert_eq!(
         metadata["chio_runtime"]["failure_code"],
         "request_smuggled_trust_root"
@@ -560,6 +572,9 @@ fn treaty_runtime_hook_denies_request_smuggled_dynamic_trust(
     let metadata = decision
         .metadata
         .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+    if let Some(code) = metadata["chio_runtime"]["failure_code"].as_str() {
+        emit_threat_matrix_code(code);
+    }
     assert_eq!(
         metadata["chio_runtime"]["failure_code"],
         "request_smuggled_dynamic_trust"
@@ -917,6 +932,9 @@ fn treaty_runtime_hook_denies_replayed_continuation() -> Result<(), Box<dyn std:
     let metadata = replay
         .metadata
         .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+    if let Some(code) = metadata["chio_runtime"]["failure_code"].as_str() {
+        emit_threat_matrix_code(code);
+    }
     assert_eq!(
         metadata["chio_runtime"]["failure_code"],
         "chio_treaty_continuation_replay"
@@ -1838,6 +1856,9 @@ fn kernel_hook_rejects_treaty_dsse_unanimous_deny() -> Result<(), Box<dyn std::e
     let metadata = decision
         .metadata
         .ok_or_else(|| io::Error::other("runtime metadata missing"))?;
+    if let Some(code) = metadata["chio_runtime"]["failure_code"].as_str() {
+        emit_threat_matrix_code(code);
+    }
     assert_eq!(
         metadata["chio_runtime"]["failure_code"],
         "chio_treaty_policy_denied"

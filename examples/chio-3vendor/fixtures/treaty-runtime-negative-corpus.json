@@ -2,56 +2,232 @@
   "schema": "chio.federation.treaty-runtime-negative-fixture-corpus.v1",
   "cases": [
     {
-      "caseId": "missing-treaty",
-      "expectedCode": "chio_attest_buyer_review_missing_treaty_dsse_binding"
+      "threatId": "PS-TH-01",
+      "caseId": "wrong-treaty",
+      "expectedCode": "chio_treaty_scope_hash_mismatch",
+      "phase": "pre_dispatch",
+      "package": "chio-runtime-core",
+      "targetKind": "integration",
+      "targetName": "runtime_treaty",
+      "testFilter": "bounded_treaty_view_binds_runtime_artifacts_and_rejects_wrong_treaty",
+      "dispatchExpected": false
     },
     {
+      "threatId": "PS-TH-02",
       "caseId": "stale-treaty",
-      "expectedCode": "chio_attest_buyer_packet_hash_mismatch"
+      "expectedCode": "chio_treaty_stale",
+      "phase": "pre_dispatch",
+      "package": "chio-runtime-core",
+      "targetKind": "integration",
+      "targetName": "runtime_treaty",
+      "testFilter": "treaty_cross_boundary_admission_rejects_stale_treaty_or_future_intersection",
+      "dispatchExpected": false
     },
     {
+      "threatId": "PS-TH-03",
       "caseId": "forged-intersection",
-      "expectedCode": "chio_attest_buyer_packet_hash_mismatch"
+      "expectedCode": "chio_treaty_intersection_mismatch",
+      "phase": "pre_dispatch",
+      "package": "chio-runtime-core",
+      "targetKind": "integration",
+      "targetName": "runtime_treaty",
+      "testFilter": "treaty_cross_boundary_admission_rejects_unverified_or_forged_intersection",
+      "dispatchExpected": false
     },
     {
-      "caseId": "compatibility-only-dsse",
-      "expectedCode": "chio_attest_buyer_review_non_strict_dsse"
+      "threatId": "PS-TH-04",
+      "caseId": "missing-lineage",
+      "expectedCode": "chio_treaty_missing_required_evidence",
+      "phase": "pre_dispatch",
+      "package": "chio-runtime-core",
+      "targetKind": "integration",
+      "targetName": "runtime_admission",
+      "testFilter": "treaty_runtime_hook_denies_missing_lineage_evidence_ref",
+      "dispatchExpected": false
     },
     {
-      "caseId": "missing-co-signature",
-      "expectedCode": "chio_attest_buyer_review_strict_dsse_signature_invalid"
-    },
-    {
-      "caseId": "duplicate-dsse-signature-keyid",
-      "expectedCode": "chio_attest_buyer_review_strict_dsse_signature_invalid"
-    },
-    {
+      "threatId": "PS-TH-05",
       "caseId": "receipt-mismatch",
-      "expectedCode": "chio_federation_treaty_bilateral_mismatch"
+      "expectedCode": "predicate.schema_invalid",
+      "phase": "pre_dispatch",
+      "package": "chio-federation",
+      "targetKind": "lib",
+      "targetName": "lib",
+      "testFilter": "strict_chio_verifier_binds_treaty_remote_receipt_hash_to_resolved_receipt",
+      "dispatchExpected": false
     },
     {
-      "caseId": "verifier-report-substitution",
-      "expectedCode": "chio_attest_buyer_review_artifact_hash_mismatch"
+      "threatId": "PS-TH-06",
+      "caseId": "request-hash-mismatch",
+      "expectedCode": "predicate.schema_invalid",
+      "phase": "pre_dispatch",
+      "package": "chio-federation",
+      "targetKind": "lib",
+      "targetName": "lib",
+      "testFilter": "strict_chio_verifier_binds_treaty_request_hash_to_tool_args",
+      "dispatchExpected": false
     },
     {
-      "caseId": "verifier-report-rejected",
-      "expectedCode": "chio_attest_buyer_review_verifier_report_rejected"
+      "threatId": "PS-TH-07",
+      "caseId": "outcome-hash-mismatch",
+      "expectedCode": "predicate.schema_invalid",
+      "phase": "pre_dispatch",
+      "package": "chio-federation",
+      "targetKind": "lib",
+      "targetName": "lib",
+      "testFilter": "strict_chio_verifier_binds_treaty_outcome_hash_to_resolved_receipt",
+      "dispatchExpected": false
     },
     {
-      "caseId": "settlement-claim",
-      "expectedCode": "chio_attest_buyer_packet_settlement_claimed"
+      "threatId": "PS-TH-08",
+      "caseId": "missing-signature",
+      "expectedCode": "dsse.malformed",
+      "phase": "pre_dispatch",
+      "package": "chio-federation",
+      "targetKind": "lib",
+      "targetName": "lib",
+      "testFilter": "verifier_rejects_missing_signature",
+      "dispatchExpected": false
     },
     {
-      "caseId": "hidden-predicate-claim",
-      "expectedCode": "chio_attest_buyer_review_verifier_report_rejected"
+      "threatId": "PS-TH-09",
+      "caseId": "duplicate-signature-keyid",
+      "expectedCode": "dsse.malformed",
+      "phase": "pre_dispatch",
+      "package": "chio-federation",
+      "targetKind": "lib",
+      "targetName": "lib",
+      "testFilter": "strict_chio_verifier_rejects_duplicate_signature_keyids",
+      "dispatchExpected": false
     },
     {
+      "threatId": "PS-TH-10",
+      "caseId": "repeated-signer-key",
+      "expectedCode": "signer.independence_required",
+      "phase": "pre_dispatch",
+      "package": "chio-federation",
+      "targetKind": "lib",
+      "targetName": "lib",
+      "testFilter": "strict_chio_signer_rejects_identical_signer_keys",
+      "dispatchExpected": false
+    },
+    {
+      "threatId": "PS-TH-11",
+      "caseId": "wrong-predicate-type",
+      "expectedCode": "predicate.type_unrecognised",
+      "phase": "pre_dispatch",
+      "package": "chio-federation",
+      "targetKind": "lib",
+      "targetName": "lib",
+      "testFilter": "verifier_rejects_wrong_predicate_type_even_if_resigned",
+      "dispatchExpected": false
+    },
+    {
+      "threatId": "PS-TH-12",
+      "caseId": "noncanonical-payload",
+      "expectedCode": "statement.malformed",
+      "phase": "pre_dispatch",
+      "package": "chio-federation",
+      "targetKind": "lib",
+      "targetName": "lib",
+      "testFilter": "verifier_rejects_noncanonical_statement_payload_even_if_resigned",
+      "dispatchExpected": false
+    },
+    {
+      "threatId": "PS-TH-13",
+      "caseId": "stale-lease",
+      "expectedCode": "capability.lease_expired_or_unknown",
+      "phase": "pre_dispatch",
+      "package": "chio-federation",
+      "targetKind": "lib",
+      "targetName": "lib",
+      "testFilter": "step_14_expired_lease_fails_closed",
+      "dispatchExpected": false
+    },
+    {
+      "threatId": "PS-TH-14",
+      "caseId": "missing-governance-receipt",
+      "expectedCode": "governance.receipt_required_missing",
+      "phase": "pre_dispatch",
+      "package": "chio-federation",
+      "targetKind": "lib",
+      "targetName": "lib",
+      "testFilter": "step_15_receipt_backed_class_requires_governance_receipt",
+      "dispatchExpected": false
+    },
+    {
+      "threatId": "PS-TH-15",
+      "caseId": "replayed-continuation",
+      "expectedCode": "chio_treaty_continuation_replay",
+      "phase": "pre_dispatch",
+      "package": "chio-runtime-core",
+      "targetKind": "integration",
+      "targetName": "runtime_admission",
+      "testFilter": "treaty_runtime_hook_denies_replayed_continuation",
+      "dispatchExpected": false
+    },
+    {
+      "threatId": "PS-TH-16",
       "caseId": "request-smuggled-trust-root",
-      "expectedCode": "chio_attest_buyer_review_strict_dsse_binding_mismatch"
+      "expectedCode": "request_smuggled_trust_root",
+      "phase": "pre_dispatch",
+      "package": "chio-runtime-core",
+      "targetKind": "integration",
+      "targetName": "runtime_admission",
+      "testFilter": "treaty_runtime_hook_denies_request_smuggled_trust_root",
+      "dispatchExpected": false
     },
     {
-      "caseId": "dynamic-trust-claim",
-      "expectedCode": "chio_attest_buyer_review_strict_dsse_binding_mismatch"
+      "threatId": "PS-TH-17",
+      "caseId": "dynamic-trust-smuggling",
+      "expectedCode": "request_smuggled_dynamic_trust",
+      "phase": "pre_dispatch",
+      "package": "chio-runtime-core",
+      "targetKind": "integration",
+      "targetName": "runtime_admission",
+      "testFilter": "treaty_runtime_hook_denies_request_smuggled_dynamic_trust",
+      "dispatchExpected": false
+    },
+    {
+      "threatId": "PS-TH-18",
+      "caseId": "schema-mismatch",
+      "expectedCode": "dsse.malformed",
+      "phase": "pre_dispatch",
+      "package": "chio-federation",
+      "targetKind": "lib",
+      "targetName": "lib",
+      "testFilter": "mismatched_payload_type_fails_verification",
+      "dispatchExpected": false
+    },
+    {
+      "threatId": "PS-TH-19",
+      "caseId": "policy-disagreement",
+      "expectedCode": "policy.verdict_disagreement",
+      "phase": "pre_dispatch",
+      "package": "chio-federation",
+      "targetKind": "lib",
+      "targetName": "lib",
+      "testFilter": "step_13_verdict_disagreement_fails_closed",
+      "dispatchExpected": false
+    },
+    {
+      "threatId": "PS-TH-20",
+      "caseId": "signed-unanimous-deny",
+      "expectedCode": "chio_treaty_policy_denied",
+      "phase": "pre_dispatch",
+      "package": "chio-runtime-core",
+      "targetKind": "integration",
+      "targetName": "runtime_admission",
+      "testFilter": "kernel_hook_rejects_treaty_dsse_unanimous_deny",
+      "dispatchExpected": false
+    }
+  ],
+  "assumptions": [
+    {
+      "assumptionId": "PS-A-01",
+      "capability": "One actor controls two distinct keys authorized as the treaty participants.",
+      "status": "not_cryptographically_testable",
+      "rationale": "Distinct signatures establish possession of two keys, not organizational independence. Defeating this capability requires external identity governance or attested key custody."
     }
   ]
 }

@@ -40,12 +40,17 @@ curl -fsSL https://www.chio.computer/install.sh | sh
 
 ## What is Chio
 
-Chio is a Rust kernel that mediates every tool an AI agent tries to call. To act, the agent
-must present a capability: a signed, expiring grant that says who is acting and what they may
-do, and that can be narrowed as it is handed off but never widened. The kernel verifies the
-grant, screens the request and the result, runs the tool, and signs a receipt of what happened
-that cannot be forged or backdated. It refuses any call it cannot authorize and any result it
-cannot sign.
+Chio is a Rust kernel that puts every exchange between an AI agent and the resources it reaches
+for under one governance protocol. Tools, budgets, chain of command, and authority all reduce
+to a single policy that crosses protocol boundaries, travels with the agent, and is enforced
+wherever it acts. The security-critical semantics of that protocol are formally verified and
+implementation-linked, subject to a published assumption boundary.
+
+To act, the agent must present a capability: a signed, expiring grant that says who is acting
+and what they may do, and that can be narrowed as it is handed off but never widened. The
+kernel verifies the grant, screens the request and the result, runs the tool, and signs a
+receipt of what happened that cannot be forged or backdated. It refuses any call it cannot
+authorize and any result it cannot sign.
 
 > MCP tells an agent *how* to call a tool.
 > Chio proves *what it was allowed to do, what it cost, and what happened.*
