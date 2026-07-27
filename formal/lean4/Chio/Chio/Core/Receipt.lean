@@ -519,6 +519,22 @@ def verifyInclusion (receipt : ReceiptBody) (proof : ReceiptProof)
     (expectedRoot : MerkleHash) : Bool :=
   if applyProof (leafHash receipt) proof = expectedRoot then true else false
 
+structure ReceiptInclusionProof where
+  checkpointSeq : Nat
+  receiptSeq : Nat
+  leafIndex : Nat
+  merkleRoot : MerkleHash
+  proofLeafIndex : Nat
+  proof : ReceiptProof
+  deriving Repr, DecidableEq
+
+def ReceiptInclusionProof.verify (self : ReceiptInclusionProof)
+    (receipt : ReceiptBody) (expectedRoot : MerkleHash) : Bool :=
+  if self.leafIndex = self.proofLeafIndex then
+    verifyInclusion receipt self.proof expectedRoot
+  else
+    false
+
 def membershipProof : ReceiptTree → ReceiptBody → Option ReceiptProof
   | .leaf leafReceipt, target =>
       if target = leafReceipt then some [] else none

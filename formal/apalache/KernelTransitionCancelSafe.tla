@@ -29,6 +29,8 @@
 (*   reversal transition or concurrent Commit-vs-Cancel races.             *)
 (*   PostAdmissionDropGuard.tla carries the broader pre-dispatch and         *)
 (*   post-dispatch lifecycle model.                                         *)
+(*   Credential commit failures after dispatch follow DropPostDispatch there *)
+(*   and are outside this clean-cancellation abstraction.                    *)
 (***************************************************************************)
 
 EXTENDS Naturals, Common
