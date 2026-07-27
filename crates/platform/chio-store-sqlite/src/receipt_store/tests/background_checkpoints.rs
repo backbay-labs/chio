@@ -393,6 +393,7 @@ fn shared_db_background_build_adopts_external_checkpoint() -> Result<(), Box<dyn
     // build_due_checkpoints.)
     let mut stale_head = VerifiedHead {
         latest_checkpoint: None,
+        chain_frontier: None,
         claim_log_count: max_batch,
         claim_log_max_seq: max_batch,
     };
@@ -451,6 +452,7 @@ fn successful_checkpoint_build_clears_stale_error() -> Result<(), Box<dyn std::e
     // The recovery build succeeds and must clear the stale error.
     let mut head = VerifiedHead {
         latest_checkpoint: None,
+        chain_frontier: None,
         claim_log_count: max_batch,
         claim_log_max_seq: max_batch,
     };

@@ -214,7 +214,7 @@ ALLOWLIST: dict[str, AllowlistEntry] = {
     "crates/platform/chio-store-sqlite/src/receipt_store.rs": allow(
         "2026-07-31",
         "receipt store hot-path module after batch-bounded rework; capped to current size until split",
-        max_lines=5_345,
+        max_lines=5_375,
     ),
     "crates/platform/chio-store-sqlite/src/receipt_store/tests/retention.rs": allow(
         "2026-07-31",

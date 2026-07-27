@@ -966,3 +966,54 @@ fn validate_checkpoint_transparency_rejects_predecessor_fork() {
         "unexpected error: {error}"
     );
 }
+
+/// The frontier must agree with a full tree build at every size, otherwise a
+/// writer that extends incrementally would sign a different chain commitment
+/// than a verifier that rebuilds from leaves.
+#[test]
+fn chain_frontier_root_matches_a_full_tree_build_at_every_size() {
+    let leaves: Vec<Hash> = (0..200u32)
+        .map(|i| leaf_hash(format!("chain-leaf-{i}").as_bytes()))
+        .collect();
+
+    let mut frontier = CheckpointChainFrontier::empty();
+    assert_eq!(frontier.root(), None);
+    assert_eq!(frontier.leaf_count(), 0);
+
+    for size in 1..=leaves.len() {
+        frontier.append(leaves[size - 1]);
+        assert_eq!(frontier.leaf_count(), size as u64, "size {size}");
+        assert_eq!(
+            frontier.root(),
+            Some(checkpoint_chain_root(&leaves[..size]).expect("full build")),
+            "frontier root diverges from the full build at size {size}"
+        );
+        assert_eq!(
+            frontier,
+            CheckpointChainFrontier::from_leaves(&leaves[..size]),
+            "incremental and rebuilt frontiers diverge at size {size}"
+        );
+    }
+}
+
+/// The per-checkpoint path must not rehash the whole chain: the frontier keeps
+/// at most one subtree per set bit of the leaf count.
+#[test]
+fn chain_frontier_stays_logarithmic() {
+    let mut frontier = CheckpointChainFrontier::empty();
+    for i in 0..4096u32 {
+        frontier.append(leaf_hash(format!("chain-leaf-{i}").as_bytes()));
+    }
+    assert_eq!(frontier.leaf_count(), 4096);
+    assert_eq!(
+        frontier.subtree_count_for_test(),
+        (4096u64).count_ones() as usize,
+        "a power-of-two chain collapses to a single perfect subtree"
+    );
+
+    frontier.append(leaf_hash(b"one-more"));
+    assert_eq!(
+        frontier.subtree_count_for_test(),
+        (4097u64).count_ones() as usize
+    );
+}

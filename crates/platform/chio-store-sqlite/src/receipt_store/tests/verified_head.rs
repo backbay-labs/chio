@@ -896,6 +896,7 @@ fn stale_head_validates_adopted_delta_before_trusting() -> Result<(), Box<dyn st
     // entry_seq 4 inside the adopted pre_delta. The append must be denied.
     let mut stale_head = VerifiedHead {
         latest_checkpoint: None,
+        chain_frontier: None,
         claim_log_count: 3,
         claim_log_max_seq: 3,
     };
@@ -926,6 +927,7 @@ fn stale_head_validates_adopted_delta_before_trusting() -> Result<(), Box<dyn st
     // below-floor orphan; appending a brand-new receipt succeeds.
     let mut fresh_head = VerifiedHead {
         latest_checkpoint: None,
+        chain_frontier: None,
         claim_log_count: 4,
         claim_log_max_seq: 4,
     };
@@ -991,6 +993,7 @@ fn resync_validates_adopted_delta() -> Result<(), Box<dyn std::error::Error>> {
     // absorb it, and must not advance the head.
     let mut stale_head = VerifiedHead {
         latest_checkpoint: None,
+        chain_frontier: None,
         claim_log_count: 3,
         claim_log_max_seq: 3,
     };
@@ -1015,6 +1018,7 @@ fn resync_validates_adopted_delta() -> Result<(), Box<dyn std::error::Error>> {
     // orphan and the resync is a no-op.
     let mut fresh_head = VerifiedHead {
         latest_checkpoint: None,
+        chain_frontier: None,
         claim_log_count: 4,
         claim_log_max_seq: 4,
     };
@@ -1760,6 +1764,7 @@ fn store_wide_append_failure_poisons_the_head() -> Result<(), Box<dyn std::error
     health.set_head_poisoned(false);
     let mut head_state = WriterHeadState::Verified(Box::new(VerifiedHead {
         latest_checkpoint: None,
+        chain_frontier: None,
         claim_log_count: 3,
         claim_log_max_seq: 3,
     }));

@@ -19,7 +19,7 @@ use chio_core::receipt::{
 use chio_core::session::{
     OperationTerminalState, RequestLineageMode, RequestLineageRecord, SessionAnchorReference,
 };
-use chio_kernel::checkpoint::{KernelCheckpoint, KernelCheckpointBody};
+use chio_kernel::checkpoint::{CheckpointChainFrontier, KernelCheckpoint, KernelCheckpointBody};
 use chio_kernel::cost_attribution::{
     CostAttributionChainHop, CostAttributionQuery, CostAttributionReceiptRow,
     CostAttributionReport, CostAttributionSummary, LeafCostAttributionRow, RootCostAttributionRow,
@@ -2004,7 +2004,9 @@ fn build_due_checkpoints(
 
 /// Build every checkpoint the head owes: count-based ADR-0008 trigger, range
 /// derived from the cached head (NOT next_checkpoint_range_for_connection,
-/// which runs a full chain verify), O(b) work per checkpoint.
+/// which runs a full chain verify). Cost per checkpoint is O(b) over the batch
+/// plus O(log n) over the cached chain frontier; the frontier is rebuilt from
+/// the database only on a cache miss (first issuance after seed or resync).
 fn maybe_build_checkpoint(
     connection: &mut SqliteStoreConnection,
     head: &mut VerifiedHead,
@@ -2023,12 +2025,24 @@ fn maybe_build_checkpoint(
     // Chain leaves for every persisted checkpoint, extended in-loop as new
     // checkpoints commit; the cached head and the persisted chain must agree
     // on length before any of them are committed to a new chain_root.
-    let mut chain_leaf_hashes = load_checkpoint_chain_leaf_hashes(connection)?;
-    if chain_leaf_hashes.len() as u64 != head.checkpoint_seq() {
+    // O(n) exactly once per head, then extended in place. The frontier still
+    // reproduces the predecessor's signed chain_root inside the builder, so
+    // caching it does not weaken the check it replaces.
+    let cached = head
+        .chain_frontier
+        .take()
+        .filter(|frontier| frontier.leaf_count() == head.checkpoint_seq());
+    let mut chain_frontier = match cached {
+        Some(frontier) => frontier,
+        None => {
+            CheckpointChainFrontier::from_leaves(&load_checkpoint_chain_leaf_hashes(connection)?)
+        }
+    };
+    if chain_frontier.leaf_count() != head.checkpoint_seq() {
         return Err(ReceiptStoreError::Conflict(format!(
-            "cached head checkpoint_seq {} diverges from persisted chain length {}",
-            head.checkpoint_seq(),
-            chain_leaf_hashes.len()
+            "persisted chain covers {} checkpoints but the head is at {}",
+            chain_frontier.leaf_count(),
+            head.checkpoint_seq()
         )));
     }
     let mut built = false;
@@ -2048,15 +2062,16 @@ fn maybe_build_checkpoint(
             .checkpoint_seq()
             .checked_add(1)
             .ok_or_else(|| ReceiptStoreError::Conflict("checkpoint_seq overflow".to_string()))?;
-        // O(b) Merkle build; predecessor digest comes from the cached head.
-        let checkpoint = chio_kernel::build_checkpoint_with_previous(
+        // O(b) Merkle build over the batch, plus O(log n) over the chain
+        // frontier; the predecessor digest comes from the cached head.
+        let checkpoint = chio_kernel::checkpoint::build_checkpoint_with_chain_frontier(
             checkpoint_seq,
             start_seq,
             end_seq,
             &receipt_bytes,
             &signer.keypair,
             head.latest_checkpoint.as_ref(),
-            &chain_leaf_hashes,
+            &chain_frontier,
         )
         .map_err(checkpoint_error_to_receipt_store)?;
         #[cfg(test)]
@@ -2088,13 +2103,14 @@ fn maybe_build_checkpoint(
             )));
         }
         tx.commit()?;
-        chain_leaf_hashes.push(
+        chain_frontier.append(
             chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&adopted.body)
                 .map_err(checkpoint_error_to_receipt_store)?,
         );
         head.latest_checkpoint = Some(adopted);
         built = true;
     }
+    head.chain_frontier = Some(chain_frontier);
     Ok(built)
 }
 
@@ -2596,6 +2612,12 @@ pub(crate) struct VerifiedHead {
     /// The newest checkpoint the actor has verified, already parsed and
     /// signature-checked once. `None` before the first checkpoint.
     latest_checkpoint: Option<KernelCheckpoint>,
+    /// Frontier of the checkpoint-chain tree as of `latest_checkpoint`, kept
+    /// so issuing a checkpoint costs O(log n) hashes instead of rehashing the
+    /// whole chain. `None` means "not known here": the next issuance rebuilds
+    /// it from the persisted chain once and caches it again. Every path that
+    /// moves `latest_checkpoint` without extending this must clear it.
+    chain_frontier: Option<CheckpointChainFrontier>,
     /// Row count of `claim_receipt_log_entries` as last verified.
     claim_log_count: u64,
     /// MAX(entry_seq) of `claim_receipt_log_entries` as last verified.
@@ -2640,6 +2662,7 @@ fn seed_verified_head(connection: &Connection) -> Result<VerifiedHead, ReceiptSt
     let (claim_log_count, claim_log_max_seq) = claim_log_delta_count_and_max_seq(connection, 0)?;
     Ok(VerifiedHead {
         latest_checkpoint,
+        chain_frontier: None,
         claim_log_count,
         claim_log_max_seq,
     })
@@ -2656,6 +2679,7 @@ fn seed_head_snapshot(connection: &Connection) -> Result<VerifiedHead, ReceiptSt
     let (claim_log_count, claim_log_max_seq) = claim_log_delta_count_and_max_seq(connection, 0)?;
     Ok(VerifiedHead {
         latest_checkpoint,
+        chain_frontier: None,
         claim_log_count,
         claim_log_max_seq,
     })
@@ -2848,6 +2872,15 @@ fn catch_up_verified_head_to(
         // this adopted checkpoint's projection rows (O(b) for its batch, not full
         // history), fail closed on any divergence.
         validate_checkpoint_projection_rows(connection, &row, &checkpoint)?;
+        // Catch-up adopts checkpoints in sequence, so a cached frontier can be
+        // extended rather than dropped; the builder still reproduces the
+        // predecessor's signed chain_root from it before signing anything.
+        if let Some(frontier) = head.chain_frontier.as_mut() {
+            frontier.append(
+                chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&checkpoint.body)
+                    .map_err(checkpoint_error_to_receipt_store)?,
+            );
+        }
         head.latest_checkpoint = Some(checkpoint);
         cursor = next_seq;
     }

@@ -355,6 +355,84 @@ pub fn checkpoint_chain_leaf_hash(body: &KernelCheckpointBody) -> Result<Hash, C
     )
 }
 
+/// Append-only frontier of the checkpoint-chain Merkle tree.
+///
+/// Holds one root per perfect subtree covering the leaves so far, largest
+/// first, which is enough to compute the RFC 6962 tree head and to extend it.
+/// Appending is amortized O(1) hashes and the root costs O(log n), so a
+/// long-lived writer never rehashes the whole chain to issue one checkpoint.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CheckpointChainFrontier {
+    /// `(subtree root, leaf span)`, spans strictly decreasing powers of two.
+    subtrees: Vec<(Hash, u64)>,
+}
+
+impl CheckpointChainFrontier {
+    /// Frontier over no leaves.
+    #[must_use]
+    pub fn empty() -> Self {
+        Self::default()
+    }
+
+    /// Rebuild from every chain leaf in order. O(n); used once when a writer
+    /// seeds or resyncs its head, never on the per-checkpoint path.
+    #[must_use]
+    pub fn from_leaves(chain_leaf_hashes: &[Hash]) -> Self {
+        let mut frontier = Self::empty();
+        for leaf in chain_leaf_hashes {
+            frontier.append(*leaf);
+        }
+        frontier
+    }
+
+    /// Number of chain leaves covered.
+    #[must_use]
+    pub fn leaf_count(&self) -> u64 {
+        self.subtrees.iter().map(|(_, span)| *span).sum()
+    }
+
+    /// Extend by one chain leaf, merging equal-span neighbours so the spans
+    /// stay strictly decreasing powers of two.
+    pub fn append(&mut self, chain_leaf_hash: Hash) {
+        self.subtrees.push((chain_leaf_hash, 1));
+        while self.subtrees.len() >= 2 {
+            let (right, right_span) = self.subtrees[self.subtrees.len() - 1];
+            let (left, left_span) = self.subtrees[self.subtrees.len() - 2];
+            if left_span != right_span {
+                break;
+            }
+            self.subtrees.truncate(self.subtrees.len() - 2);
+            self.subtrees
+                .push((chio_core::merkle::node_hash(&left, &right), left_span * 2));
+        }
+    }
+
+    /// Number of perfect subtrees retained; equals the population count of
+    /// the leaf count.
+    #[cfg(test)]
+    #[must_use]
+    pub fn subtree_count_for_test(&self) -> usize {
+        self.subtrees.len()
+    }
+
+    /// RFC 6962 tree head over the covered leaves, or `None` when empty.
+    ///
+    /// Folds right-associatively, which is the same shape the recursive
+    /// definition produces for a tree whose right edge is incomplete.
+    #[must_use]
+    pub fn root(&self) -> Option<Hash> {
+        let (last, _) = *self.subtrees.last()?;
+        Some(
+            self.subtrees[..self.subtrees.len() - 1]
+                .iter()
+                .rev()
+                .fold(last, |acc, (subtree, _)| {
+                    chio_core::merkle::node_hash(subtree, &acc)
+                }),
+        )
+    }
+}
+
 /// Chain-commitment root over an ordered, gap-free run of chain leaves
 /// starting at checkpoint_seq 1.
 pub fn checkpoint_chain_root(chain_leaf_hashes: &[Hash]) -> Result<Hash, CheckpointError> {
@@ -1093,6 +1171,34 @@ pub fn build_checkpoint_with_previous(
     previous_checkpoint: Option<&KernelCheckpoint>,
     prior_chain_leaf_hashes: &[Hash],
 ) -> Result<KernelCheckpoint, CheckpointError> {
+    build_checkpoint_with_chain_frontier(
+        checkpoint_seq,
+        batch_start_seq,
+        batch_end_seq,
+        receipt_canonical_bytes_batch,
+        keypair,
+        previous_checkpoint,
+        &CheckpointChainFrontier::from_leaves(prior_chain_leaf_hashes),
+    )
+}
+
+/// Build a signed kernel checkpoint from the chain frontier rather than from
+/// every prior leaf.
+///
+/// This is the hot path: a long-lived writer keeps the frontier and extends
+/// it, so issuing a checkpoint costs O(log n) hashes instead of rehashing the
+/// whole chain. The predecessor's signed `chain_root` is still checked, at the
+/// same O(log n) cost, so the integrity guarantee is unchanged.
+#[allow(clippy::too_many_arguments)]
+pub fn build_checkpoint_with_chain_frontier(
+    checkpoint_seq: u64,
+    batch_start_seq: u64,
+    batch_end_seq: u64,
+    receipt_canonical_bytes_batch: &[Vec<u8>],
+    keypair: &Keypair,
+    previous_checkpoint: Option<&KernelCheckpoint>,
+    prior_chain: &CheckpointChainFrontier,
+) -> Result<KernelCheckpoint, CheckpointError> {
     let tree = MerkleTree::from_leaves(receipt_canonical_bytes_batch)?;
     let merkle_root = tree.root();
 
@@ -1104,7 +1210,7 @@ pub fn build_checkpoint_with_previous(
     )?;
     let chain_root = match previous_checkpoint {
         None => {
-            if !prior_chain_leaf_hashes.is_empty() {
+            if prior_chain.leaf_count() != 0 {
                 return Err(CheckpointError::Invalid(
                     "prior chain leaves supplied without a previous checkpoint".to_string(),
                 ));
@@ -1114,31 +1220,27 @@ pub fn build_checkpoint_with_previous(
                 .transpose()?
         }
         Some(previous) => {
-            if prior_chain_leaf_hashes.len() as u64 != previous.body.checkpoint_seq {
+            if prior_chain.leaf_count() != previous.body.checkpoint_seq {
                 return Err(CheckpointError::Continuity(format!(
-                    "prior chain leaf count {} does not match predecessor checkpoint_seq {}",
-                    prior_chain_leaf_hashes.len(),
+                    "prior chain covers {} leaves but predecessor is checkpoint {}",
+                    prior_chain.leaf_count(),
                     previous.body.checkpoint_seq
                 )));
             }
-            if prior_chain_leaf_hashes.last() != Some(&checkpoint_chain_leaf_hash(&previous.body)?)
-            {
-                return Err(CheckpointError::Continuity(format!(
-                    "last prior chain leaf does not match predecessor checkpoint {}",
-                    previous.body.checkpoint_seq
-                )));
-            }
+            // When the predecessor committed a chain, the frontier must
+            // reproduce exactly that commitment: this is what stops a stale or
+            // foreign frontier from being extended into a signed root.
             if let Some(previous_chain_root) = previous.body.chain_root {
-                if checkpoint_chain_root(prior_chain_leaf_hashes)? != previous_chain_root {
+                if prior_chain.root() != Some(previous_chain_root) {
                     return Err(CheckpointError::Continuity(format!(
-                        "predecessor {} chain_root does not match the supplied chain leaves",
+                        "predecessor {} chain_root does not match the supplied chain",
                         previous.body.checkpoint_seq
                     )));
                 }
             }
-            let mut chain = prior_chain_leaf_hashes.to_vec();
-            chain.push(own_chain_leaf);
-            Some(checkpoint_chain_root(&chain)?)
+            let mut chain = prior_chain.clone();
+            chain.append(own_chain_leaf);
+            chain.root()
         }
     };
 

@@ -142,7 +142,11 @@ and evolves in place, because Chio-owned schemas stay at v1 for the whole
 pre-release line (`scripts/check-chio-owned-v1-only.sh`); proofs serialized
 against the older shape no longer parse, which is correct given they proved
 nothing. The store cross-checks every commitment against the persisted chain on
-the operator path and rejects divergent clock-skew siblings. A rewritten
+the operator path and rejects divergent clock-skew siblings. Issuance stays
+batch-bounded: the writer keeps an append-only Merkle frontier of the chain on
+its verified head, so a checkpoint costs O(log n) chain hashes and rebuilds
+the frontier from the database only after a resync or restart, while still
+reproducing the predecessor's signed `chain_root` before signing. A rewritten
 history that re-signs with the real kernel key is rejected in
 `crates/tooling/chio-conformance/tests/checkpoint_consistency_forged_chain_root_rejected.rs`.
 

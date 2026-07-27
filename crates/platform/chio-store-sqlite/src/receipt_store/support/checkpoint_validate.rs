@@ -780,7 +780,8 @@ pub(crate) fn store_kernel_checkpoint_atomic(
     // chain here so the operator path fails closed. This is the operator/import
     // surface ONLY; the background builder (maybe_build_checkpoint /
     // insert_checkpoint_incremental_tx) deliberately stays on the O(b)
-    // incremental head and does not run through here.
+    // incremental head and does not run through here. Full-chain cost is
+    // accepted here precisely because this is the rare operator path.
     verify_checkpoint_chain_integrity(&tx)?;
     // An extending checkpoint that carries a chain commitment must commit
     // exactly the persisted chain plus its own leaf; anything else is caught
