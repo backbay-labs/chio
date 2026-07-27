@@ -88,6 +88,22 @@ theorem membership_proof_verifies
   unfold verifyInclusion
   exact if_pos h_sound
 
+theorem indexed_inclusion_rejects_leaf_index_mismatch
+    (receipt : ReceiptBody) (proof : ReceiptInclusionProof)
+    (expectedRoot : MerkleHash)
+    (h : proof.leafIndex ≠ proof.proofLeafIndex) :
+    proof.verify receipt expectedRoot = false := by
+  simp [ReceiptInclusionProof.verify, h]
+
+theorem indexed_inclusion_accepts_matching_membership_proof
+    (tree : ReceiptTree) (receipt : ReceiptBody) (path : ReceiptProof)
+    (leafIndex : Nat)
+    (h : membershipProof tree receipt = some path) :
+    (ReceiptInclusionProof.mk 1 1 leafIndex tree.root leafIndex path).verify
+        receipt tree.root = true := by
+  simp [ReceiptInclusionProof.verify]
+  exact membership_proof_verifies tree receipt path h
+
 /-- A checkpoint store keyed by `checkpointSeq` cannot yield two different
     roots for the same sequence. -/
 theorem checkpoint_consistency

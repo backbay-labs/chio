@@ -137,7 +137,7 @@ fn seal_collected_proof_bundle_with_fixture_id(
     verification_mode: SealVerificationMode,
 ) -> Result<serde_json::Value, CliError> {
     let passport_path = bundle.join("transaction-passport.json");
-    let (report, replay_commit_report) = match verification_mode {
+    let (verification_report, replay_snapshot) = match verification_mode {
         SealVerificationMode::ConsumeReplays => {
             let read_only_report = verify_transaction_passport_file(&passport_path)?;
             enforce_collect_kind_requirements(kind, &read_only_report)?;
@@ -150,21 +150,39 @@ fn seal_collected_proof_bundle_with_fixture_id(
             )
         }
     };
-    enforce_collect_kind_requirements(kind, &report)?;
-    let report = collected_verifier_report(bundle, report)?;
+    enforce_collect_kind_requirements(kind, &verification_report)?;
+    let report = collected_verifier_report(bundle, verification_report)?;
     let verifier_report_path = bundle.join("verifier/report.json");
     if let Some(parent) = verifier_report_path.parent() {
         fs::create_dir_all(parent)?;
     }
     write_json_line_file(&verifier_report_path, &report)?;
     write_collected_proof_room_bundle(bundle, &report, kind, public_fixture_id)?;
-    if let Some(read_only_report) = replay_commit_report {
-        super::verify_transaction_passport_file_and_consume_agent_web_replays(
-            &passport_path,
-            &read_only_report,
-        )?;
+    sync_collected_proof_room_bundle(bundle)?;
+    if let Some(read_only_report) = replay_snapshot {
+        let consumed_report =
+            super::verify_transaction_passport_file_and_consume_agent_web_replays(
+                &passport_path,
+                &read_only_report,
+            )?;
+        enforce_collect_kind_requirements(kind, &consumed_report)?;
     }
     Ok(report)
+}
+
+fn sync_collected_proof_room_bundle(path: &Path) -> Result<(), CliError> {
+    for entry in fs::read_dir(path)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        if file_type.is_dir() {
+            sync_collected_proof_room_bundle(&entry.path())?;
+        } else if file_type.is_file() {
+            fs::File::open(entry.path())?.sync_all()?;
+        }
+    }
+    #[cfg(unix)]
+    fs::File::open(path)?.sync_all()?;
+    Ok(())
 }
 
 fn enforce_collect_kind_requirements(

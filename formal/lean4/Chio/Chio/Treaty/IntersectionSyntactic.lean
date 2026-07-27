@@ -240,3 +240,47 @@ example : evaluateAmendmentSyn wideningCandidate =
 #eval evaluateAmendmentSyn wideningCandidate
 
 end Chio.Treaty.PredicateLang
+
+namespace Chio.Treaty.IntersectionSyntactic
+
+open Chio.Treaty.PredicateLang
+
+abbrev Polity := SyntacticPolity
+abbrev BilateralTreaty := SyntacticBilateralTreaty
+abbrev ConstitutionalDelta := ConstitutionalDeltaSyn
+abbrev AmendmentCandidate := AmendmentCandidateSyn
+
+/-- Production-shaped treaty intersection theorem. -/
+theorem treaty_admission_iff_predicate_intersection
+    (treaty : BilateralTreaty) (view : AdmissionView) :
+    synTreatyAdmits treaty view = true ↔
+      synTreatyPredicateIntersection treaty view = true :=
+  synTreaty_admission_iff_predicate_intersection treaty view
+
+/-- Stability above the declared governance-mode floor. -/
+theorem treaty_admission_stable_under_ladder_floor
+    (treaty : BilateralTreaty)
+    (mode : Chio.Treaty.TrustMode)
+    (view : AdmissionView)
+    (hMode : mode.atLeast treaty.modeFloor = true) :
+    synTreatyAdmitsUnderMode treaty mode view =
+      synTreatyAdmits treaty view :=
+  synTreaty_admission_stable_under_ladder_floor treaty mode view hMode
+
+/-- Exact refinement on the supplied finite domain. -/
+theorem amendment_admissible_iff_bounded_refinement
+    (candidate : AmendmentCandidate) :
+    amendmentAdmissibleSyn candidate ↔
+      SynBackwardRefines candidate.new candidate.old candidate.domain :=
+  synAmendment_admissible_iff_backward_refinement candidate
+
+/-- Fail-closed rejection after a failed decision. -/
+theorem amendment_without_refinement_rejected
+    (candidate : AmendmentCandidate)
+    (hCheck : refinesOnConstitution
+      candidate.new candidate.old candidate.domain = false) :
+    evaluateAmendmentSyn candidate =
+      Chio.Treaty.AmendmentVerdict.rejected :=
+  synAmendment_without_refinement_rejected candidate hCheck
+
+end Chio.Treaty.IntersectionSyntactic

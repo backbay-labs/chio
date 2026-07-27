@@ -19,6 +19,139 @@ struct LegacyExecutionNonceStore {
     reserve_calls: std::sync::Arc<AtomicU64>,
 }
 
+#[derive(Clone, Copy)]
+enum PostDispatchApprovalCommitFailure {
+    OwnershipLost,
+    StoreError,
+}
+
+struct PostDispatchFailingApprovalReplayStore {
+    failure: PostDispatchApprovalCommitFailure,
+}
+
+impl GovernedApprovalReplayStore for PostDispatchFailingApprovalReplayStore {
+    fn reserve_for_dispatch(
+        &self,
+        _subject_id: &str,
+        _request_id: &str,
+        _intent_hash: &str,
+        _expires_at: u64,
+        _reservation_id: &str,
+    ) -> Result<bool, KernelError> {
+        Ok(true)
+    }
+
+    fn commit_dispatch_reservation(
+        &self,
+        _subject_id: &str,
+        _request_id: &str,
+        _intent_hash: &str,
+        _reservation_id: &str,
+    ) -> Result<bool, KernelError> {
+        match self.failure {
+            PostDispatchApprovalCommitFailure::OwnershipLost => Ok(false),
+            PostDispatchApprovalCommitFailure::StoreError => {
+                Err(KernelError::GovernedTransactionDenied(
+                    "injected post-dispatch approval commit failure".to_string(),
+                ))
+            }
+        }
+    }
+
+    fn rollback_dispatch_reservation(
+        &self,
+        _subject_id: &str,
+        _request_id: &str,
+        _intent_hash: &str,
+        _reservation_id: &str,
+    ) -> Result<bool, KernelError> {
+        Ok(true)
+    }
+}
+
+struct CountingDispatchServer {
+    id: String,
+    tool: String,
+    invocations: std::sync::Arc<AtomicU64>,
+}
+
+#[async_trait::async_trait]
+impl ToolServerConnection for CountingDispatchServer {
+    fn server_id(&self) -> &str {
+        &self.id
+    }
+
+    fn tool_names(&self) -> Vec<String> {
+        vec![self.tool.clone()]
+    }
+
+    async fn invoke(
+        &self,
+        _tool_name: &str,
+        _arguments: serde_json::Value,
+        _nested_flow_bridge: Option<&mut dyn NestedFlowBridge>,
+    ) -> Result<serde_json::Value, KernelError> {
+        self.invocations.fetch_add(1, Ordering::SeqCst);
+        Ok(serde_json::json!({"status": "completed"}))
+    }
+}
+
+struct PostDispatchApprovalCommitFixture {
+    kernel: ChioKernel,
+    agent: Keypair,
+    capability: CapabilityToken,
+    request: ToolCallRequest,
+    invocations: std::sync::Arc<AtomicU64>,
+}
+
+fn post_dispatch_approval_commit_fixture(
+    request_id: &str,
+    failure: PostDispatchApprovalCommitFailure,
+) -> PostDispatchApprovalCommitFixture {
+    let server = "post-dispatch-approval-commit-server";
+    let tool = "execute";
+    let mut kernel = make_kernel(make_config());
+    kernel.set_governed_approval_replay_store(Box::new(
+        PostDispatchFailingApprovalReplayStore { failure },
+    ));
+    let invocations = std::sync::Arc::new(AtomicU64::new(0));
+    kernel.register_tool_server(Box::new(CountingDispatchServer {
+        id: server.to_string(),
+        tool: tool.to_string(),
+        invocations: std::sync::Arc::clone(&invocations),
+    }));
+    let agent = make_keypair();
+    let capability = make_capability(
+        &kernel,
+        &agent,
+        make_scope(vec![make_grant(server, tool)]),
+        300,
+    );
+    let intent = make_governed_intent(
+        &format!("intent-{request_id}"),
+        server,
+        tool,
+        "exercise post-dispatch replay commit failure handling",
+        1,
+        "USD",
+    );
+    let mut request = make_request(request_id, &capability, tool, server);
+    request.approval_token = Some(make_governed_approval_token(
+        &kernel.config.keypair,
+        &agent.public_key(),
+        &intent,
+        request_id,
+    ));
+    request.governed_intent = Some(intent);
+    PostDispatchApprovalCommitFixture {
+        kernel,
+        agent,
+        capability,
+        request,
+        invocations,
+    }
+}
+
 impl ExecutionNonceStore for LegacyExecutionNonceStore {
     fn reserve(&self, nonce_id: &str) -> Result<bool, KernelError> {
         self.reserve_calls.fetch_add(1, Ordering::SeqCst);
@@ -525,7 +658,7 @@ fn committed_dispatch_credential_retains_replay_marker_under_capacity_pressure(
         &arguments,
         "committed-credential-capacity-nonce-a",
     ));
-    let reservation = kernel.reserve_dispatch_credentials(
+    let mut reservation = kernel.reserve_dispatch_credentials(
         &committed_request,
         &capability,
         true,
@@ -606,7 +739,7 @@ fn committed_approval_retains_signed_horizon_under_capacity_pressure(
     ));
     committed_request.governed_intent = Some(intent.clone());
 
-    let reservation = kernel.reserve_dispatch_credentials(
+    let mut reservation = kernel.reserve_dispatch_credentials(
         &committed_request,
         &capability,
         false,
@@ -707,7 +840,7 @@ fn default_governed_approval_replay_store_accepts_once_and_denies_replay(
         federated_origin_kernel_id: None,
     };
 
-    let reservation = kernel.reserve_dispatch_credentials(
+    let mut reservation = kernel.reserve_dispatch_credentials(
         &request,
         &capability,
         false,
@@ -1061,6 +1194,91 @@ fn nested_late_approval_replay_rolls_back_credentials_and_dispatch_claim(
     assert_eq!(response.verdict, Verdict::Deny);
     kernel.request_session_cancellation(&session_id, &context.request_id)?;
     assert_earlier_credentials_remain_fresh(&kernel, &request, &capability, &binding)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn hosted_post_dispatch_approval_commit_failure_records_terminal_receipt(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = post_dispatch_approval_commit_fixture(
+        "hosted-post-dispatch-commit-failure",
+        PostDispatchApprovalCommitFailure::OwnershipLost,
+    );
+
+    let error = fixture
+        .kernel
+        .evaluate_tool_call(&fixture.request)
+        .await
+        .expect_err("post-dispatch approval commit failure must fail closed");
+
+    assert!(error
+        .to_string()
+        .contains("marker retention outcome unknown"));
+    assert_eq!(fixture.invocations.load(Ordering::SeqCst), 1);
+    let receipt_log = fixture.kernel.receipt_log();
+    assert_eq!(receipt_log.len(), 1);
+    let receipt = receipt_log
+        .get(0)
+        .ok_or_else(|| std::io::Error::other("terminal commit-failure receipt missing"))?;
+    assert!(receipt.is_cancelled());
+    assert!(receipt.decision.as_ref().is_some_and(|decision| matches!(
+        decision,
+        Decision::Cancelled { reason }
+            if reason == "dispatch credential commit failed after tool execution"
+    )));
+    assert!(receipt.verify_signature()?);
+    Ok(())
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn nested_post_dispatch_approval_commit_failure_records_terminal_receipt(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = post_dispatch_approval_commit_fixture(
+        "nested-post-dispatch-commit-failure",
+        PostDispatchApprovalCommitFailure::StoreError,
+    );
+    let session_id = fixture.kernel.open_session(
+        fixture.agent.public_key().to_hex(),
+        vec![fixture.capability.clone()],
+    )?;
+    fixture.kernel.activate_session(&session_id)?;
+    let context = make_operation_context(
+        &session_id,
+        &fixture.request.request_id,
+        &fixture.request.agent_id,
+    );
+    fixture
+        .kernel
+        .begin_session_request(&context, OperationKind::ToolCall, true)?;
+    let mut client = NoopNestedFlowClient;
+
+    let error = fixture
+        .kernel
+        .evaluate_tool_call_with_nested_flow_client_async(
+            &context,
+            &fixture.request,
+            &mut client,
+            None,
+        )
+        .await
+        .expect_err("nested post-dispatch approval commit failure must fail closed");
+
+    assert!(error
+        .to_string()
+        .contains("injected post-dispatch approval commit failure"));
+    assert_eq!(fixture.invocations.load(Ordering::SeqCst), 1);
+    let receipt_log = fixture.kernel.receipt_log();
+    assert_eq!(receipt_log.len(), 1);
+    let receipt = receipt_log
+        .get(0)
+        .ok_or_else(|| std::io::Error::other("nested terminal commit-failure receipt missing"))?;
+    assert!(receipt.is_cancelled());
+    assert!(receipt.decision.as_ref().is_some_and(|decision| matches!(
+        decision,
+        Decision::Cancelled { reason }
+            if reason == "dispatch credential commit failed after tool execution"
+    )));
+    assert!(receipt.verify_signature()?);
+    Ok(())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

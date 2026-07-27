@@ -379,11 +379,38 @@ async fn full_flow_denied_wrong_tool() {
 // Test: Denied by capability -- expired
 #[tokio::test]
 async fn full_flow_denied_expired_capability() {
-    let (kernel, _ca_kp) = make_kernel_bare();
+    let (kernel, ca_kp) = make_kernel_bare();
     let agent_kp = Keypair::generate();
-
-    let cap = issue_tool_cap(&kernel, &agent_kp.public_key(), "echo", 1);
-    tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let cap = CapabilityToken::sign(
+        CapabilityTokenBody {
+            id: "cap-expired".to_string(),
+            issuer: ca_kp.public_key(),
+            subject: agent_kp.public_key(),
+            scope: ChioScope {
+                grants: vec![ToolGrant {
+                    server_id: "srv".to_string(),
+                    tool_name: "echo".to_string(),
+                    operations: vec![Operation::Invoke],
+                    constraints: vec![],
+                    max_invocations: None,
+                    max_cost_per_invocation: None,
+                    max_total_cost: None,
+                    dpop_required: None,
+                }],
+                ..ChioScope::default()
+            },
+            issued_at: now.saturating_sub(2),
+            expires_at: now.saturating_sub(1),
+            delegation_chain: vec![],
+            aggregate_invocation_budget: None,
+        },
+        &ca_kp,
+    )
+    .expect("sign expired capability");
 
     let req = make_request(
         "req-expired",

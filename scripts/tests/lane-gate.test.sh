@@ -1152,6 +1152,9 @@ fi
 grep -Fq 'activation_target must be an integer <= 100' \
   "${tmp_dir}/invalid-activation.out"
 
+bash scripts/lane-gate.sh --fleet >"${tmp_dir}/advisory-fleet.out"
+grep -Fq 'fleet required=0 verdict=pass' "${tmp_dir}/advisory-fleet.out"
+
 python3 - "${config}" <<'PY'
 from pathlib import Path
 import sys

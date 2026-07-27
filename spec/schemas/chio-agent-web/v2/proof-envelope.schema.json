@@ -79,10 +79,7 @@
     },
     "receipt_refs": {
       "type": "array",
-      "items": {
-        "type": "string",
-        "pattern": "^receipt-agent-web-[a-z0-9-]+$"
-      },
+      "items": { "$ref": "#/$defs/canonicalReceiptRef" },
       "minItems": 1,
       "uniqueItems": true
     },
@@ -106,6 +103,10 @@
   },
   "$defs": {
     "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "canonicalReceiptRef": {
+      "type": "string",
+      "pattern": "^receipt-agent-web-[a-z0-9-]+$"
+    },
     "bundleRelativePath": {
       "type": "string",
       "minLength": 1,

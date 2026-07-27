@@ -12,6 +12,8 @@ use super::{
 };
 
 const POST_ADMISSION_DROP_REASON: &str = "tool evaluation future dropped after admission";
+const POST_DISPATCH_CREDENTIAL_COMMIT_FAILURE_REASON: &str =
+    "dispatch credential commit failed after tool execution";
 const PRE_DISPATCH_CLEANUP_FAULT_REASON: &str =
     "tool evaluation future dropped before dispatch with cleanup fault";
 
@@ -81,6 +83,7 @@ pub(crate) struct PostAdmissionDropGuard<'a> {
     /// Gates the step-4 child-budget release in `handle_pre_dispatch_drop`.
     budget_lease_acquired: bool,
     durable_operation: Option<&'a AdmissionOperationV1>,
+    post_dispatch_reason: &'static str,
     armed: bool,
     dispatch_started: bool,
 }
@@ -108,6 +111,7 @@ impl<'a> PostAdmissionDropGuard<'a> {
             child_receipts: Vec::new(),
             budget_lease_acquired,
             durable_operation: None,
+            post_dispatch_reason: POST_ADMISSION_DROP_REASON,
             armed: true,
             dispatch_started: false,
         }
@@ -150,6 +154,14 @@ impl<'a> PostAdmissionDropGuard<'a> {
     /// reservations.
     pub(crate) fn mark_dispatch_started(&mut self) {
         self.dispatch_started = true;
+    }
+
+    /// Classify a normal error return after the tool completed but before its
+    /// replay credentials could be committed. The guard remains armed so its
+    /// drop path records the executed-or-not outcome as a signed terminal
+    /// receipt instead of returning a raw error with no audit trail.
+    pub(crate) fn mark_dispatch_credential_commit_failed(&mut self) {
+        self.post_dispatch_reason = POST_DISPATCH_CREDENTIAL_COMMIT_FAILURE_REASON;
     }
 
     pub(crate) fn disarm(&mut self) {
@@ -444,7 +456,7 @@ impl Drop for PostAdmissionDropGuard<'_> {
             .kernel
             .build_cancelled_response_with_metadata_and_payee_binding(
                 self.request,
-                POST_ADMISSION_DROP_REASON,
+                self.post_dispatch_reason,
                 current_unix_timestamp(),
                 self.matched_grant_index,
                 receipt_metadata,

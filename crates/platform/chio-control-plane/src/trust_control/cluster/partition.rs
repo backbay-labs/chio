@@ -27,7 +27,7 @@ pub(crate) async fn handle_internal_cluster_partition(
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string()),
     };
 
-    let consensus = match cluster.lock() {
+    match cluster.lock() {
         Ok(mut guard) => {
             let self_url = guard.self_url.clone();
             let blocked = blocked_peer_urls
@@ -49,7 +49,6 @@ pub(crate) async fn handle_internal_cluster_partition(
                     peer_state.delta_records_since_snapshot = 0;
                 }
             }
-            compute_cluster_consensus_locked(&mut guard)
         }
         Err(poisoned) => {
             let mut guard = poisoned.into_inner();
@@ -73,8 +72,14 @@ pub(crate) async fn handle_internal_cluster_partition(
                     peer_state.delta_records_since_snapshot = 0;
                 }
             }
-            compute_cluster_consensus_locked(&mut guard)
         }
+    }
+    let Some((consensus, authority_lease)) = cluster_consensus_and_authority_lease_view(&state)
+    else {
+        return plain_http_error(
+            StatusCode::NOT_FOUND,
+            "cluster replication is not configured",
+        );
     };
 
     Json(ClusterPartitionResponse {
@@ -86,7 +91,7 @@ pub(crate) async fn handle_internal_cluster_partition(
         reachable_nodes: consensus.reachable_nodes,
         quorum_size: consensus.quorum_size,
         election_term: consensus.election_term,
-        authority_lease: cluster_authority_lease_view(&state),
+        authority_lease,
     })
     .into_response()
 }

@@ -386,6 +386,50 @@ fn proof_collect_consumes_replay_while_proof_verify_remains_idempotent() {
 }
 
 #[test]
+fn proof_collect_late_seal_failure_does_not_consume_replay() {
+    let tempdir = tempfile::tempdir().test_expect("tempdir");
+    let artifact_dir =
+        workspace_root().join("fixtures/proof-room/agent-web/valid-webhook-cloudevents");
+    let failed_out_path = tempdir.path().join("failed-agent-web-collection");
+    let retry_out_path = tempdir.path().join("retried-agent-web-collection");
+    let replay_store_path = tempdir.path().join("agent-web-replay.sqlite");
+
+    let failed_collect = chio_command()
+        .env("CHIO_AGENT_WEB_REPLAY_STORE_PATH", &replay_store_path)
+        .env_remove("CHIO_PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX")
+        .arg("proof")
+        .arg("collect")
+        .arg("--kind")
+        .arg("agent-web-envelope")
+        .arg("--artifact-dir")
+        .arg(&artifact_dir)
+        .arg("--out")
+        .arg(failed_out_path)
+        .arg("--json")
+        .output()
+        .test_expect("proof collect with missing signer runs");
+    assert_failure(
+        &failed_collect,
+        "proof collect requires CHIO_PROOF_COLLECT_BUNDLE_SIGNER_SEED_HEX",
+    );
+
+    let retry = chio_command()
+        .env("CHIO_AGENT_WEB_REPLAY_STORE_PATH", replay_store_path)
+        .arg("proof")
+        .arg("collect")
+        .arg("--kind")
+        .arg("agent-web-envelope")
+        .arg("--artifact-dir")
+        .arg(artifact_dir)
+        .arg("--out")
+        .arg(retry_out_path)
+        .arg("--json")
+        .output()
+        .test_expect("proof collect retry runs");
+    assert_success(&retry);
+}
+
+#[test]
 fn proof_collect_disclosure_agent_web_envelope_outputs_verifiable_combined_bundle() {
     let (tempdir, artifact_dir) = build_disclosure_agent_web_bundle();
     let out_path = tempdir

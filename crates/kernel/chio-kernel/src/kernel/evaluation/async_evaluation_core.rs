@@ -1672,7 +1672,10 @@ impl ChioKernel {
         // produce a signed ambiguous receipt instead of returning silently.
         let (tool_output, reported_cost) = match dispatch_result {
             Ok(result) => {
-                let _credential_disposition = credential_reservation.commit()?;
+                if let Err(error) = credential_reservation.commit() {
+                    post_admission_drop_guard.mark_dispatch_credential_commit_failed();
+                    return Err(error);
+                }
                 post_admission_drop_guard.disarm();
                 drop(post_admission_drop_guard);
                 result

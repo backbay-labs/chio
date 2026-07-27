@@ -63,6 +63,8 @@
 (* These are abstraction anchors registered in formal/proof-manifest.toml. *)
 (* The storage anchors do not enforce strict timestamp monotonicity.       *)
 (* MonotoneLog uses the model clock and ASSUME-OS-CLOCK at that boundary. *)
+(* Post-dispatch credential disposition is outside this model. Changes to *)
+(* that tail preserve the revocation gate and append-only verdict surface. *)
 (*                                                                          *)
 (* CONSTANTS PROCS, CAPS, and DEPTH_MAX are bounded integer counts (set    *)
 (* by the MCRevocationPropagation.cfg companions at PROCS=4, CAPS=8,      *)

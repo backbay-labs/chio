@@ -1405,7 +1405,10 @@ impl ChioKernel {
         post_admission_drop_guard.record_buffered_child_receipts()?;
         let (tool_output, reported_cost) = match tool_output_result {
             Ok(output) => {
-                let _credential_disposition = credential_reservation.commit()?;
+                if let Err(error) = credential_reservation.commit() {
+                    post_admission_drop_guard.mark_dispatch_credential_commit_failed();
+                    return Err(error);
+                }
                 post_admission_drop_guard.disarm();
                 drop(post_admission_drop_guard);
                 output
@@ -1413,7 +1416,10 @@ impl ChioKernel {
             Err(error @ KernelError::UrlElicitationsRequired { .. })
                 if nested_interaction_observed =>
             {
-                let _credential_disposition = credential_reservation.commit()?;
+                if let Err(commit_error) = credential_reservation.commit() {
+                    post_admission_drop_guard.mark_dispatch_credential_commit_failed();
+                    return Err(commit_error);
+                }
                 post_admission_drop_guard.disarm();
                 drop(post_admission_drop_guard);
                 let reason =

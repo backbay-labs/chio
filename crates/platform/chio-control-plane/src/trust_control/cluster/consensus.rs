@@ -16,15 +16,21 @@ pub(crate) async fn handle_internal_cluster_status(
             "cluster replication is not configured",
         );
     };
-    let consensus = cluster_consensus_view(&state).unwrap_or_else(|| ClusterConsensusView {
-        self_url: String::new(),
-        leader_url: None,
-        role: "standalone",
-        has_quorum: false,
-        quorum_size: 1,
-        reachable_nodes: 1,
-        election_term: 0,
-    });
+    let (consensus, authority_lease) = cluster_consensus_and_authority_lease_view(&state)
+        .unwrap_or_else(|| {
+            (
+                ClusterConsensusView {
+                    self_url: String::new(),
+                    leader_url: None,
+                    role: "standalone",
+                    has_quorum: false,
+                    quorum_size: 1,
+                    reachable_nodes: 1,
+                    election_term: 0,
+                },
+                None,
+            )
+        });
     let replication = match cluster_replication_heads(&state) {
         Ok(replication) => replication,
         Err(error) => {
@@ -109,7 +115,7 @@ pub(crate) async fn handle_internal_cluster_status(
         quorum_size: consensus.quorum_size,
         reachable_nodes: consensus.reachable_nodes,
         election_term: consensus.election_term,
-        authority_lease: cluster_authority_lease_view(&state),
+        authority_lease,
         replication,
         peers,
         budget_ack_heads,
@@ -302,12 +308,24 @@ pub(crate) fn budget_authority_guarantee_level(
 }
 
 pub(crate) fn cluster_consensus_view(state: &TrustServiceState) -> Option<ClusterConsensusView> {
+    cluster_consensus_and_authority_lease_view(state).map(|(consensus, _)| consensus)
+}
+
+pub(crate) fn cluster_consensus_and_authority_lease_view(
+    state: &TrustServiceState,
+) -> Option<(ClusterConsensusView, Option<ClusterAuthorityLeaseView>)> {
     let cluster = state.cluster.as_ref()?;
     Some(match cluster.lock() {
-        Ok(mut guard) => compute_cluster_consensus_locked(&mut guard),
+        Ok(mut guard) => {
+            let consensus = compute_cluster_consensus_locked(&mut guard);
+            let authority_lease = cluster_authority_lease_view_locked(&mut guard, &consensus);
+            (consensus, authority_lease)
+        }
         Err(poisoned) => {
             let mut guard = poisoned.into_inner();
-            compute_cluster_consensus_locked(&mut guard)
+            let consensus = compute_cluster_consensus_locked(&mut guard);
+            let authority_lease = cluster_authority_lease_view_locked(&mut guard, &consensus);
+            (consensus, authority_lease)
         }
     })
 }

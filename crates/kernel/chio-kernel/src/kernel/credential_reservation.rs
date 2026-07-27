@@ -78,7 +78,7 @@ impl DispatchCredentialReservation<'_> {
         self.execution_nonce_present || self.approval_key.is_some()
     }
 
-    pub(crate) fn commit(mut self) -> Result<PaymentCredentialDisposition, KernelError> {
+    pub(crate) fn commit(&mut self) -> Result<PaymentCredentialDisposition, KernelError> {
         // Clear rollback before the first fallible retention operation. On an
         // uncertain failure, keeping every owned marker is the safe direction.
         self.rollback_on_drop = false;
