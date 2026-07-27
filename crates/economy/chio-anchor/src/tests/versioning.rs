@@ -100,3 +100,11 @@ fn proof_bundle_schema_tracks_the_primary_proof_version() {
         "bundle schema chio.anchor-proof-bundle.v1 requires primary proof schema chio.anchor-inclusion-proof.v1"
     ));
 }
+
+#[test]
+fn unsuffixed_proof_bundle_schema_tracks_current_v2_issuance() {
+    assert_eq!(
+        crate::CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA,
+        CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V2
+    );
+}

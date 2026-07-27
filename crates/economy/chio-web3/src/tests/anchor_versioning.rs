@@ -43,3 +43,19 @@ fn web3_checkpoint_verification_requires_valid_first_v2_chain_root() {
             if message.contains("does not commit its own chain leaf")
     ));
 }
+
+#[test]
+fn web3_checkpoint_verification_rejects_tree_size_outside_signed_batch_range() {
+    let mut proof = sample_anchor_inclusion_proof();
+    proof.checkpoint_statement.tree_size = 2;
+    proof.receipt_inclusion.proof.tree_size = 2;
+    let body = checkpoint_statement_body(&proof.checkpoint_statement);
+    let (signature, _) = operator_keypair().sign_canonical(&body).unwrap();
+    proof.checkpoint_statement.signature = signature;
+
+    assert!(matches!(
+        verify_anchor_inclusion_proof(&proof),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("tree_size 2 does not match covered entry count 1")
+    ));
+}

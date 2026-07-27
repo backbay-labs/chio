@@ -68,19 +68,21 @@ use if the external-helper requirement proves too fragile to operate.
 Plain-file layout, as exercised in the experiment:
 
 ```
-log/<log_id>/checkpoints/<12-digit zero-padded tree_size>.json
+log/<log_id>/checkpoints/<20-digit zero-padded batch_end_seq>.json
 ```
 
 Each file is the canonical-JSON `KernelCheckpoint` including its kernel
-signature. Zero-padding gives lexicographic ordering that matches numeric
-ordering.
+signature. `batch_end_seq` is the cumulative checkpoint position, so routine
+equal-sized batches retain distinct paths. Zero-padding gives lexicographic
+ordering that matches numeric ordering.
 
 COB layout: a custom type whose operations are checkpoint publications, with an
 evaluator that unions concurrent operations and records conflicting
-`(kernel_key, tree_size)` groups with distinct body digests. Note that this
-requires the evaluator binary on `PATH` of every interpreting node, that
-replication succeeds while evaluation hard-fails without it, and that COBs are
-invisible to `radicle-httpd` and web gateways.
+`(kernel_key, checkpoint_seq, batch_end_seq)` groups with distinct body
+digests. Note that this requires the evaluator binary on `PATH` of every
+interpreting node and that replication succeeds while evaluation hard-fails
+without it. COB visibility through `radicle-httpd` and web gateways remains
+unverified because `radicle-httpd` was absent from the tested release artifact.
 
 ## 5. Detection algorithm
 

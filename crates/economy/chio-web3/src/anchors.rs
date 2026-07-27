@@ -529,6 +529,24 @@ fn validate_checkpoint_statement_shape(
             "checkpoint statement tree_size must be non-zero".to_string(),
         ));
     }
+    if statement.schema == CHIO_CHECKPOINT_STATEMENT_SCHEMA_V2 {
+        let covered_entries = statement
+            .batch_end_seq
+            .checked_sub(statement.batch_start_seq)
+            .and_then(|count| count.checked_add(1))
+            .ok_or_else(|| {
+                Web3ContractError::InvalidProof(format!(
+                    "invalid checkpoint statement entry range {}-{}",
+                    statement.batch_start_seq, statement.batch_end_seq
+                ))
+            })?;
+        if statement.tree_size != covered_entries {
+            return Err(Web3ContractError::InvalidProof(format!(
+                "checkpoint statement tree_size {} does not match covered entry count {covered_entries}",
+                statement.tree_size
+            )));
+        }
+    }
     if statement.schema == CHIO_CHECKPOINT_STATEMENT_SCHEMA_V2 && statement.checkpoint_seq == 1 {
         let Some(chain_root) = statement.chain_root else {
             return Err(Web3ContractError::InvalidProof(

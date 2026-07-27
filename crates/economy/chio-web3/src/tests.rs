@@ -361,7 +361,7 @@ fn sample_anchor_inclusion_proof_for_receipt(receipt: ChioReceipt) -> AnchorIncl
         schema: CHIO_CHECKPOINT_STATEMENT_SCHEMA.to_string(),
         checkpoint_seq: 1_042,
         batch_start_seq: 104_101,
-        batch_end_seq: 104_200,
+        batch_end_seq: 104_101,
         tree_size: 1,
         merkle_root,
         issued_at: 1_743_292_800,

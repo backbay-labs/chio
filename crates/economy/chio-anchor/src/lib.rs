@@ -436,7 +436,7 @@ mod tests {
         .test_unwrap();
 
         AnchorProofBundle {
-            schema: super::CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA.to_string(),
+            schema: CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V1.to_string(),
             primary_proof: upgraded,
             secondary_lanes: vec![AnchorLaneKind::BitcoinOts],
             solana_anchor: None,
@@ -606,7 +606,7 @@ mod tests {
         );
 
         let bundle = AnchorProofBundle {
-            schema: super::CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA.to_string(),
+            schema: CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V1.to_string(),
             primary_proof: upgraded,
             secondary_lanes: vec![AnchorLaneKind::BitcoinOts],
             solana_anchor: None,
@@ -665,7 +665,7 @@ mod tests {
         .test_unwrap();
 
         let bundle = AnchorProofBundle {
-            schema: super::CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA.to_string(),
+            schema: CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V1.to_string(),
             primary_proof: proof,
             secondary_lanes: vec![AnchorLaneKind::SolanaMemo],
             solana_anchor: Some(SolanaMemoAnchorRecord::from_prepared(
@@ -704,7 +704,7 @@ mod tests {
         solana.anchored_checkpoint_seq += 1;
 
         let bundle = AnchorProofBundle {
-            schema: super::CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA.to_string(),
+            schema: CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V1.to_string(),
             primary_proof: proof,
             secondary_lanes: vec![AnchorLaneKind::SolanaMemo],
             solana_anchor: Some(solana),

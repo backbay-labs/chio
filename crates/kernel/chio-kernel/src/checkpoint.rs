@@ -1115,6 +1115,16 @@ pub fn build_checkpoint_transparency(
 pub fn validate_checkpoint_transparency(
     checkpoints: &[KernelCheckpoint],
 ) -> Result<CheckpointTransparencySummary, CheckpointError> {
+    let mut checkpoint_seqs = BTreeSet::new();
+    for checkpoint in checkpoints {
+        if !checkpoint_seqs.insert(checkpoint.body.checkpoint_seq) {
+            return Err(CheckpointError::Continuity(format!(
+                "duplicate checkpoint sequence {}",
+                checkpoint.body.checkpoint_seq
+            )));
+        }
+    }
+
     let transparency = build_checkpoint_transparency(checkpoints)?;
     if let Some(equivocation) = transparency.equivocations.first() {
         return Err(CheckpointError::Continuity(format!(

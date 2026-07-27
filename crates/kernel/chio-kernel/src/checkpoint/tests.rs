@@ -179,6 +179,31 @@ fn build_checkpoint_transparency_derives_publications_and_witnesses() {
 }
 
 #[test]
+fn validate_checkpoint_transparency_rejects_duplicate_signed_checkpoints() {
+    let kp = Keypair::generate();
+    let first = build_checkpoint(1, 1, 2, &make_receipt_bytes(2), &kp).expect("build first");
+    let second = build_checkpoint_with_previous(
+        2,
+        3,
+        4,
+        &make_receipt_bytes(2),
+        &kp,
+        Some(&first),
+        &chain_leaves(&[&first]),
+    )
+    .expect("build second");
+
+    let error = validate_checkpoint_transparency(&[first.clone(), first, second])
+        .expect_err("duplicate signed checkpoints must fail closed");
+    assert!(
+        error
+            .to_string()
+            .contains("duplicate checkpoint sequence 1"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
 fn checkpoint_log_id_preserves_historical_ed25519_hashing() {
     let kp = Keypair::generate();
     let checkpoint =

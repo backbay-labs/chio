@@ -11,7 +11,7 @@ use crate::{
 
 pub const CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V1: &str = "chio.anchor-proof-bundle.v1";
 pub const CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V2: &str = "chio.anchor-proof-bundle.v2";
-pub const CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA: &str = CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V1;
+pub const CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA: &str = CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
