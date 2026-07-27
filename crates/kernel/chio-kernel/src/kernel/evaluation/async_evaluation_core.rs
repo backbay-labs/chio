@@ -1681,21 +1681,40 @@ impl ChioKernel {
                 post_admission_drop_guard.disarm();
                 drop(post_admission_drop_guard);
                 let credential_cleanup = if payment_authorization.is_some() {
-                    credential_reservation.commit().map(|_| ())
+                    credential_reservation
+                        .commit()
+                        .map(|_| PaymentCredentialDisposition::RetainedAfterAuthorization)
                 } else {
-                    credential_reservation.rollback_before_dispatch()
+                    credential_reservation
+                        .rollback_before_dispatch()
+                        .map(|()| PaymentCredentialDisposition::NonePresent)
                 };
-                if let Err(cleanup_error) = credential_cleanup {
-                    warn!(
-                        request_id = %request.request_id,
-                        reason = %redacted!(&cleanup_error),
-                        audit_fault = "url_elicitation_credential_cleanup_unrecorded",
-                        "URL-elicitation credential cleanup could not be confirmed"
-                    );
-                }
+                let (credential_disposition, credential_cleanup_error) = match credential_cleanup {
+                    Ok(disposition) => (disposition, None),
+                    Err(cleanup_error) => {
+                        warn!(
+                            request_id = %request.request_id,
+                            reason = %redacted!(&cleanup_error),
+                            audit_fault = "url_elicitation_credential_cleanup_unconfirmed",
+                            "URL-elicitation credential cleanup could not be confirmed"
+                        );
+                        (
+                            PaymentCredentialDisposition::RetentionOutcomeUnknown,
+                            Some(cleanup_error.to_string()),
+                        )
+                    }
+                };
+                let cleanup_reason = credential_cleanup_error.as_ref().map_or_else(
+                    || "tool server requested URL elicitation before execution".to_string(),
+                    |cleanup_error| {
+                        format!(
+                            "tool server requested URL elicitation before execution; dispatch credential cleanup could not be confirmed: {cleanup_error}"
+                        )
+                    },
+                );
                 let cleanup_denial = PreDispatchCleanupDeny {
                     request,
-                    reason: "tool server requested URL elicitation before execution",
+                    reason: &cleanup_reason,
                     timestamp: now,
                     matched_grant_index,
                     cap,
@@ -1708,28 +1727,33 @@ impl ChioKernel {
                     verified_payee_binding: verified_governed_payee_binding.as_ref(),
                     budget_lease_acquired,
                 };
-                let credential_disposition = if payment_authorization.is_some() {
-                    PaymentCredentialDisposition::RetainedAfterAuthorization
-                } else {
-                    PaymentCredentialDisposition::NonePresent
-                };
                 let cleanup_requires_receipt = payment_authorization.is_some()
-                    || !reserved_runtime_admission_ids(extra_metadata.as_ref()).is_empty();
-                let cleanup = if cleanup_requires_receipt {
-                    self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
-                        self.build_pre_dispatch_cleanup_deny_response_with_credentials(
-                            cleanup_denial,
-                            credential_disposition,
-                        )
-                        .map(|_| ())
-                    })
-                } else {
-                    self.unwind_url_elicitation_before_effect(
-                        cleanup_denial,
-                        credential_disposition,
-                    )
-                };
-                if let Err(cleanup_error) = cleanup {
+                    || !reserved_runtime_admission_ids(extra_metadata.as_ref()).is_empty()
+                    || credential_cleanup_error.is_some();
+                if cleanup_requires_receipt {
+                    let cleanup = self.with_pre_invocation_guard_evidence(
+                        &pre_invocation_guard_evidence,
+                        || {
+                            self.build_pre_dispatch_cleanup_deny_response_with_credentials(
+                                cleanup_denial,
+                                credential_disposition,
+                            )
+                        },
+                    );
+                    if credential_cleanup_error.is_some() {
+                        return cleanup;
+                    }
+                    if let Err(cleanup_error) = cleanup {
+                        warn!(
+                            request_id = %request.request_id,
+                            reason = %redacted!(&cleanup_error),
+                            audit_fault = "url_elicitation_cleanup_unrecorded",
+                            "URL-elicitation cleanup could not be confirmed"
+                        );
+                    }
+                } else if let Err(cleanup_error) = self
+                    .unwind_url_elicitation_before_effect(cleanup_denial, credential_disposition)
+                {
                     warn!(
                         request_id = %request.request_id,
                         reason = %redacted!(&cleanup_error),

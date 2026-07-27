@@ -223,10 +223,11 @@ impl SqliteAgentWebReplayStore {
             FROM (
                 SELECT COUNT(*) AS scope_rows
                 FROM chio_agent_web_replays
+                WHERE replay_scope <> ?1
                 GROUP BY replay_scope
             )
             "#,
-            [],
+            params![LEGACY_UNSCOPED_REPLAY_SCOPE],
             |row| row.get::<_, i64>(0),
         )?;
         let (persisted_global_capacity, persisted_per_scope_capacity) = transaction.query_row(
@@ -966,6 +967,48 @@ mod tests {
                 &[replay_entry_in_scope(2, "legacy-shared", expires_at + 20)],
             )
             .test_expect("scoped ids are independent after legacy expiry");
+    }
+
+    #[test]
+    fn migrated_legacy_bucket_is_governed_only_by_global_capacity() {
+        let tempdir = tempfile::tempdir().test_expect("tempdir creates");
+        let path = tempdir.path().join("legacy-capacity.sqlite");
+        let now = unix_now();
+        let now_sql = i64::try_from(now).test_expect("fixture time fits SQLite integer");
+        let expires_at_sql =
+            i64::try_from(now + 3_600).test_expect("fixture expiry fits SQLite integer");
+        let connection = Connection::open(&path).test_expect("legacy database opens");
+        connection
+            .execute_batch(
+                r#"
+                CREATE TABLE chio_agent_web_replays (
+                    webhook_id TEXT PRIMARY KEY,
+                    consumed_at INTEGER NOT NULL,
+                    expires_at INTEGER NOT NULL
+                );
+                "#,
+            )
+            .test_expect("legacy replay table creates");
+        for webhook_id in ["legacy-one", "legacy-two"] {
+            connection
+                .execute(
+                    "INSERT INTO chio_agent_web_replays (webhook_id, consumed_at, expires_at) VALUES (?1, ?2, ?3)",
+                    params![webhook_id, now_sql, expires_at_sql],
+                )
+                .test_expect("legacy replay row inserts");
+        }
+        drop(connection);
+
+        let store = SqliteAgentWebReplayStore::open_with_capacity(&path, 2, 1)
+            .test_expect("legacy bucket may exceed the authenticated per-scope limit");
+        let error = store
+            .check_and_insert(now, &[replay_entry_in_scope(1, "fresh", now + 3_600)])
+            .test_expect_err("migrated rows still consume global capacity");
+        assert!(matches!(
+            error,
+            AgentWebReplayStoreError::Unavailable(message)
+                if message.contains("global live-entry capacity 2")
+        ));
     }
 
     #[test]

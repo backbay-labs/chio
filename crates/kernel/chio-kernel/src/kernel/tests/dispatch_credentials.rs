@@ -822,6 +822,123 @@ fn nested_url_elicitation_rolls_back_credentials_for_retry(
         .complete_session_request(&session_id, &context.request_id)?;
     Ok(())
 }
+
+#[test]
+fn hosted_url_elicitation_credential_cleanup_failure_records_terminal_denial(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = request_with_panicking_execution_nonce_store(
+        "hosted-url-credential-cleanup-failure",
+        false,
+        true,
+    )?;
+    let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
+    fixture
+        .kernel
+        .register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
+            &fixture.request.server_id,
+            vec![&fixture.request.tool_name],
+            std::sync::Arc::clone(&stream_attempts),
+        )));
+
+    let response = fixture.kernel.evaluate_tool_call_blocking(&fixture.request)?;
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert!(response.receipt.verify_signature()?);
+    assert_eq!(stream_attempts.load(Ordering::SeqCst), 1);
+    assert_eq!(fixture.rollback_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(fixture.kernel.receipt_log().len(), 1);
+    let reason = response
+        .reason
+        .as_deref()
+        .ok_or_else(|| std::io::Error::other("cleanup denial reason missing"))?;
+    assert!(reason.contains("dispatch credential cleanup could not be confirmed"));
+    assert!(!reason.contains("sensitive execution nonce rollback panic payload"));
+    let runtime = &response
+        .receipt
+        .metadata
+        .as_ref()
+        .ok_or_else(|| std::io::Error::other("cleanup denial metadata missing"))?
+        ["chio_runtime"];
+    assert_eq!(
+        runtime["dispatch_credential_disposition"],
+        "retention_outcome_unknown"
+    );
+    assert_eq!(
+        runtime["dispatch_credential_retention_outcome_unknown"],
+        true
+    );
+    Ok(())
+}
+
+#[test]
+fn nested_url_elicitation_credential_cleanup_failure_records_terminal_denial(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = request_with_panicking_execution_nonce_store(
+        "nested-url-credential-cleanup-failure",
+        false,
+        true,
+    )?;
+    let stream_attempts = std::sync::Arc::new(AtomicU64::new(0));
+    fixture
+        .kernel
+        .register_tool_server(Box::new(UrlElicitationBeforeSideEffectServer::new(
+            &fixture.request.server_id,
+            vec![&fixture.request.tool_name],
+            std::sync::Arc::clone(&stream_attempts),
+        )));
+    let session_id = fixture.kernel.open_session(
+        fixture.request.agent_id.clone(),
+        vec![fixture.capability.clone()],
+    )?;
+    fixture.kernel.activate_session(&session_id)?;
+    let context = make_operation_context(
+        &session_id,
+        &fixture.request.request_id,
+        &fixture.request.agent_id,
+    );
+    fixture
+        .kernel
+        .begin_session_request(&context, OperationKind::ToolCall, true)?;
+    let mut client = NoopNestedFlowClient;
+
+    let response = fixture.kernel.evaluate_tool_call_with_nested_flow_client(
+        &context,
+        &fixture.request,
+        &mut client,
+        None,
+    )?;
+
+    assert_eq!(response.verdict, Verdict::Deny);
+    assert!(response.receipt.verify_signature()?);
+    assert_eq!(stream_attempts.load(Ordering::SeqCst), 1);
+    assert_eq!(fixture.rollback_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(fixture.kernel.receipt_log().len(), 1);
+    let reason = response
+        .reason
+        .as_deref()
+        .ok_or_else(|| std::io::Error::other("nested cleanup denial reason missing"))?;
+    assert!(reason.contains("dispatch credential cleanup could not be confirmed"));
+    assert!(!reason.contains("sensitive execution nonce rollback panic payload"));
+    let runtime = &response
+        .receipt
+        .metadata
+        .as_ref()
+        .ok_or_else(|| std::io::Error::other("nested cleanup denial metadata missing"))?
+        ["chio_runtime"];
+    assert_eq!(
+        runtime["dispatch_credential_disposition"],
+        "retention_outcome_unknown"
+    );
+    assert_eq!(
+        runtime["dispatch_credential_retention_outcome_unknown"],
+        true
+    );
+    fixture
+        .kernel
+        .complete_session_request(&session_id, &context.request_id)?;
+    Ok(())
+}
+
 #[test]
 fn terminal_allow_persistence_rechecks_revocation_at_append_boundary(
 ) -> Result<(), Box<dyn std::error::Error>> {
