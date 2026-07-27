@@ -1103,6 +1103,30 @@ fn validate_checkpoint_transparency_rejects_predecessor_fork() {
     );
 }
 
+#[test]
+fn validate_checkpoint_transparency_rejects_truncated_predecessor_chain() {
+    let kp = Keypair::generate();
+    let first = build_checkpoint(1, 1, 2, &[b"one".to_vec(), b"two".to_vec()], &kp)
+        .expect("first checkpoint");
+    let second = build_checkpoint_with_previous(
+        2,
+        3,
+        4,
+        &[b"three".to_vec(), b"four".to_vec()],
+        &kp,
+        Some(&first),
+        &chain_leaves(&[&first]),
+    )
+    .expect("second checkpoint");
+
+    let error = validate_checkpoint_transparency(&[second])
+        .expect_err("a checkpoint set with an unresolved predecessor must fail closed");
+    assert!(
+        error.to_string().contains("unresolved predecessor"),
+        "unexpected error: {error}"
+    );
+}
+
 /// The frontier must agree with a full tree build at every size, otherwise a
 /// writer that extends incrementally would sign a different chain commitment
 /// than a verifier that rebuilds from leaves.

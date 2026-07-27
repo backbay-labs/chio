@@ -174,6 +174,8 @@ pub const CHIO_DISCLOSURE_LINEAGE_VERIFIER_REPORT_V1_SCHEMA: &str =
     "chio.disclosure.lineage-verifier-report.v1";
 pub const CHIO_TRANSPARENCY_INCLUSION_PROOF_V1_SCHEMA: &str =
     "chio.transparency.inclusion-proof.v1";
+pub const CHIO_TRANSPARENCY_INCLUSION_PROOF_V2_SCHEMA: &str =
+    "chio.transparency.inclusion-proof.v2";
 pub const CHIO_POLICY_ACTIVATION_RECEIPT_V1_SCHEMA: &str = "chio.policy.activation-receipt.v1";
 pub const CHIO_RUNTIME_EXECUTION_LEASE_V1_SCHEMA: &str = "chio.runtime.execution-lease.v1";
 pub const CHIO_RUNTIME_TOOL_SERVER_ACK_V1_SCHEMA: &str = "chio.runtime.tool-server-ack.v1";
@@ -796,6 +798,13 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
     (
         CHIO_TRANSPARENCY_INCLUSION_PROOF_V1_SCHEMA,
         Some(("transparency_inclusion_proof", "crypto-context-v1")),
+    ),
+    (
+        CHIO_TRANSPARENCY_INCLUSION_PROOF_V2_SCHEMA,
+        Some((
+            "transparency_anchored_inclusion_proof",
+            "checkpoint-transparency-v2",
+        )),
     ),
     (
         CHIO_POLICY_ACTIVATION_RECEIPT_V1_SCHEMA,

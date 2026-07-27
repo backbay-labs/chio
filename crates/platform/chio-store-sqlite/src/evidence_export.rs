@@ -240,8 +240,12 @@ impl SqliteReceiptStore {
             r#"
             SELECT checkpoint_seq
             FROM kernel_checkpoints
-            WHERE batch_end_seq >= ?1
-              AND batch_start_seq <= ?2
+            WHERE checkpoint_seq <= (
+                SELECT MAX(checkpoint_seq)
+                FROM kernel_checkpoints
+                WHERE batch_end_seq >= ?1
+                  AND batch_start_seq <= ?2
+            )
             ORDER BY checkpoint_seq ASC
             "#,
         )?;
@@ -448,6 +452,7 @@ mod tests {
     };
     use chio_core::session::{OperationKind, OperationTerminalState, RequestId, SessionId};
     use chio_kernel::checkpoint::validate_checkpoint_transparency;
+    use chio_kernel::checkpoint::{build_checkpoint_with_previous, checkpoint_chain_leaf_hash};
     use chio_kernel::{build_checkpoint, ReceiptStore};
 
     use super::*;
@@ -646,6 +651,74 @@ mod tests {
         assert_eq!(transparency.publications.len(), 1);
         assert!(transparency.witnesses.is_empty());
         assert!(transparency.equivocations.is_empty());
+
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn scoped_export_includes_checkpoint_prefix_to_genesis() {
+        let path = unique_db_path("evidence-export-checkpoint-prefix");
+        let store = SqliteReceiptStore::open(&path).unwrap();
+        let checkpoint_key = evidence_receipt_keypair();
+
+        let seq1 = store
+            .append_chio_receipt_returning_seq(&receipt_with_ts("rcpt-1", "cap-1", 100))
+            .unwrap();
+        let seq2 = store
+            .append_chio_receipt_returning_seq(&receipt_with_ts("rcpt-2", "cap-1", 101))
+            .unwrap();
+        let seq3 = store
+            .append_chio_receipt_returning_seq(&receipt_with_ts("rcpt-3", "cap-1", 102))
+            .unwrap();
+        let seq4 = store
+            .append_chio_receipt_returning_seq(&receipt_with_ts("rcpt-4", "cap-1", 103))
+            .unwrap();
+
+        let first_bytes = store.receipts_canonical_bytes_range(seq1, seq2).unwrap();
+        let first = build_checkpoint(
+            1,
+            seq1,
+            seq2,
+            &first_bytes
+                .into_iter()
+                .map(|(_, bytes)| bytes)
+                .collect::<Vec<_>>(),
+            &checkpoint_key,
+        )
+        .unwrap();
+        store.store_checkpoint(&first).unwrap();
+
+        let second_bytes = store.receipts_canonical_bytes_range(seq3, seq4).unwrap();
+        let second = build_checkpoint_with_previous(
+            2,
+            seq3,
+            seq4,
+            &second_bytes
+                .into_iter()
+                .map(|(_, bytes)| bytes)
+                .collect::<Vec<_>>(),
+            &checkpoint_key,
+            Some(&first),
+            &[checkpoint_chain_leaf_hash(&first.body).unwrap()],
+        )
+        .unwrap();
+        store.store_checkpoint(&second).unwrap();
+
+        let mut query = EvidenceExportQuery::admin_all();
+        query.since = Some(102);
+        let bundle = store.build_evidence_export_bundle(&query).unwrap();
+
+        assert_eq!(bundle.tool_receipts.len(), 2);
+        assert_eq!(
+            bundle
+                .checkpoints
+                .iter()
+                .map(|checkpoint| checkpoint.body.checkpoint_seq)
+                .collect::<Vec<_>>(),
+            vec![1, 2],
+            "a scoped export must carry the predecessor prefix to checkpoint 1"
+        );
+        validate_checkpoint_transparency(&bundle.checkpoints).unwrap();
 
         let _ = std::fs::remove_file(path);
     }

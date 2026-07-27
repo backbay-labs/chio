@@ -1383,6 +1383,20 @@ settlement lanes additionally require durable local receipt storage and
 kernel-signed checkpoint issuance; append-only remote receipt mirrors are
 insufficient when the runtime claims Merkle or Solana evidence readiness.
 
+A checkpoint set presented without a separately pinned boundary MUST carry the
+predecessor chain back to checkpoint 1. A checkpoint that cites a predecessor
+absent from the set MUST fail verification. Scoped evidence exports therefore
+include the checkpoint prefix through the newest checkpoint covering the
+selected receipts.
+
+The registered `chio.transparency.inclusion-proof.v1` format retains its
+selective-disclosure hash construction and does not qualify a transaction as
+`trust_anchored`. The checkpoint-anchored receipt format is
+`chio.transparency.inclusion-proof.v2`: it uses RFC 6962 leaf and node hashing,
+binds the leaf to the transaction receipt bytes, and embeds a strictly parsed
+checkpoint statement signed by a verifier-pinned checkpoint key. Readers MUST
+NOT interpret v1 proof bytes with the v2 trust semantics.
+
 The current bounded release treats checkpoints as local audit evidence with
 derived `log_id`, `log_tree_size`, predecessor-witness, and consistency-proof
 surfaces. Those proofs support audit and `transparency_preview` claims only.

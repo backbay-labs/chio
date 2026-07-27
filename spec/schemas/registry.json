@@ -1440,6 +1440,12 @@
       "schemaFile": "spec/schemas/chio-transparency/v1/inclusion-proof.schema.json"
     },
     {
+      "schema": "chio.transparency.inclusion-proof.v2",
+      "artifactKind": "transparency_anchored_inclusion_proof",
+      "introducedBy": "checkpoint-transparency-v2",
+      "schemaFile": "spec/schemas/chio-transparency/v2/inclusion-proof.schema.json"
+    },
+    {
       "schema": "chio.transaction-passport.v1",
       "artifactKind": "transaction_passport",
       "introducedBy": "transaction-passport-v1",

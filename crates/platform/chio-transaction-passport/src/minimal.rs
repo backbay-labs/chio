@@ -787,14 +787,17 @@ fn issuer_key_part(issuer: &str) -> &str {
     issuer.strip_prefix("did:chio:").unwrap_or(issuer)
 }
 
-const TRANSPARENCY_INCLUSION_PROOF_SCHEMA_ID: &str = "chio.transparency.inclusion-proof.v1";
+const TRANSPARENCY_INCLUSION_PROOF_SCHEMA_V1_ID: &str = "chio.transparency.inclusion-proof.v1";
+const TRANSPARENCY_INCLUSION_PROOF_SCHEMA_V2_ID: &str = "chio.transparency.inclusion-proof.v2";
 const CHECKPOINT_STATEMENT_SCHEMA_V1_ID: &str = "chio.checkpoint_statement.v1";
 const CHECKPOINT_STATEMENT_SCHEMA_V2_ID: &str = "chio.checkpoint_statement.v2";
 const RECEIPT_EVIDENCE_ROLE: &str = "receipt";
 
-/// Payload of a `chio.transparency.inclusion-proof.v1` artifact as consumed
-/// for transparency-state promotion. Unknown fields are tolerated; promotion
-/// depends only on what verifies.
+/// Payload of a `chio.transparency.inclusion-proof.v2` artifact as consumed
+/// for transparency-state promotion. V2 uses RFC 6962 hashing over receipt
+/// bytes and embeds the signed checkpoint statement. The registered v1
+/// selective-disclosure format has different leaf and node hashing and remains
+/// preview-only here.
 #[derive(Debug, Deserialize)]
 struct TransparencyInclusionProofArtifact {
     schema: String,
@@ -949,7 +952,11 @@ fn evidence_graph_transparency_state(
             .and_then(Value::as_str)
             .unwrap_or_default();
         if role == "transparency-inclusion-proof"
-            || schema == TRANSPARENCY_INCLUSION_PROOF_SCHEMA_ID
+            || matches!(
+                schema,
+                TRANSPARENCY_INCLUSION_PROOF_SCHEMA_V1_ID
+                    | TRANSPARENCY_INCLUSION_PROOF_SCHEMA_V2_ID
+            )
         {
             match transparency_anchor_state(node, nodes, artifacts, trusted_checkpoint_signer_keys)
             {
@@ -1003,16 +1010,27 @@ fn transparency_anchor_state(
     let Ok(artifact) = serde_json::from_slice::<TransparencyInclusionProofArtifact>(bytes) else {
         return TransparencyAnchor::Invalid(format!("{path} is not a readable inclusion proof"));
     };
-    if artifact.schema != TRANSPARENCY_INCLUSION_PROOF_SCHEMA_ID {
+    if artifact.schema == TRANSPARENCY_INCLUSION_PROOF_SCHEMA_V1_ID {
+        // V1 is the registered selective-disclosure proof. Its leaf is the
+        // SHA-256 digest of the subject digest string and its internal nodes
+        // are unprefixed. It cannot be interpreted as the RFC 6962 receipt
+        // proof below, even if an unknown checkpoint_statement field was
+        // tolerated by a producer.
+        return TransparencyAnchor::NotEvaluable;
+    }
+    if artifact.schema != TRANSPARENCY_INCLUSION_PROOF_SCHEMA_V2_ID {
         return TransparencyAnchor::Invalid(format!(
             "unsupported inclusion proof schema {}",
             artifact.schema
         ));
     }
-    // Proofs published without an anchoring checkpoint statement (the shape
-    // the base schema defines) are simply unanchored, not malformed.
+    // V2 is specifically the checkpoint-anchored format, so omitting its
+    // checkpoint statement is malformed rather than a preview-only legacy
+    // proof.
     let Some(statement) = artifact.checkpoint_statement else {
-        return TransparencyAnchor::NotEvaluable;
+        return TransparencyAnchor::Invalid(
+            "v2 inclusion proof is missing checkpoint_statement".to_string(),
+        );
     };
 
     let invalid = |reason: &str| TransparencyAnchor::Invalid(reason.to_string());

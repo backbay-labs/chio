@@ -2496,7 +2496,7 @@ fn transparency_anchored_fixture(
         .to_hex();
 
     let mut inclusion_artifact = json!({
-        "schema": "chio.transparency.inclusion-proof.v1",
+        "schema": "chio.transparency.inclusion-proof.v2",
         "proof_id": "transparency-proof-governed-action",
         "log_id": "local-log-governed-action",
         "artifact_ref": subject_sha256,
@@ -2513,6 +2513,10 @@ fn transparency_anchored_fixture(
         }
     });
     mutate_artifact(&mut inclusion_artifact);
+    let inclusion_schema = inclusion_artifact["schema"]
+        .as_str()
+        .test_expect("inclusion artifact schema")
+        .to_string();
     artifacts.insert(
         "transparency-inclusion-proof.json".to_string(),
         serde_json::to_vec(&inclusion_artifact).test_expect("inclusion artifact serializes"),
@@ -2531,7 +2535,7 @@ fn transparency_anchored_fixture(
         .test_expect("graph nodes are an array")
         .push(json!({
             "id": inclusion_digest,
-            "schema": "chio.transparency.inclusion-proof.v1",
+            "schema": inclusion_schema,
             "path": "transparency-inclusion-proof.json",
             "sha256": inclusion_digest,
             "role": "transparency-inclusion-proof"
@@ -2602,7 +2606,7 @@ fn standalone_minimal_passport_promotes_verified_transparency_anchor() {
 }
 
 #[test]
-fn standalone_minimal_passport_rejects_unverified_transparency_anchor_label() {
+fn standalone_minimal_passport_rejects_v2_anchor_without_checkpoint_statement() {
     let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
         transparency_anchored_fixture(|artifact| {
             let object = artifact
@@ -2613,7 +2617,26 @@ fn standalone_minimal_passport_rejects_unverified_transparency_anchor_label() {
 
     let error =
         verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
-            .test_expect_err("an inclusion-proof label without a signed anchor must not promote");
+            .test_expect_err("a v2 inclusion proof without its signed anchor must deny");
+
+    assert!(
+        error
+            .to_string()
+            .contains("v2 inclusion proof is missing checkpoint_statement"),
+        "{error}"
+    );
+}
+
+#[test]
+fn standalone_minimal_passport_keeps_registered_v1_proofs_at_preview() {
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|artifact| {
+            artifact["schema"] = json!("chio.transparency.inclusion-proof.v1");
+        });
+
+    let error =
+        verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+            .test_expect_err("registered v1 proof hashing must not qualify as an RFC 6962 anchor");
 
     assert!(
         error
@@ -2813,7 +2836,7 @@ fn standalone_minimal_passport_validates_every_transparency_candidate() {
         .test_expect("graph nodes are an array")
         .push(json!({
             "id": invalid_digest,
-            "schema": "chio.transparency.inclusion-proof.v1",
+            "schema": "chio.transparency.inclusion-proof.v2",
             "path": "transparency-inclusion-proof-invalid.json",
             "sha256": invalid_digest,
             "role": "transparency-inclusion-proof"

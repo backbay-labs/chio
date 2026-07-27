@@ -1006,7 +1006,12 @@ pub fn build_checkpoint_transparency(
     })
 }
 
-/// Validate that a checkpoint set is transparency-safe and fork-free.
+/// Validate that a checkpoint set is transparency-safe, fork-free, and
+/// connected to checkpoint 1.
+///
+/// A caller that wants to trust a later boundary without the full prefix must
+/// use a separate API that accepts an explicitly pinned boundary. This
+/// verifier has no such input, so an unresolved predecessor fails closed.
 pub fn validate_checkpoint_transparency(
     checkpoints: &[KernelCheckpoint],
 ) -> Result<CheckpointTransparencySummary, CheckpointError> {
@@ -1026,11 +1031,21 @@ pub fn validate_checkpoint_transparency(
         let Some(previous_checkpoint_sha256) =
             checkpoint.body.previous_checkpoint_sha256.as_deref()
         else {
+            if checkpoint.body.checkpoint_seq != 1 {
+                return Err(CheckpointError::Continuity(format!(
+                    "checkpoint {} is not connected to checkpoint 1",
+                    checkpoint.body.checkpoint_seq
+                )));
+            }
             continue;
         };
-        if let Some(previous) = by_digest.get(previous_checkpoint_sha256) {
-            validate_checkpoint_predecessor(previous, checkpoint)?;
-        }
+        let previous = by_digest.get(previous_checkpoint_sha256).ok_or_else(|| {
+            CheckpointError::Continuity(format!(
+                "checkpoint {} has unresolved predecessor {}",
+                checkpoint.body.checkpoint_seq, previous_checkpoint_sha256
+            ))
+        })?;
+        validate_checkpoint_predecessor(previous, checkpoint)?;
     }
 
     Ok(transparency)

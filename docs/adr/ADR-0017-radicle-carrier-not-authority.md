@@ -59,9 +59,10 @@ custody, config drift) in exchange for a property Chio cannot yet make use of.
 The trigger conditions for revisiting are listed below.
 
 **4. The `transparency_preview` cap is not substrate-blocked, and closing it is
-the actual work.** Approximately 80 to 85 percent of the effort required to
-lift the section 6.5 cap is internal to Chio and identical regardless of where
-checkpoints are published. The transparency program document
+the actual work.** Most required correctness work is internal to Chio and
+identical regardless of where checkpoints are published. The earlier 80 to 85
+percent estimate is withdrawn because registry schema names do not map
+one-to-one to independent commitment work. The transparency program document
 (`docs/architecture/transparency/README.md`) is the authoritative plan and
 takes priority over any carrier work.
 
@@ -91,9 +92,13 @@ makes equivocation discoverable by a party who goes looking and who has
 retained the contradicting artifact. Witness cosigning makes equivocation
 unpresentable to a verifier who checks the quorum, offline, from the artifact
 alone. Section 6.5 names the stronger property. The C2SP `tlog-witness` and
-`tlog-cosignature` specifications now define ML-DSA-44 cosignatures, making the
-standards-track option the only candidate that natively survives `PqRequired`.
-Sigsum is hard-wired to Ed25519 and fails the same floor Radicle fails.
+`tlog-cosignature` specifications define ML-DSA-44 cosignatures, making the
+standards-track option the only evaluated candidate with a post-quantum
+cosignature. This does not yet satisfy Chio's `PqRequired` floor, which uses a
+classical plus ML-DSA-65 hybrid, and the current checkpoint signer is
+Ed25519-only. Stage 4 therefore includes an explicit witness-algorithm policy
+and checkpoint-signing migration. Sigsum is hard-wired to Ed25519 and fails
+the same floor Radicle fails.
 
 **The experiment partially confirmed the Radicle thesis and found its limit.**
 Cross-namespace evidence proved genuinely indestructible: force-push, namespace

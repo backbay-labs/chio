@@ -202,6 +202,12 @@ return `trust_anchored` at all. The label-only, untrusted-signer,
 tampered-root, partial-body, field-smuggling, multiple-candidate, and
 unbound-subject cases are pinned by tests in
 `crates/platform/chio-transaction-passport/tests/transaction_passport.rs`.
+The registered `chio.transparency.inclusion-proof.v1` remains the
+selective-disclosure format, whose subject-digest leaf and unprefixed node
+hashing are not RFC 6962 receipt-tree semantics. It remains preview-only.
+Checkpoint-anchored receipt proofs use
+`chio.transparency.inclusion-proof.v2`, whose schema requires the signed
+checkpoint statement and whose leaf is the RFC 6962 hash of the receipt bytes.
 
 ### F3 (medium): the signed checkpoint body accepts unknown fields
 
@@ -268,7 +274,10 @@ through 3 depends on a substrate choice.
 Implement RFC 6962 consistency proofs in `merkle.rs` with test vectors; carry
 node hashes in `CheckpointConsistencyProof` and verify them (F1); fix the
 `trust_anchored` promotion to require cryptographic verification (F2); add
-`deny_unknown_fields` to the signed checkpoint body (F3). Exit criterion, met:
+`deny_unknown_fields` to the signed checkpoint body (F3); and reject checkpoint
+sets whose predecessor chain does not reach checkpoint 1. Scoped exports carry
+that prefix instead of presenting an unresolved predecessor. Exit criterion,
+met:
 a tampered successor root fails verification in
 `checkpoint_consistency_forged_chain_root_rejected.rs`, which fails loudly
 against the pre-fix verifier.
