@@ -156,7 +156,7 @@ while IFS= read -r line; do
   # inclusion proofs are security-interpreted formats. Their v2 schemas
   # prevent rolling readers from applying legacy v1 semantics to new
   # commitments, paths, and hash constructions.
-  if [[ "$text" =~ chio\.checkpoint_(statement|consistency_proof)\.v2|chio\.transparency\.inclusion-proof\.v2|CHECKPOINT_(CONSISTENCY_PROOF_)?SCHEMA_V2|CHIO_CHECKPOINT_STATEMENT_SCHEMA_V2|TRANSPARENCY_INCLUSION_PROOF_(SCHEMA_V2|V2_SCHEMA) ]]; then
+  if [[ "$text" =~ chio\.checkpoint_(statement|consistency_proof)\.v2|chio\.(anchor-inclusion-proof|transparency\.inclusion-proof)\.v2|CHECKPOINT_(CONSISTENCY_PROOF_)?SCHEMA_V2|CHIO_CHECKPOINT_STATEMENT_SCHEMA_V2|(ANCHOR|TRANSPARENCY)_INCLUSION_PROOF_(SCHEMA_V2|V2_SCHEMA) ]]; then
     continue
   fi
 

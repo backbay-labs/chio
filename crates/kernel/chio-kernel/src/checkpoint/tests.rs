@@ -799,6 +799,39 @@ fn validate_checkpoint_predecessor_rejects_chain_commitment_downgrade() {
 }
 
 #[test]
+fn validate_checkpoint_predecessor_requires_first_v2_successor_commitment() {
+    let kp = Keypair::generate();
+    let mut legacy_first = build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &kp).expect("first");
+    legacy_first.body.schema = CHECKPOINT_SCHEMA_V1.to_string();
+    legacy_first.body.chain_root = None;
+    legacy_first.signature =
+        kp.sign(&canonical_json_bytes(&legacy_first.body).expect("canonical legacy body"));
+
+    let mut v2_second = build_checkpoint_with_previous(
+        2,
+        4,
+        6,
+        &make_receipt_bytes(3),
+        &kp,
+        Some(&legacy_first),
+        &chain_leaves(&[&legacy_first]),
+    )
+    .expect("v2 successor");
+    v2_second.body.chain_root = None;
+    v2_second.signature =
+        kp.sign(&canonical_json_bytes(&v2_second.body).expect("canonical v2 body"));
+
+    let error = validate_checkpoint_predecessor(&legacy_first, &v2_second)
+        .expect_err("the first v2 successor must start the retained chain commitment");
+    assert!(
+        error
+            .to_string()
+            .contains("does not start or extend the chain commitment"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
 fn validate_checkpoint_rejects_first_checkpoint_chain_root_mismatch() {
     let kp = Keypair::generate();
     let mut checkpoint =

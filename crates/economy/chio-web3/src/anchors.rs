@@ -18,7 +18,9 @@ use crate::validation::{ensure_non_empty, evm_addresses_match};
 pub const CHIO_CHECKPOINT_STATEMENT_SCHEMA_V1: &str = "chio.checkpoint_statement.v1";
 pub const CHIO_CHECKPOINT_STATEMENT_SCHEMA_V2: &str = "chio.checkpoint_statement.v2";
 pub const CHIO_CHECKPOINT_STATEMENT_SCHEMA: &str = CHIO_CHECKPOINT_STATEMENT_SCHEMA_V2;
-pub const CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA: &str = "chio.anchor-inclusion-proof.v1";
+pub const CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA_V1: &str = "chio.anchor-inclusion-proof.v1";
+pub const CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA_V2: &str = "chio.anchor-inclusion-proof.v2";
+pub const CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA: &str = CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA_V2;
 pub const CHIO_ORACLE_CONVERSION_EVIDENCE_SCHEMA: &str = "chio.oracle-conversion-evidence.v1";
 pub const CHIO_LINK_ORACLE_AUTHORITY: &str = "chio_link_runtime_v1";
 pub const CHIO_ANCHOR_CONTROL_STATE_SCHEMA: &str = "chio.anchor.control-state.v1";
@@ -285,8 +287,22 @@ fn oracle_minor_units_per_unit(currency: &str) -> Result<u128, Web3ContractError
 pub fn validate_anchor_inclusion_proof(
     proof: &AnchorInclusionProof,
 ) -> Result<(), Web3ContractError> {
-    if proof.schema != CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA {
-        return Err(Web3ContractError::UnsupportedSchema(proof.schema.clone()));
+    match proof.schema.as_str() {
+        CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA_V1 => {
+            if proof.checkpoint_statement.schema != CHIO_CHECKPOINT_STATEMENT_SCHEMA_V1 {
+                return Err(Web3ContractError::InvalidProof(
+                    "v1 anchor inclusion proofs must embed a v1 checkpoint statement".to_string(),
+                ));
+            }
+        }
+        CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA_V2 => {
+            if proof.checkpoint_statement.schema != CHIO_CHECKPOINT_STATEMENT_SCHEMA_V2 {
+                return Err(Web3ContractError::InvalidProof(
+                    "v2 anchor inclusion proofs must embed a v2 checkpoint statement".to_string(),
+                ));
+            }
+        }
+        _ => return Err(Web3ContractError::UnsupportedSchema(proof.schema.clone())),
     }
     validate_web3_identity_binding(&proof.key_binding_certificate)?;
     if proof.receipt.id.trim().is_empty() {
@@ -314,31 +330,7 @@ pub fn validate_anchor_inclusion_proof(
             "receipt inclusion merkle_root must match checkpoint statement".to_string(),
         ));
     }
-    if !matches!(
-        proof.checkpoint_statement.schema.as_str(),
-        CHIO_CHECKPOINT_STATEMENT_SCHEMA_V1 | CHIO_CHECKPOINT_STATEMENT_SCHEMA_V2
-    ) {
-        return Err(Web3ContractError::UnsupportedSchema(
-            proof.checkpoint_statement.schema.clone(),
-        ));
-    }
-    if proof.checkpoint_statement.schema == CHIO_CHECKPOINT_STATEMENT_SCHEMA_V1
-        && proof.checkpoint_statement.chain_root.is_some()
-    {
-        return Err(Web3ContractError::InvalidProof(
-            "v1 checkpoint statements cannot carry chain_root".to_string(),
-        ));
-    }
-    if proof.checkpoint_statement.batch_start_seq > proof.checkpoint_statement.batch_end_seq {
-        return Err(Web3ContractError::InvalidProof(
-            "checkpoint statement batch_start_seq must be <= batch_end_seq".to_string(),
-        ));
-    }
-    if proof.checkpoint_statement.tree_size == 0 {
-        return Err(Web3ContractError::InvalidProof(
-            "checkpoint statement tree_size must be non-zero".to_string(),
-        ));
-    }
+    validate_checkpoint_statement_shape(&proof.checkpoint_statement)?;
     if proof.checkpoint_statement.tree_size as usize != proof.receipt_inclusion.proof.tree_size {
         return Err(Web3ContractError::InvalidProof(
             "checkpoint statement tree_size must match receipt inclusion proof".to_string(),
@@ -475,6 +467,7 @@ pub fn validate_anchor_inclusion_proof(
 pub fn verify_checkpoint_statement(
     statement: &Web3CheckpointStatement,
 ) -> Result<(), Web3ContractError> {
+    validate_checkpoint_statement_shape(statement)?;
     let body = checkpoint_statement_body(statement);
     let verified = statement
         .kernel_key
@@ -484,6 +477,70 @@ pub fn verify_checkpoint_statement(
         return Err(Web3ContractError::InvalidProof(
             "checkpoint statement signature verification failed".to_string(),
         ));
+    }
+    Ok(())
+}
+
+#[derive(Serialize)]
+struct Web3CheckpointChainLeaf {
+    checkpoint_seq: u64,
+    batch_start_seq: u64,
+    batch_end_seq: u64,
+    merkle_root: Hash,
+}
+
+fn checkpoint_chain_leaf_hash(
+    statement: &Web3CheckpointStatement,
+) -> Result<Hash, Web3ContractError> {
+    let leaf = Web3CheckpointChainLeaf {
+        checkpoint_seq: statement.checkpoint_seq,
+        batch_start_seq: statement.batch_start_seq,
+        batch_end_seq: statement.batch_end_seq,
+        merkle_root: statement.merkle_root,
+    };
+    let bytes = canonical_json_bytes(&leaf)
+        .map_err(|error| Web3ContractError::InvalidProof(error.to_string()))?;
+    Ok(leaf_hash(&bytes))
+}
+
+fn validate_checkpoint_statement_shape(
+    statement: &Web3CheckpointStatement,
+) -> Result<(), Web3ContractError> {
+    if !matches!(
+        statement.schema.as_str(),
+        CHIO_CHECKPOINT_STATEMENT_SCHEMA_V1 | CHIO_CHECKPOINT_STATEMENT_SCHEMA_V2
+    ) {
+        return Err(Web3ContractError::UnsupportedSchema(
+            statement.schema.clone(),
+        ));
+    }
+    if statement.schema == CHIO_CHECKPOINT_STATEMENT_SCHEMA_V1 && statement.chain_root.is_some() {
+        return Err(Web3ContractError::InvalidProof(
+            "v1 checkpoint statements cannot carry chain_root".to_string(),
+        ));
+    }
+    if statement.batch_start_seq > statement.batch_end_seq {
+        return Err(Web3ContractError::InvalidProof(
+            "checkpoint statement batch_start_seq must be <= batch_end_seq".to_string(),
+        ));
+    }
+    if statement.tree_size == 0 {
+        return Err(Web3ContractError::InvalidProof(
+            "checkpoint statement tree_size must be non-zero".to_string(),
+        ));
+    }
+    if statement.schema == CHIO_CHECKPOINT_STATEMENT_SCHEMA_V2 && statement.checkpoint_seq == 1 {
+        let Some(chain_root) = statement.chain_root else {
+            return Err(Web3ContractError::InvalidProof(
+                "v2 checkpoint 1 must carry chain_root".to_string(),
+            ));
+        };
+        let expected = checkpoint_chain_leaf_hash(statement)?;
+        if chain_root != expected {
+            return Err(Web3ContractError::InvalidProof(
+                "chain_root of the first checkpoint does not commit its own chain leaf".to_string(),
+            ));
+        }
     }
     Ok(())
 }

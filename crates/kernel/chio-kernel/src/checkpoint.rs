@@ -1472,6 +1472,12 @@ pub fn validate_checkpoint_predecessor(
             checkpoint.body.checkpoint_seq
         )));
     }
+    if checkpoint.body.schema == CHECKPOINT_SCHEMA_V2 && checkpoint.body.chain_root.is_none() {
+        return Err(CheckpointError::Continuity(format!(
+            "v2 checkpoint {} does not start or extend the chain commitment",
+            checkpoint.body.checkpoint_seq
+        )));
+    }
 
     Ok(())
 }

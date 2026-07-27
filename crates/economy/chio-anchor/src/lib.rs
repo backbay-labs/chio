@@ -36,7 +36,8 @@ pub mod fuzz;
 use chio_core::web3::anchors::{
     validate_anchor_inclusion_proof, verify_anchor_inclusion_proof, AnchorInclusionProof,
     Web3ChainAnchorRecord, Web3CheckpointStatement, Web3ReceiptInclusion,
-    CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA,
+    CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA_V1, CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA_V2,
+    CHIO_CHECKPOINT_STATEMENT_SCHEMA_V1, CHIO_CHECKPOINT_STATEMENT_SCHEMA_V2,
 };
 use chio_core::web3::identity::SignedWeb3IdentityBinding;
 use chio_kernel::checkpoint::{KernelCheckpoint, KernelCheckpointBody, ReceiptInclusionProof};
@@ -195,11 +196,21 @@ pub fn build_anchor_inclusion_proof(
     chain_anchor: Option<Web3ChainAnchorRecord>,
     binding: SignedWeb3IdentityBinding,
 ) -> Result<AnchorInclusionProof, AnchorError> {
+    let checkpoint_statement = checkpoint_statement_from_kernel(checkpoint);
+    let schema = match checkpoint_statement.schema.as_str() {
+        CHIO_CHECKPOINT_STATEMENT_SCHEMA_V1 => CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA_V1,
+        CHIO_CHECKPOINT_STATEMENT_SCHEMA_V2 => CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA_V2,
+        other => {
+            return Err(AnchorError::Verification(format!(
+                "unsupported checkpoint statement schema {other}"
+            )))
+        }
+    };
     let proof = AnchorInclusionProof {
-        schema: CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA.to_string(),
+        schema: schema.to_string(),
         receipt,
         receipt_inclusion: receipt_inclusion_from_kernel(inclusion),
-        checkpoint_statement: checkpoint_statement_from_kernel(checkpoint),
+        checkpoint_statement,
         chain_anchor,
         bitcoin_anchor: None,
         super_root_inclusion: None,

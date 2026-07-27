@@ -91,7 +91,6 @@ fn transparency_inclusion_rejects_truncated_path_before_root_width() {
     let proof = sample_proof(Vec::new());
     let leaf_hash = sha256_hex(proof.subject_sha256_hex.as_bytes());
     let inclusion = TransparencyInclusionProof {
-        checkpoint_statement: None,
         schema: TRANSPARENCY_INCLUSION_PROOF_SCHEMA_V1.to_string(),
         proof_id: "transparency-proof-1".to_string(),
         log_id: "log-1".to_string(),

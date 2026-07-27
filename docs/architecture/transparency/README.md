@@ -208,6 +208,9 @@ hashing are not RFC 6962 receipt-tree semantics. It remains preview-only.
 Checkpoint-anchored receipt proofs use
 `chio.transparency.inclusion-proof.v2`, whose schema requires the signed
 checkpoint statement and whose leaf is the RFC 6962 hash of the receipt bytes.
+Web3 projections preserve the same rolling-reader boundary:
+`chio.anchor-inclusion-proof.v1` embeds only v1 checkpoint statements, while
+`chio.anchor-inclusion-proof.v2` embeds chain-committed v2 statements.
 
 ### F3 (medium): the signed checkpoint body accepts unknown fields
 

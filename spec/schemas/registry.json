@@ -23,6 +23,12 @@
       "schemaFile": "spec/schemas/chio-web3/v1/anchor-inclusion-proof.schema.json"
     },
     {
+      "schema": "chio.anchor-inclusion-proof.v2",
+      "artifactKind": "anchor_inclusion_proof",
+      "introducedBy": "checkpoint-transparency-v2",
+      "schemaFile": "spec/schemas/chio-web3/v2/anchor-inclusion-proof.schema.json"
+    },
+    {
       "schema": "chio.anchor-proof-bundle.v1",
       "artifactKind": "anchor_proof_bundle",
       "introducedBy": "public-settlement-v1",

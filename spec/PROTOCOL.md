@@ -2796,7 +2796,8 @@ instead of ambient.
 The shipped official web3 execution surface is artifact-driven rather than
 permissionless. It consists of `chio.web3-trust-profile.v1`,
 `chio.web3-contract-package.v1`, `chio.web3-chain-configuration.v1`,
-`chio.anchor-inclusion-proof.v1`, `chio.oracle-conversion-evidence.v1`,
+`chio.anchor-inclusion-proof.v1`, `chio.anchor-inclusion-proof.v2`,
+`chio.oracle-conversion-evidence.v1`,
 `chio.web3-settlement-dispatch.v1`,
 `chio.web3-settlement-execution-receipt.v1`, and
 `chio.web3-qualification-matrix.v1`. Those artifacts bind one official

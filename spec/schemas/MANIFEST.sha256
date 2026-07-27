@@ -1,4 +1,4 @@
-110901689a7df441b199d06fbca9c67f61dba6621f828d3493823e58e3b313fc  spec/schemas/MANIFEST.sha256
+27424388aac6569a292e3c81d37e55a5700e0bd5782bba8d30d9f97c10f1d990  spec/schemas/MANIFEST.sha256
 59854984853104df5c353e2f681a15fc7924742f9a2e468c29af248dce45ce03  spec/schemas/VERSION
 e90c7bc3c555c335559650c71f7fda1e3c13d134a5ff8ceaa0041000536c2ea9  spec/schemas/chio-agent-web/v1/external-projection-manifest.schema.json
 1cd24132ad8f98fad89bb62aa756304c2dee0b51aacd69c922e0f786dce2abec  spec/schemas/chio-agent-web/v1/interop-verifier-report.schema.json
@@ -336,12 +336,13 @@ a80dcbf85529967e111b684b494635dc8f0b74f2f156cbc22f8658803f6cfa5b  spec/schemas/c
 78ef587b5b79bd6b5117a88ef496e8e5ebb6044daf4ad1c1e5dec8551a8712c0  spec/schemas/chio-trust/v1/revocation-snapshot.schema.json
 82966a702b4e0f925b405af696fb75c97f15b0157398442e420349aa5a358f7e  spec/schemas/chio-trust/v1/scorecard-snapshot.schema.json
 248b9500a10146b3baf1e50f87b8398597a92a4f70996aba065d9ff4f47e8767  spec/schemas/chio-trust/v1/trust-root.schema.json
-182a5e6ea97538520765e00425bff6f431eedb14bc89abbaa3e6e3dc80109ff2  spec/schemas/chio-web3/v1/anchor-inclusion-proof.schema.json
+9c9e3263958f0605bbf13b753f50ab8eaae329694519f85cd66e1e2b36cc11d8  spec/schemas/chio-web3/v1/anchor-inclusion-proof.schema.json
 da129d09dc8ffccc16740f32a7bd3cd802df17e708d488ac5d060a4d7ad8684d  spec/schemas/chio-web3/v1/anchor-proof-bundle.schema.json
 5a7d11b9b6a2b67b5ec296fa6589be675084704824fa4b3c833363c67a398f0d  spec/schemas/chio-web3/v1/public-settlement-verifier-report.schema.json
 b338458880dab8cba5c47ebbd66f00459c0fc3d443c2ca48e5786944f1605538  spec/schemas/chio-web3/v1/settlement-dispatch.schema.json
 c0f2f15a0704602f5b808efaf60e2e34c54ed8785f98ea04f8c0597097ec1b74  spec/schemas/chio-web3/v1/settlement-execution-receipt.schema.json
 e387c7baa6fed74b58704d5b08c9cc5bcafeac63b21e9e16cae9e9e82cf6b9f1  spec/schemas/chio-web3/v1/settlement-proof-bundle.schema.json
+10393322f01ed87b9017f639ce101642a40ec21850c98737b999a9d9d7f570c2  spec/schemas/chio-web3/v2/anchor-inclusion-proof.schema.json
 56657c55e7f7a9a55236409e4d224c928f6ae7b560a6b5b0f7421e7007ff737e  spec/schemas/chio-web3/v2/settlement-dispatch.schema.json
 f822a0541bada26bd762465311bd987f0c86131ffcfa7b44c5257a05f97383b8  spec/schemas/chio-web3/v2/settlement-execution-receipt.schema.json
 d52927d8718e29cae0afeda327edcc195e7f40f04f26fd87a0dca5e1e5c46d18  spec/schemas/chio-wire/v1/agent/active-response-governed-intent.schema.json
@@ -401,4 +402,4 @@ ff4f655a0f0c7afda5c0674f3afde1e3961f1d58292584ed39f8bb5b96e30c8b  spec/schemas/c
 3374b9d40520b66cae420da1f9c8bb07fed6bfbd62ae918615e2f88b6e1b7700  spec/schemas/chio-workflow/v1/preflight-report.schema.json
 f109672e496e5e3bb56c5a3d61ed882b922d8bbade45899975d1852921f7890e  spec/schemas/financial-credential-defs.v1.schema.json
 049d7788253b57ddf472ebed0e8e6cb1a26e2249e9645e9e18cfdc3606a2b669  spec/schemas/fiscal-defs.v1.schema.json
-168a7638a7405a568f8252e0c967a06abcdc29b76f81364ec03845b48db3532f  spec/schemas/registry.json
+1da36302b04e2b3bd547f0dc354d1c1834415d034cc8a611a08a28f6a4a95f18  spec/schemas/registry.json
