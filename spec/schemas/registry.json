@@ -35,6 +35,12 @@
       "schemaFile": "spec/schemas/chio-web3/v1/anchor-proof-bundle.schema.json"
     },
     {
+      "schema": "chio.anchor-proof-bundle.v2",
+      "artifactKind": "anchor_proof_bundle",
+      "introducedBy": "checkpoint-transparency-v2",
+      "schemaFile": "spec/schemas/chio-web3/v2/anchor-proof-bundle.schema.json"
+    },
+    {
       "schema": "chio.aggregate-budget-root.v1",
       "artifactKind": "aggregate_budget_root_binding",
       "introducedBy": "protocol-primitives-v1",

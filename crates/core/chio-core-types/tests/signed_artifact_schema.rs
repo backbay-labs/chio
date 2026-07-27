@@ -856,6 +856,11 @@ fn public_settlement_anchor_evidence_schemas_are_registered() {
             "anchor_proof_bundle",
             "public-settlement-v1",
         ),
+        (
+            "chio.anchor-proof-bundle.v2",
+            "anchor_proof_bundle",
+            "checkpoint-transparency-v2",
+        ),
     ] {
         assert!(
             chio_core_types::is_supported_signed_artifact_schema(schema),

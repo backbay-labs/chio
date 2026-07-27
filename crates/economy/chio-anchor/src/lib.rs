@@ -64,6 +64,7 @@ pub use bitcoin::{
 pub use bundle::{
     verify_checkpoint_publication_records, verify_proof_bundle, AnchorLaneKind, AnchorProofBundle,
     AnchorVerificationLane, AnchorVerificationReport, CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA,
+    CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V1, CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V2,
 };
 pub use discovery::{
     build_anchor_discovery_artifact, build_anchor_discovery_artifact_with_runtime,
@@ -329,7 +330,7 @@ mod tests {
     };
     use chio_core::web3::anchors::AnchorInclusionProof;
     use chio_kernel::checkpoint::{
-        build_checkpoint, build_checkpoint_transparency,
+        build_checkpoint, build_checkpoint_transparency, build_inclusion_proof,
         build_trust_anchored_checkpoint_publication, CheckpointTransparencySummary,
     };
     use chio_kernel::evidence_export::{
@@ -350,7 +351,8 @@ mod tests {
         verify_proof_bundle, verify_proof_bundle_with_discovery, AnchorEmergencyControls,
         AnchorEmergencyMode, AnchorLaneHealthStatus, AnchorLaneKind, AnchorLaneRuntimeStatus,
         AnchorProofBundle, AnchorRuntimeReport, AnchorServiceConfig, EvmAnchorTarget,
-        SolanaMemoAnchorRecord, CHIO_ANCHOR_RUNTIME_REPORT_SCHEMA,
+        SolanaMemoAnchorRecord, CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V1,
+        CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V2, CHIO_ANCHOR_RUNTIME_REPORT_SCHEMA,
     };
 
     use chio_test_support::prelude::*;
@@ -360,6 +362,44 @@ mod tests {
             "../../../../docs/standards/CHIO_ANCHOR_INCLUSION_PROOF_EXAMPLE.json"
         ))
         .test_unwrap()
+    }
+
+    fn sample_v2_primary_proof() -> AnchorInclusionProof {
+        let sample = sample_primary_proof();
+        let checkpoint_key = chio_core::Keypair::generate();
+        let mut receipt_body = sample.receipt.body().clone();
+        receipt_body.kernel_key = checkpoint_key.public_key();
+        let receipt = chio_core::receipt::body::ChioReceipt::sign(receipt_body, &checkpoint_key)
+            .test_unwrap();
+        let certificate = chio_core::web3::identity::Web3IdentityBindingCertificate {
+            schema: chio_core::web3::identity::CHIO_KEY_BINDING_CERTIFICATE_SCHEMA.to_string(),
+            chio_identity: format!("did:chio:{}", checkpoint_key.public_key().to_hex()),
+            chio_public_key: checkpoint_key.public_key(),
+            chain_scope: vec!["eip155:8453".to_string()],
+            purpose: vec![chio_core::web3::identity::Web3KeyBindingPurpose::Anchor],
+            settlement_address: "0x1000000000000000000000000000000000000002".to_string(),
+            issued_at: 1_743_600_000,
+            expires_at: 1_774_828_800,
+            nonce: "v2-bundle-binding".to_string(),
+        };
+        let binding = chio_core::web3::identity::SignedWeb3IdentityBinding {
+            signature: checkpoint_key.sign_canonical(&certificate).test_unwrap().0,
+            certificate,
+        };
+        let receipt_bytes = chio_core::canonical_json_bytes(&receipt.body()).test_unwrap();
+        let checkpoint = build_checkpoint(
+            1,
+            1,
+            1,
+            std::slice::from_ref(&receipt_bytes),
+            &checkpoint_key,
+        )
+        .test_unwrap();
+        let tree = chio_core::merkle::MerkleTree::from_leaves(std::slice::from_ref(&receipt_bytes))
+            .test_unwrap();
+        let inclusion = build_inclusion_proof(&tree, 0, 1, 1).test_unwrap();
+
+        build_anchor_inclusion_proof(receipt, &inclusion, &checkpoint, None, binding).test_unwrap()
     }
 
     fn synthetic_ots_proof(start_digest: &[u8; 32], bitcoin_height: u64) -> String {
@@ -409,6 +449,39 @@ mod tests {
 
         let restored = kernel_checkpoint_from_statement(&statement);
         assert_eq!(restored, checkpoint, "the bridge round-trips losslessly");
+    }
+
+    #[test]
+    fn proof_bundle_schema_tracks_the_primary_proof_version() {
+        let proof = sample_v2_primary_proof();
+        let checkpoint = kernel_checkpoint_from_statement(&proof.checkpoint_statement);
+        let prepared = prepare_solana_memo_publication(
+            &checkpoint,
+            "solana:mainnet-beta",
+            "7xKXtg2CW9Q4hN7kD6A6tVWyQGm9Xxq6u9rY2T6yQkZp",
+        )
+        .test_unwrap();
+        let solana = SolanaMemoAnchorRecord::from_prepared(
+            &prepared,
+            "5W8D7gF9w3mP2nL6e1c4k7T9y2V6a1b3s5d7f9g2h4j6k8m1n3p5q7r9t1u3v5w7".to_string(),
+            310_045_221,
+            1_743_600_000,
+        );
+        let mut bundle = AnchorProofBundle {
+            schema: CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V2.to_string(),
+            primary_proof: proof,
+            secondary_lanes: vec![AnchorLaneKind::SolanaMemo],
+            solana_anchor: Some(solana),
+            note: None,
+        };
+
+        assert!(verify_proof_bundle(&bundle).test_unwrap().verified);
+
+        bundle.schema = CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V1.to_string();
+        let error = verify_proof_bundle(&bundle).test_unwrap_err();
+        assert!(error.to_string().contains(
+            "bundle schema chio.anchor-proof-bundle.v1 requires primary proof schema chio.anchor-inclusion-proof.v1"
+        ));
     }
 
     fn sample_evidence_bundle() -> EvidenceExportBundle {

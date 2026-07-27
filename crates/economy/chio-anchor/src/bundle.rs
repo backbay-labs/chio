@@ -1,4 +1,7 @@
-use chio_core::web3::anchors::{verify_anchor_inclusion_proof, AnchorInclusionProof};
+use chio_core::web3::anchors::{
+    verify_anchor_inclusion_proof, AnchorInclusionProof, CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA_V1,
+    CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA_V2,
+};
 use chio_kernel::checkpoint::{describe_checkpoint_equivocation, CheckpointTransparencySummary};
 use serde::{Deserialize, Serialize};
 
@@ -6,7 +9,9 @@ use crate::{
     verify_bitcoin_anchor_for_proof, verify_solana_anchor, AnchorError, SolanaMemoAnchorRecord,
 };
 
-pub const CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA: &str = "chio.anchor-proof-bundle.v1";
+pub const CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V1: &str = "chio.anchor-proof-bundle.v1";
+pub const CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V2: &str = "chio.anchor-proof-bundle.v2";
+pub const CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA: &str = CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -46,10 +51,20 @@ pub struct AnchorVerificationReport {
 pub fn verify_proof_bundle(
     bundle: &AnchorProofBundle,
 ) -> Result<AnchorVerificationReport, AnchorError> {
-    if bundle.schema != CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA {
+    let required_primary_schema = match bundle.schema.as_str() {
+        CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V1 => CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA_V1,
+        CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V2 => CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA_V2,
+        _ => {
+            return Err(AnchorError::Verification(format!(
+                "unsupported bundle schema {}",
+                bundle.schema
+            )))
+        }
+    };
+    if bundle.primary_proof.schema != required_primary_schema {
         return Err(AnchorError::Verification(format!(
-            "unsupported bundle schema {}",
-            bundle.schema
+            "bundle schema {} requires primary proof schema {}",
+            bundle.schema, required_primary_schema
         )));
     }
     if bundle.secondary_lanes.is_empty() {

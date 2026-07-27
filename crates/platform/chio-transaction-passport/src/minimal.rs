@@ -799,22 +799,27 @@ const RECEIPT_EVIDENCE_ROLE: &str = "receipt";
 /// selective-disclosure format has different leaf and node hashing and remains
 /// preview-only here.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct TransparencyInclusionProofArtifact {
     schema: String,
+    proof_id: String,
+    log_id: String,
     artifact_ref: String,
     root_hash: String,
     leaf_hash: String,
     tree_size: u64,
     leaf_index: u64,
+    checkpoint: String,
     inclusion_path: Vec<String>,
-    #[serde(default)]
-    checkpoint_statement: Option<CheckpointStatementArtifact>,
+    verified_at: u64,
+    checkpoint_statement: CheckpointStatementArtifact,
 }
 
 /// Signed checkpoint statement embedded in an inclusion-proof artifact. The
 /// body is kept as raw JSON so the signature verifies over exactly the bytes
 /// the signer canonicalized.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct CheckpointStatementArtifact {
     body: Value,
     signature: String,
@@ -1007,10 +1012,13 @@ fn transparency_anchor_state(
     if super::sha256_hex(bytes) != node_sha256 {
         return TransparencyAnchor::Invalid(format!("{path} does not match its declared digest"));
     }
-    let Ok(artifact) = serde_json::from_slice::<TransparencyInclusionProofArtifact>(bytes) else {
+    let Ok(raw_artifact) = serde_json::from_slice::<Value>(bytes) else {
         return TransparencyAnchor::Invalid(format!("{path} is not a readable inclusion proof"));
     };
-    if artifact.schema == TRANSPARENCY_INCLUSION_PROOF_SCHEMA_V1_ID {
+    let Some(schema) = raw_artifact.get("schema").and_then(Value::as_str) else {
+        return TransparencyAnchor::Invalid(format!("{path} has no inclusion proof schema"));
+    };
+    if schema == TRANSPARENCY_INCLUSION_PROOF_SCHEMA_V1_ID {
         // V1 is the registered selective-disclosure proof. Its leaf is the
         // SHA-256 digest of the subject digest string and its internal nodes
         // are unprefixed. It cannot be interpreted as the RFC 6962 receipt
@@ -1018,20 +1026,45 @@ fn transparency_anchor_state(
         // tolerated by a producer.
         return TransparencyAnchor::NotEvaluable;
     }
+    if schema != TRANSPARENCY_INCLUSION_PROOF_SCHEMA_V2_ID {
+        return TransparencyAnchor::Invalid(format!("unsupported inclusion proof schema {schema}"));
+    }
+    let artifact: TransparencyInclusionProofArtifact = match serde_json::from_value(raw_artifact) {
+        Ok(artifact) => artifact,
+        Err(error) => {
+            return TransparencyAnchor::Invalid(format!(
+                "v2 inclusion proof envelope is invalid: {error}"
+            ))
+        }
+    };
     if artifact.schema != TRANSPARENCY_INCLUSION_PROOF_SCHEMA_V2_ID {
         return TransparencyAnchor::Invalid(format!(
             "unsupported inclusion proof schema {}",
             artifact.schema
         ));
     }
-    // V2 is specifically the checkpoint-anchored format, so omitting its
-    // checkpoint statement is malformed rather than a preview-only legacy
-    // proof.
-    let Some(statement) = artifact.checkpoint_statement else {
+    for (field, value) in [
+        ("proof_id", artifact.proof_id.as_str()),
+        ("log_id", artifact.log_id.as_str()),
+        ("checkpoint", artifact.checkpoint.as_str()),
+    ] {
+        if value.trim().is_empty() {
+            return TransparencyAnchor::Invalid(format!(
+                "v2 inclusion proof {field} must not be empty"
+            ));
+        }
+    }
+    if artifact.verified_at == 0 {
         return TransparencyAnchor::Invalid(
-            "v2 inclusion proof is missing checkpoint_statement".to_string(),
+            "v2 inclusion proof verified_at must be greater than zero".to_string(),
+        );
+    }
+    if artifact.tree_size == 0 || artifact.leaf_index >= artifact.tree_size {
+        return TransparencyAnchor::Invalid(
+            "v2 inclusion proof leaf position is outside the committed tree".to_string(),
         );
     };
+    let statement = artifact.checkpoint_statement;
 
     let invalid = |reason: &str| TransparencyAnchor::Invalid(reason.to_string());
 

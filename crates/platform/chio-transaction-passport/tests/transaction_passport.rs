@@ -2622,7 +2622,46 @@ fn standalone_minimal_passport_rejects_v2_anchor_without_checkpoint_statement() 
     assert!(
         error
             .to_string()
-            .contains("v2 inclusion proof is missing checkpoint_statement"),
+            .contains("v2 inclusion proof envelope is invalid"),
+        "{error}"
+    );
+}
+
+#[test]
+fn standalone_minimal_passport_requires_the_complete_v2_inclusion_envelope() {
+    for field in ["proof_id", "log_id", "checkpoint", "verified_at"] {
+        let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+            transparency_anchored_fixture(|artifact| {
+                artifact
+                    .as_object_mut()
+                    .test_expect("inclusion artifact is an object")
+                    .remove(field);
+            });
+
+        let error =
+            verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+                .test_expect_err("an incomplete v2 envelope must deny");
+        assert!(
+            error
+                .to_string()
+                .contains("v2 inclusion proof envelope is invalid"),
+            "missing {field}: {error}"
+        );
+    }
+}
+
+#[test]
+fn standalone_minimal_passport_rejects_unknown_v2_inclusion_envelope_fields() {
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|artifact| {
+            artifact["smuggled"] = json!("field");
+        });
+
+    let error =
+        verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+            .test_expect_err("a field-smuggled v2 envelope must deny");
+    assert!(
+        error.to_string().contains("unknown field `smuggled`"),
         "{error}"
     );
 }

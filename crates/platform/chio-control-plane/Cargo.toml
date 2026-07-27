@@ -74,6 +74,7 @@ p384 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
 x509-cert = "0.2"
 url = "2"
 uuid = { workspace = true }
+libc = "0.2"
 
 [dev-dependencies]
 chio-anchor = { workspace = true }

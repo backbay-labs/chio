@@ -3079,6 +3079,7 @@ dependencies = [
  "ciborium",
  "clap 4.6.0",
  "hex",
+ "libc",
  "p384",
  "percent-encoding",
  "proptest",

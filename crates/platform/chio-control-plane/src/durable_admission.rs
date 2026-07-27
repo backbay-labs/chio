@@ -194,8 +194,19 @@ pub(crate) fn create_private_directory(path: &Path) -> Result<(), std::io::Error
     fs::create_dir_all(path)?;
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+
+        let directory = OpenOptions::new()
+            .read(true)
+            .custom_flags(libc::O_CLOEXEC | libc::O_DIRECTORY | libc::O_NOFOLLOW)
+            .open(path)?;
+        if !directory.metadata()?.is_dir() {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::NotADirectory,
+                "private directory path is not a directory",
+            ));
+        }
+        directory.set_permissions(fs::Permissions::from_mode(0o700))?;
     }
     Ok(())
 }
@@ -507,6 +518,24 @@ mod tests {
         assert!(error
             .to_string()
             .contains("target database must not alias alias database"));
+        Ok(())
+    }
+
+    #[test]
+    fn private_directory_rejects_symlink_without_chmod_target() -> Result<(), CliError> {
+        use std::os::unix::fs::{symlink, PermissionsExt};
+
+        let directory = tempfile::tempdir()?;
+        let target = directory.path().join("attacker-selected");
+        let alias = directory.path().join("authority.locks");
+        fs::create_dir(&target)?;
+        fs::set_permissions(&target, fs::Permissions::from_mode(0o755))?;
+        symlink(&target, &alias)?;
+
+        let error = create_private_directory(&alias)
+            .expect_err("a symlinked private-directory path must fail closed");
+        assert_ne!(error.kind(), std::io::ErrorKind::NotFound);
+        assert_eq!(fs::metadata(&target)?.permissions().mode() & 0o777, 0o755);
         Ok(())
     }
 }

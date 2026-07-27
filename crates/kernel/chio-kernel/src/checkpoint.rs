@@ -574,9 +574,9 @@ fn validate_chain_leaves_for_pair(
             current.body.checkpoint_seq, previous.body.checkpoint_seq
         )));
     }
-    if chain_leaf_hashes.len() != to_size {
+    if chain_leaf_hashes.len() < to_size {
         return Err(CheckpointError::Continuity(format!(
-            "chain leaf count {} does not match checkpoint {} chain size {}",
+            "chain leaf count {} does not reach checkpoint {} chain size {}",
             chain_leaf_hashes.len(),
             current.body.checkpoint_seq,
             to_size
@@ -597,18 +597,38 @@ fn validate_chain_leaves_for_pair(
     Ok((from_size, to_size))
 }
 
-/// Build a Merkle consistency proof showing that `current`'s chain commitment
-/// is an append-only extension of `previous`'s.
-///
-/// `chain_leaf_hashes` must contain the chain leaf of every checkpoint from
-/// sequence 1 through `current`, in order (see
-/// [`checkpoint_chain_leaf_hash`]). Both checkpoints must carry a signed
-/// `chain_root` and both roots must match the supplied leaves; the proof
-/// fails to build rather than committing to unverified data.
-pub fn build_checkpoint_consistency_proof(
+fn validate_checkpoint_chain_commitments(
     previous: &KernelCheckpoint,
     current: &KernelCheckpoint,
     chain_leaf_hashes: &[Hash],
+    chain_tree: &MerkleTree,
+) -> Result<(usize, usize), CheckpointError> {
+    let (from_size, to_size) =
+        validate_chain_leaves_for_pair(previous, current, chain_leaf_hashes)?;
+    if let Some(from_chain_root) = previous.body.chain_root {
+        if chain_tree.prefix_root(from_size)? != from_chain_root {
+            return Err(CheckpointError::Continuity(format!(
+                "predecessor {} chain_root does not match the retained checkpoint chain",
+                previous.body.checkpoint_seq
+            )));
+        }
+    }
+    if let Some(to_chain_root) = current.body.chain_root {
+        if chain_tree.prefix_root(to_size)? != to_chain_root {
+            return Err(CheckpointError::Continuity(format!(
+                "checkpoint {} chain_root does not extend the retained checkpoint chain",
+                current.body.checkpoint_seq
+            )));
+        }
+    }
+    Ok((from_size, to_size))
+}
+
+fn build_checkpoint_consistency_proof_from_tree(
+    previous: &KernelCheckpoint,
+    current: &KernelCheckpoint,
+    chain_leaf_hashes: &[Hash],
+    chain_tree: &MerkleTree,
 ) -> Result<CheckpointConsistencyProof, CheckpointError> {
     validate_checkpoint_predecessor(previous, current)?;
     let previous_log_id = checkpoint_log_id(previous);
@@ -626,24 +646,10 @@ pub fn build_checkpoint_consistency_proof(
     let from_chain_root = require_chain_root(previous)?;
     let to_chain_root = require_chain_root(current)?;
     let (from_size, to_size) =
-        validate_chain_leaves_for_pair(previous, current, chain_leaf_hashes)?;
-    if checkpoint_chain_root(&chain_leaf_hashes[..from_size])? != from_chain_root {
-        return Err(CheckpointError::Continuity(format!(
-            "predecessor {} chain_root does not match the supplied chain leaves",
-            previous.body.checkpoint_seq
-        )));
-    }
-    let tree = MerkleTree::from_hashes(chain_leaf_hashes.to_vec())?;
-    if tree.root() != to_chain_root {
-        return Err(CheckpointError::Continuity(format!(
-            "checkpoint {} chain_root does not match the supplied chain leaves",
-            current.body.checkpoint_seq
-        )));
-    }
-    let chain_proof_hashes = tree.consistency_proof(from_size)?;
-    let to_leaf_inclusion = tree.inclusion_proof(to_size - 1)?;
-    let from_leaf_inclusion = MerkleTree::from_hashes(chain_leaf_hashes[..from_size].to_vec())?
-        .inclusion_proof(from_size - 1)?;
+        validate_checkpoint_chain_commitments(previous, current, chain_leaf_hashes, chain_tree)?;
+    let chain_proof_hashes = chain_tree.consistency_proof_between(from_size, to_size)?;
+    let from_leaf_inclusion = chain_tree.inclusion_proof_at_size(from_size - 1, from_size)?;
+    let to_leaf_inclusion = chain_tree.inclusion_proof_at_size(to_size - 1, to_size)?;
 
     Ok(CheckpointConsistencyProof {
         schema: CHECKPOINT_CONSISTENCY_PROOF_SCHEMA.to_string(),
@@ -662,6 +668,78 @@ pub fn build_checkpoint_consistency_proof(
         from_leaf_inclusion: Some(from_leaf_inclusion),
         to_leaf_inclusion: Some(to_leaf_inclusion),
     })
+}
+
+fn build_legacy_checkpoint_consistency_record(
+    previous: &KernelCheckpoint,
+    current: &KernelCheckpoint,
+) -> Result<CheckpointConsistencyProof, CheckpointError> {
+    validate_checkpoint_predecessor(previous, current)?;
+    let previous_log_id = checkpoint_log_id(previous);
+    let current_log_id = checkpoint_log_id(current);
+    if previous_log_id != current_log_id {
+        return Err(CheckpointError::Continuity(format!(
+            "checkpoint {} derives log_id {} but predecessor {} derives {}",
+            current.body.checkpoint_seq,
+            current_log_id,
+            previous.body.checkpoint_seq,
+            previous_log_id
+        )));
+    }
+    if previous.body.schema != CHECKPOINT_SCHEMA_V1
+        || current.body.schema != CHECKPOINT_SCHEMA_V1
+        || previous.body.chain_root.is_some()
+        || current.body.chain_root.is_some()
+    {
+        return Err(CheckpointError::Invalid(
+            "legacy consistency records require two v1 checkpoints without chain commitments"
+                .to_string(),
+        ));
+    }
+
+    Ok(CheckpointConsistencyProof {
+        schema: CHECKPOINT_CONSISTENCY_PROOF_SCHEMA_V1.to_string(),
+        log_id: current_log_id,
+        from_checkpoint_seq: previous.body.checkpoint_seq,
+        to_checkpoint_seq: current.body.checkpoint_seq,
+        from_checkpoint_sha256: checkpoint_body_sha256(&previous.body)?,
+        to_checkpoint_sha256: checkpoint_body_sha256(&current.body)?,
+        from_log_tree_size: checkpoint_log_tree_size(&previous.body),
+        to_log_tree_size: checkpoint_log_tree_size(&current.body),
+        appended_entry_start_seq: current.body.batch_start_seq,
+        appended_entry_end_seq: current.body.batch_end_seq,
+        from_chain_root: None,
+        to_chain_root: None,
+        chain_proof_hashes: Vec::new(),
+        from_leaf_inclusion: None,
+        to_leaf_inclusion: None,
+    })
+}
+
+/// Build a Merkle consistency proof showing that `current`'s chain commitment
+/// is an append-only extension of `previous`'s.
+///
+/// `chain_leaf_hashes` must contain the chain leaf of every checkpoint from
+/// sequence 1 through `current`, in order (see
+/// [`checkpoint_chain_leaf_hash`]). Both checkpoints must carry a signed
+/// `chain_root` and both roots must match the supplied leaves; the proof
+/// fails to build rather than committing to unverified data.
+pub fn build_checkpoint_consistency_proof(
+    previous: &KernelCheckpoint,
+    current: &KernelCheckpoint,
+    chain_leaf_hashes: &[Hash],
+) -> Result<CheckpointConsistencyProof, CheckpointError> {
+    let to_size = chain_tree_size(current)?;
+    if chain_leaf_hashes.len() != to_size {
+        return Err(CheckpointError::Continuity(format!(
+            "chain leaf count {} does not match checkpoint {} chain size {}",
+            chain_leaf_hashes.len(),
+            current.body.checkpoint_seq,
+            to_size
+        )));
+    }
+    let tree = MerkleTree::from_hashes(chain_leaf_hashes.to_vec())?;
+    build_checkpoint_consistency_proof_from_tree(previous, current, chain_leaf_hashes, &tree)
 }
 
 /// Verify a consistency proof against two signed checkpoints.
@@ -961,6 +1039,9 @@ pub fn build_checkpoint_transparency(
         };
         next_seq = following;
     }
+    let chain_tree = (!chain_leaf_hashes.is_empty())
+        .then(|| MerkleTree::from_hashes(chain_leaf_hashes.clone()))
+        .transpose()?;
 
     let mut witnesses = Vec::new();
     let mut consistency_proofs = Vec::new();
@@ -980,17 +1061,36 @@ pub fn build_checkpoint_transparency(
             }
             witnesses.push(build_checkpoint_witness(previous, checkpoint)?);
             let log_id = checkpoint_log_id(checkpoint);
-            if checkpoint_log_id(previous) == log_id
-                && previous.body.chain_root.is_some()
-                && checkpoint.body.chain_root.is_some()
-            {
-                let to_size = chain_tree_size(checkpoint)?;
+            let to_size = chain_tree_size(checkpoint)?;
+            if let Some(tree) = chain_tree.as_ref() {
                 if chain_leaf_hashes.len() >= to_size {
-                    consistency_proofs.push(build_checkpoint_consistency_proof(
+                    // The checkpoint-chain commitment is global. Verify both
+                    // signed roots against the retained prefix even when a
+                    // signing-key rotation changes the derived log identity.
+                    validate_checkpoint_chain_commitments(
                         previous,
                         checkpoint,
-                        &chain_leaf_hashes[..to_size],
-                    )?);
+                        &chain_leaf_hashes,
+                        tree,
+                    )?;
+                    if checkpoint_log_id(previous) == log_id {
+                        if previous.body.schema == CHECKPOINT_SCHEMA_V1
+                            && checkpoint.body.schema == CHECKPOINT_SCHEMA_V1
+                        {
+                            consistency_proofs.push(build_legacy_checkpoint_consistency_record(
+                                previous, checkpoint,
+                            )?);
+                        } else if previous.body.chain_root.is_some()
+                            && checkpoint.body.chain_root.is_some()
+                        {
+                            consistency_proofs.push(build_checkpoint_consistency_proof_from_tree(
+                                previous,
+                                checkpoint,
+                                &chain_leaf_hashes,
+                                tree,
+                            )?);
+                        }
+                    }
                 }
             }
         }

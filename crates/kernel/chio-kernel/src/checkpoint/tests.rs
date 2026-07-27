@@ -542,6 +542,77 @@ fn transparency_preserves_post_rotation_consistency_proofs() {
 }
 
 #[test]
+fn transparency_rejects_divergent_chain_root_at_key_rotation() {
+    let first_key = Keypair::generate();
+    let rotated_key = Keypair::generate();
+    let first =
+        build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &first_key).expect("first checkpoint");
+    let mut second = build_checkpoint_with_previous(
+        2,
+        4,
+        6,
+        &make_receipt_bytes(3),
+        &rotated_key,
+        Some(&first),
+        &chain_leaves(&[&first]),
+    )
+    .expect("rotated checkpoint");
+    second.body.chain_root =
+        Some(checkpoint_chain_root(&[leaf_hash(b"unrelated-rotated-history")]).expect("root"));
+    second.signature = rotated_key
+        .sign(&canonical_json_bytes(&second.body).expect("canonical rotated checkpoint body"));
+
+    let error = build_checkpoint_transparency(&[first, second])
+        .expect_err("key rotation must not bypass the global chain commitment");
+    assert!(
+        error
+            .to_string()
+            .contains("does not extend the retained checkpoint chain"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn transparency_derives_legacy_v1_consistency_records() {
+    let keypair = Keypair::generate();
+    let mut first =
+        build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &keypair).expect("first checkpoint");
+    first.body.schema = CHECKPOINT_SCHEMA_V1.to_string();
+    first.body.chain_root = None;
+    first.signature =
+        keypair.sign(&canonical_json_bytes(&first.body).expect("canonical first v1 body"));
+
+    let mut second = build_checkpoint_with_previous(
+        2,
+        4,
+        6,
+        &make_receipt_bytes(3),
+        &keypair,
+        Some(&first),
+        &chain_leaves(&[&first]),
+    )
+    .expect("second checkpoint");
+    second.body.schema = CHECKPOINT_SCHEMA_V1.to_string();
+    second.body.chain_root = None;
+    second.body.previous_checkpoint_sha256 =
+        Some(checkpoint_body_sha256(&first.body).expect("first v1 digest"));
+    second.signature =
+        keypair.sign(&canonical_json_bytes(&second.body).expect("canonical second v1 body"));
+
+    let transparency = validate_checkpoint_transparency(&[first.clone(), second.clone()])
+        .expect("legacy transparency");
+    assert_eq!(transparency.consistency_proofs.len(), 1);
+    let proof = &transparency.consistency_proofs[0];
+    assert_eq!(proof.schema, CHECKPOINT_CONSISTENCY_PROOF_SCHEMA_V1);
+    assert!(verify_checkpoint_consistency_proof(&first, &second, proof)
+        .expect("verify legacy metadata record"));
+    assert!(
+        verify_checkpoint_transparency_records(&[first, second], &transparency).is_ok(),
+        "a derived legacy record must round-trip through record verification"
+    );
+}
+
+#[test]
 fn checkpoint_consistency_proof_rejects_unrelated_chain_root() {
     let kp = Keypair::generate();
     let first = build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &kp).expect("first");
