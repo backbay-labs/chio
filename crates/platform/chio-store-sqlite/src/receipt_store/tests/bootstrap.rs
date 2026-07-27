@@ -770,6 +770,9 @@ fn receipt_store_health_read_only_missing_db_reports_not_found_without_creating(
 fn empty_store_reports_zero_committed_entry_for_operator_surfaces() {
     let path = unique_db_path("chio-receipts-empty-operator-surfaces");
     let store = SqliteReceiptStore::open(&path).test_unwrap();
+    store
+        .wait_for_writer_ready(Duration::from_secs(5))
+        .test_unwrap();
 
     assert_eq!(store.latest_committed_entry_seq().test_unwrap(), 0);
 
