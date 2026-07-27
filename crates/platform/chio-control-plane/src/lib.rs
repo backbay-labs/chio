@@ -1,9 +1,6 @@
 #![allow(clippy::result_large_err, clippy::too_many_arguments)]
-use std::fs;
-use std::path::Path;
-use std::sync::Arc;
-
 pub use chio_agent_web_interop as agent_web;
+use chio_core::capability::threshold_approval::ThresholdApprovalRequirement;
 use chio_core::crypto::Keypair;
 use chio_errors::_generated::error_codes::{
     ATTEST_PROVENANCE_MISSING, CAPABILITY_SCOPE_EXCEEDED, CAPABILITY_SUBJECT_MISMATCH, CLI_IO,
@@ -15,14 +12,16 @@ use chio_errors::_generated::error_codes::{
 use chio_errors::{ChioError, ErrorCodeSpec};
 use chio_kernel::transport::TransportError;
 use chio_kernel::{ChioKernel, KernelConfig, StructuredErrorReport};
+use std::fs;
+use std::path::Path;
+use std::sync::Arc;
 mod anchor_egress;
 pub mod attestation;
 pub mod certify;
 mod durable_admission;
 pub use chio_enterprise_export as enterprise_export;
-pub(crate) use durable_admission::{
-    create_private_directory, durable_admission_lock_root, write_private_file_atomically,
-};
+use durable_admission::create_private_directory;
+pub(crate) use durable_admission::{durable_admission_lock_root, write_private_file_atomically};
 pub use durable_admission::{
     durable_admission_sidecar_path, open_durable_admission_runtime,
     validate_distinct_database_paths, validate_durable_admission_participant_paths,
@@ -52,10 +51,7 @@ pub use chio_transaction_passport as transaction_passport;
 pub mod transaction_passport_risk;
 pub mod trust_control;
 pub use chio_trust_market_context as trust_market;
-
-struct LoadedThresholdApprovalResolver(
-    chio_core::capability::threshold_approval::ThresholdApprovalRequirement,
-);
+struct LoadedThresholdApprovalResolver(ThresholdApprovalRequirement);
 
 impl chio_kernel::threshold_approval::ThresholdApprovalRequirementResolver
     for LoadedThresholdApprovalResolver
@@ -876,8 +872,7 @@ mod tests {
     #[test]
     fn durable_admission_runtime_shares_one_owner_on_a_distinct_sidecar() {
         let directory = tempfile::tempdir().expect("create durable admission test directory");
-        create_private_directory(directory.path())
-            .expect("secure durable admission test directory");
+        create_private_directory(directory.path()).expect("secure test directory");
         let session_database = directory.path().join("sessions.sqlite3");
         let admission_database =
             durable_admission_sidecar_path(&session_database).expect("derive admission sidecar");
@@ -908,8 +903,7 @@ mod tests {
     #[test]
     fn durable_admission_runtime_rejects_a_lost_signing_seed() {
         let directory = tempfile::tempdir().expect("create durable admission test directory");
-        create_private_directory(directory.path())
-            .expect("secure durable admission test directory");
+        create_private_directory(directory.path()).expect("secure test directory");
         let admission_database = directory.path().join("admission.sqlite3");
         let runtime = DurableAdmissionRuntime::open(&admission_database)
             .expect("open durable admission runtime");

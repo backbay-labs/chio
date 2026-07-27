@@ -1,0 +1,202 @@
+use super::*;
+
+#[test]
+fn standalone_minimal_passport_rejects_anchor_over_a_non_receipt_artifact() {
+    // A genuine, pinned-key-signed anchor over some other digest-bound
+    // artifact must not carry the anchored tier: otherwise a published
+    // (artifact, proof, checkpoint) triple grafts into any graph.
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) = transparency_anchored_fixture(
+        |artifact| {
+            let policy_bytes = br#"{"schema":"chio.policy.bundle.v1","id":"policy","version":"2026-06-10","rules":[{"id":"allow-demo-echo","effect":"allow","scope":"tool:demo.echo"}]}"#.to_vec();
+            let leaf = chio_core_types::merkle::leaf_hash(&policy_bytes);
+            let leaf_hex = format!("0x{}", leaf.to_hex());
+            let kernel = transparency_checkpoint_keypair();
+            let mut body = artifact["checkpoint_statement"]["body"].clone();
+            body["merkle_root"] = json!(leaf_hex);
+            let checkpoint_chain_leaf = json!({
+                "checkpoint_seq": body["checkpoint_seq"],
+                "batch_start_seq": body["batch_start_seq"],
+                "batch_end_seq": body["batch_end_seq"],
+                "merkle_root": body["merkle_root"]
+            });
+            let chain_root = chio_core_types::merkle::leaf_hash(
+                &chio_core_types::canonical_json_bytes(&checkpoint_chain_leaf)
+                    .test_expect("canonical policy checkpoint chain leaf"),
+            );
+            body["chain_root"] = json!(format!("0x{}", chain_root.to_hex()));
+            let signature = kernel
+                .sign(
+                    &chio_core_types::canonical_json_bytes(&body)
+                        .test_expect("canonical policy-anchor statement body"),
+                )
+                .to_hex();
+            artifact["artifact_ref"] = json!(sha256_hex(&policy_bytes));
+            artifact["root_hash"] = json!(leaf_hex);
+            artifact["leaf_hash"] = json!(leaf_hex);
+            artifact["checkpoint_statement"] = json!({
+                "body": body,
+                "signature": signature
+            });
+        },
+    );
+
+    let error =
+        verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+            .test_expect_err("an anchor over a non-receipt artifact must not promote");
+
+    assert!(
+        error
+            .to_string()
+            .contains("inclusion proof subject is not this transaction's receipt"),
+        "{error}"
+    );
+}
+
+#[test]
+fn standalone_minimal_passport_denies_a_checkable_but_invalid_transparency_anchor() {
+    // A malformed anchor this verifier CAN judge is an evaluation error, not a
+    // silent downgrade: reporting the preview tier would let it ride through a
+    // policy that accepts preview.
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|artifact| {
+            artifact["inclusion_path"] = json!([format!("0x{}", "11".repeat(32))]);
+        });
+
+    let error =
+        verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+            .test_expect_err("a checkable invalid anchor must deny");
+
+    assert!(
+        error
+            .to_string()
+            .contains("transparency inclusion proof is invalid"),
+        "{error}"
+    );
+}
+
+#[test]
+fn standalone_minimal_passport_validates_every_transparency_candidate() {
+    let (mut artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|_| {});
+    let mut invalid_artifact: Value = serde_json::from_slice(
+        artifacts
+            .get("transparency-inclusion-proof.json")
+            .test_expect("valid inclusion artifact exists"),
+    )
+    .test_expect("valid inclusion artifact parses");
+    invalid_artifact["inclusion_path"] = json!([format!("0x{}", "11".repeat(32))]);
+    let invalid_bytes =
+        serde_json::to_vec(&invalid_artifact).test_expect("invalid inclusion artifact serializes");
+    let invalid_digest = sha256_hex(&invalid_bytes);
+    artifacts.insert(
+        "transparency-inclusion-proof-invalid.json".to_string(),
+        invalid_bytes,
+    );
+
+    let mut graph: Value =
+        serde_json::from_slice(&evidence_graph_bytes).test_expect("evidence graph parses");
+    graph["nodes"]
+        .as_array_mut()
+        .test_expect("graph nodes are an array")
+        .push(json!({
+            "id": invalid_digest,
+            "schema": "chio.transparency.inclusion-proof.v2",
+            "path": "transparency-inclusion-proof-invalid.json",
+            "sha256": invalid_digest,
+            "role": "transparency-inclusion-proof"
+        }));
+    let evidence_graph_bytes = serde_json::to_vec(&graph).test_expect("evidence graph serializes");
+
+    let error =
+        verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+            .test_expect_err("a later invalid candidate must deny after a valid candidate");
+    assert!(
+        error
+            .to_string()
+            .contains("transparency inclusion proof is invalid"),
+        "{error}"
+    );
+}
+
+#[test]
+fn standalone_minimal_passport_rejects_signed_checkpoint_missing_required_body_fields() {
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|artifact| {
+            let mut body = artifact["checkpoint_statement"]["body"].clone();
+            body.as_object_mut()
+                .test_expect("checkpoint body is an object")
+                .remove("checkpoint_seq");
+            let signature = transparency_checkpoint_keypair()
+                .sign(
+                    &chio_core_types::canonical_json_bytes(&body)
+                        .test_expect("canonical malformed checkpoint body"),
+                )
+                .to_hex();
+            artifact["checkpoint_statement"] = json!({
+                "body": body,
+                "signature": signature
+            });
+        });
+
+    let error =
+        verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+            .test_expect_err("a signed partial checkpoint body must deny");
+    assert!(
+        error
+            .to_string()
+            .contains("checkpoint statement body is invalid"),
+        "{error}"
+    );
+}
+
+#[test]
+fn standalone_minimal_passport_rejects_signed_checkpoint_unknown_body_fields() {
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|artifact| {
+            let mut body = artifact["checkpoint_statement"]["body"].clone();
+            body["smuggled"] = json!("field");
+            let signature = transparency_checkpoint_keypair()
+                .sign(
+                    &chio_core_types::canonical_json_bytes(&body)
+                        .test_expect("canonical field-smuggled checkpoint body"),
+                )
+                .to_hex();
+            artifact["checkpoint_statement"] = json!({
+                "body": body,
+                "signature": signature
+            });
+        });
+
+    let error =
+        verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+            .test_expect_err("a signed field-smuggled checkpoint body must deny");
+    assert!(
+        error.to_string().contains("unknown field `smuggled`"),
+        "{error}"
+    );
+}
+
+#[test]
+fn standalone_minimal_passport_keeps_preview_when_the_anchor_is_not_evaluable() {
+    // With no pinned checkpoint keys the verifier cannot judge the anchor, so
+    // the graph settles at the preview tier instead of erroring. The fixture
+    // policy demands the anchored tier, so the denial names the tier reached
+    // rather than a proof defect.
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|_| {});
+
+    let error = verify_standalone_anchored_with_checkpoint_keys(
+        &artifacts,
+        &evidence_graph_bytes,
+        &verifier_policy_bytes,
+        &[],
+    )
+    .test_expect_err("the fixture policy requires the anchored tier");
+
+    assert!(
+        error
+            .to_string()
+            .contains("transparency state not accepted by verifier policy: transparency_preview"),
+        "an unjudgeable anchor must degrade rather than error: {error}"
+    );
+}

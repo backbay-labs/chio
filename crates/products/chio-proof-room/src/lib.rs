@@ -754,7 +754,6 @@ pub(crate) fn transaction_trusted_checkpoint_keys_from_env() -> Result<Vec<Publi
         )),
     }
 }
-
 pub(crate) fn runtime_trust_from_env(
 ) -> Result<chio_transaction_passport::RuntimeSecurityTrust, String> {
     let trusted_passport_signer_keys = transaction_trusted_root_keys_from_env()?;
