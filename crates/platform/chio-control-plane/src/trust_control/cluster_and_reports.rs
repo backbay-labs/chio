@@ -318,6 +318,24 @@ mod cluster_and_reports_tests {
     }
 
     #[test]
+    fn consensus_and_authority_lease_share_one_consistent_snapshot() {
+        let state = state_with_cluster("http://node-a", &["http://node-b"], None, None, None);
+        update_peer_reachable(&state, "http://node-b");
+
+        let (consensus, authority_lease) =
+            cluster_consensus_and_authority_lease_view(&state).test_unwrap();
+        let authority_lease = authority_lease.test_unwrap();
+
+        assert!(consensus.has_quorum);
+        assert_eq!(
+            consensus.leader_url.as_deref(),
+            Some(authority_lease.leader_url.as_str())
+        );
+        assert_eq!(consensus.election_term, authority_lease.term);
+        assert_eq!(consensus.election_term, authority_lease.lease_epoch);
+    }
+
+    #[test]
     fn compute_cluster_consensus_drops_stale_peers_after_authority_lease_timeout() {
         let mut cluster = ClusterRuntimeState {
             self_url: "http://node-a".to_string(),
