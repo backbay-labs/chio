@@ -144,6 +144,12 @@
       "schemaFile": "spec/schemas/chio-wire/v1/capability/cumulative-approval-root.schema.json"
     },
     {
+      "schema": "chio.delivery-contract.v1",
+      "artifactKind": "delivery_contract",
+      "introducedBy": "delivery-contract-v1",
+      "schemaFile": "spec/schemas/chio-wire/v1/receipt/delivery-contract.schema.json"
+    },
+    {
       "schema": "chio.federation.authority-profile.v1",
       "artifactKind": "chio_federation_authority_profile",
       "introducedBy": "chio-final-architecture/v1",

@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-wire/v1/receipt/delivery-contract.schema.json",
+  "title": "Chio Delivery Contract Receipt Metadata",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "expected_digest",
+    "observed_digest",
+    "result"
+  ],
+  "properties": {
+    "schema": { "const": "chio.delivery-contract.v1" },
+    "expected_digest": { "$ref": "#/$defs/digest" },
+    "observed_digest": { "$ref": "#/$defs/digest" },
+    "result": {
+      "enum": [
+        "matched",
+        "mismatched"
+      ]
+    }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

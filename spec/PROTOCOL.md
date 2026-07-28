@@ -1059,17 +1059,26 @@ Nested flows such as sampling, elicitation, and resource reads use
 
 ### 6.4 Receipt Metadata
 
-The shipped metadata surface is extensible JSON. Current first-class uses
-include:
+The shipped metadata surface is extensible JSON. The top-level keys below are
+reserved: the kernel writes its typed blocks under them, merges them last, and
+rejects a pre-existing collision from caller or hook metadata, so a verifier can
+treat a block found under a reserved key as kernel-authored and covered by the
+receipt signature. Unknown fields and unsupported schema versions fail closed.
 
-- the reserved `chio_receipt_signing_nonce` key, bound by the signing path to
-  the pre-binding receipt id (see "Receipt Identity And DAG"); it is part of
-  the signed body on every receipt
-- financial attribution and settlement metadata
-- governed transaction intent and approval metadata
-- subject and issuer attribution
-- streamed-output chunk metadata
-- portable-trust and federation provenance
+| Key | Written by | Contents |
+|-----|------------|----------|
+| `chio_receipt_signing_nonce` | signing path | The pre-binding receipt id, folded into the signed body of every receipt (see "Receipt Identity And DAG"). |
+| `original_metadata` | signing path | A non-object caller metadata value displaced when the signing nonce is bound. |
+| `financial` | kernel | Financial attribution and settlement metadata. |
+| `budget_authority` | kernel | Budget-authority lineage for monetary receipts. |
+| `channel` | kernel | Streamed-output channel accounting metadata. |
+| `governed_transaction` | kernel | Governed-transaction intent and approval metadata. |
+| `admission_operation` | kernel | Durable admission projection, schema `chio.admission-receipt.v1` (see below). |
+| `delivery_contract` | kernel | Output-digest delivery evidence, schema `chio.delivery-contract.v1` (see below). |
+
+Subject and issuer attribution, streamed-output chunk metadata, and
+portable-trust and federation provenance are additive extensions layered over
+the same object.
 
 Durable tool calls carry an `admission_operation` block whose schema is
 `chio.admission-receipt.v1`. It binds the signed receipt to the admission
@@ -1078,6 +1087,18 @@ trusted time, coordinator lease and store fence, retained dispatch commit, and
 optional tool outcome. The machine-readable contract is registered at
 `spec/schemas/chio-wire/v1/receipt/admission-metadata.schema.json`; unknown
 fields and unsupported schema versions fail closed.
+
+Digest-constrained tool calls carry a `delivery_contract` block whose schema is
+`chio.delivery-contract.v1`. It records the `expected_digest` the grant fixed in
+advance, the `observed_digest` of the delivered output (both canonical lowercase
+64-character hex SHA-256), and a `result` of `matched` or `mismatched`. The
+block is present only when the exercised grant carried an output-digest
+constraint: `matched` accompanies an Allow, `mismatched` accompanies the
+persisted zero-charge Deny. Like the admission block it carries no signature of
+its own and is authenticated by the enclosing receipt. The machine-readable
+contract is registered at
+`spec/schemas/chio-wire/v1/receipt/delivery-contract.schema.json`; unknown
+fields, a non-pinned schema, and non-hex digests fail closed.
 
 Governed receipt metadata now also admits a versioned
 `economic_authorization` envelope with `version`, `economic_mode`, `payer`,
