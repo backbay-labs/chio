@@ -146,7 +146,7 @@ fn stale_finding_id_is_rejected() {
     finding.descriptor.topic = "repo:backbay/chio#other-topic".to_string();
     assert!(matches!(
         finding.validate(),
-        Err(FindingError::MalformedDigest("finding_id"))
+        Err(FindingError::FindingIdMismatch)
     ));
 }
 
@@ -449,7 +449,7 @@ fn signing_rejects_stale_finding_id() {
     finding.descriptor.topic = "repo:backbay/chio#different-question".to_string();
     assert!(matches!(
         sign_finding(finding, &issuer),
-        Err(FindingError::MalformedDigest("finding_id"))
+        Err(FindingError::FindingIdMismatch)
     ));
 }
 

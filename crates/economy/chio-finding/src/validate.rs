@@ -20,6 +20,8 @@ pub enum FindingError {
     EmptyField(&'static str),
     #[error("field is not a lowercase 64-char hex digest: {0}")]
     MalformedDigest(&'static str),
+    #[error("finding_id does not match the canonical artifact body")]
+    FindingIdMismatch,
     #[error("field exceeds the I-JSON maximum safe integer: {0}")]
     IJsonIntegerOutOfRange(&'static str),
     #[error("runtime_assurance_tier must be omitted when assurance is none")]
@@ -166,7 +168,7 @@ impl Finding {
         if expected == self.finding_id {
             Ok(())
         } else {
-            Err(FindingError::MalformedDigest("finding_id"))
+            Err(FindingError::FindingIdMismatch)
         }
     }
 }
