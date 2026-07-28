@@ -10,8 +10,17 @@ use chio_finding::{
 };
 use chio_finding::{sign_finding, verify_finding, verify_finding_signature};
 
+const I_JSON_MAX_SAFE_INTEGER: u64 = (1_u64 << 53) - 1;
+
 fn hex64(fill: char) -> String {
     std::iter::repeat_n(fill, 64).collect()
+}
+
+fn recompute_finding_id(finding: &mut Finding) {
+    finding.finding_id = match compute_finding_id(finding) {
+        Ok(finding_id) => finding_id,
+        Err(err) => panic!("finding id computation failed: {err}"),
+    };
 }
 
 /// Draft with an EMPTY finding_id; not yet valid.
@@ -259,5 +268,92 @@ fn signing_requires_the_issuer_key() {
     assert!(matches!(
         sign_finding(base_finding(&issuer), &other),
         Err(FindingError::Signing)
+    ));
+}
+
+#[test]
+fn i_json_maximum_values_are_accepted() {
+    let issuer = Keypair::generate();
+    let mut finding = draft_finding_with_issuer(issuer.public_key());
+    finding.evidence_cost.units = I_JSON_MAX_SAFE_INTEGER;
+    finding.issued_at = I_JSON_MAX_SAFE_INTEGER - 1;
+    finding.expires_at = I_JSON_MAX_SAFE_INTEGER;
+    recompute_finding_id(&mut finding);
+    assert!(finding.validate().is_ok());
+}
+
+#[test]
+fn evidence_cost_above_i_json_maximum_is_rejected() {
+    let issuer = Keypair::generate();
+    let mut finding = draft_finding_with_issuer(issuer.public_key());
+    finding.evidence_cost.units = I_JSON_MAX_SAFE_INTEGER + 1;
+    recompute_finding_id(&mut finding);
+    assert!(matches!(
+        finding.validate(),
+        Err(FindingError::IJsonIntegerOutOfRange("evidence_cost.units"))
+    ));
+}
+
+#[test]
+fn issued_at_above_i_json_maximum_is_rejected() {
+    let issuer = Keypair::generate();
+    let mut finding = draft_finding_with_issuer(issuer.public_key());
+    finding.issued_at = I_JSON_MAX_SAFE_INTEGER + 1;
+    finding.expires_at = I_JSON_MAX_SAFE_INTEGER + 2;
+    recompute_finding_id(&mut finding);
+    assert!(matches!(
+        finding.validate(),
+        Err(FindingError::IJsonIntegerOutOfRange("issued_at"))
+    ));
+}
+
+#[test]
+fn expires_at_above_i_json_maximum_is_rejected() {
+    let issuer = Keypair::generate();
+    let mut finding = draft_finding_with_issuer(issuer.public_key());
+    finding.expires_at = I_JSON_MAX_SAFE_INTEGER + 1;
+    recompute_finding_id(&mut finding);
+    assert!(matches!(
+        finding.validate(),
+        Err(FindingError::IJsonIntegerOutOfRange("expires_at"))
+    ));
+}
+
+#[test]
+fn explicit_none_runtime_tier_is_rejected() {
+    let issuer = Keypair::generate();
+    let mut finding = draft_finding_with_issuer(issuer.public_key());
+    finding.runtime_assurance_tier = Some(RuntimeAssuranceTier::None);
+    recompute_finding_id(&mut finding);
+    assert!(matches!(
+        finding.validate(),
+        Err(FindingError::NonCanonicalRuntimeAssuranceTier)
+    ));
+}
+
+#[test]
+fn non_ed25519_issuer_is_rejected() {
+    let mut sec1 = [0_u8; 65];
+    sec1[0] = 0x04;
+    let issuer = match PublicKey::from_p256_sec1(&sec1) {
+        Ok(issuer) => issuer,
+        Err(err) => panic!("P-256 test key construction failed: {err}"),
+    };
+    let mut finding = draft_finding_with_issuer(issuer);
+    recompute_finding_id(&mut finding);
+    assert!(matches!(
+        finding.validate(),
+        Err(FindingError::UnsupportedIssuerAlgorithm)
+    ));
+}
+
+#[test]
+fn signing_rejects_stale_finding_id() {
+    let issuer = Keypair::generate();
+    let mut finding = base_finding(&issuer);
+    finding.descriptor.topic = "repo:backbay/chio#different-question".to_string();
+    assert!(matches!(
+        sign_finding(finding, &issuer),
+        Err(FindingError::MalformedDigest("finding_id"))
     ));
 }

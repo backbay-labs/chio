@@ -2,10 +2,11 @@
 
 use chio_core_types::canonical_json_bytes;
 use chio_core_types::capability::runtime_attestation::RuntimeAssuranceTier;
-use chio_core_types::crypto::Keypair;
-use chio_core_types::crypto::{sha256_hex, Signature};
+use chio_core_types::crypto::{sha256_hex, Keypair, Signature, SigningAlgorithm};
 
 use crate::types::{Finding, FindingEvidenceClass, FindingGuaranteeClass, FINDING_SCHEMA_V1};
+
+const I_JSON_MAX_SAFE_INTEGER: u64 = (1_u64 << 53) - 1;
 
 /// Validation failures. Every variant is a rejection; there are no
 /// warning-grade outcomes.
@@ -17,6 +18,12 @@ pub enum FindingError {
     EmptyField(&'static str),
     #[error("field is not a lowercase 64-char hex digest: {0}")]
     MalformedDigest(&'static str),
+    #[error("field exceeds the I-JSON maximum safe integer: {0}")]
+    IJsonIntegerOutOfRange(&'static str),
+    #[error("runtime_assurance_tier must be omitted when assurance is none")]
+    NonCanonicalRuntimeAssuranceTier,
+    #[error("finding issuer must use Ed25519")]
+    UnsupportedIssuerAlgorithm,
     #[error("deterministic_replay findings require replay_recipe_sha256")]
     MissingReplayRecipe,
     #[error("non-asserted evidence class requires evidence receipts")]
@@ -54,6 +61,14 @@ fn require_hex64(value: &str, field: &'static str) -> Result<(), FindingError> {
     }
 }
 
+fn require_i_json_u64(value: u64, field: &'static str) -> Result<(), FindingError> {
+    if value <= I_JSON_MAX_SAFE_INTEGER {
+        Ok(())
+    } else {
+        Err(FindingError::IJsonIntegerOutOfRange(field))
+    }
+}
+
 impl Finding {
     /// Structural validation. Signature and cross-artifact checks (bond
     /// existence, receipt verification, status freshness) live in later
@@ -66,6 +81,15 @@ impl Finding {
             return Err(FindingError::UnsupportedSchema(self.schema.clone()));
         }
         require_hex64(&self.finding_id, "finding_id")?;
+        if self.issuer.algorithm() != SigningAlgorithm::Ed25519 {
+            return Err(FindingError::UnsupportedIssuerAlgorithm);
+        }
+        require_i_json_u64(self.evidence_cost.units, "evidence_cost.units")?;
+        require_i_json_u64(self.issued_at, "issued_at")?;
+        require_i_json_u64(self.expires_at, "expires_at")?;
+        if self.runtime_assurance_tier == Some(RuntimeAssuranceTier::None) {
+            return Err(FindingError::NonCanonicalRuntimeAssuranceTier);
+        }
         require_non_empty(&self.descriptor.topic, "descriptor.topic")?;
         require_hex64(&self.descriptor.context_sha256, "descriptor.context_sha256")?;
         require_hex64(&self.payload_sha256, "payload_sha256")?;
@@ -82,10 +106,10 @@ impl Finding {
         } else if let Some(recipe) = &self.replay_recipe_sha256 {
             require_hex64(recipe, "replay_recipe_sha256")?;
         }
-        // Any attestation-quality signal (non-asserted guarantee class,
-        // non-asserted evidence class, or a non-None runtime tier) needs
-        // receipts to verify against; an asserted finding claiming
-        // `Verified` runtime with no receipts is exactly the D3 lie.
+        // Any attestation-quality signal requires at least one receipt
+        // reference. This is a structural requirement only: M1 does not
+        // resolve the reference, verify receipt/checkpoint/revocation
+        // evidence, bind issuer lineage, or establish the claimed tier/class.
         let claims_attestation = self.guarantee_class != FindingGuaranteeClass::Asserted
             || self.evidence_class != FindingEvidenceClass::Asserted
             || matches!(
@@ -140,7 +164,8 @@ pub fn sign_finding(mut finding: Finding, keypair: &Keypair) -> Result<Finding, 
     if finding.issuer != keypair.public_key() {
         return Err(FindingError::Signing);
     }
-    finding.signature = String::new();
+    finding.signature.clear();
+    finding.validate()?;
     let (signature, _) = keypair
         .sign_canonical(&finding)
         .map_err(|_| FindingError::Signing)?;
@@ -176,8 +201,15 @@ pub fn verify_finding_signature(finding: &Finding) -> Result<(), FindingError> {
     }
 }
 
-/// The full fail-closed acceptance boundary for a published finding:
-/// structure + content-addressed id (validate) + issuer signature.
+/// Verify artifact integrity for an already-deserialized finding:
+/// structural invariants, content-address binding, and the embedded issuer
+/// signature.
+///
+/// This does not authenticate evidence receipts or checkpoints, bind the
+/// issuer to evidence lineage, verify bond/status/pricing references, check
+/// wall-clock liveness, or establish the truth of the guarantee/evidence
+/// classes. Market and trust decisions must perform those milestone-specific
+/// checks separately.
 ///
 /// IMPORTANT (review finding): this operates on an ALREADY-DESERIALIZED
 /// `Finding` and reserializes canonically to check the signature and id.
