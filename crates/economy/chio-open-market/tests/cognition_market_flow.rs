@@ -9,10 +9,11 @@
 //! signer, and golden fixture. The production marketplace still has no
 //! finding publish or reveal wiring.
 //!
-//! Three of these tests pass today: the buy leg clears the REAL `bid()`
+//! Three of these tests pass today: the buy leg clears the real `bid()`
 //! path for a finding listing (colon-segment scope semantics), the bid
-//! shape needs zero new fields, and the elicitation ceiling is
-//! deterministic. The `#[ignore]`d test specifies the desired end-to-end
+//! shape needs zero new fields, and buyer-local ceiling arithmetic is
+//! deterministic. They do not exercise `accept()` or an authoritative
+//! reservation. The `#[ignore]`d test specifies the desired end-to-end
 //! reveal flow and names the seams that do not exist yet; run it with
 //! `cargo test -p chio-open-market --test cognition_market_flow
 //! cognition_market_reveal_flow_spec -- --ignored --exact` to see the first
@@ -58,18 +59,18 @@ fn finding_scope(finding: &Finding) -> String {
 
 /// Delivery proof the reveal step must produce: a kernel receipt whose
 /// `content_hash` equals the finding's committed `payload_sha256`.
-/// Today no tool contract enforces that equality, so this stub can only
-/// report the seam as missing.
+/// Today the output-aware kernel finalizer cannot enforce that equality,
+/// so this stub can only report the seam as missing.
 fn mediated_reveal_delivery_receipt(_finding: &Finding) -> Option<String> {
     None
 }
 
-/// Elicitation ceiling from memo section 6.6: the counterfactual the
-/// platform can actually meter (re-derivation quote) discounted by the
-/// planner-owned priors, hard-capped by the purchasing allocation.
-/// Deterministic and implementable today; kept here as spec.
+/// Buyer-local elicitation arithmetic from memo section 6.6: a supplied
+/// re-derivation estimate discounted by planner-owned priors and capped by
+/// a supplied budget remainder. No authenticated quote producer or
+/// authoritative allocation is wired here.
 struct FindingBidBasis {
-    rederivation_quote_units: u64,
+    rederivation_estimate_units: u64,
     would_have_run_bps: u16,
     sibling_redundancy_bps: u16,
     guarantee_class_bps: u16,
@@ -82,7 +83,7 @@ fn finding_bid_ceiling(basis: &FindingBidBasis) -> u64 {
     let keep = BPS - u128::from(basis.sibling_redundancy_bps.min(10_000));
     let class = u128::from(basis.guarantee_class_bps.min(10_000));
     let discounted =
-        u128::from(basis.rederivation_quote_units) * would / BPS * keep / BPS * class / BPS;
+        u128::from(basis.rederivation_estimate_units) * would / BPS * keep / BPS * class / BPS;
     u64::try_from(discounted)
         .unwrap_or(u64::MAX)
         .min(basis.budget_remaining_units)
@@ -299,15 +300,17 @@ fn finding_purchase_clears_the_real_bid_path() {
     );
     // Seam pin (M4): no delivery constraint can be attached yet.
     assert!(grant.constraints.is_empty());
+    // Seam pin (M4): the current bid path also mints a bearer grant.
+    assert_eq!(grant.dpop_required, None);
 }
 
-/// Passes today: the elicitation ceiling is deterministic, monotone in the
-/// re-derivation quote, and hard-capped by the purchasing allocation. It
-/// makes no claim about the finding's true value.
+/// Passes today: this buyer-local arithmetic is deterministic, monotone in
+/// the supplied re-derivation estimate, and capped by the supplied budget
+/// remainder. It makes no claim about true value or authoritative funds.
 #[test]
 fn finding_bid_ceiling_is_bounded_and_budget_capped() {
     let mut basis = FindingBidBasis {
-        rederivation_quote_units: 4_200,
+        rederivation_estimate_units: 4_200,
         would_have_run_bps: 6_000,
         sibling_redundancy_bps: 2_500,
         guarantee_class_bps: 10_000,
@@ -316,10 +319,10 @@ fn finding_bid_ceiling_is_bounded_and_budget_capped() {
     let ceiling = finding_bid_ceiling(&basis);
     // 4200 x 0.60 x 0.75 x 1.00 = 1890.
     assert_eq!(ceiling, 1_890);
-    assert!(ceiling <= basis.rederivation_quote_units);
+    assert!(ceiling <= basis.rederivation_estimate_units);
 
     let mut higher_quote = FindingBidBasis {
-        rederivation_quote_units: 8_400,
+        rederivation_estimate_units: 8_400,
         ..basis
     };
     assert!(finding_bid_ceiling(&higher_quote) >= ceiling);
@@ -389,27 +392,30 @@ fn cognition_market_reveal_flow_spec() {
     assert_eq!(compute_finding_id(&finding), Ok(finding.finding_id.clone()));
     assert!(verify_finding(&finding).is_ok());
 
-    // 2. Bid/accept: covered by the passing tests above, including the
-    //    real bid() path and the pinned empty-constraints seam.
+    // 2. Bid: covered by the passing tests above, including the real
+    //    bid() path and the pinned empty-constraints and DPoP seams.
+    //    The target flow still needs an authoritative budget reservation
+    //    followed by pure `accept()` validation and binding.
 
-    // 3. Escrow: MustPrepay hold (small amounts) or ChioEscrow terms
-    //    (large amounts) with release/refund as the only terminal states.
+    // 3. Payment: a direct durable HoldCapture + ReversibleHold profile,
+    //    with exact identity and amount bindings. MustPrepay, PrepaidFinal,
+    //    legacy, portable, x402, and ACP paths are excluded.
 
     // 4. Reveal = delivery proof. MISSING SEAMS, in dependency order:
-    //    a. a `read_finding` tool contract that refuses to sign a delivery
-    //       receipt unless receipt.content_hash == finding.payload_sha256
-    //       (carried as a provider-minted OutputDigestSha256 constraint;
-    //       see the empty-constraints pin above);
-    //    b. escrow release wired from that receipt's Merkle inclusion;
-    //    c. a `FabricatedFindingEvidence` abuse class + replay challenge
-    //       decision rule feeding the existing sanction/slash gate;
+    //    a. a provider-minted `OutputDigestSha256` constraint plus purchase
+    //       marker, enforced by the output-aware budgeted kernel finalizer
+    //       before reconcile, capture, and signed receipt construction;
+    //    b. a conditional cross-organization settlement-authority bridge
+    //       from that verified purchase record to capture or escrow release;
+    //    c. a signed `chio.finding.challenge-outcome.v1` artifact wrapped as
+    //       exactly one frozen-v1 `FraudulentListing` `External` finding;
     //    d. a finding-status feed (revocation-oracle pattern) checked for
     //       non-inclusion at purchase time.
     let delivery = mediated_reveal_delivery_receipt(&finding);
     let receipt_id = match delivery {
         Some(receipt_id) => receipt_id,
         None => panic!(
-            "missing seam (a): no governed read_finding tool contract binds \
+            "missing seam (a): no output-aware kernel finalizer binds \
              receipt content_hash to the committed payload_sha256"
         ),
     };
