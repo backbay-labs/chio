@@ -1,0 +1,130 @@
+# ADR-0019: Kernel Delivery Contract (output-digest constraint, durable enforcement, delivery-contract receipt block)
+
+- Status: Proposed (kernel-review pass recorded below in lieu of a separate owner sign-off; see "Kernel review")
+- Decision owner: kernel and spend control-plane lane
+- Related: ADR-0016 (authoritative spend contract), ADR-0017 (cognition-market finding artifacts), `spec/PROTOCOL.md` 6.4 (receipt-metadata blocks), the cognition-market program plan (`docs/research/cognition-market/PLAN.md`, milestone M3)
+- Supersedes the ADR-A and ADR-E placeholders in the cognition-market decision backlog.
+
+## Context
+
+The cognition-market program (ADR-0017) sells sealed findings whose reveal must be enforceable: an agent that pays for a finding must receive exactly the committed payload, or not pay. That enforcement is a general kernel capability - "an Allow for this grant is valid only if the delivered output hashes to a value the grant fixed in advance" - and M3 builds it generically. M4 specializes the delivered value to a finding reveal envelope.
+
+PR #974 (`51e46336b`) reshaped the kernel terminal topology, so the delivery contract must be designed against what the code now does, not against the pre-#974 assumptions the milestone text carries. This ADR was written against `main`; the kernel source on the M3 branch is byte-identical to `main`. Every file:line below was read directly.
+
+The relevant facts:
+
+- `Constraint` (`crates/core/chio-core-types/src/capability/scope.rs:331-410`) is an adjacently tagged enum (`#[serde(tag = "type", content = "value", rename_all = "snake_case", deny_unknown_fields)]`, `:324-330`) inside the signature-covered capability body. An unknown `type` fails deserialization, so an old binary denies a token carrying a variant it does not know.
+- The production request matcher (`crates/kernel/chio-kernel/src/request_matching.rs:405-458`), governed validation (`kernel/governed_validation.rs:166-227`), and the portable matcher and namers (`crates/kernel/chio-kernel-core/src/scope.rs:193-255`, `:338-365`; `normalized.rs:627-654`) match `Constraint` exhaustively: a new variant is a compile error at each, forcing a decision.
+- The production financial path is durable. `finalize_durable_tool_return` (`crates/kernel/chio-kernel/src/kernel/admission_coordinator/terminal.rs:1245`) runs post-invocation transforms (`:1277-1282`), computes the final post-transform content hash (`:1289`, `receipt_content_for_output`), then plans payment (`:1373`), freezes the outcome (`:1434-1465`), moves money (`:1527-1539`), and signs (`:1641-1654`). It is state-gated on `Finalizing` (`:1252-1257`); `record_durable_tool_return` moved the operation `DispatchCommitted -> Finalizing` before it runs (`:305-320`).
+- `AdmissionOperationState` has 17 variants (`crates/kernel/chio-kernel/src/admission_operation.rs:184-202`). The only legal transitions from `Finalizing` are `Completed` and `OutcomeUnknownAfterDispatch` (`admission_operation/state.rs:608-616`). `VerifiedAdmissionReceipt::qualify` forbids `Decision::Deny` at `Completed` (`admission_operation/projection.rs:187-191`), and `OutcomeUnknownAfterDispatch` asserts an unknown outcome. There is therefore no existing terminal that can carry a signed Deny for a known post-delivery digest mismatch.
+- A durable post-invocation hook `Block` today becomes a plain `Err` (`terminal.rs:420-425`) that wedges the operation in `Finalizing` and, through the reconcile-on-startup path (`admission_coordinator.rs:498-500` -> `:355` -> `async_evaluation_core.rs:327`, `?`), fails every subsequent durable tool call in the process. It is not a usable terminal.
+- The receipt `metadata` map is authenticated by the enclosing receipt: it feeds `receipt.id` (`receipt/body.rs:198-199,226,236-240`) and the signing body (`receipt/signing.rs:99-104`). A metadata block needs no signature of its own. `chio.admission-receipt.v1` is the registration precedent (typed struct `admission_operation/projection.rs:52-71`; consts `admission_operation.rs:29-30`; schema `spec/schemas/chio-wire/v1/receipt/admission-metadata.schema.json`; registry `spec/schemas/registry.json:7-12`; manifest `spec/schemas/MANIFEST.sha256:393`; PROTOCOL `spec/PROTOCOL.md:1074-1080`; not in `SIGNED_ARTIFACT_SCHEMA_SPECS`).
+
+## Decision
+
+### 1. Carrier
+
+Add `Constraint::OutputDigestSha256(String)`, wire form `{"type":"output_digest_sha256","value":"<64 lowercase hex>"}`, value validated by the existing lowercase-64-hex check behind `AdmissionDigest::try_new` (`admission_operation/identity.rs:52-61,713-719`).
+
+The adjacently tagged decoder denies a pre-M3 binary that receives it, which is the fail-closed property M3 requires. `Constraint::Custom` is rejected as a carrier: it is an existing variant every current surface accepts and evaluates against request arguments (`request_matching.rs:421`) or ignores, so a `Custom`-carried digest deserializes cleanly on every existing binary and is Allowed with full settlement and zero output enforcement (cross-version fail-open). The request matcher rejects `Custom("output_digest_sha256", _)` explicitly so the carrier cannot be downgrade-re-expressed. Attenuation gets an explicit structural-equality arm rather than the `_ => self == child` catch-all (`scope.rs:483`). The variant is added to the wire schema and regenerated (`cargo xtask codegen rust`) so `_generated/chio_wire_v1.rs` stays in sync. The variant is added to the control-plane economic-sensitivity list (`chio-control-plane/src/issuance/scope.rs:94-106`) so a digest-constrained grant attracts the assurance ratchet.
+
+Digest validity is enforced at the admission gate (item 5), not at deserialization, so token-parse semantics do not change for verifiers with no stake in delivery.
+
+### 2. Durable gate placement
+
+Insert the comparison in `finalize_durable_tool_return` between the post-transform hash at `terminal.rs:1289` and the guard-decision digest at `:1365`, and route the result through `terminal_decision`, not a side channel. On mismatch, set `terminal_decision = Decision::Deny { .. }` before `:1365`.
+
+Two properties follow: the verdict is covered by the existing frozen replay contract (`post_guard_decision_digest` already hashes the decision with the output digest, `:1365-1372`, compared on replay at `:1491-1509`), and nothing financial has happened yet (`durable_payment_disposition` at `:1373` is the first money decision). `durable_payment_disposition` (`:890-968`) does not inspect the decision today; it gains the delivery verdict as an input and forces the zero-charge disposition on mismatch (item 3). Secondary sites that must reproduce the block from persisted state: the replay lane `completed_durable_tool_response` (`:509-684`, byte-equality at `:828-832,856`), `recover_durable_tool_admission` (`:326-342`), and `reconcile_recoverable_admissions` (`admission_coordinator.rs:364-502`).
+
+### 3. Durable mismatch terminal transition
+
+Add an 18th state, `AdmissionOperationState::DeniedAfterDelivery`, legal only from `Finalizing`. This is unavoidable: no existing terminal reachable from `Finalizing` can carry a signed Deny (see Context). The state carries:
+
+- a new `AdmissionTerminalProjection` variant holding the signed Deny receipt (`projection.rs:1190-1216`);
+- a `qualify` arm admitting `Decision::Deny` for and only for this state (`projection.rs:187-191`);
+- the payment-presence rule analogue of `validate_completed_participant_presence` (`projection.rs:1157-1179`);
+- recovery and reconcile arms (`terminal.rs:331-341`, `admission_coordinator.rs:364-502`);
+- a closed reason enum with exactly one M3 member, `DigestMismatch`, extended additively by M4;
+- the `projected_state` enum extension in `admission-metadata.schema.json` with the consequent `registry.json` and `MANIFEST.sha256` digest bumps.
+
+The state uses `AdmissionCompensationStatus::NotCompensated`: nothing was compensated, the open hold was released.
+
+The financial terminal reuses `SettlementDispositionV1::ContractualZeroCharge` (`crates/kernel/chio-kernel/src/tool_outcome.rs:711-715`), which already releases the open hold, captures zero, and reconciles realized spend to zero (`terminal.rs:1114-1123,1198-1210`), authorized by `VerifiedContractualZeroCharge` derived from persisted records (`tool_outcome/release.rs:1649-1715`) and frozen into `pricing_verdict_digest` (`terminal.rs:1383-1389`). It is `ReversibleHold`-only, which is consistent with item 5 disallowing the prepayment paths.
+
+Rejected: relaxing `Completed` to admit Deny (destroys the meaning of `projected_state` for every consumer and needs the same schema work anyway); reusing `Decision::Incomplete` (captures full cost today because the disposition never reads the decision, and conflates a delivery-contract violation with stream truncation that M4 must keep distinct); a fourth `SettlementDispositionV1` variant (touches the release-authority chain for a distinction the state and metadata block already carry).
+
+An M3 mismatch consumes one invocation of quota and zero currency: the pre-dispatch invocation capture (`admission_coordinator.rs:1673-1727`) commits before the tool runs and is not reversed; only the monetary hold reconciles to zero. The Deny receipt's `financial.cost_charged` is zero and `budget_remaining` reflects the consumed invocation, not a reversed one.
+
+### 4. Legacy-lane policy
+
+Reject digest-constrained requests predispatch, unconditionally whenever `durable_admission.is_none()`, at two tiers of `async_evaluation_core.rs` and their `nested_flow_evaluation.rs` mirrors:
+
+- Tier 1 (`async_evaluation_core.rs:288`, mirror `nested_flow_evaluation.rs:181`): any candidate in `matching_grants` carries the constraint. This is upstream of every budget or payment mutation and of the `InvocationHold` capture (`:952-953`).
+- Tier 2 (`async_evaluation_core.rs:860`, mirror `nested_flow_evaluation.rs:727`): the selected grant is the digest carrier and the lane is legacy, using the existing pre-dispatch cleanup unwind.
+
+Rejection is unconditional, not gated on the `unsafe_ephemeral_financial_dispatch` flag, because the legacy lane runs no post-invocation pipeline (the pipeline has callers only in the `charge_result == None` arm, `finalization.rs:30` from `validation.rs:2090,2100`) and can irreversibly consume an invocation with no flag (`:952-953`). "Evaluate before `reconcile_budget_charge`" (milestone text) is not implementable: the value to hash does not exist at `reconcile_budget_charge` (`validation.rs:2196`, before stream limits at `:2306`) and is not the signed value. The legacy Allow-builder comparison (`kernel/responses/allow_responses.rs:46-47`) stays only as defence in depth; the durable lane bypasses it entirely.
+
+### 5. `PrepaidFinal` and reserve-for-caller `MustPrepay`
+
+Both are disallowed for the M3 profile. Reject at the Tier-1 gate before reserve-for-caller returns (`async_evaluation_core.rs:751`), when the request carries the constraint and any of: nonce preflight required; governed `MustPrepay`; or the resolved rail would be `PrepaidFinal`. The rail mode is not known at Tier 1, so a third check runs immediately after `authorize_payment_if_needed` (`:1002`) and before dispatch (`:1157`), unwinding through the pre-dispatch cleanup deny. These paths spend before they produce output (`validation.rs:2724-2799`, `:2655`) and cannot be released once `PrepaidFinal` (`terminal.rs:1133-1139,1179-1183`), so a mismatch would have no terminal.
+
+`/v1/reconcile` (`reconcile_reserved_authorization_by_nonce`, `kernel/reconciliation.rs:148-460`) is declared out of the M3 qualified profile rather than extending the signed `NonceBinding`. This is sound only because reserve-for-caller is rejected upstream, so no digest-constrained nonce can be minted, and the constraint did not exist before M3 so no legacy nonce carries one. A future profile that admits reserve-for-caller must revisit the `NonceBinding` wire shape.
+
+`sha256_hex(b"null")` is the fixed content hash of every no-output Allow surface (`receipt_support/receipt_content.rs:21-25`). The admission gate rejects it as a legal expected-digest value, and the comparison is never invoked from a surface whose output is `None`.
+
+### 6. Pre-dispatch surfaces and the exhaustive-match rule
+
+`OutputDigestSha256` is handled explicitly at every compile-forced `Constraint` match (request matcher, governed validation, portable matcher and namers). Normative rule: wildcard arms over `Constraint` are forbidden in `chio-kernel`, `chio-kernel-core`, and `chio-control-plane`, backed by a test. As part of M3 the `unsupported =>` wildcard in `chio-kernel-core/src/normalized.rs:560-562` is replaced with an explicit variant list, and the `_ => true` fail-open in `chio-ag-ui-proxy/src/proxy/helpers.rs:117-121` (a live fail-open for every non-`Custom` constraint today) is enumerated or made fail-closed.
+
+Surfaces that structurally cannot enforce (no output exists) reject the constraint before nonce minting or budget mutation: portable core (`chio-kernel-core/src/scope.rs:250`, one line covering browser, mobile, and C++ FFI, firing before `admit_delegated_budget` at `evaluate.rs:448`), reserve-for-caller and reconcile-by-nonce (item 5), HTTP authority (gated in `validate_capability_token`, `crates/platform/chio-http-core/src/authority.rs:1250`, before the kernel call at `:708`), and API Protect. Portable verifiers never issue an Allow and are out of scope. `chio-api-protect`'s `build_manual_receipt` (`proxy/receipts.rs:8-49`), which signs a caller-supplied `content_hash` with no recompute, is declared outside the delivery contract and recorded as a standing hazard.
+
+Selection: reject unless the selected grant carries exactly one `OutputDigestSha256`, its value is canonical lowercase 64-hex and is not `sha256("null")`, and no other candidate in `matching_grants` carries one (Tier 2, where `matched_grant_index` is resolved). This closes the budget-fallthrough case where selection `continue`s past a digest-carrying grant onto an unconstrained sibling (`async_evaluation_core.rs:584-593`).
+
+Freezing: fold the expected digest into `immutable_tool_admission_request_hash`, which is already re-derived and compared on recovery (`terminal.rs:481-487`), so restart cannot select a different grant or digest. This changes `operation_id` (`identity.rs:289-325,456-466`), a persisted-format break for in-flight operations that must be sequenced with a version bump; the alternative (a new attachment slot, `admission_operation.rs:372-390`, cap at `:422-434`) does not change `operation_id` but needs a phase rule.
+
+### 7. `chio.delivery-contract.v1` receipt block and the receipt-metadata key registry
+
+Add a receipt-metadata block under top-level key `delivery_contract`, schema id `chio.delivery-contract.v1`, closed shape `{schema, expected_digest, observed_digest, result}` with `result` in `{matched, mismatched}`, `deny_unknown_fields`, all fields required; `matched` only on Allow, `mismatched` only on the persisted Deny from item 3. The block is absent for unconstrained requests (its presence would change every receipt id). The typed struct lives in `crates/core/chio-core-types/src/receipt/metadata.rs` (not `chio-kernel`, unlike the admission precedent) because M4/M5 evidence consumers and portable verifiers outside the kernel must read it. The kernel merges the block last and rejects a pre-existing `delivery_contract` key in caller or hook metadata, because the metadata merge is last-write-wins (`receipt_support/receipt_metadata.rs:87-112`). Registration follows the admission precedent (schema file, registry row, manifest, subtree README, COVERAGE, PROTOCOL 6.4 paragraph), plus an instance-conformance test (serialize the struct, validate against the registered schema) that the admission precedent lacks.
+
+The receipt-metadata key registry (the ADR-E rider) lands in M3, not later, because M3's security claim depends on `delivery_contract` not being caller-writable: a named-const registry in `receipt/metadata.rs`, conversion of the scattered key literals (`receipt/body.rs:580,585,590,598`; `admission_operation.rs:29`) to reference it, a normative key table in PROTOCOL 6.4 replacing the prose at `:1062-1072`, and a reserved-key collision assertion plus a metadata-is-object assertion before body construction (`receipt_persistence.rs:40`).
+
+### 8. Generic transform and `Stream` semantics
+
+The committed representation is `receipt_content_for_output` over the final post-transform `ToolCallOutput::Value`: sha256 of canonical JSON bytes (`receipt_content.rs:8-17`). `Stream` denies fail-closed unconditionally at M3: the stream content hash is sha256 over concatenated per-chunk hex digests (`receipt_content.rs:29-62`), which no provider can author against a payload. `None` output can never be `matched` (item 5). Comparison is transform-aware: a redaction that changes the output is a mismatch. M3 makes no claim about why the value differs; this is generic delivery evidence, not seller-fraud evidence. An operator-configured redactor silently turns a digest-constrained Allow into a zero-charge Deny; M3 documents this operationally, M4 removes it by rejecting non-empty pipelines predispatch.
+
+### 9. M4 finding-profile compatibility boundary
+
+M3 guarantees exactly five things M4 depends on and nothing more: (1) the comparison preimage is a canonical-JSON `Value` digest an M4 reveal envelope can be authored against; (2) the mismatch terminal is a distinct persisted state, not `Incomplete`, so M4/M5 treat only a delivery-contract Deny as candidate seller evidence; (3) the financial terminal is `ContractualZeroCharge` on `ReversibleHold`, which is M4's release-only claim already implemented; (4) the `delivery_contract` block is closed, so M4 attaches `finding_delivery` as a sibling key; (5) the terminal's reason enum is closed with one M3 member, extended additively by M4 for media-type and operator-policy denies. M3 does not implement media-type checks, transform-profile recording, finding or listing binding, `RequireFindingPurchase`, the `BidMintContext` extension, or DPoP flags. M4 narrows the admitted profile to `HoldCapture` + `ReversibleHold`; it does not reinterpret M3.
+
+### 10. Verdict matrix and formal verification
+
+Add a sixth `ScenarioCategory::DeliveryContract` (not reusing the reserved `Receipt` slot) with twelve scenarios, and perform the full rotation: the enum plus `as_str`/`FromStr`/stability test (`chio-conformance/verdict_matrix/src/lib.rs:45-118`), the corpus directory, `manifest.toml` counts and recomputed hashes, the hard-coded `48` in the Rust and Python driver tests, the Go driver, the docs, the workflow count step, and new deny-reason URNs in `spec/errors/registry.yaml`. Scenarios are authored so the required Python and Go mock drivers produce a real tuple from carrier admission alone (deny-on-unsupported-constraint), not from a digest concept they lack. The stale hash at `docs/conformance/verdict-matrix.md:26` is fixed and gated.
+
+Required FV hook: exactly one Kani harness, reached by factoring the comparison into a pure `chio_kernel_core::formal_core` function `delivery_contract_admits(expected, observed) -> DeliveryVerdict` and proving `verdict == Allow implies expected == observed`, modelled on `chio-kernel-core/src/kani_public_harnesses.rs:396-422`, registered in `.kani/harnesses.toml`, `formal/rust-verification/kani-public-harnesses.toml [lanes.pr]`, and both hard-coded lists in `scripts/check-kani-public-core.sh`. The bounded Lean entry is deferred with a named follow-up: the Lean model has no output or content hash and covers a third of the constraint vocabulary, so a meaningful theorem is new model construction, not an entry addition. Enforcement asymmetry is stated plainly: only the verdict-matrix rotation is backed by a required CI job; the Kani lane is nightly and the formal-proof script is reachable only from release qualification, so "the Kani harness and Lean entry are green" is a claim about non-PR gates unless M3 is paired with an FV-E3-style PR smoke tier.
+
+## Corrections to the milestone text
+
+The milestone definition (`docs/research/cognition-market/PLAN.md`) and `ARCHITECTURE.md` are corrected as follows; the plan authored from this ADR carries these, not the originals.
+
+- "Legacy lane: evaluate before `reconcile_budget_charge`" is not implementable; the charged legacy branch runs no post-invocation pipeline and the value to hash does not exist at that point. Adopt predispatch rejection (item 4).
+- The legacy reject is unconditional on `durable_admission.is_none()`, not scoped to "unsafe legacy financial dispatch active": a flagless `InvocationHold` capture and the absence of a transform seam make the non-financial legacy path equally unable to enforce.
+- "authenticated read-only tools whose side-effect classification is part of admission" overstates the code: `Monetary` shadows `ReadOnly` in the classification chain (a paid read-only tool is never `ReadOnly`), and the input is a tool server's self-declared manifest flag, not authenticated evidence. M3 looks up `tool_is_read_only` independently at the digest gate and treats the flag as an admission input, documented as such.
+- "A persisted, replay-stable signed Deny with explicit financial terminal state" presumes a terminal that does not exist; item 3 adds it.
+- The exhaustive-handling site list is incomplete and includes silent and fail-open arms (`normalized.rs:560-562`, `issuance/scope.rs:94-106`, `approval.rs:563`, `chio-ag-ui-proxy/.../helpers.rs:117-121`); item 6 covers them.
+- The surface list omits `reconcile_reserved_authorization_by_nonce`, the C++ FFI, `api-protect proxy/receipts.rs`, and the `nested_flow_evaluation.rs` duplicate money path; item 6 covers them.
+- "final post-transform value preimage" is not a lane invariant (durable is post-pipeline, legacy budgeted is post-stream-limit only); predispatch rejection of the legacy lane makes it moot.
+- `Stream` is not conditionally supportable; unconditional denial is the only honest M3 answer (item 8).
+- "no capture" is ambiguous between currency and budget; item 3 resolves it (zero currency, one invocation of quota consumed).
+- `PLAN.md:43` and `ARCHITECTURE.md:1627` cite `request_matching.rs:420` for the `Custom` fail-open; the `Custom` arm is `:421`, and the real defect is cross-version (a `Custom`-carried digest is matched against arguments or ignored by every existing surface, so an unaware kernel Allows with full settlement and no enforcement), not a same-binary fail-open.
+- No test mutates receipt `metadata` and asserts signature failure, and none validates a serialized metadata struct against its registered schema; M3 adds both.
+
+## Consequences
+
+- New machinery M3 must build, in order of unavoidability: the 18th `AdmissionOperationState` with its terminal projection, `qualify` arm, participant-presence rule, recovery and reconcile arms, and schema enum extension; a delivery-verdict input to `durable_payment_disposition`; the frozen expected digest in the durable binding; a pure `formal_core` comparison function for the Kani harness; the reserved-key and object-shape assertions on receipt metadata; and the replacement of the `normalized.rs` wildcard with an explicit list.
+- Fail-closed everywhere: an unaware binary denies the token (adjacent tag), every kernel Constraint match is exhaustive (compile error on a new variant), every no-output surface rejects before money moves, and `Stream` and `None` deny.
+- M3 result is generic delivery evidence. Finding-specific binding, media-type policy, and the `finding_delivery` overlay are M4.
+- ADR-0017 stays Proposed until M9; this ADR does not change its status.
+
+## Kernel review
+
+This ADR stands in for the plan's "fresh ADR-A and kernel-owner review" with a recorded adversarial review pass over the post-#974 terminal topology (six-lens read of the durable lane, legacy lane, constraint matching, receipt metadata, verdict/FV machinery, and pre-dispatch surfaces), every load-bearing claim re-verified by direct read. The single correction the review forced against an initial reading is recorded above: the durable digest comparison runs at `Finalizing`, not `DispatchCommitted`, so no existing terminal can carry the mismatch Deny and an 18th state is required. Where a human kernel owner would still be consulted before implementation: the `operation_id`-breaking digest freeze versus a new attachment slot (item 6), and whether a self-declared `tool_is_read_only` flag is acceptable as an admission input for the no-capture profile (item 6 / corrections). Both are flagged in the M3 plan as decisions to confirm before the owning task lands.
