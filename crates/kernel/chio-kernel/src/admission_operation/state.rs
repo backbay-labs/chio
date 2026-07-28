@@ -409,7 +409,8 @@ pub(super) fn validate_state_requirements(
             | AdmissionOperationState::Completed
             | AdmissionOperationState::CompensatedBeforeDispatch
             | AdmissionOperationState::NotAcceptedAfterDispatchCommit
-            | AdmissionOperationState::OutcomeUnknownAfterDispatch => true,
+            | AdmissionOperationState::OutcomeUnknownAfterDispatch
+            | AdmissionOperationState::DeniedAfterDelivery => true,
         }
     };
     if valid {
@@ -613,6 +614,9 @@ pub(super) fn is_legal_transition(
                     && from == AdmissionOperationState::Finalizing)
         }
         AdmissionOperationState::Completed => from == AdmissionOperationState::Finalizing,
+        // A delivery-digest mismatch is decided during finalization, so
+        // the only legal predecessor is Finalizing.
+        AdmissionOperationState::DeniedAfterDelivery => from == AdmissionOperationState::Finalizing,
         _ => false,
     }
 }

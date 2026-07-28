@@ -174,6 +174,10 @@ pub enum AdmissionOperationState {
     CompensatedBeforeDispatch,
     NotAcceptedAfterDispatchCommit,
     OutcomeUnknownAfterDispatch,
+    /// The delivered output did not match a grant's committed output
+    /// digest. A signed Deny is persisted; the open hold is released and
+    /// zero is captured.
+    DeniedAfterDelivery,
     MutationReady,
     MutationSubmitted,
     EconomicMutationApplied,
@@ -181,7 +185,7 @@ pub enum AdmissionOperationState {
 }
 
 impl AdmissionOperationState {
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 18] = [
         Self::Prepared,
         Self::BrokerAttemptRegistered,
         Self::ApprovalRequired,
@@ -195,6 +199,7 @@ impl AdmissionOperationState {
         Self::CompensatedBeforeDispatch,
         Self::NotAcceptedAfterDispatchCommit,
         Self::OutcomeUnknownAfterDispatch,
+        Self::DeniedAfterDelivery,
         Self::MutationReady,
         Self::MutationSubmitted,
         Self::EconomicMutationApplied,
@@ -209,6 +214,7 @@ impl AdmissionOperationState {
                 | Self::CompensatedBeforeDispatch
                 | Self::NotAcceptedAfterDispatchCommit
                 | Self::OutcomeUnknownAfterDispatch
+                | Self::DeniedAfterDelivery
                 | Self::EconomicMutationApplied
                 | Self::EconomicMutationNotApplied
         )
