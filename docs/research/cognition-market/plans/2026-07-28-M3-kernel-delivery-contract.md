@@ -37,17 +37,18 @@ ADR-0018 flags two points a human kernel owner would still weigh. Each is
 resolved here with a default and an explicit fallback; the default is
 taken unless review overturns it before the task that depends on it.
 
-- CONF-1 (Task 5, freezing): fold the expected digest into
-  `immutable_tool_admission_request_hash`
-  (`admission_operation/identity.rs:289-325`), which reuses the existing
-  recovery re-derivation and comparison
-  (`terminal.rs:481-487`). Default: DO fold, and gate the
-  persisted-format change behind an operation-record version bump plus a
-  migration that treats a pre-M3 record's absent digest as "no
-  constraint". Fallback if the version bump proves too invasive: a new
-  `AdmissionAttachment` slot (`admission_operation.rs:372-390`, cap 13 at
-  `:422-434`) with a phase rule in `validate_state_attachments`
-  (`state.rs:160-205`), which does not change `operation_id`.
+- CONF-1 (Task 5, freezing): RESOLVED during implementation. The freeze
+  needs no new binding field and no `operation_id` change. The whole
+  matching-grant set is already covered by the durable binding's
+  `immutable_request_hash`, and the selected `matched_grant_index` is
+  already persisted in the raw invocation blob;
+  `durable_evaluation_contract` (`terminal.rs:451-507`) already
+  re-resolves the grant set, re-derives the request hash, and validates
+  both on the finalize path (`:481-487`). The expected digest is
+  therefore recovered at finalize by reading the selected grant's
+  `OutputDigestSha256` constraint, reusing that existing proof. This is
+  strictly better than the drafted default (no persisted-format break,
+  no `operation_id` change) and needs no version bump.
 - CONF-2 (Task 4, read-only classification): the self-declared
   `tool_is_read_only` manifest flag (`runtime.rs:399-406`, default false)
   is treated as an admission INPUT, not authenticated evidence, and M3
