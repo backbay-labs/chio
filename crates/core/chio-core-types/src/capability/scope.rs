@@ -407,6 +407,18 @@ pub enum Constraint {
     /// Patterns are compiled lazily during kernel evaluation so invalid
     /// regexes do not break construction or round-trip serialization.
     MemoryWriteDenyPatterns(Vec<String>),
+    /// Delivery: an Allow for this grant is valid only if the final
+    /// post-transform output content hash equals this expected digest,
+    /// otherwise the request is denied before any irreversible money
+    /// movement.
+    ///
+    /// The value is a canonical lowercase 64-character hex SHA-256 digest.
+    /// Unlike the argument-side constraints above, this is enforced at the
+    /// output-aware durable terminal, not at request matching; the request
+    /// matcher only admits the carrier. Every surface that cannot prove
+    /// the output-aware terminal ordering rejects the constraint before it
+    /// mutates budget or payment.
+    OutputDigestSha256(String),
 }
 
 impl Constraint {
@@ -480,6 +492,9 @@ impl Constraint {
                         _ => false,
                     }
             }
+            // A delivery digest is preserved only by an identical digest:
+            // a child cannot loosen or drop the expected output.
+            (Self::OutputDigestSha256(parent), Self::OutputDigestSha256(child)) => parent == child,
             _ => self == child,
         }
     }

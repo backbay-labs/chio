@@ -557,9 +557,25 @@ impl TryFrom<&Constraint> for NormalizedConstraint {
                 Ok(Self::MinimumRuntimeAssurance((*tier).into()))
             }
             Constraint::Custom(key, value) => Ok(Self::Custom(key.clone(), value.clone())),
-            unsupported => Err(NormalizationError::UnsupportedConstraint {
-                kind: unsupported_constraint_name(unsupported).to_string(),
-            }),
+            unsupported @ (Constraint::RegexMatch(_)
+            | Constraint::RequireCumulativeApprovalAbove { .. }
+            | Constraint::MinimumAutonomyTier(_)
+            | Constraint::TableAllowlist(_)
+            | Constraint::ColumnDenylist(_)
+            | Constraint::MaxRowsReturned(_)
+            | Constraint::OperationClass(_)
+            | Constraint::AudienceAllowlist(_)
+            | Constraint::ContentReviewTier(_)
+            | Constraint::MaxTransactionAmountUsd(_)
+            | Constraint::RequireDualApproval(_)
+            | Constraint::ModelConstraint { .. }
+            | Constraint::MemoryStoreAllowlist(_)
+            | Constraint::MemoryWriteDenyPatterns(_)
+            | Constraint::OutputDigestSha256(_)) => {
+                Err(NormalizationError::UnsupportedConstraint {
+                    kind: unsupported_constraint_name(unsupported).to_string(),
+                })
+            }
         }
     }
 }
@@ -650,6 +666,7 @@ fn unsupported_constraint_name(constraint: &Constraint) -> &'static str {
         Constraint::ModelConstraint { .. } => "model_constraint",
         Constraint::MemoryStoreAllowlist(_) => "memory_store_allowlist",
         Constraint::MemoryWriteDenyPatterns(_) => "memory_write_deny_patterns",
+        Constraint::OutputDigestSha256(_) => "output_digest_sha256",
     }
 }
 
