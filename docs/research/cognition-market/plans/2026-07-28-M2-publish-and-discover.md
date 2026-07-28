@@ -95,8 +95,7 @@ cite them as D1..D15.
   raw bytes content-addressed by their canonical digest, idempotently.
   Dependencies referenced by digest inside the recipe (input bundles,
   template) upload through the same endpoint and are retained. There is no
-  GC: retention through the claim/audit/appeal horizon is achieved in the
-  wedge by never deleting, recorded as an operational note.
+  GC: retention through the claim/audit/appeal horizon is achieved by never deleting, recorded as an operational note.
 - D5 Admission distribution: `GET /v1/findings/{finding_id}/admission`
   serves the current venue-signed admission envelope; finding-index search
   rows carry `{admission_id, admission_envelope_sha256, admission_expires_at}`
@@ -647,6 +646,44 @@ test`, `ci: cognition-market-experimental lanes`,
 adversarial review pass over the whole branch diff before it is declared
 ready. Record exact results (counts, HEAD, umask qualification) in this
 file under a "Recorded results" heading, following the M0/M1 precedent.
+
+### Recorded results at `32d1d92dd`
+
+Full workspace gate under explicit `umask 022`:
+
+- `cargo build --workspace`: clean.
+- `cargo test --workspace`: 480 green targets, 8,199 passed, 22 ignored.
+  One target reported a failure, `chio-mcp-edge`'s
+  `execute_bridge_mcp_tool_call_async_skips_receipt_write_error_for_request_cancelled`.
+  It is a parallelism flake, not a regression: the test passes in
+  isolation and the full `chio-mcp-edge` lib suite passes 105/105 on
+  three consecutive reruns. This branch touches neither that crate nor
+  its receipt-write dependencies; its last change is `51e46336b`, an
+  ancestor of this branch. This records a qualified gate, not a claim
+  that the single parallel workspace run was green.
+- `cargo clippy --workspace --lib --bins --examples -- -D warnings`: clean.
+- `cargo fmt --all -- --check`: clean.
+- `scripts/check-chio-schema-registry.sh` and
+  `scripts/check-chio-owned-v1-only.sh`: pass.
+
+Feature lanes, both under `umask 022`:
+
+- Feature-on: `chio-control-plane` 440 lib tests (including the ten
+  publish-discover-admission cases), `chio-store-sqlite` finding-market
+  10, `chio-open-market` 17 admission plus 16 bidding plus 31 lib,
+  `chio-finding` 88 across three suites, `chio-finding-verifier` 12.
+- Feature-off: `chio-control-plane` 430 lib tests including the
+  route-absence proof that every finding path answers 404 in a default
+  build; `cargo tree -p chio-control-plane -e normal` shows zero
+  `chio-finding` edges, which CI enforces.
+
+Known unrelated lints: `cargo clippy -p chio-store-sqlite --all-targets`
+reports seven `expect_used` errors in sibling test files this milestone
+does not touch (`channel_lifecycle_store_tests.rs`,
+`channel_release_publisher_store_tests.rs`, `fiscal_store_tests.rs`,
+`receipt_store/tests/retention.rs`). The set is byte-identical with the
+feature off, so it predates this work; the workspace gate's lint scope
+(`--lib --bins --examples`) does not include it.
 
 ## M2 exit criteria
 
