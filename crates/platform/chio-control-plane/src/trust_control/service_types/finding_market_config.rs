@@ -114,6 +114,11 @@ pub struct FindingMarketConfig {
     pub challenge_administration_pool: FindingPoolPin,
     pub community_fund_destination: String,
     pub status_feed_operator_ref: String,
+    /// Trusted open-market fee-schedule signer keys (canonical bare
+    /// lowercase Ed25519 hex). A schedule verifies only against this
+    /// pinned set; the envelope's own embedded signer never
+    /// self-authorizes.
+    pub fee_schedule_operator_keys: Vec<String>,
 }
 
 impl FindingMarketConfig {
@@ -153,6 +158,41 @@ impl FindingMarketConfig {
                 "finding-market status feed operator ref must be non-empty".to_string(),
             ));
         }
+        if self.fee_schedule_operator_keys.is_empty() {
+            return Err(CliError::cli_other_error(
+                "finding-market fee schedule operator keys must be non-empty".to_string(),
+            ));
+        }
+        for key_hex in &self.fee_schedule_operator_keys {
+            let key = PublicKey::from_hex(key_hex).map_err(|_| {
+                CliError::cli_other_error(
+                    "finding-market fee schedule operator key is not valid".to_string(),
+                )
+            })?;
+            if key.algorithm() != SigningAlgorithm::Ed25519
+                || key.is_weak_ed25519()
+                || key.to_hex() != *key_hex
+            {
+                return Err(CliError::cli_other_error(
+                    "finding-market fee schedule operator key must be a canonical, non-weak Ed25519 key"
+                        .to_string(),
+                ));
+            }
+        }
         Ok(())
+    }
+
+    /// The parsed pinned fee-schedule signer set.
+    pub fn fee_schedule_operators(&self) -> Result<Vec<PublicKey>, CliError> {
+        self.fee_schedule_operator_keys
+            .iter()
+            .map(|key_hex| {
+                PublicKey::from_hex(key_hex).map_err(|_| {
+                    CliError::cli_other_error(
+                        "pinned finding-market fee schedule operator key is not valid".to_string(),
+                    )
+                })
+            })
+            .collect()
     }
 }

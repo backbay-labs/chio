@@ -17,11 +17,13 @@
 //! the standalone artifact surfaces (publish, recipes, profiles).
 
 use chio_finding::{
-    verify_pinned_envelope, verify_signed_bond_backing, verify_signed_verifier_report, Finding,
-    FindingChallengeVerifierProfile, FindingEvidenceClass, FindingFacetKind, FindingFacetOutcome,
-    FindingFeeEvent, FindingGuaranteeClass, FindingReplayRecipeInput, SignedFindingAdmission,
-    SignedFindingBondBacking, SignedFindingChallengeVerifierProfile, SignedFindingMarketTerms,
-    SignedFindingVerifierReport, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
+    verify_pinned_envelope, verify_signed_bond_backing, verify_signed_seller_authorization,
+    verify_signed_verifier_report, Finding, FindingChallengeVerifierProfile, FindingEvidenceClass,
+    FindingFacetKind, FindingFacetOutcome, FindingFeeEvent, FindingGuaranteeClass, FindingPayee,
+    FindingReplayRecipeInput, SignedFindingAdmission, SignedFindingBondBacking,
+    SignedFindingChallengeVerifierProfile, SignedFindingMarketTerms,
+    SignedFindingSellerAuthorization, SignedFindingVerifierReport,
+    FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
 };
 use chio_open_market::fee_schedule::SignedOpenMarketFeeSchedule;
 use chio_open_market::finding_admission::{
@@ -367,7 +369,12 @@ fn current_admission_view(
     if now >= snapshot.expires_at {
         return None;
     }
-    if snapshot.allocation_state != FindingAllocationState::Live {
+    // Activation dedicates the allocation in the same transaction that
+    // indexes the admission, so the healthy state for an ACTIVE admission
+    // is `Consumed` (encumbered by exactly this admission). `Expired` and
+    // `Released` mean the backing is gone; `Live` with an active
+    // admission cannot happen through the store transaction.
+    if snapshot.allocation_state != FindingAllocationState::Consumed {
         return None;
     }
     let admission: SignedFindingAdmission = serde_json::from_str(&snapshot.envelope_json).ok()?;
@@ -630,6 +637,7 @@ pub(crate) async fn handle_register_finding_collateral(
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct FindingActivateRequest {
     pub admission: SignedFindingAdmission,
+    pub seller_authorization: SignedFindingSellerAuthorization,
     pub terms: SignedFindingMarketTerms,
     pub backing: SignedFindingBondBacking,
     pub fee_schedule: SignedOpenMarketFeeSchedule,
@@ -686,6 +694,26 @@ pub(crate) async fn handle_activate_finding(
         return plain_http_error(StatusCode::BAD_REQUEST, "admission names another finding");
     }
     let now = unix_timestamp_now();
+
+    // Exact-replay short circuit: a retry of an already committed
+    // activation must return the stored outcome instead of re-verifying
+    // against the post-commit allocation state. Byte equality on the
+    // canonical envelope is the replay test; a different envelope for the
+    // same admission id falls through and rejects below.
+    if let Ok(Some(snapshot)) = store.get_current_admission(&finding_id) {
+        if snapshot.admission_id == admission.admission_id {
+            match chio_core::canonical_json_bytes(&request.admission) {
+                Ok(bytes) if bytes == snapshot.envelope_json.as_bytes() => {
+                    return Json(serde_json::json!({
+                        "admissionId": admission.admission_id,
+                        "outcome": "ExactReplay",
+                    }))
+                    .into_response();
+                }
+                _ => {}
+            }
+        }
+    }
 
     // The published finding is the root of every binding.
     let artifact_json = match store.get_finding_bytes(&finding_id) {
@@ -752,6 +780,61 @@ pub(crate) async fn handle_activate_finding(
         return plain_http_error(StatusCode::BAD_REQUEST, "listing id mismatch");
     }
 
+    // Seller authorization: the issuer-signed grant that lets this
+    // seller list this exact finding. Required even when issuer and
+    // seller are the same key.
+    let authorization_digest = match canonical_digest_of(&request.seller_authorization) {
+        Ok(digest) => digest,
+        Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error),
+    };
+    if authorization_digest != admission.seller_authorization_envelope_sha256 {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "seller authorization envelope digest mismatch",
+        );
+    }
+    if let Err(error) = verify_signed_seller_authorization(&request.seller_authorization) {
+        return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
+    }
+    let authorization = &request.seller_authorization.body;
+    if authorization.issuer != finding.issuer {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "seller authorization issuer is not the finding issuer",
+        );
+    }
+    if authorization.seller != request.terms.body.seller {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "seller authorization names a different seller than the terms",
+        );
+    }
+    if authorization.finding_id != finding_id
+        || authorization.finding_artifact_sha256 != artifact_sha256
+    {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "seller authorization binds a different finding",
+        );
+    }
+    if authorization.listing_id != admission.listing_id {
+        return plain_http_error(
+            StatusCode::BAD_REQUEST,
+            "seller authorization names a different listing",
+        );
+    }
+    if authorization.issued_at > now || authorization.expires_at <= now {
+        return plain_http_error(StatusCode::BAD_REQUEST, "seller authorization is not live");
+    }
+    if let FindingPayee::Beneficiary { destination, .. } = &authorization.payee {
+        if destination != &admission.payee_destination {
+            return plain_http_error(
+                StatusCode::BAD_REQUEST,
+                "seller authorization payee does not match the admission",
+            );
+        }
+    }
+
     // Collateral snapshot for the named allocation.
     let allocation = match store.get_allocation(&admission.backing_allocation_id) {
         Ok(Some(snapshot)) => snapshot,
@@ -773,8 +856,16 @@ pub(crate) async fn handle_activate_finding(
 
     // The full admission verification: venue pin, liveness, terms and
     // backing bindings, fiscal gate, sizing inequality, expiry bound.
-    let earliest_constituent_expiry = finding.expires_at.min(request.pricing_hint.body.expires_at);
-    let trusted_signers = [request.fee_schedule.signer_key.clone()];
+    let earliest_constituent_expiry = finding
+        .expires_at
+        .min(request.pricing_hint.body.expires_at)
+        .min(authorization.expires_at);
+    let trusted_signers = match config.fee_schedule_operators() {
+        Ok(signers) => signers,
+        Err(error) => {
+            return plain_http_error(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string())
+        }
+    };
     let gate = match state.fiscal_runtime.as_ref() {
         Some(_) => {
             // Fiscal-governed venues verify schedules through the
