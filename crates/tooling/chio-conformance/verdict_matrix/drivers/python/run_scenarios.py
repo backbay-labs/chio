@@ -24,6 +24,12 @@ REASON_INPUT_REDACTED = "urn:chio:error:guard:input-redacted"
 REASON_OUTPUT_REDACTED = "urn:chio:error:guard:output-redacted"
 REASON_GUARD_DENIED = "urn:chio:error:guard:denied"
 REASON_KERNEL_INTERNAL = "urn:chio:error:kernel:internal-error"
+REASON_DELIVERY_DIGEST_MISMATCH = (
+    "urn:chio:error:kernel:delivery-contract-digest-mismatch"
+)
+REASON_DELIVERY_UNSUPPORTED_CARRIER = (
+    "urn:chio:error:kernel:delivery-contract-unsupported-carrier"
+)
 
 
 @dataclass(frozen=True)
@@ -246,6 +252,21 @@ async def evaluate_scenario(scenario: dict[str, Any]) -> VerdictTuple:
                 else REASON_INPUT_REDACTED
             )
             return tuple_for("allow", reason, scope_set)
+
+    if category == "delivery_contract":
+        # This SDK does not enforce output digests. A request carrying the
+        # output_digest_sha256 constraint is denied from carrier admission
+        # alone; the scenario declares the delivery ground truth so a
+        # mismatch is surfaced distinctly from an unenforceable carrier.
+        if bool(script.get("carrier_present", False)):
+            if str(script.get("delivery_result", "none")) == "mismatched":
+                return tuple_for(
+                    "deny", REASON_DELIVERY_DIGEST_MISMATCH, scope_set
+                )
+            return tuple_for(
+                "deny", REASON_DELIVERY_UNSUPPORTED_CARRIER, scope_set
+            )
+        return tuple_for("allow", REASON_NONE, scope_set)
 
     return tuple_for("allow", REASON_NONE, scope_set)
 

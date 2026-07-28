@@ -38,6 +38,10 @@ pub const REASON_INPUT_REDACTED: &str = "urn:chio:error:guard:input-redacted";
 pub const REASON_OUTPUT_REDACTED: &str = "urn:chio:error:guard:output-redacted";
 pub const REASON_GUARD_DENIED: &str = "urn:chio:error:guard:denied";
 pub const REASON_KERNEL_INTERNAL: &str = "urn:chio:error:kernel:internal-error";
+pub const REASON_DELIVERY_DIGEST_MISMATCH: &str =
+    "urn:chio:error:kernel:delivery-contract-digest-mismatch";
+pub const REASON_DELIVERY_UNSUPPORTED_CARRIER: &str =
+    "urn:chio:error:kernel:delivery-contract-unsupported-carrier";
 
 #[derive(Debug, Error)]
 pub enum DriverError {
@@ -131,6 +135,12 @@ pub struct ScenarioScript {
     #[serde(default)]
     pub redaction_phase: RedactionPhase,
     #[serde(default)]
+    pub carrier_present: bool,
+    #[serde(default)]
+    pub delivery_lane: DeliveryLane,
+    #[serde(default)]
+    pub delivery_result: DeliveryResult,
+    #[serde(default)]
     pub source_fixture: Option<String>,
     #[serde(flatten)]
     pub extra: BTreeMap<String, Value>,
@@ -213,6 +223,38 @@ pub enum RedactionPhase {
     #[default]
     Input,
     Output,
+}
+
+/// Financial and output surface a delivery-contract scenario exercises.
+///
+/// The mock drivers do not enforce output digests, so the lane is
+/// descriptive: it records which real-kernel rejection path the scenario
+/// stands in for. Every lane resolves to a fail-closed deny from carrier
+/// admission alone.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DeliveryLane {
+    #[default]
+    Durable,
+    Legacy,
+    Prepay,
+    Stream,
+    NoOutput,
+}
+
+/// Declared delivery outcome a full output-aware kernel would compute.
+///
+/// A driver that cannot enforce output digests never observes this
+/// directly; the scenario declares it so the mock can represent a
+/// matched delivery (which it still cannot admit) distinctly from a
+/// mismatched one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum DeliveryResult {
+    #[default]
+    None,
+    Matched,
+    Mismatched,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -358,6 +400,10 @@ fn evaluate_scenario(scenario: &VerdictScenario) -> Result<VerdictTuple, String>
         ));
     }
 
+    if scenario.category == ScenarioCategory::DeliveryContract {
+        return Ok(evaluate_delivery_contract_scenario(scenario));
+    }
+
     let mut kernel = ChioKernel::new(kernel_config());
     configure_replay_store(&mut kernel, scenario);
     configure_redaction_hooks(&mut kernel, scenario);
@@ -406,6 +452,44 @@ fn evaluate_scenario(scenario: &VerdictScenario) -> Result<VerdictTuple, String>
         &response,
         &scenario.script.capability_scopes,
     ))
+}
+
+/// Evaluate a `delivery_contract` scenario from carrier admission alone.
+///
+/// The kernel behind this driver does not enforce output digests, so the
+/// only sound verdict for a request carrying the `output_digest_sha256`
+/// constraint is a fail-closed deny. The scenario declares the carrier
+/// and the delivery ground truth; this evaluator derives the tuple from
+/// those fields without ever computing a content hash, mirroring the
+/// Python and Go mock drivers byte for byte so the diff oracle sees one
+/// verdict tuple across every language.
+fn evaluate_delivery_contract_scenario(scenario: &VerdictScenario) -> VerdictTuple {
+    let script = &scenario.script;
+    let scope_set = script.capability_scopes.clone();
+
+    if script.revoked {
+        return tuple(Verdict::Deny, REASON_REVOKED, scope_set);
+    }
+    if let Some(required) = script.required_scope.as_deref() {
+        if !scope_set.iter().any(|scope| scope == required) {
+            return tuple(Verdict::Deny, REASON_SCOPE_EXCEEDED, scope_set);
+        }
+    }
+
+    if !script.carrier_present {
+        return tuple(Verdict::Allow, REASON_NONE, scope_set);
+    }
+
+    match script.delivery_result {
+        DeliveryResult::Mismatched => {
+            tuple(Verdict::Deny, REASON_DELIVERY_DIGEST_MISMATCH, scope_set)
+        }
+        DeliveryResult::Matched | DeliveryResult::None => tuple(
+            Verdict::Deny,
+            REASON_DELIVERY_UNSUPPORTED_CARRIER,
+            scope_set,
+        ),
+    }
 }
 
 fn tuple(verdict: Verdict, reason_code: &str, scope_set: Vec<String>) -> VerdictTuple {
@@ -933,6 +1017,9 @@ mod tests {
                 replay_nonce_status: ReplayNonceStatus::Fresh,
                 redaction_action: RedactionAction::None,
                 redaction_phase: RedactionPhase::Input,
+                carrier_present: false,
+                delivery_lane: DeliveryLane::Durable,
+                delivery_result: DeliveryResult::None,
                 source_fixture: Some("fixtures/scenario-a.ndjson".to_string()),
                 extra: BTreeMap::new(),
             },
@@ -951,6 +1038,110 @@ mod tests {
         assert!(
             error.to_string().contains(expected_reason),
             "unexpected validation error: {error}"
+        );
+    }
+
+    fn delivery_scenario(
+        carrier_present: bool,
+        result: DeliveryResult,
+        revoked: bool,
+        required_scope: &str,
+        scopes: &[&str],
+    ) -> VerdictScenario {
+        let mut scenario = valid_scenario();
+        scenario.category = ScenarioCategory::DeliveryContract;
+        scenario.script.capability_scopes = scopes.iter().map(|scope| scope.to_string()).collect();
+        scenario.script.required_scope = Some(required_scope.to_string());
+        scenario.script.revoked = revoked;
+        scenario.script.carrier_present = carrier_present;
+        scenario.script.delivery_result = result;
+        scenario
+    }
+
+    #[test]
+    fn delivery_contract_denies_from_carrier_admission_alone() {
+        // Carrier admitted, no output enforcement support: fail closed.
+        let admitted = delivery_scenario(
+            true,
+            DeliveryResult::None,
+            false,
+            "tool:read",
+            &["tool:read"],
+        );
+        assert_eq!(
+            evaluate_delivery_contract_scenario(&admitted),
+            tuple(
+                Verdict::Deny,
+                REASON_DELIVERY_UNSUPPORTED_CARRIER,
+                vec!["tool:read".to_string()]
+            )
+        );
+
+        // A ground-truth match still cannot be admitted without enforcement.
+        let matched = delivery_scenario(
+            true,
+            DeliveryResult::Matched,
+            false,
+            "tool:read",
+            &["tool:read"],
+        );
+        assert_eq!(
+            evaluate_delivery_contract_scenario(&matched).reason_code,
+            REASON_DELIVERY_UNSUPPORTED_CARRIER
+        );
+
+        // A declared mismatch is represented via the digest-mismatch reason.
+        let mismatched = delivery_scenario(
+            true,
+            DeliveryResult::Mismatched,
+            false,
+            "tool:write",
+            &["tool:write"],
+        );
+        assert_eq!(
+            evaluate_delivery_contract_scenario(&mismatched),
+            tuple(
+                Verdict::Deny,
+                REASON_DELIVERY_DIGEST_MISMATCH,
+                vec!["tool:write".to_string()]
+            )
+        );
+
+        // The carrier is denied at admission before enforcement is reached.
+        let scope_denied = delivery_scenario(
+            true,
+            DeliveryResult::None,
+            false,
+            "tool:write",
+            &["tool:read"],
+        );
+        assert_eq!(
+            evaluate_delivery_contract_scenario(&scope_denied).reason_code,
+            REASON_SCOPE_EXCEEDED
+        );
+        let revoked = delivery_scenario(
+            true,
+            DeliveryResult::None,
+            true,
+            "tool:read",
+            &["tool:read"],
+        );
+        assert_eq!(
+            evaluate_delivery_contract_scenario(&revoked).reason_code,
+            REASON_REVOKED
+        );
+
+        // No carrier means nothing to enforce; a plain admit stands.
+        let no_carrier = delivery_scenario(
+            false,
+            DeliveryResult::None,
+            false,
+            "tool:read",
+            &["tool:read"],
+        );
+        assert_eq!(
+            evaluate_delivery_contract_scenario(&no_carrier),
+            tuple(Verdict::Allow, REASON_NONE, vec!["tool:read".to_string()])
         );
     }
 

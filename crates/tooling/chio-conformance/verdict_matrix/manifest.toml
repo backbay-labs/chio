@@ -4,17 +4,18 @@ scenario_spec = "chio.verdict-matrix.scenario.v1"
 
 [corpus]
 status = "active"
-scenario_count = 48
+scenario_count = 60
 scenario_root = "scenarios"
 scenario_index_algorithm = "sha256(relative-path-tab-file-sha256-newline)"
-scenario_index_hash = "sha256:785a445bb796c80905e809c1023d12658f96a1ec4506a0d66a63736e15bbb2ed"
-corpus_sha256 = "785a445bb796c80905e809c1023d12658f96a1ec4506a0d66a63736e15bbb2ed"
+scenario_index_hash = "sha256:6ef424c7410290675d796330ec46aef1a1c3a4c56952349f452c72cdc139f0d3"
+corpus_sha256 = "6ef424c7410290675d796330ec46aef1a1c3a4c56952349f452c72cdc139f0d3"
 
 [corpus.categories]
 capability_subset = 12
 revocation_propagation = 12
 replay_verdict = 12
 redaction_determinism = 12
+delivery_contract = 12
 
 [drivers]
 required = ["rust-kernel"]
@@ -67,6 +68,12 @@ requires_sidecar_env = ["CHIO_VERDICT_MATRIX_SIDECAR_URL", "CHIO_SIDECAR_URL"]
 status = "partial"
 entrypoint = "drivers/wasm-browser"
 command = "crates/tooling/chio-conformance/verdict_matrix/drivers/wasm-browser/run.sh"
+# The browser `evaluate_pure` surface has no revocation store, execution-nonce
+# store, guard pipeline, or output-aware terminal, so it emits real tuples for
+# the capability category only. delivery_contract is deliberately absent here:
+# the cross-language oracle proves the browser kernel emits no tuple for it, so
+# claiming support would contradict enforced behavior. The required rust-kernel,
+# python-sdk, and go-http-sdk drivers carry the delivery_contract category.
 supported_categories = ["capability"]
 
 # Deployment-shape SDK drivers. The four drivers below re-host one of the

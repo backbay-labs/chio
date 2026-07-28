@@ -20,6 +20,8 @@ const reasonInputRedacted = "urn:chio:error:guard:input-redacted"
 const reasonOutputRedacted = "urn:chio:error:guard:output-redacted"
 const reasonGuardDenied = "urn:chio:error:guard:denied"
 const reasonKernelInternal = "urn:chio:error:kernel:internal-error"
+const reasonDeliveryDigestMismatch = "urn:chio:error:kernel:delivery-contract-digest-mismatch"
+const reasonDeliveryUnsupportedCarrier = "urn:chio:error:kernel:delivery-contract-unsupported-carrier"
 
 type scenario struct {
 	Schema   string         `json:"schema"`
@@ -40,6 +42,9 @@ type scenarioScript struct {
 	ReplayNonceStatus string   `json:"replay_nonce_status"`
 	RedactionAction   string   `json:"redaction_action"`
 	RedactionPhase    string   `json:"redaction_phase"`
+	CarrierPresent    bool     `json:"carrier_present"`
+	DeliveryLane      string   `json:"delivery_lane"`
+	DeliveryResult    string   `json:"delivery_result"`
 }
 
 type verdictTuple struct {
@@ -204,6 +209,18 @@ func evaluateScenario(s scenario) verdictTuple {
 			}
 			return tuple("allow", reasonInputRedacted, scopeSet)
 		}
+	case "delivery_contract":
+		// This SDK does not enforce output digests. A request carrying the
+		// output_digest_sha256 constraint is denied from carrier admission
+		// alone; a declared mismatch is surfaced via the digest-mismatch
+		// reason, everything else via the unsupported-carrier reason.
+		if s.Script.CarrierPresent {
+			if s.Script.DeliveryResult == "mismatched" {
+				return tuple("deny", reasonDeliveryDigestMismatch, scopeSet)
+			}
+			return tuple("deny", reasonDeliveryUnsupportedCarrier, scopeSet)
+		}
+		return tuple("allow", reasonNone, scopeSet)
 	}
 
 	return tuple("allow", reasonNone, scopeSet)

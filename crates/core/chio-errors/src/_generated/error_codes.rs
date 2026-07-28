@@ -682,6 +682,32 @@ pub const KERNEL_BUDGET_AUTHORIZE_REPLAY: ErrorCodeSpec = ErrorCodeSpec {
     consumed_by: &["chio-kernel", "chio-metering", "chio-control-plane"],
 };
 
+pub const KERNEL_DELIVERY_CONTRACT_UNSUPPORTED_CARRIER: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:kernel:delivery-contract-unsupported-carrier",
+    domain: Domain::Kernel,
+    severity: Severity::Error,
+    summary: "Request carried an output-digest delivery contract the evaluator cannot enforce.",
+    help: "Route the request to an output-aware durable terminal, or drop the output_digest_sha256 constraint before retrying.",
+    string_code: "CHIO-KERNEL-DELIVERY-CONTRACT-UNSUPPORTED-CARRIER",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-kernel", "chio-conformance"],
+};
+
+pub const KERNEL_DELIVERY_CONTRACT_DIGEST_MISMATCH: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:kernel:delivery-contract-digest-mismatch",
+    domain: Domain::Kernel,
+    severity: Severity::Error,
+    summary: "Delivered output did not hash to the frozen expected digest of the delivery contract.",
+    help: "The delivery is rejected and no money moves. Re-run the tool so the output matches the expected digest before retrying.",
+    string_code: "CHIO-KERNEL-DELIVERY-CONTRACT-DIGEST-MISMATCH",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-kernel", "chio-conformance"],
+};
+
 pub const TRANSPORT_PROTOCOL_VERSION_UNSUPPORTED: ErrorCodeSpec = ErrorCodeSpec {
     urn: "urn:chio:error:transport:protocol-version-unsupported",
     domain: Domain::Transport,
@@ -1462,6 +1488,8 @@ pub static ERROR_CODES: &[ErrorCodeSpec] = &[
     KERNEL_REQUEST_CANCELLED,
     KERNEL_BUDGET_EXHAUSTED,
     KERNEL_BUDGET_AUTHORIZE_REPLAY,
+    KERNEL_DELIVERY_CONTRACT_UNSUPPORTED_CARRIER,
+    KERNEL_DELIVERY_CONTRACT_DIGEST_MISMATCH,
     TRANSPORT_PROTOCOL_VERSION_UNSUPPORTED,
     TRANSPORT_INVALID_REQUEST_SHAPE,
     TRANSPORT_AUTH_MISSING_OR_INVALID,

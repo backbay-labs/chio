@@ -663,6 +663,28 @@ codes:
       - chio-kernel
       - chio-metering
       - chio-control-plane
+  - urn: "urn:chio:error:kernel:delivery-contract-unsupported-carrier"
+    domain: kernel
+    severity: error
+    summary: "Request carried an output-digest delivery contract the evaluator cannot enforce."
+    help: "Route the request to an output-aware durable terminal, or drop the output_digest_sha256 constraint before retrying."
+    string_code: "CHIO-KERNEL-DELIVERY-CONTRACT-UNSUPPORTED-CARRIER"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-kernel
+      - chio-conformance
+  - urn: "urn:chio:error:kernel:delivery-contract-digest-mismatch"
+    domain: kernel
+    severity: error
+    summary: "Delivered output did not hash to the frozen expected digest of the delivery contract."
+    help: "The delivery is rejected and no money moves. Re-run the tool so the output matches the expected digest before retrying."
+    string_code: "CHIO-KERNEL-DELIVERY-CONTRACT-DIGEST-MISMATCH"
+    since: "0.1.0"
+    stability: unstable
+    consumed_by:
+      - chio-kernel
+      - chio-conformance
   - urn: "urn:chio:error:transport:protocol-version-unsupported"
     domain: transport
     severity: error
