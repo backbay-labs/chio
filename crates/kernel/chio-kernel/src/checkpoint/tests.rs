@@ -344,6 +344,82 @@ fn build_checkpoint_transparency_derives_publications_and_witnesses() {
 }
 
 #[test]
+fn transparency_verifies_each_checkpoint_once_for_a_large_prefix() {
+    const CHECKPOINT_COUNT: u64 = 128;
+
+    let keypair = Keypair::generate();
+    let mut frontier = CheckpointChainFrontier::empty();
+    let mut checkpoints = Vec::<KernelCheckpoint>::with_capacity(CHECKPOINT_COUNT as usize);
+    for checkpoint_seq in 1..=CHECKPOINT_COUNT {
+        let receipt = format!("receipt-{checkpoint_seq}").into_bytes();
+        let checkpoint = build_checkpoint_with_chain_frontier(
+            checkpoint_seq,
+            checkpoint_seq,
+            checkpoint_seq,
+            &[receipt],
+            &keypair,
+            checkpoints.last(),
+            &frontier,
+        )
+        .expect("build checkpoint prefix");
+        frontier
+            .append(checkpoint_chain_leaf_hash(&checkpoint.body).expect("checkpoint chain leaf"));
+        checkpoints.push(checkpoint);
+    }
+
+    let verifications_before = checkpoint_signature_verification_count_for_test();
+    let inspections_before = checkpoint_equivocation_inspection_count_for_test();
+    let transparency =
+        validate_checkpoint_transparency(&checkpoints).expect("validate checkpoint prefix");
+    let verification_count =
+        checkpoint_signature_verification_count_for_test() - verifications_before;
+    let inspection_count = checkpoint_equivocation_inspection_count_for_test() - inspections_before;
+
+    assert_eq!(transparency.publications.len(), CHECKPOINT_COUNT as usize);
+    assert_eq!(transparency.witnesses.len(), CHECKPOINT_COUNT as usize - 1);
+    assert_eq!(
+        verification_count, CHECKPOINT_COUNT as usize,
+        "transparency validation must verify each checkpoint signature exactly once"
+    );
+    assert_eq!(
+        inspection_count, 0,
+        "a clean prefix must not inspect any checkpoint pairs for equivocation"
+    );
+
+    let conflicting = build_checkpoint(1, 1, 1, &[b"conflicting-receipt".to_vec()], &keypair)
+        .expect("build conflicting checkpoint");
+    let inspections_before = checkpoint_equivocation_inspection_count_for_test();
+    let conflict_summary = build_checkpoint_transparency(&[checkpoints[0].clone(), conflicting])
+        .expect("derive conflicting transparency");
+    let inspection_count = checkpoint_equivocation_inspection_count_for_test() - inspections_before;
+    assert_eq!(inspection_count, 1, "one indexed pair must be inspected");
+    assert_eq!(conflict_summary.equivocations.len(), 1);
+    assert_eq!(
+        conflict_summary.equivocations[0].kind,
+        CheckpointEquivocationKind::ConflictingCheckpointSeq
+    );
+
+    let duplicate_checkpoints = vec![checkpoints[0].clone(); CHECKPOINT_COUNT as usize];
+    let verifications_before = checkpoint_signature_verification_count_for_test();
+    let inspections_before = checkpoint_equivocation_inspection_count_for_test();
+    let duplicate_summary = build_checkpoint_transparency(&duplicate_checkpoints)
+        .expect("derive duplicate checkpoint transparency");
+    let verification_count =
+        checkpoint_signature_verification_count_for_test() - verifications_before;
+    let inspection_count = checkpoint_equivocation_inspection_count_for_test() - inspections_before;
+    assert_eq!(
+        duplicate_summary.publications.len(),
+        CHECKPOINT_COUNT as usize
+    );
+    assert!(duplicate_summary.equivocations.is_empty());
+    assert_eq!(verification_count, CHECKPOINT_COUNT as usize);
+    assert_eq!(
+        inspection_count, 0,
+        "identical bodies must not create quadratic candidate scans"
+    );
+}
+
+#[test]
 fn validate_checkpoint_transparency_rejects_duplicate_signed_checkpoints() {
     let kp = Keypair::generate();
     let first = build_checkpoint(1, 1, 2, &make_receipt_bytes(2), &kp).expect("build first");
@@ -543,6 +619,35 @@ fn build_trust_anchored_checkpoint_publication_rejects_invalid_binding() {
 }
 
 #[test]
+fn trust_anchor_binding_validation_precedes_checkpoint_validation() {
+    let keypair = Keypair::generate();
+    let mut checkpoint =
+        build_checkpoint(1, 1, 1, &make_receipt_bytes(1), &keypair).expect("build checkpoint");
+    checkpoint.body.issued_at = checkpoint.body.issued_at.saturating_add(1);
+
+    let error = build_trust_anchored_checkpoint_publication(
+        &checkpoint,
+        CheckpointPublicationTrustAnchorBinding {
+            publication_identity:
+                chio_core::receipt::checkpoint::CheckpointPublicationIdentity::new(
+                    chio_core::receipt::checkpoint::CheckpointPublicationIdentityKind::TransparencyService,
+                    "",
+                ),
+            trust_anchor_identity:
+                chio_core::receipt::checkpoint::CheckpointTrustAnchorIdentity::new(
+                    chio_core::receipt::checkpoint::CheckpointTrustAnchorIdentityKind::Did,
+                    "did:chio:operator-root",
+                ),
+            trust_anchor_ref: "chio_checkpoint_witness_chain".to_string(),
+            signer_cert_ref: "".to_string(),
+            publication_profile_version: "phase4-preview.v1".to_string(),
+        },
+    )
+    .expect_err("invalid binding must be rejected before the checkpoint");
+    assert!(error.to_string().contains("publication_identity.identity"));
+}
+
+#[test]
 fn build_trust_anchored_checkpoint_publication_rejects_mismatched_local_log_identity() {
     let kp = Keypair::generate();
     let checkpoint =
@@ -586,6 +691,123 @@ fn detect_checkpoint_equivocation_reports_conflicting_sequence() {
     );
     assert_eq!(equivocation.first_checkpoint_seq, 1);
     assert_eq!(equivocation.second_checkpoint_seq, 1);
+}
+
+fn pairwise_checkpoint_equivocations(
+    checkpoints: &[KernelCheckpoint],
+) -> Vec<CheckpointEquivocation> {
+    let mut equivocations = Vec::new();
+    for (position, checkpoint) in checkpoints.iter().enumerate() {
+        for conflicting in checkpoints.iter().skip(position + 1) {
+            if let Some(equivocation) = detect_checkpoint_equivocation(checkpoint, conflicting)
+                .expect("pairwise equivocation detection")
+            {
+                equivocations.push(equivocation);
+            }
+        }
+    }
+    equivocations.sort();
+    equivocations.dedup();
+    equivocations
+}
+
+#[test]
+fn indexed_equivocation_matches_pairwise_orientation_and_priority() {
+    let keypair = Keypair::generate();
+    let with_predecessor = |mut checkpoint: KernelCheckpoint, digest: &str| {
+        checkpoint.body.previous_checkpoint_sha256 = Some(digest.repeat(32));
+        checkpoint.signature = keypair.sign(
+            &canonical_json_bytes(&checkpoint.body).expect("canonical checkpoint with predecessor"),
+        );
+        checkpoint
+    };
+
+    let sequence_first = with_predecessor(
+        build_checkpoint(2, 1, 1, &[b"sequence-first".to_vec()], &keypair)
+            .expect("build first sequence checkpoint"),
+        "11",
+    );
+    let sequence_second = with_predecessor(
+        build_checkpoint(2, 1, 1, &[b"sequence-second".to_vec()], &keypair)
+            .expect("build second sequence checkpoint"),
+        "22",
+    );
+    let tree_size_first = build_checkpoint(
+        2,
+        1,
+        2,
+        &[b"tree-first-a".to_vec(), b"tree-first-b".to_vec()],
+        &keypair,
+    )
+    .expect("build first tree-size checkpoint");
+    let tree_size_second = build_checkpoint(
+        3,
+        1,
+        2,
+        &[b"tree-second-a".to_vec(), b"tree-second-b".to_vec()],
+        &keypair,
+    )
+    .expect("build second tree-size checkpoint");
+    let predecessor_first = with_predecessor(
+        build_checkpoint(2, 1, 1, &[b"predecessor-first".to_vec()], &keypair)
+            .expect("build first predecessor checkpoint"),
+        "33",
+    );
+    let predecessor_second = with_predecessor(
+        build_checkpoint(3, 2, 2, &[b"predecessor-second".to_vec()], &keypair)
+            .expect("build second predecessor checkpoint"),
+        "33",
+    );
+    let overlap_first = with_predecessor(
+        build_checkpoint(4, 3, 3, &[b"overlap-first".to_vec()], &keypair)
+            .expect("build first overlap checkpoint"),
+        "44",
+    );
+    let overlap_second = with_predecessor(
+        build_checkpoint(4, 3, 3, &[b"overlap-second".to_vec()], &keypair)
+            .expect("build second overlap checkpoint"),
+        "44",
+    );
+
+    for (checkpoints, expected_kind) in [
+        (
+            vec![sequence_first.clone(), sequence_second.clone()],
+            CheckpointEquivocationKind::ConflictingCheckpointSeq,
+        ),
+        (
+            vec![tree_size_first, tree_size_second],
+            CheckpointEquivocationKind::ConflictingLogTreeSize,
+        ),
+        (
+            vec![predecessor_first, predecessor_second],
+            CheckpointEquivocationKind::ConflictingPredecessorWitness,
+        ),
+        (
+            vec![overlap_first, overlap_second],
+            CheckpointEquivocationKind::ConflictingCheckpointSeq,
+        ),
+        (
+            vec![
+                sequence_first.clone(),
+                sequence_second.clone(),
+                sequence_first.clone(),
+            ],
+            CheckpointEquivocationKind::ConflictingCheckpointSeq,
+        ),
+        (
+            vec![sequence_second.clone(), sequence_first, sequence_second],
+            CheckpointEquivocationKind::ConflictingCheckpointSeq,
+        ),
+    ] {
+        let expected = pairwise_checkpoint_equivocations(&checkpoints);
+        let actual = build_checkpoint_transparency(&checkpoints)
+            .expect("indexed transparency")
+            .equivocations;
+        assert_eq!(actual, expected);
+        assert!(actual
+            .iter()
+            .all(|equivocation| equivocation.kind == expected_kind));
+    }
 }
 
 #[test]

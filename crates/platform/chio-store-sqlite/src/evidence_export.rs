@@ -4,7 +4,7 @@ use chio_core::merkle::MerkleTree;
 use chio_core::receipt::checkpoint::CheckpointPublicationTrustAnchorBinding;
 use chio_kernel::capability_lineage::CapabilitySnapshot;
 use chio_kernel::checkpoint::{
-    build_inclusion_proof, build_trust_anchored_checkpoint_publication,
+    bind_checkpoint_publication_trust_anchor, build_inclusion_proof,
     validate_checkpoint_transparency, CheckpointPublication, CheckpointTransparencySummary,
     KernelCheckpoint, ReceiptInclusionProof,
 };
@@ -29,12 +29,31 @@ impl SqliteReceiptStore {
         &self,
         query: &EvidenceExportQuery,
     ) -> Result<EvidenceExportBundle, EvidenceExportError> {
+        let (bundle, _) = self.collect_evidence_export_bundle(query)?;
+        Ok(bundle)
+    }
+
+    /// Build a bundle and its transparency summary with one checkpoint
+    /// validation pass.
+    pub fn build_evidence_export_bundle_with_transparency(
+        &self,
+        query: &EvidenceExportQuery,
+    ) -> Result<(EvidenceExportBundle, CheckpointTransparencySummary), EvidenceExportError> {
+        let (bundle, transparency) = self.collect_evidence_export_bundle(query)?;
+        let transparency = self.enrich_evidence_export_transparency_summary(transparency)?;
+        Ok((bundle, transparency))
+    }
+
+    fn collect_evidence_export_bundle(
+        &self,
+        query: &EvidenceExportQuery,
+    ) -> Result<(EvidenceExportBundle, CheckpointTransparencySummary), EvidenceExportError> {
         query.validate_read_boundary()?;
         let query = query.normalized_for_read_boundary();
         let tool_receipts = self.collect_tool_receipts_for_export(&query)?;
         let child_receipt_scope = self.resolve_child_receipt_scope(&query);
         let child_receipts = self.collect_child_receipts_for_export(&query, child_receipt_scope)?;
-        let checkpoints = self.collect_checkpoints_for_export(&tool_receipts)?;
+        let (checkpoints, transparency) = self.collect_checkpoints_for_export(&tool_receipts)?;
         let capability_lineage = self.collect_lineage_for_export(&tool_receipts)?;
         let (inclusion_proofs, uncheckpointed_receipts) =
             self.collect_inclusion_proofs_for_export(&tool_receipts, &checkpoints)?;
@@ -52,43 +71,40 @@ impl SqliteReceiptStore {
             },
         };
 
-        Ok(EvidenceExportBundle {
-            query: query.clone(),
-            tool_receipts,
-            child_receipts,
-            child_receipt_scope,
-            checkpoints,
-            capability_lineage,
-            inclusion_proofs,
-            uncheckpointed_receipts,
-            retention,
-        })
+        Ok((
+            EvidenceExportBundle {
+                query: query.clone(),
+                tool_receipts,
+                child_receipts,
+                child_receipt_scope,
+                checkpoints,
+                capability_lineage,
+                inclusion_proofs,
+                uncheckpointed_receipts,
+                retention,
+            },
+            transparency,
+        ))
     }
 
     pub fn build_evidence_export_transparency_summary(
         &self,
         checkpoints: &[KernelCheckpoint],
     ) -> Result<CheckpointTransparencySummary, EvidenceExportError> {
-        let mut summary = validate_checkpoint_transparency(checkpoints)?;
+        let summary = validate_checkpoint_transparency(checkpoints)?;
+        self.enrich_evidence_export_transparency_summary(summary)
+    }
+
+    fn enrich_evidence_export_transparency_summary(
+        &self,
+        mut summary: CheckpointTransparencySummary,
+    ) -> Result<CheckpointTransparencySummary, EvidenceExportError> {
         if summary.publications.is_empty() {
             return Ok(summary);
         }
 
-        let checkpoint_by_seq = checkpoints
-            .iter()
-            .map(|checkpoint| (checkpoint.body.checkpoint_seq, checkpoint))
-            .collect::<BTreeMap<_, _>>();
         let connection = self.connection()?;
         for publication in &mut summary.publications {
-            let Some(checkpoint) = checkpoint_by_seq.get(&publication.checkpoint_seq).copied()
-            else {
-                return Err(EvidenceExportError::ReceiptStore(
-                    ReceiptStoreError::Conflict(format!(
-                        "checkpoint {} is missing while deriving publication summary",
-                        publication.checkpoint_seq
-                    )),
-                ));
-            };
             let persisted =
                 load_checkpoint_publication_core(&connection, publication.checkpoint_seq)?
                     .ok_or_else(|| {
@@ -109,7 +125,8 @@ impl SqliteReceiptStore {
                 &connection,
                 publication.checkpoint_seq,
             )? {
-                *publication = build_trust_anchored_checkpoint_publication(checkpoint, binding)?;
+                *publication =
+                    bind_checkpoint_publication_trust_anchor(publication.clone(), binding)?;
             }
         }
 
@@ -220,9 +237,9 @@ impl SqliteReceiptStore {
     fn collect_checkpoints_for_export(
         &self,
         tool_receipts: &[EvidenceToolReceiptRecord],
-    ) -> Result<Vec<KernelCheckpoint>, EvidenceExportError> {
+    ) -> Result<(Vec<KernelCheckpoint>, CheckpointTransparencySummary), EvidenceExportError> {
         if tool_receipts.is_empty() {
-            return Ok(Vec::new());
+            return Ok((Vec::new(), CheckpointTransparencySummary::default()));
         }
         let min_seq = tool_receipts
             .iter()
@@ -261,9 +278,8 @@ impl SqliteReceiptStore {
             }
         }
 
-        validate_checkpoint_transparency(&checkpoints)?;
-
-        Ok(checkpoints)
+        let transparency = validate_checkpoint_transparency(&checkpoints)?;
+        Ok((checkpoints, transparency))
     }
 
     fn collect_lineage_for_export(
@@ -718,7 +734,9 @@ mod tests {
 
         let mut query = EvidenceExportQuery::admin_all();
         query.since = Some(102);
-        let bundle = store.build_evidence_export_bundle(&query).unwrap();
+        let (bundle, transparency) = store
+            .build_evidence_export_bundle_with_transparency(&query)
+            .unwrap();
 
         assert_eq!(bundle.tool_receipts.len(), 2);
         assert_eq!(
@@ -730,7 +748,9 @@ mod tests {
             vec![1, 2],
             "a scoped export must carry the predecessor prefix to checkpoint 1"
         );
-        validate_checkpoint_transparency(&bundle.checkpoints).unwrap();
+        assert_eq!(transparency.publications.len(), 2);
+        assert_eq!(transparency.witnesses.len(), 1);
+        assert!(transparency.equivocations.is_empty());
 
         let _ = std::fs::remove_file(path);
     }

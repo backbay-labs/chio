@@ -1186,9 +1186,8 @@ pub fn cmd_evidence_export(
         }
         (Some(receipt_db), None) => {
             let store = SqliteReceiptStore::open(receipt_db)?;
-            let bundle = store.build_evidence_export_bundle(&prepared.query)?;
-            let transparency =
-                store.build_evidence_export_transparency_summary(&bundle.checkpoints)?;
+            let (bundle, transparency) =
+                store.build_evidence_export_bundle_with_transparency(&prepared.query)?;
             validate_evidence_bundle_requirements(&bundle, prepared.require_proofs)?;
             RemoteEvidenceExportResponse {
                 bundle,
