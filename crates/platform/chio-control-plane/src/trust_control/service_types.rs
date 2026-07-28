@@ -14,6 +14,9 @@ mod budget_lifecycle;
 mod cluster_budget;
 #[path = "service_types/config.rs"]
 mod config;
+#[cfg(feature = "cognition-market-experimental")]
+#[path = "service_types/finding_market_config.rs"]
+mod finding_market_config;
 #[path = "service_types/paths.rs"]
 mod paths;
 #[path = "service_types/requests.rs"]
@@ -45,6 +48,8 @@ pub use self::cluster_budget::{
 };
 pub(crate) use self::config::validate_control_secret;
 pub use self::config::{TrustFiscalRuntimeConfig, TrustServiceConfig};
+#[cfg(feature = "cognition-market-experimental")]
+pub use self::finding_market_config::{FindingAuthorityPin, FindingMarketConfig, FindingPoolPin};
 pub use self::paths::FEDERATED_DELEGATION_POLICY_SCHEMA;
 pub(crate) use self::paths::{
     AGENT_RECEIPTS_PATH, AUTHORITY_CACHE_TTL, AUTHORITY_PATH, AUTHORIZATION_CONTEXT_REPORT_PATH,
@@ -120,6 +125,12 @@ pub(crate) use self::paths::{
     UNDERWRITING_APPEALS_PATH, UNDERWRITING_APPEAL_RESOLVE_PATH,
     UNDERWRITING_DECISIONS_REPORT_PATH, UNDERWRITING_DECISION_ISSUE_PATH,
     UNDERWRITING_DECISION_PATH, UNDERWRITING_INPUT_PATH, UNDERWRITING_SIMULATION_PATH,
+};
+#[cfg(feature = "cognition-market-experimental")]
+pub(crate) use self::paths::{
+    FINDINGS_COLLATERAL_PATH, FINDINGS_PROFILES_PATH, FINDINGS_PUBLISH_PATH, FINDINGS_RECIPES_PATH,
+    FINDINGS_SEARCH_PATH, FINDING_ACTIVATE_PATH, FINDING_ADMISSION_PATH,
+    FINDING_PARTICIPATION_PATH, FINDING_PATH,
 };
 pub(crate) use self::requests::{
     build_capability_snapshot, build_federated_delegation_anchor_snapshot,

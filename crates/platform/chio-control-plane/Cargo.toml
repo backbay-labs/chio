@@ -18,9 +18,21 @@ name = "chio_control_plane"
 [features]
 default = []
 pq = ["chio-core/pq", "chio-kernel/pq", "chio-store-sqlite/pq"]
+# Ship-dark cognition-market surfaces (PLAN.md global constraints): the
+# finding publish/discover/admission routes, their store, and the
+# open-market admission gate compile only under this feature until the
+# M9 qualification gate flips.
+cognition-market-experimental = [
+    "dep:chio-finding",
+    "dep:chio-spec-validate",
+    "chio-store-sqlite/cognition-market-experimental",
+    "chio-open-market/cognition-market-experimental",
+]
 
 [dependencies]
 chio-agent-web-interop = { workspace = true }
+chio-finding = { workspace = true, optional = true }
+chio-spec-validate = { workspace = true, optional = true }
 chio-appraisal = { workspace = true }
 chio-commerce-order = { workspace = true }
 chio-core = { workspace = true }
@@ -89,6 +101,7 @@ windows-sys = { version = "0.60.2", features = [
 
 [dev-dependencies]
 chio-anchor = { workspace = true }
+chio-finding-verifier = { workspace = true }
 chio-link = { workspace = true }
 chio-test-support = { workspace = true }
 proptest = { workspace = true }

@@ -64,6 +64,14 @@ pub(crate) async fn serve_async(config: TrustServiceConfig) -> Result<(), CliErr
         FederationAdmissionRateLimiter::from_memory_budget(&config.memory_budget),
     ));
     let cluster_progress = cluster.as_ref().map(|_| Arc::new(ClusterProgress::new()));
+    // The wedge evidenced rail: present exactly when the finding market
+    // is configured, so activation fails closed on unconfigured venues.
+    #[cfg(feature = "cognition-market-experimental")]
+    let finding_rail: Option<Arc<dyn super::super::finding_handlers::FindingRailObserver>> =
+        config.finding_market.as_ref().map(|_| {
+            Arc::new(super::super::finding_handlers::VenueLedgerRailObserver)
+                as Arc<dyn super::super::finding_handlers::FindingRailObserver>
+        });
     let state = TrustServiceState {
         config,
         joint_authority_store,
@@ -75,6 +83,8 @@ pub(crate) async fn serve_async(config: TrustServiceConfig) -> Result<(), CliErr
         federation_admission_rate_limiter,
         cluster,
         cluster_progress,
+        #[cfg(feature = "cognition-market-experimental")]
+        finding_rail,
     };
     let controller = ShutdownController::install();
     let cluster_sync_task = state

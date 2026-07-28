@@ -38,7 +38,7 @@ use chio_open_market::{
     },
     finding_admission::{
         bid_with_finding_admission, verify_finding_admission, FindingAdmissionContext,
-        FindingAdmissionError, FindingAllocationSnapshot,
+        FindingAdmissionError, FindingAllocationSnapshot, FindingFeeScheduleGate,
     },
     fiscal_adapter::signed_fee_schedule_digest,
     listing::{
@@ -459,8 +459,10 @@ impl Web {
             venue_id: VENUE_ID,
             now: NOW,
             fee_schedule: &self.schedule,
-            fiscal_resolver: resolver,
-            fiscal_binding: None,
+            fee_schedule_gate: FindingFeeScheduleGate::Fiscal {
+                resolver,
+                binding: None,
+            },
             trusted_local_operator_signers: &self.trusted_signers,
             terms: &self.terms,
             backing: &self.backing,

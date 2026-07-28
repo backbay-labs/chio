@@ -26,9 +26,22 @@ use crate::bidding::{bid, BidMintContext, BiddingError, SignedAskResponse, Signe
 use crate::crypto::PublicKey;
 use crate::fee_schedule::{OpenMarketBondClass, SignedOpenMarketFeeSchedule};
 use crate::fiscal_adapter::{
-    authorize_fiscal_open_market_fee_schedule, signed_fee_schedule_digest,
+    authorize_fiscal_open_market_fee_schedule, signed_fee_schedule_digest, verify_legacy_schedule,
     FiscalLegacyFeeScheduleBinding, FiscalOpenMarketError,
 };
+
+/// Fee-schedule authorization mode for admission verification.
+#[derive(Clone, Copy)]
+pub enum FindingFeeScheduleGate<'a> {
+    /// No fiscal runtime configured: legacy signer verification only.
+    Legacy,
+    /// Fiscal governance live: authorize through the resolver, with the
+    /// governed-mode binding when applicable.
+    Fiscal {
+        resolver: &'a FiscalResolver<'a>,
+        binding: Option<&'a FiscalLegacyFeeScheduleBinding>,
+    },
+}
 
 /// Typed rejections from [`verify_finding_admission`] and
 /// [`bid_with_finding_admission`]. Every variant denies.
@@ -105,13 +118,11 @@ pub struct FindingAdmissionContext<'a> {
     /// The exact signed fee schedule the admission binds by envelope
     /// digest.
     pub fee_schedule: &'a SignedOpenMarketFeeSchedule,
-    /// Fiscal governance mode carrier; threaded through
-    /// [`authorize_fiscal_open_market_fee_schedule`] so fiscal governance
-    /// keeps working on this path.
-    pub fiscal_resolver: &'a FiscalResolver<'a>,
-    /// Legacy fee-schedule binding required when the fiscal domain is
-    /// governed.
-    pub fiscal_binding: Option<&'a FiscalLegacyFeeScheduleBinding>,
+    /// Fee-schedule authorization gate. With no fiscal runtime the
+    /// schedule verifies as a legacy artifact against the trusted
+    /// operator signers (the issuance precedent); with fiscal governance
+    /// live it authorizes through the resolver.
+    pub fee_schedule_gate: FindingFeeScheduleGate<'a>,
     /// Trusted open-market governing authority signers.
     pub trusted_local_operator_signers: &'a [PublicKey],
     /// The seller-signed terms envelope the admission binds by digest.
@@ -220,13 +231,21 @@ pub fn verify_finding_admission(
     if schedule_digest != admission.fee_schedule_envelope_sha256 {
         return Err(FindingAdmissionError::FeeScheduleDigestMismatch);
     }
-    authorize_fiscal_open_market_fee_schedule(
-        context.fee_schedule,
-        context.fiscal_binding,
-        context.fiscal_resolver,
-        context.trusted_local_operator_signers,
-    )
-    .map_err(FindingAdmissionError::FeeScheduleUnauthorized)?;
+    match context.fee_schedule_gate {
+        FindingFeeScheduleGate::Legacy => {
+            verify_legacy_schedule(context.fee_schedule, context.trusted_local_operator_signers)
+                .map_err(FindingAdmissionError::FeeScheduleUnauthorized)?;
+        }
+        FindingFeeScheduleGate::Fiscal { resolver, binding } => {
+            authorize_fiscal_open_market_fee_schedule(
+                context.fee_schedule,
+                binding,
+                resolver,
+                context.trusted_local_operator_signers,
+            )
+            .map_err(FindingAdmissionError::FeeScheduleUnauthorized)?;
+        }
+    }
 
     // Sizing inequality: the schedule's slashable Listing-class
     // requirement (unique after the duplicate-bond-class rejection the

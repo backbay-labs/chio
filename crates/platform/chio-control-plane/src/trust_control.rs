@@ -304,6 +304,9 @@ mod cluster_and_reports;
 mod config_and_public;
 #[path = "trust_control/credit_and_loss.rs"]
 mod credit_and_loss;
+#[cfg(feature = "cognition-market-experimental")]
+#[path = "trust_control/finding_handlers.rs"]
+mod finding_handlers;
 #[path = "trust_control/passport_handlers.rs"]
 mod passport_handlers;
 #[path = "trust_control/receipt_handlers.rs"]
@@ -335,6 +338,8 @@ pub(crate) use self::budget_handlers::*;
 pub use self::capital_and_liability::*;
 pub(crate) use self::certification_handlers::*;
 pub(crate) use self::credit_and_loss::*;
+#[cfg(feature = "cognition-market-experimental")]
+pub(crate) use self::finding_handlers::*;
 pub(crate) use self::fiscal_handlers::*;
 pub(crate) use self::fiscal_runtime::*;
 pub(crate) use self::passport_handlers::*;

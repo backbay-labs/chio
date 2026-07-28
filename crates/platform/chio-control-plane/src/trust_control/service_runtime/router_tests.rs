@@ -36,6 +36,8 @@ fn metrics_state(service_token: &str) -> TrustServiceState {
         cluster_sync_interval: Duration::from_millis(25),
         roster_policy: None,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
+        #[cfg(feature = "cognition-market-experimental")]
+        finding_market: None,
     };
     TrustServiceState {
         config,
@@ -50,6 +52,8 @@ fn metrics_state(service_token: &str) -> TrustServiceState {
         )),
         cluster: None,
         cluster_progress: None,
+        #[cfg(feature = "cognition-market-experimental")]
+        finding_rail: None,
     }
 }
 

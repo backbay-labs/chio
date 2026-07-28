@@ -184,6 +184,7 @@ pub struct FindingAdmissionSnapshot {
     pub envelope_json: String,
     pub envelope_sha256: String,
     pub expires_at: u64,
+    pub activated_at: u64,
     pub backing_allocation_id: String,
     pub allocation_state: FindingAllocationState,
 }
@@ -1023,7 +1024,7 @@ impl SqliteFindingMarketStore {
                 r#"
                 SELECT admission_id, listing_id, backing_allocation_id,
                        admission_envelope_sha256, admission_envelope_json,
-                       expires_at
+                       expires_at, activated_at
                 FROM admissions WHERE finding_id = ?1 AND state = 'active'
                 "#,
                 [finding_id],
@@ -1035,6 +1036,7 @@ impl SqliteFindingMarketStore {
                         row.get::<_, String>(3)?,
                         row.get::<_, String>(4)?,
                         row.get::<_, i64>(5)?,
+                        row.get::<_, i64>(6)?,
                     ))
                 },
             )
@@ -1047,6 +1049,7 @@ impl SqliteFindingMarketStore {
             envelope_sha256,
             envelope_json,
             expires_at,
+            activated_at,
         )) = row
         else {
             return Ok(None);
@@ -1062,6 +1065,7 @@ impl SqliteFindingMarketStore {
             envelope_json,
             envelope_sha256,
             expires_at: stored_u64(expires_at, "expires_at")?,
+            activated_at: stored_u64(activated_at, "activated_at")?,
             backing_allocation_id,
             allocation_state: allocation.state,
         }))

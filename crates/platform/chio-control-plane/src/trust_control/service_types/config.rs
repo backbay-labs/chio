@@ -100,6 +100,11 @@ pub struct TrustServiceConfig {
     /// lowering it here actually tightens that guard rather than being silently
     /// overridden by the compiled-in default.
     pub memory_budget: chio_kernel::MemoryBudgetConfig,
+    /// Cognition-market authority roster (plan D9). `None` keeps every
+    /// finding surface at 409; the field exists only under the ship-dark
+    /// feature.
+    #[cfg(feature = "cognition-market-experimental")]
+    pub finding_market: Option<super::finding_market_config::FindingMarketConfig>,
 }
 
 impl TrustServiceConfig {
@@ -138,6 +143,10 @@ impl TrustServiceConfig {
             return Err(CliError::cli_other_error(
                 "certification public metadata TTL must be non-zero".to_string(),
             ));
+        }
+        #[cfg(feature = "cognition-market-experimental")]
+        if let Some(finding_market) = &self.finding_market {
+            finding_market.validate()?;
         }
         if self.joint_authority_db_path.is_some()
             && (self.budget_db_path.is_some() || self.revocation_db_path.is_some())
@@ -259,6 +268,8 @@ mod service_config_tests {
             cluster_sync_interval: Duration::from_millis(25),
             roster_policy: None,
             memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
+            #[cfg(feature = "cognition-market-experimental")]
+            finding_market: None,
         }
     }
 

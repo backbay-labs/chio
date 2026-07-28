@@ -153,6 +153,7 @@ pub(crate) fn build_router(state: TrustServiceState) -> Router {
             GENERIC_GOVERNANCE_CASE_EVALUATE_PATH,
             post(handle_evaluate_generic_governance_case),
         )
+        .merge(finding_market_routes())
         .route(
             OPEN_MARKET_FEE_SCHEDULE_ISSUE_PATH,
             post(handle_issue_open_market_fee_schedule),
@@ -701,6 +702,49 @@ async fn handle_trust_control_metrics(
         body,
     )
         .into_response()
+}
+
+/// Cognition-market finding routes (M2, ship-dark). Publish takes a
+/// tighter body cap than the service-wide limit; dependency uploads keep
+/// the 1 MiB bound. Feature-off builds get an empty router here.
+#[cfg(feature = "cognition-market-experimental")]
+fn finding_market_routes() -> Router<TrustServiceState> {
+    Router::new()
+        .route(
+            FINDINGS_PUBLISH_PATH,
+            post(handle_publish_finding)
+                .layer(DefaultBodyLimit::max(FINDING_PUBLISH_MAX_BODY_BYTES)),
+        )
+        .route(FINDING_PATH, get(handle_get_finding))
+        .route(
+            FINDINGS_SEARCH_PATH,
+            get(handle_search_findings_get).post(handle_search_findings_post),
+        )
+        .route(
+            FINDINGS_RECIPES_PATH,
+            post(handle_upload_finding_dependency)
+                .layer(DefaultBodyLimit::max(FINDING_DEPENDENCY_MAX_BODY_BYTES)),
+        )
+        .route(
+            FINDINGS_PROFILES_PATH,
+            post(handle_register_finding_profile)
+                .layer(DefaultBodyLimit::max(FINDING_DEPENDENCY_MAX_BODY_BYTES)),
+        )
+        .route(
+            FINDINGS_COLLATERAL_PATH,
+            post(handle_register_finding_collateral),
+        )
+        .route(FINDING_ACTIVATE_PATH, post(handle_activate_finding))
+        .route(
+            FINDING_PARTICIPATION_PATH,
+            post(handle_finding_participation),
+        )
+        .route(FINDING_ADMISSION_PATH, get(handle_get_finding_admission))
+}
+
+#[cfg(not(feature = "cognition-market-experimental"))]
+fn finding_market_routes() -> Router<TrustServiceState> {
+    Router::new()
 }
 
 #[cfg(test)]
