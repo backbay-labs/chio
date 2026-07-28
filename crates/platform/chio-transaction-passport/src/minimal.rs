@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path};
 
 use chio_core_types::{
-    canonical::canonical_json_bytes,
+    canonical::{canonical_json_bytes, canonical_json_bytes_from_str},
     crypto::{Keypair, Signature},
     hashing::Hash,
     merkle::{leaf_hash, MerkleProof},
@@ -1014,7 +1014,18 @@ fn transparency_anchor_state(
     if super::sha256_hex(bytes) != node_sha256 {
         return TransparencyAnchor::Invalid(format!("{path} does not match its declared digest"));
     }
-    let Ok(raw_artifact) = serde_json::from_slice::<Value>(bytes) else {
+    let Ok(raw_json) = std::str::from_utf8(bytes) else {
+        return TransparencyAnchor::Invalid(format!("{path} is not a readable inclusion proof"));
+    };
+    let canonical_artifact_bytes = match canonical_json_bytes_from_str(raw_json) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            return TransparencyAnchor::Invalid(format!(
+                "{path} is not a strict inclusion proof: {error}"
+            ))
+        }
+    };
+    let Ok(raw_artifact) = serde_json::from_slice::<Value>(&canonical_artifact_bytes) else {
         return TransparencyAnchor::Invalid(format!("{path} is not a readable inclusion proof"));
     };
     let Some(schema) = raw_artifact.get("schema").and_then(Value::as_str) else {

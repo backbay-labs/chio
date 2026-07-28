@@ -2545,6 +2545,37 @@ fn transparency_anchored_fixture(
     (artifacts, evidence_graph_bytes, verifier_policy_bytes)
 }
 
+fn transparency_anchored_fixture_with_raw_artifact(
+    mutate_artifact: impl FnOnce(&str) -> String,
+) -> (BTreeMap<String, Vec<u8>>, Vec<u8>, Vec<u8>) {
+    let (mut artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|_| {});
+    let artifact_path = "transparency-inclusion-proof.json";
+    let artifact_text = std::str::from_utf8(
+        artifacts
+            .get(artifact_path)
+            .test_expect("inclusion artifact exists"),
+    )
+    .test_expect("inclusion artifact is UTF-8");
+    let artifact_bytes = mutate_artifact(artifact_text).into_bytes();
+    let artifact_digest = sha256_hex(&artifact_bytes);
+    artifacts.insert(artifact_path.to_string(), artifact_bytes);
+
+    let mut graph: Value =
+        serde_json::from_slice(&evidence_graph_bytes).test_expect("evidence graph parses");
+    let proof_node = graph["nodes"]
+        .as_array_mut()
+        .test_expect("evidence graph nodes are an array")
+        .iter_mut()
+        .find(|node| node["path"].as_str() == Some(artifact_path))
+        .test_expect("evidence graph carries the inclusion proof");
+    proof_node["id"] = json!(artifact_digest);
+    proof_node["sha256"] = json!(artifact_digest);
+    let evidence_graph_bytes = serde_json::to_vec(&graph).test_expect("evidence graph serializes");
+
+    (artifacts, evidence_graph_bytes, verifier_policy_bytes)
+}
+
 fn transparency_checkpoint_keypair() -> Keypair {
     Keypair::from_seed(&[71u8; 32])
 }
@@ -2603,6 +2634,49 @@ fn standalone_minimal_passport_promotes_verified_transparency_anchor() {
             .test_expect("verified transparency anchor promotes");
 
     assert_eq!(report.transparency_state, "trust_anchored");
+}
+
+#[test]
+fn standalone_minimal_passport_accepts_unique_key_proof_with_noncanonical_whitespace() {
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture_with_raw_artifact(|artifact| format!("\n  {artifact}\n"));
+
+    let report =
+        verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+            .test_expect("strict parsing preserves valid proof semantics");
+
+    assert_eq!(report.transparency_state, "trust_anchored");
+}
+
+#[test]
+fn standalone_minimal_passport_rejects_duplicate_v2_proof_keys() {
+    for (label, needle, replacement) in [
+        (
+            "proof envelope",
+            r#""root_hash":"#,
+            format!(r#""root_hash":"0x{}","root_hash":"#, "0".repeat(64)),
+        ),
+        (
+            "signed checkpoint body",
+            r#""checkpoint_seq":1"#,
+            r#""checkpoint_seq":2,"checkpoint_seq":1"#.to_string(),
+        ),
+    ] {
+        let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+            transparency_anchored_fixture_with_raw_artifact(|artifact| {
+                let mutated = artifact.replacen(needle, &replacement, 1);
+                assert_ne!(mutated, artifact, "{label} mutation must apply");
+                mutated
+            });
+
+        let error =
+            verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+                .test_expect_err("duplicate proof keys must deny");
+        assert!(
+            error.to_string().contains("duplicate object key"),
+            "{label}: {error}"
+        );
+    }
 }
 
 #[test]
