@@ -301,6 +301,9 @@ impl SqliteAuthorityStore {
             )?;
             crate::tool_outcome_store::initialize_tool_outcome_schema(&mut connection)
                 .map_err(|error| SqliteServingOwnerError::Invalid(error.to_string()))?;
+            #[cfg(feature = "cognition-market-experimental")]
+            crate::finding_market_store::initialize_finding_market_schema(&mut connection)
+                .map_err(|error| SqliteServingOwnerError::Invalid(error.to_string()))?;
             initialize_global_commit_schema(&connection)?;
             seed_global_baseline(&mut connection)?;
             reset_derived_budget_ack_cache(&connection)?;
@@ -442,6 +445,9 @@ impl SqliteAuthorityStore {
         )?;
         crate::tool_outcome_store::initialize_tool_outcome_schema(&mut connection)
             .map_err(|error| SqliteServingOwnerError::Invalid(error.to_string()))?;
+        #[cfg(feature = "cognition-market-experimental")]
+        crate::finding_market_store::initialize_finding_market_schema(&mut connection)
+            .map_err(|error| SqliteServingOwnerError::Invalid(error.to_string()))?;
         initialize_global_commit_schema(&connection)?;
         seed_global_baseline(&mut connection)?;
         reset_derived_budget_ack_cache(&connection)?;
@@ -516,6 +522,9 @@ impl SqliteAuthorityStore {
             &mut connection,
         )?;
         crate::tool_outcome_store::initialize_tool_outcome_schema(&mut connection)
+            .map_err(|error| SqliteServingOwnerError::Invalid(error.to_string()))?;
+        #[cfg(feature = "cognition-market-experimental")]
+        crate::finding_market_store::initialize_finding_market_schema(&mut connection)
             .map_err(|error| SqliteServingOwnerError::Invalid(error.to_string()))?;
         verify_global_commit_schema(&connection)?;
         reset_derived_budget_ack_cache(&connection)?;
@@ -726,6 +735,15 @@ impl SqliteAuthorityStore {
     #[must_use]
     pub fn tool_outcome_store(&self) -> crate::tool_outcome_store::SqliteToolOutcomeStore {
         crate::tool_outcome_store::SqliteToolOutcomeStore::open_alongside(
+            self.connection.clone(),
+            self.owner.clone(),
+        )
+    }
+
+    #[cfg(feature = "cognition-market-experimental")]
+    #[must_use]
+    pub fn finding_market_store(&self) -> crate::finding_market_store::SqliteFindingMarketStore {
+        crate::finding_market_store::SqliteFindingMarketStore::open_alongside(
             self.connection.clone(),
             self.owner.clone(),
         )

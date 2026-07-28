@@ -4176,6 +4176,7 @@ dependencies = [
  "chio-listing",
  "chio-test-support",
  "serde",
+ "serde_json",
  "thiserror 1.0.69",
 ]
 
@@ -4632,6 +4633,7 @@ dependencies = [
  "chio-credit",
  "chio-federation",
  "chio-federation-authority",
+ "chio-finding",
  "chio-fiscal",
  "chio-kernel",
  "chio-kernel-core",

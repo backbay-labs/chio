@@ -24,6 +24,14 @@ lineage = []
 # harness. Default-off so production store builds expose no environment-driven
 # pause points.
 chaos-test-hooks = []
+# Cognition market: gates the durable finding-market store (published
+# findings, replay-recipe blobs, collateral allocations, fee events,
+# and venue admissions) for the M2 publish-and-discover wedge.
+# Default-off so the workspace ships dark with byte-identical
+# behaviour. Enabling this feature wires the finding-market schema and
+# store atop the serving-owner fence, plus the chio-finding artifact
+# types it persists.
+cognition-market-experimental = ["dep:chio-finding"]
 
 [dependencies]
 chacha20poly1305 = { workspace = true }
@@ -32,6 +40,7 @@ chio-core = { package = "chio-core-types", path = "../../core/chio-core-types" }
 chio-credit = { workspace = true }
 chio-federation = { workspace = true }
 chio-federation-authority = { workspace = true }
+chio-finding = { workspace = true, optional = true }
 chio-fiscal = { workspace = true }
 chio-kernel = { workspace = true }
 chio-kernel-core = { workspace = true }

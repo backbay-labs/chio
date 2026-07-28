@@ -41,6 +41,8 @@ pub mod economic_state_cache;
 pub mod encrypted_blob;
 pub mod evidence_export;
 pub mod execution_nonce_store;
+#[cfg(feature = "cognition-market-experimental")]
+pub mod finding_market_store;
 pub mod fiscal_store;
 pub mod frost_store;
 mod governed_approval_replay_store;
@@ -232,6 +234,13 @@ pub use encrypted_blob::{
     EncryptedBlob, SqliteEncryptedBlobStore, TenantId, TenantKey,
 };
 pub use execution_nonce_store::{SqliteExecutionNonceStore, SqliteExecutionNonceStoreError};
+#[cfg(feature = "cognition-market-experimental")]
+pub use finding_market_store::{
+    finding_fee_idempotency_key, FindingActivationOutcome, FindingAdmissionSnapshot,
+    FindingAllocationSnapshot, FindingAllocationState, FindingFeeEventRecord, FindingFeeIntent,
+    FindingFeeState, FindingMarketStoreError, FindingPutOutcome, FindingRecordInput,
+    FindingSearchRow, SqliteFindingMarketStore,
+};
 pub use frost_store::{
     FrostActiveRosterRecord, FrostCeremonyRecord, FrostCeremonyRound1Record,
     FrostCeremonyRound2Record, FrostCeremonyState, FrostCoordinatorCancellation,
