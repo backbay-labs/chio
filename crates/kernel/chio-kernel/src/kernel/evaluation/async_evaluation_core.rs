@@ -1124,6 +1124,62 @@ impl ChioKernel {
             });
         }
 
+        // An output-digest grant can only be honored at the durable,
+        // output-aware terminal that compares the delivered output before
+        // settlement. Reject a digest-constrained request on any lane that
+        // cannot reach that terminal, before it captures or settles: the
+        // legacy lane (no post-invocation output-aware terminal), a
+        // non-reversible payment rail (a settled prepayment has no
+        // zero-charge release on a mismatch), and governed prepay (captures
+        // before the output exists). This judges the selected grant, like
+        // the financial-durability gate below. The selection-cardinality
+        // rule (exactly one canonical digest, no ambiguous sibling) is
+        // enforced where the grant is selected.
+        if let Some(selected) = matching_grants
+            .iter()
+            .find(|matching| matching.index == matched_grant_index)
+        {
+            let requires_output_digest = selected
+                .grant
+                .constraints
+                .iter()
+                .any(|constraint| matches!(constraint, Constraint::OutputDigestSha256(_)));
+            if requires_output_digest {
+                let rail_is_reversible = self
+                    .payment_adapter
+                    .as_ref()
+                    .and_then(|adapter| adapter.rail_mode())
+                    .is_none_or(|mode| mode == crate::payment::PaymentRailMode::ReversibleHold);
+                if durable_admission.is_none()
+                    || !rail_is_reversible
+                    || Self::is_governed_mustprepay_request(request)
+                {
+                    let reason = "output-digest delivery requires durable reversible-hold coverage";
+                    warn!(request_id = %request.request_id, reason, "delivery contract denied");
+                    return self.with_pre_invocation_guard_evidence(
+                        &pre_invocation_guard_evidence,
+                        || {
+                            self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                                request,
+                                reason,
+                                timestamp: now,
+                                matched_grant_index,
+                                cap,
+                                budget_mutation: &budget_mutation,
+                                payment_authorization: None,
+                                durable_operation: durable_admission
+                                    .as_ref()
+                                    .map(DurableToolAdmission::operation),
+                                runtime_admission_metadata: extra_metadata.clone(),
+                                verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                                budget_lease_acquired,
+                            })
+                        },
+                    );
+                }
+            }
+        }
+
         // A financial hold may not cross the tool-server dispatch boundary unless
         // a durable admission operation can arbitrate an ambiguous outcome after a
         // crash, cancellation, or deadline. This check uses the grant actually
