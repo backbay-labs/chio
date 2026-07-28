@@ -24,11 +24,11 @@ use crate::evaluate::EvaluateInput;
 use crate::formal_aeneas::{ledger_apply, ledger_is_terminal, ReservationLedger};
 use crate::formal_core::{
     budget_charge_admits, budget_increment_admits, composite_quota_authorize,
-    family_binding_preserved, guard_pipeline_allows, monetary_cap_is_subset_by_parts,
-    optional_u32_cap_is_subset, quota_maximum_compatible, receipt_fields_coupled,
-    required_true_is_preserved, revocation_lookup_denies, revocation_snapshot_denies,
-    threshold_distinct_eligible_signers, time_window_valid, BudgetAdmissionProjectionError,
-    GuardStep, RevocationCheckTarget,
+    delivery_contract_admits, family_binding_preserved, guard_pipeline_allows,
+    monetary_cap_is_subset_by_parts, optional_u32_cap_is_subset, quota_maximum_compatible,
+    receipt_fields_coupled, required_true_is_preserved, revocation_lookup_denies,
+    revocation_snapshot_denies, threshold_distinct_eligible_signers, time_window_valid,
+    BudgetAdmissionProjectionError, DeliveryVerdict, GuardStep, RevocationCheckTarget,
 };
 use crate::guard::PortableToolCallRequest;
 use crate::normalized::{NormalizedOperation, NormalizedScope, NormalizedToolGrant};
@@ -1703,4 +1703,25 @@ pub fn verify_oracle_inclusion_walk_parity() {
     let model_root = model_inclusion_root(leaf, model_index, model_size, &proof.audit_path);
     let actual_root = proof.compute_root_from_hash(leaf).ok();
     assert!(abstract_hash_options_equal(actual_root, model_root));
+}
+
+/// Delivery-contract soundness: an Allow verdict implies the observed
+/// output digest equals the grant's committed expected digest. This is the
+/// kernel's money-path guarantee that a paid delivery matched what the
+/// grant fixed. Bounded to short byte strings for tractability; the
+/// property is over exact equality, which does not depend on length.
+#[kani::proof]
+#[kani::unwind(5)]
+pub fn public_delivery_contract_allow_implies_digest_match() {
+    let expected: [u8; 4] = kani::any();
+    let observed: [u8; 4] = kani::any();
+    let (Ok(expected_str), Ok(observed_str)) = (
+        core::str::from_utf8(&expected),
+        core::str::from_utf8(&observed),
+    ) else {
+        return;
+    };
+    if delivery_contract_admits(expected_str, observed_str) == DeliveryVerdict::Allow {
+        assert!(expected == observed);
+    }
 }

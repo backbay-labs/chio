@@ -64,7 +64,7 @@ pub mod clock;
 pub mod evaluate;
 #[allow(dead_code)]
 pub(crate) mod formal_aeneas;
-pub(crate) mod formal_core;
+pub mod formal_core;
 #[cfg(feature = "fuzz")]
 pub mod fuzz;
 pub mod guard;
