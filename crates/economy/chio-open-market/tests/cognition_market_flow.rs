@@ -1,19 +1,25 @@
-//! Spec-shaped coverage for the proposed agent cognition market
-//! (research spike, branch `research/cognition-market`).
+//! Spec-shaped coverage for the proposed agent cognition market.
 //!
 //! Companion documents:
 //! - `docs/research/agent-cognition-market.md` (design memo)
 //! - `docs/research/cognition-market/ARCHITECTURE.md` (design set)
 //! - `docs/adr/ADR-0017-cognition-market-finding-artifacts.md`
 //!
+//! M1 ships the registered `chio.finding.v1` artifact, schema, validator,
+//! signer, and golden fixture. The production marketplace still has no
+//! finding publish or reveal wiring.
+//!
 //! Three of these tests pass today: the buy leg clears the REAL `bid()`
 //! path for a finding listing (colon-segment scope semantics), the bid
 //! shape needs zero new fields, and the elicitation ceiling is
 //! deterministic. The `#[ignore]`d test specifies the desired end-to-end
 //! reveal flow and names the seams that do not exist yet; run it with
-//! `cargo test -- --ignored` to see the first missing seam. Nothing here
-//! is production wiring.
+//! `cargo test -- --ignored` to see the first missing seam.
 
+use chio_finding::{
+    compute_finding_id, sign_finding, verify_finding, Finding, FindingDescriptor,
+    FindingEvidenceClass, FindingGuaranteeClass, FindingOutcomeClass, FINDING_SCHEMA_V1,
+};
 use chio_open_market::{
     bidding::{
         bid, BidMintContext, BidRequest, RequestedScope, SignedBidRequest, ASK_RESPONSE_SCHEMA,
@@ -48,99 +54,43 @@ fn finding_scope() -> String {
     format!("finding:{}", hex64('a'))
 }
 
-/// Stub shapes mirroring the interface sketches in the memo (section 6.1).
-/// They live in this test file on purpose: the production types do not
-/// exist yet, and this spike must not add public API surface. Fields and
-/// variants exist to specify the artifact shape, so dead-code analysis is
-/// silenced for the module.
-#[allow(dead_code)]
-mod finding_stubs {
-    pub const FINDING_SCHEMA_V1: &str = "chio.finding.v1";
-
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum FindingOutcomeClass {
-        /// "Doing X fails / has no effect": the negative result.
-        NullResult,
-        /// "This change makes the committed check pass": the verified fix.
-        VerifiedFix,
-    }
-
-    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-    pub enum FindingGuaranteeClass {
-        /// Claim re-checkable by deterministic re-execution of the
-        /// committed descriptor (the coding-agent wedge).
-        DeterministicReplay,
-        /// Execution, cost, and output digest attested by mediated
-        /// receipts; claim semantics not re-checkable.
-        MeteredAttested,
-    }
-
-    #[derive(Debug, Clone)]
-    pub struct FindingDescriptor {
-        pub topic: String,
-        pub context_sha256: String,
-        pub outcome_class: FindingOutcomeClass,
-    }
-
-    #[derive(Debug, Clone)]
-    pub struct Finding {
-        pub schema: String,
-        pub finding_id: String,
-        pub descriptor: FindingDescriptor,
-        pub guarantee_class: FindingGuaranteeClass,
-        /// Commitment to the reveal: digest of the canonical reveal
-        /// envelope {media_type, payload_b64}. The envelope deliberately
-        /// excludes finding_id so the commitment and the content-addressed
-        /// id do not form a hash cycle (ARCHITECTURE 4.5).
-        pub payload_sha256: String,
-        pub evidence_receipt_ids: Vec<String>,
-        pub evidence_cost_units: u64,
-        pub bond_ref: String,
-        pub status_feed_ref: String,
-    }
-
-    /// Delivery proof the reveal step must produce: a kernel receipt whose
-    /// `content_hash` equals the finding's committed `payload_sha256`.
-    /// Today no tool contract enforces that equality, so this stub can
-    /// only report the seam as missing.
-    pub fn mediated_reveal_delivery_receipt(_finding: &Finding) -> Option<String> {
-        None
-    }
-
-    /// Elicitation ceiling from memo section 6.6: the counterfactual the
-    /// platform can actually meter (re-derivation quote) discounted by the
-    /// planner-owned priors, hard-capped by the purchasing allocation.
-    /// Deterministic and implementable today; kept here as spec.
-    pub struct FindingBidBasis {
-        pub rederivation_quote_units: u64,
-        pub would_have_run_bps: u16,
-        pub sibling_redundancy_bps: u16,
-        pub guarantee_class_bps: u16,
-        pub budget_remaining_units: u64,
-    }
-
-    pub fn finding_bid_ceiling(basis: &FindingBidBasis) -> u64 {
-        const BPS: u128 = 10_000;
-        let would = u128::from(basis.would_have_run_bps.min(10_000));
-        let keep = BPS - u128::from(basis.sibling_redundancy_bps.min(10_000));
-        let class = u128::from(basis.guarantee_class_bps.min(10_000));
-        let discounted =
-            u128::from(basis.rederivation_quote_units) * would / BPS * keep / BPS * class / BPS;
-        u64::try_from(discounted)
-            .unwrap_or(u64::MAX)
-            .min(basis.budget_remaining_units)
-    }
+/// Delivery proof the reveal step must produce: a kernel receipt whose
+/// `content_hash` equals the finding's committed `payload_sha256`.
+/// Today no tool contract enforces that equality, so this stub can only
+/// report the seam as missing.
+fn mediated_reveal_delivery_receipt(_finding: &Finding) -> Option<String> {
+    None
 }
 
-use finding_stubs::{
-    finding_bid_ceiling, mediated_reveal_delivery_receipt, Finding, FindingBidBasis,
-    FindingDescriptor, FindingGuaranteeClass, FindingOutcomeClass, FINDING_SCHEMA_V1,
-};
+/// Elicitation ceiling from memo section 6.6: the counterfactual the
+/// platform can actually meter (re-derivation quote) discounted by the
+/// planner-owned priors, hard-capped by the purchasing allocation.
+/// Deterministic and implementable today; kept here as spec.
+struct FindingBidBasis {
+    rederivation_quote_units: u64,
+    would_have_run_bps: u16,
+    sibling_redundancy_bps: u16,
+    guarantee_class_bps: u16,
+    budget_remaining_units: u64,
+}
+
+fn finding_bid_ceiling(basis: &FindingBidBasis) -> u64 {
+    const BPS: u128 = 10_000;
+    let would = u128::from(basis.would_have_run_bps.min(10_000));
+    let keep = BPS - u128::from(basis.sibling_redundancy_bps.min(10_000));
+    let class = u128::from(basis.guarantee_class_bps.min(10_000));
+    let discounted =
+        u128::from(basis.rederivation_quote_units) * would / BPS * keep / BPS * class / BPS;
+    u64::try_from(discounted)
+        .unwrap_or(u64::MAX)
+        .min(basis.budget_remaining_units)
+}
 
 fn sealed_negative_result() -> Finding {
-    Finding {
+    let issuer = Keypair::from_seed(&[11_u8; 32]);
+    let mut finding = Finding {
         schema: FINDING_SCHEMA_V1.to_string(),
-        finding_id: hex64('f'),
+        finding_id: String::new(),
         descriptor: FindingDescriptor {
             topic: "repo:backbay/chio#flaky-suite-investigation".to_string(),
             context_sha256: hex64('a'),
@@ -148,10 +98,33 @@ fn sealed_negative_result() -> Finding {
         },
         guarantee_class: FindingGuaranteeClass::DeterministicReplay,
         payload_sha256: hex64('b'),
+        payload_media_type: "application/json".to_string(),
         evidence_receipt_ids: vec!["receipt-0001".to_string(), "receipt-0002".to_string()],
-        evidence_cost_units: 4_200,
+        evidence_checkpoint_ref: "checkpoint-0001".to_string(),
+        evidence_cost: MonetaryAmount {
+            units: 4_200,
+            currency: "USD".to_string(),
+        },
+        runtime_assurance_tier: None,
+        evidence_class: FindingEvidenceClass::Verified,
+        replay_recipe_sha256: Some(hex64('c')),
+        intent_commitment_receipt_id: None,
         bond_ref: "bond-req-listing-slashable-01".to_string(),
         status_feed_ref: "finding-status-feed-01".to_string(),
+        license_ref: None,
+        price_hint_ref: None,
+        issuer: issuer.public_key(),
+        issued_at: 1_784_880_000,
+        expires_at: 1_792_656_000,
+        signature: String::new(),
+    };
+    finding.finding_id = match compute_finding_id(&finding) {
+        Ok(finding_id) => finding_id,
+        Err(err) => panic!("finding id computation failed: {err}"),
+    };
+    match sign_finding(finding, &issuer) {
+        Ok(finding) => finding,
+        Err(err) => panic!("finding signing failed: {err}"),
     }
 }
 
@@ -346,9 +319,19 @@ fn cognition_market_reveal_flow_spec() {
     let finding = sealed_negative_result();
 
     // 1. Commit: the finding artifact carries the payload commitment and
-    //    the metered evidence refs a buyer verifies before bidding.
+    //    the metered evidence refs a buyer verifies before bidding. M1
+    //    provides structural, content-address, and issuer-signature
+    //    integrity for this artifact.
     assert_eq!(finding.schema, FINDING_SCHEMA_V1);
+    assert_eq!(
+        finding.descriptor.outcome_class,
+        FindingOutcomeClass::NullResult
+    );
     assert!(!finding.evidence_receipt_ids.is_empty());
+    assert!(!finding.signature.is_empty());
+    assert!(finding.validate().is_ok());
+    assert_eq!(compute_finding_id(&finding), Ok(finding.finding_id.clone()));
+    assert!(verify_finding(&finding).is_ok());
 
     // 2. Bid/accept: covered by the passing tests above, including the
     //    real bid() path and the pinned empty-constraints seam.

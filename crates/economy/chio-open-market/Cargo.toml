@@ -20,6 +20,7 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+chio-finding = { workspace = true }
 chio-test-support = { workspace = true }
 
 [lints]

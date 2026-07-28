@@ -4158,6 +4158,7 @@ name = "chio-open-market"
 version = "0.1.0"
 dependencies = [
  "chio-core-types",
+ "chio-finding",
  "chio-fiscal",
  "chio-governance",
  "chio-listing",
