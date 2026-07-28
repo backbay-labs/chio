@@ -206,6 +206,70 @@ fn standalone_minimal_passport_rejects_signed_checkpoint_explicit_null_options()
 }
 
 #[test]
+fn standalone_minimal_passport_rejects_noncanonical_checkpoint_body_encodings() {
+    for field in ["merkle_root", "chain_root", "kernel_key"] {
+        let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+            transparency_anchored_fixture(|artifact| {
+                let mut body = artifact["checkpoint_statement"]["body"].clone();
+                let wire_value = body[field]
+                    .as_str()
+                    .test_expect("checkpoint field is encoded as a string");
+                let noncanonical = match wire_value.strip_prefix("0x") {
+                    Some(hex) => format!("0x{}", hex.to_uppercase()),
+                    None => wire_value.to_uppercase(),
+                };
+                assert_ne!(
+                    noncanonical, wire_value,
+                    "fixture field {field} must contain hexadecimal letters"
+                );
+                body[field] = json!(noncanonical);
+                let signature = transparency_checkpoint_keypair()
+                    .sign(
+                        &chio_core_types::canonical_json_bytes(&body)
+                            .test_expect("canonical noncanonical-wire checkpoint body"),
+                    )
+                    .to_hex();
+                artifact["checkpoint_statement"] = json!({
+                    "body": body,
+                    "signature": signature
+                });
+            });
+
+        let error =
+            verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+                .test_expect_err("a noncanonical checkpoint field encoding must deny");
+        assert!(
+            error
+                .to_string()
+                .contains("checkpoint statement body uses noncanonical field encodings"),
+            "{field}: {error}"
+        );
+    }
+}
+
+#[test]
+fn standalone_minimal_passport_rejects_noncanonical_checkpoint_signature_encoding() {
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|artifact| {
+            let signature = artifact["checkpoint_statement"]["signature"]
+                .as_str()
+                .test_expect("checkpoint signature is a string")
+                .to_uppercase();
+            artifact["checkpoint_statement"]["signature"] = json!(signature);
+        });
+
+    let error =
+        verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+            .test_expect_err("a noncanonical checkpoint signature encoding must deny");
+    assert!(
+        error
+            .to_string()
+            .contains("checkpoint statement signature uses a noncanonical encoding"),
+        "{error}"
+    );
+}
+
+#[test]
 fn standalone_minimal_passport_rejects_zero_checkpoint_issuance_time() {
     let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
         transparency_anchored_fixture(|artifact| {

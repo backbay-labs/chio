@@ -59,3 +59,23 @@ fn web3_checkpoint_verification_rejects_tree_size_outside_signed_batch_range() {
             if message.contains("tree_size 2 does not match covered entry count 1")
     ));
 }
+
+#[test]
+fn web3_checkpoint_verification_checks_tree_size_conversion_before_comparison() {
+    let mut proof = sample_anchor_inclusion_proof();
+    let claimed_tree_size = u64::from(u32::MAX) + 2;
+    proof.checkpoint_statement.batch_start_seq = 1;
+    proof.checkpoint_statement.batch_end_seq = claimed_tree_size;
+    proof.checkpoint_statement.tree_size = claimed_tree_size;
+
+    let expected_message = if usize::BITS == 32 {
+        "tree_size cannot be represented by this platform's Merkle proof index"
+    } else {
+        "tree_size must match receipt inclusion proof"
+    };
+    assert!(matches!(
+        validate_anchor_inclusion_proof(&proof),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains(expected_message)
+    ));
+}

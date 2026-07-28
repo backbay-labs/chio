@@ -367,7 +367,14 @@ pub fn validate_anchor_inclusion_proof(
         ));
     }
     validate_checkpoint_statement_shape(&proof.checkpoint_statement)?;
-    if proof.checkpoint_statement.tree_size as usize != proof.receipt_inclusion.proof.tree_size {
+    let checkpoint_tree_size =
+        usize::try_from(proof.checkpoint_statement.tree_size).map_err(|_| {
+            Web3ContractError::InvalidProof(
+                "checkpoint statement tree_size cannot be represented by this platform's Merkle proof index"
+                    .to_string(),
+            )
+        })?;
+    if checkpoint_tree_size != proof.receipt_inclusion.proof.tree_size {
         return Err(Web3ContractError::InvalidProof(
             "checkpoint statement tree_size must match receipt inclusion proof".to_string(),
         ));

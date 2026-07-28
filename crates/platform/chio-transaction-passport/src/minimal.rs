@@ -828,7 +828,7 @@ struct CheckpointStatementArtifact {
 /// Strict wire mirror of a kernel checkpoint body. This crate deliberately
 /// does not depend on `chio-kernel`, so it validates the same signed fields
 /// locally after signature verification.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct CheckpointStatementBody {
     schema: String,
@@ -839,9 +839,9 @@ struct CheckpointStatementBody {
     merkle_root: Hash,
     issued_at: u64,
     kernel_key: PublicKey,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     previous_checkpoint_sha256: Option<String>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     chain_root: Option<Hash>,
 }
 
@@ -1107,6 +1107,9 @@ fn transparency_anchor_state(
     let Ok(signature) = Signature::from_hex(&statement.signature) else {
         return invalid("checkpoint statement signature is unreadable");
     };
+    if statement.signature != signature.to_hex() {
+        return invalid("checkpoint statement signature uses a noncanonical encoding");
+    }
     let Ok(body_bytes) = canonical_json_bytes(&statement.body) else {
         return invalid("checkpoint statement body is not canonicalizable");
     };
@@ -1121,6 +1124,12 @@ fn transparency_anchor_state(
             ))
         }
     };
+    let Ok(typed_body_bytes) = canonical_json_bytes(&checkpoint_body) else {
+        return invalid("parsed checkpoint statement body is not canonicalizable");
+    };
+    if typed_body_bytes != body_bytes {
+        return invalid("checkpoint statement body uses noncanonical field encodings");
+    }
     if checkpoint_body.kernel_key != kernel_key {
         return invalid("checkpoint statement kernel_key changed during parsing");
     }
