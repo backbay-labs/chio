@@ -109,6 +109,9 @@ fn run_runtime_loopback_scenario_with_static_baseline(
     })?;
     let (run_id, steps) = normalize_runtime_loopback_steps(scenario)?;
 
+    chio_store_sqlite::SqliteAuthorityStore::ensure_serving_supported().map_err(|error| {
+        RuntimeLoopbackError::message(format!("Chio runtime loopback authority platform: {error}"))
+    })?;
     fs::create_dir_all(store_dir).map_err(|error| {
         RuntimeLoopbackError::message(format!(
             "failed to create Chio runtime store directory {}: {error}",

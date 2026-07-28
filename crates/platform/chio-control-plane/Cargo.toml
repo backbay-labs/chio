@@ -75,7 +75,7 @@ x509-cert = "0.2"
 url = "2"
 uuid = { workspace = true }
 libc = "0.2"
-nix = { version = "0.31.2", features = ["fs", "user"] }
+nix = { version = "0.31.2", features = ["dir", "user"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.60.2", features = [

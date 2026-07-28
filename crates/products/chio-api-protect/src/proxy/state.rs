@@ -558,6 +558,11 @@ impl ProtectProxy {
             ));
         }
 
+        if durable_receipt_db.is_some() {
+            chio_store_sqlite::SqliteAuthorityStore::ensure_serving_supported()
+                .map_err(|error| ProtectError::ReceiptStore(error.to_string()))?;
+        }
+
         let spec_content = self.load_spec_content().await?;
         let routes = Self::build_routes(&spec_content)?;
         let route_count = routes.len();

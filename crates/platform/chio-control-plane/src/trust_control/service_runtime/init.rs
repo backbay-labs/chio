@@ -18,6 +18,7 @@ pub(crate) async fn serve_async(config: TrustServiceConfig) -> Result<(), CliErr
         load_verifier_policy_registry(config.verifier_policies_file.as_deref(), "trust_control")?;
     let joint_authority_store = match config.joint_authority_db_path.as_deref() {
         Some(path) => {
+            SqliteAuthorityStore::ensure_serving_supported()?;
             let lock_root = crate::durable_admission_lock_root(path)?;
             crate::create_private_directory(&lock_root)?;
             SqliteAuthorityStore::provision(path, &lock_root)?;

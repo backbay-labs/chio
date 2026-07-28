@@ -119,7 +119,8 @@ fn init_rejects_parent_component_after_symlink_segment() {
         "chio init accepted a parent component after a symlink segment"
     );
     assert!(
-        String::from_utf8_lossy(&output.stderr).contains("parent components after a path segment"),
+        String::from_utf8_lossy(&output.stderr)
+            .contains("parent components after a named component"),
         "unexpected chio init error: {}",
         String::from_utf8_lossy(&output.stderr)
     );
