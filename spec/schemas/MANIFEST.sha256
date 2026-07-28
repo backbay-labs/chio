@@ -112,7 +112,7 @@ ab4b1991f907ff0963fdf5617a27c497ac1455512ee563c3ede96535b0fe66c6  spec/schemas/c
 a090c94daf60128bfbb637c141d4c6eb97f6d7dabca256ed2fcaeeea1a5ad0b1  spec/schemas/chio-federation/v1/treaty-scope.schema.json
 d3cd392ecaca10668edd360b7ce1e5479f2bfab784f63499879914dd876524e8  spec/schemas/chio-federation/v1/verification-context.schema.json
 fb33f0a18894dc039ea4a2d71c01469e9ef5a691f850235f32797cdfc99cfb9e  spec/schemas/chio-federation/v1/verifier-trust-bundle.schema.json
-7f762c9dbb33890055b717babe906be710855873c3e6254a91bc841c038a4937  spec/schemas/chio-finding/v1/finding.schema.json
+088afeb5ddea5a931126b45d61decc65e1dbe2e82bcf25f782a7343b42445d22  spec/schemas/chio-finding/v1/finding.schema.json
 1cf7cb29f72bf81ef49a7219cb41050af8647f1fbe4ae8099be1e499eb5d8af3  spec/schemas/chio-fiscal/v1/activation.schema.json
 d3a03422771817cc1c2d4d1848a14eb8ac13fbf427308e4567e6bce3e4f1e5aa  spec/schemas/chio-fiscal/v1/approval.schema.json
 dda44c6c0ead952e77bbc6737811a0f1cf26f8262d538dc3c433204435194e17  spec/schemas/chio-fiscal/v1/charter.schema.json

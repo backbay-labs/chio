@@ -1,5 +1,7 @@
 //! Fail-closed validation for finding-family artifacts.
 
+use std::collections::BTreeSet;
+
 use chio_core_types::canonical_json_bytes;
 use chio_core_types::capability::runtime_attestation::RuntimeAssuranceTier;
 use chio_core_types::crypto::{sha256_hex, Keypair, Signature, SigningAlgorithm};
@@ -24,10 +26,16 @@ pub enum FindingError {
     NonCanonicalRuntimeAssuranceTier,
     #[error("finding issuer must use Ed25519")]
     UnsupportedIssuerAlgorithm,
+    #[error("finding issuer must not be a weak Ed25519 key")]
+    WeakIssuerKey,
+    #[error("evidence_cost.currency must be a three-letter uppercase ISO 4217-style code")]
+    InvalidCurrency,
     #[error("deterministic_replay findings require replay_recipe_sha256")]
     MissingReplayRecipe,
     #[error("non-asserted evidence class requires evidence receipts")]
     MissingEvidence,
+    #[error("evidence receipt ids must be unique")]
+    DuplicateEvidenceReceiptId,
     #[error("expires_at must be strictly after issued_at")]
     InvalidValidityWindow,
     #[error("canonical JSON serialization failed")]
@@ -84,6 +92,9 @@ impl Finding {
         if self.issuer.algorithm() != SigningAlgorithm::Ed25519 {
             return Err(FindingError::UnsupportedIssuerAlgorithm);
         }
+        if self.issuer.is_weak_ed25519() {
+            return Err(FindingError::WeakIssuerKey);
+        }
         require_i_json_u64(self.evidence_cost.units, "evidence_cost.units")?;
         require_i_json_u64(self.issued_at, "issued_at")?;
         require_i_json_u64(self.expires_at, "expires_at")?;
@@ -95,7 +106,15 @@ impl Finding {
         require_hex64(&self.payload_sha256, "payload_sha256")?;
         require_non_empty(&self.payload_media_type, "payload_media_type")?;
         require_non_empty(&self.evidence_checkpoint_ref, "evidence_checkpoint_ref")?;
-        require_non_empty(&self.evidence_cost.currency, "evidence_cost.currency")?;
+        if self.evidence_cost.currency.len() != 3
+            || !self
+                .evidence_cost
+                .currency
+                .bytes()
+                .all(|byte| byte.is_ascii_uppercase())
+        {
+            return Err(FindingError::InvalidCurrency);
+        }
         require_non_empty(&self.bond_ref, "bond_ref")?;
         require_non_empty(&self.status_feed_ref, "status_feed_ref")?;
         if self.guarantee_class == FindingGuaranteeClass::DeterministicReplay {
@@ -119,8 +138,12 @@ impl Finding {
         if claims_attestation && self.evidence_receipt_ids.is_empty() {
             return Err(FindingError::MissingEvidence);
         }
+        let mut unique_receipt_ids = BTreeSet::new();
         for receipt_id in &self.evidence_receipt_ids {
             require_non_empty(receipt_id, "evidence_receipt_ids[]")?;
+            if !unique_receipt_ids.insert(receipt_id) {
+                return Err(FindingError::DuplicateEvidenceReceiptId);
+            }
         }
         if let Some(receipt_id) = &self.intent_commitment_receipt_id {
             require_non_empty(receipt_id, "intent_commitment_receipt_id")?;
@@ -195,7 +218,7 @@ pub fn verify_finding_signature(finding: &Finding) -> Result<(), FindingError> {
         Signature::from_hex(&finding.signature).map_err(|_| FindingError::SignatureInvalid)?;
     let mut body = finding.clone();
     body.signature = String::new();
-    match finding.issuer.verify_canonical(&body, &signature) {
+    match finding.issuer.verify_canonical_strict(&body, &signature) {
         Ok(true) => Ok(()),
         _ => Err(FindingError::SignatureInvalid),
     }

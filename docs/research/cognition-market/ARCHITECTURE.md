@@ -105,7 +105,7 @@ signed export envelope in the economy crates):
 | Field | Type | Semantics |
 |---|---|---|
 | `schema` | string | `chio.finding.v1` |
-| `finding_id` | string | content-addressed: sha256 of the canonical body with `finding_id` AND `signature` both cleared - the single canonical id input, identical to the implementation plan's `compute_finding_id` |
+| `finding_id` | string | content-addressed: sha256 of the canonical body with `finding_id` AND `signature` retained as empty JSON strings `""` (never omitted or null) - the single canonical id input, identical to `compute_finding_id` |
 | `descriptor.topic` | string | prefix-searchable topic key (org- or repo-scoped) |
 | `descriptor.context_sha256` | hex64 | digest of the full context object (committed test suite + commit, or experiment protocol); the match key |
 | `descriptor.outcome_class` | enum | `null_result` / `verified_fix` / `positive_result` |

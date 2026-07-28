@@ -184,6 +184,18 @@ fn expiry_must_follow_issuance() {
 }
 
 #[test]
+fn invalid_currency_is_rejected() {
+    let issuer = Keypair::generate();
+    let mut draft = draft_finding_with_issuer(issuer.public_key());
+    draft.evidence_cost.currency = "usd".to_string();
+    recompute_finding_id(&mut draft);
+    assert!(matches!(
+        draft.validate(),
+        Err(FindingError::InvalidCurrency)
+    ));
+}
+
+#[test]
 fn non_asserted_evidence_requires_receipts() {
     let issuer = Keypair::generate();
     let mut draft = draft_finding_with_issuer(issuer.public_key());
@@ -204,6 +216,18 @@ fn blank_evidence_receipt_id_is_rejected() {
     assert!(matches!(
         draft.validate(),
         Err(FindingError::EmptyField("evidence_receipt_ids[]"))
+    ));
+}
+
+#[test]
+fn duplicate_evidence_receipt_ids_are_rejected() {
+    let issuer = Keypair::generate();
+    let mut draft = draft_finding_with_issuer(issuer.public_key());
+    draft.evidence_receipt_ids = vec!["r-1".to_string(), "r-1".to_string()];
+    recompute_finding_id(&mut draft);
+    assert!(matches!(
+        draft.validate(),
+        Err(FindingError::DuplicateEvidenceReceiptId)
     ));
 }
 
@@ -399,6 +423,26 @@ fn non_ed25519_issuer_is_rejected() {
 }
 
 #[test]
+fn weak_identity_issuer_cannot_forge_a_finding() {
+    // The compressed Edwards identity is a weak, low-order public key.
+    // With loose Ed25519 verification, R=identity and S=0 verifies for
+    // almost every message without possession of a private key.
+    let issuer_hex = format!("01{}", "00".repeat(31));
+    let issuer = match PublicKey::from_hex(&issuer_hex) {
+        Ok(issuer) => issuer,
+        Err(err) => panic!("weak Ed25519 test key construction failed: {err}"),
+    };
+    let mut finding = draft_finding_with_issuer(issuer);
+    recompute_finding_id(&mut finding);
+    finding.signature = format!("01{}", "00".repeat(63));
+
+    assert!(matches!(
+        verify_finding(&finding),
+        Err(FindingError::WeakIssuerKey)
+    ));
+}
+
+#[test]
 fn signing_rejects_stale_finding_id() {
     let issuer = Keypair::generate();
     let mut finding = base_finding(&issuer);
@@ -430,6 +474,7 @@ fn schema_rejects_integer_above_i_json_maximum() -> TestResult {
 #[test]
 fn schema_rejects_runtime_assurance_none() -> TestResult {
     let mut value = serde_json::to_value(signed_asserted_finding_without_receipts()?)?;
+    value["evidence_receipt_ids"] = json!(["r-1"]);
     value["runtime_assurance_tier"] = json!("none");
     assert_finding_schema_rejects(&value, "runtime_assurance_tier none")
 }
@@ -449,6 +494,7 @@ fn schema_rejects_prefixed_issuer() -> TestResult {
 #[test]
 fn schema_rejects_explicit_null_for_optional_field() -> TestResult {
     let mut value = serde_json::to_value(signed_asserted_finding_without_receipts()?)?;
+    value["evidence_receipt_ids"] = json!(["r-1"]);
     value["runtime_assurance_tier"] = Value::Null;
     assert_finding_schema_rejects(&value, "explicit null runtime_assurance_tier")
 }
@@ -456,8 +502,16 @@ fn schema_rejects_explicit_null_for_optional_field() -> TestResult {
 #[test]
 fn schema_rejects_deterministic_replay_without_recipe() -> TestResult {
     let mut value = serde_json::to_value(signed_asserted_finding_without_receipts()?)?;
+    value["evidence_receipt_ids"] = json!(["r-1"]);
     value["guarantee_class"] = json!("deterministic_replay");
     assert_finding_schema_rejects(&value, "deterministic replay without recipe")
+}
+
+#[test]
+fn schema_rejects_invalid_currency() -> TestResult {
+    let mut value = serde_json::to_value(signed_asserted_finding_without_receipts()?)?;
+    value["evidence_cost"]["currency"] = json!("usd");
+    assert_finding_schema_rejects(&value, "invalid ISO 4217 currency")
 }
 
 #[test]
@@ -472,6 +526,14 @@ fn schema_rejects_observed_evidence_without_receipts() -> TestResult {
     let mut value = serde_json::to_value(signed_asserted_finding_without_receipts()?)?;
     value["evidence_class"] = json!("observed");
     assert_finding_schema_rejects(&value, "observed evidence without receipts")
+}
+
+#[test]
+fn schema_rejects_duplicate_evidence_receipts() -> TestResult {
+    let finding = signed_asserted_finding_without_receipts()?;
+    let mut value = serde_json::to_value(finding)?;
+    value["evidence_receipt_ids"] = json!(["r-1", "r-1"]);
+    assert_finding_schema_rejects(&value, "duplicate evidence receipt ids")
 }
 
 #[test]

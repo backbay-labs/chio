@@ -1380,18 +1380,25 @@ path separately verifies authority and emits receipts.
 findings. It binds a machine-matchable descriptor, a commitment to the reveal
 envelope, evidence references and cost, guarantee and evidence classes, bond
 and status references, an Ed25519 issuer, and a validity window. Its
-`finding_id` is the SHA-256 digest of canonical JSON for the artifact with both
-`finding_id` and `signature` cleared. Its inline signature covers canonical
-JSON with only `signature` cleared, so the signature binds the content-addressed
-identifier.
+`finding_id` is the SHA-256 digest of canonical JSON for the artifact after
+setting both `finding_id` and `signature` to the empty JSON string `""`.
+Those members remain present; implementations MUST NOT omit them or encode
+them as `null` in the id preimage. Its inline signature covers canonical JSON
+after retaining the populated `finding_id` and setting only `signature` to
+`""`, again without omitting the member. The signature therefore binds the
+content-addressed identifier.
 
 Finding artifacts MUST use the bare lowercase Ed25519 key and signature
-encodings required by the registered schema. Integer-valued cost and timestamp
-fields MUST remain within the I-JSON safe range. An absent
+encodings required by the registered schema. Issuer verification MUST reject
+weak, low-order Ed25519 keys and use strict signature verification.
+`evidence_cost.currency` MUST be a three-letter uppercase ISO 4217-style code.
+Integer-valued cost and timestamp fields MUST remain within the I-JSON safe
+range. An absent
 `runtime_assurance_tier` is the sole encoding for no runtime assurance.
 `deterministic_replay` findings MUST carry `replay_recipe_sha256`. Any
 non-asserted guarantee or evidence class, or any present runtime assurance
-tier, MUST carry at least one evidence receipt reference.
+tier, MUST carry at least one evidence receipt reference. Evidence receipt
+identifiers MUST be unique within an artifact.
 
 Artifact verification proves structural invariants, content-address binding,
 and the embedded issuer signature. It does not authenticate referenced

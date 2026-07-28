@@ -14,7 +14,9 @@
 //! shape needs zero new fields, and the elicitation ceiling is
 //! deterministic. The `#[ignore]`d test specifies the desired end-to-end
 //! reveal flow and names the seams that do not exist yet; run it with
-//! `cargo test -- --ignored` to see the first missing seam.
+//! `cargo test -p chio-open-market --test cognition_market_flow
+//! cognition_market_reveal_flow_spec -- --ignored --exact` to see the first
+//! missing seam without running unrelated ignored tests.
 
 use chio_finding::{
     compute_finding_id, sign_finding, verify_finding, Finding, FindingDescriptor,
@@ -22,8 +24,8 @@ use chio_finding::{
 };
 use chio_open_market::{
     bidding::{
-        bid, BidMintContext, BidRequest, RequestedScope, SignedBidRequest, ASK_RESPONSE_SCHEMA,
-        BID_REQUEST_SCHEMA,
+        bid, BidMintContext, BidRequest, BiddingError, RequestedScope, SignedBidRequest,
+        ASK_RESPONSE_SCHEMA, BID_REQUEST_SCHEMA,
     },
     capability::scope::MonetaryAmount,
     crypto::Keypair,
@@ -50,8 +52,8 @@ fn hex64(fill: char) -> String {
 /// semantics: `capability_scope_covers` splits on `:` and requires the
 /// advertised scope to be a segment-prefix of the requested one
 /// (`chio-open-market/src/bidding.rs:534`).
-fn finding_scope() -> String {
-    format!("finding:{}", hex64('a'))
+fn finding_scope(finding: &Finding) -> String {
+    format!("finding:{}", finding.finding_id)
 }
 
 /// Delivery proof the reveal step must produce: a kernel receipt whose
@@ -144,7 +146,7 @@ fn finding_namespace(keypair: &Keypair) -> GenericNamespaceOwnership {
     }
 }
 
-fn signed_finding_listing(keypair: &Keypair) -> SignedGenericListing {
+fn signed_finding_listing(keypair: &Keypair, finding: &Finding) -> SignedGenericListing {
     let body = GenericListingArtifact {
         schema: GENERIC_LISTING_ARTIFACT_SCHEMA.to_string(),
         listing_id: FINDING_LISTING_ID.to_string(),
@@ -157,7 +159,10 @@ fn signed_finding_listing(keypair: &Keypair) -> SignedGenericListing {
             actor_kind: GenericListingActorKind::ToolServer,
             actor_id: FINDING_SERVER_ID.to_string(),
             display_name: Some("Finding server".to_string()),
-            metadata_url: Some("https://registry.seller.example/finding/f3a9".to_string()),
+            metadata_url: Some(format!(
+                "https://registry.seller.example/finding/{}",
+                finding.finding_id
+            )),
             resolution_url: None,
             homepage_url: None,
         },
@@ -171,17 +176,17 @@ fn signed_finding_listing(keypair: &Keypair) -> SignedGenericListing {
     SignedGenericListing::sign(body, keypair).test_expect("sign finding listing")
 }
 
-fn finding_listing_entry(operator: &Keypair, price_units: u64) -> Listing {
+fn finding_listing_entry(operator: &Keypair, finding: &Finding, price_units: u64) -> Listing {
     Listing {
         rank: 1,
-        listing: signed_finding_listing(operator),
+        listing: signed_finding_listing(operator, finding),
         pricing: SignedListingPricingHint::sign(
             ListingPricingHint {
                 schema: LISTING_PRICING_HINT_SCHEMA.to_string(),
                 listing_id: FINDING_LISTING_ID.to_string(),
                 namespace: "https://registry.seller.example".to_string(),
                 provider_operator_id: "seller-operator".to_string(),
-                capability_scope: finding_scope(),
+                capability_scope: finding_scope(finding),
                 price_per_call: MonetaryAmount {
                     units: price_units,
                     currency: "USD".to_string(),
@@ -216,13 +221,13 @@ fn finding_listing_entry(operator: &Keypair, price_units: u64) -> Listing {
     }
 }
 
-fn finding_bid_request() -> BidRequest {
+fn finding_bid_request(finding: &Finding, max_price_units: u64) -> BidRequest {
     BidRequest {
         schema: BID_REQUEST_SCHEMA.to_string(),
         agent_id: "buyer-agent-7".to_string(),
         listing_id: FINDING_LISTING_ID.to_string(),
         max_price_per_call: MonetaryAmount {
-            units: 900,
+            units: max_price_units,
             currency: "USD".to_string(),
         },
         window_seconds: 3_600,
@@ -230,7 +235,7 @@ fn finding_bid_request() -> BidRequest {
             server_id: FINDING_SERVER_ID.to_string(),
             tool_name: "read_finding".to_string(),
             max_invocations: Some(1),
-            capability_scope_prefix: finding_scope(),
+            capability_scope_prefix: finding_scope(finding),
         },
         issued_at: 120,
     }
@@ -241,22 +246,32 @@ fn finding_bid_request() -> BidRequest {
 /// a tool listing; the bid itself needs zero new fields.
 #[test]
 fn finding_purchase_reuses_marketplace_bid_shape() {
-    assert!(finding_bid_request().validate().is_ok());
+    let finding = sealed_negative_result();
+    assert!(verify_finding(&finding).is_ok());
+    assert!(finding_bid_request(&finding, 900).validate().is_ok());
 }
 
 /// Passes today: a finding listing clears the REAL `bid()` path with the
-/// colon-segment scope convention, and the minted token is the one-shot
-/// priced grant the reveal needs. Also pins the M4 seam: `bid()` mints
-/// grants with empty constraints (`bidding.rs:396`), so the delivery
-/// binding (`OutputDigestSha256`) has nowhere to ride until
-/// `BidMintContext` grows provider-supplied constraints.
+/// colon-segment scope convention, and the minted token is a generic
+/// one-shot priced grant. Also pins the M4 seam: `bid()` mints grants with
+/// empty constraints (`bidding.rs:396`) and does not retain the opaque
+/// capability-scope prefix, so the delivery and per-finding binding has
+/// nowhere to ride until `BidMintContext` grows provider-supplied
+/// constraints.
 #[test]
 fn finding_purchase_clears_the_real_bid_path() {
     let operator = Keypair::generate();
     let agent = Keypair::generate();
-    let listing = finding_listing_entry(&operator, 900);
-    let request =
-        SignedBidRequest::sign(finding_bid_request(), &agent).test_expect("sign finding bid");
+    let finding = sealed_negative_result();
+    let listing = finding_listing_entry(&operator, &finding, 900);
+    let request = SignedBidRequest::sign(finding_bid_request(&finding, 900), &agent)
+        .test_expect("sign finding bid");
+    let expected_scope = finding_scope(&finding);
+    assert_eq!(listing.pricing.body.capability_scope, expected_scope);
+    assert_eq!(
+        request.body.requested_scope.capability_scope_prefix,
+        expected_scope
+    );
 
     let ask = bid(
         &request,
@@ -303,11 +318,52 @@ fn finding_bid_ceiling_is_bounded_and_budget_capped() {
     assert_eq!(ceiling, 1_890);
     assert!(ceiling <= basis.rederivation_quote_units);
 
+    let mut higher_quote = FindingBidBasis {
+        rederivation_quote_units: 8_400,
+        ..basis
+    };
+    assert!(finding_bid_ceiling(&higher_quote) >= ceiling);
+
+    let operator = Keypair::generate();
+    let agent = Keypair::generate();
+    let finding = sealed_negative_result();
+    let affordable_listing = finding_listing_entry(&operator, &finding, ceiling);
+    let affordable_request = SignedBidRequest::sign(finding_bid_request(&finding, ceiling), &agent)
+        .test_expect("sign affordable finding bid");
+    assert!(bid(
+        &affordable_request,
+        BidMintContext {
+            listing: &affordable_listing,
+            issuer_keypair: &operator,
+            agent_subject: agent.public_key(),
+            token_id: "finding-token-at-ceiling".to_string(),
+            now: 120,
+        },
+    )
+    .is_ok());
+
+    let overpriced_listing = finding_listing_entry(&operator, &finding, ceiling + 1);
+    let overpriced_request = SignedBidRequest::sign(finding_bid_request(&finding, ceiling), &agent)
+        .test_expect("sign over-ceiling finding bid");
+    assert!(matches!(
+        bid(
+            &overpriced_request,
+            BidMintContext {
+                listing: &overpriced_listing,
+                issuer_keypair: &operator,
+                agent_subject: agent.public_key(),
+                token_id: "finding-token-over-ceiling".to_string(),
+                now: 120,
+            },
+        ),
+        Err(BiddingError::BidCeilingTooLow)
+    ));
+
     basis.budget_remaining_units = 500;
     assert_eq!(finding_bid_ceiling(&basis), 500);
 
-    basis.would_have_run_bps = 0;
-    assert_eq!(finding_bid_ceiling(&basis), 0);
+    higher_quote.would_have_run_bps = 0;
+    assert_eq!(finding_bid_ceiling(&higher_quote), 0);
 }
 
 /// Specifies the desired end-to-end flow (memo section 6.2). Ignored
