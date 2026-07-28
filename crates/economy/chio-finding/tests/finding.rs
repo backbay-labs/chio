@@ -202,7 +202,7 @@ fn invalid_currency_is_rejected() {
     recompute_finding_id(&mut draft);
     assert!(matches!(
         draft.validate(),
-        Err(FindingError::InvalidCurrency)
+        Err(FindingError::InvalidCurrency(_))
     ));
 }
 

@@ -54,16 +54,11 @@ pub(crate) enum CostFacetOutcome {
 /// exact evidence-cost currency must reach the asserted rollup. An empty
 /// admitted-key set denies everything by construction.
 pub(crate) fn evaluate_metered_exposure(
-    receipts: &[ChioReceipt],
+    receipts: &[&ChioReceipt],
     admitted_kernel_keys: &[PublicKey],
     nonce_resolver: &dyn FindingNonceResolver,
     evidence_cost: &MonetaryAmount,
 ) -> CostFacetOutcome {
-    if admitted_kernel_keys.is_empty() {
-        return CostFacetOutcome::Failed {
-            reason: "no admitted kernel keys configured".to_string(),
-        };
-    }
     if receipts.is_empty() {
         return CostFacetOutcome::Unavailable {
             reason: "no evidence receipts resolved",
@@ -122,7 +117,7 @@ pub(crate) fn evaluate_metered_exposure(
 /// (`settlement_status == settled`). `pending` and `not_applicable` never
 /// satisfy the facet.
 pub(crate) fn evaluate_settled_spend(
-    receipts: &[ChioReceipt],
+    receipts: &[&ChioReceipt],
     metered: &CostFacetOutcome,
 ) -> CostFacetOutcome {
     let CostFacetOutcome::Verified { accounted_units } = metered else {

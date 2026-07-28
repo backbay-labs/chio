@@ -37,11 +37,7 @@ pub fn verify_pinned_envelope<T: Serialize>(
     pinned_authority: &PublicKey,
     label: &'static str,
 ) -> Result<(), FindingError> {
-    if pinned_authority.algorithm() != SigningAlgorithm::Ed25519
-        || pinned_authority.is_weak_ed25519()
-    {
-        return Err(FindingError::InvalidAuthorityKey(label));
-    }
+    require_ed25519(pinned_authority, label)?;
     if envelope.signer_key != *pinned_authority {
         return Err(FindingError::AuthorityMismatch(label));
     }

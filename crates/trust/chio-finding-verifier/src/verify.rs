@@ -420,10 +420,10 @@ pub fn verify_finding_evidence(
     ));
 
     // Step 6 / facets 8-9: cost floors.
-    let receipts: Vec<ChioReceipt> = bundle
+    let receipts: Vec<&ChioReceipt> = bundle
         .receipts
         .iter()
-        .map(|evidence| evidence.receipt.clone())
+        .map(|evidence| &evidence.receipt)
         .collect();
     let metered = if receipts_ok {
         evaluate_metered_exposure(

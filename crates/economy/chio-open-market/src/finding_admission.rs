@@ -63,6 +63,10 @@ pub enum FindingAdmissionError {
     BackingEnvelope(FindingError),
     #[error("backing allocation id does not match the admission binding")]
     AllocationMismatch,
+    #[error("terms identity does not match the admission finding or listing")]
+    TermsIdentityMismatch,
+    #[error("backing identity does not match the admission finding or listing")]
+    BackingIdentityMismatch,
     #[error("backing allocation is not live in the collateral snapshot")]
     AllocationNotLive,
     #[error("fee schedule envelope digest does not match the admission binding")]
@@ -224,6 +228,12 @@ pub fn verify_finding_admission(
     if context.backing.body.allocation_id != admission.backing_allocation_id {
         return Err(FindingAdmissionError::AllocationMismatch);
     }
+    if context.backing.body.finding_id != admission.finding_id
+        || context.backing.body.listing_id != admission.listing_id
+        || context.backing.body.seller != context.terms.body.seller
+    {
+        return Err(FindingAdmissionError::BackingIdentityMismatch);
+    }
     if !context.allocation_snapshot.live {
         return Err(FindingAdmissionError::AllocationNotLive);
     }
@@ -274,10 +284,12 @@ pub fn verify_finding_admission(
     {
         return Err(FindingAdmissionError::CurrencyMismatch);
     }
-    let promised_backing = stake
-        .units
-        .checked_add(exposure.units)
-        .ok_or(FindingAdmissionError::BackingSumOverflow)?;
+    let promised_backing = context
+        .terms
+        .body
+        .backing_requirement
+        .required_backing_units()
+        .map_err(|_| FindingAdmissionError::BackingSumOverflow)?;
     if requirement.required_amount.units < promised_backing {
         return Err(FindingAdmissionError::ListingRequirementUndersized);
     }
@@ -332,6 +344,11 @@ pub fn bid_with_finding_admission(
     bid_context: BidMintContext<'_>,
     admission: &VerifiedFindingAdmission,
 ) -> Result<SignedAskResponse, FindingAdmissionError> {
+    // The witness certifies bindings as of its own verification time, so
+    // spending it later must re-check currency against the bid clock.
+    if bid_context.now >= admission.expires_at() {
+        return Err(FindingAdmissionError::AdmissionExpired);
+    }
     // Scope equality alone binds nothing: every listing for one finding
     // advertises the same `finding:<id>` scope, so a bid could ride an
     // admission issued for a different listing. Bind the exact listing

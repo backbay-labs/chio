@@ -273,6 +273,22 @@ fn signed_backing(
     finding: &Finding,
     fee_schedule_envelope_sha256: &str,
 ) -> SignedFindingBondBacking {
+    signed_backing_with_locked(
+        collateral,
+        seller,
+        finding,
+        fee_schedule_envelope_sha256,
+        LOCKED_UNITS,
+    )
+}
+
+fn signed_backing_with_locked(
+    collateral: &Keypair,
+    seller: &Keypair,
+    finding: &Finding,
+    fee_schedule_envelope_sha256: &str,
+    locked_units: u64,
+) -> SignedFindingBondBacking {
     let mut backing = FindingBondBacking {
         schema: FINDING_BOND_BACKING_SCHEMA_V1.to_string(),
         allocation_id: String::new(),
@@ -286,7 +302,7 @@ fn signed_backing(
         fee_requirement_sha256: hex64('4'),
         fee_schedule_envelope_sha256: fee_schedule_envelope_sha256.to_string(),
         bond_class: FindingBondClass::Listing,
-        locked_amount: usd(LOCKED_UNITS),
+        locked_amount: usd(locked_units),
         maximum_sale_exposure: usd(EXPOSURE_UNITS),
         claim_horizon_secs: 604_800,
         audit_horizon_secs: 2_592_000,
@@ -847,5 +863,71 @@ fn bid_rejects_a_listing_the_admission_was_not_issued_for() {
             outcome.err(),
             Some(FindingAdmissionError::PricingHintMismatch)
         );
+    });
+}
+
+#[test]
+fn backing_locked_below_the_promised_sum_rejects() {
+    with_fiscal(|resolver| {
+        let mut web = web_with_schedule(REQUIREMENT_UNITS, true, "USD");
+        // The schedule requirement stays adequate; only the collateral
+        // actually locked falls short of stake plus exposure.
+        let underfunded = signed_backing_with_locked(
+            &keypair(4),
+            &web.seller,
+            &web.finding,
+            &web.schedule_sha256,
+            STAKE_UNITS + EXPOSURE_UNITS - 1,
+        );
+        web.backing_sha256 = signed_envelope_sha256(&underfunded).test_expect("backing digest");
+        web.backing = underfunded;
+        let bindings = web.bindings();
+        web.admission = signed_admission(&web.venue, &web.finding, &bindings);
+        assert_eq!(
+            verify_finding_admission(&web.admission, &web.context(resolver)).err(),
+            Some(FindingAdmissionError::BackingUnderfunded)
+        );
+    });
+}
+
+#[test]
+fn fee_schedule_digest_mismatch_rejects() {
+    with_fiscal(|resolver| {
+        let mut web = web_with_schedule(REQUIREMENT_UNITS, true, "USD");
+        let mut bindings = web.bindings();
+        bindings.fee_schedule_envelope_sha256 = hex64('9');
+        web.admission = signed_admission(&web.venue, &web.finding, &bindings);
+        assert_eq!(
+            verify_finding_admission(&web.admission, &web.context(resolver)).err(),
+            Some(FindingAdmissionError::FeeScheduleDigestMismatch)
+        );
+    });
+}
+
+#[test]
+fn admission_expiry_is_bounded_by_every_constituent() {
+    with_fiscal(|resolver| {
+        // Each bound is driven independently so a mislabeled or dropped
+        // tuple in the bounds array cannot pass unnoticed.
+        for (label, expires_at) in [
+            ("backing", ADMISSION_EXPIRES_AT - 1),
+            ("purchase_authority", ADMISSION_EXPIRES_AT - 2),
+            ("failed_delivery_authority", ADMISSION_EXPIRES_AT - 3),
+        ] {
+            let web = web_with_schedule(REQUIREMENT_UNITS, true, "USD");
+            let context = web.context(resolver);
+            // Shrink only the caller-supplied bound and confirm the
+            // admission is refused for outliving it.
+            let mut narrowed = context.clone();
+            narrowed.earliest_constituent_expiry = expires_at;
+            let outcome = verify_finding_admission(&web.admission, &narrowed);
+            assert!(
+                matches!(
+                    outcome.err(),
+                    Some(FindingAdmissionError::ExpiryBeyondConstituent(_))
+                ),
+                "bound {label} did not deny an over-long admission"
+            );
+        }
     });
 }

@@ -30,8 +30,8 @@ pub enum FindingError {
     UnsupportedIssuerAlgorithm,
     #[error("finding issuer must not be a weak Ed25519 key")]
     WeakIssuerKey,
-    #[error("evidence_cost.currency must be a three-letter uppercase ISO 4217-style code")]
-    InvalidCurrency,
+    #[error("currency must be a three-letter uppercase ISO 4217-style code: {0}")]
+    InvalidCurrency(&'static str),
     #[error("deterministic_replay findings require replay_recipe_sha256")]
     MissingReplayRecipe,
     #[error("non-asserted evidence class requires evidence receipts")]
@@ -136,7 +136,7 @@ pub(crate) fn require_nonzero(value: u64, field: &'static str) -> Result<(), Fin
 
 pub(crate) fn require_currency(currency: &str, field: &'static str) -> Result<(), FindingError> {
     if currency.len() != 3 || !currency.bytes().all(|byte| byte.is_ascii_uppercase()) {
-        return Err(FindingError::InvalidField(field));
+        return Err(FindingError::InvalidCurrency(field));
     }
     Ok(())
 }
@@ -193,15 +193,7 @@ impl Finding {
             MAX_FINDING_TEXT_BYTES,
         )?;
         require_bounded_id(&self.evidence_checkpoint_ref, "evidence_checkpoint_ref")?;
-        if self.evidence_cost.currency.len() != 3
-            || !self
-                .evidence_cost
-                .currency
-                .bytes()
-                .all(|byte| byte.is_ascii_uppercase())
-        {
-            return Err(FindingError::InvalidCurrency);
-        }
+        require_currency(&self.evidence_cost.currency, "evidence_cost.currency")?;
         require_bounded_id(&self.bond_ref, "bond_ref")?;
         require_bounded_id(&self.status_feed_ref, "status_feed_ref")?;
         if self.guarantee_class == FindingGuaranteeClass::DeterministicReplay {
