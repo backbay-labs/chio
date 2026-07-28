@@ -78,8 +78,9 @@ pub struct Finding {
     pub payload_media_type: String,
     pub evidence_receipt_ids: Vec<String>,
     pub evidence_checkpoint_ref: String,
-    /// Metered production-cost rollup (bucketed for public descriptors;
-    /// see the side-channel note in the threat model).
+    /// Issuer-asserted production-cost rollup (bucketed for public
+    /// descriptors; see the side-channel note in the threat model).
+    /// M1 does not prove compute burn or semantically verify this amount.
     pub evidence_cost: MonetaryAmount,
     /// Attestation-quality tier from appraisal, as the existing CLOSED
     /// vocabulary so unsupported tier names fail at parse time
@@ -95,6 +96,8 @@ pub struct Finding {
     /// Receipt id of a pre-outcome intent commitment, when present.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intent_commitment_receipt_id: Option<String>,
+    /// Opaque collateral reference at M1. Publication admission must resolve
+    /// and verify live backing before advertising a slashable guarantee.
     pub bond_ref: String,
     pub status_feed_ref: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
