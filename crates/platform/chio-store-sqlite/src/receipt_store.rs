@@ -2616,7 +2616,7 @@ pub(crate) struct VerifiedHead {
     latest_checkpoint: Option<KernelCheckpoint>,
     /// Frontier of the checkpoint-chain tree as of `latest_checkpoint`, kept
     /// so issuing a checkpoint costs O(log n) hashes instead of rehashing the
-    /// whole chain. `None` means "not known here": the next issuance rebuilds
+    /// whole chain. `None` means "not known here": catch-up or issuance rebuilds
     /// it from the persisted chain once and caches it again. Every path that
     /// moves `latest_checkpoint` without extending this must clear it.
     chain_frontier: Option<CheckpointChainFrontier>,
@@ -2660,11 +2660,12 @@ pub(crate) struct WriterHeadSnapshot {
 /// once (the startup path for the O(N) check; also the audit-repair path).
 fn seed_verified_head(connection: &Connection) -> Result<VerifiedHead, ReceiptStoreError> {
     validate_claim_receipt_log_entries(connection)?;
-    let latest_checkpoint = verify_checkpoint_chain_integrity(connection)?;
+    let (latest_checkpoint, chain_frontier) =
+        verify_checkpoint_chain_integrity_with_frontier(connection)?;
     let (claim_log_count, claim_log_max_seq) = claim_log_delta_count_and_max_seq(connection, 0)?;
     Ok(VerifiedHead {
         latest_checkpoint,
-        chain_frontier: None,
+        chain_frontier: Some(chain_frontier),
         claim_log_count,
         claim_log_max_seq,
     })
@@ -2874,15 +2875,14 @@ fn catch_up_verified_head_to(
         // this adopted checkpoint's projection rows (O(b) for its batch, not full
         // history), fail closed on any divergence.
         validate_checkpoint_projection_rows(connection, &row, &checkpoint)?;
-        // Catch-up adopts checkpoints in sequence, so a cached frontier can be
-        // extended rather than dropped; the builder still reproduces the
-        // predecessor's signed chain_root from it before signing anything.
-        if let Some(frontier) = head.chain_frontier.as_mut() {
-            frontier.append(
-                chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&checkpoint.body)
-                    .map_err(checkpoint_error_to_receipt_store)?,
-            );
-        }
+        // Check any signed chain root before adopting. Legacy v1 leaves still
+        // extend the frontier so a later v2 root commits the complete history.
+        head.chain_frontier = Some(advance_verified_checkpoint_chain_frontier(
+            connection,
+            head.chain_frontier.as_ref(),
+            head.latest_checkpoint.as_ref(),
+            &checkpoint,
+        )?);
         head.latest_checkpoint = Some(checkpoint);
         cursor = next_seq;
     }

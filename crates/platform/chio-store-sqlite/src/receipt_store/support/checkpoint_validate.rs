@@ -555,6 +555,12 @@ pub(crate) fn load_checkpoint_chain_leaf_hashes(
 pub(crate) fn verify_checkpoint_chain_integrity(
     connection: &Connection,
 ) -> Result<Option<KernelCheckpoint>, ReceiptStoreError> {
+    verify_checkpoint_chain_integrity_with_frontier(connection).map(|(latest, _)| latest)
+}
+
+pub(crate) fn verify_checkpoint_chain_integrity_with_frontier(
+    connection: &Connection,
+) -> Result<(Option<KernelCheckpoint>, CheckpointChainFrontier), ReceiptStoreError> {
     let rows = load_all_persisted_checkpoint_rows(connection)?;
     let mut latest = None;
     let mut expected_head_ids = BTreeSet::new();
@@ -619,7 +625,63 @@ pub(crate) fn verify_checkpoint_chain_integrity(
         &expected_publication_ids,
     )?;
 
-    Ok(latest)
+    Ok((latest, chain_frontier))
+}
+
+/// Extend the verified checkpoint-chain frontier by one peer checkpoint.
+///
+/// A cache miss rebuilds only the prefix represented by `predecessor`; startup
+/// normally retains the frontier returned by full verification. Signed v2
+/// roots must match before the caller advances its verified head. Legacy v1
+/// checkpoints carry no root, but their leaves still extend the frontier so a
+/// later v2 checkpoint commits the complete history.
+pub(crate) fn advance_verified_checkpoint_chain_frontier(
+    connection: &Connection,
+    cached: Option<&CheckpointChainFrontier>,
+    predecessor: Option<&KernelCheckpoint>,
+    checkpoint: &KernelCheckpoint,
+) -> Result<CheckpointChainFrontier, ReceiptStoreError> {
+    let predecessor_seq = predecessor.map_or(0, |item| item.body.checkpoint_seq);
+    let mut frontier = match cached.filter(|item| item.leaf_count() == predecessor_seq) {
+        Some(frontier) => frontier.clone(),
+        None => {
+            // A missing cache has no trusted prefix commitment of its own.
+            // Prove the persisted chain before deriving the predecessor slice.
+            verify_checkpoint_chain_integrity_with_frontier(connection)?;
+            let chain_leaf_hashes = load_checkpoint_chain_leaf_hashes(connection)?;
+            let prefix_len = usize::try_from(predecessor_seq).map_err(|_| {
+                ReceiptStoreError::Conflict(format!(
+                    "verified checkpoint sequence {predecessor_seq} exceeds platform limits"
+                ))
+            })?;
+            if chain_leaf_hashes.len() < prefix_len {
+                return Err(ReceiptStoreError::Conflict(format!(
+                    "persisted checkpoint chain ends before verified head {predecessor_seq}"
+                )));
+            }
+            CheckpointChainFrontier::from_leaves(&chain_leaf_hashes[..prefix_len])
+        }
+    };
+    if let Some(chain_root) = predecessor.and_then(|item| item.body.chain_root) {
+        if frontier.root() != Some(chain_root) {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "verified checkpoint {predecessor_seq} chain_root does not match the persisted chain"
+            )));
+        }
+    }
+    frontier.append(
+        chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&checkpoint.body)
+            .map_err(checkpoint_error_to_receipt_store)?,
+    );
+    if let Some(chain_root) = checkpoint.body.chain_root {
+        if frontier.root() != Some(chain_root) {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "checkpoint {} chain_root does not match the persisted chain",
+                checkpoint.body.checkpoint_seq
+            )));
+        }
+    }
+    Ok(frontier)
 }
 
 pub(crate) fn validate_checkpoint_base(

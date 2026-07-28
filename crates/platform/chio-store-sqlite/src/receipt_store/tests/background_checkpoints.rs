@@ -953,6 +953,16 @@ fn frontier_rebuild_adopts_concurrent_checkpoint_winner() -> Result<(), Box<dyn 
     let connection = store.connection()?;
     let mut stale_head = seed_verified_head(&connection)?;
     assert_eq!(stale_head.checkpoint_seq(), 0);
+    assert_eq!(
+        stale_head
+            .chain_frontier
+            .as_ref()
+            .map(CheckpointChainFrontier::leaf_count),
+        Some(0),
+        "startup must retain the verified empty frontier"
+    );
+    // Model a dropped cache between the refresh and frontier rebuild.
+    stale_head.chain_frontier = None;
     assert!(stale_head.chain_frontier.is_none());
     drop(connection);
 
