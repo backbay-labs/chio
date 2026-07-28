@@ -1,0 +1,317 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/verifier-report.schema.json",
+  "title": "Chio Finding Verifier Report",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "body",
+    "signerKey",
+    "signature"
+  ],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "report_id",
+        "finding_id",
+        "finding_artifact_sha256",
+        "verifier_profile_id",
+        "verifier_profile_envelope_sha256",
+        "verifier_implementation_id",
+        "resolved_evidence_bundle_sha256",
+        "trust_root_snapshot_sha256",
+        "resolver_policy_sha256",
+        "trusted_time_input_sha256",
+        "facets",
+        "verifier_authority",
+        "verifier_key_epoch",
+        "evaluation_time"
+      ],
+      "properties": {
+        "schema": {
+          "const": "chio.finding.verifier-report.v1"
+        },
+        "report_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "finding_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "finding_artifact_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "verifier_profile_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "verifier_profile_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "verifier_implementation_id": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "resolved_evidence_bundle_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "trust_root_snapshot_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "resolver_policy_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "trusted_time_input_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "facets": {
+          "type": "array",
+          "minItems": 13,
+          "maxItems": 13,
+          "prefixItems": [
+            {
+              "$ref": "#/$defs/facetResult",
+              "properties": {
+                "facet": {
+                  "const": "artifact_integrity"
+                }
+              }
+            },
+            {
+              "$ref": "#/$defs/facetResult",
+              "properties": {
+                "facet": {
+                  "const": "receipt_authenticity"
+                }
+              }
+            },
+            {
+              "$ref": "#/$defs/facetResult",
+              "properties": {
+                "facet": {
+                  "const": "checkpoint_membership"
+                }
+              }
+            },
+            {
+              "$ref": "#/$defs/facetResult",
+              "properties": {
+                "facet": {
+                  "const": "kernel_and_revocation_trust"
+                }
+              }
+            },
+            {
+              "$ref": "#/$defs/facetResult",
+              "properties": {
+                "facet": {
+                  "const": "issuer_lineage"
+                }
+              }
+            },
+            {
+              "$ref": "#/$defs/facetResult",
+              "properties": {
+                "facet": {
+                  "const": "recipe_binding"
+                }
+              }
+            },
+            {
+              "$ref": "#/$defs/facetResult",
+              "properties": {
+                "facet": {
+                  "const": "intent_binding"
+                }
+              }
+            },
+            {
+              "$ref": "#/$defs/facetResult",
+              "properties": {
+                "facet": {
+                  "const": "metered_exposure_backing"
+                }
+              }
+            },
+            {
+              "$ref": "#/$defs/facetResult",
+              "properties": {
+                "facet": {
+                  "const": "settled_spend_backing"
+                }
+              }
+            },
+            {
+              "$ref": "#/$defs/facetResult",
+              "properties": {
+                "facet": {
+                  "const": "runtime_assurance_backing"
+                }
+              }
+            },
+            {
+              "$ref": "#/$defs/facetResult",
+              "properties": {
+                "facet": {
+                  "const": "bond_backing"
+                }
+              }
+            },
+            {
+              "$ref": "#/$defs/facetResult",
+              "properties": {
+                "facet": {
+                  "const": "status_liveness"
+                }
+              }
+            },
+            {
+              "$ref": "#/$defs/facetResult",
+              "properties": {
+                "facet": {
+                  "const": "guarantee_consistency"
+                }
+              }
+            }
+          ]
+        },
+        "backing_allocation_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "verifier_authority": {
+          "$ref": "#/$defs/ed25519PublicKey"
+        },
+        "verifier_key_epoch": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "evaluation_time": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "required": [
+              "facets"
+            ],
+            "properties": {
+              "facets": {
+                "prefixItems": [
+                  true,
+                  true,
+                  true,
+                  true,
+                  true,
+                  true,
+                  true,
+                  true,
+                  true,
+                  true,
+                  {
+                    "required": [
+                      "outcome"
+                    ],
+                    "properties": {
+                      "outcome": {
+                        "const": "verified"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "backing_allocation_id"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "backing_allocation_id"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "signerKey": {
+      "$ref": "#/$defs/ed25519PublicKey"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  },
+  "$defs": {
+    "ed25519PublicKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "facetResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "facet",
+        "outcome",
+        "reason"
+      ],
+      "properties": {
+        "facet": {
+          "enum": [
+            "artifact_integrity",
+            "receipt_authenticity",
+            "checkpoint_membership",
+            "kernel_and_revocation_trust",
+            "issuer_lineage",
+            "recipe_binding",
+            "intent_binding",
+            "metered_exposure_backing",
+            "settled_spend_backing",
+            "runtime_assurance_backing",
+            "bond_backing",
+            "status_liveness",
+            "guarantee_consistency"
+          ]
+        },
+        "outcome": {
+          "enum": [
+            "verified",
+            "asserted",
+            "unavailable",
+            "failed"
+          ]
+        },
+        "reason": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "evidence_refs": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/nonBlankString"
+          }
+        }
+      }
+    },
+    "iJsonU64": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "iJsonU64NonZero": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "nonBlankString": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

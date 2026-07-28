@@ -1407,9 +1407,141 @@ bonds, status feeds, or pricing hints, check wall-clock liveness, or establish
 the truth of a guarantee or evidence class. A market or trust decision MUST
 perform those checks separately before relying on the corresponding claim.
 
-Only `chio.finding.v1` is registered in this family at this stage. Delivery,
-challenge, and status-epoch artifacts remain unsupported until their owning
-milestones define and register them.
+#### 6.4.7.1 Market envelope discipline (M2 families)
+
+The M2 market artifacts below travel as signed export envelopes
+(`{body, signerKey, signature}`), unlike the inline-signed
+`chio.finding.v1`. Each body is strict snake_case JSON that rejects unknown
+members, names its own signing authority, and carries a content-addressed
+identifier computed exactly like `finding_id`: the SHA-256 digest of
+canonical JSON for the body after setting only the id member to the empty
+JSON string `""`, with every other member present. Envelope verification
+MUST verify strictly against an EXTERNALLY pinned authority key, MUST
+reject weak Ed25519 keys, MUST require the embedded `signerKey` to equal
+the pinned authority, and MUST require the body's authority member to
+equal the envelope signer. Verifying an envelope against its own embedded
+key alone is never sufficient for any market or value-moving decision.
+Envelope digests referenced by other artifacts are SHA-256 over the
+canonical JSON of the COMPLETE envelope (body, signer key, and signature),
+never over the body alone.
+
+#### 6.4.7.2 `chio.finding.challenge-verifier-profile.v1`
+
+The reusable, governance-signed trust profile. It binds receipt signer
+roles (production, delivery, replay, each exactly once), checkpoint log
+identities and signers, the externally trusted BBS projection issuer and
+registry, allowed runner manifest digests, required receipt semantics,
+resolver and retention policy references, resource caps, the predicate
+engine and its closed predicate vocabulary
+(`baseline_fails_candidate_passes_v1` at this stage), the verifier-report
+signer role, the purchase and failed-delivery authority roles, per-key
+epoch, validity, rotation, and revocation policy, the operator, and a
+validity window. The profile has no member that can reference a finding,
+recipe, listing, report, or backing: a finding-scoped profile would form
+a hash cycle and is invalid. Role keys named here are additionally pinned
+by deployment governance; presence in a profile authorizes nothing by
+itself.
+
+#### 6.4.7.3 `chio.finding.replay-recipe-input.v1`
+
+The UNSIGNED strict replay verifier input. It registers in the public
+schema registry and manifest but MUST NOT enter the signed-artifact
+allowlist; it travels only as a content-addressed non-authority
+attachment. Its integrity comes from bytes: a `deterministic_replay`
+publication MUST supply a size-bounded strict raw preimage whose canonical
+digest equals the signed finding's `replay_recipe_sha256`. Duplicate keys,
+unknown members, non-canonical spellings, and digest mismatches reject.
+The input binds the decision rule, the admitted verifier-profile envelope
+digest, finding context and payload commitments, the mediated runner and
+manifest, ordered baseline-then-candidate phases with immutable input
+bundles and exact payload-application semantics, a canonical parameter
+bundle digest, a fully deterministic environment policy, resource bounds,
+the closed predicate, the cycle-free pre-run template digest, and the
+claimed verdict. The pre-run template commits everything knowable before
+execution and excludes the final payload digest, producing receipts,
+outcome class, and verdict. Venues MUST retain the recipe and every
+digest-addressed dependency through the full claim, audit, and appeal
+horizon.
+
+#### 6.4.7.4 `chio.finding.market-terms.v1`
+
+Seller-signed sale terms: the exact finding and listing, the canonical
+backing requirement (`base_finding_stake`, `maximum_sale_exposure`, and
+collateral policy, one currency), nonzero filing, claim, and appeal
+windows, the audit epoch length, audit eligibility, decision rules, the
+admitted verifier-profile envelope digest, per-guarantee-class challenge
+bond limits, and a deterministic payout policy. Terms MUST NOT bind the
+later backing-envelope digest; backing may bind terms, so the reverse edge
+would form a cycle. The envelope signer MUST equal the embedded seller.
+
+#### 6.4.7.5 `chio.finding.seller-authorization.v1`
+
+Finding-issuer-signed authorization for a seller or delegate: the exact
+finding, listing, seller, provider server and tool, the payment
+beneficiary or a provider-signed payee mapping digest, a revocation
+status reference, and a validity window. This artifact is REQUIRED even
+when issuer and seller are the same key. The envelope signer MUST equal
+the embedded issuer, and surfaces that resolve the finding MUST also
+require that issuer to equal the finding's issuer.
+
+#### 6.4.7.6 `chio.finding.bond-backing.v1`
+
+Collateral-authority-signed live allocation: seller, authorization,
+finding, listing, terms and profile envelope digests, the exact
+fee-schedule envelope and bond-requirement digests, the `listing` bond
+class, one currency, a locked amount that is at least the maximum sale
+exposure, nonzero claim, audit, appeal, and settlement horizons, the
+concrete vault (the `venue_ledger` variant at this stage; unknown vault
+kinds reject), and an expiry. A signed requirement, an opaque reference,
+or a transient evaluation result is NOT collateral: admission MUST resolve
+the allocation to live, exclusive, unconsumed store state, and reused,
+stale, wrong-party, wrong-currency, or underfunded allocations reject.
+
+#### 6.4.7.7 `chio.finding.verifier-report.v1`
+
+Verifier-authority-signed facet report: the exact finding id and artifact
+digest, verifier profile id and envelope digest, verifier implementation
+id, resolved-evidence bundle digest, trust-root, resolver, and
+trusted-time input digests, exactly the thirteen facets in canonical
+order (`artifact_integrity`, `receipt_authenticity`,
+`checkpoint_membership`, `kernel_and_revocation_trust`, `issuer_lineage`,
+`recipe_binding`, `intent_binding`, `metered_exposure_backing`,
+`settled_spend_backing`, `runtime_assurance_backing`, `bond_backing`,
+`status_liveness`, `guarantee_consistency`), each `verified`, `asserted`,
+`unavailable`, or `failed` with a reason, the verifier key epoch, and the
+evaluation time. A `verified` `bond_backing` facet MUST name the exact
+backing allocation, and acceptance MUST reject a report whose named
+allocation did not exist before the report's evaluation time. Every facet
+required by the profile or by a present finding claim MUST be exactly
+`verified`; `asserted` and `unavailable` deny. Only the externally
+pinned, profile-authorized verifier key that was valid and unrevoked at
+evaluation may sign.
+
+#### 6.4.7.8 `chio.finding.admission.v1`
+
+The venue-signed admission bundle, the ONLY qualification of a finding
+listing for trusted search, bid, and purchase. It binds the exact finding
+artifact digest, seller-authorization, listing, pricing-hint, terms,
+profile, verifier-report, and backing envelope digests, the capability
+scope `finding:<finding_id>` exactly, the server, metadata URL, publisher,
+and payee, the fee-schedule envelope digest, settled fee terminals
+(publication plus the first participation epoch at minimum, each naming
+schedule, event, payer, amount, pool principal, rail destination, and the
+rail evidence digests), the distinct audit-pool and
+challenge-administration-pool principals with rail-tagged destinations and
+authority epochs, the community-fund destination, the status-feed
+operator reference, the purchase and failed-delivery authority snapshots,
+and a validity window. The body venue identity and the envelope signer
+MUST both equal the externally configured venue authority. Admission
+expiry MUST be no later than the earliest constituent expiry. Publication
+liveness uses both bounds: a finding with `issued_at > now` or
+`expires_at <= now` MUST NOT be indexable, admittable, or pairable with a
+fresh pricing hint.
+
+The finding family registers `chio.finding.v1`, the six signed M2 market
+artifacts above, and the unsigned replay-recipe input at this stage.
+Delivery, challenge, and status-epoch artifacts remain unsupported until
+their owning milestones define and register them.
 
 ### 6.5 Checkpoints
 

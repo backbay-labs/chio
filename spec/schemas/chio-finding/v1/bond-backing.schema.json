@@ -1,0 +1,185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/bond-backing.schema.json",
+  "title": "Chio Finding Bond Backing",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "body",
+    "signerKey",
+    "signature"
+  ],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "allocation_id",
+        "collateral_authority",
+        "seller",
+        "authorization_envelope_sha256",
+        "finding_id",
+        "listing_id",
+        "terms_envelope_sha256",
+        "profile_envelope_sha256",
+        "fee_requirement_sha256",
+        "fee_schedule_envelope_sha256",
+        "bond_class",
+        "locked_amount",
+        "maximum_sale_exposure",
+        "claim_horizon_secs",
+        "audit_horizon_secs",
+        "appeal_horizon_secs",
+        "settlement_buffer_secs",
+        "vault",
+        "issued_at",
+        "expires_at"
+      ],
+      "properties": {
+        "schema": {
+          "const": "chio.finding.bond-backing.v1"
+        },
+        "allocation_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "collateral_authority": {
+          "$ref": "#/$defs/ed25519PublicKey"
+        },
+        "seller": {
+          "$ref": "#/$defs/ed25519PublicKey"
+        },
+        "authorization_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "finding_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "listing_id": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "terms_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "profile_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "fee_requirement_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "fee_schedule_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "bond_class": {
+          "enum": [
+            "listing"
+          ]
+        },
+        "locked_amount": {
+          "$ref": "#/$defs/monetaryAmount"
+        },
+        "maximum_sale_exposure": {
+          "$ref": "#/$defs/monetaryAmount"
+        },
+        "claim_horizon_secs": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "audit_horizon_secs": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "appeal_horizon_secs": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "settlement_buffer_secs": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "vault": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "venue_ledger"
+              ],
+              "properties": {
+                "venue_ledger": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "ledger_account",
+                    "operator_epoch"
+                  ],
+                  "properties": {
+                    "ledger_account": {
+                      "$ref": "#/$defs/nonBlankString"
+                    },
+                    "operator_epoch": {
+                      "$ref": "#/$defs/iJsonU64NonZero"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "issued_at": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/iJsonU64"
+        }
+      }
+    },
+    "signerKey": {
+      "$ref": "#/$defs/ed25519PublicKey"
+    },
+    "signature": {
+      "$ref": "#/$defs/ed25519Signature"
+    }
+  },
+  "$defs": {
+    "iJsonU64": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "iJsonU64NonZero": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "nonBlankString": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "ed25519PublicKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "ed25519Signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    },
+    "monetaryAmount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "units",
+        "currency"
+      ],
+      "properties": {
+        "units": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      }
+    }
+  }
+}

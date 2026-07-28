@@ -1,0 +1,195 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/replay-recipe-input.schema.json",
+  "title": "Chio Finding Replay Recipe Input (unsigned)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "decision_rule_ref",
+    "verifier_profile_envelope_sha256",
+    "context_sha256",
+    "payload_sha256",
+    "runner_server",
+    "runner_tool",
+    "runner_manifest_sha256",
+    "phases",
+    "parameters_sha256",
+    "environment",
+    "resource_bounds",
+    "predicate",
+    "pre_run_template_sha256",
+    "claimed_verdict"
+  ],
+  "properties": {
+    "schema": {
+      "const": "chio.finding.replay-recipe-input.v1"
+    },
+    "decision_rule_ref": {
+      "$ref": "#/$defs/nonBlankString"
+    },
+    "verifier_profile_envelope_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "context_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "payload_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "runner_server": {
+      "$ref": "#/$defs/nonBlankString"
+    },
+    "runner_tool": {
+      "$ref": "#/$defs/nonBlankString"
+    },
+    "runner_manifest_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "phases": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "prefixItems": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "phase",
+            "input_bundle_sha256",
+            "payload_application"
+          ],
+          "properties": {
+            "phase": {
+              "const": "baseline"
+            },
+            "input_bundle_sha256": {
+              "$ref": "#/$defs/sha256"
+            },
+            "payload_application": {
+              "$ref": "#/$defs/nonBlankString"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "phase",
+            "input_bundle_sha256",
+            "payload_application"
+          ],
+          "properties": {
+            "phase": {
+              "const": "candidate"
+            },
+            "input_bundle_sha256": {
+              "$ref": "#/$defs/sha256"
+            },
+            "payload_application": {
+              "$ref": "#/$defs/nonBlankString"
+            }
+          }
+        }
+      ],
+      "items": false
+    },
+    "parameters_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "environment": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "runtime_image_sha256",
+        "platform",
+        "network_policy",
+        "clock_policy",
+        "randomness_policy",
+        "locale",
+        "timezone"
+      ],
+      "properties": {
+        "runtime_image_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "platform": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "network_policy": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "clock_policy": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "randomness_policy": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "locale": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "timezone": {
+          "$ref": "#/$defs/nonBlankString"
+        }
+      }
+    },
+    "resource_bounds": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "max_recipe_bytes",
+        "max_evidence_receipts",
+        "max_runtime_secs",
+        "max_memory_bytes"
+      ],
+      "properties": {
+        "max_recipe_bytes": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "max_evidence_receipts": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "max_runtime_secs": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "max_memory_bytes": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        }
+      }
+    },
+    "predicate": {
+      "enum": [
+        "baseline_fails_candidate_passes_v1"
+      ]
+    },
+    "pre_run_template_sha256": {
+      "$ref": "#/$defs/sha256"
+    },
+    "claimed_verdict": {
+      "enum": [
+        "predicate_holds",
+        "predicate_fails"
+      ]
+    }
+  },
+  "$defs": {
+    "iJsonU64": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "iJsonU64NonZero": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "nonBlankString": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

@@ -20,7 +20,8 @@ use crate::validate::{
 };
 
 /// Collateral-authority-signed bond backing allocation.
-pub const FINDING_BOND_BACKING_SCHEMA_V1: &str = "chio.finding.bond-backing.v1";
+pub const FINDING_BOND_BACKING_SCHEMA_V1: &str =
+    chio_core_types::CHIO_FINDING_BOND_BACKING_V1_SCHEMA;
 
 /// Bond class this allocation backs. The wedge admits `Listing` only;
 /// the closed enum keeps unknown classes failing at parse time.

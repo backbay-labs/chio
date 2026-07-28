@@ -95,6 +95,13 @@ fn profile_body() -> Result<FindingChallengeVerifierProfile, FindingError> {
         resource_caps: resource_caps(),
         predicate_engine: "chio-replay-v1".to_string(),
         allowed_predicates: vec![FindingPredicate::BaselineFailsCandidatePassesV1],
+        required_facets: vec![
+            FindingFacetKind::ArtifactIntegrity,
+            FindingFacetKind::ReceiptAuthenticity,
+            FindingFacetKind::CheckpointMembership,
+            FindingFacetKind::BondBacking,
+            FindingFacetKind::GuaranteeConsistency,
+        ],
         verifier_report_signer: key_policy(15, "verifier-report"),
         purchase_authority: key_policy(16, "purchase"),
         failed_delivery_authority: key_policy(17, "failed-delivery"),

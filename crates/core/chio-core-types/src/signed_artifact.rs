@@ -90,6 +90,20 @@ pub const CHIO_FINANCIAL_AGENT_PASSPORT_PRESENTATION_CHALLENGE_V1_SCHEMA: &str =
     "chio.financial-agent-passport-presentation-challenge.v1";
 /// Cognition-market finding artifact.
 pub const CHIO_FINDING_V1_SCHEMA: &str = "chio.finding.v1";
+/// Cognition-market venue admission bundle.
+pub const CHIO_FINDING_ADMISSION_V1_SCHEMA: &str = "chio.finding.admission.v1";
+/// Cognition-market bond-backing collateral allocation.
+pub const CHIO_FINDING_BOND_BACKING_V1_SCHEMA: &str = "chio.finding.bond-backing.v1";
+/// Cognition-market reusable challenge-verifier profile.
+pub const CHIO_FINDING_CHALLENGE_VERIFIER_PROFILE_V1_SCHEMA: &str =
+    "chio.finding.challenge-verifier-profile.v1";
+/// Cognition-market seller market terms.
+pub const CHIO_FINDING_MARKET_TERMS_V1_SCHEMA: &str = "chio.finding.market-terms.v1";
+/// Cognition-market issuer-signed seller authorization.
+pub const CHIO_FINDING_SELLER_AUTHORIZATION_V1_SCHEMA: &str =
+    "chio.finding.seller-authorization.v1";
+/// Cognition-market verifier facet report.
+pub const CHIO_FINDING_VERIFIER_REPORT_V1_SCHEMA: &str = "chio.finding.verifier-report.v1";
 pub const CHIO_FISCAL_CHARTER_V1_SCHEMA: &str = "chio.fiscal.charter.v1";
 pub const CHIO_FISCAL_SCHEDULE_V1_SCHEMA: &str = "chio.fiscal.schedule.v1";
 pub const CHIO_FISCAL_PROPOSAL_V1_SCHEMA: &str = "chio.fiscal.proposal.v1";
@@ -520,6 +534,30 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
     (
         CHIO_FINDING_V1_SCHEMA,
         Some(("finding", "finding-market-v1")),
+    ),
+    (
+        CHIO_FINDING_ADMISSION_V1_SCHEMA,
+        Some(("finding_admission", "finding-market-v1")),
+    ),
+    (
+        CHIO_FINDING_BOND_BACKING_V1_SCHEMA,
+        Some(("finding_bond_backing", "finding-market-v1")),
+    ),
+    (
+        CHIO_FINDING_CHALLENGE_VERIFIER_PROFILE_V1_SCHEMA,
+        Some(("finding_challenge_verifier_profile", "finding-market-v1")),
+    ),
+    (
+        CHIO_FINDING_MARKET_TERMS_V1_SCHEMA,
+        Some(("finding_market_terms", "finding-market-v1")),
+    ),
+    (
+        CHIO_FINDING_SELLER_AUTHORIZATION_V1_SCHEMA,
+        Some(("finding_seller_authorization", "finding-market-v1")),
+    ),
+    (
+        CHIO_FINDING_VERIFIER_REPORT_V1_SCHEMA,
+        Some(("finding_verifier_report", "finding-market-v1")),
     ),
     (
         CHIO_FISCAL_CHARTER_V1_SCHEMA,

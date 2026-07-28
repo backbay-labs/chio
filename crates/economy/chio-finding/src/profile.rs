@@ -14,13 +14,14 @@ use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use serde::{Deserialize, Serialize};
 
 use crate::envelope::require_ed25519;
+use crate::report::FindingFacetKind;
 use crate::validate::{
     require_hex64, require_non_empty, require_nonzero, require_window, FindingError,
 };
 
 /// Governance-signed reusable challenge-verifier profile.
 pub const FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1: &str =
-    "chio.finding.challenge-verifier-profile.v1";
+    chio_core_types::CHIO_FINDING_CHALLENGE_VERIFIER_PROFILE_V1_SCHEMA;
 
 /// Receipt signer roles the profile pins.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
@@ -170,6 +171,11 @@ pub struct FindingChallengeVerifierProfile {
     pub resource_caps: FindingResourceCaps,
     pub predicate_engine: String,
     pub allowed_predicates: Vec<FindingPredicate>,
+    /// Facets a report must have exactly `verified` for admission under
+    /// this profile, in addition to whatever a present Finding claim
+    /// requires. May be empty only in the sense that claim-derived
+    /// requirements still apply; the wedge profile lists its floor here.
+    pub required_facets: Vec<FindingFacetKind>,
     pub verifier_report_signer: FindingAuthorityKeyPolicy,
     /// M4 roles, pinned before any Finding is authored so admission can
     /// bind them ahead of the first sale.
@@ -247,6 +253,12 @@ impl FindingChallengeVerifierProfile {
         for predicate in &self.allowed_predicates {
             if !predicates.insert(*predicate) {
                 return Err(FindingError::DuplicateEntry("allowed_predicates[]"));
+            }
+        }
+        let mut required_facets = std::collections::BTreeSet::new();
+        for facet in &self.required_facets {
+            if !required_facets.insert(*facet) {
+                return Err(FindingError::DuplicateEntry("required_facets[]"));
             }
         }
         self.verifier_report_signer

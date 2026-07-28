@@ -1,0 +1,373 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/admission.schema.json",
+  "title": "Chio Finding Admission",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "body",
+    "signerKey",
+    "signature"
+  ],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "admission_id",
+        "venue",
+        "venue_id",
+        "finding_id",
+        "finding_artifact_sha256",
+        "seller_authorization_envelope_sha256",
+        "listing_id",
+        "listing_envelope_sha256",
+        "server_id",
+        "metadata_url",
+        "pricing_hint_envelope_sha256",
+        "capability_scope",
+        "publisher_operator_id",
+        "payee_destination",
+        "fee_schedule_envelope_sha256",
+        "verifier_report_id",
+        "verifier_report_envelope_sha256",
+        "terms_envelope_sha256",
+        "profile_envelope_sha256",
+        "fee_terminals",
+        "backing_allocation_id",
+        "backing_envelope_sha256",
+        "audit_pool",
+        "challenge_administration_pool",
+        "community_fund_destination",
+        "status_feed_operator_ref",
+        "purchase_authority",
+        "failed_delivery_authority",
+        "issued_at",
+        "expires_at"
+      ],
+      "properties": {
+        "schema": {
+          "const": "chio.finding.admission.v1"
+        },
+        "admission_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "venue": {
+          "$ref": "#/$defs/ed25519PublicKey"
+        },
+        "venue_id": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "finding_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "finding_artifact_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "seller_authorization_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "listing_id": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "listing_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "server_id": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "metadata_url": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "pricing_hint_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "capability_scope": {
+          "type": "string",
+          "pattern": "^finding:[0-9a-f]{64}$"
+        },
+        "publisher_operator_id": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "payee_destination": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "fee_schedule_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "verifier_report_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "verifier_report_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "terms_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "profile_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "fee_terminals": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/feeTerminalBinding"
+          },
+          "allOf": [
+            {
+              "contains": {
+                "type": "object",
+                "required": [
+                  "event"
+                ],
+                "properties": {
+                  "event": {
+                    "const": "publication"
+                  }
+                }
+              }
+            },
+            {
+              "contains": {
+                "type": "object",
+                "required": [
+                  "event"
+                ],
+                "properties": {
+                  "event": {
+                    "type": "object",
+                    "required": [
+                      "participation_epoch"
+                    ],
+                    "properties": {
+                      "participation_epoch": {
+                        "type": "object",
+                        "required": [
+                          "epoch_index"
+                        ],
+                        "properties": {
+                          "epoch_index": {
+                            "const": 0
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "backing_allocation_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "backing_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "audit_pool": {
+          "$ref": "#/$defs/poolBinding"
+        },
+        "challenge_administration_pool": {
+          "$ref": "#/$defs/poolBinding"
+        },
+        "community_fund_destination": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "status_feed_operator_ref": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "purchase_authority": {
+          "$ref": "#/$defs/authorityKeyPolicy"
+        },
+        "failed_delivery_authority": {
+          "$ref": "#/$defs/authorityKeyPolicy"
+        },
+        "issued_at": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/iJsonU64"
+        }
+      }
+    },
+    "signerKey": {
+      "$ref": "#/$defs/ed25519PublicKey"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  },
+  "$defs": {
+    "authorityKeyPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority_id",
+        "key",
+        "key_epoch",
+        "valid_from",
+        "valid_until",
+        "rotation_policy_ref",
+        "revocation_status_ref"
+      ],
+      "properties": {
+        "authority_id": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "key": {
+          "$ref": "#/$defs/ed25519PublicKey"
+        },
+        "key_epoch": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "valid_from": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "valid_until": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "rotation_policy_ref": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "revocation_status_ref": {
+          "$ref": "#/$defs/nonBlankString"
+        }
+      }
+    },
+    "ed25519PublicKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "feeEvent": {
+      "oneOf": [
+        {
+          "const": "publication"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "participation_epoch"
+          ],
+          "properties": {
+            "participation_epoch": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "epoch_index"
+              ],
+              "properties": {
+                "epoch_index": {
+                  "$ref": "#/$defs/iJsonU64"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "feeTerminalBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "fee_schedule_envelope_sha256",
+        "event",
+        "payer",
+        "amount",
+        "pool_principal_id",
+        "rail_destination",
+        "instruction_sha256",
+        "observation_sha256"
+      ],
+      "properties": {
+        "fee_schedule_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "event": {
+          "$ref": "#/$defs/feeEvent"
+        },
+        "payer": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "amount": {
+          "$ref": "#/$defs/monetaryAmount"
+        },
+        "pool_principal_id": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "rail_destination": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "instruction_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "observation_sha256": {
+          "$ref": "#/$defs/sha256"
+        }
+      }
+    },
+    "iJsonU64": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "iJsonU64NonZero": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "monetaryAmount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "units",
+        "currency"
+      ],
+      "properties": {
+        "units": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      }
+    },
+    "nonBlankString": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "poolBinding": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "principal_id",
+        "rail_destination",
+        "currency",
+        "authority_epoch"
+      ],
+      "properties": {
+        "principal_id": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "rail_destination": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "authority_epoch": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        }
+      }
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

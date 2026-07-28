@@ -23,7 +23,7 @@ use crate::validate::{
 };
 
 /// Venue-signed admission bundle.
-pub const FINDING_ADMISSION_SCHEMA_V1: &str = "chio.finding.admission.v1";
+pub const FINDING_ADMISSION_SCHEMA_V1: &str = chio_core_types::CHIO_FINDING_ADMISSION_V1_SCHEMA;
 
 /// Fee event a terminal binding settles.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]

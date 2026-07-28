@@ -1,0 +1,251 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/market-terms.schema.json",
+  "title": "Chio Finding Market Terms",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "body",
+    "signerKey",
+    "signature"
+  ],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "terms_id",
+        "finding_id",
+        "finding_artifact_sha256",
+        "listing_id",
+        "seller",
+        "backing_requirement",
+        "filing_window_secs",
+        "claim_window_secs",
+        "appeal_window_secs",
+        "audit_epoch_length_secs",
+        "audit_eligible",
+        "decision_rule_refs",
+        "verifier_profile_envelope_sha256",
+        "challenge_bond_limits",
+        "payout_policy",
+        "issued_at",
+        "expires_at"
+      ],
+      "properties": {
+        "schema": {
+          "const": "chio.finding.market-terms.v1"
+        },
+        "terms_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "finding_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "finding_artifact_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "listing_id": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "seller": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "backing_requirement": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "base_finding_stake",
+            "maximum_sale_exposure",
+            "collateral_policy"
+          ],
+          "properties": {
+            "base_finding_stake": {
+              "$ref": "#/$defs/monetaryAmountNonzero"
+            },
+            "maximum_sale_exposure": {
+              "$ref": "#/$defs/monetaryAmountNonzero"
+            },
+            "collateral_policy": {
+              "$ref": "#/$defs/nonBlankString"
+            }
+          }
+        },
+        "filing_window_secs": {
+          "$ref": "#/$defs/iJsonU64Nonzero"
+        },
+        "claim_window_secs": {
+          "$ref": "#/$defs/iJsonU64Nonzero"
+        },
+        "appeal_window_secs": {
+          "$ref": "#/$defs/iJsonU64Nonzero"
+        },
+        "audit_epoch_length_secs": {
+          "$ref": "#/$defs/iJsonU64Nonzero"
+        },
+        "audit_eligible": {
+          "type": "boolean"
+        },
+        "decision_rule_refs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/nonBlankString"
+          }
+        },
+        "verifier_profile_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "challenge_bond_limits": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/challengeBondLimit"
+          },
+          "allOf": [
+            {
+              "contains": {
+                "required": [
+                  "guarantee_class"
+                ],
+                "properties": {
+                  "guarantee_class": {
+                    "const": "deterministic_replay"
+                  }
+                }
+              },
+              "minContains": 0,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "required": [
+                  "guarantee_class"
+                ],
+                "properties": {
+                  "guarantee_class": {
+                    "const": "metered_attested"
+                  }
+                }
+              },
+              "minContains": 0,
+              "maxContains": 1
+            },
+            {
+              "contains": {
+                "required": [
+                  "guarantee_class"
+                ],
+                "properties": {
+                  "guarantee_class": {
+                    "const": "asserted"
+                  }
+                }
+              },
+              "minContains": 0,
+              "maxContains": 1
+            }
+          ]
+        },
+        "payout_policy": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "issued_at": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/iJsonU64"
+        }
+      }
+    },
+    "signerKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  },
+  "$defs": {
+    "challengeBondLimit": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "guarantee_class",
+        "min_bond",
+        "max_bond"
+      ],
+      "properties": {
+        "guarantee_class": {
+          "enum": [
+            "deterministic_replay",
+            "metered_attested",
+            "asserted"
+          ]
+        },
+        "min_bond": {
+          "$ref": "#/$defs/monetaryAmountNonzero"
+        },
+        "max_bond": {
+          "$ref": "#/$defs/monetaryAmount"
+        }
+      }
+    },
+    "iJsonU64": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "iJsonU64Nonzero": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "monetaryAmount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "units",
+        "currency"
+      ],
+      "properties": {
+        "units": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      }
+    },
+    "monetaryAmountNonzero": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "units",
+        "currency"
+      ],
+      "properties": {
+        "units": {
+          "$ref": "#/$defs/iJsonU64Nonzero"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      }
+    },
+    "nonBlankString": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

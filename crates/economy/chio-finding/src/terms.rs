@@ -19,7 +19,8 @@ use crate::validate::{
 };
 
 /// Seller-signed market terms.
-pub const FINDING_MARKET_TERMS_SCHEMA_V1: &str = "chio.finding.market-terms.v1";
+pub const FINDING_MARKET_TERMS_SCHEMA_V1: &str =
+    chio_core_types::CHIO_FINDING_MARKET_TERMS_V1_SCHEMA;
 
 /// Canonical backing requirement the admission sizing check enforces
 /// against the exact signed fee schedule:

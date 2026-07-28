@@ -18,7 +18,8 @@ use crate::validate::{
 };
 
 /// Verifier-authority-signed facet report.
-pub const FINDING_VERIFIER_REPORT_SCHEMA_V1: &str = "chio.finding.verifier-report.v1";
+pub const FINDING_VERIFIER_REPORT_SCHEMA_V1: &str =
+    chio_core_types::CHIO_FINDING_VERIFIER_REPORT_V1_SCHEMA;
 
 /// The closed 13-facet vocabulary (ARCHITECTURE 4.1.1).
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]

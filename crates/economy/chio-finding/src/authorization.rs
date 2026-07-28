@@ -14,7 +14,8 @@ use crate::envelope::require_ed25519;
 use crate::validate::{require_hex64, require_non_empty, require_window, FindingError};
 
 /// Finding-issuer-signed seller authorization.
-pub const FINDING_SELLER_AUTHORIZATION_SCHEMA_V1: &str = "chio.finding.seller-authorization.v1";
+pub const FINDING_SELLER_AUTHORIZATION_SCHEMA_V1: &str =
+    chio_core_types::CHIO_FINDING_SELLER_AUTHORIZATION_V1_SCHEMA;
 
 /// Where sale proceeds go. Either a direct rail-tagged beneficiary
 /// destination or a provider-signed payee mapping committed by envelope

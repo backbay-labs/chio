@@ -766,13 +766,51 @@ fn built_in_signed_artifact_registry_matches_public_metadata() {
 /// registers a finding-family schema extends the matching table.
 #[test]
 fn finding_family_schema_registry_parity_is_bidirectional() {
-    const EXPECTED_SIGNED: &[(&str, &str, &str, &str)] = &[(
-        "chio.finding.v1",
-        "finding",
-        "finding-market-v1",
-        "spec/schemas/chio-finding/v1/finding.schema.json",
-    )];
-    const EXPECTED_REGISTRY_ONLY: &[&str] = &[];
+    const EXPECTED_SIGNED: &[(&str, &str, &str, &str)] = &[
+        (
+            "chio.finding.v1",
+            "finding",
+            "finding-market-v1",
+            "spec/schemas/chio-finding/v1/finding.schema.json",
+        ),
+        (
+            "chio.finding.admission.v1",
+            "finding_admission",
+            "finding-market-v1",
+            "spec/schemas/chio-finding/v1/admission.schema.json",
+        ),
+        (
+            "chio.finding.bond-backing.v1",
+            "finding_bond_backing",
+            "finding-market-v1",
+            "spec/schemas/chio-finding/v1/bond-backing.schema.json",
+        ),
+        (
+            "chio.finding.challenge-verifier-profile.v1",
+            "finding_challenge_verifier_profile",
+            "finding-market-v1",
+            "spec/schemas/chio-finding/v1/challenge-verifier-profile.schema.json",
+        ),
+        (
+            "chio.finding.market-terms.v1",
+            "finding_market_terms",
+            "finding-market-v1",
+            "spec/schemas/chio-finding/v1/market-terms.schema.json",
+        ),
+        (
+            "chio.finding.seller-authorization.v1",
+            "finding_seller_authorization",
+            "finding-market-v1",
+            "spec/schemas/chio-finding/v1/seller-authorization.schema.json",
+        ),
+        (
+            "chio.finding.verifier-report.v1",
+            "finding_verifier_report",
+            "finding-market-v1",
+            "spec/schemas/chio-finding/v1/verifier-report.schema.json",
+        ),
+    ];
+    const EXPECTED_REGISTRY_ONLY: &[&str] = &["chio.finding.replay-recipe-input.v1"];
 
     let registry: serde_json::Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),

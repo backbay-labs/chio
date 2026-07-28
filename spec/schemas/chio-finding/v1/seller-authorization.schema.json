@@ -1,0 +1,148 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/seller-authorization.schema.json",
+  "title": "Chio Finding Seller Authorization (signed envelope)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "body",
+    "signerKey",
+    "signature"
+  ],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "authorization_id",
+        "finding_id",
+        "finding_artifact_sha256",
+        "listing_id",
+        "issuer",
+        "seller",
+        "provider_server_id",
+        "provider_tool",
+        "payee",
+        "revocation_status_ref",
+        "issued_at",
+        "expires_at"
+      ],
+      "properties": {
+        "schema": {
+          "const": "chio.finding.seller-authorization.v1"
+        },
+        "authorization_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "finding_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "finding_artifact_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "listing_id": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "issuer": {
+          "$ref": "#/$defs/ed25519PublicKey"
+        },
+        "seller": {
+          "$ref": "#/$defs/ed25519PublicKey"
+        },
+        "provider_server_id": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "provider_tool": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "payee": {
+          "oneOf": [
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "beneficiary"
+              ],
+              "properties": {
+                "beneficiary": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "destination",
+                    "currency"
+                  ],
+                  "properties": {
+                    "destination": {
+                      "$ref": "#/$defs/nonBlankString"
+                    },
+                    "currency": {
+                      "type": "string",
+                      "pattern": "^[A-Z]{3}$"
+                    }
+                  }
+                }
+              }
+            },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "provider_payee_mapping"
+              ],
+              "properties": {
+                "provider_payee_mapping": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "mapping_envelope_sha256"
+                  ],
+                  "properties": {
+                    "mapping_envelope_sha256": {
+                      "$ref": "#/$defs/sha256"
+                    }
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "revocation_status_ref": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "issued_at": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/iJsonU64"
+        }
+      }
+    },
+    "signerKey": {
+      "$ref": "#/$defs/ed25519PublicKey"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  },
+  "$defs": {
+    "iJsonU64": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "nonBlankString": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "ed25519PublicKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

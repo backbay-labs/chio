@@ -1,0 +1,341 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/challenge-verifier-profile.schema.json",
+  "title": "Chio Finding Challenge-Verifier Profile",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "body",
+    "signerKey",
+    "signature"
+  ],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "profile_id",
+        "governance_authority",
+        "operator",
+        "receipt_signers",
+        "checkpoint_logs",
+        "bbs_projection_issuer",
+        "allowed_runner_manifests",
+        "required_receipt_semantics",
+        "resolver_policy_ref",
+        "retention_policy_ref",
+        "resource_caps",
+        "predicate_engine",
+        "allowed_predicates",
+        "required_facets",
+        "verifier_report_signer",
+        "purchase_authority",
+        "failed_delivery_authority",
+        "issued_at",
+        "expires_at"
+      ],
+      "properties": {
+        "schema": {
+          "const": "chio.finding.challenge-verifier-profile.v1"
+        },
+        "profile_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "governance_authority": {
+          "$ref": "#/$defs/ed25519PublicKey"
+        },
+        "operator": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "receipt_signers": {
+          "type": "array",
+          "minItems": 3,
+          "maxItems": 3,
+          "items": {
+            "$ref": "#/$defs/receiptSignerRole"
+          },
+          "allOf": [
+            {
+              "contains": {
+                "type": "object",
+                "required": [
+                  "role"
+                ],
+                "properties": {
+                  "role": {
+                    "const": "production"
+                  }
+                }
+              }
+            },
+            {
+              "contains": {
+                "type": "object",
+                "required": [
+                  "role"
+                ],
+                "properties": {
+                  "role": {
+                    "const": "delivery"
+                  }
+                }
+              }
+            },
+            {
+              "contains": {
+                "type": "object",
+                "required": [
+                  "role"
+                ],
+                "properties": {
+                  "role": {
+                    "const": "replay"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "checkpoint_logs": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/checkpointLogPolicy"
+          }
+        },
+        "bbs_projection_issuer": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "issuer_fingerprint",
+            "key_hex",
+            "registry_ref",
+            "key_epoch",
+            "valid_from",
+            "valid_until",
+            "revocation_status_ref"
+          ],
+          "properties": {
+            "issuer_fingerprint": {
+              "$ref": "#/$defs/nonBlankString"
+            },
+            "key_hex": {
+              "$ref": "#/$defs/nonBlankString"
+            },
+            "registry_ref": {
+              "$ref": "#/$defs/nonBlankString"
+            },
+            "key_epoch": {
+              "$ref": "#/$defs/positiveIJsonU64"
+            },
+            "valid_from": {
+              "$ref": "#/$defs/iJsonU64"
+            },
+            "valid_until": {
+              "$ref": "#/$defs/iJsonU64"
+            },
+            "revocation_status_ref": {
+              "$ref": "#/$defs/nonBlankString"
+            }
+          }
+        },
+        "allowed_runner_manifests": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/sha256"
+          }
+        },
+        "required_receipt_semantics": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "resolver_policy_ref": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "retention_policy_ref": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "resource_caps": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "max_recipe_bytes",
+            "max_evidence_receipts",
+            "max_runtime_secs",
+            "max_memory_bytes"
+          ],
+          "properties": {
+            "max_recipe_bytes": {
+              "$ref": "#/$defs/positiveIJsonU64"
+            },
+            "max_evidence_receipts": {
+              "$ref": "#/$defs/positiveIJsonU64"
+            },
+            "max_runtime_secs": {
+              "$ref": "#/$defs/positiveIJsonU64"
+            },
+            "max_memory_bytes": {
+              "$ref": "#/$defs/positiveIJsonU64"
+            }
+          }
+        },
+        "predicate_engine": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "allowed_predicates": {
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "baseline_fails_candidate_passes_v1"
+            ]
+          }
+        },
+        "required_facets": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": [
+              "artifact_integrity",
+              "receipt_authenticity",
+              "checkpoint_membership",
+              "kernel_and_revocation_trust",
+              "issuer_lineage",
+              "recipe_binding",
+              "intent_binding",
+              "metered_exposure_backing",
+              "settled_spend_backing",
+              "runtime_assurance_backing",
+              "bond_backing",
+              "status_liveness",
+              "guarantee_consistency"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "verifier_report_signer": {
+          "$ref": "#/$defs/authorityKeyPolicy"
+        },
+        "purchase_authority": {
+          "$ref": "#/$defs/authorityKeyPolicy"
+        },
+        "failed_delivery_authority": {
+          "$ref": "#/$defs/authorityKeyPolicy"
+        },
+        "issued_at": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "expires_at": {
+          "$ref": "#/$defs/iJsonU64"
+        }
+      }
+    },
+    "signerKey": {
+      "$ref": "#/$defs/ed25519PublicKey"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  },
+  "$defs": {
+    "iJsonU64": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "positiveIJsonU64": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "nonBlankString": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "ed25519PublicKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "authorityKeyPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "authority_id",
+        "key",
+        "key_epoch",
+        "valid_from",
+        "valid_until",
+        "rotation_policy_ref",
+        "revocation_status_ref"
+      ],
+      "properties": {
+        "authority_id": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "key": {
+          "$ref": "#/$defs/ed25519PublicKey"
+        },
+        "key_epoch": {
+          "$ref": "#/$defs/positiveIJsonU64"
+        },
+        "valid_from": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "valid_until": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "rotation_policy_ref": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "revocation_status_ref": {
+          "$ref": "#/$defs/nonBlankString"
+        }
+      }
+    },
+    "receiptSignerRole": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "role",
+        "policy"
+      ],
+      "properties": {
+        "role": {
+          "enum": [
+            "production",
+            "delivery",
+            "replay"
+          ]
+        },
+        "policy": {
+          "$ref": "#/$defs/authorityKeyPolicy"
+        }
+      }
+    },
+    "checkpointLogPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "log_id",
+        "signer"
+      ],
+      "properties": {
+        "log_id": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "signer": {
+          "$ref": "#/$defs/authorityKeyPolicy"
+        }
+      }
+    }
+  }
+}
