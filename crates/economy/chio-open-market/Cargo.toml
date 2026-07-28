@@ -13,15 +13,23 @@ name = "chio_open_market"
 
 [dependencies]
 chio-core-types = { workspace = true }
+chio-finding = { workspace = true, optional = true }
 chio-fiscal = { workspace = true }
 chio-governance = { workspace = true }
 chio-listing = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 
+[features]
+# Ship dark (cognition-market program constraint): the finding admission
+# seam compiles only when this feature is on, so default builds keep
+# byte-identical behavior until the launch gate flips.
+cognition-market-experimental = ["dep:chio-finding"]
+
 [dev-dependencies]
 chio-finding = { workspace = true }
 chio-test-support = { workspace = true }
+serde_json = { workspace = true }
 
 [lints]
 workspace = true

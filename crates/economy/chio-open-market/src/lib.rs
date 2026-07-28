@@ -13,6 +13,8 @@
 //! - [`penalty`] - abuse classes, penalty artifacts, issue requests, and states.
 //! - [`evidence`] - evidence references and evaluation finding codes.
 //! - [`evaluation`] - penalty evaluation requests and fail-closed market rules.
+//! - `finding_admission` - admission-gated cognition-market bid seam,
+//!   compiled only under the `cognition-market-experimental` feature.
 
 #![forbid(unsafe_code)]
 
@@ -25,6 +27,8 @@ pub mod bidding;
 pub mod evaluation;
 pub mod evidence;
 pub mod fee_schedule;
+#[cfg(feature = "cognition-market-experimental")]
+pub mod finding_admission;
 pub mod fiscal_adapter;
 pub mod penalty;
 pub(crate) mod validation;

@@ -108,8 +108,18 @@ impl OpenMarketFeeScheduleArtifact {
         if self.bond_requirements.is_empty() {
             return Err("bond_requirements must not be empty".to_string());
         }
+        // The penalty evaluator resolves a bond class by first match, so a
+        // schedule carrying two requirements for the same class is ambiguous
+        // about which one governs. Reject the shape at validation time.
+        let mut seen_bond_classes = std::collections::BTreeSet::new();
         for (index, requirement) in self.bond_requirements.iter().enumerate() {
             requirement.validate(&format!("bond_requirements[{index}]"))?;
+            if !seen_bond_classes.insert(requirement.bond_class as u8) {
+                return Err(format!(
+                    "bond_requirements[{index}] repeats a bond class; each bond class may \
+                     appear at most once"
+                ));
+            }
         }
         if let Some(expires_at) = self.expires_at {
             if expires_at <= self.issued_at {
@@ -212,5 +222,80 @@ fn validate_non_empty(value: &str, field: &str) -> Result<(), String> {
         Err(format!("{field} must not be empty"))
     } else {
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use chio_test_support::prelude::*;
+
+    use super::*;
+
+    fn usd(units: u64) -> MonetaryAmount {
+        MonetaryAmount {
+            units,
+            currency: "USD".to_string(),
+        }
+    }
+
+    fn requirement(bond_class: OpenMarketBondClass, units: u64) -> OpenMarketBondRequirement {
+        OpenMarketBondRequirement {
+            bond_class,
+            required_amount: usd(units),
+            collateral_reference_kind: OpenMarketCollateralReferenceKind::ExternalReference,
+            slashable: true,
+        }
+    }
+
+    fn issue_request(
+        bond_requirements: Vec<OpenMarketBondRequirement>,
+    ) -> OpenMarketFeeScheduleIssueRequest {
+        OpenMarketFeeScheduleIssueRequest {
+            scope: OpenMarketEconomicsScope {
+                namespace: "market.example".to_string(),
+                allowed_listing_operator_ids: Vec::new(),
+                allowed_actor_kinds: Vec::new(),
+                allowed_admission_classes: Vec::new(),
+                policy_reference: None,
+            },
+            publication_fee: usd(1),
+            dispute_fee: usd(2),
+            market_participation_fee: usd(3),
+            bond_requirements,
+            issued_by: "operator.example".to_string(),
+            issued_at: Some(100),
+            expires_at: None,
+            note: None,
+        }
+    }
+
+    #[test]
+    fn fee_schedule_rejects_duplicate_bond_classes() {
+        let distinct = issue_request(vec![
+            requirement(OpenMarketBondClass::Listing, 10),
+            requirement(OpenMarketBondClass::Dispute, 20),
+        ]);
+        let mut artifact =
+            build_open_market_fee_schedule_artifact("operator.example", None, &distinct, 100)
+                .test_unwrap();
+
+        artifact
+            .bond_requirements
+            .push(requirement(OpenMarketBondClass::Listing, 30));
+        let error = artifact.validate().test_unwrap_err();
+        assert!(error.contains("bond_requirements[2]"));
+        assert!(error.contains("at most once"));
+
+        let duplicated = issue_request(vec![
+            requirement(OpenMarketBondClass::Listing, 10),
+            requirement(OpenMarketBondClass::Listing, 30),
+        ]);
+        assert!(build_open_market_fee_schedule_artifact(
+            "operator.example",
+            None,
+            &duplicated,
+            100
+        )
+        .is_err());
     }
 }
