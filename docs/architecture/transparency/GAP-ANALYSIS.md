@@ -236,9 +236,14 @@ tests exist, so promotion evidence cannot be faked, and every step here is
 mandatory rather than ceremonial.
 
 Conformance coverage today: the transparency surface consists of six
-`anchor_batch_*` negative tests in `crates/tooling/chio-conformance/tests/`.
-There are none for checkpoint consistency, equivocation, or continuity-class
-qualification.
+anchor-batch negative tests (five `anchor_batch_*` files plus
+`b3_anchor_batch_sync_path_rejected_under_public_witness.rs`) plus
+`checkpoint_consistency_forged_chain_root_rejected.rs` and
+`checkpoint_statement_unknown_field_rejected.rs` in
+`crates/tooling/chio-conformance/tests/`. The forged-root and signed-body
+parser boundaries are covered. Split-view equivocation, predecessor
+continuity, missing child proofs, incomplete receipt families, and
+continuity-class qualification still need conformance negatives.
 
 ## 9. Retention against append-only
 
@@ -284,7 +289,7 @@ Stage column carries scheduling, and the program README defines stage order.
 | 12 | Wire checkpoint issuance to publication: the checkpoint to `AnchorBatch` to witness pipeline gains a production caller and becomes mandatory under an append-only profile | 4 | internal | M | `chio-anchor/src/batch.rs`, `chio-anchor/src/automation.rs` |
 | 13 | Prove the two anchor theorems | 4 | internal | M-L | `theorem-inventory.v1.json`, `formal/lean4/Chio/Chio/Proofs/` |
 | 14 | Register the claim and proof-manifest rows | 5 | internal | S | `claim-registry.v1.json`, `proof-manifest.v1.json` |
-| 15 | Conformance negatives: split view, broken consistency proof, missing child proof, incomplete family, unqualified policy | 1-5 | internal | M | `crates/tooling/chio-conformance/tests/` |
+| 15 | Finish conformance negatives: split view, predecessor continuity, missing child proof, incomplete family, unqualified policy (forged consistency root and checkpoint parser negatives landed 2026-07-27) | 1-5 | internal | M | `crates/tooling/chio-conformance/tests/` |
 | 16 | Substrate publisher behind the existing witness seam | 5 | substrate | M | `chio-anchor/src/witness.rs` |
 | 17 | Replication and availability operations: topology, freshness windows, service levels | 5 | substrate | M | ops, `docs/security/public-witness-semantics.md` |
 | 18 | Independent monitors and cross-view comparison: exchange observed heads, run detection across views | 5 | mixed | L | `checkpoint.rs:440-508`, new federation surface |

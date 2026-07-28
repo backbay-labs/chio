@@ -18,7 +18,7 @@ use chio_core::receipt::{
     checkpoint::CheckpointPublicationIdentityKind,
     checkpoint::CheckpointPublicationTrustAnchorBinding,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::ReceiptStoreError;
 
@@ -41,6 +41,22 @@ pub const CHECKPOINT_EQUIVOCATION_SCHEMA: &str = "chio.checkpoint_equivocation.v
 #[must_use]
 pub fn is_supported_checkpoint_schema(schema: &str) -> bool {
     matches!(schema, CHECKPOINT_SCHEMA_V1 | CHECKPOINT_SCHEMA_V2)
+}
+
+fn deserialize_non_null_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: serde::de::DeserializeOwned,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    if value.is_null() {
+        return Err(<D::Error as serde::de::Error>::custom(
+            "explicit null is not permitted; omit the optional field",
+        ));
+    }
+    T::deserialize(value)
+        .map(Some)
+        .map_err(<D::Error as serde::de::Error>::custom)
 }
 
 /// Error type for checkpoint operations.
@@ -87,7 +103,11 @@ pub struct KernelCheckpointBody {
     /// The kernel's signing key (public).
     pub kernel_key: PublicKey,
     /// Hash of the immediately preceding checkpoint body when this checkpoint extends a prior batch.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_non_null_option"
+    )]
     pub previous_checkpoint_sha256: Option<String>,
     /// RFC 6962 root over the checkpoint-chain leaves for checkpoint_seq 1
     /// through this checkpoint, one leaf per checkpoint binding its sequence,
@@ -95,7 +115,11 @@ pub struct KernelCheckpointBody {
     /// is the commitment that consistency proofs verify against. Absent on
     /// v1 checkpoints and on detached v2 checkpoints built without chain
     /// context.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_non_null_option"
+    )]
     pub chain_root: Option<Hash>,
 }
 
@@ -1147,6 +1171,12 @@ pub fn validate_checkpoint_transparency(
                     checkpoint.body.checkpoint_seq
                 )));
             }
+            if checkpoint.body.batch_start_seq != 1 {
+                return Err(CheckpointError::Continuity(format!(
+                    "checkpoint 1 must start at receipt 1, got {}",
+                    checkpoint.body.batch_start_seq
+                )));
+            }
             continue;
         };
         let previous = by_digest.get(previous_checkpoint_sha256).ok_or_else(|| {
@@ -1485,6 +1515,21 @@ pub fn validate_checkpoint(checkpoint: &KernelCheckpoint) -> Result<(), Checkpoi
             "tree_size must be greater than zero".to_string(),
         ));
     }
+    if checkpoint.body.issued_at == 0 {
+        return Err(CheckpointError::Invalid(
+            "issued_at must be greater than zero".to_string(),
+        ));
+    }
+    if checkpoint
+        .body
+        .previous_checkpoint_sha256
+        .as_deref()
+        .is_some_and(|digest| !is_lowercase_sha256(digest))
+    {
+        return Err(CheckpointError::Invalid(
+            "previous_checkpoint_sha256 must be 64 lowercase hex characters".to_string(),
+        ));
+    }
     let expected_tree_size = checkpoint_batch_entry_count(&checkpoint.body)?;
     if u64::try_from(checkpoint.body.tree_size).ok() != Some(expected_tree_size) {
         return Err(CheckpointError::Invalid(format!(
@@ -1522,6 +1567,13 @@ pub fn validate_checkpoint(checkpoint: &KernelCheckpoint) -> Result<(), Checkpoi
         return Err(CheckpointError::InvalidSignature);
     }
     Ok(())
+}
+
+fn is_lowercase_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 /// Validate that `checkpoint` cleanly extends `predecessor`.

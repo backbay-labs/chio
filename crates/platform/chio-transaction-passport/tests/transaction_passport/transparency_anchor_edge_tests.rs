@@ -177,6 +177,91 @@ fn standalone_minimal_passport_rejects_signed_checkpoint_unknown_body_fields() {
 }
 
 #[test]
+fn standalone_minimal_passport_rejects_signed_checkpoint_explicit_null_options() {
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|artifact| {
+            let mut body = artifact["checkpoint_statement"]["body"].clone();
+            body["previous_checkpoint_sha256"] = Value::Null;
+            let signature = transparency_checkpoint_keypair()
+                .sign(
+                    &chio_core_types::canonical_json_bytes(&body)
+                        .test_expect("canonical explicit-null checkpoint body"),
+                )
+                .to_hex();
+            artifact["checkpoint_statement"] = json!({
+                "body": body,
+                "signature": signature
+            });
+        });
+
+    let error =
+        verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+            .test_expect_err("a signed explicit-null checkpoint option must deny");
+    assert!(
+        error
+            .to_string()
+            .contains("previous_checkpoint_sha256 must be omitted rather than null"),
+        "{error}"
+    );
+}
+
+#[test]
+fn standalone_minimal_passport_rejects_zero_checkpoint_issuance_time() {
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|artifact| {
+            let mut body = artifact["checkpoint_statement"]["body"].clone();
+            body["issued_at"] = json!(0);
+            let signature = transparency_checkpoint_keypair()
+                .sign(
+                    &chio_core_types::canonical_json_bytes(&body)
+                        .test_expect("canonical zero-time checkpoint body"),
+                )
+                .to_hex();
+            artifact["checkpoint_statement"] = json!({
+                "body": body,
+                "signature": signature
+            });
+        });
+
+    let error =
+        verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+            .test_expect_err("a signed zero-time checkpoint must deny");
+    assert!(
+        error
+            .to_string()
+            .contains("checkpoint statement issued_at must be greater than zero"),
+        "{error}"
+    );
+}
+
+#[test]
+fn standalone_minimal_passport_requires_node_and_artifact_schema_parity() {
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|_| {});
+    let mut graph: Value =
+        serde_json::from_slice(&evidence_graph_bytes).test_expect("evidence graph parses");
+    let inclusion_node = graph["nodes"]
+        .as_array_mut()
+        .test_expect("graph nodes are an array")
+        .iter_mut()
+        .find(|node| node["role"] == "transparency-inclusion-proof")
+        .test_expect("transparency node exists");
+    inclusion_node["schema"] = json!("chio.transparency.inclusion-proof.v1");
+    let evidence_graph_bytes =
+        serde_json::to_vec(&graph).test_expect("mismatched evidence graph serializes");
+
+    let error =
+        verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+            .test_expect_err("a node cannot promote an artifact under a different schema");
+    assert!(
+        error
+            .to_string()
+            .contains("does not match artifact schema chio.transparency.inclusion-proof.v2"),
+        "{error}"
+    );
+}
+
+#[test]
 fn standalone_minimal_passport_keeps_preview_when_the_anchor_is_not_evaluable() {
     // With no pinned checkpoint keys the verifier cannot judge the anchor, so
     // the graph settles at the preview tier instead of erroring. The fixture

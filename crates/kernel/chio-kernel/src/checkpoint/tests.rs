@@ -204,6 +204,64 @@ fn validate_checkpoint_transparency_rejects_duplicate_signed_checkpoints() {
 }
 
 #[test]
+fn validate_checkpoint_transparency_requires_the_first_receipt_prefix() {
+    let keypair = Keypair::generate();
+    let checkpoint = build_checkpoint(1, 5, 5, &make_receipt_bytes(1), &keypair)
+        .expect("build signed late-starting checkpoint");
+    validate_checkpoint(&checkpoint).expect("single-checkpoint integrity remains valid");
+
+    let error = validate_checkpoint_transparency(&[checkpoint])
+        .expect_err("transparency must reject a prefix that starts after receipt one");
+    assert!(
+        error
+            .to_string()
+            .contains("checkpoint 1 must start at receipt 1, got 5"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn validate_checkpoint_rejects_zero_time_and_malformed_predecessor_digest() {
+    let keypair = Keypair::generate();
+    let checkpoint = build_checkpoint(1, 1, 1, &make_receipt_bytes(1), &keypair)
+        .expect("build signed checkpoint");
+
+    let mut zero_time = checkpoint.clone();
+    zero_time.body.issued_at = 0;
+    let error = validate_checkpoint(&zero_time).expect_err("zero issued_at must fail closed");
+    assert!(error
+        .to_string()
+        .contains("issued_at must be greater than zero"));
+
+    let mut malformed_predecessor = checkpoint;
+    malformed_predecessor.body.previous_checkpoint_sha256 = Some("not-a-digest".to_string());
+    let error = validate_checkpoint(&malformed_predecessor)
+        .expect_err("malformed predecessor digest must fail closed");
+    assert!(error
+        .to_string()
+        .contains("must be 64 lowercase hex characters"));
+}
+
+#[test]
+fn checkpoint_body_rejects_explicit_null_options_at_deserialization() {
+    let keypair = Keypair::generate();
+    let checkpoint = build_checkpoint(1, 1, 1, &make_receipt_bytes(1), &keypair)
+        .expect("build signed checkpoint");
+
+    for field in ["previous_checkpoint_sha256", "chain_root"] {
+        let mut document =
+            serde_json::to_value(&checkpoint).expect("serialize signed checkpoint fixture");
+        document["body"][field] = serde_json::Value::Null;
+        let error = serde_json::from_value::<KernelCheckpoint>(document)
+            .expect_err("explicit null checkpoint options must fail closed");
+        assert!(
+            error.to_string().contains("explicit null is not permitted"),
+            "unexpected {field} error: {error}"
+        );
+    }
+}
+
+#[test]
 fn checkpoint_log_id_preserves_historical_ed25519_hashing() {
     let kp = Keypair::generate();
     let checkpoint =
@@ -1166,7 +1224,7 @@ fn validate_checkpoint_predecessor_rejects_wrong_predecessor_digest() {
         &chain_leaves(&[&first]),
     )
     .expect("build failed");
-    second.body.previous_checkpoint_sha256 = Some("not-the-real-digest".to_string());
+    second.body.previous_checkpoint_sha256 = Some("00".repeat(32));
     second.signature =
         kp.sign(&canonical_json_bytes(&second.body).expect("canonical second checkpoint body"));
 

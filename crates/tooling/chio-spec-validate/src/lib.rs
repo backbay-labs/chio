@@ -524,6 +524,270 @@ mod tests {
         }
     }
 
+    #[test]
+    fn web3_v2_anchor_schema_rejects_empty_nested_payloads() {
+        let schema_path = workspace_schema_path("chio-web3/v2/anchor-inclusion-proof.schema.json");
+        let schema = load_json(&schema_path)
+            .unwrap_or_else(|error| panic!("load v2 anchor schema: {error}"));
+        let document = json!({
+            "schema": "chio.anchor-inclusion-proof.v2",
+            "receipt": {},
+            "receipt_inclusion": {},
+            "checkpoint_statement": {},
+            "key_binding_certificate": {}
+        });
+
+        assert!(
+            matches!(
+                validate_value(
+                    &schema_path,
+                    &schema,
+                    Path::new("<empty-anchor-payload>"),
+                    &document
+                ),
+                Err(ValidateError::SchemaViolation(_, _, _))
+            ),
+            "empty nested anchor payloads must compile the schema and fail validation"
+        );
+    }
+
+    #[test]
+    fn transparency_v2_schema_accepts_supported_checkpoint_algorithms() {
+        let schema_path = workspace_schema_path("chio-transparency/v2/inclusion-proof.schema.json");
+        let schema = load_json(&schema_path)
+            .unwrap_or_else(|error| panic!("load v2 transparency schema: {error}"));
+        let algorithm_values = [
+            ("a".repeat(64), "b".repeat(128)),
+            (
+                format!("p256:04{}", "a".repeat(128)),
+                format!("p256:{}", "b".repeat(142)),
+            ),
+            (
+                format!("p384:04{}", "a".repeat(192)),
+                format!("p384:{}", "b".repeat(208)),
+            ),
+            (
+                format!(
+                    "hybrid:{}:{}:ed25519+mldsa65",
+                    "a".repeat(64),
+                    "c".repeat(3904)
+                ),
+                format!(
+                    "hybrid:{}:{}:ed25519+mldsa65",
+                    "b".repeat(128),
+                    "d".repeat(6618)
+                ),
+            ),
+            (
+                format!(
+                    "hybrid:p256:04{}:{}:p256+mldsa65",
+                    "a".repeat(128),
+                    "c".repeat(3904)
+                ),
+                format!(
+                    "hybrid:p256:{}:{}:p256+mldsa65",
+                    "b".repeat(142),
+                    "d".repeat(6618)
+                ),
+            ),
+        ];
+
+        for (kernel_key, signature) in algorithm_values {
+            let document = json!({
+                "schema": "chio.transparency.inclusion-proof.v2",
+                "proof_id": "proof-1",
+                "log_id": "log-1",
+                "artifact_ref": "1".repeat(64),
+                "root_hash": "2".repeat(64),
+                "leaf_hash": "2".repeat(64),
+                "tree_size": 1,
+                "leaf_index": 0,
+                "checkpoint": "log-1:1",
+                "inclusion_path": [],
+                "verified_at": 1,
+                "checkpoint_statement": {
+                    "body": {
+                        "schema": "chio.checkpoint_statement.v2",
+                        "checkpoint_seq": 1,
+                        "batch_start_seq": 1,
+                        "batch_end_seq": 1,
+                        "tree_size": 1,
+                        "merkle_root": "2".repeat(64),
+                        "issued_at": 1,
+                        "kernel_key": kernel_key,
+                        "chain_root": "3".repeat(64)
+                    },
+                    "signature": signature
+                }
+            });
+            validate_value(
+                &schema_path,
+                &schema,
+                Path::new("<supported-checkpoint-algorithm>"),
+                &document,
+            )
+            .unwrap_or_else(|error| {
+                panic!("supported checkpoint algorithm must validate: {error}")
+            });
+        }
+    }
+
+    #[test]
+    fn transparency_v2_schema_rejects_mismatched_or_malformed_algorithm_envelopes() {
+        let schema_path = workspace_schema_path("chio-transparency/v2/inclusion-proof.schema.json");
+        let schema = load_json(&schema_path)
+            .unwrap_or_else(|error| panic!("load v2 transparency schema: {error}"));
+        let invalid_pairs = [
+            (
+                format!("p256:{}", "a".repeat(130)),
+                format!("p256:{}", "b".repeat(141)),
+            ),
+            (
+                format!(
+                    "hybrid:{}:{}:p256+mldsa65",
+                    "a".repeat(64),
+                    "c".repeat(3904)
+                ),
+                format!(
+                    "hybrid:{}:{}:p256+mldsa65",
+                    "b".repeat(128),
+                    "d".repeat(6618)
+                ),
+            ),
+        ];
+
+        for (kernel_key, signature) in invalid_pairs {
+            let document = json!({
+                "schema": "chio.transparency.inclusion-proof.v2",
+                "proof_id": "proof-1",
+                "log_id": "log-1",
+                "artifact_ref": "1".repeat(64),
+                "root_hash": "2".repeat(64),
+                "leaf_hash": "2".repeat(64),
+                "tree_size": 1,
+                "leaf_index": 0,
+                "checkpoint": "log-1:1",
+                "inclusion_path": [],
+                "verified_at": 1,
+                "checkpoint_statement": {
+                    "body": {
+                        "schema": "chio.checkpoint_statement.v2",
+                        "checkpoint_seq": 1,
+                        "batch_start_seq": 1,
+                        "batch_end_seq": 1,
+                        "tree_size": 1,
+                        "merkle_root": "2".repeat(64),
+                        "issued_at": 1,
+                        "kernel_key": kernel_key,
+                        "chain_root": "3".repeat(64)
+                    },
+                    "signature": signature
+                }
+            });
+            assert!(matches!(
+                validate_value(
+                    &schema_path,
+                    &schema,
+                    Path::new("<invalid-checkpoint-algorithm>"),
+                    &document
+                ),
+                Err(ValidateError::SchemaViolation(_, _, _))
+            ));
+        }
+    }
+
+    #[test]
+    fn transparency_v2_schema_enforces_checkpoint_version_chain_root_rules() {
+        let schema_path = workspace_schema_path("chio-transparency/v2/inclusion-proof.schema.json");
+        let schema = load_json(&schema_path)
+            .unwrap_or_else(|error| panic!("load v2 transparency schema: {error}"));
+        let invalid_documents = [
+            transparency_document(
+                "chio.checkpoint_statement.v1",
+                1,
+                Some(json!("3".repeat(64))),
+            ),
+            transparency_document("chio.checkpoint_statement.v2", 1, None),
+        ];
+        for document in invalid_documents {
+            assert!(matches!(
+                validate_value(
+                    &schema_path,
+                    &schema,
+                    Path::new("<invalid-checkpoint-version-root>"),
+                    &document
+                ),
+                Err(ValidateError::SchemaViolation(_, _, _))
+            ));
+        }
+
+        let detached_later = transparency_document("chio.checkpoint_statement.v2", 2, None);
+        validate_value(
+            &schema_path,
+            &schema,
+            Path::new("<detached-later-v2-checkpoint>"),
+            &detached_later,
+        )
+        .unwrap_or_else(|error| panic!("later detached v2 checkpoint must validate: {error}"));
+    }
+
+    #[test]
+    fn web3_v2_anchor_bundle_excludes_the_primary_lane_from_secondary_lanes() {
+        let schema_path = workspace_schema_path("chio-web3/v2/anchor-proof-bundle.schema.json");
+        let schema = load_json(&schema_path)
+            .unwrap_or_else(|error| panic!("load v2 anchor bundle schema: {error}"));
+        assert_eq!(
+            schema.pointer("/properties/secondary_lanes/items/enum"),
+            Some(&json!(["bitcoin_ots", "solana_memo"]))
+        );
+    }
+
+    fn workspace_schema_path(relative: &str) -> PathBuf {
+        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        path.push("../../..");
+        path.push("spec/schemas");
+        path.push(relative);
+        fs::canonicalize(&path)
+            .unwrap_or_else(|error| panic!("canonicalize {}: {error}", path.display()))
+    }
+
+    fn transparency_document(
+        checkpoint_schema: &str,
+        checkpoint_seq: u64,
+        chain_root: Option<Value>,
+    ) -> Value {
+        let mut body = json!({
+            "schema": checkpoint_schema,
+            "checkpoint_seq": checkpoint_seq,
+            "batch_start_seq": checkpoint_seq,
+            "batch_end_seq": checkpoint_seq,
+            "tree_size": 1,
+            "merkle_root": "2".repeat(64),
+            "issued_at": 1,
+            "kernel_key": "a".repeat(64)
+        });
+        if let Some(chain_root) = chain_root {
+            body["chain_root"] = chain_root;
+        }
+        json!({
+            "schema": "chio.transparency.inclusion-proof.v2",
+            "proof_id": "proof-1",
+            "log_id": "log-1",
+            "artifact_ref": "1".repeat(64),
+            "root_hash": "2".repeat(64),
+            "leaf_hash": "2".repeat(64),
+            "tree_size": 1,
+            "leaf_index": 0,
+            "checkpoint": format!("log-1:{checkpoint_seq}"),
+            "inclusion_path": [],
+            "verified_at": 1,
+            "checkpoint_statement": {
+                "body": body,
+                "signature": "b".repeat(128)
+            }
+        })
+    }
+
     fn file_uri(path: &Path) -> String {
         let mut value = path.to_string_lossy().replace('\\', "/");
         if !value.starts_with('/') {

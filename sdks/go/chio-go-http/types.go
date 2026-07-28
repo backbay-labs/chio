@@ -2,7 +2,7 @@
 // or 'cargo xtask codegen --lang go'.
 //
 // Source: spec/schemas/chio-wire/v1/**/*.schema.json
-// Schema content SHA-256: 6aef2fbc7a838c2166d6041b744d14f06a8e19873ed12cba7fdc0ac4b702a501
+// Schema content SHA-256: cdcd7261dc30d37b2a47e8b2d8185b0427d09e892fd10176f20fd5ba268208d6
 // Tool:   oapi-codegen v2.4.1 (see xtask/codegen-tools.lock.toml)
 //
 // The Schema content SHA-256 is computed from the lex-sorted schema bytes
@@ -545,6 +545,7 @@ const (
 // Defines values for ReceiptRecordAlgorithm.
 const (
 	ReceiptRecordAlgorithmEd25519 ReceiptRecordAlgorithm = "ed25519"
+	ReceiptRecordAlgorithmHybrid  ReceiptRecordAlgorithm = "hybrid"
 	ReceiptRecordAlgorithmP256    ReceiptRecordAlgorithm = "p256"
 	ReceiptRecordAlgorithmP384    ReceiptRecordAlgorithm = "p384"
 )
@@ -2163,7 +2164,7 @@ type ReceiptRecord struct {
 	// Id Authoritative content-addressed receipt id.
 	Id string `json:"id"`
 
-	// KernelKey Kernel public key (for verification without out-of-band lookup). Bare 64-char lowercase hex string for Ed25519, `p256:<130-char hex>` for uncompressed SEC1 P-256 (65 bytes; leading byte `0x04`), or `p384:<194-char hex>` for uncompressed SEC1 P-384 (97 bytes; leading byte `0x04`). Anything outside these length classes is rejected at decode time by `PublicKey::from_hex` in `crates/core/chio-core-types/src/crypto.rs`.
+	// KernelKey Kernel public key (for verification without out-of-band lookup). Supports Ed25519, uncompressed SEC1 P-256/P-384, and algorithm-coupled classical plus ML-DSA-65 hybrid envelopes accepted by `PublicKey::from_hex`.
 	KernelKey string `json:"kernel_key"`
 
 	// Metadata Optional receipt metadata for stream/accounting/financial details. Schema-less by design (mirrors `Option<serde_json::Value>`).
@@ -2181,7 +2182,7 @@ type ReceiptRecord struct {
 	// RedactionMode Signed redaction mode applied to receipt details.
 	RedactionMode ReceiptRecordRedactionMode `json:"redaction_mode"`
 
-	// Signature Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput, bbs_signature? }. Bare 128-char lowercase hex for Ed25519 (`Signature::from_hex` in `crates/core/chio-core-types/src/crypto.rs` requires exactly 64 bytes for the bare path), or `p256:<DER hex>` / `p384:<DER hex>` for FIPS algorithms. The DER-encoded ECDSA payload length varies (~70-72 bytes for P-256, ~104-110 bytes for P-384) so the FIPS hex bodies are matched as `[0-9a-f]+` and validated by length-aware decoders downstream.
+	// Signature Hex-encoded signature over canonical JSON of ChioReceiptSigningBody { id, body: ChioReceiptIdInput, bbs_signature? }. Supports Ed25519, byte-aligned DER P-256/P-384, and algorithm-coupled classical plus ML-DSA-65 hybrid envelopes; cryptographic DER validity is checked by the verifier.
 	Signature string `json:"signature"`
 
 	// TenantId Tenant identifier for multi-tenant deployments. Absent in single-tenant mode; derived from the authenticated session's enterprise identity context, never from caller-provided request fields.

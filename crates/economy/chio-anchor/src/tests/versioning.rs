@@ -92,6 +92,19 @@ fn proof_bundle_schema_tracks_the_primary_proof_version() {
         note: None,
     };
 
+    let mut schema_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    schema_path.push("../../../spec/schemas/chio-web3/v2/anchor-proof-bundle.schema.json");
+    let schema_path = std::fs::canonicalize(&schema_path).test_unwrap();
+    let schema = chio_spec_validate::load_json(&schema_path).test_unwrap();
+    let serialized = serde_json::to_value(&bundle).test_unwrap();
+    chio_spec_validate::validate_value(
+        &schema_path,
+        &schema,
+        std::path::Path::new("<sample-anchor-proof-bundle>"),
+        &serialized,
+    )
+    .test_expect("serialized v2 proof bundle satisfies its published schema");
+
     assert!(verify_proof_bundle(&bundle).test_unwrap().verified);
 
     bundle.schema = CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V1.to_string();

@@ -3,7 +3,7 @@ use chio_core::web3::anchors::{
     CHIO_ANCHOR_INCLUSION_PROOF_SCHEMA_V2,
 };
 use chio_kernel::checkpoint::{describe_checkpoint_equivocation, CheckpointTransparencySummary};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::{
     verify_bitcoin_anchor_for_proof, verify_solana_anchor, AnchorError, SolanaMemoAnchorRecord,
@@ -12,6 +12,22 @@ use crate::{
 pub const CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V1: &str = "chio.anchor-proof-bundle.v1";
 pub const CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V2: &str = "chio.anchor-proof-bundle.v2";
 pub const CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA: &str = CHIO_ANCHOR_PROOF_BUNDLE_SCHEMA_V2;
+
+fn deserialize_non_null_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: serde::de::DeserializeOwned,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    if value.is_null() {
+        return Err(<D::Error as serde::de::Error>::custom(
+            "explicit null is not permitted; omit the optional field",
+        ));
+    }
+    T::deserialize(value)
+        .map(Some)
+        .map_err(<D::Error as serde::de::Error>::custom)
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -27,9 +43,17 @@ pub struct AnchorProofBundle {
     pub schema: String,
     pub primary_proof: AnchorInclusionProof,
     pub secondary_lanes: Vec<AnchorLaneKind>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_non_null_option"
+    )]
     pub solana_anchor: Option<SolanaMemoAnchorRecord>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_non_null_option"
+    )]
     pub note: Option<String>,
 }
 

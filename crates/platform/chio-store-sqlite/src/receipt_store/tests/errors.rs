@@ -537,7 +537,7 @@ fn store_checkpoint_rejects_wrong_predecessor_digest() {
         &[chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&first.body).test_unwrap()],
     )
     .test_unwrap();
-    second.body.previous_checkpoint_sha256 = Some("not-the-real-digest".to_string());
+    second.body.previous_checkpoint_sha256 = Some("00".repeat(32));
     second.signature = kp.sign(&chio_core::canonical_json_bytes(&second.body).test_unwrap());
     let error = ReceiptStore::store_checkpoint(&store, &second).test_unwrap_err();
     assert!(error

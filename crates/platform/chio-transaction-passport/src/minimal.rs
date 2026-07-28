@@ -913,7 +913,9 @@ impl CheckpointStatementBody {
                 "checkpoint statement previous_checkpoint_sha256 is invalid".to_string()
             })?;
         }
-        let _issued_at = self.issued_at;
+        if self.issued_at == 0 {
+            return Err("checkpoint statement issued_at must be greater than zero".to_string());
+        }
         Ok(())
     }
 }
@@ -1018,6 +1020,16 @@ fn transparency_anchor_state(
     let Some(schema) = raw_artifact.get("schema").and_then(Value::as_str) else {
         return TransparencyAnchor::Invalid(format!("{path} has no inclusion proof schema"));
     };
+    let Some(node_schema) = node.get("schema").and_then(Value::as_str) else {
+        return TransparencyAnchor::Invalid(
+            "transparency node has no declared inclusion proof schema".to_string(),
+        );
+    };
+    if node_schema != schema {
+        return TransparencyAnchor::Invalid(format!(
+            "transparency node schema {node_schema} does not match artifact schema {schema}"
+        ));
+    }
     if schema == TRANSPARENCY_INCLUSION_PROOF_SCHEMA_V1_ID {
         // V1 is the registered selective-disclosure proof. Its leaf is the
         // SHA-256 digest of the subject digest string and its internal nodes
@@ -1073,6 +1085,13 @@ fn transparency_anchor_state(
     let Some(body) = statement.body.as_object() else {
         return invalid("checkpoint statement body is not an object");
     };
+    for optional_field in ["previous_checkpoint_sha256", "chain_root"] {
+        if body.get(optional_field).is_some_and(Value::is_null) {
+            return TransparencyAnchor::Invalid(format!(
+                "checkpoint statement {optional_field} must be omitted rather than null"
+            ));
+        }
+    }
     let Some(kernel_key) = body
         .get("kernel_key")
         .and_then(Value::as_str)

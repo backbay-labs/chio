@@ -1,5 +1,5 @@
 use alloy_primitives::keccak256;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 
 pub use chio_core_types::oracle::OracleConversionEvidence;
 
@@ -26,6 +26,22 @@ pub const CHIO_LINK_ORACLE_AUTHORITY: &str = "chio_link_runtime_v1";
 pub const CHIO_ANCHOR_CONTROL_STATE_SCHEMA: &str = "chio.anchor.control-state.v1";
 pub const CHIO_ANCHOR_CONTROL_TRACE_SCHEMA: &str = "chio.anchor.control-trace.v1";
 
+fn deserialize_non_null_option<'de, D, T>(deserializer: D) -> Result<Option<T>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: serde::de::DeserializeOwned,
+{
+    let value = serde_json::Value::deserialize(deserializer)?;
+    if value.is_null() {
+        return Err(<D::Error as serde::de::Error>::custom(
+            "explicit null is not permitted; omit the optional field",
+        ));
+    }
+    T::deserialize(value)
+        .map(Some)
+        .map_err(<D::Error as serde::de::Error>::custom)
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Web3ReceiptInclusion {
@@ -44,12 +60,20 @@ pub struct Web3CheckpointStatement {
     pub tree_size: u64,
     pub merkle_root: Hash,
     pub issued_at: u64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_non_null_option"
+    )]
     pub previous_checkpoint_sha256: Option<String>,
     /// Checkpoint-chain commitment carried by the signed kernel body; must
     /// round-trip losslessly or the reconstructed body fails signature
     /// verification.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_non_null_option"
+    )]
     pub chain_root: Option<Hash>,
     pub kernel_key: PublicKey,
     pub signature: Signature,
@@ -95,11 +119,23 @@ pub struct AnchorInclusionProof {
     pub receipt: ChioReceipt,
     pub receipt_inclusion: Web3ReceiptInclusion,
     pub checkpoint_statement: Web3CheckpointStatement,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_non_null_option"
+    )]
     pub chain_anchor: Option<Web3ChainAnchorRecord>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_non_null_option"
+    )]
     pub bitcoin_anchor: Option<Web3BitcoinAnchor>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_non_null_option"
+    )]
     pub super_root_inclusion: Option<Web3SuperRootInclusion>,
     pub key_binding_certificate: SignedWeb3IdentityBinding,
 }
@@ -503,7 +539,7 @@ fn checkpoint_chain_leaf_hash(
     Ok(leaf_hash(&bytes))
 }
 
-fn validate_checkpoint_statement_shape(
+pub(crate) fn validate_checkpoint_statement_shape(
     statement: &Web3CheckpointStatement,
 ) -> Result<(), Web3ContractError> {
     if !matches!(
@@ -517,6 +553,31 @@ fn validate_checkpoint_statement_shape(
     if statement.schema == CHIO_CHECKPOINT_STATEMENT_SCHEMA_V1 && statement.chain_root.is_some() {
         return Err(Web3ContractError::InvalidProof(
             "v1 checkpoint statements cannot carry chain_root".to_string(),
+        ));
+    }
+    if statement.checkpoint_seq == 0 {
+        return Err(Web3ContractError::InvalidProof(
+            "checkpoint statement checkpoint_seq must be greater than zero".to_string(),
+        ));
+    }
+    if statement.batch_start_seq == 0 {
+        return Err(Web3ContractError::InvalidProof(
+            "checkpoint statement batch_start_seq must be greater than zero".to_string(),
+        ));
+    }
+    if statement.issued_at == 0 {
+        return Err(Web3ContractError::InvalidProof(
+            "checkpoint statement issued_at must be greater than zero".to_string(),
+        ));
+    }
+    if statement
+        .previous_checkpoint_sha256
+        .as_deref()
+        .is_some_and(|digest| !is_lowercase_sha256(digest))
+    {
+        return Err(Web3ContractError::InvalidProof(
+            "checkpoint statement previous_checkpoint_sha256 must be 64 lowercase hex characters"
+                .to_string(),
         ));
     }
     if statement.batch_start_seq > statement.batch_end_seq {
@@ -561,6 +622,13 @@ fn validate_checkpoint_statement_shape(
         }
     }
     Ok(())
+}
+
+fn is_lowercase_sha256(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
 pub fn verify_anchor_inclusion_proof(

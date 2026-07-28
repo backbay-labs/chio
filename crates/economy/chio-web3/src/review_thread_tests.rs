@@ -1,3 +1,4 @@
+use crate::anchors::validate_checkpoint_statement_shape;
 use crate::error::Web3ContractError;
 use crate::settlement::validate_web3_settlement_dispatch;
 use crate::settlement_proof::{
@@ -5,13 +6,154 @@ use crate::settlement_proof::{
     PublicSettlementWitnessMode,
 };
 use serde_json::json;
+use std::path::PathBuf;
 
 use super::tests::{
-    resign_dispatch_capital_instruction, sample_beneficiary_binding_for_address, sample_dispatch,
+    resign_dispatch_capital_instruction, sample_anchor_inclusion_proof,
+    sample_beneficiary_binding_for_address, sample_dispatch,
     sample_public_settlement_proof_bundle_with_chain_snapshot,
     sample_public_settlement_verifier_trust, sign_sample_public_settlement_bundle,
     verify_sample_public_settlement_proof,
 };
+
+#[test]
+fn web3_checkpoint_statement_rejects_zero_sequences() {
+    let mut proof = sample_anchor_inclusion_proof();
+    proof.checkpoint_statement.checkpoint_seq = 0;
+    assert!(matches!(
+        validate_checkpoint_statement_shape(&proof.checkpoint_statement),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("checkpoint_seq must be greater than zero")
+    ));
+
+    let mut proof = sample_anchor_inclusion_proof();
+    proof.checkpoint_statement.batch_start_seq = 0;
+    proof.checkpoint_statement.batch_end_seq = 0;
+    assert!(matches!(
+        validate_checkpoint_statement_shape(&proof.checkpoint_statement),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("batch_start_seq must be greater than zero")
+    ));
+
+    let mut proof = sample_anchor_inclusion_proof();
+    proof.checkpoint_statement.issued_at = 0;
+    assert!(matches!(
+        validate_checkpoint_statement_shape(&proof.checkpoint_statement),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("issued_at must be greater than zero")
+    ));
+
+    let mut proof = sample_anchor_inclusion_proof();
+    proof.checkpoint_statement.previous_checkpoint_sha256 = Some("not-a-digest".to_string());
+    assert!(matches!(
+        validate_checkpoint_statement_shape(&proof.checkpoint_statement),
+        Err(Web3ContractError::InvalidProof(message))
+            if message.contains("must be 64 lowercase hex characters")
+    ));
+}
+
+#[test]
+fn web3_checkpoint_statement_rejects_explicit_null_options_at_deserialization() {
+    for field in ["previous_checkpoint_sha256", "chain_root"] {
+        let mut document = serde_json::to_value(sample_anchor_inclusion_proof())
+            .unwrap_or_else(|error| panic!("serialize sample anchor inclusion proof: {error}"));
+        document["checkpoint_statement"][field] = serde_json::Value::Null;
+        let error = serde_json::from_value::<crate::anchors::AnchorInclusionProof>(document)
+            .expect_err("explicit null checkpoint options must fail closed");
+        assert!(
+            error.to_string().contains("explicit null is not permitted"),
+            "unexpected {field} error: {error}"
+        );
+    }
+}
+
+#[test]
+fn serialized_anchor_inclusion_proof_satisfies_the_published_schema() {
+    let mut schema_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    schema_path.push("../../../spec/schemas/chio-web3/v2/anchor-inclusion-proof.schema.json");
+    let schema_path = std::fs::canonicalize(&schema_path)
+        .unwrap_or_else(|error| panic!("canonicalize {}: {error}", schema_path.display()));
+    let schema = chio_spec_validate::load_json(&schema_path)
+        .unwrap_or_else(|error| panic!("load anchor inclusion schema: {error}"));
+    let document = serde_json::to_value(sample_anchor_inclusion_proof())
+        .unwrap_or_else(|error| panic!("serialize sample anchor inclusion proof: {error}"));
+
+    chio_spec_validate::validate_value(
+        &schema_path,
+        &schema,
+        std::path::Path::new("<sample-anchor-inclusion-proof>"),
+        &document,
+    )
+    .unwrap_or_else(|error| panic!("sample anchor inclusion proof must satisfy schema: {error}"));
+
+    let mut zero_epoch = document.clone();
+    zero_epoch["chain_anchor"]["operator_epoch"] = json!(0);
+    assert!(
+        chio_spec_validate::validate_value(
+            &schema_path,
+            &schema,
+            std::path::Path::new("<zero-operator-epoch>"),
+            &zero_epoch,
+        )
+        .is_err(),
+        "published schema must reject a zero operator epoch"
+    );
+
+    let mut zero_operator_key_hash = document.clone();
+    zero_operator_key_hash["chain_anchor"]["operator_key_hash"] =
+        json!(format!("0x{}", "0".repeat(64)));
+    assert!(
+        chio_spec_validate::validate_value(
+            &schema_path,
+            &schema,
+            std::path::Path::new("<zero-operator-key-hash>"),
+            &zero_operator_key_hash,
+        )
+        .is_err(),
+        "published schema must reject a zero operator key hash"
+    );
+
+    let mut bitcoin_without_super_root = document;
+    bitcoin_without_super_root["bitcoin_anchor"] = json!({
+        "method": "opentimestamps",
+        "ots_proof_b64": "AA==",
+        "bitcoin_block_height": 1,
+        "bitcoin_block_hash": "00"
+    });
+    assert!(
+        chio_spec_validate::validate_value(
+            &schema_path,
+            &schema,
+            std::path::Path::new("<bitcoin-without-super-root>"),
+            &bitcoin_without_super_root,
+        )
+        .is_err(),
+        "published schema must require super-root metadata for a Bitcoin anchor"
+    );
+
+    let mut unsupported_bitcoin_method = bitcoin_without_super_root;
+    unsupported_bitcoin_method["super_root_inclusion"] = json!({
+        "super_root": format!("0x{}", "1".repeat(64)),
+        "proof": {
+            "tree_size": 1,
+            "leaf_index": 0,
+            "audit_path": []
+        },
+        "aggregated_checkpoint_start": 1042,
+        "aggregated_checkpoint_end": 1042
+    });
+    unsupported_bitcoin_method["bitcoin_anchor"]["method"] = json!("not-opentimestamps");
+    assert!(
+        chio_spec_validate::validate_value(
+            &schema_path,
+            &schema,
+            std::path::Path::new("<unsupported-bitcoin-method>"),
+            &unsupported_bitcoin_method,
+        )
+        .is_err(),
+        "published schema must reject unsupported Bitcoin anchor methods"
+    );
+}
 
 #[test]
 fn web3_dispatch_rejects_beneficiary_outside_signed_rail() {

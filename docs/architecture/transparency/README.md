@@ -210,7 +210,11 @@ Checkpoint-anchored receipt proofs use
 checkpoint statement and whose leaf is the RFC 6962 hash of the receipt bytes.
 Web3 projections preserve the same rolling-reader boundary:
 `chio.anchor-inclusion-proof.v1` embeds only v1 checkpoint statements, while
-`chio.anchor-inclusion-proof.v2` embeds chain-committed v2 statements.
+`chio.anchor-inclusion-proof.v2` embeds v2 statements and preserves their
+optional chain commitment. Sequence 1 statements must carry `chain_root`, and
+later v2 statements carry a signature-bound chain commitment only when
+`chain_root` is present. Cross-checkpoint consistency requires the checkpoint
+transparency verifier or a consistency proof.
 
 ### F3 (medium): the signed checkpoint body accepts unknown fields
 
