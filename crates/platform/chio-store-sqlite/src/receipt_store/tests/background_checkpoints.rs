@@ -1,6 +1,9 @@
 use super::super::*;
 use super::support::*;
 
+#[path = "background_checkpoint_races.rs"]
+mod background_checkpoint_races;
+
 fn signer(keypair: &Keypair, max_batch: u64) -> BackgroundCheckpointSigner {
     BackgroundCheckpointSigner {
         keypair: Arc::new(keypair.clone()),
@@ -283,8 +286,11 @@ fn identical_background_checkpoint_is_idempotent() -> Result<(), Box<dyn std::er
     // primary-key conflict.
     {
         let mut connection = store.connection()?;
-        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-        insert_checkpoint_incremental_tx(&tx, None, &persisted)?;
+        let mut tx =
+            connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let savepoint = tx.savepoint()?;
+        insert_checkpoint_incremental_tx(&savepoint, None, &persisted)?;
+        savepoint.commit()?;
         tx.commit()?;
     }
 
@@ -863,8 +869,11 @@ fn concurrent_valid_checkpoint_is_adopted_not_conflicted() -> Result<(), Box<dyn
     // its head up to the persisted row, not to its discarded build).
     let adopted = {
         let mut connection = store.connection()?;
-        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-        let adopted = insert_checkpoint_incremental_tx(&tx, None, &loser)?;
+        let mut tx =
+            connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let savepoint = tx.savepoint()?;
+        let adopted = insert_checkpoint_incremental_tx(&savepoint, None, &loser)?;
+        savepoint.commit()?;
         tx.commit()?;
         adopted
     };
@@ -913,14 +922,16 @@ fn concurrent_valid_checkpoint_is_adopted_not_conflicted() -> Result<(), Box<dyn
     let good_bytes = canonical_receipt_bytes(&bad_store, 1, max_batch);
     let good = build_checkpoint(1, 1, max_batch, &good_bytes, &keypair)?;
     let mut connection = bad_store.connection()?;
-    let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-    let error = insert_checkpoint_incremental_tx(&tx, None, &good)
+    let mut tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    let savepoint = tx.savepoint()?;
+    let error = insert_checkpoint_incremental_tx(&savepoint, None, &good)
         .err()
         .ok_or("an invalid persisted checkpoint at the same seq must fail closed")?;
     assert!(
         matches!(error, ReceiptStoreError::Conflict(_)),
         "expected a fail-closed Conflict on an invalid same-seq winner, got {error:?}"
     );
+    drop(savepoint);
     drop(tx);
     drop(connection);
     let _ = fs::remove_file(bad_path);
@@ -1012,10 +1023,10 @@ fn frontier_rebuild_adopts_concurrent_checkpoint_winner() -> Result<(), Box<dyn 
     Ok(())
 }
 
-/// A failed build consumes the cached chain frontier before returning its
-/// error. A retry therefore enters the cache-miss path. That path must fully
-/// verify predecessor continuity, not merely hash individually valid rows,
-/// before a v2 successor commits a legacy v1 prefix.
+/// A failed build must preserve the live cached chain frontier. After forcing a
+/// cache miss, the retry must fully verify predecessor continuity, not merely
+/// hash individually valid rows, before a v2 successor commits a legacy v1
+/// prefix.
 #[test]
 fn frontier_cache_miss_rejects_disconnected_legacy_prefix_after_failed_build(
 ) -> Result<(), Box<dyn std::error::Error>> {
@@ -1084,14 +1095,18 @@ fn frontier_cache_miss_rejects_disconnected_legacy_prefix_after_failed_build(
                 .contains("does not match receipt signer key"),
         "expected the mismatched signer to fail closed, got {error:?}"
     );
-    assert!(
-        head.chain_frontier.is_none(),
-        "the failed build must exercise the retry's cache-miss path"
+    assert_eq!(
+        head.chain_frontier
+            .as_ref()
+            .map(CheckpointChainFrontier::leaf_count),
+        Some(2),
+        "the failed build must not mutate the live verified frontier"
     );
     assert!(
         store.load_checkpoint_by_seq(3)?.is_none(),
         "the failed build must not persist its candidate"
     );
+    head.chain_frontier = None;
 
     // Replace checkpoint 1 out of band with a separately valid v1 statement.
     // Its earlier timestamp changes its signed body digest without changing
@@ -1189,6 +1204,17 @@ fn frontier_cache_miss_rejects_disconnected_legacy_prefix_after_failed_build(
         .previous_checkpoint_sha256
         .as_deref()
         .ok_or("replacement checkpoint 2 must retain its predecessor digest")?;
+    // The rejected retry restored both guard families in its outer
+    // transaction. Drop the relevant update guards again to model the second
+    // out-of-band replacement.
+    connection.execute_batch(
+        r#"
+        DROP TRIGGER IF EXISTS kernel_checkpoints_reject_update;
+        DROP TRIGGER IF EXISTS checkpoint_tree_heads_reject_update;
+        DROP TRIGGER IF EXISTS checkpoint_predecessor_witnesses_reject_update;
+        DROP TRIGGER IF EXISTS checkpoint_publication_metadata_reject_update;
+        "#,
+    )?;
     assert_eq!(
         connection.execute(
             "UPDATE kernel_checkpoints
@@ -1370,9 +1396,10 @@ fn checkpoint_insert_rejects_prefix_replaced_after_frontier_audit(
     // The Immediate transaction now owns the insertion snapshot. It must
     // observe replacement_one at seq 1, reject the cached checkpoint_one, and
     // leave the checkpoint-2 slot empty.
-    let tx =
+    let mut tx =
         builder_connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-    let error = insert_checkpoint_incremental_tx(&tx, Some(&checkpoint_one), &candidate)
+    let savepoint = tx.savepoint()?;
+    let error = insert_checkpoint_incremental_tx(&savepoint, Some(&checkpoint_one), &candidate)
         .err()
         .ok_or("a stale candidate must not extend the replacement prefix")?;
     assert!(
@@ -1383,9 +1410,10 @@ fn checkpoint_insert_rejects_prefix_replaced_after_frontier_audit(
         "expected a fail-closed predecessor snapshot conflict, got {error:?}"
     );
     assert!(
-        load_persisted_checkpoint_row(&tx, 2)?.is_none(),
+        load_persisted_checkpoint_row(&savepoint, 2)?.is_none(),
         "the replacement prefix must not gain a disconnected successor"
     );
+    drop(savepoint);
     drop(tx);
 
     assert!(

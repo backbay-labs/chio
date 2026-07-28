@@ -2026,20 +2026,19 @@ fn maybe_build_checkpoint(
     // builder, so caching it does not weaken the check it replaces.
     let cached = head
         .chain_frontier
-        .take()
-        .filter(|frontier| frontier.leaf_count() == head.checkpoint_seq());
+        .as_ref()
+        .filter(|frontier| frontier.leaf_count() == head.checkpoint_seq())
+        .cloned();
+    let mut advanced = false;
     let mut chain_frontier = match cached {
         Some(frontier) => frontier,
-        None => rebuild_checkpoint_frontier(connection, head.latest_checkpoint.as_ref())?,
+        None => {
+            let (frontier, cache_advanced) =
+                build_checkpoint_after_frontier_cache_miss(connection, head, signer)?;
+            advanced = cache_advanced;
+            frontier
+        }
     };
-    let mut advanced = false;
-    // A peer may commit after the latest-row refresh but before this cache-miss
-    // scan. If the persisted frontier now leads the cached head, verify and
-    // adopt that bounded suffix before comparing positions.
-    if chain_frontier.leaf_count() > head.checkpoint_seq() {
-        catch_up_verified_head_to(connection, head, chain_frontier.leaf_count())?;
-        advanced = true;
-    }
     if chain_frontier.leaf_count() != head.checkpoint_seq() {
         return Err(ReceiptStoreError::Conflict(format!(
             "persisted chain covers {} checkpoints but the head is at {}",
@@ -2085,25 +2084,16 @@ fn maybe_build_checkpoint(
                 "injected test checkpoint build failure".to_string(),
             ));
         }
-        let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
-        ensure_checkpoint_transparency_guards(&tx)?;
         // The insert returns the checkpoint now persisted at this seq: either
         // the one we just built, or a concurrently committed winner (clock-skew
         // sibling) it validated and adopted. Catch the cached head up to THAT
         // checkpoint so a later verify_head_against_latest_checkpoint does not
         // see our discarded byte-different build diverge from the persisted row.
-        let adopted =
-            insert_checkpoint_incremental_tx(&tx, head.latest_checkpoint.as_ref(), &checkpoint)?;
-        // A clock-skew sibling may differ in issued_at and signature, but it
-        // was built from the same persisted chain, so its chain commitment
-        // must be byte-identical to ours; anything else is a fork.
-        if adopted.body.chain_root != checkpoint.body.chain_root {
-            return Err(ReceiptStoreError::Conflict(format!(
-                "checkpoint {} adopted with a divergent chain commitment",
-                adopted.body.checkpoint_seq
-            )));
-        }
-        tx.commit()?;
+        let adopted = insert_background_checkpoint_guarded(
+            connection,
+            head.latest_checkpoint.as_ref(),
+            &checkpoint,
+        )?;
         chain_frontier.append(
             chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&adopted.body)
                 .map_err(checkpoint_error_to_receipt_store)?,
