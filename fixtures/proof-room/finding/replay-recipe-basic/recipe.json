@@ -1,0 +1,41 @@
+{
+  "schema": "chio.finding.replay-recipe-input.v1",
+  "decision_rule_ref": "decision/replay-v1",
+  "verifier_profile_envelope_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "context_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "payload_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "runner_server": "finding-server",
+  "runner_tool": "finding.replay",
+  "runner_manifest_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "phases": [
+    {
+      "phase": "baseline",
+      "input_bundle_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "payload_application": "not_applied"
+    },
+    {
+      "phase": "candidate",
+      "input_bundle_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      "payload_application": "apply_patch_v1"
+    }
+  ],
+  "parameters_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "environment": {
+    "runtime_image_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "platform": "linux/amd64",
+    "network_policy": "deny_all",
+    "clock_policy": "fixed:1700000000",
+    "randomness_policy": "seed:42",
+    "locale": "C",
+    "timezone": "UTC"
+  },
+  "resource_bounds": {
+    "max_recipe_bytes": 262144,
+    "max_evidence_receipts": 64,
+    "max_runtime_secs": 900,
+    "max_memory_bytes": 2147483648
+  },
+  "predicate": "baseline_fails_candidate_passes_v1",
+  "pre_run_template_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+  "claimed_verdict": "predicate_holds"
+}

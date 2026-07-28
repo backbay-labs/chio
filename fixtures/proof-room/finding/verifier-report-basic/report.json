@@ -1,0 +1,88 @@
+{
+  "body": {
+    "schema": "chio.finding.verifier-report.v1",
+    "report_id": "99ee33f3026405bacd50047f4e063e12bdd85c382c5a64a54c7be9987af69c9c",
+    "finding_id": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "finding_artifact_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "verifier_profile_id": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "verifier_profile_envelope_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "verifier_implementation_id": "chio-finding-verifier/0.1",
+    "resolved_evidence_bundle_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "trust_root_snapshot_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "resolver_policy_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "trusted_time_input_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "facets": [
+      {
+        "facet": "artifact_integrity",
+        "outcome": "verified",
+        "reason": "wedge evaluation"
+      },
+      {
+        "facet": "receipt_authenticity",
+        "outcome": "verified",
+        "reason": "wedge evaluation"
+      },
+      {
+        "facet": "checkpoint_membership",
+        "outcome": "verified",
+        "reason": "wedge evaluation"
+      },
+      {
+        "facet": "kernel_and_revocation_trust",
+        "outcome": "verified",
+        "reason": "wedge evaluation"
+      },
+      {
+        "facet": "issuer_lineage",
+        "outcome": "verified",
+        "reason": "wedge evaluation"
+      },
+      {
+        "facet": "recipe_binding",
+        "outcome": "verified",
+        "reason": "wedge evaluation"
+      },
+      {
+        "facet": "intent_binding",
+        "outcome": "verified",
+        "reason": "wedge evaluation"
+      },
+      {
+        "facet": "metered_exposure_backing",
+        "outcome": "verified",
+        "reason": "wedge evaluation"
+      },
+      {
+        "facet": "settled_spend_backing",
+        "outcome": "verified",
+        "reason": "wedge evaluation"
+      },
+      {
+        "facet": "runtime_assurance_backing",
+        "outcome": "verified",
+        "reason": "wedge evaluation"
+      },
+      {
+        "facet": "bond_backing",
+        "outcome": "verified",
+        "reason": "wedge evaluation"
+      },
+      {
+        "facet": "status_liveness",
+        "outcome": "unavailable",
+        "reason": "wedge evaluation"
+      },
+      {
+        "facet": "guarantee_consistency",
+        "outcome": "verified",
+        "reason": "wedge evaluation"
+      }
+    ],
+    "backing_allocation_id": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "verifier_authority": "d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+    "verifier_key_epoch": 1,
+    "evaluation_time": 1750000000
+  },
+  "signerKey": "d9bf2148748a85c89da5aad8ee0b0fc2d105fd39d41a4c796536354f0ae2900c",
+  "signature": "6d289acb51ba4e2c32c7ee095b60b2591d416abf40dc751aaf420f64c222ea44c3febf9b7bc3b6fb30feb34c3a189399438a14e49ea9f0194304ba27d525f00b"
+}

@@ -1,0 +1,48 @@
+{
+  "body": {
+    "schema": "chio.finding.market-terms.v1",
+    "terms_id": "00e03f40ee7e96c48fa13cf05f8f0d932b47cc4524d5fdd06c524d8aa1142e77",
+    "finding_id": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "finding_artifact_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "listing_id": "finding-listing-01",
+    "seller": "8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394",
+    "backing_requirement": {
+      "base_finding_stake": {
+        "units": 50,
+        "currency": "USD"
+      },
+      "maximum_sale_exposure": {
+        "units": 450,
+        "currency": "USD"
+      },
+      "collateral_policy": "venue_ledger_exclusive_v1"
+    },
+    "filing_window_secs": 86400,
+    "claim_window_secs": 604800,
+    "appeal_window_secs": 259200,
+    "audit_epoch_length_secs": 2592000,
+    "audit_eligible": true,
+    "decision_rule_refs": [
+      "decision/replay-v1"
+    ],
+    "verifier_profile_envelope_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "challenge_bond_limits": [
+      {
+        "guarantee_class": "deterministic_replay",
+        "min_bond": {
+          "units": 10,
+          "currency": "USD"
+        },
+        "max_bond": {
+          "units": 100,
+          "currency": "USD"
+        }
+      }
+    ],
+    "payout_policy": "pro_rata_capped_v1",
+    "issued_at": 1700000000,
+    "expires_at": 1900000000
+  },
+  "signerKey": "8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394",
+  "signature": "6b958e91fdc8b1b53c59834b9dde858998c68244c634733add2ca5296e78df0de4f78163c7a92758eb4585262a1cb47597ee670576743dcd7262b897f964750b"
+}

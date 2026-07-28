@@ -1,0 +1,38 @@
+{
+  "body": {
+    "schema": "chio.finding.bond-backing.v1",
+    "allocation_id": "2586e92a398e6dbbea299408add0610a881a847ec3523e839ef9eb9e175ef482",
+    "collateral_authority": "ca93ac1705187071d67b83c7ff0efe8108e8ec4530575d7726879333dbdabe7c",
+    "seller": "8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394",
+    "authorization_envelope_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "finding_id": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "listing_id": "finding-listing-01",
+    "terms_envelope_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "profile_envelope_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "fee_requirement_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "fee_schedule_envelope_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "bond_class": "listing",
+    "locked_amount": {
+      "units": 500,
+      "currency": "USD"
+    },
+    "maximum_sale_exposure": {
+      "units": 450,
+      "currency": "USD"
+    },
+    "claim_horizon_secs": 604800,
+    "audit_horizon_secs": 2592000,
+    "appeal_horizon_secs": 259200,
+    "settlement_buffer_secs": 86400,
+    "vault": {
+      "venue_ledger": {
+        "ledger_account": "vault:finding-collateral",
+        "operator_epoch": 1
+      }
+    },
+    "issued_at": 1700000000,
+    "expires_at": 1900000000
+  },
+  "signerKey": "ca93ac1705187071d67b83c7ff0efe8108e8ec4530575d7726879333dbdabe7c",
+  "signature": "c4b9de57139d73c60ed8996620e617979199bbf168abddb5a55f33f4640c31ce2baaff07ad36ed520ce33e76b114b005cca0cd6bcee7d4ee68b40a631ea0a309"
+}

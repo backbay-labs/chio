@@ -1,0 +1,24 @@
+{
+  "body": {
+    "schema": "chio.finding.seller-authorization.v1",
+    "authorization_id": "cd595cde853c1d2c42732748e9894cf0166b99bf85df47031eb89d4cf58a2af4",
+    "finding_id": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "finding_artifact_sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "listing_id": "finding-listing-01",
+    "issuer": "ed4928c628d1c2c6eae90338905995612959273a5c63f93636c14614ac8737d1",
+    "seller": "8139770ea87d175f56a35466c34c7ecccb8d8a91b4ee37a25df60f5b8fc9b394",
+    "provider_server_id": "finding-server",
+    "provider_tool": "finding.reveal",
+    "payee": {
+      "beneficiary": {
+        "destination": "rail:venue-ledger:seller-42",
+        "currency": "USD"
+      }
+    },
+    "revocation_status_ref": "revocations/seller-auth",
+    "issued_at": 1700000000,
+    "expires_at": 1900000000
+  },
+  "signerKey": "ed4928c628d1c2c6eae90338905995612959273a5c63f93636c14614ac8737d1",
+  "signature": "e8608b9a3f1127efee43cae3d8b2a9d67ebfbdcb19b0d4215979bafcd980c3e1d7878b4994beea01294f7d07822d2bd27458ee286c7269ed95d78b43d0dd650b"
+}
