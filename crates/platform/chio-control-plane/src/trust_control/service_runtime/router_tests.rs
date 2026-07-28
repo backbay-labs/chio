@@ -749,3 +749,56 @@ async fn receipt_append_routes_accept_bodies_above_the_service_body_cap() {
         "a route without the receipt-append override must still cap at 1 MiB"
     );
 }
+
+/// The cognition-market surfaces are compiled out unless the feature is
+/// enabled, so a default build must not answer on any of their paths.
+/// This is the runtime half of the guard; the dependency-graph half lives
+/// in CI, which fails if the finding crates enter the default tree.
+#[cfg(not(feature = "cognition-market-experimental"))]
+#[tokio::test]
+async fn finding_market_routes_are_absent_by_default() -> Result<(), Box<dyn std::error::Error>> {
+    use axum::body::Body;
+    use axum::http::Request;
+    use tower::ServiceExt;
+
+    for (method, uri) in [
+        ("POST", "/v1/findings/publish"),
+        ("GET", "/v1/findings/search"),
+        ("POST", "/v1/findings/search"),
+        ("POST", "/v1/findings/recipes"),
+        ("POST", "/v1/findings/profiles"),
+        ("POST", "/v1/findings/collateral"),
+        (
+            "GET",
+            "/v1/findings/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+        ),
+        (
+            "POST",
+            "/v1/findings/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/activate",
+        ),
+        (
+            "POST",
+            "/v1/findings/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/participation",
+        ),
+        (
+            "GET",
+            "/v1/findings/0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef/admission",
+        ),
+    ] {
+        let request = Request::builder()
+            .method(method)
+            .uri(uri)
+            .header(AUTHORIZATION, "Bearer service-secret")
+            .header("content-type", "application/json")
+            .body(Body::from("{}"))?;
+        let response = super::build_router(metrics_state("service-secret"))
+            .oneshot(request)
+            .await?;
+        assert_eq!(
+            response.status(),
+            StatusCode::NOT_FOUND,
+            "{method} {uri} must not be served by a default build"
+        );
+    }
+    Ok(())
+}
