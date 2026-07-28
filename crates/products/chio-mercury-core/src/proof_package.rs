@@ -1079,6 +1079,17 @@ fn derived_completeness_mode(bundle: &EvidenceExportBundle) -> &'static str {
 
     let mut checkpoints_by_seq = BTreeMap::new();
     for checkpoint in &bundle.checkpoints {
+        let Some(covered_entry_count) = checkpoint
+            .body
+            .batch_end_seq
+            .checked_sub(checkpoint.body.batch_start_seq)
+            .and_then(|difference| difference.checked_add(1))
+        else {
+            return COMPLETENESS_BEST_EFFORT;
+        };
+        if usize::try_from(covered_entry_count).ok() != Some(checkpoint.body.tree_size) {
+            return COMPLETENESS_BEST_EFFORT;
+        }
         if checkpoints_by_seq
             .insert(checkpoint.body.checkpoint_seq, checkpoint)
             .is_some()
@@ -1088,6 +1099,10 @@ fn derived_completeness_mode(bundle: &EvidenceExportBundle) -> &'static str {
     }
 
     let mut proved_receipt_seqs = BTreeSet::new();
+    let mut proved_receipt_seqs_by_checkpoint = checkpoints_by_seq
+        .keys()
+        .map(|checkpoint_seq| (*checkpoint_seq, BTreeSet::new()))
+        .collect::<BTreeMap<_, _>>();
     for proof in &bundle.inclusion_proofs {
         if !tool_receipt_seqs.contains(&proof.receipt_seq)
             || !proved_receipt_seqs.insert(proof.receipt_seq)
@@ -1113,13 +1128,33 @@ fn derived_completeness_mode(bundle: &EvidenceExportBundle) -> &'static str {
         {
             return COMPLETENESS_BEST_EFFORT;
         }
+        let Some(checkpoint_receipt_seqs) =
+            proved_receipt_seqs_by_checkpoint.get_mut(&proof.checkpoint_seq)
+        else {
+            return COMPLETENESS_BEST_EFFORT;
+        };
+        if !checkpoint_receipt_seqs.insert(proof.receipt_seq) {
+            return COMPLETENESS_BEST_EFFORT;
+        }
     }
 
-    if proved_receipt_seqs == tool_receipt_seqs {
-        COMPLETENESS_FULL_CHECKPOINT_COVERAGE
-    } else {
-        COMPLETENESS_BEST_EFFORT
+    if proved_receipt_seqs != tool_receipt_seqs {
+        return COMPLETENESS_BEST_EFFORT;
     }
+    for (checkpoint_seq, checkpoint) in checkpoints_by_seq {
+        let Some(checkpoint_receipt_seqs) = proved_receipt_seqs_by_checkpoint.get(&checkpoint_seq)
+        else {
+            return COMPLETENESS_BEST_EFFORT;
+        };
+        if checkpoint_receipt_seqs.len() != checkpoint.body.tree_size
+            || checkpoint_receipt_seqs.first().copied() != Some(checkpoint.body.batch_start_seq)
+            || checkpoint_receipt_seqs.last().copied() != Some(checkpoint.body.batch_end_seq)
+        {
+            return COMPLETENESS_BEST_EFFORT;
+        }
+    }
+
+    COMPLETENESS_FULL_CHECKPOINT_COVERAGE
 }
 
 fn verify_mercury_kernel_authority(
@@ -1173,6 +1208,14 @@ fn verify_trusted_checkpoint_requirements(
     if !bundle.uncheckpointed_receipts.is_empty() {
         return Err(MercuryContractError::Validation(
             "trusted Mercury verification requires full checkpoint coverage".to_string(),
+        ));
+    }
+    if publication_profile.completeness_mode != COMPLETENESS_FULL_CHECKPOINT_COVERAGE
+        || derived_completeness_mode(bundle) != COMPLETENESS_FULL_CHECKPOINT_COVERAGE
+    {
+        return Err(MercuryContractError::Validation(
+            "trusted Mercury verification requires exact coverage of every signed checkpoint leaf"
+                .to_string(),
         ));
     }
     if !publication_profile.checkpoint_signatures_required {
@@ -2755,6 +2798,64 @@ mod tests {
             .expect("full trusted authority scope");
 
         assert!(report.verifier_equivalent);
+    }
+
+    #[test]
+    fn trusted_proof_verification_rejects_selectively_omitted_checkpoint_leaf() {
+        let checkpoint_keypair = Keypair::generate();
+        let mut bundle = sample_bundle_with_records(
+            vec![
+                EvidenceToolReceiptRecord {
+                    seq: 1,
+                    receipt: sample_receipt(1),
+                },
+                EvidenceToolReceiptRecord {
+                    seq: 2,
+                    receipt: sample_receipt(2),
+                },
+            ],
+            Vec::new(),
+            &checkpoint_keypair,
+        );
+        assert_eq!(bundle.checkpoints[0].body.tree_size, 2);
+
+        bundle.tool_receipts.pop();
+        bundle.inclusion_proofs.pop();
+        assert!(bundle.uncheckpointed_receipts.is_empty());
+
+        let mut package =
+            build_sample_proof_package(bundle).expect("best-effort selective package");
+        assert_eq!(
+            package.publication_profile.completeness_mode,
+            COMPLETENESS_BEST_EFFORT
+        );
+        package
+            .verify(1_775_137_920)
+            .expect("selective package remains structurally verifiable");
+
+        let trusted_keys = trusted_authority_keys(&package.chio_bundle);
+        let error = package
+            .verify_with_trusted_kernel_keys(1_775_137_921, &trusted_keys)
+            .expect_err("selective checkpoint package cannot be verifier-equivalent");
+        assert!(
+            error
+                .to_string()
+                .contains("exact coverage of every signed checkpoint leaf"),
+            "unexpected error: {error}"
+        );
+
+        package.publication_profile.completeness_mode =
+            COMPLETENESS_FULL_CHECKPOINT_COVERAGE.to_string();
+        package.refresh_package_id().expect("refresh package id");
+        let error = package
+            .validate()
+            .expect_err("selective checkpoint package cannot claim full coverage");
+        assert!(
+            error
+                .to_string()
+                .contains("completeness_mode must be best_effort"),
+            "unexpected error: {error}"
+        );
     }
 
     #[test]
