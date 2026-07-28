@@ -100,7 +100,7 @@ production surface half-wired.
 | M0 | Spec and registration | `chio.finding.v1` registered (challenge/status schemas deferred to M5/M6 per review); ADR-0017 remains Proposed | - | implemented with M1 |
 | M1 | `chio-finding` crate | artifact types, strict validators/signing, golden | M0 | implemented; qualified workspace gate passed |
 | M2 | Publish and discover | descriptor search surface; listing publish path; bond-proof admission gate | M1 | implemented dark behind `cognition-market-experimental`; plan [plans/2026-07-28-M2-publish-and-discover.md](plans/2026-07-28-M2-publish-and-discover.md) |
-| M3 | Kernel delivery contract | candidate `Constraint::OutputDigestSha256`; durable and legacy digest enforcement; generic `chio.delivery-contract.v1` receipt block; verdict-matrix rotation | M1 | blocked pending fresh ADR-A and kernel-owner review against the post-#974 terminal topology |
+| M3 | Kernel delivery contract | candidate `Constraint::OutputDigestSha256`; durable and legacy digest enforcement; generic `chio.delivery-contract.v1` receipt block; verdict-matrix rotation | M1 | ADR-A landed as [ADR-0018](../../adr/ADR-0018-kernel-delivery-contract.md); implementing per [plans/2026-07-28-M3-kernel-delivery-contract.md](plans/2026-07-28-M3-kernel-delivery-contract.md) |
 | M4 | Wedge purchase E2E | reference finding server; ADR-A-selected output-aware durable hold/capture; `chio finding` CLI (publish/search/verify/buy) | M2, M3 | plan after M3 |
 | M5 | Challenge and audit lane | frozen-v1 `FraudulentListing` mapping plus signed finding challenge outcome; challenge evaluator; verifiable audit schedule; slash wiring | M4 | plan after M4 |
 | M6 | Status feed and retraction | oracle instance; control-plane root/proof surfaces; purchase-time non-inclusion; challenge-outcome outbox; quarantine guard rule; ops runbook | M4, M5 | plan after M5 |
@@ -1518,11 +1518,11 @@ normative scope statement.
 
 | ADR | Decision | Milestone | Current lean (from ARCHITECTURE) |
 |---|---|---|---|
-| ADR-A | Delivery carrier, durable mismatch transition, legacy coverage, `PrepaidFinal` policy, and metadata insertion | M3 | `OutputDigestSha256` remains the carrier candidate; use the post-transform durable receipt-content boundary, but choose rail and terminal-state semantics through fresh kernel-owner review |
+| ADR-A | Delivery carrier, durable mismatch transition, legacy coverage, `PrepaidFinal` policy, and metadata insertion | M3 | DECIDED in [ADR-0018](../../adr/ADR-0018-kernel-delivery-contract.md): `OutputDigestSha256` carrier; compare at the post-transform durable boundary; new `DeniedAfterDelivery` terminal with `ContractualZeroCharge`; legacy and prepayment rejected predispatch |
 | ADR-B | Status-feed governance: who operates feeds, epoch cadence, anchor lanes, equivocation slashing | M6 | venue-operated, anchored, operator-bonded (threat model O2/O3) |
 | ADR-C | Cross-org Finding escrow enforcement: contract discriminator versus audited TTP profile | M7 | prefer a contract-level full-only/authority gate; otherwise classify the current-contract profile Experimental and discretionary |
 | ADR-D | Auction mechanism (batched uniform-price per topic) | only with M4+ demand data | posted-price holds until data says otherwise (MECHANISMS 3) |
-| ADR-E | Receipt-metadata key registry (repo-wide hygiene found during research) | M3 rider | named consts + PROTOCOL 6.4 table (7.5) |
+| ADR-E | Receipt-metadata key registry (repo-wide hygiene found during research) | M3 (folded into ADR-0018 item 7) | named consts + PROTOCOL 6.4 table; lands in M3 because the delivery-contract block's security depends on the reserved-key policy |
 | ADR-F | Existence-tier product (paid dead-end check) | M8+ | one-bit reveal priced per MECHANISMS 3/9 |
 
 ## 5. Risk register (program-level)
