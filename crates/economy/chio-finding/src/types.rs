@@ -104,9 +104,9 @@ pub struct Finding {
     pub license_ref: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub price_hint_ref: Option<String>,
-    /// Producing agent subject. A real key type, so junk issuers reject
-    /// at parse time (PublicKey deserializes from 64-hex,
-    /// chio-core-types/src/crypto.rs:313-319).
+    /// Producing agent subject. Malformed encodings reject during typed
+    /// deserialization. The raw schema plus `Finding::validate` enforce the
+    /// canonical bare Ed25519 form and reject weak keys.
     pub issuer: PublicKey,
     pub issued_at: u64,
     pub expires_at: u64,
