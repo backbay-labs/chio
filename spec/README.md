@@ -56,8 +56,9 @@ Pick the sequence that matches why you are here:
   enumerating normative error codes and taxonomy.
 - `ietf/`: IETF draft artifacts, currently `draft-chio-protocol-00.md`, for
   external standardization tracks.
-- `schemas/`: JSON schema trees for the native wire protocol (`chio-wire/v1`)
-  and the HTTP substrate (`chio-http/v1`).
+- `schemas/`: JSON schema trees for the native wire protocol (`chio-wire/v1`),
+  the HTTP substrate (`chio-http/v1`), and registered higher-layer signed
+  artifact families.
 - `security/`: structured threat-model artifacts such as
   `chio-threat-model.v1.json` that pair with `SECURITY.md`.
 - `versions/`: version-negotiation artifacts such as

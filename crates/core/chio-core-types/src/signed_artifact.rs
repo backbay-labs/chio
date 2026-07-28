@@ -88,6 +88,8 @@ pub const CHIO_FINANCIAL_AGENT_PASSPORT_SOURCE_MANIFEST_V1_SCHEMA: &str =
     "chio.financial-agent-passport.source-manifest.v1";
 pub const CHIO_FINANCIAL_AGENT_PASSPORT_PRESENTATION_CHALLENGE_V1_SCHEMA: &str =
     "chio.financial-agent-passport-presentation-challenge.v1";
+/// Cognition-market finding artifact.
+pub const CHIO_FINDING_V1_SCHEMA: &str = "chio.finding.v1";
 pub const CHIO_FISCAL_CHARTER_V1_SCHEMA: &str = "chio.fiscal.charter.v1";
 pub const CHIO_FISCAL_SCHEDULE_V1_SCHEMA: &str = "chio.fiscal.schedule.v1";
 pub const CHIO_FISCAL_PROPOSAL_V1_SCHEMA: &str = "chio.fiscal.proposal.v1";
@@ -514,6 +516,10 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
             "agent_passport_presentation_challenge",
             "financial-credentials-v1",
         )),
+    ),
+    (
+        CHIO_FINDING_V1_SCHEMA,
+        Some(("finding", "finding-market-v1")),
     ),
     (
         CHIO_FISCAL_CHARTER_V1_SCHEMA,

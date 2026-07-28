@@ -8,7 +8,7 @@ use chio_core_types::crypto::PublicKey;
 use serde::{Deserialize, Serialize};
 
 /// Signed information-good artifact.
-pub const FINDING_SCHEMA_V1: &str = "chio.finding.v1";
+pub const FINDING_SCHEMA_V1: &str = chio_core_types::CHIO_FINDING_V1_SCHEMA;
 
 /// What kind of claim is being sold.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
