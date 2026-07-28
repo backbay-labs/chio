@@ -1939,12 +1939,8 @@ fn build_due_checkpoints_and_record(
     let signer = checkpoint_signer.as_ref()?;
     // Panic isolation: a panic mid-build
     // (Merkle build, Ed25519 sign, serde) must not kill the writer thread.
-    // `head.latest_checkpoint` is only assigned after a checkpoint is
-    // committed or a peer winner is fully verified. A later panic can
-    // therefore retain verified head progress while dropping the cached
-    // frontier, which is rebuilt on the next attempt. Handle a caught panic
-    // like a non-panicking `Err`: record `last_error` and keep the thread
-    // alive without rolling back durable or verified state.
+    // A committed or peer-adopted checkpoint can advance the verified head
+    // before a later panic drops its frontier. Record `last_error` and rebuild.
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         build_due_checkpoints(pool, head, signer)
     }))
@@ -1952,15 +1948,9 @@ fn build_due_checkpoints_and_record(
     match result {
         Ok(advanced) => {
             health.store_head_snapshot(head);
-            // Recovery signal: a prior background
-            // checkpoint build may have set `last_error`. A later SUCCESSFUL
-            // checkpoint advance is reached here through a writer-routed op (a
-            // `Write` job crossing the threshold), which does NOT run the
-            // append batch's `last_error` reset, so without this the store keeps
-            // reporting unhealthy after it has recovered. Clear the stale error
-            // only when the head actually advanced (our build or a verified
-            // peer-winner adoption), never on a no-op due-check, so a genuinely
-            // current error is not masked by an idle refresh.
+            // Clear a stale background error only after this attempt advances
+            // the verified head, whether through our commit or peer-winner
+            // adoption. An idle refresh must not mask a current error.
             if advanced {
                 if let Ok(mut last_error) = health.last_error.lock() {
                     *last_error = None;
@@ -2011,8 +2001,7 @@ fn build_due_checkpoints(
 /// which runs a full chain verify). Cost per checkpoint is O(b) over the batch
 /// plus O(log n) over the cached chain frontier; the frontier is rebuilt from
 /// the database only on a cache miss (first issuance after seed or resync).
-/// Returns true when the cached checkpoint head advances, whether this builder
-/// commits a checkpoint or boundedly adopts a concurrently committed winner.
+/// Returns true when this builder commits or boundedly adopts a checkpoint.
 fn maybe_build_checkpoint(
     connection: &mut SqliteStoreConnection,
     head: &mut VerifiedHead,
@@ -2045,11 +2034,9 @@ fn maybe_build_checkpoint(
         }
     };
     let mut advanced = false;
-    // A peer can commit the due checkpoint after build_due_checkpoints'
-    // latest-row refresh but before this cache-miss frontier scan. The loaded
-    // frontier then legitimately leads the cached head. Verify and adopt that
-    // bounded suffix before comparing positions; the already-loaded frontier
-    // is the exact persisted prefix the adopted head now names.
+    // A peer may commit after the latest-row refresh but before this cache-miss
+    // scan. If the persisted frontier now leads the cached head, verify and
+    // adopt that bounded suffix before comparing positions.
     if chain_frontier.leaf_count() > head.checkpoint_seq() {
         catch_up_verified_head_to(connection, head, chain_frontier.leaf_count())?;
         advanced = true;
