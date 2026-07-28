@@ -756,6 +756,120 @@ fn built_in_signed_artifact_registry_matches_public_metadata() {
     }
 }
 
+/// Bidirectional schema-registry parity for the cognition-market finding
+/// family. The generic test above proves allowlist-to-registry
+/// correspondence only; a `chio.finding.*` row added to registry.json
+/// without a matching allowlist registration (or vice versa) would pass it.
+/// This table is the family's explicit row list: standalone signed schemas
+/// carry their exact registration metadata, and registry-only unsigned
+/// schemas (none at M1) are enumerated separately. Each milestone that
+/// registers a finding-family schema extends the matching table.
+#[test]
+fn finding_family_schema_registry_parity_is_bidirectional() {
+    const EXPECTED_SIGNED: &[(&str, &str, &str, &str)] = &[(
+        "chio.finding.v1",
+        "finding",
+        "finding-market-v1",
+        "spec/schemas/chio-finding/v1/finding.schema.json",
+    )];
+    const EXPECTED_REGISTRY_ONLY: &[&str] = &[];
+
+    let registry: serde_json::Value = serde_json::from_str(include_str!(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../../spec/schemas/registry.json"
+    )))
+    .expect("schema registry parses");
+    let registry_rows: BTreeMap<&str, (&str, &str, &str)> = registry
+        .get("artifacts")
+        .and_then(serde_json::Value::as_array)
+        .expect("registry artifacts are present")
+        .iter()
+        .filter_map(|entry| {
+            let schema = entry
+                .get("schema")
+                .and_then(serde_json::Value::as_str)
+                .expect("registry artifact has schema");
+            if !schema.starts_with("chio.finding.") {
+                return None;
+            }
+            let artifact_kind = entry
+                .get("artifactKind")
+                .and_then(serde_json::Value::as_str)
+                .expect("registry artifact has artifactKind");
+            let introduced_by = entry
+                .get("introducedBy")
+                .and_then(serde_json::Value::as_str)
+                .expect("registry artifact has introducedBy");
+            let schema_file = entry
+                .get("schemaFile")
+                .and_then(serde_json::Value::as_str)
+                .expect("registry artifact has schemaFile");
+            Some((schema, (artifact_kind, introduced_by, schema_file)))
+        })
+        .collect();
+    let built_in_rows: BTreeMap<String, (String, String)> =
+        chio_core_types::built_in_signed_artifact_registry()
+            .into_iter()
+            .filter(|entry| entry.schema.starts_with("chio.finding."))
+            .map(|entry| (entry.schema, (entry.artifact_kind, entry.introduced_by)))
+            .collect();
+
+    for (schema, artifact_kind, introduced_by, schema_file) in EXPECTED_SIGNED {
+        assert!(
+            chio_core_types::is_supported_signed_artifact_schema(schema),
+            "expected signed finding-family schema must be supported: {schema}"
+        );
+        let (built_kind, built_introduced_by) = built_in_rows
+            .get(*schema)
+            .unwrap_or_else(|| panic!("expected signed row missing from allowlist: {schema}"));
+        assert_eq!(built_kind, artifact_kind, "allowlist kind for {schema}");
+        assert_eq!(
+            built_introduced_by, introduced_by,
+            "allowlist introducedBy for {schema}"
+        );
+        let (reg_kind, reg_introduced_by, reg_schema_file) = registry_rows
+            .get(*schema)
+            .unwrap_or_else(|| panic!("expected signed row missing from registry.json: {schema}"));
+        assert_eq!(reg_kind, artifact_kind, "registry.json kind for {schema}");
+        assert_eq!(
+            reg_introduced_by, introduced_by,
+            "registry.json introducedBy for {schema}"
+        );
+        assert_eq!(
+            reg_schema_file, schema_file,
+            "registry.json schemaFile for {schema}"
+        );
+    }
+    for schema in EXPECTED_REGISTRY_ONLY {
+        assert!(
+            registry_rows.contains_key(schema),
+            "expected registry-only row missing from registry.json: {schema}"
+        );
+        assert!(
+            !built_in_rows.contains_key(*schema),
+            "registry-only finding-family schema must stay out of the signed allowlist: {schema}"
+        );
+    }
+
+    let expected: BTreeSet<&str> = EXPECTED_SIGNED
+        .iter()
+        .map(|(schema, _, _, _)| *schema)
+        .chain(EXPECTED_REGISTRY_ONLY.iter().copied())
+        .collect();
+    for schema in built_in_rows.keys() {
+        assert!(
+            expected.contains(schema.as_str()),
+            "finding-family allowlist row has no explicit parity entry: {schema}"
+        );
+    }
+    for schema in registry_rows.keys() {
+        assert!(
+            expected.contains(schema),
+            "finding-family registry.json row has no explicit parity entry: {schema}"
+        );
+    }
+}
+
 #[test]
 fn public_settlement_dispatch_and_receipt_schemas_are_supported() {
     let registry: serde_json::Value = serde_json::from_str(include_str!(concat!(
