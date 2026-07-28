@@ -334,10 +334,10 @@ impl ChioKernel {
                 self.finalize_durable_tool_return(admission, request, &tool_return)
                     .map(Some)
             }
-            AdmissionOperationState::Completed
-            | AdmissionOperationState::DeniedAfterDelivery => self
-                .completed_durable_tool_response(admission, request)
-                .map(Some),
+            AdmissionOperationState::Completed | AdmissionOperationState::DeniedAfterDelivery => {
+                self.completed_durable_tool_response(admission, request)
+                    .map(Some)
+            }
             _ => Ok(None),
         }
     }
@@ -670,28 +670,27 @@ impl ChioKernel {
             merge_metadata_objects(expected_non_financial_metadata, retained_financial_metadata);
         // Reproduce the delivery-contract block so the replayed metadata
         // byte-matches the persisted receipt.
-        let expected_non_admission_metadata = if let Some(expected) =
-            expected_output_digest.as_deref()
-        {
-            let block = chio_core::receipt::metadata::DeliveryContract {
-                schema: chio_core::receipt::metadata::DELIVERY_CONTRACT_SCHEMA.to_owned(),
-                expected_digest: expected.to_owned(),
-                observed_digest: receipt_content.content_hash.clone(),
-                result: if delivery_denied {
-                    chio_core::receipt::metadata::DeliveryResult::Mismatched
-                } else {
-                    chio_core::receipt::metadata::DeliveryResult::Matched
-                },
+        let expected_non_admission_metadata =
+            if let Some(expected) = expected_output_digest.as_deref() {
+                let block = chio_core::receipt::metadata::DeliveryContract {
+                    schema: chio_core::receipt::metadata::DELIVERY_CONTRACT_SCHEMA.to_owned(),
+                    expected_digest: expected.to_owned(),
+                    observed_digest: receipt_content.content_hash.clone(),
+                    result: if delivery_denied {
+                        chio_core::receipt::metadata::DeliveryResult::Mismatched
+                    } else {
+                        chio_core::receipt::metadata::DeliveryResult::Matched
+                    },
+                };
+                merge_metadata_objects(
+                    expected_non_admission_metadata,
+                    Some(serde_json::json!({
+                        chio_core::receipt::metadata::DELIVERY_CONTRACT_METADATA_KEY: block
+                    })),
+                )
+            } else {
+                expected_non_admission_metadata
             };
-            merge_metadata_objects(
-                expected_non_admission_metadata,
-                Some(serde_json::json!({
-                    chio_core::receipt::metadata::DELIVERY_CONTRACT_METADATA_KEY: block
-                })),
-            )
-        } else {
-            expected_non_admission_metadata
-        };
         self.validate_completed_durable_receipt(
             admission,
             request,
@@ -786,6 +785,10 @@ impl ChioKernel {
             decision: expected_decision,
             post_invocation_evidence: expected_post_invocation_evidence,
         } = expectation;
+        // A delivery-digest mismatch is the only durable terminal that renders
+        // a Deny: it persists as DeniedAfterDelivery and attaches no
+        // completed-tool-outcome, unlike an Allow or Incomplete Completed.
+        let denied = matches!(expected_decision, Decision::Deny { .. });
         let runtime = self.durable_runtime()?;
         let operation = &admission.operation;
         let replay_receipt_id = match operation.terminal_replay() {
@@ -959,15 +962,25 @@ impl ChioKernel {
             || metadata.request_namespace_digest != *operation.binding().request_namespace_digest()
             || metadata.request_binding_hash != *operation.binding().request_binding_hash()
             || metadata.projected_operation_version != operation.version()
-            || metadata.projected_state != AdmissionOperationState::Completed
+            || metadata.projected_state
+                != if denied {
+                    AdmissionOperationState::DeniedAfterDelivery
+                } else {
+                    AdmissionOperationState::Completed
+                }
             || metadata.projected_dispatch_state != AdmissionDispatchState::Terminal
             || metadata.trusted_time_unix_ms == 0
             || receipt.timestamp != metadata.trusted_time_unix_ms / 1_000
             || metadata.coordinator_lease_epoch != operation.coordinator_lease_epoch()
             || metadata.retained_dispatch_commit != operation.dispatch_commit().cloned()
             || metadata.compensation_status != AdmissionCompensationStatus::NotCompensated
-            || metadata.tool_outcome_id.as_ref() != expected_outcome_id
-            || metadata.tool_outcome_version != Some(tool_return.outcome.version())
+            || metadata.tool_outcome_id.as_ref() != if denied { None } else { expected_outcome_id }
+            || metadata.tool_outcome_version
+                != if denied {
+                    None
+                } else {
+                    Some(tool_return.outcome.version())
+                }
         {
             return Err(KernelError::DurableAdmission(
                 "projected receipt conflicts with the completed admission".to_owned(),
@@ -1047,9 +1060,7 @@ impl ChioKernel {
         // digest-constrained request, so a denied delivery is always a
         // reversible hold; assert that invariant rather than silently
         // producing an unreleasable zero-charge.
-        if delivery_denied
-            && journal.rail_mode != crate::payment::PaymentRailMode::ReversibleHold
-        {
+        if delivery_denied && journal.rail_mode != crate::payment::PaymentRailMode::ReversibleHold {
             return Err(KernelError::DurableAdmission(
                 "delivery denial requires a reversible-hold rail".to_owned(),
             ));
@@ -1680,7 +1691,15 @@ impl ChioKernel {
                 .clone(),
             request_binding_hash: admission.operation.binding().request_binding_hash().clone(),
             projected_operation_version,
-            projected_state: AdmissionOperationState::Completed,
+            // A delivery mismatch terminates as DeniedAfterDelivery, which,
+            // like the other non-Completed terminals, attaches no
+            // completed-tool-outcome reference. The delivered output survives
+            // as the receipt content hash and the delivery-contract block.
+            projected_state: if delivery_denied {
+                AdmissionOperationState::DeniedAfterDelivery
+            } else {
+                AdmissionOperationState::Completed
+            },
             projected_dispatch_state: AdmissionDispatchState::Terminal,
             trusted_time_unix_ms: trusted_now_unix_ms,
             coordinator_lease_id: context.coordinator_lease_id.clone(),
@@ -1688,8 +1707,16 @@ impl ChioKernel {
             store_fence: context.store_fence.clone(),
             retained_dispatch_commit: admission.operation.dispatch_commit().cloned(),
             compensation_status: AdmissionCompensationStatus::NotCompensated,
-            tool_outcome_id: Some(terminal_outcome.outcome_id().clone()),
-            tool_outcome_version: Some(terminal_outcome.version()),
+            tool_outcome_id: if delivery_denied {
+                None
+            } else {
+                Some(terminal_outcome.outcome_id().clone())
+            },
+            tool_outcome_version: if delivery_denied {
+                None
+            } else {
+                Some(terminal_outcome.version())
+            },
         };
         let memory_action_kind = crate::memory_provenance::classify_memory_action(
             &request.tool_name,
@@ -1758,7 +1785,9 @@ impl ChioKernel {
         let metadata = if let Some(expected) = expected_output_digest.as_deref() {
             if metadata
                 .as_ref()
-                .and_then(|value| value.get(chio_core::receipt::metadata::DELIVERY_CONTRACT_METADATA_KEY))
+                .and_then(|value| {
+                    value.get(chio_core::receipt::metadata::DELIVERY_CONTRACT_METADATA_KEY)
+                })
                 .is_some()
             {
                 return Err(KernelError::DurableAdmission(
@@ -1777,7 +1806,9 @@ impl ChioKernel {
             };
             merge_metadata_objects(
                 metadata,
-                Some(serde_json::json!({ chio_core::receipt::metadata::DELIVERY_CONTRACT_METADATA_KEY: block })),
+                Some(
+                    serde_json::json!({ chio_core::receipt::metadata::DELIVERY_CONTRACT_METADATA_KEY: block }),
+                ),
             )
         } else {
             metadata
@@ -1804,14 +1835,27 @@ impl ChioKernel {
             trust_level: chio_core::receipt::kinds::TrustLevel::default(),
             tenant_id: receipt_tenant_id,
         })?;
-        let receipt = VerifiedAdmissionReceipt::from_kernel_verified_terminal(
-            receipt,
-            &self.config.keypair.public_key(),
-            &terminal_decision,
-            &admission.operation,
-            &context,
-            &tool_outcome,
-        )
+        let receipt = if delivery_denied {
+            VerifiedAdmissionReceipt::from_kernel_verified_denied_after_delivery(
+                receipt,
+                &self.config.keypair.public_key(),
+                &terminal_decision,
+                &request.server_id,
+                &request.tool_name,
+                &resolved_output_digest,
+                &admission.operation,
+                &context,
+            )
+        } else {
+            VerifiedAdmissionReceipt::from_kernel_verified_terminal(
+                receipt,
+                &self.config.keypair.public_key(),
+                &terminal_decision,
+                &admission.operation,
+                &context,
+                &tool_outcome,
+            )
+        }
         .map_err(|error| {
             KernelError::DurableAdmission(format!("terminal receipt qualification failed: {error}"))
         })?;
@@ -1882,15 +1926,16 @@ impl ChioKernel {
             // terminals do not apply: the pre-dispatch gate admits only a
             // reversible-hold tool dispatch for a digest-constrained
             // request.
-            let projection = crate::admission_operation::AdmissionTerminalProjection::DeniedAfterDelivery {
-                context,
-                reason: crate::admission_operation::DeliveryDenialReason::DigestMismatch,
-                evidence: Box::new(
-                    crate::admission_operation::AdmissionReceiptOrIncident::Receipt(Box::new(
-                        receipt,
-                    )),
-                ),
-            };
+            let projection =
+                crate::admission_operation::AdmissionTerminalProjection::DeniedAfterDelivery {
+                    context,
+                    reason: crate::admission_operation::DeliveryDenialReason::DigestMismatch,
+                    evidence: Box::new(
+                        crate::admission_operation::AdmissionReceiptOrIncident::Receipt(Box::new(
+                            receipt,
+                        )),
+                    ),
+                };
             let terminal = runtime
                 .store
                 .commit_admission_projection(&projection)

@@ -5,10 +5,13 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use chio_core::canonical::canonical_json_bytes;
 use chio_core::capability::{
-    scope::{ChioScope, MonetaryAmount, Operation, ToolGrant},
+    scope::{ChioScope, Constraint, MonetaryAmount, Operation, ToolGrant},
     token::CapabilityToken,
 };
 use chio_core::crypto::{sha256_hex, Keypair};
+use chio_core::receipt::metadata::{
+    DeliveryContract, DeliveryResult, DELIVERY_CONTRACT_METADATA_KEY, DELIVERY_CONTRACT_SCHEMA,
+};
 use chio_kernel::admission_operation::{
     AdmissionOperationState, AdmissionOperationStore, AdmissionReceiptMetadataV1,
     AdmissionRecoveryLease, StoreMutationFence, ADMISSION_RECEIPT_METADATA_KEY,
@@ -22,9 +25,9 @@ use chio_kernel::{
     BudgetStore, ChioKernel, KernelConfig, KernelError, NestedFlowBridge, PaymentAdapter,
     PaymentAuthorization, PaymentAuthorizationState, PaymentAuthorizeRequest, PaymentError,
     PaymentJournalState, PaymentRailMode, PaymentReleaseAuthorityKind, PaymentResult,
-    PaymentSettleAction, RailSettlementStatus, ReceiptStore, ToolCallRequest, ToolInvocationCost,
-    ToolServerConnection, Verdict, DEFAULT_CHECKPOINT_BATCH_SIZE, DEFAULT_MAX_STREAM_DURATION_SECS,
-    DEFAULT_MAX_STREAM_TOTAL_BYTES,
+    PaymentSettleAction, RailSettlementStatus, ReceiptStore, ToolCallRequest, ToolCallResponse,
+    ToolInvocationCost, ToolServerConnection, Verdict, DEFAULT_CHECKPOINT_BATCH_SIZE,
+    DEFAULT_MAX_STREAM_DURATION_SECS, DEFAULT_MAX_STREAM_TOTAL_BYTES,
 };
 use chio_store_sqlite::{SqliteAuthorityStore, SqliteToolOutcomeStore};
 
@@ -258,6 +261,78 @@ impl PaymentAdapter for ReversiblePaymentAdapter {
         if let Some(calls) = &self.calls {
             calls.refunds.fetch_add(1, Ordering::SeqCst);
         }
+        Ok(PaymentResult {
+            transaction_id: transaction_id.to_owned(),
+            settlement_status: RailSettlementStatus::Refunded,
+            metadata: serde_json::json!({}),
+        })
+    }
+}
+
+/// A final-settlement rail. A delivery-digest grant cannot be honored here:
+/// the compare only runs after the tool returns, which is past the prepay
+/// point on this rail, so the kernel must reject the request before dispatch.
+struct PrepaidFinalPaymentAdapter {
+    calls: Arc<PaymentCalls>,
+}
+
+impl PaymentAdapter for PrepaidFinalPaymentAdapter {
+    fn rail_id(&self) -> &'static str {
+        "sqlite-test-prepaid-final"
+    }
+
+    fn rail_mode(&self) -> Option<PaymentRailMode> {
+        Some(PaymentRailMode::PrepaidFinal)
+    }
+
+    fn authorize(
+        &self,
+        request: &PaymentAuthorizeRequest,
+    ) -> Result<PaymentAuthorization, PaymentError> {
+        self.calls.authorizations.fetch_add(1, Ordering::SeqCst);
+        Ok(PaymentAuthorization {
+            authorization_id: format!("prepaid:{}", request.reference),
+            state: PaymentAuthorizationState::PrepaidFinal,
+            metadata: serde_json::json!({}),
+        })
+    }
+
+    fn capture(
+        &self,
+        authorization_id: &str,
+        _amount_units: u64,
+        _currency: &str,
+        _reference: &str,
+    ) -> Result<PaymentResult, PaymentError> {
+        self.calls.captures.fetch_add(1, Ordering::SeqCst);
+        Ok(PaymentResult {
+            transaction_id: authorization_id.to_owned(),
+            settlement_status: RailSettlementStatus::Settled,
+            metadata: serde_json::json!({}),
+        })
+    }
+
+    fn release(
+        &self,
+        authorization_id: &str,
+        _reference: &str,
+    ) -> Result<PaymentResult, PaymentError> {
+        self.calls.releases.fetch_add(1, Ordering::SeqCst);
+        Ok(PaymentResult {
+            transaction_id: format!("release:{authorization_id}"),
+            settlement_status: RailSettlementStatus::Released,
+            metadata: serde_json::json!({}),
+        })
+    }
+
+    fn refund(
+        &self,
+        transaction_id: &str,
+        _amount_units: u64,
+        _currency: &str,
+        _reference: &str,
+    ) -> Result<PaymentResult, PaymentError> {
+        self.calls.refunds.fetch_add(1, Ordering::SeqCst);
         Ok(PaymentResult {
             transaction_id: transaction_id.to_owned(),
             settlement_status: RailSettlementStatus::Refunded,
@@ -520,6 +595,31 @@ fn paid_request(capability: &CapabilityToken) -> ToolCallRequest {
         model_metadata: None,
         federated_origin_kernel_id: None,
     }
+}
+
+fn paid_scope_with_digests(digests: &[&str]) -> ChioScope {
+    let mut scope = paid_scope();
+    if let Some(grant) = scope.grants.first_mut() {
+        grant.constraints = digests
+            .iter()
+            .map(|digest| Constraint::OutputDigestSha256((*digest).to_owned()))
+            .collect();
+    }
+    scope
+}
+
+fn delivery_block(response: &ToolCallResponse) -> Result<DeliveryContract, Box<dyn Error>> {
+    let value = response
+        .receipt
+        .metadata
+        .as_ref()
+        .and_then(serde_json::Value::as_object)
+        .and_then(|metadata| metadata.get(DELIVERY_CONTRACT_METADATA_KEY))
+        .cloned()
+        .ok_or_else(|| std::io::Error::other("delivery contract block is absent"))?;
+    let block: DeliveryContract = serde_json::from_value(value)?;
+    block.validate()?;
+    Ok(block)
 }
 
 fn now_unix_ms() -> Result<u64, Box<dyn Error>> {
@@ -978,5 +1078,288 @@ fn sqlite_durable_zero_charge_persists_release_evidence_and_reopens_cleanly(
         .ok_or_else(|| std::io::Error::other("reopened payment journal is absent"))?;
     assert_eq!(reopened.state, PaymentJournalState::Settled);
     assert_eq!(reopened.settle_action, Some(PaymentSettleAction::Release));
+    Ok(())
+}
+
+// A grant that fixes an expected output digest is honored end to end: a
+// delivered output that does not hash to it is denied with a signed
+// zero-charge receipt, a matching delivery captures normally, and both
+// outcomes survive a restart without redispatching the tool or moving money
+// a second time. A rail that cannot support the deferred compare is rejected
+// before the tool ever runs.
+#[test]
+fn output_digest_delivery_contract_enforces_every_lane() -> Result<(), Box<dyn Error>> {
+    let wrong_digest = sha256_hex(b"a digest the delivered output cannot match");
+
+    // Lane 1: a mismatch denies, charges nothing, and recovers to the same
+    // persisted Deny after a restart.
+    let true_digest = {
+        let temp = tempfile::tempdir()?;
+        let database = temp.path().join("authority.db");
+        let lock_root = temp.path().join("locks");
+        std::fs::create_dir(&lock_root)?;
+        SqliteAuthorityStore::provision(&database, &lock_root)?;
+        let kernel_keypair = Keypair::generate();
+        let invocations = Arc::new(AtomicU64::new(0));
+        let payment_calls = Arc::new(PaymentCalls::default());
+
+        let (request, response, operation_id) = {
+            let authority = SqliteAuthorityStore::open_serving(&database, &lock_root)?;
+            let fence = authority.mutation_fence();
+            let operations = Arc::new(authority.admission_operation_store());
+            let outcomes = Arc::new(authority.tool_outcome_store());
+            let budget = Arc::new(authority.budget_store());
+            let mut kernel = ChioKernel::new(kernel_config(kernel_keypair.clone()));
+            kernel.set_durable_admission_store(operations.clone(), outcomes, fence.clone())?;
+            kernel.set_budget_store_handle(budget);
+            kernel.set_payment_adapter(Box::new(ReversiblePaymentAdapter {
+                calls: Some(payment_calls.clone()),
+            }));
+            kernel.register_tool_server(Box::new(PaidMutationServer {
+                invocations: invocations.clone(),
+            }));
+            let agent = Keypair::generate();
+            let capability = kernel.issue_capability(
+                &agent.public_key(),
+                paid_scope_with_digests(&[wrong_digest.as_str()]),
+                300,
+            )?;
+            let request = paid_request(&capability);
+            let response = kernel.evaluate_tool_call_blocking(&request)?;
+
+            assert_eq!(response.verdict, Verdict::Deny, "{:?}", response.reason);
+            assert!(
+                response
+                    .reason
+                    .as_deref()
+                    .is_some_and(|reason| reason.contains("committed output digest")),
+                "{:?}",
+                response.reason
+            );
+            let block = delivery_block(&response)?;
+            assert_eq!(block.schema, DELIVERY_CONTRACT_SCHEMA);
+            assert_eq!(block.result, DeliveryResult::Mismatched);
+            assert_eq!(block.expected_digest, wrong_digest);
+            assert_eq!(block.observed_digest, response.receipt.content_hash);
+            assert_ne!(block.observed_digest, block.expected_digest);
+            assert_eq!(invocations.load(Ordering::SeqCst), 1);
+            // The paid grant was worth five units, yet the mismatch releases
+            // the hold instead of capturing it.
+            assert_eq!(payment_calls.captures.load(Ordering::SeqCst), 0);
+            assert_eq!(payment_calls.releases.load(Ordering::SeqCst), 1);
+
+            let metadata: AdmissionReceiptMetadataV1 = serde_json::from_value(
+                response
+                    .receipt
+                    .metadata
+                    .as_ref()
+                    .and_then(serde_json::Value::as_object)
+                    .and_then(|metadata| metadata.get(ADMISSION_RECEIPT_METADATA_KEY))
+                    .cloned()
+                    .ok_or_else(|| std::io::Error::other("admission receipt metadata is absent"))?,
+            )?;
+            let operation = operations
+                .load_by_operation_id(&metadata.operation_id)?
+                .ok_or_else(|| std::io::Error::other("denied admission operation is absent"))?;
+            assert_eq!(
+                operation.state(),
+                AdmissionOperationState::DeniedAfterDelivery
+            );
+            let journal = operations
+                .load_payment_journal(metadata.operation_id.as_str(), &fence)?
+                .ok_or_else(|| std::io::Error::other("payment journal is absent"))?;
+            assert_eq!(journal.state, PaymentJournalState::Settled);
+            assert_eq!(journal.settle_action, Some(PaymentSettleAction::Release));
+            assert_eq!(
+                journal
+                    .release_authority
+                    .as_ref()
+                    .map(|authority| authority.kind),
+                Some(PaymentReleaseAuthorityKind::ContractualZeroCharge)
+            );
+            assert_eq!(
+                response
+                    .receipt
+                    .metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.get("financial"))
+                    .and_then(|financial| financial.get("cost_charged"))
+                    .and_then(serde_json::Value::as_u64),
+                Some(0)
+            );
+            (request, response, metadata.operation_id)
+        };
+
+        // Restart: re-entering the denied operation returns the persisted
+        // Deny without redispatching the tool or moving funds.
+        let authority = SqliteAuthorityStore::open_serving(&database, &lock_root)?;
+        let fence = authority.mutation_fence();
+        let operations = Arc::new(authority.admission_operation_store());
+        let outcomes = Arc::new(authority.tool_outcome_store());
+        let budget = Arc::new(authority.budget_store());
+        let mut recovered = ChioKernel::new(kernel_config(kernel_keypair));
+        recovered.set_durable_admission_store(operations.clone(), outcomes, fence)?;
+        recovered.set_budget_store_handle(budget);
+        recovered.set_payment_adapter(Box::new(ReversiblePaymentAdapter {
+            calls: Some(payment_calls.clone()),
+        }));
+        recovered.register_tool_server(Box::new(PaidMutationServer {
+            invocations: invocations.clone(),
+        }));
+
+        let replay = recovered.evaluate_tool_call_blocking(&request)?;
+        assert_eq!(replay.verdict, Verdict::Deny, "{:?}", replay.reason);
+        assert_eq!(replay.receipt.id, response.receipt.id);
+        assert_eq!(
+            canonical_json_bytes(&replay.receipt)?,
+            canonical_json_bytes(&response.receipt)?
+        );
+        assert_eq!(delivery_block(&replay)?.result, DeliveryResult::Mismatched);
+        assert_eq!(invocations.load(Ordering::SeqCst), 1);
+        assert_eq!(payment_calls.captures.load(Ordering::SeqCst), 0);
+        let operation = operations
+            .load_by_operation_id(&operation_id)?
+            .ok_or_else(|| std::io::Error::other("denied admission operation is absent"))?;
+        assert_eq!(
+            operation.state(),
+            AdmissionOperationState::DeniedAfterDelivery
+        );
+
+        response.receipt.content_hash.clone()
+    };
+
+    // Lane 2: a matching digest allows, captures, and replays the same Allow
+    // after a restart without a second capture.
+    {
+        let temp = tempfile::tempdir()?;
+        let database = temp.path().join("authority.db");
+        let lock_root = temp.path().join("locks");
+        std::fs::create_dir(&lock_root)?;
+        SqliteAuthorityStore::provision(&database, &lock_root)?;
+        let kernel_keypair = Keypair::generate();
+        let invocations = Arc::new(AtomicU64::new(0));
+        let payment_calls = Arc::new(PaymentCalls::default());
+
+        let (request, response) = {
+            let authority = SqliteAuthorityStore::open_serving(&database, &lock_root)?;
+            let fence = authority.mutation_fence();
+            let operations = Arc::new(authority.admission_operation_store());
+            let outcomes = Arc::new(authority.tool_outcome_store());
+            let budget = Arc::new(authority.budget_store());
+            let mut kernel = ChioKernel::new(kernel_config(kernel_keypair.clone()));
+            kernel.set_durable_admission_store(operations.clone(), outcomes, fence.clone())?;
+            kernel.set_budget_store_handle(budget);
+            kernel.set_payment_adapter(Box::new(ReversiblePaymentAdapter {
+                calls: Some(payment_calls.clone()),
+            }));
+            kernel.register_tool_server(Box::new(PaidMutationServer {
+                invocations: invocations.clone(),
+            }));
+            let agent = Keypair::generate();
+            let capability = kernel.issue_capability(
+                &agent.public_key(),
+                paid_scope_with_digests(&[true_digest.as_str()]),
+                300,
+            )?;
+            let request = paid_request(&capability);
+            let response = kernel.evaluate_tool_call_blocking(&request)?;
+
+            assert_eq!(response.verdict, Verdict::Allow, "{:?}", response.reason);
+            let block = delivery_block(&response)?;
+            assert_eq!(block.result, DeliveryResult::Matched);
+            assert_eq!(block.expected_digest, true_digest);
+            assert_eq!(block.observed_digest, true_digest);
+            assert_eq!(block.observed_digest, response.receipt.content_hash);
+            assert_eq!(invocations.load(Ordering::SeqCst), 1);
+            assert_eq!(payment_calls.captures.load(Ordering::SeqCst), 1);
+
+            let metadata: AdmissionReceiptMetadataV1 = serde_json::from_value(
+                response
+                    .receipt
+                    .metadata
+                    .as_ref()
+                    .and_then(serde_json::Value::as_object)
+                    .and_then(|metadata| metadata.get(ADMISSION_RECEIPT_METADATA_KEY))
+                    .cloned()
+                    .ok_or_else(|| std::io::Error::other("admission receipt metadata is absent"))?,
+            )?;
+            let operation = operations
+                .load_by_operation_id(&metadata.operation_id)?
+                .ok_or_else(|| std::io::Error::other("completed admission operation is absent"))?;
+            assert_eq!(operation.state(), AdmissionOperationState::Completed);
+            (request, response)
+        };
+
+        let authority = SqliteAuthorityStore::open_serving(&database, &lock_root)?;
+        let fence = authority.mutation_fence();
+        let operations = Arc::new(authority.admission_operation_store());
+        let outcomes = Arc::new(authority.tool_outcome_store());
+        let budget = Arc::new(authority.budget_store());
+        let mut recovered = ChioKernel::new(kernel_config(kernel_keypair));
+        recovered.set_durable_admission_store(operations, outcomes, fence)?;
+        recovered.set_budget_store_handle(budget);
+        recovered.set_payment_adapter(Box::new(ReversiblePaymentAdapter {
+            calls: Some(payment_calls.clone()),
+        }));
+        recovered.register_tool_server(Box::new(PaidMutationServer {
+            invocations: invocations.clone(),
+        }));
+
+        let replay = recovered.evaluate_tool_call_blocking(&request)?;
+        assert_eq!(replay.verdict, Verdict::Allow, "{:?}", replay.reason);
+        assert_eq!(replay.receipt.id, response.receipt.id);
+        assert_eq!(replay.output, response.output);
+        assert_eq!(delivery_block(&replay)?.result, DeliveryResult::Matched);
+        assert_eq!(invocations.load(Ordering::SeqCst), 1);
+        assert_eq!(payment_calls.captures.load(Ordering::SeqCst), 1);
+    }
+
+    // Lane 3: a final-settlement rail cannot arbitrate the deferred compare,
+    // so a digest-constrained request is denied before dispatch with no
+    // execution and no money touched.
+    {
+        let temp = tempfile::tempdir()?;
+        let database = temp.path().join("authority.db");
+        let lock_root = temp.path().join("locks");
+        std::fs::create_dir(&lock_root)?;
+        SqliteAuthorityStore::provision(&database, &lock_root)?;
+        let invocations = Arc::new(AtomicU64::new(0));
+        let payment_calls = Arc::new(PaymentCalls::default());
+        let authority = SqliteAuthorityStore::open_serving(&database, &lock_root)?;
+        let fence = authority.mutation_fence();
+        let operations = Arc::new(authority.admission_operation_store());
+        let outcomes = Arc::new(authority.tool_outcome_store());
+        let budget = Arc::new(authority.budget_store());
+        let mut kernel = ChioKernel::new(kernel_config(Keypair::generate()));
+        kernel.set_durable_admission_store(operations, outcomes, fence)?;
+        kernel.set_budget_store_handle(budget);
+        kernel.set_payment_adapter(Box::new(PrepaidFinalPaymentAdapter {
+            calls: payment_calls.clone(),
+        }));
+        kernel.register_tool_server(Box::new(PaidMutationServer {
+            invocations: invocations.clone(),
+        }));
+        let agent = Keypair::generate();
+        let capability = kernel.issue_capability(
+            &agent.public_key(),
+            paid_scope_with_digests(&[true_digest.as_str()]),
+            300,
+        )?;
+        let response = kernel.evaluate_tool_call_blocking(&paid_request(&capability))?;
+
+        assert_eq!(response.verdict, Verdict::Deny, "{:?}", response.reason);
+        assert!(
+            response
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("reversible-hold")),
+            "{:?}",
+            response.reason
+        );
+        assert_eq!(invocations.load(Ordering::SeqCst), 0);
+        assert_eq!(payment_calls.authorizations.load(Ordering::SeqCst), 0);
+        assert_eq!(payment_calls.captures.load(Ordering::SeqCst), 0);
+    }
+
     Ok(())
 }

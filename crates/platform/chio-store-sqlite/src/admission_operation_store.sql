@@ -11,8 +11,8 @@ CREATE TABLE IF NOT EXISTS admission_operations (
         'budget_authorized', 'approval_reserved', 'ready_to_dispatch',
         'capture_pending', 'dispatch_committed', 'finalizing', 'completed',
         'compensated_before_dispatch', 'not_accepted_after_dispatch_commit',
-        'outcome_unknown_after_dispatch', 'mutation_ready', 'mutation_submitted',
-        'economic_mutation_applied', 'economic_mutation_not_applied'
+        'outcome_unknown_after_dispatch', 'denied_after_delivery', 'mutation_ready',
+        'mutation_submitted', 'economic_mutation_applied', 'economic_mutation_not_applied'
     )),
     terminal INTEGER NOT NULL CHECK (terminal IN (0, 1)),
     coordinator_lease_epoch INTEGER NOT NULL CHECK (coordinator_lease_epoch > 0),
@@ -350,6 +350,7 @@ CREATE TABLE IF NOT EXISTS admission_operation_terminal_projections (
     terminal_state TEXT NOT NULL CHECK (terminal_state IN (
         'completed', 'compensated_before_dispatch',
         'not_accepted_after_dispatch_commit', 'outcome_unknown_after_dispatch',
+        'denied_after_delivery',
         'economic_mutation_applied', 'economic_mutation_not_applied'
     )),
     projection_body_digest TEXT NOT NULL CHECK (

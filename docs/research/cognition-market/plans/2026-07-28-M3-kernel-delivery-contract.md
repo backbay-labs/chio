@@ -406,3 +406,40 @@ class`.
 5. The full qualified workspace gate passes at the branch HEAD.
 6. CONF-1 and CONF-2 are resolved (default or overturned by review) and
    recorded.
+
+## Recorded results
+
+- Carrier, receipt block, 18th state, formal core, and verdict matrix
+  landed across Tasks 1-6 (commits on `codex/cognition-market-m3`).
+- Durable enforcement (Task 5) compares the delivered post-transform
+  output digest against the grant's committed digest at the `Finalizing`
+  terminal. A mismatch denies with a signed receipt, projects
+  `DeniedAfterDelivery`, and settles the reversible hold to a contractual
+  zero charge. Recovery and replay reproduce the outcome: a re-entered
+  `DeniedAfterDelivery` operation returns the persisted Deny without
+  redispatching the tool or moving money, and the replay lane rebuilds the
+  `delivery_contract` block byte-for-byte for the completed-admission
+  equality check.
+- Exit test `output_digest_delivery_contract_enforces_every_lane`
+  (`crates/kernel/chio-kernel/tests/durable_admission_sqlite.rs`) is green
+  and drives three lanes end to end against SQLite: a paid mismatch
+  (Deny, zero charge, `mismatched` block, `DeniedAfterDelivery`, no
+  capture, restart recovers to the persisted Deny without redispatch); a
+  paid match (Allow, capture, `matched` block, restart replays the Allow
+  without a second capture); and a final-settlement rail (rejected at
+  admission with no execution and no authorization).
+- Pre-dispatch rejection is enforced at admission: `begin_durable_tool_admission`
+  refuses a digest-constrained monetary grant whose rail is not a
+  reversible hold, before any operation or payment journal exists. The
+  primary and nested pre-dispatch gates remain as defense in depth for the
+  non-durable and governed-mustprepay conditions.
+- Finding (pre-existing, out of scope): compensating a monetary durable
+  operation that is still `HoldPlaced` before dispatch exercises two seams
+  that predate this work and were never reached before: the payment-journal
+  SQL CHECK rejects the `CancelBeforeAuthorization` terminal (`closed` with
+  a null `authorization_id`, which the Rust state machine emits), and
+  `verify_payment_terminal_source` expects a payment-terminal record for a
+  `CompensatedBeforeDispatch` projection that carries none. Rejecting the
+  digest-plus-final-rail case at admission means the delivery contract never
+  reaches these seams; hardening the generic `HoldPlaced` pre-dispatch
+  cancel path is a separate follow-up.

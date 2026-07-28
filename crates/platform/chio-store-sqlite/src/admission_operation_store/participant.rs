@@ -577,6 +577,44 @@ pub(super) fn verify_payment_terminal_source<'a>(
         }
         return Ok(());
     }
+    if terminal_state == AdmissionOperationState::DeniedAfterDelivery {
+        // A rejected delivery releases the open hold to a contractual zero
+        // charge: the money outcome lives in the fenced journal, not in a
+        // payment-terminal projection record, so the projection carries none.
+        if !records.is_empty() {
+            return Err(AdmissionOperationError::TerminalProjectionBindingMismatch.into());
+        }
+        if !requires_payment {
+            return Ok(());
+        }
+        let journal = crate::budget_store::load_payment_journal(
+            transaction,
+            operation.binding().operation_id().as_str(),
+        )
+        .map_err(|error| AdmissionOperationStoreError::Invariant(error.to_string()))?
+        .ok_or_else(|| {
+            AdmissionOperationStoreError::Invariant(
+                "delivery-denied terminal lost its payment journal".to_owned(),
+            )
+        })?;
+        journal
+            .validate()
+            .map_err(|error| AdmissionOperationStoreError::Invariant(error.to_string()))?;
+        if journal.state != chio_kernel::payment::PaymentJournalState::Settled
+            || journal.settle_action != Some(chio_kernel::payment::PaymentSettleAction::Release)
+            || journal
+                .release_authority
+                .as_ref()
+                .map(|authority| authority.kind)
+                != Some(chio_kernel::payment::PaymentReleaseAuthorityKind::ContractualZeroCharge)
+        {
+            return Err(AdmissionOperationStoreError::Invariant(
+                "delivery-denied terminal must release its hold at a contractual zero charge"
+                    .to_owned(),
+            ));
+        }
+        return Ok(());
+    }
     if records.len() != usize::from(requires_payment) {
         return Err(AdmissionOperationError::TerminalProjectionBindingMismatch.into());
     }

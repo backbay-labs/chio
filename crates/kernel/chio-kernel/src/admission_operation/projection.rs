@@ -133,6 +133,38 @@ impl VerifiedAdmissionReceipt {
         )
     }
 
+    /// Qualify a signed Deny that a delivery-digest mismatch produced after
+    /// the tool returned. The terminal carries no completed-tool-outcome
+    /// attachment: the delivered output is retained only as the receipt's
+    /// content hash and the delivery-contract block, mirroring the other
+    /// non-`Completed` terminals.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn from_kernel_verified_denied_after_delivery(
+        receipt: ChioReceipt,
+        expected_kernel_public_key: &PublicKey,
+        expected_decision: &Decision,
+        expected_tool_server: &str,
+        expected_tool_name: &str,
+        expected_content_hash: &AdmissionDigest,
+        operation: &AdmissionOperationV1,
+        context: &AdmissionProjectionContext,
+    ) -> Result<Self, AdmissionOperationError> {
+        Self::qualify(
+            receipt,
+            expected_kernel_public_key,
+            expected_decision,
+            expected_tool_server,
+            expected_tool_name,
+            operation.binding.action_parameter_hash(),
+            expected_content_hash,
+            operation,
+            context,
+            AdmissionOperationState::DeniedAfterDelivery,
+            AdmissionCompensationStatus::NotCompensated,
+            None,
+        )
+    }
+
     #[cfg(any(test, feature = "admission-test-support"))]
     #[allow(clippy::too_many_arguments)]
     pub fn from_kernel_verified_for_test(
@@ -1925,6 +1957,11 @@ pub(super) fn validate_terminal_replay(
             AdmissionOperationKind::ToolDispatch | AdmissionOperationKind::GovernedActiveResponse,
             AdmissionOperationState::OutcomeUnknownAfterDispatch,
             Some(AdmissionTerminalReplay::Incident { .. }),
+        ) => true,
+        (
+            AdmissionOperationKind::ToolDispatch | AdmissionOperationKind::GovernedActiveResponse,
+            AdmissionOperationState::DeniedAfterDelivery,
+            Some(AdmissionTerminalReplay::Receipt { .. }),
         ) => true,
         (
             AdmissionOperationKind::GovernedEconomicMutation,
