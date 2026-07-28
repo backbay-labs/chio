@@ -796,6 +796,46 @@ impl ChioKernel {
         };
 
         if self.execution_nonce_preflight_required(request) {
+            // Nonce-preflight authorizes without producing output: reserve-
+            // for-caller settles a prepayment and reverse-for-retry mints a
+            // nonce, neither reaching an output-aware terminal. An
+            // output-digest grant cannot be enforced here, so reject before
+            // any mint or capture.
+            if matching_grants
+                .iter()
+                .find(|matching| matching.index == matched_grant_index)
+                .is_some_and(|selected| {
+                    selected
+                        .grant
+                        .constraints
+                        .iter()
+                        .any(|constraint| matches!(constraint, Constraint::OutputDigestSha256(_)))
+                })
+            {
+                let reason =
+                    "output-digest delivery cannot be enforced on a no-output authorization path";
+                warn!(request_id = %request.request_id, reason, "delivery contract denied");
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                            request,
+                            reason,
+                            timestamp: now,
+                            matched_grant_index,
+                            cap,
+                            budget_mutation: &budget_mutation,
+                            payment_authorization: None,
+                            durable_operation: durable_admission
+                                .as_ref()
+                                .map(DurableToolAdmission::operation),
+                            runtime_admission_metadata: extra_metadata.clone(),
+                            verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                            budget_lease_acquired,
+                        })
+                    },
+                );
+            }
             if preflight_disposition == PreflightHoldDisposition::ReverseForRetry {
                 return self.with_pre_invocation_guard_evidence(
                     &pre_invocation_guard_evidence,
