@@ -2,7 +2,8 @@
 
 use chio_core_types::canonical_json_bytes;
 use chio_core_types::capability::runtime_attestation::RuntimeAssuranceTier;
-use chio_core_types::crypto::sha256_hex;
+use chio_core_types::crypto::Keypair;
+use chio_core_types::crypto::{sha256_hex, Signature};
 
 use crate::types::{Finding, FindingEvidenceClass, FindingGuaranteeClass, FINDING_SCHEMA_V1};
 
@@ -131,4 +132,64 @@ pub fn compute_finding_id(finding: &Finding) -> Result<String, FindingError> {
     body.signature = String::new();
     let bytes = canonical_json_bytes(&body).map_err(|_| FindingError::Canonicalization)?;
     Ok(sha256_hex(&bytes))
+}
+
+/// Sign the finding inline: signature is over the canonical body with
+/// `signature` cleared. The signer must be the artifact's issuer.
+pub fn sign_finding(mut finding: Finding, keypair: &Keypair) -> Result<Finding, FindingError> {
+    if finding.issuer != keypair.public_key() {
+        return Err(FindingError::Signing);
+    }
+    finding.signature = String::new();
+    let (signature, _) = keypair
+        .sign_canonical(&finding)
+        .map_err(|_| FindingError::Signing)?;
+    finding.signature = signature.to_hex();
+    Ok(finding)
+}
+
+pub(crate) fn is_hex128(value: &str) -> bool {
+    value.len() == 128
+        && value
+            .chars()
+            .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
+}
+
+/// Verify the inline signature against the embedded issuer, fail-closed.
+/// The exact-encoding precheck matters (review finding):
+/// `Signature::from_hex` tolerates `0x` and algorithm prefixes that the
+/// registered JSON schema rejects, and the signature field is cleared
+/// before canonical verification, so without this check an alternate
+/// encoding would verify here while failing the `chio.finding.v1`
+/// schema - publish would accept artifacts the schema refuses.
+pub fn verify_finding_signature(finding: &Finding) -> Result<(), FindingError> {
+    if !is_hex128(&finding.signature) {
+        return Err(FindingError::SignatureInvalid);
+    }
+    let signature =
+        Signature::from_hex(&finding.signature).map_err(|_| FindingError::SignatureInvalid)?;
+    let mut body = finding.clone();
+    body.signature = String::new();
+    match finding.issuer.verify_canonical(&body, &signature) {
+        Ok(true) => Ok(()),
+        _ => Err(FindingError::SignatureInvalid),
+    }
+}
+
+/// The full fail-closed acceptance boundary for a published finding:
+/// structure + content-addressed id (validate) + issuer signature.
+///
+/// IMPORTANT (review finding): this operates on an ALREADY-DESERIALIZED
+/// `Finding` and reserializes canonically to check the signature and id.
+/// It is NOT a substitute for validating the raw request JSON against the
+/// registered `chio.finding.v1` schema: `PublicKey::from_hex` tolerates
+/// `0x`/uppercase and `Option` fields accept explicit `null`, so an
+/// artifact whose only deviation is `issuer: "0x.."` or
+/// `runtime_assurance_tier: null` would pass here (canonicalized to the
+/// accepted form) while failing the schema. The M2 publish boundary MUST
+/// run `chio-spec-validate` against the raw bytes BEFORE deserializing
+/// and calling this.
+pub fn verify_finding(finding: &Finding) -> Result<(), FindingError> {
+    finding.validate()?;
+    verify_finding_signature(finding)
 }

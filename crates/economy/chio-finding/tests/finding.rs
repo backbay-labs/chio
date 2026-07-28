@@ -8,6 +8,7 @@ use chio_finding::{
     Finding, FindingDescriptor, FindingError, FindingEvidenceClass, FindingGuaranteeClass,
     FindingOutcomeClass, FINDING_SCHEMA_V1,
 };
+use chio_finding::{sign_finding, verify_finding, verify_finding_signature};
 
 fn hex64(fill: char) -> String {
     std::iter::repeat_n(fill, 64).collect()
@@ -200,4 +201,63 @@ fn unknown_json_fields_are_rejected() {
         map.insert("surprise".to_string(), serde_json::Value::Bool(true));
     }
     assert!(serde_json::from_value::<Finding>(value).is_err());
+}
+
+#[test]
+fn signed_finding_roundtrip_verifies() {
+    let issuer = Keypair::generate();
+    let finding = base_finding(&issuer);
+    let signed = match sign_finding(finding, &issuer) {
+        Ok(signed) => signed,
+        Err(err) => panic!("signing failed: {err}"),
+    };
+    assert!(!signed.signature.is_empty());
+    assert!(verify_finding_signature(&signed).is_ok());
+    assert!(signed.validate().is_ok());
+    assert!(verify_finding(&signed).is_ok());
+}
+
+#[test]
+fn tampered_signed_finding_fails_verification() {
+    let issuer = Keypair::generate();
+    let mut signed = match sign_finding(base_finding(&issuer), &issuer) {
+        Ok(signed) => signed,
+        Err(err) => panic!("signing failed: {err}"),
+    };
+    signed.expires_at += 1;
+    assert!(matches!(
+        verify_finding_signature(&signed),
+        Err(FindingError::SignatureInvalid)
+    ));
+}
+
+#[test]
+fn non_canonical_signature_encodings_are_rejected() {
+    let issuer = Keypair::generate();
+    let signed = match sign_finding(base_finding(&issuer), &issuer) {
+        Ok(signed) => signed,
+        Err(err) => panic!("signing failed: {err}"),
+    };
+    let mut uppercase = signed.clone();
+    uppercase.signature = uppercase.signature.to_uppercase();
+    assert!(matches!(
+        verify_finding_signature(&uppercase),
+        Err(FindingError::SignatureInvalid)
+    ));
+    let mut prefixed = signed;
+    prefixed.signature = format!("0x{}", prefixed.signature);
+    assert!(matches!(
+        verify_finding_signature(&prefixed),
+        Err(FindingError::SignatureInvalid)
+    ));
+}
+
+#[test]
+fn signing_requires_the_issuer_key() {
+    let issuer = Keypair::generate();
+    let other = Keypair::generate();
+    assert!(matches!(
+        sign_finding(base_finding(&issuer), &other),
+        Err(FindingError::Signing)
+    ));
 }
