@@ -1939,27 +1939,29 @@ fn build_due_checkpoints_and_record(
     let signer = checkpoint_signer.as_ref()?;
     // Panic isolation: a panic mid-build
     // (Merkle build, Ed25519 sign, serde) must not kill the writer thread.
-    // `head.latest_checkpoint` is only ever assigned AFTER the per-checkpoint
-    // transaction commits (see `maybe_build_checkpoint`), so a panic
-    // anywhere before that leaves `head` exactly as it was; a caught panic
-    // is therefore handled identically to a non-panicking `Err`: record
-    // `last_error`, leave the head untouched, keep the thread alive.
+    // `head.latest_checkpoint` is only assigned after a checkpoint is
+    // committed or a peer winner is fully verified. A later panic can
+    // therefore retain verified head progress while dropping the cached
+    // frontier, which is rebuilt on the next attempt. Handle a caught panic
+    // like a non-panicking `Err`: record `last_error` and keep the thread
+    // alive without rolling back durable or verified state.
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         build_due_checkpoints(pool, head, signer)
     }))
     .unwrap_or_else(|payload| Err(receipt_writer_job_panic_error(&payload)));
     match result {
-        Ok(built) => {
+        Ok(advanced) => {
             health.store_head_snapshot(head);
             // Recovery signal: a prior background
             // checkpoint build may have set `last_error`. A later SUCCESSFUL
-            // build is reached here through a writer-routed op (a `Write` job
-            // crossing the threshold), which does NOT run the append batch's
-            // `last_error` reset, so without this the store keeps reporting
-            // unhealthy after it has recovered. Clear the stale error only on an
-            // ACTUAL build (`built`), never on a no-op due-check, so a genuinely
+            // checkpoint advance is reached here through a writer-routed op (a
+            // `Write` job crossing the threshold), which does NOT run the
+            // append batch's `last_error` reset, so without this the store keeps
+            // reporting unhealthy after it has recovered. Clear the stale error
+            // only when the head actually advanced (our build or a verified
+            // peer-winner adoption), never on a no-op due-check, so a genuinely
             // current error is not masked by an idle refresh.
-            if built {
+            if advanced {
                 if let Ok(mut last_error) = health.last_error.lock() {
                     *last_error = None;
                 }
@@ -1986,6 +1988,7 @@ fn build_due_checkpoints(
     let mut connection = pool
         .get()
         .map_err(|error| ReceiptStoreError::Pool(error.to_string()))?;
+    let checkpoint_seq_before_refresh = head.checkpoint_seq();
     // Shared-file freshness: on a shared receipt DB
     // another writer can commit a checkpoint AFTER this actor's append
     // pre-check but BEFORE its batch tx. `append_receipt_batch` then adopts that
@@ -1999,7 +2002,8 @@ fn build_due_checkpoints(
     // NOT a full chain verify, so the incremental hot path stays flat per
     // append.
     verify_head_against_latest_checkpoint(&connection, head)?;
-    maybe_build_checkpoint(&mut connection, head, signer)
+    let refreshed = head.checkpoint_seq() > checkpoint_seq_before_refresh;
+    maybe_build_checkpoint(&mut connection, head, signer).map(|advanced| refreshed || advanced)
 }
 
 /// Build every checkpoint the head owes: count-based ADR-0008 trigger, range
@@ -2007,6 +2011,8 @@ fn build_due_checkpoints(
 /// which runs a full chain verify). Cost per checkpoint is O(b) over the batch
 /// plus O(log n) over the cached chain frontier; the frontier is rebuilt from
 /// the database only on a cache miss (first issuance after seed or resync).
+/// Returns true when the cached checkpoint head advances, whether this builder
+/// commits a checkpoint or boundedly adopts a concurrently committed winner.
 fn maybe_build_checkpoint(
     connection: &mut SqliteStoreConnection,
     head: &mut VerifiedHead,
@@ -2038,6 +2044,16 @@ fn maybe_build_checkpoint(
             CheckpointChainFrontier::from_leaves(&load_checkpoint_chain_leaf_hashes(connection)?)
         }
     };
+    let mut advanced = false;
+    // A peer can commit the due checkpoint after build_due_checkpoints'
+    // latest-row refresh but before this cache-miss frontier scan. The loaded
+    // frontier then legitimately leads the cached head. Verify and adopt that
+    // bounded suffix before comparing positions; the already-loaded frontier
+    // is the exact persisted prefix the adopted head now names.
+    if chain_frontier.leaf_count() > head.checkpoint_seq() {
+        catch_up_verified_head_to(connection, head, chain_frontier.leaf_count())?;
+        advanced = true;
+    }
     if chain_frontier.leaf_count() != head.checkpoint_seq() {
         return Err(ReceiptStoreError::Conflict(format!(
             "persisted chain covers {} checkpoints but the head is at {}",
@@ -2045,7 +2061,6 @@ fn maybe_build_checkpoint(
             head.checkpoint_seq()
         )));
     }
-    let mut built = false;
     while head
         .claim_log_max_seq
         .saturating_sub(head.checkpointed_entry_seq())
@@ -2108,10 +2123,10 @@ fn maybe_build_checkpoint(
                 .map_err(checkpoint_error_to_receipt_store)?,
         );
         head.latest_checkpoint = Some(adopted);
-        built = true;
+        advanced = true;
     }
     head.chain_frontier = Some(chain_frontier);
-    Ok(built)
+    Ok(advanced)
 }
 
 /// Head-resync rule: one indexed delta aggregate plus one

@@ -1144,12 +1144,18 @@ fn transparency_anchor_state(
     let Ok(root_hash) = Hash::from_hex(&artifact.root_hash) else {
         return invalid("inclusion proof root_hash is unreadable");
     };
+    if !hash_encoding_is_canonical(&artifact.root_hash, &root_hash) {
+        return invalid("inclusion proof root_hash uses a noncanonical encoding");
+    }
     if root_hash != committed_root || artifact.tree_size != committed_tree_size {
         return invalid("inclusion proof does not target the committed checkpoint tree");
     }
     let Ok(leaf) = Hash::from_hex(&artifact.leaf_hash) else {
         return invalid("inclusion proof leaf_hash is unreadable");
     };
+    if !hash_encoding_is_canonical(&artifact.leaf_hash, &leaf) {
+        return invalid("inclusion proof leaf_hash uses a noncanonical encoding");
+    }
     let (Ok(tree_size), Ok(leaf_index)) = (
         usize::try_from(artifact.tree_size),
         usize::try_from(artifact.leaf_index),
@@ -1164,6 +1170,14 @@ fn transparency_anchor_state(
     else {
         return invalid("inclusion proof audit path is unreadable");
     };
+    if artifact
+        .inclusion_path
+        .iter()
+        .zip(&audit_path)
+        .any(|(encoded, hash)| !hash_encoding_is_canonical(encoded, hash))
+    {
+        return invalid("inclusion proof audit path uses a noncanonical encoding");
+    }
     let proof = MerkleProof {
         tree_size,
         leaf_index,
@@ -1206,6 +1220,14 @@ fn transparency_anchor_state(
             "proven leaf is not the RFC 6962 leaf hash of the receipt".to_string(),
         )
     }
+}
+
+fn hash_encoding_is_canonical(encoded: &str, hash: &Hash) -> bool {
+    let canonical = hash.to_hex();
+    encoded == canonical.as_str()
+        || encoded
+            .strip_prefix("0x")
+            .is_some_and(|hex| hex == canonical.as_str())
 }
 
 fn validate_claim_set_bytes(

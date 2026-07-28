@@ -528,49 +528,25 @@ fn archive_batch_matches_signed_root(
 ///
 /// Fails closed when the persisted chain is not a gap-free run starting at
 /// sequence 1: a chain commitment over an incomplete leaf set would be
-/// unsound.
+/// unsound. Every leaf is derived from a signature-validated checkpoint body,
+/// never from the denormalized mirror columns.
 pub(crate) fn load_checkpoint_chain_leaf_hashes(
     connection: &Connection,
 ) -> Result<Vec<chio_core::hashing::Hash>, ReceiptStoreError> {
-    let mut statement = connection.prepare(
-        r#"
-        SELECT checkpoint_seq, batch_start_seq, batch_end_seq, merkle_root
-        FROM kernel_checkpoints
-        ORDER BY checkpoint_seq ASC
-        "#,
-    )?;
-    let rows = statement.query_map([], |row| {
-        Ok((
-            row.get::<_, i64>(0)?,
-            row.get::<_, i64>(1)?,
-            row.get::<_, i64>(2)?,
-            row.get::<_, String>(3)?,
-        ))
-    })?;
-    let mut chain_leaf_hashes = Vec::new();
+    let rows = load_all_persisted_checkpoint_rows(connection)?;
+    let mut chain_leaf_hashes = Vec::with_capacity(rows.len());
     for row in rows {
-        let (checkpoint_seq, batch_start_seq, batch_end_seq, merkle_root_hex) = row?;
-        let checkpoint_seq = sqlite_u64(checkpoint_seq, "checkpoint_seq")?;
+        let checkpoint = parse_persisted_checkpoint_row(row)?;
+        let checkpoint_seq = checkpoint.body.checkpoint_seq;
         let expected_seq = chain_leaf_hashes.len() as u64 + 1;
         if checkpoint_seq != expected_seq {
             return Err(ReceiptStoreError::Conflict(format!(
                 "checkpoint chain has a gap: expected seq {expected_seq}, found {checkpoint_seq}"
             )));
         }
-        let merkle_root =
-            chio_core::hashing::Hash::from_hex(&merkle_root_hex).map_err(|error| {
-                ReceiptStoreError::Conflict(format!(
-                    "checkpoint {checkpoint_seq} merkle_root is not a valid hash: {error}"
-                ))
-            })?;
         chain_leaf_hashes.push(
-            chio_kernel::checkpoint::checkpoint_chain_leaf_hash_from_parts(
-                checkpoint_seq,
-                sqlite_u64(batch_start_seq, "batch_start_seq")?,
-                sqlite_u64(batch_end_seq, "batch_end_seq")?,
-                merkle_root,
-            )
-            .map_err(checkpoint_error_to_receipt_store)?,
+            chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&checkpoint.body)
+                .map_err(checkpoint_error_to_receipt_store)?,
         );
     }
     Ok(chain_leaf_hashes)

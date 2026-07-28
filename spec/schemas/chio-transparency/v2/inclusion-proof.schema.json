@@ -48,6 +48,7 @@
   "$defs": {
     "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
     "hash": { "type": "string", "pattern": "^(0x)?[0-9a-f]{64}$" },
+    "canonicalHash": { "type": "string", "pattern": "^0x[0-9a-f]{64}$" },
     "publicKey": {
       "type": "string",
       "pattern": "^([0-9a-f]{64}|p256:04[0-9a-f]{128}|p384:04[0-9a-f]{192}|hybrid:[0-9a-f]{64}:[0-9a-f]{3904}:ed25519\\+mldsa65|hybrid:p256:04[0-9a-f]{128}:[0-9a-f]{3904}:p256\\+mldsa65|hybrid:p384:04[0-9a-f]{192}:[0-9a-f]{3904}:p384\\+mldsa65)$"
@@ -80,11 +81,11 @@
         "batch_start_seq": { "type": "integer", "minimum": 1 },
         "batch_end_seq": { "type": "integer", "minimum": 1 },
         "tree_size": { "type": "integer", "minimum": 1 },
-        "merkle_root": { "$ref": "#/$defs/hash" },
+        "merkle_root": { "$ref": "#/$defs/canonicalHash" },
         "issued_at": { "type": "integer", "minimum": 1 },
         "kernel_key": { "$ref": "#/$defs/publicKey" },
         "previous_checkpoint_sha256": { "$ref": "#/$defs/sha256" },
-        "chain_root": { "$ref": "#/$defs/hash" }
+        "chain_root": { "$ref": "#/$defs/canonicalHash" }
       },
       "allOf": [
         {

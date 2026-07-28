@@ -270,6 +270,123 @@ fn standalone_minimal_passport_rejects_noncanonical_checkpoint_signature_encodin
 }
 
 #[test]
+fn standalone_minimal_passport_accepts_canonical_inclusion_proof_hash_encodings() {
+    let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+        transparency_anchored_fixture(|artifact| {
+            configure_two_leaf_transparency_proof(artifact);
+            for field in ["root_hash", "leaf_hash"] {
+                let encoded = artifact[field]
+                    .as_str()
+                    .test_expect("proof hash is encoded as a string");
+                artifact[field] = json!(encoded
+                    .strip_prefix("0x")
+                    .test_expect("fixture proof hash is prefixed"));
+            }
+        });
+
+    let report =
+        verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+            .test_expect("lowercase proof hashes with either schema-supported prefix form promote");
+
+    assert_eq!(report.transparency_state, "trust_anchored");
+}
+
+#[test]
+fn standalone_minimal_passport_rejects_noncanonical_inclusion_proof_hash_encodings() {
+    for (field, expected_reason) in [
+        (
+            "root_hash",
+            "inclusion proof root_hash uses a noncanonical encoding",
+        ),
+        (
+            "leaf_hash",
+            "inclusion proof leaf_hash uses a noncanonical encoding",
+        ),
+        (
+            "inclusion_path",
+            "inclusion proof audit path uses a noncanonical encoding",
+        ),
+    ] {
+        let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
+            transparency_anchored_fixture(|artifact| {
+                configure_two_leaf_transparency_proof(artifact);
+                let encoded = if field == "inclusion_path" {
+                    artifact["inclusion_path"][0]
+                        .as_str()
+                        .test_expect("audit path hash is encoded as a string")
+                } else {
+                    artifact[field]
+                        .as_str()
+                        .test_expect("proof hash is encoded as a string")
+                };
+                let noncanonical = match encoded.strip_prefix("0x") {
+                    Some(hex) => format!("0x{}", hex.to_uppercase()),
+                    None => encoded.to_uppercase(),
+                };
+                assert_ne!(
+                    noncanonical, encoded,
+                    "fixture field {field} must contain hexadecimal letters"
+                );
+                if field == "inclusion_path" {
+                    artifact["inclusion_path"][0] = json!(noncanonical);
+                } else {
+                    artifact[field] = json!(noncanonical);
+                }
+            });
+
+        let error =
+            verify_standalone_anchored(&artifacts, &evidence_graph_bytes, &verifier_policy_bytes)
+                .test_expect_err("a noncanonical inclusion proof hash encoding must deny");
+        assert!(
+            error.to_string().contains(expected_reason),
+            "{field}: {error}"
+        );
+    }
+}
+
+fn configure_two_leaf_transparency_proof(artifact: &mut Value) {
+    let leaf = chio_core_types::Hash::from_hex(
+        artifact["leaf_hash"]
+            .as_str()
+            .test_expect("fixture leaf hash is encoded as a string"),
+    )
+    .test_expect("fixture leaf hash parses");
+    let sibling = chio_core_types::merkle::leaf_hash(b"canonical audit path sibling");
+    let root = chio_core_types::merkle::node_hash(&leaf, &sibling);
+    let root_hex = root.to_hex_prefixed();
+
+    artifact["root_hash"] = json!(root_hex);
+    artifact["tree_size"] = json!(2);
+    artifact["inclusion_path"] = json!([sibling.to_hex_prefixed()]);
+
+    let mut body = artifact["checkpoint_statement"]["body"].clone();
+    body["batch_end_seq"] = json!(2);
+    body["tree_size"] = json!(2);
+    body["merkle_root"] = json!(root_hex);
+    let checkpoint_chain_leaf = json!({
+        "checkpoint_seq": body["checkpoint_seq"],
+        "batch_start_seq": body["batch_start_seq"],
+        "batch_end_seq": body["batch_end_seq"],
+        "merkle_root": body["merkle_root"]
+    });
+    let chain_root = chio_core_types::merkle::leaf_hash(
+        &chio_core_types::canonical_json_bytes(&checkpoint_chain_leaf)
+            .test_expect("canonical two-leaf checkpoint chain leaf"),
+    );
+    body["chain_root"] = json!(chain_root.to_hex_prefixed());
+    let signature = transparency_checkpoint_keypair()
+        .sign(
+            &chio_core_types::canonical_json_bytes(&body)
+                .test_expect("canonical two-leaf checkpoint body"),
+        )
+        .to_hex();
+    artifact["checkpoint_statement"] = json!({
+        "body": body,
+        "signature": signature
+    });
+}
+
+#[test]
 fn standalone_minimal_passport_rejects_zero_checkpoint_issuance_time() {
     let (artifacts, evidence_graph_bytes, verifier_policy_bytes) =
         transparency_anchored_fixture(|artifact| {

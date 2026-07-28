@@ -927,6 +927,81 @@ fn concurrent_valid_checkpoint_is_adopted_not_conflicted() -> Result<(), Box<dyn
     Ok(())
 }
 
+/// The frontier cache-miss scan races independently from the latest-row head
+/// refresh. Model the precise interleaving where the refresh saw an empty
+/// checkpoint chain, a peer then committed checkpoint 1, and the frontier scan
+/// sees that winner. The builder must boundedly verify and adopt the winner,
+/// reuse the one-leaf frontier, and continue with checkpoint 2 rather than
+/// reporting a false head/frontier conflict.
+#[test]
+fn frontier_rebuild_adopts_concurrent_checkpoint_winner() -> Result<(), Box<dyn std::error::Error>>
+{
+    let (temp_dir, path) = temp_db("chio-bg-frontier-race")?;
+    let keypair = receipt_test_keypair();
+    let store = SqliteReceiptStore::open(&path)?;
+    let max_batch = 2;
+    for i in 0..(max_batch * 2) {
+        let receipt =
+            sample_receipt_with_keypair(&format!("rcpt-frontier-race-{i}"), i + 1, &keypair);
+        store.append_chio_receipt_returning_seq(&receipt)?;
+    }
+    store.flush_receipt_writes()?;
+
+    // This is the loser's cached state immediately after its latest-row
+    // refresh: four claim-log entries are known, but no checkpoint or chain
+    // frontier was visible yet.
+    let connection = store.connection()?;
+    let mut stale_head = seed_verified_head(&connection)?;
+    assert_eq!(stale_head.checkpoint_seq(), 0);
+    assert!(stale_head.chain_frontier.is_none());
+    drop(connection);
+
+    // The peer wins checkpoint 1 after that refresh and before the loser's
+    // cache-miss frontier scan.
+    store.create_next_receipt_checkpoint(max_batch, &keypair)?;
+    let winner = store
+        .load_checkpoint_by_seq(1)?
+        .ok_or("concurrent checkpoint winner missing")?;
+
+    // Enter at the frontier-rebuild stage. It now observes one persisted leaf
+    // while the cached head is still at zero. Adoption must succeed, then the
+    // second owed batch must extend the adopted winner.
+    let mut connection = store.connection()?;
+    let advanced = maybe_build_checkpoint(
+        &mut connection,
+        &mut stale_head,
+        &signer(&keypair, max_batch),
+    )?;
+    assert!(
+        advanced,
+        "winner adoption and catch-up must report progress"
+    );
+    assert_eq!(
+        stale_head.latest_checkpoint.as_ref(),
+        store.load_checkpoint_by_seq(2)?.as_ref(),
+        "the cached head must continue through the second owed checkpoint"
+    );
+    assert_eq!(
+        stale_head
+            .chain_frontier
+            .as_ref()
+            .map(CheckpointChainFrontier::leaf_count),
+        Some(2),
+        "the reused frontier must cover the adopted winner and its successor"
+    );
+    assert_eq!(
+        store.load_checkpoint_by_seq(1)?.as_ref(),
+        Some(&winner),
+        "catch-up must preserve the concurrently committed winner"
+    );
+    verify_checkpoint_chain_integrity(&connection)?;
+
+    drop(connection);
+    drop(store);
+    temp_dir.close()?;
+    Ok(())
+}
+
 /// If the `InstallSigner` handler only STORED the signer, an already-owed
 /// checkpoint (the store opened on a DB that already has at least max_batch
 /// uncheckpointed claim-log entries, e.g. a crash between the durable append

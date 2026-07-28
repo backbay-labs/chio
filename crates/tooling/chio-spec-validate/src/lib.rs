@@ -612,10 +612,10 @@ mod tests {
                         "batch_start_seq": 1,
                         "batch_end_seq": 1,
                         "tree_size": 1,
-                        "merkle_root": "2".repeat(64),
+                        "merkle_root": format!("0x{}", "2".repeat(64)),
                         "issued_at": 1,
                         "kernel_key": kernel_key,
-                        "chain_root": "3".repeat(64)
+                        "chain_root": format!("0x{}", "3".repeat(64))
                     },
                     "signature": signature
                 }
@@ -676,10 +676,10 @@ mod tests {
                         "batch_start_seq": 1,
                         "batch_end_seq": 1,
                         "tree_size": 1,
-                        "merkle_root": "2".repeat(64),
+                        "merkle_root": format!("0x{}", "2".repeat(64)),
                         "issued_at": 1,
                         "kernel_key": kernel_key,
-                        "chain_root": "3".repeat(64)
+                        "chain_root": format!("0x{}", "3".repeat(64))
                     },
                     "signature": signature
                 }
@@ -705,7 +705,7 @@ mod tests {
             transparency_document(
                 "chio.checkpoint_statement.v1",
                 1,
-                Some(json!("3".repeat(64))),
+                Some(json!(format!("0x{}", "3".repeat(64)))),
             ),
             transparency_document("chio.checkpoint_statement.v2", 1, None),
         ];
@@ -729,6 +729,44 @@ mod tests {
             &detached_later,
         )
         .unwrap_or_else(|error| panic!("later detached v2 checkpoint must validate: {error}"));
+    }
+
+    #[test]
+    fn transparency_v2_schema_rejects_noncanonical_checkpoint_hashes() {
+        let schema_path = workspace_schema_path("chio-transparency/v2/inclusion-proof.schema.json");
+        let schema = load_json(&schema_path)
+            .unwrap_or_else(|error| panic!("load v2 transparency schema: {error}"));
+        let canonical_chain_root = json!(format!("0x{}", "3".repeat(64)));
+        let canonical = transparency_document(
+            "chio.checkpoint_statement.v2",
+            1,
+            Some(canonical_chain_root),
+        );
+
+        validate_value(
+            &schema_path,
+            &schema,
+            Path::new("<canonical-checkpoint-hashes>"),
+            &canonical,
+        )
+        .unwrap_or_else(|error| panic!("canonical checkpoint hashes must validate: {error}"));
+
+        for field in ["merkle_root", "chain_root"] {
+            let mut document = canonical.clone();
+            document["checkpoint_statement"]["body"][field] = json!("2".repeat(64));
+            assert!(
+                matches!(
+                    validate_value(
+                        &schema_path,
+                        &schema,
+                        Path::new("<noncanonical-checkpoint-hash>"),
+                        &document
+                    ),
+                    Err(ValidateError::SchemaViolation(_, _, _))
+                ),
+                "bare checkpoint {field} must fail schema validation"
+            );
+        }
     }
 
     #[test]
@@ -762,7 +800,7 @@ mod tests {
             "batch_start_seq": checkpoint_seq,
             "batch_end_seq": checkpoint_seq,
             "tree_size": 1,
-            "merkle_root": "2".repeat(64),
+            "merkle_root": format!("0x{}", "2".repeat(64)),
             "issued_at": 1,
             "kernel_key": "a".repeat(64)
         });
