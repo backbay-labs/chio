@@ -3599,6 +3599,7 @@ name = "chio-finding"
 version = "0.1.0"
 dependencies = [
  "chio-core-types",
+ "chio-spec-validate",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
