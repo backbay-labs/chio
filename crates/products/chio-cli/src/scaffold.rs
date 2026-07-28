@@ -12,7 +12,8 @@ const HELLO_SERVER_TEMPLATE: &str = include_str!("../templates/init/src/bin/hell
 const DEMO_TEMPLATE: &str = include_str!("../templates/init/src/bin/demo.rs.tmpl");
 
 pub(crate) fn cmd_init(path: &Path) -> Result<(), CliError> {
-    ensure_target_dir(path)?;
+    let path = normalize_target_path(path);
+    ensure_target_dir(&path)?;
 
     let project_name = path
         .file_name()
@@ -41,7 +42,7 @@ pub(crate) fn cmd_init(path: &Path) -> Result<(), CliError> {
     )?;
     write_template(path.join("src/bin/demo.rs"), DEMO_TEMPLATE, &replacements)?;
 
-    let absolute = fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let absolute = fs::canonicalize(&path).unwrap_or_else(|_| path.to_path_buf());
     let chio_bin_hint = std::env::current_exe()
         .ok()
         .map(|path| path.display().to_string())
@@ -57,24 +58,41 @@ pub(crate) fn cmd_init(path: &Path) -> Result<(), CliError> {
     Ok(())
 }
 
+fn normalize_target_path(path: &Path) -> PathBuf {
+    path.components().collect()
+}
+
 fn ensure_target_dir(path: &Path) -> Result<(), CliError> {
-    if path.exists() {
-        if !path.is_dir() {
-            return Err(CliError::cli_other_error(format!(
-                "refusing to scaffold into non-directory `{}`",
-                path.display()
-            )));
+    match fs::symlink_metadata(path) {
+        Ok(metadata) => {
+            if metadata.file_type().is_symlink() {
+                return Err(CliError::cli_other_error(format!(
+                    "refusing to scaffold into symbolic link `{}`",
+                    path.display()
+                )));
+            }
+            if !metadata.is_dir() {
+                return Err(CliError::cli_other_error(format!(
+                    "refusing to scaffold into non-directory `{}`",
+                    path.display()
+                )));
+            }
+            chio_control_plane::ensure_private_directory(path)?;
+            if path.read_dir()?.next().is_some() {
+                return Err(CliError::cli_other_error(format!(
+                    "refusing to scaffold into non-empty directory `{}`",
+                    path.display()
+                )));
+            }
         }
-        if path.read_dir()?.next().is_some() {
-            return Err(CliError::cli_other_error(format!(
-                "refusing to scaffold into non-empty directory `{}`",
-                path.display()
-            )));
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            chio_control_plane::ensure_private_directory(path)?;
         }
-        return Ok(());
+        Err(error) => {
+            return Err(error.into());
+        }
     }
 
-    fs::create_dir_all(path)?;
     Ok(())
 }
 

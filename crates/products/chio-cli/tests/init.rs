@@ -6,6 +6,9 @@ use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
 static UNIQUE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 fn unique_test_dir() -> PathBuf {
@@ -54,6 +57,177 @@ fn init_creates_expected_project_files() {
         fs::read_to_string(project_dir.join("Cargo.toml")).expect("read scaffold manifest");
     assert!(cargo_toml.contains("[package]"));
     assert!(!cargo_toml.contains("{{PACKAGE_NAME}}"));
+
+    assert_private_directory(&project_dir);
+}
+
+#[cfg(unix)]
+#[test]
+fn init_rejects_writable_existing_empty_project_directory_without_mutation() {
+    let project_dir = unique_test_dir();
+    fs::create_dir(&project_dir).expect("create existing project directory");
+    fs::set_permissions(&project_dir, fs::Permissions::from_mode(0o777))
+        .expect("make existing project directory permissive");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_chio"))
+        .arg("init")
+        .arg(&project_dir)
+        .output()
+        .expect("run chio init");
+
+    assert!(
+        !output.status.success(),
+        "chio init accepted a group- or world-writable target"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("must not be group or world writable"),
+        "unexpected chio init error: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_directory_mode(&project_dir, 0o777);
+    assert!(
+        fs::read_dir(&project_dir)
+            .expect("read rejected project directory")
+            .next()
+            .is_none(),
+        "chio init mutated the rejected project directory"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn init_rejects_unsafe_ancestor_without_creating_project() {
+    let unsafe_ancestor = unique_test_dir();
+    let project_dir = unsafe_ancestor.join("project");
+    fs::create_dir(&unsafe_ancestor).expect("create unsafe project ancestor");
+    fs::set_permissions(&unsafe_ancestor, fs::Permissions::from_mode(0o777))
+        .expect("make project ancestor writable");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_chio"))
+        .arg("init")
+        .arg(&project_dir)
+        .output()
+        .expect("run chio init");
+
+    assert!(
+        !output.status.success(),
+        "chio init accepted an unsafe project ancestor"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains(
+            "private directory ancestry must not be group or world writable unless sticky"
+        ),
+        "unexpected chio init error: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !project_dir.exists(),
+        "chio init created a project below an unsafe ancestor"
+    );
+    assert_directory_mode(&unsafe_ancestor, 0o777);
+    assert!(
+        fs::read_dir(&unsafe_ancestor)
+            .expect("read unsafe project ancestor")
+            .next()
+            .is_none(),
+        "chio init mutated the unsafe project ancestor"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn init_accepts_safe_existing_empty_project_directory_without_chmod() {
+    let project_dir = unique_test_dir();
+    fs::create_dir(&project_dir).expect("create existing project directory");
+    fs::set_permissions(&project_dir, fs::Permissions::from_mode(0o755))
+        .expect("set safe existing project directory permissions");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_chio"))
+        .arg("init")
+        .arg(&project_dir)
+        .output()
+        .expect("run chio init");
+
+    assert!(
+        output.status.success(),
+        "chio init failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_directory_mode(&project_dir, 0o755);
+}
+
+#[cfg(unix)]
+#[test]
+fn init_rejects_symlink_target_without_mutating_destination() {
+    let test_root = unique_test_dir();
+    let destination = test_root.join("destination");
+    let project_link = test_root.join("project-link");
+    fs::create_dir_all(&destination).expect("create symlink destination");
+    fs::set_permissions(&destination, fs::Permissions::from_mode(0o755))
+        .expect("set destination permissions");
+    std::os::unix::fs::symlink(&destination, &project_link).expect("create project symlink");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_chio"))
+        .arg("init")
+        .arg(&project_link)
+        .output()
+        .expect("run chio init");
+
+    assert!(
+        !output.status.success(),
+        "chio init accepted a symlink target"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("symbolic link"),
+        "unexpected chio init error: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_directory_mode(&destination, 0o755);
+    assert!(
+        fs::read_dir(&destination)
+            .expect("read symlink destination")
+            .next()
+            .is_none(),
+        "chio init mutated the symlink destination"
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn init_rejects_symlink_target_with_trailing_separator() {
+    let test_root = unique_test_dir();
+    let destination = test_root.join("destination");
+    let project_link = test_root.join("project-link");
+    fs::create_dir_all(&destination).expect("create symlink destination");
+    fs::set_permissions(&destination, fs::Permissions::from_mode(0o755))
+        .expect("set destination permissions");
+    std::os::unix::fs::symlink(&destination, &project_link).expect("create project symlink");
+    let mut project_link_with_separator = project_link.into_os_string();
+    project_link_with_separator.push("/");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_chio"))
+        .arg("init")
+        .arg(&project_link_with_separator)
+        .output()
+        .expect("run chio init");
+
+    assert!(
+        !output.status.success(),
+        "chio init accepted a symlink target with a trailing separator"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("symbolic link"),
+        "unexpected chio init error: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_directory_mode(&destination, 0o755);
+    assert!(
+        fs::read_dir(&destination)
+            .expect("read symlink destination")
+            .next()
+            .is_none(),
+        "chio init mutated the symlink destination"
+    );
 }
 
 #[test]
@@ -97,4 +271,28 @@ fn scaffolded_demo_runs_governed_hello_flow() {
     assert!(stdout.contains("latest receipt:"));
     assert!(project_dir.join(".chio/receipts.db").exists());
     assert!(project_dir.join(".chio/session.db").exists());
+    assert_private_directory(&project_dir.join(".chio"));
 }
+
+#[cfg(unix)]
+fn assert_private_directory(path: &std::path::Path) {
+    assert_directory_mode(path, 0o700);
+}
+
+#[cfg(unix)]
+fn assert_directory_mode(path: &std::path::Path, expected_mode: u32) {
+    let mode = fs::metadata(path)
+        .expect("read directory metadata")
+        .permissions()
+        .mode()
+        & 0o777;
+    assert_eq!(
+        mode,
+        expected_mode,
+        "`{}` must have mode {expected_mode:04o}",
+        path.display()
+    );
+}
+
+#[cfg(not(unix))]
+fn assert_private_directory(_path: &std::path::Path) {}
