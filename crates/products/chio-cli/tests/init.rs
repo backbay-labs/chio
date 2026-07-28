@@ -63,6 +63,74 @@ fn init_creates_expected_project_files() {
 
 #[cfg(unix)]
 #[test]
+fn init_accepts_parent_relative_project_directory() {
+    let test_root = unique_test_dir();
+    let working_directory = test_root.join("working");
+    let project_dir = test_root.join("new-project");
+    fs::create_dir_all(&working_directory).expect("create working directory");
+    fs::set_permissions(&test_root, fs::Permissions::from_mode(0o700)).expect("secure test root");
+    fs::set_permissions(&working_directory, fs::Permissions::from_mode(0o700))
+        .expect("secure working directory");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_chio"))
+        .arg("init")
+        .arg("../new-project")
+        .current_dir(&working_directory)
+        .output()
+        .expect("run chio init");
+
+    assert!(
+        output.status.success(),
+        "chio init failed: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        project_dir.join("Cargo.toml").exists(),
+        "chio init did not create the parent-relative project"
+    );
+    assert_private_directory(&project_dir);
+}
+
+#[cfg(unix)]
+#[test]
+fn init_rejects_parent_component_after_symlink_segment() {
+    let test_root = unique_test_dir();
+    let working_directory = test_root.join("working");
+    let symlink_destination = test_root.join("destination");
+    let redirected_project = test_root.join("project");
+    let lexical_project = working_directory.join("project");
+    fs::create_dir_all(&working_directory).expect("create working directory");
+    fs::create_dir_all(&symlink_destination).expect("create symlink destination");
+    fs::set_permissions(&test_root, fs::Permissions::from_mode(0o700)).expect("secure test root");
+    fs::set_permissions(&working_directory, fs::Permissions::from_mode(0o700))
+        .expect("secure working directory");
+    std::os::unix::fs::symlink(&symlink_destination, working_directory.join("link"))
+        .expect("create path symlink");
+
+    let output = Command::new(env!("CARGO_BIN_EXE_chio"))
+        .arg("init")
+        .arg("link/../project")
+        .current_dir(&working_directory)
+        .output()
+        .expect("run chio init");
+
+    assert!(
+        !output.status.success(),
+        "chio init accepted a parent component after a symlink segment"
+    );
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("parent components after a path segment"),
+        "unexpected chio init error: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        !redirected_project.exists() && !lexical_project.exists(),
+        "chio init created a project after ambiguous symlink traversal"
+    );
+}
+
+#[cfg(unix)]
+#[test]
 fn init_rejects_writable_existing_empty_project_directory_without_mutation() {
     let project_dir = unique_test_dir();
     fs::create_dir(&project_dir).expect("create existing project directory");
