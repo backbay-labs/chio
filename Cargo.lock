@@ -3595,6 +3595,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-finding"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "serde",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "chio-fiscal"
 version = "0.1.0"
 dependencies = [
