@@ -11,6 +11,10 @@ use chio_store_sqlite::{SqliteAuthorityStore, SqliteBudgetStore, SqliteRevocatio
 
 use crate::{load_or_create_authority_keypair, CliError};
 
+#[cfg(windows)]
+#[path = "durable_admission/windows.rs"]
+mod windows;
+
 #[derive(Clone)]
 pub struct DurableAdmissionRuntime {
     operations: Arc<dyn QualifiedAdmissionProjectionStore>,
@@ -195,9 +199,17 @@ pub(crate) fn create_private_directory(path: &Path) -> Result<(), std::io::Error
     {
         prepare_private_directory_unix(path, ExistingPrivateDirectory::Harden)?;
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
     {
-        fs::create_dir_all(path)?;
+        windows::prepare_private_directory(path)?;
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = path;
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "secure private-directory creation is unavailable on this platform",
+        ));
     }
     Ok(())
 }
@@ -214,9 +226,17 @@ pub fn ensure_private_directory(path: &Path) -> Result<(), std::io::Error> {
     {
         prepare_private_directory_unix(path, ExistingPrivateDirectory::Preserve)?;
     }
-    #[cfg(not(unix))]
+    #[cfg(windows)]
     {
-        fs::create_dir_all(path)?;
+        windows::prepare_private_directory(path)?;
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = path;
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::Unsupported,
+            "secure private-directory creation is unavailable on this platform",
+        ));
     }
     Ok(())
 }
