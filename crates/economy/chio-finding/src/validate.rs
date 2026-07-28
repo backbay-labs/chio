@@ -48,6 +48,26 @@ pub enum FindingError {
     SignatureInvalid,
     #[error("value exceeds its size bound: {0}")]
     SizeLimitExceeded(&'static str),
+    #[error("content-addressed id does not match the canonical body: {0}")]
+    ArtifactIdMismatch(&'static str),
+    #[error("invalid field: {0}")]
+    InvalidField(&'static str),
+    #[error("duplicate entry: {0}")]
+    DuplicateEntry(&'static str),
+    #[error("missing required entry: {0}")]
+    MissingEntry(&'static str),
+    #[error("value must be nonzero: {0}")]
+    NonZeroRequired(&'static str),
+    #[error("authority key rejected (algorithm or weak-key): {0}")]
+    InvalidAuthorityKey(&'static str),
+    #[error("envelope signer does not match the pinned authority: {0}")]
+    AuthorityMismatch(&'static str),
+    #[error("envelope signature invalid: {0}")]
+    EnvelopeSignatureInvalid(&'static str),
+    #[error("currency mismatch: {0}")]
+    CurrencyMismatch(&'static str),
+    #[error("amount arithmetic overflow: {0}")]
+    AmountOverflow(&'static str),
 }
 
 /// Upper bound on opaque identifiers carried by finding artifacts.
@@ -66,7 +86,7 @@ pub(crate) fn is_hex64(value: &str) -> bool {
             .all(|c| c.is_ascii_digit() || ('a'..='f').contains(&c))
 }
 
-fn require_non_empty(value: &str, field: &'static str) -> Result<(), FindingError> {
+pub(crate) fn require_non_empty(value: &str, field: &'static str) -> Result<(), FindingError> {
     if value.trim().is_empty() {
         Err(FindingError::EmptyField(field))
     } else {
@@ -90,7 +110,7 @@ fn require_bounded_id(value: &str, field: &'static str) -> Result<(), FindingErr
     require_bounded_non_empty(value, field, MAX_FINDING_IDENTIFIER_BYTES)
 }
 
-fn require_hex64(value: &str, field: &'static str) -> Result<(), FindingError> {
+pub(crate) fn require_hex64(value: &str, field: &'static str) -> Result<(), FindingError> {
     if is_hex64(value) {
         Ok(())
     } else {
@@ -98,12 +118,41 @@ fn require_hex64(value: &str, field: &'static str) -> Result<(), FindingError> {
     }
 }
 
-fn require_i_json_u64(value: u64, field: &'static str) -> Result<(), FindingError> {
+pub(crate) fn require_i_json_u64(value: u64, field: &'static str) -> Result<(), FindingError> {
     if value <= I_JSON_MAX_SAFE_INTEGER {
         Ok(())
     } else {
         Err(FindingError::IJsonIntegerOutOfRange(field))
     }
+}
+
+pub(crate) fn require_nonzero(value: u64, field: &'static str) -> Result<(), FindingError> {
+    if value == 0 {
+        Err(FindingError::NonZeroRequired(field))
+    } else {
+        require_i_json_u64(value, field)
+    }
+}
+
+pub(crate) fn require_currency(currency: &str, field: &'static str) -> Result<(), FindingError> {
+    if currency.len() != 3 || !currency.bytes().all(|byte| byte.is_ascii_uppercase()) {
+        return Err(FindingError::InvalidField(field));
+    }
+    Ok(())
+}
+
+pub(crate) fn require_window(
+    issued_at: u64,
+    expires_at: u64,
+    issued_field: &'static str,
+    expires_field: &'static str,
+) -> Result<(), FindingError> {
+    require_i_json_u64(issued_at, issued_field)?;
+    require_i_json_u64(expires_at, expires_field)?;
+    if expires_at <= issued_at {
+        return Err(FindingError::InvalidValidityWindow);
+    }
+    Ok(())
 }
 
 impl Finding {
