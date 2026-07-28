@@ -213,6 +213,8 @@ impl FindingAdmission {
         if !has_publication || !has_first_epoch {
             return Err(FindingError::MissingEntry("fee_terminals[].event"));
         }
+        require_hex64(&self.backing_allocation_id, "backing_allocation_id")?;
+        require_hex64(&self.backing_envelope_sha256, "backing_envelope_sha256")?;
         self.audit_pool.validate("audit_pool")?;
         self.challenge_administration_pool
             .validate("challenge_administration_pool")?;

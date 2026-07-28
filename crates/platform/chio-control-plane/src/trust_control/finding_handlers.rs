@@ -33,8 +33,8 @@ use chio_open_market::finding_admission::{
 use chio_open_market::fiscal_adapter::signed_fee_schedule_digest;
 use chio_open_market::listing::SignedGenericListing;
 use chio_store_sqlite::finding_market_store::{
-    finding_fee_idempotency_key, FindingAllocationState, FindingFeeIntent, FindingRecordInput,
-    SqliteFindingMarketStore,
+    finding_fee_idempotency_key, FindingAllocationState, FindingFeeIntent, FindingFeeIntentOutcome,
+    FindingRecordInput, SqliteFindingMarketStore,
 };
 
 use super::report_validation::validate_service_auth;
@@ -1060,8 +1060,16 @@ pub(crate) async fn handle_activate_finding(
             rail_destination: &terminal.rail_destination,
             instruction_sha256: &instruction_sha256,
         };
-        if let Err(error) = store.begin_fee_intent(&intent) {
-            return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
+        match store.begin_fee_intent(&intent) {
+            Ok(fenced) if fenced.outcome == FindingFeeIntentOutcome::AlreadyReconciled => {
+                // Settled by an earlier attempt: dispatching again would
+                // ask the rail to move the same money twice.
+                continue;
+            }
+            Ok(_) => {}
+            Err(error) => {
+                return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
+            }
         }
         let observation = match rail.dispatch(&instruction) {
             Ok(observation) => observation,
@@ -1217,8 +1225,18 @@ pub(crate) async fn handle_finding_participation(
         rail_destination: &config.audit_pool.rail_destination,
         instruction_sha256: &instruction_sha256,
     };
-    if let Err(error) = store.begin_fee_intent(&intent) {
-        return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
+    match store.begin_fee_intent(&intent) {
+        Ok(fenced) if fenced.outcome == FindingFeeIntentOutcome::AlreadyReconciled => {
+            return Json(serde_json::json!({
+                "findingId": finding_id,
+                "paidThroughEpoch": next_epoch,
+            }))
+            .into_response();
+        }
+        Ok(_) => {}
+        Err(error) => {
+            return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
+        }
     }
     let observation = match rail.dispatch(&instruction) {
         Ok(observation) => observation,

@@ -172,6 +172,27 @@ pub struct FindingFeeEventRecord {
     pub state: FindingFeeState,
 }
 
+/// Whether `begin_fee_intent` inserted a fresh row, replayed one still
+/// pending or failed, or replayed one already reconciled. Only the last
+/// case is fully settled: a caller must not re-dispatch to the rail for an
+/// `AlreadyReconciled` replay, while a fresh `Inserted` row or a
+/// still-open `ExistingIntent` replay both still need the dispatch they
+/// fence.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FindingFeeIntentOutcome {
+    Inserted,
+    ExistingIntent,
+    AlreadyReconciled,
+}
+
+/// The fee event row `begin_fee_intent` fenced, plus which
+/// [`FindingFeeIntentOutcome`] produced it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FindingFeeIntentResult {
+    pub record: FindingFeeEventRecord,
+    pub outcome: FindingFeeIntentOutcome,
+}
+
 /// Whether activation performed the transaction or replayed a prior
 /// identical success as a no-op.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -528,11 +549,11 @@ impl SqliteFindingMarketStore {
             )
             .optional()
             .map_err(sqlite_error)?;
-        match bytes {
-            Some(bytes) if sha256_hex(&bytes) == canonical_sha256 => Ok(Some(bytes)),
-            Some(_) => Err(invariant("stored recipe blob failed its digest re-check")),
-            None => Ok(None),
-        }
+        let Some(bytes) = bytes else {
+            return Ok(None);
+        };
+        verify_stored_digest(&bytes, canonical_sha256, "recipe blob")?;
+        Ok(Some(bytes))
     }
 
     /// Register one live collateral allocation from a collateral-authority
@@ -660,13 +681,16 @@ impl SqliteFindingMarketStore {
     }
 
     /// Fence one fee charge before dispatch. Absent key inserts an
-    /// `intent` row. An identical retry returns the existing row
-    /// whatever its state; conflicting parameters under the same key
-    /// reject.
+    /// `intent` row. An identical retry returns the existing row under a
+    /// discriminated [`FindingFeeIntentOutcome`] so a caller can tell a
+    /// fresh intent from a replay, and a still-open replay from one
+    /// already reconciled (which it must not re-dispatch to the rail);
+    /// conflicting parameters under the same key reject regardless of
+    /// outcome.
     pub fn begin_fee_intent(
         &self,
         intent: &FindingFeeIntent<'_>,
-    ) -> Result<FindingFeeEventRecord, FindingMarketStoreError> {
+    ) -> Result<FindingFeeIntentResult, FindingMarketStoreError> {
         require_hex64(
             intent.fee_schedule_envelope_sha256,
             "fee_schedule_envelope_sha256",
@@ -698,7 +722,16 @@ impl SqliteFindingMarketStore {
                 && existing.rail_destination == intent.rail_destination
                 && existing.instruction_sha256 == intent.instruction_sha256
             {
-                return Ok(existing);
+                let outcome = match existing.state {
+                    FindingFeeState::Reconciled => FindingFeeIntentOutcome::AlreadyReconciled,
+                    FindingFeeState::Intent | FindingFeeState::Failed => {
+                        FindingFeeIntentOutcome::ExistingIntent
+                    }
+                };
+                return Ok(FindingFeeIntentResult {
+                    record: existing,
+                    outcome,
+                });
             }
             return Err(FindingMarketStoreError::Conflict(
                 "conflicting fee parameters under an existing idempotency key".to_owned(),
@@ -735,8 +768,24 @@ impl SqliteFindingMarketStore {
         }
         self.commit_write(transaction)?;
         self.sync_after_write(&connection)?;
-        load_fee_event_committed(&connection, &key)?
-            .ok_or_else(|| invariant("fee intent disappeared after commit"))
+        Ok(FindingFeeIntentResult {
+            record: FindingFeeEventRecord {
+                idempotency_key: key,
+                fee_schedule_envelope_sha256: intent.fee_schedule_envelope_sha256.to_owned(),
+                event: intent.event.clone(),
+                finding_id: intent.finding_id.to_owned(),
+                listing_id: intent.listing_id.to_owned(),
+                payer: intent.payer.to_owned(),
+                amount_units: intent.amount.units,
+                currency: intent.amount.currency.clone(),
+                pool_principal_id: intent.pool_principal_id.to_owned(),
+                rail_destination: intent.rail_destination.to_owned(),
+                instruction_sha256: intent.instruction_sha256.to_owned(),
+                observation_sha256: None,
+                state: FindingFeeState::Intent,
+            },
+            outcome: FindingFeeIntentOutcome::Inserted,
+        })
     }
 
     /// Mark one fee event reconciled against its matched rail observation.
@@ -1017,6 +1066,45 @@ impl SqliteFindingMarketStore {
 
     /// The current (active) admission for a finding: exact envelope bytes
     /// plus the allocation-liveness hook data readers re-check.
+    /// Re-hash every retained artifact and compare against its stored
+    /// digest, rejecting on the first mismatch. This walks the full
+    /// corpus, so it is an explicit operator and test entry point rather
+    /// than something the open path pays for; serve paths verify the
+    /// exact row they return on every read.
+    pub fn verify_stored_content_digests(&self) -> Result<(), FindingMarketStoreError> {
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        verify_table_digests::<String>(
+            &transaction,
+            "findings",
+            "artifact_json",
+            "artifact_sha256",
+            "finding artifact",
+        )?;
+        verify_table_digests::<Vec<u8>>(
+            &transaction,
+            "recipe_blobs",
+            "blob_bytes",
+            "canonical_sha256",
+            "recipe blob",
+        )?;
+        verify_table_digests::<String>(
+            &transaction,
+            "collateral_allocations",
+            "backing_envelope_json",
+            "backing_envelope_sha256",
+            "backing envelope",
+        )?;
+        verify_table_digests::<String>(
+            &transaction,
+            "admissions",
+            "admission_envelope_json",
+            "admission_envelope_sha256",
+            "admission envelope",
+        )?;
+        Ok(())
+    }
+
     pub fn get_current_admission(
         &self,
         finding_id: &str,
@@ -1059,9 +1147,11 @@ impl SqliteFindingMarketStore {
         else {
             return Ok(None);
         };
-        if sha256_hex(envelope_json.as_bytes()) != envelope_sha256 {
-            return Err(invariant("stored admission failed its digest re-check"));
-        }
+        verify_stored_digest(
+            envelope_json.as_bytes(),
+            &envelope_sha256,
+            "admission envelope",
+        )?;
         let allocation = load_allocation_snapshot_tx(&transaction, &backing_allocation_id)?
             .ok_or_else(|| invariant("active admission lost its collateral allocation"))?;
         Ok(Some(FindingAdmissionSnapshot {
@@ -1115,9 +1205,11 @@ fn load_finding_row_tx(
     else {
         return Ok(None);
     };
-    if sha256_hex(artifact_json.as_bytes()) != artifact_sha256 {
-        return Err(invariant("stored finding failed its digest re-check"));
-    }
+    verify_stored_digest(
+        artifact_json.as_bytes(),
+        &artifact_sha256,
+        "finding artifact",
+    )?;
     Ok(Some(FindingRow {
         artifact_json,
         artifact_sha256,
@@ -1207,11 +1299,11 @@ fn load_allocation_snapshot_tx(
     else {
         return Ok(None);
     };
-    if sha256_hex(backing_envelope_json.as_bytes()) != backing_envelope_sha256 {
-        return Err(invariant(
-            "stored backing envelope failed its digest re-check",
-        ));
-    }
+    verify_stored_digest(
+        backing_envelope_json.as_bytes(),
+        &backing_envelope_sha256,
+        "backing envelope",
+    )?;
     let parsed: SignedFindingBondBacking = serde_json::from_str(&backing_envelope_json)
         .map_err(|error| invariant(format!("stored backing envelope decode failed: {error}")))?;
     let backing = parsed.body;
@@ -1275,21 +1367,7 @@ fn load_fee_event_tx(
     transaction: &Transaction<'_>,
     idempotency_key: &str,
 ) -> Result<Option<FindingFeeEventRecord>, FindingMarketStoreError> {
-    load_fee_event_connection(transaction, idempotency_key)
-}
-
-fn load_fee_event_committed(
-    connection: &Connection,
-    idempotency_key: &str,
-) -> Result<Option<FindingFeeEventRecord>, FindingMarketStoreError> {
-    load_fee_event_connection(connection, idempotency_key)
-}
-
-fn load_fee_event_connection(
-    connection: &Connection,
-    idempotency_key: &str,
-) -> Result<Option<FindingFeeEventRecord>, FindingMarketStoreError> {
-    let row = connection
+    let row = transaction
         .query_row(
             r#"
             SELECT fee_schedule_envelope_sha256, event_kind, epoch_index,
@@ -1408,7 +1486,20 @@ pub(crate) fn initialize_finding_market_schema(
     verify_finding_market_invariants(&transaction)?;
     transaction.commit().map_err(sqlite_error)
 }
-
+/// Verify the market schema's shape: this database's table, index, and
+/// trigger definitions against a freshly created canonical schema. The
+/// cost is a handful of `sqlite_schema` rows, independent of how much
+/// market data has accumulated, so this runs on every open.
+///
+/// Stored content digests are NOT re-hashed here. Every serve path
+/// re-verifies the exact bytes it returns against their stored digest
+/// before handing them out, so a corrupted row is caught when it is used;
+/// re-hashing the whole retained corpus on every process start would grow
+/// without bound and duplicate that check. Operators and tests that want
+/// the corpus swept explicitly call
+/// [`SqliteFindingMarketStore::verify_stored_content_digests`].
+///
+/// Fails closed: any schema-shape difference rejects the open.
 pub(crate) fn verify_finding_market_invariants(
     connection: &Connection,
 ) -> Result<(), FindingMarketStoreError> {
@@ -1421,63 +1512,52 @@ pub(crate) fn verify_finding_market_invariants(
             "finding market schema differs from the canonical definition",
         ));
     }
+    Ok(())
+}
+
+/// Re-hash every row of `table` and compare against its stored digest.
+/// `content_column` and `digest_column` are compile-time-fixed identifiers
+/// from this module's own schema, never caller input.
+fn verify_table_digests<T>(
+    connection: &Connection,
+    table: &str,
+    content_column: &str,
+    digest_column: &str,
+    what: &str,
+) -> Result<(), FindingMarketStoreError>
+where
+    T: rusqlite::types::FromSql + AsRef<[u8]>,
+{
     let mut statement = connection
-        .prepare("SELECT artifact_json, artifact_sha256 FROM findings ORDER BY finding_id")
+        .prepare(&format!(
+            "SELECT {content_column}, {digest_column} FROM {table}"
+        ))
         .map_err(sqlite_error)?;
     let mut rows = statement.query([]).map_err(sqlite_error)?;
     while let Some(row) = rows.next().map_err(sqlite_error)? {
-        let artifact: String = row.get(0).map_err(sqlite_error)?;
+        let content: T = row.get(0).map_err(sqlite_error)?;
         let digest: String = row.get(1).map_err(sqlite_error)?;
-        if sha256_hex(artifact.as_bytes()) != digest {
-            return Err(invariant("finding artifact digest is invalid"));
-        }
-    }
-    drop(rows);
-    drop(statement);
-    let mut statement = connection
-        .prepare("SELECT canonical_sha256, blob_bytes FROM recipe_blobs ORDER BY canonical_sha256")
-        .map_err(sqlite_error)?;
-    let mut rows = statement.query([]).map_err(sqlite_error)?;
-    while let Some(row) = rows.next().map_err(sqlite_error)? {
-        let digest: String = row.get(0).map_err(sqlite_error)?;
-        let bytes: Vec<u8> = row.get(1).map_err(sqlite_error)?;
-        if sha256_hex(&bytes) != digest {
-            return Err(invariant("recipe blob digest is invalid"));
-        }
-    }
-    drop(rows);
-    drop(statement);
-    let mut statement = connection
-        .prepare(
-            "SELECT backing_envelope_json, backing_envelope_sha256
-             FROM collateral_allocations ORDER BY allocation_id",
-        )
-        .map_err(sqlite_error)?;
-    let mut rows = statement.query([]).map_err(sqlite_error)?;
-    while let Some(row) = rows.next().map_err(sqlite_error)? {
-        let envelope: String = row.get(0).map_err(sqlite_error)?;
-        let digest: String = row.get(1).map_err(sqlite_error)?;
-        if sha256_hex(envelope.as_bytes()) != digest {
-            return Err(invariant("backing envelope digest is invalid"));
-        }
-    }
-    drop(rows);
-    drop(statement);
-    let mut statement = connection
-        .prepare(
-            "SELECT admission_envelope_json, admission_envelope_sha256
-             FROM admissions ORDER BY admission_id",
-        )
-        .map_err(sqlite_error)?;
-    let mut rows = statement.query([]).map_err(sqlite_error)?;
-    while let Some(row) = rows.next().map_err(sqlite_error)? {
-        let envelope: String = row.get(0).map_err(sqlite_error)?;
-        let digest: String = row.get(1).map_err(sqlite_error)?;
-        if sha256_hex(envelope.as_bytes()) != digest {
-            return Err(invariant("admission envelope digest is invalid"));
-        }
+        verify_stored_digest(content.as_ref(), &digest, what)?;
     }
     Ok(())
+}
+
+/// Recompute `bytes`' digest and compare it to the value stored alongside
+/// them, failing closed on any mismatch. Every retained content column this
+/// store re-checks (finding artifacts, recipe blobs, backing envelopes,
+/// admission envelopes) routes through this one comparison, on both the
+/// single-row read path and the open-path bulk sweep, so the check and its
+/// wording cannot drift between call sites.
+fn verify_stored_digest(
+    bytes: &[u8],
+    expected_hex: &str,
+    what: &str,
+) -> Result<(), FindingMarketStoreError> {
+    if sha256_hex(bytes) == expected_hex {
+        Ok(())
+    } else {
+        Err(invariant(format!("{what} digest is invalid")))
+    }
 }
 
 type SchemaCatalogEntry = (String, String, String, Option<String>);
@@ -1496,7 +1576,7 @@ fn finding_market_schema_catalog(
                OR tbl_name GLOB 'collateral_allocations*'
                OR name GLOB 'fee_events*' OR tbl_name GLOB 'fee_events*'
                OR name GLOB 'admissions*' OR tbl_name GLOB 'admissions*'
-            ORDER BY type, name, tbl_name
+               ORDER BY type, name, tbl_name
             "#,
         )
         .map_err(sqlite_error)?;

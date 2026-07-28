@@ -67,10 +67,14 @@ pub enum FindingAdmissionError {
     TermsIdentityMismatch,
     #[error("backing identity does not match the admission finding or listing")]
     BackingIdentityMismatch,
+    #[error("backing commits different terms, profile, or fee schedule than the admission")]
+    BackingBindingMismatch,
     #[error("backing allocation is not live in the collateral snapshot")]
     AllocationNotLive,
     #[error("fee schedule envelope digest does not match the admission binding")]
     FeeScheduleDigestMismatch,
+    #[error("fee schedule envelope rejected: {0}")]
+    FeeScheduleEnvelope(FiscalOpenMarketError),
     #[error("fee schedule rejected by the fiscal authorization gate: {0}")]
     FeeScheduleUnauthorized(FiscalOpenMarketError),
     #[error("fee schedule defines no Listing-class bond requirement")]
@@ -241,7 +245,7 @@ pub fn verify_finding_admission(
     // The exact signed fee schedule, bound by digest, authorized by the
     // fiscal governance gate.
     let schedule_digest = signed_fee_schedule_digest(context.fee_schedule)
-        .map_err(FindingAdmissionError::FeeScheduleUnauthorized)?;
+        .map_err(FindingAdmissionError::FeeScheduleEnvelope)?;
     if schedule_digest != admission.fee_schedule_envelope_sha256 {
         return Err(FindingAdmissionError::FeeScheduleDigestMismatch);
     }
@@ -327,6 +331,17 @@ pub fn verify_finding_admission(
         if admission.expires_at > bound {
             return Err(FindingAdmissionError::ExpiryBeyondConstituent(label));
         }
+    }
+
+    // The allocation commits the terms, profile, and fee schedule it was
+    // sized against. Without these equalities an allocation minted for one
+    // set of terms could back an admission citing another.
+    if context.backing.body.terms_envelope_sha256 != admission.terms_envelope_sha256
+        || context.backing.body.profile_envelope_sha256 != admission.profile_envelope_sha256
+        || context.backing.body.fee_schedule_envelope_sha256
+            != admission.fee_schedule_envelope_sha256
+    {
+        return Err(FindingAdmissionError::BackingBindingMismatch);
     }
 
     Ok(VerifiedFindingAdmission {

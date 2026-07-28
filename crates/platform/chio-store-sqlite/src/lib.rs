@@ -238,8 +238,8 @@ pub use execution_nonce_store::{SqliteExecutionNonceStore, SqliteExecutionNonceS
 pub use finding_market_store::{
     finding_fee_idempotency_key, FindingActivationOutcome, FindingAdmissionSnapshot,
     FindingAllocationSnapshot, FindingAllocationState, FindingFeeEventRecord, FindingFeeIntent,
-    FindingFeeState, FindingMarketStoreError, FindingPutOutcome, FindingRecordInput,
-    FindingSearchRow, SqliteFindingMarketStore,
+    FindingFeeIntentOutcome, FindingFeeIntentResult, FindingFeeState, FindingMarketStoreError,
+    FindingPutOutcome, FindingRecordInput, FindingSearchRow, SqliteFindingMarketStore,
 };
 pub use frost_store::{
     FrostActiveRosterRecord, FrostCeremonyRecord, FrostCeremonyRound1Record,

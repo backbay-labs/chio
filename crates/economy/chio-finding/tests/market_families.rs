@@ -679,3 +679,25 @@ fn admission_venue_id_mismatch_rejects() -> TestResult {
     );
     Ok(())
 }
+
+#[test]
+fn admission_rejects_malformed_backing_fields() -> TestResult {
+    let venue = keypair(6);
+
+    let mut admission = admission_body(&venue)?;
+    admission.backing_allocation_id = "not-a-hex64-allocation-id".to_string();
+    admission.admission_id = (compute_admission_id(&admission))?;
+    assert_eq!(
+        admission.validate(),
+        Err(FindingError::MalformedDigest("backing_allocation_id"))
+    );
+
+    let mut admission = admission_body(&venue)?;
+    admission.backing_envelope_sha256 = "not-a-hex64-envelope-digest".to_string();
+    admission.admission_id = (compute_admission_id(&admission))?;
+    assert_eq!(
+        admission.validate(),
+        Err(FindingError::MalformedDigest("backing_envelope_sha256"))
+    );
+    Ok(())
+}

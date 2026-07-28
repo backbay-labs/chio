@@ -244,6 +244,7 @@ fn begin_intent(
             instruction_sha256: instruction,
         })
         .expect("begin fee intent")
+        .record
 }
 
 fn reconcile(
@@ -328,21 +329,36 @@ fn put_finding_rejects_conflicting_bytes_for_same_id() {
 fn search_findings_paginates_and_filters_liveness() {
     let fixture = fixture();
     let context = hex64('c');
-    for id in ['a', 'b', 'd'] {
-        publish_finding(
-            &fixture.store,
-            &hex64(id),
-            "regression/topic",
-            &context,
-            1_700_000_000,
-            1_900_000_000,
-        );
-    }
+    let topic = "regression/topic";
+    let artifact_a = publish_finding(
+        &fixture.store,
+        &hex64('a'),
+        topic,
+        &context,
+        1_700_000_000,
+        1_900_000_000,
+    );
+    let artifact_b = publish_finding(
+        &fixture.store,
+        &hex64('b'),
+        topic,
+        &context,
+        1_700_000_000,
+        1_900_000_000,
+    );
+    let artifact_d = publish_finding(
+        &fixture.store,
+        &hex64('d'),
+        topic,
+        &context,
+        1_700_000_000,
+        1_900_000_000,
+    );
     // Expired at NOW: excluded by the upper liveness bound.
     publish_finding(
         &fixture.store,
         &hex64('e'),
-        "regression/topic",
+        topic,
         &context,
         1_600_000_000,
         1_700_000_000,
@@ -351,7 +367,7 @@ fn search_findings_paginates_and_filters_liveness() {
     publish_finding(
         &fixture.store,
         &hex64('f'),
-        "regression/topic",
+        topic,
         &context,
         1_800_000_000,
         1_900_000_000,
@@ -367,17 +383,47 @@ fn search_findings_paginates_and_filters_liveness() {
             .collect::<Vec<_>>(),
         vec![hex64('a'), hex64('b')]
     );
+    // Full row equality, not just finding_id, so a column-index swap between
+    // the adjacent (topic, context_sha256) or (issued_at, expires_at) pairs
+    // would fail this test.
+    assert_eq!(
+        first_page[0],
+        FindingSearchRow {
+            finding_id: hex64('a'),
+            artifact_sha256: chio_core::sha256_hex(artifact_a.as_bytes()),
+            topic: topic.to_string(),
+            context_sha256: context.clone(),
+            issued_at: 1_700_000_000,
+            expires_at: 1_900_000_000,
+        }
+    );
+    assert_eq!(
+        first_page[1],
+        FindingSearchRow {
+            finding_id: hex64('b'),
+            artifact_sha256: chio_core::sha256_hex(artifact_b.as_bytes()),
+            topic: topic.to_string(),
+            context_sha256: context.clone(),
+            issued_at: 1_700_000_000,
+            expires_at: 1_900_000_000,
+        }
+    );
     let second_page = fixture
         .store
         .search_findings(None, Some(&context), Some(&hex64('b')), 2, NOW)
         .expect("second page");
     assert_eq!(
-        second_page
-            .iter()
-            .map(|row| row.finding_id.clone())
-            .collect::<Vec<_>>(),
-        vec![hex64('d')],
-        "expired and future-issued findings must not appear"
+        second_page,
+        vec![FindingSearchRow {
+            finding_id: hex64('d'),
+            artifact_sha256: chio_core::sha256_hex(artifact_d.as_bytes()),
+            topic: topic.to_string(),
+            context_sha256: context.clone(),
+            issued_at: 1_700_000_000,
+            expires_at: 1_900_000_000,
+        }],
+        "expired and future-issued findings must not appear, and the \
+         surviving row must match on every column"
     );
     let by_topic = fixture
         .store
@@ -802,4 +848,168 @@ fn activate_listing_is_atomic_idempotent_and_supersedes() {
          guarantees the prior row moved to superseded"
     );
     assert_eq!(superseding.envelope_json, second_envelope);
+}
+
+#[test]
+fn begin_fee_intent_outcome_discriminates_fresh_pending_and_reconciled() {
+    let fixture = fixture();
+    let finding_id = hex64('a');
+    let event = FindingFeeEvent::Publication;
+    let schedule = hex64('5');
+    let amount = usd(5);
+    let instruction = hex64('6');
+    let intent = FindingFeeIntent {
+        fee_schedule_envelope_sha256: &schedule,
+        event: &event,
+        finding_id: &finding_id,
+        listing_id: LISTING_ID,
+        payer: "seller-42",
+        amount: &amount,
+        pool_principal_id: "pool:audit",
+        rail_destination: "rail:venue-ledger:audit-pool",
+        instruction_sha256: &instruction,
+    };
+
+    let fresh = fixture
+        .store
+        .begin_fee_intent(&intent)
+        .expect("fresh intent");
+    assert_eq!(fresh.outcome, FindingFeeIntentOutcome::Inserted);
+    assert_eq!(fresh.record.state, FindingFeeState::Intent);
+
+    let pending_replay = fixture
+        .store
+        .begin_fee_intent(&intent)
+        .expect("pending replay");
+    assert_eq!(
+        pending_replay.outcome,
+        FindingFeeIntentOutcome::ExistingIntent
+    );
+    assert_eq!(pending_replay.record, fresh.record);
+
+    fixture
+        .store
+        .mark_fee_failed(&fresh.record.idempotency_key)
+        .expect("mark failed");
+    let failed_replay = fixture
+        .store
+        .begin_fee_intent(&intent)
+        .expect("failed replay");
+    assert_eq!(
+        failed_replay.outcome,
+        FindingFeeIntentOutcome::ExistingIntent,
+        "a failed, not-yet-settled intent must not read as already reconciled"
+    );
+
+    fixture
+        .store
+        .mark_fee_reconciled(
+            &fresh.record.idempotency_key,
+            &hex64('7'),
+            &amount,
+            "rail:venue-ledger:audit-pool",
+        )
+        .expect("reconcile");
+    let reconciled_replay = fixture
+        .store
+        .begin_fee_intent(&intent)
+        .expect("reconciled replay");
+    assert_eq!(
+        reconciled_replay.outcome,
+        FindingFeeIntentOutcome::AlreadyReconciled,
+        "a caller must be able to short-circuit a rail dispatch it already settled"
+    );
+    assert_eq!(reconciled_replay.record.state, FindingFeeState::Reconciled);
+
+    // Conflicting parameters under the same key still reject regardless of
+    // the discriminated outcome shape.
+    let conflicting = fixture.store.begin_fee_intent(&FindingFeeIntent {
+        fee_schedule_envelope_sha256: &schedule,
+        event: &event,
+        finding_id: &finding_id,
+        listing_id: LISTING_ID,
+        payer: "someone-else",
+        amount: &amount,
+        pool_principal_id: "pool:audit",
+        rail_destination: "rail:venue-ledger:audit-pool",
+        instruction_sha256: &instruction,
+    });
+    assert!(
+        matches!(conflicting, Err(FindingMarketStoreError::Conflict(_))),
+        "conflicting parameters under an existing idempotency key must still reject"
+    );
+}
+
+#[test]
+fn corrupted_content_is_caught_on_the_serve_path_and_by_the_explicit_sweep() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    secure_temp_directory(temp.path());
+    let database = temp.path().join("authority.db");
+    let lock_root = temp.path().join("locks");
+    fs::create_dir(&lock_root).expect("create lock root");
+    secure_temp_directory(&lock_root);
+    SqliteAuthorityStore::provision(&database, &lock_root).expect("provision authority");
+
+    let finding_id = hex64('a');
+    {
+        let authority =
+            SqliteAuthorityStore::open_serving(&database, &lock_root).expect("open authority");
+        let store = authority.finding_market_store();
+        publish_finding(
+            &store,
+            &finding_id,
+            "regression/topic",
+            &hex64('c'),
+            1_700_000_000,
+            1_900_000_000,
+        );
+        store
+            .verify_stored_content_digests()
+            .expect("a clean corpus passes the explicit sweep");
+    }
+
+    // Tamper with the stored digest directly, bypassing the store's write
+    // path and its immutability trigger the way on-disk bit rot or an
+    // out-of-band write would. The schema is re-applied afterward (every
+    // statement in it is an idempotent guard) so only the corrupted row's
+    // content, not the schema shape, differs from canonical.
+    {
+        let raw = rusqlite::Connection::open(&database).expect("open raw connection");
+        raw.execute_batch("DROP TRIGGER findings_immutable;")
+            .expect("drop immutability trigger for the tamper");
+        let changed = raw
+            .execute(
+                "UPDATE findings SET artifact_sha256 = ?1 WHERE finding_id = ?2",
+                rusqlite::params![hex64('9'), finding_id],
+            )
+            .expect("corrupt the stored digest");
+        assert_eq!(changed, 1, "the tamper must touch exactly the one row");
+        raw.execute_batch(FINDING_MARKET_SCHEMA)
+            .expect("restore the canonical schema, including the dropped trigger");
+    }
+
+    // The schema shape is intact, so the open succeeds: content digests
+    // are not swept on the open path.
+    let authority =
+        SqliteAuthorityStore::open_serving(&database, &lock_root).expect("open with intact schema");
+    let store = authority.finding_market_store();
+
+    // Serving the corrupted row rejects, which is the guarantee that
+    // actually protects a caller.
+    assert!(
+        matches!(
+            store.get_finding_bytes(&finding_id),
+            Err(FindingMarketStoreError::Invariant(_))
+        ),
+        "serving a corrupted finding must fail closed"
+    );
+
+    // And the explicit sweep finds it without anyone requesting the row.
+    assert!(
+        matches!(
+            store.verify_stored_content_digests(),
+            Err(FindingMarketStoreError::Invariant(_))
+        ),
+        "the explicit sweep must detect corruption in a retained row"
+    );
 }

@@ -272,22 +272,25 @@ fn signed_backing(
     seller: &Keypair,
     finding: &Finding,
     fee_schedule_envelope_sha256: &str,
+    terms_envelope_sha256: &str,
 ) -> SignedFindingBondBacking {
-    signed_backing_with_locked(
+    signed_backing_committing(
         collateral,
         seller,
         finding,
         fee_schedule_envelope_sha256,
         LOCKED_UNITS,
+        terms_envelope_sha256,
     )
 }
 
-fn signed_backing_with_locked(
+fn signed_backing_committing(
     collateral: &Keypair,
     seller: &Keypair,
     finding: &Finding,
     fee_schedule_envelope_sha256: &str,
     locked_units: u64,
+    terms_envelope_sha256: &str,
 ) -> SignedFindingBondBacking {
     let mut backing = FindingBondBacking {
         schema: FINDING_BOND_BACKING_SCHEMA_V1.to_string(),
@@ -297,7 +300,7 @@ fn signed_backing_with_locked(
         authorization_envelope_sha256: hex64('1'),
         finding_id: finding.finding_id.clone(),
         listing_id: FINDING_LISTING_ID.to_string(),
-        terms_envelope_sha256: hex64('2'),
+        terms_envelope_sha256: terms_envelope_sha256.to_string(),
         profile_envelope_sha256: hex64('3'),
         fee_requirement_sha256: hex64('4'),
         fee_schedule_envelope_sha256: fee_schedule_envelope_sha256.to_string(),
@@ -436,7 +439,13 @@ fn web_with_schedule(requirement_units: u64, slashable: bool, currency: &str) ->
     let schedule_sha256 = signed_fee_schedule_digest(&schedule).test_expect("schedule digest");
     let terms = signed_terms(&seller, &finding, WINDOW_EXPIRES_AT);
     let terms_sha256 = signed_envelope_sha256(&terms).test_expect("terms digest");
-    let backing = signed_backing(&collateral, &seller, &finding, &schedule_sha256);
+    let backing = signed_backing(
+        &collateral,
+        &seller,
+        &finding,
+        &schedule_sha256,
+        &terms_sha256,
+    );
     let backing_sha256 = signed_envelope_sha256(&backing).test_expect("backing digest");
     // The admission binds the exact listing and pricing-hint envelopes a
     // bid must later present, so build the canonical entry here.
@@ -872,12 +881,13 @@ fn backing_locked_below_the_promised_sum_rejects() {
         let mut web = web_with_schedule(REQUIREMENT_UNITS, true, "USD");
         // The schedule requirement stays adequate; only the collateral
         // actually locked falls short of stake plus exposure.
-        let underfunded = signed_backing_with_locked(
+        let underfunded = signed_backing_committing(
             &keypair(4),
             &web.seller,
             &web.finding,
             &web.schedule_sha256,
             STAKE_UNITS + EXPOSURE_UNITS - 1,
+            &web.terms_sha256,
         );
         web.backing_sha256 = signed_envelope_sha256(&underfunded).test_expect("backing digest");
         web.backing = underfunded;
@@ -929,5 +939,30 @@ fn admission_expiry_is_bounded_by_every_constituent() {
                 "bound {label} did not deny an over-long admission"
             );
         }
+    });
+}
+
+#[test]
+fn backing_committing_other_terms_rejects() {
+    with_fiscal(|resolver| {
+        let mut web = web_with_schedule(REQUIREMENT_UNITS, true, "USD");
+        // A well-formed allocation for this seller, finding, and listing
+        // that was sized against different terms than the admission cites.
+        let foreign = signed_backing_committing(
+            &keypair(4),
+            &web.seller,
+            &web.finding,
+            &web.schedule_sha256,
+            LOCKED_UNITS,
+            &hex64('f'),
+        );
+        web.backing_sha256 = signed_envelope_sha256(&foreign).test_expect("backing digest");
+        web.backing = foreign;
+        let bindings = web.bindings();
+        web.admission = signed_admission(&web.venue, &web.finding, &bindings);
+        assert_eq!(
+            verify_finding_admission(&web.admission, &web.context(resolver)).err(),
+            Some(FindingAdmissionError::BackingBindingMismatch)
+        );
     });
 }

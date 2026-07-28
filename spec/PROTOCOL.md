@@ -1407,12 +1407,17 @@ bonds, status feeds, or pricing hints, check wall-clock liveness, or establish
 the truth of a guarantee or evidence class. A market or trust decision MUST
 perform those checks separately before relying on the corresponding claim.
 
-#### 6.4.7.1 Market envelope discipline (M2 families)
+#### 6.4.7.1 Market envelope discipline
 
-The M2 market artifacts below travel as signed export envelopes
-(`{body, signerKey, signature}`), unlike the inline-signed
-`chio.finding.v1`. Each body is strict snake_case JSON that rejects unknown
-members, names its own signing authority, and carries a content-addressed
+Six families travel as signed export envelopes
+(`{body, signerKey, signature}`): `chio.finding.challenge-verifier-profile.v1`,
+`chio.finding.market-terms.v1`, `chio.finding.seller-authorization.v1`,
+`chio.finding.bond-backing.v1`, `chio.finding.verifier-report.v1`, and
+`chio.finding.admission.v1`. This differs from the inline-signed
+`chio.finding.v1` and from the unsigned `chio.finding.replay-recipe-input.v1`,
+which carries no envelope at all. Each of the six envelope bodies is strict
+snake_case JSON that rejects unknown members, names its own signing
+authority, and carries a content-addressed
 identifier computed exactly like `finding_id`: the SHA-256 digest of
 canonical JSON for the body after setting only the id member to the empty
 JSON string `""`, with every other member present. Envelope verification
@@ -1522,9 +1527,10 @@ evaluation may sign.
 The venue-signed admission bundle, the ONLY qualification of a finding
 listing for trusted search, bid, and purchase. It binds the exact finding
 artifact digest, seller-authorization, listing, pricing-hint, terms,
-profile, verifier-report, and backing envelope digests, the capability
-scope `finding:<finding_id>` exactly, the server, metadata URL, publisher,
-and payee, the fee-schedule envelope digest, settled fee terminals
+profile, verifier-report, and backing envelope digests, the exact backing
+allocation id, the capability scope `finding:<finding_id>` exactly, the
+server, metadata URL, publisher, and payee, the fee-schedule envelope
+digest, settled fee terminals
 (publication plus the first participation epoch at minimum, each naming
 schedule, event, payer, amount, pool principal, rail destination, and the
 rail evidence digests), the distinct audit-pool and
@@ -1538,10 +1544,10 @@ liveness uses both bounds: a finding with `issued_at > now` or
 `expires_at <= now` MUST NOT be indexable, admittable, or pairable with a
 fresh pricing hint.
 
-The finding family registers `chio.finding.v1`, the six signed M2 market
+The finding family registers `chio.finding.v1`, the six signed market
 artifacts above, and the unsigned replay-recipe input at this stage.
-Delivery, challenge, and status-epoch artifacts remain unsupported until
-their owning milestones define and register them.
+Delivery, challenge, and status-epoch artifacts remain unsupported until a
+future revision of this specification defines and registers them.
 
 ### 6.5 Checkpoints
 

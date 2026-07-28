@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 pub const OPEN_MARKET_FEE_SCHEDULE_ARTIFACT_SCHEMA: &str = "chio.registry.market-fee-schedule.v1";
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub enum OpenMarketBondClass {
     Publication,
@@ -105,22 +105,7 @@ impl OpenMarketFeeScheduleArtifact {
         validate_monetary_amount(&self.publication_fee, "publication_fee")?;
         validate_monetary_amount(&self.dispute_fee, "dispute_fee")?;
         validate_monetary_amount(&self.market_participation_fee, "market_participation_fee")?;
-        if self.bond_requirements.is_empty() {
-            return Err("bond_requirements must not be empty".to_string());
-        }
-        // The penalty evaluator resolves a bond class by first match, so a
-        // schedule carrying two requirements for the same class is ambiguous
-        // about which one governs. Reject the shape at validation time.
-        let mut seen_bond_classes = std::collections::BTreeSet::new();
-        for (index, requirement) in self.bond_requirements.iter().enumerate() {
-            requirement.validate(&format!("bond_requirements[{index}]"))?;
-            if !seen_bond_classes.insert(requirement.bond_class as u8) {
-                return Err(format!(
-                    "bond_requirements[{index}] repeats a bond class; each bond class may \
-                     appear at most once"
-                ));
-            }
-        }
+        validate_bond_requirements(&self.bond_requirements)?;
         if let Some(expires_at) = self.expires_at {
             if expires_at <= self.issued_at {
                 return Err("expires_at must be greater than issued_at".to_string());
@@ -156,12 +141,7 @@ impl OpenMarketFeeScheduleIssueRequest {
         validate_monetary_amount(&self.publication_fee, "publication_fee")?;
         validate_monetary_amount(&self.dispute_fee, "dispute_fee")?;
         validate_monetary_amount(&self.market_participation_fee, "market_participation_fee")?;
-        if self.bond_requirements.is_empty() {
-            return Err("bond_requirements must not be empty".to_string());
-        }
-        for (index, requirement) in self.bond_requirements.iter().enumerate() {
-            requirement.validate(&format!("bond_requirements[{index}]"))?;
-        }
+        validate_bond_requirements(&self.bond_requirements)?;
         Ok(())
     }
 }
@@ -208,6 +188,26 @@ pub fn build_open_market_fee_schedule_artifact(
     };
     artifact.validate()?;
     Ok(artifact)
+}
+
+fn validate_bond_requirements(items: &[OpenMarketBondRequirement]) -> Result<(), String> {
+    if items.is_empty() {
+        return Err("bond_requirements must not be empty".to_string());
+    }
+    // The penalty evaluator resolves a bond class by first match, so a
+    // schedule carrying two requirements for the same class is ambiguous
+    // about which one governs. Reject the shape at validation time.
+    let mut seen_bond_classes = std::collections::BTreeSet::new();
+    for (index, requirement) in items.iter().enumerate() {
+        requirement.validate(&format!("bond_requirements[{index}]"))?;
+        if !seen_bond_classes.insert(requirement.bond_class) {
+            return Err(format!(
+                "bond_requirements[{index}] repeats a bond class; each bond class may \
+                 appear at most once"
+            ));
+        }
+    }
+    Ok(())
 }
 
 fn validate_monetary_amount(value: &MonetaryAmount, field: &str) -> Result<(), String> {
@@ -290,12 +290,10 @@ mod tests {
             requirement(OpenMarketBondClass::Listing, 10),
             requirement(OpenMarketBondClass::Listing, 30),
         ]);
-        assert!(build_open_market_fee_schedule_artifact(
-            "operator.example",
-            None,
-            &duplicated,
-            100
-        )
-        .is_err());
+        let error =
+            build_open_market_fee_schedule_artifact("operator.example", None, &duplicated, 100)
+                .test_unwrap_err();
+        assert!(error.contains("bond_requirements[1]"));
+        assert!(error.contains("at most once"));
     }
 }

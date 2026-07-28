@@ -4,7 +4,8 @@
 //! against a caller-supplied root. This module supplies the additional
 //! binding ARCHITECTURE 4.1.1 requires: checkpoint identity and
 //! signature, wrapper sequence and range checks, BOTH leaf-index fields,
-//! BOTH tree sizes, the pinned canonical leaf definition (full canonical
+//! the inclusion proof's tree size against the checkpoint's signed tree
+//! size, the pinned canonical leaf definition (full canonical
 //! receipt envelope bytes), duplicate rejection, and profile-pinned log
 //! identity/signer.
 
@@ -121,7 +122,8 @@ pub fn verify_checkpoint_membership(
         if proof.leaf_index != proof.proof.leaf_index {
             return Err(CheckpointMembershipError::LeafIndexMismatch);
         }
-        // Both tree sizes must equal the signed checkpoint's tree size.
+        // The inclusion proof's tree size must equal the signed
+        // checkpoint's tree size.
         if proof.proof.tree_size != body.tree_size {
             return Err(CheckpointMembershipError::TreeSizeMismatch);
         }
