@@ -2085,8 +2085,8 @@ fn maybe_build_checkpoint(
                 "injected test checkpoint build failure".to_string(),
             ));
         }
-        ensure_checkpoint_transparency_guards(connection)?;
         let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        ensure_checkpoint_transparency_guards(&tx)?;
         // The insert returns the checkpoint now persisted at this seq: either
         // the one we just built, or a concurrently committed winner (clock-skew
         // sibling) it validated and adopted. Catch the cached head up to THAT

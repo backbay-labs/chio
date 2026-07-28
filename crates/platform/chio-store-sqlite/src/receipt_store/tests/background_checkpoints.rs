@@ -1253,6 +1253,151 @@ fn frontier_cache_miss_rejects_disconnected_legacy_prefix_after_failed_build(
     Ok(())
 }
 
+/// The full cache-miss frontier audit ends before the background builder opens
+/// its Immediate insertion transaction. A peer can replace the verified prefix
+/// coherently in that gap. The transaction must re-read the persisted
+/// predecessor and reject the stale candidate before appending it.
+#[test]
+fn checkpoint_insert_rejects_prefix_replaced_after_frontier_audit(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (temp_dir, path) = temp_db("chio-bg-frontier-insert-race")?;
+    let keypair = receipt_test_keypair();
+    let store = SqliteReceiptStore::open(&path)?;
+    let max_batch = 2;
+    for i in 0..(max_batch * 2) {
+        let receipt =
+            sample_receipt_with_keypair(&format!("rcpt-frontier-insert-race-{i}"), i + 1, &keypair);
+        store.append_chio_receipt_returning_seq(&receipt)?;
+    }
+    store.flush_receipt_writes()?;
+
+    // Persist a valid one-checkpoint legacy prefix. A legacy checkpoint carries
+    // no chain_root, so changing and re-signing its timestamp produces a
+    // distinct but independently valid replacement prefix.
+    let mut checkpoint_one = build_checkpoint(
+        1,
+        1,
+        max_batch,
+        &canonical_receipt_bytes(&store, 1, max_batch),
+        &keypair,
+    )?;
+    checkpoint_one.body.schema = chio_kernel::checkpoint::CHECKPOINT_SCHEMA_V1.to_string();
+    checkpoint_one.body.chain_root = None;
+    checkpoint_one.signature = keypair.sign(&canonical_json_bytes(&checkpoint_one.body)?);
+    insert_checkpoint_row(&store, &checkpoint_one, checkpoint_one.body.batch_end_seq);
+
+    // This is the builder's verified snapshot and the candidate derived from
+    // it. The audit transaction commits before the later write transaction, so
+    // no database lock spans the deliberate replacement below.
+    let mut builder_connection = store.connection()?;
+    let old_frontier = rebuild_checkpoint_frontier(&mut builder_connection, Some(&checkpoint_one))?;
+    let candidate = chio_kernel::checkpoint::build_checkpoint_with_chain_frontier(
+        2,
+        max_batch + 1,
+        max_batch * 2,
+        &canonical_receipt_bytes(&store, max_batch + 1, max_batch * 2),
+        &keypair,
+        Some(&checkpoint_one),
+        &old_frontier,
+    )?;
+
+    // In the gap, a peer replaces checkpoint 1 and its transparency
+    // projections. The replacement passes the full chain audit, but it is not
+    // the predecessor used above.
+    let mut replacement_one = checkpoint_one.clone();
+    replacement_one.body.issued_at = checkpoint_one
+        .body
+        .issued_at
+        .checked_sub(1)
+        .ok_or("checkpoint timestamp must permit a distinct predecessor")?;
+    replacement_one.signature = keypair.sign(&canonical_json_bytes(&replacement_one.body)?);
+    chio_kernel::checkpoint::validate_checkpoint(&replacement_one)?;
+
+    let replacement_one_json = serde_json::to_string(&replacement_one.body)?;
+    let replacement_one_signature = replacement_one.signature.to_hex();
+    let peer = store.connection()?;
+    peer.execute_batch(
+        r#"
+        DROP TRIGGER IF EXISTS kernel_checkpoints_reject_update;
+        DROP TRIGGER IF EXISTS checkpoint_tree_heads_reject_update;
+        DROP TRIGGER IF EXISTS checkpoint_publication_metadata_reject_update;
+        "#,
+    )?;
+    assert_eq!(
+        peer.execute(
+            "UPDATE kernel_checkpoints
+             SET issued_at = ?1, statement_json = ?2, signature = ?3
+             WHERE checkpoint_seq = 1",
+            rusqlite::params![
+                replacement_one.body.issued_at as i64,
+                replacement_one_json,
+                replacement_one_signature,
+            ],
+        )?,
+        1
+    );
+    assert_eq!(
+        peer.execute(
+            "UPDATE checkpoint_tree_heads
+             SET issued_at = ?1, statement_json = ?2, signature = ?3
+             WHERE checkpoint_seq = 1",
+            rusqlite::params![
+                replacement_one.body.issued_at as i64,
+                replacement_one_json,
+                replacement_one_signature,
+            ],
+        )?,
+        1
+    );
+    assert_eq!(
+        peer.execute(
+            "UPDATE checkpoint_publication_metadata
+             SET published_at = ?1
+             WHERE checkpoint_seq = 1",
+            rusqlite::params![replacement_one.body.issued_at as i64],
+        )?,
+        1
+    );
+    ensure_checkpoint_transparency_guards(&peer)?;
+    ensure_transparency_projection_guards(&peer)?;
+    assert_eq!(
+        verify_checkpoint_chain_integrity(&peer)?.as_ref(),
+        Some(&replacement_one),
+        "the peer replacement must be a coherent persisted prefix"
+    );
+    drop(peer);
+
+    // The Immediate transaction now owns the insertion snapshot. It must
+    // observe replacement_one at seq 1, reject the cached checkpoint_one, and
+    // leave the checkpoint-2 slot empty.
+    let tx =
+        builder_connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    let error = insert_checkpoint_incremental_tx(&tx, Some(&checkpoint_one), &candidate)
+        .err()
+        .ok_or("a stale candidate must not extend the replacement prefix")?;
+    assert!(
+        matches!(error, ReceiptStoreError::Conflict(_))
+            && error
+                .to_string()
+                .contains("cached predecessor 1 changed before persistence"),
+        "expected a fail-closed predecessor snapshot conflict, got {error:?}"
+    );
+    assert!(
+        load_persisted_checkpoint_row(&tx, 2)?.is_none(),
+        "the replacement prefix must not gain a disconnected successor"
+    );
+    drop(tx);
+
+    assert!(
+        store.load_checkpoint_by_seq(2)?.is_none(),
+        "the failed transaction must leave checkpoint 2 absent"
+    );
+    drop(builder_connection);
+    drop(store);
+    temp_dir.close()?;
+    Ok(())
+}
+
 /// If the `InstallSigner` handler only STORED the signer, an already-owed
 /// checkpoint (the store opened on a DB that already has at least max_batch
 /// uncheckpointed claim-log entries, e.g. a crash between the durable append

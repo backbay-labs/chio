@@ -832,8 +832,8 @@ pub(crate) fn store_kernel_checkpoint_atomic(
     connection: &mut Connection,
     checkpoint: &KernelCheckpoint,
 ) -> Result<(), ReceiptStoreError> {
-    ensure_checkpoint_transparency_guards(connection)?;
     let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    ensure_checkpoint_transparency_guards(&tx)?;
     // Operator / import append re-verification: a
     // manually stored or externally imported checkpoint is a rare, off-hot-path
     // surface. `store_kernel_checkpoint_tx` only parses the LATEST checkpoint as
@@ -883,8 +883,8 @@ pub(crate) fn create_next_receipt_checkpoint_atomic(
     max_batch: u64,
     keypair: &Keypair,
 ) -> Result<ReceiptCheckpointCreateReport, ReceiptStoreError> {
-    ensure_checkpoint_transparency_guards(connection)?;
     let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    ensure_checkpoint_transparency_guards(&tx)?;
     let previous_checkpoint = verify_checkpoint_chain_integrity(&tx)?;
     let latest_committed_entry_seq = super::latest_claim_log_entry_seq(&tx)?;
     let Some(range) = super::next_checkpoint_range_for_connection(&tx, max_batch)? else {
@@ -966,6 +966,37 @@ pub(crate) fn insert_checkpoint_incremental_tx(
                 })?;
         }
         None => validate_checkpoint_base(checkpoint)?,
+    }
+    // The frontier audit and candidate construction happen before the caller
+    // opens this Immediate transaction. A peer can coherently replace the
+    // persisted prefix in that gap, leaving `predecessor` and the candidate
+    // internally consistent with each other but disconnected from the prefix
+    // now on disk. Re-read seq - 1 after the write lock is held and require it
+    // to be byte-identical to the predecessor used to build the candidate.
+    // This still permits a peer winner at the candidate's own sequence: that
+    // row is handled and adopted below after its shared predecessor is pinned.
+    if let Some(predecessor) = predecessor {
+        let predecessor_seq = predecessor.body.checkpoint_seq;
+        let persisted_predecessor_row =
+            load_persisted_checkpoint_row(tx, predecessor_seq)?.ok_or_else(|| {
+                ReceiptStoreError::Conflict(format!(
+                    "checkpoint {} cached predecessor {predecessor_seq} disappeared before persistence",
+                    checkpoint.body.checkpoint_seq
+                ))
+            })?;
+        let persisted_predecessor =
+            parse_persisted_checkpoint_row(persisted_predecessor_row.clone())?;
+        validate_checkpoint_projection_rows(
+            tx,
+            &persisted_predecessor_row,
+            &persisted_predecessor,
+        )?;
+        if persisted_predecessor != *predecessor {
+            return Err(ReceiptStoreError::Conflict(format!(
+                "checkpoint {} cached predecessor {predecessor_seq} changed before persistence",
+                checkpoint.body.checkpoint_seq
+            )));
+        }
     }
     validate_checkpoint_against_claim_log(tx, checkpoint)?;
     // Idempotent and concurrent-winner background-checkpoint convergence
