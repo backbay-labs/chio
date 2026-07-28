@@ -547,6 +547,26 @@ def validate_generated_headers(
             )
 
 
+def validate_rust_example_packages(
+    root: Path,
+    paths: list[str],
+    failures: list[str],
+) -> None:
+    checked: set[str] = set()
+    for path in paths:
+        parts = Path(path).parts
+        if len(parts) < 4 or parts[0] != "examples" or parts[2] != "src":
+            continue
+        example = str(Path(parts[0]) / parts[1])
+        if example in checked:
+            continue
+        checked.add(example)
+        if not (root / example / "Cargo.toml").is_file():
+            failures.append(
+                f"{example}: contains Rust src files but has no Cargo.toml"
+            )
+
+
 def validate_text_hygiene(root: Path, failures: list[str]) -> None:
     try:
         paths = discover_text_hygiene_files(root)
@@ -702,6 +722,7 @@ def main() -> int:
             failures.append(f"{file.path}: {violation}")
 
     validate_generated_headers(root, paths, failures)
+    validate_rust_example_packages(root, paths, failures)
     validate_text_hygiene(root, failures)
 
     if errors:

@@ -220,9 +220,24 @@ assert_rc "$(run_checker_script "$expired_checker" "$expired_allowlist" "$work/e
 grep -F "allowlist entry expired on 2000-01-01" \
   "$work/expired-allowlist.err" >/dev/null
 
+orphan_example="$work/orphan-example"
+init_case "$orphan_example"
+write_lines "$orphan_example/examples/orphan/src/lib.rs" 25
+track_case "$orphan_example"
+assert_rc "$(run_checker "$orphan_example" "$work/orphan-example.out" "$work/orphan-example.err")" 1 \
+  "Rust example source without a Cargo package fails"
+grep -F "examples/orphan: contains Rust src files but has no Cargo.toml" \
+  "$work/orphan-example.err" >/dev/null
+
 large_example="$work/large-example"
 init_case "$large_example"
 write_lines "$large_example/examples/oversized/src/main.rs" 3000
+cat > "$large_example/examples/oversized/Cargo.toml" <<'EOF'
+[package]
+name = "oversized-example"
+version = "0.0.0"
+edition = "2021"
+EOF
 track_case "$large_example"
 assert_rc "$(run_checker "$large_example" "$work/large-example.out" "$work/large-example.err")" 0 \
   "large example file is classified separately"
