@@ -3606,6 +3606,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-finding-verifier"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "chio-finding",
+ "chio-kernel",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "chio-fiscal"
 version = "0.1.0"
 dependencies = [

@@ -1,0 +1,145 @@
+//! Checkpoint membership with the full wrapper cross-check.
+//!
+//! `ReceiptInclusionProof::verify` proves only the inner Merkle path
+//! against a caller-supplied root. This module supplies the binding the
+//! plan requires on top: checkpoint identity and signature, wrapper
+//! sequence and range checks, BOTH leaf-index fields, BOTH tree sizes,
+//! the pinned canonical leaf definition (full canonical receipt envelope
+//! bytes), duplicate rejection, and profile-pinned log identity/signer.
+
+use std::collections::{BTreeMap, BTreeSet};
+
+use chio_core_types::crypto::PublicKey;
+use chio_finding::FindingChallengeVerifierProfile;
+use chio_kernel::checkpoint::{
+    checkpoint_log_id, validate_checkpoint, verify_checkpoint_signature, KernelCheckpoint,
+};
+
+use crate::verify::ResolvedReceiptEvidence;
+
+/// Membership failures. Every variant is a rejection.
+#[derive(Debug, thiserror::Error, PartialEq, Eq)]
+pub enum CheckpointMembershipError {
+    #[error("no checkpoints supplied")]
+    NoCheckpoints,
+    #[error("duplicate checkpoint seq {0}")]
+    DuplicateCheckpoint(u64),
+    #[error("checkpoint {0} failed structural validation")]
+    CheckpointInvalid(u64),
+    #[error("checkpoint {0} signature invalid")]
+    CheckpointSignatureInvalid(u64),
+    #[error("checkpoint {0} log id is not pinned by the profile")]
+    LogNotPinned(u64),
+    #[error("checkpoint {0} signer does not match the pinned log signer")]
+    SignerNotPinned(u64),
+    #[error("inclusion proof references unknown checkpoint seq {0}")]
+    UnknownCheckpoint(u64),
+    #[error("duplicate inclusion proof for receipt seq {0}")]
+    DuplicateProof(u64),
+    #[error("receipt seq {0} outside the checkpoint batch range")]
+    ReceiptSeqOutOfRange(u64),
+    #[error("outer leaf index does not equal the inner proof leaf index")]
+    LeafIndexMismatch,
+    #[error("inner proof tree size does not equal the checkpoint tree size")]
+    TreeSizeMismatch,
+    #[error("leaf index does not equal receipt_seq - batch_start_seq")]
+    LeafOffsetMismatch,
+    #[error("proof merkle root does not equal the checkpoint root")]
+    RootMismatch,
+    #[error("inclusion path failed against the checkpoint root")]
+    InclusionInvalid,
+    #[error("checkpoint identity does not equal the finding's evidence_checkpoint_ref")]
+    CheckpointRefMismatch,
+}
+
+/// Verify that every resolved receipt is a member of a profile-pinned,
+/// signature-valid checkpoint, closing the five gaps the shipped
+/// composition leaves open. The canonical leaf definition is PINNED as
+/// the full canonical receipt envelope bytes (the exact bytes supplied in
+/// the resolved evidence); a body-only leaf is a different projection and
+/// fails here by construction.
+pub fn verify_checkpoint_membership(
+    receipts: &[ResolvedReceiptEvidence],
+    checkpoints: &[KernelCheckpoint],
+    profile: &FindingChallengeVerifierProfile,
+    evidence_checkpoint_ref: &str,
+) -> Result<(), CheckpointMembershipError> {
+    if checkpoints.is_empty() {
+        return Err(CheckpointMembershipError::NoCheckpoints);
+    }
+    let pinned_logs: BTreeMap<&str, &PublicKey> = profile
+        .checkpoint_logs
+        .iter()
+        .map(|log| (log.log_id.as_str(), &log.signer.key))
+        .collect();
+    let mut by_seq = BTreeMap::new();
+    for checkpoint in checkpoints {
+        let seq = checkpoint.body.checkpoint_seq;
+        if validate_checkpoint(checkpoint).is_err() {
+            return Err(CheckpointMembershipError::CheckpointInvalid(seq));
+        }
+        if !matches!(verify_checkpoint_signature(checkpoint), Ok(true)) {
+            return Err(CheckpointMembershipError::CheckpointSignatureInvalid(seq));
+        }
+        let log_id = checkpoint_log_id(checkpoint);
+        // Wedge checkpoint-reference grammar: `<log_id>#<checkpoint_seq>`.
+        // Every supplied checkpoint identity must equal the finding's
+        // single evidence_checkpoint_ref; substitution denies.
+        if format!("{log_id}#{seq}") != evidence_checkpoint_ref {
+            return Err(CheckpointMembershipError::CheckpointRefMismatch);
+        }
+        let Some(pinned_signer) = pinned_logs.get(log_id.as_str()) else {
+            return Err(CheckpointMembershipError::LogNotPinned(seq));
+        };
+        if checkpoint.body.kernel_key != **pinned_signer {
+            return Err(CheckpointMembershipError::SignerNotPinned(seq));
+        }
+        if by_seq.insert(seq, checkpoint).is_some() {
+            return Err(CheckpointMembershipError::DuplicateCheckpoint(seq));
+        }
+    }
+    let mut proved_receipt_seqs = BTreeSet::new();
+    for evidence in receipts {
+        let proof = &evidence.inclusion_proof;
+        let Some(checkpoint) = by_seq.get(&proof.checkpoint_seq) else {
+            return Err(CheckpointMembershipError::UnknownCheckpoint(
+                proof.checkpoint_seq,
+            ));
+        };
+        if !proved_receipt_seqs.insert(proof.receipt_seq) {
+            return Err(CheckpointMembershipError::DuplicateProof(proof.receipt_seq));
+        }
+        let body = &checkpoint.body;
+        if proof.receipt_seq < body.batch_start_seq || proof.receipt_seq > body.batch_end_seq {
+            return Err(CheckpointMembershipError::ReceiptSeqOutOfRange(
+                proof.receipt_seq,
+            ));
+        }
+        // Both leaf-index fields must agree: the outer wrapper field is
+        // inert in the shipped verify path and could silently disagree.
+        if proof.leaf_index != proof.proof.leaf_index {
+            return Err(CheckpointMembershipError::LeafIndexMismatch);
+        }
+        // Both tree sizes must equal the signed checkpoint's tree size.
+        if proof.proof.tree_size != body.tree_size {
+            return Err(CheckpointMembershipError::TreeSizeMismatch);
+        }
+        // The leaf position must equal the receipt's offset in the batch.
+        let expected_index = proof.receipt_seq - body.batch_start_seq;
+        if u64::try_from(proof.leaf_index) != Ok(expected_index) {
+            return Err(CheckpointMembershipError::LeafOffsetMismatch);
+        }
+        // The wrapper's claimed root must equal the SIGNED root; the path
+        // then verifies against the signed root, never the claimed one.
+        if proof.merkle_root != body.merkle_root {
+            return Err(CheckpointMembershipError::RootMismatch);
+        }
+        if !proof
+            .proof
+            .verify(&evidence.canonical_receipt_bytes, &body.merkle_root)
+        {
+            return Err(CheckpointMembershipError::InclusionInvalid);
+        }
+    }
+    Ok(())
+}
