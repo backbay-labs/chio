@@ -34,6 +34,10 @@
       "type": "string",
       "pattern": "^(0x)?[0-9a-f]{64}$"
     },
+    "canonicalHash": {
+      "type": "string",
+      "pattern": "^0x[0-9a-f]{64}$"
+    },
     "sha256": {
       "type": "string",
       "pattern": "^[0-9a-f]{64}$"
@@ -89,10 +93,10 @@
         "batch_start_seq": { "type": "integer", "minimum": 1 },
         "batch_end_seq": { "type": "integer", "minimum": 1 },
         "tree_size": { "type": "integer", "minimum": 1 },
-        "merkle_root": { "$ref": "#/$defs/hash" },
+        "merkle_root": { "$ref": "#/$defs/canonicalHash" },
         "issued_at": { "type": "integer", "minimum": 1 },
         "previous_checkpoint_sha256": { "$ref": "#/$defs/sha256" },
-        "chain_root": { "$ref": "#/$defs/hash" },
+        "chain_root": { "$ref": "#/$defs/canonicalHash" },
         "kernel_key": { "$ref": "#/$defs/publicKey" },
         "signature": { "$ref": "#/$defs/signature" }
       },

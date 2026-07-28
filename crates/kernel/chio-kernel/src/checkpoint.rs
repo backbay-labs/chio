@@ -1413,6 +1413,8 @@ pub fn build_checkpoint_with_chain_frontier(
                 .transpose()?
         }
         Some(previous) => {
+            validate_checkpoint(previous)?;
+            validate_checkpoint_successor_position(previous, checkpoint_seq, batch_start_seq)?;
             if prior_chain.leaf_count() != previous.body.checkpoint_seq {
                 return Err(CheckpointError::Continuity(format!(
                     "prior chain covers {} leaves but predecessor is checkpoint {}",
@@ -1576,14 +1578,11 @@ fn is_lowercase_sha256(value: &str) -> bool {
             .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
 }
 
-/// Validate that `checkpoint` cleanly extends `predecessor`.
-pub fn validate_checkpoint_predecessor(
+fn validate_checkpoint_successor_position(
     predecessor: &KernelCheckpoint,
-    checkpoint: &KernelCheckpoint,
+    checkpoint_seq: u64,
+    batch_start_seq: u64,
 ) -> Result<(), CheckpointError> {
-    validate_checkpoint(predecessor)?;
-    validate_checkpoint(checkpoint)?;
-
     let expected_checkpoint_seq =
         predecessor
             .body
@@ -1592,10 +1591,10 @@ pub fn validate_checkpoint_predecessor(
             .ok_or_else(|| {
                 CheckpointError::Continuity("predecessor checkpoint_seq overflowed u64".to_string())
             })?;
-    if checkpoint.body.checkpoint_seq != expected_checkpoint_seq {
+    if checkpoint_seq != expected_checkpoint_seq {
         return Err(CheckpointError::Continuity(format!(
             "checkpoint_seq {} does not immediately follow predecessor {}",
-            checkpoint.body.checkpoint_seq, predecessor.body.checkpoint_seq
+            checkpoint_seq, predecessor.body.checkpoint_seq
         )));
     }
 
@@ -1606,12 +1605,28 @@ pub fn validate_checkpoint_predecessor(
         .ok_or_else(|| {
             CheckpointError::Continuity("predecessor batch_end_seq overflowed u64".to_string())
         })?;
-    if checkpoint.body.batch_start_seq != expected_batch_start {
+    if batch_start_seq != expected_batch_start {
         return Err(CheckpointError::Continuity(format!(
             "batch_start_seq {} does not immediately follow predecessor batch_end_seq {}",
-            checkpoint.body.batch_start_seq, predecessor.body.batch_end_seq
+            batch_start_seq, predecessor.body.batch_end_seq
         )));
     }
+
+    Ok(())
+}
+
+/// Validate that `checkpoint` cleanly extends `predecessor`.
+pub fn validate_checkpoint_predecessor(
+    predecessor: &KernelCheckpoint,
+    checkpoint: &KernelCheckpoint,
+) -> Result<(), CheckpointError> {
+    validate_checkpoint(predecessor)?;
+    validate_checkpoint(checkpoint)?;
+    validate_checkpoint_successor_position(
+        predecessor,
+        checkpoint.body.checkpoint_seq,
+        checkpoint.body.batch_start_seq,
+    )?;
 
     let Some(previous_checkpoint_sha256) = checkpoint.body.previous_checkpoint_sha256.as_deref()
     else {

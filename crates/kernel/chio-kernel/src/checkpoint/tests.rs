@@ -139,6 +139,171 @@ fn build_checkpoint_with_previous_sets_continuity_hash() {
 }
 
 #[test]
+fn build_checkpoint_with_chain_frontier_accepts_canonical_successor() -> Result<(), CheckpointError>
+{
+    let keypair = Keypair::generate();
+    let first = build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &keypair)?;
+    let first_leaf = checkpoint_chain_leaf_hash(&first.body)?;
+    let frontier = CheckpointChainFrontier::from_leaves(&[first_leaf]);
+
+    let second = build_checkpoint_with_chain_frontier(
+        2,
+        4,
+        6,
+        &make_receipt_bytes(3),
+        &keypair,
+        Some(&first),
+        &frontier,
+    )?;
+
+    validate_checkpoint_predecessor(&first, &second)?;
+    assert!(second.body.chain_root.is_some());
+    Ok(())
+}
+
+#[test]
+fn build_checkpoint_with_chain_frontier_rejects_invalid_predecessor() -> Result<(), CheckpointError>
+{
+    let keypair = Keypair::generate();
+    let first = build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &keypair)?;
+    let first_leaf = checkpoint_chain_leaf_hash(&first.body)?;
+    let frontier = CheckpointChainFrontier::from_leaves(&[first_leaf]);
+
+    let mut invalid_signature = first.clone();
+    invalid_signature.body.issued_at = invalid_signature.body.issued_at.saturating_add(1);
+    let result = build_checkpoint_with_chain_frontier(
+        2,
+        4,
+        6,
+        &make_receipt_bytes(3),
+        &keypair,
+        Some(&invalid_signature),
+        &frontier,
+    );
+    assert!(matches!(result, Err(CheckpointError::InvalidSignature)));
+
+    let mut invalid_body = first;
+    invalid_body.body.tree_size = invalid_body.body.tree_size.saturating_add(1);
+    let result = build_checkpoint_with_chain_frontier(
+        2,
+        4,
+        6,
+        &make_receipt_bytes(3),
+        &keypair,
+        Some(&invalid_body),
+        &frontier,
+    );
+    assert!(matches!(
+        result,
+        Err(CheckpointError::Invalid(message))
+            if message.contains("tree_size 4 does not match covered entry count 3")
+    ));
+
+    Ok(())
+}
+
+#[test]
+fn build_checkpoint_with_chain_frontier_rejects_discontinuous_successor(
+) -> Result<(), CheckpointError> {
+    let keypair = Keypair::generate();
+    let first = build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &keypair)?;
+    let first_leaf = checkpoint_chain_leaf_hash(&first.body)?;
+    let frontier = CheckpointChainFrontier::from_leaves(&[first_leaf]);
+
+    let result = build_checkpoint_with_chain_frontier(
+        3,
+        4,
+        6,
+        &make_receipt_bytes(3),
+        &keypair,
+        Some(&first),
+        &frontier,
+    );
+    assert!(matches!(
+        result,
+        Err(CheckpointError::Continuity(message))
+            if message.contains("checkpoint_seq 3 does not immediately follow predecessor 1")
+    ));
+
+    let result = build_checkpoint_with_chain_frontier(
+        2,
+        5,
+        6,
+        &make_receipt_bytes(2),
+        &keypair,
+        Some(&first),
+        &frontier,
+    );
+    assert!(matches!(
+        result,
+        Err(CheckpointError::Continuity(message))
+            if message.contains(
+                "batch_start_seq 5 does not immediately follow predecessor batch_end_seq 3"
+            )
+    ));
+
+    let result = build_checkpoint_with_chain_frontier(
+        2,
+        3,
+        3,
+        &make_receipt_bytes(1),
+        &keypair,
+        Some(&first),
+        &frontier,
+    );
+    assert!(matches!(
+        result,
+        Err(CheckpointError::Continuity(message))
+            if message.contains(
+                "batch_start_seq 3 does not immediately follow predecessor batch_end_seq 3"
+            )
+    ));
+
+    Ok(())
+}
+
+#[test]
+fn build_checkpoint_with_chain_frontier_rejects_successor_overflow() -> Result<(), CheckpointError>
+{
+    let keypair = Keypair::generate();
+    let maximum_sequence = build_checkpoint(u64::MAX, 1, 1, &make_receipt_bytes(1), &keypair)?;
+    let result = build_checkpoint_with_chain_frontier(
+        u64::MAX,
+        2,
+        2,
+        &make_receipt_bytes(1),
+        &keypair,
+        Some(&maximum_sequence),
+        &CheckpointChainFrontier::empty(),
+    );
+    assert!(matches!(
+        result,
+        Err(CheckpointError::Continuity(message))
+            if message.contains("predecessor checkpoint_seq overflowed u64")
+    ));
+
+    let maximum_batch = build_checkpoint(1, u64::MAX, u64::MAX, &make_receipt_bytes(1), &keypair)?;
+    let maximum_batch_leaf = checkpoint_chain_leaf_hash(&maximum_batch.body)?;
+    let frontier = CheckpointChainFrontier::from_leaves(&[maximum_batch_leaf]);
+    let result = build_checkpoint_with_chain_frontier(
+        2,
+        u64::MAX,
+        u64::MAX,
+        &make_receipt_bytes(1),
+        &keypair,
+        Some(&maximum_batch),
+        &frontier,
+    );
+    assert!(matches!(
+        result,
+        Err(CheckpointError::Continuity(message))
+            if message.contains("predecessor batch_end_seq overflowed u64")
+    ));
+
+    Ok(())
+}
+
+#[test]
 fn build_checkpoint_transparency_derives_publications_and_witnesses() {
     let kp = Keypair::generate();
     let first = build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &kp).expect("build first");
@@ -1191,16 +1356,11 @@ fn validate_checkpoint_predecessor_accepts_contiguous_batches() {
 fn validate_checkpoint_predecessor_rejects_batch_gap() {
     let kp = Keypair::generate();
     let first = build_checkpoint(1, 1, 3, &make_receipt_bytes(3), &kp).expect("build failed");
-    let second = build_checkpoint_with_previous(
-        2,
-        5,
-        6,
-        &make_receipt_bytes(2),
-        &kp,
-        Some(&first),
-        &chain_leaves(&[&first]),
-    )
-    .expect("build failed");
+    let mut second = build_checkpoint(2, 5, 6, &make_receipt_bytes(2), &kp).expect("build failed");
+    second.body.previous_checkpoint_sha256 =
+        Some(checkpoint_body_sha256(&first.body).expect("predecessor digest"));
+    second.signature =
+        kp.sign(&canonical_json_bytes(&second.body).expect("canonical checkpoint body"));
 
     let error =
         validate_checkpoint_predecessor(&first, &second).expect_err("continuity should fail");
@@ -1273,10 +1433,12 @@ fn validate_checkpoint_transparency_rejects_predecessor_fork() {
         6,
         &[b"five".to_vec(), b"six".to_vec()],
         &kp,
-        Some(&first),
-        &chain_leaves(&[&first]),
+        Some(&second),
+        &chain_leaves(&[&first, &second]),
     )
     .expect("fork checkpoint");
+    fork.body.previous_checkpoint_sha256 =
+        Some(checkpoint_body_sha256(&first.body).expect("first checkpoint digest"));
     fork.signature =
         kp.sign(&canonical_json_bytes(&fork.body).expect("canonical fork checkpoint body"));
 

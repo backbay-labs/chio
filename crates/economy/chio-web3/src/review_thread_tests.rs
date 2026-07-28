@@ -156,6 +156,91 @@ fn serialized_anchor_inclusion_proof_satisfies_the_published_schema() {
 }
 
 #[test]
+fn published_v2_anchor_schemas_require_canonical_signed_checkpoint_hashes() {
+    let mut schema_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    schema_path.push("../../../spec/schemas/chio-web3/v2/anchor-inclusion-proof.schema.json");
+    let schema_path = std::fs::canonicalize(&schema_path)
+        .unwrap_or_else(|error| panic!("canonicalize {}: {error}", schema_path.display()));
+    let schema = chio_spec_validate::load_json(&schema_path)
+        .unwrap_or_else(|error| panic!("load anchor inclusion schema: {error}"));
+    let mut canonical = serde_json::to_value(sample_anchor_inclusion_proof())
+        .unwrap_or_else(|error| panic!("serialize sample anchor inclusion proof: {error}"));
+    canonical["checkpoint_statement"]["chain_root"] = json!(format!("0x{}", "3".repeat(64)));
+
+    chio_spec_validate::validate_value(
+        &schema_path,
+        &schema,
+        std::path::Path::new("<canonical-checkpoint-hashes>"),
+        &canonical,
+    )
+    .unwrap_or_else(|error| panic!("canonical checkpoint hashes must satisfy schema: {error}"));
+
+    for (field, value) in [
+        ("merkle_root", json!("2".repeat(64))),
+        ("merkle_root", json!(format!("0x{}", "A".repeat(64)))),
+        ("chain_root", json!("3".repeat(64))),
+        ("chain_root", json!(format!("0x{}", "B".repeat(64)))),
+    ] {
+        let mut noncanonical = canonical.clone();
+        noncanonical["checkpoint_statement"][field] = value;
+        assert!(
+            chio_spec_validate::validate_value(
+                &schema_path,
+                &schema,
+                std::path::Path::new("<noncanonical-checkpoint-hash>"),
+                &noncanonical,
+            )
+            .is_err(),
+            "published schema must reject noncanonical checkpoint {field}"
+        );
+    }
+
+    let mut bundle_schema_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    bundle_schema_path.push("../../../spec/schemas/chio-web3/v2/anchor-proof-bundle.schema.json");
+    let bundle_schema_path = std::fs::canonicalize(&bundle_schema_path)
+        .unwrap_or_else(|error| panic!("canonicalize {}: {error}", bundle_schema_path.display()));
+    let bundle_schema = chio_spec_validate::load_json(&bundle_schema_path)
+        .unwrap_or_else(|error| panic!("load anchor proof bundle schema: {error}"));
+    let bundle = json!({
+        "schema": "chio.anchor-proof-bundle.v2",
+        "primary_proof": canonical,
+        "secondary_lanes": ["solana_memo"],
+        "solana_anchor": {
+            "chain_id": "solana:mainnet",
+            "operator_pubkey": "operator",
+            "memo_program_id": "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
+            "tx_signature": "signature",
+            "slot": 1,
+            "block_time": 1,
+            "memo_data": "checkpoint-anchor",
+            "anchored_merkle_root": format!("0x{}", "2".repeat(64)),
+            "anchored_checkpoint_seq": 1
+        }
+    });
+    chio_spec_validate::validate_value(
+        &bundle_schema_path,
+        &bundle_schema,
+        std::path::Path::new("<canonical-checkpoint-bundle>"),
+        &bundle,
+    )
+    .unwrap_or_else(|error| panic!("canonical checkpoint bundle must satisfy schema: {error}"));
+
+    let mut noncanonical_bundle = bundle;
+    noncanonical_bundle["primary_proof"]["checkpoint_statement"]["chain_root"] =
+        json!("3".repeat(64));
+    assert!(
+        chio_spec_validate::validate_value(
+            &bundle_schema_path,
+            &bundle_schema,
+            std::path::Path::new("<noncanonical-checkpoint-bundle>"),
+            &noncanonical_bundle,
+        )
+        .is_err(),
+        "bundle schema must inherit canonical checkpoint hash requirements"
+    );
+}
+
+#[test]
 fn web3_dispatch_rejects_beneficiary_outside_signed_rail() {
     let mut dispatch = sample_dispatch();
     dispatch.beneficiary_address = "0x3333333333333333333333333333333333333333".to_string();
