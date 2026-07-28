@@ -1012,6 +1012,247 @@ fn frontier_rebuild_adopts_concurrent_checkpoint_winner() -> Result<(), Box<dyn 
     Ok(())
 }
 
+/// A failed build consumes the cached chain frontier before returning its
+/// error. A retry therefore enters the cache-miss path. That path must fully
+/// verify predecessor continuity, not merely hash individually valid rows,
+/// before a v2 successor commits a legacy v1 prefix.
+#[test]
+fn frontier_cache_miss_rejects_disconnected_legacy_prefix_after_failed_build(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (temp_dir, path) = temp_db("chio-bg-frontier-cache-loss")?;
+    let keypair = receipt_test_keypair();
+    let wrong_keypair = Keypair::from_seed(&[0x43; 32]);
+    let store = SqliteReceiptStore::open(&path)?;
+    let max_batch = 2;
+    for i in 0..(max_batch * 3) {
+        let receipt =
+            sample_receipt_with_keypair(&format!("rcpt-frontier-cache-loss-{i}"), i + 1, &keypair);
+        store.append_chio_receipt_returning_seq(&receipt)?;
+    }
+    store.flush_receipt_writes()?;
+
+    let mut checkpoint_one = build_checkpoint(
+        1,
+        1,
+        max_batch,
+        &canonical_receipt_bytes(&store, 1, max_batch),
+        &keypair,
+    )?;
+    checkpoint_one.body.schema = chio_kernel::checkpoint::CHECKPOINT_SCHEMA_V1.to_string();
+    checkpoint_one.body.chain_root = None;
+    checkpoint_one.signature = keypair.sign(&canonical_json_bytes(&checkpoint_one.body)?);
+    insert_checkpoint_row(&store, &checkpoint_one, checkpoint_one.body.batch_end_seq);
+
+    let checkpoint_one_leaf =
+        chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&checkpoint_one.body)?;
+    let mut checkpoint_two = build_checkpoint_with_previous(
+        2,
+        max_batch + 1,
+        max_batch * 2,
+        &canonical_receipt_bytes(&store, max_batch + 1, max_batch * 2),
+        &keypair,
+        Some(&checkpoint_one),
+        &[checkpoint_one_leaf],
+    )?;
+    checkpoint_two.body.schema = chio_kernel::checkpoint::CHECKPOINT_SCHEMA_V1.to_string();
+    checkpoint_two.body.chain_root = None;
+    checkpoint_two.signature = keypair.sign(&canonical_json_bytes(&checkpoint_two.body)?);
+    insert_checkpoint_row(&store, &checkpoint_two, checkpoint_two.body.batch_end_seq);
+
+    let mut connection = store.connection()?;
+    let mut head = seed_verified_head(&connection)?;
+    assert_eq!(head.latest_checkpoint.as_ref(), Some(&checkpoint_two));
+    assert_eq!(
+        head.chain_frontier
+            .as_ref()
+            .map(CheckpointChainFrontier::leaf_count),
+        Some(2),
+        "seeding must retain the fully verified legacy frontier"
+    );
+
+    let error = maybe_build_checkpoint(
+        &mut connection,
+        &mut head,
+        &signer(&wrong_keypair, max_batch),
+    )
+    .err()
+    .ok_or("the mismatched signer must fail after consuming the cached frontier")?;
+    assert!(
+        matches!(error, ReceiptStoreError::Conflict(_))
+            && error
+                .to_string()
+                .contains("does not match receipt signer key"),
+        "expected the mismatched signer to fail closed, got {error:?}"
+    );
+    assert!(
+        head.chain_frontier.is_none(),
+        "the failed build must exercise the retry's cache-miss path"
+    );
+    assert!(
+        store.load_checkpoint_by_seq(3)?.is_none(),
+        "the failed build must not persist its candidate"
+    );
+
+    // Replace checkpoint 1 out of band with a separately valid v1 statement.
+    // Its earlier timestamp changes its signed body digest without changing
+    // the covered receipts. Checkpoint 2 remains byte-for-byte unchanged and
+    // therefore still points at the original checkpoint 1.
+    let mut replacement = checkpoint_one.clone();
+    replacement.body.issued_at = checkpoint_one
+        .body
+        .issued_at
+        .checked_sub(1)
+        .ok_or("checkpoint timestamp must permit a distinct predecessor")?;
+    replacement.signature = keypair.sign(&canonical_json_bytes(&replacement.body)?);
+    chio_kernel::checkpoint::validate_checkpoint(&replacement)?;
+    assert!(
+        chio_kernel::checkpoint::validate_checkpoint_predecessor(&replacement, &checkpoint_two)
+            .is_err(),
+        "the retained checkpoint 2 must be disconnected from the replacement"
+    );
+    let replacement_json = serde_json::to_string(&replacement.body)?;
+    let replacement_signature = replacement.signature.to_hex();
+    connection.execute_batch(
+        r#"
+        DROP TRIGGER IF EXISTS kernel_checkpoints_reject_update;
+        DROP TRIGGER IF EXISTS checkpoint_tree_heads_reject_update;
+        DROP TRIGGER IF EXISTS checkpoint_predecessor_witnesses_reject_update;
+        DROP TRIGGER IF EXISTS checkpoint_publication_metadata_reject_update;
+        "#,
+    )?;
+    assert_eq!(
+        connection.execute(
+            "UPDATE kernel_checkpoints
+             SET issued_at = ?1, statement_json = ?2, signature = ?3
+             WHERE checkpoint_seq = 1",
+            rusqlite::params![
+                replacement.body.issued_at as i64,
+                replacement_json,
+                replacement_signature,
+            ],
+        )?,
+        1
+    );
+    assert_eq!(
+        connection.execute(
+            "UPDATE checkpoint_tree_heads
+             SET issued_at = ?1, statement_json = ?2, signature = ?3
+             WHERE checkpoint_seq = 1",
+            rusqlite::params![
+                replacement.body.issued_at as i64,
+                replacement_json,
+                replacement_signature,
+            ],
+        )?,
+        1
+    );
+    assert_eq!(
+        connection.execute(
+            "UPDATE checkpoint_publication_metadata
+             SET published_at = ?1
+             WHERE checkpoint_seq = 1",
+            rusqlite::params![replacement.body.issued_at as i64],
+        )?,
+        1
+    );
+
+    let error = maybe_build_checkpoint(&mut connection, &mut head, &signer(&keypair, max_batch))
+        .err()
+        .ok_or("a cache-miss retry must reject the disconnected legacy prefix")?;
+    assert!(
+        matches!(error, ReceiptStoreError::Conflict(_))
+            && error
+                .to_string()
+                .contains("does not match predecessor digest"),
+        "expected full predecessor verification to reject the retry, got {error:?}"
+    );
+    assert!(
+        load_persisted_checkpoint_row(&connection, 3)?.is_none(),
+        "a disconnected legacy prefix must not gain a v2 successor"
+    );
+
+    // Now make the replacement prefix internally coherent by re-linking and
+    // re-signing checkpoint 2. The full audit succeeds over this replacement,
+    // but its latest checkpoint is not the writer's previously verified head.
+    // The cache-miss path must reject that same-length fork rather than combine
+    // the replacement frontier with the stale checkpoint 2 predecessor.
+    let mut replacement_two = checkpoint_two.clone();
+    replacement_two.body.previous_checkpoint_sha256 = Some(
+        chio_kernel::checkpoint::checkpoint_body_sha256(&replacement.body)?,
+    );
+    replacement_two.signature = keypair.sign(&canonical_json_bytes(&replacement_two.body)?);
+    chio_kernel::checkpoint::validate_checkpoint_predecessor(&replacement, &replacement_two)?;
+    let replacement_two_json = serde_json::to_string(&replacement_two.body)?;
+    let replacement_two_signature = replacement_two.signature.to_hex();
+    let replacement_predecessor = replacement_two
+        .body
+        .previous_checkpoint_sha256
+        .as_deref()
+        .ok_or("replacement checkpoint 2 must retain its predecessor digest")?;
+    assert_eq!(
+        connection.execute(
+            "UPDATE kernel_checkpoints
+             SET statement_json = ?1, signature = ?2
+             WHERE checkpoint_seq = 2",
+            rusqlite::params![replacement_two_json, replacement_two_signature],
+        )?,
+        1
+    );
+    assert_eq!(
+        connection.execute(
+            "UPDATE checkpoint_tree_heads
+             SET previous_checkpoint_sha256 = ?1, statement_json = ?2, signature = ?3
+             WHERE checkpoint_seq = 2",
+            rusqlite::params![
+                replacement_predecessor,
+                replacement_two_json,
+                replacement_two_signature,
+            ],
+        )?,
+        1
+    );
+    assert_eq!(
+        connection.execute(
+            "UPDATE checkpoint_predecessor_witnesses
+             SET previous_checkpoint_sha256 = ?1, witness_statement_json = ?2
+             WHERE witness_checkpoint_seq = 2",
+            rusqlite::params![replacement_predecessor, replacement_two_json],
+        )?,
+        1
+    );
+    assert_eq!(
+        connection.execute(
+            "UPDATE checkpoint_publication_metadata
+             SET previous_checkpoint_sha256 = ?1
+             WHERE checkpoint_seq = 2",
+            rusqlite::params![replacement_predecessor],
+        )?,
+        1
+    );
+
+    let error = maybe_build_checkpoint(&mut connection, &mut head, &signer(&keypair, max_batch))
+        .err()
+        .ok_or("a cache-miss retry must reject a coherent same-length fork")?;
+    assert!(
+        matches!(error, ReceiptStoreError::Conflict(_))
+            && error
+                .to_string()
+                .contains("diverged from the verified head"),
+        "expected same-length head reconciliation to reject the retry, got {error:?}"
+    );
+    assert!(
+        load_persisted_checkpoint_row(&connection, 3)?.is_none(),
+        "a coherent replacement prefix must not be joined to the stale head"
+    );
+
+    ensure_checkpoint_transparency_guards(&connection)?;
+    ensure_transparency_projection_guards(&connection)?;
+    drop(connection);
+    drop(store);
+    temp_dir.close()?;
+    Ok(())
+}
+
 /// If the `InstallSigner` handler only STORED the signer, an already-owed
 /// checkpoint (the store opened on a DB that already has at least max_batch
 /// uncheckpointed claim-log entries, e.g. a crash between the durable append

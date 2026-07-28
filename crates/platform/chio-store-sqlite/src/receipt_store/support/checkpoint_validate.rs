@@ -628,6 +628,29 @@ pub(crate) fn verify_checkpoint_chain_integrity_with_frontier(
     Ok((latest, chain_frontier))
 }
 
+/// Fully verify a cache-miss frontier and reconcile a same-length persisted
+/// chain with the caller's already-verified head. A coherent out-of-band
+/// replacement can pass the full audit on its own, but it must not be combined
+/// with the stale predecessor retained by a long-lived writer.
+pub(crate) fn rebuild_checkpoint_frontier(
+    connection: &mut Connection,
+    head_latest: Option<&KernelCheckpoint>,
+) -> Result<CheckpointChainFrontier, ReceiptStoreError> {
+    // Keep checkpoint rows, claim-log evidence, and projection ID sets on one
+    // read snapshot. A peer may commit immediately before or after this audit,
+    // but cannot appear in only the later projection queries.
+    let tx = connection.transaction_with_behavior(rusqlite::TransactionBehavior::Deferred)?;
+    let (persisted_latest, frontier) = verify_checkpoint_chain_integrity_with_frontier(&tx)?;
+    let head_seq = head_latest.map_or(0, |checkpoint| checkpoint.body.checkpoint_seq);
+    if frontier.leaf_count() == head_seq && persisted_latest.as_ref() != head_latest {
+        return Err(ReceiptStoreError::Conflict(format!(
+            "persisted checkpoint at verified sequence {head_seq} diverged from the verified head while rebuilding the chain frontier"
+        )));
+    }
+    tx.commit()?;
+    Ok(frontier)
+}
+
 /// Extend the verified checkpoint-chain frontier by one peer checkpoint.
 ///
 /// A cache miss rebuilds only the prefix represented by `predecessor`; startup

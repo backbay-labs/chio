@@ -2020,18 +2020,17 @@ fn maybe_build_checkpoint(
     // Chain leaves for every persisted checkpoint, extended in-loop as new
     // checkpoints commit; the cached head and the persisted chain must agree
     // on length before any of them are committed to a new chain_root.
-    // O(n) exactly once per head, then extended in place. The frontier still
-    // reproduces the predecessor's signed chain_root inside the builder, so
-    // caching it does not weaken the check it replaces.
+    // O(n) exactly once per head, then extended in place. A cache miss runs the
+    // full semantic chain audit before reusing its returned frontier. The
+    // frontier still reproduces the predecessor's signed chain_root inside the
+    // builder, so caching it does not weaken the check it replaces.
     let cached = head
         .chain_frontier
         .take()
         .filter(|frontier| frontier.leaf_count() == head.checkpoint_seq());
     let mut chain_frontier = match cached {
         Some(frontier) => frontier,
-        None => {
-            CheckpointChainFrontier::from_leaves(&load_checkpoint_chain_leaf_hashes(connection)?)
-        }
+        None => rebuild_checkpoint_frontier(connection, head.latest_checkpoint.as_ref())?,
     };
     let mut advanced = false;
     // A peer may commit after the latest-row refresh but before this cache-miss
