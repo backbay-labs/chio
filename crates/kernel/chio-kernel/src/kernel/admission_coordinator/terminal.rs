@@ -334,7 +334,8 @@ impl ChioKernel {
                 self.finalize_durable_tool_return(admission, request, &tool_return)
                     .map(Some)
             }
-            AdmissionOperationState::Completed => self
+            AdmissionOperationState::Completed
+            | AdmissionOperationState::DeniedAfterDelivery => self
                 .completed_durable_tool_response(admission, request)
                 .map(Some),
             _ => Ok(None),
@@ -458,6 +459,7 @@ impl ChioKernel {
             usize,
             DurablePostReturnPlan,
             PostReturnNormalizedRequestContextV1,
+            Option<String>,
         ),
         KernelError,
     > {
@@ -470,12 +472,27 @@ impl ChioKernel {
             request.model_metadata.as_ref(),
         )
         .map_err(|error| KernelError::DurableAdmission(error.to_string()))?;
-        if !matching_grants.iter().any(|matching| {
+        let Some(selected_grant) = matching_grants.iter().find(|matching| {
             matching.index == matched_grant_index && admission.permits_matching_grant(matching)
-        }) {
+        }) else {
             return Err(KernelError::DurableAdmission(
                 "recorded tool return does not match the captured grant".to_owned(),
             ));
+        };
+        // The expected output digest is frozen: the whole matching-grant
+        // set is covered by the durable binding's immutable_request_hash
+        // (revalidated below) and the selected index by the raw blob, so
+        // this reads the same digest the grant fixed at admission. The
+        // selection-cardinality rule guarantees at most one.
+        let mut expected_output_digest = None;
+        for constraint in &selected_grant.grant.constraints {
+            if let Constraint::OutputDigestSha256(digest) = constraint {
+                if expected_output_digest.replace(digest.clone()).is_some() {
+                    return Err(KernelError::DurableAdmission(
+                        "selected grant carries more than one output digest constraint".to_owned(),
+                    ));
+                }
+            }
         }
         let plan = self.durable_post_return_plan()?;
         let recovered_request_hash =
@@ -503,7 +520,12 @@ impl ChioKernel {
             .map_err(|error| KernelError::DurableAdmission(error.to_string()))?,
         )
         .map_err(tool_outcome_error)?;
-        Ok((matched_grant_index, plan, normalized_context))
+        Ok((
+            matched_grant_index,
+            plan,
+            normalized_context,
+            expected_output_digest,
+        ))
     }
 
     fn completed_durable_tool_response(
@@ -513,7 +535,7 @@ impl ChioKernel {
     ) -> Result<ToolCallResponse, KernelError> {
         let runtime = self.durable_runtime()?;
         let tool_return = self.load_durable_tool_return(admission)?;
-        let (matched_grant_index, plan, normalized_context) =
+        let (matched_grant_index, plan, normalized_context, expected_output_digest) =
             self.durable_evaluation_contract(admission, request, &tool_return.raw)?;
         let DurableEvaluatedOutput {
             output,
@@ -532,11 +554,27 @@ impl ChioKernel {
             _ => None,
         };
         let receipt_content = receipt_content_for_output(Some(&output), expected_chunks)?;
-        let expected_decision = incomplete_reason
-            .as_ref()
-            .map_or(Decision::Allow, |reason| Decision::Incomplete {
-                reason: reason.clone(),
-            });
+        // Reproduce the delivery verdict deterministically so the replay
+        // byte-matches the persisted receipt, whether it was an Allow or a
+        // delivery-mismatch Deny.
+        let delivery_denied = expected_output_digest.as_deref().is_some_and(|expected| {
+            chio_kernel_core::formal_core::delivery_contract_admits(
+                expected,
+                &receipt_content.content_hash,
+            ) == chio_kernel_core::formal_core::DeliveryVerdict::Deny
+        });
+        let expected_decision = if delivery_denied {
+            Decision::Deny {
+                reason: "delivered output does not match the committed output digest".to_owned(),
+                guard: "delivery_contract".to_owned(),
+            }
+        } else {
+            incomplete_reason
+                .as_ref()
+                .map_or(Decision::Allow, |reason| Decision::Incomplete {
+                    reason: reason.clone(),
+                })
+        };
         let expected_non_financial_metadata = merge_metadata_objects(
             merge_metadata_objects(
                 receipt_content.metadata.clone(),
@@ -630,6 +668,30 @@ impl ChioKernel {
             .map(|financial| serde_json::json!({ "financial": financial }));
         let expected_non_admission_metadata =
             merge_metadata_objects(expected_non_financial_metadata, retained_financial_metadata);
+        // Reproduce the delivery-contract block so the replayed metadata
+        // byte-matches the persisted receipt.
+        let expected_non_admission_metadata = if let Some(expected) =
+            expected_output_digest.as_deref()
+        {
+            let block = chio_core::receipt::metadata::DeliveryContract {
+                schema: chio_core::receipt::metadata::DELIVERY_CONTRACT_SCHEMA.to_owned(),
+                expected_digest: expected.to_owned(),
+                observed_digest: receipt_content.content_hash.clone(),
+                result: if delivery_denied {
+                    chio_core::receipt::metadata::DeliveryResult::Mismatched
+                } else {
+                    chio_core::receipt::metadata::DeliveryResult::Matched
+                },
+            };
+            merge_metadata_objects(
+                expected_non_admission_metadata,
+                Some(serde_json::json!({
+                    chio_core::receipt::metadata::DELIVERY_CONTRACT_METADATA_KEY: block
+                })),
+            )
+        } else {
+            expected_non_admission_metadata
+        };
         self.validate_completed_durable_receipt(
             admission,
             request,
@@ -681,16 +743,24 @@ impl ChioKernel {
                 receipt.timestamp,
             )?;
         }
-        let (verdict, reason, terminal_state) = incomplete_reason.map_or(
-            (Verdict::Allow, None, OperationTerminalState::Completed),
-            |reason| {
-                (
-                    Verdict::Deny,
-                    Some(reason.clone()),
-                    OperationTerminalState::Incomplete { reason },
-                )
-            },
-        );
+        let (verdict, reason, terminal_state) = if delivery_denied {
+            (
+                Verdict::Deny,
+                Some("delivered output does not match the committed output digest".to_owned()),
+                OperationTerminalState::Completed,
+            )
+        } else {
+            incomplete_reason.map_or(
+                (Verdict::Allow, None, OperationTerminalState::Completed),
+                |reason| {
+                    (
+                        Verdict::Deny,
+                        Some(reason.clone()),
+                        OperationTerminalState::Incomplete { reason },
+                    )
+                },
+            )
+        };
         Ok(ToolCallResponse {
             request_id: request.request_id.clone(),
             verdict,
@@ -912,6 +982,7 @@ impl ChioKernel {
         runtime: &DurableAdmissionRuntime,
         raw: &RawInvocationOutcomeV1,
         trusted_now_unix_ms: u64,
+        delivery_denied: bool,
     ) -> Result<
         Option<(
             crate::payment::PaymentJournalRecord,
@@ -971,7 +1042,19 @@ impl ChioKernel {
                 units
             }
         };
-        let disposition = if amount_units == 0 {
+        // A delivery mismatch releases the open hold and captures zero. The
+        // pre-dispatch gate rejects every non-reversible rail for a
+        // digest-constrained request, so a denied delivery is always a
+        // reversible hold; assert that invariant rather than silently
+        // producing an unreleasable zero-charge.
+        if delivery_denied
+            && journal.rail_mode != crate::payment::PaymentRailMode::ReversibleHold
+        {
+            return Err(KernelError::DurableAdmission(
+                "delivery denial requires a reversible-hold rail".to_owned(),
+            ));
+        }
+        let disposition = if delivery_denied || amount_units == 0 {
             SettlementDispositionV1::ContractualZeroCharge {
                 currency: journal.currency.clone(),
             }
@@ -1285,7 +1368,7 @@ impl ChioKernel {
         let _guard_evidence_scope = scope_pre_invocation_guard_evidence(
             tool_return.raw.pre_invocation_guard_evidence().to_vec(),
         );
-        let (matched_grant_index, plan, normalized_context) =
+        let (matched_grant_index, plan, normalized_context, expected_output_digest) =
             self.durable_evaluation_contract(admission, request, &tool_return.raw)?;
         let DurableEvaluatedOutput {
             output,
@@ -1306,15 +1389,33 @@ impl ChioKernel {
             _ => None,
         };
         let receipt_content = receipt_content_for_output(Some(&output), expected_chunks)?;
-        let terminal_decision = incomplete_reason
-            .as_ref()
-            .map_or(Decision::Allow, |reason| Decision::Incomplete {
-                reason: reason.clone(),
-            });
         let resolved_output_digest = AdmissionDigest::try_new(
             "resolved_output_digest",
             receipt_content.content_hash.clone(),
         )?;
+        // Delivery contract: a grant that fixed an expected output digest
+        // is honored only if the delivered post-transform output hashes to
+        // it. The comparison runs here, after the transform and before any
+        // money decision, and drives the terminal decision so the verdict
+        // participates in the existing frozen replay contract below.
+        let delivery_denied = expected_output_digest.as_deref().is_some_and(|expected| {
+            chio_kernel_core::formal_core::delivery_contract_admits(
+                expected,
+                resolved_output_digest.as_str(),
+            ) == chio_kernel_core::formal_core::DeliveryVerdict::Deny
+        });
+        let terminal_decision = if delivery_denied {
+            Decision::Deny {
+                reason: "delivered output does not match the committed output digest".to_owned(),
+                guard: "delivery_contract".to_owned(),
+            }
+        } else {
+            incomplete_reason
+                .as_ref()
+                .map_or(Decision::Allow, |reason| Decision::Incomplete {
+                    reason: reason.clone(),
+                })
+        };
         let stored_outcome = runtime
             .outcome_store
             .lookup_by_operation(admission.operation.binding().operation_id())
@@ -1394,6 +1495,7 @@ impl ChioKernel {
             runtime,
             &tool_return.raw,
             trusted_now_unix_ms,
+            delivery_denied,
         )?;
         let settlement_disposition = payment_plan.as_ref().map_or(
             SettlementDispositionV1::NotApplicable,
@@ -1649,6 +1751,37 @@ impl ChioKernel {
                 ADMISSION_RECEIPT_METADATA_KEY: admission_metadata
             })),
         );
+        // The delivery-contract block is the kernel's own verdict, so it is
+        // merged last and a pre-existing key from caller or hook metadata is
+        // a hard error: the shallow last-write-wins merge would otherwise
+        // let it forge or shadow the kernel's block.
+        let metadata = if let Some(expected) = expected_output_digest.as_deref() {
+            if metadata
+                .as_ref()
+                .and_then(|value| value.get(chio_core::receipt::metadata::DELIVERY_CONTRACT_METADATA_KEY))
+                .is_some()
+            {
+                return Err(KernelError::DurableAdmission(
+                    "receipt metadata already carries a delivery_contract block".to_owned(),
+                ));
+            }
+            let block = chio_core::receipt::metadata::DeliveryContract {
+                schema: chio_core::receipt::metadata::DELIVERY_CONTRACT_SCHEMA.to_owned(),
+                expected_digest: expected.to_owned(),
+                observed_digest: resolved_output_digest.as_str().to_owned(),
+                result: if delivery_denied {
+                    chio_core::receipt::metadata::DeliveryResult::Mismatched
+                } else {
+                    chio_core::receipt::metadata::DeliveryResult::Matched
+                },
+            };
+            merge_metadata_objects(
+                metadata,
+                Some(serde_json::json!({ chio_core::receipt::metadata::DELIVERY_CONTRACT_METADATA_KEY: block })),
+            )
+        } else {
+            metadata
+        };
         let action =
             ToolCallAction::from_parameters(request.arguments.clone()).map_err(|error| {
                 KernelError::ReceiptSigningFailed(format!("failed to hash parameters: {error}"))
@@ -1743,56 +1876,83 @@ impl ChioKernel {
             None
         };
         let projected_receipt = receipt.receipt().clone();
-        let projection =
-            AdmissionTerminalProjection::Completed(Box::new(AdmissionCompletedProjection {
+        let (terminal, expected_terminal_state) = if delivery_denied {
+            // A delivery mismatch terminates as a persisted signed Deny
+            // whose hold was released and whose capture is zero. Channel
+            // terminals do not apply: the pre-dispatch gate admits only a
+            // reversible-hold tool dispatch for a digest-constrained
+            // request.
+            let projection = crate::admission_operation::AdmissionTerminalProjection::DeniedAfterDelivery {
                 context,
-                receipt,
-                tool_outcome: Some(tool_outcome),
-                payment_evidence,
-                authorization: None,
-                eligibility: None,
-                observer_work,
-                obligation: channel_prepared
-                    .as_ref()
-                    .and_then(|prepared| prepared.obligation().cloned()),
-                channel_terminal: channel_prepared
-                    .as_ref()
-                    .map(|prepared| prepared.channel().clone()),
-            }));
-        let terminal = if let Some(prepared) = channel_prepared.as_ref() {
-            let authority = runtime
-                .channel_terminal_authority
-                .as_deref()
-                .ok_or_else(|| {
-                    KernelError::DurableAdmission(
-                        "qualified channel terminal authority disappeared".to_owned(),
-                    )
-                })?;
-            crate::admission_operation::commit_prepared_channel_terminal_projection(
-                authority,
-                &admission.operation,
-                &lease,
-                &projection,
-                &runtime.store.admission_projection_capabilities(),
-                prepared,
-                &self.config.keypair,
-                &runtime.fence,
-                trusted_now_unix_ms,
-            )
-            .map_err(|error| KernelError::DurableAdmission(error.to_string()))?
-        } else {
-            runtime
+                reason: crate::admission_operation::DeliveryDenialReason::DigestMismatch,
+                evidence: Box::new(
+                    crate::admission_operation::AdmissionReceiptOrIncident::Receipt(Box::new(
+                        receipt,
+                    )),
+                ),
+            };
+            let terminal = runtime
                 .store
                 .commit_admission_projection(&projection)
                 .map_err(|error| {
                     KernelError::DurableAdmission(format!(
                         "atomic terminal projection failed: {error}"
                     ))
-                })?
+                })?;
+            (terminal, AdmissionOperationState::DeniedAfterDelivery)
+        } else {
+            let projection =
+                AdmissionTerminalProjection::Completed(Box::new(AdmissionCompletedProjection {
+                    context,
+                    receipt,
+                    tool_outcome: Some(tool_outcome),
+                    payment_evidence,
+                    authorization: None,
+                    eligibility: None,
+                    observer_work,
+                    obligation: channel_prepared
+                        .as_ref()
+                        .and_then(|prepared| prepared.obligation().cloned()),
+                    channel_terminal: channel_prepared
+                        .as_ref()
+                        .map(|prepared| prepared.channel().clone()),
+                }));
+            let terminal = if let Some(prepared) = channel_prepared.as_ref() {
+                let authority = runtime
+                    .channel_terminal_authority
+                    .as_deref()
+                    .ok_or_else(|| {
+                        KernelError::DurableAdmission(
+                            "qualified channel terminal authority disappeared".to_owned(),
+                        )
+                    })?;
+                crate::admission_operation::commit_prepared_channel_terminal_projection(
+                    authority,
+                    &admission.operation,
+                    &lease,
+                    &projection,
+                    &runtime.store.admission_projection_capabilities(),
+                    prepared,
+                    &self.config.keypair,
+                    &runtime.fence,
+                    trusted_now_unix_ms,
+                )
+                .map_err(|error| KernelError::DurableAdmission(error.to_string()))?
+            } else {
+                runtime
+                    .store
+                    .commit_admission_projection(&projection)
+                    .map_err(|error| {
+                        KernelError::DurableAdmission(format!(
+                            "atomic terminal projection failed: {error}"
+                        ))
+                    })?
+            };
+            (terminal, AdmissionOperationState::Completed)
         };
-        if terminal.state != AdmissionOperationState::Completed {
+        if terminal.state != expected_terminal_state {
             return Err(KernelError::DurableAdmission(
-                "terminal projection did not complete the operation".to_owned(),
+                "terminal projection did not reach the expected terminal state".to_owned(),
             ));
         }
         admission.operation = runtime
@@ -1819,23 +1979,32 @@ impl ChioKernel {
                 projected_receipt.timestamp,
             )?;
         }
-        let (verdict, reason, terminal_state, execution_nonce) = match incomplete_reason {
-            Some(reason) => (
+        let (verdict, reason, terminal_state, execution_nonce) = if delivery_denied {
+            (
                 Verdict::Deny,
-                Some(reason.clone()),
-                OperationTerminalState::Incomplete { reason },
-                None,
-            ),
-            None => (
-                Verdict::Allow,
-                None,
+                Some("delivered output does not match the committed output digest".to_owned()),
                 OperationTerminalState::Completed,
-                self.mint_execution_nonce_for_allow(
-                    request,
-                    &request.capability,
-                    &projected_receipt,
-                )?,
-            ),
+                None,
+            )
+        } else {
+            match incomplete_reason {
+                Some(reason) => (
+                    Verdict::Deny,
+                    Some(reason.clone()),
+                    OperationTerminalState::Incomplete { reason },
+                    None,
+                ),
+                None => (
+                    Verdict::Allow,
+                    None,
+                    OperationTerminalState::Completed,
+                    self.mint_execution_nonce_for_allow(
+                        request,
+                        &request.capability,
+                        &projected_receipt,
+                    )?,
+                ),
+            }
         };
         Ok(ToolCallResponse {
             request_id: request.request_id.clone(),
