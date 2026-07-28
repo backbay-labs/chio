@@ -64,7 +64,7 @@ pub(crate) async fn serve_async(config: TrustServiceConfig) -> Result<(), CliErr
         FederationAdmissionRateLimiter::from_memory_budget(&config.memory_budget),
     ));
     let cluster_progress = cluster.as_ref().map(|_| Arc::new(ClusterProgress::new()));
-    // The wedge evidenced rail: present exactly when the finding market
+    // The evidenced rail is present exactly when the finding market
     // is configured, so activation fails closed on unconfigured venues.
     #[cfg(feature = "cognition-market-experimental")]
     let finding_rail: Option<Arc<dyn super::super::finding_handlers::FindingRailObserver>> =

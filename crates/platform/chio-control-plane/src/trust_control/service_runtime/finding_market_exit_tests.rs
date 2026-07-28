@@ -712,7 +712,8 @@ struct ReportInputs<'a> {
     receipts: &'a [ResolvedReceiptEvidence],
     checkpoint: &'a KernelCheckpoint,
     recipe_bytes: &'a [u8],
-    backing: &'a FindingBondBacking,
+    backing: &'a SignedFindingBondBacking,
+    collateral: &'a Keypair,
 }
 
 fn make_signed_report(
@@ -723,6 +724,7 @@ fn make_signed_report(
         governance_authority: inputs.governance.public_key(),
         profile: inputs.profile.clone(),
         admitted_kernel_keys: vec![inputs.kernel.public_key()],
+        collateral_authority: inputs.collateral.public_key(),
         trusted_time,
         trust_root_snapshot_sha256: HEX64.to_string(),
         resolver_policy_sha256: HEX64.to_string(),
@@ -741,7 +743,9 @@ fn make_signed_report(
     };
     let draft = verify_finding_evidence(inputs.raw_finding, &trust, &bundle)?;
     if !draft.satisfies_required_facets(&trust.profile.body) {
-        return Err(missing("draft does not satisfy the wedge profile facets"));
+        return Err(missing(
+            "draft does not satisfy the required profile facets",
+        ));
     }
     Ok(sign_finding_verifier_report(
         &draft,
@@ -1015,7 +1019,8 @@ impl MarketWeb {
             receipts: &receipts,
             checkpoint: &checkpoint,
             recipe_bytes: &recipe_bytes,
-            backing: &backing.body,
+            backing: &backing,
+            collateral: &collateral,
         };
         // The current report's evaluation time sits strictly after the
         // wall-clock collateral acceptance the venue records at

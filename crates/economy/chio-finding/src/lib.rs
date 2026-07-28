@@ -1,12 +1,12 @@
 //! Cognition-market finding artifacts for the Chio protocol.
 //!
 //! The signed information-good artifact (`chio.finding.v1`) with
-//! fail-closed pure validation and inline signing, plus the M2 market
-//! families: the reusable challenge-verifier profile, the unsigned replay
+//! fail-closed pure validation and inline signing, plus supporting market
+//! primitives: the reusable challenge-verifier profile, the unsigned replay
 //! recipe input, seller market terms, issuer seller authorization, the
 //! live bond-backing allocation, the verifier facet report, and the venue
-//! admission bundle. Challenge and status-feed artifacts land with their
-//! owning milestones (M5/M6). Design:
+//! admission bundle. Challenge and status-feed artifacts have no resolver
+//! in this crate yet; callers that need them supply their own. Design:
 //! docs/research/cognition-market/ARCHITECTURE.md sections 4-5 and
 //! ADR-0017. No storage, no I/O, no kernel wiring.
 

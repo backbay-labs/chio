@@ -1,4 +1,4 @@
-//! HTTP surface for the cognition-market finding market (M2): strict
+//! HTTP surface for the cognition-market finding market: strict
 //! canonical publish ingress, immutable by-id resolution, the bounded
 //! paginated descriptor index, digest-addressed dependency retention,
 //! governance-profile registration, collateral registration, the durable
@@ -83,8 +83,8 @@ pub(crate) struct FindingRailObservation {
     pub rail: String,
 }
 
-/// The evidenced rail seam (plan D9). The wedge ships the deterministic
-/// venue-ledger observer; tests inject failing observers to prove a
+/// The evidenced rail seam: the deterministic venue-ledger observer is
+/// the rail implementation; tests inject failing observers to prove a
 /// failed charge cannot admit.
 pub(crate) trait FindingRailObserver: Send + Sync {
     fn dispatch(
@@ -227,7 +227,7 @@ pub(crate) async fn handle_publish_finding(
     if let Err(error) = chio_finding::verify_finding(&finding) {
         return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
     }
-    // Liveness is a surface obligation, both bounds: a correctly signed
+    // Both bounds enforce liveness: a correctly signed
     // but future-issued or expired finding must not become indexable.
     let now = unix_timestamp_now();
     if finding.issued_at > now {
@@ -238,7 +238,7 @@ pub(crate) async fn handle_publish_finding(
     }
     // The finding-scoped pricing hint signs `finding:<finding_id>`;
     // hashing the hint into the finding would be a cycle, so this
-    // projection requires the reference absent (plan invariant 4).
+    // projection requires the reference absent.
     if finding.price_hint_ref.is_some() {
         return plain_http_error(
             StatusCode::BAD_REQUEST,
@@ -311,7 +311,7 @@ pub(crate) async fn handle_get_finding(
     }
 }
 
-/// Search query DTO shared by the GET and POST variants (plan D1/D2).
+/// Search query DTO shared by the GET and POST variants.
 #[derive(Debug, Default, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct FindingSearchQuery {
@@ -471,7 +471,7 @@ pub(crate) async fn handle_search_findings_post(
 }
 
 /// POST /v1/findings/recipes (authenticated): digest-addressed retention
-/// for replay recipes and their dependencies (plan D4). A body that is a
+/// for replay recipes and their dependencies. A body that is a
 /// `chio.finding.replay-recipe-input.v1` artifact passes the full strict
 /// pipeline; any other body is an opaque digest-addressed dependency
 /// (input bundles, parameter bundles) retained by its byte digest.
@@ -584,7 +584,7 @@ pub(crate) async fn handle_register_finding_profile(
 
 /// POST /v1/findings/collateral (authenticated): register a live
 /// exclusive collateral allocation from a bond-backing envelope signed by
-/// the pinned collateral authority (plan D10).
+/// the pinned collateral authority.
 pub(crate) async fn handle_register_finding_collateral(
     State(state): State<TrustServiceState>,
     headers: HeaderMap,
@@ -647,9 +647,9 @@ pub(crate) struct FindingActivateRequest {
 }
 
 /// The facets a finding REQUIRES exactly `verified` before admission: the
-/// profile's floor plus every claim the artifact itself makes. Mirrors
-/// the verifier-side derivation; nothing here waives a profile-listed
-/// facet.
+/// profile's floor plus every claim the artifact itself makes. The
+/// verifier derives required facets the same way when it evaluates
+/// outcomes; nothing here waives a profile-listed facet.
 fn required_facets(
     finding: &Finding,
     profile: &FindingChallengeVerifierProfile,
@@ -671,7 +671,7 @@ fn required_facets(
 }
 
 /// POST /v1/findings/{finding_id}/activate (authenticated): the durable
-/// idempotent activation transaction (plan Task 4). Fee collection runs
+/// idempotent activation transaction. Fee collection runs
 /// on the evidenced rail first; the store transaction then atomically
 /// asserts the reconciled terminals, consumes the allocation, and indexes
 /// the admission. A failed charge cannot publish for free and crash or
@@ -738,8 +738,8 @@ pub(crate) async fn handle_activate_finding(
         );
     }
 
-    // Listing and pricing-hint exact bindings (wrong hint or metadata
-    // binding is an M2 exit rejection).
+    // Listing and pricing-hint exact bindings: a mismatched hint or
+    // metadata binding is rejected.
     let listing_digest = match canonical_digest_of(&request.listing) {
         Ok(digest) => digest,
         Err(error) => return plain_http_error(StatusCode::BAD_REQUEST, &error),
@@ -869,11 +869,11 @@ pub(crate) async fn handle_activate_finding(
     let gate = match state.fiscal_runtime.as_ref() {
         Some(_) => {
             // Fiscal-governed venues verify schedules through the
-            // resolver-driven surface; the wedge exposes the legacy gate
-            // and the governed path lands with its consuming deployment.
+            // resolver-driven surface; no resolver is wired into finding
+            // activation yet, so fiscal-governed venues are rejected here.
             return plain_http_error(
                 StatusCode::CONFLICT,
-                "fiscal-governed finding activation is not wired in the M2 wedge",
+                "fiscal-governed finding activation is unavailable: no fee-schedule resolver is wired for this venue",
             );
         }
         None => FindingFeeScheduleGate::Legacy,
@@ -899,7 +899,7 @@ pub(crate) async fn handle_activate_finding(
     }
 
     // Verifier report: pinned signer, exact bindings, report-before-
-    // backing (plan D14), and the required-facet policy against the
+    // backing, and the required-facet policy against the
     // retained profile.
     if let Err(error) = verify_signed_verifier_report(&request.verifier_report, &verifier_key) {
         return plain_http_error(StatusCode::BAD_REQUEST, &error.to_string());
@@ -970,7 +970,7 @@ pub(crate) async fn handle_activate_finding(
     }
 
     // Terms binding for later epoch computation: retain the exact terms
-    // envelope digest-addressed (the admission binds it, D8).
+    // envelope digest-addressed, since the admission binds it.
     let terms_json = match chio_core::canonical_json_bytes(&request.terms) {
         Ok(bytes) => bytes,
         Err(_) => {
@@ -1003,7 +1003,7 @@ pub(crate) async fn handle_activate_finding(
         if terminal.fee_schedule_envelope_sha256 != schedule_digest {
             return plain_http_error(StatusCode::BAD_REQUEST, "fee terminal schedule mismatch");
         }
-        // Both M2 events restrict to the governance-pinned audit pool.
+        // Both fee event kinds restrict to the governance-pinned audit pool.
         if terminal.pool_principal_id != config.audit_pool.principal_id
             || terminal.rail_destination != config.audit_pool.rail_destination
             || terminal.amount.currency != config.audit_pool.currency
@@ -1126,7 +1126,7 @@ pub(crate) struct FindingParticipationRequest {
 }
 
 /// POST /v1/findings/{finding_id}/participation (authenticated): collect
-/// the next unpaid audit epoch (plan D8). Later unpaid epochs make the
+/// the next unpaid audit epoch. Later unpaid epochs make the
 /// listing non-admitted at read time; this is the renewal path.
 pub(crate) async fn handle_finding_participation(
     State(state): State<TrustServiceState>,
@@ -1250,8 +1250,8 @@ pub(crate) async fn handle_finding_participation(
 }
 
 /// GET /v1/findings/{finding_id}/admission (public): serve the CURRENT
-/// venue-signed admission envelope verbatim, or 404 when none is current
-/// (plan D5).
+/// venue-signed admission envelope verbatim, or 404 when none is
+/// current.
 pub(crate) async fn handle_get_finding_admission(
     State(state): State<TrustServiceState>,
     AxumPath(finding_id): AxumPath<String>,

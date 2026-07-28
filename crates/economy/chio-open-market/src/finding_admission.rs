@@ -1,4 +1,4 @@
-//! Admission-gated marketplace entry for cognition-market findings (M2).
+//! Admission-gated marketplace entry for cognition-market findings.
 //!
 //! Trusted bid accepts a finding listing ONLY through a current
 //! venue-signed admission bundle. [`verify_finding_admission`] is the pure
@@ -12,8 +12,8 @@
 //! of currency [`bid_with_finding_admission`] accepts before delegating to
 //! the real [`bid`] path unchanged.
 //!
-//! Compiled only under the `cognition-market-experimental` feature: the
-//! cognition market ships dark until the program launch gate flips.
+//! Compiled only under the `cognition-market-experimental` feature; default
+//! builds omit this module entirely.
 
 use chio_finding::{
     signed_envelope_sha256, verify_signed_admission, verify_signed_bond_backing,
@@ -85,6 +85,10 @@ pub enum FindingAdmissionError {
     ExpiryBeyondConstituent(&'static str),
     #[error("admission capability scope does not match the listing pricing hint scope")]
     ScopeMismatch,
+    #[error("bid listing is not the listing the admission was issued for")]
+    ListingMismatch,
+    #[error("bid pricing hint is not the hint the admission binds")]
+    PricingHintMismatch,
     #[error("bid rejected: {0}")]
     Bidding(BiddingError),
 }
@@ -300,6 +304,12 @@ pub fn verify_finding_admission(
             context.earliest_constituent_expiry,
             "earliest_constituent_expiry",
         ),
+        // A schedule with no expiry never lapses, so absence is an
+        // unbounded ceiling rather than a missing bound.
+        (
+            context.fee_schedule.body.expires_at.unwrap_or(u64::MAX),
+            "fee_schedule",
+        ),
     ];
     for (bound, label) in expiry_bounds {
         if admission.expires_at > bound {
@@ -322,8 +332,25 @@ pub fn bid_with_finding_admission(
     bid_context: BidMintContext<'_>,
     admission: &VerifiedFindingAdmission,
 ) -> Result<SignedAskResponse, FindingAdmissionError> {
+    // Scope equality alone binds nothing: every listing for one finding
+    // advertises the same `finding:<id>` scope, so a bid could ride an
+    // admission issued for a different listing. Bind the exact listing
+    // and pricing-hint envelopes the admission was signed over.
     if bid_context.listing.pricing.body.capability_scope != admission.capability_scope() {
         return Err(FindingAdmissionError::ScopeMismatch);
+    }
+    if bid_context.listing.listing_id() != admission.listing_id() {
+        return Err(FindingAdmissionError::ListingMismatch);
+    }
+    let listing_digest = signed_envelope_sha256(&bid_context.listing.listing)
+        .map_err(FindingAdmissionError::AdmissionEnvelope)?;
+    if listing_digest != admission.admission().listing_envelope_sha256 {
+        return Err(FindingAdmissionError::ListingMismatch);
+    }
+    let hint_digest = signed_envelope_sha256(&bid_context.listing.pricing)
+        .map_err(FindingAdmissionError::AdmissionEnvelope)?;
+    if hint_digest != admission.admission().pricing_hint_envelope_sha256 {
+        return Err(FindingAdmissionError::PricingHintMismatch);
     }
     bid(request, bid_context).map_err(FindingAdmissionError::Bidding)
 }

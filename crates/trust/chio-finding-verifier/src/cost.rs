@@ -138,9 +138,14 @@ pub(crate) fn evaluate_settled_spend(
         };
         match financial.settlement_status {
             SettlementStatus::Settled => {}
-            SettlementStatus::Pending
-            | SettlementStatus::NotApplicable
-            | SettlementStatus::Failed => {
+            // A failed settlement is evidence that spend did NOT occur,
+            // not absent evidence.
+            SettlementStatus::Failed => {
+                return CostFacetOutcome::Failed {
+                    reason: format!("receipt {} settlement failed", receipt.id),
+                };
+            }
+            SettlementStatus::Pending | SettlementStatus::NotApplicable => {
                 return CostFacetOutcome::Unavailable {
                     reason: "receipt settlement not finalized",
                 };

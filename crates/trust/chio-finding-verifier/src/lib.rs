@@ -1,11 +1,11 @@
-//! The M2 `FindingEvidenceVerifier` profile: turns a raw finding plus an
-//! explicitly resolved evidence bundle and pinned trust roots into the
-//! structured 13-facet report (ARCHITECTURE 4.1.1).
+//! The `FindingEvidenceVerifier`: turns a raw finding plus an explicitly
+//! resolved evidence bundle and pinned trust roots into the structured
+//! 13-facet report (ARCHITECTURE 4.1.1).
 //!
-//! M1 `verify_finding` proves artifact integrity only. This crate adds
-//! the buyer/venue boundary that receipt references, checkpoints, cost,
-//! recipe, and bond references must clear before a facet may read
-//! `verified`. Design rules:
+//! `chio_finding::verify_finding` proves artifact integrity only. This
+//! crate adds the buyer/venue boundary that receipt references,
+//! checkpoints, cost, recipe, and bond references must clear before a
+//! facet may read `verified`. Design rules:
 //!
 //! - Fail closed. Empty trust inputs deny; they never widen acceptance.
 //! - No loose helpers as authority boundaries: receipts verify strictly

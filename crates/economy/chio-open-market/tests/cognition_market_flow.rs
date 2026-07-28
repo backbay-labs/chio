@@ -393,7 +393,12 @@ fn cognition_market_reveal_flow_spec() {
     assert!(verify_finding(&finding).is_ok());
 
     // 2. Bid: covered by the passing tests above, including the real
-    //    bid() path and the pinned empty-constraints and DPoP seams.
+    //    bid() path and the pinned empty-constraints and DPoP seams. An
+    //    admission gate sits in front of it: trusted bid goes through
+    //    `finding_admission::bid_with_finding_admission`, which accepts
+    //    only a current venue-signed admission bundle (publish, search,
+    //    collateral, fees, and activation are exercised by the
+    //    control-plane test `finding_publish_discover_admission`).
     //    The target flow still needs an authoritative budget reservation
     //    followed by pure `accept()` validation and binding.
 

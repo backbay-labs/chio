@@ -256,6 +256,31 @@ jobs:
           RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
         run: cargo test -p chio-cli --features iroh
 
+      - name: control-plane default build excludes the cognition market
+        env:
+          CARGO_BUILD_JOBS: "1"
+          RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+        run: |
+          if cargo tree -p chio-control-plane -e normal 2>/dev/null | grep -qE '[[:space:]]chio-finding(-verifier)? v'; then
+            echo "ERROR: chio-finding is present in the default control-plane dependency tree" >&2
+            echo "The default control-plane binary must not link the cognition market; use --features cognition-market-experimental to opt in." >&2
+            exit 1
+          fi
+          echo "OK: the cognition market is not linked into the default control plane"
+
+      - name: cognition-market-experimental feature build, clippy, and tests
+        env:
+          CARGO_BUILD_JOBS: "1"
+          RUSTFLAGS: "${{ env.CHIO_CI_RUSTFLAGS }} -C debuginfo=0"
+        run: |
+          umask 022
+          cargo build -p chio-control-plane -p chio-store-sqlite -p chio-open-market --features chio-control-plane/cognition-market-experimental
+          cargo clippy -p chio-control-plane -p chio-store-sqlite -p chio-open-market --features chio-control-plane/cognition-market-experimental -- -D warnings
+          cargo test -p chio-control-plane --lib --features cognition-market-experimental
+          cargo test -p chio-store-sqlite --features cognition-market-experimental
+          cargo test -p chio-open-market --features cognition-market-experimental
+          cargo test -p chio-finding -p chio-finding-verifier
+
       - name: Wasm guards library tests
         env:
           CARGO_BUILD_JOBS: "1"

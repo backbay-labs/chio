@@ -102,7 +102,9 @@ pub struct FindingVerifierReport {
     /// Exactly one result per facet, in `FindingFacetKind::ALL` order.
     pub facets: Vec<FindingFacetResult>,
     /// Required when the `bond_backing` facet is `verified`: the exact
-    /// live allocation the verdict is about (D14 report-before-backing).
+    /// live allocation the verdict is about. The allocation must already
+    /// have existed when the report was evaluated; a report cannot claim
+    /// backing from an allocation created afterward.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub backing_allocation_id: Option<String>,
     /// Verifier authority that must sign the enclosing envelope; the

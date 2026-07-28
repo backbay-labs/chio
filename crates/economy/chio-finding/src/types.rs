@@ -79,8 +79,10 @@ pub struct Finding {
     pub evidence_receipt_ids: Vec<String>,
     pub evidence_checkpoint_ref: String,
     /// Issuer-asserted production-cost rollup (bucketed for public
-    /// descriptors; see the side-channel note in the threat model).
-    /// M1 does not prove compute burn or semantically verify this amount.
+    /// descriptors; see the side-channel note in the threat model). This
+    /// type does not prove compute burn or semantically verify this
+    /// amount; callers that need that assurance must resolve it against
+    /// the metered receipts separately.
     pub evidence_cost: MonetaryAmount,
     /// Attestation-quality tier from appraisal, as the existing CLOSED
     /// vocabulary so unsupported tier names fail at parse time
@@ -96,8 +98,9 @@ pub struct Finding {
     /// Receipt id of a pre-outcome intent commitment, when present.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub intent_commitment_receipt_id: Option<String>,
-    /// Opaque collateral reference at M1. Publication admission must resolve
-    /// and verify live backing before advertising a slashable guarantee.
+    /// Opaque collateral reference; this type does not resolve or verify
+    /// it. Publication admission must resolve and verify live backing
+    /// before advertising a slashable guarantee.
     pub bond_ref: String,
     pub status_feed_ref: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -111,10 +114,10 @@ pub struct Finding {
     pub issued_at: u64,
     pub expires_at: u64,
     /// Lowercase-hex Ed25519 signature over the canonical body with
-    /// `signature` cleared, verifiable against `issuer` (Task 3). Empty
-    /// string = unsigned draft; published artifacts are signed. Inline
-    /// signature (disclosure-family precedent, SignedLineageSubgraph)
-    /// so the registered JSON schema validates the artifact as-serialized;
-    /// no SignedExportEnvelope wrapper is used for this family.
+    /// `signature` cleared, verifiable against `issuer`. Empty string =
+    /// unsigned draft; published artifacts are signed. Inline signature
+    /// (disclosure-family precedent, SignedLineageSubgraph) so the
+    /// registered JSON schema validates the artifact as-serialized; no
+    /// SignedExportEnvelope wrapper is used for this family.
     pub signature: String,
 }

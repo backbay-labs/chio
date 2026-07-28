@@ -1,11 +1,12 @@
 //! Checkpoint membership with the full wrapper cross-check.
 //!
 //! `ReceiptInclusionProof::verify` proves only the inner Merkle path
-//! against a caller-supplied root. This module supplies the binding the
-//! plan requires on top: checkpoint identity and signature, wrapper
-//! sequence and range checks, BOTH leaf-index fields, BOTH tree sizes,
-//! the pinned canonical leaf definition (full canonical receipt envelope
-//! bytes), duplicate rejection, and profile-pinned log identity/signer.
+//! against a caller-supplied root. This module supplies the additional
+//! binding ARCHITECTURE 4.1.1 requires: checkpoint identity and
+//! signature, wrapper sequence and range checks, BOTH leaf-index fields,
+//! BOTH tree sizes, the pinned canonical leaf definition (full canonical
+//! receipt envelope bytes), duplicate rejection, and profile-pinned log
+//! identity/signer.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -82,9 +83,9 @@ pub fn verify_checkpoint_membership(
             return Err(CheckpointMembershipError::CheckpointSignatureInvalid(seq));
         }
         let log_id = checkpoint_log_id(checkpoint);
-        // Wedge checkpoint-reference grammar: `<log_id>#<checkpoint_seq>`.
-        // Every supplied checkpoint identity must equal the finding's
-        // single evidence_checkpoint_ref; substitution denies.
+        // Checkpoint-reference grammar: `<log_id>#<checkpoint_seq>`. Every
+        // supplied checkpoint identity must equal the finding's single
+        // evidence_checkpoint_ref; substitution denies.
         if format!("{log_id}#{seq}") != evidence_checkpoint_ref {
             return Err(CheckpointMembershipError::CheckpointRefMismatch);
         }

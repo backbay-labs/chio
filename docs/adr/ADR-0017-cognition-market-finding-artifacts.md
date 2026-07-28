@@ -5,6 +5,16 @@
   type, validator, strict issuer verification, registered schema, normative
   `spec/PROTOCOL.md` 6.4.7 text, and golden fixture. D1 listing/publish
   integration and D2-D5 remain proposed.
+- Partial implementation (2026-07-28): M2 implements D1 publish/discover:
+  the six market artifact families plus the unsigned replay-recipe input
+  (`spec/PROTOCOL.md` 6.4.7.1-6.4.7.8), the offline
+  `FindingEvidenceVerifier` facet profile, the durable finding-market
+  store (exact-bytes serving, exclusive collateral, idempotent fees,
+  atomic activation), and the feature-gated control-plane
+  publish/search/activation surfaces with the admission-gated bid seam.
+  Everything ships dark behind `cognition-market-experimental`. D2
+  reveal-as-governed-call and D3-D5 remain proposed (M3+, blocked on
+  ADR-A).
 - Decision owner: economy and settlement lane
 - Related: ADR-0015 (non-discretionary escrow posture), ADR-0016 (authoritative spend contract), `spec/PROTOCOL.md` 6.4.5 (disclosure and lineage family), `spec/PROTOCOL.md` 6.4.7 (finding artifact family)
 

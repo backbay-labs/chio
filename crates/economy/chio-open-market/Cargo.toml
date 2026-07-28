@@ -21,9 +21,8 @@ serde = { workspace = true }
 thiserror = { workspace = true }
 
 [features]
-# Ship dark (cognition-market program constraint): the finding admission
-# seam compiles only when this feature is on, so default builds keep
-# byte-identical behavior until the launch gate flips.
+# The finding admission seam compiles only when this feature is enabled,
+# so default builds omit it entirely and keep byte-identical behavior.
 cognition-market-experimental = ["dep:chio-finding"]
 
 [dev-dependencies]

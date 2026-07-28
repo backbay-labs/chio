@@ -26,11 +26,10 @@ lineage = []
 chaos-test-hooks = []
 # Cognition market: gates the durable finding-market store (published
 # findings, replay-recipe blobs, collateral allocations, fee events,
-# and venue admissions) for the M2 publish-and-discover wedge.
-# Default-off so the workspace ships dark with byte-identical
-# behaviour. Enabling this feature wires the finding-market schema and
-# store atop the serving-owner fence, plus the chio-finding artifact
-# types it persists.
+# and venue admissions). Default-off so the workspace keeps its
+# byte-equivalent behaviour. Enabling this feature wires the
+# finding-market schema and store atop the serving-owner fence, plus
+# the chio-finding artifact types it persists.
 cognition-market-experimental = ["dep:chio-finding"]
 
 [dependencies]

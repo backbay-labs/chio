@@ -33,7 +33,7 @@ pub enum FindingReceiptRole {
 }
 
 /// Closed replay predicate vocabulary. Unknown predicate names fail at
-/// parse time; the wedge ships exactly one.
+/// parse time; exactly one predicate is defined so far.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, PartialOrd, Ord)]
 #[serde(rename_all = "snake_case")]
 pub enum FindingPredicate {
@@ -174,11 +174,12 @@ pub struct FindingChallengeVerifierProfile {
     /// Facets a report must have exactly `verified` for admission under
     /// this profile, in addition to whatever a present Finding claim
     /// requires. May be empty only in the sense that claim-derived
-    /// requirements still apply; the wedge profile lists its floor here.
+    /// requirements still apply; this list is the profile's own floor.
     pub required_facets: Vec<FindingFacetKind>,
     pub verifier_report_signer: FindingAuthorityKeyPolicy,
-    /// M4 roles, pinned before any Finding is authored so admission can
-    /// bind them ahead of the first sale.
+    /// Purchase and failed-delivery authority roles, pinned before any
+    /// Finding is authored so admission can bind them ahead of the first
+    /// sale.
     pub purchase_authority: FindingAuthorityKeyPolicy,
     pub failed_delivery_authority: FindingAuthorityKeyPolicy,
     pub issued_at: u64,

@@ -1,4 +1,4 @@
-//! JSON Schema conformance and golden-fixture coverage for the seven M2
+//! JSON Schema conformance and golden-fixture coverage for the seven
 //! market artifact families. Behavioral wire-type coverage lives in
 //! `market_families.rs`; this file pins the registered schemas and the
 //! deterministic fixtures against both the schema and the Rust verify
@@ -110,9 +110,9 @@ const GOLDEN_ALLOCATION_ID: &str =
     "2586e92a398e6dbbea299408add0610a881a847ec3523e839ef9eb9e175ef482";
 const GOLDEN_BACKING_ENVELOPE_SHA256: &str =
     "dd924dc6577ffb36d42a81726652f51121ace3859eebf8fe6edbd5f82bd47f0e";
-const GOLDEN_REPORT_ID: &str = "99ee33f3026405bacd50047f4e063e12bdd85c382c5a64a54c7be9987af69c9c";
+const GOLDEN_REPORT_ID: &str = "fca3e0c0e15921c334ab431c40010ecc8e881423c529b29766513c3b39fcc186";
 const GOLDEN_REPORT_ENVELOPE_SHA256: &str =
-    "6a63e923995cc50df2127746f8ffe8e04fe7ffca6875ebfbce3fae5c16f169d2";
+    "642276851f5c9ded9cefbfc701ecd95a1c7668ad58e929277ce94070ab5e16a5";
 const GOLDEN_ADMISSION_ID: &str =
     "d54f98cf25f7e4ae5812ad1a38ee4b25fe0d007014d09e99c0d7d6f70ef883be";
 const GOLDEN_ADMISSION_ENVELOPE_SHA256: &str =
@@ -355,7 +355,7 @@ fn verified_facets() -> Vec<FindingFacetResult> {
             FindingFacetResult {
                 facet,
                 outcome,
-                reason: "wedge evaluation".to_string(),
+                reason: "evaluated under the pinned verifier profile".to_string(),
                 evidence_refs: Vec::new(),
             }
         })

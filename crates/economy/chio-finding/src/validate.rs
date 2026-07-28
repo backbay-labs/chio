@@ -157,11 +157,12 @@ pub(crate) fn require_window(
 
 impl Finding {
     /// Structural validation. Signature and cross-artifact checks (bond
-    /// existence, receipt verification, status freshness) live in later
-    /// milestones; this validator is pure over the artifact alone. It is
-    /// also CLOCKLESS by design: it checks the window shape
-    /// (expires_at > issued_at) but not liveness - publish/search (M2)
-    /// and buy (M4) must reject `now >= expires_at` themselves.
+    /// existence, receipt verification, status freshness) are surface
+    /// obligations, not wire-type checks; this validator is pure over the
+    /// artifact alone. It is also CLOCKLESS by design: it checks the
+    /// window shape (expires_at > issued_at) but not liveness - callers
+    /// that resolve a Finding for publish, search, or purchase must
+    /// reject `now >= expires_at` themselves.
     pub fn validate(&self) -> Result<(), FindingError> {
         if self.schema != FINDING_SCHEMA_V1 {
             return Err(FindingError::UnsupportedSchema(self.schema.clone()));
@@ -212,9 +213,10 @@ impl Finding {
             require_hex64(recipe, "replay_recipe_sha256")?;
         }
         // Any attestation-quality signal requires at least one receipt
-        // reference. This is a structural requirement only: M1 does not
-        // resolve the reference, verify receipt/checkpoint/revocation
-        // evidence, bind issuer lineage, or establish the claimed tier/class.
+        // reference. This is a structural requirement only: this
+        // validator does not resolve the reference, verify
+        // receipt/checkpoint/revocation evidence, bind issuer lineage, or
+        // establish the claimed tier/class.
         let claims_attestation = self.guarantee_class != FindingGuaranteeClass::Asserted
             || self.evidence_class != FindingEvidenceClass::Asserted
             || matches!(
@@ -293,7 +295,7 @@ pub(crate) fn is_hex128(value: &str) -> bool {
 }
 
 /// Verify the inline signature against the embedded issuer, fail-closed.
-/// The exact-encoding precheck matters (review finding):
+/// The exact-encoding precheck matters:
 /// `Signature::from_hex` tolerates `0x` and algorithm prefixes that the
 /// registered JSON schema rejects, and the signature field is cleared
 /// before canonical verification, so without this check an alternate
@@ -320,17 +322,17 @@ pub fn verify_finding_signature(finding: &Finding) -> Result<(), FindingError> {
 /// This does not authenticate evidence receipts or checkpoints, bind the
 /// issuer to evidence lineage, verify bond/status/pricing references, check
 /// wall-clock liveness, or establish the truth of the guarantee/evidence
-/// classes. Market and trust decisions must perform those milestone-specific
-/// checks separately.
+/// classes. Market and trust decisions must perform those checks
+/// separately.
 ///
-/// IMPORTANT (review finding): this operates on an ALREADY-DESERIALIZED
+/// IMPORTANT: this operates on an ALREADY-DESERIALIZED
 /// `Finding` and reserializes canonically to check the signature and id.
 /// It is NOT a substitute for validating the raw request JSON against the
 /// registered `chio.finding.v1` schema: `PublicKey::from_hex` tolerates
 /// `0x`/uppercase and `Option` fields accept explicit `null`, so an
 /// artifact whose only deviation is `issuer: "0x.."` or
 /// `runtime_assurance_tier: null` would pass here (canonicalized to the
-/// accepted form) while failing the schema. The M2 publish boundary MUST
+/// accepted form) while failing the schema. The publish boundary MUST
 /// run `chio-spec-validate` against the raw bytes BEFORE deserializing
 /// and calling this.
 pub fn verify_finding(finding: &Finding) -> Result<(), FindingError> {

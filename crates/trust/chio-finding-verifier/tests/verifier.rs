@@ -81,7 +81,8 @@ struct Fixture {
     receipts: Vec<ResolvedReceiptEvidence>,
     checkpoint: KernelCheckpoint,
     recipe_bytes: Vec<u8>,
-    backing: FindingBondBacking,
+    finding_payload_sha256: String,
+    backing: SignedExportEnvelope<FindingBondBacking>,
     profile: SignedExportEnvelope<FindingChallengeVerifierProfile>,
 }
 
@@ -106,12 +107,17 @@ fn resource_caps() -> FindingResourceCaps {
     }
 }
 
-fn recipe(manifest_sha256: &str, payload_sha256: &str) -> FindingReplayRecipeInput {
+fn recipe(
+    manifest_sha256: &str,
+    payload_sha256: &str,
+    profile_envelope_sha256: &str,
+    context_sha256: &str,
+) -> FindingReplayRecipeInput {
     FindingReplayRecipeInput {
         schema: FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1.to_string(),
         decision_rule_ref: "decision/replay-v1".to_string(),
-        verifier_profile_envelope_sha256: HEX64.to_string(),
-        context_sha256: HEX64.to_string(),
+        verifier_profile_envelope_sha256: profile_envelope_sha256.to_string(),
+        context_sha256: context_sha256.to_string(),
         payload_sha256: payload_sha256.to_string(),
         runner_server: "finding-server".to_string(),
         runner_tool: "finding.replay".to_string(),
@@ -145,6 +151,21 @@ fn recipe(manifest_sha256: &str, payload_sha256: &str) -> FindingReplayRecipeInp
     }
 }
 
+/// A finding claiming `metered_attested` over the same evidence, used to
+/// prove the guarantee-consistency rule for the non-replay class.
+fn metered_attested_fixture() -> Result<Fixture, Box<dyn Error>> {
+    let mut fx = fixture()?;
+    let mut finding: Finding = serde_json::from_str(&fx.raw_finding)?;
+    finding.guarantee_class = FindingGuaranteeClass::MeteredAttested;
+    finding.replay_recipe_sha256 = None;
+    finding.signature = String::new();
+    finding.finding_id = compute_finding_id(&finding)?;
+    let finding = sign_finding(finding, &fx.issuer)?;
+    fx.raw_finding = String::from_utf8(canonical_json_bytes(&finding)?)?;
+    fx.finding_payload_sha256 = finding.payload_sha256.clone();
+    Ok(fx)
+}
+
 fn fixture() -> Result<Fixture, Box<dyn Error>> {
     let issuer = keypair(3);
     let governance = keypair(1);
@@ -170,8 +191,66 @@ fn fixture() -> Result<Fixture, Box<dyn Error>> {
     let log_id = checkpoint_log_id(&checkpoint);
     let evidence_checkpoint_ref = format!("{log_id}#1");
 
-    // Recipe committed by the finding.
-    let recipe_input = recipe(HEX64, &payload_sha256);
+    let mut profile_body = FindingChallengeVerifierProfile {
+        schema: FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1.to_string(),
+        profile_id: String::new(),
+        governance_authority: governance.public_key(),
+        operator: "venue-operator".to_string(),
+        receipt_signers: vec![
+            FindingReceiptSignerRole {
+                role: FindingReceiptRole::Production,
+                policy: key_policy(21, "production"),
+            },
+            FindingReceiptSignerRole {
+                role: FindingReceiptRole::Delivery,
+                policy: key_policy(12, "delivery"),
+            },
+            FindingReceiptSignerRole {
+                role: FindingReceiptRole::Replay,
+                policy: key_policy(13, "replay"),
+            },
+        ],
+        checkpoint_logs: vec![FindingCheckpointLogPolicy {
+            log_id,
+            signer: key_policy(21, "checkpoint"),
+        }],
+        bbs_projection_issuer: FindingBbsIssuerPolicy {
+            issuer_fingerprint: "bbs-issuer-fp".to_string(),
+            key_hex: HEX64.to_string(),
+            registry_ref: "registry/bbs-issuers".to_string(),
+            key_epoch: 1,
+            valid_from: 1_700_000_000,
+            valid_until: 1_900_000_000,
+            revocation_status_ref: "revocations/bbs".to_string(),
+        },
+        allowed_runner_manifests: vec![HEX64.to_string()],
+        required_receipt_semantics: "chio.mediated_spend.v1".to_string(),
+        resolver_policy_ref: "resolver-policy-v1".to_string(),
+        retention_policy_ref: "retention-forever-v1".to_string(),
+        resource_caps: resource_caps(),
+        predicate_engine: "chio-replay-v1".to_string(),
+        allowed_predicates: vec![FindingPredicate::BaselineFailsCandidatePassesV1],
+        required_facets: vec![
+            FindingFacetKind::ArtifactIntegrity,
+            FindingFacetKind::ReceiptAuthenticity,
+            FindingFacetKind::CheckpointMembership,
+            FindingFacetKind::RecipeBinding,
+            FindingFacetKind::BondBacking,
+            FindingFacetKind::GuaranteeConsistency,
+        ],
+        verifier_report_signer: key_policy(15, "verifier-report"),
+        purchase_authority: key_policy(16, "purchase"),
+        failed_delivery_authority: key_policy(17, "failed-delivery"),
+        issued_at: 1_700_000_000,
+        expires_at: 1_900_000_000,
+    };
+    profile_body.profile_id = compute_profile_id(&profile_body)?;
+    let profile = SignedExportEnvelope::sign(profile_body, &governance)?;
+    let profile_envelope_sha256 = sha256_hex(&canonical_json_bytes(&profile)?);
+
+    // The recipe commits the admitted profile; the finding then commits
+    // the recipe. Reversing either edge would be a hash cycle.
+    let recipe_input = recipe(HEX64, &payload_sha256, &profile_envelope_sha256, HEX64);
     let recipe_bytes = canonical_json_bytes(&recipe_input)?;
     let replay_recipe_sha256 = sha256_hex(&recipe_bytes);
 
@@ -242,62 +321,7 @@ fn fixture() -> Result<Fixture, Box<dyn Error>> {
         expires_at: 1_900_000_000,
     };
     backing.allocation_id = compute_allocation_id(&backing)?;
-
-    let mut profile_body = FindingChallengeVerifierProfile {
-        schema: FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1.to_string(),
-        profile_id: String::new(),
-        governance_authority: governance.public_key(),
-        operator: "venue-operator".to_string(),
-        receipt_signers: vec![
-            FindingReceiptSignerRole {
-                role: FindingReceiptRole::Production,
-                policy: key_policy(21, "production"),
-            },
-            FindingReceiptSignerRole {
-                role: FindingReceiptRole::Delivery,
-                policy: key_policy(12, "delivery"),
-            },
-            FindingReceiptSignerRole {
-                role: FindingReceiptRole::Replay,
-                policy: key_policy(13, "replay"),
-            },
-        ],
-        checkpoint_logs: vec![FindingCheckpointLogPolicy {
-            log_id,
-            signer: key_policy(21, "checkpoint"),
-        }],
-        bbs_projection_issuer: FindingBbsIssuerPolicy {
-            issuer_fingerprint: "bbs-issuer-fp".to_string(),
-            key_hex: HEX64.to_string(),
-            registry_ref: "registry/bbs-issuers".to_string(),
-            key_epoch: 1,
-            valid_from: 1_700_000_000,
-            valid_until: 1_900_000_000,
-            revocation_status_ref: "revocations/bbs".to_string(),
-        },
-        allowed_runner_manifests: vec![HEX64.to_string()],
-        required_receipt_semantics: "chio.mediated_spend.v1".to_string(),
-        resolver_policy_ref: "resolver-policy-v1".to_string(),
-        retention_policy_ref: "retention-forever-v1".to_string(),
-        resource_caps: resource_caps(),
-        predicate_engine: "chio-replay-v1".to_string(),
-        allowed_predicates: vec![FindingPredicate::BaselineFailsCandidatePassesV1],
-        required_facets: vec![
-            FindingFacetKind::ArtifactIntegrity,
-            FindingFacetKind::ReceiptAuthenticity,
-            FindingFacetKind::CheckpointMembership,
-            FindingFacetKind::RecipeBinding,
-            FindingFacetKind::BondBacking,
-            FindingFacetKind::GuaranteeConsistency,
-        ],
-        verifier_report_signer: key_policy(15, "verifier-report"),
-        purchase_authority: key_policy(16, "purchase"),
-        failed_delivery_authority: key_policy(17, "failed-delivery"),
-        issued_at: 1_700_000_000,
-        expires_at: 1_900_000_000,
-    };
-    profile_body.profile_id = compute_profile_id(&profile_body)?;
-    let profile = SignedExportEnvelope::sign(profile_body, &governance)?;
+    let backing = SignedExportEnvelope::sign(backing, &collateral)?;
 
     let receipts = vec![
         ResolvedReceiptEvidence {
@@ -317,6 +341,7 @@ fn fixture() -> Result<Fixture, Box<dyn Error>> {
         governance,
         verifier,
         raw_finding,
+        finding_payload_sha256: finding.payload_sha256.clone(),
         receipts,
         checkpoint,
         recipe_bytes,
@@ -330,6 +355,7 @@ fn trust_roots(fx: &Fixture) -> FindingVerifierTrustRoots {
         governance_authority: fx.governance.public_key(),
         profile: fx.profile.clone(),
         admitted_kernel_keys: vec![keypair(21).public_key()],
+        collateral_authority: keypair(4).public_key(),
         trusted_time: 1_750_000_000,
         trust_root_snapshot_sha256: HEX64.to_string(),
         resolver_policy_sha256: HEX64.to_string(),
@@ -366,7 +392,7 @@ fn clone_receipts(fx: &Fixture) -> Vec<ResolvedReceiptEvidence> {
 }
 
 #[test]
-fn full_wedge_evaluation_verifies_the_required_facets() -> TestResult {
+fn full_evidence_bundle_verifies_the_required_facets() -> TestResult {
     let fx = fixture()?;
     let trust = trust_roots(&fx);
     let draft =
@@ -412,7 +438,7 @@ fn full_wedge_evaluation_verifies_the_required_facets() -> TestResult {
     assert!(draft.satisfies_required_facets(&fx.profile.body));
     assert_eq!(
         draft.backing_allocation_id.as_deref(),
-        Some(fx.backing.allocation_id.as_str())
+        Some(fx.backing.body.allocation_id.as_str())
     );
 
     // Report round trip under the pinned verifier authority.
@@ -515,7 +541,7 @@ fn reordered_receipts_fail_the_exact_binding() -> TestResult {
 fn recipe_digest_mismatch_fails_and_denies_the_deterministic_claim() -> TestResult {
     let fx = fixture()?;
     let trust = trust_roots(&fx);
-    let mut wrong_recipe = recipe(HEX64, HEX64);
+    let mut wrong_recipe = recipe(HEX64, HEX64, HEX64, HEX64);
     wrong_recipe.decision_rule_ref = "decision/other".to_string();
     let wrong_bytes = canonical_json_bytes(&wrong_recipe)?;
     let mut evidence_bundle = bundle(&fx, clone_receipts(&fx));
@@ -585,6 +611,96 @@ fn report_signing_requires_the_profile_authorized_key() -> TestResult {
     assert!(
         sign_finding_verifier_report(&draft, &trust, "chio-finding-verifier/0.1", &fx.issuer)
             .is_err()
+    );
+    Ok(())
+}
+
+#[test]
+fn recipe_must_bind_the_finding_it_is_committed_by() -> TestResult {
+    let fx = fixture()?;
+    let trust = trust_roots(&fx);
+    let profile_sha256 = sha256_hex(&canonical_json_bytes(&fx.profile)?);
+
+    // A recipe for a different payload, committed at the right digest,
+    // still fails: the digest proves retention, not aboutness.
+    let other_payload = "1".repeat(64);
+    let foreign = recipe(HEX64, &other_payload, &profile_sha256, HEX64);
+    let foreign_bytes = canonical_json_bytes(&foreign)?;
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    evidence.recipe_preimage = Some(foreign_bytes.as_slice());
+    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
+    assert_eq!(
+        draft.facet_outcome(FindingFacetKind::RecipeBinding),
+        Some(FindingFacetOutcome::Failed)
+    );
+
+    // A recipe committing an unadmitted profile fails the same way.
+    let wrong_profile = recipe(HEX64, &fx.finding_payload_sha256, HEX64, HEX64);
+    let wrong_bytes = canonical_json_bytes(&wrong_profile)?;
+    let mut evidence = bundle(&fx, clone_receipts(&fx));
+    evidence.recipe_preimage = Some(wrong_bytes.as_slice());
+    let draft = verify_finding_evidence(&fx.raw_finding, &trust, &evidence)?;
+    assert_eq!(
+        draft.facet_outcome(FindingFacetKind::RecipeBinding),
+        Some(FindingFacetOutcome::Failed)
+    );
+    Ok(())
+}
+
+#[test]
+fn backing_signed_by_an_unpinned_authority_is_not_bond_evidence() -> TestResult {
+    let fx = fixture()?;
+    let mut trust = trust_roots(&fx);
+    trust.collateral_authority = keypair(9).public_key();
+    let draft =
+        verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx)))?;
+    assert_eq!(
+        draft.facet_outcome(FindingFacetKind::BondBacking),
+        Some(FindingFacetOutcome::Failed)
+    );
+    assert!(draft.backing_allocation_id.is_none());
+    assert!(!draft.satisfies_required_facets(&fx.profile.body));
+    Ok(())
+}
+
+#[test]
+fn receipts_signed_by_an_unpinned_kernel_are_not_authentic() -> TestResult {
+    let fx = fixture()?;
+    let mut trust = trust_roots(&fx);
+    // Drop the production signer pin while leaving the receipts and
+    // their strict signatures untouched.
+    let mut profile_body = fx.profile.body.clone();
+    for signer in &mut profile_body.receipt_signers {
+        if signer.role == FindingReceiptRole::Production {
+            signer.policy.key = keypair(9).public_key();
+        }
+    }
+    profile_body.profile_id = compute_profile_id(&profile_body)?;
+    trust.profile = SignedExportEnvelope::sign(profile_body, &keypair(1))?;
+    let draft =
+        verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx)))?;
+    assert_eq!(
+        draft.facet_outcome(FindingFacetKind::ReceiptAuthenticity),
+        Some(FindingFacetOutcome::Failed)
+    );
+    Ok(())
+}
+
+#[test]
+fn guarantee_consistency_denies_an_unbacked_metered_claim() -> TestResult {
+    let fx = metered_attested_fixture()?;
+    let trust = trust_roots(&fx);
+    let draft =
+        verify_finding_evidence(&fx.raw_finding, &trust, &bundle(&fx, clone_receipts(&fx)))?;
+    // Metered exposure is unavailable without nonce evidence, so the
+    // metered_attested claim must not be consistent.
+    assert_eq!(
+        draft.facet_outcome(FindingFacetKind::MeteredExposureBacking),
+        Some(FindingFacetOutcome::Unavailable)
+    );
+    assert_eq!(
+        draft.facet_outcome(FindingFacetKind::GuaranteeConsistency),
+        Some(FindingFacetOutcome::Failed)
     );
     Ok(())
 }

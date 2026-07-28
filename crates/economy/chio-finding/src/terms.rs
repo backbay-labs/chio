@@ -31,7 +31,7 @@ pub const FINDING_MARKET_TERMS_SCHEMA_V1: &str =
 pub struct FindingBackingRequirement {
     pub base_finding_stake: MonetaryAmount,
     pub maximum_sale_exposure: MonetaryAmount,
-    /// Collateral policy vocabulary; the wedge value is
+    /// Collateral policy vocabulary; the only defined value today is
     /// `venue_ledger_exclusive_v1`.
     pub collateral_policy: String,
 }
@@ -123,7 +123,7 @@ pub struct FindingMarketTerms {
     pub filing_window_secs: u64,
     pub claim_window_secs: u64,
     pub appeal_window_secs: u64,
-    /// Recurring participation-fee cadence (D8); epoch 0 starts at
+    /// Recurring participation-fee cadence; epoch 0 starts at
     /// activation.
     pub audit_epoch_length_secs: u64,
     pub audit_eligible: bool,
@@ -131,8 +131,8 @@ pub struct FindingMarketTerms {
     /// Envelope digest of the ALREADY admitted reusable verifier profile.
     pub verifier_profile_envelope_sha256: String,
     pub challenge_bond_limits: Vec<FindingChallengeBondLimit>,
-    /// Deterministic payout policy vocabulary; wedge value
-    /// `pro_rata_capped_v1`.
+    /// Deterministic payout policy vocabulary; the only defined value
+    /// today is `pro_rata_capped_v1`.
     pub payout_policy: String,
     pub issued_at: u64,
     pub expires_at: u64,

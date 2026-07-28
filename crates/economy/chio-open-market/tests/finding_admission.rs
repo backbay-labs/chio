@@ -1,6 +1,6 @@
 #![cfg(feature = "cognition-market-experimental")]
 
-//! Feature-gated coverage for the M2 admission-gated bid seam:
+//! Feature-gated coverage for the admission-gated bid seam:
 //! `verify_finding_admission` over externally pinned inputs, then
 //! `bid_with_finding_admission` delegating to the REAL marketplace
 //! `bid()` path for a `finding:<finding_id>` scoped listing.
@@ -304,6 +304,8 @@ fn signed_backing(
 }
 
 struct AdmissionBindings {
+    listing_envelope_sha256: String,
+    pricing_hint_envelope_sha256: String,
     terms_envelope_sha256: String,
     backing_envelope_sha256: String,
     backing_allocation_id: String,
@@ -326,13 +328,13 @@ fn signed_admission(
         finding_artifact_sha256: hex64('d'),
         seller_authorization_envelope_sha256: hex64('1'),
         listing_id: FINDING_LISTING_ID.to_string(),
-        listing_envelope_sha256: hex64('5'),
+        listing_envelope_sha256: bindings.listing_envelope_sha256.clone(),
         server_id: FINDING_SERVER_ID.to_string(),
         metadata_url: format!(
             "https://registry.seller.example/finding/{}",
             finding.finding_id
         ),
-        pricing_hint_envelope_sha256: hex64('6'),
+        pricing_hint_envelope_sha256: bindings.pricing_hint_envelope_sha256.clone(),
         capability_scope: format!("finding:{}", finding.finding_id),
         publisher_operator_id: "seller-operator".to_string(),
         payee_destination: "rail:venue-ledger:seller-42".to_string(),
@@ -403,6 +405,8 @@ struct Web {
     terms_sha256: String,
     backing: SignedFindingBondBacking,
     backing_sha256: String,
+    listing_sha256: String,
+    hint_sha256: String,
     admission: SignedFindingAdmission,
 }
 
@@ -418,10 +422,23 @@ fn web_with_schedule(requirement_units: u64, slashable: bool, currency: &str) ->
     let terms_sha256 = signed_envelope_sha256(&terms).test_expect("terms digest");
     let backing = signed_backing(&collateral, &seller, &finding, &schedule_sha256);
     let backing_sha256 = signed_envelope_sha256(&backing).test_expect("backing digest");
+    // The admission binds the exact listing and pricing-hint envelopes a
+    // bid must later present, so build the canonical entry here.
+    let canonical_listing = finding_listing_entry(
+        &operator,
+        &finding,
+        &format!("finding:{}", finding.finding_id),
+        900,
+    );
+    let listing_sha256 =
+        signed_envelope_sha256(&canonical_listing.listing).test_expect("listing digest");
+    let hint_sha256 = signed_envelope_sha256(&canonical_listing.pricing).test_expect("hint digest");
     let admission = signed_admission(
         &venue,
         &finding,
         &AdmissionBindings {
+            listing_envelope_sha256: listing_sha256.clone(),
+            pricing_hint_envelope_sha256: hint_sha256.clone(),
             terms_envelope_sha256: terms_sha256.clone(),
             backing_envelope_sha256: backing_sha256.clone(),
             backing_allocation_id: backing.body.allocation_id.clone(),
@@ -444,6 +461,8 @@ fn web_with_schedule(requirement_units: u64, slashable: bool, currency: &str) ->
         terms_sha256,
         backing,
         backing_sha256,
+        listing_sha256,
+        hint_sha256,
         admission,
     }
 }
@@ -477,6 +496,8 @@ impl Web {
 
     fn bindings(&self) -> AdmissionBindings {
         AdmissionBindings {
+            listing_envelope_sha256: self.listing_sha256.clone(),
+            pricing_hint_envelope_sha256: self.hint_sha256.clone(),
             terms_envelope_sha256: self.terms_sha256.clone(),
             backing_envelope_sha256: self.backing_sha256.clone(),
             backing_allocation_id: self.backing.body.allocation_id.clone(),
@@ -792,5 +813,39 @@ fn scope_mismatch_at_bid_time_rejects() {
         )
         .test_unwrap_err();
         assert_eq!(error, FindingAdmissionError::ScopeMismatch);
+    });
+}
+
+#[test]
+fn bid_rejects_a_listing_the_admission_was_not_issued_for() {
+    with_fiscal(|resolver| {
+        let web = web_with_schedule(REQUIREMENT_UNITS, true, "USD");
+        let agent = keypair(31);
+        let expected_scope = format!("finding:{}", web.finding.finding_id);
+        let witness = verify_finding_admission(&web.admission, &web.context(resolver))
+            .test_expect("admission verifies");
+
+        // Same finding and the same advertised scope, but a different
+        // listing envelope: scope equality alone would let this ride an
+        // admission issued for another listing.
+        let other_listing =
+            finding_listing_entry(&web.operator, &web.finding, &expected_scope, 901);
+        let request = SignedBidRequest::sign(finding_bid_request(&web.finding, 901), &agent)
+            .test_expect("sign bid request");
+        let outcome = bid_with_finding_admission(
+            &request,
+            BidMintContext {
+                listing: &other_listing,
+                issuer_keypair: &web.operator,
+                agent_subject: agent.public_key(),
+                token_id: "finding-token-0002".to_string(),
+                now: NOW,
+            },
+            &witness,
+        );
+        assert_eq!(
+            outcome.err(),
+            Some(FindingAdmissionError::PricingHintMismatch)
+        );
     });
 }

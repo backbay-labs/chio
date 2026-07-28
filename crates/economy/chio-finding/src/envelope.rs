@@ -1,4 +1,5 @@
-//! Shared signed-envelope discipline for the M2 market artifact families.
+//! Shared signed-envelope discipline for the market artifact families in
+//! this crate.
 //!
 //! Every value-moving family in this crate travels as a
 //! `SignedExportEnvelope<T>` whose signer must equal an EXTERNALLY pinned

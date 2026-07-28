@@ -18,7 +18,7 @@ pub(crate) struct TrustServiceState {
     /// exactly when `cluster` is `Some`. A budget-write handler parks on this
     /// watch instead of driving its own inline sync.
     pub(crate) cluster_progress: Option<Arc<ClusterProgress>>,
-    /// Evidenced rail seam for finding-market fee collection (plan D9);
+    /// Evidenced rail seam for finding-market fee collection;
     /// `None` fails activation closed.
     #[cfg(feature = "cognition-market-experimental")]
     pub(crate) finding_rail: Option<Arc<dyn super::super::finding_handlers::FindingRailObserver>>,

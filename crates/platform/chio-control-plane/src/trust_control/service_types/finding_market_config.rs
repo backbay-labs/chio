@@ -1,5 +1,5 @@
 //! Deployment-pinned authority roster for the cognition-market finding
-//! surfaces (plan D9). Compiled only under `cognition-market-experimental`.
+//! surfaces. Compiled only under `cognition-market-experimental`.
 //!
 //! Every value-moving role is pinned here, independently of whatever keys
 //! artifacts embed: an envelope verifies only against its configured role,

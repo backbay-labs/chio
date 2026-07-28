@@ -1,4 +1,4 @@
-//! Behavioral coverage for the M2 market artifact families: happy-path
+//! Behavioral coverage for the market artifact families: happy-path
 //! construction and signing per family, then the adversarial rejections
 //! the wire types must enforce on their own (surface obligations such as
 //! liveness, store exclusivity, and cross-artifact digest resolution are
@@ -229,7 +229,7 @@ fn verified_facets() -> Vec<FindingFacetResult> {
             FindingFacetResult {
                 facet,
                 outcome,
-                reason: "wedge evaluation".to_string(),
+                reason: "evaluated under the pinned verifier profile".to_string(),
                 evidence_refs: Vec::new(),
             }
         })

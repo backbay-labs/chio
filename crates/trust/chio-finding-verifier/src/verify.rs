@@ -6,9 +6,10 @@
 //! completion on supplied evidence; `unavailable` when a required input
 //! was not supplied (which DENIES wherever the facet is required);
 //! `failed` when supplied evidence positively fails; `asserted` for
-//! seller labels the wedge cannot check. Nothing here collapses one into
-//! another, and required-facet policy is evaluated by the caller against
-//! the profile plus the finding's own claims.
+//! seller labels this verifier has no independent evidence to check.
+//! Nothing here collapses one into another, and required-facet policy is
+//! evaluated by the caller against the profile plus the finding's own
+//! claims.
 
 use std::collections::BTreeSet;
 
@@ -18,10 +19,11 @@ use chio_core_types::crypto::{sha256_hex, Keypair, PublicKey};
 use chio_core_types::receipt::body::{chio_receipt_id, ChioReceipt};
 use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use chio_finding::{
-    compute_report_id, verify_finding, verify_pinned_envelope, Finding, FindingBondBacking,
+    compute_report_id, verify_finding, verify_pinned_envelope, verify_signed_bond_backing, Finding,
     FindingChallengeVerifierProfile, FindingEvidenceClass, FindingFacetKind, FindingFacetOutcome,
-    FindingFacetResult, FindingGuaranteeClass, FindingPredicate, FindingReplayRecipeInput,
-    FindingVerifierReport, SignedFindingChallengeVerifierProfile, SignedFindingVerifierReport,
+    FindingFacetResult, FindingGuaranteeClass, FindingPredicate, FindingReceiptRole,
+    FindingReplayRecipeInput, FindingVerifierReport, SignedFindingBondBacking,
+    SignedFindingChallengeVerifierProfile, SignedFindingVerifierReport,
     FINDING_VERIFIER_REPORT_SCHEMA_V1,
 };
 use chio_kernel::checkpoint::{KernelCheckpoint, ReceiptInclusionProof};
@@ -69,6 +71,8 @@ pub struct FindingVerifierTrustRoots {
     pub profile: SignedFindingChallengeVerifierProfile,
     /// Kernel keys admitted for authoritative-spend accounting.
     pub admitted_kernel_keys: Vec<PublicKey>,
+    /// Collateral authority whose signature makes an allocation evidence.
+    pub collateral_authority: PublicKey,
     /// Venue trusted time for the evaluation stamp.
     pub trusted_time: u64,
     /// Digest of the trust-root snapshot the caller resolved (pinned
@@ -95,7 +99,10 @@ pub struct ResolvedReceiptEvidence {
 /// evaluation. A stale or absent snapshot reports bond backing
 /// unavailable, never verified.
 pub struct FindingBondSnapshot {
-    pub backing: FindingBondBacking,
+    /// The collateral-authority-signed allocation envelope. The body
+    /// alone is a seller-supplied assertion; only the signature under the
+    /// pinned authority makes it evidence.
+    pub backing: SignedFindingBondBacking,
     /// Store state: live and unconsumed right now.
     pub live: bool,
     /// Venue trusted time when the collateral authority registered the
@@ -223,10 +230,13 @@ pub fn verify_finding_evidence(
         return Err(FindingVerifierError::NoAdmittedKernelKeys);
     }
     let profile = &trust.profile.body;
+    let profile_envelope_bytes =
+        canonical_json_bytes(&trust.profile).map_err(|_| FindingVerifierError::Canonicalization)?;
+    let profile_envelope_sha256 = sha256_hex(&profile_envelope_bytes);
 
     let mut facets = Vec::with_capacity(FindingFacetKind::ALL.len());
 
-    // Facet 1: artifact integrity (M1 verify over the parsed view).
+    // Facet 1: artifact integrity (verify_finding over the parsed view).
     let artifact_integrity = match verify_finding(&finding) {
         Ok(()) => facet(
             FindingFacetKind::ArtifactIntegrity,
@@ -254,9 +264,34 @@ pub fn verify_finding_evidence(
     } else {
         let mut failure: Option<String> = None;
         let mut recomputed_ids = Vec::with_capacity(bundle.receipts.len());
+        // The profile pins which kernel keys may sign production
+        // evidence. Strict self-verification proves the bytes are
+        // internally authentic; only this set makes them trusted.
+        let production_signers: Vec<&PublicKey> = profile
+            .receipt_signers
+            .iter()
+            .filter(|signer| signer.role == FindingReceiptRole::Production)
+            .map(|signer| &signer.policy.key)
+            .collect();
+        if bundle.receipts.len() as u64 > profile.resource_caps.max_evidence_receipts {
+            failure = Some("evidence receipt count exceeds the profile cap".to_string());
+        }
         for evidence in &bundle.receipts {
+            if failure.is_some() {
+                break;
+            }
             if let Err(error) = verify_receipt_strict(&evidence.receipt) {
                 failure = Some(format!("receipt {}: {error}", evidence.receipt.id));
+                break;
+            }
+            if !production_signers
+                .iter()
+                .any(|pinned| **pinned == evidence.receipt.kernel_key)
+            {
+                failure = Some(format!(
+                    "receipt {} is signed by a key the profile does not pin as a production signer",
+                    evidence.receipt.id
+                ));
                 break;
             }
             // The canonical bytes supplied as the leaf must BE the bytes
@@ -339,22 +374,23 @@ pub fn verify_finding_evidence(
     };
     facets.push(checkpoint_membership);
 
-    // Facet 4: kernel and revocation trust. The wedge pins checkpoint
-    // signers through the profile (checked above) but carries no
-    // revocation feed yet; that portable proof is the M6 surface.
+    // Facet 4: kernel and revocation trust. Checkpoint signers are pinned
+    // through the profile (checked above); callers supply no revocation
+    // feed and no resolver for revocation freshness exists yet, so this
+    // facet reports unavailable.
     facets.push(facet(
         FindingFacetKind::KernelAndRevocationTrust,
         FindingFacetOutcome::Unavailable,
-        "revocation freshness evidence is not part of the M2 wedge bundle",
+        "revocation freshness evidence not supplied",
     ));
 
-    // Facet 5: issuer lineage. Signed capability snapshot transport
-    // validation is not wired into the wedge bundle; a payload digest
-    // match alone is NOT provenance, so the facet stays unavailable.
+    // Facet 5: issuer lineage. Callers supply no signed capability
+    // snapshot for transport validation; a payload digest match alone is
+    // NOT provenance, so the facet stays unavailable.
     facets.push(facet(
         FindingFacetKind::IssuerLineage,
         FindingFacetOutcome::Unavailable,
-        "signed capability snapshot evidence is not part of the M2 wedge bundle",
+        "signed capability snapshot evidence not supplied",
     ));
 
     // Step 4 / facet 6: recipe binding.
@@ -369,16 +405,18 @@ pub fn verify_finding_evidence(
             FindingFacetOutcome::Unavailable,
             "replay recipe preimage not supplied",
         ),
-        (Some(committed), Some(raw)) => evaluate_recipe_binding(profile, committed, raw),
+        (Some(committed), Some(raw)) => {
+            evaluate_recipe_binding(&finding, profile, &profile_envelope_sha256, committed, raw)
+        }
     };
     facets.push(recipe_binding);
 
-    // Facet 7: intent binding. Single-log ordering proof over the intent
-    // receipt is not carried in the wedge bundle.
+    // Facet 7: intent binding. Callers supply no single-log ordering
+    // proof over the intent receipt, so this facet reports unavailable.
     facets.push(facet(
         FindingFacetKind::IntentBinding,
         FindingFacetOutcome::Unavailable,
-        "intent commitment ordering evidence is not part of the M2 wedge bundle",
+        "intent commitment ordering evidence not supplied",
     ));
 
     // Step 6 / facets 8-9: cost floors.
@@ -417,20 +455,21 @@ pub fn verify_finding_evidence(
         Some(_) => facet(
             FindingFacetKind::RuntimeAssuranceBacking,
             FindingFacetOutcome::Asserted,
-            "appraisal and attestation evidence is not part of the M2 wedge bundle",
+            "appraisal and attestation evidence not supplied",
         ),
     });
 
     // Step 7 / facet 11: bond backing against the fresh store snapshot.
-    let (bond_backing, backing_allocation_id) = evaluate_bond_backing(&finding, bundle);
+    let (bond_backing, backing_allocation_id) = evaluate_bond_backing(&finding, trust, bundle);
     facets.push(bond_backing);
 
-    // Facet 12: status liveness. The portable sparse proof is M6; an
-    // authenticated online observation would be venue configuration.
+    // Facet 12: status liveness. Callers supply no portable sparse
+    // non-inclusion proof; an authenticated online status observation is
+    // a venue configuration concern, not evidence this verifier resolves.
     facets.push(facet(
         FindingFacetKind::StatusLiveness,
         FindingFacetOutcome::Unavailable,
-        "portable status non-inclusion proof lands with the M6 feed",
+        "portable status non-inclusion proof not supplied",
     ));
 
     // Facet 13: guarantee and evidence-class consistency, without
@@ -470,7 +509,9 @@ fn cost_facet(kind: FindingFacetKind, outcome: &CostFacetOutcome) -> FindingFace
 }
 
 fn evaluate_recipe_binding(
+    finding: &Finding,
     profile: &FindingChallengeVerifierProfile,
+    profile_envelope_sha256: &str,
     committed_sha256: &str,
     raw_preimage: &[u8],
 ) -> FindingFacetResult {
@@ -526,6 +567,42 @@ fn evaluate_recipe_binding(
             format!("recipe validation failed: {error}"),
         );
     }
+    // A digest-valid recipe proves nothing unless it is a recipe FOR
+    // this artifact under this profile: without these equalities any
+    // admitted recipe could be committed by any finding.
+    if recipe.context_sha256 != finding.descriptor.context_sha256 {
+        return facet(
+            FindingFacetKind::RecipeBinding,
+            FindingFacetOutcome::Failed,
+            "recipe context digest does not match the finding descriptor",
+        );
+    }
+    if recipe.payload_sha256 != finding.payload_sha256 {
+        return facet(
+            FindingFacetKind::RecipeBinding,
+            FindingFacetOutcome::Failed,
+            "recipe payload commitment does not match the finding",
+        );
+    }
+    if recipe.verifier_profile_envelope_sha256 != profile_envelope_sha256 {
+        return facet(
+            FindingFacetKind::RecipeBinding,
+            FindingFacetOutcome::Failed,
+            "recipe commits a different verifier profile",
+        );
+    }
+    if recipe.resource_bounds.max_runtime_secs > profile.resource_caps.max_runtime_secs
+        || recipe.resource_bounds.max_memory_bytes > profile.resource_caps.max_memory_bytes
+        || recipe.resource_bounds.max_recipe_bytes > profile.resource_caps.max_recipe_bytes
+        || recipe.resource_bounds.max_evidence_receipts
+            > profile.resource_caps.max_evidence_receipts
+    {
+        return facet(
+            FindingFacetKind::RecipeBinding,
+            FindingFacetOutcome::Failed,
+            "recipe resource bounds exceed the profile caps",
+        );
+    }
     if !profile
         .allowed_runner_manifests
         .contains(&recipe.runner_manifest_sha256)
@@ -556,6 +633,7 @@ fn evaluate_recipe_binding(
 
 fn evaluate_bond_backing(
     finding: &Finding,
+    trust: &FindingVerifierTrustRoots,
     bundle: &FindingEvidenceBundle<'_>,
 ) -> (FindingFacetResult, Option<String>) {
     let Some(snapshot) = &bundle.bond_snapshot else {
@@ -568,17 +646,41 @@ fn evaluate_bond_backing(
             None,
         );
     };
-    if let Err(error) = snapshot.backing.validate() {
+    // The allocation is evidence only under the externally pinned
+    // collateral authority; an unsigned body is a seller claim.
+    if let Err(error) = verify_signed_bond_backing(&snapshot.backing, &trust.collateral_authority) {
         return (
             facet(
                 FindingFacetKind::BondBacking,
                 FindingFacetOutcome::Failed,
-                format!("backing artifact invalid: {error}"),
+                format!("backing envelope rejected: {error}"),
             ),
             None,
         );
     }
-    if snapshot.backing.finding_id != finding.finding_id {
+    let backing = &snapshot.backing.body;
+    // A live allocation that expires before the claim, audit, and appeal
+    // horizons it promises is not backing.
+    let horizon_end = backing
+        .claim_horizon_secs
+        .checked_add(backing.audit_horizon_secs)
+        .and_then(|sum| sum.checked_add(backing.appeal_horizon_secs))
+        .and_then(|sum| sum.checked_add(backing.settlement_buffer_secs))
+        .and_then(|sum| trust.trusted_time.checked_add(sum));
+    match horizon_end {
+        Some(required) if backing.expires_at >= required => {}
+        _ => {
+            return (
+                facet(
+                    FindingFacetKind::BondBacking,
+                    FindingFacetOutcome::Failed,
+                    "backing expiry does not cover its own liability horizons",
+                ),
+                None,
+            );
+        }
+    }
+    if backing.finding_id != finding.finding_id {
         return (
             facet(
                 FindingFacetKind::BondBacking,
@@ -602,9 +704,9 @@ fn evaluate_bond_backing(
         facet(
             FindingFacetKind::BondBacking,
             FindingFacetOutcome::Verified,
-            "live exclusive allocation resolved for this finding",
+            "live exclusive allocation verified under the pinned collateral authority",
         ),
-        Some(snapshot.backing.allocation_id.clone()),
+        Some(backing.allocation_id.clone()),
     )
 }
 
@@ -639,16 +741,50 @@ fn evaluate_guarantee_consistency(
             "deterministic_replay claimed without a verified recipe binding",
         );
     }
-    if finding.evidence_class == FindingEvidenceClass::Verified
+    // A metered_attested guarantee asserts that execution and cost were
+    // attested by mediated receipts, so it needs the same receipt and
+    // membership backing plus a kernel-accounted cost floor. Without
+    // this, the strongest non-replay guarantee is the cheapest to claim.
+    if finding.guarantee_class == FindingGuaranteeClass::MeteredAttested
         && (outcome_of(FindingFacetKind::ReceiptAuthenticity)
             != Some(FindingFacetOutcome::Verified)
             || outcome_of(FindingFacetKind::CheckpointMembership)
+                != Some(FindingFacetOutcome::Verified)
+            || outcome_of(FindingFacetKind::MeteredExposureBacking)
                 != Some(FindingFacetOutcome::Verified))
     {
         return facet(
             FindingFacetKind::GuaranteeConsistency,
             FindingFacetOutcome::Failed,
-            "verified evidence class claimed without verified receipts and membership",
+            "metered_attested claimed without verified receipts, membership, and metered exposure",
+        );
+    }
+    // Observed and verified evidence classes both assert that the
+    // referenced receipts are real and checkpointed; only asserted is
+    // free.
+    if matches!(
+        finding.evidence_class,
+        FindingEvidenceClass::Verified | FindingEvidenceClass::Observed
+    ) && (outcome_of(FindingFacetKind::ReceiptAuthenticity)
+        != Some(FindingFacetOutcome::Verified)
+        || outcome_of(FindingFacetKind::CheckpointMembership)
+            != Some(FindingFacetOutcome::Verified))
+    {
+        return facet(
+            FindingFacetKind::GuaranteeConsistency,
+            FindingFacetOutcome::Failed,
+            "evidence class claims receipts that are not verified and checkpoint-bound",
+        );
+    }
+    // A positively failed facet is never consistent, whatever it is.
+    if facets
+        .iter()
+        .any(|result| result.outcome == FindingFacetOutcome::Failed)
+    {
+        return facet(
+            FindingFacetKind::GuaranteeConsistency,
+            FindingFacetOutcome::Failed,
+            "at least one evaluated facet failed",
         );
     }
     facet(
@@ -665,9 +801,13 @@ fn bundle_digest(bundle: &FindingEvidenceBundle<'_>) -> Result<String, FindingVe
     #[derive(serde::Serialize)]
     struct BundleCommitment<'a> {
         receipt_sha256s: Vec<String>,
+        inclusion_proof_sha256s: Vec<String>,
         checkpoint_sha256s: Vec<String>,
         recipe_sha256: Option<String>,
         backing_allocation_id: Option<&'a str>,
+        backing_envelope_sha256: Option<String>,
+        backing_live: Option<bool>,
+        backing_accepted_at: Option<u64>,
     }
     let receipt_sha256s = bundle
         .receipts
@@ -680,14 +820,35 @@ fn bundle_digest(bundle: &FindingEvidenceBundle<'_>) -> Result<String, FindingVe
             canonical_json_bytes(checkpoint).map_err(|_| FindingVerifierError::Canonicalization)?;
         checkpoint_sha256s.push(sha256_hex(&bytes));
     }
+    let mut inclusion_proof_sha256s = Vec::with_capacity(bundle.receipts.len());
+    for evidence in &bundle.receipts {
+        let bytes = canonical_json_bytes(&evidence.inclusion_proof)
+            .map_err(|_| FindingVerifierError::Canonicalization)?;
+        inclusion_proof_sha256s.push(sha256_hex(&bytes));
+    }
+    let backing_envelope_sha256 = match bundle.bond_snapshot.as_ref() {
+        Some(snapshot) => {
+            let bytes = canonical_json_bytes(&snapshot.backing)
+                .map_err(|_| FindingVerifierError::Canonicalization)?;
+            Some(sha256_hex(&bytes))
+        }
+        None => None,
+    };
     let commitment = BundleCommitment {
         receipt_sha256s,
+        inclusion_proof_sha256s,
         checkpoint_sha256s,
         recipe_sha256: bundle.recipe_preimage.map(sha256_hex),
         backing_allocation_id: bundle
             .bond_snapshot
             .as_ref()
-            .map(|snapshot| snapshot.backing.allocation_id.as_str()),
+            .map(|snapshot| snapshot.backing.body.allocation_id.as_str()),
+        backing_envelope_sha256,
+        backing_live: bundle.bond_snapshot.as_ref().map(|snapshot| snapshot.live),
+        backing_accepted_at: bundle
+            .bond_snapshot
+            .as_ref()
+            .map(|snapshot| snapshot.accepted_at),
     };
     let bytes =
         canonical_json_bytes(&commitment).map_err(|_| FindingVerifierError::Canonicalization)?;

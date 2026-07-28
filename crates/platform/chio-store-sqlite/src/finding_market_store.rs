@@ -1,12 +1,13 @@
-//! Durable finding-market storage for the M2 publish-and-discover wedge.
+//! Durable storage for the cognition finding market: publication,
+//! discovery, collateral backing, fee accounting, and venue admission.
 //!
 //! Five tables back the cognition market: `findings` (the exact accepted
 //! canonical artifact bytes plus the descriptor index), `recipe_blobs`
-//! (content-addressed replay-recipe preimages, retained forever per the
-//! wedge retention posture), `collateral_allocations` (live, exclusive,
-//! non-reusable backing allocations), `fee_events` (the durable
-//! idempotency fence for evidenced fee collection), and `admissions`
-//! (venue-signed admission bundles). Writes run under
+//! (content-addressed replay-recipe preimages, retained without
+//! deletion), `collateral_allocations` (live, exclusive, non-reusable
+//! backing allocations), `fee_events` (the durable idempotency fence for
+//! evidenced fee collection), and `admissions` (venue-signed admission
+//! bundles). Writes run under
 //! `TransactionBehavior::Immediate` behind the serving-owner fence; reads
 //! run `Deferred`; a commit whose outcome cannot be observed surfaces as
 //! outcome-unknown and poisons the owner exactly like the sibling stores.
@@ -48,9 +49,12 @@ const MAX_FINDING_ARTIFACT_BYTES: usize = 256 * 1024;
 const MAX_RECIPE_BLOB_BYTES: usize = 1024 * 1024;
 /// Signed backing and admission envelopes share the publish-body scale.
 const MAX_ENVELOPE_BYTES: usize = 256 * 1024;
-/// Topic byte-length bound, matching the M1 topic bound (plan D2).
+/// Topic byte-length bound for the descriptor index and the publish
+/// path that populates it.
 const MAX_TOPIC_BYTES: usize = 120;
-/// Search page clamp, matching the descriptor-index bound (plan D1).
+/// Search page clamp, matching the page-size bound shared by the other
+/// paginated query surfaces (for example
+/// `chio_listing::MAX_GENERIC_LISTING_LIMIT`).
 const MAX_SEARCH_PAGE: usize = 200;
 
 /// Errors surfaced by the finding-market store. Fail-closed: every
@@ -114,9 +118,10 @@ pub enum FindingAllocationState {
 }
 
 /// Snapshot of one collateral allocation: the parsed backing body, its
-/// exact envelope digest, the lifecycle state, and the venue trusted time
-/// at which the collateral authority's registration was accepted (the D14
-/// report-before-backing comparison input).
+/// exact envelope digest, the lifecycle state, and the venue trusted
+/// time at which the collateral authority's registration was accepted.
+/// Callers compare this against a report's timestamp to confirm the
+/// backing predates the report it covers.
 #[derive(Debug, Clone)]
 pub struct FindingAllocationSnapshot {
     pub backing: FindingBondBacking,
@@ -133,9 +138,9 @@ pub enum FindingFeeState {
     Failed,
 }
 
-/// Parameters fencing one fee charge before dispatch (plan D9). The
-/// idempotency key derives from the schedule digest, event, finding, and
-/// listing; every other field must be identical on replay.
+/// Parameters fencing one fee charge before dispatch. The idempotency
+/// key derives from the schedule digest, event, finding, and listing;
+/// every other field must be identical on replay.
 #[derive(Debug, Clone, Copy)]
 pub struct FindingFeeIntent<'a> {
     pub fee_schedule_envelope_sha256: &'a str,
@@ -176,7 +181,7 @@ pub enum FindingActivationOutcome {
 }
 
 /// The current admission for a finding: exact envelope bytes plus the
-/// data a reader needs to re-check collateral liveness (plan D5).
+/// data a reader needs to re-check collateral liveness.
 #[derive(Debug, Clone)]
 pub struct FindingAdmissionSnapshot {
     pub admission_id: String,
@@ -189,7 +194,7 @@ pub struct FindingAdmissionSnapshot {
     pub allocation_state: FindingAllocationState,
 }
 
-/// Deterministic idempotency key for one fee event (plan D9):
+/// Deterministic idempotency key for one fee event:
 /// `fee_schedule_envelope_sha256 : event kind : epoch index : finding_id :
 /// listing_id`. Every segment before `listing_id` comes from a fixed-width
 /// or closed vocabulary, so placing the only free-form segment last keeps
@@ -366,8 +371,8 @@ impl SqliteFindingMarketStore {
 
     /// One page of descriptor rows live at `now` (`issued_at <= now <
     /// expires_at`, both bounds), ordered by `finding_id` ascending with
-    /// exclusive start-after cursor semantics (plan D1/D2). An unfiltered
-    /// scan is rejected fail-closed; `limit` clamps to 1..=200.
+    /// exclusive start-after cursor semantics. An unfiltered scan is
+    /// rejected fail-closed; `limit` clamps to 1..=200.
     pub fn search_findings(
         &self,
         topic_prefix: Option<&str>,
@@ -454,7 +459,7 @@ impl SqliteFindingMarketStore {
 
     /// Persist a content-addressed recipe preimage, idempotently by
     /// digest. The digest is recomputed server-side and must equal the
-    /// claimed key; there is no delete (plan D4 retention).
+    /// claimed key; the store enforces retention, so there is no delete.
     pub fn put_recipe_blob(
         &self,
         canonical_sha256: &str,
@@ -532,8 +537,8 @@ impl SqliteFindingMarketStore {
 
     /// Register one live collateral allocation from a collateral-authority
     /// backing envelope. `accepted_at` is the venue trusted time of
-    /// acceptance (plan D14). The raw envelope bytes must parse to exactly
-    /// the supplied backing body; pinned-authority signature verification
+    /// acceptance. The raw envelope bytes must parse to exactly the
+    /// supplied backing body; pinned-authority signature verification
     /// is the caller's boundary. Exclusivity: at most one live allocation
     /// per (seller, finding, listing), and an allocation id registers
     /// exactly once whatever its state, so an already-encumbered or reused
@@ -654,8 +659,8 @@ impl SqliteFindingMarketStore {
         load_allocation_snapshot_tx(&transaction, allocation_id)
     }
 
-    /// Fence one fee charge before dispatch (plan D9). Absent key inserts
-    /// an `intent` row. An identical retry returns the existing row
+    /// Fence one fee charge before dispatch. Absent key inserts an
+    /// `intent` row. An identical retry returns the existing row
     /// whatever its state; conflicting parameters under the same key
     /// reject.
     pub fn begin_fee_intent(
@@ -1011,7 +1016,7 @@ impl SqliteFindingMarketStore {
     }
 
     /// The current (active) admission for a finding: exact envelope bytes
-    /// plus the allocation-liveness hook data readers re-check (plan D5).
+    /// plus the allocation-liveness hook data readers re-check.
     pub fn get_current_admission(
         &self,
         finding_id: &str,

@@ -99,7 +99,7 @@ production surface half-wired.
 |---|---|---|---|---|
 | M0 | Spec and registration | `chio.finding.v1` registered (challenge/status schemas deferred to M5/M6 per review); ADR-0017 remains Proposed | - | implemented with M1 |
 | M1 | `chio-finding` crate | artifact types, strict validators/signing, golden | M0 | implemented; qualified workspace gate passed |
-| M2 | Publish and discover | descriptor search surface; listing publish path; bond-proof admission gate | M1 | ready for fresh plan after M0/M1 gate |
+| M2 | Publish and discover | descriptor search surface; listing publish path; bond-proof admission gate | M1 | implemented dark behind `cognition-market-experimental`; plan [plans/2026-07-28-M2-publish-and-discover.md](plans/2026-07-28-M2-publish-and-discover.md) |
 | M3 | Kernel delivery contract | candidate `Constraint::OutputDigestSha256`; durable and legacy digest enforcement; generic `chio.delivery-contract.v1` receipt block; verdict-matrix rotation | M1 | blocked pending fresh ADR-A and kernel-owner review against the post-#974 terminal topology |
 | M4 | Wedge purchase E2E | reference finding server; ADR-A-selected output-aware durable hold/capture; `chio finding` CLI (publish/search/verify/buy) | M2, M3 | plan after M3 |
 | M5 | Challenge and audit lane | frozen-v1 `FraudulentListing` mapping plus signed finding challenge outcome; challenge evaluator; verifiable audit schedule; slash wiring | M4 | plan after M4 |
@@ -134,6 +134,16 @@ oracle root envelope, but its own signature must also bind the status backend,
 feed, nonce, and proof-semantics domain (ARCHITECTURE 4.4).
 
 ### M2 Publish and discover
+
+Status: implemented on `codex/cognition-market-m2` (stacked on the M0/M1
+branch) per the bite-sized plan
+[plans/2026-07-28-M2-publish-and-discover.md](plans/2026-07-28-M2-publish-and-discover.md),
+which fixes the fifteen design points this definition left open (D1-D15)
+and records the recorded-results gate. Every runtime surface ships dark
+behind `cognition-market-experimental`; the artifact families and their
+registrations are always-on spec. The definition below remains the
+normative scope statement.
+
 
 - Control-plane `POST /v1/findings/publish`: the REUSABLE `Finding`-ingress
   invariant (review finding) - FIRST apply a request-size limit and run

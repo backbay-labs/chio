@@ -23,8 +23,8 @@ use crate::validate::{
 pub const FINDING_BOND_BACKING_SCHEMA_V1: &str =
     chio_core_types::CHIO_FINDING_BOND_BACKING_V1_SCHEMA;
 
-/// Bond class this allocation backs. The wedge admits `Listing` only;
-/// the closed enum keeps unknown classes failing at parse time.
+/// Bond class this allocation backs. Only `Listing` is admitted; the
+/// closed enum keeps unknown classes failing at parse time.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum FindingBondClass {
@@ -32,9 +32,9 @@ pub enum FindingBondClass {
 }
 
 /// Concrete vault backing the locked amount. Closed enum: unknown vault
-/// kinds fail at parse time. The M2 wedge ships the venue-ledger variant
-/// only; chain vaults arrive with their owning milestones and their own
-/// verifiers.
+/// kinds fail at parse time. Only the venue-ledger variant is defined
+/// here; a chain-backed vault would need its own enum arm and its own
+/// verifier before this type could represent it.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum FindingCollateralVault {

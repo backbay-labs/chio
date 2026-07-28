@@ -18,10 +18,10 @@ name = "chio_control_plane"
 [features]
 default = []
 pq = ["chio-core/pq", "chio-kernel/pq", "chio-store-sqlite/pq"]
-# Ship-dark cognition-market surfaces (PLAN.md global constraints): the
+# Cognition-market surfaces: the
 # finding publish/discover/admission routes, their store, and the
-# open-market admission gate compile only under this feature until the
-# M9 qualification gate flips.
+# open-market admission gate compile only under this feature flag,
+# which is off by default.
 cognition-market-experimental = [
     "dep:chio-finding",
     "dep:chio-spec-validate",

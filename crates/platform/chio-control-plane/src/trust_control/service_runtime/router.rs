@@ -704,7 +704,7 @@ async fn handle_trust_control_metrics(
         .into_response()
 }
 
-/// Cognition-market finding routes (M2, ship-dark). Publish takes a
+/// Cognition-market finding routes. Publish takes a
 /// tighter body cap than the service-wide limit; dependency uploads keep
 /// the 1 MiB bound. Feature-off builds get an empty router here.
 #[cfg(feature = "cognition-market-experimental")]

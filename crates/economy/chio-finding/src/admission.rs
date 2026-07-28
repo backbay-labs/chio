@@ -4,7 +4,7 @@
 //!
 //! Admission binds every exact constituent envelope by digest, both
 //! governance-pinned pool identities, the community-fund destination, and
-//! the M4 purchase/failed-delivery authorities BEFORE any sale. Its body
+//! the purchase/failed-delivery authorities BEFORE any sale. Its body
 //! venue identity and its envelope signer must both equal the externally
 //! configured venue authority. Presence of a current verified admission
 //! IS the qualified cognition-market profile; generic listing search
@@ -134,7 +134,8 @@ pub struct FindingAdmission {
     pub challenge_administration_pool: FindingPoolBinding,
     pub community_fund_destination: String,
     pub status_feed_operator_ref: String,
-    /// M4 roles pinned before any sale, snapshot included.
+    /// Purchase and failed-delivery authority roles, pinned before any
+    /// sale, snapshot included.
     pub purchase_authority: FindingAuthorityKeyPolicy,
     pub failed_delivery_authority: FindingAuthorityKeyPolicy,
     pub issued_at: u64,
