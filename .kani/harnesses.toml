@@ -262,6 +262,14 @@ unwinding_checks = true
 primary_rust_symbol = "chio_core_types::merkle::MerkleProof::compute_root_from_hash"
 notes = "Exact production compute_root_from_hash traversal over every leaf and tree size from 1 through 8, with CBMC unwinding assertions. Under cfg(kani), node_hash is an order-sensitive two-byte algebra; collision resistance remains ASSUME-SHA256 and standard builds retain RFC 6962 SHA-256."
 
+[[harness]]
+crate = "chio-kernel-core"
+harness = "public_delivery_contract_allow_implies_digest_match"
+default_unwind = 8
+timeout_secs = 1800
+lane = "pr"
+notes = "Allow from the delivery-contract carrier implies byte-identical digests."
+
 
 # ---------------------------------------------------------------------
 # Per-crate sections land with their harness source
