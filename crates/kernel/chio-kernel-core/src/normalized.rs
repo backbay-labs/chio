@@ -557,8 +557,7 @@ impl TryFrom<&Constraint> for NormalizedConstraint {
                 Ok(Self::MinimumRuntimeAssurance((*tier).into()))
             }
             Constraint::Custom(key, value) => Ok(Self::Custom(key.clone(), value.clone())),
-            unsupported @ (Constraint::RegexMatch(_)
-            | Constraint::RequireCumulativeApprovalAbove { .. }
+            unsupported @ (Constraint::RequireCumulativeApprovalAbove { .. }
             | Constraint::MinimumAutonomyTier(_)
             | Constraint::TableAllowlist(_)
             | Constraint::ColumnDenylist(_)
