@@ -2,7 +2,7 @@
 
 - Status: Reference (citations verified against the tree, 2026-07-26)
 - Program: [README.md](./README.md) is the five-stage summary of this analysis
-- Decision context: [../../adr/ADR-0017-radicle-carrier-not-authority.md](../../adr/ADR-0017-radicle-carrier-not-authority.md)
+- Decision context: [../../adr/ADR-0018-radicle-carrier-not-authority.md](../../adr/ADR-0018-radicle-carrier-not-authority.md)
 - Substrate evidence: [../../research/radicle/EVALUATION.md](../../research/radicle/EVALUATION.md)
 
 This document decomposes the `spec/PROTOCOL.md` section 6.5 append-only gate

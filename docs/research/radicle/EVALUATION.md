@@ -1,7 +1,7 @@
 # Radicle evaluation: consolidated findings
 
 - Status: Complete (2026-07-25)
-- Decision: [../../adr/ADR-0017-radicle-carrier-not-authority.md](../../adr/ADR-0017-radicle-carrier-not-authority.md)
+- Decision: [../../adr/ADR-0018-radicle-carrier-not-authority.md](../../adr/ADR-0018-radicle-carrier-not-authority.md)
 - Follow-on program: [../../architecture/transparency/README.md](../../architecture/transparency/README.md)
 - Method: ten parallel agents across two waves; three hands-on experiments
   (dependency build spike, two-node Collaborative Object round trip, six-node
@@ -46,7 +46,7 @@ GPL-2.0-with-linking-exception libgit2 C sources, because the gate reads crate
 metadata (`MIT OR Apache-2.0`) and cannot see vendored C. The linking exception
 makes this legally fine. The hygiene problem is that a green run tells a
 reviewer something false about what is in the binary. Tracked as a standalone
-finding in ADR-0017.
+finding in ADR-0018.
 
 ## 3. The dependency spike
 

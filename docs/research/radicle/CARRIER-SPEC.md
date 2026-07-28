@@ -1,8 +1,8 @@
 # Radicle checkpoint carrier: deferred implementation spec
 
-- Status: Deferred. Do not build without a triggered revisit under ADR-0017.
+- Status: Deferred. Do not build without a triggered revisit under ADR-0018.
 - Date: 2026-07-25
-- Decision: [../../adr/ADR-0017-radicle-carrier-not-authority.md](../../adr/ADR-0017-radicle-carrier-not-authority.md)
+- Decision: [../../adr/ADR-0018-radicle-carrier-not-authority.md](../../adr/ADR-0018-radicle-carrier-not-authority.md)
 - Evidence: [./EVALUATION.md](./EVALUATION.md)
 - Precedent for the seam: ADR-0014 and [../iroh/ADAPTER-SPEC.md](../iroh/ADAPTER-SPEC.md)
 

@@ -6,7 +6,7 @@
   append-only or claim strong non-repudiation
 - Origin: the Radicle evaluation ([../../research/radicle/EVALUATION.md](../../research/radicle/EVALUATION.md)),
   which resolved into this program
-- Decision context: [../../adr/ADR-0017-radicle-carrier-not-authority.md](../../adr/ADR-0017-radicle-carrier-not-authority.md)
+- Decision context: [../../adr/ADR-0018-radicle-carrier-not-authority.md](../../adr/ADR-0018-radicle-carrier-not-authority.md)
 - Full decomposition: [GAP-ANALYSIS.md](./GAP-ANALYSIS.md), the itemized work
   breakdown with per-item citations that this program summarizes
 
@@ -328,7 +328,7 @@ valid quorum, offline.
 **Stage 5: choose a publication substrate.**
 Only now does this decision have consequences, and by this point stages 1
 through 4 have made it cheap and reversible. Radicle remains a deferred
-candidate under ADR-0017 with a documented carrier spec.
+candidate under ADR-0018 with a documented carrier spec.
 
 ## 5. Standing invariants
 

@@ -1,4 +1,4 @@
-# ADR-0017: Radicle Is A Carrier, Never An Authority (Adoption Deferred)
+# ADR-0018: Radicle Is A Carrier, Never An Authority (Adoption Deferred)
 
 - Status: Accepted (decision recorded 2026-07-25; adoption deferred, not scheduled)
 - Decision owner: trust and federation lane
