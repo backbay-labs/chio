@@ -448,22 +448,27 @@ impl ChioKernel {
             step_result_digests,
         })
     }
+}
 
+struct DurableEvaluationContract {
+    matched_grant_index: usize,
+    plan: DurablePostReturnPlan,
+    normalized_context: PostReturnNormalizedRequestContextV1,
+    expected_output_digest: Option<String>,
+    purchase: Option<crate::finding_purchase::VerifiedFindingPurchase>,
+}
+
+impl ChioKernel {
+    /// The frozen evaluation facts every durable terminal pass re-derives
+    /// from the recorded request: the selected grant, the frozen
+    /// post-return plan, the normalized replay context, the committed
+    /// output digest, and the purchase binding for a marked reveal.
     fn durable_evaluation_contract(
         &self,
         admission: &DurableToolAdmission,
         request: &ToolCallRequest,
         raw: &RawInvocationOutcomeV1,
-    ) -> Result<
-        (
-            usize,
-            DurablePostReturnPlan,
-            PostReturnNormalizedRequestContextV1,
-            Option<String>,
-            Option<crate::finding_purchase::VerifiedFindingPurchase>,
-        ),
-        KernelError,
-    > {
+    ) -> Result<DurableEvaluationContract, KernelError> {
         let matched_grant_index = raw.matched_grant_index().map_err(tool_outcome_error)?;
         let matching_grants = resolve_required_matching_grants(
             &request.capability,
@@ -532,13 +537,13 @@ impl ChioKernel {
                     "purchase binding could not be re-derived: {reason}"
                 ))
             })?;
-        Ok((
+        Ok(DurableEvaluationContract {
             matched_grant_index,
             plan,
             normalized_context,
             expected_output_digest,
             purchase,
-        ))
+        })
     }
 
     fn completed_durable_tool_response(
@@ -548,8 +553,13 @@ impl ChioKernel {
     ) -> Result<ToolCallResponse, KernelError> {
         let runtime = self.durable_runtime()?;
         let tool_return = self.load_durable_tool_return(admission)?;
-        let (matched_grant_index, plan, normalized_context, expected_output_digest, purchase) =
-            self.durable_evaluation_contract(admission, request, &tool_return.raw)?;
+        let DurableEvaluationContract {
+            matched_grant_index,
+            plan,
+            normalized_context,
+            expected_output_digest,
+            purchase,
+        } = self.durable_evaluation_contract(admission, request, &tool_return.raw)?;
         let DurableEvaluatedOutput {
             output,
             incomplete_reason,
@@ -1404,8 +1414,13 @@ impl ChioKernel {
         let _guard_evidence_scope = scope_pre_invocation_guard_evidence(
             tool_return.raw.pre_invocation_guard_evidence().to_vec(),
         );
-        let (matched_grant_index, plan, normalized_context, expected_output_digest, purchase) =
-            self.durable_evaluation_contract(admission, request, &tool_return.raw)?;
+        let DurableEvaluationContract {
+            matched_grant_index,
+            plan,
+            normalized_context,
+            expected_output_digest,
+            purchase,
+        } = self.durable_evaluation_contract(admission, request, &tool_return.raw)?;
         let DurableEvaluatedOutput {
             output,
             incomplete_reason,

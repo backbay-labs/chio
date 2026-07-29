@@ -308,6 +308,9 @@ mod credit_and_loss;
 #[path = "trust_control/finding_handlers.rs"]
 mod finding_handlers;
 #[cfg(feature = "cognition-market-experimental")]
+#[path = "trust_control/finding_purchase_coordinator.rs"]
+pub mod finding_purchase_coordinator;
+#[cfg(feature = "cognition-market-experimental")]
 #[path = "trust_control/finding_purchase_verifier.rs"]
 pub mod finding_purchase_verifier;
 #[cfg(feature = "cognition-market-experimental")]
