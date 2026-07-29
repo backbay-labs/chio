@@ -102,6 +102,7 @@ fn grant_is_economically_sensitive(grant: &ToolGrant) -> bool {
                     | Constraint::SellerExact(_)
                     | Constraint::MinimumAutonomyTier(_)
                     | Constraint::OutputDigestSha256(_)
+                    | Constraint::RequireFindingPurchase(_)
             )
         })
 }

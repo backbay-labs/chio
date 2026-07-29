@@ -445,6 +445,13 @@ fn constraint_matches(
                     .to_owned(),
             ))
         }
+        Constraint::Custom(key, _) if key == "require_finding_purchase" => {
+            Err(KernelError::InvalidConstraint(
+                "require_finding_purchase must use the RequireFindingPurchase constraint, not \
+                 Custom"
+                    .to_owned(),
+            ))
+        }
         Constraint::Custom(key, expected) => Ok(argument_contains_custom(arguments, key, expected)),
 
         // Constraints that require domain-specific evaluation (SQL parsing,
@@ -487,6 +494,16 @@ fn constraint_matches(
         // Admitting it here lets the grant match; every surface that cannot
         // reach that terminal rejects the constraint before dispatch.
         Constraint::OutputDigestSha256(_) => Ok(true),
+        // A purchase-marked grant serves exactly one reveal request: the
+        // argument object must name the sold finding as a typed string
+        // equal to the signed marker. A missing, wrong, or wrong-typed
+        // argument fails the match here, before any nonce, budget, or
+        // payment mutation. The purchase context itself is verified by the
+        // purchase-aware admission gate, not at argument matching.
+        Constraint::RequireFindingPurchase(marker) => Ok(arguments
+            .get("finding_id")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|finding_id| finding_id == marker.finding_id)),
     }
 }
 
@@ -650,6 +667,62 @@ mod tests {
             &serde_json::json!({"store": null}),
             &["session-cache".to_string()]
         ));
+    }
+
+    fn purchase_marker(finding_id: &str) -> Constraint {
+        Constraint::RequireFindingPurchase(Box::new(
+            chio_core::capability::scope::FindingPurchaseMarkerV1 {
+                finding_id: finding_id.to_string(),
+                listing_id: "listing-1".to_string(),
+                settlement:
+                    chio_core::capability::scope::FindingSettlementSelector::LocalReversibleHold,
+            },
+        ))
+    }
+
+    #[test]
+    fn finding_purchase_marker_requires_the_exact_typed_finding_argument() {
+        let capability = capability_with_constraints(vec![purchase_marker("finding-a")]);
+
+        assert!(capability_matches_request(
+            &capability,
+            "tool",
+            "srv",
+            &serde_json::json!({"finding_id": "finding-a"}),
+        )
+        .expect("matching finding argument admits the carrier"));
+        for arguments in [
+            serde_json::json!({}),
+            serde_json::json!({"finding_id": "finding-b"}),
+            serde_json::json!({"finding_id": ["finding-a"]}),
+            serde_json::json!({"finding_id": {"id": "finding-a"}}),
+            serde_json::json!({"finding": "finding-a"}),
+        ] {
+            assert!(
+                !capability_matches_request(&capability, "tool", "srv", &arguments)
+                    .expect("evaluate request match"),
+                "argument shape {arguments} must fail the purchase-marked grant"
+            );
+        }
+    }
+
+    #[test]
+    fn finding_purchase_custom_spelling_is_rejected_as_downgrade() {
+        let capability = capability_with_constraints(vec![Constraint::Custom(
+            "require_finding_purchase".to_string(),
+            "finding-a".to_string(),
+        )]);
+
+        let result = capability_matches_request(
+            &capability,
+            "tool",
+            "srv",
+            &serde_json::json!({"finding_id": "finding-a"}),
+        );
+        assert!(
+            matches!(result, Err(KernelError::InvalidConstraint(_))),
+            "custom spelling must be rejected, got {result:?}"
+        );
     }
 }
 

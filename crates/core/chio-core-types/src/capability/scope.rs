@@ -419,6 +419,53 @@ pub enum Constraint {
     /// the output-aware terminal ordering rejects the constraint before it
     /// mutates budget or payment.
     OutputDigestSha256(String),
+    /// Delivery: this grant authorizes exactly one purchased finding
+    /// reveal. The provider-signed marker names the exact finding and
+    /// listing being sold and closes over the settlement rail, so omitted
+    /// purchase context can never downgrade into a generic
+    /// digest-constrained call.
+    ///
+    /// Admission requires the request to name the same finding, a verified
+    /// purchase context, and the settlement profile the selector admits.
+    /// Surfaces without purchase-aware admission reject the marker before
+    /// any budget or payment mutation.
+    RequireFindingPurchase(Box<FindingPurchaseMarkerV1>),
+}
+
+/// Closed settlement selector for a purchased finding reveal.
+///
+/// The selector is signed into the grant by the provider, so a purchase
+/// admitted for one rail cannot be replayed against another by omitting
+/// its companion evidence.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "mode", rename_all = "snake_case", deny_unknown_fields)]
+pub enum FindingSettlementSelector {
+    /// Single-operator settlement over a local reversible hold: authorize
+    /// before dispatch, capture only after the delivered output passes the
+    /// digest and media checks, release on any failure.
+    LocalReversibleHold,
+    /// Cross-organization escrow settlement. The digest pins the exact
+    /// settlement-profile envelope the escrow witness must satisfy.
+    /// Registered for wire compatibility; admission rejects it until an
+    /// escrow witness lane exists.
+    CrossOrgEscrow {
+        /// Canonical lowercase 64-hex SHA-256 digest of the signed
+        /// settlement-profile envelope.
+        settlement_profile_sha256: String,
+    },
+}
+
+/// Provider-signed purchase binding carried by
+/// [`Constraint::RequireFindingPurchase`].
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct FindingPurchaseMarkerV1 {
+    /// Content-addressed id of the finding being sold.
+    pub finding_id: String,
+    /// Listing the sale was admitted under.
+    pub listing_id: String,
+    /// Closed settlement rail selector for this sale.
+    pub settlement: FindingSettlementSelector,
 }
 
 impl Constraint {
@@ -495,6 +542,11 @@ impl Constraint {
             // A delivery digest is preserved only by an identical digest:
             // a child cannot loosen or drop the expected output.
             (Self::OutputDigestSha256(parent), Self::OutputDigestSha256(child)) => parent == child,
+            // A purchase marker is preserved only by an identical marker:
+            // delegation cannot retarget the finding, listing, or rail.
+            (Self::RequireFindingPurchase(parent), Self::RequireFindingPurchase(child)) => {
+                parent == child
+            }
             _ => self == child,
         }
     }

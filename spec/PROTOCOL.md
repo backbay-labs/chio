@@ -457,7 +457,15 @@ The shipped scope model includes:
 
 The shipped `constraints` surface includes ordinary argument constraints plus
 governed-transaction controls such as `governed_intent_required`,
-`require_approval_above`, and `seller_exact`.
+`require_approval_above`, and `seller_exact`, and two delivery controls:
+`output_digest_sha256` (the expected post-transform output digest, enforced
+at the output-aware durable terminal) and `require_finding_purchase` (a
+provider-signed purchase marker binding `finding_id`, `listing_id`, and a
+closed settlement selector whose modes are `local_reversible_hold` and
+`cross_org_escrow` with a pinned `settlement_profile_sha256`). Surfaces
+without output-aware or purchase-aware admission reject both delivery
+controls fail-closed before any budget or payment mutation, and the
+`Custom`-keyed spellings of either name are rejected as downgrade attempts.
 
 ### Capability Attenuation
 

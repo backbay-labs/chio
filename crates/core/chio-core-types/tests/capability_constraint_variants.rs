@@ -12,7 +12,10 @@
 
 use chio_core_types::capability::{
     governance::ProvenanceEvidenceClass,
-    scope::{Constraint, ContentReviewTier, ModelMetadata, ModelSafetyTier, SqlOperationClass},
+    scope::{
+        Constraint, ContentReviewTier, FindingPurchaseMarkerV1, FindingSettlementSelector,
+        ModelMetadata, ModelSafetyTier, SqlOperationClass,
+    },
 };
 use serde_json::{json, Value};
 
@@ -245,4 +248,136 @@ fn existing_path_prefix_still_deserializes() {
     });
     let constraint: Constraint = serde_json::from_value(value).expect("decodes");
     assert_eq!(constraint, Constraint::PathPrefix("/workspace".to_string()));
+}
+
+fn purchase_marker(
+    finding_id: &str,
+    listing_id: &str,
+    settlement: FindingSettlementSelector,
+) -> Constraint {
+    Constraint::RequireFindingPurchase(Box::new(FindingPurchaseMarkerV1 {
+        finding_id: finding_id.to_string(),
+        listing_id: listing_id.to_string(),
+        settlement,
+    }))
+}
+
+#[test]
+fn require_finding_purchase_local_serializes_with_expected_shape() {
+    let constraint = purchase_marker(
+        "finding-1",
+        "listing-1",
+        FindingSettlementSelector::LocalReversibleHold,
+    );
+    let value = to_value(&constraint);
+    assert_eq!(
+        value,
+        json!({
+            "type": "require_finding_purchase",
+            "value": {
+                "finding_id": "finding-1",
+                "listing_id": "listing-1",
+                "settlement": {"mode": "local_reversible_hold"},
+            },
+        })
+    );
+    assert_eq!(roundtrip(constraint.clone()), constraint);
+}
+
+#[test]
+fn require_finding_purchase_escrow_selector_roundtrips() {
+    let constraint = purchase_marker(
+        "finding-1",
+        "listing-1",
+        FindingSettlementSelector::CrossOrgEscrow {
+            settlement_profile_sha256: "ab".repeat(32),
+        },
+    );
+    let value = to_value(&constraint);
+    assert_eq!(
+        value["value"]["settlement"],
+        json!({
+            "mode": "cross_org_escrow",
+            "settlement_profile_sha256": "ab".repeat(32),
+        })
+    );
+    assert_eq!(roundtrip(constraint.clone()), constraint);
+}
+
+#[test]
+fn require_finding_purchase_rejects_unknown_marker_fields() {
+    let value = json!({
+        "type": "require_finding_purchase",
+        "value": {
+            "finding_id": "finding-1",
+            "listing_id": "listing-1",
+            "settlement": {"mode": "local_reversible_hold"},
+            "payout_override": "attacker",
+        },
+    });
+    assert!(serde_json::from_value::<Constraint>(value).is_err());
+}
+
+#[test]
+fn require_finding_purchase_rejects_unknown_settlement_mode() {
+    let value = json!({
+        "type": "require_finding_purchase",
+        "value": {
+            "finding_id": "finding-1",
+            "listing_id": "listing-1",
+            "settlement": {"mode": "irreversible_transfer"},
+        },
+    });
+    assert!(serde_json::from_value::<Constraint>(value).is_err());
+}
+
+#[test]
+fn require_finding_purchase_is_preserved_only_by_the_identical_marker() {
+    let base = |constraints: Vec<Constraint>| chio_core_types::capability::scope::ToolGrant {
+        server_id: "srv".to_string(),
+        tool_name: "read_finding".to_string(),
+        operations: vec![chio_core_types::capability::scope::Operation::Invoke],
+        constraints,
+        max_invocations: Some(1),
+        max_cost_per_invocation: None,
+        max_total_cost: None,
+        dpop_required: Some(true),
+    };
+    let parent = base(vec![purchase_marker(
+        "finding-1",
+        "listing-1",
+        FindingSettlementSelector::LocalReversibleHold,
+    )]);
+
+    assert!(base(vec![purchase_marker(
+        "finding-1",
+        "listing-1",
+        FindingSettlementSelector::LocalReversibleHold,
+    )])
+    .is_subset_of(&parent));
+    for retargeted in [
+        base(vec![purchase_marker(
+            "finding-2",
+            "listing-1",
+            FindingSettlementSelector::LocalReversibleHold,
+        )]),
+        base(vec![purchase_marker(
+            "finding-1",
+            "listing-2",
+            FindingSettlementSelector::LocalReversibleHold,
+        )]),
+        base(vec![purchase_marker(
+            "finding-1",
+            "listing-1",
+            FindingSettlementSelector::CrossOrgEscrow {
+                settlement_profile_sha256: "cd".repeat(32),
+            },
+        )]),
+        base(Vec::new()),
+    ] {
+        assert!(
+            !retargeted.is_subset_of(&parent),
+            "a child may not retarget or drop the purchase marker"
+        );
+    }
 }

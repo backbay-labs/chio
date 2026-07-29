@@ -248,7 +248,8 @@ fn constraint_matches(
         | Constraint::RequireDualApproval(_)
         | Constraint::ModelConstraint { .. }
         | Constraint::MemoryWriteDenyPatterns(_)
-        | Constraint::OutputDigestSha256(_) => Err(ScopeMatchError::ConstraintError(format!(
+        | Constraint::OutputDigestSha256(_)
+        | Constraint::RequireFindingPurchase(_) => Err(ScopeMatchError::ConstraintError(format!(
             "portable kernel cannot safely evaluate {}",
             constraint_name(constraint)
         ))),
@@ -363,6 +364,7 @@ fn constraint_name(constraint: &Constraint) -> &'static str {
         Constraint::MemoryStoreAllowlist(_) => "memory_store_allowlist",
         Constraint::MemoryWriteDenyPatterns(_) => "memory_write_deny_patterns",
         Constraint::OutputDigestSha256(_) => "output_digest_sha256",
+        Constraint::RequireFindingPurchase(_) => "require_finding_purchase",
     }
 }
 

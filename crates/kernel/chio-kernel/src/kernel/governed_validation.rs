@@ -223,7 +223,8 @@ impl ChioKernel {
                 | Constraint::ModelConstraint { .. }
                 | Constraint::MemoryStoreAllowlist(_)
                 | Constraint::MemoryWriteDenyPatterns(_)
-                | Constraint::OutputDigestSha256(_) => {}
+                | Constraint::OutputDigestSha256(_)
+                | Constraint::RequireFindingPurchase(_) => {}
             }
         }
 

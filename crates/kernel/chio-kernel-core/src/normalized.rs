@@ -570,7 +570,8 @@ impl TryFrom<&Constraint> for NormalizedConstraint {
             | Constraint::ModelConstraint { .. }
             | Constraint::MemoryStoreAllowlist(_)
             | Constraint::MemoryWriteDenyPatterns(_)
-            | Constraint::OutputDigestSha256(_)) => {
+            | Constraint::OutputDigestSha256(_)
+            | Constraint::RequireFindingPurchase(_)) => {
                 Err(NormalizationError::UnsupportedConstraint {
                     kind: unsupported_constraint_name(unsupported).to_string(),
                 })
@@ -666,6 +667,7 @@ fn unsupported_constraint_name(constraint: &Constraint) -> &'static str {
         Constraint::MemoryStoreAllowlist(_) => "memory_store_allowlist",
         Constraint::MemoryWriteDenyPatterns(_) => "memory_write_deny_patterns",
         Constraint::OutputDigestSha256(_) => "output_digest_sha256",
+        Constraint::RequireFindingPurchase(_) => "require_finding_purchase",
     }
 }
 
@@ -739,6 +741,32 @@ mod tests {
             error,
             NormalizationError::UnsupportedConstraint {
                 kind: "table_allowlist".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn normalized_scope_rejects_finding_purchase_marker() {
+        use alloc::boxed::Box;
+        let scope = ChioScope {
+            grants: vec![grant(vec![Constraint::RequireFindingPurchase(Box::new(
+                chio_core_types::capability::scope::FindingPurchaseMarkerV1 {
+                    finding_id: "finding-1".to_string(),
+                    listing_id: "listing-1".to_string(),
+                    settlement:
+                        chio_core_types::capability::scope::FindingSettlementSelector::LocalReversibleHold,
+                },
+            ))])],
+            resource_grants: vec![],
+            prompt_grants: vec![],
+        };
+
+        let error = NormalizedScope::try_from(&scope)
+            .expect_err("purchase-aware admission is not portable");
+        assert_eq!(
+            error,
+            NormalizationError::UnsupportedConstraint {
+                kind: "require_finding_purchase".to_string(),
             }
         );
     }
