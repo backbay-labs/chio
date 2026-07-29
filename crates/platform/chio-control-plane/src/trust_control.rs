@@ -307,6 +307,9 @@ mod credit_and_loss;
 #[cfg(feature = "cognition-market-experimental")]
 #[path = "trust_control/finding_handlers.rs"]
 mod finding_handlers;
+#[cfg(feature = "cognition-market-experimental")]
+#[path = "trust_control/finding_reveal_server.rs"]
+pub mod finding_reveal_server;
 #[path = "trust_control/passport_handlers.rs"]
 mod passport_handlers;
 #[path = "trust_control/receipt_handlers.rs"]

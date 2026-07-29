@@ -30,6 +30,7 @@ cognition-market-experimental = [
 ]
 
 [dependencies]
+async-trait = { workspace = true }
 chio-agent-web-interop = { workspace = true }
 chio-finding = { workspace = true, optional = true }
 chio-spec-validate = { workspace = true, optional = true }
