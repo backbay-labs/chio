@@ -282,6 +282,8 @@ fn finding_purchase_clears_the_real_bid_path() {
             agent_subject: agent.public_key(),
             token_id: "finding-token-0001".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect("finding bid clears the marketplace path");
@@ -341,6 +343,8 @@ fn finding_bid_ceiling_is_bounded_and_budget_capped() {
             agent_subject: agent.public_key(),
             token_id: "finding-token-at-ceiling".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .is_ok());
@@ -357,6 +361,8 @@ fn finding_bid_ceiling_is_bounded_and_budget_capped() {
                 agent_subject: agent.public_key(),
                 token_id: "finding-token-over-ceiling".to_string(),
                 now: 120,
+                grant_constraints: Vec::new(),
+                dpop_required: None,
             },
         ),
         Err(BiddingError::BidCeilingTooLow)

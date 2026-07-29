@@ -269,6 +269,8 @@ fn bid_happy_path_mints_token_and_accept_records_settlement() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-abc".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect("bid succeeds");
@@ -310,6 +312,8 @@ fn accept_rejects_timestamp_before_ask_issuance() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-abc".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect("bid succeeds");
@@ -345,6 +349,8 @@ fn accept_rejects_bogus_reservation_receipt() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-abc".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect("bid succeeds");
@@ -381,6 +387,8 @@ fn reservation_receipt_verification_rejects_wrong_authority() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-abc".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect("bid succeeds");
@@ -415,6 +423,8 @@ fn accept_rejects_underfunded_reservation_receipt() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-abc".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect("bid succeeds");
@@ -450,6 +460,8 @@ fn accept_rejects_single_call_reservation_for_multi_invocation_token() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-abc".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect("bid succeeds");
@@ -489,6 +501,8 @@ fn accept_rejects_reservation_identity_mismatch() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-abc".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect("bid succeeds");
@@ -532,6 +546,8 @@ fn accept_rejects_reservation_currency_mismatch() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-abc".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect("bid succeeds");
@@ -568,6 +584,8 @@ fn bid_fails_closed_on_stale_listing_freshness() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-abc".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect_err("stale listing rejected");
@@ -596,6 +614,8 @@ fn bid_fails_closed_on_revoked_listing() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-abc".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect_err("revoked listing rejected");
@@ -627,6 +647,8 @@ fn bid_refuses_mismatched_listing_id() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-abc".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect_err("mismatched listing rejected");
@@ -668,6 +690,8 @@ fn bid_allows_deeper_scope_prefix_without_rewriting_tool_name() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-premium".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect("bid succeeds for deeper capability scope");
@@ -701,6 +725,8 @@ fn bid_rejects_sibling_scope_prefixes() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-sibling".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect_err("sibling scope should be rejected");
@@ -730,6 +756,8 @@ fn accept_refuses_empty_bid_receipt_id() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-abc".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect("bid succeeds");
@@ -764,6 +792,8 @@ fn accept_rejects_non_agent_acceptor_signature() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-abc".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect("bid succeeds");
@@ -804,6 +834,8 @@ fn bid_rejects_max_total_cost_overflow_instead_of_silently_saturating() {
             agent_subject: agent_keypair.public_key(),
             token_id: "token-overflow".to_string(),
             now: 120,
+            grant_constraints: Vec::new(),
+            dpop_required: None,
         },
     )
     .test_expect_err("overflowing total cost is rejected");

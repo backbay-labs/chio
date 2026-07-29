@@ -1945,6 +1945,8 @@ async fn finding_publish_discover_admission() -> TestResult {
             agent_subject: agent.public_key(),
             token_id: "finding-token-0001".to_string(),
             now: unix_timestamp_now(),
+        grant_constraints: Vec::new(),
+        dpop_required: None,
         },
         &witness,
     )?;
