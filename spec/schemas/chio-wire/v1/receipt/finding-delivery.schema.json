@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-wire/v1/receipt/finding-delivery.schema.json",
+  "title": "Chio Finding Delivery Receipt Metadata",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "finding_id",
+    "listing_id",
+    "transform_profile",
+    "digest_check",
+    "media_type_check",
+    "settlement_mode",
+    "accepted_bid_envelope_sha256",
+    "venue_admission_envelope_sha256",
+    "reservation_id",
+    "purchase_intent_id",
+    "authoritative_payment_operation_id"
+  ],
+  "properties": {
+    "schema": { "const": "chio.finding.delivery.v1" },
+    "finding_id": { "$ref": "#/$defs/identifier" },
+    "listing_id": { "$ref": "#/$defs/identifier" },
+    "transform_profile": {
+      "enum": [
+        "identity"
+      ]
+    },
+    "digest_check": {
+      "enum": [
+        "matched",
+        "mismatched"
+      ]
+    },
+    "media_type_check": {
+      "enum": [
+        "matched",
+        "mismatched",
+        "not_evaluated"
+      ]
+    },
+    "settlement_mode": {
+      "enum": [
+        "local_reversible_hold"
+      ]
+    },
+    "accepted_bid_envelope_sha256": { "$ref": "#/$defs/digest" },
+    "venue_admission_envelope_sha256": { "$ref": "#/$defs/digest" },
+    "reservation_id": { "$ref": "#/$defs/identifier" },
+    "purchase_intent_id": { "$ref": "#/$defs/identifier" },
+    "authoritative_payment_operation_id": { "$ref": "#/$defs/identifier" }
+  },
+  "$defs": {
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "identifier": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._:-]{1,512}$"
+    }
+  }
+}

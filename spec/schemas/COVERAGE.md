@@ -28,7 +28,7 @@ canonical `chio_spec_codegen::GENERATED_HEADER`; it is not exported from
 
 ## Wire schemas: `chio-wire/v1/`
 
-The native Chio message families defined in `spec/WIRE_PROTOCOL.md`. Fifty-two
+The native Chio message families defined in `spec/WIRE_PROTOCOL.md`. Fifty-five
 schema files across eleven subtrees.
 
 ### agent (5)
@@ -41,13 +41,14 @@ schema files across eleven subtrees.
 | `agent/list_capabilities.schema.json`                |    12 |
 | `agent/tool_call_request.schema.json`                |    50 |
 
-### kernel (6)
+### kernel (7)
 
 | File                                           | Lines |
 |------------------------------------------------|-------|
 | `kernel/capability_list.schema.json`           |    15 |
 | `kernel/capability_revoked.schema.json`        |    16 |
 | `kernel/combined-capture-metadata.schema.json` |    42 |
+| `kernel/execution_nonce.schema.json`           |    50 |
 | `kernel/heartbeat.schema.json`                 |    12 |
 | `kernel/tool_call_chunk.schema.json`           |    21 |
 | `kernel/tool_call_response.schema.json`        |   185 |
@@ -92,7 +93,7 @@ projection. See `capability/README.md`.
 | `capability/token.schema.json`                         |   604 |
 | `capability/verified-approval-set.schema.json`         |    44 |
 
-### receipt (5)
+### receipt (6)
 
 Signed receipts produced after tool calls complete, plus lineage and
 inclusion-proof shapes. See `receipt/README.md`.
@@ -101,6 +102,7 @@ inclusion-proof shapes. See `receipt/README.md`.
 |------------------------------------------------|-------|
 | `receipt/admission-metadata.schema.json`       |   153 |
 | `receipt/delivery-contract.schema.json`        |    30 |
+| `receipt/finding-delivery.schema.json`         |    64 |
 | `receipt/inclusion-proof.schema.json`          |    30 |
 | `receipt/lineage_statement.schema.json`        |    97 |
 | `receipt/record.schema.json`                   |   448 |

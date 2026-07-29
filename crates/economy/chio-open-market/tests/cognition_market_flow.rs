@@ -1,23 +1,17 @@
-//! Spec-shaped coverage for the proposed agent cognition market.
+//! Coverage for the parts of a cognition-market purchase that ride the
+//! generic marketplace path: a finding listing clears the real `bid()`
+//! flow under the colon-segment scope convention, the bid shape needs no
+//! finding-specific fields, and the buyer-local bid ceiling is
+//! deterministic and budget-capped.
 //!
-//! Companion documents:
-//! - `docs/research/agent-cognition-market.md` (design memo)
-//! - `docs/research/cognition-market/ARCHITECTURE.md` (design set)
-//! - `docs/adr/ADR-0017-cognition-market-finding-artifacts.md`
+//! The admission-gated and delivery-committed mint paths are covered by
+//! `tests/finding_admission.rs`; the reveal-time purchase-context verifier
+//! by `tests/purchase_verification.rs`; and publish through discovery,
+//! reservation, reveal, and settlement by the control-plane wedge purchase
+//! test in `chio-control-plane`.
 //!
-//! M1 ships the registered `chio.finding.v1` artifact, schema, validator,
-//! signer, and golden fixture. The production marketplace still has no
-//! finding publish or reveal wiring.
-//!
-//! Three of these tests pass today: the buy leg clears the real `bid()`
-//! path for a finding listing (colon-segment scope semantics), the bid
-//! shape needs zero new fields, and buyer-local ceiling arithmetic is
-//! deterministic. They do not exercise `accept()` or an authoritative
-//! reservation. The `#[ignore]`d test specifies the desired end-to-end
-//! reveal flow and names the seams that do not exist yet; run it with
-//! `cargo test -p chio-open-market --test cognition_market_flow
-//! cognition_market_reveal_flow_spec -- --ignored --exact` to see the first
-//! missing seam without running unrelated ignored tests.
+//! `docs/adr/ADR-0017-cognition-market-finding-artifacts.md` describes the
+//! artifact family these tests buy against.
 
 use chio_finding::{
     compute_finding_id, sign_finding, verify_finding, Finding, FindingDescriptor,
@@ -43,7 +37,7 @@ use chio_open_market::{
 use chio_test_support::prelude::*;
 
 const FINDING_SERVER_ID: &str = "finding-server.seller.example";
-const FINDING_LISTING_ID: &str = "listing-finding-dead-end-0001";
+const FINDING_LISTING_ID: &str = "listing-finding-bid-path-0001";
 
 fn hex64(fill: char) -> String {
     std::iter::repeat_n(fill, 64).collect()
@@ -51,24 +45,15 @@ fn hex64(fill: char) -> String {
 
 /// Colon-segment scope for one finding, per the real marketplace
 /// semantics: `capability_scope_covers` splits on `:` and requires the
-/// advertised scope to be a segment-prefix of the requested one
-/// (`chio-open-market/src/bidding.rs:534`).
+/// advertised scope to be a segment-prefix of the requested one.
 fn finding_scope(finding: &Finding) -> String {
     format!("finding:{}", finding.finding_id)
 }
 
-/// Delivery proof the reveal step must produce: a kernel receipt whose
-/// `content_hash` equals the finding's committed `payload_sha256`.
-/// Today the output-aware kernel finalizer cannot enforce that equality,
-/// so this stub can only report the seam as missing.
-fn mediated_reveal_delivery_receipt(_finding: &Finding) -> Option<String> {
-    None
-}
-
-/// Buyer-local elicitation arithmetic from memo section 6.6: a supplied
-/// re-derivation estimate discounted by planner-owned priors and capped by
-/// a supplied budget remainder. No authenticated quote producer or
-/// authoritative allocation is wired here.
+/// Buyer-local elicitation arithmetic: a supplied re-derivation estimate
+/// discounted by planner-owned priors and capped by a supplied budget
+/// remainder. No authenticated quote producer or authoritative allocation
+/// is wired here.
 struct FindingBidBasis {
     rederivation_estimate_units: u64,
     would_have_run_bps: u16,
@@ -131,10 +116,10 @@ fn sealed_negative_result() -> Finding {
     }
 }
 
-/// Marketplace fixtures for the end-to-end bid-path test, mirroring the
-/// construction in `tests/bidding.rs` with finding-flavored values. The
-/// listed subject is the seller's finding server under the existing
-/// `ToolServer` actor kind (ARCHITECTURE 7.3): no listing-schema change.
+/// Marketplace fixtures for the bid-path test, mirroring the construction
+/// in `tests/bidding.rs` with finding-flavored values. The listed subject
+/// is the seller's finding server under the existing `ToolServer` actor
+/// kind, so no listing-schema change is involved.
 fn finding_namespace(keypair: &Keypair) -> GenericNamespaceOwnership {
     GenericNamespaceOwnership {
         namespace: "https://registry.seller.example".to_string(),
@@ -242,9 +227,9 @@ fn finding_bid_request(finding: &Finding, max_price_units: u64) -> BidRequest {
     }
 }
 
-/// Passes today: buying a finding reuses the existing marketplace bid
-/// shape unchanged. The listing id points at a finding listing instead of
-/// a tool listing; the bid itself needs zero new fields.
+/// Buying a finding reuses the existing marketplace bid shape unchanged.
+/// The listing id points at a finding listing instead of a tool listing;
+/// the bid itself needs zero new fields.
 #[test]
 fn finding_purchase_reuses_marketplace_bid_shape() {
     let finding = sealed_negative_result();
@@ -252,13 +237,11 @@ fn finding_purchase_reuses_marketplace_bid_shape() {
     assert!(finding_bid_request(&finding, 900).validate().is_ok());
 }
 
-/// Passes today: a finding listing clears the REAL `bid()` path with the
-/// colon-segment scope convention, and the minted token is a generic
-/// one-shot priced grant. Also pins the M4 seam: `bid()` mints grants with
-/// empty constraints (`bidding.rs:396`) and does not retain the opaque
-/// capability-scope prefix, so the delivery and per-finding binding has
-/// nowhere to ride until `BidMintContext` grows provider-supplied
-/// constraints.
+/// A finding listing clears the real `bid()` path with the colon-segment
+/// scope convention, and the minted token is a generic one-shot priced
+/// grant. The generic path mints exactly the provider-supplied constraints
+/// it is handed and nothing more; the delivery commitment and the purchase
+/// marker are authored by the finding purchase mint instead.
 #[test]
 fn finding_purchase_clears_the_real_bid_path() {
     let operator = Keypair::generate();
@@ -300,15 +283,15 @@ fn finding_purchase_clears_the_real_bid_path() {
             currency: "USD".to_string(),
         })
     );
-    // Seam pin (M4): no delivery constraint can be attached yet.
+    // Nothing the caller did not supply: an empty constraint list and a
+    // bearer grant.
     assert!(grant.constraints.is_empty());
-    // Seam pin (M4): the current bid path also mints a bearer grant.
     assert_eq!(grant.dpop_required, None);
 }
 
-/// Passes today: this buyer-local arithmetic is deterministic, monotone in
-/// the supplied re-derivation estimate, and capped by the supplied budget
-/// remainder. It makes no claim about true value or authoritative funds.
+/// The buyer-local ceiling is deterministic, monotone in the supplied
+/// re-derivation estimate, and capped by the supplied budget remainder. It
+/// makes no claim about true value or authoritative funds.
 #[test]
 fn finding_bid_ceiling_is_bounded_and_budget_capped() {
     let mut basis = FindingBidBasis {
@@ -373,65 +356,4 @@ fn finding_bid_ceiling_is_bounded_and_budget_capped() {
 
     higher_quote.would_have_run_bps = 0;
     assert_eq!(finding_bid_ceiling(&higher_quote), 0);
-}
-
-/// Specifies the desired end-to-end flow (memo section 6.2). Ignored
-/// because the reveal seam does not exist yet; the panic below names the
-/// first missing piece in dependency order.
-#[test]
-#[ignore = "specifies the unimplemented cognition-market reveal flow; see docs/research/agent-cognition-market.md section 6.2"]
-fn cognition_market_reveal_flow_spec() {
-    let finding = sealed_negative_result();
-
-    // 1. Commit: the finding artifact carries the payload commitment and
-    //    the metered evidence refs a buyer verifies before bidding. M1
-    //    provides structural, content-address, and issuer-signature
-    //    integrity for this artifact.
-    assert_eq!(finding.schema, FINDING_SCHEMA_V1);
-    assert_eq!(
-        finding.descriptor.outcome_class,
-        FindingOutcomeClass::NullResult
-    );
-    assert!(!finding.evidence_receipt_ids.is_empty());
-    assert!(!finding.signature.is_empty());
-    assert!(finding.validate().is_ok());
-    assert_eq!(compute_finding_id(&finding), Ok(finding.finding_id.clone()));
-    assert!(verify_finding(&finding).is_ok());
-
-    // 2. Bid: covered by the passing tests above, including the real
-    //    bid() path and the pinned empty-constraints and DPoP seams. An
-    //    admission gate sits in front of it: trusted bid goes through
-    //    `finding_admission::bid_with_finding_admission`, which accepts
-    //    only a current venue-signed admission bundle (publish, search,
-    //    collateral, fees, and activation are exercised by the
-    //    control-plane test `finding_publish_discover_admission`).
-    //    The target flow still needs an authoritative budget reservation
-    //    followed by pure `accept()` validation and binding.
-
-    // 3. Payment: a direct durable HoldCapture + ReversibleHold profile,
-    //    with exact identity and amount bindings. MustPrepay, PrepaidFinal,
-    //    legacy, portable, x402, and ACP paths are excluded.
-
-    // 4. Reveal = delivery proof. MISSING SEAMS, in dependency order:
-    //    a. a provider-minted `OutputDigestSha256` constraint plus purchase
-    //       marker, enforced by the output-aware budgeted kernel finalizer
-    //       before reconcile, capture, and signed receipt construction;
-    //    b. a conditional cross-organization settlement-authority bridge
-    //       from that verified purchase record to capture or escrow release;
-    //    c. a signed `chio.finding.challenge-outcome.v1` artifact wrapped as
-    //       exactly one frozen-v1 `FraudulentListing` `External` finding;
-    //    d. a finding-status feed (revocation-oracle pattern) checked for
-    //       non-inclusion at purchase time.
-    let delivery = mediated_reveal_delivery_receipt(&finding);
-    let receipt_id = match delivery {
-        Some(receipt_id) => receipt_id,
-        None => panic!(
-            "missing seam (a): no output-aware kernel finalizer binds \
-             receipt content_hash to the committed payload_sha256"
-        ),
-    };
-
-    // 5. Post-reveal: the delivery receipt anchors the dispute window and
-    //    the challenge evidence chain.
-    assert!(!receipt_id.is_empty());
 }

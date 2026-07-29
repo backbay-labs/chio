@@ -288,6 +288,12 @@
       "schemaFile": "spec/schemas/chio-finding/v1/challenge-verifier-profile.schema.json"
     },
     {
+      "schema": "chio.finding.delivery.v1",
+      "artifactKind": "finding_delivery",
+      "introducedBy": "finding-delivery-v1",
+      "schemaFile": "spec/schemas/chio-wire/v1/receipt/finding-delivery.schema.json"
+    },
+    {
       "schema": "chio.finding.failed-delivery.v1",
       "artifactKind": "finding_failed_delivery",
       "introducedBy": "finding-market-v1",

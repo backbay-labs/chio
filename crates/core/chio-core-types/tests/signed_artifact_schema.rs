@@ -823,6 +823,7 @@ fn finding_family_schema_registry_parity_is_bidirectional() {
         ),
     ];
     const EXPECTED_REGISTRY_ONLY: &[&str] = &[
+        "chio.finding.delivery.v1",
         "chio.finding.purchase-context.v1",
         "chio.finding.replay-recipe-input.v1",
     ];

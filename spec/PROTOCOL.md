@@ -1083,6 +1083,7 @@ receipt signature. Unknown fields and unsupported schema versions fail closed.
 | `governed_transaction` | kernel | Governed-transaction intent and approval metadata. |
 | `admission_operation` | kernel | Durable admission projection, schema `chio.admission-receipt.v1` (see below). |
 | `delivery_contract` | kernel | Output-digest delivery evidence, schema `chio.delivery-contract.v1` (see below). |
+| `finding_delivery` | kernel | Purchased-finding delivery overlay, schema `chio.finding.delivery.v1` (see below). |
 
 Subject and issuer attribution, streamed-output chunk metadata, and
 portable-trust and federation provenance are additive extensions layered over
@@ -1107,6 +1108,22 @@ its own and is authenticated by the enclosing receipt. The machine-readable
 contract is registered at
 `spec/schemas/chio-wire/v1/receipt/delivery-contract.schema.json`; unknown
 fields, a non-pinned schema, and non-hex digests fail closed.
+
+A reveal admitted under a provider-signed finding purchase marker carries a
+`finding_delivery` block alongside the generic one, with schema
+`chio.finding.delivery.v1`. It names the `finding_id` and `listing_id` the sale
+was admitted under, the kernel-proved `transform_profile`, the `digest_check`
+and `media_type_check` comparisons, the `settlement_mode` the admitted selector
+named, the canonical SHA-256 digests of the accepted-bid and venue-admission
+envelopes, and the authoritative `reservation_id`, `purchase_intent_id`, and
+`authoritative_payment_operation_id`. Every field derives from kernel-verified
+state, never from a caller-asserted value, and the block appears only when the
+purchase context arrived through verified signed artifacts. Like the generic
+block it carries no signature of its own and is authenticated by the enclosing
+receipt. The machine-readable contract is registered at
+`spec/schemas/chio-wire/v1/receipt/finding-delivery.schema.json`; unknown
+fields, a non-pinned schema, non-hex envelope digests, and unrecognized
+comparison, profile, or settlement values fail closed.
 
 Governed receipt metadata now also admits a versioned
 `economic_authorization` envelope with `version`, `economic_mode`, `payer`,
