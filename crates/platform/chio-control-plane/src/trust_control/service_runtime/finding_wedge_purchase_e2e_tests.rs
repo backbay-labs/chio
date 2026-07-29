@@ -1576,6 +1576,8 @@ fn coordinator(store: SqliteFindingPurchaseStore) -> Result<FindingPurchaseCoord
         &keypair(16).public_key(),
         keypair(17),
         &keypair(17).public_key(),
+        &keypair(6).public_key(),
+        VENUE_ID,
     )?)
 }
 
@@ -1834,7 +1836,6 @@ fn reserve_and_accept(
         &handshake.ask,
         &handshake.buyer_signature_hex,
         &web.admission,
-        &web.admission_sha256,
         EXPOSURE_UNITS,
         RESERVATION_TTL_SECS,
         now,
@@ -2759,7 +2760,6 @@ async fn wedge_purchase_reservation_authenticates_the_buyer_and_replays() -> Tes
         &exchange.ask,
         &interloper,
         &deployment.web.admission,
-        &deployment.web.admission_sha256,
         EXPOSURE_UNITS,
         RESERVATION_TTL_SECS,
         unix_timestamp_now(),
@@ -2779,7 +2779,6 @@ async fn wedge_purchase_reservation_authenticates_the_buyer_and_replays() -> Tes
         &exchange.ask,
         &exchange.buyer_signature_hex,
         &deployment.web.admission,
-        &deployment.web.admission_sha256,
         EXPOSURE_UNITS,
         RESERVATION_TTL_SECS,
         now,
@@ -2788,7 +2787,6 @@ async fn wedge_purchase_reservation_authenticates_the_buyer_and_replays() -> Tes
         &exchange.ask,
         &exchange.buyer_signature_hex,
         &deployment.web.admission,
-        &deployment.web.admission_sha256,
         EXPOSURE_UNITS,
         RESERVATION_TTL_SECS,
         now,
@@ -2824,7 +2822,6 @@ async fn wedge_purchase_second_reservation_overcommits_the_allocation() -> TestR
         &first.ask,
         &first.buyer_signature_hex,
         &deployment.web.admission,
-        &deployment.web.admission_sha256,
         EXPOSURE_UNITS,
         RESERVATION_TTL_SECS,
         unix_timestamp_now(),
@@ -2843,7 +2840,6 @@ async fn wedge_purchase_second_reservation_overcommits_the_allocation() -> TestR
         &second.ask,
         &second.buyer_signature_hex,
         &deployment.web.admission,
-        &deployment.web.admission_sha256,
         EXPOSURE_UNITS,
         RESERVATION_TTL_SECS,
         unix_timestamp_now(),
@@ -2860,8 +2856,317 @@ async fn wedge_purchase_second_reservation_overcommits_the_allocation() -> TestR
         .ok_or_else(|| missing("first reservation"))?;
     assert_eq!(surviving.state, FindingPurchaseReservationState::Open);
     assert_eq!(
-        purchase_store.list_open_encumbrance_total(&deployment.web.allocation_id)?,
+        purchase_store
+            .list_outstanding_exposure_total(&deployment.web.allocation_id, unix_timestamp_now())?,
         PRICE_UNITS
     );
+    Ok(())
+}
+
+/// One activated market, one coordinator, and one genuine handshake: the
+/// whole surface a reserve-time refusal needs.
+struct ReserveFixture {
+    deployment: Deployment,
+    authority: Arc<SqliteAuthorityStore>,
+    coordinator: FindingPurchaseCoordinator,
+    exchange: Handshake,
+}
+
+async fn open_reserve_fixture() -> Result<ReserveFixture, AnyError> {
+    let deployment = provision(RevealCase::honest())?;
+    let authority = deployment.open()?;
+    let state = market_state(authority.clone(), market_config());
+    deployment.seed_and_activate(&state).await?;
+    let accepted_at = allocation_accepted_at(&authority, &deployment.web)?;
+    let witness = admission_witness(&deployment.web, accepted_at)?;
+    let coordinator = coordinator(authority.finding_purchase_store())?;
+    let exchange = handshake(
+        &deployment.web,
+        &witness,
+        &keypair(31),
+        "buyer-agent-7",
+        TOKEN_ID,
+    )?;
+    Ok(ReserveFixture {
+        deployment,
+        authority,
+        coordinator,
+        exchange,
+    })
+}
+
+impl ReserveFixture {
+    fn reserve_with(
+        &self,
+        admission: &SignedFindingAdmission,
+        now: u64,
+    ) -> Result<SignedReservationReceipt, PurchaseCoordinatorError> {
+        self.coordinator.reserve(
+            &self.exchange.ask,
+            &self.exchange.buyer_signature_hex,
+            admission,
+            EXPOSURE_UNITS,
+            RESERVATION_TTL_SECS,
+            now,
+        )
+    }
+}
+
+/// The admission chooses the finding and the collateral allocation the
+/// reservation binds, so an admission that does not verify under the
+/// pinned venue authority, or that is outside its own window, opens
+/// nothing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wedge_purchase_reserve_refuses_an_unverified_venue_admission() -> TestResult {
+    let fixture = open_reserve_fixture().await?;
+    let purchase_store = fixture.authority.finding_purchase_store();
+    let now = unix_timestamp_now();
+
+    // The same body, signed by a key that is not the venue authority.
+    let forged: SignedFindingAdmission =
+        SignedExportEnvelope::sign(fixture.deployment.web.admission.body.clone(), &keypair(9))?;
+    assert!(matches!(
+        fixture.reserve_with(&forged, now),
+        Err(PurchaseCoordinatorError::AdmissionEnvelope(_))
+    ));
+
+    // The venue's signature, over a body that now names a different
+    // collateral allocation.
+    let mut redirected = fixture.deployment.web.admission.clone();
+    redirected.body.backing_allocation_id = HEX64.to_string();
+    assert!(matches!(
+        fixture.reserve_with(&redirected, now),
+        Err(PurchaseCoordinatorError::AdmissionEnvelope(_))
+    ));
+
+    // A genuinely venue-signed admission whose window has closed.
+    let mut lapsed_body = fixture.deployment.web.admission.body.clone();
+    lapsed_body.expires_at = now.saturating_sub(1);
+    lapsed_body.admission_id = compute_admission_id(&lapsed_body)?;
+    let lapsed: SignedFindingAdmission =
+        SignedExportEnvelope::sign(lapsed_body, &fixture.deployment.web.venue)?;
+    assert!(matches!(
+        fixture.reserve_with(&lapsed, now),
+        Err(PurchaseCoordinatorError::AdmissionWindow)
+    ));
+
+    assert!(purchase_store
+        .get_reservation(&fixture.exchange.reservation_id)?
+        .is_none());
+    assert_eq!(
+        purchase_store
+            .list_outstanding_exposure_total(&fixture.deployment.web.allocation_id, now)?,
+        0
+    );
+
+    // The admission the venue actually issued still reserves.
+    let receipt = fixture.reserve_with(&fixture.deployment.web.admission, now)?;
+    assert_eq!(receipt.body.receipt_id, fixture.exchange.reservation_id);
+    let reservation = purchase_store
+        .get_reservation(&fixture.exchange.reservation_id)?
+        .ok_or_else(|| missing("reservation under the genuine admission"))?;
+    assert_eq!(reservation.finding_id, fixture.deployment.web.finding_id);
+    Ok(())
+}
+
+/// An ask outside its own window never opens a reservation: the seller's
+/// collateral would be held for a full TTL against a quote that no longer
+/// stands.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wedge_purchase_reserve_refuses_an_ask_outside_its_window() -> TestResult {
+    let fixture = open_reserve_fixture().await?;
+    let purchase_store = fixture.authority.finding_purchase_store();
+    let issued_at = fixture.exchange.ask.body.issued_at;
+    let expires_at = fixture.exchange.ask.body.expires_at;
+    for now in [
+        issued_at.saturating_sub(1),
+        expires_at,
+        expires_at.saturating_add(LONG_EPOCH_SECS),
+    ] {
+        assert!(
+            matches!(
+                fixture.reserve_with(&fixture.deployment.web.admission, now),
+                Err(PurchaseCoordinatorError::AskWindow)
+            ),
+            "ask must not reserve at {now}"
+        );
+    }
+    assert!(purchase_store
+        .get_reservation(&fixture.exchange.reservation_id)?
+        .is_none());
+    assert_eq!(
+        purchase_store
+            .list_outstanding_exposure_total(&fixture.deployment.web.allocation_id, issued_at)?,
+        0
+    );
+
+    // The same ask inside its window reserves.
+    fixture.reserve_with(&fixture.deployment.web.admission, issued_at)?;
+    assert!(purchase_store
+        .get_reservation(&fixture.exchange.reservation_id)?
+        .is_some());
+    Ok(())
+}
+
+/// A capture above the accepted price is not a settlement this venue can
+/// record. It refuses before anything durable happens, and a partial
+/// capture at or below the accepted price still settles.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wedge_purchase_realized_spend_above_the_accepted_price_refuses() -> TestResult {
+    let lane = open_lane(LaneOptions::standard()).await?;
+    let response = lane.reveal("wedge-overspend-1", "nonce-overspend-1")?;
+    assert_eq!(response.verdict, Verdict::Allow, "{:?}", response.reason);
+
+    let purchase_store = lane.authority.finding_purchase_store();
+    let allocation_id = lane.deployment.web.allocation_id.clone();
+    let reservation_id = lane.purchase.handshake.reservation_id.clone();
+    let now = unix_timestamp_now();
+    purchase_store.register_community_fund_destination(
+        &allocation_id,
+        COMMUNITY_FUND_DESTINATION,
+        now,
+    )?;
+
+    let refused = lane.coordinator.finalize_delivery(
+        &reservation_id,
+        &response.receipt.id,
+        &lane.purchase.accepted_bid_envelope_sha256,
+        PRICE_UNITS.saturating_add(1),
+        PAYOUT_DESTINATION,
+        &lane.deployment.web.backing_sha256,
+        now.saturating_add(RETENTION_SECS),
+        now,
+    );
+    assert!(matches!(
+        refused,
+        Err(PurchaseCoordinatorError::RealizedSpendAboveAcceptedPrice)
+    ));
+
+    // The refusal preceded every durable step: no destination took a slot,
+    // the purchase slot is still reserved, and no record exists.
+    assert_eq!(
+        purchase_store.list_payout_destinations(&allocation_id)?,
+        vec![(0_u8, COMMUNITY_FUND_DESTINATION.to_string())]
+    );
+    let slot = purchase_store
+        .get_slot(&reservation_id)?
+        .ok_or_else(|| missing("slot after the refused settlement"))?;
+    assert_eq!(slot.state, FindingPurchaseSlotState::Reserved);
+    let purchase_key = derive_purchase_key(
+        &lane.purchase.accepted_bid_envelope_sha256,
+        &derive_payment_operation_id(&reservation_id),
+    );
+    assert!(purchase_store.get_purchase_record(&purchase_key)?.is_none());
+
+    let partial = lane.coordinator.finalize_delivery(
+        &reservation_id,
+        &response.receipt.id,
+        &lane.purchase.accepted_bid_envelope_sha256,
+        PRICE_UNITS.saturating_sub(1),
+        PAYOUT_DESTINATION,
+        &lane.deployment.web.backing_sha256,
+        now.saturating_add(RETENTION_SECS),
+        now,
+    )?;
+    verify_signed_purchase_record(&partial, &keypair(16).public_key())?;
+    assert_eq!(partial.body.accepted_price, usd(PRICE_UNITS));
+    assert_eq!(
+        partial.body.realized_spend,
+        usd(PRICE_UNITS.saturating_sub(1))
+    );
+    assert!(purchase_store
+        .get_purchase_record(&partial.body.purchase_key)?
+        .is_some());
+    Ok(())
+}
+
+/// Both closes are one-shot and the store keeps the bytes forever, so an
+/// artifact that fails its own validator is never signed and never
+/// reaches the store, on either the settled or the denied path.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wedge_purchase_refuses_to_persist_an_unvalidatable_artifact() -> TestResult {
+    let lane = open_lane(LaneOptions::standard()).await?;
+    let response = lane.reveal("wedge-invalid-artifact-1", "nonce-invalid-artifact-1")?;
+    assert_eq!(response.verdict, Verdict::Allow, "{:?}", response.reason);
+
+    let purchase_store = lane.authority.finding_purchase_store();
+    let allocation_id = lane.deployment.web.allocation_id.clone();
+    let reservation_id = lane.purchase.handshake.reservation_id.clone();
+    let now = unix_timestamp_now();
+    purchase_store.register_community_fund_destination(
+        &allocation_id,
+        COMMUNITY_FUND_DESTINATION,
+        now,
+    )?;
+
+    // The seller backing reference is not a digest, so the purchase record
+    // body cannot validate.
+    let refused = lane.coordinator.finalize_delivery(
+        &reservation_id,
+        &response.receipt.id,
+        &lane.purchase.accepted_bid_envelope_sha256,
+        PRICE_UNITS,
+        PAYOUT_DESTINATION,
+        "backing-reference-that-is-not-a-digest",
+        now.saturating_add(RETENTION_SECS),
+        now,
+    );
+    assert!(matches!(
+        refused,
+        Err(PurchaseCoordinatorError::ArtifactValidation(_))
+    ));
+
+    // The denial terminal refuses the same way.
+    let refused_denial = lane.coordinator.finalize_denial(
+        &reservation_id,
+        &lane.purchase.accepted_bid_envelope_sha256,
+        &response.receipt.id,
+        &digest_of(&response.receipt)?,
+        "checkpoint/venue-wedge#1",
+        "checkpoint-digest-that-is-not-a-digest",
+        now,
+    );
+    assert!(matches!(
+        refused_denial,
+        Err(PurchaseCoordinatorError::ArtifactValidation(_))
+    ));
+
+    // Neither refusal moved the purchase or admitted a destination.
+    assert_eq!(
+        purchase_store.list_payout_destinations(&allocation_id)?,
+        vec![(0_u8, COMMUNITY_FUND_DESTINATION.to_string())]
+    );
+    let slot = purchase_store
+        .get_slot(&reservation_id)?
+        .ok_or_else(|| missing("slot after the refused artifacts"))?;
+    assert_eq!(slot.state, FindingPurchaseSlotState::Reserved);
+    let reservation = purchase_store
+        .get_reservation(&reservation_id)?
+        .ok_or_else(|| missing("reservation after the refused artifacts"))?;
+    assert_eq!(
+        reservation.state,
+        FindingPurchaseReservationState::SlotReserved
+    );
+    let purchase_key = derive_purchase_key(
+        &lane.purchase.accepted_bid_envelope_sha256,
+        &derive_payment_operation_id(&reservation_id),
+    );
+    assert!(purchase_store.get_purchase_record(&purchase_key)?.is_none());
+
+    // The purchase is still settleable under a valid record.
+    let record = lane.coordinator.finalize_delivery(
+        &reservation_id,
+        &response.receipt.id,
+        &lane.purchase.accepted_bid_envelope_sha256,
+        PRICE_UNITS,
+        PAYOUT_DESTINATION,
+        &lane.deployment.web.backing_sha256,
+        now.saturating_add(RETENTION_SECS),
+        now,
+    )?;
+    verify_signed_purchase_record(&record, &keypair(16).public_key())?;
+    assert!(purchase_store
+        .get_purchase_record(&record.body.purchase_key)?
+        .is_some());
     Ok(())
 }

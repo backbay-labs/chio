@@ -3,13 +3,15 @@
 //! The pure marketplace accept does not reserve funds: it verifies a
 //! supplied reservation receipt and copies its id. This coordinator is
 //! the authoritative other half. After a bid it authenticates the buyer
-//! key, verifies the exact signed ask against the current venue
-//! admission, preallocates the stable purchase and payment identities,
-//! atomically opens the budget reservation and the seller exposure
-//! encumbrance in the durable purchase store, and only then signs the
-//! minimal compatibility reservation receipt under the configured
-//! purchase authority. Reveals re-resolve the durable record through the
-//! accepted bid's receipt id; no caller-shaped value overrides it.
+//! key, re-verifies the venue admission under the pinned venue authority
+//! and the exact signed ask against it, preallocates the stable purchase
+//! and payment identities, atomically opens the budget reservation and the
+//! seller exposure encumbrance in the durable purchase store, and only
+//! then signs the minimal compatibility reservation receipt under the
+//! configured purchase authority. Reveals re-resolve the durable record
+//! through the accepted bid's receipt id; no caller-shaped value overrides
+//! it. Every artifact this coordinator signs passes its own validator
+//! first, because both closes are one-shot and the store keeps the bytes.
 //!
 //! Compiled only under the `cognition-market-experimental` feature.
 
@@ -55,14 +57,28 @@ pub fn derive_reservation_id(ask_digest: &str, payer_hex: &str) -> String {
 pub enum PurchaseCoordinatorError {
     #[error("purchase authority key does not match the configured pin")]
     AuthorityPinMismatch,
+    #[error("venue authority pin must be named and distinct from the signing authorities")]
+    VenuePin,
     #[error("reserve request signature does not verify under the buyer key")]
     BuyerSignature,
     #[error("ask envelope rejected")]
     AskEnvelope,
+    #[error("ask is not live at the supplied clock")]
+    AskWindow,
+    #[error("venue admission does not verify under the pinned venue authority: {0}")]
+    AdmissionEnvelope(String),
+    #[error("venue admission is not live at the supplied clock")]
+    AdmissionWindow,
     #[error("venue admission does not cover this sale")]
     AdmissionMismatch,
     #[error("purchase amounts must be exactly equal in units and currency")]
     AmountMismatch,
+    #[error("realized spend exceeds the accepted price")]
+    RealizedSpendAboveAcceptedPrice,
+    #[error("artifact body failed its own validator: {0}")]
+    ArtifactValidation(String),
+    #[error("payout destination was not admitted: {0}")]
+    PayoutDestination(String),
     #[error("durable purchase store rejected the transition: {0}")]
     Store(String),
     #[error("reservation is not resolvable through the accepted bid")]
@@ -78,27 +94,40 @@ pub struct FindingPurchaseCoordinator {
     store: SqliteFindingPurchaseStore,
     purchase_authority: Keypair,
     failed_delivery_authority: Keypair,
+    venue_authority: PublicKey,
+    venue_id: String,
 }
 
 impl FindingPurchaseCoordinator {
     /// Build the coordinator over the durable purchase store, verifying
-    /// each signing key equals its configured public pin.
+    /// each signing key equals its configured public pin and that the
+    /// venue the admissions must carry is named.
     pub fn new(
         store: SqliteFindingPurchaseStore,
         purchase_authority: Keypair,
         purchase_pin: &PublicKey,
         failed_delivery_authority: Keypair,
         failed_delivery_pin: &PublicKey,
+        venue_pin: &PublicKey,
+        venue_id: &str,
     ) -> Result<Self, PurchaseCoordinatorError> {
         if purchase_authority.public_key() != *purchase_pin
             || failed_delivery_authority.public_key() != *failed_delivery_pin
         {
             return Err(PurchaseCoordinatorError::AuthorityPinMismatch);
         }
+        if venue_id.is_empty()
+            || *venue_pin == purchase_authority.public_key()
+            || *venue_pin == failed_delivery_authority.public_key()
+        {
+            return Err(PurchaseCoordinatorError::VenuePin);
+        }
         Ok(Self {
             store,
             purchase_authority,
             failed_delivery_authority,
+            venue_authority: venue_pin.clone(),
+            venue_id: venue_id.to_owned(),
         })
     }
 
@@ -106,17 +135,17 @@ impl FindingPurchaseCoordinator {
     /// the compatibility reservation receipt.
     ///
     /// The buyer proves control of the token subject key by signing the
-    /// exact ask digest; the venue admission freezes the sale identities;
-    /// the allocation cap check and both reservations commit in one
-    /// durable transaction. Replaying the same ask and payer returns the
-    /// same signed receipt.
+    /// exact ask digest; the venue admission is re-verified under the
+    /// pinned venue authority and against its own liveness bounds before
+    /// any identity it names reaches durable state; the allocation cap
+    /// check and both reservations commit in one durable transaction.
+    /// Replaying the same ask and payer returns the same signed receipt.
     #[allow(clippy::too_many_arguments)]
     pub fn reserve(
         &self,
         ask: &SignedAskResponse,
         buyer_signature_over_ask_digest: &str,
         admission: &SignedFindingAdmission,
-        admission_envelope_sha256: &str,
         maximum_sale_exposure_units: u64,
         reservation_ttl_secs: u64,
         now: u64,
@@ -125,6 +154,12 @@ impl FindingPurchaseCoordinator {
             || ask.body.token_offer.issuer != ask.signer_key
         {
             return Err(PurchaseCoordinatorError::AskEnvelope);
+        }
+        // An abandoned or expired ask must never open a reservation: the
+        // reservation would hold seller collateral for a full TTL against a
+        // quote the seller no longer stands behind.
+        if now < ask.body.issued_at || now >= ask.body.expires_at {
+            return Err(PurchaseCoordinatorError::AskWindow);
         }
         let ask_digest = canonical_json_bytes(&ask.body)
             .map(|bytes| sha256_hex(&bytes))
@@ -136,9 +171,25 @@ impl FindingPurchaseCoordinator {
         if !payer.verify(ask_digest.as_bytes(), &buyer_signature) {
             return Err(PurchaseCoordinatorError::BuyerSignature);
         }
+        // The finding, listing, and backing allocation this reservation
+        // binds come from the admission body, so the admission is only
+        // usable once it verifies under the pinned venue authority. An
+        // unverified admission would let its presenter choose which
+        // collateral the sale encumbers.
+        chio_finding::verify_signed_admission(admission, &self.venue_authority, &self.venue_id)
+            .map_err(|error| PurchaseCoordinatorError::AdmissionEnvelope(error.to_string()))?;
+        if now < admission.body.issued_at || now >= admission.body.expires_at {
+            return Err(PurchaseCoordinatorError::AdmissionWindow);
+        }
         if admission.body.listing_id != ask.body.listing_id {
             return Err(PurchaseCoordinatorError::AdmissionMismatch);
         }
+        // The digest is derived from the envelope just verified, never
+        // accepted from the caller: it is signed into the settlement
+        // record as the venue admission this sale was made under.
+        let admission_envelope_sha256 = canonical_json_bytes(admission)
+            .map(|bytes| sha256_hex(&bytes))
+            .map_err(|_| PurchaseCoordinatorError::Canonical)?;
         let [grant] = ask.body.token_offer.scope.grants.as_slice() else {
             return Err(PurchaseCoordinatorError::AskEnvelope);
         };
@@ -166,7 +217,7 @@ impl FindingPurchaseCoordinator {
             listing_id: &ask.body.listing_id,
             bid_envelope_sha256: &bid_envelope_sha256,
             ask_digest: &ask_digest,
-            admission_envelope_sha256,
+            admission_envelope_sha256: &admission_envelope_sha256,
             amount_units: ask.body.quoted_price.units,
             currency: &ask.body.quoted_price.currency,
             expires_at: now.saturating_add(reservation_ttl_secs),
@@ -217,6 +268,16 @@ impl FindingPurchaseCoordinator {
     /// Close the purchase after a settled Allow: sign the authoritative
     /// purchase record, retain the exposure through the liability
     /// horizon, admit the payout destination, and close the slot.
+    ///
+    /// Ordering guarantee. The pure checks run first, so a call that
+    /// cannot produce a valid record writes nothing at all. The payout
+    /// destination is then admitted, and only after it holds a slot does
+    /// `close_slot_with_record` make the purchase final. A settled record
+    /// therefore never exists without an admitted destination to pay. The
+    /// converse is recoverable rather than lossy: a destination admitted
+    /// by a call that then fails to close replays into the same slot,
+    /// because admission is idempotent per allocation and destination, and
+    /// the reservation stays slot-reserved until it is closed or expires.
     #[allow(clippy::too_many_arguments)]
     pub fn finalize_delivery(
         &self,
@@ -230,6 +291,12 @@ impl FindingPurchaseCoordinator {
         now: u64,
     ) -> Result<SignedFindingPurchaseRecord, PurchaseCoordinatorError> {
         let reservation = self.resolve(reservation_id)?;
+        // A capture above the accepted price is not a settlement this
+        // venue can record: the record's own validator rejects it, and the
+        // buyer never authorized the excess.
+        if realized_spend_units > reservation.amount_units {
+            return Err(PurchaseCoordinatorError::RealizedSpendAboveAcceptedPrice);
+        }
         let buyer = PublicKey::from_hex(&reservation.payer_hex)
             .map_err(|_| PurchaseCoordinatorError::Store("payer key malformed".to_owned()))?;
         let record = FindingPurchaseRecord {
@@ -265,23 +332,26 @@ impl FindingPurchaseCoordinator {
             payout_destination: payout_destination.to_owned(),
             recorded_at: now,
         };
+        // The store retains these bytes forever and the close is one-shot,
+        // so a body that fails its own validator must never be signed: it
+        // would stand as the buyer's unverifiable proof of a settled sale.
+        record
+            .validate()
+            .map_err(|error| PurchaseCoordinatorError::ArtifactValidation(error.to_string()))?;
+        let allocation_id = self
+            .store
+            .get_encumbrance(reservation_id)
+            .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?
+            .ok_or(PurchaseCoordinatorError::UnknownReservation)?
+            .allocation_id;
+        self.store
+            .admit_payout_destination(&allocation_id, payout_destination, now)
+            .map_err(|error| PurchaseCoordinatorError::PayoutDestination(error.to_string()))?;
         let signed = SignedFindingPurchaseRecord::sign(record, &self.purchase_authority)
             .map_err(|_| PurchaseCoordinatorError::Signing)?;
         let record_json =
             canonical_json_bytes(&signed).map_err(|_| PurchaseCoordinatorError::Canonical)?;
         let record_sha256 = sha256_hex(&record_json);
-        self.store
-            .admit_payout_destination(
-                &self
-                    .store
-                    .get_encumbrance(reservation_id)
-                    .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?
-                    .ok_or(PurchaseCoordinatorError::UnknownReservation)?
-                    .allocation_id,
-                payout_destination,
-                now,
-            )
-            .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?;
         self.store
             .close_slot_with_record(&FindingPurchaseDeliveryInput {
                 reservation_id,
@@ -339,6 +409,12 @@ impl FindingPurchaseCoordinator {
         };
         artifact.failed_delivery_id = compute_failed_delivery_id(&artifact)
             .map_err(|_| PurchaseCoordinatorError::Canonical)?;
+        // The denial terminal is the buyer's only evidence that the hold
+        // was released without capture, and the store keeps it forever, so
+        // an artifact its own validator rejects must never be signed.
+        artifact
+            .validate()
+            .map_err(|error| PurchaseCoordinatorError::ArtifactValidation(error.to_string()))?;
         let signed = SignedFindingFailedDelivery::sign(artifact, &self.failed_delivery_authority)
             .map_err(|_| PurchaseCoordinatorError::Signing)?;
         let record_json =
