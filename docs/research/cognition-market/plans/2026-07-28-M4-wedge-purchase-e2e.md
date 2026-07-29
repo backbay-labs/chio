@@ -192,6 +192,28 @@ authorization is a market-side mint), and challenge evaluation (M5).
    canonical bytes, schema-validate, typed round-trip, byte equality, then
    verify.
 
+## Resolutions recorded during implementation
+
+- D2 needed no new admission-hash field: `ImmutableToolAdmissionRequest`
+  already includes `governed_intent`
+  (`admission_coordinator.rs:238`), so the carrier is frozen into the
+  immutable request hash and durably recoverable through the raw
+  invocation blob's canonical request JSON with zero kernel schema
+  changes. Replay under different carrier bytes already fails closed.
+- The preallocated `purchase_intent_id` and
+  `authoritative_payment_operation_id` derive deterministically from the
+  reservation id under domain-separated digests
+  (`chio.finding.purchase-intent.v1`, `chio.finding.payment-operation.v1`),
+  fixed at reserve time. This keeps the finalizer's pure re-derivation
+  self-sufficient while the coordinator store stays authoritative; the
+  admission-time check verifies the store rows carry exactly the derived
+  identities.
+- The purchase verifier seam is split into a deterministic half (replayed
+  by the finalizer from the frozen request; no clocks, no store reads)
+  and an admission-time half (liveness bounds plus authoritative
+  reservation state), so recovery can never diverge from admission on a
+  frozen operation.
+
 ## Task 1: `RequireFindingPurchase` constraint carrier
 
 - Add `FindingSettlementSelector` and `FindingPurchaseMarkerV1` plus the
