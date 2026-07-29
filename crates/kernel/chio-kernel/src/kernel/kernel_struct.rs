@@ -571,6 +571,8 @@ pub struct ChioKernel {
     /// retention is unconfigured or before a store is attached.
     pub(super) retention_maintenance: Option<crate::receipt_store::RetentionMaintenanceHandle>,
     pub(super) payment_adapter: Option<Box<dyn PaymentAdapter>>,
+    pub(super) finding_purchase_verifier:
+        Option<Arc<dyn crate::finding_purchase::FindingPurchaseVerifier>>,
     pub(super) price_oracle: Option<Box<dyn PriceOracle>>,
     pub(super) runtime_admission_hook: Option<Arc<dyn RuntimeAdmissionHook>>,
     pub(super) runtime_admission_readiness_timeout: Duration,

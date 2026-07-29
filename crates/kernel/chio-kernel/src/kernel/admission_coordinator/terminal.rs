@@ -460,6 +460,7 @@ impl ChioKernel {
             DurablePostReturnPlan,
             PostReturnNormalizedRequestContextV1,
             Option<String>,
+            Option<crate::finding_purchase::VerifiedFindingPurchase>,
         ),
         KernelError,
     > {
@@ -520,11 +521,23 @@ impl ChioKernel {
             .map_err(|error| KernelError::DurableAdmission(error.to_string()))?,
         )
         .map_err(tool_outcome_error)?;
+        // The purchase binding is re-derived deterministically from the
+        // frozen request: the marker and carrier are both covered by the
+        // immutable request hash revalidated above, so a divergent result
+        // here is a configuration fault, not a delivery verdict.
+        let purchase = self
+            .verify_purchase_context(selected_grant.grant, request)
+            .map_err(|reason| {
+                KernelError::DurableAdmission(format!(
+                    "purchase binding could not be re-derived: {reason}"
+                ))
+            })?;
         Ok((
             matched_grant_index,
             plan,
             normalized_context,
             expected_output_digest,
+            purchase,
         ))
     }
 
@@ -535,7 +548,7 @@ impl ChioKernel {
     ) -> Result<ToolCallResponse, KernelError> {
         let runtime = self.durable_runtime()?;
         let tool_return = self.load_durable_tool_return(admission)?;
-        let (matched_grant_index, plan, normalized_context, expected_output_digest) =
+        let (matched_grant_index, plan, normalized_context, expected_output_digest, purchase) =
             self.durable_evaluation_contract(admission, request, &tool_return.raw)?;
         let DurableEvaluatedOutput {
             output,
@@ -556,24 +569,23 @@ impl ChioKernel {
         let receipt_content = receipt_content_for_output(Some(&output), expected_chunks)?;
         // Reproduce the delivery verdict deterministically so the replay
         // byte-matches the persisted receipt, whether it was an Allow or a
-        // delivery-mismatch Deny.
-        let delivery_denied = expected_output_digest.as_deref().is_some_and(|expected| {
-            chio_kernel_core::formal_core::delivery_contract_admits(
-                expected,
-                &receipt_content.content_hash,
-            ) == chio_kernel_core::formal_core::DeliveryVerdict::Deny
-        });
-        let expected_decision = if delivery_denied {
-            Decision::Deny {
-                reason: "delivered output does not match the committed output digest".to_owned(),
-                guard: "delivery_contract".to_owned(),
-            }
-        } else {
-            incomplete_reason
+        // delivery-denial Deny.
+        let delivery_evaluation = crate::kernel::purchase_gate::evaluate_delivery(
+            expected_output_digest.as_deref(),
+            &receipt_content.content_hash,
+            &receipt_content.canonical_content,
+            purchase.as_ref(),
+        );
+        let expected_decision = match &delivery_evaluation.denial {
+            Some(denial) => Decision::Deny {
+                reason: denial.message.to_owned(),
+                guard: denial.guard.to_owned(),
+            },
+            None => incomplete_reason
                 .as_ref()
                 .map_or(Decision::Allow, |reason| Decision::Incomplete {
                     reason: reason.clone(),
-                })
+                }),
         };
         let expected_non_financial_metadata = merge_metadata_objects(
             merge_metadata_objects(
@@ -668,15 +680,15 @@ impl ChioKernel {
             .map(|financial| serde_json::json!({ "financial": financial }));
         let expected_non_admission_metadata =
             merge_metadata_objects(expected_non_financial_metadata, retained_financial_metadata);
-        // Reproduce the delivery-contract block so the replayed metadata
-        // byte-matches the persisted receipt.
+        // Reproduce the delivery-contract and finding-delivery blocks so
+        // the replayed metadata byte-matches the persisted receipt.
         let expected_non_admission_metadata =
             if let Some(expected) = expected_output_digest.as_deref() {
                 let block = chio_core::receipt::metadata::DeliveryContract {
                     schema: chio_core::receipt::metadata::DELIVERY_CONTRACT_SCHEMA.to_owned(),
                     expected_digest: expected.to_owned(),
                     observed_digest: receipt_content.content_hash.clone(),
-                    result: if delivery_denied {
+                    result: if delivery_evaluation.digest_mismatched {
                         chio_core::receipt::metadata::DeliveryResult::Mismatched
                     } else {
                         chio_core::receipt::metadata::DeliveryResult::Matched
@@ -691,6 +703,18 @@ impl ChioKernel {
             } else {
                 expected_non_admission_metadata
             };
+        let expected_non_admission_metadata = if let Some(binding) = purchase.as_ref() {
+            let block =
+                crate::kernel::purchase_gate::finding_delivery_block(binding, &delivery_evaluation);
+            merge_metadata_objects(
+                expected_non_admission_metadata,
+                Some(serde_json::json!({
+                    chio_core::receipt::metadata::FINDING_DELIVERY_METADATA_KEY: block
+                })),
+            )
+        } else {
+            expected_non_admission_metadata
+        };
         self.validate_completed_durable_receipt(
             admission,
             request,
@@ -742,24 +766,25 @@ impl ChioKernel {
                 receipt.timestamp,
             )?;
         }
-        let (verdict, reason, terminal_state) = if delivery_denied {
-            (
-                Verdict::Deny,
-                Some("delivered output does not match the committed output digest".to_owned()),
-                OperationTerminalState::Completed,
-            )
-        } else {
-            incomplete_reason.map_or(
-                (Verdict::Allow, None, OperationTerminalState::Completed),
-                |reason| {
-                    (
-                        Verdict::Deny,
-                        Some(reason.clone()),
-                        OperationTerminalState::Incomplete { reason },
-                    )
-                },
-            )
-        };
+        let (verdict, reason, terminal_state) =
+            if let Some(denial) = delivery_evaluation.denial.as_ref() {
+                (
+                    Verdict::Deny,
+                    Some(denial.message.to_owned()),
+                    OperationTerminalState::Completed,
+                )
+            } else {
+                incomplete_reason.map_or(
+                    (Verdict::Allow, None, OperationTerminalState::Completed),
+                    |reason| {
+                        (
+                            Verdict::Deny,
+                            Some(reason.clone()),
+                            OperationTerminalState::Incomplete { reason },
+                        )
+                    },
+                )
+            };
         Ok(ToolCallResponse {
             request_id: request.request_id.clone(),
             verdict,
@@ -1379,7 +1404,7 @@ impl ChioKernel {
         let _guard_evidence_scope = scope_pre_invocation_guard_evidence(
             tool_return.raw.pre_invocation_guard_evidence().to_vec(),
         );
-        let (matched_grant_index, plan, normalized_context, expected_output_digest) =
+        let (matched_grant_index, plan, normalized_context, expected_output_digest, purchase) =
             self.durable_evaluation_contract(admission, request, &tool_return.raw)?;
         let DurableEvaluatedOutput {
             output,
@@ -1406,26 +1431,33 @@ impl ChioKernel {
         )?;
         // Delivery contract: a grant that fixed an expected output digest
         // is honored only if the delivered post-transform output hashes to
-        // it. The comparison runs here, after the transform and before any
-        // money decision, and drives the terminal decision so the verdict
+        // it, and a purchase-marked delivery additionally resolves to the
+        // strict reveal envelope of the advertised media type. The
+        // comparisons run here, after the transform and before any money
+        // decision, and drive the terminal decision so the verdict
         // participates in the existing frozen replay contract below.
-        let delivery_denied = expected_output_digest.as_deref().is_some_and(|expected| {
-            chio_kernel_core::formal_core::delivery_contract_admits(
-                expected,
-                resolved_output_digest.as_str(),
-            ) == chio_kernel_core::formal_core::DeliveryVerdict::Deny
-        });
-        let terminal_decision = if delivery_denied {
-            Decision::Deny {
-                reason: "delivered output does not match the committed output digest".to_owned(),
-                guard: "delivery_contract".to_owned(),
-            }
-        } else {
-            incomplete_reason
+        if purchase.is_some() && !plan.hook_identities.is_empty() {
+            return Err(KernelError::DurableAdmission(
+                "purchase-marked delivery requires the frozen identity output plan".to_owned(),
+            ));
+        }
+        let delivery_evaluation = crate::kernel::purchase_gate::evaluate_delivery(
+            expected_output_digest.as_deref(),
+            resolved_output_digest.as_str(),
+            &receipt_content.canonical_content,
+            purchase.as_ref(),
+        );
+        let delivery_denied = delivery_evaluation.denial.is_some();
+        let terminal_decision = match &delivery_evaluation.denial {
+            Some(denial) => Decision::Deny {
+                reason: denial.message.to_owned(),
+                guard: denial.guard.to_owned(),
+            },
+            None => incomplete_reason
                 .as_ref()
                 .map_or(Decision::Allow, |reason| Decision::Incomplete {
                     reason: reason.clone(),
-                })
+                }),
         };
         let stored_outcome = runtime
             .outcome_store
@@ -1798,7 +1830,7 @@ impl ChioKernel {
                 schema: chio_core::receipt::metadata::DELIVERY_CONTRACT_SCHEMA.to_owned(),
                 expected_digest: expected.to_owned(),
                 observed_digest: resolved_output_digest.as_str().to_owned(),
-                result: if delivery_denied {
+                result: if delivery_evaluation.digest_mismatched {
                     chio_core::receipt::metadata::DeliveryResult::Mismatched
                 } else {
                     chio_core::receipt::metadata::DeliveryResult::Matched
@@ -1808,6 +1840,32 @@ impl ChioKernel {
                 metadata,
                 Some(
                     serde_json::json!({ chio_core::receipt::metadata::DELIVERY_CONTRACT_METADATA_KEY: block }),
+                ),
+            )
+        } else {
+            metadata
+        };
+        // The finding overlay is likewise kernel-owned and forge-checked;
+        // it is present exactly when the grant carried the verified
+        // purchase marker.
+        let metadata = if let Some(binding) = purchase.as_ref() {
+            if metadata
+                .as_ref()
+                .and_then(|value| {
+                    value.get(chio_core::receipt::metadata::FINDING_DELIVERY_METADATA_KEY)
+                })
+                .is_some()
+            {
+                return Err(KernelError::DurableAdmission(
+                    "receipt metadata already carries a finding_delivery block".to_owned(),
+                ));
+            }
+            let block =
+                crate::kernel::purchase_gate::finding_delivery_block(binding, &delivery_evaluation);
+            merge_metadata_objects(
+                metadata,
+                Some(
+                    serde_json::json!({ chio_core::receipt::metadata::FINDING_DELIVERY_METADATA_KEY: block }),
                 ),
             )
         } else {
@@ -1920,8 +1978,10 @@ impl ChioKernel {
             None
         };
         let projected_receipt = receipt.receipt().clone();
-        let (terminal, expected_terminal_state) = if delivery_denied {
-            // A delivery mismatch terminates as a persisted signed Deny
+        let (terminal, expected_terminal_state) = if let Some(denial) =
+            delivery_evaluation.denial.as_ref()
+        {
+            // A delivery denial terminates as a persisted signed Deny
             // whose hold was released and whose capture is zero. Channel
             // terminals do not apply: the pre-dispatch gate admits only a
             // reversible-hold tool dispatch for a digest-constrained
@@ -1929,7 +1989,7 @@ impl ChioKernel {
             let projection =
                 crate::admission_operation::AdmissionTerminalProjection::DeniedAfterDelivery {
                     context,
-                    reason: crate::admission_operation::DeliveryDenialReason::DigestMismatch,
+                    reason: denial.reason,
                     evidence: Box::new(
                         crate::admission_operation::AdmissionReceiptOrIncident::Receipt(Box::new(
                             receipt,
@@ -2024,33 +2084,34 @@ impl ChioKernel {
                 projected_receipt.timestamp,
             )?;
         }
-        let (verdict, reason, terminal_state, execution_nonce) = if delivery_denied {
-            (
-                Verdict::Deny,
-                Some("delivered output does not match the committed output digest".to_owned()),
-                OperationTerminalState::Completed,
-                None,
-            )
-        } else {
-            match incomplete_reason {
-                Some(reason) => (
+        let (verdict, reason, terminal_state, execution_nonce) =
+            if let Some(denial) = delivery_evaluation.denial.as_ref() {
+                (
                     Verdict::Deny,
-                    Some(reason.clone()),
-                    OperationTerminalState::Incomplete { reason },
-                    None,
-                ),
-                None => (
-                    Verdict::Allow,
-                    None,
+                    Some(denial.message.to_owned()),
                     OperationTerminalState::Completed,
-                    self.mint_execution_nonce_for_allow(
-                        request,
-                        &request.capability,
-                        &projected_receipt,
-                    )?,
-                ),
-            }
-        };
+                    None,
+                )
+            } else {
+                match incomplete_reason {
+                    Some(reason) => (
+                        Verdict::Deny,
+                        Some(reason.clone()),
+                        OperationTerminalState::Incomplete { reason },
+                        None,
+                    ),
+                    None => (
+                        Verdict::Allow,
+                        None,
+                        OperationTerminalState::Completed,
+                        self.mint_execution_nonce_for_allow(
+                            request,
+                            &request.capability,
+                            &projected_receipt,
+                        )?,
+                    ),
+                }
+            };
         Ok(ToolCallResponse {
             request_id: request.request_id.clone(),
             verdict,

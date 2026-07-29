@@ -287,6 +287,7 @@ impl ChioKernel {
             receipt_store_write_lock: Mutex::new(()),
             retention_maintenance: None,
             payment_adapter: None,
+            finding_purchase_verifier: None,
             price_oracle: None,
             runtime_admission_hook: None,
             runtime_admission_readiness_timeout: Duration::from_millis(
@@ -886,6 +887,16 @@ impl ChioKernel {
 
     pub fn set_payment_adapter(&mut self, payment_adapter: Box<dyn PaymentAdapter>) {
         self.payment_adapter = Some(payment_adapter);
+    }
+
+    /// Install the purchase-context verifier for delivery-committed
+    /// finding reveals. Without one, every purchase-marked grant denies
+    /// before dispatch.
+    pub fn set_finding_purchase_verifier(
+        &mut self,
+        verifier: Arc<dyn crate::finding_purchase::FindingPurchaseVerifier>,
+    ) {
+        self.finding_purchase_verifier = Some(verifier);
     }
 
     pub fn set_price_oracle(&mut self, price_oracle: Box<dyn PriceOracle>) {

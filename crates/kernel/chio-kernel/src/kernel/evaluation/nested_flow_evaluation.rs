@@ -808,6 +808,33 @@ impl ChioKernel {
                     );
                 }
             }
+            // Nested dispatch enforces the same purchase boundary as a
+            // root tool call: a purchase-marked grant requires the
+            // verified signed purchase context and an open slot-reserved
+            // reservation before any mutation.
+            if let Err(reason) = self.verify_purchase_admission(selected.grant, request, now) {
+                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding purchase denied");
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                            request,
+                            reason: &reason,
+                            timestamp: now,
+                            matched_grant_index,
+                            cap,
+                            budget_mutation: &budget_mutation,
+                            payment_authorization: None,
+                            durable_operation: durable_admission
+                                .as_ref()
+                                .map(DurableToolAdmission::operation),
+                            runtime_admission_metadata,
+                            verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                            budget_lease_acquired,
+                        })
+                    },
+                );
+            }
         }
 
         // Nested dispatch has the same financial durability boundary as a root

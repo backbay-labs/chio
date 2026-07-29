@@ -63,6 +63,8 @@ pub mod execution_nonce;
 #[cfg(not(loom))]
 pub mod federation_artifact_store;
 #[cfg(not(loom))]
+pub mod finding_purchase;
+#[cfg(not(loom))]
 pub mod governed_active_response;
 #[cfg(not(loom))]
 pub mod governed_approval_replay;

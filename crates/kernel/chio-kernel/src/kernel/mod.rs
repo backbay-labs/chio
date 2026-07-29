@@ -1455,8 +1455,11 @@ mod governed_validation;
 // Guard evaluation, runtime admission, and tool dispatch.
 #[path = "dispatch.rs"]
 mod dispatch;
+// Purchase-marked admission checks for delivery-committed reveals.
 #[path = "evaluator.rs"]
 pub mod evaluator;
+#[path = "purchase_gate.rs"]
+mod purchase_gate;
 mod responses;
 #[path = "session_ops.rs"]
 mod session_ops;

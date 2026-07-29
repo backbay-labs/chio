@@ -1228,6 +1228,12 @@ pub enum DeliveryDenialReason {
     /// The final post-transform output hash did not equal the grant's
     /// committed output digest.
     DigestMismatch,
+    /// The delivered value was not the strict two-field reveal envelope a
+    /// purchased delivery commits to.
+    EnvelopeMalformed,
+    /// The reveal envelope advertised a different media type than the
+    /// signed finding.
+    MediaTypeMismatch,
 }
 
 #[derive(Debug, Clone, Serialize)]
