@@ -68,6 +68,10 @@ pub enum FindingError {
     CurrencyMismatch(&'static str),
     #[error("amount arithmetic overflow: {0}")]
     AmountOverflow(&'static str),
+    #[error("value exceeds its size bound: {0}")]
+    SizeLimitExceeded(&'static str),
+    #[error("value is not canonical JSON: {0}")]
+    NonCanonicalBytes(&'static str),
 }
 
 /// Upper bound on opaque identifiers carried by finding-market artifacts.
@@ -81,7 +85,6 @@ pub const MAX_FINDING_EVIDENCE_RECEIPTS: usize = 256;
 
 /// Upper bound on variable-length collections carried by market artifacts.
 pub const MAX_FINDING_ARTIFACT_ITEMS: usize = 256;
-
 pub(crate) fn is_hex64(value: &str) -> bool {
     value.len() == 64
         && value

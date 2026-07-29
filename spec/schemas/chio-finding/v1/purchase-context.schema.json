@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/purchase-context.schema.json",
+  "title": "Chio Finding Purchase Context (unsigned)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "finding_json",
+    "listing_envelope_json",
+    "pricing_hint_envelope_json",
+    "venue_admission_envelope_json",
+    "market_terms_envelope_json",
+    "seller_authorization_envelope_json",
+    "verifier_profile_envelope_json",
+    "seller_backing_envelope_json",
+    "verifier_report_envelope_json",
+    "bid_request_envelope_json",
+    "ask_response_envelope_json",
+    "accepted_bid_envelope_json",
+    "reservation_receipt_envelope_json",
+    "reservation_store_key",
+    "token_offer_json"
+  ],
+  "properties": {
+    "schema": {
+      "const": "chio.finding.purchase-context.v1"
+    },
+    "finding_json": {
+      "$ref": "#/$defs/canonicalJsonText"
+    },
+    "listing_envelope_json": {
+      "$ref": "#/$defs/canonicalJsonText"
+    },
+    "pricing_hint_envelope_json": {
+      "$ref": "#/$defs/canonicalJsonText"
+    },
+    "venue_admission_envelope_json": {
+      "$ref": "#/$defs/canonicalJsonText"
+    },
+    "market_terms_envelope_json": {
+      "$ref": "#/$defs/canonicalJsonText"
+    },
+    "seller_authorization_envelope_json": {
+      "$ref": "#/$defs/canonicalJsonText"
+    },
+    "verifier_profile_envelope_json": {
+      "$ref": "#/$defs/canonicalJsonText"
+    },
+    "seller_backing_envelope_json": {
+      "$ref": "#/$defs/canonicalJsonText"
+    },
+    "verifier_report_envelope_json": {
+      "$ref": "#/$defs/canonicalJsonText"
+    },
+    "bid_request_envelope_json": {
+      "$ref": "#/$defs/canonicalJsonText"
+    },
+    "ask_response_envelope_json": {
+      "$ref": "#/$defs/canonicalJsonText"
+    },
+    "accepted_bid_envelope_json": {
+      "$ref": "#/$defs/canonicalJsonText"
+    },
+    "reservation_receipt_envelope_json": {
+      "$ref": "#/$defs/canonicalJsonText"
+    },
+    "reservation_store_key": {
+      "$ref": "#/$defs/boundedIdentifier"
+    },
+    "token_offer_json": {
+      "$ref": "#/$defs/canonicalJsonText"
+    }
+  },
+  "$defs": {
+    "boundedIdentifier": {
+      "type": "string",
+      "pattern": "\\S",
+      "maxLength": 512
+    },
+    "canonicalJsonText": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 262144
+    }
+  }
+}

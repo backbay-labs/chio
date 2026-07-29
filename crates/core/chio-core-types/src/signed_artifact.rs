@@ -97,8 +97,12 @@ pub const CHIO_FINDING_BOND_BACKING_V1_SCHEMA: &str = "chio.finding.bond-backing
 /// Cognition-market reusable challenge-verifier profile.
 pub const CHIO_FINDING_CHALLENGE_VERIFIER_PROFILE_V1_SCHEMA: &str =
     "chio.finding.challenge-verifier-profile.v1";
+/// Cognition-market failed-delivery terminal.
+pub const CHIO_FINDING_FAILED_DELIVERY_V1_SCHEMA: &str = "chio.finding.failed-delivery.v1";
 /// Cognition-market seller market terms.
 pub const CHIO_FINDING_MARKET_TERMS_V1_SCHEMA: &str = "chio.finding.market-terms.v1";
+/// Cognition-market settled purchase record.
+pub const CHIO_FINDING_PURCHASE_RECORD_V1_SCHEMA: &str = "chio.finding.purchase-record.v1";
 /// Cognition-market issuer-signed seller authorization.
 pub const CHIO_FINDING_SELLER_AUTHORIZATION_V1_SCHEMA: &str =
     "chio.finding.seller-authorization.v1";
@@ -548,8 +552,16 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
         Some(("finding_challenge_verifier_profile", "finding-market-v1")),
     ),
     (
+        CHIO_FINDING_FAILED_DELIVERY_V1_SCHEMA,
+        Some(("finding_failed_delivery", "finding-market-v1")),
+    ),
+    (
         CHIO_FINDING_MARKET_TERMS_V1_SCHEMA,
         Some(("finding_market_terms", "finding-market-v1")),
+    ),
+    (
+        CHIO_FINDING_PURCHASE_RECORD_V1_SCHEMA,
+        Some(("finding_purchase_record", "finding-market-v1")),
     ),
     (
         CHIO_FINDING_SELLER_AUTHORIZATION_V1_SCHEMA,

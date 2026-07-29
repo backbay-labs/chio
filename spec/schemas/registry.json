@@ -288,10 +288,28 @@
       "schemaFile": "spec/schemas/chio-finding/v1/challenge-verifier-profile.schema.json"
     },
     {
+      "schema": "chio.finding.failed-delivery.v1",
+      "artifactKind": "finding_failed_delivery",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/failed-delivery.schema.json"
+    },
+    {
       "schema": "chio.finding.market-terms.v1",
       "artifactKind": "finding_market_terms",
       "introducedBy": "finding-market-v1",
       "schemaFile": "spec/schemas/chio-finding/v1/market-terms.schema.json"
+    },
+    {
+      "schema": "chio.finding.purchase-context.v1",
+      "artifactKind": "finding_purchase_context",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/purchase-context.schema.json"
+    },
+    {
+      "schema": "chio.finding.purchase-record.v1",
+      "artifactKind": "finding_purchase_record",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/purchase-record.schema.json"
     },
     {
       "schema": "chio.finding.replay-recipe-input.v1",

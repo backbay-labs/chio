@@ -792,10 +792,22 @@ fn finding_family_schema_registry_parity_is_bidirectional() {
             "spec/schemas/chio-finding/v1/challenge-verifier-profile.schema.json",
         ),
         (
+            "chio.finding.failed-delivery.v1",
+            "finding_failed_delivery",
+            "finding-market-v1",
+            "spec/schemas/chio-finding/v1/failed-delivery.schema.json",
+        ),
+        (
             "chio.finding.market-terms.v1",
             "finding_market_terms",
             "finding-market-v1",
             "spec/schemas/chio-finding/v1/market-terms.schema.json",
+        ),
+        (
+            "chio.finding.purchase-record.v1",
+            "finding_purchase_record",
+            "finding-market-v1",
+            "spec/schemas/chio-finding/v1/purchase-record.schema.json",
         ),
         (
             "chio.finding.seller-authorization.v1",
@@ -810,7 +822,10 @@ fn finding_family_schema_registry_parity_is_bidirectional() {
             "spec/schemas/chio-finding/v1/verifier-report.schema.json",
         ),
     ];
-    const EXPECTED_REGISTRY_ONLY: &[&str] = &["chio.finding.replay-recipe-input.v1"];
+    const EXPECTED_REGISTRY_ONLY: &[&str] = &[
+        "chio.finding.purchase-context.v1",
+        "chio.finding.replay-recipe-input.v1",
+    ];
 
     let registry: serde_json::Value = serde_json::from_str(include_str!(concat!(
         env!("CARGO_MANIFEST_DIR"),

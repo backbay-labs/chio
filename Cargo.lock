@@ -3601,6 +3601,7 @@ dependencies = [
 name = "chio-finding"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "chio-core-types",
  "chio-spec-validate",
  "serde",
