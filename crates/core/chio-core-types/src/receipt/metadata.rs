@@ -12,7 +12,7 @@ use crate::error::{Error, Result};
 
 use super::decision::Decision;
 use super::kinds::{BoundaryClass, ObservationOutcome, ReceiptKind, RedactionMode, ToolOrigin};
-use super::validation::{require_exact, require_lowercase_hex_chars};
+use super::validation::{require_exact, require_lowercase_hex_chars, require_wire_identifier};
 
 /// Actor reference carried by signed receipt semantics.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -273,6 +273,124 @@ impl DeliveryContract {
             64,
             "delivery_contract.observed_digest",
         )?;
+        Ok(())
+    }
+}
+
+/// Finding-delivery overlay metadata block key.
+pub const FINDING_DELIVERY_METADATA_KEY: &str = "finding_delivery";
+
+/// Schema identifier pinned by every `finding_delivery` block.
+pub const FINDING_DELIVERY_SCHEMA: &str = "chio.finding.delivery.v1";
+
+/// Transform profile the kernel proved for a purchased finding reveal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingTransformProfile {
+    /// The delivered output is the unmutated seller-origin envelope: the
+    /// post-invocation hook plan was empty and frozen at admission.
+    Identity,
+}
+
+/// Outcome of the reveal-envelope media-type comparison.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingMediaTypeCheck {
+    /// The envelope media type equals the signed finding's advertised type.
+    Matched,
+    /// The envelope media type differs from the advertised type.
+    Mismatched,
+    /// The comparison did not run because an earlier check already denied.
+    NotEvaluated,
+}
+
+/// Settlement rail the purchase was admitted under.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum FindingDeliverySettlementMode {
+    /// Single-operator reversible hold: capture only after the digest and
+    /// media checks pass, release on any failure.
+    LocalReversibleHold,
+}
+
+/// Finding-specific delivery overlay for a receipt whose grant carried a
+/// provider-signed purchase marker (`Constraint::RequireFindingPurchase`).
+///
+/// Attached alongside the generic `delivery_contract` block only when the
+/// purchase context arrived through verified signed artifacts; every field
+/// derives from kernel-verified state, never from caller-asserted values.
+/// Like its generic sibling it is authenticated by the enclosing receipt and
+/// lives here so evidence consumers and portable verifiers outside the
+/// kernel can read it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct FindingDelivery {
+    /// Schema identifier; always [`FINDING_DELIVERY_SCHEMA`].
+    pub schema: String,
+    /// Content-addressed id of the finding that was sold, stamped from the
+    /// verified signed finding, never from request arguments.
+    pub finding_id: String,
+    /// Listing the sale was admitted under.
+    pub listing_id: String,
+    /// Kernel-proved transform profile for the delivered output.
+    pub transform_profile: FindingTransformProfile,
+    /// Kernel comparison of the delivered digest against the committed one.
+    pub digest_check: DeliveryResult,
+    /// Kernel comparison of the reveal-envelope media type against the
+    /// signed finding's advertised type.
+    pub media_type_check: FindingMediaTypeCheck,
+    /// Settlement rail the admitted selector named.
+    pub settlement_mode: FindingDeliverySettlementMode,
+    /// Canonical SHA-256 digest of the signed accepted-bid envelope.
+    pub accepted_bid_envelope_sha256: String,
+    /// Canonical SHA-256 digest of the venue-signed admission envelope.
+    pub venue_admission_envelope_sha256: String,
+    /// Authoritative reservation the purchase resolved through.
+    pub reservation_id: String,
+    /// Coordinator-preallocated purchase intent identity.
+    pub purchase_intent_id: String,
+    /// Coordinator-preallocated payment operation identity.
+    pub authoritative_payment_operation_id: String,
+}
+
+impl FindingDelivery {
+    /// Validate the closed shape: pinned schema, canonical 64-hex envelope
+    /// digests, and non-empty identity fields.
+    ///
+    /// This does not re-derive any comparison result; those bindings are the
+    /// kernel terminal's responsibility. A portable reader uses this to
+    /// reject a malformed block before trusting its fields.
+    pub fn validate(&self) -> Result<()> {
+        require_exact(
+            &self.schema,
+            FINDING_DELIVERY_SCHEMA,
+            "finding_delivery.schema",
+        )?;
+        require_lowercase_hex_chars(
+            &self.accepted_bid_envelope_sha256,
+            64,
+            "finding_delivery.accepted_bid_envelope_sha256",
+        )?;
+        require_lowercase_hex_chars(
+            &self.venue_admission_envelope_sha256,
+            64,
+            "finding_delivery.venue_admission_envelope_sha256",
+        )?;
+        for (value, field) in [
+            (&self.finding_id, "finding_delivery.finding_id"),
+            (&self.listing_id, "finding_delivery.listing_id"),
+            (&self.reservation_id, "finding_delivery.reservation_id"),
+            (
+                &self.purchase_intent_id,
+                "finding_delivery.purchase_intent_id",
+            ),
+            (
+                &self.authoritative_payment_operation_id,
+                "finding_delivery.authoritative_payment_operation_id",
+            ),
+        ] {
+            require_wire_identifier(value, 512, field)?;
+        }
         Ok(())
     }
 }
