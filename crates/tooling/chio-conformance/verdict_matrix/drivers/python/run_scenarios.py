@@ -30,6 +30,15 @@ REASON_DELIVERY_DIGEST_MISMATCH = (
 REASON_DELIVERY_UNSUPPORTED_CARRIER = (
     "urn:chio:error:kernel:delivery-contract-unsupported-carrier"
 )
+REASON_FINDING_PURCHASE_UNSUPPORTED_ADMISSION = (
+    "urn:chio:error:kernel:finding-purchase-unsupported-admission"
+)
+REASON_FINDING_PURCHASE_CONTEXT_INVALID = (
+    "urn:chio:error:kernel:finding-purchase-context-invalid"
+)
+REASON_FINDING_DELIVERY_MEDIA_TYPE_MISMATCH = (
+    "urn:chio:error:kernel:finding-delivery-media-type-mismatch"
+)
 
 
 @dataclass(frozen=True)
@@ -267,6 +276,31 @@ async def evaluate_scenario(scenario: dict[str, Any]) -> VerdictTuple:
                 "deny", REASON_DELIVERY_UNSUPPORTED_CARRIER, scope_set
             )
         return tuple_for("allow", REASON_NONE, scope_set)
+
+    if category == "finding_purchase":
+        # This SDK holds none of the authorities a marked reveal needs: it
+        # cannot verify a signed purchase context, so a grant carrying the
+        # require_finding_purchase marker can only fail closed. The
+        # scenario declares the marker and context ground truth so a
+        # rejected purchase stays distinct from an unenforceable marker.
+        if not bool(script.get("marker_present", False)):
+            return tuple_for("allow", REASON_NONE, scope_set)
+        if (
+            str(script.get("marker_state", "well_formed")) != "well_formed"
+            or not bool(script.get("purchase_context_present", False))
+            or not bool(script.get("token_matches_offer", False))
+            or not bool(script.get("argument_matches_marker", False))
+        ):
+            return tuple_for(
+                "deny", REASON_FINDING_PURCHASE_CONTEXT_INVALID, scope_set
+            )
+        if str(script.get("media_type_result", "none")) == "mismatched":
+            return tuple_for(
+                "deny", REASON_FINDING_DELIVERY_MEDIA_TYPE_MISMATCH, scope_set
+            )
+        return tuple_for(
+            "deny", REASON_FINDING_PURCHASE_UNSUPPORTED_ADMISSION, scope_set
+        )
 
     return tuple_for("allow", REASON_NONE, scope_set)
 

@@ -708,6 +708,45 @@ pub const KERNEL_DELIVERY_CONTRACT_DIGEST_MISMATCH: ErrorCodeSpec = ErrorCodeSpe
     consumed_by: &["chio-kernel", "chio-conformance"],
 };
 
+pub const KERNEL_FINDING_PURCHASE_UNSUPPORTED_ADMISSION: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:kernel:finding-purchase-unsupported-admission",
+    domain: Domain::Kernel,
+    severity: Severity::Error,
+    summary: "Grant carried a finding-purchase marker the evaluator cannot admit.",
+    help: "Route the reveal to a deployment with purchase-aware admission, or drop the require_finding_purchase marker before retrying.",
+    string_code: "CHIO-KERNEL-FINDING-PURCHASE-UNSUPPORTED-ADMISSION",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-kernel", "chio-conformance"],
+};
+
+pub const KERNEL_FINDING_PURCHASE_CONTEXT_INVALID: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:kernel:finding-purchase-context-invalid",
+    domain: Domain::Kernel,
+    severity: Severity::Error,
+    summary: "Finding-purchase marker or its signed purchase context failed verification.",
+    help: "Present a well-formed local reversible-hold marker with the matching signed purchase context, the exact offered token, and a finding_id argument equal to the marked sale.",
+    string_code: "CHIO-KERNEL-FINDING-PURCHASE-CONTEXT-INVALID",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-kernel", "chio-conformance"],
+};
+
+pub const KERNEL_FINDING_DELIVERY_MEDIA_TYPE_MISMATCH: ErrorCodeSpec = ErrorCodeSpec {
+    urn: "urn:chio:error:kernel:finding-delivery-media-type-mismatch",
+    domain: Domain::Kernel,
+    severity: Severity::Error,
+    summary: "Revealed finding payload did not carry the media type the signed finding advertises.",
+    help: "The reveal is rejected and the hold is released. Re-run the reveal so the delivered envelope carries the advertised media type.",
+    string_code: "CHIO-KERNEL-FINDING-DELIVERY-MEDIA-TYPE-MISMATCH",
+    jsonrpc_code: None,
+    since: "0.1.0",
+    stability: "unstable",
+    consumed_by: &["chio-kernel", "chio-conformance"],
+};
+
 pub const TRANSPORT_PROTOCOL_VERSION_UNSUPPORTED: ErrorCodeSpec = ErrorCodeSpec {
     urn: "urn:chio:error:transport:protocol-version-unsupported",
     domain: Domain::Transport,
@@ -1490,6 +1529,9 @@ pub static ERROR_CODES: &[ErrorCodeSpec] = &[
     KERNEL_BUDGET_AUTHORIZE_REPLAY,
     KERNEL_DELIVERY_CONTRACT_UNSUPPORTED_CARRIER,
     KERNEL_DELIVERY_CONTRACT_DIGEST_MISMATCH,
+    KERNEL_FINDING_PURCHASE_UNSUPPORTED_ADMISSION,
+    KERNEL_FINDING_PURCHASE_CONTEXT_INVALID,
+    KERNEL_FINDING_DELIVERY_MEDIA_TYPE_MISMATCH,
     TRANSPORT_PROTOCOL_VERSION_UNSUPPORTED,
     TRANSPORT_INVALID_REQUEST_SHAPE,
     TRANSPORT_AUTH_MISSING_OR_INVALID,

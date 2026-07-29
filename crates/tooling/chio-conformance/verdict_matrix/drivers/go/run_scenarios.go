@@ -22,6 +22,9 @@ const reasonGuardDenied = "urn:chio:error:guard:denied"
 const reasonKernelInternal = "urn:chio:error:kernel:internal-error"
 const reasonDeliveryDigestMismatch = "urn:chio:error:kernel:delivery-contract-digest-mismatch"
 const reasonDeliveryUnsupportedCarrier = "urn:chio:error:kernel:delivery-contract-unsupported-carrier"
+const reasonFindingPurchaseUnsupportedAdmission = "urn:chio:error:kernel:finding-purchase-unsupported-admission"
+const reasonFindingPurchaseContextInvalid = "urn:chio:error:kernel:finding-purchase-context-invalid"
+const reasonFindingDeliveryMediaTypeMismatch = "urn:chio:error:kernel:finding-delivery-media-type-mismatch"
 
 type scenario struct {
 	Schema   string         `json:"schema"`
@@ -45,6 +48,13 @@ type scenarioScript struct {
 	CarrierPresent    bool     `json:"carrier_present"`
 	DeliveryLane      string   `json:"delivery_lane"`
 	DeliveryResult    string   `json:"delivery_result"`
+
+	MarkerPresent          bool   `json:"marker_present"`
+	MarkerState            string `json:"marker_state"`
+	PurchaseContextPresent bool   `json:"purchase_context_present"`
+	TokenMatchesOffer      bool   `json:"token_matches_offer"`
+	ArgumentMatchesMarker  bool   `json:"argument_matches_marker"`
+	MediaTypeResult        string `json:"media_type_result"`
 }
 
 type verdictTuple struct {
@@ -221,6 +231,29 @@ func evaluateScenario(s scenario) verdictTuple {
 			return tuple("deny", reasonDeliveryUnsupportedCarrier, scopeSet)
 		}
 		return tuple("allow", reasonNone, scopeSet)
+	case "finding_purchase":
+		// This SDK holds none of the authorities a marked reveal needs: it
+		// cannot verify a signed purchase context, so a grant carrying the
+		// require_finding_purchase marker can only fail closed. The scenario
+		// declares the marker and context ground truth so a rejected purchase
+		// stays distinct from an unenforceable marker.
+		if !s.Script.MarkerPresent {
+			return tuple("allow", reasonNone, scopeSet)
+		}
+		markerState := s.Script.MarkerState
+		if markerState == "" {
+			markerState = "well_formed"
+		}
+		if markerState != "well_formed" ||
+			!s.Script.PurchaseContextPresent ||
+			!s.Script.TokenMatchesOffer ||
+			!s.Script.ArgumentMatchesMarker {
+			return tuple("deny", reasonFindingPurchaseContextInvalid, scopeSet)
+		}
+		if s.Script.MediaTypeResult == "mismatched" {
+			return tuple("deny", reasonFindingDeliveryMediaTypeMismatch, scopeSet)
+		}
+		return tuple("deny", reasonFindingPurchaseUnsupportedAdmission, scopeSet)
 	}
 
 	return tuple("allow", reasonNone, scopeSet)

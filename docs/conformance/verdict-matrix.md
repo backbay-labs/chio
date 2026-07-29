@@ -6,7 +6,7 @@ driver, and diff oracle living under `crates/tooling/chio-conformance/verdict_ma
 
 ## Corpus
 
-The active corpus contains 60 JSON scenarios:
+The active corpus contains 72 JSON scenarios:
 
 | Class | Directory | Count |
 | --- | --- | --- |
@@ -15,6 +15,7 @@ The active corpus contains 60 JSON scenarios:
 | Replay verdict | `scenarios/replay_verdict/` | 12 |
 | Redaction determinism | `scenarios/redaction_determinism/` | 12 |
 | Delivery contract | `scenarios/delivery_contract/` | 12 |
+| Finding purchase | `scenarios/finding_purchase/` | 12 |
 
 `manifest.toml` pins the corpus with `scenario_index_hash`. The hash is computed
 over sorted relative paths and each file SHA-256 digest:
@@ -24,7 +25,7 @@ relative/path.json<TAB>file_sha256<LF>
 ```
 
 The active `corpus_sha256` is
-`6ef424c7410290675d796330ec46aef1a1c3a4c56952349f452c72cdc139f0d3`.
+`c24bec3f743ba830fedfd3141e8deb38b30c900fca649d0e273287f46299e7e3`.
 
 The manifest also records the active drivers and the tuple fields asserted by
 the oracle.
@@ -42,7 +43,7 @@ The required verdict-matrix gates are:
 | `typescript-node-http` | no | advisory transport client, sidecar required |
 | `wasm-browser` | no | advisory partial browser surface |
 
-Required drivers must emit all 60 tuples with `unsupported = 0` and zero
+Required drivers must emit all 72 tuples with `unsupported = 0` and zero
 divergence from the Rust kernel expected tuple for each scenario.
 
 ## Corpus rotation
@@ -75,19 +76,29 @@ The Rust driver fails closed:
 
 ## Python and Go Driver Boundaries
 
-The Python SDK driver is required. It emits local semantic tuples for all 60
+The Python SDK driver is required. It emits local semantic tuples for all 72
 scenarios by issuing a mock SDK capability, evaluating the requested tool call
 through `MockChioClient`, and deriving the tuple from the receipt decision and
 scenario requirements. Capability subset, revocation propagation, replay
-verdict, redaction determinism, and delivery contract must all report
-`unsupported = 0`. The delivery-contract class is a mock that does not enforce
-output digests: it denies any request carrying the `output_digest_sha256`
-constraint from carrier admission alone (deny-on-unsupported-constraint),
-reporting `urn:chio:error:kernel:delivery-contract-unsupported-carrier`, or
+verdict, redaction determinism, delivery contract, and finding purchase must
+all report `unsupported = 0`. The delivery-contract class is a mock that does
+not enforce output digests: it denies any request carrying the
+`output_digest_sha256` constraint from carrier admission alone
+(deny-on-unsupported-constraint), reporting
+`urn:chio:error:kernel:delivery-contract-unsupported-carrier`, or
 `urn:chio:error:kernel:delivery-contract-digest-mismatch` for a declared
-mismatch.
+mismatch. The finding-purchase class is a mock with no purchase-context
+verification authority: it denies any request whose grant carries the
+`require_finding_purchase` marker, reporting
+`urn:chio:error:kernel:finding-purchase-context-invalid` for a marker or context
+the scenario declares defective,
+`urn:chio:error:kernel:finding-delivery-media-type-mismatch` for a declared
+media-type mismatch, and
+`urn:chio:error:kernel:finding-purchase-unsupported-admission` when every
+purchase artifact matches and admission still cannot be granted. An unmarked
+request gets no finding overlay.
 
-The Go HTTP SDK driver is required. It emits local semantic tuples for all 60
+The Go HTTP SDK driver is required. It emits local semantic tuples for all 72
 scenarios through the Go verdict-matrix driver under
 `crates/tooling/chio-conformance/verdict_matrix/drivers/go/` and is checked from
 `sdks/go/chio-go-http` with `go test -run VerdictMatrix ./...`. The required
@@ -121,9 +132,10 @@ or derive verdicts from scenario fields.
 
 The WASM browser driver exercises the real `chio-kernel-browser` `evaluate_pure`
 path for the capability subset. It reports revocation propagation, replay
-verdict, redaction determinism, and delivery contract as unsupported because that
-browser surface does not include a revocation store, execution nonce store,
-guard pipeline, or output-aware delivery terminal.
+verdict, redaction determinism, delivery contract, and finding purchase as
+unsupported because that browser surface does not include a revocation store,
+execution nonce store, guard pipeline, output-aware delivery terminal, or
+purchase-aware admission.
 
 ## Local Gates
 

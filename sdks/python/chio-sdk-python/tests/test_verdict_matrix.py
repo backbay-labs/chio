@@ -38,11 +38,11 @@ async def test_python_driver_matches_verdict_matrix_corpus() -> None:
     report = await driver.run_scenarios(root)
 
     assert report["driver"] == "python-sdk"
-    assert report["total"] == 60
-    assert report["passed"] == 60
+    assert report["total"] == 72
+    assert report["passed"] == 72
     assert report["failed"] == 0
     assert report["unsupported"] == 0
-    assert len(report["tuples"]) == 60
+    assert len(report["tuples"]) == 72
 
     read_exact = report["tuples"]["capability-subset-001-read-exact"]
     assert read_exact == {
@@ -94,6 +94,39 @@ async def test_python_driver_matches_verdict_matrix_corpus() -> None:
         digest_mismatch["reason_code"]
         == "urn:chio:error:kernel:delivery-contract-digest-mismatch"
     )
+
+    marked_reveal = report["tuples"][
+        "finding-purchase-001-marked-reveal-admission-unsupported"
+    ]
+    assert marked_reveal["verdict"] == "deny"
+    assert (
+        marked_reveal["reason_code"]
+        == "urn:chio:error:kernel:finding-purchase-unsupported-admission"
+    )
+
+    cross_org_selector = report["tuples"][
+        "finding-purchase-005-cross-org-escrow-selector"
+    ]
+    assert cross_org_selector["verdict"] == "deny"
+    assert (
+        cross_org_selector["reason_code"]
+        == "urn:chio:error:kernel:finding-purchase-context-invalid"
+    )
+
+    media_type_mismatch = report["tuples"][
+        "finding-purchase-010-media-type-mismatch"
+    ]
+    assert media_type_mismatch["verdict"] == "deny"
+    assert (
+        media_type_mismatch["reason_code"]
+        == "urn:chio:error:kernel:finding-delivery-media-type-mismatch"
+    )
+
+    unmarked_call = report["tuples"][
+        "finding-purchase-002-unmarked-call-no-overlay"
+    ]
+    assert unmarked_call["verdict"] == "allow"
+    assert unmarked_call["reason_code"] == "urn:chio:error:none"
 
     prompt_write_scope = driver.scope_for_labels(["prompt:write"])
     assert prompt_write_scope.prompt_grants[0].operations == [
