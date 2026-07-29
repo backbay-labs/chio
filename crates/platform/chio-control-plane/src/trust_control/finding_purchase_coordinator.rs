@@ -222,6 +222,7 @@ impl FindingPurchaseCoordinator {
         &self,
         reservation_id: &str,
         delivery_receipt_id: &str,
+        accepted_bid_envelope_sha256: &str,
         realized_spend_units: u64,
         payout_destination: &str,
         seller_backing_envelope_sha256: &str,
@@ -234,7 +235,7 @@ impl FindingPurchaseCoordinator {
         let record = FindingPurchaseRecord {
             schema: FINDING_PURCHASE_RECORD_SCHEMA_V1.to_owned(),
             purchase_key: derive_purchase_key(
-                &reservation.bid_envelope_sha256,
+                accepted_bid_envelope_sha256,
                 &reservation.authoritative_payment_operation_id,
             ),
             purchase_intent_id: reservation.purchase_intent_id.clone(),
@@ -245,7 +246,7 @@ impl FindingPurchaseCoordinator {
             payer: buyer,
             finding_id: reservation.finding_id.clone(),
             listing_id: reservation.listing_id.clone(),
-            accepted_bid_envelope_sha256: reservation.bid_envelope_sha256.clone(),
+            accepted_bid_envelope_sha256: accepted_bid_envelope_sha256.to_owned(),
             venue_admission_envelope_sha256: reservation.admission_envelope_sha256.clone(),
             accepted_price: chio_core::capability::scope::MonetaryAmount {
                 units: reservation.amount_units,
@@ -303,6 +304,7 @@ impl FindingPurchaseCoordinator {
     pub fn finalize_denial(
         &self,
         reservation_id: &str,
+        accepted_bid_envelope_sha256: &str,
         deny_receipt_id: &str,
         deny_receipt_sha256: &str,
         deny_checkpoint_ref: &str,
@@ -318,7 +320,7 @@ impl FindingPurchaseCoordinator {
             buyer,
             finding_id: reservation.finding_id.clone(),
             listing_id: reservation.listing_id.clone(),
-            accepted_bid_envelope_sha256: reservation.bid_envelope_sha256.clone(),
+            accepted_bid_envelope_sha256: accepted_bid_envelope_sha256.to_owned(),
             reservation_id: reservation.reservation_id.clone(),
             purchase_intent_id: reservation.purchase_intent_id.clone(),
             authoritative_payment_operation_id: reservation
