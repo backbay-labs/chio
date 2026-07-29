@@ -386,6 +386,51 @@ authorization is a market-side mint), and challenge evaluation (M5).
   market stays dark. Record exact results here under "Recorded results".
 - Update the PLAN.md ladder row for M4.
 
+## Recorded results
+
+- All ten tasks landed on `codex/cognition-market-m4` (stacked on the M3
+  branch). `cognition_market_wedge_purchase_e2e` plus eleven failure-lane
+  tests are green: the full sale on one durable authority store (publish,
+  collateral, activation, search, admission-gated provider mint,
+  buyer-authenticated reservation with slot ordering, exact-amount
+  accept, purchase-context carrier, DPoP-bound reveal on a real durable
+  kernel, both kernel-owned receipt blocks, a single capture, the signed
+  purchase record with retained exposure and an admitted payout
+  destination, the governed memory write with its signed local-child
+  lineage statement, and a byte-identical restart replay), and the
+  digest, media, context, verifier, token, argument, and rail denials,
+  buyer-signature and idempotent-reserve behavior, allocation
+  overcommit, and the no-charge recovery redelivery.
+- Gates at branch HEAD: chio-kernel lib 898 and durable suite 6;
+  chio-store-sqlite feature lib 806; chio-control-plane feature lib 452;
+  chio-open-market feature suites (75 across bins) and chio-finding 108;
+  verdict matrix workspace 89 with the corpus at 72 across six classes
+  and rust/python/go drivers plus SDK counts rotated; chio-cli feature
+  suite 1146 with the default build linking none of the market crates;
+  full default `cargo build --workspace` clean; clippy `-D warnings` and
+  rustfmt clean on every touched crate. One store-suite failure during a
+  concurrent-agent load spike did not reproduce on a quiet rerun.
+- The M3-deferred pre-dispatch cancel defect was load-bearing here and is
+  fixed: the payment-journal schema now accepts the closed state
+  `CancelBeforeAuthorization` has always produced, and a pre-dispatch
+  compensation validates its journal as cancelled or released instead of
+  demanding a payment-terminal record. Two implementation defects the
+  exit lanes caught were fixed with them: the purchase key now derives
+  from the accepted-bid envelope digest, and the delivery finalizer
+  resolves the exposure encumbrance by its reservation key.
+- Documented deviations: the purchase coordinator is an in-process
+  control-plane seam and the HTTP purchase routes are deferred, so
+  `chio finding buy` registers its full surface but refuses cleanly until
+  that wiring exists (the CLI round trip covers publish, search, and the
+  thirteen-facet verify; the buy and reveal legs are proved by the
+  in-process exit flow). Denial slot-close commits atomically with the
+  signed standing artifact after the checkpoint, so a checkpoint outage
+  delays the cutoff slot rather than leaving an unclosable one; closure
+  stays recovery-guaranteed from the durable kernel terminal. A real
+  deployment constraint surfaced by the lanes: the ask and token minter
+  must be the finding issuer or the authorized seller named by the
+  issuer-signed authorization.
+
 ## M4 exit criteria
 
 1. `cognition_market_wedge_purchase_e2e` plus the CLI round trip are green
