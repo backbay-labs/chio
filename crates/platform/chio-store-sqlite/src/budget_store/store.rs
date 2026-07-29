@@ -2,7 +2,12 @@ use super::*;
 use chio_kernel_core::budget_increment_admits;
 
 /// Budget-store schema revision. Bump on every schema-affecting change.
-pub(crate) const BUDGET_STORE_SUPPORTED_SCHEMA_VERSION: i32 = 10;
+pub(crate) const BUDGET_STORE_SUPPORTED_SCHEMA_VERSION: i32 = 11;
+/// The revision from which a stamped database is expected to already
+/// carry the invocation-capture column. Pinned rather than tracking the
+/// supported revision, so a later migration cannot silently retire the
+/// consistency assertion below.
+const BUDGET_INVOCATION_CAPTURE_DECLARED_SCHEMA_VERSION: i32 = 10;
 const BUDGET_INVOCATION_CAPTURE_SCHEMA_VERSION: i32 = 2;
 /// Stable key under which this store records its schema revision in the shared
 /// keyed metadata table, distinct from any co-located store's key.
@@ -196,7 +201,9 @@ impl SqliteBudgetStore {
         initialize_budget_replication_seq(connection)?;
         let migration = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
         let capture_column_added = ensure_budget_hold_invocation_captured_column(&migration)?;
-        if on_disk_schema_version >= BUDGET_STORE_SUPPORTED_SCHEMA_VERSION && capture_column_added {
+        if on_disk_schema_version >= BUDGET_INVOCATION_CAPTURE_DECLARED_SCHEMA_VERSION
+            && capture_column_added
+        {
             migration.rollback()?;
             return Err(BudgetStoreError::Invariant(
                 "budget schema version declares invocation capture support but the column is missing"

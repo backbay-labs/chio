@@ -7,10 +7,12 @@
 //! keyed by the reservation id the compatibility receipt carries, and it
 //! is unique on both the purchase intent and the authoritative payment
 //! operation, so no two reservations can name one payment.
-//! `seller_exposure_encumbrances` holds the open exposure that reservation
+//! `seller_exposure_encumbrances` holds the exposure that reservation
 //! places against a consumed collateral allocation, which is what bounds a
-//! seller's concurrent liability. `pending_purchase_slots` is the
-//! monotonic per-listing slot line the cutoff wait reads.
+//! seller's liability: exposure counts while the reservation is live and
+//! keeps counting once the sale settles, through the retention horizon the
+//! settlement pins. `pending_purchase_slots` is the monotonic per-listing
+//! slot line the cutoff wait reads.
 //! `purchase_records` and `failed_delivery_records` are the two terminal
 //! outcomes, retained without deletion and content-addressed against their
 //! stored digests. `payout_destinations` is the bounded sixteen-slot
@@ -26,15 +28,19 @@
 //! verification, price agreement, and payment authorization belong to the
 //! surfaces that call in here. The store enforces the durable invariants
 //! those surfaces rely on: one reservation per payment operation, exposure
-//! that never exceeds the allocation's registered cap, a slot line that
-//! only ever grows, terminal records that cannot be edited or deleted, and
-//! the atomic close transaction that moves reservation, slot, encumbrance,
-//! and record together or not at all.
+//! that never exceeds the allocation's registered cap, an allocation that
+//! backs the finding and listing it is charged for, a slot line that only
+//! ever grows, terminal records that cannot be edited or deleted, and the
+//! atomic close transaction that moves reservation, slot, encumbrance, and
+//! record together or not at all.
 //!
 //! Every mutation is idempotent by its natural key following the durable
-//! fee-intent fence: a replay with identical parameters succeeds without
+//! fee-intent fence: a replay carrying the same identity succeeds without
 //! re-applying the effect, and a replay with conflicting parameters
-//! rejects rather than overwriting what is already durable.
+//! rejects rather than overwriting what is already durable. Identity is
+//! the semantic content of the write; the trusted times a caller supplies
+//! are not part of it, so a retry issued from a later clock replays rather
+//! than stranding the durable row it is retrying.
 
 use std::sync::{Arc, Mutex, MutexGuard};
 
@@ -84,7 +90,7 @@ pub enum FindingPurchaseStoreError {
     #[error("finding purchase invariant violated: {0}")]
     Invariant(String),
     #[error(
-        "seller exposure overcommitted for allocation {allocation_id}: {outstanding} open plus {requested} requested exceeds the {maximum} cap"
+        "seller exposure overcommitted for allocation {allocation_id}: {outstanding} outstanding plus {requested} requested exceeds the {maximum} cap"
     )]
     ExposureOvercommitted {
         allocation_id: String,
@@ -94,6 +100,16 @@ pub enum FindingPurchaseStoreError {
     },
     #[error("collateral allocation {0} is not a consumed allocation")]
     AllocationNotConsumed(String),
+    #[error(
+        "collateral allocation {allocation_id} backs finding {backing_finding_id} on listing {backing_listing_id}, not finding {finding_id} on listing {listing_id}"
+    )]
+    AllocationNotBoundToSale {
+        allocation_id: String,
+        backing_finding_id: String,
+        backing_listing_id: String,
+        finding_id: String,
+        listing_id: String,
+    },
     #[error("payout destination slots are exhausted for allocation {0}")]
     DestinationSlotsExhausted(String),
     #[error("finding purchase commit outcome is unknown: {0}")]
@@ -111,8 +127,10 @@ pub enum FindingPurchaseReservationState {
     Expired,
 }
 
-/// Lifecycle of one seller exposure encumbrance. `open` is the only state
-/// that counts against the allocation cap; every exit from it is final.
+/// Lifecycle of one seller exposure encumbrance. Exposure counts against
+/// the allocation cap while it is `open`, and while it is `retained` up to
+/// its retention horizon; `released` never counts. Every exit from `open`
+/// is final.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FindingPurchaseEncumbranceState {
     Open,
@@ -218,7 +236,8 @@ pub struct FindingPurchaseDeliveryInput<'a> {
     pub record_json: &'a [u8],
     pub record_sha256: &'a str,
     pub delivery_receipt_id: &'a str,
-    /// Trusted time through which the retained exposure stays encumbered.
+    /// Trusted time through which the retained exposure stays encumbered
+    /// and keeps counting against the allocation's cap.
     pub retention_expires_at: u64,
     pub now: u64,
 }
@@ -339,14 +358,18 @@ impl SqliteFindingPurchaseStore {
     /// Fence one purchase before its payment dispatches. In one immediate
     /// transaction this inserts the reservation `open` and opens the
     /// seller exposure encumbrance that backs it, after asserting the
-    /// named collateral allocation is consumed and that the new exposure
-    /// plus every open exposure already booked against that allocation
-    /// stays within `maximum_sale_exposure_units`.
+    /// named collateral allocation is consumed, backs this finding on this
+    /// listing, and that the new exposure plus every exposure still
+    /// outstanding against that allocation at `created_at` stays within
+    /// `maximum_sale_exposure_units`.
     ///
-    /// Idempotent on the reservation id: an identical replay returns
+    /// Idempotent on the reservation id: a replay carrying the same
+    /// purchase identity returns
     /// [`FindingPurchaseWriteOutcome::ExistingSame`] without touching the
     /// exposure, and conflicting parameters under an existing reservation
-    /// id reject.
+    /// id reject. The trusted times are not part of that identity, so a
+    /// retry from a later clock replays; the durable row keeps the expiry
+    /// the first call fenced.
     pub fn open_reservation(
         &self,
         input: &FindingPurchaseReservationInput<'_>,
@@ -385,8 +408,9 @@ impl SqliteFindingPurchaseStore {
             input.encumbrance_id,
             "encumbrance id",
         )?;
-        assert_allocation_consumed(&transaction, input)?;
-        let outstanding = open_encumbrance_total_tx(&transaction, input.allocation_id)?;
+        assert_allocation_backs_sale(&transaction, input)?;
+        let outstanding =
+            outstanding_exposure_total_tx(&transaction, input.allocation_id, input.created_at)?;
         let committed = outstanding
             .checked_add(input.amount_units)
             .ok_or_else(|| invariant("seller exposure total overflowed u64"))?;
@@ -580,9 +604,10 @@ impl SqliteFindingPurchaseStore {
     /// slot against the record, moves the reservation `slot_reserved` to
     /// `consumed`, retains the exposure encumbrance through
     /// `retention_expires_at`, and inserts the retained purchase record.
-    /// Idempotent: a replay with identical parameters succeeds as a no-op,
-    /// and conflicting parameters against an already-settled purchase
-    /// reject.
+    /// Idempotent: a replay of the same settled record succeeds as a
+    /// no-op, and a different record against an already-settled purchase
+    /// rejects. The pinned retention horizon is durable and is never
+    /// rewritten, so a replay can neither extend nor shorten it.
     pub fn close_slot_with_record(
         &self,
         input: &FindingPurchaseDeliveryInput<'_>,
@@ -605,13 +630,22 @@ impl SqliteFindingPurchaseStore {
                         .ok_or_else(|| {
                             invariant("consumed reservation holds no purchase record")
                         })?;
-                let encumbrance = load_encumbrance_tx(&transaction, input.reservation_id)?
-                    .ok_or_else(|| invariant("reservation lost its exposure encumbrance"))?;
+                if load_encumbrance_tx(&transaction, input.reservation_id)?.is_none() {
+                    return Err(invariant("reservation lost its exposure encumbrance"));
+                }
+                // `retention_expires_at` is deliberately absent from this
+                // comparison. A caller derives it from its clock, so an
+                // honest retry of one settlement carries a later horizon
+                // than the durable row; comparing them would reject the
+                // retry and leave the settlement unresolved. The retained
+                // encumbrance is terminal and is never rewritten, so the
+                // horizon the first settlement pinned is the one the
+                // exposure cap keeps counting against, whatever a replay
+                // asks for.
                 if stored.purchase_key == input.purchase_key
                     && stored.record_json == input.record_json
                     && stored.record_sha256 == input.record_sha256
                     && stored.delivery_receipt_id == input.delivery_receipt_id
-                    && encumbrance.retention_expires_at == Some(input.retention_expires_at)
                 {
                     return Ok(FindingPurchaseWriteOutcome::ExistingSame);
                 }
@@ -857,15 +891,20 @@ impl SqliteFindingPurchaseStore {
             .transpose()
     }
 
-    /// Total open exposure booked against one collateral allocation.
-    pub fn list_open_encumbrance_total(
+    /// Exposure still outstanding against one collateral allocation at
+    /// `now`: every live reservation's open encumbrance plus every settled
+    /// sale's retained encumbrance whose retention horizon has not lapsed.
+    /// This is the quantity the allocation cap bounds.
+    pub fn list_outstanding_exposure_total(
         &self,
         allocation_id: &str,
+        now: u64,
     ) -> Result<u64, FindingPurchaseStoreError> {
         require_hex64(allocation_id, "allocation_id")?;
+        require_trusted_time(now, "now")?;
         let mut connection = self.connection()?;
         let transaction = self.begin_read(&mut connection)?;
-        open_encumbrance_total_tx(&transaction, allocation_id)
+        outstanding_exposure_total_tx(&transaction, allocation_id, now)
     }
 
     /// One retained settled purchase record, re-checked against its stored
@@ -1437,36 +1476,49 @@ fn due_reservations_tx(
     Ok(due)
 }
 
-fn open_encumbrance_total_tx(
+/// Exposure booked against one allocation that is still outstanding at
+/// `now`. A settled sale's exposure does not vanish when the money moves:
+/// it stays encumbered until the retention horizon the settlement pinned
+/// lapses, so one allocation can never back more concurrent plus retained
+/// liability than the cap it registered.
+fn outstanding_exposure_total_tx(
     transaction: &Transaction<'_>,
     allocation_id: &str,
+    now: u64,
 ) -> Result<u64, FindingPurchaseStoreError> {
     let total: i64 = transaction
         .query_row(
             r#"
             SELECT COALESCE(SUM(amount_units), 0) FROM seller_exposure_encumbrances
-            WHERE allocation_id = ?1 AND state = 'open'
+            WHERE allocation_id = ?1
+              AND (
+                state = 'open'
+                OR (state = 'retained' AND retention_expires_at > ?2)
+              )
             "#,
-            [allocation_id],
+            params![allocation_id, sqlite_i64(now, "now")?],
             |row| row.get(0),
         )
         .map_err(sqlite_error)?;
-    stored_u64(total, "open exposure total")
+    stored_u64(total, "outstanding exposure total")
 }
 
 /// The named allocation must exist in the sibling market store's
-/// collateral table, must have been consumed by an activation, must price
-/// in the reservation's currency, and must have registered a cap at least
-/// as large as the one the caller verified. Anything else denies the
-/// reservation.
-fn assert_allocation_consumed(
+/// collateral table, must have been consumed by an activation, must back
+/// exactly the finding and listing this reservation sells, must price in
+/// the reservation's currency, and must have registered a cap at least as
+/// large as the one the caller verified. Anything else denies the
+/// reservation: without the finding and listing comparison one seller's
+/// collateral could be encumbered for a sale it never backed.
+fn assert_allocation_backs_sale(
     transaction: &Transaction<'_>,
     input: &FindingPurchaseReservationInput<'_>,
 ) -> Result<(), FindingPurchaseStoreError> {
     let row = transaction
         .query_row(
             r#"
-            SELECT state, currency, maximum_sale_exposure_units
+            SELECT state, finding_id, listing_id, currency,
+                   maximum_sale_exposure_units
             FROM collateral_allocations WHERE allocation_id = ?1
             "#,
             [input.allocation_id],
@@ -1474,13 +1526,15 @@ fn assert_allocation_consumed(
                 Ok((
                     row.get::<_, String>(0)?,
                     row.get::<_, String>(1)?,
-                    row.get::<_, i64>(2)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
                 ))
             },
         )
         .optional()
         .map_err(sqlite_error)?;
-    let Some((state, currency, registered_maximum)) = row else {
+    let Some((state, finding_id, listing_id, currency, registered_maximum)) = row else {
         return Err(FindingPurchaseStoreError::AllocationNotConsumed(
             input.allocation_id.to_owned(),
         ));
@@ -1489,6 +1543,15 @@ fn assert_allocation_consumed(
         return Err(FindingPurchaseStoreError::AllocationNotConsumed(
             input.allocation_id.to_owned(),
         ));
+    }
+    if finding_id != input.finding_id || listing_id != input.listing_id {
+        return Err(FindingPurchaseStoreError::AllocationNotBoundToSale {
+            allocation_id: input.allocation_id.to_owned(),
+            backing_finding_id: finding_id,
+            backing_listing_id: listing_id,
+            finding_id: input.finding_id.to_owned(),
+            listing_id: input.listing_id.to_owned(),
+        });
     }
     if currency != input.currency {
         return Err(FindingPurchaseStoreError::Conflict(
@@ -1611,6 +1674,19 @@ fn abandon_reservation_tx(
     Ok(())
 }
 
+/// Whether a stored reservation is the same purchase the caller is
+/// reserving. Identity is what the purchase is: who pays, for which
+/// finding on which listing, under which digests, for how much.
+///
+/// The trusted times are deliberately excluded. A caller derives both
+/// `created_at` and `expires_at` from its clock, so an honest retry of one
+/// reserve carries later values than the durable row; comparing them would
+/// turn every such retry into a conflict and strand the reservation the
+/// caller is trying to recover. Excluding them cannot extend the fence:
+/// the stored row is returned untouched, so the expiry the first call
+/// committed remains the one the store enforces and a later `expires_at`
+/// is ignored rather than applied. A caller that needs the authoritative
+/// deadline reads it back off the reservation.
 fn reservation_matches(
     existing: &FindingPurchaseReservationRecord,
     input: &FindingPurchaseReservationInput<'_>,
@@ -1626,8 +1702,6 @@ fn reservation_matches(
         && existing.admission_envelope_sha256 == input.admission_envelope_sha256
         && existing.amount_units == input.amount_units
         && existing.currency == input.currency
-        && existing.expires_at == input.expires_at
-        && existing.created_at == input.created_at
 }
 
 fn encumbrance_matches(

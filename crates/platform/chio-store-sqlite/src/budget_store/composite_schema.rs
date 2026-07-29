@@ -2,7 +2,12 @@ use super::*;
 
 mod state_invariants;
 
-const COMPOSITE_SCHEMA_VERSION: i32 = 10;
+/// Current composite budget schema revision.
+const COMPOSITE_SCHEMA_VERSION: i32 = 11;
+/// Revision that introduced the composite projection contract, the legacy event
+/// lifecycle backfill, and zero-limit denial quota rows.
+const COMPOSITE_PROJECTION_SCHEMA_VERSION: i32 = 10;
+/// Revision that moved usage history anchors out of the live grant budget rows.
 const BUDGET_USAGE_ANCHOR_SCHEMA_VERSION: i32 = 6;
 
 pub(super) fn ensure_composite_budget_schema(
@@ -769,8 +774,9 @@ pub(super) fn ensure_composite_budget_schema(
     )?;
     migrate_zero_limit_denied_event_quotas(transaction, on_disk_schema_version)?;
     ensure_cumulative_operation_composite_fk(transaction)?;
+    migrate_payment_journal_cancelled_hold_state(transaction, on_disk_schema_version)?;
 
-    if on_disk_schema_version < COMPOSITE_SCHEMA_VERSION {
+    if on_disk_schema_version < COMPOSITE_PROJECTION_SCHEMA_VERSION {
         transaction.execute_batch(
             r#"
             DROP INDEX IF EXISTS idx_budget_events_operation_authorize;
@@ -856,7 +862,7 @@ fn migrate_zero_limit_denied_event_quotas(
     transaction: &rusqlite::Transaction<'_>,
     on_disk_schema_version: i32,
 ) -> Result<(), BudgetStoreError> {
-    if on_disk_schema_version >= COMPOSITE_SCHEMA_VERSION {
+    if on_disk_schema_version >= COMPOSITE_PROJECTION_SCHEMA_VERSION {
         return Ok(());
     }
     let table_sql: String = transaction.query_row(
@@ -940,6 +946,291 @@ fn migrate_zero_limit_denied_event_quotas(
           )
         BEGIN
             SELECT RAISE(ABORT, 'budget event quota is outside durable bounds');
+        END;
+        "#,
+    )?;
+    Ok(())
+}
+
+/// Widen the `payment_journal` row contract so a hold cancelled before any rail
+/// authorization reaches `closed` without an authorization identifier.
+///
+/// The table is created with `CREATE TABLE IF NOT EXISTS` and SQLite cannot
+/// alter a CHECK constraint in place, so a database provisioned under an earlier
+/// revision keeps the narrower contract and still rejects that cancellation
+/// until the table is rebuilt. The rebuild is skipped once the on-disk
+/// definition already carries the widened branch, so it applies at most once.
+fn migrate_payment_journal_cancelled_hold_state(
+    transaction: &rusqlite::Transaction<'_>,
+    on_disk_schema_version: i32,
+) -> Result<(), BudgetStoreError> {
+    if on_disk_schema_version >= COMPOSITE_SCHEMA_VERSION {
+        return Ok(());
+    }
+    let table_sql: String = transaction.query_row(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'payment_journal'",
+        [],
+        |row| row.get(0),
+    )?;
+    if table_sql.contains("state = 'closed'") {
+        return Ok(());
+    }
+    let rows_before: i64 =
+        transaction.query_row("SELECT COUNT(*) FROM payment_journal", [], |row| row.get(0))?;
+    // `payment_release_evidence` references `payment_journal`, so dropping the
+    // table orphans its rows for the rest of the rebuild. Renaming the journal
+    // aside instead would repoint that reference at the temporary name, which is
+    // why the rebuild keeps the name and defers foreign key enforcement: the
+    // drop counts the orphans and copying the rows back into the recreated
+    // table clears the count before the enclosing transaction commits.
+    transaction.execute_batch("PRAGMA defer_foreign_keys = ON;")?;
+    let rebuilt = rebuild_payment_journal(transaction);
+    let restored = transaction.execute_batch("PRAGMA defer_foreign_keys = OFF;");
+    rebuilt?;
+    restored?;
+    let rows_after: i64 =
+        transaction.query_row("SELECT COUNT(*) FROM payment_journal", [], |row| row.get(0))?;
+    if rows_before != rows_after {
+        return Err(BudgetStoreError::Invariant(format!(
+            "payment journal rebuild carried {rows_after} of {rows_before} rows"
+        )));
+    }
+    Ok(())
+}
+
+/// Copy every journal row aside, recreate the table under the widened contract,
+/// copy the rows back, and restore the indexes and triggers that the drop
+/// removed with the table. The copy back is a plain `INSERT`, so a row the
+/// widened contract would reject aborts the rebuild instead of being dropped.
+fn rebuild_payment_journal(
+    transaction: &rusqlite::Transaction<'_>,
+) -> Result<(), BudgetStoreError> {
+    transaction.execute_batch(
+        r#"
+        CREATE TABLE payment_journal_rebuild (
+            operation_id TEXT,
+            journal_version INTEGER,
+            request_namespace_digest TEXT,
+            request_id TEXT,
+            capability_id TEXT,
+            grant_index INTEGER,
+            hold_id TEXT,
+            rail TEXT,
+            rail_mode TEXT,
+            authorization_id TEXT,
+            transaction_id TEXT,
+            amount_units INTEGER,
+            settle_action TEXT,
+            settle_amount_units INTEGER,
+            release_authority_kind TEXT,
+            release_authority_evidence_id TEXT,
+            release_authority_evidence_digest TEXT,
+            release_authority_operation_version INTEGER,
+            currency TEXT,
+            state TEXT,
+            created_at_unix_ms INTEGER,
+            updated_at_unix_ms INTEGER
+        );
+
+        INSERT INTO payment_journal_rebuild (
+            operation_id, journal_version, request_namespace_digest, request_id,
+            capability_id, grant_index, hold_id, rail, rail_mode,
+            authorization_id, transaction_id, amount_units, settle_action,
+            settle_amount_units, release_authority_kind,
+            release_authority_evidence_id, release_authority_evidence_digest,
+            release_authority_operation_version, currency, state,
+            created_at_unix_ms, updated_at_unix_ms
+        )
+        SELECT
+            operation_id, journal_version, request_namespace_digest, request_id,
+            capability_id, grant_index, hold_id, rail, rail_mode,
+            authorization_id, transaction_id, amount_units, settle_action,
+            settle_amount_units, release_authority_kind,
+            release_authority_evidence_id, release_authority_evidence_digest,
+            release_authority_operation_version, currency, state,
+            created_at_unix_ms, updated_at_unix_ms
+        FROM payment_journal;
+
+        DROP TRIGGER IF EXISTS payment_journal_identity_immutable;
+        DROP TRIGGER IF EXISTS payment_journal_no_delete;
+        DROP INDEX IF EXISTS idx_payment_journal_request;
+        DROP INDEX IF EXISTS idx_payment_journal_state;
+        DROP TABLE payment_journal;
+
+        CREATE TABLE payment_journal (
+            operation_id TEXT PRIMARY KEY CHECK (operation_id <> '' AND length(operation_id) <= 512),
+            journal_version INTEGER NOT NULL CHECK (
+                journal_version BETWEEN 1 AND 9007199254740991
+            ),
+            request_namespace_digest TEXT NOT NULL CHECK (
+                length(request_namespace_digest) = 64
+                AND request_namespace_digest NOT GLOB '*[^0-9a-f]*'
+            ),
+            request_id TEXT NOT NULL CHECK (request_id <> '' AND length(request_id) <= 512),
+            capability_id TEXT NOT NULL CHECK (capability_id <> '' AND length(capability_id) <= 512),
+            grant_index INTEGER NOT NULL CHECK (grant_index BETWEEN 0 AND 4294967295),
+            hold_id TEXT NOT NULL UNIQUE CHECK (hold_id <> '' AND length(hold_id) <= 512),
+            rail TEXT NOT NULL CHECK (
+                rail <> '' AND rail <> 'unspecified' AND length(rail) <= 512
+            ),
+            rail_mode TEXT NOT NULL CHECK (rail_mode IN ('reversible_hold', 'prepaid_final')),
+            authorization_id TEXT CHECK (
+                authorization_id IS NULL
+                OR (authorization_id <> '' AND length(authorization_id) <= 512)
+            ),
+            transaction_id TEXT CHECK (
+                transaction_id IS NULL
+                OR (transaction_id <> '' AND length(transaction_id) <= 512)
+            ),
+            amount_units INTEGER NOT NULL CHECK (
+                amount_units BETWEEN 1 AND 9007199254740991
+            ),
+            settle_action TEXT CHECK (settle_action IN ('capture', 'release')),
+            settle_amount_units INTEGER CHECK (
+                settle_amount_units BETWEEN 1 AND amount_units
+            ),
+            release_authority_kind TEXT CHECK (
+                release_authority_kind IN (
+                    'pre_dispatch_no_effect',
+                    'transport_not_accepted',
+                    'contractual_zero_charge'
+                )
+            ),
+            release_authority_evidence_id TEXT CHECK (
+                release_authority_evidence_id IS NULL
+                OR (release_authority_evidence_id <> ''
+                    AND length(release_authority_evidence_id) <= 512)
+            ),
+            release_authority_evidence_digest TEXT CHECK (
+                release_authority_evidence_digest IS NULL
+                OR (length(release_authority_evidence_digest) = 64
+                    AND release_authority_evidence_digest NOT GLOB '*[^0-9a-f]*')
+            ),
+            release_authority_operation_version INTEGER CHECK (
+                release_authority_operation_version BETWEEN 1 AND 9007199254740991
+            ),
+            currency TEXT NOT NULL CHECK (
+                length(currency) = 3 AND currency NOT GLOB '*[^A-Z]*'
+            ),
+            state TEXT NOT NULL CHECK (state IN (
+                'hold_placed', 'authorized', 'settling', 'settled', 'closed',
+                'reconcile_failed'
+            )),
+            created_at_unix_ms INTEGER NOT NULL CHECK (
+                created_at_unix_ms BETWEEN 1 AND 9007199254740991
+            ),
+            updated_at_unix_ms INTEGER NOT NULL CHECK (
+                updated_at_unix_ms BETWEEN created_at_unix_ms AND 9007199254740991
+            ),
+            FOREIGN KEY (hold_id) REFERENCES budget_authorization_holds(hold_id),
+            CHECK (
+                (state = 'hold_placed'
+                 AND authorization_id IS NULL AND transaction_id IS NULL
+                 AND settle_action IS NULL AND settle_amount_units IS NULL
+                 AND release_authority_kind IS NULL
+                 AND release_authority_evidence_id IS NULL
+                 AND release_authority_evidence_digest IS NULL
+                 AND release_authority_operation_version IS NULL)
+                OR
+                (state = 'authorized' AND rail_mode = 'reversible_hold'
+                 AND authorization_id IS NOT NULL AND transaction_id IS NULL
+                 AND settle_action IS NULL AND settle_amount_units IS NULL
+                 AND release_authority_kind IS NULL
+                 AND release_authority_evidence_id IS NULL
+                 AND release_authority_evidence_digest IS NULL
+                 AND release_authority_operation_version IS NULL)
+                OR
+                (state = 'settling' AND rail_mode = 'reversible_hold'
+                 AND authorization_id IS NOT NULL AND transaction_id IS NULL
+                 AND (
+                    (settle_action = 'capture' AND settle_amount_units IS NOT NULL
+                     AND release_authority_kind IS NULL
+                     AND release_authority_evidence_id IS NULL
+                     AND release_authority_evidence_digest IS NULL
+                     AND release_authority_operation_version IS NULL)
+                    OR
+                    (settle_action = 'release' AND settle_amount_units IS NULL
+                     AND release_authority_kind IS NOT NULL
+                     AND release_authority_evidence_id IS NOT NULL
+                     AND release_authority_evidence_digest IS NOT NULL
+                     AND release_authority_operation_version IS NOT NULL)
+                 ))
+                OR
+                (state IN ('settled', 'closed') AND authorization_id IS NOT NULL
+                 AND (
+                    (rail_mode = 'prepaid_final' AND transaction_id IS NULL
+                     AND settle_action IS NULL AND settle_amount_units IS NULL
+                     AND release_authority_kind IS NULL
+                     AND release_authority_evidence_id IS NULL
+                     AND release_authority_evidence_digest IS NULL
+                     AND release_authority_operation_version IS NULL)
+                    OR
+                    (rail_mode = 'reversible_hold' AND transaction_id IS NOT NULL
+                     AND (
+                        (settle_action = 'capture' AND settle_amount_units IS NOT NULL
+                         AND release_authority_kind IS NULL
+                         AND release_authority_evidence_id IS NULL
+                         AND release_authority_evidence_digest IS NULL
+                         AND release_authority_operation_version IS NULL)
+                        OR
+                        (settle_action = 'release' AND settle_amount_units IS NULL
+                         AND release_authority_kind IS NOT NULL
+                         AND release_authority_evidence_id IS NOT NULL
+                         AND release_authority_evidence_digest IS NOT NULL
+                         AND release_authority_operation_version IS NOT NULL)
+                     ))
+                 ))
+                OR
+                (state = 'closed'
+                 AND authorization_id IS NULL AND transaction_id IS NULL
+                 AND settle_action IS NULL AND settle_amount_units IS NULL
+                 AND release_authority_kind IS NULL
+                 AND release_authority_evidence_id IS NULL
+                 AND release_authority_evidence_digest IS NULL
+                 AND release_authority_operation_version IS NULL)
+                OR state = 'reconcile_failed'
+            )
+        );
+
+        INSERT INTO payment_journal (
+            operation_id, journal_version, request_namespace_digest, request_id,
+            capability_id, grant_index, hold_id, rail, rail_mode,
+            authorization_id, transaction_id, amount_units, settle_action,
+            settle_amount_units, release_authority_kind,
+            release_authority_evidence_id, release_authority_evidence_digest,
+            release_authority_operation_version, currency, state,
+            created_at_unix_ms, updated_at_unix_ms
+        )
+        SELECT
+            operation_id, journal_version, request_namespace_digest, request_id,
+            capability_id, grant_index, hold_id, rail, rail_mode,
+            authorization_id, transaction_id, amount_units, settle_action,
+            settle_amount_units, release_authority_kind,
+            release_authority_evidence_id, release_authority_evidence_digest,
+            release_authority_operation_version, currency, state,
+            created_at_unix_ms, updated_at_unix_ms
+        FROM payment_journal_rebuild;
+
+        DROP TABLE payment_journal_rebuild;
+
+        CREATE UNIQUE INDEX idx_payment_journal_request
+            ON payment_journal(request_namespace_digest, request_id);
+        CREATE INDEX idx_payment_journal_state
+            ON payment_journal(state, updated_at_unix_ms);
+
+        CREATE TRIGGER payment_journal_identity_immutable
+        BEFORE UPDATE OF operation_id, request_namespace_digest, request_id,
+                         capability_id, grant_index, hold_id, rail, rail_mode,
+                         amount_units, currency, created_at_unix_ms
+        ON payment_journal
+        BEGIN
+            SELECT RAISE(ABORT, 'payment journal identity is immutable');
+        END;
+
+        CREATE TRIGGER payment_journal_no_delete
+        BEFORE DELETE ON payment_journal
+        BEGIN
+            SELECT RAISE(ABORT, 'payment journal is append-preserving');
         END;
         "#,
     )?;

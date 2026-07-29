@@ -617,6 +617,453 @@ fn v9_event_quota_projection_migrates_without_losing_history() {
     let _ = fs::remove_dir_all(path);
 }
 
+/// Every payment journal row rendered with its exact stored value and type, so a
+/// table rebuild that alters or drops a row is visible in a single comparison.
+fn payment_journal_rows(connection: &Connection) -> Vec<String> {
+    let mut statement = connection
+        .prepare("SELECT * FROM payment_journal ORDER BY operation_id")
+        .expect("prepare payment journal scan");
+    let column_count = statement.column_count();
+    statement
+        .query_map([], |row| {
+            let mut rendered = String::new();
+            for index in 0..column_count {
+                let value: rusqlite::types::Value = row.get(index)?;
+                rendered.push_str(&format!("{value:?};"));
+            }
+            Ok(rendered)
+        })
+        .expect("scan payment journal")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("collect payment journal rows")
+}
+
+const V10_PAYMENT_JOURNAL_SCHEMA: &str = r#"
+PRAGMA foreign_keys = OFF;
+DROP TRIGGER IF EXISTS payment_journal_identity_immutable;
+DROP TRIGGER IF EXISTS payment_journal_no_delete;
+DROP INDEX IF EXISTS idx_payment_journal_request;
+DROP INDEX IF EXISTS idx_payment_journal_state;
+DROP TABLE payment_journal;
+
+CREATE TABLE payment_journal (
+    operation_id TEXT PRIMARY KEY CHECK (operation_id <> '' AND length(operation_id) <= 512),
+    journal_version INTEGER NOT NULL CHECK (
+        journal_version BETWEEN 1 AND 9007199254740991
+    ),
+    request_namespace_digest TEXT NOT NULL CHECK (
+        length(request_namespace_digest) = 64
+        AND request_namespace_digest NOT GLOB '*[^0-9a-f]*'
+    ),
+    request_id TEXT NOT NULL CHECK (request_id <> '' AND length(request_id) <= 512),
+    capability_id TEXT NOT NULL CHECK (capability_id <> '' AND length(capability_id) <= 512),
+    grant_index INTEGER NOT NULL CHECK (grant_index BETWEEN 0 AND 4294967295),
+    hold_id TEXT NOT NULL UNIQUE CHECK (hold_id <> '' AND length(hold_id) <= 512),
+    rail TEXT NOT NULL CHECK (
+        rail <> '' AND rail <> 'unspecified' AND length(rail) <= 512
+    ),
+    rail_mode TEXT NOT NULL CHECK (rail_mode IN ('reversible_hold', 'prepaid_final')),
+    authorization_id TEXT CHECK (
+        authorization_id IS NULL
+        OR (authorization_id <> '' AND length(authorization_id) <= 512)
+    ),
+    transaction_id TEXT CHECK (
+        transaction_id IS NULL
+        OR (transaction_id <> '' AND length(transaction_id) <= 512)
+    ),
+    amount_units INTEGER NOT NULL CHECK (
+        amount_units BETWEEN 1 AND 9007199254740991
+    ),
+    settle_action TEXT CHECK (settle_action IN ('capture', 'release')),
+    settle_amount_units INTEGER CHECK (
+        settle_amount_units BETWEEN 1 AND amount_units
+    ),
+    release_authority_kind TEXT CHECK (
+        release_authority_kind IN (
+            'pre_dispatch_no_effect',
+            'transport_not_accepted',
+            'contractual_zero_charge'
+        )
+    ),
+    release_authority_evidence_id TEXT CHECK (
+        release_authority_evidence_id IS NULL
+        OR (release_authority_evidence_id <> ''
+            AND length(release_authority_evidence_id) <= 512)
+    ),
+    release_authority_evidence_digest TEXT CHECK (
+        release_authority_evidence_digest IS NULL
+        OR (length(release_authority_evidence_digest) = 64
+            AND release_authority_evidence_digest NOT GLOB '*[^0-9a-f]*')
+    ),
+    release_authority_operation_version INTEGER CHECK (
+        release_authority_operation_version BETWEEN 1 AND 9007199254740991
+    ),
+    currency TEXT NOT NULL CHECK (
+        length(currency) = 3 AND currency NOT GLOB '*[^A-Z]*'
+    ),
+    state TEXT NOT NULL CHECK (state IN (
+        'hold_placed', 'authorized', 'settling', 'settled', 'closed',
+        'reconcile_failed'
+    )),
+    created_at_unix_ms INTEGER NOT NULL CHECK (
+        created_at_unix_ms BETWEEN 1 AND 9007199254740991
+    ),
+    updated_at_unix_ms INTEGER NOT NULL CHECK (
+        updated_at_unix_ms BETWEEN created_at_unix_ms AND 9007199254740991
+    ),
+    FOREIGN KEY (hold_id) REFERENCES budget_authorization_holds(hold_id),
+    CHECK (
+        (state = 'hold_placed'
+         AND authorization_id IS NULL AND transaction_id IS NULL
+         AND settle_action IS NULL AND settle_amount_units IS NULL
+         AND release_authority_kind IS NULL
+         AND release_authority_evidence_id IS NULL
+         AND release_authority_evidence_digest IS NULL
+         AND release_authority_operation_version IS NULL)
+        OR
+        (state = 'authorized' AND rail_mode = 'reversible_hold'
+         AND authorization_id IS NOT NULL AND transaction_id IS NULL
+         AND settle_action IS NULL AND settle_amount_units IS NULL
+         AND release_authority_kind IS NULL
+         AND release_authority_evidence_id IS NULL
+         AND release_authority_evidence_digest IS NULL
+         AND release_authority_operation_version IS NULL)
+        OR
+        (state = 'settling' AND rail_mode = 'reversible_hold'
+         AND authorization_id IS NOT NULL AND transaction_id IS NULL
+         AND (
+            (settle_action = 'capture' AND settle_amount_units IS NOT NULL
+             AND release_authority_kind IS NULL
+             AND release_authority_evidence_id IS NULL
+             AND release_authority_evidence_digest IS NULL
+             AND release_authority_operation_version IS NULL)
+            OR
+            (settle_action = 'release' AND settle_amount_units IS NULL
+             AND release_authority_kind IS NOT NULL
+             AND release_authority_evidence_id IS NOT NULL
+             AND release_authority_evidence_digest IS NOT NULL
+             AND release_authority_operation_version IS NOT NULL)
+         ))
+        OR
+        (state IN ('settled', 'closed') AND authorization_id IS NOT NULL
+         AND (
+            (rail_mode = 'prepaid_final' AND transaction_id IS NULL
+             AND settle_action IS NULL AND settle_amount_units IS NULL
+             AND release_authority_kind IS NULL
+             AND release_authority_evidence_id IS NULL
+             AND release_authority_evidence_digest IS NULL
+             AND release_authority_operation_version IS NULL)
+            OR
+            (rail_mode = 'reversible_hold' AND transaction_id IS NOT NULL
+             AND (
+                (settle_action = 'capture' AND settle_amount_units IS NOT NULL
+                 AND release_authority_kind IS NULL
+                 AND release_authority_evidence_id IS NULL
+                 AND release_authority_evidence_digest IS NULL
+                 AND release_authority_operation_version IS NULL)
+                OR
+                (settle_action = 'release' AND settle_amount_units IS NULL
+                 AND release_authority_kind IS NOT NULL
+                 AND release_authority_evidence_id IS NOT NULL
+                 AND release_authority_evidence_digest IS NOT NULL
+                 AND release_authority_operation_version IS NOT NULL)
+             ))
+         ))
+        OR state = 'reconcile_failed'
+    )
+);
+
+CREATE UNIQUE INDEX idx_payment_journal_request
+    ON payment_journal(request_namespace_digest, request_id);
+CREATE INDEX idx_payment_journal_state
+    ON payment_journal(state, updated_at_unix_ms);
+
+CREATE TRIGGER payment_journal_identity_immutable
+BEFORE UPDATE OF operation_id, request_namespace_digest, request_id,
+                 capability_id, grant_index, hold_id, rail, rail_mode,
+                 amount_units, currency, created_at_unix_ms
+ON payment_journal
+BEGIN
+    SELECT RAISE(ABORT, 'payment journal identity is immutable');
+END;
+
+CREATE TRIGGER payment_journal_no_delete
+BEFORE DELETE ON payment_journal
+BEGIN
+    SELECT RAISE(ABORT, 'payment journal is append-preserving');
+END;
+PRAGMA foreign_keys = ON;
+"#;
+
+const INSERT_PAYMENT_JOURNAL_ROW: &str = r#"
+INSERT INTO payment_journal (
+    operation_id, journal_version, request_namespace_digest, request_id,
+    capability_id, grant_index, hold_id, rail, rail_mode,
+    authorization_id, transaction_id, amount_units, settle_action,
+    settle_amount_units, release_authority_kind,
+    release_authority_evidence_id, release_authority_evidence_digest,
+    release_authority_operation_version, currency, state,
+    created_at_unix_ms, updated_at_unix_ms
+) VALUES (
+    ?1, 1, ?2, ?3, 'cap-composite', 0, ?4, 'rail-test', 'reversible_hold',
+    ?5, NULL, 250, ?6, NULL, ?7, ?8, ?9, ?10, 'USD', ?11,
+    1700000000000, 1700000000001
+)
+"#;
+
+#[test]
+fn v10_payment_journal_migrates_to_accept_pre_authorization_cancellation() {
+    let path = unique_db_path("chio-composite-v10-payment-journal");
+    secure_create_dir_all(&path, "create budget root");
+    let database = path.join("budget.sqlite3");
+    let store = SqliteBudgetStore::open(&database).expect("open budget store");
+    for id in [
+        "journal-authorized",
+        "journal-released",
+        "journal-cancelled",
+        "journal-duplicate",
+    ] {
+        assert!(matches!(
+            store
+                .authorize_budget_hold(BudgetAuthorizeHoldRequest {
+                    capability_id: "cap-journal".to_string(),
+                    grant_index: 0,
+                    max_invocations: Some(8),
+                    requested_exposure_units: 10,
+                    max_cost_per_invocation: Some(10),
+                    max_total_cost_units: Some(1_000),
+                    hold_id: Some(format!("hold-{id}")),
+                    event_id: Some(format!("event-{id}-authorize")),
+                    authority: None,
+                    invocation_quotas: Vec::new(),
+                    cumulative_approval: None,
+                    admission_binding: None,
+                })
+                .expect("seed payment journal hold"),
+            BudgetAuthorizeHoldDecision::Authorized(_)
+        ));
+    }
+    let provisioned_sql: String = store
+        .connection()
+        .expect("inspect provisioned payment journal")
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'payment_journal'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("load provisioned payment journal definition");
+    drop(store);
+
+    let connection = Connection::open(&database).expect("open v10 database for downgrade fixture");
+    connection
+        .execute_batch(V10_PAYMENT_JOURNAL_SCHEMA)
+        .expect("install v10 payment journal table");
+    connection
+        .execute(
+            INSERT_PAYMENT_JOURNAL_ROW,
+            params![
+                "operation-journal-authorized",
+                "a".repeat(64),
+                "request-journal-authorized",
+                "hold-journal-authorized",
+                "authorization-journal-authorized",
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                None::<i64>,
+                "authorized",
+            ],
+        )
+        .expect("seed authorized journal row");
+    connection
+        .execute(
+            INSERT_PAYMENT_JOURNAL_ROW,
+            params![
+                "operation-journal-released",
+                "b".repeat(64),
+                "request-journal-released",
+                "hold-journal-released",
+                "authorization-journal-released",
+                "release",
+                "pre_dispatch_no_effect",
+                "evidence-journal-released",
+                "c".repeat(64),
+                7_i64,
+                "settling",
+            ],
+        )
+        .expect("seed releasing journal row");
+    connection
+        .execute(
+            r#"
+            INSERT INTO payment_release_evidence (
+                operation_id, evidence_id, evidence_kind, operation_version,
+                canonical_bundle, bundle_digest, created_at_unix_ms
+            ) VALUES (
+                'operation-journal-released', 'evidence-journal-released',
+                'pre_dispatch_no_effect', 7, X'0102', ?1, 1700000000001
+            )
+            "#,
+            params!["c".repeat(64)],
+        )
+        .expect("seed release evidence row");
+    let rejected = connection
+        .execute(
+            INSERT_PAYMENT_JOURNAL_ROW,
+            params![
+                "operation-journal-cancelled",
+                "d".repeat(64),
+                "request-journal-cancelled",
+                "hold-journal-cancelled",
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                None::<i64>,
+                "closed",
+            ],
+        )
+        .expect_err("v10 rejects a hold cancelled before authorization");
+    assert!(
+        rejected.to_string().contains("CHECK constraint failed"),
+        "unexpected v10 rejection: {rejected}"
+    );
+    let seeded = payment_journal_rows(&connection);
+    assert_eq!(seeded.len(), 2);
+    crate::stamp_schema_version(&connection, "budget", 10).expect("stamp v10 budget schema");
+    drop(connection);
+
+    let migrated = SqliteBudgetStore::open(&database).expect("reopen budget store");
+    let connection = migrated
+        .connection()
+        .expect("inspect migrated payment journal");
+    let table_sql: String = connection
+        .query_row(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'payment_journal'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("load payment journal definition");
+    assert!(table_sql.contains("state = 'closed'"));
+    assert_eq!(table_sql, provisioned_sql);
+    assert_eq!(payment_journal_rows(&connection), seeded);
+
+    let restored: Vec<String> = {
+        let mut statement = connection
+            .prepare(
+                "SELECT name FROM sqlite_master
+                 WHERE tbl_name = 'payment_journal' AND type IN ('index', 'trigger')
+                 ORDER BY name",
+            )
+            .expect("prepare payment journal object scan");
+        let names = statement
+            .query_map([], |row| row.get::<_, String>(0))
+            .expect("scan payment journal objects")
+            .collect::<Result<Vec<_>, _>>()
+            .expect("collect payment journal objects");
+        names
+    };
+    for object in [
+        "idx_payment_journal_request",
+        "idx_payment_journal_state",
+        "payment_journal_identity_immutable",
+        "payment_journal_no_delete",
+    ] {
+        assert!(
+            restored.iter().any(|name| name == object),
+            "payment journal rebuild lost `{object}`: {restored:?}"
+        );
+    }
+
+    let evidence_sql: String = connection
+        .query_row(
+            "SELECT sql FROM sqlite_master
+             WHERE type = 'table' AND name = 'payment_release_evidence'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("load release evidence definition");
+    assert!(evidence_sql.contains("REFERENCES payment_journal(operation_id)"));
+    let (evidence_rows, violations): (i64, i64) = connection
+        .query_row(
+            "SELECT (SELECT COUNT(*) FROM payment_release_evidence),
+                    (SELECT COUNT(*) FROM pragma_foreign_key_check)",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .expect("count release evidence and foreign key violations");
+    assert_eq!(evidence_rows, 1);
+    assert_eq!(violations, 0);
+
+    connection
+        .execute(
+            INSERT_PAYMENT_JOURNAL_ROW,
+            params![
+                "operation-journal-cancelled",
+                "d".repeat(64),
+                "request-journal-cancelled",
+                "hold-journal-cancelled",
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                None::<i64>,
+                "closed",
+            ],
+        )
+        .expect("v11 accepts a hold cancelled before authorization");
+    let append_preserving = connection
+        .execute(
+            "DELETE FROM payment_journal WHERE operation_id = 'operation-journal-cancelled'",
+            [],
+        )
+        .expect_err("payment journal delete guard survives the rebuild");
+    assert!(
+        append_preserving
+            .to_string()
+            .contains("payment journal is append-preserving"),
+        "unexpected delete outcome: {append_preserving}"
+    );
+    let duplicate_request = connection
+        .execute(
+            INSERT_PAYMENT_JOURNAL_ROW,
+            params![
+                "operation-journal-duplicate",
+                "d".repeat(64),
+                "request-journal-cancelled",
+                "hold-journal-duplicate",
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                None::<String>,
+                None::<i64>,
+                "closed",
+            ],
+        )
+        .expect_err("request uniqueness survives the rebuild");
+    assert!(
+        duplicate_request.to_string().contains("UNIQUE"),
+        "unexpected duplicate outcome: {duplicate_request}"
+    );
+    let settled = payment_journal_rows(&connection);
+    assert_eq!(settled.len(), 3);
+    drop(connection);
+    drop(migrated);
+
+    let reopened = SqliteBudgetStore::open(&database).expect("reopen migrated budget store");
+    let connection = reopened
+        .connection()
+        .expect("inspect twice-opened payment journal");
+    assert_eq!(payment_journal_rows(&connection), settled);
+    drop(connection);
+    drop(reopened);
+    let _ = fs::remove_dir_all(path);
+}
+
 #[cfg(unix)]
 #[test]
 fn provision_refuses_populated_legacy_budget_state() {
