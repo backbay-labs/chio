@@ -577,6 +577,45 @@ pub(super) fn verify_payment_terminal_source<'a>(
         }
         return Ok(());
     }
+    if terminal_state == AdmissionOperationState::CompensatedBeforeDispatch {
+        // A pre-dispatch compensation carries a release proof, not a
+        // payment-terminal record. The money outcome lives in the fenced
+        // journal: either the hold was cancelled before any rail
+        // authorization existed (closed, nothing assigned) or an
+        // authorized hold was released to a settled zero.
+        if !records.is_empty() {
+            return Err(AdmissionOperationError::TerminalProjectionBindingMismatch.into());
+        }
+        if !requires_payment {
+            return Ok(());
+        }
+        let journal = crate::budget_store::load_payment_journal(
+            transaction,
+            operation.binding().operation_id().as_str(),
+        )
+        .map_err(|error| AdmissionOperationStoreError::Invariant(error.to_string()))?
+        .ok_or_else(|| {
+            AdmissionOperationStoreError::Invariant(
+                "pre-dispatch compensation lost its payment journal".to_owned(),
+            )
+        })?;
+        journal
+            .validate()
+            .map_err(|error| AdmissionOperationStoreError::Invariant(error.to_string()))?;
+        let cancelled_before_authorization = journal.state
+            == chio_kernel::payment::PaymentJournalState::Closed
+            && journal.authorization_id.is_none()
+            && journal.settle_action.is_none();
+        let released_after_authorization = journal.state
+            == chio_kernel::payment::PaymentJournalState::Settled
+            && journal.settle_action == Some(chio_kernel::payment::PaymentSettleAction::Release);
+        if !cancelled_before_authorization && !released_after_authorization {
+            return Err(AdmissionOperationStoreError::Invariant(
+                "pre-dispatch compensation must cancel or release its payment hold".to_owned(),
+            ));
+        }
+        return Ok(());
+    }
     if terminal_state == AdmissionOperationState::DeniedAfterDelivery {
         // A rejected delivery releases the open hold to a contractual zero
         // charge: the money outcome lives in the fenced journal, not in a

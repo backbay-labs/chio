@@ -754,3 +754,7 @@ mod tests;
 #[cfg(all(test, feature = "cognition-market-experimental"))]
 #[path = "finding_market_exit_tests.rs"]
 mod finding_market_exit_tests;
+
+#[cfg(all(test, feature = "cognition-market-experimental"))]
+#[path = "finding_wedge_purchase_e2e_tests.rs"]
+mod finding_wedge_purchase_e2e_tests;

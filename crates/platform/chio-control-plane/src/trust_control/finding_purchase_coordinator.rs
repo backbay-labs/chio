@@ -274,7 +274,7 @@ impl FindingPurchaseCoordinator {
             .admit_payout_destination(
                 &self
                     .store
-                    .get_encumbrance(&signed.body.encumbrance_id)
+                    .get_encumbrance(reservation_id)
                     .map_err(|error| PurchaseCoordinatorError::Store(error.to_string()))?
                     .ok_or(PurchaseCoordinatorError::UnknownReservation)?
                     .allocation_id,

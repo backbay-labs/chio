@@ -252,6 +252,14 @@ pub(super) fn ensure_composite_budget_schema(
                          AND release_authority_operation_version IS NOT NULL)
                      ))
                  ))
+                OR
+                (state = 'closed'
+                 AND authorization_id IS NULL AND transaction_id IS NULL
+                 AND settle_action IS NULL AND settle_amount_units IS NULL
+                 AND release_authority_kind IS NULL
+                 AND release_authority_evidence_id IS NULL
+                 AND release_authority_evidence_digest IS NULL
+                 AND release_authority_operation_version IS NULL)
                 OR state = 'reconcile_failed'
             )
         );
