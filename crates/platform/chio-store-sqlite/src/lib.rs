@@ -43,6 +43,8 @@ pub mod evidence_export;
 pub mod execution_nonce_store;
 #[cfg(feature = "cognition-market-experimental")]
 pub mod finding_market_store;
+#[cfg(feature = "cognition-market-experimental")]
+pub mod finding_purchase_store;
 pub mod fiscal_store;
 pub mod frost_store;
 mod governed_approval_replay_store;
@@ -241,6 +243,14 @@ pub use finding_market_store::{
     FindingAllocationSnapshot, FindingAllocationState, FindingFeeEventRecord, FindingFeeIntent,
     FindingFeeIntentOutcome, FindingFeeIntentResult, FindingFeeState, FindingMarketStoreError,
     FindingPutOutcome, FindingRecordInput, FindingSearchRow, SqliteFindingMarketStore,
+};
+#[cfg(feature = "cognition-market-experimental")]
+pub use finding_purchase_store::{
+    FindingFailedDeliveryRow, FindingPayoutDestinationAdmission, FindingPurchaseDeliveryInput,
+    FindingPurchaseDenyInput, FindingPurchaseEncumbranceRecord, FindingPurchaseEncumbranceState,
+    FindingPurchaseRecordRow, FindingPurchaseReservationInput, FindingPurchaseReservationRecord,
+    FindingPurchaseReservationState, FindingPurchaseSlotRecord, FindingPurchaseSlotState,
+    FindingPurchaseStoreError, FindingPurchaseWriteOutcome, SqliteFindingPurchaseStore,
 };
 pub use frost_store::{
     FrostActiveRosterRecord, FrostCeremonyRecord, FrostCeremonyRound1Record,

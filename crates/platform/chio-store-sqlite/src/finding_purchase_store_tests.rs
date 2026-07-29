@@ -1,0 +1,1085 @@
+use std::fs;
+
+use chio_core::canonical::canonical_json_bytes;
+use chio_core::capability::scope::MonetaryAmount;
+use chio_core::crypto::Keypair;
+use chio_core::receipt::lineage::SignedExportEnvelope;
+use chio_finding::{
+    compute_allocation_id, FindingBondBacking, FindingBondClass, FindingCollateralVault,
+    FINDING_BOND_BACKING_SCHEMA_V1,
+};
+use tempfile::TempDir;
+
+use super::*;
+use crate::finding_market_store::SqliteFindingMarketStore;
+use crate::SqliteAuthorityStore;
+
+const MARKET_LISTING_ID: &str = "finding-listing-01";
+const LISTING_ID: &str = "purchase-listing-01";
+const OTHER_LISTING_ID: &str = "purchase-listing-02";
+const NOW: u64 = 1_750_000_000;
+const EXPIRES_AT: u64 = NOW + 3_600;
+/// The exposure cap `backing_body` registers for every fixture allocation.
+const REGISTERED_EXPOSURE_CAP: u64 = 450;
+
+struct Fixture {
+    _temp: TempDir,
+    _authority: SqliteAuthorityStore,
+    market: SqliteFindingMarketStore,
+    store: SqliteFindingPurchaseStore,
+    allocation_id: String,
+}
+
+fn fixture() -> Fixture {
+    let temp = tempfile::tempdir().expect("tempdir");
+    secure_temp_directory(temp.path());
+    let database = temp.path().join("authority.db");
+    let lock_root = temp.path().join("locks");
+    fs::create_dir(&lock_root).expect("create lock root");
+    secure_temp_directory(&lock_root);
+    SqliteAuthorityStore::provision(&database, &lock_root).expect("provision authority");
+    let authority =
+        SqliteAuthorityStore::open_serving(&database, &lock_root).expect("open authority");
+    let market = authority.finding_market_store();
+    let store = authority.finding_purchase_store();
+    let allocation_id = consume_allocation(&market, "vault:finding-collateral");
+    Fixture {
+        _temp: temp,
+        _authority: authority,
+        market,
+        store,
+        allocation_id,
+    }
+}
+
+fn secure_temp_directory(path: &std::path::Path) {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700))
+            .expect("secure temp directory");
+    }
+    #[cfg(not(unix))]
+    let _ = path;
+}
+
+fn hex64(character: char) -> String {
+    character.to_string().repeat(64)
+}
+
+fn keypair(seed: u8) -> Keypair {
+    Keypair::from_seed(&[seed; 32])
+}
+
+fn usd(units: u64) -> MonetaryAmount {
+    MonetaryAmount {
+        units,
+        currency: "USD".to_string(),
+    }
+}
+
+fn envelope_string<T: serde::Serialize + Clone>(body: &T, signer: &Keypair) -> String {
+    let signed = SignedExportEnvelope::sign(body.clone(), signer).expect("sign envelope");
+    String::from_utf8(canonical_json_bytes(&signed).expect("canonical envelope"))
+        .expect("utf8 envelope")
+}
+
+fn backing_body(ledger_account: &str) -> FindingBondBacking {
+    let mut backing = FindingBondBacking {
+        schema: FINDING_BOND_BACKING_SCHEMA_V1.to_string(),
+        allocation_id: String::new(),
+        collateral_authority: keypair(21).public_key(),
+        seller: keypair(22).public_key(),
+        authorization_envelope_sha256: hex64('1'),
+        finding_id: hex64('a'),
+        listing_id: MARKET_LISTING_ID.to_string(),
+        terms_envelope_sha256: hex64('2'),
+        profile_envelope_sha256: hex64('3'),
+        fee_requirement_sha256: hex64('4'),
+        fee_schedule_envelope_sha256: hex64('5'),
+        bond_class: FindingBondClass::Listing,
+        locked_amount: usd(500),
+        maximum_sale_exposure: usd(REGISTERED_EXPOSURE_CAP),
+        claim_horizon_secs: 604_800,
+        audit_horizon_secs: 2_592_000,
+        appeal_horizon_secs: 259_200,
+        settlement_buffer_secs: 86_400,
+        vault: FindingCollateralVault::VenueLedger {
+            ledger_account: ledger_account.to_string(),
+            operator_epoch: 1,
+        },
+        issued_at: 1_700_000_000,
+        expires_at: 1_900_000_000,
+    };
+    backing.allocation_id = compute_allocation_id(&backing).expect("allocation id");
+    backing
+}
+
+fn register_allocation(market: &SqliteFindingMarketStore, ledger_account: &str) -> String {
+    let backing = backing_body(ledger_account);
+    let envelope = envelope_string(&backing, &keypair(21));
+    market
+        .register_allocation(&envelope, &backing, NOW)
+        .expect("register allocation");
+    backing.allocation_id
+}
+
+fn consume_allocation(market: &SqliteFindingMarketStore, ledger_account: &str) -> String {
+    let allocation_id = register_allocation(market, ledger_account);
+    market
+        .consume_allocation(&allocation_id)
+        .expect("consume allocation");
+    allocation_id
+}
+
+/// One purchase's identifiers and digests, owned so the borrowed input
+/// struct can point at them.
+struct Purchase {
+    reservation_id: String,
+    purchase_intent_id: String,
+    payment_operation_id: String,
+    encumbrance_id: String,
+    listing_id: String,
+    payer_hex: String,
+    finding_id: String,
+    bid_envelope_sha256: String,
+    ask_digest: String,
+    admission_envelope_sha256: String,
+    amount_units: u64,
+    expires_at: u64,
+}
+
+impl Purchase {
+    fn new(tag: &str, listing_id: &str, amount_units: u64) -> Self {
+        Self {
+            reservation_id: format!("reservation-{tag}"),
+            purchase_intent_id: format!("intent-{tag}"),
+            payment_operation_id: format!("payment-{tag}"),
+            encumbrance_id: format!("encumbrance-{tag}"),
+            listing_id: listing_id.to_owned(),
+            payer_hex: hex64('b'),
+            finding_id: hex64('a'),
+            bid_envelope_sha256: chio_core::sha256_hex(format!("bid-{tag}").as_bytes()),
+            ask_digest: chio_core::sha256_hex(format!("ask-{tag}").as_bytes()),
+            admission_envelope_sha256: hex64('c'),
+            amount_units,
+            expires_at: EXPIRES_AT,
+        }
+    }
+
+    fn expiring_at(mut self, expires_at: u64) -> Self {
+        self.expires_at = expires_at;
+        self
+    }
+
+    fn input<'a>(&'a self, allocation_id: &'a str) -> FindingPurchaseReservationInput<'a> {
+        FindingPurchaseReservationInput {
+            reservation_id: &self.reservation_id,
+            purchase_intent_id: &self.purchase_intent_id,
+            authoritative_payment_operation_id: &self.payment_operation_id,
+            payer_hex: &self.payer_hex,
+            agent_id: "agent-buyer-01",
+            finding_id: &self.finding_id,
+            listing_id: &self.listing_id,
+            bid_envelope_sha256: &self.bid_envelope_sha256,
+            ask_digest: &self.ask_digest,
+            admission_envelope_sha256: &self.admission_envelope_sha256,
+            amount_units: self.amount_units,
+            currency: "USD",
+            expires_at: self.expires_at,
+            encumbrance_id: &self.encumbrance_id,
+            allocation_id,
+            maximum_sale_exposure_units: REGISTERED_EXPOSURE_CAP,
+            created_at: NOW,
+        }
+    }
+}
+
+fn open_reservation(fixture: &Fixture, purchase: &Purchase) -> FindingPurchaseWriteOutcome {
+    fixture
+        .store
+        .open_reservation(&purchase.input(&fixture.allocation_id))
+        .expect("open reservation")
+}
+
+fn record_bytes(tag: &str) -> Vec<u8> {
+    format!("{{\"schema\":\"chio.finding.purchase-record.v1\",\"tag\":\"{tag}\"}}").into_bytes()
+}
+
+fn reservation_state(fixture: &Fixture, reservation_id: &str) -> FindingPurchaseReservationState {
+    fixture
+        .store
+        .get_reservation(reservation_id)
+        .expect("get reservation")
+        .expect("reservation present")
+        .state
+}
+
+fn encumbrance(fixture: &Fixture, reservation_id: &str) -> FindingPurchaseEncumbranceRecord {
+    fixture
+        .store
+        .get_encumbrance(reservation_id)
+        .expect("get encumbrance")
+        .expect("encumbrance present")
+}
+
+fn slot(fixture: &Fixture, reservation_id: &str) -> FindingPurchaseSlotRecord {
+    fixture
+        .store
+        .get_slot(reservation_id)
+        .expect("get slot")
+        .expect("slot present")
+}
+
+#[test]
+fn open_reservation_inserts_replays_and_rejects_conflicts() {
+    let fixture = fixture();
+    let purchase = Purchase::new("alpha", LISTING_ID, 100);
+    assert_eq!(
+        open_reservation(&fixture, &purchase),
+        FindingPurchaseWriteOutcome::Inserted
+    );
+    let stored = fixture
+        .store
+        .get_reservation(&purchase.reservation_id)
+        .expect("get reservation")
+        .expect("reservation present");
+    assert_eq!(
+        stored,
+        FindingPurchaseReservationRecord {
+            reservation_id: purchase.reservation_id.clone(),
+            purchase_intent_id: purchase.purchase_intent_id.clone(),
+            authoritative_payment_operation_id: purchase.payment_operation_id.clone(),
+            payer_hex: purchase.payer_hex.clone(),
+            agent_id: "agent-buyer-01".to_string(),
+            finding_id: purchase.finding_id.clone(),
+            listing_id: LISTING_ID.to_string(),
+            bid_envelope_sha256: purchase.bid_envelope_sha256.clone(),
+            ask_digest: purchase.ask_digest.clone(),
+            admission_envelope_sha256: purchase.admission_envelope_sha256.clone(),
+            amount_units: 100,
+            currency: "USD".to_string(),
+            expires_at: EXPIRES_AT,
+            state: FindingPurchaseReservationState::Open,
+            created_at: NOW,
+            updated_at: NOW,
+        },
+        "every reservation column must round-trip, so a column-index swap fails here"
+    );
+    assert_eq!(
+        fixture
+            .store
+            .get_reservation_by_intent(&purchase.purchase_intent_id)
+            .expect("get by intent")
+            .expect("reservation present"),
+        stored
+    );
+    assert_eq!(
+        fixture
+            .store
+            .list_open_encumbrance_total(&fixture.allocation_id)
+            .expect("open exposure"),
+        100
+    );
+
+    assert_eq!(
+        open_reservation(&fixture, &purchase),
+        FindingPurchaseWriteOutcome::ExistingSame,
+        "an identical replay must not double-book exposure"
+    );
+    assert_eq!(
+        fixture
+            .store
+            .list_open_encumbrance_total(&fixture.allocation_id)
+            .expect("open exposure"),
+        100
+    );
+
+    let mut conflicting = purchase.input(&fixture.allocation_id);
+    conflicting.amount_units = 101;
+    assert!(
+        matches!(
+            fixture.store.open_reservation(&conflicting),
+            Err(FindingPurchaseStoreError::Conflict(_))
+        ),
+        "conflicting parameters under an existing reservation id must reject"
+    );
+
+    let mut reused_intent = Purchase::new("beta", LISTING_ID, 10);
+    reused_intent
+        .purchase_intent_id
+        .clone_from(&purchase.purchase_intent_id);
+    assert!(
+        matches!(
+            fixture
+                .store
+                .open_reservation(&reused_intent.input(&fixture.allocation_id)),
+            Err(FindingPurchaseStoreError::Conflict(_))
+        ),
+        "one purchase intent cannot fence two reservations"
+    );
+
+    let mut reused_payment = Purchase::new("gamma", LISTING_ID, 10);
+    reused_payment
+        .payment_operation_id
+        .clone_from(&purchase.payment_operation_id);
+    assert!(
+        matches!(
+            fixture
+                .store
+                .open_reservation(&reused_payment.input(&fixture.allocation_id)),
+            Err(FindingPurchaseStoreError::Conflict(_))
+        ),
+        "one payment operation cannot fence two reservations"
+    );
+
+    let mut reused_encumbrance = Purchase::new("delta", LISTING_ID, 10);
+    reused_encumbrance
+        .encumbrance_id
+        .clone_from(&purchase.encumbrance_id);
+    assert!(
+        matches!(
+            fixture
+                .store
+                .open_reservation(&reused_encumbrance.input(&fixture.allocation_id)),
+            Err(FindingPurchaseStoreError::Conflict(_))
+        ),
+        "one encumbrance id cannot back two reservations"
+    );
+    assert!(fixture
+        .store
+        .get_reservation("reservation-absent")
+        .expect("absent reservation lookup")
+        .is_none());
+}
+
+#[test]
+fn exposure_is_bounded_exactly_at_the_registered_cap() {
+    let fixture = fixture();
+    // Each `open_reservation` is its own immediate transaction, so the
+    // second call reads the first call's committed exposure: two callers
+    // racing the same allocation cannot both pass the check.
+    open_reservation(&fixture, &Purchase::new("alpha", LISTING_ID, 200));
+    open_reservation(&fixture, &Purchase::new("beta", LISTING_ID, 200));
+    assert_eq!(
+        fixture
+            .store
+            .list_open_encumbrance_total(&fixture.allocation_id)
+            .expect("open exposure"),
+        400
+    );
+
+    let over = Purchase::new("gamma", LISTING_ID, 51);
+    let rejected = fixture
+        .store
+        .open_reservation(&over.input(&fixture.allocation_id));
+    match rejected {
+        Err(FindingPurchaseStoreError::ExposureOvercommitted {
+            outstanding,
+            requested,
+            maximum,
+            ..
+        }) => {
+            assert_eq!((outstanding, requested, maximum), (400, 51, 450));
+        }
+        other => panic!("one unit past the cap must reject, got {other:?}"),
+    }
+    assert!(
+        fixture
+            .store
+            .get_reservation(&over.reservation_id)
+            .expect("rejected reservation lookup")
+            .is_none(),
+        "a rejected reservation must leave no durable state"
+    );
+
+    // Exactly at the cap is admitted: the bound is sum + new > cap.
+    let exact = Purchase::new("delta", LISTING_ID, 50);
+    assert_eq!(
+        open_reservation(&fixture, &exact),
+        FindingPurchaseWriteOutcome::Inserted
+    );
+    assert_eq!(
+        fixture
+            .store
+            .list_open_encumbrance_total(&fixture.allocation_id)
+            .expect("open exposure"),
+        450
+    );
+    assert!(
+        matches!(
+            fixture.store.open_reservation(
+                &Purchase::new("epsilon", LISTING_ID, 1).input(&fixture.allocation_id)
+            ),
+            Err(FindingPurchaseStoreError::ExposureOvercommitted { .. })
+        ),
+        "a full allocation admits nothing further"
+    );
+
+    // Releasing exposure frees capacity for the next purchase.
+    fixture
+        .store
+        .release_reservation(&exact.reservation_id, NOW + 1)
+        .expect("release");
+    assert_eq!(
+        fixture
+            .store
+            .list_open_encumbrance_total(&fixture.allocation_id)
+            .expect("open exposure"),
+        400
+    );
+    assert_eq!(
+        open_reservation(&fixture, &Purchase::new("zeta", LISTING_ID, 50)),
+        FindingPurchaseWriteOutcome::Inserted
+    );
+}
+
+#[test]
+fn reservation_requires_a_consumed_allocation() {
+    let fixture = fixture();
+    let live = register_allocation(&fixture.market, "vault:finding-collateral-live");
+    let purchase = Purchase::new("alpha", LISTING_ID, 10);
+    assert!(
+        matches!(
+            fixture.store.open_reservation(&purchase.input(&live)),
+            Err(FindingPurchaseStoreError::AllocationNotConsumed(_))
+        ),
+        "a live allocation has not been activated and cannot back a sale"
+    );
+    assert!(
+        matches!(
+            fixture.store.open_reservation(&purchase.input(&hex64('f'))),
+            Err(FindingPurchaseStoreError::AllocationNotConsumed(_))
+        ),
+        "an unknown allocation must reject"
+    );
+    let mut over_cap = purchase.input(&fixture.allocation_id);
+    over_cap.maximum_sale_exposure_units = REGISTERED_EXPOSURE_CAP + 1;
+    assert!(
+        matches!(
+            fixture.store.open_reservation(&over_cap),
+            Err(FindingPurchaseStoreError::Conflict(_))
+        ),
+        "a cap above the one the allocation registered must reject"
+    );
+}
+
+#[test]
+fn slot_ordinals_are_monotonic_within_each_listing() {
+    let fixture = fixture();
+    let first = Purchase::new("alpha", LISTING_ID, 10);
+    let second = Purchase::new("beta", LISTING_ID, 10);
+    let other = Purchase::new("gamma", OTHER_LISTING_ID, 10);
+    for purchase in [&first, &second, &other] {
+        open_reservation(&fixture, purchase);
+    }
+    assert_eq!(
+        fixture
+            .store
+            .reserve_slot(&first.reservation_id, NOW + 1)
+            .expect("first slot"),
+        1
+    );
+    assert_eq!(
+        fixture
+            .store
+            .reserve_slot(&second.reservation_id, NOW + 2)
+            .expect("second slot"),
+        2
+    );
+    assert_eq!(
+        fixture
+            .store
+            .reserve_slot(&other.reservation_id, NOW + 3)
+            .expect("other listing slot"),
+        1,
+        "slot lines are per listing"
+    );
+    assert_eq!(
+        fixture
+            .store
+            .reserve_slot(&first.reservation_id, NOW + 4)
+            .expect("idempotent slot"),
+        1,
+        "a reservation already holding a slot keeps it"
+    );
+    assert_eq!(
+        reservation_state(&fixture, &first.reservation_id),
+        FindingPurchaseReservationState::SlotReserved
+    );
+    assert_eq!(
+        fixture
+            .store
+            .open_slot_floor(LISTING_ID)
+            .expect("slot floor"),
+        Some(1)
+    );
+
+    // Closing the floor slot moves the cutoff to the next open ordinal,
+    // and a later reservation never reuses a retired ordinal.
+    fixture
+        .store
+        .release_reservation(&first.reservation_id, NOW + 5)
+        .expect("release first");
+    assert_eq!(
+        fixture
+            .store
+            .open_slot_floor(LISTING_ID)
+            .expect("slot floor"),
+        Some(2)
+    );
+    let third = Purchase::new("delta", LISTING_ID, 10);
+    open_reservation(&fixture, &third);
+    assert_eq!(
+        fixture
+            .store
+            .reserve_slot(&third.reservation_id, NOW + 6)
+            .expect("third slot"),
+        3
+    );
+    fixture
+        .store
+        .release_reservation(&second.reservation_id, NOW + 7)
+        .expect("release second");
+    fixture
+        .store
+        .release_reservation(&third.reservation_id, NOW + 8)
+        .expect("release third");
+    assert_eq!(
+        fixture
+            .store
+            .open_slot_floor(LISTING_ID)
+            .expect("slot floor"),
+        None,
+        "an idle listing has no cutoff"
+    );
+    assert_eq!(
+        fixture
+            .store
+            .open_slot_floor("purchase-listing-unknown")
+            .expect("unknown listing floor"),
+        None
+    );
+
+    let expired = Purchase::new("epsilon", LISTING_ID, 10).expiring_at(NOW + 10);
+    open_reservation(&fixture, &expired);
+    assert!(
+        matches!(
+            fixture
+                .store
+                .reserve_slot(&expired.reservation_id, NOW + 10),
+            Err(FindingPurchaseStoreError::Conflict(_))
+        ),
+        "a reservation at its expiry cannot take a fresh slot"
+    );
+    assert!(
+        matches!(
+            fixture.store.reserve_slot("reservation-absent", NOW + 1),
+            Err(FindingPurchaseStoreError::NotFound)
+        ),
+        "an unknown reservation cannot take a slot"
+    );
+}
+
+#[test]
+fn close_slot_with_record_settles_atomically_and_replays() {
+    let fixture = fixture();
+    let purchase = Purchase::new("alpha", LISTING_ID, 100);
+    open_reservation(&fixture, &purchase);
+    fixture
+        .store
+        .reserve_slot(&purchase.reservation_id, NOW + 1)
+        .expect("reserve slot");
+    let bytes = record_bytes("alpha");
+    let digest = chio_core::sha256_hex(&bytes);
+    let purchase_key = hex64('d');
+    let delivery = FindingPurchaseDeliveryInput {
+        reservation_id: &purchase.reservation_id,
+        purchase_key: &purchase_key,
+        record_json: &bytes,
+        record_sha256: &digest,
+        delivery_receipt_id: "receipt-delivery-alpha",
+        retention_expires_at: NOW + 100_000,
+        now: NOW + 2,
+    };
+
+    let mut tampered = delivery;
+    tampered.record_sha256 = &purchase_key;
+    assert!(
+        matches!(
+            fixture.store.close_slot_with_record(&tampered),
+            Err(FindingPurchaseStoreError::Conflict(_))
+        ),
+        "record bytes that do not match the claimed digest must reject"
+    );
+
+    assert_eq!(
+        fixture
+            .store
+            .close_slot_with_record(&delivery)
+            .expect("settle purchase"),
+        FindingPurchaseWriteOutcome::Inserted
+    );
+    assert_eq!(
+        reservation_state(&fixture, &purchase.reservation_id),
+        FindingPurchaseReservationState::Consumed
+    );
+    let closed = slot(&fixture, &purchase.reservation_id);
+    assert_eq!(closed.state, FindingPurchaseSlotState::ClosedRecord);
+    assert_eq!(closed.closed_at, Some(NOW + 2));
+    let retained = encumbrance(&fixture, &purchase.reservation_id);
+    assert_eq!(retained.state, FindingPurchaseEncumbranceState::Retained);
+    assert_eq!(retained.retention_expires_at, Some(NOW + 100_000));
+    assert_eq!(
+        fixture
+            .store
+            .list_open_encumbrance_total(&fixture.allocation_id)
+            .expect("open exposure"),
+        0,
+        "retained exposure no longer counts against the concurrency cap"
+    );
+    assert_eq!(
+        fixture
+            .store
+            .open_slot_floor(LISTING_ID)
+            .expect("slot floor"),
+        None
+    );
+    assert_eq!(
+        fixture
+            .store
+            .get_purchase_record(&purchase_key)
+            .expect("get purchase record")
+            .expect("purchase record present"),
+        FindingPurchaseRecordRow {
+            purchase_key: purchase_key.clone(),
+            reservation_id: purchase.reservation_id.clone(),
+            record_json: bytes.clone(),
+            record_sha256: digest.clone(),
+            delivery_receipt_id: "receipt-delivery-alpha".to_string(),
+            recorded_at: NOW + 2,
+        }
+    );
+
+    assert_eq!(
+        fixture
+            .store
+            .close_slot_with_record(&delivery)
+            .expect("replay settlement"),
+        FindingPurchaseWriteOutcome::ExistingSame
+    );
+    let mut conflicting = delivery;
+    conflicting.delivery_receipt_id = "receipt-delivery-other";
+    assert!(
+        matches!(
+            fixture.store.close_slot_with_record(&conflicting),
+            Err(FindingPurchaseStoreError::Conflict(_))
+        ),
+        "a replay under different delivery parameters must reject"
+    );
+    assert!(
+        matches!(
+            fixture
+                .store
+                .release_reservation(&purchase.reservation_id, NOW + 3),
+            Err(FindingPurchaseStoreError::Conflict(_))
+        ),
+        "a settled purchase cannot be released"
+    );
+    assert!(fixture
+        .store
+        .get_purchase_record(&hex64('e'))
+        .expect("absent purchase record lookup")
+        .is_none());
+}
+
+#[test]
+fn close_slot_with_deny_releases_exposure_and_retains_the_denial() {
+    let fixture = fixture();
+    let purchase = Purchase::new("alpha", LISTING_ID, 100);
+    open_reservation(&fixture, &purchase);
+    fixture
+        .store
+        .reserve_slot(&purchase.reservation_id, NOW + 1)
+        .expect("reserve slot");
+    let bytes = record_bytes("denied-alpha");
+    let digest = chio_core::sha256_hex(&bytes);
+    let deny = FindingPurchaseDenyInput {
+        reservation_id: &purchase.reservation_id,
+        failed_delivery_id: "failed-delivery-alpha",
+        record_json: &bytes,
+        record_sha256: &digest,
+        deny_receipt_id: "receipt-deny-alpha",
+        now: NOW + 2,
+    };
+    assert_eq!(
+        fixture
+            .store
+            .close_slot_with_deny(&deny)
+            .expect("deny delivery"),
+        FindingPurchaseWriteOutcome::Inserted
+    );
+    assert_eq!(
+        reservation_state(&fixture, &purchase.reservation_id),
+        FindingPurchaseReservationState::Released
+    );
+    assert_eq!(
+        slot(&fixture, &purchase.reservation_id).state,
+        FindingPurchaseSlotState::ClosedDeny
+    );
+    let released = encumbrance(&fixture, &purchase.reservation_id);
+    assert_eq!(released.state, FindingPurchaseEncumbranceState::Released);
+    assert_eq!(released.retention_expires_at, None);
+    assert_eq!(
+        fixture
+            .store
+            .list_open_encumbrance_total(&fixture.allocation_id)
+            .expect("open exposure"),
+        0
+    );
+    assert_eq!(
+        fixture
+            .store
+            .get_failed_delivery_record("failed-delivery-alpha")
+            .expect("get failed delivery")
+            .expect("failed delivery present"),
+        FindingFailedDeliveryRow {
+            failed_delivery_id: "failed-delivery-alpha".to_string(),
+            reservation_id: purchase.reservation_id.clone(),
+            record_json: bytes.clone(),
+            record_sha256: digest.clone(),
+            deny_receipt_id: "receipt-deny-alpha".to_string(),
+            recorded_at: NOW + 2,
+        }
+    );
+    assert_eq!(
+        fixture
+            .store
+            .close_slot_with_deny(&deny)
+            .expect("replay denial"),
+        FindingPurchaseWriteOutcome::ExistingSame
+    );
+    let mut conflicting = deny;
+    conflicting.deny_receipt_id = "receipt-deny-other";
+    assert!(
+        matches!(
+            fixture.store.close_slot_with_deny(&conflicting),
+            Err(FindingPurchaseStoreError::Conflict(_))
+        ),
+        "a replay under different denial parameters must reject"
+    );
+
+    // A predispatch abort leaves no denial record, so a later denial call
+    // for that reservation cannot masquerade as an idempotent replay.
+    let aborted = Purchase::new("beta", LISTING_ID, 10);
+    open_reservation(&fixture, &aborted);
+    fixture
+        .store
+        .reserve_slot(&aborted.reservation_id, NOW + 3)
+        .expect("reserve slot");
+    fixture
+        .store
+        .release_reservation(&aborted.reservation_id, NOW + 4)
+        .expect("abort predispatch");
+    assert!(
+        matches!(
+            fixture
+                .store
+                .close_slot_with_deny(&FindingPurchaseDenyInput {
+                    reservation_id: &aborted.reservation_id,
+                    failed_delivery_id: "failed-delivery-beta",
+                    record_json: &bytes,
+                    record_sha256: &digest,
+                    deny_receipt_id: "receipt-deny-beta",
+                    now: NOW + 5,
+                }),
+            Err(FindingPurchaseStoreError::Conflict(_))
+        ),
+        "a reservation released without a denial cannot accept one later"
+    );
+}
+
+#[test]
+fn release_and_expiry_never_leave_a_slot_reserved() {
+    let fixture = fixture();
+    let unslotted = Purchase::new("alpha", LISTING_ID, 10);
+    open_reservation(&fixture, &unslotted);
+    fixture
+        .store
+        .release_reservation(&unslotted.reservation_id, NOW + 1)
+        .expect("release open reservation");
+    assert_eq!(
+        reservation_state(&fixture, &unslotted.reservation_id),
+        FindingPurchaseReservationState::Released
+    );
+    assert_eq!(
+        encumbrance(&fixture, &unslotted.reservation_id).state,
+        FindingPurchaseEncumbranceState::Released
+    );
+    assert!(fixture
+        .store
+        .get_slot(&unslotted.reservation_id)
+        .expect("slot lookup")
+        .is_none());
+    fixture
+        .store
+        .release_reservation(&unslotted.reservation_id, NOW + 2)
+        .expect("release replays idempotently");
+
+    let slotted = Purchase::new("beta", LISTING_ID, 10);
+    open_reservation(&fixture, &slotted);
+    fixture
+        .store
+        .reserve_slot(&slotted.reservation_id, NOW + 3)
+        .expect("reserve slot");
+    fixture
+        .store
+        .release_reservation(&slotted.reservation_id, NOW + 4)
+        .expect("release slot-reserved reservation");
+    assert_eq!(
+        slot(&fixture, &slotted.reservation_id).state,
+        FindingPurchaseSlotState::ClosedDeny,
+        "a released reservation must never leave its slot reserved"
+    );
+    assert!(
+        fixture
+            .store
+            .get_failed_delivery_record("failed-delivery-beta")
+            .expect("failed delivery lookup")
+            .is_none(),
+        "a predispatch abort writes no failed-delivery record"
+    );
+
+    // Expiry sweeps whatever is still live, releasing exposure and
+    // closing slots, and never touches a settled purchase.
+    let settled = Purchase::new("gamma", LISTING_ID, 10);
+    open_reservation(&fixture, &settled);
+    fixture
+        .store
+        .reserve_slot(&settled.reservation_id, NOW + 5)
+        .expect("reserve slot");
+    let bytes = record_bytes("gamma");
+    let digest = chio_core::sha256_hex(&bytes);
+    fixture
+        .store
+        .close_slot_with_record(&FindingPurchaseDeliveryInput {
+            reservation_id: &settled.reservation_id,
+            purchase_key: &hex64('d'),
+            record_json: &bytes,
+            record_sha256: &digest,
+            delivery_receipt_id: "receipt-delivery-gamma",
+            retention_expires_at: EXPIRES_AT + 100_000,
+            now: NOW + 6,
+        })
+        .expect("settle purchase");
+
+    let stale_open = Purchase::new("delta", LISTING_ID, 10);
+    let stale_slotted = Purchase::new("epsilon", LISTING_ID, 10);
+    open_reservation(&fixture, &stale_open);
+    open_reservation(&fixture, &stale_slotted);
+    fixture
+        .store
+        .reserve_slot(&stale_slotted.reservation_id, NOW + 7)
+        .expect("reserve slot");
+    assert_eq!(
+        fixture
+            .store
+            .expire_reservations(NOW + 8, 16)
+            .expect("nothing is due yet"),
+        0
+    );
+    assert_eq!(
+        fixture
+            .store
+            .expire_reservations(EXPIRES_AT, 1)
+            .expect("bounded sweep"),
+        1,
+        "the batch limit bounds one transaction"
+    );
+    assert_eq!(
+        fixture
+            .store
+            .expire_reservations(EXPIRES_AT, 16)
+            .expect("remaining sweep"),
+        1
+    );
+    for purchase in [&stale_open, &stale_slotted] {
+        assert_eq!(
+            reservation_state(&fixture, &purchase.reservation_id),
+            FindingPurchaseReservationState::Expired
+        );
+        assert_eq!(
+            encumbrance(&fixture, &purchase.reservation_id).state,
+            FindingPurchaseEncumbranceState::Released
+        );
+    }
+    assert_eq!(
+        slot(&fixture, &stale_slotted.reservation_id).state,
+        FindingPurchaseSlotState::ClosedDeny
+    );
+    assert_eq!(
+        reservation_state(&fixture, &settled.reservation_id),
+        FindingPurchaseReservationState::Consumed,
+        "expiry must not disturb a settled purchase"
+    );
+    assert_eq!(
+        fixture
+            .store
+            .expire_reservations(EXPIRES_AT, 16)
+            .expect("idle sweep"),
+        0
+    );
+    assert_eq!(
+        fixture
+            .store
+            .open_slot_floor(LISTING_ID)
+            .expect("slot floor"),
+        None
+    );
+}
+
+#[test]
+fn payout_destination_slots_are_bounded_and_idempotent() {
+    let fixture = fixture();
+    let allocation_id = &fixture.allocation_id;
+    let community = "rail:venue-ledger:community-fund";
+    let admitted = fixture
+        .store
+        .register_community_fund_destination(allocation_id, community, NOW)
+        .expect("register community fund");
+    assert_eq!(admitted.slot_index, 0);
+    assert_eq!(admitted.outcome, FindingPurchaseWriteOutcome::Inserted);
+    let replay = fixture
+        .store
+        .register_community_fund_destination(allocation_id, community, NOW + 1)
+        .expect("replay community fund");
+    assert_eq!(replay.slot_index, 0);
+    assert_eq!(replay.outcome, FindingPurchaseWriteOutcome::ExistingSame);
+    assert_eq!(
+        replay.admitted_at, NOW,
+        "a replay reports the original admission time"
+    );
+    assert!(
+        matches!(
+            fixture.store.register_community_fund_destination(
+                allocation_id,
+                "rail:venue-ledger:other-fund",
+                NOW + 2
+            ),
+            Err(FindingPurchaseStoreError::Conflict(_))
+        ),
+        "the reserved community slot cannot be rebound"
+    );
+    assert!(
+        matches!(
+            fixture
+                .store
+                .admit_payout_destination(allocation_id, "untagged-destination", NOW),
+            Err(FindingPurchaseStoreError::Invariant(_))
+        ),
+        "a destination without a rail tag cannot be routed"
+    );
+
+    for index in 1..=15_u8 {
+        let destination = format!("rail:venue-ledger:buyer-{index}");
+        let slot = fixture
+            .store
+            .admit_payout_destination(allocation_id, &destination, NOW + u64::from(index))
+            .expect("admit buyer destination");
+        assert_eq!(slot.slot_index, index, "buyer slots fill 1..=15 in order");
+        assert_eq!(slot.outcome, FindingPurchaseWriteOutcome::Inserted);
+    }
+    let repeat = fixture
+        .store
+        .admit_payout_destination(allocation_id, "rail:venue-ledger:buyer-7", NOW + 100)
+        .expect("repeat destination");
+    assert_eq!(repeat.slot_index, 7);
+    assert_eq!(repeat.outcome, FindingPurchaseWriteOutcome::ExistingSame);
+    assert!(
+        matches!(
+            fixture.store.admit_payout_destination(
+                allocation_id,
+                "rail:venue-ledger:buyer-16",
+                NOW + 101
+            ),
+            Err(FindingPurchaseStoreError::DestinationSlotsExhausted(_))
+        ),
+        "the sixteenth distinct destination has no slot left"
+    );
+    assert!(
+        matches!(
+            fixture.store.register_community_fund_destination(
+                allocation_id,
+                "rail:venue-ledger:buyer-3",
+                NOW + 102
+            ),
+            Err(FindingPurchaseStoreError::Conflict(_))
+        ),
+        "a buyer destination cannot be promoted to the community slot"
+    );
+    let listed = fixture
+        .store
+        .list_payout_destinations(allocation_id)
+        .expect("list destinations");
+    assert_eq!(listed.len(), 16);
+    assert_eq!(listed[0], (0, community.to_string()));
+    assert_eq!(listed[15], (15, "rail:venue-ledger:buyer-15".to_string()));
+
+    // Slots are per allocation, so a second allocation starts empty.
+    let other = consume_allocation(&fixture.market, "vault:finding-collateral-2");
+    assert!(fixture
+        .store
+        .list_payout_destinations(&other)
+        .expect("empty allocation")
+        .is_empty());
+    assert_eq!(
+        fixture
+            .store
+            .admit_payout_destination(&other, "rail:venue-ledger:buyer-1", NOW)
+            .expect("admit on a fresh allocation")
+            .slot_index,
+        1
+    );
+}
+
+#[test]
+fn schema_shape_is_verified_on_every_open() {
+    let temp = tempfile::tempdir().expect("tempdir");
+    secure_temp_directory(temp.path());
+    let database = temp.path().join("authority.db");
+    let lock_root = temp.path().join("locks");
+    fs::create_dir(&lock_root).expect("create lock root");
+    secure_temp_directory(&lock_root);
+    SqliteAuthorityStore::provision(&database, &lock_root).expect("provision authority");
+    {
+        let authority =
+            SqliteAuthorityStore::open_serving(&database, &lock_root).expect("open authority");
+        assert!(authority
+            .finding_purchase_store()
+            .get_reservation("reservation-absent")
+            .expect("read on a clean schema")
+            .is_none());
+    }
+
+    // Drop a lifecycle trigger out of band, the way a partial restore or a
+    // hand-edited database would, and confirm the open refuses rather than
+    // serving a schema that no longer enforces the lifecycle.
+    {
+        let raw = rusqlite::Connection::open(&database).expect("open raw connection");
+        raw.execute_batch("DROP TRIGGER purchase_reservations_lifecycle;")
+            .expect("drop the lifecycle trigger");
+    }
+    assert!(
+        SqliteAuthorityStore::open_serving(&database, &lock_root).is_err(),
+        "a schema that differs from the canonical definition must fail the open"
+    );
+
+    // Restoring the canonical schema restores the open: every statement in
+    // the schema is an idempotent guard.
+    {
+        let raw = rusqlite::Connection::open(&database).expect("open raw connection");
+        raw.execute_batch(FINDING_PURCHASE_SCHEMA)
+            .expect("restore the canonical schema");
+    }
+    SqliteAuthorityStore::open_serving(&database, &lock_root).expect("reopen with intact schema");
+}
