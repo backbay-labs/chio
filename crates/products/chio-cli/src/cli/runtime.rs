@@ -1422,6 +1422,11 @@ pub(crate) fn cmd_trust_serve(
         cluster_sync_interval: std::time::Duration::from_millis(cluster_sync_interval_ms.max(50)),
         roster_policy,
         memory_budget: chio_kernel::MemoryBudgetConfig::defaults(),
+        // The finding surfaces stay at 409 until an operator-supplied
+        // authority roster is wired through; serving them from defaults
+        // would publish a venue nobody pinned.
+        #[cfg(feature = "cognition-market-experimental")]
+        finding_market: None,
     })
 }
 
