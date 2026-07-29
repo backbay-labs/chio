@@ -18,12 +18,13 @@ chio-fiscal = { workspace = true }
 chio-governance = { workspace = true }
 chio-listing = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true, optional = true }
 thiserror = { workspace = true }
 
 [features]
 # The finding admission seam compiles only when this feature is enabled,
 # so default builds omit it entirely and keep byte-identical behavior.
-cognition-market-experimental = ["dep:chio-finding"]
+cognition-market-experimental = ["dep:chio-finding", "dep:serde_json"]
 
 [dev-dependencies]
 chio-finding = { workspace = true }
