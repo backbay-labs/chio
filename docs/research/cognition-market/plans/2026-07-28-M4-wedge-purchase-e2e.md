@@ -431,6 +431,39 @@ authorization is a market-side mint), and challenge evaluation (M5).
   must be the finding issuer or the authorized seller named by the
   issuer-signed authorization.
 
+## Post-implementation review
+
+An adversarial review fleet (eight independent finders over the diff,
+each finding refuted by two verifiers on separate lenses) confirmed 26
+defects and refuted 13. The confirmed set is fixed on this branch. The
+most serious was a disclosure defect: a denied delivery returned the
+tool output alongside the signed Deny, so a buyer could obtain a
+seller's payload without paying by presenting a request whose delivered
+output could not match the committed digest. The denial now withholds
+the output on both the finalize and replay paths. Alongside it: the
+payment-journal constraint widening never reached existing databases
+(the table is created if-not-exists and the schema version was not
+bumped); retained exposure dropped out of the collateral cap; the
+reveal path did not bind the presented seller authorization to the
+digest the venue admitted; the coordinator signed settlement artifacts
+without validating them and trusted a caller-supplied admission digest;
+and the portable scope matcher did not reject the Custom-keyed spelling
+of either delivery carrier.
+
+Two gaps are recorded rather than fixed, both needing a store schema
+change that is out of scope here:
+
+- The payout destination passed to the delivery finalizer is not bound
+  to the payee the venue admission authorizes, so a caller that reaches
+  the finalizer chooses where the seller is paid. Binding it requires
+  persisting the admitted payee on the reservation row.
+- Money is captured by the kernel at reveal time, before the finalizer
+  runs. If the allocation's buyer-destination slots are exhausted at
+  finalize time the call now fails cleanly with nothing signed, but the
+  purchase stays captured and slot-reserved until an operator frees a
+  slot or the reservation expires. Closing the window needs the
+  destination admitted at slot reservation, before dispatch.
+
 ## M4 exit criteria
 
 1. `cognition_market_wedge_purchase_e2e` plus the CLI round trip are green
