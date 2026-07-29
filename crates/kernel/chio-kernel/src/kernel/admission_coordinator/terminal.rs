@@ -798,7 +798,10 @@ impl ChioKernel {
         Ok(ToolCallResponse {
             request_id: request.request_id.clone(),
             verdict,
-            output: Some(output),
+            // A denied delivery discloses the expected and observed digests
+            // through the receipt, never the payload: the caller is not
+            // paying for these bytes and must not receive them.
+            output: delivery_evaluation.denial.is_none().then_some(output),
             reason,
             terminal_state,
             receipt,
@@ -2130,7 +2133,10 @@ impl ChioKernel {
         Ok(ToolCallResponse {
             request_id: request.request_id.clone(),
             verdict,
-            output: Some(output),
+            // A denied delivery discloses the expected and observed digests
+            // through the receipt, never the payload: the caller is not
+            // paying for these bytes and must not receive them.
+            output: delivery_evaluation.denial.is_none().then_some(output),
             reason,
             terminal_state,
             receipt: projected_receipt,

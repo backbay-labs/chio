@@ -1136,6 +1136,13 @@ fn output_digest_delivery_contract_enforces_every_lane() -> Result<(), Box<dyn E
                 "{:?}",
                 response.reason
             );
+            // The denial discloses both digests and withholds the bytes:
+            // the caller is not paying for this output and must not
+            // receive it.
+            assert!(
+                response.output.is_none(),
+                "a denied delivery must not disclose the payload"
+            );
             let block = delivery_block(&response)?;
             assert_eq!(block.schema, DELIVERY_CONTRACT_SCHEMA);
             assert_eq!(block.result, DeliveryResult::Mismatched);
@@ -1215,6 +1222,10 @@ fn output_digest_delivery_contract_enforces_every_lane() -> Result<(), Box<dyn E
             canonical_json_bytes(&response.receipt)?
         );
         assert_eq!(delivery_block(&replay)?.result, DeliveryResult::Mismatched);
+        assert!(
+            replay.output.is_none(),
+            "a replayed denial must not disclose the payload either"
+        );
         assert_eq!(invocations.load(Ordering::SeqCst), 1);
         assert_eq!(payment_calls.captures.load(Ordering::SeqCst), 0);
         let operation = operations

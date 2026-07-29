@@ -225,6 +225,17 @@ fn constraint_matches(
         }
         Constraint::MaxLength(max) => Ok(string_leaves.iter().all(|leaf| leaf.value.len() <= *max)),
         Constraint::MaxArgsSize(max) => Ok(arguments.to_string().len() <= *max),
+        // The delivery carriers are enforced only where an output-aware
+        // terminal exists. Spelling either as a Custom key would let this
+        // surface satisfy it by argument matching alone, so the portable
+        // matcher rejects the spelling exactly as the full kernel does.
+        Constraint::Custom(key, _)
+            if key == "output_digest_sha256" || key == "require_finding_purchase" =>
+        {
+            Err(ScopeMatchError::ConstraintError(format!(
+                "{key} must use its first-class constraint, not Custom"
+            )))
+        }
         Constraint::Custom(key, expected) => Ok(argument_contains_custom(arguments, key, expected)),
         Constraint::AudienceAllowlist(allowed) => {
             Ok(audience_allowlist_matches(arguments, allowed))

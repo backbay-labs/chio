@@ -120,6 +120,7 @@ pub struct PurchaseVerificationInputs<'a> {
 pub struct PurchaseVerificationOutcome {
     pub finding: Finding,
     pub admission: SignedFindingAdmission,
+    pub seller_authorization: SignedFindingSellerAuthorization,
     pub accepted_bid_envelope_sha256: String,
     pub venue_admission_envelope_sha256: String,
     pub reservation_id: String,
@@ -225,6 +226,11 @@ pub fn verify_purchase_context_pure(
             "seller_backing",
             &context.seller_backing_envelope_json,
             &admission.body.backing_envelope_sha256,
+        ),
+        (
+            "seller_authorization",
+            &context.seller_authorization_envelope_json,
+            &admission.body.seller_authorization_envelope_sha256,
         ),
         (
             "verifier_profile",
@@ -380,5 +386,6 @@ pub fn verify_purchase_context_pure(
         reservation_id,
         finding,
         admission,
+        seller_authorization: authorization,
     })
 }

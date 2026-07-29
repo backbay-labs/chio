@@ -83,10 +83,15 @@ pub struct RecoveryMintRequest<'a> {
 /// The caller has already proved the original Allow is checkpointed and
 /// the requester holds the original subject key; this function re-checks
 /// every receipt binding it can prove from the artifact alone, then
-/// mints a grant whose request constraints force each recovery
-/// invocation to name the original receipt, the original capability, and
-/// the finding. No monetary ceiling exists, so no capture path does
+/// mints the grant. No monetary ceiling exists, so no capture path does
 /// either.
+///
+/// The authoritative binding to the sold finding is the committed output
+/// digest, enforced at the output-aware terminal: a redelivery of any
+/// other payload is denied there and its bytes are withheld. The request
+/// constraints naming the original receipt, capability, and finding are
+/// an additional pre-dispatch filter, not that binding; they match by
+/// argument containment, so they narrow rather than pin the request.
 pub fn mint_finding_recovery_grant(
     request: &RecoveryMintRequest<'_>,
     issuer_keypair: &Keypair,

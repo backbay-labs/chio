@@ -122,6 +122,12 @@ impl FindingPurchaseVerifier for MarketFindingPurchaseVerifier {
         if now_unix_secs >= outcome.admission.body.expires_at {
             return Err("venue admission has expired at the purchase clock".to_owned());
         }
+        if now_unix_secs < outcome.seller_authorization.body.issued_at {
+            return Err("seller authorization is not yet live at the purchase clock".to_owned());
+        }
+        if now_unix_secs >= outcome.seller_authorization.body.expires_at {
+            return Err("seller authorization has expired at the purchase clock".to_owned());
+        }
         self.reservations.verify_slot_reserved(
             &ReservationExpectation {
                 reservation_id: &verified.reservation_id,
