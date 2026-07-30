@@ -214,6 +214,39 @@ retry exhaustion, and exactly-once lock return; the nested replay mapping;
 concurrent and post-restart duplicate challenges proving one slash and
 at-most-once payout. Full qualified workspace gate, then a review fleet.
 
+## Recorded results
+
+The lane landed across the tasks above. What it proves, and where:
+
+- **All three classes reach an enforced sanction end to end**
+  (`finding_challenge_enforcement_e2e_tests.rs`, 33 tests) over real
+  components: a governance-signed profile pinning three kernel roles,
+  real Merkle checkpoints with inclusion proofs, kernel-signed receipts,
+  a real failed-delivery terminal, and settled purchase records the
+  claim snapshot re-reads authoritatively. The enforcement amount equals
+  the checked penalty on every class.
+- **An honest seller cannot be slashed by a denial that is not about
+  them.** A generic digest denial and an output-policy denial both reach
+  Rejected, mint no penalty, open no liability, fence no effect intent,
+  and leave sales unblocked. The evaluator proves the same property
+  directly, including for a media-type denial.
+- **Infrastructure failure costs nobody.** Indeterminate is a distinct
+  verdict with its own reason partition, and the store refuses a
+  forfeit against anything but a rejected challenge, so an unresolved
+  checkpoint or a runner error can neither sanction a seller nor take a
+  challenger's bond. Retry exhaustion returns the same lock exactly once
+  with no second fee.
+- **One defect authorizes one slash**, sequentially and under a real
+  thread race, and a restart resumes the identical sealed accounting and
+  penalty identity.
+- **No caller value reaches a payout.** Claim candidates are hints;
+  every amount and destination is re-resolved from the authoritative
+  purchase record. The distribution sums exactly, is capped by live
+  collateral and verified harm, and carries no challenger bounty.
+- Suite counts at the branch head: kernel 898; finding, challenge, and
+  verifier suites all green; open-market green; the finding lane in the
+  control plane 59 with none ignored.
+
 ## Integration gaps found during implementation
 
 Two gaps surfaced while wiring the lane. Both are recorded rather than
