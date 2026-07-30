@@ -33,9 +33,14 @@ web3 = [
     "dep:tokio",
     "dep:zeroize",
 ]
+# The finding settlement choke point compiles only when this feature is
+# enabled, so default builds omit it entirely and keep byte-identical
+# behavior.
+cognition-market-experimental = ["web3", "dep:chio-finding"]
 
 [dependencies]
 chio-core = { workspace = true, optional = true }
+chio-finding = { workspace = true, optional = true }
 chio-credit = { workspace = true, optional = true }
 chio-federation = { workspace = true, optional = true }
 chio-egress-contract = { workspace = true, features = ["reqwest-egress"], optional = true }

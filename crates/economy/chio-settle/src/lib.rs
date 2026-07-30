@@ -13,6 +13,8 @@ mod ccip;
 pub mod channel;
 mod config;
 mod evm;
+#[cfg(feature = "cognition-market-experimental")]
+mod finding_enforcement;
 mod hook;
 mod observe;
 mod ops;
@@ -55,6 +57,16 @@ pub use evm::{
     PreparedErc20Approval, PreparedEscrowCreate, PreparedEscrowRefund, PreparedEvmCall,
     PreparedEvmSubmission, PreparedMerkleRelease, PreparedRootPublication,
     SettlementAnchorContentBinding,
+};
+#[cfg(feature = "cognition-market-experimental")]
+pub use finding_enforcement::{
+    dispatch_finding_impairment, plan_finding_impairment, recheck_finding_bond_observation,
+    reconcile_finding_impairment, verify_finding_enforcement, FindingBondObservationRecheck,
+    FindingBondObservationVerdict, FindingEnforcementPins, FindingImpairmentAttempt,
+    FindingImpairmentDestination, FindingImpairmentIntent, FindingImpairmentOutcome,
+    FindingImpairmentPublishError, FindingImpairmentPublisher, FindingImpairmentQuarantine,
+    FindingOperatorQualification, FindingVaultRejection, PlannedFindingImpairment,
+    StoredImpairmentTransaction, VerifiedFindingEnforcement,
 };
 pub use hook::{
     SettlementFailureClass, SettlementFailureCode, SettlementFailureCodeParseError,
