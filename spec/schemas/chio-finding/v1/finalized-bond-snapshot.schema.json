@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/finalized-bond-snapshot.schema.json",
+  "title": "Chio Finding Finalized Bond Snapshot (signed envelope)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "body",
+    "signerKey",
+    "signature"
+  ],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "snapshot_id",
+        "chain_id",
+        "vault_contract",
+        "vault_id",
+        "seller",
+        "allocation_id",
+        "locked_amount",
+        "held_amount",
+        "slashed_amount",
+        "currency",
+        "block_number",
+        "block_hash",
+        "finality_policy",
+        "observed_finality",
+        "identity_registry_record",
+        "operator_key_hash",
+        "operator_key_epoch",
+        "observed_at"
+      ],
+      "properties": {
+        "schema": {
+          "const": "chio.finding.finalized-bond-snapshot.v1"
+        },
+        "snapshot_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "chain_id": {
+          "$ref": "#/$defs/boundedIdentifier"
+        },
+        "vault_contract": {
+          "$ref": "#/$defs/boundedIdentifier"
+        },
+        "vault_id": {
+          "$ref": "#/$defs/boundedIdentifier"
+        },
+        "seller": {
+          "$ref": "#/$defs/ed25519PublicKey"
+        },
+        "allocation_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "locked_amount": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "held_amount": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "slashed_amount": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        },
+        "block_number": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "block_hash": {
+          "$ref": "#/$defs/chainHash"
+        },
+        "finality_policy": {
+          "$ref": "#/$defs/boundedIdentifier"
+        },
+        "observed_finality": {
+          "$ref": "#/$defs/observedFinality"
+        },
+        "identity_registry_record": {
+          "$ref": "#/$defs/boundedIdentifier"
+        },
+        "operator_key_hash": {
+          "$ref": "#/$defs/chainHash"
+        },
+        "operator_key_epoch": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "observed_at": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        }
+      }
+    },
+    "signerKey": {
+      "$ref": "#/$defs/ed25519PublicKey"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  },
+  "$defs": {
+    "boundedIdentifier": {
+      "type": "string",
+      "pattern": "\\S",
+      "maxLength": 512
+    },
+    "chainHash": {
+      "type": "string",
+      "pattern": "^(0x)?[0-9a-f]{64}$"
+    },
+    "ed25519PublicKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "iJsonU64": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "iJsonU64NonZero": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "observedFinality": {
+      "oneOf": [
+        {
+          "const": "finalized"
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "confirmations"
+          ],
+          "properties": {
+            "confirmations": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "depth"
+              ],
+              "properties": {
+                "depth": {
+                  "$ref": "#/$defs/iJsonU64NonZero"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

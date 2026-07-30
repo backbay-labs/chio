@@ -92,13 +92,27 @@ pub const CHIO_FINANCIAL_AGENT_PASSPORT_PRESENTATION_CHALLENGE_V1_SCHEMA: &str =
 pub const CHIO_FINDING_V1_SCHEMA: &str = "chio.finding.v1";
 /// Cognition-market venue admission bundle.
 pub const CHIO_FINDING_ADMISSION_V1_SCHEMA: &str = "chio.finding.admission.v1";
+/// Cognition-market audit-round precommitment.
+pub const CHIO_FINDING_AUDIT_EPOCH_V1_SCHEMA: &str = "chio.finding.audit-epoch.v1";
+/// Cognition-market audit-round result.
+pub const CHIO_FINDING_AUDIT_REPORT_V1_SCHEMA: &str = "chio.finding.audit-report.v1";
 /// Cognition-market bond-backing collateral allocation.
 pub const CHIO_FINDING_BOND_BACKING_V1_SCHEMA: &str = "chio.finding.bond-backing.v1";
+/// Cognition-market challenge enforcement instruction.
+pub const CHIO_FINDING_CHALLENGE_ENFORCEMENT_V1_SCHEMA: &str =
+    "chio.finding.challenge-enforcement.v1";
+/// Cognition-market challenge outcome.
+pub const CHIO_FINDING_CHALLENGE_OUTCOME_V1_SCHEMA: &str = "chio.finding.challenge-outcome.v1";
 /// Cognition-market reusable challenge-verifier profile.
 pub const CHIO_FINDING_CHALLENGE_VERIFIER_PROFILE_V1_SCHEMA: &str =
     "chio.finding.challenge-verifier-profile.v1";
+/// Cognition-market challenge submission.
+pub const CHIO_FINDING_CHALLENGE_V1_SCHEMA: &str = "chio.finding.challenge.v1";
 /// Cognition-market failed-delivery terminal.
 pub const CHIO_FINDING_FAILED_DELIVERY_V1_SCHEMA: &str = "chio.finding.failed-delivery.v1";
+/// Cognition-market finalized bond snapshot.
+pub const CHIO_FINDING_FINALIZED_BOND_SNAPSHOT_V1_SCHEMA: &str =
+    "chio.finding.finalized-bond-snapshot.v1";
 /// Cognition-market seller market terms.
 pub const CHIO_FINDING_MARKET_TERMS_V1_SCHEMA: &str = "chio.finding.market-terms.v1";
 /// Cognition-market settled purchase record.
@@ -108,6 +122,9 @@ pub const CHIO_FINDING_SELLER_AUTHORIZATION_V1_SCHEMA: &str =
     "chio.finding.seller-authorization.v1";
 /// Cognition-market verifier facet report.
 pub const CHIO_FINDING_VERIFIER_REPORT_V1_SCHEMA: &str = "chio.finding.verifier-report.v1";
+/// Open-market penalty artifact. Its body is frozen camelCase and tolerates
+/// unknown members; the registered schema mirrors that shape exactly.
+pub const CHIO_REGISTRY_MARKET_PENALTY_V1_SCHEMA: &str = "chio.registry.market-penalty.v1";
 pub const CHIO_FISCAL_CHARTER_V1_SCHEMA: &str = "chio.fiscal.charter.v1";
 pub const CHIO_FISCAL_SCHEDULE_V1_SCHEMA: &str = "chio.fiscal.schedule.v1";
 pub const CHIO_FISCAL_PROPOSAL_V1_SCHEMA: &str = "chio.fiscal.proposal.v1";
@@ -544,16 +561,40 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
         Some(("finding_admission", "finding-market-v1")),
     ),
     (
+        CHIO_FINDING_AUDIT_EPOCH_V1_SCHEMA,
+        Some(("finding_audit_epoch", "finding-market-v1")),
+    ),
+    (
+        CHIO_FINDING_AUDIT_REPORT_V1_SCHEMA,
+        Some(("finding_audit_report", "finding-market-v1")),
+    ),
+    (
         CHIO_FINDING_BOND_BACKING_V1_SCHEMA,
         Some(("finding_bond_backing", "finding-market-v1")),
+    ),
+    (
+        CHIO_FINDING_CHALLENGE_ENFORCEMENT_V1_SCHEMA,
+        Some(("finding_challenge_enforcement", "finding-market-v1")),
+    ),
+    (
+        CHIO_FINDING_CHALLENGE_OUTCOME_V1_SCHEMA,
+        Some(("finding_challenge_outcome", "finding-market-v1")),
     ),
     (
         CHIO_FINDING_CHALLENGE_VERIFIER_PROFILE_V1_SCHEMA,
         Some(("finding_challenge_verifier_profile", "finding-market-v1")),
     ),
     (
+        CHIO_FINDING_CHALLENGE_V1_SCHEMA,
+        Some(("finding_challenge", "finding-market-v1")),
+    ),
+    (
         CHIO_FINDING_FAILED_DELIVERY_V1_SCHEMA,
         Some(("finding_failed_delivery", "finding-market-v1")),
+    ),
+    (
+        CHIO_FINDING_FINALIZED_BOND_SNAPSHOT_V1_SCHEMA,
+        Some(("finding_finalized_bond_snapshot", "finding-market-v1")),
     ),
     (
         CHIO_FINDING_MARKET_TERMS_V1_SCHEMA,
@@ -570,6 +611,10 @@ const SIGNED_ARTIFACT_SCHEMA_SPECS: &[SignedArtifactSchemaSpec] = &[
     (
         CHIO_FINDING_VERIFIER_REPORT_V1_SCHEMA,
         Some(("finding_verifier_report", "finding-market-v1")),
+    ),
+    (
+        CHIO_REGISTRY_MARKET_PENALTY_V1_SCHEMA,
+        Some(("open_market_penalty", "finding-market-v1")),
     ),
     (
         CHIO_FISCAL_CHARTER_V1_SCHEMA,

@@ -1,0 +1,121 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/audit-epoch.schema.json",
+  "title": "Chio Finding Audit Epoch (signed envelope)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "body",
+    "signerKey",
+    "signature"
+  ],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "audit_epoch_id",
+        "epoch_index",
+        "eligible_snapshot_digest",
+        "eligible_listing_count",
+        "fee_schedule_envelope_sha256",
+        "seed_commitment",
+        "selection_algorithm_id",
+        "published_rate_bps",
+        "available_budget",
+        "authorization_digest",
+        "committed_at"
+      ],
+      "properties": {
+        "schema": {
+          "const": "chio.finding.audit-epoch.v1"
+        },
+        "audit_epoch_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "epoch_index": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "eligible_snapshot_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "eligible_listing_count": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "fee_schedule_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "seed_commitment": {
+          "$ref": "#/$defs/sha256"
+        },
+        "selection_algorithm_id": {
+          "$ref": "#/$defs/boundedIdentifier"
+        },
+        "published_rate_bps": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10000
+        },
+        "available_budget": {
+          "$ref": "#/$defs/monetaryAmount"
+        },
+        "authorization_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "committed_at": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        }
+      }
+    },
+    "signerKey": {
+      "$ref": "#/$defs/ed25519PublicKey"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  },
+  "$defs": {
+    "boundedIdentifier": {
+      "type": "string",
+      "pattern": "\\S",
+      "maxLength": 512
+    },
+    "ed25519PublicKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "iJsonU64": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "iJsonU64NonZero": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "monetaryAmount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "units",
+        "currency"
+      ],
+      "properties": {
+        "units": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      }
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

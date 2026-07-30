@@ -1,0 +1,335 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/challenge-outcome.schema.json",
+  "title": "Chio Finding Challenge Outcome (signed envelope)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "body",
+    "signerKey",
+    "signature"
+  ],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "outcome_id",
+        "challenge_envelope_sha256",
+        "finding_id",
+        "listing_id",
+        "backing_allocation_id",
+        "authorization",
+        "evidence_kind",
+        "verifier_profile_envelope_sha256",
+        "evidence_bundle_digest",
+        "verdict",
+        "facet",
+        "reason",
+        "trigger_digest",
+        "evaluator_key_epoch",
+        "evaluated_at"
+      ],
+      "properties": {
+        "schema": {
+          "const": "chio.finding.challenge-outcome.v1"
+        },
+        "outcome_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "challenge_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "finding_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "listing_id": {
+          "$ref": "#/$defs/boundedIdentifier"
+        },
+        "backing_allocation_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "authorization": {
+          "enum": [
+            "buyer_submission",
+            "venue_audit"
+          ]
+        },
+        "evidence_kind": {
+          "enum": [
+            "digest_mismatch",
+            "evidence_invalid",
+            "replay_contradiction"
+          ]
+        },
+        "verifier_profile_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "evidence_bundle_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "verdict": {
+          "enum": [
+            "upheld",
+            "rejected",
+            "indeterminate"
+          ]
+        },
+        "facet": {
+          "$ref": "#/$defs/facet"
+        },
+        "reason": {
+          "$ref": "#/$defs/nonBlankString"
+        },
+        "trigger_digest": {
+          "$ref": "#/$defs/sha256"
+        },
+        "penalty_calculation": {
+          "$ref": "#/$defs/penaltyCalculation"
+        },
+        "evaluator_key_epoch": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "evaluated_at": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "verdict": {
+                "const": "upheld"
+              }
+            },
+            "required": [
+              "verdict"
+            ]
+          },
+          "then": {
+            "required": [
+              "penalty_calculation"
+            ]
+          },
+          "else": {
+            "not": {
+              "required": [
+                "penalty_calculation"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    "signerKey": {
+      "$ref": "#/$defs/ed25519PublicKey"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  },
+  "$defs": {
+    "boundedIdentifier": {
+      "type": "string",
+      "pattern": "\\S",
+      "maxLength": 512
+    },
+    "ed25519PublicKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "facet": {
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "digest_mismatch"
+          ],
+          "properties": {
+            "digest_mismatch": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "committed_payload_sha256",
+                "delivered_output_sha256",
+                "transform_profile",
+                "realized_spend_units"
+              ],
+              "properties": {
+                "committed_payload_sha256": {
+                  "$ref": "#/$defs/sha256"
+                },
+                "delivered_output_sha256": {
+                  "$ref": "#/$defs/sha256"
+                },
+                "transform_profile": {
+                  "const": "identity"
+                },
+                "realized_spend_units": {
+                  "const": 0
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "evidence_invalid"
+          ],
+          "properties": {
+            "evidence_invalid": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "challenged_receipt_ids",
+                "invalidity"
+              ],
+              "properties": {
+                "challenged_receipt_ids": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 64,
+                  "uniqueItems": true,
+                  "items": {
+                    "$ref": "#/$defs/boundedIdentifier"
+                  }
+                },
+                "invalidity": {
+                  "enum": [
+                    "signature_invalid",
+                    "checkpoint_contradiction",
+                    "semantic_cross_binding_failure",
+                    "key_revoked_at_publication",
+                    "no_affirmative_invalidity",
+                    "inputs_unavailable"
+                  ]
+                }
+              }
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "replay_contradiction"
+          ],
+          "properties": {
+            "replay_contradiction": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "replay_run_id",
+                "recipe_sha256",
+                "predicate",
+                "predicate_result",
+                "observation_digests"
+              ],
+              "properties": {
+                "replay_run_id": {
+                  "$ref": "#/$defs/boundedIdentifier"
+                },
+                "recipe_sha256": {
+                  "$ref": "#/$defs/sha256"
+                },
+                "predicate": {
+                  "enum": [
+                    "baseline_fails_candidate_passes_v1"
+                  ]
+                },
+                "predicate_result": {
+                  "enum": [
+                    "confirmed_contradiction",
+                    "consistent",
+                    "indeterminate"
+                  ]
+                },
+                "observation_digests": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 16,
+                  "uniqueItems": true,
+                  "items": {
+                    "$ref": "#/$defs/sha256"
+                  }
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    "iJsonU64": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991
+    },
+    "iJsonU64NonZero": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "monetaryAmount": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "units",
+        "currency"
+      ],
+      "properties": {
+        "units": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        },
+        "currency": {
+          "type": "string",
+          "pattern": "^[A-Z]{3}$"
+        }
+      }
+    },
+    "nonBlankString": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "penaltyCalculation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "base_finding_stake_units",
+        "open_per_sale_encumbrance_units",
+        "computed_exposure_units",
+        "listing_required_amount_units",
+        "live_allocated_collateral_units",
+        "penalty_amount"
+      ],
+      "properties": {
+        "base_finding_stake_units": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "open_per_sale_encumbrance_units": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "computed_exposure_units": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "listing_required_amount_units": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "live_allocated_collateral_units": {
+          "$ref": "#/$defs/iJsonU64"
+        },
+        "penalty_amount": {
+          "$ref": "#/$defs/monetaryAmount"
+        }
+      }
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

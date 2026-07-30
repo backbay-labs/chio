@@ -276,16 +276,46 @@
       "schemaFile": "spec/schemas/chio-finding/v1/admission.schema.json"
     },
     {
+      "schema": "chio.finding.audit-epoch.v1",
+      "artifactKind": "finding_audit_epoch",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/audit-epoch.schema.json"
+    },
+    {
+      "schema": "chio.finding.audit-report.v1",
+      "artifactKind": "finding_audit_report",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/audit-report.schema.json"
+    },
+    {
       "schema": "chio.finding.bond-backing.v1",
       "artifactKind": "finding_bond_backing",
       "introducedBy": "finding-market-v1",
       "schemaFile": "spec/schemas/chio-finding/v1/bond-backing.schema.json"
     },
     {
+      "schema": "chio.finding.challenge-enforcement.v1",
+      "artifactKind": "finding_challenge_enforcement",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/challenge-enforcement.schema.json"
+    },
+    {
+      "schema": "chio.finding.challenge-outcome.v1",
+      "artifactKind": "finding_challenge_outcome",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/challenge-outcome.schema.json"
+    },
+    {
       "schema": "chio.finding.challenge-verifier-profile.v1",
       "artifactKind": "finding_challenge_verifier_profile",
       "introducedBy": "finding-market-v1",
       "schemaFile": "spec/schemas/chio-finding/v1/challenge-verifier-profile.schema.json"
+    },
+    {
+      "schema": "chio.finding.challenge.v1",
+      "artifactKind": "finding_challenge",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/challenge.schema.json"
     },
     {
       "schema": "chio.finding.delivery.v1",
@@ -298,6 +328,12 @@
       "artifactKind": "finding_failed_delivery",
       "introducedBy": "finding-market-v1",
       "schemaFile": "spec/schemas/chio-finding/v1/failed-delivery.schema.json"
+    },
+    {
+      "schema": "chio.finding.finalized-bond-snapshot.v1",
+      "artifactKind": "finding_finalized_bond_snapshot",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/finalized-bond-snapshot.schema.json"
     },
     {
       "schema": "chio.finding.market-terms.v1",
@@ -322,6 +358,12 @@
       "artifactKind": "finding_recovery_context",
       "introducedBy": "finding-market-v1",
       "schemaFile": "spec/schemas/chio-finding/v1/recovery-context.schema.json"
+    },
+    {
+      "schema": "chio.finding.replay-observation.v1",
+      "artifactKind": "finding_replay_observation",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/replay-observation.schema.json"
     },
     {
       "schema": "chio.finding.replay-recipe-input.v1",
@@ -898,6 +940,12 @@
       "artifactKind": "receipt",
       "introducedBy": "schema-registry/v1/receipt-v1",
       "schemaFile": "spec/schemas/chio-wire/v1/receipt/record.schema.json"
+    },
+    {
+      "schema": "chio.registry.market-penalty.v1",
+      "artifactKind": "open_market_penalty",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/market-penalty.schema.json"
     },
     {
       "schema": "chio.runtime.admission-bundle.v1",

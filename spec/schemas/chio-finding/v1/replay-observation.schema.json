@@ -1,0 +1,77 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/replay-observation.schema.json",
+  "title": "Chio Finding Replay Observation (unsigned)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "recipe_digest",
+    "verifier_profile_digest",
+    "phase_id",
+    "runner_manifest_digest",
+    "resolved_input_bundle_digest",
+    "environment_digest",
+    "terminal_result",
+    "exit_code",
+    "report_digest",
+    "replay_run_id"
+  ],
+  "properties": {
+    "schema": {
+      "const": "chio.finding.replay-observation.v1"
+    },
+    "recipe_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "verifier_profile_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "phase_id": {
+      "enum": [
+        "baseline",
+        "candidate"
+      ]
+    },
+    "runner_manifest_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "resolved_input_bundle_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "environment_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "terminal_result": {
+      "enum": [
+        "completed",
+        "failed",
+        "timed_out",
+        "resource_exhausted",
+        "runner_error"
+      ]
+    },
+    "exit_code": {
+      "type": "integer",
+      "minimum": -256,
+      "maximum": 255
+    },
+    "report_digest": {
+      "$ref": "#/$defs/sha256"
+    },
+    "replay_run_id": {
+      "$ref": "#/$defs/boundedIdentifier"
+    }
+  },
+  "$defs": {
+    "boundedIdentifier": {
+      "type": "string",
+      "pattern": "\\S",
+      "maxLength": 512
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

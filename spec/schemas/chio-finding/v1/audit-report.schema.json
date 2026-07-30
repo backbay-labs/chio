@@ -1,0 +1,122 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://chio.world/schemas/chio-finding/v1/audit-report.schema.json",
+  "title": "Chio Finding Audit Report (signed envelope)",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "body",
+    "signerKey",
+    "signature"
+  ],
+  "properties": {
+    "body": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "audit_report_id",
+        "audit_epoch_envelope_sha256",
+        "revealed_seed",
+        "selected_finding_ids",
+        "attempt_receipt_ids",
+        "missed_attempts",
+        "outcome_envelope_digests",
+        "reported_at"
+      ],
+      "properties": {
+        "schema": {
+          "const": "chio.finding.audit-report.v1"
+        },
+        "audit_report_id": {
+          "$ref": "#/$defs/sha256"
+        },
+        "audit_epoch_envelope_sha256": {
+          "$ref": "#/$defs/sha256"
+        },
+        "revealed_seed": {
+          "$ref": "#/$defs/sha256"
+        },
+        "selected_finding_ids": {
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/sha256"
+          }
+        },
+        "attempt_receipt_ids": {
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/boundedIdentifier"
+          }
+        },
+        "missed_attempts": {
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "finding_id",
+              "reason"
+            ],
+            "properties": {
+              "finding_id": {
+                "$ref": "#/$defs/sha256"
+              },
+              "reason": {
+                "$ref": "#/$defs/nonBlankString"
+              }
+            }
+          }
+        },
+        "outcome_envelope_digests": {
+          "type": "array",
+          "maxItems": 256,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/sha256"
+          }
+        },
+        "reported_at": {
+          "$ref": "#/$defs/iJsonU64NonZero"
+        }
+      }
+    },
+    "signerKey": {
+      "$ref": "#/$defs/ed25519PublicKey"
+    },
+    "signature": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{128}$"
+    }
+  },
+  "$defs": {
+    "boundedIdentifier": {
+      "type": "string",
+      "pattern": "\\S",
+      "maxLength": 512
+    },
+    "ed25519PublicKey": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "iJsonU64NonZero": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9007199254740991
+    },
+    "nonBlankString": {
+      "type": "string",
+      "pattern": "\\S"
+    },
+    "sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  }
+}

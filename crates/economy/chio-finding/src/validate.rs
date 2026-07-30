@@ -160,6 +160,18 @@ pub(crate) fn require_currency(currency: &str, field: &'static str) -> Result<()
     Ok(())
 }
 
+/// Require a chain-observed hash: 32 bytes of lowercase hex, with the `0x`
+/// prefix optional so the same shape covers rails that render hashes with
+/// and without it. Mixed case and short digests reject.
+pub(crate) fn require_chain_hash(value: &str, field: &'static str) -> Result<(), FindingError> {
+    let digits = value.strip_prefix("0x").unwrap_or(value);
+    if is_hex64(digits) {
+        Ok(())
+    } else {
+        Err(FindingError::MalformedDigest(field))
+    }
+}
+
 /// Require a carried member to be present, bounded, and byte-identical to
 /// its own strict canonicalization.
 ///
@@ -183,6 +195,28 @@ pub(crate) fn require_canonical_json_text(
         return Err(FindingError::NonCanonicalBytes(field));
     }
     Ok(())
+}
+
+/// Strict-parse a carried canonical member into its typed form: the text
+/// must be canonical on its own, and the typed value must re-serialize to
+/// exactly the same bytes, so no member can smuggle an encoding the
+/// registered schema would reject.
+pub(crate) fn parse_canonical_json_text<T>(
+    value: &str,
+    field: &'static str,
+    max_bytes: usize,
+) -> Result<T, FindingError>
+where
+    T: serde::de::DeserializeOwned + serde::Serialize,
+{
+    require_canonical_json_text(value, field, max_bytes)?;
+    let parsed: T =
+        serde_json::from_str(value).map_err(|_| FindingError::NonCanonicalBytes(field))?;
+    let reserialized = canonical_json_bytes(&parsed).map_err(|_| FindingError::Canonicalization)?;
+    if reserialized.as_slice() != value.as_bytes() {
+        return Err(FindingError::NonCanonicalBytes(field));
+    }
+    Ok(parsed)
 }
 
 pub(crate) fn require_window(

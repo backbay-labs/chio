@@ -757,15 +757,25 @@ fn built_in_signed_artifact_registry_matches_public_metadata() {
 }
 
 /// Bidirectional schema-registry parity for the cognition-market finding
-/// family. The generic test above proves allowlist-to-registry
-/// correspondence only; a `chio.finding.*` row added to registry.json
-/// without a matching allowlist registration (or vice versa) would pass it.
-/// This table is the family's explicit row list: standalone signed schemas
-/// carry their exact registration metadata, and registry-only unsigned
-/// schemas (none at M1) are enumerated separately. Each milestone that
-/// registers a finding-family schema extends the matching table.
+/// family and for the open-market penalty artifact its challenge lane
+/// registers. The generic test above proves allowlist-to-registry
+/// correspondence only; a row added to registry.json without a matching
+/// allowlist registration (or vice versa) would pass it. This table is the
+/// lane's explicit row list: standalone signed schemas carry their exact
+/// registration metadata, and registry-only unsigned schemas are enumerated
+/// separately. Each milestone that registers a schema in this lane extends
+/// the matching table.
 #[test]
 fn finding_family_schema_registry_parity_is_bidirectional() {
+    /// The open-market penalty body is frozen and lives outside the
+    /// `chio.finding.` namespace, but the finding challenge lane owns its
+    /// public registration, so it belongs to this table.
+    const MARKET_PENALTY_SCHEMA: &str = "chio.registry.market-penalty.v1";
+
+    fn in_finding_lane(schema: &str) -> bool {
+        schema.starts_with("chio.finding.") || schema == MARKET_PENALTY_SCHEMA
+    }
+
     const EXPECTED_SIGNED: &[(&str, &str, &str, &str)] = &[
         (
             "chio.finding.v1",
@@ -780,10 +790,34 @@ fn finding_family_schema_registry_parity_is_bidirectional() {
             "spec/schemas/chio-finding/v1/admission.schema.json",
         ),
         (
+            "chio.finding.audit-epoch.v1",
+            "finding_audit_epoch",
+            "finding-market-v1",
+            "spec/schemas/chio-finding/v1/audit-epoch.schema.json",
+        ),
+        (
+            "chio.finding.audit-report.v1",
+            "finding_audit_report",
+            "finding-market-v1",
+            "spec/schemas/chio-finding/v1/audit-report.schema.json",
+        ),
+        (
             "chio.finding.bond-backing.v1",
             "finding_bond_backing",
             "finding-market-v1",
             "spec/schemas/chio-finding/v1/bond-backing.schema.json",
+        ),
+        (
+            "chio.finding.challenge-enforcement.v1",
+            "finding_challenge_enforcement",
+            "finding-market-v1",
+            "spec/schemas/chio-finding/v1/challenge-enforcement.schema.json",
+        ),
+        (
+            "chio.finding.challenge-outcome.v1",
+            "finding_challenge_outcome",
+            "finding-market-v1",
+            "spec/schemas/chio-finding/v1/challenge-outcome.schema.json",
         ),
         (
             "chio.finding.challenge-verifier-profile.v1",
@@ -792,10 +826,22 @@ fn finding_family_schema_registry_parity_is_bidirectional() {
             "spec/schemas/chio-finding/v1/challenge-verifier-profile.schema.json",
         ),
         (
+            "chio.finding.challenge.v1",
+            "finding_challenge",
+            "finding-market-v1",
+            "spec/schemas/chio-finding/v1/challenge.schema.json",
+        ),
+        (
             "chio.finding.failed-delivery.v1",
             "finding_failed_delivery",
             "finding-market-v1",
             "spec/schemas/chio-finding/v1/failed-delivery.schema.json",
+        ),
+        (
+            "chio.finding.finalized-bond-snapshot.v1",
+            "finding_finalized_bond_snapshot",
+            "finding-market-v1",
+            "spec/schemas/chio-finding/v1/finalized-bond-snapshot.schema.json",
         ),
         (
             "chio.finding.market-terms.v1",
@@ -821,10 +867,17 @@ fn finding_family_schema_registry_parity_is_bidirectional() {
             "finding-market-v1",
             "spec/schemas/chio-finding/v1/verifier-report.schema.json",
         ),
+        (
+            MARKET_PENALTY_SCHEMA,
+            "open_market_penalty",
+            "finding-market-v1",
+            "spec/schemas/chio-finding/v1/market-penalty.schema.json",
+        ),
     ];
     const EXPECTED_REGISTRY_ONLY: &[&str] = &[
         "chio.finding.delivery.v1",
         "chio.finding.purchase-context.v1",
+        "chio.finding.replay-observation.v1",
         "chio.finding.replay-recipe-input.v1",
     ];
 
@@ -843,7 +896,7 @@ fn finding_family_schema_registry_parity_is_bidirectional() {
                 .get("schema")
                 .and_then(serde_json::Value::as_str)
                 .expect("registry artifact has schema");
-            if !schema.starts_with("chio.finding.") {
+            if !in_finding_lane(schema) {
                 return None;
             }
             let artifact_kind = entry
@@ -864,7 +917,7 @@ fn finding_family_schema_registry_parity_is_bidirectional() {
     let built_in_rows: BTreeMap<String, (String, String)> =
         chio_core_types::built_in_signed_artifact_registry()
             .into_iter()
-            .filter(|entry| entry.schema.starts_with("chio.finding."))
+            .filter(|entry| in_finding_lane(&entry.schema))
             .map(|entry| (entry.schema, (entry.artifact_kind, entry.introduced_by)))
             .collect();
 
