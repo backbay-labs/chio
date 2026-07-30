@@ -3614,6 +3614,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "chio-finding-challenge"
+version = "0.1.0"
+dependencies = [
+ "chio-core-types",
+ "chio-finding",
+ "chio-finding-verifier",
+ "chio-kernel",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "chio-finding-verifier"
 version = "0.1.0"
 dependencies = [
@@ -4570,6 +4583,7 @@ dependencies = [
  "chio-credit",
  "chio-egress-contract",
  "chio-federation",
+ "chio-finding",
  "chio-kernel",
  "chio-link",
  "chio-spec-validate",

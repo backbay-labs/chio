@@ -63,6 +63,7 @@ members = [
     "crates/economy/chio-credit",
     "crates/economy/chio-fincred",
     "crates/economy/chio-finding",
+    "crates/trust/chio-finding-challenge",
     "crates/trust/chio-finding-verifier",
     "crates/economy/chio-fiscal",
     "crates/economy/chio-link",
