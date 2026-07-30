@@ -29,6 +29,10 @@ pub mod evidence;
 pub mod fee_schedule;
 #[cfg(feature = "cognition-market-experimental")]
 pub mod finding_admission;
+#[cfg(feature = "cognition-market-experimental")]
+pub mod finding_penalty;
+#[cfg(feature = "cognition-market-experimental")]
+pub mod finding_slash_amount;
 pub mod fiscal_adapter;
 pub mod penalty;
 #[cfg(feature = "cognition-market-experimental")]
