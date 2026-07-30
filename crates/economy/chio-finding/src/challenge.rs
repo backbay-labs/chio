@@ -69,6 +69,14 @@ impl FindingReceiptRef {
 }
 
 /// An atomic, content-bound checkpoint reference.
+///
+/// `checkpoint_sha256` is the digest of the CANONICAL CHECKPOINT BODY,
+/// following the transparency-record convention, not the digest of the
+/// signed envelope carrying it. The distinction matters: a checkpoint
+/// re-signed by a rotated key keeps its body digest, so binding the body
+/// is what makes the reference stable across a legitimate rotation while
+/// still refusing substituted content. Every producer and every verifier
+/// of this reference must agree on that reading.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub struct FindingCheckpointRef {

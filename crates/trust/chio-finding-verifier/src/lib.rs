@@ -29,6 +29,10 @@ mod receipts;
 mod verify;
 
 pub use checkpoints::{verify_checkpoint_membership, CheckpointMembershipError};
+// The checkpoint and inclusion-proof types are part of this crate's
+// verification contract, so a consumer can name them without taking a
+// kernel dependency for two type aliases.
+pub use chio_kernel::checkpoint::{KernelCheckpoint, ReceiptInclusionProof};
 pub use cost::{FindingNonceResolver, NoNonceEvidence};
 pub use receipts::{verify_receipt_strict, ReceiptStrictError};
 pub use verify::{
