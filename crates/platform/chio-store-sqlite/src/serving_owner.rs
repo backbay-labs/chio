@@ -310,6 +310,9 @@ impl SqliteAuthorityStore {
             #[cfg(feature = "cognition-market-experimental")]
             crate::finding_recovery_store::initialize_finding_recovery_schema(&mut connection)
                 .map_err(|error| SqliteServingOwnerError::Invalid(error.to_string()))?;
+            #[cfg(feature = "cognition-market-experimental")]
+            crate::finding_challenge_store::initialize_finding_challenge_schema(&mut connection)
+                .map_err(|error| SqliteServingOwnerError::Invalid(error.to_string()))?;
             initialize_global_commit_schema(&connection)?;
             seed_global_baseline(&mut connection)?;
             reset_derived_budget_ack_cache(&connection)?;
@@ -460,6 +463,9 @@ impl SqliteAuthorityStore {
         #[cfg(feature = "cognition-market-experimental")]
         crate::finding_recovery_store::initialize_finding_recovery_schema(&mut connection)
             .map_err(|error| SqliteServingOwnerError::Invalid(error.to_string()))?;
+        #[cfg(feature = "cognition-market-experimental")]
+        crate::finding_challenge_store::initialize_finding_challenge_schema(&mut connection)
+            .map_err(|error| SqliteServingOwnerError::Invalid(error.to_string()))?;
         initialize_global_commit_schema(&connection)?;
         seed_global_baseline(&mut connection)?;
         reset_derived_budget_ack_cache(&connection)?;
@@ -543,6 +549,9 @@ impl SqliteAuthorityStore {
             .map_err(|error| SqliteServingOwnerError::Invalid(error.to_string()))?;
         #[cfg(feature = "cognition-market-experimental")]
         crate::finding_recovery_store::initialize_finding_recovery_schema(&mut connection)
+            .map_err(|error| SqliteServingOwnerError::Invalid(error.to_string()))?;
+        #[cfg(feature = "cognition-market-experimental")]
+        crate::finding_challenge_store::initialize_finding_challenge_schema(&mut connection)
             .map_err(|error| SqliteServingOwnerError::Invalid(error.to_string()))?;
         verify_global_commit_schema(&connection)?;
         reset_derived_budget_ack_cache(&connection)?;
@@ -784,6 +793,17 @@ impl SqliteAuthorityStore {
         &self,
     ) -> crate::finding_recovery_store::SqliteFindingRecoveryStore {
         crate::finding_recovery_store::SqliteFindingRecoveryStore::open_alongside(
+            self.connection.clone(),
+            self.owner.clone(),
+        )
+    }
+
+    #[cfg(feature = "cognition-market-experimental")]
+    #[must_use]
+    pub fn finding_challenge_store(
+        &self,
+    ) -> crate::finding_challenge_store::SqliteFindingChallengeStore {
+        crate::finding_challenge_store::SqliteFindingChallengeStore::open_alongside(
             self.connection.clone(),
             self.owner.clone(),
         )

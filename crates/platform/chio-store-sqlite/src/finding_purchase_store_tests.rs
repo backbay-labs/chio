@@ -1374,6 +1374,148 @@ fn release_and_expiry_never_leave_a_slot_reserved() {
 }
 
 #[test]
+fn blocking_sales_stops_the_slot_line_and_the_wait_predicate_is_exact() {
+    let fixture = fixture();
+    let first = Purchase::new("alpha", LISTING_ID, 10);
+    let second = Purchase::new("beta", LISTING_ID, 10);
+    let third = Purchase::new("gamma", LISTING_ID, 10);
+    for purchase in [&first, &second, &third] {
+        open_reservation(&fixture, purchase);
+    }
+    assert_eq!(
+        fixture
+            .store
+            .reserve_slot(&first.reservation_id, NOW + 1)
+            .expect("first slot"),
+        1
+    );
+    assert_eq!(
+        fixture
+            .store
+            .reserve_slot(&second.reservation_id, NOW + 1)
+            .expect("second slot"),
+        2
+    );
+    assert!(
+        !fixture
+            .store
+            .sales_blocked(LISTING_ID)
+            .expect("sales blocked"),
+        "a listing sells until it is blocked"
+    );
+
+    // The wait predicate counts only the slots at or below the cutoff.
+    assert!(
+        fixture
+            .store
+            .all_slots_closed_at_or_below(LISTING_ID, 0)
+            .expect("wait predicate"),
+        "slot ordinals start at one, so a zero cutoff waits for nothing"
+    );
+    assert!(
+        !fixture
+            .store
+            .all_slots_closed_at_or_below(LISTING_ID, 1)
+            .expect("wait predicate"),
+        "slot one is still reserved"
+    );
+
+    assert_eq!(
+        fixture
+            .store
+            .block_new_slots(LISTING_ID, NOW + 2)
+            .expect("block sales"),
+        FindingPurchaseWriteOutcome::Inserted
+    );
+    assert_eq!(
+        fixture
+            .store
+            .block_new_slots(LISTING_ID, NOW + 3)
+            .expect("replay block"),
+        FindingPurchaseWriteOutcome::ExistingSame
+    );
+    assert!(fixture
+        .store
+        .sales_blocked(LISTING_ID)
+        .expect("sales blocked"));
+    assert!(
+        matches!(
+            fixture.store.reserve_slot(&third.reservation_id, NOW + 4),
+            Err(FindingPurchaseStoreError::SalesBlocked(_))
+        ),
+        "no reservation may take a fresh slot once the listing is blocked"
+    );
+    assert!(
+        fixture
+            .store
+            .get_slot(&third.reservation_id)
+            .expect("slot lookup")
+            .is_none(),
+        "a refused reserve leaves no durable slot"
+    );
+    assert_eq!(
+        fixture
+            .store
+            .reserve_slot(&first.reservation_id, NOW + 4)
+            .expect("idempotent slot"),
+        1,
+        "a reservation already holding a slot keeps it, because it opens nothing new"
+    );
+
+    // A blocked listing still closes the purchases already in flight, and
+    // the predicate flips exactly when the last pre-cutoff slot closes.
+    let bytes = record_bytes("alpha");
+    let digest = chio_core::sha256_hex(&bytes);
+    fixture
+        .store
+        .close_slot_with_record(&FindingPurchaseDeliveryInput {
+            reservation_id: &first.reservation_id,
+            purchase_key: &hex64('d'),
+            record_json: &bytes,
+            record_sha256: &digest,
+            delivery_receipt_id: "receipt-delivery-alpha",
+            retention_expires_at: NOW + 100_000,
+            now: NOW + 5,
+        })
+        .expect("settle under a block");
+    assert!(fixture
+        .store
+        .all_slots_closed_at_or_below(LISTING_ID, 1)
+        .expect("wait predicate"));
+    assert!(
+        !fixture
+            .store
+            .all_slots_closed_at_or_below(LISTING_ID, 2)
+            .expect("wait predicate"),
+        "slot two is still reserved"
+    );
+    fixture
+        .store
+        .release_reservation(&second.reservation_id, NOW + 6)
+        .expect("abort under a block");
+    assert!(
+        fixture
+            .store
+            .all_slots_closed_at_or_below(LISTING_ID, 2)
+            .expect("wait predicate"),
+        "an aborted purchase closes its slot exactly as a settled one does"
+    );
+
+    // Blocks are per listing.
+    assert!(
+        !fixture
+            .store
+            .sales_blocked(OTHER_LISTING_ID)
+            .expect("sales blocked"),
+        "blocking one listing must not block another"
+    );
+    assert!(fixture
+        .store
+        .all_slots_closed_at_or_below(OTHER_LISTING_ID, 9)
+        .expect("wait predicate"));
+}
+
+#[test]
 fn payout_destination_slots_are_bounded_and_idempotent() {
     let fixture = fixture();
     let allocation_id = &fixture.allocation_id;

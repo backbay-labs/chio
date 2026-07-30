@@ -162,6 +162,24 @@ BEGIN
     SELECT RAISE(ABORT, 'pending purchase slot must be retained');
 END;
 
+CREATE TABLE IF NOT EXISTS listing_sales_blocks (
+    listing_id TEXT NOT NULL PRIMARY KEY
+        CHECK (length(listing_id) BETWEEN 1 AND 512),
+    blocked_at INTEGER NOT NULL CHECK (blocked_at > 0)
+);
+
+CREATE TRIGGER IF NOT EXISTS listing_sales_blocks_immutable
+BEFORE UPDATE ON listing_sales_blocks
+BEGIN
+    SELECT RAISE(ABORT, 'listing sales block is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS listing_sales_blocks_no_delete
+BEFORE DELETE ON listing_sales_blocks
+BEGIN
+    SELECT RAISE(ABORT, 'listing sales block must be retained');
+END;
+
 CREATE TABLE IF NOT EXISTS purchase_records (
     purchase_key TEXT NOT NULL PRIMARY KEY
         CHECK (length(purchase_key) = 64 AND purchase_key NOT GLOB '*[^0-9a-f]*'),

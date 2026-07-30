@@ -1,8 +1,9 @@
 //! Durable storage for single-operator finding purchases: reservations,
-//! seller exposure, the per-listing pending-purchase slot line, settled
-//! purchase records, failed-delivery records, and payout destinations.
+//! seller exposure, the per-listing pending-purchase slot line, the
+//! per-listing sales block, settled purchase records, failed-delivery
+//! records, and payout destinations.
 //!
-//! Six tables back the purchase path. `purchase_reservations` is the
+//! Seven tables back the purchase path. `purchase_reservations` is the
 //! durable fence a coordinator writes before it moves money: the row is
 //! keyed by the reservation id the compatibility receipt carries, and it
 //! is unique on both the purchase intent and the authoritative payment
@@ -12,7 +13,10 @@
 //! seller's liability: exposure counts while the reservation is live and
 //! keeps counting once the sale settles, through the retention horizon the
 //! settlement pins. `pending_purchase_slots` is the monotonic per-listing
-//! slot line the cutoff wait reads.
+//! slot line the cutoff wait reads, and `listing_sales_blocks` is the
+//! one-way switch that stops that line growing: once a listing is blocked
+//! no reservation can take a fresh slot, so a frozen cutoff stays the
+//! high-water mark it was frozen at.
 //! `purchase_records` and `failed_delivery_records` are the two terminal
 //! outcomes, retained without deletion and content-addressed against their
 //! stored digests. `payout_destinations` is the bounded sixteen-slot
@@ -30,9 +34,10 @@
 //! those surfaces rely on: one reservation per payment operation, exposure
 //! that never exceeds the allocation's registered cap, an allocation that
 //! backs the finding and listing it is charged for, a slot line that only
-//! ever grows, terminal records that cannot be edited or deleted, and the
-//! atomic close transaction that moves reservation, slot, encumbrance, and
-//! record together or not at all.
+//! ever grows and stops growing the moment sales are blocked, terminal
+//! records that cannot be edited or deleted, and the atomic close
+//! transaction that moves reservation, slot, encumbrance, and record
+//! together or not at all.
 //!
 //! Every mutation is idempotent by its natural key following the durable
 //! fee-intent fence: a replay carrying the same identity succeeds without
@@ -53,7 +58,10 @@ use crate::admission_operation_store::verify_active_owner;
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_PURCHASE_SCHEMA_KEY: &str = "finding_purchase";
-pub(crate) const FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION: i32 = 1;
+/// Revision 2 adds the per-listing sales block. The schema batch is a
+/// sequence of idempotent guards, so a revision-1 database adopts the new
+/// table on its next open without touching a stored purchase.
+pub(crate) const FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION: i32 = 2;
 const FINDING_PURCHASE_SCHEMA_ANCHORS: &[&str] = &[
     "purchase_reservations",
     "admission_operations",
@@ -112,6 +120,8 @@ pub enum FindingPurchaseStoreError {
     },
     #[error("payout destination slots are exhausted for allocation {0}")]
     DestinationSlotsExhausted(String),
+    #[error("new purchases are blocked on listing {0}")]
+    SalesBlocked(String),
     #[error("finding purchase commit outcome is unknown: {0}")]
     OutcomeUnknown(String),
 }
@@ -537,7 +547,9 @@ impl SqliteFindingPurchaseStore {
     /// transaction, and slots are never deleted, so an ordinal is never
     /// reused. Idempotent: a reservation already holding a slot returns
     /// that ordinal. A reservation at or past its expiry cannot take a
-    /// fresh slot.
+    /// fresh slot, and neither can any reservation once the listing's
+    /// sales are blocked: the block is read inside this transaction, so a
+    /// reserve racing the block either commits before it or sees it.
     pub fn reserve_slot(
         &self,
         reservation_id: &str,
@@ -565,6 +577,11 @@ impl SqliteFindingPurchaseStore {
         if now >= reservation.expires_at {
             return Err(FindingPurchaseStoreError::Conflict(
                 "reservation has reached its expiry".to_owned(),
+            ));
+        }
+        if sales_blocked_tx(&transaction, &reservation.listing_id)? {
+            return Err(FindingPurchaseStoreError::SalesBlocked(
+                reservation.listing_id.clone(),
             ));
         }
         let highest: i64 = transaction
@@ -921,6 +938,64 @@ impl SqliteFindingPurchaseStore {
         floor
             .map(|ordinal| stored_u64(ordinal, "slot_ordinal"))
             .transpose()
+    }
+
+    /// Block every new pending-purchase slot on one listing. The block is
+    /// a one-way switch: it is recorded once, never lifted, and never
+    /// rewritten, so a cutoff frozen against it can only ever be the
+    /// listing's high-water mark. Idempotent, and a repeat keeps the
+    /// trusted time the first block recorded.
+    ///
+    /// Slots already reserved are untouched. Blocking stops the line
+    /// growing; it does not retract a purchase already in flight, which
+    /// still has to reach a settled record or a denial.
+    pub fn block_new_slots(
+        &self,
+        listing_id: &str,
+        now: u64,
+    ) -> Result<FindingPurchaseWriteOutcome, FindingPurchaseStoreError> {
+        require_identifier(listing_id, "listing_id")?;
+        require_trusted_time(now, "now")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        let outcome = block_new_slots_tx(&transaction, listing_id, now)?;
+        self.commit_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        Ok(outcome)
+    }
+
+    /// Whether new purchases are blocked on one listing.
+    pub fn sales_blocked(&self, listing_id: &str) -> Result<bool, FindingPurchaseStoreError> {
+        require_identifier(listing_id, "listing_id")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        sales_blocked_tx(&transaction, listing_id)
+    }
+
+    /// Whether every slot on one listing at or below `cutoff` has closed,
+    /// against a settled record or against a denial. This is the exact
+    /// predicate a claim snapshot waits on: slots above the cutoff are
+    /// irrelevant to it, and a cutoff of zero is trivially satisfied
+    /// because slot ordinals start at one.
+    pub fn all_slots_closed_at_or_below(
+        &self,
+        listing_id: &str,
+        cutoff: u64,
+    ) -> Result<bool, FindingPurchaseStoreError> {
+        require_identifier(listing_id, "listing_id")?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_read(&mut connection)?;
+        let open: i64 = transaction
+            .query_row(
+                r#"
+                SELECT COUNT(*) FROM pending_purchase_slots
+                WHERE listing_id = ?1 AND slot_ordinal <= ?2 AND state = 'reserved'
+                "#,
+                params![listing_id, sqlite_i64(cutoff, "cutoff")?],
+                |row| row.get(0),
+            )
+            .map_err(sqlite_error)?;
+        Ok(open == 0)
     }
 
     /// Exposure still outstanding against one collateral allocation at
@@ -1435,6 +1510,73 @@ fn insert_destination_tx(
     Ok(())
 }
 
+/// Record one listing's sales block inside a caller-supplied
+/// transaction. This is the seam the challenge lane composes with: the
+/// liability CAS that freezes a purchase cutoff and the block that stops
+/// the slot line growing past it are one transaction on one connection,
+/// so no slot can open between them.
+pub(crate) fn block_new_slots_tx(
+    transaction: &Transaction<'_>,
+    listing_id: &str,
+    now: u64,
+) -> Result<FindingPurchaseWriteOutcome, FindingPurchaseStoreError> {
+    if sales_blocked_tx(transaction, listing_id)? {
+        return Ok(FindingPurchaseWriteOutcome::ExistingSame);
+    }
+    let inserted = transaction
+        .execute(
+            r#"
+            INSERT INTO listing_sales_blocks (listing_id, blocked_at)
+            VALUES (?1, ?2)
+            "#,
+            params![listing_id, sqlite_i64(now, "now")?],
+        )
+        .map_err(sqlite_error)?;
+    if inserted != 1 {
+        return Err(invariant("listing sales block did not affect one row"));
+    }
+    Ok(FindingPurchaseWriteOutcome::Inserted)
+}
+
+/// The highest slot ordinal ever allocated on one listing, read inside a
+/// caller-supplied transaction. Zero means the listing has never sold.
+/// Ordinals are monotonic and slots are never deleted, so this is the
+/// listing's high-water mark and, once its sales are blocked, its final
+/// one.
+pub(crate) fn highest_slot_ordinal_tx(
+    transaction: &Transaction<'_>,
+    listing_id: &str,
+) -> Result<u64, FindingPurchaseStoreError> {
+    let highest: i64 = transaction
+        .query_row(
+            r#"
+            SELECT COALESCE(MAX(slot_ordinal), 0) FROM pending_purchase_slots
+            WHERE listing_id = ?1
+            "#,
+            [listing_id],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)?;
+    stored_u64(highest, "slot_ordinal")
+}
+
+/// Whether one listing's sales are blocked, read inside a caller-supplied
+/// transaction.
+pub(crate) fn sales_blocked_tx(
+    transaction: &Transaction<'_>,
+    listing_id: &str,
+) -> Result<bool, FindingPurchaseStoreError> {
+    let blocked: Option<i64> = transaction
+        .query_row(
+            "SELECT blocked_at FROM listing_sales_blocks WHERE listing_id = ?1",
+            [listing_id],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    Ok(blocked.is_some())
+}
+
 /// The live reservations whose expiry has passed, oldest first, bounded
 /// by `limit`, paired with the state each is leaving.
 fn due_reservations_tx(
@@ -1883,6 +2025,8 @@ fn finding_purchase_schema_catalog(
                OR tbl_name GLOB 'failed_delivery_records*'
                OR name GLOB 'payout_destinations*'
                OR tbl_name GLOB 'payout_destinations*'
+               OR name GLOB 'listing_sales_blocks*'
+               OR tbl_name GLOB 'listing_sales_blocks*'
                ORDER BY type, name, tbl_name
             "#,
         )
