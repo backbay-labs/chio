@@ -122,6 +122,12 @@ pub fn compute_slash_distribution(
     let mut allocated: u64 = 0;
     if buyer_pool_units > 0 && total_harm > 0 {
         for harm in &ordered {
+            // A record with no verified realized spend is not harmed, so it
+            // never enters the distribution: the remainder pass below would
+            // otherwise be able to pay it a unit taken from a buyer who was.
+            if harm.realized_spend_units == 0 {
+                continue;
+            }
             // Floor division first, so no buyer can be allocated more than
             // its pro rata share before the remainder pass runs.
             let share = u128::from(buyer_pool_units)
@@ -262,6 +268,36 @@ mod tests {
             .find(|entry| entry.destination == "rail:a")
             .expect("key-a entry");
         assert_eq!(key_a.amount_units, 4, "the remainder unit goes to key-a");
+    }
+
+    #[test]
+    fn a_buyer_without_verified_spend_is_never_paid() {
+        let stake = usd(0);
+        let required = usd(10_000);
+        let mut base = inputs(&stake, &required);
+        base.open_per_sale_encumbrances = 15;
+        // The zero-spend record sorts first, so it is exactly the entry the
+        // remainder pass would reach before any harmed buyer.
+        let harms = [
+            harm("key-a", "rail:a", 0),
+            harm("key-b", "rail:b", 10),
+            harm("key-c", "rail:c", 10),
+        ];
+        let distribution = compute_slash_distribution(&base, &harms).expect("distribution");
+        assert!(
+            !distribution
+                .entries
+                .iter()
+                .any(|entry| entry.destination == "rail:a"),
+            "a record with no realized spend must not appear in the distribution"
+        );
+        let paid: u64 = distribution
+            .entries
+            .iter()
+            .filter(|entry| entry.destination != "rail:community")
+            .map(|entry| entry.amount_units)
+            .sum();
+        assert_eq!(paid, distribution.buyer_pool_units);
     }
 
     #[test]
