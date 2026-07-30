@@ -388,6 +388,7 @@ chio-credentials = { path = "crates/trust/chio-credentials" }
 chio-credit = { path = "crates/economy/chio-credit" }
 chio-fincred = { path = "crates/economy/chio-fincred" }
 chio-finding = { path = "crates/economy/chio-finding" }
+chio-finding-challenge = { path = "crates/trust/chio-finding-challenge" }
 chio-finding-verifier = { path = "crates/trust/chio-finding-verifier" }
 chio-fiscal = { path = "crates/economy/chio-fiscal" }
 chio-cross-protocol = { path = "crates/protocol/chio-cross-protocol" }

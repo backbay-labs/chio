@@ -175,6 +175,11 @@ fn market_config() -> FindingMarketConfig {
         collateral: authority_pin(4, "collateral"),
         purchase: authority_pin(16, "purchase"),
         failed_delivery: authority_pin(17, "failed-delivery"),
+        challenge_evaluator: authority_pin(31, "challenge-evaluator"),
+        venue_finalization: authority_pin(32, "venue-finalization"),
+        market_penalty: authority_pin(33, "market-penalty"),
+        settlement_observer: authority_pin(34, "settlement-observer"),
+        audit_authority: authority_pin(35, "audit-authority"),
         audit_pool: FindingPoolPin {
             principal_id: AUDIT_POOL_PRINCIPAL.to_string(),
             rail_destination: AUDIT_POOL_DESTINATION.to_string(),

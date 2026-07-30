@@ -3156,6 +3156,7 @@ dependencies = [
  "chio-external-guards",
  "chio-federation",
  "chio-finding",
+ "chio-finding-challenge",
  "chio-finding-verifier",
  "chio-fiscal",
  "chio-guards",

@@ -65,7 +65,7 @@ const PROFILE_SCHEMA_JSON: &str = include_str!(
 /// binds.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) struct FindingRailInstruction {
+pub struct FindingRailInstruction {
     pub idempotency_key: String,
     pub payer: String,
     pub amount_units: u64,
@@ -79,7 +79,7 @@ pub(crate) struct FindingRailInstruction {
 /// a fee event requires it to match exactly.
 #[derive(Debug, Clone, serde::Serialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) struct FindingRailObservation {
+pub struct FindingRailObservation {
     pub instruction_sha256: String,
     pub amount_units: u64,
     pub currency: String,
@@ -98,7 +98,7 @@ struct PreparedFindingFeeCharge {
 /// failed charge cannot admit. Implementations must treat the
 /// instruction idempotency key as the replay key: retrying the same
 /// instruction may recover its observation but must not move money twice.
-pub(crate) trait FindingRailObserver: Send + Sync {
+pub trait FindingRailObserver: Send + Sync {
     fn dispatch(
         &self,
         instruction: &FindingRailInstruction,
@@ -108,7 +108,7 @@ pub(crate) trait FindingRailObserver: Send + Sync {
 /// Deterministic venue-ledger rail: the venue's own evidenced ledger
 /// acknowledges the exact instruction. Observation digests are therefore
 /// computable when the venue signs the admission, before activation runs.
-pub(crate) struct VenueLedgerRailObserver;
+pub struct VenueLedgerRailObserver;
 
 impl FindingRailObserver for VenueLedgerRailObserver {
     fn dispatch(

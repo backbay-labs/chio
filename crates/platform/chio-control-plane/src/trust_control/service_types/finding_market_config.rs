@@ -120,6 +120,21 @@ pub struct FindingMarketConfig {
     pub collateral: FindingAuthorityPin,
     pub purchase: FindingAuthorityPin,
     pub failed_delivery: FindingAuthorityPin,
+    /// Signs challenge outcomes. Disjoint from every other role: a key
+    /// that adjudicates must not also be able to authorize the
+    /// enforcement, the penalty, or the collateral reading its verdict
+    /// spends against.
+    pub challenge_evaluator: FindingAuthorityPin,
+    /// Signs challenge enforcement instructions.
+    pub venue_finalization: FindingAuthorityPin,
+    /// Signs open-market penalties for the finding lane.
+    pub market_penalty: FindingAuthorityPin,
+    /// Signs finalized bond snapshots. The control plane only verifies
+    /// against this pin; it never holds the observer's private key.
+    pub settlement_observer: FindingAuthorityPin,
+    /// Authorizes bondless venue audits. A buyer submission verifies
+    /// against its own named challenger instead.
+    pub audit_authority: FindingAuthorityPin,
     pub audit_pool: FindingPoolPin,
     pub challenge_administration_pool: FindingPoolPin,
     pub community_fund_destination: String,
@@ -138,13 +153,8 @@ impl FindingMarketConfig {
                 "finding-market venue id must be non-empty".to_string(),
             ));
         }
-        self.venue.validate("venue")?;
+        self.roster()?;
         self.listing.validate("listing")?;
-        self.governance_root.validate("governance root")?;
-        self.verifier_report.validate("verifier report")?;
-        self.collateral.validate("collateral")?;
-        self.purchase.validate("purchase")?;
-        self.failed_delivery.validate("failed delivery")?;
         self.audit_pool.validate("audit")?;
         self.challenge_administration_pool
             .validate("challenge administration")?;
@@ -191,6 +201,47 @@ impl FindingMarketConfig {
             }
         }
         Ok(())
+    }
+
+    /// Validate every pinned authority and prove the roles are disjoint,
+    /// returning the parsed roster in role order.
+    ///
+    /// Disjointness is checked here rather than at each use because one
+    /// key holding two roles collapses a separation the whole lane rests
+    /// on: the evaluator that decides a verdict would also be able to
+    /// sign the enforcement that spends against it, and the observer that
+    /// reads the collateral would be able to authorize the impairment it
+    /// reported.
+    pub fn roster(&self) -> Result<Vec<(&'static str, PublicKey)>, CliError> {
+        let roster = [
+            ("venue", &self.venue),
+            ("governance root", &self.governance_root),
+            ("verifier report", &self.verifier_report),
+            ("collateral", &self.collateral),
+            ("purchase", &self.purchase),
+            ("failed delivery", &self.failed_delivery),
+            ("challenge evaluator", &self.challenge_evaluator),
+            ("venue finalization", &self.venue_finalization),
+            ("market penalty", &self.market_penalty),
+            ("settlement observer", &self.settlement_observer),
+            ("audit authority", &self.audit_authority),
+        ];
+        let mut parsed = Vec::with_capacity(roster.len());
+        for (label, pin) in roster {
+            parsed.push((label, pin.validate(label)?));
+        }
+        for (index, (label, key)) in parsed.iter().enumerate() {
+            if let Some((other, _)) = parsed
+                .iter()
+                .skip(index.saturating_add(1))
+                .find(|(_, candidate)| candidate == key)
+            {
+                return Err(CliError::cli_other_error(format!(
+                    "finding-market {label} and {other} authorities must be distinct keys"
+                )));
+            }
+        }
+        Ok(parsed)
     }
 
     /// The parsed pinned fee-schedule signer set.

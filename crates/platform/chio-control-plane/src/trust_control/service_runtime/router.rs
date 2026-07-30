@@ -763,3 +763,8 @@ mod finding_market_exit_tests;
 #[cfg(all(test, feature = "cognition-market-experimental"))]
 #[path = "finding_wedge_purchase_e2e_tests.rs"]
 mod finding_wedge_purchase_e2e_tests;
+
+#[cfg(all(test, feature = "cognition-market-experimental"))]
+#[path = "finding_challenge_enforcement_e2e_tests.rs"]
+#[allow(clippy::expect_used, clippy::unwrap_used)]
+mod finding_challenge_enforcement_e2e_tests;
