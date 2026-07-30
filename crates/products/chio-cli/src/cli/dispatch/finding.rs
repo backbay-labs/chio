@@ -12,6 +12,10 @@ use chio_finding_verifier::MAX_RAW_FINDING_BYTES;
 mod finding_verify;
 use finding_verify::cmd_finding_verify;
 
+#[path = "finding/challenge.rs"]
+mod finding_challenge;
+use finding_challenge::cmd_finding_challenge;
+
 /// Authenticated canonical-artifact ingress.
 const FINDING_PUBLISH_PATH: &str = "/v1/findings/publish";
 /// Public bounded descriptor index.
@@ -80,6 +84,23 @@ pub(crate) fn dispatch_finding(
             json_output,
             control_url.as_deref(),
             control_token.as_deref(),
+        ),
+        FindingCommands::Challenge {
+            finding,
+            class,
+            evidence,
+            challenger_key,
+            venue_audit,
+            dry_run,
+        } => cmd_finding_challenge(
+            &finding,
+            class,
+            &evidence,
+            challenger_key.as_deref(),
+            venue_audit,
+            dry_run,
+            json_output,
+            control_url.as_deref(),
         ),
     }
 }

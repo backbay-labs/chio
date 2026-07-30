@@ -74,7 +74,7 @@ Full flag reference: `chio <command> [<subcommand>...] --help`.
 | `attest` | `buyer`, `supply-chain`, `runtime-quote` | Verify offline attestation evidence and buyer proof packages. |
 | `runtime` | `admit`, `sign-trust-input`, `policy`, `peer-weights`, `pheromone`, `orchestrate`, `ops`, `run-loopback` | Evaluate local live-runtime admission artifacts. |
 | `pheromone` | `receive`, `query`, `relay` (relay nests ~45 more, 7 levels deep) | Receive, query, and relay pheromone artifacts. |
-| `finding` | `publish`, `search`, `verify`, `buy` | Publish, discover, verify, and purchase cognition-market findings. Requires the `cognition-market-experimental` feature. |
+| `finding` | `publish`, `search`, `verify`, `buy`, `challenge` | Publish, discover, verify, purchase, and dispute cognition-market findings. Requires the `cognition-market-experimental` feature. |
 | `replay <log>` | `traffic` | Re-verify a captured receipt log against the current build. |
 | `settle` | `status` | Inspect pending, settled, and dead-lettered settlements. |
 | `lineage` | `query`, `diff`, `roots` | Query, diff, and list anchored roots in the lineage DAG. |
@@ -95,6 +95,101 @@ A few command names collide in ways worth flagging:
   to the top-level `chio replay` command.
 - `chio passport` (Agent Passport identity bundles) is unrelated to
   `chio proof`'s Transaction Passport artifacts.
+
+### Cognition-market input files
+
+`chio finding` takes three operator-supplied JSON documents. Each is read
+strict raw-first: bounded read, then a canonical-bytes check, then a
+closed-shape parse, then a typed round-trip equality check. A file that is
+not exactly its own canonical serialization is refused rather than
+normalized into acceptance, because the digests it carries are only
+meaningful against exact bytes.
+
+`chio finding verify --trust-roots <FILE>` pins the four verifier roots:
+`governance_authority` (bare Ed25519 hex), `profile` (a signed
+`chio.finding.challenge-verifier-profile.v1` envelope), `admitted_kernel_keys`
+(an array of bare Ed25519 hex keys), `collateral_authority`, and an optional
+`trusted_time` in unix seconds. Without `trusted_time` the local clock is
+used and the report says so.
+
+`chio finding verify --evidence <FILE>` supplies resolved evidence:
+`receipts` (each `{receipt, inclusion_proof}`), `checkpoints`, and an
+optional `bond_snapshot` of `{backing, live, accepted_at}`. Every member is
+optional; a facet whose evidence is absent reports unavailable and is never
+collapsed into a verified badge.
+
+`chio finding challenge --evidence <FILE>` supplies the operator half of a
+challenge. It is exactly the registered `chio.finding.challenge.v1` body
+minus the four fields the command derives rather than accepts (`schema`,
+`challenge_id`, `finding_id`, and `finding_artifact_sha256`, the last two
+taken from the artifact the venue serves). Every key below, at every depth,
+is in canonical order, which is the order the file must use, and every field
+is required:
+
+```json
+{
+  "affected_deliveries": [
+    {
+      "checkpoint_ref": "checkpoints/venue-wedge/9001",
+      "checkpoint_sha256": "<64 hex>",
+      "receipt_id": "delivery-receipt-42",
+      "receipt_sha256": "<64 hex>"
+    }
+  ],
+  "authorization": { "buyer_submission": { "...": "..." } },
+  "evidence": { "digest_mismatch": { "...": "..." } },
+  "filed_at": 1750000000,
+  "listing": {
+    "backing_envelope_sha256": "<64 hex>",
+    "listing_id": "finding-listing-01",
+    "profile_envelope_sha256": "<64 hex>",
+    "terms_envelope_sha256": "<64 hex>"
+  }
+}
+```
+
+- `listing` is copied from the venue's current signed admission envelope
+  (`GET /v1/findings/{id}/admission`). The CLI holds no pinned venue key, so
+  it binds what the operator copied and leaves authentication of that
+  envelope to the coordinator that resolves it.
+- `filed_at` is supplied rather than read from the local clock, so the same
+  inputs always assemble the same challenge and therefore the same
+  content-addressed `challenge_id`.
+- `authorization` is the artifact's closed union. `buyer_submission` carries
+  `challenger`, `dispute_fee_terminal`, `dispute_lock_ref`, and `standing`;
+  `venue_audit` carries `audit_epoch_envelope_sha256`,
+  `authorization_digest`, and `selection_digest`, and no challenger, fee,
+  bond, forfeiture, or reward member exists in it at all. The branch must
+  agree with `--venue-audit`: a buyer submission is refused under that flag
+  rather than stripped down into an audit.
+- `evidence` is the artifact's other closed union, and its branch must equal
+  `--class`. `digest_mismatch` carries `deny_checkpoint_ref`,
+  `deny_receipt_ref`, and `failed_delivery_envelope_sha256`;
+  `evidence_invalid` carries `challenged_checkpoint_ref`,
+  `challenged_evidence_receipt_refs`, and
+  `purchase_record_envelope_sha256`; `replay_contradiction` carries
+  `purchase_record_envelope_sha256`, the canonical
+  `chio.finding.replay-recipe-input.v1` text as `recipe_preimage`, and
+  `reproduction` (each entry a `checkpoint_ref`, the canonical
+  `chio.finding.replay-observation.v1` text as `observation_bytes`, and a
+  `receipt_ref`).
+- `standing` must match the evidence class: a denied reveal creates no
+  purchase record, so `digest_mismatch` stands on `failed_delivery` while
+  the other two stand on `finalized_purchase`, and the standing digest must
+  equal the digest the evidence branch already names.
+
+The assembled body is checked against the registered challenge schema and
+its own validator, then the closed guarantee/evidence compatibility matrix
+is checked against the fetched finding, all before anything is signed. A
+buyer submission is then signed under `--challenger-key` (an Ed25519 seed
+file of 64 hex characters), which must hold exactly the challenger the
+document names. A venue audit is signed by the venue's pinned audit
+authority, which this surface does not hold, so its dry run emits the body
+alone and reports no envelope digest.
+
+Submission itself needs a challenge coordinator route that this workspace
+revision does not expose, so without `--dry-run` the command refuses instead
+of transmitting.
 
 ### Global flags
 

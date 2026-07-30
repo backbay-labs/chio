@@ -1,16 +1,30 @@
 use super::*;
 
+use super::finding_challenge::{
+    load_challenge_evidence_document, prepare_challenge, FINDING_CHALLENGE_EVIDENCE_MAX_BYTES,
+};
+use super::finding_verify::{strict_finding_ingress, AcceptedFinding};
 use crate::cli_entrypoint_support::parse_cli;
 use base64::Engine as _;
 use chio_core_types::capability::scope::MonetaryAmount;
-use chio_core_types::crypto::Keypair;
+use chio_core_types::crypto::{sha256_hex, Keypair};
 use chio_core_types::receipt::body::{ChioReceipt, ChioReceiptBody};
 use chio_core_types::receipt::decision::{Decision, ToolCallAction};
 use chio_core_types::receipt::kinds::TrustLevel;
+use chio_core_types::{canonical_json_bytes, canonical_json_string};
 use chio_finding::{
-    compute_finding_id, derive_purchase_key, sign_finding, Finding, FindingDescriptor,
-    FindingEvidenceClass, FindingGuaranteeClass, FindingOutcomeClass, FindingPurchaseRecord,
-    SignedFindingPurchaseRecord, FINDING_PURCHASE_RECORD_SCHEMA_V1, FINDING_SCHEMA_V1,
+    compute_finding_id, derive_purchase_key, sign_finding, verify_signed_challenge, Finding,
+    FindingAffectedDelivery, FindingBuyerSubmission, FindingChallengeAuthorization,
+    FindingChallengeEvidence, FindingChallengeStanding, FindingCheckpointRef,
+    FindingClaimedVerdict, FindingDescriptor, FindingDisputeBondClass, FindingDisputeFeeEvent,
+    FindingDisputeFeeTerminal, FindingDisputeLockRef, FindingEvidenceClass,
+    FindingGuaranteeClass, FindingOutcomeClass, FindingPredicate, FindingPurchaseRecord,
+    FindingReceiptRef, FindingRecipeEnvironment, FindingRecipePhase, FindingRecipePhaseKind,
+    FindingReplayObservation, FindingReplayRecipeInput, FindingReplayReproduction,
+    FindingReplayTerminalResult, FindingResourceCaps, FindingVenueAuditAuthorization,
+    SignedFindingPurchaseRecord, FINDING_PURCHASE_RECORD_SCHEMA_V1,
+    FINDING_REPLAY_OBSERVATION_SCHEMA_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
+    FINDING_SCHEMA_V1,
 };
 use chio_open_market::purchase_verification::{
     derive_payment_operation_id, derive_purchase_intent_id,
@@ -730,6 +744,947 @@ async fn search_encodes_the_index_query_parameters() {
     .await
     .unwrap()
     .unwrap();
+}
+
+/// The venue is never dialed by the local gates, so the refusals that fire
+/// before the fetch can name a URL that does not resolve.
+const UNREACHABLE_VENUE: &str = "http://127.0.0.1:1";
+
+const CHALLENGE_TERMS_DIGEST: &str =
+    "1111111111111111111111111111111111111111111111111111111111111111";
+const CHALLENGE_BACKING_DIGEST: &str =
+    "2222222222222222222222222222222222222222222222222222222222222222";
+const CHALLENGE_PROFILE_DIGEST: &str =
+    "3333333333333333333333333333333333333333333333333333333333333333";
+const CHALLENGE_FAILED_DELIVERY_DIGEST: &str =
+    "4444444444444444444444444444444444444444444444444444444444444444";
+const CHALLENGE_PURCHASE_RECORD_DIGEST: &str =
+    "5555555555555555555555555555555555555555555555555555555555555555";
+const CHALLENGE_RECEIPT_DIGEST: &str =
+    "6666666666666666666666666666666666666666666666666666666666666666";
+const CHALLENGE_CHECKPOINT_DIGEST: &str =
+    "7777777777777777777777777777777777777777777777777777777777777777";
+const CHALLENGE_BUNDLE_DIGEST: &str =
+    "8888888888888888888888888888888888888888888888888888888888888888";
+
+fn challenger_keypair() -> Keypair {
+    Keypair::from_seed(&[41_u8; 32])
+}
+
+fn write_challenger_key(dir: &tempfile::TempDir, keypair_seed: [u8; 32]) -> PathBuf {
+    write_temp(dir, "challenger.seed", &hex::encode(keypair_seed))
+}
+
+fn usd(units: u64) -> MonetaryAmount {
+    MonetaryAmount {
+        units,
+        currency: "USD".to_string(),
+    }
+}
+
+fn challenge_receipt_ref(receipt_id: &str) -> FindingReceiptRef {
+    FindingReceiptRef {
+        receipt_id: receipt_id.to_string(),
+        receipt_sha256: CHALLENGE_RECEIPT_DIGEST.to_string(),
+    }
+}
+
+fn challenge_checkpoint_ref() -> FindingCheckpointRef {
+    FindingCheckpointRef {
+        checkpoint_ref: "checkpoints/venue-wedge/9001".to_string(),
+        checkpoint_sha256: CHALLENGE_CHECKPOINT_DIGEST.to_string(),
+    }
+}
+
+fn challenge_affected_delivery() -> FindingAffectedDelivery {
+    FindingAffectedDelivery {
+        receipt_id: "delivery-receipt-42".to_string(),
+        receipt_sha256: CHALLENGE_RECEIPT_DIGEST.to_string(),
+        checkpoint_ref: "checkpoints/venue-wedge/9001".to_string(),
+        checkpoint_sha256: CHALLENGE_CHECKPOINT_DIGEST.to_string(),
+    }
+}
+
+fn buyer_authorization(
+    challenger: &Keypair,
+    standing: FindingChallengeStanding,
+) -> FindingChallengeAuthorization {
+    FindingChallengeAuthorization::BuyerSubmission(Box::new(FindingBuyerSubmission {
+        challenger: challenger.public_key(),
+        dispute_fee_terminal: FindingDisputeFeeTerminal {
+            fee_schedule_envelope_sha256: CHALLENGE_TERMS_DIGEST.to_string(),
+            event: FindingDisputeFeeEvent::ChallengeFiling,
+            payer: challenger.public_key(),
+            amount: usd(2_500),
+            beneficiary_pool_principal_id: "pool:challenge-administration".to_string(),
+            rail_destination: "rail:venue-ledger:challenge-admin".to_string(),
+        },
+        dispute_lock_ref: FindingDisputeLockRef {
+            lock_id: "dispute-lock-42".to_string(),
+            class: FindingDisputeBondClass::Dispute,
+            fee_schedule_envelope_sha256: CHALLENGE_TERMS_DIGEST.to_string(),
+            amount: usd(10_000),
+            expiry: 1_760_000_000,
+        },
+        standing,
+    }))
+}
+
+fn venue_audit_authorization() -> FindingChallengeAuthorization {
+    FindingChallengeAuthorization::VenueAudit(FindingVenueAuditAuthorization {
+        audit_epoch_envelope_sha256: CHALLENGE_TERMS_DIGEST.to_string(),
+        selection_digest: CHALLENGE_BACKING_DIGEST.to_string(),
+        authorization_digest: CHALLENGE_PROFILE_DIGEST.to_string(),
+    })
+}
+
+fn digest_mismatch_evidence() -> FindingChallengeEvidence {
+    FindingChallengeEvidence::DigestMismatch {
+        failed_delivery_envelope_sha256: CHALLENGE_FAILED_DELIVERY_DIGEST.to_string(),
+        deny_receipt_ref: challenge_receipt_ref("deny-receipt-42"),
+        deny_checkpoint_ref: challenge_checkpoint_ref(),
+    }
+}
+
+fn evidence_invalid_evidence() -> FindingChallengeEvidence {
+    FindingChallengeEvidence::EvidenceInvalid {
+        challenged_evidence_receipt_refs: vec![challenge_receipt_ref("evidence-receipt-1")],
+        challenged_checkpoint_ref: challenge_checkpoint_ref(),
+        purchase_record_envelope_sha256: CHALLENGE_PURCHASE_RECORD_DIGEST.to_string(),
+    }
+}
+
+fn replay_recipe() -> FindingReplayRecipeInput {
+    FindingReplayRecipeInput {
+        schema: FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1.to_string(),
+        decision_rule_ref: "decision/replay-v1".to_string(),
+        verifier_profile_envelope_sha256: CHALLENGE_PROFILE_DIGEST.to_string(),
+        context_sha256: CHALLENGE_RECEIPT_DIGEST.to_string(),
+        payload_sha256: CHALLENGE_CHECKPOINT_DIGEST.to_string(),
+        runner_server: "finding-server".to_string(),
+        runner_tool: "finding.replay".to_string(),
+        runner_manifest_sha256: CHALLENGE_TERMS_DIGEST.to_string(),
+        phases: vec![
+            FindingRecipePhase {
+                phase: FindingRecipePhaseKind::Baseline,
+                input_bundle_sha256: CHALLENGE_BUNDLE_DIGEST.to_string(),
+                payload_application: "not_applied".to_string(),
+            },
+            FindingRecipePhase {
+                phase: FindingRecipePhaseKind::Candidate,
+                input_bundle_sha256: CHALLENGE_BACKING_DIGEST.to_string(),
+                payload_application: "apply_patch_v1".to_string(),
+            },
+        ],
+        parameters_sha256: CHALLENGE_TERMS_DIGEST.to_string(),
+        environment: FindingRecipeEnvironment {
+            runtime_image_sha256: CHALLENGE_TERMS_DIGEST.to_string(),
+            platform: "linux/amd64".to_string(),
+            network_policy: "deny_all".to_string(),
+            clock_policy: "fixed:1700000000".to_string(),
+            randomness_policy: "seed:42".to_string(),
+            locale: "C".to_string(),
+            timezone: "UTC".to_string(),
+        },
+        resource_bounds: FindingResourceCaps {
+            max_recipe_bytes: 262_144,
+            max_evidence_receipts: 64,
+            max_runtime_secs: 900,
+            max_memory_bytes: 2_147_483_648,
+        },
+        predicate: FindingPredicate::BaselineFailsCandidatePassesV1,
+        pre_run_template_sha256: CHALLENGE_TERMS_DIGEST.to_string(),
+        claimed_verdict: FindingClaimedVerdict::PredicateHolds,
+    }
+}
+
+fn replay_observation(
+    recipe_digest: &str,
+    phase: FindingRecipePhaseKind,
+) -> FindingReplayObservation {
+    FindingReplayObservation {
+        schema: FINDING_REPLAY_OBSERVATION_SCHEMA_V1.to_string(),
+        recipe_digest: recipe_digest.to_string(),
+        verifier_profile_digest: CHALLENGE_PROFILE_DIGEST.to_string(),
+        phase_id: phase,
+        runner_manifest_digest: CHALLENGE_TERMS_DIGEST.to_string(),
+        resolved_input_bundle_digest: match phase {
+            FindingRecipePhaseKind::Baseline => CHALLENGE_BUNDLE_DIGEST.to_string(),
+            FindingRecipePhaseKind::Candidate => CHALLENGE_BACKING_DIGEST.to_string(),
+        },
+        environment_digest: CHALLENGE_CHECKPOINT_DIGEST.to_string(),
+        terminal_result: FindingReplayTerminalResult::Completed,
+        exit_code: match phase {
+            FindingRecipePhaseKind::Baseline => 1,
+            FindingRecipePhaseKind::Candidate => 0,
+        },
+        report_digest: match phase {
+            FindingRecipePhaseKind::Baseline => CHALLENGE_RECEIPT_DIGEST.to_string(),
+            FindingRecipePhaseKind::Candidate => CHALLENGE_BACKING_DIGEST.to_string(),
+        },
+        replay_run_id: "replay-run-42".to_string(),
+    }
+}
+
+fn replay_contradiction_evidence() -> FindingChallengeEvidence {
+    let recipe = replay_recipe();
+    let recipe_digest = recipe.canonical_sha256().unwrap();
+    let reproduction = vec![
+        FindingReplayReproduction {
+            receipt_ref: challenge_receipt_ref("replay-receipt-baseline"),
+            checkpoint_ref: challenge_checkpoint_ref(),
+            observation_bytes: canonical_json_string(&replay_observation(
+                &recipe_digest,
+                FindingRecipePhaseKind::Baseline,
+            ))
+            .unwrap(),
+        },
+        FindingReplayReproduction {
+            receipt_ref: challenge_receipt_ref("replay-receipt-candidate"),
+            checkpoint_ref: challenge_checkpoint_ref(),
+            observation_bytes: canonical_json_string(&replay_observation(
+                &recipe_digest,
+                FindingRecipePhaseKind::Candidate,
+            ))
+            .unwrap(),
+        },
+    ];
+    FindingChallengeEvidence::ReplayContradiction {
+        reproduction,
+        recipe_preimage: canonical_json_string(&recipe).unwrap(),
+        purchase_record_envelope_sha256: CHALLENGE_PURCHASE_RECORD_DIGEST.to_string(),
+    }
+}
+
+fn class_evidence(class: FindingChallengeClassArg) -> FindingChallengeEvidence {
+    match class {
+        FindingChallengeClassArg::DigestMismatch => digest_mismatch_evidence(),
+        FindingChallengeClassArg::EvidenceInvalid => evidence_invalid_evidence(),
+        FindingChallengeClassArg::ReplayContradiction => replay_contradiction_evidence(),
+    }
+}
+
+/// A denied reveal creates no purchase record, so the digest-mismatch class
+/// stands on the failed-delivery terminal while the other two stand on the
+/// purchase record.
+fn class_standing(class: FindingChallengeClassArg) -> FindingChallengeStanding {
+    match class {
+        FindingChallengeClassArg::DigestMismatch => FindingChallengeStanding::FailedDelivery {
+            failed_delivery_id: CHALLENGE_RECEIPT_DIGEST.to_string(),
+            failed_delivery_envelope_sha256: CHALLENGE_FAILED_DELIVERY_DIGEST.to_string(),
+        },
+        _ => FindingChallengeStanding::FinalizedPurchase {
+            purchase_key: CHALLENGE_RECEIPT_DIGEST.to_string(),
+            purchase_record_envelope_sha256: CHALLENGE_PURCHASE_RECORD_DIGEST.to_string(),
+        },
+    }
+}
+
+fn challenge_document(
+    authorization: &FindingChallengeAuthorization,
+    evidence: &FindingChallengeEvidence,
+) -> String {
+    canonical_json_string(&serde_json::json!({
+        "affected_deliveries": [serde_json::to_value(challenge_affected_delivery()).unwrap()],
+        "authorization": serde_json::to_value(authorization).unwrap(),
+        "evidence": serde_json::to_value(evidence).unwrap(),
+        "filed_at": 1_750_000_000_u64,
+        "listing": {
+            "backing_envelope_sha256": CHALLENGE_BACKING_DIGEST,
+            "listing_id": "finding-listing-01",
+            "profile_envelope_sha256": CHALLENGE_PROFILE_DIGEST,
+            "terms_envelope_sha256": CHALLENGE_TERMS_DIGEST,
+        },
+    }))
+    .unwrap()
+}
+
+fn buyer_document(challenger: &Keypair, class: FindingChallengeClassArg) -> String {
+    challenge_document(
+        &buyer_authorization(challenger, class_standing(class)),
+        &class_evidence(class),
+    )
+}
+
+fn venue_audit_document(class: FindingChallengeClassArg) -> String {
+    challenge_document(&venue_audit_authorization(), &class_evidence(class))
+}
+
+/// The published fixture commits to `deterministic_replay` and `verified`,
+/// the pairing every challenge class is compatible with.
+fn accepted_golden_finding() -> AcceptedFinding {
+    strict_finding_ingress(canonical_golden_finding(), "golden finding").unwrap()
+}
+
+/// An `asserted` finding has no evidence to invalidate and committed no
+/// recipe to contradict, so only the digest-mismatch class can target it.
+fn accepted_asserted_finding() -> AcceptedFinding {
+    let issuer = Keypair::from_seed(&[10_u8; 32]);
+    let mut finding = Finding {
+        schema: FINDING_SCHEMA_V1.to_string(),
+        finding_id: String::new(),
+        descriptor: FindingDescriptor {
+            topic: "repo:backbay/chio#test-failure".to_string(),
+            context_sha256: "a".repeat(64),
+            outcome_class: FindingOutcomeClass::VerifiedFix,
+        },
+        guarantee_class: FindingGuaranteeClass::Asserted,
+        payload_sha256: "b".repeat(64),
+        payload_media_type: "text/x-diff".to_string(),
+        evidence_receipt_ids: Vec::new(),
+        evidence_checkpoint_ref: "ckpt-1".to_string(),
+        evidence_cost: usd(4_200),
+        runtime_assurance_tier: None,
+        evidence_class: FindingEvidenceClass::Asserted,
+        replay_recipe_sha256: None,
+        intent_commitment_receipt_id: None,
+        bond_ref: "bond-req-1".to_string(),
+        status_feed_ref: "finding-status/test".to_string(),
+        license_ref: None,
+        price_hint_ref: None,
+        issuer: issuer.public_key(),
+        issued_at: 1_784_880_000,
+        expires_at: 1_792_656_000,
+        signature: String::new(),
+    };
+    finding.finding_id = compute_finding_id(&finding).unwrap();
+    let signed = sign_finding(finding, &issuer).unwrap();
+    let raw = canonical_json_string(&signed).unwrap();
+    strict_finding_ingress(raw, "asserted finding").unwrap()
+}
+
+fn load_document(dir: &tempfile::TempDir, contents: &str) -> PathBuf {
+    write_temp(dir, "challenge-evidence.json", contents)
+}
+
+#[test]
+fn challenge_subcommand_parses() {
+    let cli = parse_cli([
+        "chio",
+        "finding",
+        "challenge",
+        "--finding",
+        GOLDEN_FINDING_ID,
+        "--class",
+        "replay-contradiction",
+        "--evidence",
+        "evidence.json",
+        "--challenger-key",
+        "challenger.seed",
+        "--dry-run",
+    ])
+    .unwrap();
+    match cli.command {
+        Commands::Finding {
+            command:
+                FindingCommands::Challenge {
+                    finding,
+                    class,
+                    evidence,
+                    challenger_key,
+                    venue_audit,
+                    dry_run,
+                },
+        } => {
+            assert_eq!(finding, GOLDEN_FINDING_ID);
+            assert_eq!(class, FindingChallengeClassArg::ReplayContradiction);
+            assert_eq!(evidence, PathBuf::from("evidence.json"));
+            assert_eq!(challenger_key, Some(PathBuf::from("challenger.seed")));
+            assert!(!venue_audit);
+            assert!(dry_run);
+        }
+        _ => panic!("expected finding challenge command"),
+    }
+}
+
+#[test]
+fn challenge_venue_audit_subcommand_parses() {
+    let cli = parse_cli([
+        "chio",
+        "finding",
+        "challenge",
+        "--finding",
+        GOLDEN_FINDING_ID,
+        "--class",
+        "digest-mismatch",
+        "--evidence",
+        "evidence.json",
+        "--venue-audit",
+    ])
+    .unwrap();
+    match cli.command {
+        Commands::Finding {
+            command:
+                FindingCommands::Challenge {
+                    class,
+                    challenger_key,
+                    venue_audit,
+                    dry_run,
+                    ..
+                },
+        } => {
+            assert_eq!(class, FindingChallengeClassArg::DigestMismatch);
+            assert_eq!(challenger_key, None);
+            assert!(venue_audit);
+            assert!(!dry_run);
+        }
+        _ => panic!("expected finding challenge command"),
+    }
+}
+
+#[test]
+fn challenge_evidence_invalid_class_parses() {
+    let cli = parse_cli([
+        "chio",
+        "finding",
+        "challenge",
+        "--finding",
+        GOLDEN_FINDING_ID,
+        "--class",
+        "evidence-invalid",
+        "--evidence",
+        "evidence.json",
+        "--challenger-key",
+        "challenger.seed",
+    ])
+    .unwrap();
+    match cli.command {
+        Commands::Finding {
+            command: FindingCommands::Challenge { class, .. },
+        } => assert_eq!(class, FindingChallengeClassArg::EvidenceInvalid),
+        _ => panic!("expected finding challenge command"),
+    }
+}
+
+#[test]
+fn challenge_refuses_a_challenger_key_with_a_venue_audit() {
+    let parsed = parse_cli([
+        "chio",
+        "finding",
+        "challenge",
+        "--finding",
+        GOLDEN_FINDING_ID,
+        "--class",
+        "digest-mismatch",
+        "--evidence",
+        "evidence.json",
+        "--venue-audit",
+        "--challenger-key",
+        "challenger.seed",
+    ]);
+    assert!(
+        parsed.is_err(),
+        "the audit branch carries no challenger, so it must not accept a challenger key"
+    );
+}
+
+#[test]
+fn challenge_rejects_an_unknown_class() {
+    let parsed = parse_cli([
+        "chio",
+        "finding",
+        "challenge",
+        "--finding",
+        GOLDEN_FINDING_ID,
+        "--class",
+        "wrong-media",
+        "--evidence",
+        "evidence.json",
+    ]);
+    assert!(parsed.is_err(), "the evidence class vocabulary is closed");
+}
+
+#[test]
+fn challenge_requires_the_class_finding_and_evidence_flags() {
+    for argv in [
+        vec![
+            "chio",
+            "finding",
+            "challenge",
+            "--class",
+            "digest-mismatch",
+            "--evidence",
+            "evidence.json",
+        ],
+        vec![
+            "chio",
+            "finding",
+            "challenge",
+            "--finding",
+            GOLDEN_FINDING_ID,
+            "--evidence",
+            "evidence.json",
+        ],
+        vec![
+            "chio",
+            "finding",
+            "challenge",
+            "--finding",
+            GOLDEN_FINDING_ID,
+            "--class",
+            "digest-mismatch",
+        ],
+    ] {
+        assert!(
+            parse_cli(argv.clone()).is_err(),
+            "expected a parse failure for {argv:?}"
+        );
+    }
+}
+
+#[test]
+fn challenge_requires_a_venue_url() {
+    let dir = tempfile::tempdir().unwrap();
+    let challenger = challenger_keypair();
+    let document = load_document(
+        &dir,
+        &buyer_document(&challenger, FindingChallengeClassArg::DigestMismatch),
+    );
+    let key = write_challenger_key(&dir, [41_u8; 32]);
+    let error = cmd_finding_challenge(
+        GOLDEN_FINDING_ID,
+        FindingChallengeClassArg::DigestMismatch,
+        &document,
+        Some(&key),
+        false,
+        true,
+        false,
+        None,
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("--control-url"), "unexpected error: {error}");
+}
+
+#[test]
+fn challenge_refuses_a_class_the_document_does_not_carry() {
+    let dir = tempfile::tempdir().unwrap();
+    let challenger = challenger_keypair();
+    let key = write_challenger_key(&dir, [41_u8; 32]);
+    for (carried, named) in [
+        (
+            FindingChallengeClassArg::DigestMismatch,
+            FindingChallengeClassArg::EvidenceInvalid,
+        ),
+        (
+            FindingChallengeClassArg::EvidenceInvalid,
+            FindingChallengeClassArg::ReplayContradiction,
+        ),
+        (
+            FindingChallengeClassArg::ReplayContradiction,
+            FindingChallengeClassArg::DigestMismatch,
+        ),
+    ] {
+        let document = load_document(&dir, &buyer_document(&challenger, carried));
+        let error = cmd_finding_challenge(
+            GOLDEN_FINDING_ID,
+            named,
+            &document,
+            Some(&key),
+            false,
+            true,
+            false,
+            Some(UNREACHABLE_VENUE),
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            error.contains("--class") && error.contains("does not match"),
+            "unexpected error for {carried:?} named as {named:?}: {error}"
+        );
+    }
+}
+
+#[test]
+fn challenge_refuses_a_venue_audit_over_a_buyer_submission() {
+    let dir = tempfile::tempdir().unwrap();
+    let challenger = challenger_keypair();
+    let document = load_document(
+        &dir,
+        &buyer_document(&challenger, FindingChallengeClassArg::DigestMismatch),
+    );
+    let error = cmd_finding_challenge(
+        GOLDEN_FINDING_ID,
+        FindingChallengeClassArg::DigestMismatch,
+        &document,
+        None,
+        true,
+        true,
+        false,
+        Some(UNREACHABLE_VENUE),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        error.contains("dispute fee") && error.contains("dispute bond"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn challenge_refuses_an_audit_document_without_the_audit_flag() {
+    let dir = tempfile::tempdir().unwrap();
+    let document = load_document(
+        &dir,
+        &venue_audit_document(FindingChallengeClassArg::DigestMismatch),
+    );
+    let key = write_challenger_key(&dir, [41_u8; 32]);
+    let error = cmd_finding_challenge(
+        GOLDEN_FINDING_ID,
+        FindingChallengeClassArg::DigestMismatch,
+        &document,
+        Some(&key),
+        false,
+        true,
+        false,
+        Some(UNREACHABLE_VENUE),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(error.contains("--venue-audit"), "unexpected error: {error}");
+}
+
+#[test]
+fn challenge_refuses_a_buyer_submission_without_a_challenger_key() {
+    let dir = tempfile::tempdir().unwrap();
+    let challenger = challenger_keypair();
+    let document = load_document(
+        &dir,
+        &buyer_document(&challenger, FindingChallengeClassArg::DigestMismatch),
+    );
+    let error = cmd_finding_challenge(
+        GOLDEN_FINDING_ID,
+        FindingChallengeClassArg::DigestMismatch,
+        &document,
+        None,
+        false,
+        true,
+        false,
+        Some(UNREACHABLE_VENUE),
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        error.contains("--challenger-key"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn challenge_refuses_a_key_that_is_not_the_named_challenger() {
+    let dir = tempfile::tempdir().unwrap();
+    let challenger = challenger_keypair();
+    let document = load_document(
+        &dir,
+        &buyer_document(&challenger, FindingChallengeClassArg::DigestMismatch),
+    );
+    let other_key = write_challenger_key(&dir, [42_u8; 32]);
+    let parsed = load_challenge_evidence_document(&document).unwrap();
+    let error = prepare_challenge(&accepted_golden_finding(), parsed, Some(&other_key))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("names") && error.contains(&challenger.public_key().to_hex()),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn challenge_refuses_a_malformed_evidence_document() {
+    let dir = tempfile::tempdir().unwrap();
+    let broken = load_document(&dir, "{ not json");
+    let error = load_challenge_evidence_document(&broken)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("strict canonical I-JSON"),
+        "unexpected error: {error}"
+    );
+
+    let wrong_shape = write_temp(
+        &dir,
+        "wrong-shape.json",
+        &canonical_json_string(&serde_json::json!({ "filed_at": 1_750_000_000_u64 })).unwrap(),
+    );
+    let error = load_challenge_evidence_document(&wrong_shape)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("not a challenge evidence document"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn challenge_refuses_a_non_canonical_evidence_document() {
+    let dir = tempfile::tempdir().unwrap();
+    let challenger = challenger_keypair();
+    let canonical = buyer_document(&challenger, FindingChallengeClassArg::DigestMismatch);
+    let value: serde_json::Value = serde_json::from_str(&canonical).unwrap();
+    let pretty = load_document(&dir, &serde_json::to_string_pretty(&value).unwrap());
+    let error = load_challenge_evidence_document(&pretty)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("canonical serialization"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn challenge_refuses_an_evidence_document_above_the_ingest_bound() {
+    let dir = tempfile::tempdir().unwrap();
+    let oversized = "\u{20}".repeat(FINDING_CHALLENGE_EVIDENCE_MAX_BYTES + 1);
+    let path = load_document(&dir, &oversized);
+    let error = load_challenge_evidence_document(&path)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("challenge evidence bound"),
+        "unexpected error: {error}"
+    );
+}
+
+/// The assembled body is checked against the registered schema before its
+/// own validator runs, so a field the schema constrains is refused by the
+/// schema rather than by the later structural pass.
+#[test]
+fn challenge_refuses_a_body_the_registered_schema_rejects() {
+    let dir = tempfile::tempdir().unwrap();
+    let challenger = challenger_keypair();
+    let key = write_challenger_key(&dir, [41_u8; 32]);
+    let mut value: serde_json::Value = serde_json::from_str(&buyer_document(
+        &challenger,
+        FindingChallengeClassArg::DigestMismatch,
+    ))
+    .unwrap();
+    value["listing"]["listing_id"] = serde_json::Value::String(String::new());
+    let document = load_document(&dir, &canonical_json_string(&value).unwrap());
+
+    let parsed = load_challenge_evidence_document(&document).unwrap();
+    let error = prepare_challenge(&accepted_golden_finding(), parsed, Some(&key))
+        .unwrap_err()
+        .to_string();
+    assert!(
+        error.contains("rejected by the challenge schema"),
+        "unexpected error: {error}"
+    );
+}
+
+#[test]
+fn challenge_accepts_every_class_against_a_compatible_finding() {
+    let dir = tempfile::tempdir().unwrap();
+    let challenger = challenger_keypair();
+    let key = write_challenger_key(&dir, [41_u8; 32]);
+    for class in [
+        FindingChallengeClassArg::DigestMismatch,
+        FindingChallengeClassArg::EvidenceInvalid,
+        FindingChallengeClassArg::ReplayContradiction,
+    ] {
+        let document = load_document(&dir, &buyer_document(&challenger, class));
+        let parsed = load_challenge_evidence_document(&document).unwrap();
+        let prepared = prepare_challenge(&accepted_golden_finding(), parsed, Some(&key))
+            .unwrap_or_else(|error| panic!("{class:?} rejected: {error}"));
+        assert_eq!(prepared.challenge.evidence.kind(), class.kind());
+        assert_eq!(prepared.challenge.finding_id, GOLDEN_FINDING_ID);
+    }
+}
+
+#[test]
+fn challenge_refuses_a_class_the_targeted_finding_forbids() {
+    let dir = tempfile::tempdir().unwrap();
+    let challenger = challenger_keypair();
+    let key = write_challenger_key(&dir, [41_u8; 32]);
+    let asserted = accepted_asserted_finding();
+
+    for class in [
+        FindingChallengeClassArg::EvidenceInvalid,
+        FindingChallengeClassArg::ReplayContradiction,
+    ] {
+        let document = load_document(&dir, &buyer_document(&challenger, class));
+        let parsed = load_challenge_evidence_document(&document).unwrap();
+        let error = prepare_challenge(&asserted, parsed, Some(&key))
+            .unwrap_err()
+            .to_string();
+        assert!(
+            error.contains("cannot challenge finding"),
+            "unexpected error for {class:?}: {error}"
+        );
+    }
+
+    // The same asserted finding still admits the class whose standing is the
+    // failed-delivery terminal rather than anything the finding claimed.
+    let document = load_document(
+        &dir,
+        &buyer_document(&challenger, FindingChallengeClassArg::DigestMismatch),
+    );
+    let parsed = load_challenge_evidence_document(&document).unwrap();
+    prepare_challenge(&asserted, parsed, Some(&key)).unwrap();
+}
+
+#[test]
+fn challenge_signs_under_the_challenger_the_document_names() {
+    let dir = tempfile::tempdir().unwrap();
+    let challenger = challenger_keypair();
+    let key = write_challenger_key(&dir, [41_u8; 32]);
+    let document = load_document(
+        &dir,
+        &buyer_document(&challenger, FindingChallengeClassArg::EvidenceInvalid),
+    );
+    let parsed = load_challenge_evidence_document(&document).unwrap();
+    let prepared = prepare_challenge(&accepted_golden_finding(), parsed, Some(&key)).unwrap();
+
+    let signed = prepared
+        .signed
+        .as_ref()
+        .expect("buyer submissions are signed");
+    assert_eq!(signed.signer_key, challenger.public_key());
+    // The pinned audit authority is irrelevant to a buyer submission, which
+    // the artifact authorizes by the challenger its body names.
+    verify_signed_challenge(signed, &Keypair::from_seed(&[9_u8; 32]).public_key()).unwrap();
+}
+
+#[test]
+fn challenge_venue_audit_carries_no_signature() {
+    let dir = tempfile::tempdir().unwrap();
+    let document = load_document(
+        &dir,
+        &venue_audit_document(FindingChallengeClassArg::ReplayContradiction),
+    );
+    let parsed = load_challenge_evidence_document(&document).unwrap();
+    let prepared = prepare_challenge(&accepted_golden_finding(), parsed, None).unwrap();
+    assert!(
+        prepared.signed.is_none(),
+        "the audit branch is signed by the venue's pinned audit authority"
+    );
+}
+
+#[test]
+fn challenge_dry_run_digests_match_an_independent_computation() {
+    let dir = tempfile::tempdir().unwrap();
+    let challenger = challenger_keypair();
+    let key = write_challenger_key(&dir, [41_u8; 32]);
+    let document = load_document(
+        &dir,
+        &buyer_document(&challenger, FindingChallengeClassArg::DigestMismatch),
+    );
+    let parsed = load_challenge_evidence_document(&document).unwrap();
+    let accepted = accepted_golden_finding();
+    let prepared = prepare_challenge(&accepted, parsed, Some(&key)).unwrap();
+
+    let canonical = canonical_json_string(&prepared.challenge).unwrap();
+    assert_eq!(prepared.canonical_challenge, canonical);
+    assert_eq!(
+        prepared.challenge_sha256,
+        sha256_hex(canonical.as_bytes()),
+        "the reported digest must be taken over the emitted bytes"
+    );
+
+    let mut without_id = prepared.challenge.clone();
+    without_id.challenge_id = String::new();
+    assert_eq!(
+        prepared.challenge.challenge_id,
+        sha256_hex(&canonical_json_bytes(&without_id).unwrap()),
+        "the challenge id is the content address of the body with the id cleared"
+    );
+
+    assert_eq!(
+        prepared.challenge.finding_artifact_sha256,
+        sha256_hex(canonical_golden_finding().as_bytes()),
+        "the challenge binds the exact artifact bytes the venue served"
+    );
+    assert_eq!(prepared.challenge.finding_id, accepted.finding.finding_id);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn challenge_dry_run_emits_the_canonical_challenge_without_transmitting() {
+    if !loopback_bind_available() {
+        eprintln!("skipping finding challenge dry-run transport test: loopback bind denied");
+        return;
+    }
+    let server = challenge_venue().await;
+    let dir = tempfile::tempdir().unwrap();
+    let challenger = challenger_keypair();
+    let key = write_challenger_key(&dir, [41_u8; 32]);
+    let document = load_document(
+        &dir,
+        &buyer_document(&challenger, FindingChallengeClassArg::DigestMismatch),
+    );
+
+    let uri = server.uri();
+    tokio::task::spawn_blocking(move || {
+        cmd_finding_challenge(
+            GOLDEN_FINDING_ID,
+            FindingChallengeClassArg::DigestMismatch,
+            &document,
+            Some(&key),
+            false,
+            true,
+            true,
+            Some(&uri),
+        )
+    })
+    .await
+    .unwrap()
+    .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn challenge_without_dry_run_reports_the_missing_coordinator_route() {
+    if !loopback_bind_available() {
+        eprintln!("skipping finding challenge submission test: loopback bind denied");
+        return;
+    }
+    let server = challenge_venue().await;
+    let dir = tempfile::tempdir().unwrap();
+    let challenger = challenger_keypair();
+    let key = write_challenger_key(&dir, [41_u8; 32]);
+    let document = load_document(
+        &dir,
+        &buyer_document(&challenger, FindingChallengeClassArg::DigestMismatch),
+    );
+
+    let uri = server.uri();
+    let error = tokio::task::spawn_blocking(move || {
+        cmd_finding_challenge(
+            GOLDEN_FINDING_ID,
+            FindingChallengeClassArg::DigestMismatch,
+            &document,
+            Some(&key),
+            false,
+            false,
+            false,
+            Some(&uri),
+        )
+    })
+    .await
+    .unwrap()
+    .unwrap_err();
+
+    assert!(
+        matches!(error, CliError::Chio(_)),
+        "the refusal must stay inside the typed error taxonomy"
+    );
+    let message = error.to_string();
+    assert!(
+        message.contains("coordinator route") && message.contains("--dry-run"),
+        "unexpected error: {message}"
+    );
+}
+
+async fn challenge_venue() -> MockServer {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path_matcher(format!("/v1/findings/{GOLDEN_FINDING_ID}")))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "application/json")
+                .set_body_string(canonical_golden_finding()),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+    server
 }
 
 #[tokio::test(flavor = "multi_thread")]
