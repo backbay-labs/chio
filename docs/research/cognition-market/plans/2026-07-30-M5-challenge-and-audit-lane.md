@@ -214,6 +214,36 @@ retry exhaustion, and exactly-once lock return; the nested replay mapping;
 concurrent and post-restart duplicate challenges proving one slash and
 at-most-once payout. Full qualified workspace gate, then a review fleet.
 
+## Integration gaps found during implementation
+
+Two gaps surfaced while wiring the lane. Both are recorded rather than
+papered over, because closing either changes a component this milestone
+deliberately does not own.
+
+- **Destination denomination.** The purchase store admits payout
+  destinations as rail-tagged `rail:account` strings, while the
+  impairment planner parses enforcement destinations as chain addresses.
+  An enforcement built from a real sealed claim snapshot therefore
+  carries destinations the planner refuses. A deployment needs an
+  explicit rail-to-address mapping at the settlement boundary; the tests
+  keep the two denominations apart rather than pretending they are one.
+  This sits with the ADR-0015 follow-up that constrains destinations in
+  the contract.
+- **Purchase enumeration at the cutoff.** The durable store exposes
+  keyed purchase readers but no listing-scoped enumerator, so the
+  coordinator takes candidate purchase keys and re-resolves every figure
+  authoritatively from the record: nothing a caller supplies about an
+  amount or a destination survives. Completeness of the candidate set is
+  therefore an operator responsibility, which is exactly the
+  omitted-victim residual this plan already names. A complete index would
+  turn that residual into a proof.
+
+A third boundary is deliberate rather than a gap: `finalizing -> settled`
+currently requires confirmed impairment but not the post-impairment
+status insertion, because that publication belongs to M6. The retraction
+intent is durably enqueued and left dispatch-ineligible, and whoever
+lands status publication must add that precondition to the transition.
+
 ## M5 exit criteria
 
 1. The named exit test and its negatives are green and prove every clause
