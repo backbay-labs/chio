@@ -172,6 +172,15 @@ fn purchase_context_roundtrips_through_base64() -> TestResult {
 }
 
 #[test]
+fn purchase_context_encoded_bound_covers_the_full_raw_bound() {
+    let raw = vec![0_u8; PURCHASE_CONTEXT_MAX_CANONICAL_BYTES];
+    assert_eq!(
+        STANDARD.encode(raw).len(),
+        PURCHASE_CONTEXT_MAX_ENCODED_BYTES
+    );
+}
+
+#[test]
 fn purchase_context_rejects_an_oversized_encoding_before_decoding() -> TestResult {
     let encoded = "A".repeat(PURCHASE_CONTEXT_MAX_ENCODED_BYTES + 1);
     assert_eq!(

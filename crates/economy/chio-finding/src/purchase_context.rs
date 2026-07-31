@@ -24,13 +24,14 @@ use crate::validate::{require_bounded_id, FindingError};
 /// Unsigned buyer-presented purchase context.
 pub const PURCHASE_CONTEXT_SCHEMA: &str = "chio.finding.purchase-context.v1";
 
-/// Bound on the base64 transport encoding, enforced BEFORE any decode so an
-/// oversized presentation costs no decode work.
-pub const PURCHASE_CONTEXT_MAX_ENCODED_BYTES: usize = 262_144;
-
 /// Bound on the decoded canonical JSON, and on each canonical member the
 /// carrier holds.
 pub const PURCHASE_CONTEXT_MAX_CANONICAL_BYTES: usize = 262_144;
+
+/// Bound on the base64 transport encoding, enforced BEFORE any decode so an
+/// oversized presentation costs no decode work.
+pub const PURCHASE_CONTEXT_MAX_ENCODED_BYTES: usize =
+    PURCHASE_CONTEXT_MAX_CANONICAL_BYTES.div_ceil(3) * 4;
 
 /// The buyer-presented purchase context.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
