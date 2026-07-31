@@ -101,6 +101,12 @@ pub enum FindingChallengeReason {
     /// A challenged evidence signing key was revoked only after publication,
     /// which is a key-lifecycle event rather than retroactive fabrication.
     EvidenceKeyRevokedAfterPublication,
+    /// A revocation offered for a challenged evidence signing key is not the
+    /// committed profile's own: it does not verify under the pinned
+    /// governance root, or it speaks for a feed, authority, or key epoch the
+    /// profile does not pin for that key. The key's standing is therefore
+    /// unknown, which is neither innocence nor guilt.
+    EvidenceKeyRevocationNotEstablished,
     /// A reproduction receipt was not signed by the profile's replay-role
     /// authority, or that authority was not valid when the receipt was
     /// issued.
@@ -146,6 +152,7 @@ impl FindingChallengeReason {
             | FindingChallengeReason::EvidenceCheckpointNotEstablished
             | FindingChallengeReason::EvidenceAuthorityNotEstablished
             | FindingChallengeReason::EvidenceKeyRevokedAfterPublication
+            | FindingChallengeReason::EvidenceKeyRevocationNotEstablished
             | FindingChallengeReason::ReplayAuthorityNotEstablished
             | FindingChallengeReason::ReplayObservationNotEstablished
             | FindingChallengeReason::ReplayRunIncomplete
@@ -212,6 +219,9 @@ impl FindingChallengeReason {
             }
             FindingChallengeReason::EvidenceKeyRevokedAfterPublication => {
                 "evidence_key_revoked_after_publication"
+            }
+            FindingChallengeReason::EvidenceKeyRevocationNotEstablished => {
+                "evidence_key_revocation_not_established"
             }
             FindingChallengeReason::ReplayAuthorityNotEstablished => {
                 "replay_authority_not_established"
@@ -285,6 +295,9 @@ impl FindingChallengeReason {
             }
             FindingChallengeReason::EvidenceKeyRevokedAfterPublication => {
                 "a challenged evidence signing key was revoked only after publication"
+            }
+            FindingChallengeReason::EvidenceKeyRevocationNotEstablished => {
+                "a revocation offered for a challenged evidence signing key is not established under the committed profile"
             }
             FindingChallengeReason::ReplayAuthorityNotEstablished => {
                 "a reproduction receipt is not signed by the profile's replay authority"

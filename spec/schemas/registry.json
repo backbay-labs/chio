@@ -336,6 +336,12 @@
       "schemaFile": "spec/schemas/chio-finding/v1/finalized-bond-snapshot.schema.json"
     },
     {
+      "schema": "chio.finding.key-revocation.v1",
+      "artifactKind": "finding_key_revocation",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/key-revocation.schema.json"
+    },
+    {
       "schema": "chio.finding.market-terms.v1",
       "artifactKind": "finding_market_terms",
       "introducedBy": "finding-market-v1",

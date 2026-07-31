@@ -6,13 +6,15 @@
 //! only affirmative invalidity under the profile effective at publication can
 //! support fraud: a signature that does not verify, a checkpoint proof that
 //! contradicts the claimed membership, a receipt whose own commitment
-//! contradicts its content, or a key proven revoked at publication time.
+//! contradicts its content, or a key the pinned governance root withdrew as
+//! of publication time.
 //!
 //! Everything else that can go wrong here is an operational fact rather than
 //! a seller's act. A blob that did not resolve, a signer this profile does not
-//! establish for that role and time, a checkpoint that was never supplied, or
-//! a key revoked only after publication all leave the question open, and the
-//! evaluator says so instead of reading an outage as innocence or as guilt.
+//! establish for that role and time, a checkpoint that was never supplied, a
+//! revocation that is not the profile's own, or a key withdrawn only after
+//! publication all leave the question open, and the evaluator says so instead
+//! of reading an outage as innocence or as guilt.
 //!
 //! The passes are ordered deliberately: resolution, then anchoring, then
 //! affirmative invalidity, then unestablished inputs. Resolution runs first
@@ -27,8 +29,8 @@
 
 use chio_core_types::receipt::body::chio_receipt_id;
 use chio_finding::{
-    FindingChallengeFacet, FindingCheckpointRef, FindingEvidenceInvalidFacet,
-    FindingEvidenceInvalidity, FindingReceiptRef, FindingReceiptRole,
+    FindingAuthorityKeyPolicy, FindingChallengeFacet, FindingCheckpointRef,
+    FindingEvidenceInvalidFacet, FindingEvidenceInvalidity, FindingReceiptRef, FindingReceiptRole,
 };
 use chio_finding_verifier::{
     verify_checkpoint_membership, verify_receipt_strict, ReceiptStrictError,
@@ -44,6 +46,7 @@ use crate::receipts::{
     checkpoint_matches_reference, membership_contradicts, policy_covers, receipt_matches_reference,
     role_policy,
 };
+use crate::revocation::{revocation_standing, KeyRevocationStanding};
 use crate::standing::bind_purchase_record;
 
 pub(crate) fn evaluate_evidence_invalid(
@@ -147,6 +150,12 @@ pub(crate) fn evaluate_evidence_invalid(
         return Ok(adjudication(&challenged_ids, invalidity, reason));
     }
 
+    // A revocation is only the profile's own when it withdraws the exact key
+    // policy the profile pins, so that policy is resolved before any pass can
+    // read a revocation. Its absence is settled in pass 4, where every other
+    // unestablished authority is.
+    let production_policy = role_policy(context.profile, FindingReceiptRole::Production);
+
     // Pass 3: affirmative invalidity, over bytes the venue's log commits.
     for resolved in evidence.challenged_receipts {
         if let Err(error) = verify_receipt_strict(&resolved.receipt) {
@@ -178,7 +187,9 @@ pub(crate) fn evaluate_evidence_invalid(
                 FindingChallengeReason::EvidenceSemanticCrossBindingFailure,
             ));
         }
-        if revoked_at_or_before(evidence, resolved, context.finding.issued_at) {
+        if standing_of(context, evidence, resolved, production_policy)
+            == KeyRevocationStanding::RevokedAtOrBefore
+        {
             return Ok(adjudication(
                 &challenged_ids,
                 FindingEvidenceInvalidity::KeyRevokedAtPublication,
@@ -188,8 +199,7 @@ pub(crate) fn evaluate_evidence_invalid(
     }
 
     // Pass 4: inputs the profile does not establish for this evidence.
-    let Some(production_policy) = role_policy(context.profile, FindingReceiptRole::Production)
-    else {
+    let Some(production_policy) = production_policy else {
         return Ok(adjudication(
             &challenged_ids,
             FindingEvidenceInvalidity::InputsUnavailable,
@@ -208,13 +218,22 @@ pub(crate) fn evaluate_evidence_invalid(
                 FindingChallengeReason::EvidenceAuthorityNotEstablished,
             ));
         }
-        if revokes_after(evidence, resolved, context.finding.issued_at) {
-            return Ok(adjudication(
-                &challenged_ids,
-                FindingEvidenceInvalidity::InputsUnavailable,
-                FindingChallengeReason::EvidenceKeyRevokedAfterPublication,
-            ));
-        }
+        let reason = match standing_of(context, evidence, resolved, Some(production_policy)) {
+            KeyRevocationStanding::NotEstablished => {
+                FindingChallengeReason::EvidenceKeyRevocationNotEstablished
+            }
+            KeyRevocationStanding::RevokedAfter => {
+                FindingChallengeReason::EvidenceKeyRevokedAfterPublication
+            }
+            KeyRevocationStanding::NoneOffered | KeyRevocationStanding::RevokedAtOrBefore => {
+                continue
+            }
+        };
+        return Ok(adjudication(
+            &challenged_ids,
+            FindingEvidenceInvalidity::InputsUnavailable,
+            reason,
+        ));
     }
 
     Ok(adjudication(
@@ -228,28 +247,23 @@ fn recomputes_to(resolved: &ResolvedReceiptEvidence, receipt_id: &str) -> bool {
     matches!(chio_receipt_id(&resolved.receipt.body()), Ok(id) if id == receipt_id)
 }
 
-/// Whether a resolved proof establishes that this receipt's signing key was
-/// already revoked or compromised when the finding was published.
-fn revoked_at_or_before(
+/// What the offered statements establish about this receipt's signing key at
+/// the instant the finding was published. Publication time, not "now", is the
+/// instant that decides whether a withdrawn key could have produced evidence
+/// the finding was entitled to name.
+fn standing_of(
+    context: &EvaluationContext<'_>,
     evidence: &FindingEvidenceInvalidEvidence<'_>,
     resolved: &ResolvedReceiptEvidence,
-    published_at: u64,
-) -> bool {
-    evidence.revoked_keys.iter().any(|proof| {
-        *proof.key == resolved.receipt.kernel_key && proof.revoked_from <= published_at
-    })
-}
-
-/// Whether the only revocation proof for this key begins after publication.
-fn revokes_after(
-    evidence: &FindingEvidenceInvalidEvidence<'_>,
-    resolved: &ResolvedReceiptEvidence,
-    published_at: u64,
-) -> bool {
-    evidence
-        .revoked_keys
-        .iter()
-        .any(|proof| *proof.key == resolved.receipt.kernel_key && proof.revoked_from > published_at)
+    policy: Option<&FindingAuthorityKeyPolicy>,
+) -> KeyRevocationStanding {
+    revocation_standing(
+        evidence.revoked_keys,
+        policy,
+        &resolved.receipt.kernel_key,
+        context.governance_authority,
+        context.finding.issued_at,
+    )
 }
 
 /// Build the facet and the verdict from one decision. The facet's invalidity

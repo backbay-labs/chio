@@ -12,7 +12,7 @@ use chio_finding_challenge::{
 use support::{
     evidence_case, evidence_case_with_revocations, expect_inadmissible, expect_reason, outcome_for,
     world, world_with, world_with_classes, EvidenceShape, FindingClasses, ProductionShape,
-    RevokedKey, TestResult, PUBLISHED_AT,
+    RevocationShape, TestResult, PUBLISHED_AT,
 };
 
 #[test]
@@ -167,11 +167,11 @@ fn a_checkpoint_that_is_not_the_venues_own_is_indeterminate() -> TestResult {
 #[test]
 fn a_key_proven_revoked_at_publication_upholds() -> TestResult {
     let world = world()?;
-    let revoked = vec![RevokedKey {
-        key: world.production_kernel.public_key(),
-        revoked_from: PUBLISHED_AT - 1,
-        proof_ref: "revocations/finding-market#42".to_string(),
-    }];
+    let revoked = vec![world.revocation(
+        &world.production_kernel.public_key(),
+        PUBLISHED_AT - 1,
+        RevocationShape::Sound,
+    )?];
     let case = evidence_case_with_revocations(&world, EvidenceShape::Sound, revoked)?;
     let proofs = case.revocation_proofs();
     let evidence = case.evidence(&proofs);
@@ -189,11 +189,11 @@ fn a_key_proven_revoked_at_publication_upholds() -> TestResult {
 #[test]
 fn a_key_revoked_only_afterwards_is_indeterminate() -> TestResult {
     let world = world()?;
-    let revoked = vec![RevokedKey {
-        key: world.production_kernel.public_key(),
-        revoked_from: PUBLISHED_AT + 1,
-        proof_ref: "revocations/finding-market#43".to_string(),
-    }];
+    let revoked = vec![world.revocation(
+        &world.production_kernel.public_key(),
+        PUBLISHED_AT + 1,
+        RevocationShape::Sound,
+    )?];
     let case = evidence_case_with_revocations(&world, EvidenceShape::Sound, revoked)?;
     let proofs = case.revocation_proofs();
     let evidence = case.evidence(&proofs);
@@ -209,6 +209,93 @@ fn a_key_revoked_only_afterwards_is_indeterminate() -> TestResult {
     );
     assert!(!evaluation.authorizes_penalty());
     outcome_for(&world, &case.challenge, &adjudication)?;
+    Ok(())
+}
+
+/// Revocation is the one fact that can condemn a receipt the venue's log
+/// commits, signed by the pinned authority, inside its validity window. Every
+/// shape below leaves the statement well formed and breaks exactly one of the
+/// bindings that make it the committed profile's own, and none of them may
+/// sanction the seller.
+#[test]
+fn a_revocation_the_profile_does_not_establish_cannot_uphold() -> TestResult {
+    for shape in [
+        RevocationShape::ForeignSigner,
+        RevocationShape::ForeignFeed,
+        RevocationShape::ForeignAuthority,
+        RevocationShape::ForeignEpoch,
+    ] {
+        let world = world()?;
+        let revoked = vec![world.revocation(
+            &world.production_kernel.public_key(),
+            PUBLISHED_AT - 1,
+            shape,
+        )?];
+        let case = evidence_case_with_revocations(&world, EvidenceShape::Sound, revoked)?;
+        let proofs = case.revocation_proofs();
+        let evidence = case.evidence(&proofs);
+        let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+        let adjudication = expect_reason(
+            &evaluation,
+            FindingChallengeReason::EvidenceKeyRevocationNotEstablished,
+        )
+        .map_err(|error| format!("{shape:?}: {error}"))?;
+        assert_eq!(
+            adjudication.verdict(),
+            FindingChallengeVerdict::Indeterminate,
+            "{shape:?} must not settle the key's standing"
+        );
+        assert!(!evaluation.authorizes_penalty(), "{shape:?}");
+        outcome_for(&world, &case.challenge, &adjudication)?;
+    }
+    Ok(())
+}
+
+/// An unestablished statement leaves the key's standing open, and an open
+/// question is not closed by a second statement that does authenticate.
+#[test]
+fn one_unestablished_revocation_outweighs_an_established_one() -> TestResult {
+    let world = world()?;
+    let key = world.production_kernel.public_key();
+    let revoked = vec![
+        world.revocation(&key, PUBLISHED_AT - 1, RevocationShape::Sound)?,
+        world.revocation(&key, PUBLISHED_AT - 1, RevocationShape::ForeignSigner)?,
+    ];
+    let case = evidence_case_with_revocations(&world, EvidenceShape::Sound, revoked)?;
+    let proofs = case.revocation_proofs();
+    let evidence = case.evidence(&proofs);
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    let adjudication = expect_reason(
+        &evaluation,
+        FindingChallengeReason::EvidenceKeyRevocationNotEstablished,
+    )?;
+    assert_eq!(
+        adjudication.verdict(),
+        FindingChallengeVerdict::Indeterminate
+    );
+    assert!(!evaluation.authorizes_penalty());
+    Ok(())
+}
+
+/// A statement about some other key is inert. It cannot uphold, and it cannot
+/// unsettle a subset whose own signing key nobody withdrew.
+#[test]
+fn a_revocation_of_another_key_leaves_the_subset_clean() -> TestResult {
+    let world = world()?;
+    let revoked = vec![world.revocation(
+        &world.replay_kernel.public_key(),
+        PUBLISHED_AT - 1,
+        RevocationShape::Sound,
+    )?];
+    let case = evidence_case_with_revocations(&world, EvidenceShape::Sound, revoked)?;
+    let proofs = case.revocation_proofs();
+    let evidence = case.evidence(&proofs);
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    let adjudication = expect_reason(&evaluation, FindingChallengeReason::ChallengedEvidenceValid)?;
+    assert_eq!(adjudication.verdict(), FindingChallengeVerdict::Rejected);
     Ok(())
 }
 

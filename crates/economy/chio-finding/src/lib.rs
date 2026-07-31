@@ -9,9 +9,10 @@
 //! purchase context, the settled purchase record, and the failed-delivery
 //! terminal, and the challenge and audit lane: the class-gated challenge,
 //! its signed outcome and enforcement instruction, the finalized bond
-//! snapshot, the audit epoch and report, and the unsigned replay
-//! observation preimage. Status-feed artifacts have no resolver in this
-//! crate yet; callers that need them supply their own. Design:
+//! snapshot, the audit epoch and report, the governance-signed authority
+//! key revocation, and the unsigned replay observation preimage.
+//! Status-feed artifacts have no resolver in this crate; callers that need
+//! them resolve the feeds a profile pins and supply what they find. Design:
 //! docs/research/cognition-market/ARCHITECTURE.md sections 4-5 and
 //! ADR-0017. No storage, no I/O, no kernel wiring.
 
@@ -30,6 +31,7 @@ mod challenge_outcome;
 mod envelope;
 mod failed_delivery;
 mod finalized_bond_snapshot;
+mod key_revocation;
 mod profile;
 mod purchase_context;
 mod purchase_record;
@@ -52,6 +54,7 @@ pub use challenge_outcome::*;
 pub use envelope::{signed_envelope_sha256, verify_pinned_envelope};
 pub use failed_delivery::*;
 pub use finalized_bond_snapshot::*;
+pub use key_revocation::*;
 pub use profile::*;
 pub use purchase_context::*;
 pub use purchase_record::*;

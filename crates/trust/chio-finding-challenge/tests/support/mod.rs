@@ -37,14 +37,15 @@ use chio_finding::{
     FindingCheckpointLogPolicy, FindingCheckpointRef, FindingClaimedVerdict, FindingDescriptor,
     FindingDisputeBondClass, FindingDisputeFeeEvent, FindingDisputeFeeTerminal,
     FindingDisputeLockRef, FindingEvidenceClass, FindingFacetKind, FindingFailedDelivery,
-    FindingGuaranteeClass, FindingHoldReleaseTerminal, FindingOutcomeClass,
+    FindingGuaranteeClass, FindingHoldReleaseTerminal, FindingKeyRevocation, FindingOutcomeClass,
     FindingPenaltyCalculation, FindingPredicate, FindingPurchaseRecord, FindingReceiptRef,
     FindingReceiptRole, FindingReceiptSignerRole, FindingRecipeEnvironment, FindingRecipePhase,
     FindingRecipePhaseKind, FindingReplayObservation, FindingReplayRecipeInput,
     FindingReplayReproduction, FindingReplayTerminalResult, FindingResourceCaps,
     FindingVenueAuditAuthorization, SignedFindingChallenge, SignedFindingChallengeVerifierProfile,
-    SignedFindingFailedDelivery, SignedFindingPurchaseRecord, FINDING_CHALLENGE_OUTCOME_SCHEMA_V1,
-    FINDING_CHALLENGE_SCHEMA_V1, FINDING_FAILED_DELIVERY_SCHEMA_V1,
+    SignedFindingFailedDelivery, SignedFindingKeyRevocation, SignedFindingPurchaseRecord,
+    FINDING_CHALLENGE_OUTCOME_SCHEMA_V1, FINDING_CHALLENGE_SCHEMA_V1,
+    FINDING_FAILED_DELIVERY_SCHEMA_V1, FINDING_KEY_REVOCATION_SCHEMA_V1,
     FINDING_PURCHASE_RECORD_SCHEMA_V1, FINDING_REPLAY_OBSERVATION_SCHEMA_V1,
     FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SCHEMA_V1,
 };
@@ -632,6 +633,50 @@ impl World {
         };
         Ok(SignedExportEnvelope::sign(record, authority)?)
     }
+
+    /// A revocation statement for one key, built against the production
+    /// role's own pinned key policy so only the shape under test can fail to
+    /// bind.
+    pub fn revocation(
+        &self,
+        key: &PublicKey,
+        revoked_from: u64,
+        shape: RevocationShape,
+    ) -> Built<RevokedKey> {
+        let policy = self
+            .profile
+            .body
+            .receipt_signers
+            .iter()
+            .find(|signer| signer.role == FindingReceiptRole::Production)
+            .map(|signer| &signer.policy)
+            .ok_or("the profile pins a production signer")?;
+        let body = FindingKeyRevocation {
+            schema: FINDING_KEY_REVOCATION_SCHEMA_V1.to_string(),
+            revocation_status_ref: match shape {
+                RevocationShape::ForeignFeed => "revocations/elsewhere".to_string(),
+                _ => policy.revocation_status_ref.clone(),
+            },
+            authority_id: match shape {
+                RevocationShape::ForeignAuthority => "authority-elsewhere".to_string(),
+                _ => policy.authority_id.clone(),
+            },
+            key: key.clone(),
+            key_epoch: match shape {
+                RevocationShape::ForeignEpoch => policy.key_epoch + 1,
+                _ => policy.key_epoch,
+            },
+            revoked_from,
+            recorded_at: 1_740_000_000,
+        };
+        let signer = match shape {
+            RevocationShape::ForeignSigner => &self.buyer,
+            _ => &self.governance,
+        };
+        Ok(RevokedKey {
+            statement: SignedExportEnvelope::sign(body, signer)?,
+        })
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -900,11 +945,26 @@ pub struct EvidenceCase {
     pub revoked_keys: Vec<RevokedKey>,
 }
 
-/// An owned revocation proof, so a case can hand out borrowed views.
+/// How one offered revocation statement is built. Every shape but `Sound`
+/// leaves a well formed, well signed statement and changes exactly one of the
+/// members that bind it to the key policy the profile pins.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum RevocationShape {
+    #[default]
+    Sound,
+    /// Signed by a key that is not the pinned governance root.
+    ForeignSigner,
+    /// Published on a feed the key policy does not name.
+    ForeignFeed,
+    /// Names an authority other than the one the key policy identifies.
+    ForeignAuthority,
+    /// Names a key epoch other than the one the key policy pins.
+    ForeignEpoch,
+}
+
+/// An owned revocation statement, so a case can hand out borrowed views.
 pub struct RevokedKey {
-    pub key: PublicKey,
-    pub revoked_from: u64,
-    pub proof_ref: String,
+    pub statement: SignedFindingKeyRevocation,
 }
 
 impl EvidenceCase {
@@ -912,9 +972,7 @@ impl EvidenceCase {
         self.revoked_keys
             .iter()
             .map(|proof| FindingRevokedKeyProof {
-                key: &proof.key,
-                revoked_from: proof.revoked_from,
-                proof_ref: &proof.proof_ref,
+                statement: &proof.statement,
             })
             .collect()
     }

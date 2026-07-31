@@ -33,7 +33,7 @@ const EVIDENCE_CLASSES: [FindingEvidenceClass; 3] = [
     FindingEvidenceClass::Verified,
 ];
 
-const REASONS: [FindingChallengeReason; 24] = [
+const REASONS: [FindingChallengeReason; 25] = [
     FindingChallengeReason::SellerOriginDigestMismatch,
     FindingChallengeReason::EvidenceSignatureInvalid,
     FindingChallengeReason::EvidenceCheckpointContradiction,
@@ -53,6 +53,7 @@ const REASONS: [FindingChallengeReason; 24] = [
     FindingChallengeReason::EvidenceCheckpointNotEstablished,
     FindingChallengeReason::EvidenceAuthorityNotEstablished,
     FindingChallengeReason::EvidenceKeyRevokedAfterPublication,
+    FindingChallengeReason::EvidenceKeyRevocationNotEstablished,
     FindingChallengeReason::ReplayAuthorityNotEstablished,
     FindingChallengeReason::ReplayObservationNotEstablished,
     FindingChallengeReason::ReplayRunIncomplete,
@@ -414,6 +415,6 @@ fn the_reason_vocabulary_partitions_the_three_verdicts() -> TestResult {
     // affirmative act rather than a missing input.
     assert_eq!(fraud, 6);
     assert_eq!(clean, 6);
-    assert_eq!(unestablished, 12);
+    assert_eq!(unestablished, 13);
     Ok(())
 }

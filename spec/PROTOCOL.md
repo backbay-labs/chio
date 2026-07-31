@@ -1461,7 +1461,7 @@ perform those checks separately before relying on the corresponding claim.
 
 #### 6.4.7.1 Market envelope discipline
 
-Fourteen families travel as signed export envelopes
+Fifteen families travel as signed export envelopes
 (`{body, signerKey, signature}`): `chio.finding.challenge-verifier-profile.v1`,
 `chio.finding.market-terms.v1`, `chio.finding.seller-authorization.v1`,
 `chio.finding.bond-backing.v1`, `chio.finding.verifier-report.v1`,
@@ -1470,26 +1470,29 @@ Fourteen families travel as signed export envelopes
 `chio.finding.challenge-outcome.v1`,
 `chio.finding.challenge-enforcement.v1`,
 `chio.finding.finalized-bond-snapshot.v1`,
-`chio.finding.audit-epoch.v1`, and `chio.finding.audit-report.v1`. This
+`chio.finding.audit-epoch.v1`, `chio.finding.audit-report.v1`, and
+`chio.finding.key-revocation.v1`. This
 differs from the inline-signed
 `chio.finding.v1` and from the unsigned
 `chio.finding.replay-recipe-input.v1`,
 `chio.finding.purchase-context.v1`, and
 `chio.finding.replay-observation.v1`, which carry no envelope at all. Each
-of the fourteen envelope bodies is strict snake_case JSON that rejects
-unknown members and carries a stable identifier. Twelve of them are
-content-addressed exactly like `finding_id`: the SHA-256 digest of
+of the fifteen envelope bodies is strict snake_case JSON that rejects
+unknown members. Fourteen carry a stable identifier, and twelve of those
+are content-addressed exactly like `finding_id`: the SHA-256 digest of
 canonical JSON for the body after setting only the id member to the empty
 JSON string `""`, with every other member present. Two are exceptions:
 `chio.finding.purchase-record.v1` derives its `purchase_key` from a
 domain-separated preimage over two members (6.4.7.10), and
 `chio.finding.challenge-outcome.v1` derives its `outcome_id` from a
-domain-separated preimage over the whole canonical body (6.4.7.13). The
+domain-separated preimage over the whole canonical body (6.4.7.13).
+`chio.finding.key-revocation.v1` carries no identifier at all: a revocation
+is named by the envelope digest of the statement itself (6.4.7.20). The
 first six additionally name their own signing authority in the body, as
 does a `buyer_submission` challenge through its `challenger`; the two
-purchase terminals, a `venue_audit` challenge, and the five remaining
-challenge and audit artifacts name other subjects and are authorized only
-by the external role pin. Envelope
+purchase terminals, a `venue_audit` challenge, the five remaining
+challenge and audit artifacts, and the key revocation name other subjects
+and are authorized only by the external role pin. Envelope
 verification
 MUST verify strictly against an EXTERNALLY pinned authority key, MUST
 reject weak Ed25519 keys, MUST require the embedded `signerKey` to equal
@@ -1881,7 +1884,30 @@ envelope signer, the body `issued_by`, and the configured governing operator
 MUST all name the same profile-authorized penalty authority; a generic
 caller-supplied trusted signer is not authorization.
 
-The finding family registers `chio.finding.v1`, the fourteen signed
+#### 6.4.7.20 `chio.finding.key-revocation.v1`
+
+The governance-signed statement that a pinned authority key stopped being
+trustworthy from a stated instant. The body names the revocation feed the
+statement is published on (`revocation_status_ref`), the pinned authority
+(`authority_id`), the `key` and the `key_epoch` the statement withdraws, the
+venue trusted time it holds from (`revoked_from`), and `recorded_at`.
+
+A verifier MUST accept a revocation as evidence about a key only when the
+envelope verifies against the SAME externally pinned governance root that
+authorized the profile, and when the body's `revocation_status_ref`,
+`authority_id`, `key`, and `key_epoch` all equal the members of the key
+policy that profile pins for the key under test. A statement published on a
+feed the policy does not name, or covering an epoch the policy does not pin,
+is a statement about a different key and MUST NOT be read as evidence about
+this one.
+
+`revoked_from` is compared against the timestamp of the artifact under test,
+never against the verifier's clock: whether a key was trustworthy when it
+signed is a fact about that instant. A verifier that cannot establish a
+revocation offered for a key MUST leave the question open rather than
+resolve it in either direction.
+
+The finding family registers `chio.finding.v1`, the fifteen signed
 artifacts above, the three unsigned carriers, and the open-market penalty
 envelope at this stage. Status-epoch artifacts remain unsupported until a
 future revision of this specification defines and registers them.

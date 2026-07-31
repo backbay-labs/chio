@@ -9,7 +9,7 @@
 use chio_core_types::crypto::PublicKey;
 use chio_finding::{
     FindingChallengeFacet, FindingChallengeVerdict, FindingError, SignedFindingChallenge,
-    SignedFindingChallengeVerifierProfile, SignedFindingFailedDelivery,
+    SignedFindingChallengeVerifierProfile, SignedFindingFailedDelivery, SignedFindingKeyRevocation,
     SignedFindingPurchaseRecord,
 };
 use chio_finding_verifier::ResolvedReceiptEvidence;
@@ -69,21 +69,24 @@ pub struct FindingEvidenceInvalidEvidence<'a> {
     pub challenged_receipts: &'a [ResolvedReceiptEvidence],
     /// The checkpoint the contested subset is proved against.
     pub challenged_checkpoint: &'a KernelCheckpoint,
-    /// Keys the caller resolved as revoked or compromised. A proof that only
-    /// begins after publication is a key-lifecycle event, not retroactive
-    /// fabrication, and cannot uphold.
+    /// What the caller resolved from the revocation feeds the profile pins.
+    /// A statement that only holds from after publication is a key-lifecycle
+    /// event, not retroactive fabrication, and cannot uphold.
     pub revoked_keys: &'a [FindingRevokedKeyProof<'a>],
 }
 
-/// One resolved revocation or compromise proof.
+/// One offered revocation or compromise proof.
+///
+/// The proof IS the governance-signed statement. Nothing about a revocation
+/// can be asserted beside it: the key, the epoch, the feed, and the instant
+/// the withdrawal holds from are all members of a body the governance root
+/// signed. A caller who does not hold that signature cannot express the
+/// claim at all, which is what keeps a challenger-chosen timestamp from
+/// turning a checkpointed production receipt into affirmative fraud.
 pub struct FindingRevokedKeyProof<'a> {
-    /// The key the proof covers.
-    pub key: &'a PublicKey,
-    /// Venue trusted time from which the proof holds. Compared against the
-    /// finding's publication time, never against "now".
-    pub revoked_from: u64,
-    /// Opaque reference to the proof the caller resolved.
-    pub proof_ref: &'a str,
+    /// The signed statement. The evaluator re-verifies it against the same
+    /// pinned governance root that authorized the profile.
+    pub statement: &'a SignedFindingKeyRevocation,
 }
 
 /// Resolved evidence for a `replay_contradiction` challenge.

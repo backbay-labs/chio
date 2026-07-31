@@ -40,6 +40,7 @@ mod input;
 mod reason;
 mod receipts;
 mod replay_contradiction;
+mod revocation;
 mod standing;
 
 pub use evaluate::evaluate_finding_challenge;

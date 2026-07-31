@@ -844,6 +844,12 @@ fn finding_family_schema_registry_parity_is_bidirectional() {
             "spec/schemas/chio-finding/v1/finalized-bond-snapshot.schema.json",
         ),
         (
+            "chio.finding.key-revocation.v1",
+            "finding_key_revocation",
+            "finding-market-v1",
+            "spec/schemas/chio-finding/v1/key-revocation.schema.json",
+        ),
+        (
             "chio.finding.market-terms.v1",
             "finding_market_terms",
             "finding-market-v1",

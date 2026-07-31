@@ -29,6 +29,9 @@ pub(crate) struct EvaluationContext<'a> {
     pub(crate) finding: &'a Finding,
     pub(crate) profile: &'a FindingChallengeVerifierProfile,
     pub(crate) profile_envelope_sha256: &'a str,
+    /// The deployment's pinned governance root, the authority that signed
+    /// this profile and the only one that may withdraw a key it pins.
+    pub(crate) governance_authority: &'a PublicKey,
     /// The buyer whose standing the submission rests on, when the submission
     /// is a buyer filing. A venue audit has no challenger and no standing.
     pub(crate) challenger: Option<&'a PublicKey>,
@@ -109,6 +112,7 @@ fn adjudicate(
         finding: &finding,
         profile: &input.profile.body,
         profile_envelope_sha256: &profile_envelope_sha256,
+        governance_authority: input.governance_authority,
         challenger,
     };
 
