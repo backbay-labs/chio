@@ -34,7 +34,12 @@
 //! challenge and freezes the purchase cutoff commits in the same
 //! transaction as the sales block that stops the purchase store's slot
 //! line growing past it. No slot can open in between, so the frozen
-//! cutoff is exactly the listing's high-water mark.
+//! cutoff is exactly the listing's high-water mark. The appeal terminal
+//! is the mirror of that transaction:
+//! [`SqliteFindingChallengeStore::reverse_liability_before_impairment`]
+//! lifts the block in the same commit that exonerates the head, so a
+//! seller who wins an appeal is selling again the moment the reversal is
+//! durable.
 //!
 //! The store is not an authority boundary: envelope signature
 //! verification, evidence adjudication, and penalty authorization belong
@@ -64,7 +69,7 @@ use thiserror::Error;
 
 use crate::admission_operation_store::verify_active_owner;
 use crate::finding_purchase_store::{
-    block_new_slots_tx, highest_slot_ordinal_tx, FindingPurchaseStoreError,
+    block_new_slots_tx, highest_slot_ordinal_tx, lift_sales_block_tx, FindingPurchaseStoreError,
 };
 use crate::serving_owner::SqliteServingOwner;
 
@@ -1066,21 +1071,50 @@ impl SqliteFindingChallengeStore {
 
     /// Compare-and-set `pending_appeal -> reversed_before_impairment`,
     /// the appeal terminal. Nothing was impaired, so the head closes
-    /// without a settlement.
+    /// without a settlement and the seller is exonerated.
+    ///
+    /// The exoneration reaches the sale path in the same immediate
+    /// transaction: the listing's sales block is lifted alongside the
+    /// compare-and-set, so no restart can observe a head that cleared its
+    /// appeal while the listing it names is still barred from selling.
+    /// This is the one transition that lifts a block, and it is the mirror
+    /// of the upheld transaction that raised it.
+    ///
+    /// The lift waits on the last holder. One listing carries one block
+    /// however many heads reached it, so a listing another live liability
+    /// still holds stays blocked and only that head's own exoneration
+    /// releases it.
     pub fn reverse_liability_before_impairment(
         &self,
         liability_key: &str,
         expected_state: FindingLiabilityState,
         now: u64,
     ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
-        self.transition_liability(
-            liability_key,
+        require_hex64(liability_key, "liability_key")?;
+        require_trusted_time(now, "now")?;
+        require_transition_source(
             expected_state,
+            FindingLiabilityState::PendingAppeal,
+            FindingLiabilityState::ReversedBeforeImpairment,
+        )?;
+        let mut connection = self.connection()?;
+        let transaction = self.begin_write(&mut connection)?;
+        let (outcome, liability) = apply_liability_transition_tx(
+            &transaction,
+            liability_key,
             FindingLiabilityState::PendingAppeal,
             FindingLiabilityState::ReversedBeforeImpairment,
             Some(false),
             now,
-        )
+        )?;
+        if !listing_holds_another_liability_tx(&transaction, &liability.listing_id, liability_key)?
+        {
+            lift_sales_block_tx(&transaction, &liability.listing_id, now)
+                .map_err(purchase_error)?;
+        }
+        self.commit_write(transaction)?;
+        self.sync_after_write(&connection)?;
+        Ok(outcome)
     }
 
     /// Flag or clear the quarantine on one liability head. A quarantined
@@ -1627,51 +1661,115 @@ impl SqliteFindingChallengeStore {
     ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
         require_hex64(liability_key, "liability_key")?;
         require_trusted_time(now, "now")?;
-        if expected_state != source_state {
-            return Err(FindingChallengeStoreError::Conflict(format!(
-                "state {} is not the source of the transition to {}",
-                liability_state_name(expected_state),
-                liability_state_name(target_state)
-            )));
-        }
+        require_transition_source(expected_state, source_state, target_state)?;
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
-        let liability = load_liability_tx(&transaction, liability_key)?
-            .ok_or(FindingChallengeStoreError::NotFound)?;
-        if liability.state == target_state {
-            return Ok(FindingChallengeWriteOutcome::ExistingSame);
-        }
-        if liability.state != source_state {
-            return Err(FindingChallengeStoreError::Conflict(format!(
-                "liability is in state {}, not the expected {}",
-                liability_state_name(liability.state),
-                liability_state_name(source_state)
-            )));
-        }
-        let pending = publication_pending.unwrap_or(liability.publication_pending);
-        let changed = transaction
-            .execute(
-                r#"
-                UPDATE liability_heads
-                SET state = ?3, publication_pending = ?4, updated_at = ?5
-                WHERE liability_key = ?1 AND state = ?2
-                "#,
-                params![
-                    liability_key,
-                    liability_state_name(source_state),
-                    liability_state_name(target_state),
-                    i64::from(pending),
-                    sqlite_i64(now, "now")?,
-                ],
-            )
-            .map_err(sqlite_error)?;
-        if changed != 1 {
-            return Err(invariant("liability transition did not affect one row"));
+        let (outcome, _) = apply_liability_transition_tx(
+            &transaction,
+            liability_key,
+            source_state,
+            target_state,
+            publication_pending,
+            now,
+        )?;
+        if outcome == FindingChallengeWriteOutcome::ExistingSame {
+            return Ok(outcome);
         }
         self.commit_write(transaction)?;
         self.sync_after_write(&connection)?;
-        Ok(FindingChallengeWriteOutcome::Inserted)
+        Ok(outcome)
     }
+}
+
+/// The caller names the state it believes a head is in, and that state
+/// must be the only legal source of the edge it is asking for, so no
+/// caller can skip a state by naming a later one.
+fn require_transition_source(
+    expected_state: FindingLiabilityState,
+    source_state: FindingLiabilityState,
+    target_state: FindingLiabilityState,
+) -> Result<(), FindingChallengeStoreError> {
+    if expected_state == source_state {
+        return Ok(());
+    }
+    Err(FindingChallengeStoreError::Conflict(format!(
+        "state {} is not the source of the transition to {}",
+        liability_state_name(expected_state),
+        liability_state_name(target_state)
+    )))
+}
+
+/// One liability edge applied inside a caller-supplied transaction, paired
+/// with the head as this transaction read it so a composing caller reaches
+/// the listing it names without a second load. Identity columns are frozen
+/// at insert, so the listing that record names is the one the edge moved.
+/// Idempotent once the head already sits at the target.
+fn apply_liability_transition_tx(
+    transaction: &Transaction<'_>,
+    liability_key: &str,
+    source_state: FindingLiabilityState,
+    target_state: FindingLiabilityState,
+    publication_pending: Option<bool>,
+    now: u64,
+) -> Result<(FindingChallengeWriteOutcome, FindingLiabilityRecord), FindingChallengeStoreError> {
+    let liability = load_liability_tx(transaction, liability_key)?
+        .ok_or(FindingChallengeStoreError::NotFound)?;
+    if liability.state == target_state {
+        return Ok((FindingChallengeWriteOutcome::ExistingSame, liability));
+    }
+    if liability.state != source_state {
+        return Err(FindingChallengeStoreError::Conflict(format!(
+            "liability is in state {}, not the expected {}",
+            liability_state_name(liability.state),
+            liability_state_name(source_state)
+        )));
+    }
+    let pending = publication_pending.unwrap_or(liability.publication_pending);
+    let changed = transaction
+        .execute(
+            r#"
+            UPDATE liability_heads
+            SET state = ?3, publication_pending = ?4, updated_at = ?5
+            WHERE liability_key = ?1 AND state = ?2
+            "#,
+            params![
+                liability_key,
+                liability_state_name(source_state),
+                liability_state_name(target_state),
+                i64::from(pending),
+                sqlite_i64(now, "now")?,
+            ],
+        )
+        .map_err(sqlite_error)?;
+    if changed != 1 {
+        return Err(invariant("liability transition did not affect one row"));
+    }
+    Ok((FindingChallengeWriteOutcome::Inserted, liability))
+}
+
+/// Whether a liability head other than `liability_key` still holds one
+/// listing's sales block. Every head past `open` carries an upheld
+/// challenge, and so holds the listing until it is exonerated; a head that
+/// never left `open` never blocked anything.
+fn listing_holds_another_liability_tx(
+    transaction: &Transaction<'_>,
+    listing_id: &str,
+    liability_key: &str,
+) -> Result<bool, FindingChallengeStoreError> {
+    let held: bool = transaction
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM liability_heads
+                WHERE listing_id = ?1 AND liability_key <> ?2
+                  AND state NOT IN ('open', 'reversed_before_impairment')
+            )
+            "#,
+            params![listing_id, liability_key],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)?;
+    Ok(held)
 }
 
 /// The upheld transaction, exposed on a caller-supplied transaction so a

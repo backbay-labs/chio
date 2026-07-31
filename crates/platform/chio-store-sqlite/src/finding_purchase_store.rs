@@ -958,6 +958,11 @@ impl SqliteFindingPurchaseStore {
     /// Slots already reserved are untouched. Blocking stops the line
     /// growing; it does not retract a purchase already in flight, which
     /// still has to reach a settled record or a denial.
+    ///
+    /// Nothing on this surface lifts a block. The one transition that
+    /// does is the liability reversal that exonerates the seller, and it
+    /// is composed into that reversal's own transaction rather than
+    /// offered to a caller.
     pub fn block_new_slots(
         &self,
         listing_id: &str,
@@ -1569,6 +1574,41 @@ pub(crate) fn block_new_slots_tx(
         return Err(invariant("listing sales block did not affect one row"));
     }
     Ok(FindingPurchaseWriteOutcome::Inserted)
+}
+
+/// Lift one listing's live sales block inside a caller-supplied
+/// transaction, stamping when it was lifted and leaving the raise itself
+/// untouched.
+///
+/// This is the counterpart seam to [`block_new_slots_tx`], and it exists
+/// for exactly one caller: the liability reversal that exonerates the
+/// seller before anything was impaired. The store cannot see what
+/// authorizes a lift, so it is deliberately not reachable from the public
+/// surface; the challenge lane composes it into the same transaction as
+/// the compare-and-set that reaches the reversed terminal, and only once
+/// no other liability still holds the listing.
+///
+/// Idempotent: a listing with no live block is already where the caller
+/// wants it, whether it was never blocked or the lift already committed.
+pub(crate) fn lift_sales_block_tx(
+    transaction: &Transaction<'_>,
+    listing_id: &str,
+    now: u64,
+) -> Result<FindingPurchaseWriteOutcome, FindingPurchaseStoreError> {
+    let lifted = transaction
+        .execute(
+            r#"
+            UPDATE listing_sales_blocks SET state = 'lifted', lifted_at = ?2
+            WHERE listing_id = ?1 AND state = 'blocked'
+            "#,
+            params![listing_id, sqlite_i64(now, "now")?],
+        )
+        .map_err(sqlite_error)?;
+    match lifted {
+        0 => Ok(FindingPurchaseWriteOutcome::ExistingSame),
+        1 => Ok(FindingPurchaseWriteOutcome::Inserted),
+        _ => Err(invariant("listing sales block lift affected several rows")),
+    }
 }
 
 /// The highest slot ordinal ever allocated on one listing, read inside a

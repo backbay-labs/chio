@@ -374,6 +374,51 @@ fn settle_slot(fixture: &Fixture, tag: &str, purchase_key: &str, now: u64) {
         .expect("settle purchase");
 }
 
+/// Every sales-block episode on one listing, oldest first, as
+/// `(ordinal, state, blocked_at, lifted_at)`. Read straight from the
+/// database: the raise a release leaves behind is a record this lane
+/// retains, not a state the sale path serves.
+fn sales_block_episodes(
+    fixture: &Fixture,
+    listing_id: &str,
+) -> Vec<(u64, String, u64, Option<u64>)> {
+    let connection =
+        Connection::open(fixture._temp.path().join("authority.db")).expect("open the database");
+    let mut statement = connection
+        .prepare(
+            r#"
+            SELECT block_ordinal, state, blocked_at, lifted_at
+            FROM listing_sales_blocks
+            WHERE listing_id = ?1
+            ORDER BY block_ordinal ASC
+            "#,
+        )
+        .expect("prepare the episode read");
+    let episodes = statement
+        .query_map([listing_id], |row| {
+            Ok((
+                row.get::<_, i64>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, i64>(2)?,
+                row.get::<_, Option<i64>>(3)?,
+            ))
+        })
+        .expect("read episodes")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("episode rows");
+    episodes
+        .into_iter()
+        .map(|(ordinal, state, blocked_at, lifted_at)| {
+            (
+                ordinal.unsigned_abs(),
+                state,
+                blocked_at.unsigned_abs(),
+                lifted_at.map(i64::unsigned_abs),
+            )
+        })
+        .collect()
+}
+
 fn deny_slot(fixture: &Fixture, tag: &str, now: u64) {
     let reservation_id = format!("reservation-{tag}");
     let bytes = format!("{{\"schema\":\"chio.finding.failed-delivery.v1\",\"tag\":\"{tag}\"}}")
@@ -1423,6 +1468,306 @@ fn upholding_blocks_new_slots_and_freezes_the_cutoff() {
     assert_eq!(
         liability(&fixture, &head.liability_key).purchase_cutoff_slot,
         Some(2)
+    );
+}
+
+#[test]
+fn a_successful_appeal_returns_the_listing_to_selling() {
+    let fixture = fixture();
+    assert_eq!(
+        reserve_slot(&fixture, "alpha", LISTING_ID, &fixture.allocation_id),
+        1
+    );
+    settle_slot(&fixture, "alpha", &hex64('d'), NOW + 2);
+    fixture
+        .purchases
+        .block_new_slots(OTHER_LISTING_ID, NOW + 2)
+        .expect("block an unrelated listing");
+
+    let head = Liability::new("alpha", LISTING_ID, &fixture.allocation_id);
+    open_liability(&fixture, &head);
+    let challenge = Challenge::buyer("alpha");
+    close_challenge(
+        &fixture,
+        &challenge,
+        FindingChallengeVerdict::Upheld,
+        NOW + 3,
+    );
+    fixture
+        .store
+        .uphold_liability(&head.liability_key, &challenge.challenge_id, 1, NOW + 5)
+        .expect("uphold liability");
+    fixture
+        .store
+        .begin_appeal_window(
+            &head.liability_key,
+            FindingLiabilityState::UpheldPendingClaims,
+            NOW + 6,
+        )
+        .expect("open the appeal window");
+    assert!(
+        fixture
+            .purchases
+            .sales_blocked(LISTING_ID)
+            .expect("sales blocked"),
+        "a head under appeal has not been exonerated yet"
+    );
+
+    assert_eq!(
+        fixture
+            .store
+            .reverse_liability_before_impairment(
+                &head.liability_key,
+                FindingLiabilityState::PendingAppeal,
+                NOW + 7
+            )
+            .expect("reverse before impairment"),
+        FindingChallengeWriteOutcome::Inserted
+    );
+    assert!(
+        !fixture
+            .purchases
+            .sales_blocked(LISTING_ID)
+            .expect("sales blocked"),
+        "an exonerated seller is not barred from selling"
+    );
+    assert_eq!(
+        reserve_slot(&fixture, "beta", LISTING_ID, &fixture.allocation_id),
+        2,
+        "the slot line resumes above the cutoff the block froze"
+    );
+    assert!(
+        fixture
+            .purchases
+            .sales_blocked(OTHER_LISTING_ID)
+            .expect("sales blocked"),
+        "a lift reaches exactly the listing the exonerated head names"
+    );
+
+    // The raise outlives the lift: a listing selling again still records
+    // that it was blocked, from when until when.
+    assert_eq!(
+        sales_block_episodes(&fixture, LISTING_ID),
+        vec![(1, "lifted".to_owned(), NOW + 5, Some(NOW + 7))]
+    );
+
+    assert_eq!(
+        fixture
+            .store
+            .reverse_liability_before_impairment(
+                &head.liability_key,
+                FindingLiabilityState::PendingAppeal,
+                NOW + 9
+            )
+            .expect("replay the reversal"),
+        FindingChallengeWriteOutcome::ExistingSame
+    );
+    assert_eq!(
+        sales_block_episodes(&fixture, LISTING_ID),
+        vec![(1, "lifted".to_owned(), NOW + 5, Some(NOW + 7))],
+        "a replay must not restamp the release"
+    );
+}
+
+#[test]
+fn only_an_exoneration_lifts_a_listing_sales_block() {
+    let fixture = fixture();
+    let head = Liability::new("alpha", LISTING_ID, &fixture.allocation_id);
+    open_liability(&fixture, &head);
+    let challenge = Challenge::buyer("alpha");
+    close_challenge(
+        &fixture,
+        &challenge,
+        FindingChallengeVerdict::Upheld,
+        NOW + 1,
+    );
+    fixture
+        .store
+        .uphold_liability(&head.liability_key, &challenge.challenge_id, 0, NOW + 3)
+        .expect("uphold liability");
+
+    assert!(
+        matches!(
+            fixture.store.reverse_liability_before_impairment(
+                &head.liability_key,
+                FindingLiabilityState::UpheldPendingClaims,
+                NOW + 4
+            ),
+            Err(FindingChallengeStoreError::Conflict(_))
+        ),
+        "the appeal window is the only source of the reversal"
+    );
+    assert!(
+        matches!(
+            fixture.store.reverse_liability_before_impairment(
+                &head.liability_key,
+                FindingLiabilityState::PendingAppeal,
+                NOW + 4
+            ),
+            Err(FindingChallengeStoreError::Conflict(_))
+        ),
+        "a head that never entered the appeal window has no reversal to take"
+    );
+    assert!(
+        fixture
+            .purchases
+            .sales_blocked(LISTING_ID)
+            .expect("sales blocked"),
+        "a refused reversal leaves the listing exactly as blocked as it was"
+    );
+
+    // Every other edge out of the upheld liability leaves the block
+    // standing, including the settled terminal an impairment reaches.
+    let still_blocked = |stage: &str| {
+        assert!(
+            fixture
+                .purchases
+                .sales_blocked(LISTING_ID)
+                .expect("sales blocked"),
+            "a {stage} liability keeps its listing blocked"
+        );
+    };
+    fixture
+        .store
+        .begin_appeal_window(
+            &head.liability_key,
+            FindingLiabilityState::UpheldPendingClaims,
+            NOW + 5,
+        )
+        .expect("open the appeal window");
+    still_blocked("pending-appeal");
+    fixture
+        .store
+        .begin_finalizing(
+            &head.liability_key,
+            FindingLiabilityState::PendingAppeal,
+            NOW + 6,
+        )
+        .expect("begin finalizing");
+    still_blocked("finalizing");
+    fixture
+        .store
+        .settle_liability(
+            &head.liability_key,
+            FindingLiabilityState::Finalizing,
+            NOW + 7,
+        )
+        .expect("settle the liability");
+    still_blocked("settled");
+
+    assert!(
+        matches!(
+            fixture.store.reverse_liability_before_impairment(
+                &head.liability_key,
+                FindingLiabilityState::PendingAppeal,
+                NOW + 8
+            ),
+            Err(FindingChallengeStoreError::Conflict(_))
+        ),
+        "a settled head cannot be walked back into an exoneration"
+    );
+    assert_eq!(
+        sales_block_episodes(&fixture, LISTING_ID),
+        vec![(1, "blocked".to_owned(), NOW + 3, None)]
+    );
+}
+
+#[test]
+fn a_listing_another_liability_still_holds_stays_blocked() {
+    let fixture = fixture();
+    let first = Liability::new("alpha", LISTING_ID, &fixture.allocation_id);
+    let second = Liability::new("beta", LISTING_ID, &fixture.allocation_id);
+    let first_challenge = Challenge::buyer("alpha");
+    let second_challenge = Challenge::buyer("beta");
+    for (head, challenge) in [(&first, &first_challenge), (&second, &second_challenge)] {
+        open_liability(&fixture, head);
+        close_challenge(
+            &fixture,
+            challenge,
+            FindingChallengeVerdict::Upheld,
+            NOW + 1,
+        );
+        fixture
+            .store
+            .uphold_liability(&head.liability_key, &challenge.challenge_id, 0, NOW + 3)
+            .expect("uphold liability");
+        fixture
+            .store
+            .begin_appeal_window(
+                &head.liability_key,
+                FindingLiabilityState::UpheldPendingClaims,
+                NOW + 4,
+            )
+            .expect("open the appeal window");
+    }
+    assert_eq!(
+        sales_block_episodes(&fixture, LISTING_ID),
+        vec![(1, "blocked".to_owned(), NOW + 3, None)],
+        "one listing carries one block however many heads reach it"
+    );
+
+    fixture
+        .store
+        .reverse_liability_before_impairment(
+            &first.liability_key,
+            FindingLiabilityState::PendingAppeal,
+            NOW + 5,
+        )
+        .expect("reverse the first head");
+    assert!(
+        fixture
+            .purchases
+            .sales_blocked(LISTING_ID)
+            .expect("sales blocked"),
+        "a block every live head holds is not released by one of them clearing"
+    );
+
+    fixture
+        .store
+        .reverse_liability_before_impairment(
+            &second.liability_key,
+            FindingLiabilityState::PendingAppeal,
+            NOW + 6,
+        )
+        .expect("reverse the second head");
+    assert!(
+        !fixture
+            .purchases
+            .sales_blocked(LISTING_ID)
+            .expect("sales blocked"),
+        "the last head to clear releases the listing"
+    );
+
+    // A fresh defect blocks the listing again on its own episode, and the
+    // released one stays exactly where it closed.
+    let third = Liability::new("gamma", LISTING_ID, &fixture.allocation_id);
+    open_liability(&fixture, &third);
+    let third_challenge = Challenge::buyer("gamma");
+    close_challenge(
+        &fixture,
+        &third_challenge,
+        FindingChallengeVerdict::Upheld,
+        NOW + 7,
+    );
+    fixture
+        .store
+        .uphold_liability(
+            &third.liability_key,
+            &third_challenge.challenge_id,
+            0,
+            NOW + 9,
+        )
+        .expect("uphold the third head");
+    assert!(fixture
+        .purchases
+        .sales_blocked(LISTING_ID)
+        .expect("sales blocked"));
+    assert_eq!(
+        sales_block_episodes(&fixture, LISTING_ID),
+        vec![
+            (1, "lifted".to_owned(), NOW + 3, Some(NOW + 6)),
+            (2, "blocked".to_owned(), NOW + 9, None),
+        ]
     );
 }
 
