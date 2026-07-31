@@ -79,6 +79,18 @@ fn escape_log_field(value: &str) -> String {
     value.chars().flat_map(char::escape_debug).collect()
 }
 
+fn terminal_safe(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+    for character in value.chars() {
+        if character.is_control() {
+            encoded.extend(character.escape_default());
+        } else {
+            encoded.push(character);
+        }
+    }
+    encoded
+}
+
 /// Format a redacted tracing event into one stderr line. Both field names and
 /// values are control-encoded so no field can introduce a line break and forge
 /// an additional log record.
@@ -106,7 +118,7 @@ fn write_redacted_event_to_stderr(event: chio_log_redact::RedactedEvent) {
 
 #[cfg(test)]
 mod redacted_format_tests {
-    use super::{escape_log_field, format_redacted_event_line};
+    use super::{escape_log_field, format_redacted_event_line, terminal_safe};
     use chio_log_redact::{RedactedEvent, RedactedField};
 
     #[test]
@@ -137,6 +149,14 @@ mod redacted_format_tests {
     fn escape_log_field_leaves_ordinary_text_intact() {
         assert_eq!(escape_log_field("cap-1234 allow"), "cap-1234 allow");
         assert_eq!(escape_log_field("tab\there"), "tab\\there");
+    }
+
+    #[test]
+    fn terminal_fields_escape_controls_without_rewriting_printable_text() {
+        assert_eq!(
+            terminal_safe("quoted \"value\"\n\u{1b}[2J"),
+            "quoted \"value\"\\n\\u{1b}[2J"
+        );
     }
 }
 

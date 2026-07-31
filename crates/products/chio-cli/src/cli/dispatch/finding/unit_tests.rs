@@ -34,6 +34,14 @@ fn write_temp(dir: &tempfile::TempDir, name: &str, contents: &str) -> PathBuf {
     path
 }
 
+fn oversized_support_file(dir: &tempfile::TempDir, name: &str) -> PathBuf {
+    write_temp(
+        dir,
+        name,
+        &"x".repeat(super::finding_verify::FINDING_VERIFY_SUPPORT_MAX_BYTES + 1),
+    )
+}
+
 #[test]
 fn publish_subcommand_parses() {
     let cli = parse_cli(["chio", "finding", "publish", "--file", "finding.json"]).unwrap();
@@ -328,6 +336,59 @@ fn verify_accepts_the_canonical_artifact_under_integrity_only() {
 }
 
 #[test]
+fn finding_plain_text_escapes_terminal_controls() {
+    let hostile = "safe\n\u{1b}[2Jforged\rline";
+    let escaped = terminal_safe(hostile);
+    assert_eq!(escaped, "safe\\n\\u{1b}[2Jforged\\rline");
+    assert!(!escaped.chars().any(char::is_control));
+}
+
+#[test]
+fn verify_caps_every_support_file_before_parsing() {
+    let dir = tempfile::tempdir().unwrap();
+    let artifact = write_temp(&dir, "finding.json", &canonical_golden_finding());
+    let roots = write_temp(&dir, "trust-roots.json", &golden_trust_roots());
+
+    for (kind, trust_roots, evidence, recipe) in [
+        (
+            "trust-roots",
+            Some(oversized_support_file(&dir, "oversized-roots.json")),
+            None,
+            None,
+        ),
+        (
+            "evidence",
+            Some(roots.clone()),
+            Some(oversized_support_file(&dir, "oversized-evidence.json")),
+            None,
+        ),
+        (
+            "recipe",
+            Some(roots.clone()),
+            None,
+            Some(oversized_support_file(&dir, "oversized-recipe.bin")),
+        ),
+    ] {
+        let error = cmd_finding_verify(
+            Some(&artifact),
+            None,
+            trust_roots.as_deref(),
+            evidence.as_deref(),
+            recipe.as_deref(),
+            false,
+            true,
+            None,
+        )
+        .unwrap_err()
+        .to_string();
+        assert!(
+            error.contains(kind) && error.contains("524288 byte"),
+            "unexpected {kind} error: {error}"
+        );
+    }
+}
+
+#[test]
 fn verify_refuses_to_call_integrity_alone_evidence_verification() {
     let dir = tempfile::tempdir().unwrap();
     let path = write_temp(&dir, "finding.json", &canonical_golden_finding());
@@ -498,4 +559,46 @@ async fn verify_by_id_runs_the_strict_ingress_over_the_served_bytes() {
     .await
     .unwrap()
     .unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn verify_by_id_rejects_a_different_valid_artifact() {
+    if !loopback_bind_available() {
+        eprintln!("skipping finding verify transport test: loopback bind denied");
+        return;
+    }
+    let requested_id = "a".repeat(64);
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path_matcher(format!("/v1/findings/{requested_id}")))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-type", "application/json")
+                .set_body_string(canonical_golden_finding()),
+        )
+        .expect(1)
+        .mount(&server)
+        .await;
+
+    let uri = server.uri();
+    let error = tokio::task::spawn_blocking(move || {
+        cmd_finding_verify(
+            None,
+            Some(&requested_id),
+            None,
+            None,
+            None,
+            true,
+            true,
+            Some(&uri),
+        )
+    })
+    .await
+    .unwrap()
+    .unwrap_err()
+    .to_string();
+    assert!(
+        error.contains("venue returned finding") && error.contains("requested id"),
+        "unexpected error: {error}"
+    );
 }

@@ -1,5 +1,7 @@
 use super::*;
 
+use std::io::Read;
+
 use chio_core_types::crypto::{sha256_hex, PublicKey};
 use chio_core_types::receipt::body::ChioReceipt;
 use chio_core_types::{canonical_json_bytes, canonical_json_bytes_from_str};
@@ -16,6 +18,7 @@ use chio_kernel::checkpoint::{KernelCheckpoint, ReceiptInclusionProof};
 const FINDING_SCHEMA_JSON: &str =
     include_str!("../../../../../../../spec/schemas/chio-finding/v1/finding.schema.json");
 const FINDING_SCHEMA_LABEL: &str = "chio-finding/v1/finding.schema.json";
+pub(super) const FINDING_VERIFY_SUPPORT_MAX_BYTES: usize = 512 * 1024;
 
 /// Identifies the resolution rules this surface applied, so a report
 /// evaluated here is distinguishable from one evaluated by a venue that
@@ -75,6 +78,14 @@ pub(super) fn cmd_finding_verify(
     };
 
     let accepted = strict_finding_ingress(raw, &source)?;
+    if let Some(requested_id) = id {
+        if accepted.finding.finding_id != requested_id {
+            return Err(CliError::cli_other_error(format!(
+                "venue returned finding {} for requested id {requested_id}",
+                accepted.finding.finding_id
+            )));
+        }
+    }
 
     if integrity_only {
         emit_integrity_only(&accepted, json_output)?;
@@ -95,7 +106,7 @@ pub(super) fn cmd_finding_verify(
         None => FindingEvidenceFile::default(),
     };
     let recipe_preimage = match recipe {
-        Some(path) => Some(fs::read(path)?),
+        Some(path) => Some(read_bounded_support_file(path, "recipe")?),
         None => None,
     };
 
@@ -238,7 +249,10 @@ impl From<FindingBondSnapshotEntry> for FindingBondSnapshot {
 /// The digest is taken over the canonicalization of the supplied file so
 /// two operators who pin the same roots derive the same commitment.
 fn load_trust_roots(path: &Path) -> Result<(FindingTrustRootsFile, String), CliError> {
-    let raw = fs::read_to_string(path)?;
+    let bytes = read_bounded_support_file(path, "trust-roots")?;
+    let raw = String::from_utf8(bytes).map_err(|error| {
+        CliError::cli_other_error(format!("{} is not valid UTF-8: {error}", path.display()))
+    })?;
     let roots: FindingTrustRootsFile = serde_json::from_str(&raw)?;
     let canonical = canonical_json_bytes_from_str(&raw).map_err(|error| {
         CliError::cli_other_error(format!(
@@ -250,7 +264,23 @@ fn load_trust_roots(path: &Path) -> Result<(FindingTrustRootsFile, String), CliE
 }
 
 fn load_evidence_file(path: &Path) -> Result<FindingEvidenceFile, CliError> {
-    Ok(serde_json::from_slice(&fs::read(path)?)?)
+    Ok(serde_json::from_slice(&read_bounded_support_file(
+        path, "evidence",
+    )?)?)
+}
+
+fn read_bounded_support_file(path: &Path, kind: &str) -> Result<Vec<u8>, CliError> {
+    let mut reader = std::fs::File::open(path)?
+        .take((FINDING_VERIFY_SUPPORT_MAX_BYTES as u64).saturating_add(1));
+    let mut bytes = Vec::with_capacity(FINDING_VERIFY_SUPPORT_MAX_BYTES.saturating_add(1));
+    reader.read_to_end(&mut bytes)?;
+    if bytes.len() > FINDING_VERIFY_SUPPORT_MAX_BYTES {
+        return Err(CliError::cli_other_error(format!(
+            "{} is above the {FINDING_VERIFY_SUPPORT_MAX_BYTES} byte {kind} bound",
+            path.display()
+        )));
+    }
+    Ok(bytes)
 }
 
 fn unix_seconds_now() -> Result<u64, CliError> {
@@ -328,13 +358,19 @@ fn emit_integrity_only(accepted: &AcceptedFinding, json_output: bool) -> Result<
         });
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
-        println!("finding_id:          {}", accepted.finding.finding_id);
-        println!("artifact_sha256:     {}", accepted.artifact_sha256);
+        println!(
+            "finding_id:          {}",
+            terminal_safe(&accepted.finding.finding_id)
+        );
+        println!(
+            "artifact_sha256:     {}",
+            terminal_safe(&accepted.artifact_sha256)
+        );
         println!("mode:                integrity_only");
         println!("artifact_integrity:  verified");
         println!("facets_not_evaluated:");
         for label in &unevaluated {
-            println!("  {label}");
+            println!("  {}", terminal_safe(label));
         }
     }
     Ok(())
@@ -381,24 +417,33 @@ fn emit_evidence_report(
         });
         println!("{}", serde_json::to_string_pretty(&report)?);
     } else {
-        println!("finding_id:          {}", accepted.finding.finding_id);
-        println!("artifact_sha256:     {}", draft.finding_artifact_sha256);
+        println!(
+            "finding_id:          {}",
+            terminal_safe(&accepted.finding.finding_id)
+        );
+        println!(
+            "artifact_sha256:     {}",
+            terminal_safe(&draft.finding_artifact_sha256)
+        );
         println!("mode:                evidence");
         println!("evaluation_time:     {}", draft.evaluation_time);
         println!(
             "evidence_bundle:     {}",
-            draft.resolved_evidence_bundle_sha256
+            terminal_safe(&draft.resolved_evidence_bundle_sha256)
         );
         println!("facets:");
         for result in &draft.facets {
             println!(
                 "  {:<28}  {:<12}  {}",
-                facet_label(result.facet)?,
-                outcome_label(result.outcome)?,
-                result.reason
+                terminal_safe(&facet_label(result.facet)?),
+                terminal_safe(&outcome_label(result.outcome)?),
+                terminal_safe(&result.reason)
             );
         }
-        println!("required_facets:     {}", required_labels.join(", "));
+        println!(
+            "required_facets:     {}",
+            terminal_safe(&required_labels.join(", "))
+        );
     }
 
     if unverified.is_empty() {

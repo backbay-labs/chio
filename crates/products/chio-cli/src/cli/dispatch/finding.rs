@@ -168,8 +168,11 @@ fn cmd_finding_publish(
             serde_json::to_string_pretty(&published_json(&published))?
         );
     } else {
-        println!("finding_id:      {}", published.finding_id);
-        println!("artifact_sha256: {}", published.artifact_sha256);
+        println!("finding_id:      {}", terminal_safe(&published.finding_id));
+        println!(
+            "artifact_sha256: {}",
+            terminal_safe(&published.artifact_sha256)
+        );
     }
     Ok(())
 }
@@ -277,13 +280,16 @@ fn cmd_finding_search(
             .map(|admission| admission.admission_id.as_str())
             .unwrap_or("-");
         println!(
-            "{:<64}  {:<40}  {:<12}  {admission}",
-            row.finding_id, row.topic, row.expires_at
+            "{:<64}  {:<40}  {:<12}  {}",
+            terminal_safe(&row.finding_id),
+            terminal_safe(&row.topic),
+            row.expires_at,
+            terminal_safe(admission)
         );
     }
     println!("count:           {}", page.count);
     match page.next_cursor.as_deref() {
-        Some(cursor) => println!("next_cursor:     {cursor}"),
+        Some(cursor) => println!("next_cursor:     {}", terminal_safe(cursor)),
         None => println!("next_cursor:     -"),
     }
     Ok(())
