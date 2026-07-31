@@ -76,23 +76,34 @@ pub(crate) fn policy_covers(policy: &FindingAuthorityKeyPolicy, instant: u64) ->
 /// Whether a membership failure positively contradicts the claimed proof, as
 /// opposed to leaving membership unresolved.
 ///
-/// The distinction decides a verdict: a signature-invalid checkpoint or an
-/// inclusion path that does not reach the signed root is evidence that the
-/// claimed anchoring never happened, while an unsupplied, unpinned, or
-/// misidentified checkpoint is an input nobody established.
+/// The distinction decides a verdict, and only one failure carries the
+/// authority to settle it. The checkpoint is the venue's signed artifact; the
+/// inclusion wrapper around each receipt is not signed by anyone, and the
+/// caller resolves it. So an inclusion path that fails against the signed
+/// root, from a wrapper the checkpoint itself agrees with, is evidence that
+/// the claimed anchoring never happened: the venue's own root does not carry
+/// those bytes at the position its sequencing implies.
+///
+/// Everything else leaves membership unresolved. A checkpoint that is
+/// malformed, that does not verify under the log signer the profile pins, or
+/// that arrives unpinned, duplicated, misidentified, or not at all is an
+/// unauthenticated blob anyone could present. A wrapper that disagrees with
+/// the signed checkpoint about the root, the tree size, or the leaf position,
+/// or that repeats a receipt sequence, is a resolver defect. Neither says
+/// anything about the seller, in either direction.
 pub(crate) fn membership_contradicts(error: &CheckpointMembershipError) -> bool {
     match error {
-        CheckpointMembershipError::CheckpointInvalid(_)
-        | CheckpointMembershipError::CheckpointSignatureInvalid(_)
-        | CheckpointMembershipError::DuplicateCheckpoint(_)
+        CheckpointMembershipError::InclusionInvalid => true,
+        CheckpointMembershipError::NoCheckpoints
         | CheckpointMembershipError::DuplicateProof(_)
         | CheckpointMembershipError::ReceiptSeqOutOfRange(_)
         | CheckpointMembershipError::LeafIndexMismatch
         | CheckpointMembershipError::TreeSizeMismatch
         | CheckpointMembershipError::LeafOffsetMismatch
         | CheckpointMembershipError::RootMismatch
-        | CheckpointMembershipError::InclusionInvalid => true,
-        CheckpointMembershipError::NoCheckpoints
+        | CheckpointMembershipError::CheckpointInvalid(_)
+        | CheckpointMembershipError::CheckpointSignatureInvalid(_)
+        | CheckpointMembershipError::DuplicateCheckpoint(_)
         | CheckpointMembershipError::LogNotPinned(_)
         | CheckpointMembershipError::SignerNotPinned(_)
         | CheckpointMembershipError::UnknownCheckpoint(_)

@@ -8,12 +8,13 @@ use chio_finding::{
     FindingGuaranteeClass, FindingReplayPredicateResult, FindingReplayTerminalResult,
 };
 use chio_finding_challenge::{
-    evaluate_finding_challenge, FindingChallengeInadmissible, FindingChallengeReason,
+    evaluate_finding_challenge, FindingChallengeClassEvidence, FindingChallengeInadmissible,
+    FindingChallengeReason, FindingReplayContradictionEvidence,
 };
 
 use support::{
     expect_inadmissible, expect_reason, foreign_recipe_preimage, outcome_for, replay_case, world,
-    world_with_classes, FindingClasses, PhaseShape, ReplayShape, TestResult,
+    world_with_classes, FindingClasses, PhaseShape, ReplayShape, TestResult, HEX64_THIRD,
 };
 
 #[test]
@@ -189,6 +190,56 @@ fn a_receipt_that_does_not_commit_its_observation_is_indeterminate() -> TestResu
     expect_reason(
         &evaluation,
         FindingChallengeReason::ReplayObservationNotEstablished,
+    )?;
+    Ok(())
+}
+
+/// The environment is the commitment that decides whether an exit code is
+/// reproducible at all, so a run under one the recipe never committed cannot
+/// contradict the claim, however cleanly it reproduced.
+#[test]
+fn a_reproduction_under_an_uncommitted_environment_is_indeterminate() -> TestResult {
+    let world = world()?;
+    let shape = ReplayShape {
+        // Phases that would otherwise confirm a contradiction.
+        phases: vec![PhaseShape::baseline_fails(), PhaseShape::candidate_fails()],
+        environment_digest: Some(HEX64_THIRD.to_string()),
+        ..ReplayShape::default()
+    };
+    let case = replay_case(&world, &shape)?;
+    let reproductions = case.reproductions();
+    let evidence = case.evidence(&reproductions);
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    let adjudication = expect_reason(
+        &evaluation,
+        FindingChallengeReason::ReplayObservationNotEstablished,
+    )?;
+    assert_eq!(
+        adjudication.verdict(),
+        FindingChallengeVerdict::Indeterminate
+    );
+    assert!(!evaluation.authorizes_penalty());
+    outcome_for(&world, &case.challenge, &adjudication)?;
+    Ok(())
+}
+
+#[test]
+fn a_reproduction_set_smaller_than_the_challenge_is_inadmissible() -> TestResult {
+    let world = world()?;
+    let case = replay_case(&world, &ReplayShape::default())?;
+    let reproductions = case.reproductions();
+    // The challenge carries two tuples; the resolver supplied one.
+    let evidence =
+        FindingChallengeClassEvidence::ReplayContradiction(FindingReplayContradictionEvidence {
+            purchase_record: &case.purchase_record,
+            reproductions: &reproductions[..1],
+        });
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::EvidenceSetMismatch("reproductions"),
     )?;
     Ok(())
 }

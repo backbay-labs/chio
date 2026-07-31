@@ -10,8 +10,11 @@
 //! Each reproduction is then held to the same standard: role-scoped to the
 //! profile's replay authority, checkpoint-proved, and terminated by a receipt
 //! whose content hash IS the digest of the exact observation preimage the
-//! challenge carried. Only observations that ran to completion feed the
-//! predicate. A phase that failed to run, timed out, exhausted a cap, or died
+//! challenge carried. Every pre-run commitment the recipe fixed holds for the
+//! run that produced it as well (the runner manifest, the phase input bundle,
+//! and the execution environment), because a divergence in any of them makes
+//! the exit code a fact about the run rather than about the claim. Only
+//! observations that ran to completion feed the predicate. A phase that failed to run, timed out, exhausted a cap, or died
 //! in the runner is an infrastructure fact and can never become seller fraud.
 //!
 //! The contradiction is against the recipe's claimed verdict, not against an
@@ -19,6 +22,7 @@
 //! a conclusion, so the conclusion is computed here from the committed
 //! predicate and compared with what the seller claimed.
 
+use chio_core_types::canonical_json_bytes;
 use chio_core_types::crypto::sha256_hex;
 use chio_finding::{
     FindingChallengeFacet, FindingClaimedVerdict, FindingPredicate, FindingReceiptRole,
@@ -139,6 +143,17 @@ pub(crate) fn evaluate_replay_contradiction(
             FindingChallengeReason::ReplayAuthorityNotEstablished,
         ));
     };
+    // The environment is an exact commitment of the seller's own recipe, so
+    // the digest each run must report is derived from that recipe here rather
+    // than taken from the run.
+    let Ok(committed_environment) =
+        canonical_json_bytes(&recipe.environment).map(|bytes| sha256_hex(&bytes))
+    else {
+        return Ok(facet.adjudication(
+            FindingReplayPredicateResult::Indeterminate,
+            FindingChallengeReason::ReplayObservationNotEstablished,
+        ));
+    };
 
     for ((tuple, carried), resolved) in reproduction
         .iter()
@@ -195,6 +210,14 @@ pub(crate) fn evaluate_replay_contradiction(
                 .allowed_runner_manifests
                 .contains(&observation.runner_manifest_digest)
         {
+            return Ok(facet.adjudication(
+                FindingReplayPredicateResult::Indeterminate,
+                FindingChallengeReason::ReplayObservationNotEstablished,
+            ));
+        }
+        // An exit code produced under an environment the recipe never
+        // committed is a fact about that environment, never about the claim.
+        if observation.environment_digest != committed_environment {
             return Ok(facet.adjudication(
                 FindingReplayPredicateResult::Indeterminate,
                 FindingChallengeReason::ReplayObservationNotEstablished,

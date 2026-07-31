@@ -14,11 +14,16 @@
 //! a key revoked only after publication all leave the question open, and the
 //! evaluator says so instead of reading an outage as innocence or as guilt.
 //!
-//! The passes are ordered deliberately: resolution, then affirmative
-//! invalidity, then unestablished inputs. Resolution runs first so a blob
-//! nobody resolved can never be read as a contradiction, and invalidity runs
-//! before the authority pass so a positively invalid receipt is not excused
-//! by a key-lifecycle gap.
+//! The passes are ordered deliberately: resolution, then anchoring, then
+//! affirmative invalidity, then unestablished inputs. Resolution runs first
+//! so a blob nobody resolved can never be read as a contradiction. Anchoring
+//! runs next because a receipt's content address covers its body while its
+//! signature lives outside that address, and the digests the challenge
+//! carries are the challenger's own claim: the venue's signed checkpoint,
+//! whose leaf IS the canonical receipt envelope, is the only artifact that
+//! pins the exact bytes, so bytes nobody proved to be that leaf can never be
+//! read as the seller's act. Invalidity then runs before the authority pass
+//! so a positively invalid receipt is not excused by a key-lifecycle gap.
 
 use chio_core_types::receipt::body::chio_receipt_id;
 use chio_finding::{
@@ -105,7 +110,44 @@ pub(crate) fn evaluate_evidence_invalid(
         ));
     }
 
-    // Pass 2: affirmative invalidity.
+    // Pass 2: anchoring. Membership against the log the finding committed is
+    // what makes a byte string the seller's artifact rather than the
+    // challenger's, so it is established before anything about those bytes
+    // can support fraud.
+    if let Err(error) = verify_checkpoint_membership(
+        evidence.challenged_receipts,
+        core::slice::from_ref(evidence.challenged_checkpoint),
+        context.profile,
+        &challenged_checkpoint_ref.checkpoint_ref,
+    ) {
+        // Bytes that fail strict verification and are not the checkpointed
+        // leaf establish nothing: anyone holding the finding's receipt can
+        // mint them, because the envelope's signature is outside the content
+        // address the finding names.
+        for resolved in evidence.challenged_receipts {
+            if verify_receipt_strict(&resolved.receipt).is_err() {
+                return Ok(adjudication(
+                    &challenged_ids,
+                    FindingEvidenceInvalidity::InputsUnavailable,
+                    FindingChallengeReason::EvidenceReceiptNotEstablished,
+                ));
+            }
+        }
+        let (invalidity, reason) = if membership_contradicts(&error) {
+            (
+                FindingEvidenceInvalidity::CheckpointContradiction,
+                FindingChallengeReason::EvidenceCheckpointContradiction,
+            )
+        } else {
+            (
+                FindingEvidenceInvalidity::InputsUnavailable,
+                FindingChallengeReason::EvidenceCheckpointNotEstablished,
+            )
+        };
+        return Ok(adjudication(&challenged_ids, invalidity, reason));
+    }
+
+    // Pass 3: affirmative invalidity, over bytes the venue's log commits.
     for resolved in evidence.challenged_receipts {
         if let Err(error) = verify_receipt_strict(&resolved.receipt) {
             return Ok(match error {
@@ -144,27 +186,8 @@ pub(crate) fn evaluate_evidence_invalid(
             ));
         }
     }
-    if let Err(error) = verify_checkpoint_membership(
-        evidence.challenged_receipts,
-        core::slice::from_ref(evidence.challenged_checkpoint),
-        context.profile,
-        &challenged_checkpoint_ref.checkpoint_ref,
-    ) {
-        let (invalidity, reason) = if membership_contradicts(&error) {
-            (
-                FindingEvidenceInvalidity::CheckpointContradiction,
-                FindingChallengeReason::EvidenceCheckpointContradiction,
-            )
-        } else {
-            (
-                FindingEvidenceInvalidity::InputsUnavailable,
-                FindingChallengeReason::EvidenceCheckpointNotEstablished,
-            )
-        };
-        return Ok(adjudication(&challenged_ids, invalidity, reason));
-    }
 
-    // Pass 3: inputs the profile does not establish for this evidence.
+    // Pass 4: inputs the profile does not establish for this evidence.
     let Some(production_policy) = role_policy(context.profile, FindingReceiptRole::Production)
     else {
         return Ok(adjudication(
@@ -174,8 +197,10 @@ pub(crate) fn evaluate_evidence_invalid(
         ));
     };
     for resolved in evidence.challenged_receipts {
+        // A key policy states when the key was an authority, so the instant
+        // it is tested at is the one the receipt was signed at.
         if resolved.receipt.kernel_key != production_policy.key
-            || !policy_covers(production_policy, context.finding.issued_at)
+            || !policy_covers(production_policy, resolved.receipt.timestamp)
         {
             return Ok(adjudication(
                 &challenged_ids,

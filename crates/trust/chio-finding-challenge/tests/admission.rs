@@ -1,6 +1,7 @@
 //! Class-independent admission: the closed compatibility matrix, the
-//! strict-raw-first ingress, the pinned authorities, and the reason
-//! vocabulary's partition of the three verdicts.
+//! strict-raw-first ingress, the pinned authorities, the standing a buyer
+//! filing must carry, and the reason vocabulary's partition of the three
+//! verdicts.
 
 mod support;
 
@@ -15,9 +16,9 @@ use chio_finding_challenge::{
 };
 
 use support::{
-    digest_case, evidence_case, expect_inadmissible, keypair, reissued_profile, replay_case,
-    venue_digest_case, world, world_with_classes, DenyShape, EvidenceShape, FindingClasses,
-    ReplayShape, TestResult,
+    digest_case, evidence_case, evidence_case_with_standing, expect_inadmissible, keypair,
+    reissued_profile, replay_case, tampered_finding, venue_digest_case, world, world_with_classes,
+    DenyShape, EvidenceShape, FindingClasses, ReplayShape, StandingShape, TestResult,
 };
 
 const GUARANTEE_CLASSES: [FindingGuaranteeClass; 3] = [
@@ -236,6 +237,127 @@ fn a_venue_audit_must_verify_under_the_pinned_audit_authority() -> TestResult {
         ) => {}
         other => panic!("expected the challenge to be rejected, got {other:?}"),
     }
+    Ok(())
+}
+
+#[test]
+fn the_finding_artifact_must_verify_as_its_issuer_signed_it() -> TestResult {
+    let world = world()?;
+    let case = digest_case(&world, &DenyShape::seller_origin())?;
+    let evidence = case.evidence();
+    let tampered = tampered_finding(&world)?;
+    let input = FindingChallengeEvaluationInput {
+        challenge: &case.challenge,
+        pinned_audit_authority: &world.audit_authority_key,
+        raw_finding: &tampered,
+        profile: &world.profile,
+        governance_authority: &world.governance_key,
+        evidence: &evidence,
+    };
+    let evaluation = evaluate_finding_challenge(&input);
+    match &evaluation {
+        FindingChallengeEvaluation::Inadmissible(
+            FindingChallengeInadmissible::FindingRejected(_),
+        ) => {}
+        other => panic!("expected the finding to be rejected, got {other:?}"),
+    }
+    assert!(evaluation.verdict().is_none());
+    Ok(())
+}
+
+/// Standing is what makes a buyer's filing this buyer's filing about this
+/// sale. Each of these keeps every other artifact sound, so the gate named by
+/// the expected variant is the only one that can produce the rejection.
+#[test]
+fn standing_must_be_signed_by_the_profiles_purchase_authority() -> TestResult {
+    let world = world()?;
+    let case = evidence_case_with_standing(&world, StandingShape::ForeignAuthority)?;
+    let proofs = case.revocation_proofs();
+    let evidence = case.evidence(&proofs);
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    match &evaluation {
+        FindingChallengeEvaluation::Inadmissible(
+            FindingChallengeInadmissible::StandingRejected(_),
+        ) => {}
+        other => panic!("expected the standing artifact to be rejected, got {other:?}"),
+    }
+    assert!(evaluation.verdict().is_none());
+    Ok(())
+}
+
+#[test]
+fn standing_must_be_the_record_the_challenge_names() -> TestResult {
+    let world = world()?;
+    let case = evidence_case_with_standing(&world, StandingShape::UnnamedRecord)?;
+    let proofs = case.revocation_proofs();
+    let evidence = case.evidence(&proofs);
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::StandingBindingMismatch("purchase_record_envelope_sha256"),
+    )?;
+    Ok(())
+}
+
+#[test]
+fn standing_must_settle_the_challenged_finding() -> TestResult {
+    let world = world()?;
+    let case = evidence_case_with_standing(&world, StandingShape::ForeignFinding)?;
+    let proofs = case.revocation_proofs();
+    let evidence = case.evidence(&proofs);
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::StandingBindingMismatch("finding_id"),
+    )?;
+    Ok(())
+}
+
+#[test]
+fn standing_must_settle_the_challenged_listing() -> TestResult {
+    let world = world()?;
+    let case = evidence_case_with_standing(&world, StandingShape::ForeignListing)?;
+    let proofs = case.revocation_proofs();
+    let evidence = case.evidence(&proofs);
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::StandingBindingMismatch("listing_id"),
+    )?;
+    Ok(())
+}
+
+#[test]
+fn standing_must_belong_to_the_challenger() -> TestResult {
+    let world = world()?;
+    let case = evidence_case_with_standing(&world, StandingShape::ForeignBuyer)?;
+    let proofs = case.revocation_proofs();
+    let evidence = case.evidence(&proofs);
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::StandingBindingMismatch("buyer"),
+    )?;
+    Ok(())
+}
+
+#[test]
+fn standing_must_name_the_purchase_key_the_record_carries() -> TestResult {
+    let world = world()?;
+    let case = evidence_case_with_standing(&world, StandingShape::ForeignPurchaseKey)?;
+    let proofs = case.revocation_proofs();
+    let evidence = case.evidence(&proofs);
+    let evaluation = evaluate_finding_challenge(&world.input(&case.challenge, &evidence));
+
+    expect_inadmissible(
+        &evaluation,
+        &FindingChallengeInadmissible::StandingBindingMismatch("purchase_key"),
+    )?;
     Ok(())
 }
 

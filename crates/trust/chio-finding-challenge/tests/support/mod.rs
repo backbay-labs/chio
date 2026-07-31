@@ -231,12 +231,21 @@ impl Default for FindingClasses {
 pub enum ProductionShape {
     #[default]
     Sound,
-    /// The first receipt carries a signature that belongs to another body.
-    ForeignSignature,
+    /// The checkpoint commits a first receipt whose signature belongs to
+    /// another body, so the venue's own log carries the broken envelope.
+    CheckpointedForeignSignature,
+    /// The log commits the sound first receipt, and the bytes offered to the
+    /// evaluator carry another body's signature. The receipt identifier is a
+    /// content address over the body alone, so the finding that names it is
+    /// byte for byte identical either way.
+    SuppliedForeignSignature,
     /// The first receipt's action commitment contradicts its parameters.
     ActionCommitmentBroken,
     /// The receipts are signed by a key the profile pins for another role.
     ForeignSigner,
+    /// The first receipt is signed before the production key's validity
+    /// window opens.
+    SignedBeforeKeyWindow,
 }
 
 pub fn world() -> Built<World> {
@@ -273,9 +282,13 @@ pub fn world_with(classes: FindingClasses, production: ProductionShape) -> Built
         },
         _ => first_action,
     };
+    let first_signed_at = match production {
+        ProductionShape::SignedBeforeKeyWindow => KEY_VALID_FROM - 1,
+        _ => 1_690_000_000,
+    };
     let mut first = signed_receipt(
         production_signer,
-        1_690_000_000,
+        first_signed_at,
         "finding.produce",
         first_action,
         Decision::Allow,
@@ -291,7 +304,7 @@ pub fn world_with(classes: FindingClasses, production: ProductionShape) -> Built
         HEX64_ALT,
         None,
     )?;
-    if production == ProductionShape::ForeignSignature {
+    if production == ProductionShape::CheckpointedForeignSignature {
         first.signature = second.signature.clone();
     }
     let first_bytes = canonical_json_bytes(&first)?;
@@ -301,6 +314,11 @@ pub fn world_with(classes: FindingClasses, production: ProductionShape) -> Built
     let evidence_checkpoint_ref = checkpoint_reference(&evidence_checkpoint)?;
     let first_id = first.id.clone();
     let second_id = second.id.clone();
+    // The swap happens after the log committed its leaves, so these are the
+    // bytes a challenger supplies rather than the bytes the venue published.
+    if production == ProductionShape::SuppliedForeignSignature {
+        first.signature = second.signature.clone();
+    }
     let evidence_receipts = vec![
         resolve(first, &leaves, 0, 1, 100)?,
         resolve(second, &leaves, 1, 1, 101)?,
@@ -565,15 +583,32 @@ impl World {
 
     /// The settled purchase record both evidence classes rest on.
     pub fn purchase_record(&self) -> Built<SignedFindingPurchaseRecord> {
+        self.purchase_record_shaped(StandingShape::Sound)
+    }
+
+    /// The same record, built to fail exactly one standing gate.
+    pub fn purchase_record_shaped(
+        &self,
+        shape: StandingShape,
+    ) -> Built<SignedFindingPurchaseRecord> {
         let record = FindingPurchaseRecord {
             schema: FINDING_PURCHASE_RECORD_SCHEMA_V1.to_string(),
             purchase_key: derive_purchase_key(HEX64_THIRD, PAYMENT_OPERATION_ID),
             purchase_intent_id: PURCHASE_INTENT_ID.to_string(),
             authoritative_payment_operation_id: PAYMENT_OPERATION_ID.to_string(),
-            buyer: self.buyer.public_key(),
+            buyer: match shape {
+                StandingShape::ForeignBuyer => keypair(77).public_key(),
+                _ => self.buyer.public_key(),
+            },
             payer: self.buyer.public_key(),
-            finding_id: self.finding.finding_id.clone(),
-            listing_id: LISTING_ID.to_string(),
+            finding_id: match shape {
+                StandingShape::ForeignFinding => HEX64_ALT.to_string(),
+                _ => self.finding.finding_id.clone(),
+            },
+            listing_id: match shape {
+                StandingShape::ForeignListing => "finding-listing-02".to_string(),
+                _ => LISTING_ID.to_string(),
+            },
             accepted_bid_envelope_sha256: HEX64_THIRD.to_string(),
             venue_admission_envelope_sha256: HEX64.to_string(),
             accepted_price: usd(5_000),
@@ -583,12 +618,18 @@ impl World {
             delivery_receipt_id: "delivery-receipt-42".to_string(),
             payment_reference: "payment-reference-42".to_string(),
             payout_destination: "rail:venue-ledger:buyer-1".to_string(),
-            recorded_at: 1_740_000_000,
+            // The only difference of an unnamed record: it is a settled
+            // record of the same sale that the challenge does not name.
+            recorded_at: match shape {
+                StandingShape::UnnamedRecord => 1_740_000_001,
+                _ => 1_740_000_000,
+            },
         };
-        Ok(SignedExportEnvelope::sign(
-            record,
-            &self.purchase_authority,
-        )?)
+        let authority = match shape {
+            StandingShape::ForeignAuthority => &self.buyer,
+            _ => &self.purchase_authority,
+        };
+        Ok(SignedExportEnvelope::sign(record, authority)?)
     }
 }
 
@@ -812,8 +853,40 @@ pub enum EvidenceShape {
     /// A checkpoint with the named identity and digest whose signed root
     /// cannot carry the supplied inclusion paths.
     ContradictoryCheckpoint,
+    /// The venue's own checkpoint, with a resolver-supplied inclusion wrapper
+    /// that disagrees with it about the tree.
+    InconsistentProof,
     /// A checkpoint that is not the artifact the reference names at all.
     UnresolvedCheckpoint,
+    /// A checkpoint carrying the pinned log signer's key in its body and
+    /// another key's signature over it.
+    ForgedCheckpoint,
+    /// The challenge contests a receipt the finding never named.
+    UnnamedReceipt,
+    /// The challenge names a checkpoint other than the one the finding
+    /// committed.
+    ForeignCheckpoint,
+}
+
+/// How the standing record, and the standing the challenge declares over it,
+/// are built.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum StandingShape {
+    #[default]
+    Sound,
+    /// Signed by a key the profile does not pin as the purchase authority.
+    ForeignAuthority,
+    /// The evidence carries a settled record other than the one the challenge
+    /// names.
+    UnnamedRecord,
+    /// The record settles a different finding.
+    ForeignFinding,
+    /// The record settles a different listing.
+    ForeignListing,
+    /// The record names a buyer other than the challenger.
+    ForeignBuyer,
+    /// The declared standing names a purchase key the record does not carry.
+    ForeignPurchaseKey,
 }
 
 pub struct EvidenceCase {
@@ -857,7 +930,7 @@ impl EvidenceCase {
 }
 
 pub fn evidence_case(world: &World, shape: EvidenceShape) -> Built<EvidenceCase> {
-    evidence_case_with_revocations(world, shape, Vec::new())
+    build_evidence_case(world, shape, StandingShape::Sound, Vec::new())
 }
 
 pub fn evidence_case_with_revocations(
@@ -865,23 +938,52 @@ pub fn evidence_case_with_revocations(
     shape: EvidenceShape,
     revoked_keys: Vec<RevokedKey>,
 ) -> Built<EvidenceCase> {
-    let purchase_record = world.purchase_record()?;
-    let purchase_record_envelope_sha256 = signed_envelope_sha256(&purchase_record)?;
-    let challenged_refs: Vec<FindingReceiptRef> = world
+    build_evidence_case(world, shape, StandingShape::Sound, revoked_keys)
+}
+
+pub fn evidence_case_with_standing(world: &World, standing: StandingShape) -> Built<EvidenceCase> {
+    build_evidence_case(world, EvidenceShape::Sound, standing, Vec::new())
+}
+
+fn build_evidence_case(
+    world: &World,
+    shape: EvidenceShape,
+    standing: StandingShape,
+    revoked_keys: Vec<RevokedKey>,
+) -> Built<EvidenceCase> {
+    let purchase_record = world.purchase_record_shaped(standing)?;
+    // Every shape but the unnamed record names the record it carries, so the
+    // gate under test is the only one that can fail.
+    let purchase_record_envelope_sha256 = match standing {
+        StandingShape::UnnamedRecord => signed_envelope_sha256(&world.purchase_record()?)?,
+        _ => signed_envelope_sha256(&purchase_record)?,
+    };
+    let declared_purchase_key = match standing {
+        StandingShape::ForeignPurchaseKey => derive_purchase_key(HEX64, PAYMENT_OPERATION_ID),
+        _ => purchase_record.body.purchase_key.clone(),
+    };
+    let mut challenged_refs: Vec<FindingReceiptRef> = world
         .evidence_receipts
         .iter()
         .map(receipt_reference)
         .collect();
-    let challenged_receipts = world
+    let mut challenged_receipts = world
         .evidence_receipts
         .iter()
         .map(clone_resolved)
         .collect::<Built<Vec<ResolvedReceiptEvidence>>>()?;
+    if shape == EvidenceShape::UnnamedReceipt {
+        let unnamed = unnamed_production_receipt(world)?;
+        challenged_refs[0] = receipt_reference(&unnamed);
+        challenged_receipts[0] = unnamed;
+    }
     // The checkpoint is chosen before the challenge is signed, because the
     // challenge binds its digest and a test that wants a contradiction needs
     // a reference that resolves to the contradicting artifact.
     let challenged_checkpoint = match shape {
-        EvidenceShape::Sound => world.evidence_checkpoint.clone(),
+        EvidenceShape::Sound | EvidenceShape::UnnamedReceipt | EvidenceShape::InconsistentProof => {
+            world.evidence_checkpoint.clone()
+        }
         // Same log and sequence, so the identity still matches the finding's
         // reference, but a root the supplied inclusion paths cannot reach.
         EvidenceShape::ContradictoryCheckpoint => build_checkpoint(
@@ -901,11 +1003,55 @@ pub fn evidence_case_with_revocations(
             ],
             &world.production_kernel,
         )?,
-    };
-    let challenged_checkpoint_ref = match shape {
-        EvidenceShape::Sound | EvidenceShape::ContradictoryCheckpoint => {
-            checkpoint_reference(&challenged_checkpoint)?
+        // The same leaves and identity the venue published, signed by a key
+        // that is not the pinned log signer.
+        EvidenceShape::ForgedCheckpoint => {
+            let leaves: Vec<Vec<u8>> = challenged_receipts
+                .iter()
+                .map(|resolved| resolved.canonical_receipt_bytes.clone())
+                .collect();
+            let mut forged = build_checkpoint(1, 100, 101, &leaves, &keypair(88))?;
+            forged.body.kernel_key = world.production_kernel.public_key();
+            forged
         }
+        // A checkpoint of the same log at a sequence the finding never
+        // committed, so its identity is another artifact's.
+        EvidenceShape::ForeignCheckpoint => build_checkpoint(
+            9,
+            900,
+            901,
+            &[b"other-leaf-a".to_vec(), b"other-leaf-b".to_vec()],
+            &world.production_kernel,
+        )?,
+    };
+    match shape {
+        // The wrapper is unsigned, so a wrapper that disagrees with the
+        // signed checkpoint proves nothing. The contradiction case keeps the
+        // two consistent and lets the inclusion path itself fail against the
+        // venue's own root.
+        EvidenceShape::ContradictoryCheckpoint => {
+            let tree =
+                MerkleTree::from_leaves(&[b"other-leaf-a".to_vec(), b"other-leaf-b".to_vec()])?;
+            for (index, resolved) in challenged_receipts.iter_mut().enumerate() {
+                let receipt_seq = resolved.inclusion_proof.receipt_seq;
+                resolved.inclusion_proof = build_inclusion_proof(&tree, index, 1, receipt_seq)?;
+            }
+        }
+        EvidenceShape::InconsistentProof => {
+            for resolved in challenged_receipts.iter_mut() {
+                resolved.inclusion_proof.proof.tree_size =
+                    resolved.inclusion_proof.proof.tree_size.saturating_add(1);
+            }
+        }
+        _ => {}
+    }
+    let challenged_checkpoint_ref = match shape {
+        EvidenceShape::Sound
+        | EvidenceShape::UnnamedReceipt
+        | EvidenceShape::InconsistentProof
+        | EvidenceShape::ContradictoryCheckpoint
+        | EvidenceShape::ForgedCheckpoint
+        | EvidenceShape::ForeignCheckpoint => checkpoint_reference(&challenged_checkpoint)?,
         // The reference names the real checkpoint; the resolver supplied
         // another one.
         EvidenceShape::UnresolvedCheckpoint => world.evidence_checkpoint_ref.clone(),
@@ -916,7 +1062,7 @@ pub fn evidence_case_with_revocations(
         purchase_record_envelope_sha256: purchase_record_envelope_sha256.clone(),
     };
     let authorization = world.buyer_authorization(FindingChallengeStanding::FinalizedPurchase {
-        purchase_key: purchase_record.body.purchase_key.clone(),
+        purchase_key: declared_purchase_key,
         purchase_record_envelope_sha256,
     });
     let affected = vec![world.affected_delivery(&challenged_refs[0])];
@@ -929,6 +1075,22 @@ pub fn evidence_case_with_revocations(
         challenged_checkpoint,
         revoked_keys,
     })
+}
+
+/// A production receipt built exactly like the finding's own evidence, which
+/// the finding does not name.
+fn unnamed_production_receipt(world: &World) -> Built<ResolvedReceiptEvidence> {
+    let receipt = signed_receipt(
+        &world.production_kernel,
+        1_690_000_002,
+        "finding.produce",
+        ToolCallAction::from_parameters(serde_json::json!({ "step": 2 }))?,
+        Decision::Allow,
+        HEX64_THIRD,
+        None,
+    )?;
+    let leaves = vec![canonical_json_bytes(&receipt)?];
+    resolve(receipt, &leaves, 0, 1, 100)
 }
 
 fn clone_resolved(evidence: &ResolvedReceiptEvidence) -> Built<ResolvedReceiptEvidence> {
@@ -992,6 +1154,8 @@ pub struct ReplayShape {
     pub signer: Option<u8>,
     /// Break the receipt-to-observation digest commitment.
     pub break_content_commitment: bool,
+    /// Report an environment other than the one the recipe committed.
+    pub environment_digest: Option<String>,
 }
 
 impl Default for ReplayShape {
@@ -1001,6 +1165,7 @@ impl Default for ReplayShape {
             recipe_preimage: None,
             signer: None,
             break_content_commitment: false,
+            environment_digest: None,
         }
     }
 }
@@ -1047,6 +1212,13 @@ pub fn replay_case(world: &World, shape: &ReplayShape) -> Built<ReplayCase> {
         Some(seed) => keypair(seed),
         None => world.replay_kernel.clone(),
     };
+    // The digest a run reports for its environment is the digest of the
+    // environment the recipe committed, derived the same way the consumer
+    // derives it.
+    let environment_digest = match &shape.environment_digest {
+        Some(digest) => digest.clone(),
+        None => committed_environment_digest(&world.recipe)?,
+    };
 
     let mut observation_texts = Vec::with_capacity(shape.phases.len());
     let mut receipts = Vec::with_capacity(shape.phases.len());
@@ -1062,7 +1234,7 @@ pub fn replay_case(world: &World, shape: &ReplayShape) -> Built<ReplayCase> {
                 FindingRecipePhaseKind::Baseline => HEX64.to_string(),
                 FindingRecipePhaseKind::Candidate => HEX64_ALT.to_string(),
             },
-            environment_digest: HEX64_THIRD.to_string(),
+            environment_digest: environment_digest.clone(),
             terminal_result: phase.terminal,
             exit_code: phase.exit_code,
             report_digest: match phase.phase {
@@ -1130,6 +1302,12 @@ pub fn replay_case(world: &World, shape: &ReplayShape) -> Built<ReplayCase> {
     })
 }
 
+/// The digest of the environment a recipe commits: sha256 over the canonical
+/// JSON of the recipe's `environment` member.
+pub fn committed_environment_digest(recipe: &FindingReplayRecipeInput) -> Built<String> {
+    Ok(sha256_hex(&canonical_json_bytes(&recipe.environment)?))
+}
+
 /// A recipe that differs from the committed one, for the preimage-mismatch
 /// negatives. It stays strictly canonical, so the only thing wrong with it is
 /// that it is not the recipe the finding committed.
@@ -1137,6 +1315,14 @@ pub fn foreign_recipe_preimage(world: &World) -> Built<String> {
     let mut recipe = world.recipe.clone();
     recipe.decision_rule_ref = "decision/replay-v2".to_string();
     Ok(canonical_json_string(&recipe)?)
+}
+
+/// The finding's bytes with one member changed, so the artifact no longer
+/// verifies as the issuer signed it.
+pub fn tampered_finding(world: &World) -> Built<String> {
+    let mut finding = world.finding.clone();
+    finding.bond_ref = "bond:another-allocation".to_string();
+    Ok(canonical_json_string(&finding)?)
 }
 
 /// The same governance profile reissued under a different operator, so its
