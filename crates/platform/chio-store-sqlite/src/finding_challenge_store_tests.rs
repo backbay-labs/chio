@@ -1525,7 +1525,13 @@ fn a_successful_appeal_returns_the_listing_to_selling() {
     );
     fixture
         .store
-        .uphold_liability(&head.liability_key, &challenge.challenge_id, 1, NOW + 5)
+        .uphold_liability(
+            &head.liability_key,
+            &challenge.challenge_id,
+            1,
+            NOW + CLAIM_WINDOW,
+            NOW + 5,
+        )
         .expect("uphold liability");
     fixture
         .store
@@ -1613,7 +1619,13 @@ fn only_an_exoneration_lifts_a_listing_sales_block() {
     );
     fixture
         .store
-        .uphold_liability(&head.liability_key, &challenge.challenge_id, 0, NOW + 3)
+        .uphold_liability(
+            &head.liability_key,
+            &challenge.challenge_id,
+            0,
+            NOW + CLAIM_WINDOW,
+            NOW + 3,
+        )
         .expect("uphold liability");
 
     assert!(
@@ -1719,7 +1731,13 @@ fn a_listing_another_liability_still_holds_stays_blocked() {
         );
         fixture
             .store
-            .uphold_liability(&head.liability_key, &challenge.challenge_id, 0, NOW + 3)
+            .uphold_liability(
+                &head.liability_key,
+                &challenge.challenge_id,
+                0,
+                NOW + CLAIM_WINDOW,
+                NOW + 3,
+            )
             .expect("uphold liability");
         fixture
             .store
@@ -1785,6 +1803,7 @@ fn a_listing_another_liability_still_holds_stays_blocked() {
             &third.liability_key,
             &third_challenge.challenge_id,
             0,
+            NOW + CLAIM_WINDOW,
             NOW + 9,
         )
         .expect("uphold the third head");
