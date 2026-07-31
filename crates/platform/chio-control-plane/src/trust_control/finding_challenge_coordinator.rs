@@ -37,9 +37,10 @@
 //!   before the liability enters finalizing. An unresolved appeal
 //!   quarantines; it is never read as a denial.
 //! - [`FindingChallengeCoordinator::finalize`] verifies the enforcement
-//!   pair through the settlement choke point, plans the impairment,
-//!   dispatches it through the injected publisher, and settles only on a
-//!   confirmed reconciliation.
+//!   pair through the settlement choke point, re-reads the chain state the
+//!   signed snapshot rests on, plans the impairment, dispatches it through
+//!   the injected publisher, and settles only on a confirmed
+//!   reconciliation the chain still qualifies.
 //!
 //! Compiled only under the `cognition-market-experimental` feature.
 
@@ -88,9 +89,10 @@ use chio_open_market::penalty::{
     SignedOpenMarketPenalty,
 };
 use chio_settle::{
-    dispatch_finding_impairment, plan_finding_impairment, verify_finding_enforcement,
-    EvmBondSnapshot, FindingEnforcementPins, FindingImpairmentOutcome, FindingImpairmentPublisher,
-    FindingImpairmentQuarantine, SettlementChainConfig,
+    dispatch_finding_impairment, plan_finding_impairment, recheck_finding_bond_observation,
+    verify_finding_enforcement, EvmBondSnapshot, FindingBondObservationSource,
+    FindingEnforcementPins, FindingImpairmentOutcome, FindingImpairmentPublisher,
+    FindingImpairmentQuarantine, SettlementChainConfig, VerifiedFindingEnforcement,
 };
 use chio_store_sqlite::{
     FindingChallengeAuthorizationBranch, FindingChallengeEvaluationStart,
@@ -366,6 +368,8 @@ pub enum ChallengeCoordinatorError {
     LiabilityIdentity(&'static str),
     #[error("settlement choke point rejected the enforcement: {0}")]
     Settlement(String),
+    #[error("bond observation no longer qualifies at the chain head: {0}")]
+    BondObservation(String),
     #[error("impairment publisher failed: {0}")]
     Publisher(String),
     #[error("artifact body failed its own validator: {0}")]
@@ -1374,6 +1378,13 @@ impl FindingChallengeCoordinator {
     /// transactions, so an attempt can die between them. A re-entry that
     /// finds the fenced intent already confirmed dispatches nothing and
     /// finishes the settlement instead.
+    ///
+    /// Live state. A signed snapshot attests what an observer saw at one
+    /// block, which is not the same as what is true now. The injected
+    /// observation source is read twice against that snapshot, once before
+    /// the call is prepared and once before the head settles, so a reorg
+    /// or an operator rotation that lands across the broadcast is observed
+    /// rather than assumed away.
     #[allow(clippy::too_many_arguments)]
     pub fn finalize(
         &self,
@@ -1386,6 +1397,7 @@ impl FindingChallengeCoordinator {
         operator_address: &str,
         vault_snapshot: &EvmBondSnapshot,
         anchor_proof: &AnchorInclusionProof,
+        observations: &dyn FindingBondObservationSource,
         publisher: &dyn FindingImpairmentPublisher,
         now: u64,
     ) -> Result<FindingFinalization, ChallengeCoordinatorError> {
@@ -1439,6 +1451,13 @@ impl FindingChallengeCoordinator {
         };
         let verified = verify_finding_enforcement(enforcement, bond_snapshot, &pins, now)
             .map_err(|error| ChallengeCoordinatorError::Settlement(error.to_string()))?;
+        // The snapshot's signature proves who observed the collateral, not
+        // that what they observed is still true. A block reorged out from
+        // under it, a rotated operator key, or a registry that no longer
+        // qualifies the observer all leave the figure the amount was
+        // checked against unknown, so the chain is re-read before the call
+        // is prepared.
+        self.require_qualified_observation(&verified, observations)?;
         let planned = plan_finding_impairment(
             settlement_config,
             &verified,
@@ -1474,11 +1493,30 @@ impl FindingChallengeCoordinator {
 
         match &outcome {
             FindingImpairmentOutcome::Confirmed { .. } => {
+                // A finalized transaction was proved to be this exact
+                // intent, so the intent is confirmed whatever the chain
+                // did afterwards: leaving it dispatchable would invite a
+                // second impairment of the same collateral.
                 self.challenges
                     .advance_effect_intent(&intent_key, FindingEffectIntentState::Confirmed, now)
                     .map_err(|error| {
                         ChallengeCoordinatorError::ChallengeStore(error.to_string())
                     })?;
+                // Settling is the separate question. The head closes only
+                // if the observation the amount was computed against is
+                // still the canonical one at the receipt's finality; a
+                // reorg or a rotation across the broadcast means an
+                // operator has to reconcile what actually moved, and a
+                // settled head would have closed the last edge to do it
+                // from.
+                if let Err(error) = self.require_qualified_observation(&verified, observations) {
+                    self.challenges
+                        .set_liability_quarantine(liability_key, true, now)
+                        .map_err(|store| {
+                            ChallengeCoordinatorError::ChallengeStore(store.to_string())
+                        })?;
+                    return Err(error);
+                }
                 self.challenges
                     .settle_liability(liability_key, FindingLiabilityState::Finalizing, now)
                     .map_err(|error| {
@@ -1970,6 +2008,30 @@ impl FindingChallengeCoordinator {
         {
             return Err(ChallengeCoordinatorError::LiabilityIdentity(
                 "liability_key",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Re-read the chain and identity state behind a verified snapshot and
+    /// require it to still qualify.
+    ///
+    /// The read itself is injected, so a source that cannot complete it
+    /// denies rather than returning state it is unsure of. Unknown chain
+    /// state and a disqualified observation are the same answer here:
+    /// neither authorizes moving collateral.
+    fn require_qualified_observation(
+        &self,
+        verified: &VerifiedFindingEnforcement,
+        observations: &dyn FindingBondObservationSource,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let observed = observations
+            .observe(verified)
+            .map_err(|error| ChallengeCoordinatorError::BondObservation(error.to_string()))?;
+        let verdict = recheck_finding_bond_observation(verified, &observed);
+        if !verdict.is_qualified() {
+            return Err(ChallengeCoordinatorError::BondObservation(
+                verdict.reason().to_owned(),
             ));
         }
         Ok(())

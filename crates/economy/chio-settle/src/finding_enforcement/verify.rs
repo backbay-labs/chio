@@ -394,6 +394,51 @@ impl FindingBondObservationVerdict {
     pub const fn is_qualified(&self) -> bool {
         matches!(self, Self::Qualified)
     }
+
+    /// A stable one-line reason a caller can report a refusal with.
+    #[must_use]
+    pub const fn reason(&self) -> &'static str {
+        match self {
+            Self::Qualified => "observation still qualifies",
+            Self::Reorged { .. } => "the block the bond snapshot observed is no longer canonical",
+            Self::OperatorRotated {
+                field: FindingOperatorQualification::IdentityRegistryRecord,
+            } => "the identity registry record behind the observation changed",
+            Self::OperatorRotated {
+                field: FindingOperatorQualification::OperatorKeyHash,
+            } => "the operator key hash behind the observation rotated",
+            Self::OperatorRotated {
+                field: FindingOperatorQualification::OperatorKeyEpoch,
+            } => "the operator key epoch behind the observation advanced",
+            Self::OperatorNotActive => {
+                "the identity registry no longer lists the observing operator as active"
+            }
+        }
+    }
+}
+
+/// Live re-read of the chain and identity state one verified snapshot rests
+/// on.
+///
+/// The trait is dyn-compatible so a coordinator can hold an
+/// `Arc<dyn FindingBondObservationSource>`. It exists because the recheck has
+/// to run twice against genuinely different reads: once before the impairment
+/// is planned, and once after its receipt has finalized. Handing the same
+/// captured observation to both would make the second check vacuous, which is
+/// exactly the window a reorg lands in.
+///
+/// Implementations read the chain and the identity registry. This crate opens
+/// no sockets and ships no adapter.
+pub trait FindingBondObservationSource: Send + Sync {
+    /// Read the state currently behind the verified snapshot.
+    ///
+    /// An implementation that cannot complete the read returns an error
+    /// rather than a stale or partial observation: unknown chain state must
+    /// deny, never qualify.
+    fn observe(
+        &self,
+        verified: &VerifiedFindingEnforcement,
+    ) -> Result<FindingBondObservationRecheck, SettlementError>;
 }
 
 /// Recheck the observed block hash and the operator qualification behind a

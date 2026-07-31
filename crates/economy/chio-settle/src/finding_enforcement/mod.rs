@@ -44,8 +44,8 @@ pub use reconcile::{
 };
 pub use verify::{
     recheck_finding_bond_observation, verify_finding_enforcement, FindingBondObservationRecheck,
-    FindingBondObservationVerdict, FindingEnforcementPins, FindingOperatorQualification,
-    VerifiedFindingEnforcement,
+    FindingBondObservationSource, FindingBondObservationVerdict, FindingEnforcementPins,
+    FindingOperatorQualification, VerifiedFindingEnforcement,
 };
 
 use alloy_primitives::{Address, FixedBytes, B256};

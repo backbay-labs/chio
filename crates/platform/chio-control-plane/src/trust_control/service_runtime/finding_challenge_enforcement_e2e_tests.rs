@@ -109,10 +109,11 @@ use chio_open_market::listing::{
 use chio_open_market::penalty::OpenMarketPenaltyEffectiveState;
 use chio_settle::{
     settlement_devnet_rpc_egress_contract, EvmBondSnapshot, EvmTransactionReceipt,
-    FindingImpairmentAttempt, FindingImpairmentOutcome, FindingImpairmentPublishError,
-    FindingImpairmentPublisher, FindingImpairmentQuarantine, FindingVaultRejection,
-    PreparedEvmCall, SettlementChainConfig, SettlementEvidenceConfig, SettlementFinalityStatus,
-    SettlementOracleConfig, SettlementPolicyConfig, StoredImpairmentTransaction,
+    FindingBondObservationRecheck, FindingImpairmentAttempt, FindingImpairmentOutcome,
+    FindingImpairmentPublishError, FindingImpairmentPublisher, FindingImpairmentQuarantine,
+    FindingVaultRejection, PreparedEvmCall, SettlementChainConfig, SettlementEvidenceConfig,
+    SettlementFinalityStatus, SettlementOracleConfig, SettlementPolicyConfig,
+    StoredImpairmentTransaction,
 };
 use chio_store_sqlite::finding_market_store::SqliteFindingMarketStore;
 use chio_store_sqlite::{
@@ -3886,6 +3887,63 @@ fn evm_vault_snapshot_for(vault_id: &str) -> EvmBondSnapshot {
     }
 }
 
+/// The chain and identity state the signed snapshot named, as an operator
+/// would re-read it when nothing has moved.
+fn qualified_observation() -> FindingBondObservationRecheck {
+    FindingBondObservationRecheck {
+        block_hash: Some(chain_hash(0xbb)),
+        identity_registry_record: "registry/operators/venue-42".to_string(),
+        operator_key_hash: OPERATOR_KEY_HASH.to_string(),
+        operator_key_epoch: 3,
+        operator_active: true,
+    }
+}
+
+/// An observation source that replays a fixed script, one entry per read.
+/// Two reads happen on a settling finalization, so a script can put the
+/// chain in one state before the call is prepared and another after its
+/// receipt finalized.
+struct ScriptedObservations {
+    reads: Mutex<std::collections::VecDeque<FindingBondObservationRecheck>>,
+    trailing: FindingBondObservationRecheck,
+}
+
+impl ScriptedObservations {
+    /// Every read reports the state the snapshot named.
+    fn qualified() -> Self {
+        Self {
+            reads: Mutex::new(std::collections::VecDeque::new()),
+            trailing: qualified_observation(),
+        }
+    }
+
+    /// The named reads happen first; every read after them reports the
+    /// state the snapshot named.
+    fn then_qualified(reads: Vec<FindingBondObservationRecheck>) -> Self {
+        Self {
+            reads: Mutex::new(reads.into()),
+            trailing: qualified_observation(),
+        }
+    }
+}
+
+impl chio_settle::FindingBondObservationSource for ScriptedObservations {
+    fn observe(
+        &self,
+        _verified: &chio_settle::VerifiedFindingEnforcement,
+    ) -> Result<FindingBondObservationRecheck, chio_settle::SettlementError> {
+        let scripted = match self.reads.lock() {
+            Ok(mut guard) => guard.pop_front(),
+            Err(_) => {
+                return Err(chio_settle::SettlementError::InvalidInput(
+                    "observation script is poisoned".to_string(),
+                ))
+            }
+        };
+        Ok(scripted.unwrap_or_else(|| self.trailing.clone()))
+    }
+}
+
 /// A publisher that reports the vault burned this evidence hash without
 /// producing the transaction that did it. That is exactly the ambiguity
 /// the choke point must refuse to read as a slash.
@@ -4070,6 +4128,17 @@ impl FinalizingLiability {
         publisher: &dyn FindingImpairmentPublisher,
         now: u64,
     ) -> Result<FindingFinalization, AnyError> {
+        Ok(self.finalize_observing(&ScriptedObservations::qualified(), publisher, now)??)
+    }
+
+    /// The same run against a caller-scripted view of the chain, so a test
+    /// can move the state the signed snapshot rests on under it.
+    fn finalize_observing(
+        &self,
+        observations: &dyn chio_settle::FindingBondObservationSource,
+        publisher: &dyn FindingImpairmentPublisher,
+        now: u64,
+    ) -> Result<Result<FindingFinalization, ChallengeCoordinatorError>, AnyError> {
         Ok(self.coordinator.finalize(
             &self.liability_key,
             &self.enforcement,
@@ -4080,9 +4149,10 @@ impl FinalizingLiability {
             &settlement_config()?.operator_address,
             &evm_vault_snapshot(),
             &anchor_proof()?,
+            observations,
             publisher,
             now,
-        )?)
+        ))
     }
 
     fn intent_state(&self) -> Result<FindingEffectIntentState, AnyError> {
@@ -4316,6 +4386,82 @@ fn finding_challenge_a_confirmed_impairment_settles_without_dispatching_again() 
 }
 
 #[test]
+fn finding_challenge_a_reorged_bond_observation_never_reaches_the_publisher() -> TestResult {
+    let case = finalizing_liability()?;
+    // The observer signed for a block the chain no longer carries at that
+    // height, so what it reported about the collateral is unknown.
+    let reorged = FindingBondObservationRecheck {
+        block_hash: Some(chain_hash(0xcd)),
+        ..qualified_observation()
+    };
+
+    let refused = case
+        .finalize_observing(
+            &ScriptedObservations::then_qualified(vec![reorged]),
+            &UnreachablePublisher,
+            SETTLEMENT_NOW,
+        )?
+        .expect_err("a snapshot whose block was reorged out authorizes nothing");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::BondObservation(_)
+    ));
+    assert_eq!(
+        case.intent_state()?,
+        FindingEffectIntentState::Pending,
+        "nothing was dispatched, so the intent never left its fence"
+    );
+    let parked = case.head()?;
+    assert_eq!(parked.state, FindingLiabilityState::Finalizing);
+    assert!(case.deployment.purchases.sales_blocked(LISTING_ID)?);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_an_operator_rotation_across_the_broadcast_never_settles() -> TestResult {
+    let case = finalizing_liability()?;
+    let publisher = MiningPublisher::new();
+
+    // The first attempt broadcasts and comes back unmined, which leaves
+    // the intent dispatchable.
+    case.finalize(&publisher, SETTLEMENT_NOW)?;
+    assert_eq!(case.intent_state()?, FindingEffectIntentState::Failed);
+
+    // The transaction then mines and finalizes, but the operator identity
+    // the observation was qualified under rotated in the meantime. The
+    // impairment is real and the intent confirms; the head must not.
+    let rotated = FindingBondObservationRecheck {
+        operator_key_epoch: 4,
+        ..qualified_observation()
+    };
+    let refused = case
+        .finalize_observing(
+            &ScriptedObservations::then_qualified(vec![qualified_observation(), rotated]),
+            &publisher,
+            SETTLEMENT_NOW + 60,
+        )?
+        .expect_err("a rotated operator leaves the impairment for reconciliation");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::BondObservation(_)
+    ));
+    assert_eq!(
+        case.intent_state()?,
+        FindingEffectIntentState::Confirmed,
+        "the transaction was proved to be this intent, so it is never redispatched"
+    );
+    let parked = case.head()?;
+    assert_eq!(
+        parked.state,
+        FindingLiabilityState::Finalizing,
+        "the head stays open for the operator who has to reconcile it"
+    );
+    assert!(parked.quarantined);
+    assert!(case.deployment.purchases.sales_blocked(LISTING_ID)?);
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_an_enforcement_naming_another_vault_never_reaches_the_publisher() -> TestResult
 {
     let case = finalizing_liability()?;
@@ -4343,6 +4489,7 @@ fn finding_challenge_an_enforcement_naming_another_vault_never_reaches_the_publi
             &settlement_config()?.operator_address,
             &evm_vault_snapshot_for(&elsewhere),
             &anchor_proof()?,
+            &ScriptedObservations::qualified(),
             &UnreachablePublisher,
             SETTLEMENT_NOW,
         )
