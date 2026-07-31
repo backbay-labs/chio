@@ -52,16 +52,15 @@ use chio_core::web3::anchors::AnchorInclusionProof;
 use chio_finding::{
     compute_enforcement_id, derive_outcome_id, ensure_challenge_class_compatibility,
     signed_envelope_sha256, verify_finding, verify_pinned_envelope, verify_signed_audit_epoch,
-    verify_signed_challenge, verify_signed_challenge_outcome, verify_signed_purchase_record,
-    verify_signed_market_terms,
-    Finding, FindingChallenge, FindingChallengeAuthorization, FindingChallengeAuthorizationKind,
-    FindingChallengeEnforcement, FindingChallengeEvidenceKind, FindingChallengeOutcome,
-    FindingEffectIntentBinding, FindingEnforcementDestination, FindingPenaltyCalculation,
-    FindingPurchaseRecord, SignedFindingAuditEpoch, SignedFindingChallenge,
-    SignedFindingChallengeEnforcement,
-    SignedFindingChallengeOutcome, SignedFindingChallengeVerifierProfile,
-    SignedFindingFinalizedBondSnapshot, SignedFindingMarketTerms, SignedFindingPurchaseRecord,
-    FINDING_CHALLENGE_ENFORCEMENT_SCHEMA_V1, FINDING_CHALLENGE_OUTCOME_SCHEMA_V1,
+    verify_signed_challenge, verify_signed_challenge_outcome, verify_signed_market_terms,
+    verify_signed_purchase_record, Finding, FindingChallenge, FindingChallengeAuthorization,
+    FindingChallengeEnforcement, FindingChallengeEvidenceKind,
+    FindingChallengeOutcome, FindingEffectIntentBinding, FindingEnforcementDestination,
+    FindingPenaltyCalculation, FindingPurchaseRecord, SignedFindingAuditEpoch,
+    SignedFindingChallenge, SignedFindingChallengeEnforcement, SignedFindingChallengeOutcome,
+    SignedFindingChallengeVerifierProfile, SignedFindingFinalizedBondSnapshot,
+    SignedFindingMarketTerms, SignedFindingPurchaseRecord, FINDING_CHALLENGE_ENFORCEMENT_SCHEMA_V1,
+    FINDING_CHALLENGE_OUTCOME_SCHEMA_V1,
 };
 use chio_finding_challenge::{
     evaluate_finding_challenge, FindingChallengeClassEvidence, FindingChallengeEvaluation,
@@ -3078,10 +3077,4 @@ fn case_state_name(case: &SignedGenericGovernanceCase) -> &'static str {
         GenericGovernanceCaseState::Denied => "denied",
         GenericGovernanceCaseState::Superseded => "superseded",
     }
-}
-
-/// Whether the challenge lane authorization branch names a challenger.
-#[must_use]
-pub const fn branch_names_challenger(kind: FindingChallengeAuthorizationKind) -> bool {
-    matches!(kind, FindingChallengeAuthorizationKind::BuyerSubmission)
 }
