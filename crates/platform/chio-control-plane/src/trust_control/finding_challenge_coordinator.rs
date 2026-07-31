@@ -331,6 +331,8 @@ pub enum ChallengeCoordinatorError {
     PurchaseOutsideAllocation(String),
     #[error("purchase record {0} names a payout destination that was never admitted")]
     UnadmittedPayoutDestination(String),
+    #[error("purchase record {0} attests a realized spend the bond currency does not carry")]
+    PurchaseCurrencyMismatch(String),
     #[error("checked slash arithmetic refused the distribution: {0}")]
     SlashArithmetic(String),
     #[error("sealed claim accounting does not match the recomputed distribution")]
@@ -2042,8 +2044,9 @@ impl FindingChallengeCoordinator {
     /// authority, name this liability's finding and listing, sit at or
     /// below the frozen cutoff on a slot that closed against a settled
     /// record, have charged its exposure to this liability's allocation,
-    /// and pay a destination that was admitted at capture. No
-    /// caller-supplied amount or address survives.
+    /// pay a destination that was admitted at capture, and be denominated
+    /// in the bond currency. No caller-supplied amount or address
+    /// survives.
     fn seal_claim_snapshot(
         &self,
         liability_key: &str,
@@ -2053,7 +2056,12 @@ impl FindingChallengeCoordinator {
         collateral: &FindingCollateralFacts<'_>,
         now: u64,
     ) -> Result<SealedClaimSnapshot, ChallengeCoordinatorError> {
-        let harms = self.verified_harms(identity, cutoff_slot, claim_candidates)?;
+        let harms = self.verified_harms(
+            identity,
+            &collateral.base_finding_stake.currency,
+            cutoff_slot,
+            claim_candidates,
+        )?;
         let total_realized_spend_units = harms
             .iter()
             .try_fold(0_u64, |total, harm| {
@@ -2119,6 +2127,7 @@ impl FindingChallengeCoordinator {
     fn verified_harms(
         &self,
         identity: &FindingLiabilityIdentity<'_>,
+        bond_currency: &str,
         cutoff_slot: u64,
         claim_candidates: &[String],
     ) -> Result<Vec<VerifiedHarm>, ChallengeCoordinatorError> {
@@ -2189,6 +2198,15 @@ impl FindingChallengeCoordinator {
                 .any(|(_, destination)| destination == &record.payout_destination)
             {
                 return Err(ChallengeCoordinatorError::UnadmittedPayoutDestination(
+                    purchase_key.clone(),
+                ));
+            }
+            // A verified harm carries bare units that the distribution
+            // reads as bond currency, so the denomination has to be proven
+            // here. Folding a spend attested in another currency would pay
+            // it out unit for unit against collateral it never priced.
+            if record.realized_spend.currency != bond_currency {
+                return Err(ChallengeCoordinatorError::PurchaseCurrencyMismatch(
                     purchase_key.clone(),
                 ));
             }

@@ -3029,6 +3029,55 @@ fn finding_challenge_a_sale_from_the_previous_backing_claims_nothing() -> TestRe
 }
 
 #[test]
+fn finding_challenge_harm_in_another_currency_seals_nothing() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let governance = governance()?;
+    let ready = ready_to_uphold(&deployment, &coordinator)?;
+    let sale = settle_purchase(&deployment, "alpha", BUYER_ONE_DESTINATION, 60, NOW)?;
+
+    // A verified harm carries bare units, so a bond denominated in
+    // anything but the currency the sale realized would pay those units
+    // out one for one against collateral that never priced them.
+    let stake = MonetaryAmount {
+        units: 300,
+        currency: "EUR".to_string(),
+    };
+    let required = MonetaryAmount {
+        units: 5_000,
+        currency: "EUR".to_string(),
+    };
+    let refused = coordinator
+        .uphold(
+            &ready.challenge_id,
+            &ready.outcome,
+            &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
+            1,
+            &[sale.purchase_key],
+            &collateral_facts(&stake, &required, &deployment.allocation_id, 5_000),
+            &governance.context(),
+            &governance.sanction_case,
+            NOW + 2,
+        )
+        .expect_err("a spend attested in another currency is not a bond-currency harm");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::PurchaseCurrencyMismatch(_)
+    ));
+    assert!(
+        coordinator
+            .sealed_claim(&derive_liability_key(
+                &derive_defect_key(&ready.finding.finding_id),
+                VENUE_ID,
+                &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
+            ))?
+            .is_none(),
+        "no accounting is sealed from spends the bond never priced"
+    );
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_sealed_snapshot_distribution_sums_exactly() -> TestResult {
     let case = upheld_liability()?;
     let sealed = &case.upheld.sealed;
