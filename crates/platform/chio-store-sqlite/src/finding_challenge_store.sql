@@ -181,6 +181,10 @@ CREATE TABLE IF NOT EXISTS liability_heads (
     upheld_challenge_id TEXT REFERENCES challenges(challenge_id),
     purchase_cutoff_slot INTEGER
         CHECK (purchase_cutoff_slot IS NULL OR purchase_cutoff_slot >= 0),
+    -- Trusted time at which the seller-signed claim window closes. No
+    -- accounting may be sealed before it, so harmed buyers and omission
+    -- proofs keep the whole window they were promised.
+    claim_deadline INTEGER CHECK (claim_deadline IS NULL OR claim_deadline > 0),
     snapshot_digest TEXT CHECK (
         snapshot_digest IS NULL
         OR (length(snapshot_digest) = 64
@@ -199,9 +203,10 @@ CREATE TABLE IF NOT EXISTS liability_heads (
     -- An open liability names no upheld challenge, and every state past
     -- open names exactly the one that carried it there.
     CHECK ((state = 'open') = (upheld_challenge_id IS NULL)),
-    -- The cutoff freezes in the same transaction that records the upheld
-    -- challenge, so neither exists without the other.
+    -- The cutoff and the claim deadline freeze in the same transaction
+    -- that records the upheld challenge, so none exists without the rest.
     CHECK ((upheld_challenge_id IS NULL) = (purchase_cutoff_slot IS NULL)),
+    CHECK ((upheld_challenge_id IS NULL) = (claim_deadline IS NULL)),
     -- Both snapshot commitments are sealed together or not at all.
     CHECK ((snapshot_digest IS NULL) = (allocation_digest IS NULL))
 );
@@ -234,6 +239,8 @@ WHEN (OLD.upheld_challenge_id IS NOT NULL
       AND NEW.upheld_challenge_id IS NOT OLD.upheld_challenge_id)
   OR (OLD.purchase_cutoff_slot IS NOT NULL
       AND NEW.purchase_cutoff_slot IS NOT OLD.purchase_cutoff_slot)
+  OR (OLD.claim_deadline IS NOT NULL
+      AND NEW.claim_deadline IS NOT OLD.claim_deadline)
   OR (OLD.snapshot_digest IS NOT NULL
       AND NEW.snapshot_digest IS NOT OLD.snapshot_digest)
   OR (OLD.allocation_digest IS NOT NULL

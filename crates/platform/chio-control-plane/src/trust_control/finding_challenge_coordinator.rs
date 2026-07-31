@@ -26,9 +26,10 @@
 //!   forfeits, and a closed retry window returns the lock exactly once
 //!   without charging a second fee.
 //! - [`FindingChallengeCoordinator::uphold`] runs the critical
-//!   transaction: the liability compare-and-set, the sales block, and the
-//!   purchase-cutoff freeze commit together, then the pre-cutoff slots
-//!   must close before the claim snapshot is computed and sealed, then the
+//!   transaction: the liability compare-and-set, the sales block, the
+//!   purchase-cutoff freeze, and the seller-signed claim deadline commit
+//!   together, then the pre-cutoff slots must close and that deadline must
+//!   elapse before the claim snapshot is computed and sealed, then the
 //!   pending-appeal sanction and hold are minted and evaluated.
 //! - [`FindingChallengeCoordinator::resolve_appeal`] reverses a timely
 //!   successful appeal, or, on appeal finality with no reversal, signs the
@@ -51,14 +52,15 @@ use chio_finding::{
     compute_enforcement_id, derive_outcome_id, ensure_challenge_class_compatibility,
     signed_envelope_sha256, verify_finding, verify_pinned_envelope, verify_signed_audit_epoch,
     verify_signed_challenge, verify_signed_challenge_outcome, verify_signed_purchase_record,
+    verify_signed_market_terms,
     Finding, FindingChallenge, FindingChallengeAuthorization, FindingChallengeAuthorizationKind,
     FindingChallengeEnforcement, FindingChallengeEvidenceKind, FindingChallengeOutcome,
     FindingEffectIntentBinding, FindingEnforcementDestination, FindingPenaltyCalculation,
     FindingPurchaseRecord, SignedFindingAuditEpoch, SignedFindingChallenge,
-    SignedFindingChallengeEnforcement, SignedFindingChallengeOutcome,
-    SignedFindingChallengeVerifierProfile, SignedFindingFinalizedBondSnapshot,
-    SignedFindingPurchaseRecord, FINDING_CHALLENGE_ENFORCEMENT_SCHEMA_V1,
-    FINDING_CHALLENGE_OUTCOME_SCHEMA_V1,
+    SignedFindingChallengeEnforcement,
+    SignedFindingChallengeOutcome, SignedFindingChallengeVerifierProfile,
+    SignedFindingFinalizedBondSnapshot, SignedFindingMarketTerms, SignedFindingPurchaseRecord,
+    FINDING_CHALLENGE_ENFORCEMENT_SCHEMA_V1, FINDING_CHALLENGE_OUTCOME_SCHEMA_V1,
 };
 use chio_finding_challenge::{
     evaluate_finding_challenge, FindingChallengeClassEvidence, FindingChallengeEvaluation,
@@ -321,7 +323,11 @@ pub enum ChallengeCoordinatorError {
     OutcomeBinding,
     #[error("collateral facts do not name the allocation this liability is charged to")]
     CollateralAllocation,
-    #[error("pre-cutoff purchase slots have not all closed")]
+    #[error("signed market terms rejected: {0}")]
+    TermsEnvelope(String),
+    #[error("market terms do not bind this liability: {0}")]
+    TermsBinding(&'static str),
+    #[error("the claim window this liability owes has not closed")]
     ClaimWindowOpen,
     #[error("purchase record {0} is not resolvable in the authoritative index")]
     UnknownPurchaseRecord(String),
@@ -1012,20 +1018,25 @@ impl FindingChallengeCoordinator {
     /// The critical transaction, and everything that has to follow it
     /// before an appeal window can open.
     ///
-    /// The liability compare-and-set, the sales block, and the purchase
-    /// cutoff freeze commit in one store call on the connection the
-    /// purchase store shares, so no slot can open above the cutoff and
-    /// below the block. The claim snapshot then waits: every slot at or
-    /// below the frozen cutoff must have reached a settled record or a
-    /// denial before the accounting is computed, because a slot still in
-    /// flight is a buyer who may yet belong in it. Only then is the
-    /// snapshot sealed, the sanction recorded, and the pending-appeal hold
-    /// minted and evaluated.
+    /// The liability compare-and-set, the sales block, the purchase cutoff
+    /// freeze, and the claim deadline commit in one store call on the
+    /// connection the purchase store shares, so no slot can open above the
+    /// cutoff and below the block. The claim snapshot then waits on two
+    /// conditions. Every slot at or below the frozen cutoff must have
+    /// reached a settled record or a denial, because a slot still in
+    /// flight is a buyer who may yet belong in it. And the seller-signed
+    /// claim window must have elapsed, because the snapshot is immutable:
+    /// sealing it the instant adjudication lands would close the payout
+    /// against every harmed buyer and omission proof still inside the
+    /// window the seller signed for. Only then is the snapshot sealed, the
+    /// sanction recorded, and the pending-appeal hold minted and
+    /// evaluated.
     ///
-    /// Returns [`ChallengeCoordinatorError::ClaimWindowOpen`] while slots
-    /// remain open. That is a retry, not a failure: the liability stays
+    /// Returns [`ChallengeCoordinatorError::ClaimWindowOpen`] until both
+    /// hold. That is a retry, not a failure: the liability stays
     /// upheld-pending-claims with sales already blocked, and a later call
-    /// replays the compare-and-set as a no-op and continues.
+    /// replays the compare-and-set as a no-op and continues. It follows
+    /// that no single call can both open the window and seal the payout.
     ///
     /// Two preconditions of the hold are checked before any of that
     /// commits, because both are pure and both would otherwise wedge the
@@ -1039,6 +1050,7 @@ impl FindingChallengeCoordinator {
         challenge_id: &str,
         outcome: &SignedFindingChallengeOutcome,
         identity: &FindingLiabilityIdentity<'_>,
+        terms: &SignedFindingMarketTerms,
         cutoff_slot: u64,
         claim_candidates: &[String],
         collateral: &FindingCollateralFacts<'_>,
@@ -1065,6 +1077,7 @@ impl FindingChallengeCoordinator {
         if collateral.allocation_id != identity.allocation_id {
             return Err(ChallengeCoordinatorError::CollateralAllocation);
         }
+        let claim_deadline = self.require_claim_window(terms, identity, now)?;
         self.require_pinned_governance(governance, sanction_case, None)?;
         self.require_impairable_collateral(collateral, now)?;
         let defect_key = derive_defect_key(identity.finding_id);
@@ -1084,7 +1097,13 @@ impl FindingChallengeCoordinator {
             })
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
         self.challenges
-            .uphold_liability(&liability_key, challenge_id, cutoff_slot, now)
+            .uphold_liability(
+                &liability_key,
+                challenge_id,
+                cutoff_slot,
+                claim_deadline,
+                now,
+            )
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
 
         if !self
@@ -1093,6 +1112,23 @@ impl FindingChallengeCoordinator {
             .map_err(|error| ChallengeCoordinatorError::PurchaseStore(error.to_string()))?
         {
             return Err(ChallengeCoordinatorError::ClaimWindowOpen);
+        }
+        // The deadline the head froze when the window opened governs, not
+        // the one this call just derived: a retry reads the instant harmed
+        // buyers were promised rather than one measured from its own
+        // clock, so no later attempt can shorten the window it resumes.
+        let frozen = self
+            .challenges
+            .get_liability(&liability_key)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or_else(|| {
+                ChallengeCoordinatorError::ChallengeStore(
+                    "liability head is not recorded".to_owned(),
+                )
+            })?;
+        match frozen.claim_deadline {
+            Some(deadline) if now >= deadline => {}
+            _ => return Err(ChallengeCoordinatorError::ClaimWindowOpen),
         }
 
         let sealed = self.seal_claim_snapshot(
@@ -1799,6 +1835,32 @@ impl FindingChallengeCoordinator {
             ));
         }
         Ok(())
+    }
+
+    /// Resolve the instant this liability's claim window closes.
+    ///
+    /// The length is a term the seller signed for this exact finding and
+    /// listing, never an operator's choice: the snapshot it gates is what
+    /// harmed buyers and omission proofs are paid from, so the venue must
+    /// not be able to shorten it once adjudication has landed. Terms for
+    /// another listing, or an envelope the embedded seller did not sign,
+    /// bind nothing here.
+    fn require_claim_window(
+        &self,
+        terms: &SignedFindingMarketTerms,
+        identity: &FindingLiabilityIdentity<'_>,
+        now: u64,
+    ) -> Result<u64, ChallengeCoordinatorError> {
+        verify_signed_market_terms(terms)
+            .map_err(|error| ChallengeCoordinatorError::TermsEnvelope(error.to_string()))?;
+        if terms.body.finding_id != identity.finding_id {
+            return Err(ChallengeCoordinatorError::TermsBinding("finding_id"));
+        }
+        if terms.body.listing_id != identity.listing_id {
+            return Err(ChallengeCoordinatorError::TermsBinding("listing_id"));
+        }
+        now.checked_add(terms.body.claim_window_secs)
+            .ok_or(ChallengeCoordinatorError::TermsBinding("claim_window_secs"))
     }
 
     /// Require the collateral behind this defect to be able to fund a

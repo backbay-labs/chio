@@ -23,6 +23,9 @@ const LISTING_ID: &str = "challenge-listing-01";
 const OTHER_LISTING_ID: &str = "challenge-listing-02";
 const NOW: u64 = 1_750_000_000;
 const RETRY_DEADLINE: u64 = NOW + 3_600;
+/// Seller-signed claim window every upheld liability in these tests
+/// freezes, measured from the instant the window opens.
+const CLAIM_WINDOW: u64 = 604_800;
 /// The exposure cap `backing_body` registers for every fixture allocation.
 const REGISTERED_EXPOSURE_CAP: u64 = 450;
 
@@ -1085,6 +1088,7 @@ fn liability_head_advances_only_by_compare_and_set() {
             state: FindingLiabilityState::Open,
             upheld_challenge_id: None,
             purchase_cutoff_slot: None,
+            claim_deadline: None,
             snapshot_digest: None,
             allocation_digest: None,
             publication_pending: false,
@@ -1142,7 +1146,13 @@ fn liability_head_advances_only_by_compare_and_set() {
     );
     fixture
         .store
-        .uphold_liability(&head.liability_key, &challenge.challenge_id, 0, NOW + 3)
+        .uphold_liability(
+            &head.liability_key,
+            &challenge.challenge_id,
+            0,
+            NOW + CLAIM_WINDOW,
+            NOW + 3,
+        )
         .expect("uphold liability");
     assert!(
         matches!(
@@ -1261,6 +1271,7 @@ fn liability_head_advances_only_by_compare_and_set() {
             &reversed.liability_key,
             &appeal_challenge.challenge_id,
             0,
+            NOW + CLAIM_WINDOW,
             NOW + 3,
         )
         .expect("uphold liability");
@@ -1346,9 +1357,13 @@ fn upholding_blocks_new_slots_and_freezes_the_cutoff() {
     submit(&fixture, &live);
     assert!(
         matches!(
-            fixture
-                .store
-                .uphold_liability(&head.liability_key, &live.challenge_id, 2, NOW + 5),
+            fixture.store.uphold_liability(
+                &head.liability_key,
+                &live.challenge_id,
+                2,
+                NOW + CLAIM_WINDOW,
+                NOW + 5
+            ),
             Err(FindingChallengeStoreError::Conflict(_))
         ),
         "only an upheld challenge can uphold a liability"
@@ -1366,6 +1381,7 @@ fn upholding_blocks_new_slots_and_freezes_the_cutoff() {
                 &head.liability_key,
                 &elsewhere.challenge_id,
                 2,
+                NOW + CLAIM_WINDOW,
                 NOW + 5
             ),
             Err(FindingChallengeStoreError::Conflict(_))
@@ -1378,6 +1394,7 @@ fn upholding_blocks_new_slots_and_freezes_the_cutoff() {
                 &head.liability_key,
                 &challenge.challenge_id,
                 1,
+                NOW + CLAIM_WINDOW,
                 NOW + 5
             ),
             Err(FindingChallengeStoreError::Conflict(_))
@@ -1395,7 +1412,13 @@ fn upholding_blocks_new_slots_and_freezes_the_cutoff() {
     assert_eq!(
         fixture
             .store
-            .uphold_liability(&head.liability_key, &challenge.challenge_id, 2, NOW + 5)
+            .uphold_liability(
+                &head.liability_key,
+                &challenge.challenge_id,
+                2,
+                NOW + CLAIM_WINDOW,
+                NOW + 5,
+            )
             .expect("uphold liability"),
         FindingChallengeWriteOutcome::Inserted
     );
@@ -1449,7 +1472,13 @@ fn upholding_blocks_new_slots_and_freezes_the_cutoff() {
     assert_eq!(
         fixture
             .store
-            .uphold_liability(&head.liability_key, &challenge.challenge_id, 2, NOW + 7)
+            .uphold_liability(
+                &head.liability_key,
+                &challenge.challenge_id,
+                2,
+                NOW + CLAIM_WINDOW,
+                NOW + 7,
+            )
             .expect("replay uphold"),
         FindingChallengeWriteOutcome::ExistingSame
     );
@@ -1459,6 +1488,7 @@ fn upholding_blocks_new_slots_and_freezes_the_cutoff() {
                 &head.liability_key,
                 &challenge.challenge_id,
                 3,
+                NOW + CLAIM_WINDOW,
                 NOW + 8
             ),
             Err(FindingChallengeStoreError::Conflict(_))
@@ -2019,7 +2049,7 @@ fn claim_snapshot_seals_once_against_the_frozen_cutoff() {
         currency: "USD",
         buyer_pool_units: 10,
         community_fund_units: 5,
-        sealed_at: NOW + 10,
+        sealed_at: NOW + CLAIM_WINDOW + 10,
     };
     assert!(
         matches!(
@@ -2038,7 +2068,13 @@ fn claim_snapshot_seals_once_against_the_frozen_cutoff() {
     );
     fixture
         .store
-        .uphold_liability(&head.liability_key, &challenge.challenge_id, 1, NOW + 5)
+        .uphold_liability(
+            &head.liability_key,
+            &challenge.challenge_id,
+            1,
+            NOW + CLAIM_WINDOW,
+            NOW + 5,
+        )
         .expect("uphold liability");
 
     let mut wrong_cutoff = sealed;
@@ -2058,6 +2094,15 @@ fn claim_snapshot_seals_once_against_the_frozen_cutoff() {
             Err(FindingChallengeStoreError::Invariant(_))
         ),
         "the buyer pool is capped by verified realized spend"
+    );
+    let mut early = sealed;
+    early.sealed_at = NOW + CLAIM_WINDOW - 1;
+    assert!(
+        matches!(
+            fixture.store.seal_claim_snapshot(&early),
+            Err(FindingChallengeStoreError::Conflict(_))
+        ),
+        "the snapshot is immutable, so it never seals inside the claim window"
     );
 
     assert_eq!(
@@ -2082,7 +2127,7 @@ fn claim_snapshot_seals_once_against_the_frozen_cutoff() {
             currency: "USD".to_string(),
             buyer_pool_units: 10,
             community_fund_units: 5,
-            sealed_at: NOW + 10,
+            sealed_at: NOW + CLAIM_WINDOW + 10,
         }
     );
     let stamped = liability(&fixture, &head.liability_key);

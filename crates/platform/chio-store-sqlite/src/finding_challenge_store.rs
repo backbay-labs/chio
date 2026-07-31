@@ -74,7 +74,7 @@ use crate::finding_purchase_store::{
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_CHALLENGE_SCHEMA_KEY: &str = "finding_challenge";
-pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 1;
+pub(crate) const FINDING_CHALLENGE_SUPPORTED_SCHEMA_VERSION: i32 = 2;
 const FINDING_CHALLENGE_SCHEMA_ANCHORS: &[&str] =
     &["challenges", "admission_operations", "chio_serving_owner"];
 const FINDING_CHALLENGE_SCHEMA: &str = include_str!("finding_challenge_store.sql");
@@ -338,6 +338,9 @@ pub struct FindingLiabilityRecord {
     pub state: FindingLiabilityState,
     pub upheld_challenge_id: Option<String>,
     pub purchase_cutoff_slot: Option<u64>,
+    /// Trusted time the seller-signed claim window closes. Frozen with
+    /// the cutoff; no snapshot seals before it.
+    pub claim_deadline: Option<u64>,
     pub snapshot_digest: Option<String>,
     pub allocation_digest: Option<String>,
     pub publication_pending: bool,
@@ -995,20 +998,39 @@ impl SqliteFindingChallengeStore {
     /// block can fall above the claim line. Idempotent on the exact
     /// challenge and cutoff already frozen; a different challenge or a
     /// different cutoff rejects.
+    ///
+    /// `claim_deadline` freezes with the cutoff and is never rewritten,
+    /// so the window harmed buyers were promised is fixed by the first
+    /// call. A replay derives its own deadline from its own clock and
+    /// that value is ignored, which is what stops a retry shortening the
+    /// window it is resuming.
     pub fn uphold_liability(
         &self,
         liability_key: &str,
         challenge_id: &str,
         cutoff_slot: u64,
+        claim_deadline: u64,
         now: u64,
     ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
         require_hex64(liability_key, "liability_key")?;
         require_identifier(challenge_id, "challenge_id")?;
         require_trusted_time(now, "now")?;
+        require_trusted_time(claim_deadline, "claim_deadline")?;
+        if claim_deadline <= now {
+            return Err(FindingChallengeStoreError::Conflict(
+                "claim deadline has already lapsed at the upheld transaction".to_owned(),
+            ));
+        }
         let mut connection = self.connection()?;
         let transaction = self.begin_write(&mut connection)?;
-        let outcome =
-            uphold_liability_tx(&transaction, liability_key, challenge_id, cutoff_slot, now)?;
+        let outcome = uphold_liability_tx(
+            &transaction,
+            liability_key,
+            challenge_id,
+            cutoff_slot,
+            claim_deadline,
+            now,
+        )?;
         self.commit_write(transaction)?;
         self.sync_after_write(&connection)?;
         Ok(outcome)
@@ -1422,6 +1444,18 @@ impl SqliteFindingChallengeStore {
                 "claim snapshot does not seal the frozen purchase cutoff".to_owned(),
             ));
         }
+        // The snapshot is immutable once written, so an early seal is a
+        // permanent loss of standing for every claim the window still had
+        // time to admit. The frozen deadline is the only authority on when
+        // that window closed.
+        match liability.claim_deadline {
+            Some(deadline) if input.sealed_at >= deadline => {}
+            _ => {
+                return Err(FindingChallengeStoreError::Conflict(
+                    "claim window has not closed for this liability".to_owned(),
+                ));
+            }
+        }
         let inserted = transaction
             .execute(
                 r#"
@@ -1780,6 +1814,7 @@ pub(crate) fn uphold_liability_tx(
     liability_key: &str,
     challenge_id: &str,
     cutoff_slot: u64,
+    claim_deadline: u64,
     now: u64,
 ) -> Result<FindingChallengeWriteOutcome, FindingChallengeStoreError> {
     let liability = load_liability_tx(transaction, liability_key)?
@@ -1829,13 +1864,14 @@ pub(crate) fn uphold_liability_tx(
             r#"
             UPDATE liability_heads
             SET state = 'upheld_pending_claims', upheld_challenge_id = ?2,
-                purchase_cutoff_slot = ?3, updated_at = ?4
+                purchase_cutoff_slot = ?3, claim_deadline = ?4, updated_at = ?5
             WHERE liability_key = ?1 AND state = 'open'
             "#,
             params![
                 liability_key,
                 challenge_id,
                 sqlite_i64(cutoff_slot, "cutoff_slot")?,
+                sqlite_i64(claim_deadline, "claim_deadline")?,
                 sqlite_i64(now, "now")?,
             ],
         )
@@ -1990,7 +2026,7 @@ fn load_dispute_lock_tx(
 const LIABILITY_COLUMNS: &str = r#"
     liability_key, defect_key, finding_id, listing_id, allocation_id, venue_id,
     chain_id, vault_contract, vault_id, state, upheld_challenge_id,
-    purchase_cutoff_slot, snapshot_digest, allocation_digest,
+    purchase_cutoff_slot, claim_deadline, snapshot_digest, allocation_digest,
     publication_pending, quarantined, opened_at, updated_at
 "#;
 
@@ -2007,6 +2043,7 @@ struct RawLiability {
     state: String,
     upheld_challenge_id: Option<String>,
     purchase_cutoff_slot: Option<i64>,
+    claim_deadline: Option<i64>,
     snapshot_digest: Option<String>,
     allocation_digest: Option<String>,
     publication_pending: i64,
@@ -2029,12 +2066,13 @@ fn map_liability(row: &rusqlite::Row<'_>) -> rusqlite::Result<RawLiability> {
         state: row.get(9)?,
         upheld_challenge_id: row.get(10)?,
         purchase_cutoff_slot: row.get(11)?,
-        snapshot_digest: row.get(12)?,
-        allocation_digest: row.get(13)?,
-        publication_pending: row.get(14)?,
-        quarantined: row.get(15)?,
-        opened_at: row.get(16)?,
-        updated_at: row.get(17)?,
+        claim_deadline: row.get(12)?,
+        snapshot_digest: row.get(13)?,
+        allocation_digest: row.get(14)?,
+        publication_pending: row.get(15)?,
+        quarantined: row.get(16)?,
+        opened_at: row.get(17)?,
+        updated_at: row.get(18)?,
     })
 }
 
@@ -2056,6 +2094,10 @@ fn liability_from_raw(
         purchase_cutoff_slot: raw
             .purchase_cutoff_slot
             .map(|value| stored_u64(value, "purchase_cutoff_slot"))
+            .transpose()?,
+        claim_deadline: raw
+            .claim_deadline
+            .map(|value| stored_u64(value, "claim_deadline"))
             .transpose()?,
         snapshot_digest: raw.snapshot_digest,
         allocation_digest: raw.allocation_digest,
