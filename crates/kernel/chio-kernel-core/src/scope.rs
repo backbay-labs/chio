@@ -226,15 +226,18 @@ fn constraint_matches(
         Constraint::MaxLength(max) => Ok(string_leaves.iter().all(|leaf| leaf.value.len() <= *max)),
         Constraint::MaxArgsSize(max) => Ok(arguments.to_string().len() <= *max),
         // The delivery carriers are enforced only where an output-aware
-        // terminal exists. Spelling either as a Custom key must never
-        // satisfy a grant by argument matching alone, so the spelling
-        // fails the grant it appears on without condemning its sibling
-        // grants; the first-class variants below still deny the whole
-        // evaluation on this surface.
+        // terminal exists. Spelling either as a Custom key would let this
+        // surface satisfy it by argument matching alone, so the portable
+        // matcher rejects the spelling exactly as the full kernel does.
+        // Failing the whole call is deliberate: a spelling that merely
+        // failed its own grant would let an unconstrained sibling serve
+        // the call with no delivery enforcement.
         Constraint::Custom(key, _)
             if key == "output_digest_sha256" || key == "require_finding_purchase" =>
         {
-            Ok(false)
+            Err(ScopeMatchError::ConstraintError(format!(
+                "{key} must use its first-class constraint, not Custom"
+            )))
         }
         Constraint::Custom(key, expected) => Ok(argument_contains_custom(arguments, key, expected)),
         Constraint::AudienceAllowlist(allowed) => {
@@ -697,26 +700,45 @@ mod delivery_spelling_tests {
     }
 
     #[test]
-    fn custom_delivery_spellings_never_match_and_never_poison_siblings() {
+    fn custom_delivery_spellings_fail_the_call_loudly_and_stay_scoped_to_their_tool() {
+        let mut poisoned_other = grant(vec![Constraint::Custom(
+            "require_finding_purchase".to_string(),
+            "finding-1".to_string(),
+        )]);
+        poisoned_other.tool_name = "other".to_string();
+        let mut clean_tool = grant(Vec::new());
+        clean_tool.tool_name = "clean".to_string();
         let scope = ChioScope {
             grants: vec![
                 grant(vec![Constraint::Custom(
                     "output_digest_sha256".to_string(),
                     "aa".to_string(),
                 )]),
-                grant(vec![Constraint::Custom(
-                    "require_finding_purchase".to_string(),
-                    "finding-1".to_string(),
-                )]),
                 grant(Vec::new()),
+                poisoned_other,
+                clean_tool,
             ],
             ..ChioScope::default()
         };
+        // The poisoned candidate fails the whole call, unconstrained
+        // sibling included: silently unmatching would let the sibling
+        // serve a call the issuer tried to delivery-constrain.
         let arguments = serde_json::json!({"output_digest_sha256": "aa"});
-        let matches = resolve_matching_grants(&scope, "tool", "srv", &arguments)
-            .expect("a custom delivery spelling must not fail the whole candidate set");
-        assert_eq!(matches.len(), 1, "only the unconstrained sibling may match");
-        assert_eq!(matches[0].index, 2);
+        for tool in ["tool", "other"] {
+            assert!(
+                matches!(
+                    resolve_matching_grants(&scope, tool, "srv", &arguments),
+                    Err(ScopeMatchError::ConstraintError(_))
+                ),
+                "a custom delivery spelling must fail every candidate for {tool}"
+            );
+        }
+        // The failure is scoped to calls the poisoned grant claims to
+        // serve: an unrelated tool on the same capability is unaffected.
+        let matches = resolve_matching_grants(&scope, "clean", "srv", &arguments)
+            .expect("a spelling on another tool's grant must not leak into this call");
+        assert_eq!(matches.len(), 1);
+        assert_eq!(matches[0].index, 3);
     }
 
     #[test]
