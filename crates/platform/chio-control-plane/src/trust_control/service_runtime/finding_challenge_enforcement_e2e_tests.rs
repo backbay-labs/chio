@@ -28,7 +28,7 @@ use chio_core::canonical_json_bytes;
 use chio_core::canonical_json_string;
 use chio_core::capability::scope::MonetaryAmount;
 use chio_core::crypto::{sha256_hex, Keypair, PublicKey};
-use chio_core::merkle::MerkleTree;
+use chio_core::merkle::{leaf_hash, MerkleTree};
 use chio_core::receipt::body::{ChioReceipt, ChioReceiptBody};
 use chio_core::receipt::decision::{Decision, ToolCallAction};
 use chio_core::receipt::kinds::TrustLevel;
@@ -124,10 +124,11 @@ use chio_store_sqlite::{
 };
 
 use crate::trust_control::finding_challenge_coordinator::{
-    derive_defect_key, derive_liability_key, AppealDisposition, AppealResolution,
-    AuthorizedImpairment, ChallengeCoordinatorError, ChallengeEvaluationRequest,
-    EvaluationAdmission, FindingAuditRound, FindingChallengeCoordinator, FindingCollateralFacts,
-    FindingFilingResolver, FindingFinalization, FindingKeyRevocationStatus,
+    derive_anchor_evidence_intent_key, derive_defect_key, derive_liability_key,
+    root_intent_commitment, AppealDisposition, AppealResolution, AuthorizedImpairment,
+    ChallengeCoordinatorError, ChallengeEvaluationRequest, EvaluationAdmission,
+    FindingAuditRound, FindingChallengeCoordinator, FindingCollateralFacts, FindingFilingResolver,
+    FindingFinalization, FindingKeyRevocationStatus,
     FindingLiabilityIdentity, FindingPenaltyGovernance, UpheldLiability,
 };
 use crate::trust_control::{FindingAuthorityPin, FindingMarketConfig, FindingPoolPin};
@@ -4037,6 +4038,14 @@ impl FindingImpairmentPublisher for UnreachablePublisher {
     }
 }
 
+/// Whether the enforcement root behind a finalizing liability has been
+/// published, as the operator's anchoring step would leave it.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum EnforcementRoot {
+    Confirmed,
+    Unpublished,
+}
+
 /// One liability head driven to `finalizing` with its seller-impairment
 /// intent fenced, paired with the enforcement the settlement choke point
 /// verifies. The head carries exactly the allocation and vault the
@@ -4052,6 +4061,10 @@ struct FinalizingLiability {
 }
 
 fn finalizing_liability() -> Result<FinalizingLiability, AnyError> {
+    finalizing_liability_rooted(EnforcementRoot::Confirmed)
+}
+
+fn finalizing_liability_rooted(root: EnforcementRoot) -> Result<FinalizingLiability, AnyError> {
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
     let (finding, raw) = finding_artifact()?;
@@ -4107,6 +4120,30 @@ fn finalizing_liability() -> Result<FinalizingLiability, AnyError> {
         Some(&liability_key),
         NOW + 5,
     )?;
+    // The enforcement root the vault checks the impairment proof against,
+    // fenced under the commitment this liability and penalty derive and
+    // then driven to whatever the anchoring step left it in.
+    deployment.challenges.record_effect_intent(
+        &enforcement_root_intent_key(),
+        chio_store_sqlite::FindingEffectIntentKind::RootIntent,
+        &sha256_hex(
+            root_intent_commitment(&liability_key, &enforcement_penalty_digest()).as_bytes(),
+        ),
+        Some(&liability_key),
+        NOW + 5,
+    )?;
+    if root == EnforcementRoot::Confirmed {
+        for state in [
+            FindingEffectIntentState::Dispatched,
+            FindingEffectIntentState::Confirmed,
+        ] {
+            deployment.challenges.advance_effect_intent(
+                &enforcement_root_intent_key(),
+                state,
+                NOW + 6,
+            )?;
+        }
+    }
     let (enforcement, snapshot) =
         enforcement_pair(&liability_key, &finding.finding_id, &seller, &intent_key)?;
     Ok(FinalizingLiability {
@@ -4171,6 +4208,24 @@ impl FinalizingLiability {
             .get_liability(&self.liability_key)?
             .ok_or("liability head is durable")?)
     }
+}
+
+/// Domain-keyed identity of the enforcement-root effect the pair binds.
+fn enforcement_root_intent_key() -> String {
+    byte_hex64(0xc2)
+}
+
+/// Digest of the penalty envelope the enforcement pays for. The fenced
+/// root intent commits to it, so both sides read it from one place.
+fn enforcement_penalty_digest() -> String {
+    byte_hex64(0xb5)
+}
+
+/// The leaf the vault burns for the anchored receipt in the example
+/// proof, derived exactly as the impairment plan derives it.
+fn anchor_evidence_hash() -> Result<String, AnyError> {
+    let bytes = canonical_json_bytes(&anchor_proof()?.receipt.body())?;
+    Ok(leaf_hash(&bytes).to_hex_prefixed())
 }
 
 /// The exact settlement pair the choke point verifies, plus the finding
@@ -4244,7 +4299,7 @@ fn enforcement_pair_at_vault(
         listing_id: LISTING_ID.to_string(),
         outcome_id: byte_hex64(0xb3),
         outcome_envelope_sha256: byte_hex64(0xb4),
-        penalty_envelope_sha256: byte_hex64(0xb5),
+        penalty_envelope_sha256: enforcement_penalty_digest(),
         bond_snapshot_envelope_sha256: snapshot_digest,
         purchase_snapshot_digest: byte_hex64(0xb6),
         deterministic_allocation_digest: byte_hex64(0xb7),
@@ -4272,7 +4327,7 @@ fn enforcement_pair_at_vault(
             },
             FindingEffectIntentBinding {
                 kind: chio_finding::FindingEffectIntentKind::RootIntent,
-                intent_id: byte_hex64(0xc2),
+                intent_id: enforcement_root_intent_key(),
             },
             FindingEffectIntentBinding {
                 kind: chio_finding::FindingEffectIntentKind::Retraction,
@@ -4382,6 +4437,60 @@ fn finding_challenge_a_confirmed_impairment_settles_without_dispatching_again() 
         "the resumed attempt finishes the settlement the interrupted one owed"
     );
     assert!(!settled.publication_pending);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_an_unpublished_enforcement_root_never_reaches_the_publisher() -> TestResult {
+    let case = finalizing_liability_rooted(EnforcementRoot::Unpublished)?;
+    let refused = case
+        .finalize_observing(
+            &ScriptedObservations::qualified(),
+            &UnreachablePublisher,
+            SETTLEMENT_NOW,
+        )?
+        .expect_err("the vault call is authorized by a root that has not been published");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::EnforcementRootUnconfirmed(_)
+    ));
+    assert_eq!(
+        case.intent_state()?,
+        FindingEffectIntentState::Pending,
+        "nothing was dispatched, so the impairment never left its fence"
+    );
+    assert_eq!(case.head()?.state, FindingLiabilityState::Finalizing);
+    assert!(case.deployment.purchases.sales_blocked(LISTING_ID)?);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_an_anchor_leaf_bound_elsewhere_never_reaches_the_publisher() -> TestResult {
+    let case = finalizing_liability()?;
+    // The same anchored receipt is already committed to other terms, which
+    // is what a proof reused across enforcements looks like once the leaf
+    // is fenced.
+    case.deployment.challenges.record_effect_intent(
+        &derive_anchor_evidence_intent_key(&anchor_evidence_hash()?),
+        chio_store_sqlite::FindingEffectIntentKind::RootIntent,
+        &digest("an impairment this proof already authorized"),
+        Some(&case.liability_key),
+        NOW + 7,
+    )?;
+
+    let refused = case
+        .finalize_observing(
+            &ScriptedObservations::qualified(),
+            &UnreachablePublisher,
+            SETTLEMENT_NOW,
+        )?
+        .expect_err("one anchored leaf authorizes one impairment");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::ChallengeStore(_)
+    ));
+    assert_eq!(case.intent_state()?, FindingEffectIntentState::Pending);
+    assert_eq!(case.head()?.state, FindingLiabilityState::Finalizing);
     Ok(())
 }
 

@@ -106,6 +106,7 @@ pub struct VerifiedFindingEnforcement {
     bond_snapshot_envelope_sha256: String,
     live_allocated_collateral: u64,
     seller_impair_intent_id: String,
+    root_intent_id: String,
 }
 
 impl VerifiedFindingEnforcement {
@@ -145,6 +146,17 @@ impl VerifiedFindingEnforcement {
     #[must_use]
     pub fn seller_impair_intent_id(&self) -> &str {
         &self.seller_impair_intent_id
+    }
+
+    /// Domain-keyed identity of the enforcement-root effect.
+    ///
+    /// The vault verifies the impairment against a published root, so this
+    /// intent has to be confirmed before the call is broadcast. The
+    /// instruction names it; whether it was published is durable state the
+    /// coordinator holds.
+    #[must_use]
+    pub fn root_intent_id(&self) -> &str {
+        &self.root_intent_id
     }
 }
 
@@ -216,12 +228,11 @@ pub fn verify_finding_enforcement(
     ensure_destinations_sum_exactly(enforcement)?;
     ensure_snapshot_is_fresh(snapshot, pins.max_snapshot_age_secs, trusted_now_secs)?;
 
-    let seller_impair_intent_id = enforcement
-        .effect_intents
-        .iter()
-        .find(|intent| intent.kind == FindingEffectIntentKind::SellerImpair)
-        .map(|intent| intent.intent_id.clone())
-        .ok_or_else(|| reject("enforcement carries no seller-impairment effect intent"))?;
+    let seller_impair_intent_id =
+        bound_intent_id(enforcement, FindingEffectIntentKind::SellerImpair)
+            .ok_or_else(|| reject("enforcement carries no seller-impairment effect intent"))?;
+    let root_intent_id = bound_intent_id(enforcement, FindingEffectIntentKind::RootIntent)
+        .ok_or_else(|| reject("enforcement carries no enforcement-root effect intent"))?;
 
     Ok(VerifiedFindingEnforcement {
         enforcement: enforcement.clone(),
@@ -230,7 +241,28 @@ pub fn verify_finding_enforcement(
         bond_snapshot_envelope_sha256,
         live_allocated_collateral,
         seller_impair_intent_id,
+        root_intent_id,
     })
+}
+
+/// The single intent id an enforcement binds for one effect kind.
+///
+/// A duplicate binding is not a preference to resolve: two ids for one
+/// effect mean the instruction does not say which intent fences it, so the
+/// pair is refused rather than read as naming the first.
+fn bound_intent_id(
+    enforcement: &FindingChallengeEnforcement,
+    kind: FindingEffectIntentKind,
+) -> Option<String> {
+    let mut bound = enforcement
+        .effect_intents
+        .iter()
+        .filter(|intent| intent.kind == kind);
+    let first = bound.next()?;
+    if bound.next().is_some() {
+        return None;
+    }
+    Some(first.intent_id.clone())
 }
 
 /// Closed finality vocabulary this choke point spends against.

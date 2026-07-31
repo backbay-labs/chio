@@ -128,6 +128,9 @@ const EFFECT_ROOT_INTENT_DOMAIN: &str = "chio.finding.effect.root-intent.v1";
 /// Domain separator for the status-feed retraction effect.
 const EFFECT_RETRACTION_DOMAIN: &str = "chio.finding.effect.retraction.v1";
 
+/// Domain separator for the anchored evidence leaf an impairment burns.
+const EFFECT_ANCHOR_EVIDENCE_DOMAIN: &str = "chio.finding.effect.anchor-evidence.v1";
+
 /// Domain separator for the deterministic dispute-fee operation id.
 const DISPUTE_FEE_OPERATION_DOMAIN: &str = "chio.finding.dispute-fee-operation.v1";
 
@@ -261,6 +264,31 @@ pub fn derive_root_intent_key(
     )
 }
 
+/// Commitment the enforcement-root intent is fenced under: the liability
+/// it settles and the exact penalty envelope it pays for.
+///
+/// The intent key is liability-scoped, so this is what stops a root
+/// published for one penalty standing in for another on the same
+/// liability.
+#[must_use]
+pub fn root_intent_commitment(liability_key: &str, penalty_envelope_sha256: &str) -> String {
+    sha256_hex(
+        format!("{EFFECT_ROOT_INTENT_DOMAIN}\0{liability_key}\0{penalty_envelope_sha256}")
+            .as_bytes(),
+    )
+}
+
+/// Domain-keyed identity of one anchored evidence leaf.
+///
+/// The key is the leaf and nothing else. The vault burns an evidence hash
+/// globally and keeps that map private, so one anchored receipt must not
+/// be able to authorize impairments on two liabilities: the second
+/// presentation collides here and rejects rather than reaching the vault.
+#[must_use]
+pub fn derive_anchor_evidence_intent_key(evidence_hash: &str) -> String {
+    sha256_hex(format!("{EFFECT_ANCHOR_EVIDENCE_DOMAIN}\0{evidence_hash}").as_bytes())
+}
+
 /// Domain-keyed identity of the status-feed retraction.
 #[must_use]
 pub fn derive_retraction_intent_key(
@@ -326,6 +354,8 @@ pub enum ChallengeCoordinatorError {
     FeeRail(String),
     #[error("semantic effect intent is not durably fenced before dispatch")]
     EffectIntentUnfenced,
+    #[error("enforcement root is not confirmed: {0}")]
+    EnforcementRootUnconfirmed(&'static str),
     #[error("signed challenge outcome rejected: {0}")]
     OutcomeEnvelope(String),
     #[error("only an upheld outcome may enter the penalty lane")]
@@ -1385,6 +1415,13 @@ impl FindingChallengeCoordinator {
     /// the call is prepared and once before the head settles, so a reorg
     /// or an operator rotation that lands across the broadcast is observed
     /// rather than assumed away.
+    ///
+    /// Authorization to broadcast. The vault verifies the impairment
+    /// against a published root, so both effects the instruction binds are
+    /// resolved before anything leaves: the enforcement root must be
+    /// confirmed for this liability and this penalty, and the anchored
+    /// evidence leaf is fenced under its own key so one proof can
+    /// authorize one impairment and no more.
     #[allow(clippy::too_many_arguments)]
     pub fn finalize(
         &self,
@@ -1485,6 +1522,8 @@ impl FindingChallengeCoordinator {
                 .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
             return Ok(FindingFinalization::AlreadyConfirmed);
         }
+        self.require_confirmed_enforcement_root(liability_key, &verified)?;
+        self.fence_anchor_evidence(liability_key, &verified, planned.intent(), now)?;
         self.challenges
             .advance_effect_intent(&intent_key, FindingEffectIntentState::Dispatched, now)
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
@@ -2010,6 +2049,90 @@ impl FindingChallengeCoordinator {
                 "liability_key",
             ));
         }
+        Ok(())
+    }
+
+    /// Require the enforcement root this impairment is verified against to
+    /// be published and confirmed.
+    ///
+    /// The vault checks the impairment proof against a root, so the call
+    /// is only authorized once that root is on chain. The instruction
+    /// names the intent that fences it, but naming is not evidence: the
+    /// durable record has to belong to this liability, carry the
+    /// commitment this exact penalty derives, and sit in `confirmed`.
+    fn require_confirmed_enforcement_root(
+        &self,
+        liability_key: &str,
+        verified: &VerifiedFindingEnforcement,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let root = self
+            .challenges
+            .get_effect_intent(verified.root_intent_id())
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+        if root.kind != FindingEffectIntentKind::RootIntent
+            || root.liability_key.as_deref() != Some(liability_key)
+        {
+            return Err(ChallengeCoordinatorError::EnforcementRootUnconfirmed(
+                "the named root intent does not fence this liability",
+            ));
+        }
+        let expected = sha256_hex(
+            root_intent_commitment(
+                liability_key,
+                &verified.enforcement().penalty_envelope_sha256,
+            )
+            .as_bytes(),
+        );
+        if root.intent_digest != expected {
+            return Err(ChallengeCoordinatorError::EnforcementRootUnconfirmed(
+                "the fenced root does not commit to the penalty this enforcement pays",
+            ));
+        }
+        if root.state != FindingEffectIntentState::Confirmed {
+            return Err(ChallengeCoordinatorError::EnforcementRootUnconfirmed(
+                "the enforcement root has not been published",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Fence the anchored evidence leaf this impairment burns.
+    ///
+    /// The anchor proof arrives beside the instruction and authenticates
+    /// only as a proof: nothing in it names the enforcement it is being
+    /// spent on. The leaf is therefore committed here, before the call
+    /// leaves, to the liability, the enforcement, and the penalty it pays,
+    /// under a key that is the leaf itself. One anchored receipt can then
+    /// authorize exactly one impairment: presenting it again under
+    /// different terms collides with what is already durable and rejects,
+    /// and replaying the same terms reconciles.
+    fn fence_anchor_evidence(
+        &self,
+        liability_key: &str,
+        verified: &VerifiedFindingEnforcement,
+        intent: &chio_settle::FindingImpairmentIntent,
+        now: u64,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let enforcement = verified.enforcement();
+        let commitment = sha256_hex(
+            format!(
+                "{EFFECT_ANCHOR_EVIDENCE_DOMAIN}\0{liability_key}\0{enforcement_id}\0{penalty}\0{root}",
+                enforcement_id = enforcement.enforcement_id,
+                penalty = enforcement.penalty_envelope_sha256,
+                root = intent.merkle_root,
+            )
+            .as_bytes(),
+        );
+        self.challenges
+            .record_effect_intent(
+                &derive_anchor_evidence_intent_key(&intent.evidence_hash),
+                FindingEffectIntentKind::RootIntent,
+                &commitment,
+                Some(liability_key),
+                now,
+            )
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
         Ok(())
     }
 
@@ -2560,13 +2683,7 @@ impl FindingChallengeCoordinator {
             (
                 FindingEffectIntentKind::RootIntent,
                 root_intent_key.clone(),
-                sha256_hex(
-                    format!(
-                        "{EFFECT_ROOT_INTENT_DOMAIN}\0{liability_key}\0{digest}",
-                        digest = slash.penalty_envelope_sha256
-                    )
-                    .as_bytes(),
-                ),
+                root_intent_commitment(liability_key, &slash.penalty_envelope_sha256),
             ),
             (
                 FindingEffectIntentKind::Retraction,
