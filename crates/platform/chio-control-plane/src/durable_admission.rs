@@ -499,7 +499,31 @@ fn private_directory_traversal_flags_unix() -> nix::fcntl::OFlag {
     {
         common | OFlag::O_PATH
     }
-    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    #[cfg(any(
+        target_vendor = "apple",
+        target_os = "aix",
+        target_os = "emscripten",
+        target_os = "freebsd",
+        target_os = "fuchsia",
+        target_os = "illumos",
+        target_os = "netbsd",
+        target_os = "solaris",
+    ))]
+    {
+        common | OFlag::O_SEARCH
+    }
+    #[cfg(not(any(
+        target_os = "linux",
+        target_os = "android",
+        target_vendor = "apple",
+        target_os = "aix",
+        target_os = "emscripten",
+        target_os = "freebsd",
+        target_os = "fuchsia",
+        target_os = "illumos",
+        target_os = "netbsd",
+        target_os = "solaris",
+    )))]
     {
         common | OFlag::O_RDONLY
     }
@@ -1285,13 +1309,23 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(any(target_os = "linux", target_os = "android"))]
+    #[cfg(any(
+        target_os = "linux",
+        target_os = "android",
+        target_vendor = "apple",
+        target_os = "freebsd",
+        target_os = "netbsd",
+    ))]
     #[test]
     fn prepared_directory_traverses_search_only_ancestor() -> Result<(), CliError> {
         use nix::fcntl::OFlag;
         use std::os::unix::fs::PermissionsExt;
 
-        assert!(private_directory_traversal_flags_unix().contains(OFlag::O_PATH));
+        let flags = private_directory_traversal_flags_unix();
+        #[cfg(any(target_os = "linux", target_os = "android"))]
+        assert!(flags.contains(OFlag::O_PATH));
+        #[cfg(any(target_vendor = "apple", target_os = "freebsd", target_os = "netbsd",))]
+        assert!(flags.contains(OFlag::O_SEARCH));
         let directory = private_directory_test_root()?;
         let search_only = directory.path().join("search-only");
         let target = search_only.join("project");

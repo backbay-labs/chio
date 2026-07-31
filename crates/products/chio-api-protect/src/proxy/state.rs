@@ -937,6 +937,73 @@ mod proxy_builder_tests {
     }
 }
 
+#[cfg(all(test, windows))]
+mod windows_authority_tests {
+    use super::*;
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[tokio::test]
+    async fn durable_startup_rejects_windows_before_api_protect_mutation(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let directory = tempfile::tempdir()?;
+        let state_parent = directory.path().join("state");
+        let receipt_database = state_parent.join("receipts.sqlite3");
+        let receipt_database_string = receipt_database.to_string_lossy().into_owned();
+        let (authority_database, authority_lock_root) =
+            authority_sibling_paths(&receipt_database_string);
+        let missing_spec = directory.path().join("missing-openapi.json");
+        let observer_called = AtomicBool::new(false);
+
+        let result = ProtectProxy::new(ProtectConfig {
+            upstream: "http://127.0.0.1:1".to_string(),
+            spec_content: None,
+            spec_path: Some(missing_spec.to_string_lossy().into_owned()),
+            listen_addr: "127.0.0.1:0".to_string(),
+            receipt_db: Some(receipt_database_string),
+            allow_ephemeral_receipts: false,
+            sidecar_control_token: None,
+            signer_seed_hex: None,
+            trusted_capability_issuers: Vec::new(),
+            control_url: None,
+            control_token: None,
+            budget_db: None,
+            revocation_db: None,
+            require_nonce: false,
+            allow_advisory: false,
+            upstream_request_timeout: crate::DEFAULT_UPSTREAM_REQUEST_TIMEOUT,
+        })
+        .run_with_observer(|_| observer_called.store(true, Ordering::SeqCst))
+        .await;
+
+        let error = match result {
+            Ok(()) => {
+                return Err(std::io::Error::other(
+                    "Windows durable API-protect startup unexpectedly succeeded",
+                )
+                .into());
+            }
+            Err(error) => error,
+        };
+
+        assert!(
+            matches!(
+                &error,
+                ProtectError::ReceiptStore(message)
+                    if message.contains(
+                        "sqlite authority serving requires Unix file identity and positioned I/O"
+                    )
+            ),
+            "the platform preflight must fail before attempting to load the missing spec: {error}"
+        );
+        assert!(!observer_called.load(Ordering::SeqCst));
+        assert!(!state_parent.exists());
+        assert!(!receipt_database.exists());
+        assert!(!authority_database.exists());
+        assert!(!authority_lock_root.exists());
+        Ok(())
+    }
+}
+
 fn protect_serve_error(error: ServeError) -> ProtectError {
     match error {
         ServeError::Io(source) => ProtectError::Io(source),

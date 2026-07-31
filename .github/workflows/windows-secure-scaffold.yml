@@ -9,8 +9,10 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
+      - "crates/kernel/chio-runtime-harness/**"
       - "crates/platform/chio-store-sqlite/**"
       - "crates/platform/chio-control-plane/**"
+      - "crates/products/chio-api-protect/**"
       - "crates/products/chio-cli/**"
   push:
     branches: [main]
@@ -20,8 +22,10 @@ on:
       - "Cargo.toml"
       - "Cargo.lock"
       - "rust-toolchain.toml"
+      - "crates/kernel/chio-runtime-harness/**"
       - "crates/platform/chio-store-sqlite/**"
       - "crates/platform/chio-control-plane/**"
+      - "crates/products/chio-api-protect/**"
       - "crates/products/chio-cli/**"
   workflow_dispatch:
 
@@ -53,6 +57,15 @@ jobs:
 
       - name: Test Windows control-plane guards
         run: "cargo test --locked -p chio-control-plane --lib durable_admission::windows -- --nocapture"
+
+      - name: Test Windows trust service startup guard
+        run: "cargo test --locked -p chio-control-plane --lib trust_control::service_runtime::init::windows_authority_tests:: -- --nocapture"
+
+      - name: Test Windows runtime harness startup guard
+        run: "cargo test --locked -p chio-runtime-harness --lib windows_authority_tests:: -- --nocapture"
+
+      - name: Test Windows API protect startup guard
+        run: "cargo test --locked -p chio-api-protect --lib proxy::state::windows_authority_tests:: -- --nocapture"
 
       - name: Test Windows CLI init wiring
         run: "cargo test --locked -p chio-cli --test init init_creates_expected_project_files -- --exact --nocapture"

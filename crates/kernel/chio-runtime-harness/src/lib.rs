@@ -214,6 +214,56 @@ fn run_runtime_loopback_scenario_with_static_baseline(
     )
 }
 
+#[cfg(all(test, windows))]
+mod windows_authority_tests {
+    use super::run_runtime_loopback_scenario;
+    use std::path::Path;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    #[test]
+    fn runtime_loopback_rejects_authority_before_startup_mutates_paths(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let unique = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "chio-runtime-harness-windows-authority-{}-{unique}",
+            std::process::id()
+        ));
+        let store_dir = root.join("store");
+        let out_dir = root.join("out");
+        let scenario = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../../examples/chio-3vendor/fixtures/runtime-spine/scenario.json");
+
+        assert!(!root.exists(), "temporary test path already exists");
+        let error =
+            match run_runtime_loopback_scenario(&scenario, &store_dir, 1_800_000_001_000, &out_dir)
+            {
+                Ok(()) => {
+                    return Err(std::io::Error::other(
+                        "Windows runtime loopback authority startup unexpectedly succeeded",
+                    )
+                    .into());
+                }
+                Err(error) => error,
+            };
+
+        assert_eq!(
+            error.to_string(),
+            "Chio runtime loopback authority platform: invalid sqlite authority store: \
+             sqlite authority serving requires Unix file identity and positioned I/O"
+        );
+        assert!(
+            !store_dir.exists(),
+            "authority preflight created store state"
+        );
+        assert!(
+            !out_dir.exists(),
+            "authority preflight created output state"
+        );
+        assert!(!root.exists(), "authority preflight created caller paths");
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
