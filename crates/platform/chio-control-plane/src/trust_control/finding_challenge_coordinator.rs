@@ -49,7 +49,7 @@ use chio_core::crypto::{sha256_hex, Keypair, PublicKey};
 use chio_core::web3::anchors::AnchorInclusionProof;
 use chio_finding::{
     compute_enforcement_id, derive_outcome_id, ensure_challenge_class_compatibility,
-    signed_envelope_sha256, verify_finding, verify_signed_challenge,
+    signed_envelope_sha256, verify_finding, verify_pinned_envelope, verify_signed_challenge,
     verify_signed_challenge_outcome, verify_signed_purchase_record, Finding, FindingChallenge,
     FindingChallengeAuthorization, FindingChallengeAuthorizationKind, FindingChallengeEnforcement,
     FindingChallengeEvidenceKind, FindingChallengeOutcome, FindingEffectIntentBinding,
@@ -282,6 +282,12 @@ pub enum ChallengeCoordinatorError {
     DisputeBondCurrency,
     #[error("buyer filing has not collected its dispute fee and locked its bond")]
     FilingUnfunded,
+    #[error("filing binds a fee schedule this venue never published")]
+    UnknownFeeSchedule,
+    #[error("resolved fee schedule rejected: {0}")]
+    FeeScheduleArtifact(String),
+    #[error("filing terms are not the ones the signed fee schedule sets: {0}")]
+    DisputeTerms(&'static str),
     #[error("dispute fee rail dispatch failed: {0}")]
     FeeRail(String),
     #[error("semantic effect intent is not durably fenced before dispatch")]
@@ -328,6 +334,18 @@ pub enum ChallengeCoordinatorError {
     Signing,
     #[error("canonicalization failed")]
     Canonical,
+}
+
+/// Resolution of the signed artifacts a filing binds by digest.
+///
+/// A challenge carries digests, never the artifacts behind them, so the
+/// venue answers from its own published record. Nothing a filer sends can
+/// widen what a resolver returns, and a digest the venue cannot resolve
+/// denies the filing rather than admitting it on the digest alone.
+pub trait FindingFilingResolver: Send + Sync {
+    /// The signed open-market fee schedule published under this envelope
+    /// digest, or `None` when the venue published no such schedule.
+    fn fee_schedule(&self, envelope_sha256: &str) -> Option<SignedOpenMarketFeeSchedule>;
 }
 
 /// The pinned public roles this coordinator verifies against. None of
@@ -524,6 +542,8 @@ pub struct FindingChallengeCoordinator {
     finalization_authority: Keypair,
     penalty_authority: Keypair,
     rail: Arc<dyn FindingRailObserver>,
+    /// Resolves the signed artifacts a filing binds by digest.
+    filings: Arc<dyn FindingFilingResolver>,
     venue_id: String,
     challenge_administration_pool: FindingPoolPin,
     community_fund_destination: String,
@@ -551,6 +571,7 @@ impl FindingChallengeCoordinator {
         finalization_authority: Keypair,
         penalty_authority: Keypair,
         rail: Arc<dyn FindingRailObserver>,
+        filings: Arc<dyn FindingFilingResolver>,
         failed_challenge_disposition: FindingDisputeLockDisposition,
     ) -> Result<Self, ChallengeCoordinatorError> {
         config
@@ -601,6 +622,7 @@ impl FindingChallengeCoordinator {
             finalization_authority,
             penalty_authority,
             rail,
+            filings,
             venue_id: config.venue_id.clone(),
             challenge_administration_pool: config.challenge_administration_pool.clone(),
             community_fund_destination: config.community_fund_destination.clone(),
@@ -1408,13 +1430,19 @@ impl FindingChallengeCoordinator {
     }
 
     /// Require the fee and bond a buyer submission carries to be the ones
-    /// the admitted market terms pinned.
+    /// the admitted market terms pinned and the signed fee schedule
+    /// priced.
     ///
     /// The two shipped fee event kinds are hard-pinned to the audit pool
     /// so a seller cannot redirect participation fees. The dispute fee is
     /// the third charge path and is pinned just as hard, in the other
     /// direction: it reaches the challenge-administration pool or it does
     /// not settle.
+    ///
+    /// The amounts are then held to the schedule the filing itself names.
+    /// A submission that binds a schedule digest but is never checked
+    /// against the schedule behind it prices its own filing, which leaves
+    /// the stake a frivolous challenge risks entirely to the challenger.
     fn require_dispute_terms(
         &self,
         submission: &chio_finding::FindingBuyerSubmission,
@@ -1438,7 +1466,83 @@ impl FindingChallengeCoordinator {
         if lock.amount.currency != pool.currency {
             return Err(ChallengeCoordinatorError::DisputeBondCurrency);
         }
+        // The fee and the bond are two halves of one filing and one
+        // schedule prices both. A submission naming two would take its fee
+        // from the cheaper and its stake from the smaller.
+        if fee.fee_schedule_envelope_sha256 != lock.fee_schedule_envelope_sha256 {
+            return Err(ChallengeCoordinatorError::DisputeTerms(
+                "fee_schedule_envelope_sha256",
+            ));
+        }
+        let terms = self
+            .resolve_fee_schedule(&fee.fee_schedule_envelope_sha256)?
+            .body;
+        // A schedule that has not been issued yet, or that has expired,
+        // prices nothing: the window a filing is admitted in is the window
+        // its own schedule is live in.
+        if now < terms.issued_at || terms.expires_at.is_some_and(|expiry| now >= expiry) {
+            return Err(ChallengeCoordinatorError::DisputeTerms("filing window"));
+        }
+        if fee.amount.units != terms.dispute_fee.units
+            || fee.amount.currency != terms.dispute_fee.currency
+        {
+            return Err(ChallengeCoordinatorError::DisputeTerms("dispute fee"));
+        }
+        // The dispute-class requirement is unique in a schedule its own
+        // validator accepted, and it fixes the stake exactly: a smaller
+        // bond underprices a frivolous filing, and a larger one would let
+        // a forfeiture take more than any signed schedule authorizes.
+        let requirement = terms
+            .bond_requirements
+            .iter()
+            .find(|requirement| requirement.bond_class == OpenMarketBondClass::Dispute)
+            .ok_or(ChallengeCoordinatorError::DisputeTerms(
+                "dispute bond requirement",
+            ))?;
+        if lock.amount.units != requirement.required_amount.units
+            || lock.amount.currency != requirement.required_amount.currency
+        {
+            return Err(ChallengeCoordinatorError::DisputeTerms("dispute bond"));
+        }
         Ok(())
+    }
+
+    /// Resolve the signed fee schedule one filing bound by digest, and
+    /// prove it is a schedule this venue authorized.
+    ///
+    /// The digest is re-derived from the resolved envelope, so a resolver
+    /// answering with any other artifact is caught here rather than
+    /// pricing the filing. The signer must be one of the pinned
+    /// fee-schedule operators and the signature must verify strictly
+    /// against that pin, so an envelope's own embedded key never widens
+    /// the roster it is checked against.
+    fn resolve_fee_schedule(
+        &self,
+        envelope_sha256: &str,
+    ) -> Result<SignedOpenMarketFeeSchedule, ChallengeCoordinatorError> {
+        let schedule = self
+            .filings
+            .fee_schedule(envelope_sha256)
+            .ok_or(ChallengeCoordinatorError::UnknownFeeSchedule)?;
+        if self.envelope_digest(&schedule)? != envelope_sha256 {
+            return Err(ChallengeCoordinatorError::DisputeTerms(
+                "resolved fee schedule digest",
+            ));
+        }
+        let operator = self
+            .fee_schedule_operators
+            .iter()
+            .find(|operator| *operator == &schedule.signer_key)
+            .ok_or(ChallengeCoordinatorError::AuthorityPinMismatch(
+                "fee schedule",
+            ))?;
+        verify_pinned_envelope(&schedule, operator, "fee schedule")
+            .map_err(|error| ChallengeCoordinatorError::FeeScheduleArtifact(error.to_string()))?;
+        schedule
+            .body
+            .validate()
+            .map_err(ChallengeCoordinatorError::FeeScheduleArtifact)?;
+        Ok(schedule)
     }
 
     /// Require every governance artifact behind a penalty to carry a

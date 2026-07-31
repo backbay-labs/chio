@@ -19,6 +19,7 @@
 //! stores, so the upheld transaction runs against the same connection and
 //! the same serving-owner fence the sale path uses.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -116,8 +117,9 @@ use chio_store_sqlite::{
 use crate::trust_control::finding_challenge_coordinator::{
     derive_defect_key, derive_liability_key, AppealDisposition, AppealResolution,
     AuthorizedImpairment, ChallengeCoordinatorError, ChallengeEvaluationRequest,
-    EvaluationAdmission, FindingChallengeCoordinator, FindingCollateralFacts, FindingFinalization,
-    FindingLiabilityIdentity, FindingPenaltyGovernance, UpheldLiability,
+    EvaluationAdmission, FindingChallengeCoordinator, FindingCollateralFacts,
+    FindingFilingResolver, FindingFinalization, FindingLiabilityIdentity, FindingPenaltyGovernance,
+    UpheldLiability,
 };
 use crate::trust_control::{FindingAuthorityPin, FindingMarketConfig, FindingPoolPin};
 use crate::trust_control::{FindingRailInstruction, FindingRailObservation, FindingRailObserver};
@@ -139,6 +141,12 @@ const BUYER_TWO_DESTINATION: &str = "rail:venue-ledger:buyer-two";
 const CHALLENGER_BOUNTY_DESTINATION: &str = "rail:venue-ledger:challenger-bounty";
 const NOW: u64 = 1_750_000_000;
 const REGISTERED_EXPOSURE_CAP: u64 = 450;
+
+// What the published fee schedule charges to file a challenge and what it
+// requires the filer to stake. A filing that names anything else is not
+// priced by the schedule it binds.
+const DISPUTE_FEE_UNITS: u64 = 25;
+const DISPUTE_BOND_UNITS: u64 = 40;
 
 // Key-role validity window every pinned authority in the governance
 // profile is issued under, and the publication instant the revocation
@@ -313,6 +321,28 @@ impl FindingRailObserver for RecordingRail {
     }
 }
 
+/// The venue's published record of the signed artifacts a filing may bind
+/// by digest. A filing resolves against this and nothing else, so a digest
+/// that names an artifact the venue never published resolves to nothing.
+#[derive(Default)]
+struct PublishedArtifacts {
+    fee_schedules: BTreeMap<String, SignedOpenMarketFeeSchedule>,
+}
+
+impl PublishedArtifacts {
+    fn publish(mut self, schedule: &SignedOpenMarketFeeSchedule) -> Result<Self, AnyError> {
+        self.fee_schedules
+            .insert(signed_envelope_sha256(schedule)?, schedule.clone());
+        Ok(self)
+    }
+}
+
+impl FindingFilingResolver for PublishedArtifacts {
+    fn fee_schedule(&self, envelope_sha256: &str) -> Option<SignedOpenMarketFeeSchedule> {
+        self.fee_schedules.get(envelope_sha256).cloned()
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Deployment
 // ---------------------------------------------------------------------------
@@ -327,6 +357,7 @@ struct Deployment {
     challenges: SqliteFindingChallengeStore,
     allocation_id: String,
     rail: Arc<RecordingRail>,
+    filings: Arc<PublishedArtifacts>,
 }
 
 fn deployment() -> Result<Deployment, AnyError> {
@@ -343,6 +374,7 @@ fn deployment() -> Result<Deployment, AnyError> {
     let challenges = authority.finding_challenge_store();
     let allocation_id = consume_allocation(&market, LISTING_ID)?;
     purchases.register_community_fund_destination(&allocation_id, COMMUNITY_FUND_RAIL, NOW)?;
+    let filings = PublishedArtifacts::default().publish(&published_fee_schedule()?)?;
     Ok(Deployment {
         _temp: temp,
         database,
@@ -353,6 +385,7 @@ fn deployment() -> Result<Deployment, AnyError> {
         challenges,
         allocation_id,
         rail: Arc::new(RecordingRail::default()),
+        filings: Arc::new(filings),
     })
 }
 
@@ -361,14 +394,25 @@ impl Deployment {
         &self,
         failed_challenge_disposition: FindingDisputeLockDisposition,
     ) -> Result<FindingChallengeCoordinator, AnyError> {
+        self.coordinator_under(&market_config(), failed_challenge_disposition)
+    }
+
+    /// The same coordinator under a caller-chosen deployment pin roster,
+    /// so a test can drive a role whose configured lifecycle has moved.
+    fn coordinator_under(
+        &self,
+        config: &FindingMarketConfig,
+        failed_challenge_disposition: FindingDisputeLockDisposition,
+    ) -> Result<FindingChallengeCoordinator, AnyError> {
         Ok(FindingChallengeCoordinator::new(
             self.challenges.clone(),
             self.purchases.clone(),
-            &market_config(),
+            config,
             keypair(31),
             keypair(32),
             keypair(33),
             self.rail.clone(),
+            self.filings.clone(),
             failed_challenge_disposition,
         )?)
     }
@@ -387,6 +431,7 @@ impl Deployment {
             challenges,
             allocation_id,
             rail,
+            filings,
         } = self;
         // The serving lock lives on the open handles, so every one of them
         // closes before the database can be served again.
@@ -408,6 +453,7 @@ impl Deployment {
             challenges,
             allocation_id,
             rail,
+            filings,
         })
     }
 }
@@ -869,27 +915,30 @@ impl ChallengedFinding {
         &self,
         lock_tag: &str,
         standing: FindingChallengeStanding,
-    ) -> FindingChallengeAuthorization {
+    ) -> Result<FindingChallengeAuthorization, AnyError> {
         let buyer = keypair(41);
-        FindingChallengeAuthorization::BuyerSubmission(Box::new(FindingBuyerSubmission {
-            challenger: buyer.public_key(),
-            dispute_fee_terminal: FindingDisputeFeeTerminal {
-                fee_schedule_envelope_sha256: hex64('5'),
-                event: FindingDisputeFeeEvent::ChallengeFiling,
-                payer: buyer.public_key(),
-                amount: usd(25),
-                beneficiary_pool_principal_id: CHALLENGE_POOL_PRINCIPAL.to_string(),
-                rail_destination: CHALLENGE_POOL_DESTINATION.to_string(),
+        let schedule_envelope_sha256 = signed_envelope_sha256(&published_fee_schedule()?)?;
+        Ok(FindingChallengeAuthorization::BuyerSubmission(Box::new(
+            FindingBuyerSubmission {
+                challenger: buyer.public_key(),
+                dispute_fee_terminal: FindingDisputeFeeTerminal {
+                    fee_schedule_envelope_sha256: schedule_envelope_sha256.clone(),
+                    event: FindingDisputeFeeEvent::ChallengeFiling,
+                    payer: buyer.public_key(),
+                    amount: usd(DISPUTE_FEE_UNITS),
+                    beneficiary_pool_principal_id: CHALLENGE_POOL_PRINCIPAL.to_string(),
+                    rail_destination: CHALLENGE_POOL_DESTINATION.to_string(),
+                },
+                dispute_lock_ref: FindingDisputeLockRef {
+                    lock_id: format!("dispute-lock-{lock_tag}"),
+                    class: FindingDisputeBondClass::Dispute,
+                    fee_schedule_envelope_sha256: schedule_envelope_sha256,
+                    amount: usd(DISPUTE_BOND_UNITS),
+                    expiry: NOW + 86_400,
+                },
+                standing,
             },
-            dispute_lock_ref: FindingDisputeLockRef {
-                lock_id: format!("dispute-lock-{lock_tag}"),
-                class: FindingDisputeBondClass::Dispute,
-                fee_schedule_envelope_sha256: hex64('5'),
-                amount: usd(40),
-                expiry: NOW + 86_400,
-            },
-            standing,
-        }))
+        )))
     }
 
     fn venue_authorization(&self) -> FindingChallengeAuthorization {
@@ -1080,7 +1129,7 @@ fn digest_mismatch_case(
                     failed_delivery_id: failed_delivery.body.failed_delivery_id.clone(),
                     failed_delivery_envelope_sha256,
                 },
-            ),
+            )?,
             vec![ChallengedFinding::affected_delivery(
                 &deny_receipt_ref,
                 &deny_checkpoint_ref,
@@ -1166,7 +1215,7 @@ fn evidence_invalid_case(
                     purchase_key: standing.purchase_key.clone(),
                     purchase_record_envelope_sha256: standing.record_envelope_sha256.clone(),
                 },
-            ),
+            )?,
             vec![ChallengedFinding::affected_delivery(
                 &first_ref,
                 &evidence.reference,
@@ -1339,7 +1388,7 @@ fn replay_case(
             purchase_key: standing.purchase_key.clone(),
             purchase_record_envelope_sha256: standing.record_envelope_sha256.clone(),
         },
-    );
+    )?;
     let affected = vec![ChallengedFinding::affected_delivery(
         &receipt_reference(
             resolved
@@ -1358,6 +1407,7 @@ fn replay_case(
 
 fn buyer_challenge(buyer: &Keypair) -> Result<SignedFindingChallenge, AnyError> {
     let (finding, raw) = finding_artifact()?;
+    let schedule_envelope_sha256 = signed_envelope_sha256(&published_fee_schedule()?)?;
     let mut body = FindingChallenge {
         schema: FINDING_CHALLENGE_SCHEMA_V1.to_string(),
         challenge_id: String::new(),
@@ -1378,18 +1428,18 @@ fn buyer_challenge(buyer: &Keypair) -> Result<SignedFindingChallenge, AnyError> 
             FindingBuyerSubmission {
                 challenger: buyer.public_key(),
                 dispute_fee_terminal: FindingDisputeFeeTerminal {
-                    fee_schedule_envelope_sha256: hex64('5'),
+                    fee_schedule_envelope_sha256: schedule_envelope_sha256.clone(),
                     event: FindingDisputeFeeEvent::ChallengeFiling,
                     payer: buyer.public_key(),
-                    amount: usd(25),
+                    amount: usd(DISPUTE_FEE_UNITS),
                     beneficiary_pool_principal_id: CHALLENGE_POOL_PRINCIPAL.to_string(),
                     rail_destination: CHALLENGE_POOL_DESTINATION.to_string(),
                 },
                 dispute_lock_ref: FindingDisputeLockRef {
                     lock_id: "dispute-lock-01".to_string(),
                     class: FindingDisputeBondClass::Dispute,
-                    fee_schedule_envelope_sha256: hex64('5'),
-                    amount: usd(40),
+                    fee_schedule_envelope_sha256: schedule_envelope_sha256,
+                    amount: usd(DISPUTE_BOND_UNITS),
                     expiry: NOW + 86_400,
                 },
                 standing: FindingChallengeStanding::FinalizedPurchase {
@@ -1816,6 +1866,12 @@ fn sample_case(
     Ok(SignedGenericGovernanceCase::sign(artifact, signer)?)
 }
 
+/// The one schedule this venue published, signed by the pinned
+/// fee-schedule operator. Every filing prices against it.
+fn published_fee_schedule() -> Result<SignedOpenMarketFeeSchedule, AnyError> {
+    sample_fee_schedule(&fee_schedule_keypair())
+}
+
 fn sample_fee_schedule(signer: &Keypair) -> Result<SignedOpenMarketFeeSchedule, AnyError> {
     let artifact = build_open_market_fee_schedule_artifact(
         OPERATOR_ID,
@@ -1829,14 +1885,22 @@ fn sample_fee_schedule(signer: &Keypair) -> Result<SignedOpenMarketFeeSchedule, 
                 policy_reference: Some("policy/open-market/default".to_string()),
             },
             publication_fee: usd(100),
-            dispute_fee: usd(25),
+            dispute_fee: usd(DISPUTE_FEE_UNITS),
             market_participation_fee: usd(500),
-            bond_requirements: vec![OpenMarketBondRequirement {
-                bond_class: OpenMarketBondClass::Listing,
-                required_amount: usd(5_000),
-                collateral_reference_kind: OpenMarketCollateralReferenceKind::CreditBond,
-                slashable: true,
-            }],
+            bond_requirements: vec![
+                OpenMarketBondRequirement {
+                    bond_class: OpenMarketBondClass::Listing,
+                    required_amount: usd(5_000),
+                    collateral_reference_kind: OpenMarketCollateralReferenceKind::CreditBond,
+                    slashable: true,
+                },
+                OpenMarketBondRequirement {
+                    bond_class: OpenMarketBondClass::Dispute,
+                    required_amount: usd(DISPUTE_BOND_UNITS),
+                    collateral_reference_kind: OpenMarketCollateralReferenceKind::ExternalReference,
+                    slashable: true,
+                },
+            ],
             issued_by: "market@chio.example".to_string(),
             issued_at: Some(NOW - 700),
             expires_at: Some(NOW + 900_000),
@@ -2205,6 +2269,147 @@ fn finding_challenge_a_filing_whose_fee_never_settled_is_not_evaluable() -> Test
         coordinator.admit_evaluation(&challenge_id, NOW + 3)?,
         EvaluationAdmission::Admitted
     );
+    Ok(())
+}
+
+/// Refile the reference buyer challenge with one filing term rewritten, so
+/// a test can prove which term the signed fee schedule fixes.
+fn buyer_challenge_with(
+    buyer: &Keypair,
+    rewrite: impl FnOnce(&mut FindingBuyerSubmission),
+) -> Result<SignedFindingChallenge, AnyError> {
+    let mut challenge = buyer_challenge(buyer)?;
+    if let FindingChallengeAuthorization::BuyerSubmission(submission) =
+        &mut challenge.body.authorization
+    {
+        rewrite(submission);
+    }
+    challenge.body.challenge_id = compute_challenge_id(&challenge.body)?;
+    Ok(SignedExportEnvelope::sign(challenge.body, buyer)?)
+}
+
+/// The reference buyer filing, filed at a caller-chosen venue instant.
+fn buyer_challenge_filed_at(
+    buyer: &Keypair,
+    filed_at: u64,
+) -> Result<SignedFindingChallenge, AnyError> {
+    let mut challenge = buyer_challenge(buyer)?;
+    challenge.body.filed_at = filed_at;
+    challenge.body.challenge_id = compute_challenge_id(&challenge.body)?;
+    Ok(SignedExportEnvelope::sign(challenge.body, buyer)?)
+}
+
+#[test]
+fn finding_challenge_filing_terms_must_be_the_ones_the_signed_schedule_prices() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let buyer = keypair(41);
+    let (_, raw) = finding_artifact()?;
+
+    // A bond below the schedule's dispute requirement underprices the
+    // filing; a bond above it would let a forfeiture take more than the
+    // schedule authorizes. Neither is the stake the schedule set.
+    for units in [DISPUTE_BOND_UNITS - 1, DISPUTE_BOND_UNITS + 1] {
+        let challenge = buyer_challenge_with(&buyer, |submission| {
+            submission.dispute_lock_ref.amount = usd(units);
+        })?;
+        let error = coordinator
+            .submit(&challenge, &raw, NOW)
+            .expect_err("a bond the schedule does not set must not be admitted");
+        assert!(
+            matches!(
+                error,
+                ChallengeCoordinatorError::DisputeTerms("dispute bond")
+            ),
+            "unexpected rejection for a {units} unit bond: {error}"
+        );
+    }
+
+    // The fee is the schedule's dispute fee, not whatever the filing paid.
+    let challenge = buyer_challenge_with(&buyer, |submission| {
+        submission.dispute_fee_terminal.amount = usd(DISPUTE_FEE_UNITS - 1);
+    })?;
+    let error = coordinator
+        .submit(&challenge, &raw, NOW)
+        .expect_err("a fee the schedule does not set must not be admitted");
+    assert!(matches!(
+        error,
+        ChallengeCoordinatorError::DisputeTerms("dispute fee")
+    ));
+
+    // One filing is priced by one schedule, so the fee and the bond may
+    // not name two.
+    let challenge = buyer_challenge_with(&buyer, |submission| {
+        submission.dispute_lock_ref.fee_schedule_envelope_sha256 = hex64('5');
+    })?;
+    let error = coordinator
+        .submit(&challenge, &raw, NOW)
+        .expect_err("a filing priced by two schedules must not be admitted");
+    assert!(matches!(
+        error,
+        ChallengeCoordinatorError::DisputeTerms("fee_schedule_envelope_sha256")
+    ));
+
+    // A schedule this venue never published resolves to nothing at all.
+    let challenge = buyer_challenge_with(&buyer, |submission| {
+        submission.dispute_fee_terminal.fee_schedule_envelope_sha256 = hex64('5');
+        submission.dispute_lock_ref.fee_schedule_envelope_sha256 = hex64('5');
+    })?;
+    let error = coordinator
+        .submit(&challenge, &raw, NOW)
+        .expect_err("an unresolvable schedule digest must not be admitted");
+    assert!(matches!(
+        error,
+        ChallengeCoordinatorError::UnknownFeeSchedule
+    ));
+
+    assert!(
+        deployment.rail.charges().is_empty(),
+        "no filing priced outside its schedule ever reached the rail"
+    );
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_a_filing_outside_the_schedule_window_is_refused() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let buyer = keypair(41);
+    let (_, raw) = finding_artifact()?;
+    let schedule = published_fee_schedule()?.body;
+    let expires_at = schedule
+        .expires_at
+        .ok_or("the published schedule carries an expiry")?;
+
+    // The schedule prices filings only while it is live, so its own window
+    // is the filing window, at both ends.
+    let early = buyer_challenge_filed_at(&buyer, schedule.issued_at - 1)?;
+    let error = coordinator
+        .submit(&early, &raw, schedule.issued_at - 1)
+        .expect_err("a filing ahead of its schedule prices nothing");
+    assert!(matches!(
+        error,
+        ChallengeCoordinatorError::DisputeTerms("filing window")
+    ));
+
+    let late = buyer_challenge_with(&buyer, |submission| {
+        submission.dispute_lock_ref.expiry = expires_at + 1;
+    })?;
+    let error = coordinator
+        .submit(&late, &raw, expires_at)
+        .expect_err("a filing at or past the schedule expiry prices nothing");
+    assert!(matches!(
+        error,
+        ChallengeCoordinatorError::DisputeTerms("filing window")
+    ));
+
+    for challenge in [&early, &late] {
+        assert!(deployment
+            .challenges
+            .get_challenge(&challenge.body.challenge_id)?
+            .is_none());
+    }
+    assert!(deployment.rail.charges().is_empty());
     Ok(())
 }
 
@@ -4082,7 +4287,7 @@ fn finding_challenge_a_malformed_recipe_preimage_is_refused_at_submission() -> T
                 purchase_key: sale.purchase_key.clone(),
                 purchase_record_envelope_sha256: sale.record_envelope_sha256.clone(),
             },
-        );
+        )?;
         let challenge = challenged.sign_challenge(
             authorization,
             branch,
@@ -4892,6 +5097,7 @@ fn finding_challenge_construction_refuses_a_key_reused_across_roles() -> TestRes
         keypair(31),
         keypair(33),
         deployment.rail.clone(),
+        deployment.filings.clone(),
         FindingDisputeLockDisposition::Forfeited,
     );
     match refused {
