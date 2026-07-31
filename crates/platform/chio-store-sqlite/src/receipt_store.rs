@@ -2089,15 +2089,13 @@ fn maybe_build_checkpoint(
         // sibling) it validated and adopted. Catch the cached head up to THAT
         // checkpoint so a later verify_head_against_latest_checkpoint does not
         // see our discarded byte-different build diverge from the persisted row.
-        let adopted = insert_background_checkpoint_guarded(
+        let (adopted, adopted_frontier) = insert_background_checkpoint_guarded(
             connection,
             head.latest_checkpoint.as_ref(),
+            &chain_frontier,
             &checkpoint,
         )?;
-        chain_frontier.append(
-            chio_kernel::checkpoint::checkpoint_chain_leaf_hash(&adopted.body)
-                .map_err(checkpoint_error_to_receipt_store)?,
-        );
+        chain_frontier = adopted_frontier;
         head.latest_checkpoint = Some(adopted);
         advanced = true;
     }

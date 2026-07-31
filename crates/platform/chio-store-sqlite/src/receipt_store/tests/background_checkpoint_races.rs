@@ -173,6 +173,239 @@ fn rejected_checkpoint_commits_restored_guards_but_not_candidate(
 }
 
 #[test]
+fn panicked_checkpoint_commits_restored_guards_but_not_candidate(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (temp_dir, path) = temp_db("chio-checkpoint-guard-panic")?;
+    let keypair = receipt_test_keypair();
+    let store = SqliteReceiptStore::open(&path)?;
+    let max_batch = test_hooks::PANIC_DURING_CHECKPOINT_BUILD_MARKER_MAX_BATCH;
+    for i in 0..(max_batch * 2) {
+        store.append_chio_receipt_returning_seq(&sample_receipt_with_keypair(
+            &format!("guard-panic-{i}"),
+            i + 1,
+            &keypair,
+        ))?;
+    }
+    store.flush_receipt_writes()?;
+    store.create_next_receipt_checkpoint(max_batch, &keypair)?;
+    let checkpoint_one = store
+        .load_checkpoint_by_seq(1)?
+        .ok_or("checkpoint 1 missing")?;
+
+    let mut connection = store.connection()?;
+    let mut head = seed_verified_head(&connection)?;
+    head.chain_frontier = None;
+    connection.execute_batch(
+        r#"
+        DROP TRIGGER IF EXISTS kernel_checkpoints_reject_update;
+        DROP TRIGGER IF EXISTS checkpoint_tree_heads_reject_update;
+        DROP TRIGGER IF EXISTS checkpoint_publication_metadata_reject_update;
+        "#,
+    )?;
+
+    test_hooks::PANIC_DURING_CHECKPOINT_BUILD.store(true, std::sync::atomic::Ordering::SeqCst);
+    let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        build_checkpoint_after_frontier_cache_miss(
+            &mut connection,
+            &mut head,
+            &signer(&keypair, max_batch),
+        )
+    }));
+    test_hooks::PANIC_DURING_CHECKPOINT_BUILD.store(false, std::sync::atomic::Ordering::SeqCst);
+    let panic_payload = panic
+        .err()
+        .ok_or("the injected checkpoint panic must resume")?;
+    let panic_message = panic_payload
+        .downcast_ref::<&str>()
+        .map(|message| (*message).to_string())
+        .or_else(|| panic_payload.downcast_ref::<String>().cloned())
+        .ok_or("checkpoint panic payload must be a string")?;
+    assert_eq!(
+        panic_message, "injected test panic during background checkpoint build",
+        "the wrapper must resume the original panic payload"
+    );
+    assert_eq!(
+        head.latest_checkpoint.as_ref(),
+        Some(&checkpoint_one),
+        "a panicked candidate must not publish a new verified head"
+    );
+    assert!(
+        head.chain_frontier.is_none(),
+        "a panicked cache-miss build must preserve the live frontier"
+    );
+
+    // Inspect the database directly so a store API cannot recreate a missing
+    // guard and hide a rollback bug.
+    for trigger in [
+        "kernel_checkpoints_reject_update",
+        "checkpoint_tree_heads_reject_update",
+        "checkpoint_publication_metadata_reject_update",
+    ] {
+        let present: bool = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = ?1)",
+            rusqlite::params![trigger],
+            |row| row.get(0),
+        )?;
+        assert!(present, "{trigger} must survive the resumed panic");
+    }
+    let candidate_rows: (i64, i64) = connection.query_row(
+        "SELECT
+             (SELECT COUNT(*) FROM kernel_checkpoints WHERE checkpoint_seq = 2),
+             (SELECT COUNT(*) FROM checkpoint_tree_heads WHERE checkpoint_seq = 2)",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+    assert_eq!(
+        candidate_rows,
+        (0, 0),
+        "the panicked candidate savepoint must roll back"
+    );
+    let checkpoint_update = connection
+        .execute(
+            "UPDATE kernel_checkpoints SET issued_at = issued_at WHERE checkpoint_seq = 1",
+            [],
+        )
+        .err()
+        .ok_or("checkpoint UPDATE must remain guarded after panic")?;
+    assert!(checkpoint_update
+        .to_string()
+        .contains("kernel checkpoints are immutable"));
+    let tree_update = connection
+        .execute(
+            "UPDATE checkpoint_tree_heads SET issued_at = issued_at WHERE checkpoint_seq = 1",
+            [],
+        )
+        .err()
+        .ok_or("tree-head UPDATE must remain guarded after panic")?;
+    assert!(tree_update
+        .to_string()
+        .contains("checkpoint tree heads are immutable"));
+    let publication_update = connection
+        .execute(
+            "UPDATE checkpoint_publication_metadata
+             SET published_at = published_at
+             WHERE checkpoint_seq = 1",
+            [],
+        )
+        .err()
+        .ok_or("publication UPDATE must remain guarded after panic")?;
+    assert!(publication_update
+        .to_string()
+        .contains("checkpoint publication metadata is immutable"));
+
+    drop(connection);
+    drop(store);
+    temp_dir.close()?;
+    Ok(())
+}
+
+#[test]
+fn panicked_savepoint_write_rolls_back_candidate_and_resumes_payload(
+) -> Result<(), Box<dyn std::error::Error>> {
+    const PANIC_MARKER: &str = "checkpoint candidate write panic marker";
+
+    let (temp_dir, path) = temp_db("chio-checkpoint-savepoint-write-panic")?;
+    let keypair = receipt_test_keypair();
+    let store = SqliteReceiptStore::open(&path)?;
+    for i in 0..4u64 {
+        store.append_chio_receipt_returning_seq(&sample_receipt_with_keypair(
+            &format!("savepoint-write-panic-{i}"),
+            i + 1,
+            &keypair,
+        ))?;
+    }
+    store.flush_receipt_writes()?;
+    store.create_next_receipt_checkpoint(2, &keypair)?;
+    let checkpoint_one = store
+        .load_checkpoint_by_seq(1)?
+        .ok_or("checkpoint 1 missing")?;
+    let checkpoint_two = build_checkpoint_with_previous(
+        2,
+        3,
+        4,
+        &canonical_receipt_bytes(&store, 3, 4),
+        &keypair,
+        Some(&checkpoint_one),
+        &[chio_kernel::checkpoint::checkpoint_chain_leaf_hash(
+            &checkpoint_one.body,
+        )?],
+    )?;
+
+    let mut connection = store.connection()?;
+    connection.execute_batch(
+        r#"
+        DROP TRIGGER IF EXISTS kernel_checkpoints_reject_update;
+        DROP TRIGGER IF EXISTS checkpoint_tree_heads_reject_update;
+        DROP TRIGGER IF EXISTS checkpoint_publication_metadata_reject_update;
+        "#,
+    )?;
+    let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        checkpoint_guarded_immediate::<()>(&mut connection, |tx| {
+            let inserted =
+                insert_checkpoint_incremental_tx(tx, Some(&checkpoint_one), &checkpoint_two)?;
+            if inserted != checkpoint_two {
+                return Err(ReceiptStoreError::Conflict(
+                    "candidate insert did not persist the expected checkpoint".to_string(),
+                ));
+            }
+            std::panic::panic_any(PANIC_MARKER);
+        })
+    }));
+    let panic_payload = panic
+        .err()
+        .ok_or("the post-insert savepoint panic must resume")?;
+    assert_eq!(
+        panic_payload.downcast_ref::<&str>().copied(),
+        Some(PANIC_MARKER),
+        "the wrapper must resume the original post-write panic payload"
+    );
+
+    let candidate_rows: (i64, i64, i64, i64) = connection.query_row(
+        "SELECT
+             (SELECT COUNT(*) FROM kernel_checkpoints WHERE checkpoint_seq = 2),
+             (SELECT COUNT(*) FROM checkpoint_tree_heads WHERE checkpoint_seq = 2),
+             (SELECT COUNT(*) FROM checkpoint_predecessor_witnesses
+              WHERE witness_checkpoint_seq = 2),
+             (SELECT COUNT(*) FROM checkpoint_publication_metadata
+              WHERE checkpoint_seq = 2)",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
+    )?;
+    assert_eq!(
+        candidate_rows,
+        (0, 0, 0, 0),
+        "every candidate write must roll back with the panicked savepoint"
+    );
+    for trigger in [
+        "kernel_checkpoints_reject_update",
+        "checkpoint_tree_heads_reject_update",
+        "checkpoint_publication_metadata_reject_update",
+    ] {
+        let present: bool = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = ?1)",
+            rusqlite::params![trigger],
+            |row| row.get(0),
+        )?;
+        assert!(present, "{trigger} must survive the post-write panic");
+    }
+    let checkpoint_update = connection
+        .execute(
+            "UPDATE kernel_checkpoints SET issued_at = issued_at WHERE checkpoint_seq = 1",
+            [],
+        )
+        .err()
+        .ok_or("checkpoint UPDATE must remain guarded after post-write panic")?;
+    assert!(checkpoint_update
+        .to_string()
+        .contains("kernel checkpoints are immutable"));
+
+    drop(connection);
+    drop(store);
+    temp_dir.close()?;
+    Ok(())
+}
+
+#[test]
 fn cache_miss_holds_insert_lock_across_interior_projection_audit(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (temp_dir, path) = temp_db("chio-checkpoint-cache-miss-interior")?;
@@ -205,7 +438,7 @@ fn cache_miss_holds_insert_lock_across_interior_projection_audit(
         &mut connection,
         &mut head,
         &signer(&keypair, 2),
-        || {
+        |_| {
             let error = peer
                 .execute(
                     "UPDATE checkpoint_publication_metadata
@@ -340,7 +573,160 @@ fn cache_miss_uses_locked_legacy_replacement_frontier_when_no_build_is_due(
 }
 
 #[test]
-fn archived_peer_checkpoint_winner_is_adopted_after_live_rows_rotate(
+fn cache_hit_adopts_valid_different_batch_winner_frontier() -> Result<(), Box<dyn std::error::Error>>
+{
+    let (temp_dir, path) = temp_db("chio-checkpoint-different-batch-hit")?;
+    let keypair = receipt_test_keypair();
+    let store = SqliteReceiptStore::open(&path)?;
+    for i in 0..5u64 {
+        store.append_chio_receipt_returning_seq(&sample_receipt_with_keypair(
+            &format!("different-batch-hit-{i}"),
+            i + 1,
+            &keypair,
+        ))?;
+    }
+    store.flush_receipt_writes()?;
+    store.create_next_receipt_checkpoint(2, &keypair)?;
+    let checkpoint_one = store
+        .load_checkpoint_by_seq(1)?
+        .ok_or("checkpoint 1 missing")?;
+    let chain_leaves = [chio_kernel::checkpoint::checkpoint_chain_leaf_hash(
+        &checkpoint_one.body,
+    )?];
+    let prior_frontier = CheckpointChainFrontier::from_leaves(&chain_leaves);
+    let loser = build_checkpoint_with_previous(
+        2,
+        3,
+        4,
+        &canonical_receipt_bytes(&store, 3, 4),
+        &keypair,
+        Some(&checkpoint_one),
+        &chain_leaves,
+    )?;
+    let winner = build_checkpoint_with_previous(
+        2,
+        3,
+        5,
+        &canonical_receipt_bytes(&store, 3, 5),
+        &keypair,
+        Some(&checkpoint_one),
+        &chain_leaves,
+    )?;
+    assert_ne!(
+        loser.body.chain_root, winner.body.chain_root,
+        "different valid batch lengths must produce different chain roots"
+    );
+    store.store_checkpoint(&winner)?;
+
+    let mut connection = store.connection()?;
+    let (adopted, adopted_frontier) = insert_background_checkpoint_guarded(
+        &mut connection,
+        Some(&checkpoint_one),
+        &prior_frontier,
+        &loser,
+    )?;
+    assert_eq!(adopted, winner);
+    assert_eq!(adopted_frontier.root(), winner.body.chain_root);
+    assert_ne!(adopted_frontier.root(), loser.body.chain_root);
+    assert_eq!(
+        parse_persisted_checkpoint_row(
+            load_persisted_checkpoint_row(&connection, 2)?
+                .ok_or("persisted checkpoint 2 missing")?,
+        )?,
+        winner
+    );
+    assert!(load_persisted_checkpoint_row(&connection, 3)?.is_none());
+    verify_checkpoint_chain_integrity(&connection)?;
+
+    drop(connection);
+    drop(store);
+    temp_dir.close()?;
+    Ok(())
+}
+
+#[test]
+fn cache_miss_adopts_valid_different_batch_winner_frontier(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let (temp_dir, path) = temp_db("chio-checkpoint-different-batch-miss")?;
+    let keypair = receipt_test_keypair();
+    let store = SqliteReceiptStore::open(&path)?;
+    for i in 0..5u64 {
+        store.append_chio_receipt_returning_seq(&sample_receipt_with_keypair(
+            &format!("different-batch-miss-{i}"),
+            i + 1,
+            &keypair,
+        ))?;
+    }
+    store.flush_receipt_writes()?;
+    store.create_next_receipt_checkpoint(2, &keypair)?;
+    let checkpoint_one = store
+        .load_checkpoint_by_seq(1)?
+        .ok_or("checkpoint 1 missing")?;
+    let chain_leaves = [chio_kernel::checkpoint::checkpoint_chain_leaf_hash(
+        &checkpoint_one.body,
+    )?];
+    let loser = build_checkpoint_with_previous(
+        2,
+        3,
+        4,
+        &canonical_receipt_bytes(&store, 3, 4),
+        &keypair,
+        Some(&checkpoint_one),
+        &chain_leaves,
+    )?;
+    let winner = build_checkpoint_with_previous(
+        2,
+        3,
+        5,
+        &canonical_receipt_bytes(&store, 3, 5),
+        &keypair,
+        Some(&checkpoint_one),
+        &chain_leaves,
+    )?;
+    assert_ne!(loser.body.chain_root, winner.body.chain_root);
+
+    let mut connection = store.connection()?;
+    let mut head = seed_verified_head(&connection)?;
+    head.chain_frontier = None;
+    let (frontier, advanced) = build_checkpoint_after_frontier_cache_miss_with_hook(
+        &mut connection,
+        &mut head,
+        &signer(&keypair, 2),
+        |tx| {
+            let inserted = insert_checkpoint_incremental_tx(tx, Some(&checkpoint_one), &winner)?;
+            if inserted != winner {
+                return Err(ReceiptStoreError::Conflict(
+                    "different-batch winner injection diverged".to_string(),
+                ));
+            }
+            Ok(())
+        },
+    )?;
+    assert!(advanced);
+    assert_eq!(frontier.leaf_count(), 2);
+    assert_eq!(frontier.root(), winner.body.chain_root);
+    assert_ne!(frontier.root(), loser.body.chain_root);
+    assert_eq!(head.latest_checkpoint.as_ref(), Some(&winner));
+    assert_eq!(head.chain_frontier.as_ref(), Some(&frontier));
+    assert_eq!(head.checkpointed_entry_seq(), 5);
+    assert_eq!(
+        parse_persisted_checkpoint_row(
+            load_persisted_checkpoint_row(&connection, 2)?
+                .ok_or("persisted checkpoint 2 missing")?,
+        )?,
+        winner
+    );
+    assert!(load_persisted_checkpoint_row(&connection, 3)?.is_none());
+    verify_checkpoint_chain_integrity(&connection)?;
+
+    drop(connection);
+    drop(store);
+    temp_dir.close()?;
+    Ok(())
+}
+
+#[test]
+fn archived_peer_checkpoint_winner_is_authenticated_before_adoption(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let (temp_dir, path) = temp_db("chio-checkpoint-archived-winner")?;
     let archive = unique_db_path("chio-checkpoint-archived-winner-archive");
@@ -394,13 +780,191 @@ fn archived_peer_checkpoint_winner_is_adopted_after_live_rows_rotate(
     assert_eq!(live_range, (1, 5), "only receipt 5 must remain live");
     drop(peer_connection);
 
+    let prior_frontier = CheckpointChainFrontier::from_leaves(&chain_leaves);
     let mut connection = store.connection()?;
-    let adopted =
-        insert_background_checkpoint_guarded(&mut connection, Some(&checkpoint_one), &loser)?;
+    let (adopted, adopted_frontier) = insert_background_checkpoint_guarded(
+        &mut connection,
+        Some(&checkpoint_one),
+        &prior_frontier,
+        &loser,
+    )?;
     assert_eq!(
         adopted, winner,
         "the loser must adopt the archived peer winner"
     );
+    assert_eq!(adopted_frontier.root(), winner.body.chain_root);
+
+    // Diverge only the live surrogate row id. Checkpoint parsing, receipt
+    // signatures, signer binding, and Merkle validation cannot observe this
+    // field, so withdrawing trust here specifically proves exact archive-row
+    // identity is required.
+    let live_winner_row =
+        load_persisted_checkpoint_row(&connection, 2)?.ok_or("live winner row missing")?;
+    let divergent_id = live_winner_row
+        .id
+        .checked_add(1_000)
+        .ok_or("checkpoint row id overflow")?;
+    connection.execute_batch("DROP TRIGGER IF EXISTS kernel_checkpoints_reject_update;")?;
+    assert_eq!(
+        connection.execute(
+            "UPDATE kernel_checkpoints SET id = ?1 WHERE checkpoint_seq = 2",
+            rusqlite::params![sqlite_i64(divergent_id, "divergent checkpoint id")?],
+        )?,
+        1
+    );
+    assert_eq!(
+        trusted_retention_watermark(&connection)?,
+        0,
+        "an id-only live/archive row mismatch must withdraw trust"
+    );
+    assert_eq!(
+        connection.execute(
+            "UPDATE kernel_checkpoints SET id = ?1 WHERE checkpoint_seq = 2",
+            rusqlite::params![sqlite_i64(live_winner_row.id, "restored checkpoint id")?],
+        )?,
+        1
+    );
+    assert_eq!(
+        trusted_retention_watermark(&connection)?,
+        4,
+        "restoring exact row identity must restore archive trust"
+    );
+
+    // Replace the persisted winner and all of its live projections with a
+    // checkpoint signed by an attacker. Its range, receipt Merkle root,
+    // predecessor link, and chain root remain authentic, so only archived
+    // checkpoint identity and receipt-signer binding distinguish it.
+    let attacker = Keypair::from_seed(&[0x5d; 32]);
+    let mut forged = winner.clone();
+    forged.body.kernel_key = attacker.public_key();
+    forged.signature = attacker.sign(&canonical_json_bytes(&forged.body)?);
+    chio_kernel::checkpoint::validate_checkpoint(&forged)?;
+    chio_kernel::checkpoint::validate_checkpoint_predecessor(&checkpoint_one, &forged)?;
+    assert_eq!(forged.body.batch_start_seq, winner.body.batch_start_seq);
+    assert_eq!(forged.body.batch_end_seq, winner.body.batch_end_seq);
+    assert_eq!(forged.body.merkle_root, winner.body.merkle_root);
+    assert_eq!(forged.body.chain_root, winner.body.chain_root);
+    assert_ne!(forged.body.kernel_key, winner.body.kernel_key);
+
+    let forged_json = serde_json::to_string(&forged.body)?;
+    let forged_signature = forged.signature.to_hex();
+    let forged_key = forged.body.kernel_key.to_hex();
+    connection.execute_batch(
+        r#"
+        DROP TRIGGER IF EXISTS kernel_checkpoints_reject_update;
+        DROP TRIGGER IF EXISTS checkpoint_tree_heads_reject_update;
+        DROP TRIGGER IF EXISTS checkpoint_predecessor_witnesses_reject_update;
+        DROP TRIGGER IF EXISTS checkpoint_publication_metadata_reject_update;
+        "#,
+    )?;
+    assert_eq!(
+        connection.execute(
+            "UPDATE kernel_checkpoints
+             SET statement_json = ?1, signature = ?2, kernel_key = ?3
+             WHERE checkpoint_seq = 2",
+            rusqlite::params![&forged_json, &forged_signature, &forged_key],
+        )?,
+        1
+    );
+    assert_eq!(
+        connection.execute(
+            "UPDATE checkpoint_tree_heads
+             SET kernel_key = ?1, statement_json = ?2, signature = ?3
+             WHERE checkpoint_seq = 2",
+            rusqlite::params![&forged_key, &forged_json, &forged_signature],
+        )?,
+        1
+    );
+    assert_eq!(
+        connection.execute(
+            "UPDATE checkpoint_predecessor_witnesses
+             SET witness_statement_json = ?1
+             WHERE witness_checkpoint_seq = 2",
+            rusqlite::params![&forged_json],
+        )?,
+        1
+    );
+    assert_eq!(
+        connection.execute(
+            "UPDATE checkpoint_publication_metadata
+             SET kernel_key = ?1
+             WHERE checkpoint_seq = 2",
+            rusqlite::params![&forged_key],
+        )?,
+        1
+    );
+    let live_forged_row =
+        load_persisted_checkpoint_row(&connection, 2)?.ok_or("forged checkpoint 2 missing")?;
+    assert_eq!(
+        parse_persisted_checkpoint_row(live_forged_row.clone())?,
+        forged
+    );
+    validate_checkpoint_projection_rows(&connection, &live_forged_row, &forged)?;
+    assert_eq!(
+        trusted_retention_watermark(&connection)?,
+        0,
+        "live/archive checkpoint identity mismatch must withdraw trust"
+    );
+
+    // Replace the archived checkpoint row too. Exact row identity and the
+    // authentic Merkle root now pass, but the untouched archived receipts are
+    // still signed by the original key. Full archived claim-log validation
+    // must therefore keep the watermark untrusted.
+    let archive_connection = rusqlite::Connection::open(&archive)?;
+    assert_eq!(
+        archive_connection.execute(
+            "UPDATE kernel_checkpoints
+             SET statement_json = ?1, signature = ?2, kernel_key = ?3
+             WHERE checkpoint_seq = 2",
+            rusqlite::params![&forged_json, &forged_signature, &forged_key],
+        )?,
+        1
+    );
+    let archived_forged_row = load_persisted_checkpoint_row(&archive_connection, 2)?
+        .ok_or("archived forged checkpoint 2 missing")?;
+    assert_eq!(archived_forged_row, live_forged_row);
+    drop(archive_connection);
+    assert_eq!(
+        trusted_retention_watermark(&connection)?,
+        0,
+        "attacker-signed checkpoint must not authenticate original-key archived receipts"
+    );
+
+    let error = insert_background_checkpoint_guarded(
+        &mut connection,
+        Some(&checkpoint_one),
+        &prior_frontier,
+        &loser,
+    )
+    .err()
+    .ok_or("attacker-signed archived winner must be rejected")?;
+    assert!(
+        matches!(error, ReceiptStoreError::Conflict(_))
+            && error
+                .to_string()
+                .contains("gap in checkpoint signer binding"),
+        "unexpected archived-winner rejection: {error:?}"
+    );
+    assert_eq!(
+        parse_persisted_checkpoint_row(
+            load_persisted_checkpoint_row(&connection, 2)?
+                .ok_or("persisted forged checkpoint 2 missing after rejection")?,
+        )?,
+        forged
+    );
+    for trigger in [
+        "kernel_checkpoints_reject_update",
+        "checkpoint_tree_heads_reject_update",
+        "checkpoint_predecessor_witnesses_reject_update",
+        "checkpoint_publication_metadata_reject_update",
+    ] {
+        let present: bool = connection.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name = ?1)",
+            rusqlite::params![trigger],
+            |row| row.get(0),
+        )?;
+        assert!(present, "{trigger} must be restored after rejection");
+    }
 
     drop(connection);
     drop(peer);
