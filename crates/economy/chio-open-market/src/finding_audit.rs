@@ -139,6 +139,8 @@ pub enum FindingAuditError {
     ZeroAttemptCost,
     #[error("report does not bind the presented epoch envelope digest")]
     EpochEnvelopeMismatch,
+    #[error("audit report must be published strictly after its epoch commitment")]
+    ReportNotAfterEpoch,
     #[error("epoch envelope digest is not a 64 character lowercase hex value")]
     InvalidEpochEnvelopeDigest,
     #[error("report selects finding {0}, which this round did not select")]
@@ -268,6 +270,11 @@ pub fn select_audit_targets_within_budget(
 /// added target, a dropped target, or a seed outside the commitment each
 /// reject with their own error.
 ///
+/// The bound epoch is validated before the report time is compared, and the
+/// report must be published strictly after the epoch commitment. A report
+/// cannot attest to a seed reveal or selection that had not yet been
+/// committed.
+///
 /// Accounting is then complete in both directions. Every selected finding is
 /// either recorded as a missed attempt with a reason or attempted, and each
 /// attempted selection owes exactly one attempt receipt, so a round can
@@ -294,6 +301,9 @@ pub fn verify_audit_report(
     }
 
     let expected = select_audit_targets(epoch, &report.revealed_seed, eligible)?;
+    if report.reported_at <= epoch.committed_at {
+        return Err(FindingAuditError::ReportNotAfterEpoch);
+    }
     let expected_ids: BTreeSet<&str> = expected
         .iter()
         .map(|selection| selection.finding_id.as_str())

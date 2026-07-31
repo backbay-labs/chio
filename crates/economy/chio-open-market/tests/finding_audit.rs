@@ -408,6 +408,24 @@ fn an_exact_match_report_verifies() {
 }
 
 #[test]
+fn a_report_that_does_not_strictly_follow_its_epoch_rejects() {
+    let (eligible, epoch) = standard_round();
+    let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
+    let envelope = signed_epoch_digest(&epoch);
+
+    for reported_at in [COMMITTED_AT - 1, COMMITTED_AT] {
+        let mut report = report_for(&envelope, &selection);
+        report.reported_at = reported_at;
+        reseal(&mut report);
+        assert_eq!(
+            verify_audit_report(&epoch, &envelope, &report, &eligible).test_unwrap_err(),
+            FindingAuditError::ReportNotAfterEpoch,
+            "reported_at={reported_at} must strictly follow the epoch commitment"
+        );
+    }
+}
+
+#[test]
 fn a_report_revealing_a_wrong_seed_rejects() {
     let (eligible, epoch) = standard_round();
     let selection = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
