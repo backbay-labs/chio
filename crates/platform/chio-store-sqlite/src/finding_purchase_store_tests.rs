@@ -1516,6 +1516,185 @@ fn blocking_sales_stops_the_slot_line_and_the_wait_predicate_is_exact() {
 }
 
 #[test]
+fn a_sales_block_episode_lifts_once_and_is_never_erased() {
+    let connection = Connection::open_in_memory().expect("in-memory database");
+    connection
+        .execute_batch(FINDING_PURCHASE_SCHEMA)
+        .expect("purchase schema");
+    connection
+        .execute_batch(
+            r#"
+            INSERT INTO listing_sales_blocks (
+                listing_id, block_ordinal, state, blocked_at, lifted_at
+            ) VALUES ('listing-01', 1, 'blocked', 10, NULL);
+            "#,
+        )
+        .expect("raise a block");
+
+    assert!(
+        connection
+            .execute_batch(
+                r#"
+                INSERT INTO listing_sales_blocks (
+                    listing_id, block_ordinal, state, blocked_at, lifted_at
+                ) VALUES ('listing-01', 2, 'blocked', 11, NULL);
+                "#,
+            )
+            .is_err(),
+        "a listing carries at most one live block, so a lift is never ambiguous"
+    );
+    assert!(
+        connection
+            .execute_batch(
+                "UPDATE listing_sales_blocks SET blocked_at = 99 WHERE block_ordinal = 1;"
+            )
+            .is_err(),
+        "the raise is frozen at the time it was recorded"
+    );
+    assert!(
+        connection
+            .execute_batch("DELETE FROM listing_sales_blocks;")
+            .is_err(),
+        "a block episode is retained, never deleted"
+    );
+
+    connection
+        .execute_batch(
+            r#"
+            UPDATE listing_sales_blocks SET state = 'lifted', lifted_at = 20
+            WHERE block_ordinal = 1;
+            "#,
+        )
+        .expect("lift the block");
+    assert!(
+        connection
+            .execute_batch(
+                r#"
+                UPDATE listing_sales_blocks SET state = 'blocked', lifted_at = NULL
+                WHERE block_ordinal = 1;
+                "#,
+            )
+            .is_err(),
+        "a released episode is never reblocked in place"
+    );
+    assert!(
+        connection
+            .execute_batch(
+                "UPDATE listing_sales_blocks SET lifted_at = 30 WHERE block_ordinal = 1;"
+            )
+            .is_err(),
+        "a lift is stamped exactly once"
+    );
+
+    // The listing may be blocked again, and the released episode keeps its
+    // own raise and release beside the new one.
+    connection
+        .execute_batch(
+            r#"
+            INSERT INTO listing_sales_blocks (
+                listing_id, block_ordinal, state, blocked_at, lifted_at
+            ) VALUES ('listing-01', 2, 'blocked', 40, NULL);
+            "#,
+        )
+        .expect("raise a second block");
+    let retained: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM listing_sales_blocks WHERE listing_id = 'listing-01'",
+            [],
+            |row| row.get(0),
+        )
+        .expect("count episodes");
+    assert_eq!(retained, 2);
+}
+
+#[test]
+fn a_listing_keyed_sales_block_carries_across_to_the_episode_line() {
+    let mut connection = Connection::open_in_memory().expect("in-memory database");
+    connection
+        .execute_batch(FINDING_PURCHASE_SCHEMA)
+        .expect("purchase schema");
+    // Rewind the sales block to the listing-keyed shape the earlier
+    // revision provisioned, carrying two listings blocked under it.
+    connection
+        .execute_batch(
+            r#"
+            DROP TABLE listing_sales_blocks;
+
+            CREATE TABLE listing_sales_blocks (
+                listing_id TEXT NOT NULL PRIMARY KEY
+                    CHECK (length(listing_id) BETWEEN 1 AND 512),
+                blocked_at INTEGER NOT NULL CHECK (blocked_at > 0)
+            );
+
+            CREATE TRIGGER listing_sales_blocks_immutable
+            BEFORE UPDATE ON listing_sales_blocks
+            BEGIN
+                SELECT RAISE(ABORT, 'listing sales block is immutable');
+            END;
+
+            CREATE TRIGGER listing_sales_blocks_no_delete
+            BEFORE DELETE ON listing_sales_blocks
+            BEGIN
+                SELECT RAISE(ABORT, 'listing sales block must be retained');
+            END;
+
+            INSERT INTO listing_sales_blocks (listing_id, blocked_at)
+            VALUES ('listing-01', 10), ('listing-02', 11);
+            "#,
+        )
+        .expect("rewind to the listing-keyed block");
+    connection
+        .execute_batch(&format!(
+            "PRAGMA application_id = {};",
+            crate::CHIO_SQLITE_APPLICATION_ID
+        ))
+        .expect("stamp the application id");
+    crate::stamp_schema_version(
+        &connection,
+        FINDING_PURCHASE_SCHEMA_KEY,
+        FINDING_PURCHASE_LISTING_KEYED_BLOCK_VERSION,
+    )
+    .expect("stamp the earlier revision");
+
+    initialize_finding_purchase_schema(&mut connection).expect("open across the revision");
+
+    let mut statement = connection
+        .prepare(
+            r#"
+            SELECT listing_id, block_ordinal, state, blocked_at, lifted_at
+            FROM listing_sales_blocks ORDER BY listing_id ASC
+            "#,
+        )
+        .expect("prepare episode read");
+    let episodes = statement
+        .query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, i64>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+                row.get::<_, Option<i64>>(4)?,
+            ))
+        })
+        .expect("read episodes")
+        .collect::<Result<Vec<_>, _>>()
+        .expect("episode rows");
+    assert_eq!(
+        episodes,
+        vec![
+            ("listing-01".to_owned(), 1, "blocked".to_owned(), 10, None),
+            ("listing-02".to_owned(), 1, "blocked".to_owned(), 11, None),
+        ],
+        "a block that was never lifted stays live across the upgrade, at the time it was raised"
+    );
+
+    // The open re-verifies the schema shape, so the parked table is gone
+    // and reopening is a no-op.
+    drop(statement);
+    initialize_finding_purchase_schema(&mut connection).expect("reopen at the current revision");
+}
+
+#[test]
 fn payout_destination_slots_are_bounded_and_idempotent() {
     let fixture = fixture();
     let allocation_id = &fixture.allocation_id;

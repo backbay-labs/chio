@@ -14,9 +14,12 @@
 //! keeps counting once the sale settles, through the retention horizon the
 //! settlement pins. `pending_purchase_slots` is the monotonic per-listing
 //! slot line the cutoff wait reads, and `listing_sales_blocks` is the
-//! one-way switch that stops that line growing: once a listing is blocked
-//! no reservation can take a fresh slot, so a frozen cutoff stays the
-//! high-water mark it was frozen at.
+//! switch that stops that line growing: while a listing carries a live
+//! block no reservation can take a fresh slot, so a frozen cutoff stays
+//! the high-water mark it was frozen at. A block is an episode on that
+//! listing, raised once and lifted at most once when the liability that
+//! raised it is exonerated; the raise stays on the record either way, so
+//! a lifted listing still shows when and for how long it was blocked.
 //! `purchase_records` and `failed_delivery_records` are the two terminal
 //! outcomes, retained without deletion and content-addressed against their
 //! stored digests. `payout_destinations` is the bounded sixteen-slot
@@ -34,7 +37,7 @@
 //! those surfaces rely on: one reservation per payment operation, exposure
 //! that never exceeds the allocation's registered cap, an allocation that
 //! backs the finding and listing it is charged for, a slot line that only
-//! ever grows and stops growing the moment sales are blocked, terminal
+//! ever grows and stops growing while sales are blocked, terminal
 //! records that cannot be edited or deleted, and the atomic close
 //! transaction that moves reservation, slot, encumbrance, and record
 //! together or not at all.
@@ -58,10 +61,17 @@ use crate::admission_operation_store::verify_active_owner;
 use crate::serving_owner::SqliteServingOwner;
 
 const FINDING_PURCHASE_SCHEMA_KEY: &str = "finding_purchase";
-/// Revision 2 adds the per-listing sales block. The schema batch is a
-/// sequence of idempotent guards, so a revision-1 database adopts the new
-/// table on its next open without touching a stored purchase.
-pub(crate) const FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION: i32 = 2;
+/// Revision 3 turns the per-listing sales block into an episode line that
+/// an exonerating reversal can lift. The schema batch is a sequence of
+/// idempotent guards, so a revision-1 database adopts the new table on its
+/// next open; a revision-2 database carries its listing-keyed blocks
+/// across in [`carry_listing_sales_blocks_across`].
+pub(crate) const FINDING_PURCHASE_SUPPORTED_SCHEMA_VERSION: i32 = 3;
+/// Revision that introduced the listing-keyed, never-lifted sales block.
+const FINDING_PURCHASE_LISTING_KEYED_BLOCK_VERSION: i32 = 2;
+/// Name the listing-keyed block table is parked under while the episode
+/// line is created beside it.
+const LEGACY_SALES_BLOCK_TABLE: &str = "listing_sales_blocks_legacy";
 const FINDING_PURCHASE_SCHEMA_ANCHORS: &[&str] = &[
     "purchase_reservations",
     "admission_operations",
@@ -940,11 +950,10 @@ impl SqliteFindingPurchaseStore {
             .transpose()
     }
 
-    /// Block every new pending-purchase slot on one listing. The block is
-    /// a one-way switch: it is recorded once, never lifted, and never
-    /// rewritten, so a cutoff frozen against it can only ever be the
-    /// listing's high-water mark. Idempotent, and a repeat keeps the
-    /// trusted time the first block recorded.
+    /// Block every new pending-purchase slot on one listing. While the
+    /// block stands it is never rewritten, so a cutoff frozen against it
+    /// can only ever be the listing's high-water mark. Idempotent, and a
+    /// repeat keeps the trusted time the first block recorded.
     ///
     /// Slots already reserved are untouched. Blocking stops the line
     /// growing; it does not retract a purchase already in flight, which
@@ -1510,11 +1519,17 @@ fn insert_destination_tx(
     Ok(())
 }
 
-/// Record one listing's sales block inside a caller-supplied
-/// transaction. This is the seam the challenge lane composes with: the
-/// liability CAS that freezes a purchase cutoff and the block that stops
-/// the slot line growing past it are one transaction on one connection,
-/// so no slot can open between them.
+/// Raise one listing's sales block inside a caller-supplied transaction.
+/// This is the seam the challenge lane composes with: the liability CAS
+/// that freezes a purchase cutoff and the block that stops the slot line
+/// growing past it are one transaction on one connection, so no slot can
+/// open between them.
+///
+/// Episodes are numbered strictly monotonically per listing and are never
+/// deleted, so a listing blocked, exonerated, and blocked again keeps both
+/// raises on the record. A listing that already carries a live block
+/// replays: the second liability to reach it holds the same episode the
+/// first raised, and that episode outlives either of them.
 pub(crate) fn block_new_slots_tx(
     transaction: &Transaction<'_>,
     listing_id: &str,
@@ -1523,13 +1538,31 @@ pub(crate) fn block_new_slots_tx(
     if sales_blocked_tx(transaction, listing_id)? {
         return Ok(FindingPurchaseWriteOutcome::ExistingSame);
     }
+    let highest: i64 = transaction
+        .query_row(
+            r#"
+            SELECT COALESCE(MAX(block_ordinal), 0) FROM listing_sales_blocks
+            WHERE listing_id = ?1
+            "#,
+            [listing_id],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)?;
+    let ordinal = stored_u64(highest, "block_ordinal")?
+        .checked_add(1)
+        .ok_or_else(|| invariant("block ordinal overflowed u64"))?;
     let inserted = transaction
         .execute(
             r#"
-            INSERT INTO listing_sales_blocks (listing_id, blocked_at)
-            VALUES (?1, ?2)
+            INSERT INTO listing_sales_blocks (
+                listing_id, block_ordinal, state, blocked_at, lifted_at
+            ) VALUES (?1, ?2, 'blocked', ?3, NULL)
             "#,
-            params![listing_id, sqlite_i64(now, "now")?],
+            params![
+                listing_id,
+                sqlite_i64(ordinal, "block_ordinal")?,
+                sqlite_i64(now, "now")?,
+            ],
         )
         .map_err(sqlite_error)?;
     if inserted != 1 {
@@ -1561,20 +1594,25 @@ pub(crate) fn highest_slot_ordinal_tx(
 }
 
 /// Whether one listing's sales are blocked, read inside a caller-supplied
-/// transaction.
+/// transaction. A listing sells again once its live block episode is
+/// lifted; the lifted episodes it retains do not block anything.
 pub(crate) fn sales_blocked_tx(
     transaction: &Transaction<'_>,
     listing_id: &str,
 ) -> Result<bool, FindingPurchaseStoreError> {
-    let blocked: Option<i64> = transaction
+    let blocked: bool = transaction
         .query_row(
-            "SELECT blocked_at FROM listing_sales_blocks WHERE listing_id = ?1",
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM listing_sales_blocks
+                WHERE listing_id = ?1 AND state = 'blocked'
+            )
+            "#,
             [listing_id],
             |row| row.get(0),
         )
-        .optional()
         .map_err(sqlite_error)?;
-    Ok(blocked.is_some())
+    Ok(blocked)
 }
 
 /// The live reservations whose expiry has passed, oldest first, bounded
@@ -1966,9 +2004,11 @@ pub(crate) fn initialize_finding_purchase_schema(
     let transaction = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(sqlite_error)?;
+    park_listing_keyed_sales_blocks(&transaction, on_disk)?;
     transaction
         .execute_batch(FINDING_PURCHASE_SCHEMA)
         .map_err(sqlite_error)?;
+    carry_listing_sales_blocks_across(&transaction)?;
     crate::stamp_schema_version(
         &transaction,
         FINDING_PURCHASE_SCHEMA_KEY,
@@ -1977,6 +2017,114 @@ pub(crate) fn initialize_finding_purchase_schema(
     .map_err(|error| invariant(error.to_string()))?;
     verify_finding_purchase_invariants(&transaction)?;
     transaction.commit().map_err(sqlite_error)
+}
+
+/// Park a listing-keyed sales block table beside the schema batch so the
+/// batch can create the episode line under the canonical name.
+///
+/// `CREATE TABLE IF NOT EXISTS` leaves an existing definition alone and
+/// SQLite cannot re-key a table in place, so a database provisioned when a
+/// block was a single never-lifted row per listing keeps that shape until
+/// its rows are carried across. The two legacy triggers go with it: they
+/// are attached to the parked table under names the episode line reuses,
+/// and a surviving trigger would make the batch's `IF NOT EXISTS` guard
+/// skip the definition that replaces it.
+///
+/// Gated structurally as well as by revision, so it applies at most once
+/// and never touches a database that already carries the episode line.
+fn park_listing_keyed_sales_blocks(
+    transaction: &Transaction<'_>,
+    on_disk_version: i32,
+) -> Result<(), FindingPurchaseStoreError> {
+    if on_disk_version != FINDING_PURCHASE_LISTING_KEYED_BLOCK_VERSION {
+        return Ok(());
+    }
+    let definition: Option<String> = transaction
+        .query_row(
+            r#"
+            SELECT sql FROM sqlite_schema
+            WHERE type = 'table' AND name = 'listing_sales_blocks'
+            "#,
+            [],
+            |row| row.get(0),
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    let Some(definition) = definition else {
+        return Ok(());
+    };
+    if definition.contains("block_ordinal") {
+        return Ok(());
+    }
+    transaction
+        .execute_batch(&format!(
+            r#"
+            DROP TRIGGER IF EXISTS listing_sales_blocks_immutable;
+            DROP TRIGGER IF EXISTS listing_sales_blocks_no_delete;
+            ALTER TABLE listing_sales_blocks RENAME TO {LEGACY_SALES_BLOCK_TABLE};
+            "#
+        ))
+        .map_err(sqlite_error)?;
+    Ok(())
+}
+
+/// Move every parked block onto the episode line as that listing's first
+/// episode, still blocked, and drop the parked table once its rows are
+/// across.
+///
+/// A listing-keyed block was raised and never lifted, so carrying it as a
+/// live episode is what the listing's sales state already is: no listing
+/// silently starts selling again across the upgrade, and none is stranded
+/// under a block the reversal transition cannot reach. The copy is a plain
+/// `INSERT`, so a row the episode line's constraints reject aborts the
+/// open rather than being dropped.
+fn carry_listing_sales_blocks_across(
+    transaction: &Transaction<'_>,
+) -> Result<(), FindingPurchaseStoreError> {
+    let parked: bool = transaction
+        .query_row(
+            r#"
+            SELECT EXISTS(
+                SELECT 1 FROM sqlite_schema WHERE type = 'table' AND name = ?1
+            )
+            "#,
+            [LEGACY_SALES_BLOCK_TABLE],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)?;
+    if !parked {
+        return Ok(());
+    }
+    let expected: i64 = transaction
+        .query_row(
+            &format!("SELECT COUNT(*) FROM {LEGACY_SALES_BLOCK_TABLE}"),
+            [],
+            |row| row.get(0),
+        )
+        .map_err(sqlite_error)?;
+    let carried = transaction
+        .execute(
+            &format!(
+                r#"
+                INSERT INTO listing_sales_blocks (
+                    listing_id, block_ordinal, state, blocked_at, lifted_at
+                )
+                SELECT listing_id, 1, 'blocked', blocked_at, NULL
+                FROM {LEGACY_SALES_BLOCK_TABLE}
+                "#
+            ),
+            [],
+        )
+        .map_err(sqlite_error)?;
+    if i64::try_from(carried).unwrap_or(i64::MAX) != expected {
+        return Err(invariant(format!(
+            "listing sales block migration carried {carried} of {expected} rows"
+        )));
+    }
+    transaction
+        .execute_batch(&format!("DROP TABLE {LEGACY_SALES_BLOCK_TABLE};"))
+        .map_err(sqlite_error)?;
+    Ok(())
 }
 
 /// Verify the purchase schema's shape: this database's table, index, and

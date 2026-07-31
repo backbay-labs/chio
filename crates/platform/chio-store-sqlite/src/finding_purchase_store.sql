@@ -163,15 +163,35 @@ BEGIN
 END;
 
 CREATE TABLE IF NOT EXISTS listing_sales_blocks (
-    listing_id TEXT NOT NULL PRIMARY KEY
-        CHECK (length(listing_id) BETWEEN 1 AND 512),
-    blocked_at INTEGER NOT NULL CHECK (blocked_at > 0)
+    listing_id TEXT NOT NULL CHECK (length(listing_id) BETWEEN 1 AND 512),
+    block_ordinal INTEGER NOT NULL CHECK (block_ordinal > 0),
+    state TEXT NOT NULL CHECK (state IN ('blocked', 'lifted')),
+    blocked_at INTEGER NOT NULL CHECK (blocked_at > 0),
+    lifted_at INTEGER CHECK (lifted_at IS NULL OR lifted_at >= blocked_at),
+    PRIMARY KEY (listing_id, block_ordinal),
+    CHECK ((state = 'blocked') = (lifted_at IS NULL))
 );
 
-CREATE TRIGGER IF NOT EXISTS listing_sales_blocks_immutable
+-- One listing carries at most one live block, so the episode a lift closes
+-- is never ambiguous.
+CREATE UNIQUE INDEX IF NOT EXISTS listing_sales_blocks_live
+    ON listing_sales_blocks(listing_id)
+    WHERE state = 'blocked';
+
+CREATE TRIGGER IF NOT EXISTS listing_sales_blocks_immutable_identity
 BEFORE UPDATE ON listing_sales_blocks
+WHEN NEW.listing_id <> OLD.listing_id
+  OR NEW.block_ordinal <> OLD.block_ordinal
+  OR NEW.blocked_at <> OLD.blocked_at
 BEGIN
-    SELECT RAISE(ABORT, 'listing sales block is immutable');
+    SELECT RAISE(ABORT, 'listing sales block identity is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS listing_sales_blocks_lifecycle
+BEFORE UPDATE OF state, lifted_at ON listing_sales_blocks
+WHEN NOT (OLD.state = 'blocked' AND NEW.state = 'lifted')
+BEGIN
+    SELECT RAISE(ABORT, 'listing sales block lifts exactly once');
 END;
 
 CREATE TRIGGER IF NOT EXISTS listing_sales_blocks_no_delete
