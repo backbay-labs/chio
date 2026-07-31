@@ -318,6 +318,12 @@
       "schemaFile": "spec/schemas/chio-finding/v1/purchase-record.schema.json"
     },
     {
+      "schema": "chio.finding.recovery-context.v1",
+      "artifactKind": "finding_recovery_context",
+      "introducedBy": "finding-market-v1",
+      "schemaFile": "spec/schemas/chio-finding/v1/recovery-context.schema.json"
+    },
+    {
       "schema": "chio.finding.replay-recipe-input.v1",
       "artifactKind": "finding_replay_recipe_input",
       "introducedBy": "finding-market-v1",

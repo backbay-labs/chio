@@ -391,6 +391,7 @@ fn require_finding_recovery_serializes_with_closed_shape() {
         original_capability_id: "capability-1".to_string(),
         original_delivery_receipt_id: "receipt-1".to_string(),
         purchase_key: "c".repeat(64),
+        max_recoveries: 3,
     }));
     let value = serde_json::to_value(&constraint).expect("serialize recovery marker");
     assert_eq!(
@@ -404,6 +405,7 @@ fn require_finding_recovery_serializes_with_closed_shape() {
                 "original_capability_id": "capability-1",
                 "original_delivery_receipt_id": "receipt-1",
                 "purchase_key": "c".repeat(64),
+                "max_recoveries": 3,
             }
         })
     );
@@ -422,6 +424,7 @@ fn require_finding_recovery_rejects_unknown_fields() {
             "original_capability_id": "capability-1",
             "original_delivery_receipt_id": "receipt-1",
             "purchase_key": "c".repeat(64),
+            "max_recoveries": 3,
             "extra": true,
         }
     });

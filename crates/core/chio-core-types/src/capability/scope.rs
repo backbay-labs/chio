@@ -498,6 +498,8 @@ pub struct FindingRecoveryMarkerV1 {
     pub original_delivery_receipt_id: String,
     /// Derived key of the signed settled purchase record.
     pub purchase_key: String,
+    /// Durable attempt ceiling shared by every re-mint of `recovery_id`.
+    pub max_recoveries: u32,
 }
 
 impl Constraint {
