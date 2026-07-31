@@ -49,12 +49,13 @@ use chio_core::crypto::{sha256_hex, Keypair, PublicKey};
 use chio_core::web3::anchors::AnchorInclusionProof;
 use chio_finding::{
     compute_enforcement_id, derive_outcome_id, ensure_challenge_class_compatibility,
-    signed_envelope_sha256, verify_finding, verify_pinned_envelope, verify_signed_challenge,
-    verify_signed_challenge_outcome, verify_signed_purchase_record, Finding, FindingChallenge,
-    FindingChallengeAuthorization, FindingChallengeAuthorizationKind, FindingChallengeEnforcement,
-    FindingChallengeEvidenceKind, FindingChallengeOutcome, FindingEffectIntentBinding,
-    FindingEnforcementDestination, FindingPenaltyCalculation, FindingPurchaseRecord,
-    SignedFindingChallenge, SignedFindingChallengeEnforcement, SignedFindingChallengeOutcome,
+    signed_envelope_sha256, verify_finding, verify_pinned_envelope, verify_signed_audit_epoch,
+    verify_signed_challenge, verify_signed_challenge_outcome, verify_signed_purchase_record,
+    Finding, FindingChallenge, FindingChallengeAuthorization, FindingChallengeAuthorizationKind,
+    FindingChallengeEnforcement, FindingChallengeEvidenceKind, FindingChallengeOutcome,
+    FindingEffectIntentBinding, FindingEnforcementDestination, FindingPenaltyCalculation,
+    FindingPurchaseRecord, SignedFindingAuditEpoch, SignedFindingChallenge,
+    SignedFindingChallengeEnforcement, SignedFindingChallengeOutcome,
     SignedFindingChallengeVerifierProfile, SignedFindingFinalizedBondSnapshot,
     SignedFindingPurchaseRecord, FINDING_CHALLENGE_ENFORCEMENT_SCHEMA_V1,
     FINDING_CHALLENGE_OUTCOME_SCHEMA_V1,
@@ -68,6 +69,7 @@ use chio_open_market::evaluation::{
 };
 use chio_open_market::evidence::{OpenMarketEvidenceKind, OpenMarketEvidenceReference};
 use chio_open_market::fee_schedule::{OpenMarketBondClass, SignedOpenMarketFeeSchedule};
+use chio_open_market::finding_audit::{select_audit_targets, EligibleListing};
 use chio_open_market::finding_penalty::{
     evaluate_finding_penalty, FindingPenaltyBranch, FindingPenaltyContext,
 };
@@ -284,6 +286,14 @@ pub enum ChallengeCoordinatorError {
     FilingUnfunded,
     #[error("filing binds a fee schedule this venue never published")]
     UnknownFeeSchedule,
+    #[error("filing binds an audit round this venue never published")]
+    UnknownAuditRound,
+    #[error("signed audit epoch rejected: {0}")]
+    AuditEpoch(String),
+    #[error("audit round selection rejected: {0}")]
+    AuditSelection(String),
+    #[error("venue audit does not bind the round that drew it: {0}")]
+    AuditRoundBinding(&'static str),
     #[error("resolved fee schedule rejected: {0}")]
     FeeScheduleArtifact(String),
     #[error("filing terms are not the ones the signed fee schedule sets: {0}")]
@@ -336,6 +346,17 @@ pub enum ChallengeCoordinatorError {
     Canonical,
 }
 
+/// One published audit round, in the form anyone can replay it: the signed
+/// epoch that fixed the round's inputs before it sampled, the seed the
+/// venue revealed afterwards, and the eligible listing snapshot the epoch
+/// committed the digest of.
+#[derive(Debug, Clone)]
+pub struct FindingAuditRound {
+    pub epoch: SignedFindingAuditEpoch,
+    pub revealed_seed: String,
+    pub eligible: Vec<EligibleListing>,
+}
+
 /// Resolution of the signed artifacts a filing binds by digest.
 ///
 /// A challenge carries digests, never the artifacts behind them, so the
@@ -346,6 +367,10 @@ pub trait FindingFilingResolver: Send + Sync {
     /// The signed open-market fee schedule published under this envelope
     /// digest, or `None` when the venue published no such schedule.
     fn fee_schedule(&self, envelope_sha256: &str) -> Option<SignedOpenMarketFeeSchedule>;
+
+    /// The audit round published under this epoch envelope digest, or
+    /// `None` when the venue published no such round.
+    fn audit_round(&self, epoch_envelope_sha256: &str) -> Option<FindingAuditRound>;
 }
 
 /// The pinned public roles this coordinator verifies against. None of
@@ -653,7 +678,9 @@ impl FindingChallengeCoordinator {
     /// A venue audit takes none of that path. Its authorization branch has
     /// no fee, bond, forfeiture, or reward member at all, so those fields
     /// are unrepresentable on it rather than merely rejected, and this
-    /// method charges and locks nothing for it.
+    /// method charges and locks nothing for it. What it owes instead is
+    /// the round: a bondless filing is admitted only against the published
+    /// selection that drew this listing.
     pub fn submit(
         &self,
         challenge: &SignedFindingChallenge,
@@ -690,11 +717,17 @@ impl FindingChallengeCoordinator {
                 (FindingChallengeAuthorizationBranch::VenueAudit, None)
             }
         };
-        // The durable row carries no fee or bond precondition, so a filing
-        // whose fee or bond cannot be authenticated must be refused before
-        // anything about it becomes durable.
-        if let FindingChallengeAuthorization::BuyerSubmission(submission) = &body.authorization {
-            self.require_dispute_terms(submission, now)?;
+        // The durable row carries neither the money terms of a buyer
+        // filing nor the round behind a bondless one, so a filing whose
+        // branch cannot be authorized must be refused before anything
+        // about it becomes durable.
+        match &body.authorization {
+            FindingChallengeAuthorization::BuyerSubmission(submission) => {
+                self.require_dispute_terms(submission, now)?;
+            }
+            FindingChallengeAuthorization::VenueAudit(audit) => {
+                self.require_audit_selection(audit, body)?;
+            }
         }
         let write = self
             .challenges
@@ -1503,6 +1536,60 @@ impl FindingChallengeCoordinator {
             || lock.amount.currency != requirement.required_amount.currency
         {
             return Err(ChallengeCoordinatorError::DisputeTerms("dispute bond"));
+        }
+        Ok(())
+    }
+
+    /// Require a bondless venue audit to be one the published round drew.
+    ///
+    /// The audit branch is the only filing that stakes nothing, so the
+    /// round is the whole of what stands between it and an unbounded free
+    /// challenge. Verifying that the pinned audit authority signed the
+    /// envelope proves who filed, never what was drawn: the three digests
+    /// the branch carries have to resolve to a published round and to the
+    /// draw that round deterministically produces for this exact listing.
+    fn require_audit_selection(
+        &self,
+        audit: &chio_finding::FindingVenueAuditAuthorization,
+        challenge: &FindingChallenge,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let round = self
+            .filings
+            .audit_round(&audit.audit_epoch_envelope_sha256)
+            .ok_or(ChallengeCoordinatorError::UnknownAuditRound)?;
+        // Re-derived from the resolved envelope, so a resolver answering
+        // with any other round is caught here rather than authorizing a
+        // filing against a round the audit never named.
+        if self.envelope_digest(&round.epoch)? != audit.audit_epoch_envelope_sha256 {
+            return Err(ChallengeCoordinatorError::AuditRoundBinding(
+                "audit_epoch_envelope_sha256",
+            ));
+        }
+        verify_signed_audit_epoch(&round.epoch, &self.pins.audit_authority)
+            .map_err(|error| ChallengeCoordinatorError::AuditEpoch(error.to_string()))?;
+        if round.epoch.body.authorization_digest != audit.authorization_digest {
+            return Err(ChallengeCoordinatorError::AuditRoundBinding(
+                "authorization_digest",
+            ));
+        }
+        // The selection is a pure function of inputs the epoch committed
+        // to before the seed was revealed, so it is recomputed here rather
+        // than read from anything the filing carries. A listing the round
+        // never drew has no entry to find.
+        let selection =
+            select_audit_targets(&round.epoch.body, &round.revealed_seed, &round.eligible)
+                .map_err(|error| ChallengeCoordinatorError::AuditSelection(error.to_string()))?;
+        let drawn = selection
+            .iter()
+            .find(|target| {
+                target.finding_id == challenge.finding_id
+                    && target.listing_id == challenge.listing_id
+            })
+            .ok_or(ChallengeCoordinatorError::AuditRoundBinding("selection"))?;
+        if drawn.draw != audit.selection_digest {
+            return Err(ChallengeCoordinatorError::AuditRoundBinding(
+                "selection_digest",
+            ));
         }
         Ok(())
     }
