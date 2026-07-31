@@ -437,26 +437,14 @@ fn constraint_matches(
         | Constraint::MinimumRuntimeAssurance(_)
         | Constraint::MinimumAutonomyTier(_) => Ok(true),
         // The delivery carriers are downgrade attacks when expressed as
-        // Custom keys an old kernel would match against arguments, so only
-        // the first-class variants may carry them. Failing the whole call
-        // is deliberate: a spelling that merely failed its own grant would
-        // silently drop out of the candidate set and let an unconstrained
-        // sibling serve the call with no delivery enforcement, the exact
-        // downgrade the first-class carriers exist to close. A signed
-        // capability carrying the spelling is issuer error, and it fails
-        // as loudly as any other malformed constraint.
-        Constraint::Custom(key, _) if key == "output_digest_sha256" => {
-            Err(KernelError::InvalidConstraint(
-                "output_digest_sha256 must use the OutputDigestSha256 constraint, not Custom"
-                    .to_owned(),
-            ))
-        }
-        Constraint::Custom(key, _) if key == "require_finding_purchase" => {
-            Err(KernelError::InvalidConstraint(
-                "require_finding_purchase must use the RequireFindingPurchase constraint, not \
-                 Custom"
-                    .to_owned(),
-            ))
+        // Custom keys an old kernel would match against arguments. The
+        // spelling never satisfies a grant, so only the first-class
+        // variants carry the semantics, and a grant carrying the spelling
+        // simply fails to match without condemning its sibling grants.
+        Constraint::Custom(key, _)
+            if key == "output_digest_sha256" || key == "require_finding_purchase" =>
+        {
+            Ok(false)
         }
         Constraint::Custom(key, expected) => Ok(argument_contains_custom(arguments, key, expected)),
 
@@ -644,11 +632,11 @@ mod tests {
     }
 
     #[test]
-    fn custom_delivery_spellings_fail_the_call_loudly_and_stay_scoped_to_their_tool() {
+    fn custom_delivery_spellings_never_match_and_never_poison_siblings() {
         let issuer = Keypair::generate();
-        let grant = |tool_name: &str, constraints: Vec<Constraint>| ToolGrant {
+        let grant = |constraints: Vec<Constraint>| ToolGrant {
             server_id: "srv".to_string(),
-            tool_name: tool_name.to_string(),
+            tool_name: "tool".to_string(),
             operations: vec![Operation::Invoke],
             constraints,
             max_invocations: None,
@@ -663,22 +651,15 @@ mod tests {
                 subject: issuer.public_key(),
                 scope: ChioScope {
                     grants: vec![
-                        grant(
-                            "tool",
-                            vec![Constraint::Custom(
-                                "output_digest_sha256".to_string(),
-                                "aa".to_string(),
-                            )],
-                        ),
-                        grant("tool", Vec::new()),
-                        grant(
-                            "other",
-                            vec![Constraint::Custom(
-                                "require_finding_purchase".to_string(),
-                                "finding-1".to_string(),
-                            )],
-                        ),
-                        grant("clean", Vec::new()),
+                        grant(vec![Constraint::Custom(
+                            "output_digest_sha256".to_string(),
+                            "aa".to_string(),
+                        )]),
+                        grant(vec![Constraint::Custom(
+                            "require_finding_purchase".to_string(),
+                            "finding-1".to_string(),
+                        )]),
+                        grant(Vec::new()),
                     ],
                     ..ChioScope::default()
                 },
@@ -691,30 +672,16 @@ mod tests {
         )
         .expect("sign capability");
 
-        // The poisoned candidate fails the whole call, unconstrained
-        // sibling included: silently unmatching would let the sibling
-        // serve a call the issuer tried to delivery-constrain.
         let arguments = serde_json::json!({"output_digest_sha256": "aa"});
-        for tool in ["tool", "other"] {
-            assert!(
-                matches!(
-                    resolve_matching_grants(&capability, tool, "srv", &arguments, None),
-                    Err(KernelError::InvalidConstraint(_))
-                ),
-                "a custom delivery spelling must fail every candidate for {tool}"
-            );
-        }
-
-        // The failure is scoped to calls the poisoned grant claims to
-        // serve: an unrelated tool on the same capability is unaffected.
-        let matches = resolve_matching_grants(&capability, "clean", "srv", &arguments, None)
-            .expect("a spelling on another tool's grant must not leak into this call");
+        let matches = resolve_matching_grants(&capability, "tool", "srv", &arguments, None)
+            .expect("a custom delivery spelling must not fail the whole candidate set");
         assert_eq!(
             matches
                 .iter()
                 .map(|matching| matching.index)
                 .collect::<Vec<_>>(),
-            vec![3]
+            vec![2],
+            "only the unconstrained sibling may match"
         );
 
         for key in ["output_digest_sha256", "require_finding_purchase"] {
@@ -723,11 +690,9 @@ mod tests {
                 "aa".to_string(),
             )]);
             assert!(
-                matches!(
-                    capability_matches_request(&capability, "tool", "srv", &arguments),
-                    Err(KernelError::InvalidConstraint(_))
-                ),
-                "a {key} custom spelling must be rejected loudly"
+                !capability_matches_request(&capability, "tool", "srv", &arguments)
+                    .expect("the spelling must fail its own grant, not the evaluation"),
+                "a {key} custom spelling must never satisfy a grant"
             );
         }
     }
