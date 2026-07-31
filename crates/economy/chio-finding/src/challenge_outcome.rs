@@ -33,8 +33,8 @@ use crate::challenge::{
 use crate::envelope::signed_envelope_sha256;
 use crate::profile::FindingPredicate;
 use crate::validate::{
-    require_bounded_id, require_currency, require_hex64, require_non_empty, require_nonzero,
-    FindingError,
+    require_bounded_id, require_currency, require_hex64, require_i_json_u64, require_non_empty,
+    require_nonzero, FindingError,
 };
 
 /// Evaluator-signed challenge outcome.
@@ -276,6 +276,15 @@ impl FindingChallengeFacet {
 /// `penalty = min(live_allocated_collateral, computed_exposure)`. Overflow
 /// and a computed exposure above the signed requirement reject; nothing is
 /// silently clamped.
+///
+/// Two range invariants keep a signed calculation acceptable everywhere it
+/// is read. Every unit member stays inside the I-JSON safe-integer range,
+/// because a consumer that parses the canonical bytes with a
+/// double-precision number type would silently round anything above it. And
+/// the resulting penalty is nonzero: an upheld outcome over exhausted live
+/// collateral authorizes no sanction, and a zero amount is refused by every
+/// downstream monetary type, so the calculation is rejected here rather
+/// than signed and stranded.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub struct FindingPenaltyCalculation {
@@ -289,6 +298,26 @@ pub struct FindingPenaltyCalculation {
 
 impl FindingPenaltyCalculation {
     fn validate(&self) -> Result<(), FindingError> {
+        require_i_json_u64(
+            self.base_finding_stake_units,
+            "penalty_calculation.base_finding_stake_units",
+        )?;
+        require_i_json_u64(
+            self.open_per_sale_encumbrance_units,
+            "penalty_calculation.open_per_sale_encumbrance_units",
+        )?;
+        require_i_json_u64(
+            self.computed_exposure_units,
+            "penalty_calculation.computed_exposure_units",
+        )?;
+        require_i_json_u64(
+            self.listing_required_amount_units,
+            "penalty_calculation.listing_required_amount_units",
+        )?;
+        require_i_json_u64(
+            self.live_allocated_collateral_units,
+            "penalty_calculation.live_allocated_collateral_units",
+        )?;
         let computed = self
             .base_finding_stake_units
             .checked_add(self.open_per_sale_encumbrance_units)
@@ -309,6 +338,10 @@ impl FindingPenaltyCalculation {
                 "penalty_calculation.penalty_amount",
             ));
         }
+        require_nonzero(
+            self.penalty_amount.units,
+            "penalty_calculation.penalty_amount",
+        )?;
         require_currency(
             &self.penalty_amount.currency,
             "penalty_calculation.penalty_amount.currency",

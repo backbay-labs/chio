@@ -5,6 +5,7 @@
 //! lane registers. Cross-artifact adjudication belongs to the evaluator and
 //! is covered there.
 
+use std::collections::BTreeSet;
 use std::error::Error;
 use std::path::PathBuf;
 
@@ -47,6 +48,19 @@ const HEX64_ALT: &str = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9
 const HEX64_THIRD: &str = "abcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd";
 const SEED: &str = "1111111111111111111111111111111111111111111111111111111111111111";
 
+/// Every artifact family this lane registers. The round-trip coverage
+/// assertion is keyed on this list, so a family added to the lane without a
+/// value that reaches its registered schema fails here.
+const CHALLENGE_LANE_FAMILIES: [&str; 7] = [
+    "audit-epoch",
+    "audit-report",
+    "challenge",
+    "challenge-enforcement",
+    "challenge-outcome",
+    "finalized-bond-snapshot",
+    "replay-observation",
+];
+
 fn keypair(seed: u8) -> Keypair {
     Keypair::from_seed(&[seed; 32])
 }
@@ -75,6 +89,13 @@ fn assert_family_schema_rejects(family: &str, value: &Value, case: &str) -> Test
         ))
         .into()),
     }
+}
+
+/// The exact document a verifier reads: the artifact's canonical bytes,
+/// parsed back. Schema conformance is checked over those bytes rather than
+/// over an in-memory value that never crossed the wire.
+fn canonical_document<T: serde::Serialize>(artifact: &T) -> Result<Value, Box<dyn Error>> {
+    Ok(serde_json::from_slice(&canonical_json_bytes(artifact)?)?)
 }
 
 fn usd(units: u64) -> MonetaryAmount {
@@ -349,6 +370,19 @@ fn outcome_body(
         evaluator_key_epoch: 7,
         evaluated_at: 1_750_000_500,
     };
+    outcome.outcome_id = derive_outcome_id(&outcome)?;
+    Ok(outcome)
+}
+
+fn upheld_outcome_with_penalty(
+    penalty_calculation: FindingPenaltyCalculation,
+) -> Result<FindingChallengeOutcome, FindingError> {
+    let mut outcome = outcome_body(
+        HEX64,
+        FindingChallengeVerdict::Upheld,
+        digest_mismatch_facet(),
+    )?;
+    outcome.penalty_calculation = Some(penalty_calculation);
     outcome.outcome_id = derive_outcome_id(&outcome)?;
     Ok(outcome)
 }
@@ -1712,5 +1746,200 @@ fn market_penalty_schema_mirrors_the_frozen_camel_case_shape() -> TestResult {
     let mut no_evidence = value;
     no_evidence["body"]["evidenceRefs"] = json!([]);
     assert_family_schema_rejects("market-penalty", &no_evidence, "empty evidence refs")?;
+    Ok(())
+}
+
+/// Artifact validation and the registered schema are two independent gates
+/// over the same bytes, and a signed artifact has to clear both. Anything
+/// the validator accepts is round-tripped through its canonical encoding and
+/// put to the schema here, so a member the schema constrains more tightly
+/// than the validator cannot reach a signature and then strand at the first
+/// verifier that reads the registry.
+#[test]
+fn every_challenge_family_round_trips_its_registered_schema() -> TestResult {
+    let challenger = keypair(41);
+    let audit_authority = keypair(42);
+    let evaluator = keypair(43);
+    let finalization_authority = keypair(44);
+    let seller = keypair(45);
+    let observer = keypair(46);
+    let mut documents: Vec<(&'static str, Value)> = Vec::new();
+
+    let buyer_challenge = buyer_digest_mismatch_challenge(&challenger)?;
+    (buyer_challenge.validate())?;
+    documents.push((
+        "challenge",
+        canonical_document(&SignedExportEnvelope::sign(buyer_challenge, &challenger)?)?,
+    ));
+
+    let venue_challenge = venue_replay_challenge()?;
+    (venue_challenge.validate())?;
+    documents.push((
+        "challenge",
+        canonical_document(&SignedExportEnvelope::sign(
+            venue_challenge,
+            &audit_authority,
+        )?)?,
+    ));
+
+    for (verdict, facet) in [
+        (FindingChallengeVerdict::Upheld, digest_mismatch_facet()),
+        (
+            FindingChallengeVerdict::Rejected,
+            replay_facet(FindingReplayPredicateResult::Consistent),
+        ),
+        (
+            FindingChallengeVerdict::Indeterminate,
+            replay_facet(FindingReplayPredicateResult::Indeterminate),
+        ),
+    ] {
+        let outcome = outcome_body(HEX64, verdict, facet)?;
+        (outcome.validate())?;
+        documents.push((
+            "challenge-outcome",
+            canonical_document(&SignedExportEnvelope::sign(outcome, &evaluator)?)?,
+        ));
+    }
+
+    // The smallest calculation the formula admits: one unit of exposure fully
+    // covered by one unit of live collateral.
+    let minimal_penalty = upheld_outcome_with_penalty(FindingPenaltyCalculation {
+        base_finding_stake_units: 1,
+        open_per_sale_encumbrance_units: 0,
+        computed_exposure_units: 1,
+        listing_required_amount_units: 1,
+        live_allocated_collateral_units: 1,
+        penalty_amount: usd(1),
+    })?;
+    (minimal_penalty.validate())?;
+    documents.push((
+        "challenge-outcome",
+        canonical_document(&SignedExportEnvelope::sign(minimal_penalty, &evaluator)?)?,
+    ));
+
+    let enforcement = enforcement_body()?;
+    (enforcement.validate())?;
+    documents.push((
+        "challenge-enforcement",
+        canonical_document(&SignedExportEnvelope::sign(
+            enforcement,
+            &finalization_authority,
+        )?)?,
+    ));
+
+    for finality in [
+        FindingObservedFinality::Finalized,
+        FindingObservedFinality::Confirmations { depth: 96 },
+    ] {
+        let mut snapshot = bond_snapshot_body(&seller)?;
+        snapshot.observed_finality = finality;
+        snapshot.snapshot_id = compute_snapshot_id(&snapshot)?;
+        (snapshot.validate())?;
+        documents.push((
+            "finalized-bond-snapshot",
+            canonical_document(&SignedExportEnvelope::sign(snapshot, &observer)?)?,
+        ));
+    }
+
+    let epoch = audit_epoch_body()?;
+    (epoch.validate())?;
+    let signed_epoch = SignedExportEnvelope::sign(epoch, &audit_authority)?;
+    documents.push(("audit-epoch", canonical_document(&signed_epoch)?));
+
+    let report = audit_report_body(&signed_envelope_sha256(&signed_epoch)?)?;
+    (report.validate())?;
+    documents.push((
+        "audit-report",
+        canonical_document(&SignedExportEnvelope::sign(report, &audit_authority)?)?,
+    ));
+
+    for phase in [
+        FindingRecipePhaseKind::Baseline,
+        FindingRecipePhaseKind::Candidate,
+    ] {
+        let observation = observation_body(HEX64, HEX64_ALT, phase, "replay-run-42");
+        (observation.validate())?;
+        documents.push(("replay-observation", canonical_document(&observation)?));
+    }
+
+    let mut covered = BTreeSet::new();
+    for (family, document) in &documents {
+        validate_family_schema(family, document)?;
+        covered.insert(*family);
+    }
+    assert_eq!(
+        covered,
+        CHALLENGE_LANE_FAMILIES.into_iter().collect::<BTreeSet<_>>()
+    );
+    Ok(())
+}
+
+/// The penalty calculation is the one place where the outcome carries raw
+/// unit members rather than a monetary amount alone, so its bounds are
+/// pinned against the registered schema in both directions.
+#[test]
+fn penalty_calculation_bounds_match_the_registered_schema() -> TestResult {
+    let evaluator = keypair(43);
+
+    // Live collateral exhausted by an earlier hold: the formula yields zero,
+    // which authorizes no sanction and which no monetary member may carry.
+    let exhausted_collateral = upheld_outcome_with_penalty(FindingPenaltyCalculation {
+        base_finding_stake_units: 50,
+        open_per_sale_encumbrance_units: 0,
+        computed_exposure_units: 50,
+        listing_required_amount_units: 5_000,
+        live_allocated_collateral_units: 0,
+        penalty_amount: usd(0),
+    })?;
+    assert_eq!(
+        exhausted_collateral.validate(),
+        Err(FindingError::NonZeroRequired(
+            "penalty_calculation.penalty_amount"
+        ))
+    );
+    let signed = SignedExportEnvelope::sign(exhausted_collateral, &evaluator)?;
+    assert_family_schema_rejects(
+        "challenge-outcome",
+        &canonical_document(&signed)?,
+        "zero penalty amount",
+    )?;
+
+    // A unit member above the I-JSON safe integer would round in any
+    // consumer that parses the canonical bytes as a double.
+    let unsafe_requirement = upheld_outcome_with_penalty(FindingPenaltyCalculation {
+        base_finding_stake_units: 1,
+        open_per_sale_encumbrance_units: 0,
+        computed_exposure_units: 1,
+        listing_required_amount_units: u64::MAX,
+        live_allocated_collateral_units: 1,
+        penalty_amount: usd(1),
+    })?;
+    assert_eq!(
+        unsafe_requirement.validate(),
+        Err(FindingError::IJsonIntegerOutOfRange(
+            "penalty_calculation.listing_required_amount_units"
+        ))
+    );
+    let signed = SignedExportEnvelope::sign(unsafe_requirement, &evaluator)?;
+    assert_family_schema_rejects(
+        "challenge-outcome",
+        &canonical_document(&signed)?,
+        "listing requirement above the I-JSON safe integer",
+    )?;
+
+    let unsafe_collateral = upheld_outcome_with_penalty(FindingPenaltyCalculation {
+        base_finding_stake_units: 1,
+        open_per_sale_encumbrance_units: 0,
+        computed_exposure_units: 1,
+        listing_required_amount_units: 1,
+        live_allocated_collateral_units: u64::MAX,
+        penalty_amount: usd(1),
+    })?;
+    assert_eq!(
+        unsafe_collateral.validate(),
+        Err(FindingError::IJsonIntegerOutOfRange(
+            "penalty_calculation.live_allocated_collateral_units"
+        ))
+    );
     Ok(())
 }

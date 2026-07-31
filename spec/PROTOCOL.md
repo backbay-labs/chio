@@ -1838,6 +1838,19 @@ terminal is an infrastructure fact and MUST resolve indeterminate rather than
 seller fraud. The observation has no member for a claimed verdict: the
 predicate belongs to the committed recipe.
 
+The `environment_digest` binds the execution environment the recipe
+committed, and its derivation is normative so that a producer and a verifier
+cannot disagree about the value. It is the SHA-256 digest of the canonical
+JSON bytes of the committed `chio.finding.replay-recipe-input.v1`
+`environment` member, the same derivation the pre-run template digest uses
+over its own canonical body. A digest over the whole recipe, over the
+runtime image alone, or over any runner-local rendering of the environment
+is a different value and MUST reject. An observation whose
+`environment_digest` does not equal that commitment ran outside the
+committed environment, so it is NOT evidence of seller fraud: like a
+non-`completed` terminal it MUST NOT feed a predicate and MUST resolve
+indeterminate.
+
 #### 6.4.7.19 `chio.registry.market-penalty.v1`
 
 The open-market penalty artifact, registered publicly by the finding
