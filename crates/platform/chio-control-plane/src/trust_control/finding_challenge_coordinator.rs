@@ -1125,6 +1125,21 @@ impl FindingChallengeCoordinator {
         {
             return Err(ChallengeCoordinatorError::OutcomeBinding);
         }
+        // The outcome adjudicates exactly one challenge: the one whose
+        // signed envelope digest it embeds. The durable row for the
+        // challenge being upheld carries that digest, so an outcome
+        // presented beside any other challenge id sanctions nothing, even
+        // when both challenges target the same finding and listing.
+        let challenge = self
+            .challenges
+            .get_challenge(challenge_id)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or_else(|| {
+                ChallengeCoordinatorError::ChallengeStore("challenge is not recorded".to_owned())
+            })?;
+        if outcome.body.challenge_envelope_sha256 != challenge.challenge_envelope_sha256 {
+            return Err(ChallengeCoordinatorError::OutcomeBinding);
+        }
         // Every exposure figure behind the penalty is read against one
         // allocation, and it has to be the one this liability's vault is
         // charged to. Facts naming another allocation would size the

@@ -6452,3 +6452,89 @@ fn finding_challenge_an_expired_reservation_neither_wedges_nor_inflates_the_clai
     assert_eq!(upheld.sealed.total_realized_spend_units, 60);
     Ok(())
 }
+
+#[test]
+fn finding_challenge_uphold_refuses_an_outcome_for_a_different_challenge() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let governance = governance()?;
+    let (finding, _) = finding_artifact()?;
+
+    // Two distinct challenges on one finding and listing, each closed
+    // upheld under its own signed outcome.
+    let first = venue_audit_challenge()?;
+    let mut second_body = first.body.clone();
+    second_body.filed_at = NOW + 1;
+    second_body.challenge_id = compute_challenge_id(&second_body)?;
+    let second = SignedExportEnvelope::sign(second_body, &keypair(35))?;
+    let mut outcomes = Vec::new();
+    for (challenge, at) in [(&first, NOW), (&second, NOW + 1)] {
+        deployment
+            .challenges
+            .submit_challenge(&chio_store_sqlite::FindingChallengeSubmission {
+                challenge_id: &challenge.body.challenge_id,
+                finding_id: &finding.finding_id,
+                listing_id: LISTING_ID,
+                challenge_envelope_sha256: &signed_envelope_sha256(challenge)?,
+                authorization_branch: chio_store_sqlite::FindingChallengeAuthorizationBranch::VenueAudit,
+                evidence_class: chio_store_sqlite::FindingChallengeEvidenceClass::EvidenceInvalid,
+                challenger_hex: None,
+                submitted_at: at,
+            })?;
+        let outcome = upheld_outcome(challenge, &deployment.allocation_id)?;
+        close_challenge(
+            &deployment,
+            &challenge.body.challenge_id,
+            FindingChallengeVerdict::Upheld,
+            &signed_envelope_sha256(&outcome)?,
+            at + 2,
+        )?;
+        outcomes.push(outcome);
+    }
+    let first_outcome = outcomes.remove(0);
+
+    // The first challenge's outcome presented under the second
+    // challenge's id: both are upheld on this finding and listing, so
+    // only the envelope binding separates them.
+    let stake = usd(300);
+    let required = usd(5_000);
+    let identity = liability_identity(&finding.finding_id, &deployment.allocation_id);
+    let refused = coordinator
+        .uphold(
+            &second.body.challenge_id,
+            &first_outcome,
+            &identity,
+            &market_terms(CLAIM_WINDOW_SECS)?,
+            0,
+            &[],
+            &collateral_facts(&stake, &required, &deployment.allocation_id, 5_000),
+            &governance.context(),
+            &governance.sanction_case,
+            NOW + 4,
+        )
+        .expect_err("an outcome upholds only the challenge its envelope digest names");
+    assert!(matches!(refused, ChallengeCoordinatorError::OutcomeBinding));
+    assert_eq!(
+        liability_heads(&deployment, &finding.finding_id)?,
+        0,
+        "a cross-bound outcome opens no liability"
+    );
+
+    // The true pair still upholds: the binding admits exactly the
+    // challenge the outcome adjudicated.
+    let upheld = uphold_across_claim_window(
+        &coordinator,
+        &market_terms(CLAIM_WINDOW_SECS)?,
+        &first.body.challenge_id,
+        &first_outcome,
+        &identity,
+        0,
+        &[],
+        &collateral_facts(&stake, &required, &deployment.allocation_id, 5_000),
+        &governance.context(),
+        &governance.sanction_case,
+        NOW + 6,
+    )?;
+    assert_eq!(upheld.sealed.distribution.slash.units, 300);
+    Ok(())
+}
