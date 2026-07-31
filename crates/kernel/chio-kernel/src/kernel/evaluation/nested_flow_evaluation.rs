@@ -721,7 +721,77 @@ impl ChioKernel {
             }
         };
 
+        // Delivery-marked selection rule, mirroring the root tool-call lane:
+        // when any candidate carries a committed output digest or purchase
+        // marker, the call may only proceed through that exact candidate.
+        // Selection falls through marked candidates on budget exhaustion and
+        // guard denials, and the delivery and purchase gates below judge only
+        // the selected grant, so an unmarked sibling selected in a marked
+        // candidate's place would dispatch ungated.
+        if let Some(reason) = super::evaluation_helpers::delivery_marked_selection_denial(
+            &matching_grants,
+            matched_grant_index,
+        ) {
+            warn!(request_id = %request.request_id, reason, "delivery contract denied");
+            return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
+                self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                    request,
+                    reason,
+                    timestamp: now,
+                    matched_grant_index,
+                    cap,
+                    budget_mutation: &budget_mutation,
+                    payment_authorization: None,
+                    durable_operation: durable_admission
+                        .as_ref()
+                        .map(DurableToolAdmission::operation),
+                    runtime_admission_metadata,
+                    verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                    budget_lease_acquired,
+                })
+            });
+        }
+
         if self.execution_nonce_preflight_required(request) {
+            // Nonce-preflight authorizes without producing output, so an
+            // output-digest grant cannot be enforced on it. The root lane
+            // rejects this shape before any mint; the nested lane must not
+            // be a softer path to the same authorization.
+            if matching_grants
+                .iter()
+                .find(|matching| matching.index == matched_grant_index)
+                .is_some_and(|selected| {
+                    selected
+                        .grant
+                        .constraints
+                        .iter()
+                        .any(|constraint| matches!(constraint, Constraint::OutputDigestSha256(_)))
+                })
+            {
+                let reason =
+                    "output-digest delivery cannot be enforced on a no-output authorization path";
+                warn!(request_id = %request.request_id, reason, "delivery contract denied");
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                            request,
+                            reason,
+                            timestamp: now,
+                            matched_grant_index,
+                            cap,
+                            budget_mutation: &budget_mutation,
+                            payment_authorization: None,
+                            durable_operation: durable_admission
+                                .as_ref()
+                                .map(DurableToolAdmission::operation),
+                            runtime_admission_metadata,
+                            verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                            budget_lease_acquired,
+                        })
+                    },
+                );
+            }
             return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
                 self.build_execution_nonce_preflight_allow_response_after_cleanup(
                     request,

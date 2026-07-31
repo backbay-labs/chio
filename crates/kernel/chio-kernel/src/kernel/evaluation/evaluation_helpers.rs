@@ -43,6 +43,50 @@ struct CleanupReleaseOutcome {
     confirmed: bool,
 }
 
+/// True when a grant carries a delivery carrier constraint: a committed
+/// output digest or a purchase marker.
+fn grant_is_delivery_marked(grant: &chio_core::capability::scope::ToolGrant) -> bool {
+    grant.constraints.iter().any(|constraint| {
+        matches!(
+            constraint,
+            Constraint::OutputDigestSha256(_) | Constraint::RequireFindingPurchase(_)
+        )
+    })
+}
+
+/// The delivery selection rule over the full candidate set. Grant selection
+/// skips candidates on budget exhaustion and guard denials, and both the
+/// delivery gate and the purchase gate judge only the selected grant, so a
+/// skip that landed on an unmarked sibling would dispatch with full capture,
+/// full payload, and no delivery enforcement. When any candidate for this
+/// call carries a delivery carrier, the call is therefore admissible only
+/// through that exact candidate, and two marked candidates deny outright:
+/// recovery re-derives the selection and must never be able to land on a
+/// different committed digest.
+pub(super) fn delivery_marked_selection_denial(
+    matching_grants: &[MatchingGrant<'_>],
+    matched_grant_index: usize,
+) -> Option<&'static str> {
+    let marked = matching_grants
+        .iter()
+        .filter(|matching| grant_is_delivery_marked(matching.grant))
+        .count();
+    if marked == 0 {
+        return None;
+    }
+    let selected_is_marked = matching_grants
+        .iter()
+        .find(|matching| matching.index == matched_grant_index)
+        .is_some_and(|matching| grant_is_delivery_marked(matching.grant));
+    if !selected_is_marked {
+        return Some("a delivery-marked grant cannot be bypassed by sibling grant selection");
+    }
+    if marked > 1 {
+        return Some("delivery-marked grant candidates are ambiguous for this call");
+    }
+    None
+}
+
 impl ChioKernel {
     pub(crate) fn compensate_durable_admission_after_pre_dispatch_cleanup(
         &self,

@@ -608,6 +608,28 @@ fn paid_scope_with_digests(digests: &[&str]) -> ChioScope {
     scope
 }
 
+/// A digest-marked paid grant followed by an unconstrained sibling for the
+/// same tool with roomier ceilings. The marked grant's per-invocation
+/// exposure exceeds its total budget, so budget authorization denies it and
+/// grant selection falls through to the sibling.
+fn paid_scope_with_marked_grant_and_unmarked_sibling(digest: &str) -> ChioScope {
+    let mut scope = paid_scope();
+    if let Some(grant) = scope.grants.first_mut() {
+        grant.constraints = vec![Constraint::OutputDigestSha256(digest.to_owned())];
+        grant.max_cost_per_invocation = Some(MonetaryAmount {
+            units: 5,
+            currency: "USD".to_owned(),
+        });
+        grant.max_total_cost = Some(MonetaryAmount {
+            units: 3,
+            currency: "USD".to_owned(),
+        });
+    }
+    let mut sibling = paid_scope();
+    scope.grants.append(&mut sibling.grants);
+    scope
+}
+
 fn delivery_block(response: &ToolCallResponse) -> Result<DeliveryContract, Box<dyn Error>> {
     let value = response
         .receipt
@@ -1372,5 +1394,57 @@ fn output_digest_delivery_contract_enforces_every_lane() -> Result<(), Box<dyn E
         assert_eq!(payment_calls.captures.load(Ordering::SeqCst), 0);
     }
 
+    Ok(())
+}
+
+// Grant selection skips candidates whose budget authorization denies and
+// tries the next. A delivery-marked candidate must never be skippable: an
+// unconstrained sibling selected in its place would dispatch with full
+// capture, full payload, and no delivery gate. The call denies instead.
+#[test]
+fn delivery_marked_grant_cannot_fall_through_to_an_unmarked_sibling() -> Result<(), Box<dyn Error>>
+{
+    let temp = tempfile::tempdir()?;
+    let database = temp.path().join("authority.db");
+    let lock_root = temp.path().join("locks");
+    std::fs::create_dir(&lock_root)?;
+    SqliteAuthorityStore::provision(&database, &lock_root)?;
+    let invocations = Arc::new(AtomicU64::new(0));
+    let payment_calls = Arc::new(PaymentCalls::default());
+    let authority = SqliteAuthorityStore::open_serving(&database, &lock_root)?;
+    let fence = authority.mutation_fence();
+    let operations = Arc::new(authority.admission_operation_store());
+    let outcomes = Arc::new(authority.tool_outcome_store());
+    let budget = Arc::new(authority.budget_store());
+    let mut kernel = ChioKernel::new(kernel_config(Keypair::generate()));
+    kernel.set_durable_admission_store(operations, outcomes, fence)?;
+    kernel.set_budget_store_handle(budget);
+    kernel.set_payment_adapter(Box::new(ReversiblePaymentAdapter {
+        calls: Some(payment_calls.clone()),
+    }));
+    kernel.register_tool_server(Box::new(PaidMutationServer {
+        invocations: invocations.clone(),
+    }));
+    let agent = Keypair::generate();
+    let digest = sha256_hex(b"the committed delivery only the marked grant honors");
+    let capability = kernel.issue_capability(
+        &agent.public_key(),
+        paid_scope_with_marked_grant_and_unmarked_sibling(&digest),
+        300,
+    )?;
+    let response = kernel.evaluate_tool_call_blocking(&paid_request(&capability))?;
+
+    assert_eq!(response.verdict, Verdict::Deny, "{:?}", response.reason);
+    assert!(
+        response
+            .reason
+            .as_deref()
+            .is_some_and(|reason| reason.contains("sibling")),
+        "{:?}",
+        response.reason
+    );
+    assert_eq!(invocations.load(Ordering::SeqCst), 0);
+    assert_eq!(payment_calls.authorizations.load(Ordering::SeqCst), 0);
+    assert_eq!(payment_calls.captures.load(Ordering::SeqCst), 0);
     Ok(())
 }
