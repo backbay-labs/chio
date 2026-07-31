@@ -1179,6 +1179,18 @@ impl FindingChallengeCoordinator {
             return Err(ChallengeCoordinatorError::CollateralAllocation);
         }
         let claim_deadline = self.require_claim_window(terms, identity, now)?;
+        // The stake the slash math starts from is a seller precommitment,
+        // so the signed terms are its only source of truth: facts carrying
+        // any other figure would size the penalty from a number nothing
+        // was signed over.
+        let signed_stake = &terms.body.backing_requirement.base_finding_stake;
+        if collateral.base_finding_stake.units != signed_stake.units
+            || collateral.base_finding_stake.currency != signed_stake.currency
+        {
+            return Err(ChallengeCoordinatorError::TermsBinding(
+                "base_finding_stake",
+            ));
+        }
         self.require_pinned_governance(governance, sanction_case, None)?;
         self.require_impairable_collateral(collateral, now)?;
         let defect_key = derive_defect_key(identity.finding_id);

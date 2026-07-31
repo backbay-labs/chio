@@ -3256,6 +3256,48 @@ fn finding_challenge_collateral_facts_for_another_allocation_uphold_nothing() ->
 }
 
 #[test]
+fn finding_challenge_collateral_facts_must_carry_the_signed_stake() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let governance = governance()?;
+    let ready = ready_to_uphold(&deployment, &coordinator)?;
+
+    // The slash math starts from the seller's signed precommitment. Facts
+    // carrying any other stake would size the penalty from a number
+    // nothing was signed over, in either direction.
+    let inflated = usd(301);
+    let required = usd(5_000);
+    let refused = coordinator
+        .uphold(
+            &ready.challenge_id,
+            &ready.outcome,
+            &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
+            &market_terms(CLAIM_WINDOW_SECS)?,
+            0,
+            &[],
+            &collateral_facts(&inflated, &required, &deployment.allocation_id, 5_000),
+            &governance.context(),
+            &governance.sanction_case,
+            NOW + 2,
+        )
+        .expect_err("a stake the terms never signed sizes no penalty");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::TermsBinding("base_finding_stake")
+    ));
+    assert_eq!(
+        liability_heads(&deployment, &ready.finding.finding_id)?,
+        0,
+        "an unsigned stake opens no liability"
+    );
+    assert!(
+        !deployment.purchases.sales_blocked(LISTING_ID)?,
+        "nothing durable happens before the stake binding is proven"
+    );
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_a_sale_from_the_previous_backing_claims_nothing() -> TestResult {
     let deployment = deployment()?;
     let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
@@ -3327,7 +3369,10 @@ fn finding_challenge_harm_in_another_currency_seals_nothing() -> TestResult {
 
     // A verified harm carries bare units, so a bond denominated in
     // anything but the currency the sale realized would pay those units
-    // out one for one against collateral that never priced them.
+    // out one for one against collateral that never priced them. The
+    // terms sign the same denomination the collateral facts carry, so
+    // what stands between this sale and the payout is the harm
+    // verification alone.
     let stake = MonetaryAmount {
         units: 300,
         currency: "EUR".to_string(),
@@ -3336,9 +3381,13 @@ fn finding_challenge_harm_in_another_currency_seals_nothing() -> TestResult {
         units: 5_000,
         currency: "EUR".to_string(),
     };
+    let eur_terms = market_terms_shaped(|terms| {
+        terms.backing_requirement.base_finding_stake.currency = "EUR".to_string();
+        terms.backing_requirement.maximum_sale_exposure.currency = "EUR".to_string();
+    })?;
     let refused = uphold_across_claim_window(
         &coordinator,
-        &market_terms(CLAIM_WINDOW_SECS)?,
+        &eur_terms,
         &ready.challenge_id,
         &ready.outcome,
         &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
