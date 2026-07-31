@@ -160,6 +160,15 @@ const MAX_RAW_FINDING_BYTES: usize = 1_048_576;
 /// key revoked since would still adjudicate under it.
 const MAX_REVOCATION_STATUS_AGE_SECS: u64 = 3_600;
 
+/// Shortest appeal window a sanction may become final through, measured
+/// from the instant the durable case index recorded that sanction.
+///
+/// A venue may hold the window open longer, never shorter. The deadline
+/// presented at finality is checked against this floor and against durable
+/// state rather than trusted on its own, so no caller can compress the
+/// interval a seller is owed to file.
+const MIN_APPEAL_WINDOW_SECS: u64 = 24 * 60 * 60;
+
 /// Derive the per-finding defect identity. One defect spans every class
 /// and evidence subset, which is what stops a second corroborating
 /// challenge opening a second slashable liability.
@@ -319,6 +328,8 @@ pub enum ChallengeCoordinatorError {
     OutcomeEnvelope(String),
     #[error("only an upheld outcome may enter the penalty lane")]
     VerdictNotUpheld,
+    #[error("appeal finality is not established by the durable governance state: {0}")]
+    AppealNotFinal(&'static str),
     #[error("outcome does not bind this challenge")]
     OutcomeBinding,
     #[error("collateral facts do not name the allocation this liability is charged to")]
@@ -555,11 +566,20 @@ pub enum AppealDisposition<'a> {
         appeal_case: &'a SignedGenericGovernanceCase,
         appeal_case_id: &'a str,
     },
-    /// No filing by the signed deadline, or a terminal denied appeal.
-    /// Neither creates an appeal case head, so the original sanction
-    /// still governs.
+    /// No filing by the venue's appeal deadline, or a terminal denied
+    /// appeal. Neither creates an appeal case head, so the original
+    /// sanction still governs.
+    ///
+    /// Naming this variant asserts nothing. The coordinator proves
+    /// finality against the durable case index and the clock: the
+    /// sanction must still be the single live case on the liability, the
+    /// deadline must respect [`MIN_APPEAL_WINDOW_SECS`] measured from the
+    /// instant that sanction was indexed, and the venue clock must be
+    /// past it.
     Final {
         sanction_case: &'a SignedGenericGovernanceCase,
+        /// Instant the venue closed the appeal window at.
+        appeal_deadline: u64,
     },
     /// Open, escalated, unresolved, or unavailable. This is not a denial.
     Unresolved { reason: &'a str },
@@ -1203,11 +1223,13 @@ impl FindingChallengeCoordinator {
     /// continues, because an identical retry reconciles and a conflicting
     /// one rejects.
     ///
-    /// Authority. Nothing about the target is taken from the caller. The
-    /// durable head is the only authority on which finding, listing,
-    /// allocation, and vault this liability may impair, and the only
-    /// outcome that may authorize it is the exact envelope the store
-    /// recorded for the challenge that upheld it.
+    /// Authority. Nothing about the target is taken from the caller, and
+    /// neither is finality. The durable head is the only authority on
+    /// which finding, listing, allocation, and vault this liability may
+    /// impair, the only outcome that may authorize it is the exact
+    /// envelope the store recorded for the challenge that upheld it, and
+    /// the appeal window is proved closed against the durable case index
+    /// rather than asserted by naming a disposition.
     #[allow(clippy::too_many_arguments)]
     pub fn resolve_appeal(
         &self,
@@ -1289,7 +1311,17 @@ impl FindingChallengeCoordinator {
                     reversal: Box::new(reversal),
                 })
             }
-            AppealDisposition::Final { sanction_case } => {
+            AppealDisposition::Final {
+                sanction_case,
+                appeal_deadline,
+            } => {
+                self.require_appeal_window_closed(
+                    &record,
+                    sanction_case,
+                    sanction_case_id,
+                    *appeal_deadline,
+                    now,
+                )?;
                 let slash = self.mint_penalty(
                     FindingPenaltyBranch::AppealFinalImpairment,
                     governance,
@@ -1930,6 +1962,60 @@ impl FindingChallengeCoordinator {
         {
             return Err(ChallengeCoordinatorError::LiabilityIdentity(
                 "liability_key",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Require the appeal window on this liability to be provably closed
+    /// with the presented sanction still governing it.
+    ///
+    /// Two independent facts have to hold, because an impairment minted
+    /// while an appeal is live is unrecoverable. The single live case on
+    /// the liability must be exactly the sanction being presented: a
+    /// successful appeal takes the head by superseding it, and an appeal
+    /// recorded beside the sanction leaves two live cases, which the index
+    /// refuses to resolve at all. And the deadline must be a real one,
+    /// measured from the instant the index recorded that sanction and at
+    /// least [`MIN_APPEAL_WINDOW_SECS`] long, with the venue clock past
+    /// it.
+    fn require_appeal_window_closed(
+        &self,
+        record: &FindingLiabilityRecord,
+        sanction_case: &SignedGenericGovernanceCase,
+        sanction_case_id: &str,
+        appeal_deadline: u64,
+        now: u64,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        if sanction_case.body.case_id != sanction_case_id {
+            return Err(ChallengeCoordinatorError::AppealNotFinal(
+                "sanction case does not name the sanction being closed",
+            ));
+        }
+        let head = self
+            .challenges
+            .resolve_case_head(&record.liability_key)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or(ChallengeCoordinatorError::AppealNotFinal(
+                "liability carries no live governance case",
+            ))?;
+        if head.case_kind != FindingGovernanceCaseKind::Sanction || head.case_id != sanction_case_id
+        {
+            return Err(ChallengeCoordinatorError::AppealNotFinal(
+                "the sanction is no longer the live case on this liability",
+            ));
+        }
+        let earliest = head.recorded_at.checked_add(MIN_APPEAL_WINDOW_SECS).ok_or(
+            ChallengeCoordinatorError::AppealNotFinal("appeal window end is not representable"),
+        )?;
+        if appeal_deadline < earliest {
+            return Err(ChallengeCoordinatorError::AppealNotFinal(
+                "appeal deadline is shorter than the minimum window",
+            ));
+        }
+        if now <= appeal_deadline {
+            return Err(ChallengeCoordinatorError::AppealNotFinal(
+                "appeal deadline has not passed at the venue clock",
             ));
         }
         Ok(())

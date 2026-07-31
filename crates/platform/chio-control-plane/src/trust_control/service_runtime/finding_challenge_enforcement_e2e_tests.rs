@@ -166,6 +166,13 @@ const REVOCATION_STATUS_REF: &str = "revocations/finding-market";
 const DISPUTE_FEE_UNITS: u64 = 25;
 const DISPUTE_BOND_UNITS: u64 = 40;
 
+// The appeal window the venue closes its sanctions through. It has to
+// clear the coordinator's minimum window measured from the instant the
+// case index recorded the sanction, and finality is only reachable once
+// the venue clock is past it.
+const APPEAL_DEADLINE: u64 = NOW + 90_000;
+const APPEAL_FINAL_AT: u64 = APPEAL_DEADLINE + 1;
+
 // Key-role validity window every pinned authority in the governance
 // profile is issued under, and the publication instant the revocation
 // comparisons are made against.
@@ -2189,6 +2196,7 @@ fn impair_after_appeal(
         &governance.context(),
         &AppealDisposition::Final {
             sanction_case: &governance.sanction_case,
+            appeal_deadline: APPEAL_DEADLINE,
         },
         &upheld.sanction_case_id,
         &upheld.hold,
@@ -3357,11 +3365,12 @@ fn finding_challenge_appeal_finality_impairs_and_fences_every_effect_intent() ->
         &case.governance.context(),
         &AppealDisposition::Final {
             sanction_case: &case.governance.sanction_case,
+            appeal_deadline: APPEAL_DEADLINE,
         },
         &case.upheld.sanction_case_id,
         &case.upheld.hold,
         &hex64('7'),
-        NOW + 20,
+        APPEAL_FINAL_AT,
     )?;
     let AppealResolution::Finalizing(authorized) = resolution else {
         return Err("appeal finality with no reversal authorizes the impairment".into());
@@ -3415,6 +3424,115 @@ fn finding_challenge_appeal_finality_impairs_and_fences_every_effect_intent() ->
     assert_eq!(liability.state, FindingLiabilityState::Finalizing);
     assert!(liability.publication_pending);
     assert!(case.deployment.purchases.sales_blocked(LISTING_ID)?);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_appeal_finality_refuses_a_window_that_has_not_closed() -> TestResult {
+    let case = upheld_liability()?;
+    let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);
+    let close_at = |deadline: u64, now: u64| {
+        case.coordinator.resolve_appeal(
+            &case.upheld.liability_key,
+            &case.outcome,
+            &identity,
+            &case.upheld.sealed,
+            &case.governance.context(),
+            &AppealDisposition::Final {
+                sanction_case: &case.governance.sanction_case,
+                appeal_deadline: deadline,
+            },
+            &case.upheld.sanction_case_id,
+            &case.upheld.hold,
+            &hex64('7'),
+            now,
+        )
+    };
+
+    // A deadline set to the instant the window opened is not a window at
+    // all, and it is exactly what a caller presents to slash a seller who
+    // has not had a chance to file.
+    let collapsed = close_at(NOW + 19, NOW + 20)
+        .expect_err("a sanction is not final the moment the appeal window opens");
+    assert!(matches!(
+        collapsed,
+        ChallengeCoordinatorError::AppealNotFinal(_)
+    ));
+
+    // A deadline that respects the minimum window still governs until the
+    // venue clock passes it.
+    let early = close_at(APPEAL_DEADLINE, APPEAL_DEADLINE)
+        .expect_err("finality is only reached once the deadline has passed");
+    assert!(matches!(
+        early,
+        ChallengeCoordinatorError::AppealNotFinal(_)
+    ));
+
+    assert!(
+        case.deployment
+            .challenges
+            .list_effect_intents(&case.upheld.liability_key)?
+            .is_empty(),
+        "an open appeal window fences no impairment effect"
+    );
+    let liability = case
+        .deployment
+        .challenges
+        .get_liability(&case.upheld.liability_key)?
+        .ok_or("liability head is durable")?;
+    assert_eq!(liability.state, FindingLiabilityState::PendingAppeal);
+    assert!(!liability.publication_pending);
+
+    // The same call once the window has genuinely closed authorizes it.
+    assert!(matches!(
+        close_at(APPEAL_DEADLINE, APPEAL_FINAL_AT)?,
+        AppealResolution::Finalizing(_)
+    ));
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_a_live_appeal_case_blocks_appeal_finality() -> TestResult {
+    let case = upheld_liability()?;
+    let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);
+    // An appeal filed against the sanction and still open. It supersedes
+    // nothing yet, so the liability now carries two live cases and no
+    // single case can be said to govern it.
+    case.deployment.challenges.record_governance_case(
+        &chio_store_sqlite::FindingGovernanceCaseInput {
+            case_id: "case-appeal-open-01",
+            finding_id: &case.finding_id,
+            listing_id: LISTING_ID,
+            liability_key: &case.upheld.liability_key,
+            case_kind: chio_store_sqlite::FindingGovernanceCaseKind::Appeal,
+            case_state: "open",
+            appeal_of_case_id: Some(&case.upheld.sanction_case_id),
+            supersedes_case_id: None,
+            recorded_at: NOW + 10,
+        },
+    )?;
+
+    let refused = resolve_final(&case, &identity, &case.outcome, APPEAL_FINAL_AT)
+        .expect_err("a live appeal is not a denial and authorizes no impairment");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::ChallengeStore(_)
+    ));
+    assert!(
+        case.deployment
+            .challenges
+            .list_effect_intents(&case.upheld.liability_key)?
+            .is_empty(),
+        "an unresolved case head fences no impairment effect"
+    );
+    assert_eq!(
+        case.deployment
+            .challenges
+            .get_liability(&case.upheld.liability_key)?
+            .ok_or("liability head is durable")?
+            .state,
+        FindingLiabilityState::PendingAppeal
+    );
     Ok(())
 }
 
@@ -3476,11 +3594,12 @@ fn finding_challenge_sealed_accounting_cannot_be_substituted_at_appeal_finality(
             &case.governance.context(),
             &AppealDisposition::Final {
                 sanction_case: &case.governance.sanction_case,
+                appeal_deadline: APPEAL_DEADLINE,
             },
             &case.upheld.sanction_case_id,
             &case.upheld.hold,
             &hex64('7'),
-            NOW + 20,
+            APPEAL_FINAL_AT,
         )
         .expect_err("a substituted distribution must not authorize an impairment");
     assert!(matches!(
@@ -3505,6 +3624,7 @@ fn resolve_final(
         &case.governance.context(),
         &AppealDisposition::Final {
             sanction_case: &case.governance.sanction_case,
+            appeal_deadline: APPEAL_DEADLINE,
         },
         &case.upheld.sanction_case_id,
         &case.upheld.hold,
@@ -3519,7 +3639,7 @@ fn finding_challenge_appeal_finality_refuses_an_identity_the_head_does_not_carry
     let mut elsewhere = liability_identity(&case.finding_id, &case.deployment.allocation_id);
     elsewhere.vault_id = "vault-99";
 
-    let refused = resolve_final(&case, &elsewhere, &case.outcome, NOW + 20)
+    let refused = resolve_final(&case, &elsewhere, &case.outcome, APPEAL_FINAL_AT)
         .expect_err("a liability may only be impaired at the vault it was opened against");
     assert!(matches!(
         refused,
@@ -3560,7 +3680,7 @@ fn finding_challenge_a_rejected_outcome_never_authorizes_an_impairment() -> Test
     body.validate()?;
     let rejected = SignedExportEnvelope::sign(body, &keypair(31))?;
 
-    let refused = resolve_final(&case, &identity, &rejected, NOW + 20)
+    let refused = resolve_final(&case, &identity, &rejected, APPEAL_FINAL_AT)
         .expect_err("only an upheld adjudication reaches the penalty lane");
     assert!(matches!(
         refused,
@@ -3586,7 +3706,7 @@ fn finding_challenge_an_outcome_the_store_never_recorded_authorizes_no_impairmen
     body.validate()?;
     let substituted = SignedExportEnvelope::sign(body, &keypair(31))?;
 
-    let refused = resolve_final(&case, &identity, &substituted, NOW + 20)
+    let refused = resolve_final(&case, &identity, &substituted, APPEAL_FINAL_AT)
         .expect_err("only the recorded adjudication may authorize the impairment");
     assert!(matches!(refused, ChallengeCoordinatorError::OutcomeBinding));
     Ok(())
@@ -3597,7 +3717,7 @@ fn finding_challenge_a_second_appeal_finality_collides_on_the_root_intent() -> T
     let case = upheld_liability()?;
     let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);
     let AppealResolution::Finalizing(first) =
-        resolve_final(&case, &identity, &case.outcome, NOW + 20)?
+        resolve_final(&case, &identity, &case.outcome, APPEAL_FINAL_AT)?
     else {
         return Err("appeal finality with no reversal authorizes the impairment".into());
     };
@@ -3605,7 +3725,7 @@ fn finding_challenge_a_second_appeal_finality_collides_on_the_root_intent() -> T
     // A replay off a re-minted penalty carries a different penalty
     // envelope. The intent is keyed on the liability rather than on that
     // envelope, so the second one collides with what is already durable.
-    let refused = resolve_final(&case, &identity, &case.outcome, NOW + 40)
+    let refused = resolve_final(&case, &identity, &case.outcome, APPEAL_FINAL_AT + 20)
         .expect_err("one liability authorizes one enforcement");
     assert!(matches!(
         refused,
@@ -4260,7 +4380,7 @@ fn finding_challenge_digest_mismatch_reaches_an_enforced_sanction() -> TestResul
         &upheld,
         &evaluated.outcome,
         &identity,
-        NOW + 20,
+        APPEAL_FINAL_AT,
     )?;
     assert_eq!(authorized.enforcement.body.amount, usd(300));
     assert_eq!(authorized.slash.penalty.body.penalty_amount, usd(300));
@@ -4383,7 +4503,7 @@ fn finding_challenge_evidence_invalid_reaches_an_enforced_sanction() -> TestResu
         &upheld,
         &evaluated.outcome,
         &identity,
-        NOW + 20,
+        APPEAL_FINAL_AT,
     )?;
     assert_eq!(authorized.enforcement.body.amount, usd(500));
     assert_eq!(authorized.slash.penalty.body.penalty_amount, usd(500));
@@ -4485,7 +4605,7 @@ fn finding_challenge_replay_contradiction_reaches_an_enforced_sanction() -> Test
         &upheld,
         &evaluated.outcome,
         &identity,
-        NOW + 20,
+        APPEAL_FINAL_AT,
     )?;
     assert_eq!(authorized.enforcement.body.amount, usd(400));
     assert_eq!(authorized.slash.penalty.body.penalty_amount, usd(400));
