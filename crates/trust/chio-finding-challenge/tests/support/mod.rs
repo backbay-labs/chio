@@ -896,8 +896,8 @@ fn digest_case_for(world: &World, shape: &DenyShape, buyer_filing: bool) -> Buil
 pub enum EvidenceShape {
     #[default]
     Sound,
-    /// A checkpoint with the named identity and digest whose signed root
-    /// cannot carry the supplied inclusion paths.
+    /// The venue's own checkpoint with one resolver-supplied sibling hash
+    /// altered in the unsigned inclusion path.
     ContradictoryCheckpoint,
     /// The venue's own checkpoint, with a resolver-supplied inclusion wrapper
     /// that disagrees with it about the tree.
@@ -1038,22 +1038,14 @@ fn build_evidence_case(
         challenged_refs[0] = receipt_reference(&unnamed);
         challenged_receipts[0] = unnamed;
     }
-    // The checkpoint is chosen before the challenge is signed, because the
-    // challenge binds its digest and a test that wants a contradiction needs
-    // a reference that resolves to the contradicting artifact.
+    // The checkpoint is chosen before the challenge is signed because the
+    // challenge binds its digest and each negative case must control whether
+    // that reference resolves independently from the inclusion wrapper.
     let challenged_checkpoint = match shape {
-        EvidenceShape::Sound | EvidenceShape::UnnamedReceipt | EvidenceShape::InconsistentProof => {
-            world.evidence_checkpoint.clone()
-        }
-        // Same log and sequence, so the identity still matches the finding's
-        // reference, but a root the supplied inclusion paths cannot reach.
-        EvidenceShape::ContradictoryCheckpoint => build_checkpoint(
-            1,
-            100,
-            101,
-            &[b"other-leaf-a".to_vec(), b"other-leaf-b".to_vec()],
-            &world.production_kernel,
-        )?,
+        EvidenceShape::Sound
+        | EvidenceShape::UnnamedReceipt
+        | EvidenceShape::InconsistentProof
+        | EvidenceShape::ContradictoryCheckpoint => world.evidence_checkpoint.clone(),
         EvidenceShape::UnresolvedCheckpoint => build_checkpoint(
             1,
             100,
@@ -1086,17 +1078,11 @@ fn build_evidence_case(
         )?,
     };
     match shape {
-        // The wrapper is unsigned, so a wrapper that disagrees with the
-        // signed checkpoint proves nothing. The contradiction case keeps the
-        // two consistent and lets the inclusion path itself fail against the
-        // venue's own root.
+        // The wrapper is unsigned, so even a structurally consistent path
+        // whose sibling hash does not reach the signed root proves nothing.
         EvidenceShape::ContradictoryCheckpoint => {
-            let tree =
-                MerkleTree::from_leaves(&[b"other-leaf-a".to_vec(), b"other-leaf-b".to_vec()])?;
-            for (index, resolved) in challenged_receipts.iter_mut().enumerate() {
-                let receipt_seq = resolved.inclusion_proof.receipt_seq;
-                resolved.inclusion_proof = build_inclusion_proof(&tree, index, 1, receipt_seq)?;
-            }
+            challenged_receipts[0].inclusion_proof.proof.audit_path[0] =
+                chio_core_types::hashing::Hash::from_bytes([0x5a; 32]);
         }
         EvidenceShape::InconsistentProof => {
             for resolved in challenged_receipts.iter_mut() {

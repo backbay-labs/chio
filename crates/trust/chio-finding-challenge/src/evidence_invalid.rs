@@ -4,17 +4,17 @@
 //! challenge may only contest receipts the finding actually named, under the
 //! checkpoint the finding actually named. Then the subset is re-verified, and
 //! only affirmative invalidity under the profile effective at publication can
-//! support fraud: a signature that does not verify, a checkpoint proof that
-//! contradicts the claimed membership, a receipt whose own commitment
-//! contradicts its content, or a key the pinned governance root withdrew as
-//! of publication time.
+//! support fraud: a signature that does not verify, a receipt whose own
+//! commitment contradicts its content, or a key the pinned governance root
+//! withdrew as of publication time.
 //!
 //! Everything else that can go wrong here is an operational fact rather than
 //! a seller's act. A blob that did not resolve, a signer this profile does not
-//! establish for that role and time, a checkpoint that was never supplied, a
-//! revocation that is not the profile's own, or a key withdrawn only after
-//! publication all leave the question open, and the evaluator says so instead
-//! of reading an outage as innocence or as guilt.
+//! establish for that role and time, a checkpoint that was never supplied, an
+//! invalid resolver-supplied inclusion path, a revocation that is not the
+//! profile's own, or a key withdrawn only after publication all leave the
+//! question open, and the evaluator says so instead of reading an outage as
+//! innocence or as guilt.
 //!
 //! The passes are ordered deliberately: resolution, then anchoring, then
 //! affirmative invalidity, then unestablished inputs. Resolution runs first
@@ -43,8 +43,7 @@ use crate::input::{
 };
 use crate::reason::FindingChallengeReason;
 use crate::receipts::{
-    checkpoint_matches_reference, membership_contradicts, policy_covers, receipt_matches_reference,
-    role_policy,
+    checkpoint_matches_reference, policy_covers, receipt_matches_reference, role_policy,
 };
 use crate::revocation::{revocation_standing, KeyRevocationStanding};
 use crate::standing::bind_purchase_record;
@@ -117,12 +116,14 @@ pub(crate) fn evaluate_evidence_invalid(
     // what makes a byte string the seller's artifact rather than the
     // challenger's, so it is established before anything about those bytes
     // can support fraud.
-    if let Err(error) = verify_checkpoint_membership(
+    if verify_checkpoint_membership(
         evidence.challenged_receipts,
         core::slice::from_ref(evidence.challenged_checkpoint),
         context.profile,
         &challenged_checkpoint_ref.checkpoint_ref,
-    ) {
+    )
+    .is_err()
+    {
         // Bytes that fail strict verification and are not the checkpointed
         // leaf establish nothing: anyone holding the finding's receipt can
         // mint them, because the envelope's signature is outside the content
@@ -136,18 +137,15 @@ pub(crate) fn evaluate_evidence_invalid(
                 ));
             }
         }
-        let (invalidity, reason) = if membership_contradicts(&error) {
-            (
-                FindingEvidenceInvalidity::CheckpointContradiction,
-                FindingChallengeReason::EvidenceCheckpointContradiction,
-            )
-        } else {
-            (
-                FindingEvidenceInvalidity::InputsUnavailable,
-                FindingChallengeReason::EvidenceCheckpointNotEstablished,
-            )
-        };
-        return Ok(adjudication(&challenged_ids, invalidity, reason));
+        // Inclusion paths live only in the resolver-supplied wrapper. A path
+        // that does not reach the signed checkpoint root can therefore be
+        // malformed caller input, not affirmative proof that the seller's
+        // receipt was absent from the checkpoint.
+        return Ok(adjudication(
+            &challenged_ids,
+            FindingEvidenceInvalidity::InputsUnavailable,
+            FindingChallengeReason::EvidenceCheckpointNotEstablished,
+        ));
     }
 
     // A revocation is only the profile's own when it withdraws the exact key

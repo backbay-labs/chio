@@ -123,8 +123,11 @@ fn an_inclusion_wrapper_the_checkpoint_disagrees_with_is_indeterminate() -> Test
     Ok(())
 }
 
+/// The signed checkpoint still matches the finding and every wrapper field
+/// still agrees with it. Only an unsigned sibling hash is changed, so the bad
+/// path establishes caller input failure rather than seller fraud.
 #[test]
-fn a_checkpoint_proof_that_contradicts_membership_upholds() -> TestResult {
+fn an_invalid_unsigned_inclusion_path_is_indeterminate() -> TestResult {
     let world = world()?;
     let case = evidence_case(&world, EvidenceShape::ContradictoryCheckpoint)?;
     let proofs = case.revocation_proofs();
@@ -133,9 +136,13 @@ fn a_checkpoint_proof_that_contradicts_membership_upholds() -> TestResult {
 
     let adjudication = expect_reason(
         &evaluation,
-        FindingChallengeReason::EvidenceCheckpointContradiction,
+        FindingChallengeReason::EvidenceCheckpointNotEstablished,
     )?;
-    assert_eq!(adjudication.verdict(), FindingChallengeVerdict::Upheld);
+    assert_eq!(
+        adjudication.verdict(),
+        FindingChallengeVerdict::Indeterminate
+    );
+    assert!(!evaluation.authorizes_penalty());
     outcome_for(&world, &case.challenge, &adjudication)?;
     Ok(())
 }
