@@ -29,6 +29,7 @@ use chio_finding::{
     FINDING_BOND_BACKING_SCHEMA_V1, FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1,
     FINDING_MARKET_TERMS_SCHEMA_V1, FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1,
     FINDING_SELLER_AUTHORIZATION_SCHEMA_V1, FINDING_VERIFIER_REPORT_SCHEMA_V1,
+    MAX_FINDING_ARTIFACT_ITEMS, MAX_FINDING_IDENTIFIER_BYTES, MAX_FINDING_TEXT_BYTES,
 };
 use serde_json::{json, Value};
 
@@ -707,6 +708,83 @@ fn admission_schema_rejects_malformed_capability_scope() -> TestResult {
     let mut value = serde_json::to_value(signed_admission()?)?;
     value["body"]["capability_scope"] = json!("finding:not-a-digest");
     assert_family_schema_rejects(&ADMISSION, &value, "malformed capability scope")
+}
+
+#[test]
+fn market_family_schemas_reject_oversized_string_fields() -> TestResult {
+    let oversized_id = "i".repeat(MAX_FINDING_IDENTIFIER_BYTES + 1);
+    let oversized_text = "t".repeat(MAX_FINDING_TEXT_BYTES + 1);
+
+    let mut admission = serde_json::to_value(signed_admission()?)?;
+    admission["body"]["venue_id"] = json!(oversized_id.clone());
+    assert_family_schema_rejects(&ADMISSION, &admission, "oversized venue id")?;
+
+    let mut authorization = serde_json::to_value(signed_authorization()?)?;
+    authorization["body"]["revocation_status_ref"] = json!(oversized_id.clone());
+    assert_family_schema_rejects(
+        &AUTHORIZATION,
+        &authorization,
+        "oversized revocation status ref",
+    )?;
+
+    let mut backing = serde_json::to_value(signed_backing()?)?;
+    backing["body"]["vault"]["venue_ledger"]["ledger_account"] = json!(oversized_id.clone());
+    assert_family_schema_rejects(&BACKING, &backing, "oversized ledger account")?;
+
+    let mut terms = serde_json::to_value(signed_terms()?)?;
+    terms["body"]["payout_policy"] = json!(oversized_id.clone());
+    assert_family_schema_rejects(&TERMS, &terms, "oversized payout policy")?;
+
+    let mut profile = serde_json::to_value(signed_profile()?)?;
+    profile["body"]["operator"] = json!(oversized_id);
+    assert_family_schema_rejects(&PROFILE, &profile, "oversized operator")?;
+
+    let mut report = serde_json::to_value(signed_report()?)?;
+    report["body"]["facets"][0]["reason"] = json!(oversized_text);
+    assert_family_schema_rejects(&REPORT, &report, "oversized facet reason")
+}
+
+#[test]
+fn market_family_schemas_reject_oversized_collections() -> TestResult {
+    let mut admission = serde_json::to_value(signed_admission()?)?;
+    let terminal = admission["body"]["fee_terminals"][0].clone();
+    admission["body"]["fee_terminals"] = json!((0..=MAX_FINDING_ARTIFACT_ITEMS)
+        .map(|index| {
+            let mut item = terminal.clone();
+            if index > 0 {
+                item["event"] = json!({
+                    "participation_epoch": {
+                        "epoch_index": index - 1
+                    }
+                });
+            }
+            item
+        })
+        .collect::<Vec<_>>());
+    assert_family_schema_rejects(&ADMISSION, &admission, "too many fee terminals")?;
+
+    let mut terms = serde_json::to_value(signed_terms()?)?;
+    terms["body"]["decision_rule_refs"] = json!((0..=MAX_FINDING_ARTIFACT_ITEMS)
+        .map(|index| format!("decision/rule-{index}"))
+        .collect::<Vec<_>>());
+    assert_family_schema_rejects(&TERMS, &terms, "too many decision rules")?;
+
+    let mut profile = serde_json::to_value(signed_profile()?)?;
+    let checkpoint = profile["body"]["checkpoint_logs"][0].clone();
+    profile["body"]["checkpoint_logs"] = json!((0..=MAX_FINDING_ARTIFACT_ITEMS)
+        .map(|index| {
+            let mut item = checkpoint.clone();
+            item["log_id"] = json!(format!("checkpoint-{index}"));
+            item
+        })
+        .collect::<Vec<_>>());
+    assert_family_schema_rejects(&PROFILE, &profile, "too many checkpoint logs")?;
+
+    let mut report = serde_json::to_value(signed_report()?)?;
+    report["body"]["facets"][0]["evidence_refs"] = json!((0..=MAX_FINDING_ARTIFACT_ITEMS)
+        .map(|index| format!("receipt-{index}"))
+        .collect::<Vec<_>>());
+    assert_family_schema_rejects(&REPORT, &report, "too many evidence refs")
 }
 
 #[test]

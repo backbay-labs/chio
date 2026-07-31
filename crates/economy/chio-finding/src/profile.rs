@@ -16,7 +16,8 @@ use serde::{Deserialize, Serialize};
 use crate::envelope::require_ed25519;
 use crate::report::FindingFacetKind;
 use crate::validate::{
-    require_hex64, require_non_empty, require_nonzero, require_window, FindingError,
+    require_bounded_id, require_hex64, require_max_items, require_nonzero, require_window,
+    FindingError, MAX_FINDING_ARTIFACT_ITEMS,
 };
 
 /// Governance-signed reusable challenge-verifier profile.
@@ -58,12 +59,12 @@ pub struct FindingAuthorityKeyPolicy {
 
 impl FindingAuthorityKeyPolicy {
     pub fn validate(&self, label: &'static str) -> Result<(), FindingError> {
-        require_non_empty(&self.authority_id, label)?;
+        require_bounded_id(&self.authority_id, label)?;
         require_ed25519(&self.key, label)?;
         require_window(self.valid_from, self.valid_until, label, label)?;
         require_nonzero(self.key_epoch, label)?;
-        require_non_empty(&self.rotation_policy_ref, label)?;
-        require_non_empty(&self.revocation_status_ref, label)?;
+        require_bounded_id(&self.rotation_policy_ref, label)?;
+        require_bounded_id(&self.revocation_status_ref, label)?;
         Ok(())
     }
 }
@@ -103,12 +104,12 @@ pub struct FindingBbsIssuerPolicy {
 
 impl FindingBbsIssuerPolicy {
     fn validate(&self) -> Result<(), FindingError> {
-        require_non_empty(
+        require_bounded_id(
             &self.issuer_fingerprint,
             "bbs_projection_issuer.issuer_fingerprint",
         )?;
-        require_non_empty(&self.key_hex, "bbs_projection_issuer.key_hex")?;
-        require_non_empty(&self.registry_ref, "bbs_projection_issuer.registry_ref")?;
+        require_bounded_id(&self.key_hex, "bbs_projection_issuer.key_hex")?;
+        require_bounded_id(&self.registry_ref, "bbs_projection_issuer.registry_ref")?;
         require_nonzero(self.key_epoch, "bbs_projection_issuer.key_epoch")?;
         require_window(
             self.valid_from,
@@ -116,7 +117,7 @@ impl FindingBbsIssuerPolicy {
             "bbs_projection_issuer.valid_from",
             "bbs_projection_issuer.valid_until",
         )?;
-        require_non_empty(
+        require_bounded_id(
             &self.revocation_status_ref,
             "bbs_projection_issuer.revocation_status_ref",
         )?;
@@ -198,7 +199,7 @@ impl FindingChallengeVerifierProfile {
         }
         require_hex64(&self.profile_id, "profile_id")?;
         require_ed25519(&self.governance_authority, "governance_authority")?;
-        require_non_empty(&self.operator, "operator")?;
+        require_bounded_id(&self.operator, "operator")?;
         // Exactly one signer per role, all three roles present, so the
         // verifier never has to disambiguate role collisions.
         let mut roles = std::collections::BTreeSet::new();
@@ -220,9 +221,14 @@ impl FindingChallengeVerifierProfile {
         if self.checkpoint_logs.is_empty() {
             return Err(FindingError::MissingEntry("checkpoint_logs"));
         }
+        require_max_items(
+            self.checkpoint_logs.len(),
+            "checkpoint_logs",
+            MAX_FINDING_ARTIFACT_ITEMS,
+        )?;
         let mut log_ids = std::collections::BTreeSet::new();
         for log in &self.checkpoint_logs {
-            require_non_empty(&log.log_id, "checkpoint_logs[].log_id")?;
+            require_bounded_id(&log.log_id, "checkpoint_logs[].log_id")?;
             log.signer.validate("checkpoint_logs[].signer")?;
             if !log_ids.insert(log.log_id.as_str()) {
                 return Err(FindingError::DuplicateEntry("checkpoint_logs[].log_id"));
@@ -232,6 +238,11 @@ impl FindingChallengeVerifierProfile {
         if self.allowed_runner_manifests.is_empty() {
             return Err(FindingError::MissingEntry("allowed_runner_manifests"));
         }
+        require_max_items(
+            self.allowed_runner_manifests.len(),
+            "allowed_runner_manifests",
+            MAX_FINDING_ARTIFACT_ITEMS,
+        )?;
         let mut manifests = std::collections::BTreeSet::new();
         for manifest in &self.allowed_runner_manifests {
             require_hex64(manifest, "allowed_runner_manifests[]")?;
@@ -239,14 +250,14 @@ impl FindingChallengeVerifierProfile {
                 return Err(FindingError::DuplicateEntry("allowed_runner_manifests[]"));
             }
         }
-        require_non_empty(
+        require_bounded_id(
             &self.required_receipt_semantics,
             "required_receipt_semantics",
         )?;
-        require_non_empty(&self.resolver_policy_ref, "resolver_policy_ref")?;
-        require_non_empty(&self.retention_policy_ref, "retention_policy_ref")?;
+        require_bounded_id(&self.resolver_policy_ref, "resolver_policy_ref")?;
+        require_bounded_id(&self.retention_policy_ref, "retention_policy_ref")?;
         self.resource_caps.validate()?;
-        require_non_empty(&self.predicate_engine, "predicate_engine")?;
+        require_bounded_id(&self.predicate_engine, "predicate_engine")?;
         if self.allowed_predicates.is_empty() {
             return Err(FindingError::MissingEntry("allowed_predicates"));
         }

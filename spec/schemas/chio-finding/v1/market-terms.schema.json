@@ -91,6 +91,7 @@
         "decision_rule_refs": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 256,
           "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/nonBlankString"
@@ -102,6 +103,7 @@
         "challenge_bond_limits": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 3,
           "items": {
             "$ref": "#/$defs/challengeBondLimit"
           },
@@ -241,6 +243,7 @@
     },
     "nonBlankString": {
       "type": "string",
+      "maxLength": 512,
       "pattern": "\\S"
     },
     "sha256": {

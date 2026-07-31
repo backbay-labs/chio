@@ -100,6 +100,7 @@
         "checkpoint_logs": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 256,
           "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/checkpointLogPolicy"
@@ -144,6 +145,7 @@
         "allowed_runner_manifests": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 256,
           "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/sha256"
@@ -188,6 +190,7 @@
         "allowed_predicates": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 1,
           "uniqueItems": true,
           "items": {
             "enum": [
@@ -197,6 +200,7 @@
         },
         "required_facets": {
           "type": "array",
+          "maxItems": 13,
           "items": {
             "type": "string",
             "enum": [
@@ -255,6 +259,7 @@
     },
     "nonBlankString": {
       "type": "string",
+      "maxLength": 512,
       "pattern": "\\S"
     },
     "sha256": {

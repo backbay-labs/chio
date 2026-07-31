@@ -70,14 +70,17 @@ pub enum FindingError {
     AmountOverflow(&'static str),
 }
 
-/// Upper bound on opaque identifiers carried by finding artifacts.
+/// Upper bound on opaque identifiers carried by finding-market artifacts.
 pub const MAX_FINDING_IDENTIFIER_BYTES: usize = 512;
 
-/// Upper bound on searchable or display-oriented text carried by findings.
+/// Upper bound on searchable or display-oriented text carried by finding-market artifacts.
 pub const MAX_FINDING_TEXT_BYTES: usize = 512;
 
 /// Upper bound on receipt references carried by a finding.
 pub const MAX_FINDING_EVIDENCE_RECEIPTS: usize = 256;
+
+/// Upper bound on variable-length collections carried by market artifacts.
+pub const MAX_FINDING_ARTIFACT_ITEMS: usize = 256;
 
 pub(crate) fn is_hex64(value: &str) -> bool {
     value.len() == 64
@@ -106,8 +109,23 @@ fn require_bounded_non_empty(
     Ok(())
 }
 
-fn require_bounded_id(value: &str, field: &'static str) -> Result<(), FindingError> {
+pub(crate) fn require_bounded_id(value: &str, field: &'static str) -> Result<(), FindingError> {
     require_bounded_non_empty(value, field, MAX_FINDING_IDENTIFIER_BYTES)
+}
+
+pub(crate) fn require_bounded_text(value: &str, field: &'static str) -> Result<(), FindingError> {
+    require_bounded_non_empty(value, field, MAX_FINDING_TEXT_BYTES)
+}
+
+pub(crate) fn require_max_items(
+    len: usize,
+    field: &'static str,
+    max_items: usize,
+) -> Result<(), FindingError> {
+    if len > max_items {
+        return Err(FindingError::SizeLimitExceeded(field));
+    }
+    Ok(())
 }
 
 pub(crate) fn require_hex64(value: &str, field: &'static str) -> Result<(), FindingError> {

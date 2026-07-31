@@ -23,7 +23,8 @@ use chio_finding::{
     FindingVerifierReport, FINDING_ADMISSION_SCHEMA_V1, FINDING_BOND_BACKING_SCHEMA_V1,
     FINDING_CHALLENGE_VERIFIER_PROFILE_SCHEMA_V1, FINDING_MARKET_TERMS_SCHEMA_V1,
     FINDING_REPLAY_RECIPE_INPUT_SCHEMA_V1, FINDING_SELLER_AUTHORIZATION_SCHEMA_V1,
-    FINDING_VERIFIER_REPORT_SCHEMA_V1,
+    FINDING_VERIFIER_REPORT_SCHEMA_V1, MAX_FINDING_ARTIFACT_ITEMS, MAX_FINDING_IDENTIFIER_BYTES,
+    MAX_FINDING_TEXT_BYTES,
 };
 
 type TestResult = Result<(), Box<dyn std::error::Error>>;
@@ -731,6 +732,131 @@ fn admission_rejects_malformed_backing_fields() -> TestResult {
     assert_eq!(
         admission.validate(),
         Err(FindingError::MalformedDigest("backing_envelope_sha256"))
+    );
+    Ok(())
+}
+
+#[test]
+fn market_families_reject_oversized_string_fields() -> TestResult {
+    let oversized_id = "i".repeat(MAX_FINDING_IDENTIFIER_BYTES + 1);
+    let oversized_text = "t".repeat(MAX_FINDING_TEXT_BYTES + 1);
+
+    let venue = keypair(6);
+    let mut admission = admission_body(&venue)?;
+    admission.venue_id = oversized_id.clone();
+    assert_eq!(
+        admission.validate(),
+        Err(FindingError::SizeLimitExceeded("venue_id"))
+    );
+
+    let issuer = keypair(3);
+    let seller = keypair(2);
+    let mut authorization = authorization_body(&issuer, &seller)?;
+    authorization.revocation_status_ref = oversized_id.clone();
+    assert_eq!(
+        authorization.validate(),
+        Err(FindingError::SizeLimitExceeded("revocation_status_ref"))
+    );
+
+    let collateral = keypair(4);
+    let mut backing = backing_body(&collateral, &seller)?;
+    backing.vault = FindingCollateralVault::VenueLedger {
+        ledger_account: oversized_id.clone(),
+        operator_epoch: 1,
+    };
+    assert_eq!(
+        backing.validate(),
+        Err(FindingError::SizeLimitExceeded("vault.ledger_account"))
+    );
+
+    let mut terms = terms_body(&seller)?;
+    terms.decision_rule_refs = vec![oversized_id.clone()];
+    assert_eq!(
+        terms.validate(),
+        Err(FindingError::SizeLimitExceeded("decision_rule_refs[]"))
+    );
+
+    let mut profile = profile_body()?;
+    profile.bbs_projection_issuer.registry_ref = oversized_id.clone();
+    assert_eq!(
+        profile.validate(),
+        Err(FindingError::SizeLimitExceeded(
+            "bbs_projection_issuer.registry_ref"
+        ))
+    );
+
+    let verifier = keypair(15);
+    let mut report = report_body(&verifier)?;
+    report.facets[0].reason = oversized_text;
+    assert_eq!(
+        report.validate(),
+        Err(FindingError::SizeLimitExceeded("facets[].reason"))
+    );
+    report.facets[0].reason = "bounded reason".to_string();
+    report.facets[0].evidence_refs = vec![oversized_id];
+    assert_eq!(
+        report.validate(),
+        Err(FindingError::SizeLimitExceeded("facets[].evidence_refs[]"))
+    );
+    Ok(())
+}
+
+#[test]
+fn market_families_reject_oversized_collections() -> TestResult {
+    let venue = keypair(6);
+    let mut admission = admission_body(&venue)?;
+    admission.fee_terminals = (0..=MAX_FINDING_ARTIFACT_ITEMS)
+        .map(|index| FindingFeeTerminalBinding {
+            fee_schedule_envelope_sha256: HEX64.to_string(),
+            event: FindingFeeEvent::ParticipationEpoch {
+                epoch_index: index as u64,
+            },
+            payer: "seller-42".to_string(),
+            amount: MonetaryAmount {
+                units: 1,
+                currency: "USD".to_string(),
+            },
+            pool_principal_id: "pool:audit".to_string(),
+            rail_destination: "rail:venue-ledger:audit-pool".to_string(),
+            instruction_sha256: HEX64.to_string(),
+            observation_sha256: HEX64.to_string(),
+        })
+        .collect();
+    assert_eq!(
+        admission.validate(),
+        Err(FindingError::SizeLimitExceeded("fee_terminals"))
+    );
+
+    let seller = keypair(2);
+    let mut terms = terms_body(&seller)?;
+    terms.decision_rule_refs = (0..=MAX_FINDING_ARTIFACT_ITEMS)
+        .map(|index| format!("decision/rule-{index}"))
+        .collect();
+    assert_eq!(
+        terms.validate(),
+        Err(FindingError::SizeLimitExceeded("decision_rule_refs"))
+    );
+
+    let mut profile = profile_body()?;
+    profile.checkpoint_logs = (0..=MAX_FINDING_ARTIFACT_ITEMS)
+        .map(|index| FindingCheckpointLogPolicy {
+            log_id: format!("checkpoint-{index}"),
+            signer: key_policy(14, "checkpoint"),
+        })
+        .collect();
+    assert_eq!(
+        profile.validate(),
+        Err(FindingError::SizeLimitExceeded("checkpoint_logs"))
+    );
+
+    let verifier = keypair(15);
+    let mut report = report_body(&verifier)?;
+    report.facets[0].evidence_refs = (0..=MAX_FINDING_ARTIFACT_ITEMS)
+        .map(|index| format!("receipt-{index}"))
+        .collect();
+    assert_eq!(
+        report.validate(),
+        Err(FindingError::SizeLimitExceeded("facets[].evidence_refs"))
     );
     Ok(())
 }

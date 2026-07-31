@@ -14,7 +14,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::envelope::require_ed25519;
 use crate::validate::{
-    require_hex64, require_i_json_u64, require_non_empty, require_nonzero, FindingError,
+    require_bounded_id, require_bounded_text, require_hex64, require_i_json_u64, require_max_items,
+    require_nonzero, FindingError, MAX_FINDING_ARTIFACT_ITEMS,
 };
 
 /// Verifier-authority-signed facet report.
@@ -130,7 +131,7 @@ impl FindingVerifierReport {
             &self.verifier_profile_envelope_sha256,
             "verifier_profile_envelope_sha256",
         )?;
-        require_non_empty(
+        require_bounded_id(
             &self.verifier_implementation_id,
             "verifier_implementation_id",
         )?;
@@ -151,9 +152,14 @@ impl FindingVerifierReport {
             if result.facet != expected {
                 return Err(FindingError::InvalidField("facets"));
             }
-            require_non_empty(&result.reason, "facets[].reason")?;
+            require_bounded_text(&result.reason, "facets[].reason")?;
+            require_max_items(
+                result.evidence_refs.len(),
+                "facets[].evidence_refs",
+                MAX_FINDING_ARTIFACT_ITEMS,
+            )?;
             for evidence_ref in &result.evidence_refs {
-                require_non_empty(evidence_ref, "facets[].evidence_refs[]")?;
+                require_bounded_id(evidence_ref, "facets[].evidence_refs[]")?;
             }
         }
         let bond_backing_verified = self.facets.iter().any(|result| {

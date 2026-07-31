@@ -134,6 +134,7 @@
     },
     "nonBlankString": {
       "type": "string",
+      "maxLength": 512,
       "pattern": "\\S"
     },
     "sha256": {

@@ -18,8 +18,8 @@ use serde::{Deserialize, Serialize};
 use crate::envelope::require_ed25519;
 use crate::profile::FindingAuthorityKeyPolicy;
 use crate::validate::{
-    require_currency, require_hex64, require_non_empty, require_nonzero, require_window,
-    FindingError,
+    require_bounded_id, require_currency, require_hex64, require_max_items, require_nonzero,
+    require_window, FindingError, MAX_FINDING_ARTIFACT_ITEMS,
 };
 
 /// Venue-signed admission bundle.
@@ -59,11 +59,11 @@ impl FindingFeeTerminalBinding {
         if let FindingFeeEvent::ParticipationEpoch { epoch_index } = &self.event {
             crate::validate::require_i_json_u64(*epoch_index, "fee_terminals[].event.epoch_index")?;
         }
-        require_non_empty(&self.payer, "fee_terminals[].payer")?;
+        require_bounded_id(&self.payer, "fee_terminals[].payer")?;
         require_nonzero(self.amount.units, "fee_terminals[].amount")?;
         require_currency(&self.amount.currency, "fee_terminals[].amount.currency")?;
-        require_non_empty(&self.pool_principal_id, "fee_terminals[].pool_principal_id")?;
-        require_non_empty(&self.rail_destination, "fee_terminals[].rail_destination")?;
+        require_bounded_id(&self.pool_principal_id, "fee_terminals[].pool_principal_id")?;
+        require_bounded_id(&self.rail_destination, "fee_terminals[].rail_destination")?;
         require_hex64(
             &self.instruction_sha256,
             "fee_terminals[].instruction_sha256",
@@ -89,8 +89,8 @@ pub struct FindingPoolBinding {
 
 impl FindingPoolBinding {
     fn validate(&self, label: &'static str) -> Result<(), FindingError> {
-        require_non_empty(&self.principal_id, label)?;
-        require_non_empty(&self.rail_destination, label)?;
+        require_bounded_id(&self.principal_id, label)?;
+        require_bounded_id(&self.rail_destination, label)?;
         require_currency(&self.currency, label)?;
         require_nonzero(self.authority_epoch, label)?;
         Ok(())
@@ -154,17 +154,17 @@ impl FindingAdmission {
         }
         require_hex64(&self.admission_id, "admission_id")?;
         require_ed25519(&self.venue, "venue")?;
-        require_non_empty(&self.venue_id, "venue_id")?;
+        require_bounded_id(&self.venue_id, "venue_id")?;
         require_hex64(&self.finding_id, "finding_id")?;
         require_hex64(&self.finding_artifact_sha256, "finding_artifact_sha256")?;
         require_hex64(
             &self.seller_authorization_envelope_sha256,
             "seller_authorization_envelope_sha256",
         )?;
-        require_non_empty(&self.listing_id, "listing_id")?;
+        require_bounded_id(&self.listing_id, "listing_id")?;
         require_hex64(&self.listing_envelope_sha256, "listing_envelope_sha256")?;
-        require_non_empty(&self.server_id, "server_id")?;
-        require_non_empty(&self.metadata_url, "metadata_url")?;
+        require_bounded_id(&self.server_id, "server_id")?;
+        require_bounded_id(&self.metadata_url, "metadata_url")?;
         require_hex64(
             &self.pricing_hint_envelope_sha256,
             "pricing_hint_envelope_sha256",
@@ -173,8 +173,8 @@ impl FindingAdmission {
         if self.capability_scope != expected_scope {
             return Err(FindingError::InvalidField("capability_scope"));
         }
-        require_non_empty(&self.publisher_operator_id, "publisher_operator_id")?;
-        require_non_empty(&self.payee_destination, "payee_destination")?;
+        require_bounded_id(&self.publisher_operator_id, "publisher_operator_id")?;
+        require_bounded_id(&self.payee_destination, "payee_destination")?;
         require_hex64(
             &self.fee_schedule_envelope_sha256,
             "fee_schedule_envelope_sha256",
@@ -189,6 +189,11 @@ impl FindingAdmission {
         if self.fee_terminals.is_empty() {
             return Err(FindingError::MissingEntry("fee_terminals"));
         }
+        require_max_items(
+            self.fee_terminals.len(),
+            "fee_terminals",
+            MAX_FINDING_ARTIFACT_ITEMS,
+        )?;
         let mut has_publication = false;
         let mut has_first_epoch = false;
         let mut seen_events = std::collections::BTreeSet::new();
@@ -224,11 +229,11 @@ impl FindingAdmission {
         {
             return Err(FindingError::DuplicateEntry("pools"));
         }
-        require_non_empty(
+        require_bounded_id(
             &self.community_fund_destination,
             "community_fund_destination",
         )?;
-        require_non_empty(&self.status_feed_operator_ref, "status_feed_operator_ref")?;
+        require_bounded_id(&self.status_feed_operator_ref, "status_feed_operator_ref")?;
         self.purchase_authority.validate("purchase_authority")?;
         self.failed_delivery_authority
             .validate("failed_delivery_authority")?;

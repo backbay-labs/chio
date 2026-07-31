@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::envelope::require_ed25519;
 use crate::validate::{
-    require_currency, require_hex64, require_non_empty, require_nonzero, require_window,
+    require_bounded_id, require_currency, require_hex64, require_nonzero, require_window,
     FindingError,
 };
 
@@ -51,7 +51,7 @@ impl FindingCollateralVault {
                 ledger_account,
                 operator_epoch,
             } => {
-                require_non_empty(ledger_account, "vault.ledger_account")?;
+                require_bounded_id(ledger_account, "vault.ledger_account")?;
                 require_nonzero(*operator_epoch, "vault.operator_epoch")
             }
         }
@@ -109,7 +109,7 @@ impl FindingBondBacking {
             "authorization_envelope_sha256",
         )?;
         require_hex64(&self.finding_id, "finding_id")?;
-        require_non_empty(&self.listing_id, "listing_id")?;
+        require_bounded_id(&self.listing_id, "listing_id")?;
         require_hex64(&self.terms_envelope_sha256, "terms_envelope_sha256")?;
         require_hex64(&self.profile_envelope_sha256, "profile_envelope_sha256")?;
         require_hex64(&self.fee_requirement_sha256, "fee_requirement_sha256")?;

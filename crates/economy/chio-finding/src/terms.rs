@@ -14,8 +14,8 @@ use serde::{Deserialize, Serialize};
 use crate::envelope::require_ed25519;
 use crate::types::FindingGuaranteeClass;
 use crate::validate::{
-    require_currency, require_hex64, require_i_json_u64, require_non_empty, require_nonzero,
-    require_window, FindingError,
+    require_bounded_id, require_currency, require_hex64, require_i_json_u64, require_max_items,
+    require_nonzero, require_window, FindingError, MAX_FINDING_ARTIFACT_ITEMS,
 };
 
 /// Seller-signed market terms.
@@ -57,7 +57,7 @@ impl FindingBackingRequirement {
         if self.base_finding_stake.currency != self.maximum_sale_exposure.currency {
             return Err(FindingError::CurrencyMismatch("backing_requirement"));
         }
-        require_non_empty(
+        require_bounded_id(
             &self.collateral_policy,
             "backing_requirement.collateral_policy",
         )?;
@@ -149,7 +149,7 @@ impl FindingMarketTerms {
         require_hex64(&self.terms_id, "terms_id")?;
         require_hex64(&self.finding_id, "finding_id")?;
         require_hex64(&self.finding_artifact_sha256, "finding_artifact_sha256")?;
-        require_non_empty(&self.listing_id, "listing_id")?;
+        require_bounded_id(&self.listing_id, "listing_id")?;
         require_ed25519(&self.seller, "seller")?;
         self.backing_requirement.validate()?;
         require_nonzero(self.filing_window_secs, "filing_window_secs")?;
@@ -159,9 +159,14 @@ impl FindingMarketTerms {
         if self.decision_rule_refs.is_empty() {
             return Err(FindingError::MissingEntry("decision_rule_refs"));
         }
+        require_max_items(
+            self.decision_rule_refs.len(),
+            "decision_rule_refs",
+            MAX_FINDING_ARTIFACT_ITEMS,
+        )?;
         let mut rules = std::collections::BTreeSet::new();
         for rule in &self.decision_rule_refs {
-            require_non_empty(rule, "decision_rule_refs[]")?;
+            require_bounded_id(rule, "decision_rule_refs[]")?;
             if !rules.insert(rule.as_str()) {
                 return Err(FindingError::DuplicateEntry("decision_rule_refs[]"));
             }
@@ -180,7 +185,7 @@ impl FindingMarketTerms {
                 return Err(FindingError::DuplicateEntry("challenge_bond_limits[]"));
             }
         }
-        require_non_empty(&self.payout_policy, "payout_policy")?;
+        require_bounded_id(&self.payout_policy, "payout_policy")?;
         require_window(self.issued_at, self.expires_at, "issued_at", "expires_at")?;
         self.verify_terms_id()
     }

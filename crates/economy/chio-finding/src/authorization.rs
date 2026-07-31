@@ -11,7 +11,7 @@ use chio_core_types::receipt::lineage::SignedExportEnvelope;
 use serde::{Deserialize, Serialize};
 
 use crate::envelope::require_ed25519;
-use crate::validate::{require_hex64, require_non_empty, require_window, FindingError};
+use crate::validate::{require_bounded_id, require_hex64, require_window, FindingError};
 
 /// Finding-issuer-signed seller authorization.
 pub const FINDING_SELLER_AUTHORIZATION_SCHEMA_V1: &str =
@@ -39,7 +39,7 @@ impl FindingPayee {
                 destination,
                 currency,
             } => {
-                require_non_empty(destination, "payee.destination")?;
+                require_bounded_id(destination, "payee.destination")?;
                 crate::validate::require_currency(currency, "payee.currency")
             }
             FindingPayee::ProviderPayeeMapping {
@@ -83,13 +83,13 @@ impl FindingSellerAuthorization {
         require_hex64(&self.authorization_id, "authorization_id")?;
         require_hex64(&self.finding_id, "finding_id")?;
         require_hex64(&self.finding_artifact_sha256, "finding_artifact_sha256")?;
-        require_non_empty(&self.listing_id, "listing_id")?;
+        require_bounded_id(&self.listing_id, "listing_id")?;
         require_ed25519(&self.issuer, "issuer")?;
         require_ed25519(&self.seller, "seller")?;
-        require_non_empty(&self.provider_server_id, "provider_server_id")?;
-        require_non_empty(&self.provider_tool, "provider_tool")?;
+        require_bounded_id(&self.provider_server_id, "provider_server_id")?;
+        require_bounded_id(&self.provider_tool, "provider_tool")?;
         self.payee.validate()?;
-        require_non_empty(&self.revocation_status_ref, "revocation_status_ref")?;
+        require_bounded_id(&self.revocation_status_ref, "revocation_status_ref")?;
         require_window(self.issued_at, self.expires_at, "issued_at", "expires_at")?;
         self.verify_authorization_id()
     }

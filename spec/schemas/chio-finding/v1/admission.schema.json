@@ -111,6 +111,7 @@
         "fee_terminals": {
           "type": "array",
           "minItems": 1,
+          "maxItems": 256,
           "uniqueItems": true,
           "items": {
             "$ref": "#/$defs/feeTerminalBinding"
@@ -338,6 +339,7 @@
     },
     "nonBlankString": {
       "type": "string",
+      "maxLength": 512,
       "pattern": "\\S"
     },
     "poolBinding": {
