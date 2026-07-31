@@ -436,21 +436,15 @@ fn constraint_matches(
         | Constraint::SellerExact(_)
         | Constraint::MinimumRuntimeAssurance(_)
         | Constraint::MinimumAutonomyTier(_) => Ok(true),
-        // The output-digest carrier is a downgrade attack when expressed as
-        // a Custom key an old kernel would match against arguments; reject
-        // that spelling so only the first-class variant carries a digest.
-        Constraint::Custom(key, _) if key == "output_digest_sha256" => {
-            Err(KernelError::InvalidConstraint(
-                "output_digest_sha256 must use the OutputDigestSha256 constraint, not Custom"
-                    .to_owned(),
-            ))
-        }
-        Constraint::Custom(key, _) if key == "require_finding_purchase" => {
-            Err(KernelError::InvalidConstraint(
-                "require_finding_purchase must use the RequireFindingPurchase constraint, not \
-                 Custom"
-                    .to_owned(),
-            ))
+        // The delivery carriers are downgrade attacks when expressed as
+        // Custom keys an old kernel would match against arguments. The
+        // spelling never satisfies a grant, so only the first-class
+        // variants carry the semantics, and a grant carrying the spelling
+        // simply fails to match without condemning its sibling grants.
+        Constraint::Custom(key, _)
+            if key == "output_digest_sha256" || key == "require_finding_purchase" =>
+        {
+            Ok(false)
         }
         Constraint::Custom(key, expected) => Ok(argument_contains_custom(arguments, key, expected)),
 
@@ -635,6 +629,72 @@ mod tests {
             KernelError::OutOfScope { tool, server }
             if tool == "other_tool" && server == "srv"
         ));
+    }
+
+    #[test]
+    fn custom_delivery_spellings_never_match_and_never_poison_siblings() {
+        let issuer = Keypair::generate();
+        let grant = |constraints: Vec<Constraint>| ToolGrant {
+            server_id: "srv".to_string(),
+            tool_name: "tool".to_string(),
+            operations: vec![Operation::Invoke],
+            constraints,
+            max_invocations: None,
+            max_cost_per_invocation: None,
+            max_total_cost: None,
+            dpop_required: None,
+        };
+        let capability = CapabilityToken::sign(
+            CapabilityTokenBody {
+                id: "cap-custom-delivery-spelling".to_string(),
+                issuer: issuer.public_key(),
+                subject: issuer.public_key(),
+                scope: ChioScope {
+                    grants: vec![
+                        grant(vec![Constraint::Custom(
+                            "output_digest_sha256".to_string(),
+                            "aa".to_string(),
+                        )]),
+                        grant(vec![Constraint::Custom(
+                            "require_finding_purchase".to_string(),
+                            "finding-1".to_string(),
+                        )]),
+                        grant(Vec::new()),
+                    ],
+                    ..ChioScope::default()
+                },
+                issued_at: 1,
+                expires_at: u64::MAX,
+                delegation_chain: Vec::new(),
+                aggregate_invocation_budget: None,
+            },
+            &issuer,
+        )
+        .expect("sign capability");
+
+        let arguments = serde_json::json!({"output_digest_sha256": "aa"});
+        let matches = resolve_matching_grants(&capability, "tool", "srv", &arguments, None)
+            .expect("a custom delivery spelling must not fail the whole candidate set");
+        assert_eq!(
+            matches
+                .iter()
+                .map(|matching| matching.index)
+                .collect::<Vec<_>>(),
+            vec![2],
+            "only the unconstrained sibling may match"
+        );
+
+        for key in ["output_digest_sha256", "require_finding_purchase"] {
+            let capability = capability_with_constraints(vec![Constraint::Custom(
+                key.to_string(),
+                "aa".to_string(),
+            )]);
+            assert!(
+                !capability_matches_request(&capability, "tool", "srv", &arguments)
+                    .expect("the spelling must fail its own grant, not the evaluation"),
+                "a {key} custom spelling must never satisfy a grant"
+            );
+        }
     }
 
     #[test]
