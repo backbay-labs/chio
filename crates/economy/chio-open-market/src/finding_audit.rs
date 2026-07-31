@@ -218,11 +218,13 @@ pub fn audit_target_count(
 /// 3. Compute the target count from the published rate, rounding up.
 /// 4. Draw each listing as `sha256(domain, seed, finding_id, listing_id)`
 ///    and order by the exact rational priority `draw / weight`, smallest
-///    first, comparing by cross multiplication so no rounding enters the
-///    order. With uniform weights this is exactly an ordering by draw; a
-///    larger weight moves a listing earlier. Equal priorities break by
-///    finding id ascending, which is a total order because finding ids are
-///    unique in the snapshot.
+///    first, where the draw is the whole 256-bit digest read big-endian.
+///    The comparison is a cross multiplication over every bit of both
+///    draws, so neither rounding nor truncation enters the order. With
+///    uniform weights this is exactly an ordering by draw; a larger weight
+///    moves a listing earlier. Equal priorities break by finding id
+///    ascending, which is a total order because finding ids are unique in
+///    the snapshot.
 /// 5. Take the first target count entries.
 ///
 /// There is no random source: the seed is the only entropy, and it was
@@ -348,10 +350,20 @@ pub fn verify_audit_report(
     Ok(())
 }
 
+/// One listing's draw as the integer the ordering compares it as: the
+/// digest read big-endian, in 64-bit limbs, most significant first.
+type DrawValue = [u64; 4];
+
+/// A draw scaled by a weight. A 256-bit draw times a 64-bit weight needs
+/// 320 bits, so the scaled form is one limb wider than the draw.
+type ScaledDraw = [u64; 5];
+
 /// One drawn candidate, carrying the numeric draw the ordering compares.
 struct DrawnListing {
     selection: AuditSelection,
-    value: u64,
+    /// The same value as `selection.draw`, in the form the weighted
+    /// ordering compares. The hex form is what a third party rechecks.
+    draw: DrawValue,
 }
 
 fn select_targets(
@@ -404,15 +416,15 @@ fn select_targets(
     let mut drawn: Vec<DrawnListing> = ordered
         .iter()
         .map(|entry| {
-            let (draw, value) = audit_draw(revealed_seed, &entry.finding_id, &entry.listing_id);
+            let (hex, draw) = audit_draw(revealed_seed, &entry.finding_id, &entry.listing_id);
             DrawnListing {
                 selection: AuditSelection {
                     finding_id: entry.finding_id.clone(),
                     listing_id: entry.listing_id.clone(),
                     weight: entry.weight(),
-                    draw,
+                    draw: hex,
                 },
-                value,
+                draw,
             }
         })
         .collect();
@@ -423,15 +435,35 @@ fn select_targets(
 
 /// Order by the exact rational priority `draw / weight`, smallest first.
 ///
-/// The comparison is a cross multiplication of two `u64` values widened to
-/// `u128`, so it is exact and cannot overflow. Ties break by finding id,
-/// which is a total order over a snapshot whose finding ids are unique.
+/// The comparison cross multiplies each listing's draw by the other's
+/// weight, over every one of the draw's 256 bits. Comparing a prefix
+/// instead would make distinct draws tie, hand the order to the finding-id
+/// tiebreak, and let a venue that also chooses the weights aim at a 64-bit
+/// target rather than the whole digest. Ties break by finding id, which is
+/// a total order over a snapshot whose finding ids are unique.
 fn compare_priority(left: &DrawnListing, right: &DrawnListing) -> Ordering {
-    let left_key = u128::from(left.value) * u128::from(right.selection.weight);
-    let right_key = u128::from(right.value) * u128::from(left.selection.weight);
-    left_key
-        .cmp(&right_key)
+    scale_draw(&left.draw, right.selection.weight)
+        .cmp(&scale_draw(&right.draw, left.selection.weight))
         .then_with(|| left.selection.finding_id.cmp(&right.selection.finding_id))
+}
+
+/// Multiply a 256-bit draw by a 64-bit weight, exactly.
+///
+/// Schoolbook limb multiplication, most significant limb last: every limb
+/// widens to `u128` before it is scaled, so a limb product plus its
+/// incoming carry always fits and no bit of either input is discarded. The
+/// result is big-endian, so comparing two scaled draws is the ordinary
+/// lexicographic comparison of their limbs.
+fn scale_draw(draw: &DrawValue, weight: u64) -> ScaledDraw {
+    let mut scaled: ScaledDraw = [0; 5];
+    let mut carry = 0_u64;
+    for (index, limb) in draw.iter().enumerate().rev() {
+        let product = u128::from(*limb) * u128::from(weight) + u128::from(carry);
+        scaled[index + 1] = product as u64;
+        carry = (product >> 64) as u64;
+    }
+    scaled[0] = carry;
+    scaled
 }
 
 fn canonical_eligible(
@@ -473,7 +505,9 @@ fn snapshot_digest_of(ordered: &[&EligibleListing]) -> String {
     sha256(&preimage).to_hex()
 }
 
-fn audit_draw(revealed_seed: &str, finding_id: &str, listing_id: &str) -> (String, u64) {
+/// One listing's draw, as the hex digest a report publishes and as the
+/// integer the weighted ordering compares. Both are the same 256 bits.
+fn audit_draw(revealed_seed: &str, finding_id: &str, listing_id: &str) -> (String, DrawValue) {
     let mut preimage = Vec::with_capacity(
         AUDIT_DRAW_DOMAIN.len() + revealed_seed.len() + finding_id.len() + listing_id.len() + 2,
     );
@@ -484,9 +518,13 @@ fn audit_draw(revealed_seed: &str, finding_id: &str, listing_id: &str) -> (Strin
     preimage.push(0);
     preimage.extend_from_slice(listing_id.as_bytes());
     let digest = sha256(&preimage);
-    let mut head = [0_u8; 8];
-    head.copy_from_slice(&digest.as_bytes()[..8]);
-    (digest.to_hex(), u64::from_be_bytes(head))
+    let mut draw: DrawValue = [0; 4];
+    for (limb, chunk) in draw.iter_mut().zip(digest.as_bytes().chunks_exact(8)) {
+        let mut bytes = [0_u8; 8];
+        bytes.copy_from_slice(chunk);
+        *limb = u64::from_be_bytes(bytes);
+    }
+    (digest.to_hex(), draw)
 }
 
 fn affordable_attempts(

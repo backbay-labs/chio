@@ -45,6 +45,20 @@ fn finding_id(index: usize) -> String {
     sha256_hex(format!("eligible-finding-{index}").as_bytes())
 }
 
+fn tie_finding_id(index: usize) -> String {
+    sha256_hex(format!("audit-priority-tie-{index}").as_bytes())
+}
+
+fn tie_listing_id(index: usize) -> String {
+    format!("listing-audit-priority-tie-{index:04}")
+}
+
+/// The leading 64 bits of a hex draw, which is the prefix a truncating
+/// comparison would order by.
+fn leading_u64(draw: &str) -> u64 {
+    u64::from_str_radix(&draw[..16], 16).test_expect("draw prefix")
+}
+
 /// `count` eligible listings with no weights, so the ordering is exactly an
 /// ordering by draw.
 fn eligible_snapshot(count: usize) -> Vec<EligibleListing> {
@@ -244,6 +258,44 @@ fn an_absent_weight_is_exactly_weight_one() {
     assert_eq!(
         select_audit_targets(&epoch, SEED, &explicit).test_expect("selection"),
         select_audit_targets(&epoch, SEED, &eligible).test_expect("selection")
+    );
+}
+
+#[test]
+fn the_weighted_order_compares_the_whole_draw() {
+    // The priority is `draw / weight` over the full 256-bit draw. A venue
+    // that sets each listing's weight to the leading 64 bits of that
+    // listing's own draw makes both cross products agree on their leading
+    // bits exactly, so an implementation that compares a prefix of the draw
+    // sees a tie and settles the round on the finding id instead. The
+    // remaining bits of the draw decide this pair, and they select the
+    // listing the finding-id order would have placed second.
+    let eligible: Vec<EligibleListing> = [0_usize, 2]
+        .into_iter()
+        .map(|index| {
+            let finding_id = tie_finding_id(index);
+            let listing_id = tie_listing_id(index);
+            let draw = derive_audit_draw(SEED, &finding_id, &listing_id);
+            EligibleListing {
+                weight_or_none: Some(leading_u64(&draw)),
+                finding_id,
+                listing_id,
+            }
+        })
+        .collect();
+    assert!(
+        eligible[0].finding_id < eligible[1].finding_id,
+        "a finding-id tiebreak would select the first entry"
+    );
+
+    // Two eligible listings at fifty percent round up to exactly one target.
+    let epoch = epoch_for(&eligible, 5_000, BUDGET_UNITS);
+    let selected = select_audit_targets(&epoch, SEED, &eligible).test_expect("selection");
+
+    assert_eq!(
+        selected_ids(&selected),
+        vec![eligible[1].finding_id.clone()],
+        "the full draw decides the order, not its leading bits"
     );
 }
 

@@ -1808,6 +1808,20 @@ selection algorithm, the published rate in basis points (nonzero and at most
 commitment time. The seed itself has no encoding in this artifact and MUST
 NOT be published with its commitment.
 
+Under the selection algorithm `chio.finding.audit-selection.weighted-draw.v1`
+each eligible listing draws the SHA-256 digest of the domain-separated
+preimage `"chio.finding.audit-draw.v1\0"` followed by the revealed seed, a
+NUL, the finding identifier, a NUL, and the listing identifier. Listings are
+ordered by the rational priority `draw / weight`, smallest first, where an
+absent weight is exactly 1 and the draw is the WHOLE digest read big-endian.
+Implementations MUST compare by cross multiplication over every bit of both
+draws rather than over any prefix of them, and MUST break an exact tie by
+ascending finding identifier. The round takes the first targets, counting the
+published rate over the eligible count rounded UP. A prefix comparison would
+make distinct draws tie, settle those rounds on the finding identifier
+instead, and shrink the target a venue that also chooses the weights has to
+grind for from the whole digest down to that prefix.
+
 #### 6.4.7.17 `chio.finding.audit-report.v1`
 
 The venue's signed result for the same round, published AFTER the reveal: the
