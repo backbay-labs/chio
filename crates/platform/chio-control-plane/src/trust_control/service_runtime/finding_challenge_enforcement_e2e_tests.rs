@@ -453,6 +453,7 @@ fn deployment_publishing_terms(
     let purchases = authority.finding_purchase_store();
     let challenges = authority.finding_challenge_store();
     let allocation_id = consume_allocation(&market, LISTING_ID, &hex64('1'))?;
+    purchases.register_community_fund_destination(&allocation_id, COMMUNITY_FUND_RAIL, NOW)?;
     let mut filings = PublishedArtifacts::default()
         .publish_schedule(&published_fee_schedule()?)?
         .publish_round(&published_audit_round()?)?
