@@ -478,9 +478,33 @@ pub fn delivery_contract_admits(expected: &str, observed: &str) -> DeliveryVerdi
     }
 }
 
+/// The digest leg of the delivery decision the durable finalizer executes:
+/// whether settlement is denied for one resolved output. `expected` is the
+/// grant's committed digest when one exists, `observed` is the final
+/// post-transform output digest, and `delivered_value` records whether the
+/// delivery resolved to a single canonical JSON value, the only
+/// representation a digest can be committed against. A streamed delivery
+/// has no such preimage (its content hash is authorable chunk metadata,
+/// not the payload commitment), so it always denies under a constraint. An
+/// unconstrained delivery is never denied here.
+#[must_use]
+pub fn delivery_denies_settlement(
+    expected: Option<&str>,
+    observed: &str,
+    delivered_value: bool,
+) -> bool {
+    match expected {
+        None => false,
+        Some(expected) => {
+            !delivered_value
+                || delivery_contract_admits(expected, observed) == DeliveryVerdict::Deny
+        }
+    }
+}
+
 #[cfg(test)]
 mod delivery_contract_tests {
-    use super::{delivery_contract_admits, DeliveryVerdict};
+    use super::{delivery_contract_admits, delivery_denies_settlement, DeliveryVerdict};
 
     #[test]
     fn identical_digests_admit() {
@@ -488,6 +512,20 @@ mod delivery_contract_tests {
         assert_eq!(
             delivery_contract_admits(digest, digest),
             DeliveryVerdict::Allow
+        );
+    }
+
+    #[test]
+    fn settlement_denial_requires_a_constraint_and_admits_only_a_matching_value() {
+        let digest = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+        let other = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde0";
+        assert!(!delivery_denies_settlement(None, digest, true));
+        assert!(!delivery_denies_settlement(None, digest, false));
+        assert!(!delivery_denies_settlement(Some(digest), digest, true));
+        assert!(delivery_denies_settlement(Some(digest), other, true));
+        assert!(
+            delivery_denies_settlement(Some(digest), digest, false),
+            "a non-value delivery must deny even when its content hash equals the commitment"
         );
     }
 

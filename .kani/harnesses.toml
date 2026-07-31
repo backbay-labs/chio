@@ -268,7 +268,7 @@ harness = "public_delivery_contract_allow_implies_digest_match"
 default_unwind = 8
 timeout_secs = 1800
 lane = "pr"
-notes = "Allow from the delivery-contract carrier implies byte-identical digests."
+notes = "Settlement admission under a digest constraint implies a byte-identical value delivery; streams and mismatches deny."
 
 
 # ---------------------------------------------------------------------
