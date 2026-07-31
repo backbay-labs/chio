@@ -71,6 +71,10 @@ pub enum PurchaseCoordinatorError {
     AdmissionWindow,
     #[error("venue admission does not cover this sale")]
     AdmissionMismatch,
+    #[error("admission-declared {0} authority is not the coordinator signing key")]
+    DeclaredAuthorityMismatch(&'static str),
+    #[error("admission-declared {0} authority window does not cover the reservation instant")]
+    DeclaredAuthorityWindow(&'static str),
     #[error("purchase amounts must be exactly equal in units and currency")]
     AmountMismatch,
     #[error("realized spend exceeds the accepted price")]
@@ -183,6 +187,32 @@ impl FindingPurchaseCoordinator {
         }
         if admission.body.listing_id != ask.body.listing_id {
             return Err(PurchaseCoordinatorError::AdmissionMismatch);
+        }
+        // The admission pins the settlement authorities before any sale,
+        // and standing verification accepts a settlement artifact only when
+        // the declared key signed it at an instant inside the declared
+        // window. The reservation instant is the instant both terminals
+        // record, so both bindings hold here, where the clock enters: a
+        // sale settled under an undeclared key or outside the window would
+        // leave the paying buyer without standing to challenge.
+        for (role, policy, signing_key) in [
+            (
+                "purchase",
+                &admission.body.purchase_authority,
+                self.purchase_authority.public_key(),
+            ),
+            (
+                "failed-delivery",
+                &admission.body.failed_delivery_authority,
+                self.failed_delivery_authority.public_key(),
+            ),
+        ] {
+            if policy.key != signing_key {
+                return Err(PurchaseCoordinatorError::DeclaredAuthorityMismatch(role));
+            }
+            if now < policy.valid_from || now > policy.valid_until {
+                return Err(PurchaseCoordinatorError::DeclaredAuthorityWindow(role));
+            }
         }
         // The digest is derived from the envelope just verified, never
         // accepted from the caller: it is signed into the settlement

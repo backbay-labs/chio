@@ -2969,6 +2969,92 @@ async fn wedge_purchase_reserve_refuses_an_unverified_venue_admission() -> TestR
     Ok(())
 }
 
+/// The admission declares which keys hold the purchase and failed-delivery
+/// authorities and for what window, and downstream standing verification
+/// accepts a settlement artifact only when the declared key signed it at an
+/// instant the declared window covers. Reserve fixes that instant, so
+/// reserve must refuse a coordinator signing under any other key and an
+/// instant outside either declared window; otherwise the sale settles into
+/// artifacts that grant the paying buyer no standing.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn wedge_purchase_reserve_binds_the_declared_settlement_authorities() -> TestResult {
+    let fixture = open_reserve_fixture().await?;
+    let purchase_store = fixture.authority.finding_purchase_store();
+    let now = unix_timestamp_now();
+
+    // A coordinator holding a purchase key the admission never declared.
+    let drifted_purchase = FindingPurchaseCoordinator::new(
+        purchase_store.clone(),
+        keypair(18),
+        &keypair(18).public_key(),
+        keypair(17),
+        &keypair(17).public_key(),
+        &keypair(6).public_key(),
+        VENUE_ID,
+    )?;
+    assert!(matches!(
+        drifted_purchase.reserve(
+            &fixture.exchange.ask,
+            &fixture.exchange.buyer_signature_hex,
+            &fixture.deployment.web.admission,
+            EXPOSURE_UNITS,
+            RESERVATION_TTL_SECS,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::DeclaredAuthorityMismatch(
+            "purchase"
+        ))
+    ));
+
+    // A coordinator holding a failed-delivery key the admission never
+    // declared.
+    let drifted_failed_delivery = FindingPurchaseCoordinator::new(
+        purchase_store.clone(),
+        keypair(16),
+        &keypair(16).public_key(),
+        keypair(19),
+        &keypair(19).public_key(),
+        &keypair(6).public_key(),
+        VENUE_ID,
+    )?;
+    assert!(matches!(
+        drifted_failed_delivery.reserve(
+            &fixture.exchange.ask,
+            &fixture.exchange.buyer_signature_hex,
+            &fixture.deployment.web.admission,
+            EXPOSURE_UNITS,
+            RESERVATION_TTL_SECS,
+            now,
+        ),
+        Err(PurchaseCoordinatorError::DeclaredAuthorityMismatch(
+            "failed-delivery"
+        ))
+    ));
+
+    // A venue-signed admission whose declared purchase window has lapsed
+    // by the reservation instant.
+    let mut lapsed_body = fixture.deployment.web.admission.body.clone();
+    lapsed_body.purchase_authority.valid_until = ISSUED_AT.saturating_add(1);
+    lapsed_body.admission_id = compute_admission_id(&lapsed_body)?;
+    let lapsed: SignedFindingAdmission =
+        SignedExportEnvelope::sign(lapsed_body, &fixture.deployment.web.venue)?;
+    assert!(matches!(
+        fixture.reserve_with(&lapsed, now),
+        Err(PurchaseCoordinatorError::DeclaredAuthorityWindow("purchase"))
+    ));
+
+    // No refusal opened durable state; the declared coordinator still
+    // reserves under the genuine admission.
+    assert!(purchase_store
+        .get_reservation(&fixture.exchange.reservation_id)?
+        .is_none());
+    fixture.reserve_with(&fixture.deployment.web.admission, now)?;
+    assert!(purchase_store
+        .get_reservation(&fixture.exchange.reservation_id)?
+        .is_some());
+    Ok(())
+}
+
 /// An ask outside its own window never opens a reservation: the seller's
 /// collateral would be held for a full TTL against a quote that no longer
 /// stands.
