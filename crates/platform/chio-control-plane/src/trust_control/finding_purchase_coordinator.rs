@@ -330,7 +330,13 @@ impl FindingPurchaseCoordinator {
             delivery_receipt_id: delivery_receipt_id.to_owned(),
             payment_reference: reservation.authoritative_payment_operation_id.clone(),
             payout_destination: payout_destination.to_owned(),
-            recorded_at: now,
+            // The record's instant is the reservation instant, a durable
+            // fact fixed when the funds were committed. The store compares
+            // retained bytes against a retry's bytes, so a finalize clock
+            // inside the body would turn an honest crash-retry into an
+            // unresolvable conflict; the reservation instant replays
+            // byte-identically and does not move however long delivery took.
+            recorded_at: reservation.created_at,
         };
         // The store retains these bytes forever and the close is one-shot,
         // so a body that fails its own validator must never be signed: it
@@ -405,7 +411,10 @@ impl FindingPurchaseCoordinator {
             realized_spend_units: 0,
             currency: reservation.currency.clone(),
             payout_eligible: false,
-            recorded_at: now,
+            // The reservation instant, not the close clock: the terminal id
+            // is content-addressed over this body, so a clock here would
+            // give every crash-retry a different identity for one denial.
+            recorded_at: reservation.created_at,
         };
         artifact.failed_delivery_id = compute_failed_delivery_id(&artifact)
             .map_err(|_| PurchaseCoordinatorError::Canonical)?;
