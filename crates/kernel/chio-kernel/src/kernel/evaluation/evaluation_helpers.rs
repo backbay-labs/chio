@@ -87,6 +87,49 @@ pub(super) fn delivery_marked_selection_denial(
     None
 }
 
+/// The validity rule for the selected grant's delivery commitment,
+/// enforced before any hold is placed. A grant that fixes a delivery must
+/// fix exactly one committed digest in canonical form: a second digest, a
+/// non-canonical value, the fixed no-output content hash, or a purchase
+/// marker missing its paired digest could otherwise run the tool and then
+/// sign a receipt violating the registered delivery-contract schema, or
+/// strand the operation in finalization with its hold open.
+pub(super) fn delivery_commitment_denial(
+    grant: &chio_core::capability::scope::ToolGrant,
+) -> Option<&'static str> {
+    let mut digests = grant.constraints.iter().filter_map(|constraint| {
+        if let Constraint::OutputDigestSha256(digest) = constraint {
+            Some(digest.as_str())
+        } else {
+            None
+        }
+    });
+    let first = digests.next();
+    let ambiguous = digests.next().is_some();
+    let Some(digest) = first else {
+        let marked = grant.constraints.iter().any(|constraint| {
+            matches!(constraint, Constraint::RequireFindingPurchase(_))
+        });
+        return marked
+            .then_some("a purchase-marked grant requires exactly one committed output digest");
+    };
+    if ambiguous {
+        return Some("a grant may commit at most one output digest");
+    }
+    if crate::admission_operation::AdmissionDigest::try_new(
+        "expected_output_digest",
+        digest.to_owned(),
+    )
+    .is_err()
+    {
+        return Some("a committed output digest must be canonical lowercase sha-256 hex");
+    }
+    if digest == chio_core::crypto::sha256_hex(b"null") {
+        return Some("a committed output digest must not be the fixed no-output content hash");
+    }
+    None
+}
+
 impl ChioKernel {
     pub(crate) fn compensate_durable_admission_after_pre_dispatch_cleanup(
         &self,

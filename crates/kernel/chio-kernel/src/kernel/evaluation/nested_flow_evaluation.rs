@@ -731,7 +731,17 @@ impl ChioKernel {
         if let Some(reason) = super::evaluation_helpers::delivery_marked_selection_denial(
             &matching_grants,
             matched_grant_index,
-        ) {
+        )
+        .or_else(|| {
+            // The selected commitment must be singular and canonical before
+            // any hold is placed, exactly as on the root tool-call lane.
+            matching_grants
+                .iter()
+                .find(|matching| matching.index == matched_grant_index)
+                .and_then(|selected| {
+                    super::evaluation_helpers::delivery_commitment_denial(selected.grant)
+                })
+        }) {
             warn!(request_id = %request.request_id, reason, "delivery contract denied");
             return self.with_pre_invocation_guard_evidence(&pre_invocation_guard_evidence, || {
                 self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {

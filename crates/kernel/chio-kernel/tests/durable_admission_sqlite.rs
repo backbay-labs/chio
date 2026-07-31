@@ -1397,6 +1397,78 @@ fn output_digest_delivery_contract_enforces_every_lane() -> Result<(), Box<dyn E
     Ok(())
 }
 
+// A committed output digest is admitted only in the shape the terminal can
+// honor and the registered receipt schema can express: exactly one carrier
+// on the selected grant, canonical lowercase 64-hex, and never the digest
+// of the canonical null output. Every malformed shape denies before the
+// tool runs and before any payment hold exists, because past that point a
+// malformed commitment either signs a schema-violating receipt or wedges
+// the operation in finalization with its hold open.
+#[test]
+fn malformed_delivery_digests_are_rejected_before_dispatch() -> Result<(), Box<dyn Error>> {
+    let valid = sha256_hex(b"a well-formed committed delivery");
+    let null_output = sha256_hex(b"null");
+    let shapes: [(&[&str], &str); 3] = [
+        (&["zz"], "canonical"),
+        (&[valid.as_str(), null_output.as_str()], "at most one"),
+        (&[null_output.as_str()], "no-output"),
+    ];
+    for (digests, expected_fragment) in shapes {
+        let temp = tempfile::tempdir()?;
+        let database = temp.path().join("authority.db");
+        let lock_root = temp.path().join("locks");
+        std::fs::create_dir(&lock_root)?;
+        SqliteAuthorityStore::provision(&database, &lock_root)?;
+        let invocations = Arc::new(AtomicU64::new(0));
+        let payment_calls = Arc::new(PaymentCalls::default());
+        let authority = SqliteAuthorityStore::open_serving(&database, &lock_root)?;
+        let fence = authority.mutation_fence();
+        let operations = Arc::new(authority.admission_operation_store());
+        let outcomes = Arc::new(authority.tool_outcome_store());
+        let budget = Arc::new(authority.budget_store());
+        let mut kernel = ChioKernel::new(kernel_config(Keypair::generate()));
+        kernel.set_durable_admission_store(operations, outcomes, fence)?;
+        kernel.set_budget_store_handle(budget);
+        kernel.set_payment_adapter(Box::new(ReversiblePaymentAdapter {
+            calls: Some(payment_calls.clone()),
+        }));
+        kernel.register_tool_server(Box::new(PaidMutationServer {
+            invocations: invocations.clone(),
+        }));
+        let agent = Keypair::generate();
+        let capability =
+            kernel.issue_capability(&agent.public_key(), paid_scope_with_digests(digests), 300)?;
+        let response = kernel.evaluate_tool_call_blocking(&paid_request(&capability))?;
+
+        assert_eq!(
+            response.verdict,
+            Verdict::Deny,
+            "{digests:?}: {:?}",
+            response.reason
+        );
+        assert!(
+            response
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains(expected_fragment)),
+            "{digests:?}: {:?}",
+            response.reason
+        );
+        assert_eq!(invocations.load(Ordering::SeqCst), 0, "{digests:?}");
+        assert_eq!(
+            payment_calls.authorizations.load(Ordering::SeqCst),
+            0,
+            "{digests:?}"
+        );
+        assert_eq!(
+            payment_calls.captures.load(Ordering::SeqCst),
+            0,
+            "{digests:?}"
+        );
+    }
+    Ok(())
+}
+
 // Grant selection skips candidates whose budget authorization denies and
 // tries the next. A delivery-marked candidate must never be skippable: an
 // unconstrained sibling selected in its place would dispatch with full
@@ -1446,5 +1518,72 @@ fn delivery_marked_grant_cannot_fall_through_to_an_unmarked_sibling() -> Result<
     assert_eq!(invocations.load(Ordering::SeqCst), 0);
     assert_eq!(payment_calls.authorizations.load(Ordering::SeqCst), 0);
     assert_eq!(payment_calls.captures.load(Ordering::SeqCst), 0);
+    Ok(())
+}
+
+// A delivery commitment is validated at admission, before the tool runs and
+// before any hold is placed. A malformed digest would otherwise be signed
+// into a receipt whose registered schema pins canonical lowercase hex; a
+// duplicated digest would run the tool and then strand the operation in
+// finalization with its hold open; the fixed no-output content hash can
+// never name a real delivery.
+#[test]
+fn output_digest_admission_rejects_malformed_commitments() -> Result<(), Box<dyn Error>> {
+    let temp = tempfile::tempdir()?;
+    let database = temp.path().join("authority.db");
+    let lock_root = temp.path().join("locks");
+    std::fs::create_dir(&lock_root)?;
+    SqliteAuthorityStore::provision(&database, &lock_root)?;
+    let invocations = Arc::new(AtomicU64::new(0));
+    let payment_calls = Arc::new(PaymentCalls::default());
+    let authority = SqliteAuthorityStore::open_serving(&database, &lock_root)?;
+    let fence = authority.mutation_fence();
+    let operations = Arc::new(authority.admission_operation_store());
+    let outcomes = Arc::new(authority.tool_outcome_store());
+    let budget = Arc::new(authority.budget_store());
+    let mut kernel = ChioKernel::new(kernel_config(Keypair::generate()));
+    kernel.set_durable_admission_store(operations, outcomes, fence)?;
+    kernel.set_budget_store_handle(budget);
+    kernel.set_payment_adapter(Box::new(ReversiblePaymentAdapter {
+        calls: Some(payment_calls.clone()),
+    }));
+    kernel.register_tool_server(Box::new(PaidMutationServer {
+        invocations: invocations.clone(),
+    }));
+    let agent = Keypair::generate();
+
+    let valid_a = sha256_hex(b"one committed delivery");
+    let valid_b = sha256_hex(b"another committed delivery");
+    let uppercase = valid_a.to_ascii_uppercase();
+    let null_hash = sha256_hex(b"null");
+    let cases: [(&[&str], &str); 4] = [
+        (&["zz"], "canonical lowercase"),
+        (&[uppercase.as_str()], "canonical lowercase"),
+        (&[valid_a.as_str(), valid_b.as_str()], "at most one"),
+        (&[null_hash.as_str()], "no-output content hash"),
+    ];
+    for (case, (digests, expected_reason)) in cases.into_iter().enumerate() {
+        let capability =
+            kernel.issue_capability(&agent.public_key(), paid_scope_with_digests(digests), 300)?;
+        let mut request = paid_request(&capability);
+        request.request_id = format!("sqlite-durable-malformed-commitment-{case}");
+        let response = kernel.evaluate_tool_call_blocking(&request)?;
+        assert_eq!(response.verdict, Verdict::Deny, "{digests:?}");
+        assert!(
+            response
+                .reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains(expected_reason)),
+            "{digests:?} -> {:?}",
+            response.reason
+        );
+    }
+    assert_eq!(
+        invocations.load(Ordering::SeqCst),
+        0,
+        "a malformed commitment must never reach the tool"
+    );
+    assert_eq!(payment_calls.captures.load(Ordering::SeqCst), 0);
+    assert_eq!(payment_calls.releases.load(Ordering::SeqCst), 0);
     Ok(())
 }
