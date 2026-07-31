@@ -124,8 +124,8 @@ use crate::trust_control::finding_challenge_coordinator::{
     derive_defect_key, derive_liability_key, AppealDisposition, AppealResolution,
     AuthorizedImpairment, ChallengeCoordinatorError, ChallengeEvaluationRequest,
     EvaluationAdmission, FindingAuditRound, FindingChallengeCoordinator, FindingCollateralFacts,
-    FindingFilingResolver, FindingFinalization, FindingLiabilityIdentity, FindingPenaltyGovernance,
-    UpheldLiability,
+    FindingFilingResolver, FindingFinalization, FindingKeyRevocationStatus,
+    FindingLiabilityIdentity, FindingPenaltyGovernance, UpheldLiability,
 };
 use crate::trust_control::{FindingAuthorityPin, FindingMarketConfig, FindingPoolPin};
 use crate::trust_control::{FindingRailInstruction, FindingRailObservation, FindingRailObserver};
@@ -147,6 +147,11 @@ const BUYER_TWO_DESTINATION: &str = "rail:venue-ledger:buyer-two";
 const CHALLENGER_BOUNTY_DESTINATION: &str = "rail:venue-ledger:challenger-bounty";
 const NOW: u64 = 1_750_000_000;
 const REGISTERED_EXPOSURE_CAP: u64 = 450;
+
+// The epoch every pinned role is issued under and where its revocation
+// status is published. An adjudication has to hold against both.
+const PINNED_KEY_EPOCH: u64 = 1;
+const REVOCATION_STATUS_REF: &str = "revocations/finding-market";
 
 // What the published fee schedule charges to file a challenge and what it
 // requires the filer to stake. A filing that names anything else is not
@@ -241,10 +246,20 @@ fn authority_pin(seed: u8, id: &str) -> FindingAuthorityPin {
     FindingAuthorityPin {
         authority_id: id.to_string(),
         key_hex: keypair(seed).public_key().to_hex(),
-        key_epoch: 1,
+        key_epoch: PINNED_KEY_EPOCH,
         valid_from: 1,
         valid_until: u64::MAX,
-        revocation_status_ref: "revocations/finding-market".to_string(),
+        revocation_status_ref: REVOCATION_STATUS_REF.to_string(),
+    }
+}
+
+/// The evaluator pin's revocation reference, read at the venue clock and
+/// answering that the key is live.
+fn live_evaluator_key(now: u64) -> FindingKeyRevocationStatus<'static> {
+    FindingKeyRevocationStatus {
+        status_ref: REVOCATION_STATUS_REF,
+        revoked: false,
+        observed_at: now,
     }
 }
 
@@ -2047,7 +2062,8 @@ fn evaluation_request<'a>(
         backing_allocation_id: allocation_id,
         collateral,
         retry_deadline,
-        evaluator_key_epoch: 1,
+        evaluator_key_epoch: PINNED_KEY_EPOCH,
+        evaluator_revocation: live_evaluator_key(now),
         now,
     }
 }
@@ -2151,7 +2167,7 @@ fn upheld_outcome(
             live_allocated_collateral_units: 5_000,
             penalty_amount: usd(300),
         }),
-        evaluator_key_epoch: 1,
+        evaluator_key_epoch: PINNED_KEY_EPOCH,
         evaluated_at: NOW,
     };
     outcome.outcome_id = chio_finding::derive_outcome_id(&outcome)?;
@@ -4131,6 +4147,148 @@ fn finding_challenge_replay_contradiction_reaches_an_enforced_sanction() -> Test
         authorized.slash.evaluation.effective_state,
         OpenMarketPenaltyEffectiveState::BondSlashed
     );
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// The evaluator key's own lifecycle
+// ---------------------------------------------------------------------------
+
+#[test]
+fn finding_challenge_an_evaluator_key_outside_its_pinned_lifecycle_signs_nothing() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let challenged = challenged_finding()?;
+    let sale = settle_purchase(&deployment, "alpha", BUYER_ONE_DESTINATION, 50, NOW)?;
+    let case = evidence_invalid_case(
+        &challenged,
+        ProductionShape::ForeignSignature,
+        &sale,
+        Filing::Buyer,
+    )?;
+    let challenge_id = case.challenge.body.challenge_id.clone();
+    coordinator.submit(&case.challenge, &challenged.raw_finding, NOW + 2)?;
+
+    let stake = usd(300);
+    let required = usd(5_000);
+    let collateral = collateral_facts(&stake, &required, &deployment.allocation_id, 5_000);
+    let evidence = case.evidence();
+    let at = NOW + 4;
+
+    // The epoch the outcome carries states which key adjudicated, so a
+    // caller may not declare one the pin does not hold.
+    let mut request = evaluation_request(
+        &case.challenge,
+        &challenged,
+        &evidence,
+        &deployment.allocation_id,
+        &collateral,
+        None,
+        at,
+    );
+    request.evaluator_key_epoch = PINNED_KEY_EPOCH + 1;
+    assert!(matches!(
+        coordinator
+            .evaluate(&request)
+            .expect_err("an epoch the pin does not carry adjudicates nothing"),
+        ChallengeCoordinatorError::EvaluatorKeyEpoch
+    ));
+
+    // The revocation reference is external, so the reading of it is bound
+    // rather than trusted: another reference, a revoked key, and a reading
+    // too old to describe the present are all refusals.
+    let readings = [
+        (
+            FindingKeyRevocationStatus {
+                status_ref: "revocations/some-other-roster",
+                revoked: false,
+                observed_at: at,
+            },
+            "status answers another reference",
+        ),
+        (
+            FindingKeyRevocationStatus {
+                status_ref: REVOCATION_STATUS_REF,
+                revoked: true,
+                observed_at: at,
+            },
+            "key is revoked",
+        ),
+        (
+            FindingKeyRevocationStatus {
+                status_ref: REVOCATION_STATUS_REF,
+                revoked: false,
+                observed_at: at - 86_400,
+            },
+            "status is not a live reading",
+        ),
+    ];
+    for (reading, refused) in readings {
+        let mut request = evaluation_request(
+            &case.challenge,
+            &challenged,
+            &evidence,
+            &deployment.allocation_id,
+            &collateral,
+            None,
+            at,
+        );
+        request.evaluator_revocation = reading;
+        match coordinator
+            .evaluate(&request)
+            .expect_err("an unusable revocation status adjudicates nothing")
+        {
+            ChallengeCoordinatorError::EvaluatorRevocation(detail) => assert_eq!(detail, refused),
+            other => return Err(format!("unexpected rejection for {refused}: {other}").into()),
+        }
+    }
+
+    // A pin whose window has closed at the venue clock signs nothing, even
+    // though the key material still matches.
+    let mut retired = market_config();
+    retired.challenge_evaluator.valid_until = at;
+    let retired =
+        deployment.coordinator_under(&retired, FindingDisputeLockDisposition::Forfeited)?;
+    assert!(matches!(
+        retired
+            .evaluate(&evaluation_request(
+                &case.challenge,
+                &challenged,
+                &evidence,
+                &deployment.allocation_id,
+                &collateral,
+                None,
+                at,
+            ))
+            .expect_err("an expired evaluator key adjudicates nothing"),
+        ChallengeCoordinatorError::EvaluatorKeyWindow
+    ));
+
+    // None of that consumed an evaluation attempt against the challenge.
+    assert_eq!(
+        deployment
+            .challenges
+            .get_challenge(&challenge_id)?
+            .ok_or("the challenge is durable")?
+            .state,
+        FindingChallengeState::Submitted
+    );
+
+    // The same adjudication under a live key signs an outcome carrying the
+    // deployment's epoch.
+    let evaluated = coordinator
+        .evaluate(&evaluation_request(
+            &case.challenge,
+            &challenged,
+            &evidence,
+            &deployment.allocation_id,
+            &collateral,
+            None,
+            at,
+        ))?
+        .ok_or("a live evaluator key adjudicates")?;
+    assert_eq!(evaluated.state, FindingChallengeState::Upheld);
+    assert_eq!(evaluated.outcome.body.evaluator_key_epoch, PINNED_KEY_EPOCH);
     Ok(())
 }
 

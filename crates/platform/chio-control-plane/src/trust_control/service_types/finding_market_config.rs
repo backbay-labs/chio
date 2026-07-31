@@ -67,11 +67,14 @@ impl FindingAuthorityPin {
             .map_err(|_| CliError::cli_other_error("pinned finding-market key is not valid"))
     }
 
-    /// Whether this role's configured validity window covers `instant`.
-    /// The upper bound is exclusive.
+    /// Whether this role's configured validity window covers `now`.
+    ///
+    /// The upper bound is exclusive: a key stops being usable at the
+    /// instant it expires rather than one tick after it, so a role whose
+    /// window has run out signs nothing at that instant either.
     #[must_use]
-    pub const fn covers(&self, instant: u64) -> bool {
-        instant >= self.valid_from && instant < self.valid_until
+    pub const fn covers(&self, now: u64) -> bool {
+        now >= self.valid_from && now < self.valid_until
     }
 }
 

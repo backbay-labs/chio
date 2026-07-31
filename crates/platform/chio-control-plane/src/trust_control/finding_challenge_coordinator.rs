@@ -101,7 +101,7 @@ use chio_store_sqlite::{
 };
 
 use super::finding_handlers::{FindingRailInstruction, FindingRailObserver};
-use super::service_types::{FindingMarketConfig, FindingPoolPin};
+use super::service_types::{FindingAuthorityPin, FindingMarketConfig, FindingPoolPin};
 
 /// Domain separator for the per-finding defect identity.
 const DEFECT_DOMAIN: &str = "chio.finding.defect.v1";
@@ -152,6 +152,11 @@ const ENFORCEMENT_ROOT_DOMAIN: &str = "chio.finding.enforcement-root.v1";
 /// the evidence verifier's ingress bound. An unbounded artifact is an
 /// amplification vector rather than a finding.
 const MAX_RAW_FINDING_BYTES: usize = 1_048_576;
+
+/// How long one reading of a pinned key's revocation reference may govern.
+/// Past this the reading describes the reference as it used to be, and a
+/// key revoked since would still adjudicate under it.
+const MAX_REVOCATION_STATUS_AGE_SECS: u64 = 3_600;
 
 /// Derive the per-finding defect identity. One defect spans every class
 /// and evidence subset, which is what stops a second corroborating
@@ -286,6 +291,10 @@ pub enum ChallengeCoordinatorError {
     FilingUnfunded,
     #[error("filing binds a fee schedule this venue never published")]
     UnknownFeeSchedule,
+    #[error("resolved fee schedule rejected: {0}")]
+    FeeScheduleArtifact(String),
+    #[error("filing terms are not the ones the signed fee schedule sets: {0}")]
+    DisputeTerms(&'static str),
     #[error("filing binds an audit round this venue never published")]
     UnknownAuditRound,
     #[error("signed audit epoch rejected: {0}")]
@@ -294,10 +303,12 @@ pub enum ChallengeCoordinatorError {
     AuditSelection(String),
     #[error("venue audit does not bind the round that drew it: {0}")]
     AuditRoundBinding(&'static str),
-    #[error("resolved fee schedule rejected: {0}")]
-    FeeScheduleArtifact(String),
-    #[error("filing terms are not the ones the signed fee schedule sets: {0}")]
-    DisputeTerms(&'static str),
+    #[error("evaluator key is outside the validity window its pin declares")]
+    EvaluatorKeyWindow,
+    #[error("evaluation declares an epoch the evaluator pin does not carry")]
+    EvaluatorKeyEpoch,
+    #[error("evaluator key revocation status will not support a signature: {0}")]
+    EvaluatorRevocation(&'static str),
     #[error("dispute fee rail dispatch failed: {0}")]
     FeeRail(String),
     #[error("semantic effect intent is not durably fenced before dispatch")]
@@ -422,6 +433,24 @@ pub struct FindingCollateralFacts<'a> {
     pub allocation_id: &'a str,
 }
 
+/// One resolved answer about a pinned key's revocation reference.
+///
+/// The reference a pin carries is external to this process and nothing
+/// here can dereference it, so the answer arrives as an input rather than
+/// as something the coordinator derives. It is bound rather than trusted:
+/// it must name the exact reference the pin carries, it must be a reading
+/// of the present rather than of an indefinite past, and it must say the
+/// key is live. A caller that cannot resolve the reference holds no status
+/// to present, and no outcome is signed without one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct FindingKeyRevocationStatus<'a> {
+    /// The reference this reading answers for.
+    pub status_ref: &'a str,
+    pub revoked: bool,
+    /// When the reference was read.
+    pub observed_at: u64,
+}
+
 /// One adjudication request: the challenge, the artifacts it binds, and
 /// the resolved evidence its class selects.
 pub struct ChallengeEvaluationRequest<'a> {
@@ -435,7 +464,11 @@ pub struct ChallengeEvaluationRequest<'a> {
     /// Deadline of the signed retry window an indeterminate verdict may
     /// use. Absent means no retry was granted.
     pub retry_deadline: Option<u64>,
+    /// The epoch the caller believes the evaluator key is in. It is
+    /// checked against the pin rather than carried into the outcome.
     pub evaluator_key_epoch: u64,
+    /// The caller's reading of the evaluator pin's revocation reference.
+    pub evaluator_revocation: FindingKeyRevocationStatus<'a>,
     pub now: u64,
 }
 
@@ -564,6 +597,11 @@ pub struct FindingChallengeCoordinator {
     /// lane verifies against this roster and nothing else.
     fee_schedule_operators: Vec<PublicKey>,
     evaluator_authority: Keypair,
+    /// The evaluator role's full lifecycle pin. Every other role is
+    /// verified against its key alone, but this one signs, so its epoch,
+    /// its window, and its revocation reference all have to hold at the
+    /// instant an outcome is signed under it.
+    evaluator_pin: FindingAuthorityPin,
     finalization_authority: Keypair,
     penalty_authority: Keypair,
     rail: Arc<dyn FindingRailObserver>,
@@ -644,6 +682,7 @@ impl FindingChallengeCoordinator {
                 settlement_observer: pin(&config.settlement_observer, "settlement observer")?,
             },
             evaluator_authority,
+            evaluator_pin: config.challenge_evaluator.clone(),
             finalization_authority,
             penalty_authority,
             rail,
@@ -816,10 +855,16 @@ impl FindingChallengeCoordinator {
     /// outcome. The challenge is left evaluating, which is recoverable:
     /// nothing was held, sanctioned, forfeited, or transitioned, and a
     /// corrected attempt re-enters the same evaluation.
+    ///
+    /// The evaluator key's own lifecycle is proved before the attempt is
+    /// admitted, so a key that has expired, that is revoked, or that is
+    /// not in the epoch the caller declares leaves the challenge exactly
+    /// where it was rather than consuming an attempt against it.
     pub fn evaluate(
         &self,
         request: &ChallengeEvaluationRequest<'_>,
     ) -> Result<Option<ChallengeEvaluationOutcome>, ChallengeCoordinatorError> {
+        self.require_live_evaluator_key(request)?;
         let body = &request.challenge.body;
         if self.admit_evaluation(&body.challenge_id, request.now)? != EvaluationAdmission::Admitted
         {
@@ -876,7 +921,10 @@ impl FindingChallengeCoordinator {
                 .as_bytes(),
             ),
             penalty_calculation,
-            evaluator_key_epoch: request.evaluator_key_epoch,
+            // The epoch the outcome carries is the pinned one, which the
+            // request has just been held to, so the signed artifact states
+            // the deployment's epoch rather than the caller's claim.
+            evaluator_key_epoch: self.evaluator_pin.key_epoch,
             evaluated_at: request.now,
         };
         outcome.outcome_id =
@@ -1536,6 +1584,51 @@ impl FindingChallengeCoordinator {
             || lock.amount.currency != requirement.required_amount.currency
         {
             return Err(ChallengeCoordinatorError::DisputeTerms("dispute bond"));
+        }
+        Ok(())
+    }
+
+    /// Require the evaluator key to be live at the instant it would sign.
+    ///
+    /// A pin declares more than key material: it declares the epoch that
+    /// key is in, the window it may act in, and where its revocation
+    /// status is published. An outcome signed outside any of those is an
+    /// adjudication by a key the deployment has already retired, and the
+    /// signature on it is indistinguishable from a live one.
+    ///
+    /// The revocation reference is external to this process, so it is
+    /// resolved by the caller and bound here rather than trusted: an
+    /// answer to another reference, a stale answer, an answer from ahead
+    /// of the venue clock, and an answer that says revoked are all
+    /// refusals. There is no path that skips the check.
+    fn require_live_evaluator_key(
+        &self,
+        request: &ChallengeEvaluationRequest<'_>,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let pin = &self.evaluator_pin;
+        if !pin.covers(request.now) {
+            return Err(ChallengeCoordinatorError::EvaluatorKeyWindow);
+        }
+        if request.evaluator_key_epoch != pin.key_epoch {
+            return Err(ChallengeCoordinatorError::EvaluatorKeyEpoch);
+        }
+        let status = request.evaluator_revocation;
+        if status.status_ref != pin.revocation_status_ref {
+            return Err(ChallengeCoordinatorError::EvaluatorRevocation(
+                "status answers another reference",
+            ));
+        }
+        if status.revoked {
+            return Err(ChallengeCoordinatorError::EvaluatorRevocation(
+                "key is revoked",
+            ));
+        }
+        if status.observed_at > request.now
+            || request.now.saturating_sub(status.observed_at) > MAX_REVOCATION_STATUS_AGE_SECS
+        {
+            return Err(ChallengeCoordinatorError::EvaluatorRevocation(
+                "status is not a live reading",
+            ));
         }
         Ok(())
     }
