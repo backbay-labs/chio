@@ -395,6 +395,65 @@ impl FindingDelivery {
     }
 }
 
+/// Finding-recovery receipt metadata block key.
+pub const FINDING_RECOVERY_METADATA_KEY: &str = "finding_recovery";
+
+/// Schema identifier pinned by every `finding_recovery` block.
+pub const FINDING_RECOVERY_SCHEMA: &str = "chio.finding.recovery.v1";
+
+/// Kernel-owned lineage for a no-charge finding redelivery.
+///
+/// The block is authenticated by the recovery receipt. It points back to the
+/// successful paid delivery and its settled purchase record without turning
+/// either artifact into bearer authority.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct FindingRecovery {
+    /// Schema identifier; always [`FINDING_RECOVERY_SCHEMA`].
+    pub schema: String,
+    /// Deterministic durable recovery and quota identity.
+    pub recovery_id: String,
+    /// Content-addressed finding id redelivered by this receipt.
+    pub finding_id: String,
+    /// Capability id used for the original paid delivery.
+    pub original_capability_id: String,
+    /// Signed Allow receipt for the original paid delivery.
+    pub original_delivery_receipt_id: String,
+    /// Derived key of the purchase-authority-signed settlement record.
+    pub purchase_key: String,
+}
+
+impl FindingRecovery {
+    /// Validate the closed recovery lineage shape.
+    pub fn validate(&self) -> Result<()> {
+        require_exact(
+            &self.schema,
+            FINDING_RECOVERY_SCHEMA,
+            "finding_recovery.schema",
+        )?;
+        for (value, field) in [
+            (&self.recovery_id, "finding_recovery.recovery_id"),
+            (&self.finding_id, "finding_recovery.finding_id"),
+            (&self.purchase_key, "finding_recovery.purchase_key"),
+        ] {
+            require_lowercase_hex_chars(value, 64, field)?;
+        }
+        for (value, field) in [
+            (
+                &self.original_capability_id,
+                "finding_recovery.original_capability_id",
+            ),
+            (
+                &self.original_delivery_receipt_id,
+                "finding_recovery.original_delivery_receipt_id",
+            ),
+        ] {
+            require_wire_identifier(value, 512, field)?;
+        }
+        Ok(())
+    }
+}
+
 /// Universal receipt-side attribution for capability context.
 ///
 /// This metadata gives downstream analytics a deterministic local join path

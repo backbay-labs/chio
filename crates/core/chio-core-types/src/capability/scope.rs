@@ -430,6 +430,15 @@ pub enum Constraint {
     /// Surfaces without purchase-aware admission reject the marker before
     /// any budget or payment mutation.
     RequireFindingPurchase(Box<FindingPurchaseMarkerV1>),
+    /// Delivery: this grant authorizes a bounded no-charge redelivery of a
+    /// finding whose paid delivery was already settled. Recovery is a
+    /// distinct authorization profile: it never satisfies a purchase marker
+    /// and never enters a payment path.
+    ///
+    /// Admission requires the dedicated recovery carrier named by this
+    /// marker and an exact top-level `finding_id` argument. Surfaces without
+    /// recovery-aware admission reject the marker before dispatch.
+    RequireFindingRecovery(Box<FindingRecoveryMarkerV1>),
 }
 
 /// Closed settlement selector for a purchased finding reveal.
@@ -466,6 +475,29 @@ pub struct FindingPurchaseMarkerV1 {
     pub listing_id: String,
     /// Closed settlement rail selector for this sale.
     pub settlement: FindingSettlementSelector,
+}
+
+/// Provider-signed binding for a no-charge finding redelivery.
+///
+/// `recovery_id` is deterministically derived from the original capability,
+/// settled purchase record, and successful delivery receipt. It is the
+/// durable quota key, so minting the same authority again cannot reset the
+/// retry budget.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case", deny_unknown_fields)]
+pub struct FindingRecoveryMarkerV1 {
+    /// Deterministic lowercase 64-hex recovery identity.
+    pub recovery_id: String,
+    /// Content-addressed finding id being redelivered.
+    pub finding_id: String,
+    /// Listing under which the original purchase settled.
+    pub listing_id: String,
+    /// Capability id used for the original paid delivery.
+    pub original_capability_id: String,
+    /// Signed Allow receipt id for the original delivery.
+    pub original_delivery_receipt_id: String,
+    /// Derived key of the signed settled purchase record.
+    pub purchase_key: String,
 }
 
 impl Constraint {
@@ -545,6 +577,11 @@ impl Constraint {
             // A purchase marker is preserved only by an identical marker:
             // delegation cannot retarget the finding, listing, or rail.
             (Self::RequireFindingPurchase(parent), Self::RequireFindingPurchase(child)) => {
+                parent == child
+            }
+            // A recovery marker is preserved only by an identical marker:
+            // delegation cannot retarget its durable quota or lineage.
+            (Self::RequireFindingRecovery(parent), Self::RequireFindingRecovery(child)) => {
                 parent == child
             }
             _ => self == child,

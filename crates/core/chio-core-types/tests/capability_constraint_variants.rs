@@ -13,8 +13,8 @@
 use chio_core_types::capability::{
     governance::ProvenanceEvidenceClass,
     scope::{
-        Constraint, ContentReviewTier, FindingPurchaseMarkerV1, FindingSettlementSelector,
-        ModelMetadata, ModelSafetyTier, SqlOperationClass,
+        Constraint, ContentReviewTier, FindingPurchaseMarkerV1, FindingRecoveryMarkerV1,
+        FindingSettlementSelector, ModelMetadata, ModelSafetyTier, SqlOperationClass,
     },
 };
 use serde_json::{json, Value};
@@ -380,4 +380,50 @@ fn require_finding_purchase_is_preserved_only_by_the_identical_marker() {
             "a child may not retarget or drop the purchase marker"
         );
     }
+}
+
+#[test]
+fn require_finding_recovery_serializes_with_closed_shape() {
+    let constraint = Constraint::RequireFindingRecovery(Box::new(FindingRecoveryMarkerV1 {
+        recovery_id: "a".repeat(64),
+        finding_id: "b".repeat(64),
+        listing_id: "listing-1".to_string(),
+        original_capability_id: "capability-1".to_string(),
+        original_delivery_receipt_id: "receipt-1".to_string(),
+        purchase_key: "c".repeat(64),
+    }));
+    let value = serde_json::to_value(&constraint).expect("serialize recovery marker");
+    assert_eq!(
+        value,
+        serde_json::json!({
+            "type": "require_finding_recovery",
+            "value": {
+                "recovery_id": "a".repeat(64),
+                "finding_id": "b".repeat(64),
+                "listing_id": "listing-1",
+                "original_capability_id": "capability-1",
+                "original_delivery_receipt_id": "receipt-1",
+                "purchase_key": "c".repeat(64),
+            }
+        })
+    );
+    let decoded: Constraint = serde_json::from_value(value).expect("deserialize recovery marker");
+    assert_eq!(decoded, constraint);
+}
+
+#[test]
+fn require_finding_recovery_rejects_unknown_fields() {
+    let value = serde_json::json!({
+        "type": "require_finding_recovery",
+        "value": {
+            "recovery_id": "a".repeat(64),
+            "finding_id": "b".repeat(64),
+            "listing_id": "listing-1",
+            "original_capability_id": "capability-1",
+            "original_delivery_receipt_id": "receipt-1",
+            "purchase_key": "c".repeat(64),
+            "extra": true,
+        }
+    });
+    assert!(serde_json::from_value::<Constraint>(value).is_err());
 }
