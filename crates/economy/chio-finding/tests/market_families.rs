@@ -603,6 +603,19 @@ fn terms_reject_currency_mismatch_and_overflow() -> TestResult {
 }
 
 #[test]
+fn terms_reject_a_payout_policy_the_settlement_math_does_not_implement() -> TestResult {
+    let seller = keypair(2);
+    let mut terms = terms_body(&seller)?;
+    terms.payout_policy = "winner_takes_all_v1".to_string();
+    terms.terms_id = (compute_terms_id(&terms))?;
+    assert_eq!(
+        terms.validate(),
+        Err(FindingError::InvalidField("payout_policy"))
+    );
+    Ok(())
+}
+
+#[test]
 fn backing_exposure_cannot_exceed_locked_amount() -> TestResult {
     let collateral = keypair(4);
     let seller = keypair(2);

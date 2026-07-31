@@ -22,6 +22,12 @@ use crate::validate::{
 pub const FINDING_MARKET_TERMS_SCHEMA_V1: &str =
     chio_core_types::CHIO_FINDING_MARKET_TERMS_V1_SCHEMA;
 
+/// The single payout policy the settlement math implements. The policy
+/// vocabulary is closed here: a distribution computed under one policy
+/// must never settle terms that promised another, so terms naming any
+/// other policy reject at validation.
+pub const FINDING_PAYOUT_POLICY_PRO_RATA_CAPPED_V1: &str = "pro_rata_capped_v1";
+
 /// Canonical backing requirement the admission sizing check enforces
 /// against the exact signed fee schedule:
 /// `listing_requirement.required_amount >= base_finding_stake +
@@ -185,7 +191,9 @@ impl FindingMarketTerms {
                 return Err(FindingError::DuplicateEntry("challenge_bond_limits[]"));
             }
         }
-        require_bounded_id(&self.payout_policy, "payout_policy")?;
+        if self.payout_policy != FINDING_PAYOUT_POLICY_PRO_RATA_CAPPED_V1 {
+            return Err(FindingError::InvalidField("payout_policy"));
+        }
         require_window(self.issued_at, self.expires_at, "issued_at", "expires_at")?;
         self.verify_terms_id()
     }
