@@ -47,7 +47,8 @@ use chio_finding_verifier::{
 };
 use chio_http_serve::{apply_server_hygiene, ServeHygieneConfig};
 use chio_kernel::checkpoint::{
-    build_checkpoint, build_inclusion_proof, checkpoint_log_id, KernelCheckpoint,
+    build_checkpoint, build_checkpoint_transparency, build_inclusion_proof, checkpoint_log_id,
+    KernelCheckpoint,
 };
 use chio_open_market::bidding::{
     BidMintContext, BidRequest, RequestedScope, SignedBidRequest, BID_REQUEST_SCHEMA,
@@ -733,6 +734,9 @@ fn make_signed_report(
     let bundle = FindingEvidenceBundle {
         receipts: clone_receipts(inputs.receipts),
         checkpoints: vec![inputs.checkpoint.clone()],
+        checkpoint_transparency: build_checkpoint_transparency(std::slice::from_ref(
+            inputs.checkpoint,
+        ))?,
         recipe_preimage: Some(inputs.recipe_bytes),
         bond_snapshot: Some(FindingBondSnapshot {
             backing: inputs.backing.clone(),

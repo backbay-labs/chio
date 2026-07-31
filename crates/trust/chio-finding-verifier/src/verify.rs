@@ -26,7 +26,9 @@ use chio_finding::{
     SignedFindingChallengeVerifierProfile, SignedFindingVerifierReport,
     FINDING_VERIFIER_REPORT_SCHEMA_V1,
 };
-use chio_kernel::checkpoint::{KernelCheckpoint, ReceiptInclusionProof};
+use chio_kernel::checkpoint::{
+    CheckpointTransparencySummary, KernelCheckpoint, ReceiptInclusionProof,
+};
 
 use crate::checkpoints::verify_checkpoint_membership;
 use crate::cost::FindingNonceResolver;
@@ -115,6 +117,9 @@ pub struct FindingBondSnapshot {
 pub struct FindingEvidenceBundle<'a> {
     pub receipts: Vec<ResolvedReceiptEvidence>,
     pub checkpoints: Vec<KernelCheckpoint>,
+    /// Transparency records resolved with the checkpoint set. These are
+    /// re-derived and compared before any checkpoint can back a facet.
+    pub checkpoint_transparency: CheckpointTransparencySummary,
     /// Raw replay-recipe preimage bytes, when the finding commits one.
     pub recipe_preimage: Option<&'a [u8]>,
     pub bond_snapshot: Option<FindingBondSnapshot>,
@@ -352,6 +357,7 @@ pub fn verify_finding_evidence(
         match verify_checkpoint_membership(
             &bundle.receipts,
             &bundle.checkpoints,
+            &bundle.checkpoint_transparency,
             profile,
             &finding.evidence_checkpoint_ref,
         ) {
@@ -798,6 +804,7 @@ fn bundle_digest(bundle: &FindingEvidenceBundle<'_>) -> Result<String, FindingVe
         receipt_sha256s: Vec<String>,
         inclusion_proof_sha256s: Vec<String>,
         checkpoint_sha256s: Vec<String>,
+        checkpoint_transparency_sha256: String,
         recipe_sha256: Option<String>,
         backing_allocation_id: Option<&'a str>,
         backing_envelope_sha256: Option<String>,
@@ -815,6 +822,8 @@ fn bundle_digest(bundle: &FindingEvidenceBundle<'_>) -> Result<String, FindingVe
             canonical_json_bytes(checkpoint).map_err(|_| FindingVerifierError::Canonicalization)?;
         checkpoint_sha256s.push(sha256_hex(&bytes));
     }
+    let checkpoint_transparency_bytes = canonical_json_bytes(&bundle.checkpoint_transparency)
+        .map_err(|_| FindingVerifierError::Canonicalization)?;
     let mut inclusion_proof_sha256s = Vec::with_capacity(bundle.receipts.len());
     for evidence in &bundle.receipts {
         let bytes = canonical_json_bytes(&evidence.inclusion_proof)
@@ -833,6 +842,7 @@ fn bundle_digest(bundle: &FindingEvidenceBundle<'_>) -> Result<String, FindingVe
         receipt_sha256s,
         inclusion_proof_sha256s,
         checkpoint_sha256s,
+        checkpoint_transparency_sha256: sha256_hex(&checkpoint_transparency_bytes),
         recipe_sha256: bundle.recipe_preimage.map(sha256_hex),
         backing_allocation_id: bundle
             .bond_snapshot

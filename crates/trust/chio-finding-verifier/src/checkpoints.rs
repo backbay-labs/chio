@@ -14,10 +14,21 @@ use std::collections::{BTreeMap, BTreeSet};
 use chio_core_types::crypto::PublicKey;
 use chio_finding::FindingChallengeVerifierProfile;
 use chio_kernel::checkpoint::{
-    checkpoint_log_id, validate_checkpoint, verify_checkpoint_signature, KernelCheckpoint,
+    checkpoint_log_id, validate_checkpoint, verify_checkpoint_transparency_records,
+    CheckpointTransparencySummary, KernelCheckpoint,
 };
 
 use crate::verify::ResolvedReceiptEvidence;
+
+fn has_strict_checkpoint_signature(checkpoint: &KernelCheckpoint) -> bool {
+    matches!(
+        checkpoint
+            .body
+            .kernel_key
+            .verify_canonical_strict(&checkpoint.body, &checkpoint.signature),
+        Ok(true)
+    )
+}
 
 /// Membership failures. Every variant is a rejection.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
@@ -30,6 +41,8 @@ pub enum CheckpointMembershipError {
     CheckpointInvalid(u64),
     #[error("checkpoint {0} signature invalid")]
     CheckpointSignatureInvalid(u64),
+    #[error("checkpoint transparency records are invalid")]
+    TransparencyInvalid,
     #[error("checkpoint {0} log id is not pinned by the profile")]
     LogNotPinned(u64),
     #[error("checkpoint {0} signer does not match the pinned log signer")]
@@ -55,20 +68,20 @@ pub enum CheckpointMembershipError {
 }
 
 /// Verify that every resolved receipt is a member of a profile-pinned,
-/// signature-valid checkpoint, closing the five gaps the shipped
-/// composition leaves open. The canonical leaf definition is PINNED as
-/// the full canonical receipt envelope bytes (the exact bytes supplied in
-/// the resolved evidence); a body-only leaf is a different projection and
-/// fails here by construction.
+/// signature-valid checkpoint. The canonical leaf is the full canonical
+/// receipt envelope bytes supplied in the resolved evidence.
 pub fn verify_checkpoint_membership(
     receipts: &[ResolvedReceiptEvidence],
     checkpoints: &[KernelCheckpoint],
+    transparency: &CheckpointTransparencySummary,
     profile: &FindingChallengeVerifierProfile,
     evidence_checkpoint_ref: &str,
 ) -> Result<(), CheckpointMembershipError> {
     if checkpoints.is_empty() {
         return Err(CheckpointMembershipError::NoCheckpoints);
     }
+    verify_checkpoint_transparency_records(checkpoints, transparency)
+        .map_err(|_| CheckpointMembershipError::TransparencyInvalid)?;
     let pinned_logs: BTreeMap<&str, &PublicKey> = profile
         .checkpoint_logs
         .iter()
@@ -80,7 +93,7 @@ pub fn verify_checkpoint_membership(
         if validate_checkpoint(checkpoint).is_err() {
             return Err(CheckpointMembershipError::CheckpointInvalid(seq));
         }
-        if !matches!(verify_checkpoint_signature(checkpoint), Ok(true)) {
+        if !has_strict_checkpoint_signature(checkpoint) {
             return Err(CheckpointMembershipError::CheckpointSignatureInvalid(seq));
         }
         let log_id = checkpoint_log_id(checkpoint);
@@ -145,4 +158,33 @@ pub fn verify_checkpoint_membership(
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error;
+
+    use chio_core_types::crypto::{Keypair, PublicKey, Signature};
+    use chio_kernel::checkpoint::{build_checkpoint, verify_checkpoint_signature};
+
+    use super::has_strict_checkpoint_signature;
+
+    #[test]
+    fn strict_checkpoint_signature_rejects_a_weak_ed25519_key() -> Result<(), Box<dyn Error>> {
+        let weak_key = PublicKey::from_hex(
+            "0100000000000000000000000000000000000000000000000000000000000000",
+        )?;
+        let forged_signature = Signature::from_hex(
+            "0100000000000000000000000000000000000000000000000000000000000000\
+             0000000000000000000000000000000000000000000000000000000000000000",
+        )?;
+        let signer = Keypair::from_seed(&[7; 32]);
+        let mut checkpoint = build_checkpoint(1, 1, 1, &[b"receipt".to_vec()], &signer)?;
+        checkpoint.body.kernel_key = weak_key;
+        checkpoint.signature = forged_signature;
+
+        assert!(verify_checkpoint_signature(&checkpoint)?);
+        assert!(!has_strict_checkpoint_signature(&checkpoint));
+        Ok(())
+    }
 }

@@ -26,12 +26,13 @@ use chio_finding::{
     FINDING_SCHEMA_V1,
 };
 use chio_finding_verifier::{
-    sign_finding_verifier_report, verify_finding_evidence, FindingBondSnapshot,
-    FindingEvidenceBundle, FindingVerifierError, FindingVerifierTrustRoots, NoNonceEvidence,
-    ResolvedReceiptEvidence,
+    sign_finding_verifier_report, verify_checkpoint_membership, verify_finding_evidence,
+    CheckpointMembershipError, FindingBondSnapshot, FindingEvidenceBundle, FindingVerifierError,
+    FindingVerifierTrustRoots, NoNonceEvidence, ResolvedReceiptEvidence,
 };
 use chio_kernel::checkpoint::{
-    build_checkpoint, build_inclusion_proof, checkpoint_log_id, KernelCheckpoint,
+    build_checkpoint, build_checkpoint_transparency, build_inclusion_proof, checkpoint_log_id,
+    CheckpointTransparencySummary, KernelCheckpoint,
 };
 
 type TestResult = Result<(), Box<dyn Error>>;
@@ -80,6 +81,7 @@ struct Fixture {
     raw_finding: String,
     receipts: Vec<ResolvedReceiptEvidence>,
     checkpoint: KernelCheckpoint,
+    checkpoint_transparency: CheckpointTransparencySummary,
     recipe_bytes: Vec<u8>,
     finding_payload_sha256: String,
     backing: SignedExportEnvelope<FindingBondBacking>,
@@ -188,6 +190,7 @@ fn fixture() -> Result<Fixture, Box<dyn Error>> {
         &[first_bytes.clone(), second_bytes.clone()],
         &kernel,
     )?;
+    let checkpoint_transparency = build_checkpoint_transparency(std::slice::from_ref(&checkpoint))?;
     let log_id = checkpoint_log_id(&checkpoint);
     let evidence_checkpoint_ref = format!("{log_id}#1");
 
@@ -344,6 +347,7 @@ fn fixture() -> Result<Fixture, Box<dyn Error>> {
         finding_payload_sha256: finding.payload_sha256.clone(),
         receipts,
         checkpoint,
+        checkpoint_transparency,
         recipe_bytes,
         backing,
         profile,
@@ -370,6 +374,7 @@ fn bundle<'a>(
     FindingEvidenceBundle {
         receipts,
         checkpoints: vec![fx.checkpoint.clone()],
+        checkpoint_transparency: fx.checkpoint_transparency.clone(),
         recipe_preimage: Some(fx.recipe_bytes.as_slice()),
         bond_snapshot: Some(FindingBondSnapshot {
             backing: fx.backing.clone(),
@@ -518,6 +523,47 @@ fn wrapper_tampering_fails_membership_on_every_closed_gap() -> TestResult {
     assert_eq!(
         draft.facet_outcome(FindingFacetKind::CheckpointMembership),
         Some(FindingFacetOutcome::Failed)
+    );
+    Ok(())
+}
+
+#[test]
+fn checkpoint_equivocation_fails_before_membership() -> TestResult {
+    let fx = fixture()?;
+    let mut fork = fx.checkpoint.clone();
+    fork.body.issued_at = fork.body.issued_at.saturating_add(1);
+    fork.signature = keypair(21).sign(&canonical_json_bytes(&fork.body)?);
+    let checkpoints = vec![fx.checkpoint.clone(), fork];
+    let transparency = build_checkpoint_transparency(&checkpoints)?;
+
+    assert_eq!(
+        verify_checkpoint_membership(
+            &fx.receipts,
+            &checkpoints,
+            &transparency,
+            &fx.profile.body,
+            &serde_json::from_str::<Finding>(&fx.raw_finding)?.evidence_checkpoint_ref,
+        ),
+        Err(CheckpointMembershipError::TransparencyInvalid)
+    );
+    Ok(())
+}
+
+#[test]
+fn checkpoint_transparency_records_must_match_the_signed_set() -> TestResult {
+    let fx = fixture()?;
+    let mut transparency = fx.checkpoint_transparency.clone();
+    transparency.publications.clear();
+
+    assert_eq!(
+        verify_checkpoint_membership(
+            &fx.receipts,
+            std::slice::from_ref(&fx.checkpoint),
+            &transparency,
+            &fx.profile.body,
+            &serde_json::from_str::<Finding>(&fx.raw_finding)?.evidence_checkpoint_ref,
+        ),
+        Err(CheckpointMembershipError::TransparencyInvalid)
     );
     Ok(())
 }
