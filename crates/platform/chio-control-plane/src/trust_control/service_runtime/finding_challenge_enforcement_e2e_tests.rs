@@ -174,6 +174,8 @@ const DISPUTE_BOND_UNITS: u64 = 40;
 // the venue clock is past it.
 const APPEAL_DEADLINE: u64 = NOW + 90_000;
 const APPEAL_FINAL_AT: u64 = APPEAL_DEADLINE + 1;
+/// The sanction case `finalizing_liability` records as the live head.
+const FIXTURE_SANCTION_CASE_ID: &str = "case-sanction-fixture-01";
 
 // Key-role validity window every pinned authority in the governance
 // profile is issued under, and the publication instant the revocation
@@ -4119,6 +4121,22 @@ fn finalizing_liability_rooted(root: EnforcementRoot) -> Result<FinalizingLiabil
         NOW + 2 + CLAIM_WINDOW_SECS,
         NOW + 2,
     )?;
+    // The sanction the impairment settles under. Dispatch requires it to
+    // still be the live case head, exactly as the coordinator records it
+    // when it upholds a liability.
+    deployment
+        .challenges
+        .record_governance_case(&chio_store_sqlite::FindingGovernanceCaseInput {
+            case_id: FIXTURE_SANCTION_CASE_ID,
+            finding_id: &finding.finding_id,
+            listing_id: LISTING_ID,
+            liability_key: &liability_key,
+            case_kind: chio_store_sqlite::FindingGovernanceCaseKind::Sanction,
+            case_state: "enforced",
+            appeal_of_case_id: None,
+            supersedes_case_id: None,
+            recorded_at: NOW + 2,
+        })?;
     deployment.challenges.begin_appeal_window(
         &liability_key,
         FindingLiabilityState::UpheldPendingClaims,
@@ -4459,6 +4477,47 @@ fn finding_challenge_a_confirmed_impairment_settles_without_dispatching_again() 
         "the resumed attempt finishes the settlement the interrupted one owed"
     );
     assert!(!settled.publication_pending);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_a_superseded_sanction_never_reaches_the_publisher() -> TestResult {
+    let case = finalizing_liability()?;
+    // A successful appeal recorded after the enforcement was signed and
+    // fenced. It supersedes the sanction, so the authority the impairment
+    // would slash under no longer governs the liability.
+    let head = case.head()?;
+    case.deployment
+        .challenges
+        .record_governance_case(&chio_store_sqlite::FindingGovernanceCaseInput {
+            case_id: "case-appeal-late-01",
+            finding_id: &head.finding_id,
+            listing_id: LISTING_ID,
+            liability_key: &case.liability_key,
+            case_kind: chio_store_sqlite::FindingGovernanceCaseKind::Appeal,
+            case_state: "enforced",
+            appeal_of_case_id: Some(FIXTURE_SANCTION_CASE_ID),
+            supersedes_case_id: Some(FIXTURE_SANCTION_CASE_ID),
+            recorded_at: SETTLEMENT_NOW - 1,
+        })?;
+
+    let refused = case
+        .finalize_observing(
+            &ScriptedObservations::qualified(),
+            &UnreachablePublisher,
+            SETTLEMENT_NOW,
+        )?
+        .expect_err("a superseded sanction authorizes no impairment");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::AppealNotFinal(_)
+    ));
+    assert_eq!(
+        case.intent_state()?,
+        FindingEffectIntentState::Pending,
+        "the impairment intent is never even dispatched"
+    );
+    assert_eq!(case.head()?.state, FindingLiabilityState::Finalizing);
     Ok(())
 }
 

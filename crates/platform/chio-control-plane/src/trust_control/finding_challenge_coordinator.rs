@@ -1540,6 +1540,7 @@ impl FindingChallengeCoordinator {
                 .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
             return Ok(FindingFinalization::AlreadyConfirmed);
         }
+        self.require_sanction_governs(liability_key)?;
         self.require_confirmed_enforcement_root(liability_key, &verified)?;
         self.fence_anchor_evidence(liability_key, &verified, planned.intent(), now)?;
         self.challenges
@@ -2263,6 +2264,35 @@ impl FindingChallengeCoordinator {
         if now <= appeal_deadline {
             return Err(ChallengeCoordinatorError::AppealNotFinal(
                 "appeal deadline has not passed at the venue clock",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Require a sanction to still be the live governance case on this
+    /// liability before its impairment dispatches.
+    ///
+    /// The appeal window was proved closed when the enforcement was
+    /// signed, but the durable case index can move between that instant
+    /// and this dispatch: a recorded successful appeal supersedes the
+    /// sanction, and an impairment sent afterwards would slash under an
+    /// authority that no longer governs. The head is re-read here, and
+    /// anything but a live sanction (including an ambiguous head) refuses
+    /// the dispatch.
+    fn require_sanction_governs(
+        &self,
+        liability_key: &str,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let head = self
+            .challenges
+            .resolve_case_head(liability_key)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or(ChallengeCoordinatorError::AppealNotFinal(
+                "liability carries no live governance case",
+            ))?;
+        if head.case_kind != FindingGovernanceCaseKind::Sanction {
+            return Err(ChallengeCoordinatorError::AppealNotFinal(
+                "the sanction no longer governs this liability",
             ));
         }
         Ok(())
