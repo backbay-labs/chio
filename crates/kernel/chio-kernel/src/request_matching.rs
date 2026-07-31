@@ -644,50 +644,48 @@ mod tests {
             max_total_cost: None,
             dpop_required: None,
         };
-        let capability = CapabilityToken::sign(
-            CapabilityTokenBody {
-                id: "cap-custom-delivery-spelling".to_string(),
-                issuer: issuer.public_key(),
-                subject: issuer.public_key(),
-                scope: ChioScope {
-                    grants: vec![
-                        grant(vec![Constraint::Custom(
-                            "output_digest_sha256".to_string(),
-                            "aa".to_string(),
-                        )]),
-                        grant(vec![Constraint::Custom(
-                            "require_finding_purchase".to_string(),
-                            "finding-1".to_string(),
-                        )]),
-                        grant(Vec::new()),
-                    ],
-                    ..ChioScope::default()
+        for (key, value) in [
+            ("output_digest_sha256", "aa"),
+            ("require_finding_purchase", "finding-1"),
+        ] {
+            let capability = CapabilityToken::sign(
+                CapabilityTokenBody {
+                    id: format!("cap-custom-{key}"),
+                    issuer: issuer.public_key(),
+                    subject: issuer.public_key(),
+                    scope: ChioScope {
+                        grants: vec![
+                            grant(vec![Constraint::Custom(key.to_string(), value.to_string())]),
+                            grant(Vec::new()),
+                        ],
+                        ..ChioScope::default()
+                    },
+                    issued_at: 1,
+                    expires_at: u64::MAX,
+                    delegation_chain: Vec::new(),
+                    aggregate_invocation_budget: None,
                 },
-                issued_at: 1,
-                expires_at: u64::MAX,
-                delegation_chain: Vec::new(),
-                aggregate_invocation_budget: None,
-            },
-            &issuer,
-        )
-        .expect("sign capability");
+                &issuer,
+            )
+            .expect("sign capability");
+            let arguments = serde_json::Value::Object(serde_json::Map::from_iter([(
+                key.to_string(),
+                serde_json::Value::String(value.to_string()),
+            )]));
+            let matches = resolve_matching_grants(&capability, "tool", "srv", &arguments, None)
+                .expect("a custom delivery spelling must not fail the whole candidate set");
+            assert_eq!(
+                matches
+                    .iter()
+                    .map(|matching| matching.index)
+                    .collect::<Vec<_>>(),
+                vec![1],
+                "only the unconstrained sibling may match for {key}"
+            );
 
-        let arguments = serde_json::json!({"output_digest_sha256": "aa"});
-        let matches = resolve_matching_grants(&capability, "tool", "srv", &arguments, None)
-            .expect("a custom delivery spelling must not fail the whole candidate set");
-        assert_eq!(
-            matches
-                .iter()
-                .map(|matching| matching.index)
-                .collect::<Vec<_>>(),
-            vec![2],
-            "only the unconstrained sibling may match"
-        );
-
-        for key in ["output_digest_sha256", "require_finding_purchase"] {
             let capability = capability_with_constraints(vec![Constraint::Custom(
                 key.to_string(),
-                "aa".to_string(),
+                value.to_string(),
             )]);
             assert!(
                 !capability_matches_request(&capability, "tool", "srv", &arguments)

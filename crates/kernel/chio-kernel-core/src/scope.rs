@@ -698,25 +698,30 @@ mod delivery_spelling_tests {
 
     #[test]
     fn custom_delivery_spellings_never_match_and_never_poison_siblings() {
-        let scope = ChioScope {
-            grants: vec![
-                grant(vec![Constraint::Custom(
-                    "output_digest_sha256".to_string(),
-                    "aa".to_string(),
-                )]),
-                grant(vec![Constraint::Custom(
-                    "require_finding_purchase".to_string(),
-                    "finding-1".to_string(),
-                )]),
-                grant(Vec::new()),
-            ],
-            ..ChioScope::default()
-        };
-        let arguments = serde_json::json!({"output_digest_sha256": "aa"});
-        let matches = resolve_matching_grants(&scope, "tool", "srv", &arguments)
-            .expect("a custom delivery spelling must not fail the whole candidate set");
-        assert_eq!(matches.len(), 1);
-        assert_eq!(matches[0].index, 2);
+        for (key, value) in [
+            ("output_digest_sha256", "aa"),
+            ("require_finding_purchase", "finding-1"),
+        ] {
+            let scope = ChioScope {
+                grants: vec![
+                    grant(vec![Constraint::Custom(key.to_string(), value.to_string())]),
+                    grant(Vec::new()),
+                ],
+                ..ChioScope::default()
+            };
+            let arguments = serde_json::Value::Object(serde_json::Map::from_iter([(
+                key.to_string(),
+                serde_json::Value::String(value.to_string()),
+            )]));
+            let matches = resolve_matching_grants(&scope, "tool", "srv", &arguments)
+                .expect("a custom delivery spelling must not fail the whole candidate set");
+            assert_eq!(
+                matches.len(),
+                1,
+                "only the clean sibling may match for {key}"
+            );
+            assert_eq!(matches[0].index, 1);
+        }
     }
 
     #[test]
