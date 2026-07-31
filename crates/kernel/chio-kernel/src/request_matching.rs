@@ -446,6 +446,13 @@ fn constraint_matches(
         {
             Ok(false)
         }
+        Constraint::Custom(key, _) if key == "require_finding_recovery" => {
+            Err(KernelError::InvalidConstraint(
+                "require_finding_recovery must use the RequireFindingRecovery constraint, not \
+                 Custom"
+                    .to_owned(),
+            ))
+        }
         Constraint::Custom(key, expected) => Ok(argument_contains_custom(arguments, key, expected)),
 
         // Constraints that require domain-specific evaluation (SQL parsing,
@@ -495,6 +502,13 @@ fn constraint_matches(
         // payment mutation. The purchase context itself is verified by the
         // purchase-aware admission gate, not at argument matching.
         Constraint::RequireFindingPurchase(marker) => Ok(arguments
+            .get("finding_id")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|finding_id| finding_id == marker.finding_id)),
+        // Recovery uses the same exact top-level finding binding, but is a
+        // distinct no-charge authorization profile. The dedicated recovery
+        // admission gate verifies its evidence carrier and durable quota.
+        Constraint::RequireFindingRecovery(marker) => Ok(arguments
             .get("finding_id")
             .and_then(serde_json::Value::as_str)
             .is_some_and(|finding_id| finding_id == marker.finding_id)),
@@ -781,6 +795,59 @@ mod tests {
             matches!(result, Err(KernelError::InvalidConstraint(_))),
             "custom spelling must be rejected, got {result:?}"
         );
+    }
+
+    fn recovery_marker(finding_id: &str) -> Constraint {
+        Constraint::RequireFindingRecovery(Box::new(
+            chio_core::capability::scope::FindingRecoveryMarkerV1 {
+                recovery_id: "a".repeat(64),
+                finding_id: finding_id.to_string(),
+                listing_id: "listing-1".to_string(),
+                original_capability_id: "capability-original".to_string(),
+                original_delivery_receipt_id: "receipt-original".to_string(),
+                purchase_key: "b".repeat(64),
+                max_recoveries: 2,
+            },
+        ))
+    }
+
+    #[test]
+    fn finding_recovery_marker_requires_exact_top_level_finding() {
+        let capability = capability_with_constraints(vec![recovery_marker("finding-a")]);
+        assert!(capability_matches_request(
+            &capability,
+            "tool",
+            "srv",
+            &serde_json::json!({"finding_id": "finding-a"}),
+        )
+        .expect("exact recovery finding"));
+        for arguments in [
+            serde_json::json!({"finding": "finding-a"}),
+            serde_json::json!({"finding_id": "finding-b", "nested": {"finding_id": "finding-a"}}),
+            serde_json::json!({"finding_id": ["finding-a"]}),
+        ] {
+            assert!(
+                !capability_matches_request(&capability, "tool", "srv", &arguments)
+                    .expect("evaluate recovery match")
+            );
+        }
+    }
+
+    #[test]
+    fn finding_recovery_custom_spelling_is_rejected_as_downgrade() {
+        let capability = capability_with_constraints(vec![Constraint::Custom(
+            "require_finding_recovery".to_string(),
+            "finding-a".to_string(),
+        )]);
+        assert!(matches!(
+            capability_matches_request(
+                &capability,
+                "tool",
+                "srv",
+                &serde_json::json!({"require_finding_recovery": "finding-a"}),
+            ),
+            Err(KernelError::InvalidConstraint(_))
+        ));
     }
 }
 

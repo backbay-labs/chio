@@ -1275,6 +1275,32 @@ impl ChioKernel {
                     },
                 );
             }
+            // Recovery is a separate no-charge admission profile. Its
+            // verifier atomically reserves the durable recovery-id quota
+            // here, before dispatch, and never invokes payment handling.
+            if let Err(reason) = self.verify_recovery_admission(selected.grant, request, now) {
+                warn!(request_id = %request.request_id, reason = %redacted!(&reason), "finding recovery denied");
+                return self.with_pre_invocation_guard_evidence(
+                    &pre_invocation_guard_evidence,
+                    || {
+                        self.build_pre_dispatch_cleanup_deny_response(PreDispatchCleanupDeny {
+                            request,
+                            reason: &reason,
+                            timestamp: now,
+                            matched_grant_index,
+                            cap,
+                            budget_mutation: &budget_mutation,
+                            payment_authorization: None,
+                            durable_operation: durable_admission
+                                .as_ref()
+                                .map(DurableToolAdmission::operation),
+                            runtime_admission_metadata: extra_metadata.clone(),
+                            verified_payee_binding: verified_governed_payee_binding.as_ref(),
+                            budget_lease_acquired,
+                        })
+                    },
+                );
+            }
         }
 
         // A financial hold may not cross the tool-server dispatch boundary unless

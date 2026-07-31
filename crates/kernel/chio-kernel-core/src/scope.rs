@@ -232,7 +232,9 @@ fn constraint_matches(
         // grants; the first-class variants below still deny the whole
         // evaluation on this surface.
         Constraint::Custom(key, _)
-            if key == "output_digest_sha256" || key == "require_finding_purchase" =>
+            if key == "output_digest_sha256"
+                || key == "require_finding_purchase"
+                || key == "require_finding_recovery" =>
         {
             Ok(false)
         }
@@ -260,7 +262,8 @@ fn constraint_matches(
         | Constraint::ModelConstraint { .. }
         | Constraint::MemoryWriteDenyPatterns(_)
         | Constraint::OutputDigestSha256(_)
-        | Constraint::RequireFindingPurchase(_) => Err(ScopeMatchError::ConstraintError(format!(
+        | Constraint::RequireFindingPurchase(_)
+        | Constraint::RequireFindingRecovery(_) => Err(ScopeMatchError::ConstraintError(format!(
             "portable kernel cannot safely evaluate {}",
             constraint_name(constraint)
         ))),
@@ -376,6 +379,7 @@ fn constraint_name(constraint: &Constraint) -> &'static str {
         Constraint::MemoryWriteDenyPatterns(_) => "memory_write_deny_patterns",
         Constraint::OutputDigestSha256(_) => "output_digest_sha256",
         Constraint::RequireFindingPurchase(_) => "require_finding_purchase",
+        Constraint::RequireFindingRecovery(_) => "require_finding_recovery",
     }
 }
 

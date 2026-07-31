@@ -573,6 +573,8 @@ pub struct ChioKernel {
     pub(super) payment_adapter: Option<Box<dyn PaymentAdapter>>,
     pub(super) finding_purchase_verifier:
         Option<Arc<dyn crate::finding_purchase::FindingPurchaseVerifier>>,
+    pub(super) finding_recovery_verifier:
+        Option<Arc<dyn crate::finding_recovery::FindingRecoveryVerifier>>,
     pub(super) price_oracle: Option<Box<dyn PriceOracle>>,
     pub(super) runtime_admission_hook: Option<Arc<dyn RuntimeAdmissionHook>>,
     pub(super) runtime_admission_readiness_timeout: Duration,

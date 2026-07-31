@@ -288,6 +288,7 @@ impl ChioKernel {
             retention_maintenance: None,
             payment_adapter: None,
             finding_purchase_verifier: None,
+            finding_recovery_verifier: None,
             price_oracle: None,
             runtime_admission_hook: None,
             runtime_admission_readiness_timeout: Duration::from_millis(
@@ -897,6 +898,15 @@ impl ChioKernel {
         verifier: Arc<dyn crate::finding_purchase::FindingPurchaseVerifier>,
     ) {
         self.finding_purchase_verifier = Some(verifier);
+    }
+
+    /// Install no-charge finding-recovery verification and durable quota
+    /// handling. Without one, every recovery-marked grant denies.
+    pub fn set_finding_recovery_verifier(
+        &mut self,
+        verifier: Arc<dyn crate::finding_recovery::FindingRecoveryVerifier>,
+    ) {
+        self.finding_recovery_verifier = Some(verifier);
     }
 
     pub fn set_price_oracle(&mut self, price_oracle: Box<dyn PriceOracle>) {

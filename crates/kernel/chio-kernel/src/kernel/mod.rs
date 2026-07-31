@@ -1460,6 +1460,7 @@ mod dispatch;
 pub mod evaluator;
 #[path = "purchase_gate.rs"]
 mod purchase_gate;
+mod recovery_gate;
 mod responses;
 #[path = "session_ops.rs"]
 mod session_ops;

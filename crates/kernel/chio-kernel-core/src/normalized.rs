@@ -571,7 +571,8 @@ impl TryFrom<&Constraint> for NormalizedConstraint {
             | Constraint::MemoryStoreAllowlist(_)
             | Constraint::MemoryWriteDenyPatterns(_)
             | Constraint::OutputDigestSha256(_)
-            | Constraint::RequireFindingPurchase(_)) => {
+            | Constraint::RequireFindingPurchase(_)
+            | Constraint::RequireFindingRecovery(_)) => {
                 Err(NormalizationError::UnsupportedConstraint {
                     kind: unsupported_constraint_name(unsupported).to_string(),
                 })
@@ -668,6 +669,7 @@ fn unsupported_constraint_name(constraint: &Constraint) -> &'static str {
         Constraint::MemoryWriteDenyPatterns(_) => "memory_write_deny_patterns",
         Constraint::OutputDigestSha256(_) => "output_digest_sha256",
         Constraint::RequireFindingPurchase(_) => "require_finding_purchase",
+        Constraint::RequireFindingRecovery(_) => "require_finding_recovery",
     }
 }
 
@@ -767,6 +769,32 @@ mod tests {
             error,
             NormalizationError::UnsupportedConstraint {
                 kind: "require_finding_purchase".to_string(),
+            }
+        );
+    }
+
+    #[test]
+    fn normalized_scope_rejects_finding_recovery_marker() {
+        use alloc::boxed::Box;
+        let scope = ChioScope {
+            grants: vec![grant(vec![Constraint::RequireFindingRecovery(Box::new(
+                chio_core_types::capability::scope::FindingRecoveryMarkerV1 {
+                    recovery_id: "a".repeat(64),
+                    finding_id: "b".repeat(64),
+                    listing_id: "listing-1".to_string(),
+                    original_capability_id: "capability-original".to_string(),
+                    original_delivery_receipt_id: "receipt-original".to_string(),
+                    purchase_key: "c".repeat(64),
+                    max_recoveries: 2,
+                },
+            ))])],
+            resource_grants: vec![],
+            prompt_grants: vec![],
+        };
+        assert_eq!(
+            NormalizedScope::try_from(&scope).expect_err("recovery admission is not portable"),
+            NormalizationError::UnsupportedConstraint {
+                kind: "require_finding_recovery".to_string(),
             }
         );
     }

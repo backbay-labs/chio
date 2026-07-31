@@ -456,6 +456,7 @@ struct DurableEvaluationContract {
     normalized_context: PostReturnNormalizedRequestContextV1,
     expected_output_digest: Option<String>,
     purchase: Option<crate::finding_purchase::VerifiedFindingPurchase>,
+    recovery: Option<crate::finding_recovery::VerifiedFindingRecovery>,
 }
 
 impl ChioKernel {
@@ -547,12 +548,20 @@ impl ChioKernel {
                     "purchase binding could not be re-derived: {reason}"
                 ))
             })?;
+        let recovery = self
+            .verify_recovery_context(selected_grant.grant, request)
+            .map_err(|reason| {
+                KernelError::DurableAdmission(format!(
+                    "recovery binding could not be re-derived: {reason}"
+                ))
+            })?;
         Ok(DurableEvaluationContract {
             matched_grant_index,
             plan,
             normalized_context,
             expected_output_digest,
             purchase,
+            recovery,
         })
     }
 
@@ -569,6 +578,7 @@ impl ChioKernel {
             normalized_context,
             expected_output_digest,
             purchase,
+            recovery,
         } = self.durable_evaluation_contract(admission, request, &tool_return.raw)?;
         let DurableEvaluatedOutput {
             output,
@@ -736,6 +746,17 @@ impl ChioKernel {
         } else {
             expected_non_admission_metadata
         };
+        let expected_non_admission_metadata = if let Some(binding) = recovery.as_ref() {
+            let block = crate::kernel::recovery_gate::finding_recovery_block(binding);
+            merge_metadata_objects(
+                expected_non_admission_metadata,
+                Some(serde_json::json!({
+                    chio_core::receipt::metadata::FINDING_RECOVERY_METADATA_KEY: block
+                })),
+            )
+        } else {
+            expected_non_admission_metadata
+        };
         self.validate_completed_durable_receipt(
             admission,
             request,
@@ -750,6 +771,20 @@ impl ChioKernel {
         )?;
         self.materialize_durable_admission_receipt(&receipt)?;
         self.mirror_durable_admission_receipt(&receipt)?;
+        if let Some(binding) = recovery.as_ref() {
+            let verifier = self.finding_recovery_verifier.as_ref().ok_or_else(|| {
+                KernelError::DurableAdmission(
+                    "finding recovery verifier disappeared during replay".to_owned(),
+                )
+            })?;
+            verifier
+                .record_recovery_receipt(binding, &receipt.id, receipt.timestamp)
+                .map_err(|error| {
+                    KernelError::DurableAdmission(format!(
+                        "finding recovery lineage could not be recorded: {error}"
+                    ))
+                })?;
+        }
         if request.federated_origin_kernel_id.is_some()
             && (self.dual_signed_receipt(&receipt.id).is_none()
                 || self.federation_dsse_envelope(&receipt.id).is_none())
@@ -1434,6 +1469,7 @@ impl ChioKernel {
             normalized_context,
             expected_output_digest,
             purchase,
+            recovery,
         } = self.durable_evaluation_contract(admission, request, &tool_return.raw)?;
         let DurableEvaluatedOutput {
             output,
@@ -1907,6 +1943,28 @@ impl ChioKernel {
         } else {
             metadata
         };
+        let metadata = if let Some(binding) = recovery.as_ref() {
+            if metadata
+                .as_ref()
+                .and_then(|value| {
+                    value.get(chio_core::receipt::metadata::FINDING_RECOVERY_METADATA_KEY)
+                })
+                .is_some()
+            {
+                return Err(KernelError::DurableAdmission(
+                    "receipt metadata already carries a finding_recovery block".to_owned(),
+                ));
+            }
+            let block = crate::kernel::recovery_gate::finding_recovery_block(binding);
+            merge_metadata_objects(
+                metadata,
+                Some(serde_json::json!({
+                    chio_core::receipt::metadata::FINDING_RECOVERY_METADATA_KEY: block
+                })),
+            )
+        } else {
+            metadata
+        };
         let action =
             ToolCallAction::from_parameters(request.arguments.clone()).map_err(|error| {
                 KernelError::ReceiptSigningFailed(format!("failed to hash parameters: {error}"))
@@ -2115,6 +2173,24 @@ impl ChioKernel {
         drop(mutation_guard);
         self.materialize_durable_admission_receipt(&projected_receipt)?;
         self.mirror_durable_admission_receipt(&projected_receipt)?;
+        if let Some(binding) = recovery.as_ref() {
+            let verifier = self.finding_recovery_verifier.as_ref().ok_or_else(|| {
+                KernelError::DurableAdmission(
+                    "finding recovery verifier disappeared during terminalization".to_owned(),
+                )
+            })?;
+            verifier
+                .record_recovery_receipt(
+                    binding,
+                    &projected_receipt.id,
+                    projected_receipt.timestamp,
+                )
+                .map_err(|error| {
+                    KernelError::DurableAdmission(format!(
+                        "finding recovery lineage could not be recorded: {error}"
+                    ))
+                })?;
+        }
         self.apply_federation_cosign_for_admitted_request(request, &projected_receipt)?;
         if let Some(crate::memory_provenance::MemoryActionKind::Write { store, key }) =
             memory_action_kind.as_ref()
