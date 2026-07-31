@@ -292,6 +292,9 @@ fn market_config() -> FindingMarketConfig {
         venue_finalization: authority_pin(32, "venue-finalization"),
         market_penalty: authority_pin(33, "market-penalty"),
         settlement_observer: authority_pin(34, "settlement-observer"),
+        settlement_finality_requirement: chio_settle::FindingFinalityRequirement::Confirmations {
+            min_depth: 64,
+        },
         audit_authority: authority_pin(35, "audit-authority"),
         audit_pool: FindingPoolPin {
             principal_id: AUDIT_POOL_PRINCIPAL.to_string(),
@@ -4571,6 +4574,54 @@ fn finding_challenge_a_reorged_bond_observation_never_reaches_the_publisher() ->
     let parked = case.head()?;
     assert_eq!(parked.state, FindingLiabilityState::Finalizing);
     assert!(case.deployment.purchases.sales_blocked(LISTING_ID)?);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_an_observer_cannot_weaken_deployment_finality() -> TestResult {
+    let case = finalizing_liability()?;
+
+    // The trusted observer signs a self-consistent snapshot at one
+    // confirmation, then the finalization authority binds that exact
+    // snapshot. The deployment still requires 64 confirmations, so neither
+    // signature may weaken the operator-pinned chain policy.
+    let mut snapshot_body = case.snapshot.body.clone();
+    snapshot_body.finality_policy = "confirmations>=1".to_string();
+    snapshot_body.observed_finality = FindingObservedFinality::Confirmations { depth: 1 };
+    snapshot_body.snapshot_id = String::new();
+    snapshot_body.snapshot_id = compute_snapshot_id(&snapshot_body)?;
+    let snapshot = SignedExportEnvelope::sign(snapshot_body, &keypair(34))?;
+
+    let mut enforcement_body = case.enforcement.body.clone();
+    enforcement_body.bond_snapshot_envelope_sha256 = signed_envelope_sha256(&snapshot)?;
+    enforcement_body.enforcement_id = String::new();
+    enforcement_body.enforcement_id = compute_enforcement_id(&enforcement_body)?;
+    let enforcement = SignedExportEnvelope::sign(enforcement_body, &keypair(32))?;
+
+    let refused = case
+        .coordinator
+        .finalize(
+            &case.liability_key,
+            &enforcement,
+            &snapshot,
+            &case.seller,
+            MAX_SNAPSHOT_AGE_SECS,
+            &settlement_config()?,
+            &settlement_config()?.operator_address,
+            &evm_vault_snapshot(),
+            &anchor_proof()?,
+            &ScriptedObservations::qualified(),
+            &UnreachablePublisher,
+            SETTLEMENT_NOW,
+        )
+        .expect_err("the observer cannot choose a shallower finality policy");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::Settlement(detail)
+            if detail.contains("does not match the pinned finality requirement")
+    ));
+    assert_eq!(case.intent_state()?, FindingEffectIntentState::Pending);
+    assert_eq!(case.head()?.state, FindingLiabilityState::Finalizing);
     Ok(())
 }
 

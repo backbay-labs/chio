@@ -179,6 +179,9 @@ fn market_config() -> FindingMarketConfig {
         venue_finalization: authority_pin(32, "venue-finalization"),
         market_penalty: authority_pin(33, "market-penalty"),
         settlement_observer: authority_pin(34, "settlement-observer"),
+        settlement_finality_requirement: chio_settle::FindingFinalityRequirement::Confirmations {
+            min_depth: 64,
+        },
         audit_authority: authority_pin(35, "audit-authority"),
         audit_pool: FindingPoolPin {
             principal_id: AUDIT_POOL_PRINCIPAL.to_string(),

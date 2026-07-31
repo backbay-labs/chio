@@ -35,6 +35,10 @@ pub struct FindingEnforcementPins {
     /// not its owner, so the owner is pinned here and checked against the
     /// snapshot rather than inferred.
     pub seller: PublicKey,
+    /// Chain finality the deployment requires before collateral may be
+    /// impaired. This is operator configuration, never a value selected by
+    /// the observer signing the snapshot.
+    pub finality_requirement: FindingFinalityRequirement,
     /// Oldest bond observation this choke point will spend against, in
     /// seconds. Collateral moves between blocks, so an observation older than
     /// this bound is treated as unknown state rather than as available money.
@@ -80,6 +84,7 @@ impl FindingEnforcementPins {
                 "max_snapshot_age_secs must be nonzero".to_string(),
             ));
         }
+        self.finality_requirement.validate()?;
         Ok(())
     }
 }
@@ -208,7 +213,7 @@ pub fn verify_finding_enforcement(
         ));
     }
 
-    ensure_observed_finality_satisfies_policy(snapshot)?;
+    ensure_observed_finality_satisfies_policy(snapshot, pins.finality_requirement)?;
 
     if enforcement.amount.currency != snapshot.currency {
         return Err(reject(
@@ -265,9 +270,9 @@ fn bound_intent_id(
     Some(first.intent_id.clone())
 }
 
-/// Closed finality vocabulary this choke point spends against.
+/// Externally pinned chain finality this choke point spends against.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum FinalityRequirement {
+pub enum FindingFinalityRequirement {
     /// The chain proves deterministic finality for the observed block.
     Deterministic,
     /// The chain is probabilistic and the observer must have seen at least
@@ -275,8 +280,20 @@ enum FinalityRequirement {
     Confirmations { min_depth: u64 },
 }
 
-/// Require the observation to be expressed in the regime its own policy
-/// names.
+impl FindingFinalityRequirement {
+    /// Reject a deployment policy that cannot establish finality.
+    pub fn validate(self) -> Result<(), SettlementError> {
+        if matches!(self, Self::Confirmations { min_depth: 0 }) {
+            return Err(SettlementError::InvalidInput(
+                "finding finality confirmation depth must be nonzero".to_string(),
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// Require the observer's declaration and observation to satisfy the policy
+/// pinned by the deployment.
 ///
 /// A deterministic claim under a confirmation-count policy is rejected rather
 /// than accepted as "stronger": that policy exists precisely because the
@@ -284,12 +301,18 @@ enum FinalityRequirement {
 /// deployment already said it cannot make.
 fn ensure_observed_finality_satisfies_policy(
     snapshot: &FindingFinalizedBondSnapshot,
+    requirement: FindingFinalityRequirement,
 ) -> Result<(), SettlementError> {
-    let requirement = parse_finality_policy(&snapshot.finality_policy)?;
+    let declared = parse_finality_policy(&snapshot.finality_policy)?;
+    if declared != requirement {
+        return Err(reject(
+            "bond snapshot finality policy does not match the pinned finality requirement",
+        ));
+    }
     match (requirement, snapshot.observed_finality) {
-        (FinalityRequirement::Deterministic, FindingObservedFinality::Finalized) => Ok(()),
+        (FindingFinalityRequirement::Deterministic, FindingObservedFinality::Finalized) => Ok(()),
         (
-            FinalityRequirement::Confirmations { min_depth },
+            FindingFinalityRequirement::Confirmations { min_depth },
             FindingObservedFinality::Confirmations { depth },
         ) if depth >= min_depth => Ok(()),
         _ => Err(reject(
@@ -298,9 +321,9 @@ fn ensure_observed_finality_satisfies_policy(
     }
 }
 
-fn parse_finality_policy(policy: &str) -> Result<FinalityRequirement, SettlementError> {
+fn parse_finality_policy(policy: &str) -> Result<FindingFinalityRequirement, SettlementError> {
     if policy == DETERMINISTIC_FINALITY_POLICY {
-        return Ok(FinalityRequirement::Deterministic);
+        return Ok(FindingFinalityRequirement::Deterministic);
     }
     let Some(depth) = policy.strip_prefix(CONFIRMATION_FINALITY_PREFIX) else {
         return Err(reject("unrecognized bond snapshot finality policy"));
@@ -316,7 +339,7 @@ fn parse_finality_policy(policy: &str) -> Result<FinalityRequirement, Settlement
     let min_depth = depth
         .parse::<u64>()
         .map_err(|_| reject("bond snapshot finality policy confirmation depth is out of range"))?;
-    Ok(FinalityRequirement::Confirmations { min_depth })
+    Ok(FindingFinalityRequirement::Confirmations { min_depth })
 }
 
 /// Re-derive the destination sum at the choke point.

@@ -91,8 +91,9 @@ use chio_open_market::penalty::{
 use chio_settle::{
     dispatch_finding_impairment, plan_finding_impairment, recheck_finding_bond_observation,
     verify_finding_enforcement, EvmBondSnapshot, FindingBondObservationSource,
-    FindingEnforcementPins, FindingImpairmentOutcome, FindingImpairmentPublisher,
-    FindingImpairmentQuarantine, SettlementChainConfig, VerifiedFindingEnforcement,
+    FindingEnforcementPins, FindingFinalityRequirement, FindingImpairmentOutcome,
+    FindingImpairmentPublisher, FindingImpairmentQuarantine, SettlementChainConfig,
+    VerifiedFindingEnforcement,
 };
 use chio_store_sqlite::{
     FindingChallengeAuthorizationBranch, FindingChallengeEvaluationStart,
@@ -448,6 +449,7 @@ struct ChallengeRolePins {
     governance_authority: PublicKey,
     purchase_authority: PublicKey,
     settlement_observer: PublicKey,
+    settlement_finality_requirement: FindingFinalityRequirement,
 }
 
 /// One submitted challenge, as the coordinator recorded it.
@@ -749,6 +751,7 @@ impl FindingChallengeCoordinator {
                 governance_authority: pin(&config.governance_root, "governance")?,
                 purchase_authority: pin(&config.purchase, "purchase")?,
                 settlement_observer: pin(&config.settlement_observer, "settlement observer")?,
+                settlement_finality_requirement: config.settlement_finality_requirement,
             },
             evaluator_authority,
             evaluator_pin: config.challenge_evaluator.clone(),
@@ -1484,6 +1487,7 @@ impl FindingChallengeCoordinator {
             finalization_authority: self.finalization_authority.public_key(),
             settlement_observer: self.pins.settlement_observer.clone(),
             seller: seller.clone(),
+            finality_requirement: self.pins.settlement_finality_requirement,
             max_snapshot_age_secs,
         };
         let verified = verify_finding_enforcement(enforcement, bond_snapshot, &pins, now)

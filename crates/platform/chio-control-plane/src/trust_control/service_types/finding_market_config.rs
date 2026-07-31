@@ -9,6 +9,7 @@
 //! whole configuration.
 
 use chio_core::crypto::{PublicKey, SigningAlgorithm};
+use chio_settle::FindingFinalityRequirement;
 
 use crate::CliError;
 
@@ -135,6 +136,10 @@ pub struct FindingMarketConfig {
     /// Signs finalized bond snapshots. The control plane only verifies
     /// against this pin; it never holds the observer's private key.
     pub settlement_observer: FindingAuthorityPin,
+    /// Chain finality required before a finding enforcement may impair
+    /// collateral. The settlement observer cannot weaken this requirement in
+    /// a signed snapshot.
+    pub settlement_finality_requirement: FindingFinalityRequirement,
     /// Authorizes bondless venue audits. A buyer submission verifies
     /// against its own named challenger instead.
     pub audit_authority: FindingAuthorityPin,
@@ -158,6 +163,9 @@ impl FindingMarketConfig {
         }
         self.roster()?;
         self.listing.validate("listing")?;
+        self.settlement_finality_requirement
+            .validate()
+            .map_err(|error| CliError::cli_other_error(error.to_string()))?;
         self.audit_pool.validate("audit")?;
         self.challenge_administration_pool
             .validate("challenge administration")?;

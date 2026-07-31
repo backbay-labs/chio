@@ -225,6 +225,7 @@ fn default_pins() -> FindingEnforcementPins {
         finalization_authority: finalization_keypair().public_key(),
         settlement_observer: observer_keypair().public_key(),
         seller: seller_keypair().public_key(),
+        finality_requirement: FindingFinalityRequirement::Confirmations { min_depth: 64 },
         max_snapshot_age_secs: MAX_SNAPSHOT_AGE_SECS,
     }
 }
@@ -417,6 +418,20 @@ fn pins_reject_a_zero_observation_age_bound() {
 }
 
 #[test]
+fn pins_reject_a_zero_confirmation_requirement() {
+    let pins = FindingEnforcementPins {
+        finality_requirement: FindingFinalityRequirement::Confirmations { min_depth: 0 },
+        ..default_pins()
+    };
+    let (enforcement, snapshot) = default_pair();
+
+    assert_rejected(
+        verify_finding_enforcement(&enforcement, &snapshot, &pins, TRUSTED_NOW),
+        "confirmation depth must be nonzero",
+    );
+}
+
+#[test]
 fn a_snapshot_the_enforcement_does_not_bind_is_rejected() {
     let (enforcement, _) = pair_from(
         snapshot_body(),
@@ -491,29 +506,51 @@ fn observed_finality_that_misses_its_policy_is_rejected() {
         (
             "confirmations>=64".to_string(),
             FindingObservedFinality::Confirmations { depth: 63 },
+            FindingFinalityRequirement::Confirmations { min_depth: 64 },
         ),
         (
             "confirmations>=64".to_string(),
             FindingObservedFinality::Finalized,
+            FindingFinalityRequirement::Confirmations { min_depth: 64 },
         ),
         (
             "finalized".to_string(),
             FindingObservedFinality::Confirmations { depth: 96 },
+            FindingFinalityRequirement::Deterministic,
         ),
     ];
 
-    for (policy, observed) in cases {
+    for (policy, observed, finality_requirement) in cases {
         let mut body = snapshot_body();
         body.finality_policy = policy;
         body.observed_finality = observed;
         body.snapshot_id = compute_snapshot_id(&body).test_expect("snapshot id computes");
         let (enforcement, snapshot) =
             pair_from(body, &observer_keypair(), &finalization_keypair(), |_| {});
+        let pins = FindingEnforcementPins {
+            finality_requirement,
+            ..default_pins()
+        };
         assert_rejected(
-            verify_finding_enforcement(&enforcement, &snapshot, &default_pins(), TRUSTED_NOW),
+            verify_finding_enforcement(&enforcement, &snapshot, &pins, TRUSTED_NOW),
             "observed finality does not satisfy",
         );
     }
+}
+
+#[test]
+fn an_observer_cannot_choose_a_shallower_finality_policy() {
+    let mut body = snapshot_body();
+    body.finality_policy = "confirmations>=1".to_string();
+    body.observed_finality = FindingObservedFinality::Confirmations { depth: 1 };
+    body.snapshot_id = compute_snapshot_id(&body).test_expect("snapshot id computes");
+    let (enforcement, snapshot) =
+        pair_from(body, &observer_keypair(), &finalization_keypair(), |_| {});
+
+    assert_rejected(
+        verify_finding_enforcement(&enforcement, &snapshot, &default_pins(), TRUSTED_NOW),
+        "does not match the pinned finality requirement",
+    );
 }
 
 #[test]
@@ -543,7 +580,11 @@ fn a_deterministic_policy_and_observation_verify() {
     let (enforcement, snapshot) =
         pair_from(body, &observer_keypair(), &finalization_keypair(), |_| {});
 
-    verify_finding_enforcement(&enforcement, &snapshot, &default_pins(), TRUSTED_NOW)
+    let pins = FindingEnforcementPins {
+        finality_requirement: FindingFinalityRequirement::Deterministic,
+        ..default_pins()
+    };
+    verify_finding_enforcement(&enforcement, &snapshot, &pins, TRUSTED_NOW)
         .test_expect("deterministic finality verifies");
 }
 
