@@ -2919,6 +2919,48 @@ fn finding_challenge_exhausted_collateral_never_blocks_the_listing() -> TestResu
 }
 
 #[test]
+fn finding_challenge_collateral_facts_for_another_allocation_uphold_nothing() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let governance = governance()?;
+    let ready = ready_to_uphold(&deployment, &coordinator)?;
+
+    // Every exposure figure behind the slash is read against the
+    // allocation the facts name, so facts pointing at another allocation
+    // would charge this vault for encumbrances it never opened.
+    let stake = usd(300);
+    let required = usd(5_000);
+    let elsewhere = hex64('b');
+    let refused = coordinator
+        .uphold(
+            &ready.challenge_id,
+            &ready.outcome,
+            &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
+            0,
+            &[],
+            &collateral_facts(&stake, &required, &elsewhere, 5_000),
+            &governance.context(),
+            &governance.sanction_case,
+            NOW + 2,
+        )
+        .expect_err("collateral for another allocation upholds nothing");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::CollateralAllocation
+    ));
+    assert_eq!(
+        liability_heads(&deployment, &ready.finding.finding_id)?,
+        0,
+        "a mismatched allocation opens no liability"
+    );
+    assert!(
+        !deployment.purchases.sales_blocked(LISTING_ID)?,
+        "nothing durable happens before the allocation binding is proven"
+    );
+    Ok(())
+}
+
+#[test]
 fn finding_challenge_sealed_snapshot_distribution_sums_exactly() -> TestResult {
     let case = upheld_liability()?;
     let sealed = &case.upheld.sealed;

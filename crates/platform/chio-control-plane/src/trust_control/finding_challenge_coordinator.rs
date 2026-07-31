@@ -319,6 +319,8 @@ pub enum ChallengeCoordinatorError {
     VerdictNotUpheld,
     #[error("outcome does not bind this challenge")]
     OutcomeBinding,
+    #[error("collateral facts do not name the allocation this liability is charged to")]
+    CollateralAllocation,
     #[error("pre-cutoff purchase slots have not all closed")]
     ClaimWindowOpen,
     #[error("purchase record {0} is not resolvable in the authoritative index")]
@@ -430,6 +432,9 @@ pub struct FindingCollateralFacts<'a> {
     /// Live collateral the finalized bond snapshot observed.
     pub live_allocated_collateral_units: u64,
     /// Allocation whose open per-sale encumbrances the candidate adds.
+    /// The penalty lane requires this to be the allocation the liability
+    /// is charged to: exposure read from any other allocation would size
+    /// this seller's slash from encumbrances it never opened.
     pub allocation_id: &'a str,
 }
 
@@ -1047,6 +1052,14 @@ impl FindingChallengeCoordinator {
             || outcome.body.backing_allocation_id != identity.allocation_id
         {
             return Err(ChallengeCoordinatorError::OutcomeBinding);
+        }
+        // Every exposure figure behind the penalty is read against one
+        // allocation, and it has to be the one this liability's vault is
+        // charged to. Facts naming another allocation would size the
+        // slash from a different seller's open encumbrances, so they are
+        // refused here, before anything durable is written.
+        if collateral.allocation_id != identity.allocation_id {
+            return Err(ChallengeCoordinatorError::CollateralAllocation);
         }
         self.require_pinned_governance(governance, sanction_case, None)?;
         self.require_impairable_collateral(collateral, now)?;
@@ -2046,9 +2059,13 @@ impl FindingChallengeCoordinator {
             .ok_or_else(|| {
                 ChallengeCoordinatorError::SlashArithmetic("verified harm overflowed".to_owned())
             })?;
+        // The durable identity is the authority on which allocation this
+        // liability may draw from, so the encumbrances that size the
+        // candidate are read against it rather than against a figure the
+        // call carried in beside it.
         let open = self
             .purchases
-            .list_outstanding_exposure_total(collateral.allocation_id, now)
+            .list_outstanding_exposure_total(identity.allocation_id, now)
             .map_err(|error| ChallengeCoordinatorError::PurchaseStore(error.to_string()))?;
         let distribution = compute_slash_distribution(
             &SlashInputs {
