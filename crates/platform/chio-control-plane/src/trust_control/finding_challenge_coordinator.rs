@@ -86,7 +86,7 @@ use chio_open_market::penalty::{
 use chio_settle::{
     dispatch_finding_impairment, plan_finding_impairment, verify_finding_enforcement,
     EvmBondSnapshot, FindingEnforcementPins, FindingImpairmentOutcome, FindingImpairmentPublisher,
-    SettlementChainConfig,
+    FindingImpairmentQuarantine, SettlementChainConfig,
 };
 use chio_store_sqlite::{
     FindingChallengeAuthorizationBranch, FindingChallengeEvaluationStart,
@@ -94,8 +94,8 @@ use chio_store_sqlite::{
     FindingChallengeVerdict as StoreVerdict, FindingChallengeWriteOutcome,
     FindingClaimSnapshotInput, FindingDisputeLockDisposition, FindingDisputeLockInput,
     FindingEffectIntentKind, FindingEffectIntentState, FindingGovernanceCaseInput,
-    FindingGovernanceCaseKind, FindingLiabilityInput, FindingLiabilityState,
-    SqliteFindingChallengeStore, SqliteFindingPurchaseStore,
+    FindingGovernanceCaseKind, FindingLiabilityInput, FindingLiabilityRecord,
+    FindingLiabilityState, SqliteFindingChallengeStore, SqliteFindingPurchaseStore,
 };
 
 use super::finding_handlers::{FindingRailInstruction, FindingRailObserver};
@@ -220,17 +220,22 @@ pub fn derive_fee_intent_key(submission_id: &str, fee_operation_id: &str) -> Str
 }
 
 /// Domain-keyed identity of the enforcement/root semantic intent.
+///
+/// The key is liability-scoped identity only. The penalty envelope digest
+/// belongs in the commitment fenced under this key rather than in the key
+/// itself: a second penalty minted for one liability has to collide with
+/// what is already durable and reject, and a key that varied with the
+/// penalty would silently open a second intent instead.
 #[must_use]
 pub fn derive_root_intent_key(
     operator_id: &str,
     liability_key: &str,
     outcome_id: &str,
-    final_penalty_envelope_digest: &str,
     allocation_digest: &str,
 ) -> String {
     sha256_hex(
         format!(
-            "{EFFECT_ROOT_INTENT_DOMAIN}\0{operator_id}\0{ENFORCEMENT_ROOT_DOMAIN}\0{liability_key}\0{outcome_id}\0{final_penalty_envelope_digest}\0{allocation_digest}"
+            "{EFFECT_ROOT_INTENT_DOMAIN}\0{operator_id}\0{ENFORCEMENT_ROOT_DOMAIN}\0{liability_key}\0{outcome_id}\0{allocation_digest}"
         )
         .as_bytes(),
     )
@@ -305,6 +310,8 @@ pub enum ChallengeCoordinatorError {
     PenaltyEvaluation(String),
     #[error("liability is in a state this transition does not start from: {0}")]
     LiabilityState(&'static str),
+    #[error("identity does not match the durable liability head: {0}")]
+    LiabilityIdentity(&'static str),
     #[error("settlement choke point rejected the enforcement: {0}")]
     Settlement(String),
     #[error("impairment publisher failed: {0}")]
@@ -401,13 +408,16 @@ pub struct ChallengeEvaluationOutcome {
 /// The governance context a finding penalty is minted and evaluated
 /// against. The coordinator owns every finding-specific field; the caller
 /// supplies only the governance artifacts and the operator identity.
+///
+/// No authority travels with these artifacts. The charter, the case, and
+/// the activation authenticate against the pinned governance root, and the
+/// fee schedule against the pinned fee-schedule operator set, so an
+/// artifact's own embedded signer can never widen the set it is checked
+/// against.
 pub struct FindingPenaltyGovernance<'a> {
     pub local_operator_id: &'a str,
     pub subject_operator_id: &'a str,
     pub issued_by: &'a str,
-    /// The key that signed the governance artifacts below. It must be
-    /// distinct from the penalty authority, which signs the penalty.
-    pub governing_signer: &'a PublicKey,
     pub fee_schedule: &'a SignedOpenMarketFeeSchedule,
     pub charter: &'a chio_open_market::governance::generic::SignedGenericGovernanceCharter,
     pub listing: &'a SignedGenericListing,
@@ -488,11 +498,26 @@ pub enum AppealResolution {
     Quarantined { reason: String },
 }
 
+/// What one finalization attempt did with the fenced impairment.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FindingFinalization {
+    /// The publisher was asked to move the impairment on this call, and
+    /// this is what the reconciliation proved about it.
+    Reconciled(FindingImpairmentOutcome),
+    /// An earlier attempt already proved the impairment landed and died
+    /// before it could settle the head. Nothing was dispatched a second
+    /// time; this call finished the interrupted settlement.
+    AlreadyConfirmed,
+}
+
 /// The authoritative single-operator challenge coordinator.
 pub struct FindingChallengeCoordinator {
     challenges: SqliteFindingChallengeStore,
     purchases: SqliteFindingPurchaseStore,
     pins: ChallengeRolePins,
+    /// Pinned fee-schedule signer set. A schedule reaching the penalty
+    /// lane verifies against this roster and nothing else.
+    fee_schedule_operators: Vec<PublicKey>,
     evaluator_authority: Keypair,
     finalization_authority: Keypair,
     penalty_authority: Keypair,
@@ -544,9 +569,26 @@ impl FindingChallengeCoordinator {
         if penalty_authority.public_key() != pin(&config.market_penalty, "penalty")? {
             return Err(ChallengeCoordinatorError::AuthorityPinMismatch("penalty"));
         }
+        let fee_schedule_operators = config
+            .fee_schedule_operators()
+            .map_err(|error| ChallengeCoordinatorError::Configuration(error.to_string()))?;
+        // A fee schedule is one of the artifacts the penalty rests on, so
+        // the roster that may sign one must not contain a key this lane
+        // signs with: such a key would authorize its own inputs.
+        for operator in &fee_schedule_operators {
+            if operator == &evaluator_authority.public_key()
+                || operator == &finalization_authority.public_key()
+                || operator == &penalty_authority.public_key()
+            {
+                return Err(ChallengeCoordinatorError::AuthorityPinMismatch(
+                    "fee schedule operator",
+                ));
+            }
+        }
         Ok(Self {
             challenges,
             purchases,
+            fee_schedule_operators,
             pins: ChallengeRolePins {
                 audit_authority: pin(&config.audit_authority, "audit")?,
                 governance_authority: pin(&config.governance_root, "governance")?,
@@ -568,11 +610,12 @@ impl FindingChallengeCoordinator {
     /// Authenticate and durably record one challenge, charging the
     /// dispute fee and locking the dispute bond for a buyer submission.
     ///
-    /// Ordering guarantee. Every pure check runs first, so a filing that
-    /// cannot be authenticated writes nothing. The challenge row is
-    /// recorded before the fee, because a charge against a challenge the
-    /// store never accepted would be a stranded debit with nothing to
-    /// resolve it. The fee is then fenced before dispatch and the bond is
+    /// Ordering guarantee. Every pure check runs first, including the fee
+    /// and bond preconditions the durable row does not carry, so a filing
+    /// that cannot be authenticated writes nothing. The challenge row is
+    /// then recorded before the fee, because a charge against a challenge
+    /// the store never accepted would be a stranded debit with nothing to
+    /// resolve it. The fee is fenced before dispatch and the bond is
     /// locked last, so a crash anywhere replays into the same durable
     /// state: the challenge replays as an existing row, the fee intent
     /// reconciles or re-dispatches from `failed`, and the lock replays as
@@ -618,6 +661,13 @@ impl FindingChallengeCoordinator {
                 (FindingChallengeAuthorizationBranch::VenueAudit, None)
             }
         };
+        // The durable row carries no fee or bond precondition, and the
+        // evaluation pipeline is fenced on that row alone, so a filing
+        // whose fee or bond cannot be authenticated must not become an
+        // evaluable challenge.
+        if let FindingChallengeAuthorization::BuyerSubmission(submission) = &body.authorization {
+            self.require_dispute_terms(submission, now)?;
+        }
         let write = self
             .challenges
             .submit_challenge(&FindingChallengeSubmission {
@@ -641,31 +691,7 @@ impl FindingChallengeCoordinator {
                 dispute_bond_lock_id: None,
             });
         };
-
-        let fee = &submission.dispute_fee_terminal;
-        let pool = &self.challenge_administration_pool;
-        // The two shipped fee event kinds are hard-pinned to the audit
-        // pool so a seller cannot redirect participation fees. The
-        // dispute fee is the third charge path and is pinned just as
-        // hard, in the other direction: it reaches the
-        // challenge-administration pool or it does not settle.
-        if fee.beneficiary_pool_principal_id != pool.principal_id
-            || fee.rail_destination != pool.rail_destination
-            || fee.amount.currency != pool.currency
-        {
-            return Err(ChallengeCoordinatorError::DisputeFeePool);
-        }
-        if fee.payer != submission.challenger {
-            return Err(ChallengeCoordinatorError::DisputeFeePayer);
-        }
         let lock = &submission.dispute_lock_ref;
-        if lock.expiry <= now {
-            return Err(ChallengeCoordinatorError::DisputeBondWindow);
-        }
-        if lock.amount.currency != pool.currency {
-            return Err(ChallengeCoordinatorError::DisputeBondCurrency);
-        }
-
         let fee_intent_key = self.charge_dispute_fee(&body.challenge_id, submission, now)?;
         self.challenges
             .lock_dispute_bond(&FindingDisputeLockInput {
@@ -877,6 +903,13 @@ impl FindingChallengeCoordinator {
     /// remain open. That is a retry, not a failure: the liability stays
     /// upheld-pending-claims with sales already blocked, and a later call
     /// replays the compare-and-set as a no-op and continues.
+    ///
+    /// Two preconditions of the hold are checked before any of that
+    /// commits, because both are pure and both would otherwise wedge the
+    /// listing behind a hold that can never be minted, with no transition
+    /// left to release it: the governance artifacts must carry pinned
+    /// signatures, and the collateral must be able to fund a nonzero
+    /// amount, which the penalty artifacts require.
     #[allow(clippy::too_many_arguments)]
     pub fn uphold(
         &self,
@@ -901,6 +934,8 @@ impl FindingChallengeCoordinator {
         {
             return Err(ChallengeCoordinatorError::OutcomeBinding);
         }
+        self.require_pinned_governance(governance, sanction_case, None)?;
+        self.require_impairable_collateral(collateral, now)?;
         let defect_key = derive_defect_key(identity.finding_id);
         let liability_key = derive_liability_key(&defect_key, &self.venue_id, identity);
         self.challenges
@@ -1000,6 +1035,12 @@ impl FindingChallengeCoordinator {
     /// `pending_appeal`; the replay re-records each intent identically and
     /// continues, because an identical retry reconciles and a conflicting
     /// one rejects.
+    ///
+    /// Authority. Nothing about the target is taken from the caller. The
+    /// durable head is the only authority on which finding, listing,
+    /// allocation, and vault this liability may impair, and the only
+    /// outcome that may authorize it is the exact envelope the store
+    /// recorded for the challenge that upheld it.
     #[allow(clippy::too_many_arguments)]
     pub fn resolve_appeal(
         &self,
@@ -1016,6 +1057,15 @@ impl FindingChallengeCoordinator {
     ) -> Result<AppealResolution, ChallengeCoordinatorError> {
         verify_signed_challenge_outcome(outcome, &self.evaluator_authority.public_key())
             .map_err(|error| ChallengeCoordinatorError::OutcomeEnvelope(error.to_string()))?;
+        let record = self
+            .challenges
+            .get_liability(liability_key)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or_else(|| {
+                ChallengeCoordinatorError::ChallengeStore("liability is not recorded".to_owned())
+            })?;
+        self.require_identity_matches_head(liability_key, identity, &record)?;
+        self.require_outcome_upheld_this_liability(outcome, &record)?;
         self.require_sealed_matches_store(liability_key, sealed)?;
 
         match disposition {
@@ -1036,8 +1086,8 @@ impl FindingChallengeCoordinator {
                 self.challenges
                     .record_governance_case(&FindingGovernanceCaseInput {
                         case_id: appeal_case_id,
-                        finding_id: identity.finding_id,
-                        listing_id: identity.listing_id,
+                        finding_id: &record.finding_id,
+                        listing_id: &record.listing_id,
                         liability_key,
                         case_kind: FindingGovernanceCaseKind::Appeal,
                         case_state: case_state_name(appeal_case),
@@ -1085,9 +1135,8 @@ impl FindingChallengeCoordinator {
                     now,
                 )?;
                 self.finalize_enforcement(
-                    liability_key,
+                    &record,
                     outcome,
-                    identity,
                     sealed,
                     &slash,
                     governance.local_operator_id,
@@ -1107,6 +1156,17 @@ impl FindingChallengeCoordinator {
     /// liability stays `finalizing`, publication stays pending, and
     /// purchases stay blocked. A clean vault rejection leaves the intent
     /// failed and retryable, in the same state.
+    ///
+    /// The terminal `quarantined` intent state is reserved for external
+    /// state no further attempt can disambiguate. A receipt that has not
+    /// arrived, has not finalized, or reverted is the ordinary shape of a
+    /// broadcast that has not landed yet, so those leave the intent failed
+    /// and dispatchable rather than closing the only edge out.
+    ///
+    /// Resumable. The confirmed intent and the settled head are two
+    /// transactions, so an attempt can die between them. A re-entry that
+    /// finds the fenced intent already confirmed dispatches nothing and
+    /// finishes the settlement instead.
     #[allow(clippy::too_many_arguments)]
     pub fn finalize(
         &self,
@@ -1121,7 +1181,7 @@ impl FindingChallengeCoordinator {
         anchor_proof: &AnchorInclusionProof,
         publisher: &dyn FindingImpairmentPublisher,
         now: u64,
-    ) -> Result<FindingImpairmentOutcome, ChallengeCoordinatorError> {
+    ) -> Result<FindingFinalization, ChallengeCoordinatorError> {
         let liability = self
             .challenges
             .get_liability(liability_key)
@@ -1136,6 +1196,33 @@ impl FindingChallengeCoordinator {
             return Err(ChallengeCoordinatorError::Settlement(
                 "enforcement does not name this liability".to_owned(),
             ));
+        }
+        // Everything downstream binds the vault, the allocation, and the
+        // seller to the enforcement's own self-declaration. The head is
+        // what anchors that triple to the defect being settled, so one
+        // liability can never authorize an impairment against a target it
+        // was not opened against.
+        let body = &enforcement.body;
+        let bindings: [(&str, &str, &'static str); 6] = [
+            (&liability.finding_id, &body.finding_id, "finding_id"),
+            (&liability.listing_id, &body.listing_id, "listing_id"),
+            (
+                &liability.allocation_id,
+                &body.seller_allocation_id,
+                "allocation_id",
+            ),
+            (&liability.chain_id, &body.vault.chain_id, "chain_id"),
+            (
+                &liability.vault_contract,
+                &body.vault.vault_contract,
+                "vault_contract",
+            ),
+            (&liability.vault_id, &body.vault.vault_id, "vault_id"),
+        ];
+        for (durable, declared, label) in bindings {
+            if durable != declared {
+                return Err(ChallengeCoordinatorError::LiabilityIdentity(label));
+            }
         }
         let pins = FindingEnforcementPins {
             finalization_authority: self.finalization_authority.public_key(),
@@ -1157,13 +1244,20 @@ impl FindingChallengeCoordinator {
         let intent_key = planned.intent().intent_id.clone();
         // The intent must already be durable: the publisher contract
         // refuses an unfenced dispatch, and so does this coordinator.
-        if self
+        let intent = self
             .challenges
             .get_effect_intent(&intent_key)
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
-            .is_none()
-        {
-            return Err(ChallengeCoordinatorError::EffectIntentUnfenced);
+            .ok_or(ChallengeCoordinatorError::EffectIntentUnfenced)?;
+        if intent.state == FindingEffectIntentState::Confirmed {
+            // The impairment already landed and was proved to be this
+            // intent. Dispatching again would ask the vault to move the
+            // same collateral twice, and the confirmed state has no
+            // outgoing edge, so the settle is the only work left.
+            self.challenges
+                .settle_liability(liability_key, FindingLiabilityState::Finalizing, now)
+                .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
+            return Ok(FindingFinalization::AlreadyConfirmed);
         }
         self.challenges
             .advance_effect_intent(&intent_key, FindingEffectIntentState::Dispatched, now)
@@ -1180,6 +1274,18 @@ impl FindingChallengeCoordinator {
                     })?;
                 self.challenges
                     .settle_liability(liability_key, FindingLiabilityState::Finalizing, now)
+                    .map_err(|error| {
+                        ChallengeCoordinatorError::ChallengeStore(error.to_string())
+                    })?;
+            }
+            FindingImpairmentOutcome::Quarantined { reason } if quarantine_is_pending(*reason) => {
+                // A broadcast whose receipt has not arrived, has not
+                // finalized, or reverted is an observation still in
+                // flight. It leaves the intent failed and dispatchable,
+                // because the terminal quarantined state would close the
+                // only edge the same transaction can still be proved on.
+                self.challenges
+                    .advance_effect_intent(&intent_key, FindingEffectIntentState::Failed, now)
                     .map_err(|error| {
                         ChallengeCoordinatorError::ChallengeStore(error.to_string())
                     })?;
@@ -1207,7 +1313,7 @@ impl FindingChallengeCoordinator {
                     })?;
             }
         }
-        Ok(outcome)
+        Ok(FindingFinalization::Reconciled(outcome))
     }
 
     /// The sealed claim snapshot for one liability, when one exists.
@@ -1253,6 +1359,210 @@ impl FindingChallengeCoordinator {
             return Err(ChallengeCoordinatorError::FindingBinding("finding_id"));
         }
         Ok(finding)
+    }
+
+    /// Require the fee and bond a buyer submission carries to be the ones
+    /// the admitted market terms pinned.
+    ///
+    /// The two shipped fee event kinds are hard-pinned to the audit pool
+    /// so a seller cannot redirect participation fees. The dispute fee is
+    /// the third charge path and is pinned just as hard, in the other
+    /// direction: it reaches the challenge-administration pool or it does
+    /// not settle.
+    fn require_dispute_terms(
+        &self,
+        submission: &chio_finding::FindingBuyerSubmission,
+        now: u64,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let fee = &submission.dispute_fee_terminal;
+        let pool = &self.challenge_administration_pool;
+        if fee.beneficiary_pool_principal_id != pool.principal_id
+            || fee.rail_destination != pool.rail_destination
+            || fee.amount.currency != pool.currency
+        {
+            return Err(ChallengeCoordinatorError::DisputeFeePool);
+        }
+        if fee.payer != submission.challenger {
+            return Err(ChallengeCoordinatorError::DisputeFeePayer);
+        }
+        let lock = &submission.dispute_lock_ref;
+        if lock.expiry <= now {
+            return Err(ChallengeCoordinatorError::DisputeBondWindow);
+        }
+        if lock.amount.currency != pool.currency {
+            return Err(ChallengeCoordinatorError::DisputeBondCurrency);
+        }
+        Ok(())
+    }
+
+    /// Require every governance artifact behind a penalty to carry a
+    /// pinned signature.
+    ///
+    /// The charter, the case, and the activation are governance-root
+    /// artifacts; the fee schedule verifies against its own operator
+    /// roster; a superseded penalty can only be one this lane signed. The
+    /// listing is left to the namespace-owner rule the penalty surface
+    /// applies, and is bound to the case, which is pinned here.
+    fn require_pinned_governance(
+        &self,
+        governance: &FindingPenaltyGovernance<'_>,
+        case: &SignedGenericGovernanceCase,
+        prior_penalty: Option<&SignedOpenMarketPenalty>,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let governance_key = &self.pins.governance_authority;
+        // The listing authenticates against its own namespace owner rather
+        // than a pinned key, so the case is what anchors it: a listing the
+        // pinned case does not name cannot be the one being sanctioned.
+        if governance.listing.body.listing_id != case.body.listing_id {
+            return Err(ChallengeCoordinatorError::AuthorityPinMismatch(
+                "penalty listing",
+            ));
+        }
+        if !self
+            .fee_schedule_operators
+            .contains(&governance.fee_schedule.signer_key)
+        {
+            return Err(ChallengeCoordinatorError::AuthorityPinMismatch(
+                "fee schedule",
+            ));
+        }
+        if &governance.charter.signer_key != governance_key {
+            return Err(ChallengeCoordinatorError::AuthorityPinMismatch(
+                "governance charter",
+            ));
+        }
+        if &case.signer_key != governance_key {
+            return Err(ChallengeCoordinatorError::AuthorityPinMismatch(
+                "governance case",
+            ));
+        }
+        if governance
+            .activation
+            .is_some_and(|activation| &activation.signer_key != governance_key)
+        {
+            return Err(ChallengeCoordinatorError::AuthorityPinMismatch(
+                "trust activation",
+            ));
+        }
+        if prior_penalty
+            .is_some_and(|prior| prior.signer_key != self.penalty_authority.public_key())
+        {
+            return Err(ChallengeCoordinatorError::AuthorityPinMismatch(
+                "prior penalty",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Require the collateral behind this defect to be able to fund a
+    /// nonzero impairment, on the same inputs the sealed accounting is
+    /// computed from.
+    fn require_impairable_collateral(
+        &self,
+        collateral: &FindingCollateralFacts<'_>,
+        now: u64,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let open = self
+            .purchases
+            .list_outstanding_exposure_total(collateral.allocation_id, now)
+            .map_err(|error| ChallengeCoordinatorError::PurchaseStore(error.to_string()))?;
+        let candidate = collateral
+            .base_finding_stake
+            .units
+            .checked_add(open)
+            .ok_or_else(|| {
+                ChallengeCoordinatorError::SlashArithmetic(
+                    "computed exposure overflowed".to_owned(),
+                )
+            })?;
+        if candidate.min(collateral.live_allocated_collateral_units) == 0 {
+            return Err(ChallengeCoordinatorError::NothingToImpair);
+        }
+        Ok(())
+    }
+
+    /// Require the caller's identity to be exactly the one the durable
+    /// head carries, and that head to be the one that identity derives.
+    fn require_identity_matches_head(
+        &self,
+        liability_key: &str,
+        identity: &FindingLiabilityIdentity<'_>,
+        record: &FindingLiabilityRecord,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        let fields: [(&str, &str, &'static str); 6] = [
+            (&record.finding_id, identity.finding_id, "finding_id"),
+            (&record.listing_id, identity.listing_id, "listing_id"),
+            (
+                &record.allocation_id,
+                identity.allocation_id,
+                "allocation_id",
+            ),
+            (&record.chain_id, identity.chain_id, "chain_id"),
+            (
+                &record.vault_contract,
+                identity.vault_contract,
+                "vault_contract",
+            ),
+            (&record.vault_id, identity.vault_id, "vault_id"),
+        ];
+        for (durable, supplied, label) in fields {
+            if durable != supplied {
+                return Err(ChallengeCoordinatorError::LiabilityIdentity(label));
+            }
+        }
+        // The key is a commitment to this exact identity, so re-deriving
+        // it proves the head named by the key is the head that identity
+        // belongs to rather than one that merely exists.
+        if derive_liability_key(
+            &derive_defect_key(&record.finding_id),
+            &self.venue_id,
+            identity,
+        ) != liability_key
+        {
+            return Err(ChallengeCoordinatorError::LiabilityIdentity(
+                "liability_key",
+            ));
+        }
+        Ok(())
+    }
+
+    /// Require the presented outcome to be the exact upheld adjudication
+    /// this liability was opened on.
+    ///
+    /// The envelope digest is compared against the one the store recorded
+    /// with the verdict, so neither a differently signed outcome for the
+    /// same challenge nor an upheld outcome from another defect can carry
+    /// an impairment.
+    fn require_outcome_upheld_this_liability(
+        &self,
+        outcome: &SignedFindingChallengeOutcome,
+        record: &FindingLiabilityRecord,
+    ) -> Result<(), ChallengeCoordinatorError> {
+        if outcome.body.verdict != chio_finding::FindingChallengeVerdict::Upheld {
+            return Err(ChallengeCoordinatorError::VerdictNotUpheld);
+        }
+        if outcome.body.finding_id != record.finding_id
+            || outcome.body.listing_id != record.listing_id
+            || outcome.body.backing_allocation_id != record.allocation_id
+        {
+            return Err(ChallengeCoordinatorError::OutcomeBinding);
+        }
+        let challenge_id = record
+            .upheld_challenge_id
+            .as_deref()
+            .ok_or(ChallengeCoordinatorError::LiabilityState("upheld"))?;
+        let challenge = self
+            .challenges
+            .get_challenge(challenge_id)
+            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
+            .ok_or_else(|| {
+                ChallengeCoordinatorError::ChallengeStore("challenge is not recorded".to_owned())
+            })?;
+        let presented = self.envelope_digest(outcome)?;
+        if challenge.outcome_envelope_sha256.as_deref() != Some(presented.as_str()) {
+            return Err(ChallengeCoordinatorError::OutcomeBinding);
+        }
+        Ok(())
     }
 
     /// Charge the dispute fee to the challenge-administration pool
@@ -1568,12 +1878,16 @@ impl FindingChallengeCoordinator {
 
     /// Sign the enforcement instruction and fence every domain-keyed
     /// effect intent before the liability enters finalizing.
+    ///
+    /// Every field of the instruction that names a target comes from the
+    /// durable head rather than from the call, so the signed authorization
+    /// can only ever point at the allocation and vault the liability was
+    /// opened against.
     #[allow(clippy::too_many_arguments)]
     fn finalize_enforcement(
         &self,
-        liability_key: &str,
+        record: &FindingLiabilityRecord,
         outcome: &SignedFindingChallengeOutcome,
-        identity: &FindingLiabilityIdentity<'_>,
         sealed: &SealedClaimSnapshot,
         slash: &FindingPenaltyOutcome,
         operator_id: &str,
@@ -1583,10 +1897,11 @@ impl FindingChallengeCoordinator {
         if sealed.distribution.slash.units == 0 || sealed.distribution.entries.is_empty() {
             return Err(ChallengeCoordinatorError::NothingToImpair);
         }
+        let liability_key = record.liability_key.as_str();
         let outcome_envelope_sha256 = self.envelope_digest(outcome)?;
         let seller_impair_key = derive_seller_impair_intent_key(
-            identity.chain_id,
-            identity.vault_contract,
+            &record.chain_id,
+            &record.vault_contract,
             liability_key,
             &sealed.allocation_digest,
         );
@@ -1594,7 +1909,6 @@ impl FindingChallengeCoordinator {
             operator_id,
             liability_key,
             &outcome.body.outcome_id,
-            &slash.penalty_envelope_sha256,
             &sealed.allocation_digest,
         );
         let retraction_intent_id = sha256_hex(
@@ -1605,7 +1919,7 @@ impl FindingChallengeCoordinator {
             .as_bytes(),
         );
         let retraction_key = derive_retraction_intent_key(
-            identity.finding_id,
+            &record.finding_id,
             &self.status_feed_operator_ref,
             &retraction_intent_id,
         );
@@ -1628,7 +1942,17 @@ impl FindingChallengeCoordinator {
             (
                 FindingEffectIntentKind::SellerImpair,
                 seller_impair_key.clone(),
-                sealed.allocation_digest.clone(),
+                // The commitment carries the vault the impairment targets
+                // as well as the money it moves, so two enforcements for
+                // one liability naming different vaults collide on this
+                // key and reject instead of reconciling as identical.
+                format!(
+                    "{EFFECT_SELLER_IMPAIR_DOMAIN}\0{chain}\0{contract}\0{vault}\0{allocation}",
+                    chain = record.chain_id,
+                    contract = record.vault_contract,
+                    vault = record.vault_id,
+                    allocation = sealed.allocation_digest,
+                ),
             ),
             (
                 FindingEffectIntentKind::RootIntent,
@@ -1651,18 +1975,13 @@ impl FindingChallengeCoordinator {
         // The challenge-bond disposition is a separate effect with its own
         // key, so a bond return can never reconcile against the seller
         // impairment or the fee.
-        let upheld_challenge_id = self
-            .challenges
-            .get_liability(liability_key)
-            .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
-            .and_then(|record| record.upheld_challenge_id);
-        if let Some(challenge_id) = upheld_challenge_id {
+        if let Some(challenge_id) = record.upheld_challenge_id.as_deref() {
             if let Some(lock) = self
                 .challenges
-                .get_dispute_lock(&challenge_id)
+                .get_dispute_lock(challenge_id)
                 .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?
             {
-                let key = derive_challenge_bond_intent_key(&challenge_id, &lock.lock_id);
+                let key = derive_challenge_bond_intent_key(challenge_id, &lock.lock_id);
                 // The commitment separately binds the disposition, amount,
                 // currency, and destination, so two conflicting
                 // dispositions of one bond collide and reject.
@@ -1711,19 +2030,19 @@ impl FindingChallengeCoordinator {
             schema: FINDING_CHALLENGE_ENFORCEMENT_SCHEMA_V1.to_owned(),
             enforcement_id: String::new(),
             liability_key: liability_key.to_owned(),
-            finding_id: identity.finding_id.to_owned(),
-            listing_id: identity.listing_id.to_owned(),
+            finding_id: record.finding_id.clone(),
+            listing_id: record.listing_id.clone(),
             outcome_id: outcome.body.outcome_id.clone(),
             outcome_envelope_sha256,
             penalty_envelope_sha256: slash.penalty_envelope_sha256.clone(),
             bond_snapshot_envelope_sha256: bond_snapshot_envelope_sha256.to_owned(),
             purchase_snapshot_digest: sealed.snapshot_digest.clone(),
             deterministic_allocation_digest: sealed.allocation_digest.clone(),
-            seller_allocation_id: identity.allocation_id.to_owned(),
+            seller_allocation_id: record.allocation_id.clone(),
             vault: chio_finding::FindingVaultReference {
-                chain_id: identity.chain_id.to_owned(),
-                vault_contract: identity.vault_contract.to_owned(),
-                vault_id: identity.vault_id.to_owned(),
+                chain_id: record.chain_id.clone(),
+                vault_contract: record.vault_contract.clone(),
+                vault_id: record.vault_id.clone(),
             },
             amount: sealed.distribution.slash.clone(),
             destinations,
@@ -1765,6 +2084,14 @@ impl FindingChallengeCoordinator {
     /// state, the single external evidence reference bound to the signed
     /// outcome, and the checked amount. The wrapper then runs the generic
     /// evaluation first and refuses any result carrying findings.
+    ///
+    /// The authority set the whole penalty lane authenticates against is
+    /// built from configuration alone: the pinned governance root for the
+    /// charter, the case, and the activation, the pinned fee-schedule
+    /// operator roster for the schedule, and this coordinator's own
+    /// penalty key for the penalty it is about to sign. A key that only
+    /// appears inside an artifact never joins that set, so a self-signed
+    /// governance case cannot authorize a slash.
     #[allow(clippy::too_many_arguments)]
     fn mint_penalty(
         &self,
@@ -1779,9 +2106,8 @@ impl FindingChallengeCoordinator {
         now: u64,
     ) -> Result<FindingPenaltyOutcome, ChallengeCoordinatorError> {
         let penalty_key = self.penalty_authority.public_key();
-        if governance.governing_signer == &penalty_key {
-            return Err(ChallengeCoordinatorError::AuthorityPinMismatch("penalty"));
-        }
+        let governance_key = &self.pins.governance_authority;
+        self.require_pinned_governance(governance, case, prior_penalty)?;
         let outcome_envelope_sha256 = self.envelope_digest(outcome)?;
         let (action, state, supersedes) = match branch {
             FindingPenaltyBranch::PendingAppeal => (
@@ -1825,7 +2151,10 @@ impl FindingChallengeCoordinator {
             expires_at: governance.penalty_expires_at,
             note: None,
         };
-        let trusted = [governance.governing_signer.clone(), penalty_key];
+        let mut trusted = Vec::with_capacity(self.fee_schedule_operators.len().saturating_add(2));
+        trusted.push(governance_key.clone());
+        trusted.extend(self.fee_schedule_operators.iter().cloned());
+        trusted.push(penalty_key);
         let artifact = build_open_market_penalty_artifact_with_trusted_signers(
             governance.local_operator_id,
             &issue,
@@ -1889,6 +2218,26 @@ impl FindingChallengeCoordinator {
     ) -> Result<String, ChallengeCoordinatorError> {
         signed_envelope_sha256(envelope).map_err(|_| ChallengeCoordinatorError::Canonical)
     }
+}
+
+/// Whether a quarantine reason describes an observation that has not
+/// settled yet rather than one no further attempt can resolve.
+///
+/// A publisher broadcasts and returns before the transaction is mined, so
+/// a missing, unfinalized, or reverted receipt is the ordinary shape of an
+/// impairment still in flight, and in the reverted case nothing moved at
+/// all. The terminal quarantined state has no outgoing edge, so it is
+/// reserved for external state that genuinely needs an operator: an
+/// evidence hash consumed by an unknown transaction, a target or decoded
+/// input that does not match the frozen intent, or a stored transaction
+/// whose provenance cannot be established.
+const fn quarantine_is_pending(reason: FindingImpairmentQuarantine) -> bool {
+    matches!(
+        reason,
+        FindingImpairmentQuarantine::ReceiptMissing
+            | FindingImpairmentQuarantine::ReceiptNotFinalized
+            | FindingImpairmentQuarantine::ReceiptReverted
+    )
 }
 
 /// Canonical digest of one rail instruction, matching the shipped fee

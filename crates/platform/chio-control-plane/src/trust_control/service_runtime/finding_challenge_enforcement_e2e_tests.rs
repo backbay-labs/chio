@@ -98,10 +98,11 @@ use chio_open_market::listing::{
 };
 use chio_open_market::penalty::OpenMarketPenaltyEffectiveState;
 use chio_settle::{
-    settlement_devnet_rpc_egress_contract, EvmBondSnapshot, FindingImpairmentAttempt,
-    FindingImpairmentOutcome, FindingImpairmentPublishError, FindingImpairmentPublisher,
-    FindingImpairmentQuarantine, FindingVaultRejection, PreparedEvmCall, SettlementChainConfig,
-    SettlementEvidenceConfig, SettlementOracleConfig, SettlementPolicyConfig,
+    settlement_devnet_rpc_egress_contract, EvmBondSnapshot, EvmTransactionReceipt,
+    FindingImpairmentAttempt, FindingImpairmentOutcome, FindingImpairmentPublishError,
+    FindingImpairmentPublisher, FindingImpairmentQuarantine, FindingVaultRejection,
+    PreparedEvmCall, SettlementChainConfig, SettlementEvidenceConfig, SettlementFinalityStatus,
+    SettlementOracleConfig, SettlementPolicyConfig, StoredImpairmentTransaction,
 };
 use chio_store_sqlite::finding_market_store::SqliteFindingMarketStore;
 use chio_store_sqlite::{
@@ -114,7 +115,7 @@ use chio_store_sqlite::{
 use crate::trust_control::finding_challenge_coordinator::{
     derive_defect_key, derive_liability_key, AppealDisposition, AppealResolution,
     AuthorizedImpairment, ChallengeCoordinatorError, ChallengeEvaluationRequest,
-    EvaluationAdmission, FindingChallengeCoordinator, FindingCollateralFacts,
+    EvaluationAdmission, FindingChallengeCoordinator, FindingCollateralFacts, FindingFinalization,
     FindingLiabilityIdentity, FindingPenaltyGovernance, UpheldLiability,
 };
 use crate::trust_control::{FindingAuthorityPin, FindingMarketConfig, FindingPoolPin};
@@ -260,7 +261,7 @@ fn market_config() -> FindingMarketConfig {
         },
         community_fund_destination: COMMUNITY_FUND_RAIL.to_string(),
         status_feed_operator_ref: "status-feed/venue-challenge".to_string(),
-        fee_schedule_operator_keys: vec![keypair(24).public_key().to_hex()],
+        fee_schedule_operator_keys: vec![fee_schedule_keypair().public_key().to_hex()],
     }
 }
 
@@ -619,6 +620,24 @@ fn verifier_profile() -> Result<SignedFindingChallengeVerifierProfile, AnyError>
     Ok(SignedExportEnvelope::sign(body, &governing_keypair())?)
 }
 
+/// The execution environment the recipe commits to. Every reproduction
+/// has to report its digest, so the two are derived from one value.
+fn replay_environment() -> FindingRecipeEnvironment {
+    FindingRecipeEnvironment {
+        runtime_image_sha256: hex64('5'),
+        platform: "linux/amd64".to_string(),
+        network_policy: "deny_all".to_string(),
+        clock_policy: "fixed:1700000000".to_string(),
+        randomness_policy: "seed:42".to_string(),
+        locale: "C".to_string(),
+        timezone: "UTC".to_string(),
+    }
+}
+
+fn replay_environment_digest() -> Result<String, AnyError> {
+    Ok(sha256_hex(&canonical_json_bytes(&replay_environment())?))
+}
+
 /// The seller's replay recipe. It commits the admitted profile, so it can
 /// only be built once that profile's envelope digest exists.
 fn replay_recipe(profile_envelope_sha256: &str) -> FindingReplayRecipeInput {
@@ -644,15 +663,7 @@ fn replay_recipe(profile_envelope_sha256: &str) -> FindingReplayRecipeInput {
             },
         ],
         parameters_sha256: hex64('4'),
-        environment: FindingRecipeEnvironment {
-            runtime_image_sha256: hex64('5'),
-            platform: "linux/amd64".to_string(),
-            network_policy: "deny_all".to_string(),
-            clock_policy: "fixed:1700000000".to_string(),
-            randomness_policy: "seed:42".to_string(),
-            locale: "C".to_string(),
-            timezone: "UTC".to_string(),
-        },
+        environment: replay_environment(),
         resource_bounds: resource_caps(),
         predicate: FindingPredicate::BaselineFailsCandidatePassesV1,
         pre_run_template_sha256: hex64('6'),
@@ -1250,7 +1261,7 @@ fn replay_case(
                 FindingRecipePhaseKind::Baseline => hex64('1'),
                 FindingRecipePhaseKind::Candidate => hex64('2'),
             },
-            environment_digest: hex64('5'),
+            environment_digest: replay_environment_digest()?,
             terminal_result: phase.terminal,
             exit_code: phase.exit_code,
             report_digest: match phase.phase {
@@ -1568,8 +1579,23 @@ fn governing_keypair() -> Keypair {
     keypair(1)
 }
 
+/// The pinned fee-schedule operator. It is deliberately not the
+/// governance root: a schedule authenticates against its own roster.
+fn fee_schedule_keypair() -> Keypair {
+    keypair(24)
+}
+
 fn governance() -> Result<Governance, AnyError> {
-    let signer = governing_keypair();
+    governance_signed_by(&governing_keypair(), &fee_schedule_keypair())
+}
+
+/// The same governance bundle under caller-chosen keys, so a test can
+/// present artifacts no pinned authority ever signed.
+fn governance_signed_by(
+    signer: &Keypair,
+    fee_schedule_signer: &Keypair,
+) -> Result<Governance, AnyError> {
+    let signer = signer.clone();
     let listing = sample_listing(&signer)?;
     let activation = sample_activation(&signer, &listing)?;
     let charter = sample_charter(&signer)?;
@@ -1592,7 +1618,7 @@ fn governance() -> Result<Governance, AnyError> {
         Some(sanction_case.body.case_id.clone()),
     )?;
     Ok(Governance {
-        fee_schedule: sample_fee_schedule(&signer)?,
+        fee_schedule: sample_fee_schedule(fee_schedule_signer)?,
         charter,
         listing,
         activation,
@@ -1608,7 +1634,6 @@ impl Governance {
             local_operator_id: OPERATOR_ID,
             subject_operator_id: OPERATOR_ID,
             issued_by: "market@chio.example",
-            governing_signer: &self.listing.signer_key,
             fee_schedule: &self.fee_schedule,
             charter: &self.charter,
             listing: &self.listing,
@@ -1914,17 +1939,19 @@ fn liability_heads(deployment: &Deployment, finding_id: &str) -> Result<usize, A
 }
 
 /// Drive one challenge through the store to a terminal verdict, exactly
-/// as the evaluator's own recorded verdict would.
+/// as the evaluator's own recorded verdict would, recording the digest of
+/// the outcome envelope the verdict was carried by.
 fn close_challenge(
     deployment: &Deployment,
     challenge_id: &str,
     verdict: FindingChallengeVerdict,
+    outcome_envelope_sha256: &str,
     now: u64,
 ) -> Result<FindingChallengeState, AnyError> {
     deployment.challenges.begin_evaluation(challenge_id, now)?;
     Ok(deployment
         .challenges
-        .record_verdict(challenge_id, verdict, &digest(challenge_id), now)?)
+        .record_verdict(challenge_id, verdict, outcome_envelope_sha256, now)?)
 }
 
 /// The evaluator-signed upheld outcome the uphold transaction consumes.
@@ -2081,6 +2108,41 @@ fn finding_challenge_submission_refuses_a_fee_aimed_at_the_audit_pool() -> TestR
     Ok(())
 }
 
+#[test]
+fn finding_challenge_a_filing_refused_on_its_fee_leaves_no_evaluable_challenge_row() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let buyer = keypair(41);
+    let mut challenge = buyer_challenge(&buyer)?;
+    if let FindingChallengeAuthorization::BuyerSubmission(submission) =
+        &mut challenge.body.authorization
+    {
+        // A bond window that already closed cannot be forfeited, so the
+        // filing carries no collectable stake at all.
+        submission.dispute_lock_ref.expiry = NOW - 1;
+    }
+    challenge.body.challenge_id = chio_finding::compute_challenge_id(&challenge.body)?;
+    let challenge = SignedExportEnvelope::sign(challenge.body, &buyer)?;
+    let (_, raw) = finding_artifact()?;
+
+    let error = coordinator
+        .submit(&challenge, &raw, NOW)
+        .expect_err("a filing whose bond window has closed must not be recorded");
+    assert!(matches!(
+        error,
+        ChallengeCoordinatorError::DisputeBondWindow
+    ));
+    assert!(
+        deployment
+            .challenges
+            .get_challenge(&challenge.body.challenge_id)?
+            .is_none(),
+        "the evaluation pipeline is fenced on the row alone, so the row must not exist"
+    );
+    assert!(deployment.rail.charges().is_empty());
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // The three bond dispositions
 // ---------------------------------------------------------------------------
@@ -2097,6 +2159,7 @@ fn finding_challenge_upheld_verdict_returns_the_dispute_bond() -> TestResult {
         &deployment,
         &challenge.body.challenge_id,
         FindingChallengeVerdict::Upheld,
+        &digest("upheld-outcome"),
         NOW + 10,
     )?;
     assert_eq!(
@@ -2123,6 +2186,7 @@ fn finding_challenge_rejected_verdict_applies_the_predeclared_forfeit() -> TestR
         &deployment,
         &challenge.body.challenge_id,
         FindingChallengeVerdict::Rejected,
+        &digest("rejected-outcome"),
         NOW + 10,
     )?;
     assert_eq!(
@@ -2155,6 +2219,7 @@ fn finding_challenge_indeterminate_never_forfeits_and_closes_by_returning_the_lo
         FindingChallengeVerdict::Indeterminate {
             retry_deadline: Some(NOW + 100),
         },
+        &digest("indeterminate-outcome"),
         NOW + 10,
     )?;
     assert_eq!(state, FindingChallengeState::IndeterminateRetryable);
@@ -2236,13 +2301,14 @@ fn upheld_liability() -> Result<Upheld, AnyError> {
 
     let challenge = buyer_challenge(&keypair(41))?;
     coordinator.submit(&challenge, &raw, NOW + 2)?;
+    let outcome = upheld_outcome(&challenge, &deployment.allocation_id)?;
     close_challenge(
         &deployment,
         &challenge.body.challenge_id,
         FindingChallengeVerdict::Upheld,
+        &signed_envelope_sha256(&outcome)?,
         NOW + 3,
     )?;
-    let outcome = upheld_outcome(&challenge, &deployment.allocation_id)?;
 
     let stake = usd(300);
     let required = usd(5_000);
@@ -2289,6 +2355,112 @@ fn finding_challenge_uphold_blocks_sales_and_freezes_the_cutoff() -> TestResult 
             VENUE_ID,
             &liability_identity(&case.finding_id, &case.deployment.allocation_id)
         )
+    );
+    Ok(())
+}
+
+/// One filed challenge closed upheld, with the evaluator-signed outcome
+/// whose envelope the store recorded for it.
+struct ReadyToUphold {
+    finding: Finding,
+    challenge_id: String,
+    outcome: SignedFindingChallengeOutcome,
+}
+
+fn ready_to_uphold(
+    deployment: &Deployment,
+    coordinator: &FindingChallengeCoordinator,
+) -> Result<ReadyToUphold, AnyError> {
+    let (finding, raw) = finding_artifact()?;
+    let challenge = buyer_challenge(&keypair(41))?;
+    coordinator.submit(&challenge, &raw, NOW)?;
+    let outcome = upheld_outcome(&challenge, &deployment.allocation_id)?;
+    close_challenge(
+        deployment,
+        &challenge.body.challenge_id,
+        FindingChallengeVerdict::Upheld,
+        &signed_envelope_sha256(&outcome)?,
+        NOW + 1,
+    )?;
+    Ok(ReadyToUphold {
+        finding,
+        challenge_id: challenge.body.challenge_id.clone(),
+        outcome,
+    })
+}
+
+#[test]
+fn finding_challenge_a_governance_bundle_no_pinned_root_signed_mints_no_penalty() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let ready = ready_to_uphold(&deployment, &coordinator)?;
+    // A charter, case, listing, activation, and fee schedule all self
+    // signed under one fresh key, which is what an attacker holds.
+    let forged = keypair(99);
+    let governance = governance_signed_by(&forged, &forged)?;
+
+    let stake = usd(300);
+    let required = usd(5_000);
+    let refused = coordinator
+        .uphold(
+            &ready.challenge_id,
+            &ready.outcome,
+            &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
+            0,
+            &[],
+            &collateral_facts(&stake, &required, &deployment.allocation_id, 5_000),
+            &governance.context(),
+            &governance.sanction_case,
+            NOW + 2,
+        )
+        .expect_err("a self-signed governance bundle authorizes no sanction");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::AuthorityPinMismatch(_)
+    ));
+    assert_eq!(
+        liability_heads(&deployment, &ready.finding.finding_id)?,
+        0,
+        "an unpinned governance bundle opens no liability"
+    );
+    assert!(!deployment.purchases.sales_blocked(LISTING_ID)?);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_exhausted_collateral_never_blocks_the_listing() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let governance = governance()?;
+    let ready = ready_to_uphold(&deployment, &coordinator)?;
+
+    let stake = usd(300);
+    let required = usd(5_000);
+    let refused = coordinator
+        .uphold(
+            &ready.challenge_id,
+            &ready.outcome,
+            &liability_identity(&ready.finding.finding_id, &deployment.allocation_id),
+            0,
+            &[],
+            &collateral_facts(&stake, &required, &deployment.allocation_id, 0),
+            &governance.context(),
+            &governance.sanction_case,
+            NOW + 2,
+        )
+        .expect_err("a defect with nothing left to impair opens no liability");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::NothingToImpair
+    ));
+    assert_eq!(
+        liability_heads(&deployment, &ready.finding.finding_id)?,
+        0,
+        "the penalty artifacts refuse a zero amount, so the head is never opened"
+    );
+    assert!(
+        !deployment.purchases.sales_blocked(LISTING_ID)?,
+        "a listing is never blocked behind a hold that can never be minted"
     );
     Ok(())
 }
@@ -2526,6 +2698,140 @@ fn finding_challenge_sealed_accounting_cannot_be_substituted_at_appeal_finality(
     Ok(())
 }
 
+/// Close the appeal window with no reversal, at the given clock.
+fn resolve_final(
+    case: &Upheld,
+    identity: &FindingLiabilityIdentity<'_>,
+    outcome: &SignedFindingChallengeOutcome,
+    now: u64,
+) -> Result<AppealResolution, ChallengeCoordinatorError> {
+    case.coordinator.resolve_appeal(
+        &case.upheld.liability_key,
+        outcome,
+        identity,
+        &case.upheld.sealed,
+        &case.governance.context(),
+        &AppealDisposition::Final {
+            sanction_case: &case.governance.sanction_case,
+        },
+        &case.upheld.sanction_case_id,
+        &case.upheld.hold,
+        &hex64('7'),
+        now,
+    )
+}
+
+#[test]
+fn finding_challenge_appeal_finality_refuses_an_identity_the_head_does_not_carry() -> TestResult {
+    let case = upheld_liability()?;
+    let mut elsewhere = liability_identity(&case.finding_id, &case.deployment.allocation_id);
+    elsewhere.vault_id = "vault-99";
+
+    let refused = resolve_final(&case, &elsewhere, &case.outcome, NOW + 20)
+        .expect_err("a liability may only be impaired at the vault it was opened against");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::LiabilityIdentity("vault_id")
+    ));
+    assert!(
+        case.deployment
+            .challenges
+            .list_effect_intents(&case.upheld.liability_key)?
+            .is_empty(),
+        "a substituted target fences no effect"
+    );
+    assert_eq!(
+        case.deployment
+            .challenges
+            .get_liability(&case.upheld.liability_key)?
+            .ok_or("liability head is durable")?
+            .state,
+        FindingLiabilityState::PendingAppeal
+    );
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_a_rejected_outcome_never_authorizes_an_impairment() -> TestResult {
+    let case = upheld_liability()?;
+    let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);
+    let mut body = case.outcome.body.clone();
+    body.verdict = chio_finding::FindingChallengeVerdict::Rejected;
+    body.facet =
+        FindingChallengeFacet::EvidenceInvalid(chio_finding::FindingEvidenceInvalidFacet {
+            challenged_receipt_ids: vec!["receipt-evidence-01".to_string()],
+            invalidity: FindingEvidenceInvalidity::NoAffirmativeInvalidity,
+        });
+    body.reason = "evidence_resolved_valid".to_string();
+    body.penalty_calculation = None;
+    body.outcome_id = chio_finding::derive_outcome_id(&body)?;
+    body.validate()?;
+    let rejected = SignedExportEnvelope::sign(body, &keypair(31))?;
+
+    let refused = resolve_final(&case, &identity, &rejected, NOW + 20)
+        .expect_err("only an upheld adjudication reaches the penalty lane");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::VerdictNotUpheld
+    ));
+    assert!(case
+        .deployment
+        .challenges
+        .list_effect_intents(&case.upheld.liability_key)?
+        .is_empty());
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_an_outcome_the_store_never_recorded_authorizes_no_impairment() -> TestResult {
+    let case = upheld_liability()?;
+    let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);
+    // Same verdict, same bindings, adjudicated one second later: a second
+    // upheld envelope for this defect that the verdict record never named.
+    let mut body = case.outcome.body.clone();
+    body.evaluated_at = body.evaluated_at.saturating_add(1);
+    body.outcome_id = chio_finding::derive_outcome_id(&body)?;
+    body.validate()?;
+    let substituted = SignedExportEnvelope::sign(body, &keypair(31))?;
+
+    let refused = resolve_final(&case, &identity, &substituted, NOW + 20)
+        .expect_err("only the recorded adjudication may authorize the impairment");
+    assert!(matches!(refused, ChallengeCoordinatorError::OutcomeBinding));
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_a_second_appeal_finality_collides_on_the_root_intent() -> TestResult {
+    let case = upheld_liability()?;
+    let identity = liability_identity(&case.finding_id, &case.deployment.allocation_id);
+    let AppealResolution::Finalizing(first) =
+        resolve_final(&case, &identity, &case.outcome, NOW + 20)?
+    else {
+        return Err("appeal finality with no reversal authorizes the impairment".into());
+    };
+
+    // A replay off a re-minted penalty carries a different penalty
+    // envelope. The intent is keyed on the liability rather than on that
+    // envelope, so the second one collides with what is already durable.
+    let refused = resolve_final(&case, &identity, &case.outcome, NOW + 40)
+        .expect_err("one liability authorizes one enforcement");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::ChallengeStore(_)
+    ));
+    let intents = case
+        .deployment
+        .challenges
+        .list_effect_intents(&case.upheld.liability_key)?;
+    assert_eq!(
+        intents.len(),
+        4,
+        "the replay records no fifth intent beside the four already fenced"
+    );
+    assert_eq!(first.effect_intent_keys.len(), 4);
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Finalization against the settlement choke point
 // ---------------------------------------------------------------------------
@@ -2562,8 +2868,14 @@ fn settlement_config() -> Result<SettlementChainConfig, AnyError> {
 }
 
 fn evm_vault_snapshot() -> EvmBondSnapshot {
+    evm_vault_snapshot_for(&chain_hash(0x44))
+}
+
+/// The live contract read for one vault, as the operator would take it
+/// for whatever vault the instruction in hand names.
+fn evm_vault_snapshot_for(vault_id: &str) -> EvmBondSnapshot {
     EvmBondSnapshot {
-        vault_id: chain_hash(0x44),
+        vault_id: vault_id.to_string(),
         principal_address: "0x1000000000000000000000000000000000000005".to_string(),
         operator_key_hash: OPERATOR_KEY_HASH.to_string(),
         expires_at: 1_800_000_000,
@@ -2595,6 +2907,204 @@ impl FindingImpairmentPublisher for AmbiguousPublisher {
     }
 }
 
+/// A publisher that broadcasts, stores the raw transaction, and only
+/// observes a receipt for it on a later attempt. That is the ordinary
+/// shape of a real one: the transaction is not mined when publish
+/// returns.
+struct MiningPublisher {
+    tx_hash: String,
+    attempts: Mutex<u32>,
+}
+
+impl MiningPublisher {
+    fn new() -> Self {
+        Self {
+            tx_hash: chain_hash(0x77),
+            attempts: Mutex::new(0),
+        }
+    }
+
+    fn attempts(&self) -> u32 {
+        self.attempts.lock().map(|guard| *guard).unwrap_or_default()
+    }
+}
+
+impl FindingImpairmentPublisher for MiningPublisher {
+    fn publish(
+        &self,
+        _intent: &chio_settle::FindingImpairmentIntent,
+        call: &PreparedEvmCall,
+    ) -> Result<FindingImpairmentAttempt, FindingImpairmentPublishError> {
+        let attempt = match self.attempts.lock() {
+            Ok(mut guard) => {
+                *guard = guard.saturating_add(1);
+                *guard
+            }
+            Err(_) => return Err(FindingImpairmentPublishError::Transient("poisoned".into())),
+        };
+        let mined = attempt > 1;
+        Ok(FindingImpairmentAttempt::Observed {
+            stored: StoredImpairmentTransaction {
+                tx_hash: self.tx_hash.clone(),
+                to_address: call.to_address.clone(),
+                input_data: Some(call.data.clone()),
+                receipt: mined.then(|| EvmTransactionReceipt {
+                    tx_hash: self.tx_hash.clone(),
+                    block_number: 21_000_100,
+                    block_hash: chain_hash(0xbc),
+                    status: true,
+                    from_address: call.from_address.clone(),
+                    to_address: call.to_address.clone(),
+                    gas_used: 210_000,
+                    observed_at: OBSERVED_AT,
+                    logs: Vec::new(),
+                }),
+                finality: mined.then_some(SettlementFinalityStatus::Finalized),
+            },
+        })
+    }
+}
+
+/// A publisher that must never be asked to move anything. A resumed
+/// finalization has already impaired the vault, so any dispatch on that
+/// path would be a second one.
+struct UnreachablePublisher;
+
+impl FindingImpairmentPublisher for UnreachablePublisher {
+    fn publish(
+        &self,
+        _intent: &chio_settle::FindingImpairmentIntent,
+        _call: &PreparedEvmCall,
+    ) -> Result<FindingImpairmentAttempt, FindingImpairmentPublishError> {
+        Err(FindingImpairmentPublishError::Permanent(
+            "a confirmed impairment must never be dispatched again".to_string(),
+        ))
+    }
+}
+
+/// One liability head driven to `finalizing` with its seller-impairment
+/// intent fenced, paired with the enforcement the settlement choke point
+/// verifies. The head carries exactly the allocation and vault the
+/// enforcement names, as the appeal path leaves it.
+struct FinalizingLiability {
+    deployment: Deployment,
+    coordinator: FindingChallengeCoordinator,
+    liability_key: String,
+    seller: PublicKey,
+    intent_key: String,
+    enforcement: SignedFindingChallengeEnforcement,
+    snapshot: SignedFindingFinalizedBondSnapshot,
+}
+
+fn finalizing_liability() -> Result<FinalizingLiability, AnyError> {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let (finding, raw) = finding_artifact()?;
+    let challenge = buyer_challenge(&keypair(41))?;
+    coordinator.submit(&challenge, &raw, NOW)?;
+    close_challenge(
+        &deployment,
+        &challenge.body.challenge_id,
+        FindingChallengeVerdict::Upheld,
+        &digest("upheld-outcome"),
+        NOW + 1,
+    )?;
+
+    let liability_key = byte_hex64(0xb1);
+    deployment
+        .challenges
+        .open_liability(&chio_store_sqlite::FindingLiabilityInput {
+            liability_key: &liability_key,
+            defect_key: &derive_defect_key(&finding.finding_id),
+            finding_id: &finding.finding_id,
+            listing_id: LISTING_ID,
+            allocation_id: &byte_hex64(0xa1),
+            venue_id: VENUE_ID,
+            chain_id: &settlement_config()?.chain_id,
+            vault_contract: BOND_VAULT_CONTRACT,
+            vault_id: &chain_hash(0x44),
+            opened_at: NOW,
+        })?;
+    deployment.challenges.uphold_liability(
+        &liability_key,
+        &challenge.body.challenge_id,
+        1,
+        NOW + 2,
+    )?;
+    deployment.challenges.begin_appeal_window(
+        &liability_key,
+        FindingLiabilityState::UpheldPendingClaims,
+        NOW + 3,
+    )?;
+    deployment.challenges.begin_finalizing(
+        &liability_key,
+        FindingLiabilityState::PendingAppeal,
+        NOW + 4,
+    )?;
+
+    let seller = keypair(73).public_key();
+    let intent_key = byte_hex64(0xc1);
+    deployment.challenges.record_effect_intent(
+        &intent_key,
+        chio_store_sqlite::FindingEffectIntentKind::SellerImpair,
+        &byte_hex64(0xd1),
+        Some(&liability_key),
+        NOW + 5,
+    )?;
+    let (enforcement, snapshot) =
+        enforcement_pair(&liability_key, &finding.finding_id, &seller, &intent_key)?;
+    Ok(FinalizingLiability {
+        deployment,
+        coordinator,
+        liability_key,
+        seller,
+        intent_key,
+        enforcement,
+        snapshot,
+    })
+}
+
+impl FinalizingLiability {
+    /// Run the settlement choke point against this head with the given
+    /// publisher.
+    fn finalize(
+        &self,
+        publisher: &dyn FindingImpairmentPublisher,
+        now: u64,
+    ) -> Result<FindingFinalization, AnyError> {
+        Ok(self.coordinator.finalize(
+            &self.liability_key,
+            &self.enforcement,
+            &self.snapshot,
+            &self.seller,
+            MAX_SNAPSHOT_AGE_SECS,
+            &settlement_config()?,
+            &settlement_config()?.operator_address,
+            &evm_vault_snapshot(),
+            &anchor_proof()?,
+            publisher,
+            now,
+        )?)
+    }
+
+    fn intent_state(&self) -> Result<FindingEffectIntentState, AnyError> {
+        Ok(self
+            .deployment
+            .challenges
+            .get_effect_intent(&self.intent_key)?
+            .ok_or("the impairment intent is durable")?
+            .state)
+    }
+
+    fn head(&self) -> Result<chio_store_sqlite::FindingLiabilityRecord, AnyError> {
+        Ok(self
+            .deployment
+            .challenges
+            .get_liability(&self.liability_key)?
+            .ok_or("liability head is durable")?)
+    }
+}
+
 /// The exact settlement pair the choke point verifies, plus the finding
 /// and listing identities the liability head must carry.
 fn enforcement_pair(
@@ -2609,12 +3119,37 @@ fn enforcement_pair(
     ),
     AnyError,
 > {
+    enforcement_pair_at_vault(
+        liability_key,
+        finding_id,
+        seller,
+        seller_impair_intent_id,
+        &chain_hash(0x44),
+    )
+}
+
+/// The same pair against a caller-named vault, so a test can present an
+/// instruction and observation that agree with each other and with the
+/// live contract read while naming a vault the liability never did.
+fn enforcement_pair_at_vault(
+    liability_key: &str,
+    finding_id: &str,
+    seller: &PublicKey,
+    seller_impair_intent_id: &str,
+    vault_id: &str,
+) -> Result<
+    (
+        SignedFindingChallengeEnforcement,
+        SignedFindingFinalizedBondSnapshot,
+    ),
+    AnyError,
+> {
     let mut snapshot = FindingFinalizedBondSnapshot {
         schema: FINDING_FINALIZED_BOND_SNAPSHOT_SCHEMA_V1.to_string(),
         snapshot_id: String::new(),
         chain_id: settlement_config()?.chain_id,
         vault_contract: BOND_VAULT_CONTRACT.to_string(),
-        vault_id: chain_hash(0x44),
+        vault_id: vault_id.to_string(),
         seller: seller.clone(),
         allocation_id: byte_hex64(0xa1),
         locked_amount: 500_000,
@@ -2649,7 +3184,7 @@ fn enforcement_pair(
         vault: FindingVaultReference {
             chain_id: settlement_config()?.chain_id,
             vault_contract: BOND_VAULT_CONTRACT.to_string(),
-            vault_id: chain_hash(0x44),
+            vault_id: vault_id.to_string(),
         },
         amount: usd(250),
         destinations: vec![
@@ -2687,108 +3222,139 @@ fn enforcement_pair(
 
 #[test]
 fn finding_challenge_quarantined_reconciliation_leaves_purchases_blocked() -> TestResult {
-    let deployment = deployment()?;
-    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
-    let (finding, raw) = finding_artifact()?;
-    let challenge = buyer_challenge(&keypair(41))?;
-    coordinator.submit(&challenge, &raw, NOW)?;
-    close_challenge(
-        &deployment,
-        &challenge.body.challenge_id,
-        FindingChallengeVerdict::Upheld,
-        NOW + 1,
-    )?;
-
-    // Drive the head to finalizing on the same listing the sale path
-    // blocks, then fence the impairment the enforcement names.
-    let liability_key = byte_hex64(0xb1);
-    deployment
-        .challenges
-        .open_liability(&chio_store_sqlite::FindingLiabilityInput {
-            liability_key: &liability_key,
-            defect_key: &derive_defect_key(&finding.finding_id),
-            finding_id: &finding.finding_id,
-            listing_id: LISTING_ID,
-            allocation_id: &deployment.allocation_id,
-            venue_id: VENUE_ID,
-            chain_id: "chio-devnet",
-            vault_contract: BOND_VAULT_CONTRACT,
-            vault_id: "vault-01",
-            opened_at: NOW,
-        })?;
-    deployment.challenges.uphold_liability(
-        &liability_key,
-        &challenge.body.challenge_id,
-        1,
-        NOW + 2,
-    )?;
-    deployment.challenges.begin_appeal_window(
-        &liability_key,
-        FindingLiabilityState::UpheldPendingClaims,
-        NOW + 3,
-    )?;
-    deployment.challenges.begin_finalizing(
-        &liability_key,
-        FindingLiabilityState::PendingAppeal,
-        NOW + 4,
-    )?;
-
-    let seller = keypair(73);
-    let seller_impair_intent_id = byte_hex64(0xc1);
-    deployment.challenges.record_effect_intent(
-        &seller_impair_intent_id,
-        chio_store_sqlite::FindingEffectIntentKind::SellerImpair,
-        &byte_hex64(0xd1),
-        Some(&liability_key),
-        NOW + 5,
-    )?;
-    let (enforcement, snapshot) = enforcement_pair(
-        &liability_key,
-        &finding.finding_id,
-        &seller.public_key(),
-        &seller_impair_intent_id,
-    )?;
-
-    let outcome = coordinator.finalize(
-        &liability_key,
-        &enforcement,
-        &snapshot,
-        &seller.public_key(),
-        MAX_SNAPSHOT_AGE_SECS,
-        &settlement_config()?,
-        &settlement_config()?.operator_address,
-        &evm_vault_snapshot(),
-        &anchor_proof()?,
-        &AmbiguousPublisher,
-        SETTLEMENT_NOW,
-    )?;
+    let case = finalizing_liability()?;
+    let outcome = case.finalize(&AmbiguousPublisher, SETTLEMENT_NOW)?;
     assert_eq!(
         outcome,
-        FindingImpairmentOutcome::Quarantined {
+        FindingFinalization::Reconciled(FindingImpairmentOutcome::Quarantined {
             reason: FindingImpairmentQuarantine::StoredTransactionMissing
-        },
+        }),
         "a consumed evidence hash with no transaction behind it is never a slash"
     );
 
-    let liability = deployment
-        .challenges
-        .get_liability(&liability_key)?
-        .ok_or("liability head is durable")?;
+    let liability = case.head()?;
     assert_eq!(liability.state, FindingLiabilityState::Finalizing);
     assert!(liability.publication_pending);
     assert!(liability.quarantined);
     assert!(
-        deployment.purchases.sales_blocked(LISTING_ID)?,
+        case.deployment.purchases.sales_blocked(LISTING_ID)?,
         "a quarantined impairment keeps purchases denied"
     );
     assert_eq!(
-        deployment
-            .challenges
-            .get_effect_intent(&seller_impair_intent_id)?
-            .ok_or("the impairment intent is durable")?
-            .state,
-        FindingEffectIntentState::Quarantined
+        case.intent_state()?,
+        FindingEffectIntentState::Quarantined,
+        "an evidence hash burned by an unknown transaction needs an operator"
     );
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_an_unmined_broadcast_stays_dispatchable_and_settles_when_it_lands(
+) -> TestResult {
+    let case = finalizing_liability()?;
+    let publisher = MiningPublisher::new();
+
+    // The first attempt reports exactly what a durable publisher holds
+    // before its transaction is mined.
+    let first = case.finalize(&publisher, SETTLEMENT_NOW)?;
+    assert_eq!(
+        first,
+        FindingFinalization::Reconciled(FindingImpairmentOutcome::Quarantined {
+            reason: FindingImpairmentQuarantine::ReceiptMissing
+        })
+    );
+    assert_eq!(
+        case.intent_state()?,
+        FindingEffectIntentState::Failed,
+        "a receipt that has not arrived leaves the impairment dispatchable"
+    );
+    let parked = case.head()?;
+    assert_eq!(parked.state, FindingLiabilityState::Finalizing);
+    assert!(!parked.quarantined);
+
+    // The same transaction then mines and finalizes, and the liability
+    // reaches its terminal instead of staying blocked forever.
+    let second = case.finalize(&publisher, SETTLEMENT_NOW + 60)?;
+    assert_eq!(
+        second,
+        FindingFinalization::Reconciled(FindingImpairmentOutcome::Confirmed {
+            tx_hash: chain_hash(0x77)
+        })
+    );
+    assert_eq!(publisher.attempts(), 2);
+    assert_eq!(case.intent_state()?, FindingEffectIntentState::Confirmed);
+    let settled = case.head()?;
+    assert_eq!(settled.state, FindingLiabilityState::Settled);
+    assert!(!settled.publication_pending);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_a_confirmed_impairment_settles_without_dispatching_again() -> TestResult {
+    let case = finalizing_liability()?;
+    // An attempt that confirmed the impairment and died before it could
+    // settle the head leaves exactly this durable state.
+    case.deployment.challenges.advance_effect_intent(
+        &case.intent_key,
+        FindingEffectIntentState::Dispatched,
+        SETTLEMENT_NOW,
+    )?;
+    case.deployment.challenges.advance_effect_intent(
+        &case.intent_key,
+        FindingEffectIntentState::Confirmed,
+        SETTLEMENT_NOW,
+    )?;
+
+    let resumed = case.finalize(&UnreachablePublisher, SETTLEMENT_NOW + 1)?;
+    assert_eq!(resumed, FindingFinalization::AlreadyConfirmed);
+    let settled = case.head()?;
+    assert_eq!(
+        settled.state,
+        FindingLiabilityState::Settled,
+        "the resumed attempt finishes the settlement the interrupted one owed"
+    );
+    assert!(!settled.publication_pending);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_an_enforcement_naming_another_vault_never_reaches_the_publisher() -> TestResult
+{
+    let case = finalizing_liability()?;
+    // An instruction, an observation, and a live contract read that all
+    // agree with each other about a vault this liability was never opened
+    // against. Every check downstream of the head is satisfied.
+    let elsewhere = chain_hash(0x45);
+    let (enforcement, snapshot) = enforcement_pair_at_vault(
+        &case.liability_key,
+        &case.enforcement.body.finding_id,
+        &case.seller,
+        &case.intent_key,
+        &elsewhere,
+    )?;
+
+    let refused = case
+        .coordinator
+        .finalize(
+            &case.liability_key,
+            &enforcement,
+            &snapshot,
+            &case.seller,
+            MAX_SNAPSHOT_AGE_SECS,
+            &settlement_config()?,
+            &settlement_config()?.operator_address,
+            &evm_vault_snapshot_for(&elsewhere),
+            &anchor_proof()?,
+            &UnreachablePublisher,
+            SETTLEMENT_NOW,
+        )
+        .expect_err("one liability may only impair the vault it was opened against");
+    assert!(matches!(
+        refused,
+        ChallengeCoordinatorError::LiabilityIdentity("vault_id")
+    ));
+    assert_eq!(case.intent_state()?, FindingEffectIntentState::Pending);
+    assert_eq!(case.head()?.state, FindingLiabilityState::Finalizing);
     Ok(())
 }
 
@@ -3347,7 +3913,7 @@ fn finding_challenge_a_foreign_recipe_preimage_never_reaches_a_verdict() -> Test
     let sale = settle_purchase(&deployment, "alpha", BUYER_ONE_DESTINATION, 50, NOW)?;
 
     // A recipe that is canonical and binds the admitted profile, and is
-    // simply not the recipe the finding committed.
+    // not the recipe the finding committed.
     let mut foreign = replay_recipe(&challenged.profile_envelope_sha256);
     foreign.decision_rule_ref = "decision/replay-v2".to_string();
     let foreign_preimage = canonical_json_string(&foreign)?;
