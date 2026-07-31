@@ -1999,6 +1999,29 @@ impl FindingChallengeCoordinator {
             .ok_or(ChallengeCoordinatorError::TermsBinding("claim_window_secs"))
     }
 
+    /// Exposure still outstanding against one allocation, read after the
+    /// expiry sweep has retired every reservation whose expiry has
+    /// passed.
+    ///
+    /// The sweep releases exposure no purchase can realize any more, so
+    /// the figure every slash input reads is backed by reservations that
+    /// can still settle. The store serializes the sweep and the read on
+    /// one connection, and the query applies the same expiry rule itself,
+    /// so a lagging sweep can only overstate the encumbrance, never let a
+    /// dead reservation slip back in.
+    fn outstanding_exposure(
+        &self,
+        allocation_id: &str,
+        now: u64,
+    ) -> Result<u64, ChallengeCoordinatorError> {
+        self.purchases
+            .expire_reservations(now, usize::MAX)
+            .map_err(|error| ChallengeCoordinatorError::PurchaseStore(error.to_string()))?;
+        self.purchases
+            .list_outstanding_exposure_total(allocation_id, now)
+            .map_err(|error| ChallengeCoordinatorError::PurchaseStore(error.to_string()))
+    }
+
     /// Require the collateral behind this defect to be able to fund a
     /// nonzero impairment, on the same inputs the sealed accounting is
     /// computed from.
@@ -2007,10 +2030,7 @@ impl FindingChallengeCoordinator {
         collateral: &FindingCollateralFacts<'_>,
         now: u64,
     ) -> Result<(), ChallengeCoordinatorError> {
-        let open = self
-            .purchases
-            .list_outstanding_exposure_total(collateral.allocation_id, now)
-            .map_err(|error| ChallengeCoordinatorError::PurchaseStore(error.to_string()))?;
+        let open = self.outstanding_exposure(collateral.allocation_id, now)?;
         let candidate = collateral
             .base_finding_stake
             .units
@@ -2369,10 +2389,7 @@ impl FindingChallengeCoordinator {
         collateral: &FindingCollateralFacts<'_>,
         now: u64,
     ) -> Result<FindingPenaltyCalculation, ChallengeCoordinatorError> {
-        let open = self
-            .purchases
-            .list_outstanding_exposure_total(collateral.allocation_id, now)
-            .map_err(|error| ChallengeCoordinatorError::PurchaseStore(error.to_string()))?;
+        let open = self.outstanding_exposure(collateral.allocation_id, now)?;
         let computed = collateral
             .base_finding_stake
             .units
@@ -2434,10 +2451,7 @@ impl FindingChallengeCoordinator {
         // liability may draw from, so the encumbrances that size the
         // candidate are read against it rather than against a figure the
         // call carried in beside it.
-        let open = self
-            .purchases
-            .list_outstanding_exposure_total(identity.allocation_id, now)
-            .map_err(|error| ChallengeCoordinatorError::PurchaseStore(error.to_string()))?;
+        let open = self.outstanding_exposure(identity.allocation_id, now)?;
         let distribution = compute_slash_distribution(
             &SlashInputs {
                 base_finding_stake: collateral.base_finding_stake,

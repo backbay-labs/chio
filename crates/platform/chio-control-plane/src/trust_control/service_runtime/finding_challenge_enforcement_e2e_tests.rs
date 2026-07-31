@@ -6370,3 +6370,85 @@ fn finding_challenge_construction_refuses_a_key_reused_across_roles() -> TestRes
     }
     Ok(())
 }
+
+#[test]
+fn finding_challenge_an_expired_reservation_neither_wedges_nor_inflates_the_claim() -> TestResult {
+    let deployment = deployment()?;
+    let coordinator = deployment.coordinator(FindingDisputeLockDisposition::Forfeited)?;
+    let governance = governance()?;
+    let (finding, raw) = finding_artifact()?;
+    let harmed = settle_purchase(&deployment, "alpha", BUYER_ONE_DESTINATION, 60, NOW)?;
+
+    // A purchase that took the next slot and was then abandoned: nothing
+    // settles it, denies it, or releases it, and its expiry passes before
+    // adjudication. Without the expiry sweep it would hold slot two open
+    // forever, and its encumbrance would inflate the sealed slash.
+    deployment
+        .purchases
+        .open_reservation(&FindingPurchaseReservationInput {
+            reservation_id: "reservation-abandoned",
+            purchase_intent_id: "intent-abandoned",
+            authoritative_payment_operation_id: "payment-abandoned",
+            payer_hex: &keypair(41).public_key().to_hex(),
+            agent_id: "agent-buyer-01",
+            finding_id: &finding.finding_id,
+            listing_id: LISTING_ID,
+            bid_envelope_sha256: &digest("bid-abandoned"),
+            ask_digest: &digest("ask-abandoned"),
+            admission_envelope_sha256: &hex64('c'),
+            amount_units: 100,
+            currency: "USD",
+            expires_at: NOW + 5,
+            encumbrance_id: "encumbrance-abandoned",
+            allocation_id: &deployment.allocation_id,
+            maximum_sale_exposure_units: REGISTERED_EXPOSURE_CAP,
+            created_at: NOW + 1,
+        })?;
+    deployment
+        .purchases
+        .reserve_slot("reservation-abandoned", NOW + 1)?;
+
+    let challenge = buyer_challenge(&keypair(41))?;
+    coordinator.submit(&challenge, &raw, NOW + 2)?;
+    let outcome = upheld_outcome(&challenge, &deployment.allocation_id)?;
+    close_challenge(
+        &deployment,
+        &challenge.body.challenge_id,
+        FindingChallengeVerdict::Upheld,
+        &signed_envelope_sha256(&outcome)?,
+        NOW + 3,
+    )?;
+
+    let stake = usd(300);
+    let required = usd(5_000);
+    let upheld = uphold_across_claim_window(
+        &coordinator,
+        &market_terms(CLAIM_WINDOW_SECS)?,
+        &challenge.body.challenge_id,
+        &outcome,
+        &liability_identity(&finding.finding_id, &deployment.allocation_id),
+        2,
+        &[harmed.purchase_key],
+        &collateral_facts(&stake, &required, &deployment.allocation_id, 5_000),
+        &governance.context(),
+        &governance.sanction_case,
+        NOW + 7,
+    )?;
+
+    let reservation = deployment
+        .purchases
+        .get_reservation("reservation-abandoned")?
+        .ok_or("abandoned reservation is durable")?;
+    assert_eq!(
+        reservation.state,
+        chio_store_sqlite::FindingPurchaseReservationState::Expired,
+        "the claim path retires the reservation instead of waiting on it"
+    );
+    // The sealed accounting reads live exposure only: the base stake plus
+    // the settled sale's retained encumbrance, with nothing from the
+    // reservation that could never settle.
+    assert_eq!(upheld.sealed.distribution.slash.units, 400);
+    assert_eq!(upheld.sealed.distribution.buyer_pool_units, 60);
+    assert_eq!(upheld.sealed.total_realized_spend_units, 60);
+    Ok(())
+}

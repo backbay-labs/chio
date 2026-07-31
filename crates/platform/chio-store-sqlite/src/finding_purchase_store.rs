@@ -387,6 +387,12 @@ impl SqliteFindingPurchaseStore {
     /// outstanding against that allocation at `created_at` stays within
     /// `maximum_sale_exposure_units`.
     ///
+    /// Reservations encumbering this allocation whose expiry has passed
+    /// are expired inside the same transaction before the cap is checked,
+    /// so the cap bounds live exposure only: an abandoned reservation
+    /// releases its encumbrance here rather than occupying the seller's
+    /// capacity forever.
+    ///
     /// Idempotent on the reservation id: a replay carrying the same
     /// purchase identity returns
     /// [`FindingPurchaseWriteOutcome::ExistingSame`] without touching the
@@ -434,6 +440,7 @@ impl SqliteFindingPurchaseStore {
             input.encumbrance_id,
             "encumbrance id",
         )?;
+        expire_due_allocation_reservations_tx(&transaction, input.allocation_id, input.created_at)?;
         let outstanding =
             outstanding_exposure_total_tx(&transaction, input.allocation_id, input.created_at)?;
         let committed = outstanding
@@ -1684,11 +1691,65 @@ fn due_reservations_tx(
     Ok(due)
 }
 
+/// Expire the due reservations still holding an open encumbrance against
+/// one allocation, inside the caller's transaction, bounded by
+/// [`MAX_EXPIRY_BATCH`]. This runs before the allocation's exposure cap is
+/// checked so the cap bounds live exposure only; a residue past the batch
+/// bound keeps counting until a later pass reaches it, which can only
+/// deny a reservation, never overcommit one.
+fn expire_due_allocation_reservations_tx(
+    transaction: &Transaction<'_>,
+    allocation_id: &str,
+    now: u64,
+) -> Result<(), FindingPurchaseStoreError> {
+    let mut statement = transaction
+        .prepare(
+            r#"
+            SELECT reservations.reservation_id, reservations.state
+            FROM purchase_reservations AS reservations
+            JOIN seller_exposure_encumbrances AS encumbrances
+              ON encumbrances.reservation_id = reservations.reservation_id
+            WHERE encumbrances.allocation_id = ?1
+              AND encumbrances.state = 'open'
+              AND reservations.state IN ('open', 'slot_reserved')
+              AND reservations.expires_at <= ?2
+            ORDER BY reservations.expires_at ASC, reservations.reservation_id ASC
+            LIMIT ?3
+            "#,
+        )
+        .map_err(sqlite_error)?;
+    let due = statement
+        .query_map(
+            params![
+                allocation_id,
+                sqlite_i64(now, "now")?,
+                sqlite_i64(u64::try_from(MAX_EXPIRY_BATCH).unwrap_or(u64::MAX), "limit")?,
+            ],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
+        )
+        .map_err(sqlite_error)?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(sqlite_error)?;
+    drop(statement);
+    for (reservation_id, state) in &due {
+        abandon_reservation_tx(transaction, reservation_id, state, "expired", now)?;
+    }
+    Ok(())
+}
+
 /// Exposure booked against one allocation that is still outstanding at
 /// `now`. A settled sale's exposure does not vanish when the money moves:
 /// it stays encumbered until the retention horizon the settlement pinned
 /// lapses, so one allocation can never back more concurrent plus retained
 /// liability than the cap it registered.
+///
+/// An open encumbrance follows its reservation's own expiry semantics. A
+/// reservation still `open` past its expiry can never take a slot, so it
+/// can never become a sale: counting it would let an abandoned reservation
+/// encumber the cap forever. A `slot_reserved` reservation past its expiry
+/// keeps counting, because its delivery may still settle into a retained
+/// encumbrance until the expiry sweep closes it; dropping it early would
+/// undercount against exposure that can still materialize.
 fn outstanding_exposure_total_tx(
     transaction: &Transaction<'_>,
     allocation_id: &str,
@@ -1697,11 +1758,17 @@ fn outstanding_exposure_total_tx(
     let total: i64 = transaction
         .query_row(
             r#"
-            SELECT COALESCE(SUM(amount_units), 0) FROM seller_exposure_encumbrances
-            WHERE allocation_id = ?1
+            SELECT COALESCE(SUM(enc.amount_units), 0)
+            FROM seller_exposure_encumbrances AS enc
+            JOIN purchase_reservations AS res
+              ON res.reservation_id = enc.reservation_id
+            WHERE enc.allocation_id = ?1
               AND (
-                state = 'open'
-                OR (state = 'retained' AND retention_expires_at > ?2)
+                (
+                    enc.state = 'open'
+                    AND NOT (res.state = 'open' AND res.expires_at <= ?2)
+                )
+                OR (enc.state = 'retained' AND enc.retention_expires_at > ?2)
               )
             "#,
             params![allocation_id, sqlite_i64(now, "now")?],

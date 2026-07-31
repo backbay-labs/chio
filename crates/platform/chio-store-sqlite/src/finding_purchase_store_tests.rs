@@ -1374,6 +1374,115 @@ fn release_and_expiry_never_leave_a_slot_reserved() {
 }
 
 #[test]
+fn a_lapsed_reservation_stops_encumbering_the_allocation_at_the_next_reserve() {
+    let fixture = fixture();
+    // A reservation that takes most of the cap and a slot, then is
+    // abandoned: nothing settles it, denies it, or sweeps it.
+    let abandoned = Purchase::new("alpha", LISTING_ID, 400);
+    open_reservation(&fixture, &abandoned);
+    fixture
+        .store
+        .reserve_slot(&abandoned.reservation_id, NOW + 1)
+        .expect("reserve slot");
+
+    // While the reservation is live its exposure occupies the cap.
+    let crowded = Purchase::new("beta", LISTING_ID, 200);
+    assert!(
+        matches!(
+            fixture
+                .store
+                .open_reservation(&crowded.input(&fixture.allocation_id)),
+            Err(FindingPurchaseStoreError::ExposureOvercommitted { .. })
+        ),
+        "live exposure keeps occupying the cap"
+    );
+
+    // Past its expiry the reservation is dead weight: the next reserve
+    // expires it in the same transaction and checks the cap against live
+    // exposure only, so an abandoned purchase cannot lock the seller out.
+    let next = Purchase::new("gamma", LISTING_ID, 200);
+    let mut input = next.input(&fixture.allocation_id);
+    input.created_at = EXPIRES_AT;
+    input.expires_at = EXPIRES_AT + 3_600;
+    assert_eq!(
+        fixture
+            .store
+            .open_reservation(&input)
+            .expect("a lapsed reservation must not encumber the seller"),
+        FindingPurchaseWriteOutcome::Inserted
+    );
+    assert_eq!(
+        reservation_state(&fixture, &abandoned.reservation_id),
+        FindingPurchaseReservationState::Expired
+    );
+    assert_eq!(
+        encumbrance(&fixture, &abandoned.reservation_id).state,
+        FindingPurchaseEncumbranceState::Released
+    );
+    assert_eq!(
+        slot(&fixture, &abandoned.reservation_id).state,
+        FindingPurchaseSlotState::ClosedDeny
+    );
+    assert_eq!(outstanding_exposure(&fixture, EXPIRES_AT), 200);
+}
+
+#[test]
+fn the_exposure_query_follows_reservation_expiry_without_a_sweep() {
+    let fixture = fixture();
+    // One abandoned open reservation and one purchase holding a slot,
+    // both carrying the same expiry, and no sweep ever runs.
+    let abandoned = Purchase::new("alpha", LISTING_ID, 100);
+    open_reservation(&fixture, &abandoned);
+    let in_flight = Purchase::new("beta", LISTING_ID, 150);
+    open_reservation(&fixture, &in_flight);
+    fixture
+        .store
+        .reserve_slot(&in_flight.reservation_id, NOW + 1)
+        .expect("reserve slot");
+    assert_eq!(
+        outstanding_exposure(&fixture, NOW + 2),
+        250,
+        "live reservations encumber in full"
+    );
+
+    // Past the expiry the open reservation can never take a slot, so it
+    // stops counting even though nothing has swept it. The slot-holding
+    // purchase may still settle, so it must keep counting: dropping it
+    // here would let a new reservation overcommit against exposure that
+    // can still be retained.
+    assert_eq!(outstanding_exposure(&fixture, EXPIRES_AT), 150);
+    assert_eq!(
+        reservation_state(&fixture, &abandoned.reservation_id),
+        FindingPurchaseReservationState::Open,
+        "the figure moved on expiry alone, not on a sweep"
+    );
+
+    // The in-flight purchase settles past its expiry, exactly the path
+    // the query kept counting for: its exposure survives as a retained
+    // encumbrance through the settlement's own horizon.
+    let bytes = record_bytes("beta");
+    let digest = chio_core::sha256_hex(&bytes);
+    let purchase_key = hex64('d');
+    fixture
+        .store
+        .close_slot_with_record(&FindingPurchaseDeliveryInput {
+            reservation_id: &in_flight.reservation_id,
+            purchase_key: &purchase_key,
+            record_json: &bytes,
+            record_sha256: &digest,
+            delivery_receipt_id: "receipt-delivery-beta",
+            retention_expires_at: EXPIRES_AT + 100_000,
+            now: EXPIRES_AT,
+        })
+        .expect("settle the in-flight purchase past its expiry");
+    assert_eq!(
+        outstanding_exposure(&fixture, EXPIRES_AT + 1),
+        150,
+        "settlement carries the exposure into retention without a gap"
+    );
+}
+
+#[test]
 fn blocking_sales_stops_the_slot_line_and_the_wait_predicate_is_exact() {
     let fixture = fixture();
     let first = Purchase::new("alpha", LISTING_ID, 10);
