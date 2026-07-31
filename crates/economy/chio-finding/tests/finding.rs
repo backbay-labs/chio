@@ -10,7 +10,8 @@ use chio_finding::{
     compute_finding_id,
     crypto::{Keypair, PublicKey},
     Finding, FindingDescriptor, FindingError, FindingEvidenceClass, FindingGuaranteeClass,
-    FindingOutcomeClass, FINDING_SCHEMA_V1,
+    FindingOutcomeClass, FINDING_SCHEMA_V1, MAX_FINDING_EVIDENCE_RECEIPTS,
+    MAX_FINDING_IDENTIFIER_BYTES, MAX_FINDING_TEXT_BYTES,
 };
 use chio_finding::{sign_finding, verify_finding, verify_finding_signature};
 use serde_json::{json, Value};
@@ -98,6 +99,16 @@ fn base_finding(issuer: &Keypair) -> Finding {
     let mut finding = draft_finding_with_issuer(issuer.public_key());
     recompute_finding_id(&mut finding);
     finding
+}
+
+fn assert_size_limit(issuer: &Keypair, field: &'static str, mutate: impl FnOnce(&mut Finding)) {
+    let mut finding = base_finding(issuer);
+    mutate(&mut finding);
+    recompute_finding_id(&mut finding);
+    assert_eq!(
+        finding.validate(),
+        Err(FindingError::SizeLimitExceeded(field))
+    );
 }
 
 fn signed_asserted_finding_without_receipts() -> Result<Finding, FindingError> {
@@ -229,6 +240,46 @@ fn duplicate_evidence_receipt_ids_are_rejected() {
         draft.validate(),
         Err(FindingError::DuplicateEvidenceReceiptId)
     ));
+}
+
+#[test]
+fn oversized_finding_fields_are_rejected() {
+    let issuer = Keypair::generate();
+    let oversized_id = "r".repeat(MAX_FINDING_IDENTIFIER_BYTES + 1);
+    let oversized_text = "t".repeat(MAX_FINDING_TEXT_BYTES + 1);
+
+    assert_size_limit(&issuer, "descriptor.topic", |finding| {
+        finding.descriptor.topic = oversized_text.clone();
+    });
+    assert_size_limit(&issuer, "payload_media_type", |finding| {
+        finding.payload_media_type = oversized_text;
+    });
+    assert_size_limit(&issuer, "evidence_checkpoint_ref", |finding| {
+        finding.evidence_checkpoint_ref = oversized_id.clone();
+    });
+    assert_size_limit(&issuer, "evidence_receipt_ids[]", |finding| {
+        finding.evidence_receipt_ids = vec![oversized_id.clone()];
+    });
+    assert_size_limit(&issuer, "intent_commitment_receipt_id", |finding| {
+        finding.intent_commitment_receipt_id = Some(oversized_id.clone());
+    });
+    assert_size_limit(&issuer, "bond_ref", |finding| {
+        finding.bond_ref = oversized_id.clone();
+    });
+    assert_size_limit(&issuer, "status_feed_ref", |finding| {
+        finding.status_feed_ref = oversized_id.clone();
+    });
+    assert_size_limit(&issuer, "license_ref", |finding| {
+        finding.license_ref = Some(oversized_id.clone());
+    });
+    assert_size_limit(&issuer, "price_hint_ref", |finding| {
+        finding.price_hint_ref = Some(oversized_id);
+    });
+    assert_size_limit(&issuer, "evidence_receipt_ids", |finding| {
+        finding.evidence_receipt_ids = (0..=MAX_FINDING_EVIDENCE_RECEIPTS)
+            .map(|index| format!("receipt-{index}"))
+            .collect();
+    });
 }
 
 #[test]
@@ -534,6 +585,43 @@ fn schema_rejects_duplicate_evidence_receipts() -> TestResult {
     let mut value = serde_json::to_value(finding)?;
     value["evidence_receipt_ids"] = json!(["r-1", "r-1"]);
     assert_finding_schema_rejects(&value, "duplicate evidence receipt ids")
+}
+
+#[test]
+fn schema_rejects_oversized_finding_fields() -> TestResult {
+    let oversized_id = "r".repeat(MAX_FINDING_IDENTIFIER_BYTES + 1);
+    let oversized_text = "t".repeat(MAX_FINDING_TEXT_BYTES + 1);
+
+    let mut value = serde_json::to_value(signed_asserted_finding_without_receipts()?)?;
+    value["descriptor"]["topic"] = json!(oversized_text.clone());
+    assert_finding_schema_rejects(&value, "oversized descriptor topic")?;
+
+    let mut value = serde_json::to_value(signed_asserted_finding_without_receipts()?)?;
+    value["payload_media_type"] = json!(oversized_text);
+    assert_finding_schema_rejects(&value, "oversized payload media type")?;
+
+    for field in [
+        "evidence_checkpoint_ref",
+        "intent_commitment_receipt_id",
+        "bond_ref",
+        "status_feed_ref",
+        "license_ref",
+        "price_hint_ref",
+    ] {
+        let mut value = serde_json::to_value(signed_asserted_finding_without_receipts()?)?;
+        value[field] = json!(oversized_id.clone());
+        assert_finding_schema_rejects(&value, field)?;
+    }
+
+    let mut value = serde_json::to_value(signed_asserted_finding_without_receipts()?)?;
+    value["evidence_receipt_ids"] = json!([oversized_id]);
+    assert_finding_schema_rejects(&value, "oversized evidence receipt id")?;
+
+    let mut value = serde_json::to_value(signed_asserted_finding_without_receipts()?)?;
+    value["evidence_receipt_ids"] = json!((0..=MAX_FINDING_EVIDENCE_RECEIPTS)
+        .map(|index| format!("receipt-{index}"))
+        .collect::<Vec<_>>());
+    assert_finding_schema_rejects(&value, "too many evidence receipt ids")
 }
 
 #[test]

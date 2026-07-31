@@ -46,7 +46,18 @@ pub enum FindingError {
     Signing,
     #[error("finding signature invalid")]
     SignatureInvalid,
+    #[error("value exceeds its size bound: {0}")]
+    SizeLimitExceeded(&'static str),
 }
+
+/// Upper bound on opaque identifiers carried by finding artifacts.
+pub const MAX_FINDING_IDENTIFIER_BYTES: usize = 512;
+
+/// Upper bound on searchable or display-oriented text carried by findings.
+pub const MAX_FINDING_TEXT_BYTES: usize = 512;
+
+/// Upper bound on receipt references carried by a finding.
+pub const MAX_FINDING_EVIDENCE_RECEIPTS: usize = 256;
 
 pub(crate) fn is_hex64(value: &str) -> bool {
     value.len() == 64
@@ -61,6 +72,22 @@ fn require_non_empty(value: &str, field: &'static str) -> Result<(), FindingErro
     } else {
         Ok(())
     }
+}
+
+fn require_bounded_non_empty(
+    value: &str,
+    field: &'static str,
+    max_bytes: usize,
+) -> Result<(), FindingError> {
+    require_non_empty(value, field)?;
+    if value.len() > max_bytes {
+        return Err(FindingError::SizeLimitExceeded(field));
+    }
+    Ok(())
+}
+
+fn require_bounded_id(value: &str, field: &'static str) -> Result<(), FindingError> {
+    require_bounded_non_empty(value, field, MAX_FINDING_IDENTIFIER_BYTES)
 }
 
 fn require_hex64(value: &str, field: &'static str) -> Result<(), FindingError> {
@@ -103,11 +130,19 @@ impl Finding {
         if self.runtime_assurance_tier == Some(RuntimeAssuranceTier::None) {
             return Err(FindingError::NonCanonicalRuntimeAssuranceTier);
         }
-        require_non_empty(&self.descriptor.topic, "descriptor.topic")?;
+        require_bounded_non_empty(
+            &self.descriptor.topic,
+            "descriptor.topic",
+            MAX_FINDING_TEXT_BYTES,
+        )?;
         require_hex64(&self.descriptor.context_sha256, "descriptor.context_sha256")?;
         require_hex64(&self.payload_sha256, "payload_sha256")?;
-        require_non_empty(&self.payload_media_type, "payload_media_type")?;
-        require_non_empty(&self.evidence_checkpoint_ref, "evidence_checkpoint_ref")?;
+        require_bounded_non_empty(
+            &self.payload_media_type,
+            "payload_media_type",
+            MAX_FINDING_TEXT_BYTES,
+        )?;
+        require_bounded_id(&self.evidence_checkpoint_ref, "evidence_checkpoint_ref")?;
         if self.evidence_cost.currency.len() != 3
             || !self
                 .evidence_cost
@@ -117,8 +152,8 @@ impl Finding {
         {
             return Err(FindingError::InvalidCurrency);
         }
-        require_non_empty(&self.bond_ref, "bond_ref")?;
-        require_non_empty(&self.status_feed_ref, "status_feed_ref")?;
+        require_bounded_id(&self.bond_ref, "bond_ref")?;
+        require_bounded_id(&self.status_feed_ref, "status_feed_ref")?;
         if self.guarantee_class == FindingGuaranteeClass::DeterministicReplay {
             match &self.replay_recipe_sha256 {
                 Some(recipe) => require_hex64(recipe, "replay_recipe_sha256")?,
@@ -140,21 +175,24 @@ impl Finding {
         if claims_attestation && self.evidence_receipt_ids.is_empty() {
             return Err(FindingError::MissingEvidence);
         }
+        if self.evidence_receipt_ids.len() > MAX_FINDING_EVIDENCE_RECEIPTS {
+            return Err(FindingError::SizeLimitExceeded("evidence_receipt_ids"));
+        }
         let mut unique_receipt_ids = BTreeSet::new();
         for receipt_id in &self.evidence_receipt_ids {
-            require_non_empty(receipt_id, "evidence_receipt_ids[]")?;
+            require_bounded_id(receipt_id, "evidence_receipt_ids[]")?;
             if !unique_receipt_ids.insert(receipt_id) {
                 return Err(FindingError::DuplicateEvidenceReceiptId);
             }
         }
         if let Some(receipt_id) = &self.intent_commitment_receipt_id {
-            require_non_empty(receipt_id, "intent_commitment_receipt_id")?;
+            require_bounded_id(receipt_id, "intent_commitment_receipt_id")?;
         }
         if let Some(license_ref) = &self.license_ref {
-            require_non_empty(license_ref, "license_ref")?;
+            require_bounded_id(license_ref, "license_ref")?;
         }
         if let Some(price_hint_ref) = &self.price_hint_ref {
-            require_non_empty(price_hint_ref, "price_hint_ref")?;
+            require_bounded_id(price_hint_ref, "price_hint_ref")?;
         }
         if self.expires_at <= self.issued_at {
             return Err(FindingError::InvalidValidityWindow);

@@ -39,7 +39,7 @@
       ],
       "properties": {
         "topic": {
-          "$ref": "#/$defs/nonBlankString"
+          "$ref": "#/$defs/boundedText"
         },
         "context_sha256": {
           "$ref": "#/$defs/sha256"
@@ -64,17 +64,18 @@
       "$ref": "#/$defs/sha256"
     },
     "payload_media_type": {
-      "$ref": "#/$defs/nonBlankString"
+      "$ref": "#/$defs/boundedText"
     },
     "evidence_receipt_ids": {
       "type": "array",
+      "maxItems": 256,
       "uniqueItems": true,
       "items": {
-        "$ref": "#/$defs/nonBlankString"
+        "$ref": "#/$defs/boundedIdentifier"
       }
     },
     "evidence_checkpoint_ref": {
-      "$ref": "#/$defs/nonBlankString"
+      "$ref": "#/$defs/boundedIdentifier"
     },
     "evidence_cost": {
       "type": "object",
@@ -111,19 +112,19 @@
       "$ref": "#/$defs/sha256"
     },
     "intent_commitment_receipt_id": {
-      "$ref": "#/$defs/nonBlankString"
+      "$ref": "#/$defs/boundedIdentifier"
     },
     "bond_ref": {
-      "$ref": "#/$defs/nonBlankString"
+      "$ref": "#/$defs/boundedIdentifier"
     },
     "status_feed_ref": {
-      "$ref": "#/$defs/nonBlankString"
+      "$ref": "#/$defs/boundedIdentifier"
     },
     "license_ref": {
-      "$ref": "#/$defs/nonBlankString"
+      "$ref": "#/$defs/boundedIdentifier"
     },
     "price_hint_ref": {
-      "$ref": "#/$defs/nonBlankString"
+      "$ref": "#/$defs/boundedIdentifier"
     },
     "issuer": {
       "type": "string",
@@ -209,8 +210,14 @@
       "minimum": 0,
       "maximum": 9007199254740991
     },
-    "nonBlankString": {
+    "boundedIdentifier": {
       "type": "string",
+      "maxLength": 512,
+      "pattern": "\\S"
+    },
+    "boundedText": {
+      "type": "string",
+      "maxLength": 512,
       "pattern": "\\S"
     },
     "sha256": {
