@@ -1478,6 +1478,11 @@ impl ChioKernel {
             purchase.as_ref(),
         );
         let delivery_denied = delivery_evaluation.denial.is_some();
+        let projected_terminal_state = if delivery_denied {
+            AdmissionOperationState::DeniedAfterDelivery
+        } else {
+            AdmissionOperationState::Completed
+        };
         let terminal_decision = match &delivery_evaluation.denial {
             Some(denial) => Decision::Deny {
                 reason: denial.message.to_owned(),
@@ -1757,11 +1762,7 @@ impl ChioKernel {
             // like the other non-Completed terminals, attaches no
             // completed-tool-outcome reference. The delivered output survives
             // as the receipt content hash and the delivery-contract block.
-            projected_state: if delivery_denied {
-                AdmissionOperationState::DeniedAfterDelivery
-            } else {
-                AdmissionOperationState::Completed
-            },
+            projected_state: projected_terminal_state,
             projected_dispatch_state: AdmissionDispatchState::Terminal,
             trusted_time_unix_ms: trusted_now_unix_ms,
             coordinator_lease_id: context.coordinator_lease_id.clone(),
@@ -1972,6 +1973,7 @@ impl ChioKernel {
                     trusted_now_unix_ms,
                     terminal_outcome.outcome_id().clone(),
                     terminal_outcome.version(),
+                    projected_terminal_state,
                 )
                 .map_err(KernelError::from)
             })
@@ -1988,6 +1990,7 @@ impl ChioKernel {
                 &receipt,
                 terminal_outcome.outcome_id().clone(),
                 terminal_outcome.version(),
+                projected_terminal_state,
             )?)
         } else {
             None
@@ -2017,10 +2020,13 @@ impl ChioKernel {
             delivery_evaluation.denial.as_ref()
         {
             // A delivery denial terminates as a persisted signed Deny
-            // whose hold was released and whose capture is zero. Channel
-            // terminals do not apply: the pre-dispatch gate admits only a
-            // reversible-hold tool dispatch for a digest-constrained
-            // request.
+            // whose hold was released and whose capture is zero. The
+            // payment evidence binds the released journal and the
+            // observation attempt binds the release settlement, so the
+            // terminal carries the same participant proof a completed
+            // capture carries. Channel terminals do not apply: the
+            // pre-dispatch gate admits only a reversible-hold tool
+            // dispatch for a digest-constrained request.
             let projection =
                 crate::admission_operation::AdmissionTerminalProjection::DeniedAfterDelivery {
                     context,
@@ -2030,6 +2036,8 @@ impl ChioKernel {
                             receipt,
                         )),
                     ),
+                    payment_evidence: payment_evidence.map(Box::new),
+                    observer_work: observer_work.map(Box::new),
                 };
             let terminal = runtime
                 .store

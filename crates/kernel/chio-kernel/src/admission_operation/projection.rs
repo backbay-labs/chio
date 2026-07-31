@@ -330,12 +330,28 @@ impl AdmissionProjectionCapabilities {
                 )
             }
             AdmissionTerminalProjection::CompensatedBeforeDispatch { evidence, .. }
-            | AdmissionTerminalProjection::NotAcceptedAfterDispatchCommit { evidence, .. }
-            | AdmissionTerminalProjection::DeniedAfterDelivery { evidence, .. } => require(
-                !matches!(evidence.as_ref(), AdmissionReceiptOrIncident::Incident(_))
-                    || self.incident_terminal,
-                "incident_terminal",
-            ),
+            | AdmissionTerminalProjection::NotAcceptedAfterDispatchCommit { evidence, .. } => {
+                require(
+                    !matches!(evidence.as_ref(), AdmissionReceiptOrIncident::Incident(_))
+                        || self.incident_terminal,
+                    "incident_terminal",
+                )
+            }
+            AdmissionTerminalProjection::DeniedAfterDelivery { evidence, .. } => {
+                require(
+                    !matches!(evidence.as_ref(), AdmissionReceiptOrIncident::Incident(_))
+                        || self.incident_terminal,
+                    "incident_terminal",
+                )?;
+                require(
+                    !requirements.payment || self.payment_terminal,
+                    "payment_terminal",
+                )?;
+                require(
+                    !requirements.observation_attempt_zero || self.observation_attempt_zero,
+                    "observation_attempt_zero",
+                )
+            }
             AdmissionTerminalProjection::OutcomeUnknownAfterDispatch { .. } => {
                 require(self.incident_terminal, "incident_terminal")
             }
@@ -610,7 +626,7 @@ impl AdmissionExactProjectionBindingV1 {
         })
     }
 
-    pub(in crate::admission_operation) fn validate_against(
+    pub fn validate_against(
         &self,
         operation: &AdmissionOperationV1,
         context: &AdmissionProjectionContext,
@@ -743,7 +759,9 @@ macro_rules! admission_projection_binding {
 admission_projection_binding!(GovernedMutationAuditEvent);
 admission_projection_binding!(AdmissionIncident);
 
-fn receipt_digest(receipt: &ChioReceipt) -> Result<AdmissionDigest, AdmissionOperationError> {
+pub(super) fn receipt_digest(
+    receipt: &ChioReceipt,
+) -> Result<AdmissionDigest, AdmissionOperationError> {
     let bytes = canonical_json_bytes(receipt)
         .map_err(|error| AdmissionOperationError::CanonicalJson(error.to_string()))?;
     AdmissionDigest::try_new("consumer_receipt_digest", sha256_hex(&bytes))
@@ -1097,6 +1115,21 @@ pub struct ObservationAttemptZero {
     outcome_version: u64,
 }
 
+/// The two terminal states whose settlement is observable: a completed
+/// capture and a denied delivery's zero-charge release. Both retain the
+/// delivered tool outcome the observation binds against.
+fn validate_observed_terminal_state(
+    projected_state: AdmissionOperationState,
+) -> Result<(), AdmissionOperationError> {
+    if !matches!(
+        projected_state,
+        AdmissionOperationState::Completed | AdmissionOperationState::DeniedAfterDelivery
+    ) {
+        return Err(AdmissionOperationError::TerminalProjectionBindingMismatch);
+    }
+    Ok(())
+}
+
 impl ObservationAttemptZero {
     pub(crate) fn from_verified(
         operation: &AdmissionOperationV1,
@@ -1104,15 +1137,17 @@ impl ObservationAttemptZero {
         receipt: &VerifiedAdmissionReceipt,
         outcome_id: AdmissionDigest,
         outcome_version: u64,
+        projected_state: AdmissionOperationState,
     ) -> Result<Self, AdmissionOperationError> {
         let receipt = receipt.receipt();
+        validate_observed_terminal_state(projected_state)?;
         validate_positive_ijson("observation_outcome_version", outcome_version)?;
         operation.validate_completed_tool_outcome_attachment(&outcome_id)?;
         Ok(Self {
             binding: AdmissionExactProjectionBindingV1::from_verified(
                 operation,
                 context,
-                AdmissionOperationState::Completed,
+                projected_state,
             )?,
             pending: PendingSettlementObservation {
                 next_visible_at_ms: context.trusted_time_unix_ms,
@@ -1135,7 +1170,14 @@ impl ObservationAttemptZero {
         outcome_id: AdmissionDigest,
         outcome_version: u64,
     ) -> Result<Self, AdmissionOperationError> {
-        Self::from_verified(operation, context, receipt, outcome_id, outcome_version)
+        Self::from_verified(
+            operation,
+            context,
+            receipt,
+            outcome_id,
+            outcome_version,
+            AdmissionOperationState::Completed,
+        )
     }
 
     pub(super) fn validate_against(
@@ -1145,10 +1187,12 @@ impl ObservationAttemptZero {
         receipt: &VerifiedAdmissionReceipt,
         outcome_id: &AdmissionDigest,
         outcome_version: u64,
+        projected_state: AdmissionOperationState,
     ) -> Result<(), AdmissionOperationError> {
         let receipt = receipt.receipt();
+        validate_observed_terminal_state(projected_state)?;
         self.binding
-            .validate_against(operation, context, AdmissionOperationState::Completed)?;
+            .validate_against(operation, context, projected_state)?;
         validate_positive_ijson("observation_outcome_version", self.outcome_version)?;
         operation.validate_completed_tool_outcome_attachment(outcome_id)?;
         if self.pending.next_visible_at_ms != context.trusted_time_unix_ms
@@ -1160,6 +1204,10 @@ impl ObservationAttemptZero {
             return Err(AdmissionOperationError::TerminalProjectionBindingMismatch);
         }
         Ok(())
+    }
+
+    pub(super) const fn outcome_version(&self) -> u64 {
+        self.outcome_version
     }
 
     #[must_use]
@@ -1185,6 +1233,29 @@ pub struct AdmissionCompletedProjection {
     pub observer_work: Option<ObservationAttemptZero>,
     pub obligation: Option<ObligationProjection>,
     pub channel_terminal: Option<VerifiedChannelTerminalProjectionV1>,
+}
+
+/// The presence rule for the denied-after-delivery terminal, the analogue
+/// of [`validate_completed_participant_presence`]: a paid operation must
+/// carry the payment evidence binding its released journal, an observed
+/// operation must carry its observation attempt, and a requirement this
+/// terminal cannot represent (authorization consumption, outcome
+/// eligibility, obligation, channel) denies the projection outright.
+pub(super) fn validate_denied_after_delivery_participant_presence(
+    requirements: AdmissionParticipantRequirements,
+    payment_evidence: Option<&PaymentTerminalEvidence>,
+    observer_work: Option<&ObservationAttemptZero>,
+) -> Result<(), AdmissionOperationError> {
+    if requirements.authorization_consumption
+        || requirements.outcome_eligibility
+        || requirements.obligation
+        || requirements.channel
+        || payment_evidence.is_some() != requirements.payment
+        || observer_work.is_some() != requirements.observation_attempt_zero
+    {
+        return Err(AdmissionOperationError::TerminalProjectionBindingMismatch);
+    }
+    Ok(())
 }
 
 pub(super) fn validate_completed_participant_presence(
@@ -1254,6 +1325,8 @@ pub enum AdmissionTerminalProjection {
         context: AdmissionProjectionContext,
         reason: DeliveryDenialReason,
         evidence: Box<AdmissionReceiptOrIncident>,
+        payment_evidence: Option<Box<PaymentTerminalEvidence>>,
+        observer_work: Option<Box<ObservationAttemptZero>>,
     },
     OutcomeUnknownAfterDispatch {
         context: AdmissionProjectionContext,
@@ -1583,8 +1656,44 @@ impl AdmissionTerminalProjection {
                 )?);
                 records.push(canonical_receipt_or_incident_record(evidence)?);
             }
-            Self::DeniedAfterDelivery { evidence, .. } => {
-                records.push(canonical_receipt_or_incident_record(evidence)?);
+            Self::DeniedAfterDelivery {
+                context,
+                evidence,
+                payment_evidence,
+                observer_work,
+                ..
+            } => {
+                let AdmissionReceiptOrIncident::Receipt(receipt) = evidence.as_ref() else {
+                    return Err(AdmissionOperationError::TerminalProjectionBindingMismatch);
+                };
+                records.push(canonical_projection_record(
+                    AdmissionProjectionRecordKind::Receipt,
+                    AdmissionIdentifier::try_new(
+                        "projection_receipt_id",
+                        receipt.receipt().id.clone(),
+                    )?,
+                    receipt.receipt(),
+                )?);
+                if let Some(payment) = payment_evidence {
+                    records.push(canonical_projection_record(
+                        AdmissionProjectionRecordKind::PaymentTerminal,
+                        AdmissionIdentifier::try_new(
+                            "projection_operation_record_id",
+                            context.operation_id.as_str().to_owned(),
+                        )?,
+                        payment,
+                    )?);
+                }
+                if let Some(observer) = observer_work {
+                    records.push(canonical_projection_record(
+                        AdmissionProjectionRecordKind::ObservationAttemptZero,
+                        AdmissionIdentifier::try_new(
+                            "projection_observer_receipt_id",
+                            receipt.receipt().id.clone(),
+                        )?,
+                        observer.pending(),
+                    )?);
+                }
             }
             Self::OutcomeUnknownAfterDispatch { incident, .. } => {
                 records.push(canonical_projection_record(
@@ -1727,6 +1836,7 @@ impl AdmissionOperationV1 {
                         &completed.receipt,
                         outcome_id,
                         outcome_version,
+                        AdmissionOperationState::Completed,
                     )?;
                 }
                 if let Some(eligibility) = &completed.eligibility {
@@ -1738,6 +1848,7 @@ impl AdmissionOperationV1 {
                         &completed.receipt,
                         outcome_id,
                         outcome_version,
+                        AdmissionOperationState::Completed,
                     )?;
                 }
                 if let Some(obligation) = &completed.obligation {
@@ -1771,6 +1882,7 @@ impl AdmissionOperationV1 {
                         &completed.receipt,
                         outcome_id,
                         outcome_version,
+                        AdmissionOperationState::Completed,
                     )?;
                 }
                 if let Some(channel) = &completed.channel_terminal {
@@ -1824,16 +1936,62 @@ impl AdmissionOperationV1 {
                     evidence.replay(&projection_digest)?,
                 )
             }
-            AdmissionTerminalProjection::DeniedAfterDelivery { evidence, .. } => {
+            AdmissionTerminalProjection::DeniedAfterDelivery {
+                evidence,
+                payment_evidence,
+                observer_work,
+                ..
+            } => {
                 // The delivered output was produced but rejected, so the
                 // hold was released rather than compensated: nothing was
-                // captured to compensate.
+                // captured to compensate. The participant records bind the
+                // released journal and the observation of that release to
+                // this exact terminal and to the retained tool outcome.
+
+                validate_denied_after_delivery_participant_presence(
+                    requirements,
+                    payment_evidence.as_deref(),
+                    observer_work.as_deref(),
+                )?;
+                let AdmissionReceiptOrIncident::Receipt(receipt) = evidence.as_ref() else {
+                    return Err(AdmissionOperationError::TerminalProjectionBindingMismatch);
+                };
                 evidence.validate_against(
                     self,
                     context,
                     AdmissionOperationState::DeniedAfterDelivery,
                     AdmissionCompensationStatus::NotCompensated,
                 )?;
+                if payment_evidence.is_some() || observer_work.is_some() {
+                    let outcome_id = self
+                        .tool_outcome_id()
+                        .ok_or(AdmissionOperationError::TerminalProjectionBindingMismatch)?;
+                    if let (Some(payment), Some(observer)) = (payment_evidence, observer_work) {
+                        if payment.outcome_version() != observer.outcome_version() {
+                            return Err(AdmissionOperationError::TerminalProjectionBindingMismatch);
+                        }
+                    }
+                    if let Some(payment) = payment_evidence {
+                        payment.validate_against(
+                            self,
+                            context,
+                            receipt,
+                            outcome_id,
+                            payment.outcome_version(),
+                            AdmissionOperationState::DeniedAfterDelivery,
+                        )?;
+                    }
+                    if let Some(observer) = observer_work {
+                        observer.validate_against(
+                            self,
+                            context,
+                            receipt,
+                            outcome_id,
+                            observer.outcome_version(),
+                            AdmissionOperationState::DeniedAfterDelivery,
+                        )?;
+                    }
+                }
                 (
                     AdmissionOperationState::DeniedAfterDelivery,
                     evidence.replay(&projection_digest)?,

@@ -17,12 +17,12 @@ use chio_kernel::admission_operation::{
     AdmissionOperationId, AdmissionOperationKind, AdmissionOperationState, AdmissionOperationStore,
     AdmissionOperationStoreError, AdmissionOperationV1, AdmissionProjectionCapabilities,
     AdmissionProjectionContext, AdmissionProjectionManifestV1, AdmissionProjectionRecordKind,
-    AdmissionRecoveryLease, AdmissionReplayClassification, AdmissionReplayKey, AdmissionTerminal,
-    AdmissionTerminalProjection, AdmissionTerminalReplay, CanonicalAdmissionProjectionRecord,
-    CanonicalAdmissionTerminalProjection, PersistedAdmissionOperationV1,
-    QualifiedAdmissionOperationStore, SideEffectClass, SignedAdmissionTerminalProjectionV1,
-    UntrustedAdmissionRecoveryClaim, VerifiedAdmissionTerminalProjectionRecordV1,
-    VerifiedAdmissionTerminalProjectionV1,
+    AdmissionReceiptOrIncident, AdmissionRecoveryLease, AdmissionReplayClassification,
+    AdmissionReplayKey, AdmissionTerminal, AdmissionTerminalProjection, AdmissionTerminalReplay,
+    CanonicalAdmissionProjectionRecord, CanonicalAdmissionTerminalProjection,
+    PersistedAdmissionOperationV1, QualifiedAdmissionOperationStore, SideEffectClass,
+    SignedAdmissionTerminalProjectionV1, UntrustedAdmissionRecoveryClaim,
+    VerifiedAdmissionTerminalProjectionRecordV1, VerifiedAdmissionTerminalProjectionV1,
 };
 use chio_kernel::budget_store::{
     BudgetAuthorizeHoldDecision, BudgetAuthorizeHoldRequest, BudgetCaptureInvocationRequest,
@@ -627,8 +627,14 @@ impl SqliteAdmissionOperationStore {
             projected_terminal_state(projection),
             canonical.records().iter().filter_map(|record| {
                 (record.commitment().kind() == AdmissionProjectionRecordKind::PaymentTerminal)
-                    .then_some(record.canonical_bytes())
+                    .then_some((record.commitment().record_id(), record.canonical_bytes()))
             }),
+            canonical
+                .records()
+                .iter()
+                .find(|record| record.commitment().kind() == AdmissionProjectionRecordKind::Receipt)
+                .map(CanonicalAdmissionProjectionRecord::canonical_bytes),
+            canonical.projection_bytes(),
         )?;
 
         if stored.operation.state().is_terminal() {

@@ -48,7 +48,7 @@ pub(crate) fn insert_payment_journal(
 }
 
 pub(crate) fn load_payment_journal(
-    transaction: &rusqlite::Transaction<'_>,
+    transaction: &rusqlite::Connection,
     operation_id: &str,
 ) -> Result<Option<PaymentJournalRecord>, BudgetStoreError> {
     transaction

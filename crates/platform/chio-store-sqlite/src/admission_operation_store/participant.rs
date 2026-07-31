@@ -132,8 +132,14 @@ impl SqliteAdmissionOperationStore {
             verified.terminal_operation().state(),
             verified.records().iter().filter_map(|record| {
                 (record.kind() == AdmissionProjectionRecordKind::PaymentTerminal)
-                    .then_some(record.canonical_json())
+                    .then_some((record.record_id(), record.canonical_json()))
             }),
+            verified
+                .records()
+                .iter()
+                .find(|record| record.kind() == AdmissionProjectionRecordKind::Receipt)
+                .map(VerifiedAdmissionTerminalProjectionRecordV1::canonical_json),
+            verified.projection_json(),
         )?;
 
         if stored.operation.state().is_terminal() {
@@ -295,8 +301,14 @@ fn verify_anchored_terminal_authority(
         verified.terminal_operation().state(),
         verified.records().iter().filter_map(|record| {
             (record.kind() == AdmissionProjectionRecordKind::PaymentTerminal)
-                .then_some(record.canonical_json())
+                .then_some((record.record_id(), record.canonical_json()))
         }),
+        verified
+            .records()
+            .iter()
+            .find(|record| record.kind() == AdmissionProjectionRecordKind::Receipt)
+            .map(VerifiedAdmissionTerminalProjectionRecordV1::canonical_json),
+        verified.projection_json(),
     )?;
     if stored.operation.state().is_terminal() {
         verify_exact_signed_terminal_replay(transaction, &stored, verified)?;
@@ -536,15 +548,135 @@ pub(super) fn validate_payment_reconcile_binding(
     Ok(())
 }
 
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct UntrustedAdmissionExactProjectionBindingV1 {
+    operation_id: AdmissionOperationId,
+    request_id: AdmissionIdentifier,
+    request_binding_hash: AdmissionDigest,
+    source_operation_version: u64,
+    projected_operation_version: u64,
+    projected_state: AdmissionOperationState,
+    trusted_time_unix_ms: u64,
+    coordinator_lease_id: AdmissionIdentifier,
+    coordinator_lease_epoch: u64,
+    store_fence: StoreMutationFence,
+    retained_dispatch_commit:
+        Option<chio_kernel::admission_operation::AdmissionDispatchCommitBindingV1>,
+}
+
+impl UntrustedAdmissionExactProjectionBindingV1 {
+    fn validate_against(
+        &self,
+        operation: &AdmissionOperationV1,
+        context: &AdmissionProjectionContext,
+        projected_state: AdmissionOperationState,
+    ) -> Result<(), AdmissionOperationStoreError> {
+        operation.validate()?;
+        context.validate()?;
+        let operation_is_projected = operation.state().is_terminal();
+        let expected_source_version = if operation_is_projected {
+            operation
+                .version()
+                .checked_sub(1)
+                .ok_or_else(|| invariant("terminal operation version underflow"))?
+        } else {
+            operation.version()
+        };
+        let expected_projected_version = expected_source_version
+            .checked_add(1)
+            .ok_or_else(|| invariant("terminal operation version overflow"))?;
+        if self.operation_id != *operation.binding().operation_id()
+            || self.request_id != operation.replay_key().request_id
+            || self.request_binding_hash != *operation.binding().request_binding_hash()
+            || self.source_operation_version != expected_source_version
+            || self.projected_operation_version != expected_projected_version
+            || self.projected_state != projected_state
+            || self.trusted_time_unix_ms != context.trusted_time_unix_ms
+            || self.coordinator_lease_id != context.coordinator_lease_id
+            || self.coordinator_lease_epoch != context.coordinator_lease_epoch
+            || self.coordinator_lease_epoch != operation.coordinator_lease_epoch()
+            || self.store_fence != context.store_fence
+            || self.retained_dispatch_commit.as_ref() != operation.dispatch_commit()
+            || context.operation_id != *operation.binding().operation_id()
+            || context.request_id != operation.replay_key().request_id
+            || context.expected_operation_version != expected_source_version
+            || (operation_is_projected && operation.state() != projected_state)
+        {
+            return Err(AdmissionOperationError::TerminalProjectionBindingMismatch.into());
+        }
+        Ok(())
+    }
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct UntrustedPaymentTerminalSourceV1 {
+    binding: UntrustedAdmissionExactProjectionBindingV1,
+    source_authority_digest: AdmissionDigest,
+    source_record_id: AdmissionIdentifier,
+    source_record_digest: AdmissionDigest,
+    source_recorded_at_unix_ms: u64,
+    consumer_receipt_id: AdmissionIdentifier,
+    consumer_receipt_digest: AdmissionDigest,
+    outcome_id: AdmissionDigest,
+    outcome_version: u64,
+}
+
+#[derive(serde::Deserialize, serde::Serialize)]
+#[serde(deny_unknown_fields)]
+struct UntrustedPaymentTerminalEvidenceV1 {
+    source: UntrustedPaymentTerminalSourceV1,
+    payment_participant_id: AdmissionIdentifier,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+struct UntrustedObservationAttemptZeroV1 {
+    binding: UntrustedAdmissionExactProjectionBindingV1,
+    pending: PendingSettlementObservation,
+    consumer_receipt_id: AdmissionIdentifier,
+    consumer_receipt_digest: AdmissionDigest,
+    outcome_id: AdmissionDigest,
+    outcome_version: u64,
+}
+
+#[derive(serde::Deserialize)]
+struct UntrustedTerminalParticipantProjectionV1 {
+    terminal: String,
+    evidence: serde_json::Value,
+    payment_evidence: Option<UntrustedPaymentTerminalEvidenceV1>,
+    observer_work: Option<UntrustedObservationAttemptZeroV1>,
+}
+
+struct AuthoritativeToolOutcomeBindingV1 {
+    outcome_id: AdmissionDigest,
+    outcome_version: u64,
+}
+
 pub(super) fn verify_payment_terminal_source<'a>(
-    transaction: &Transaction<'_>,
+    transaction: &Connection,
     operation: &AdmissionOperationV1,
     context: &chio_kernel::admission_operation::AdmissionProjectionContext,
     terminal_state: AdmissionOperationState,
-    records: impl Iterator<Item = &'a [u8]>,
+    records: impl Iterator<Item = (&'a AdmissionIdentifier, &'a [u8])>,
+    receipt_record: Option<&'a [u8]>,
+    projection_json: &[u8],
 ) -> Result<(), AdmissionOperationStoreError> {
     let records = records.collect::<Vec<_>>();
     let requires_payment = operation.binding().participant_requirements().payment;
+    let authoritative_outcome = if terminal_state == AdmissionOperationState::DeniedAfterDelivery {
+        Some(verify_denied_participant_outcome_bindings(
+            transaction,
+            operation,
+            context,
+            &records,
+            receipt_record,
+            projection_json,
+        )?)
+    } else {
+        None
+    };
     if terminal_state == AdmissionOperationState::OutcomeUnknownAfterDispatch {
         if !records.is_empty() {
             return Err(AdmissionOperationError::TerminalProjectionBindingMismatch.into());
@@ -618,14 +750,15 @@ pub(super) fn verify_payment_terminal_source<'a>(
     }
     if terminal_state == AdmissionOperationState::DeniedAfterDelivery {
         // A rejected delivery releases the open hold to a contractual zero
-        // charge: the money outcome lives in the fenced journal, not in a
-        // payment-terminal projection record, so the projection carries none.
-        if !records.is_empty() {
+        // charge, and the terminal carries the payment-terminal record
+        // binding that released journal, exactly as a completed capture
+        // binds its settled journal.
+        if records.len() != usize::from(requires_payment) {
             return Err(AdmissionOperationError::TerminalProjectionBindingMismatch.into());
         }
-        if !requires_payment {
+        let Some((record_id, bytes)) = records.first() else {
             return Ok(());
-        }
+        };
         let journal = crate::budget_store::load_payment_journal(
             transaction,
             operation.binding().operation_id().as_str(),
@@ -652,12 +785,21 @@ pub(super) fn verify_payment_terminal_source<'a>(
                     .to_owned(),
             ));
         }
-        return Ok(());
+        return verify_payment_terminal_record(
+            record_id,
+            bytes,
+            receipt_record,
+            operation,
+            context,
+            terminal_state,
+            &journal,
+            authoritative_outcome.as_ref(),
+        );
     }
     if records.len() != usize::from(requires_payment) {
         return Err(AdmissionOperationError::TerminalProjectionBindingMismatch.into());
     }
-    let Some(bytes) = records.first() else {
+    let Some((record_id, bytes)) = records.first() else {
         return Ok(());
     };
     let journal = crate::budget_store::load_payment_journal(
@@ -682,12 +824,52 @@ pub(super) fn verify_payment_terminal_source<'a>(
             "terminal payment source journal is not settled".to_owned(),
         ));
     }
-    let value: serde_json::Value = serde_json::from_slice(bytes).map_err(|error| {
+    verify_payment_terminal_record(
+        record_id,
+        bytes,
+        receipt_record,
+        operation,
+        context,
+        terminal_state,
+        &journal,
+        None,
+    )
+}
+
+/// Cross-check one payment-terminal projection record against the fenced
+/// journal it claims to bind: the participant identity, the source record
+/// naming, the journal digest, the fence authority digest, and a recording
+/// time inside the journal's lifetime.
+fn verify_payment_terminal_record(
+    record_id: &AdmissionIdentifier,
+    bytes: &[u8],
+    receipt_record: Option<&[u8]>,
+    operation: &AdmissionOperationV1,
+    context: &chio_kernel::admission_operation::AdmissionProjectionContext,
+    terminal_state: AdmissionOperationState,
+    journal: &chio_kernel::payment::PaymentJournalRecord,
+    authoritative_outcome: Option<&AuthoritativeToolOutcomeBindingV1>,
+) -> Result<(), AdmissionOperationStoreError> {
+    let evidence: UntrustedPaymentTerminalEvidenceV1 =
+        serde_json::from_slice(bytes).map_err(|error| {
+            AdmissionOperationStoreError::Invariant(format!(
+                "terminal payment evidence is invalid JSON: {error}"
+            ))
+        })?;
+    evidence
+        .source
+        .binding
+        .validate_against(operation, context, terminal_state)?;
+    let receipt_bytes = receipt_record.ok_or_else(|| {
+        AdmissionOperationStoreError::Invariant(
+            "terminal payment evidence has no consumer receipt".to_owned(),
+        )
+    })?;
+    let receipt: ChioReceipt = serde_json::from_slice(receipt_bytes).map_err(|error| {
         AdmissionOperationStoreError::Invariant(format!(
-            "terminal payment evidence is invalid JSON: {error}"
+            "terminal payment consumer receipt is invalid JSON: {error}"
         ))
     })?;
-    let source = value.get("source").and_then(serde_json::Value::as_object);
     let expected_source_record_id = format!("payment:{}", journal.operation_id);
     let journal_digest = sha256_hex(
         &canonical_json_bytes(&journal)
@@ -697,32 +879,211 @@ pub(super) fn verify_payment_terminal_source<'a>(
         &canonical_json_bytes(&context.store_fence)
             .map_err(|error| AdmissionOperationStoreError::Invariant(error.to_string()))?,
     );
-    let source_recorded_at = source
-        .and_then(|source| source.get("source_recorded_at_unix_ms"))
-        .and_then(serde_json::Value::as_u64);
-    if value
-        .get("payment_participant_id")
-        .and_then(serde_json::Value::as_str)
-        != Some(operation.binding().operation_id().as_str())
-        || source
-            .and_then(|source| source.get("source_record_id"))
-            .and_then(serde_json::Value::as_str)
-            != Some(expected_source_record_id.as_str())
-        || source
-            .and_then(|source| source.get("source_record_digest"))
-            .and_then(serde_json::Value::as_str)
-            != Some(journal_digest.as_str())
-        || source
-            .and_then(|source| source.get("source_authority_digest"))
-            .and_then(serde_json::Value::as_str)
-            != Some(authority_digest.as_str())
-        || source_recorded_at.is_none_or(|recorded_at| {
-            recorded_at < journal.created_at_unix_ms || recorded_at > context.trusted_time_unix_ms
+    let receipt_digest = sha256_hex(
+        &canonical_json_bytes(&receipt)
+            .map_err(|error| AdmissionOperationStoreError::Invariant(error.to_string()))?,
+    );
+    let outcome_id = operation
+        .tool_outcome_id()
+        .ok_or_else(|| invariant("terminal payment evidence lost its tool outcome"))?;
+    if record_id.as_str() != operation.binding().operation_id().as_str()
+        || evidence.payment_participant_id.as_str() != operation.binding().operation_id().as_str()
+        || evidence.source.source_record_id.as_str() != expected_source_record_id
+        || evidence.source.source_record_digest.as_str() != journal_digest
+        || evidence.source.source_authority_digest.as_str() != authority_digest
+        || evidence.source.source_recorded_at_unix_ms < journal.created_at_unix_ms
+        || evidence.source.source_recorded_at_unix_ms > context.trusted_time_unix_ms
+        || evidence.source.consumer_receipt_id.as_str() != receipt.id
+        || evidence.source.consumer_receipt_digest.as_str() != receipt_digest
+        || evidence.source.outcome_id != *outcome_id
+        || evidence.source.outcome_version == 0
+        || evidence.source.outcome_version > ((1_u64 << 53) - 1)
+        || authoritative_outcome.is_some_and(|authoritative| {
+            evidence.source.outcome_id != authoritative.outcome_id
+                || evidence.source.outcome_version != authoritative.outcome_version
         })
     {
         return Err(AdmissionOperationError::TerminalProjectionBindingMismatch.into());
     }
     Ok(())
+}
+
+fn verify_denied_participant_outcome_bindings(
+    transaction: &Connection,
+    operation: &AdmissionOperationV1,
+    context: &chio_kernel::admission_operation::AdmissionProjectionContext,
+    payment_records: &[(&AdmissionIdentifier, &[u8])],
+    receipt_record: Option<&[u8]>,
+    projection_json: &[u8],
+) -> Result<AuthoritativeToolOutcomeBindingV1, AdmissionOperationStoreError> {
+    let projection: UntrustedTerminalParticipantProjectionV1 =
+        serde_json::from_slice(projection_json).map_err(|error| {
+            invariant(format!(
+                "delivery-denied participant projection is invalid JSON: {error}"
+            ))
+        })?;
+    if projection.terminal != "denied_after_delivery" {
+        return Err(AdmissionOperationError::TerminalProjectionBindingMismatch.into());
+    }
+    let receipt_bytes = receipt_record
+        .ok_or_else(|| invariant("delivery-denied participant projection has no receipt record"))?;
+    let mut evidence = projection
+        .evidence
+        .as_object()
+        .cloned()
+        .ok_or_else(|| invariant("delivery-denied receipt evidence is not an object"))?;
+    if evidence
+        .remove("kind")
+        .and_then(|kind| kind.as_str().map(str::to_owned))
+        .as_deref()
+        != Some("receipt")
+        || canonical_json_bytes(&serde_json::Value::Object(evidence))
+            .map_err(|error| invariant(error.to_string()))?
+            != receipt_bytes
+    {
+        return Err(AdmissionOperationError::TerminalProjectionBindingMismatch.into());
+    }
+    let receipt: ChioReceipt = serde_json::from_slice(receipt_bytes).map_err(|error| {
+        invariant(format!(
+            "delivery-denied participant receipt is invalid JSON: {error}"
+        ))
+    })?;
+    let receipt_digest =
+        sha256_hex(&canonical_json_bytes(&receipt).map_err(|error| invariant(error.to_string()))?);
+    let authoritative = load_authoritative_tool_outcome_binding(transaction, operation)?;
+    match (&projection.payment_evidence, payment_records) {
+        (None, []) => {}
+        (Some(evidence), [(_, record_json)]) => {
+            evidence.source.binding.validate_against(
+                operation,
+                context,
+                AdmissionOperationState::DeniedAfterDelivery,
+            )?;
+            verify_participant_outcome_binding(
+                &evidence.source.outcome_id,
+                evidence.source.outcome_version,
+                &authoritative,
+            )?;
+            let canonical =
+                canonical_json_bytes(evidence).map_err(|error| invariant(error.to_string()))?;
+            if canonical != *record_json {
+                return Err(AdmissionOperationError::TerminalProjectionBindingMismatch.into());
+            }
+        }
+        _ => return Err(AdmissionOperationError::TerminalProjectionBindingMismatch.into()),
+    }
+    if let Some(observer) = &projection.observer_work {
+        observer.binding.validate_against(
+            operation,
+            context,
+            AdmissionOperationState::DeniedAfterDelivery,
+        )?;
+        verify_participant_outcome_binding(
+            &observer.outcome_id,
+            observer.outcome_version,
+            &authoritative,
+        )?;
+        if observer.pending.next_visible_at_ms != context.trusted_time_unix_ms
+            || observer.consumer_receipt_id.as_str() != receipt.id
+            || observer.consumer_receipt_digest.as_str() != receipt_digest
+        {
+            return Err(AdmissionOperationError::TerminalProjectionBindingMismatch.into());
+        }
+    }
+    Ok(authoritative)
+}
+
+fn verify_participant_outcome_binding(
+    outcome_id: &AdmissionDigest,
+    outcome_version: u64,
+    authoritative: &AuthoritativeToolOutcomeBindingV1,
+) -> Result<(), AdmissionOperationStoreError> {
+    if outcome_id != &authoritative.outcome_id || outcome_version != authoritative.outcome_version {
+        return Err(AdmissionOperationError::TerminalProjectionBindingMismatch.into());
+    }
+    Ok(())
+}
+
+fn load_authoritative_tool_outcome_binding(
+    transaction: &Connection,
+    operation: &AdmissionOperationV1,
+) -> Result<AuthoritativeToolOutcomeBindingV1, AdmissionOperationStoreError> {
+    let row = transaction
+        .query_row(
+            r#"
+            SELECT outcome_id, request_id, raw_output_digest, outcome_version,
+                   lifecycle_digest, outcome_json, recorded_at_unix_ms
+            FROM tool_outcomes WHERE operation_id = ?1
+            "#,
+            [operation.binding().operation_id().as_str()],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, i64>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, Vec<u8>>(5)?,
+                    row.get::<_, i64>(6)?,
+                ))
+            },
+        )
+        .optional()
+        .map_err(sqlite_error)?;
+    let Some((outcome_id, request_id, raw_digest, version, lifecycle, encoded, recorded_at)) = row
+    else {
+        return Err(invariant(
+            "delivery-denied participant evidence lost its persisted tool outcome",
+        ));
+    };
+    let persisted: chio_kernel::tool_outcome::PersistedToolOutcomeRecordV1 =
+        serde_json::from_slice(&encoded)
+            .map_err(|error| invariant(format!("tool outcome decode failed: {error}")))?;
+    let record = chio_kernel::tool_outcome::ToolOutcomeRecordV1::from_persisted(persisted)
+        .map_err(|error| invariant(error.to_string()))?;
+    record
+        .validate_against(operation)
+        .map_err(|error| invariant(error.to_string()))?;
+    let persisted = record.to_persisted();
+    if record.outcome_id().as_str() != outcome_id
+        || persisted.request_id.as_str() != request_id
+        || record.raw_output_digest().as_str() != raw_digest
+        || record.version() != stored_u64(version, "outcome_version")?
+        || record.lifecycle_digest().as_str() != lifecycle
+        || record.recorded_at_unix_ms() != stored_u64(recorded_at, "recorded_at_unix_ms")?
+        || canonical_json_bytes(&persisted).map_err(|error| invariant(error.to_string()))?
+            != encoded
+        || operation.tool_outcome_id() != Some(record.outcome_id())
+    {
+        return Err(invariant(
+            "persisted tool outcome differs from its authoritative columns",
+        ));
+    }
+    Ok(AuthoritativeToolOutcomeBindingV1 {
+        outcome_id: record.outcome_id().clone(),
+        outcome_version: record.version(),
+    })
+}
+
+#[cfg(test)]
+mod participant_outcome_binding_tests {
+    use super::*;
+
+    #[test]
+    fn participant_versions_must_equal_the_authoritative_outcome(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let outcome_id = AdmissionDigest::try_new("outcome_id", "a".repeat(64))?;
+        let other_outcome_id = AdmissionDigest::try_new("outcome_id", "b".repeat(64))?;
+        let authoritative = AuthoritativeToolOutcomeBindingV1 {
+            outcome_id: outcome_id.clone(),
+            outcome_version: 7,
+        };
+
+        assert!(verify_participant_outcome_binding(&outcome_id, 7, &authoritative).is_ok());
+        assert!(verify_participant_outcome_binding(&outcome_id, 8, &authoritative).is_err());
+        assert!(verify_participant_outcome_binding(&other_outcome_id, 7, &authoritative).is_err());
+        Ok(())
+    }
 }
 
 pub(crate) fn advance_tool_outcome_tx(
