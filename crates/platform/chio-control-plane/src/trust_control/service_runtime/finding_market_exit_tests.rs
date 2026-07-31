@@ -60,8 +60,8 @@ use chio_open_market::fee_schedule::{
 };
 use chio_open_market::finding_admission::{
     bid_with_finding_admission, verify_finding_admission, FindingAdmissionContext,
-    FindingAllocationSnapshot as SeamAllocationSnapshot, FindingAllocationStatus,
-    FindingConstituentExpiryBounds, FindingFeeScheduleGate,
+    FindingAdmissionPenaltyGate, FindingAllocationSnapshot as SeamAllocationSnapshot,
+    FindingAllocationStatus, FindingConstituentExpiryBounds, FindingFeeScheduleGate,
 };
 use chio_open_market::fiscal_adapter::signed_fee_schedule_digest;
 use chio_open_market::listing::{
@@ -1908,6 +1908,7 @@ async fn finding_publish_discover_admission() -> TestResult {
             prepared_admission_id: None,
             accepted_at: allocation.accepted_at,
         },
+        penalty_gate: FindingAdmissionPenaltyGate::Ungoverned,
         collateral_authority: &collateral_key,
         constituent_expiry_bounds: FindingConstituentExpiryBounds {
             finding: web.finding.expires_at,

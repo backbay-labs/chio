@@ -27,6 +27,7 @@ use crate::capability::scope::{
     Constraint, FindingPurchaseMarkerV1, FindingSettlementSelector, MonetaryAmount,
 };
 use crate::crypto::PublicKey;
+use crate::evaluation::OpenMarketPenaltyEvaluation;
 use crate::fee_schedule::{OpenMarketBondClass, SignedOpenMarketFeeSchedule};
 use crate::fiscal_adapter::{
     authorize_fiscal_open_market_fee_schedule, signed_fee_schedule_digest, verify_legacy_schedule,
@@ -44,6 +45,17 @@ pub enum FindingFeeScheduleGate<'a> {
         resolver: &'a FiscalResolver<'a>,
         binding: Option<&'a FiscalLegacyFeeScheduleBinding>,
     },
+}
+
+/// Penalty posture for admission verification.
+#[derive(Clone, Copy)]
+pub enum FindingAdmissionPenaltyGate<'a> {
+    /// No penalty lane governs this venue: there is no evaluation to
+    /// consult.
+    Ungoverned,
+    /// The venue's current penalty evaluation for the admitted listing.
+    /// A blocking or unresolved evaluation denies the admission.
+    Evaluated(&'a OpenMarketPenaltyEvaluation),
 }
 
 /// Typed rejections from [`verify_finding_admission`] and
@@ -82,6 +94,12 @@ pub enum FindingAdmissionError {
     AllocationUnavailableForActivation,
     #[error("admission is not active for the consumed backing allocation")]
     AdmissionNotActiveForAllocation,
+    #[error("penalty evaluation does not name the admitted listing")]
+    PenaltyEvaluationMismatch,
+    #[error("penalty evaluation carries findings and establishes nothing")]
+    PenaltyEvaluationUnresolved,
+    #[error("an enforced penalty blocks admission for this listing")]
+    AdmissionBlockedByPenalty,
     #[error("fee schedule envelope digest does not match the admission binding")]
     FeeScheduleDigestMismatch,
     #[error("fee schedule envelope rejected: {0}")]
@@ -204,6 +222,11 @@ pub struct FindingAdmissionContext<'a> {
     pub backing: &'a SignedFindingBondBacking,
     /// Fresh allocation-state snapshot for the named backing allocation.
     pub allocation_snapshot: FindingAllocationSnapshot,
+    /// Penalty posture for the admitted listing. A venue that runs the
+    /// penalty lane resolves the listing's current evaluation and passes
+    /// it here; a listing under an enforced hold or slash never
+    /// re-admits.
+    pub penalty_gate: FindingAdmissionPenaltyGate<'a>,
     /// Configured collateral authority key the backing must verify under.
     pub collateral_authority: &'a PublicKey,
     /// Explicit expiry bounds for constituents the admission carries only
@@ -300,6 +323,25 @@ fn verify_finding_admission_inner(
     }
     if context.now >= admission.expires_at {
         return Err(FindingAdmissionError::AdmissionExpired);
+    }
+
+    // A listing under an enforced hold or slash must not re-enter the
+    // market through a fresh admission. The evaluation consulted here has
+    // to be for this exact listing, and one that failed to establish the
+    // penalty state proves nothing and therefore admits nothing.
+    match context.penalty_gate {
+        FindingAdmissionPenaltyGate::Ungoverned => {}
+        FindingAdmissionPenaltyGate::Evaluated(evaluation) => {
+            if evaluation.listing_id != admission.listing_id {
+                return Err(FindingAdmissionError::PenaltyEvaluationMismatch);
+            }
+            if !evaluation.findings.is_empty() {
+                return Err(FindingAdmissionError::PenaltyEvaluationUnresolved);
+            }
+            if evaluation.blocks_admission {
+                return Err(FindingAdmissionError::AdmissionBlockedByPenalty);
+            }
+        }
     }
 
     // The exact seller-signed terms envelope, bound by digest.

@@ -28,8 +28,8 @@ use chio_finding::{
 use chio_open_market::fee_schedule::SignedOpenMarketFeeSchedule;
 use chio_open_market::finding_admission::{
     verify_finding_admission_for_activation, FindingAdmissionContext,
-    FindingAllocationSnapshot as AdmissionAllocationSnapshot, FindingAllocationStatus,
-    FindingConstituentExpiryBounds, FindingFeeScheduleGate,
+    FindingAdmissionPenaltyGate, FindingAllocationSnapshot as AdmissionAllocationSnapshot,
+    FindingAllocationStatus, FindingConstituentExpiryBounds, FindingFeeScheduleGate,
 };
 use chio_open_market::fiscal_adapter::signed_fee_schedule_digest;
 use chio_open_market::listing::{
@@ -1131,6 +1131,10 @@ pub(crate) async fn handle_activate_finding(
             prepared_admission_id: prepared_replay.then(|| admission.admission_id.clone()),
             accepted_at: allocation.accepted_at,
         },
+        // This surface holds no penalty evaluation for the listing; a
+        // venue operating the challenge lane resolves the listing's
+        // current evaluation and gates admission on it.
+        penalty_gate: FindingAdmissionPenaltyGate::Ungoverned,
         collateral_authority: &collateral_key,
         constituent_expiry_bounds: FindingConstituentExpiryBounds {
             finding: finding.expires_at,

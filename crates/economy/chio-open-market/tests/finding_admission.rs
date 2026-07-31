@@ -31,6 +31,8 @@ use chio_open_market::{
     bidding::{BidMintContext, BidRequest, RequestedScope, SignedBidRequest, BID_REQUEST_SCHEMA},
     capability::scope::MonetaryAmount,
     crypto::{Keypair, PublicKey},
+    evaluation::OpenMarketPenaltyEvaluation,
+    evidence::{OpenMarketFinding, OpenMarketFindingCode},
     fee_schedule::{
         build_open_market_fee_schedule_artifact, OpenMarketBondClass, OpenMarketBondRequirement,
         OpenMarketCollateralReferenceKind, OpenMarketEconomicsScope,
@@ -39,8 +41,8 @@ use chio_open_market::{
     finding_admission::{
         accept_finding_purchase, bid_with_finding_admission, bid_with_finding_purchase,
         verify_finding_admission, verify_finding_admission_for_activation, FindingAdmissionContext,
-        FindingAdmissionError, FindingAllocationSnapshot, FindingAllocationStatus,
-        FindingConstituentExpiryBounds, FindingFeeScheduleGate,
+        FindingAdmissionError, FindingAdmissionPenaltyGate, FindingAllocationSnapshot,
+        FindingAllocationStatus, FindingConstituentExpiryBounds, FindingFeeScheduleGate,
     },
     fiscal_adapter::signed_fee_schedule_digest,
     listing::{
@@ -51,6 +53,7 @@ use chio_open_market::{
         ListingPricingHint, ListingSla, SignedGenericListing, SignedListingPricingHint,
         GENERIC_LISTING_ARTIFACT_SCHEMA, LISTING_PRICING_HINT_SCHEMA,
     },
+    penalty::{OpenMarketPenaltyAction, OpenMarketPenaltyEffectiveState, OpenMarketPenaltyState},
 };
 use chio_test_support::prelude::*;
 
@@ -521,6 +524,7 @@ impl Web {
                 prepared_admission_id: None,
                 accepted_at: ADMISSION_ISSUED_AT,
             },
+            penalty_gate: FindingAdmissionPenaltyGate::Ungoverned,
             collateral_authority: &self.collateral_key,
             constituent_expiry_bounds: FindingConstituentExpiryBounds {
                 finding: CONSTITUENT_EXPIRES_AT,
@@ -896,6 +900,94 @@ fn expired_released_or_mismatched_allocation_snapshot_rejects() {
             verify_finding_admission(&web.admission, &context).err(),
             Some(FindingAdmissionError::AllocationSnapshotMismatch)
         );
+    });
+}
+
+/// A penalty evaluation over the named listing, shaped by the caller.
+fn penalty_evaluation_for(listing_id: &str) -> OpenMarketPenaltyEvaluation {
+    OpenMarketPenaltyEvaluation {
+        listing_id: listing_id.to_string(),
+        namespace: "https://registry.seller.example".to_string(),
+        fee_schedule_id: "fee-schedule-01".to_string(),
+        charter_id: "charter-01".to_string(),
+        case_id: "case-01".to_string(),
+        penalty_id: "penalty-01".to_string(),
+        governing_operator_id: "governing-operator".to_string(),
+        action: OpenMarketPenaltyAction::SlashBond,
+        state: OpenMarketPenaltyState::Enforced,
+        effective_state: OpenMarketPenaltyEffectiveState::BondSlashed,
+        evaluated_at: NOW,
+        publication_fee: None,
+        dispute_fee: None,
+        market_participation_fee: None,
+        bond_requirement: None,
+        blocks_admission: true,
+        findings: Vec::new(),
+    }
+}
+
+#[test]
+fn blocking_penalty_evaluation_rejects_admission() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        let evaluation = penalty_evaluation_for(&web.admission.body.listing_id);
+        let mut context = web.context(resolver);
+        context.penalty_gate = FindingAdmissionPenaltyGate::Evaluated(&evaluation);
+        let error = verify_finding_admission(&web.admission, &context).test_unwrap_err();
+        assert_eq!(error, FindingAdmissionError::AdmissionBlockedByPenalty);
+    });
+}
+
+#[test]
+fn penalty_evaluation_for_another_listing_rejects_admission() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        // A clear evaluation, but over some other listing: it says nothing
+        // about the one being admitted, so it must not stand in for it.
+        let mut evaluation = penalty_evaluation_for("listing-elsewhere-0001");
+        evaluation.state = OpenMarketPenaltyState::Reversed;
+        evaluation.effective_state = OpenMarketPenaltyEffectiveState::Reversed;
+        evaluation.blocks_admission = false;
+        let mut context = web.context(resolver);
+        context.penalty_gate = FindingAdmissionPenaltyGate::Evaluated(&evaluation);
+        let error = verify_finding_admission(&web.admission, &context).test_unwrap_err();
+        assert_eq!(error, FindingAdmissionError::PenaltyEvaluationMismatch);
+    });
+}
+
+#[test]
+fn unresolved_penalty_evaluation_rejects_admission() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        // An evaluation that failed carries findings and no blocking
+        // verdict; it establishes nothing, so it admits nothing.
+        let mut evaluation = penalty_evaluation_for(&web.admission.body.listing_id);
+        evaluation.blocks_admission = false;
+        evaluation.findings = vec![OpenMarketFinding {
+            code: OpenMarketFindingCode::PenaltyUnverifiable,
+            message: "penalty envelope did not verify".to_string(),
+        }];
+        let mut context = web.context(resolver);
+        context.penalty_gate = FindingAdmissionPenaltyGate::Evaluated(&evaluation);
+        let error = verify_finding_admission(&web.admission, &context).test_unwrap_err();
+        assert_eq!(error, FindingAdmissionError::PenaltyEvaluationUnresolved);
+    });
+}
+
+#[test]
+fn clear_penalty_evaluation_admits() {
+    with_fiscal(|resolver| {
+        let web = base_web();
+        // A reversed penalty no longer blocks, so the same gate that
+        // refuses an enforced one must admit here.
+        let mut evaluation = penalty_evaluation_for(&web.admission.body.listing_id);
+        evaluation.action = OpenMarketPenaltyAction::ReverseSlash;
+        evaluation.state = OpenMarketPenaltyState::Reversed;
+        evaluation.effective_state = OpenMarketPenaltyEffectiveState::Reversed;
+        evaluation.blocks_admission = false;
+        let mut context = web.context(resolver);
+        context.penalty_gate = FindingAdmissionPenaltyGate::Evaluated(&evaluation);
+        verify_finding_admission(&web.admission, &context).test_expect("clear penalty state");
     });
 }
 

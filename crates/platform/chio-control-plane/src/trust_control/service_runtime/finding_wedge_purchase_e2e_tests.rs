@@ -97,7 +97,8 @@ use chio_open_market::fee_schedule::{
 use chio_open_market::finding_admission::{
     accept_finding_purchase, bid_with_finding_purchase, verify_finding_admission,
     FindingAdmissionContext, FindingAllocationSnapshot as SeamAllocationSnapshot,
-    FindingAllocationStatus, FindingConstituentExpiryBounds, FindingFeeScheduleGate,
+    FindingAdmissionPenaltyGate, FindingAllocationStatus, FindingConstituentExpiryBounds,
+    FindingFeeScheduleGate,
     VerifiedFindingAdmission,
 };
 use chio_open_market::fiscal_adapter::signed_fee_schedule_digest;
@@ -1376,6 +1377,7 @@ fn admission_witness(
             prepared_admission_id: None,
             accepted_at,
         },
+        penalty_gate: FindingAdmissionPenaltyGate::Ungoverned,
         collateral_authority: &collateral_key,
         constituent_expiry_bounds: FindingConstituentExpiryBounds {
             finding: web.finding.expires_at,
