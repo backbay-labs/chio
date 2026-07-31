@@ -1699,34 +1699,6 @@ fn a_listing_keyed_sales_block_carries_across_to_the_episode_line() {
 fn payout_destination_slots_are_bounded_and_idempotent() {
     let fixture = fixture();
     let allocation_id = &fixture.allocation_id;
-    let community = "rail:venue-ledger:community-fund";
-    let admitted = fixture
-        .store
-        .register_community_fund_destination(allocation_id, community, NOW)
-        .expect("register community fund");
-    assert_eq!(admitted.slot_index, 0);
-    assert_eq!(admitted.outcome, FindingPurchaseWriteOutcome::Inserted);
-    let replay = fixture
-        .store
-        .register_community_fund_destination(allocation_id, community, NOW + 1)
-        .expect("replay community fund");
-    assert_eq!(replay.slot_index, 0);
-    assert_eq!(replay.outcome, FindingPurchaseWriteOutcome::ExistingSame);
-    assert_eq!(
-        replay.admitted_at, NOW,
-        "a replay reports the original admission time"
-    );
-    assert!(
-        matches!(
-            fixture.store.register_community_fund_destination(
-                allocation_id,
-                "rail:venue-ledger:other-fund",
-                NOW + 2
-            ),
-            Err(FindingPurchaseStoreError::Conflict(_))
-        ),
-        "the reserved community slot cannot be rebound"
-    );
     assert!(
         matches!(
             fixture
@@ -1763,24 +1735,13 @@ fn payout_destination_slots_are_bounded_and_idempotent() {
         ),
         "the sixteenth distinct destination has no slot left"
     );
-    assert!(
-        matches!(
-            fixture.store.register_community_fund_destination(
-                allocation_id,
-                "rail:venue-ledger:buyer-3",
-                NOW + 102
-            ),
-            Err(FindingPurchaseStoreError::Conflict(_))
-        ),
-        "a buyer destination cannot be promoted to the community slot"
-    );
     let listed = fixture
         .store
         .list_payout_destinations(allocation_id)
         .expect("list destinations");
-    assert_eq!(listed.len(), 16);
-    assert_eq!(listed[0], (0, community.to_string()));
-    assert_eq!(listed[15], (15, "rail:venue-ledger:buyer-15".to_string()));
+    assert_eq!(listed.len(), 15, "slot zero is never admitted");
+    assert_eq!(listed[0], (1, "rail:venue-ledger:buyer-1".to_string()));
+    assert_eq!(listed[14], (15, "rail:venue-ledger:buyer-15".to_string()));
 
     // Slots are per allocation, so a second allocation starts empty.
     let other = consume_allocation(&fixture.market, "vault:finding-collateral-2", LISTING_ID);

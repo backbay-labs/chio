@@ -2229,11 +2229,6 @@ async fn wedge_purchase_settles_into_a_signed_record() -> TestResult {
 
     let purchase_store = lane.authority.finding_purchase_store();
     let now = unix_timestamp_now();
-    purchase_store.register_community_fund_destination(
-        &lane.deployment.web.allocation_id,
-        COMMUNITY_FUND_DESTINATION,
-        now,
-    )?;
     let record = lane.coordinator.finalize_delivery(
         &lane.purchase.handshake.reservation_id,
         &response.receipt,
@@ -2297,10 +2292,8 @@ async fn wedge_purchase_settles_into_a_signed_record() -> TestResult {
     );
     assert_eq!(
         purchase_store.list_payout_destinations(&lane.deployment.web.allocation_id)?,
-        vec![
-            (0_u8, COMMUNITY_FUND_DESTINATION.to_string()),
-            (1_u8, PAYOUT_DESTINATION.to_string()),
-        ]
+        vec![(1_u8, PAYOUT_DESTINATION.to_string())],
+        "the community fund pays from configuration, never from an admitted slot"
     );
     assert!(purchase_store
         .get_purchase_record(&record.body.purchase_key)?
@@ -3941,11 +3934,6 @@ async fn wedge_purchase_finalization_uses_the_durable_verdict_and_capture() -> T
     let allocation_id = lane.deployment.web.allocation_id.clone();
     let reservation_id = lane.purchase.handshake.reservation_id.clone();
     let now = unix_timestamp_now();
-    purchase_store.register_community_fund_destination(
-        &allocation_id,
-        COMMUNITY_FUND_DESTINATION,
-        now,
-    )?;
 
     let (checkpoint, inclusion_proof) = denial_checkpoint(&response.receipt)?;
     let refused = lane.coordinator.finalize_denial(
@@ -3963,10 +3951,9 @@ async fn wedge_purchase_finalization_uses_the_durable_verdict_and_capture() -> T
 
     // The refusal preceded every durable step: no destination took a slot,
     // the purchase slot is still reserved, and no record exists.
-    assert_eq!(
-        purchase_store.list_payout_destinations(&allocation_id)?,
-        vec![(0_u8, COMMUNITY_FUND_DESTINATION.to_string())]
-    );
+    assert!(purchase_store
+        .list_payout_destinations(&allocation_id)?
+        .is_empty());
     let slot = purchase_store
         .get_slot(&reservation_id)?
         .ok_or_else(|| missing("slot after the refused settlement"))?;
@@ -4079,11 +4066,6 @@ async fn wedge_purchase_refuses_to_persist_an_unvalidatable_artifact() -> TestRe
     let allocation_id = lane.deployment.web.allocation_id.clone();
     let reservation_id = lane.purchase.handshake.reservation_id.clone();
     let now = unix_timestamp_now();
-    purchase_store.register_community_fund_destination(
-        &allocation_id,
-        COMMUNITY_FUND_DESTINATION,
-        now,
-    )?;
 
     let mut tampered_backing = lane.deployment.web.backing.clone();
     tampered_backing.body.maximum_sale_exposure.units = tampered_backing
@@ -4118,10 +4100,9 @@ async fn wedge_purchase_refuses_to_persist_an_unvalidatable_artifact() -> TestRe
     ));
 
     // Neither refusal moved the purchase or admitted a destination.
-    assert_eq!(
-        purchase_store.list_payout_destinations(&allocation_id)?,
-        vec![(0_u8, COMMUNITY_FUND_DESTINATION.to_string())]
-    );
+    assert!(purchase_store
+        .list_payout_destinations(&allocation_id)?
+        .is_empty());
     let slot = purchase_store
         .get_slot(&reservation_id)?
         .ok_or_else(|| missing("slot after the refused artifacts"))?;

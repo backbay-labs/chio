@@ -67,11 +67,11 @@ const MAX_TERMINAL_RECORD_BYTES: usize = 256 * 1024;
 /// Upper bound on every opaque identifier this store persists. An
 /// unbounded identifier is an amplification vector rather than a name.
 const MAX_IDENTIFIER_BYTES: usize = 512;
-/// Payout destinations per allocation, slot zero included.
+/// Payout destinations per allocation, slot zero included. Slot zero is
+/// never admitted: the community fund pays from deployment configuration
+/// rather than from an admitted slot, and keeping the slot reserved means
+/// a buyer destination can never occupy the index that convention names.
 const PAYOUT_DESTINATION_SLOTS: u8 = 16;
-/// Slot zero is reserved at store level for the community fund, so a buyer
-/// destination can never displace it.
-const COMMUNITY_FUND_SLOT_INDEX: u8 = 0;
 /// Batch clamp for the expiry sweep, keeping one transaction bounded.
 const MAX_EXPIRY_BATCH: usize = 512;
 
@@ -963,64 +963,6 @@ impl SqliteFindingPurchaseStore {
         load_failed_delivery_tx(&transaction, "failed_delivery_id", failed_delivery_id)
     }
 
-    /// Bind the community-fund destination at the reserved slot zero for
-    /// one allocation. Idempotent on the same destination; a different
-    /// destination for an allocation whose slot zero is already bound
-    /// rejects, as does a destination already admitted as a buyer slot.
-    pub fn register_community_fund_destination(
-        &self,
-        allocation_id: &str,
-        destination: &str,
-        admitted_at: u64,
-    ) -> Result<FindingPayoutDestinationAdmission, FindingPurchaseStoreError> {
-        require_hex64(allocation_id, "allocation_id")?;
-        require_rail_destination(destination)?;
-        require_trusted_time(admitted_at, "admitted_at")?;
-        let mut connection = self.connection()?;
-        let transaction = self.begin_write(&mut connection)?;
-        if let Some(existing) = load_destination_tx(&transaction, allocation_id, destination)? {
-            if existing.slot_index != COMMUNITY_FUND_SLOT_INDEX {
-                return Err(FindingPurchaseStoreError::Conflict(
-                    "destination is already admitted as a buyer payout slot".to_owned(),
-                ));
-            }
-            return Ok(FindingPayoutDestinationAdmission {
-                outcome: FindingPurchaseWriteOutcome::ExistingSame,
-                ..existing
-            });
-        }
-        let occupant: Option<String> = transaction
-            .query_row(
-                r#"
-                SELECT destination FROM payout_destinations
-                WHERE allocation_id = ?1 AND slot_index = ?2
-                "#,
-                params![allocation_id, i64::from(COMMUNITY_FUND_SLOT_INDEX)],
-                |row| row.get(0),
-            )
-            .optional()
-            .map_err(sqlite_error)?;
-        if occupant.is_some() {
-            return Err(FindingPurchaseStoreError::Conflict(
-                "the community fund slot is already bound to a different destination".to_owned(),
-            ));
-        }
-        insert_destination_tx(
-            &transaction,
-            allocation_id,
-            destination,
-            COMMUNITY_FUND_SLOT_INDEX,
-            admitted_at,
-        )?;
-        self.commit_write(transaction)?;
-        self.sync_after_write(&connection)?;
-        Ok(FindingPayoutDestinationAdmission {
-            slot_index: COMMUNITY_FUND_SLOT_INDEX,
-            admitted_at,
-            outcome: FindingPurchaseWriteOutcome::Inserted,
-        })
-    }
-
     /// Admit one buyer payout destination for an allocation, returning the
     /// slot it occupies. An already-admitted destination replays with its
     /// existing slot; otherwise the lowest free slot in 1..=15 is taken,
@@ -1046,8 +988,8 @@ impl SqliteFindingPurchaseStore {
         Ok(admission)
     }
 
-    /// Every payout destination admitted for one allocation, ordered by
-    /// slot with the community fund first.
+    /// Every payout destination admitted for one allocation, in slot
+    /// order.
     pub fn list_payout_destinations(
         &self,
         allocation_id: &str,
