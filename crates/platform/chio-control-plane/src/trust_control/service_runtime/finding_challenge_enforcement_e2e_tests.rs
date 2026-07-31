@@ -4021,6 +4021,23 @@ impl FindingImpairmentPublisher for MiningPublisher {
     }
 }
 
+/// A publisher that cannot reach the chain and says so. It reports no
+/// attempt at all, which is the one shape that leaves the coordinator
+/// unable to tell whether anything was broadcast.
+struct UnreachableChainPublisher;
+
+impl FindingImpairmentPublisher for UnreachableChainPublisher {
+    fn publish(
+        &self,
+        _intent: &chio_settle::FindingImpairmentIntent,
+        _call: &PreparedEvmCall,
+    ) -> Result<FindingImpairmentAttempt, FindingImpairmentPublishError> {
+        Err(FindingImpairmentPublishError::Transient(
+            "no route to the chain".to_string(),
+        ))
+    }
+}
+
 /// A publisher that must never be asked to move anything. A resumed
 /// finalization has already impaired the vault, so any dispatch on that
 /// path would be a second one.
@@ -4193,12 +4210,15 @@ impl FinalizingLiability {
     }
 
     fn intent_state(&self) -> Result<FindingEffectIntentState, AnyError> {
+        Ok(self.intent()?.state)
+    }
+
+    fn intent(&self) -> Result<chio_store_sqlite::FindingEffectIntentRecord, AnyError> {
         Ok(self
             .deployment
             .challenges
             .get_effect_intent(&self.intent_key)?
-            .ok_or("the impairment intent is durable")?
-            .state)
+            .ok_or("the impairment intent is durable")?)
     }
 
     fn head(&self) -> Result<chio_store_sqlite::FindingLiabilityRecord, AnyError> {
@@ -4437,6 +4457,34 @@ fn finding_challenge_a_confirmed_impairment_settles_without_dispatching_again() 
         "the resumed attempt finishes the settlement the interrupted one owed"
     );
     assert!(!settled.publication_pending);
+    Ok(())
+}
+
+#[test]
+fn finding_challenge_every_transient_publisher_failure_counts_one_attempt() -> TestResult {
+    let case = finalizing_liability()?;
+    for attempt in 1..=3_u64 {
+        let refused = case
+            .finalize_observing(
+                &ScriptedObservations::qualified(),
+                &UnreachableChainPublisher,
+                SETTLEMENT_NOW + attempt,
+            )?
+            .expect_err("a publisher that cannot reach the chain reports no outcome");
+        assert!(matches!(refused, ChallengeCoordinatorError::Publisher(_)));
+        let intent = case.intent()?;
+        assert_eq!(
+            intent.attempt_count, attempt,
+            "every dispatch an operator paid for is on the record"
+        );
+        assert_eq!(
+            intent.state,
+            FindingEffectIntentState::Failed,
+            "the impairment stays dispatchable after a failure to reach the chain"
+        );
+    }
+    assert_eq!(case.head()?.state, FindingLiabilityState::Finalizing);
+    assert!(case.deployment.purchases.sales_blocked(LISTING_ID)?);
     Ok(())
 }
 

@@ -1527,8 +1527,24 @@ impl FindingChallengeCoordinator {
         self.challenges
             .advance_effect_intent(&intent_key, FindingEffectIntentState::Dispatched, now)
             .map_err(|error| ChallengeCoordinatorError::ChallengeStore(error.to_string()))?;
-        let outcome = dispatch_finding_impairment(&planned, publisher)
-            .map_err(|error| ChallengeCoordinatorError::Publisher(error.to_string()))?;
+        let outcome = match dispatch_finding_impairment(&planned, publisher) {
+            Ok(outcome) => outcome,
+            Err(error) => {
+                // A publisher that cannot say what happened leaves the
+                // intent dispatchable, and it returns to `failed` to say
+                // so. Leaving it in `dispatched` would be the same
+                // resumable state, but the next attempt would reconcile
+                // as an identical retry and count nothing, so every
+                // attempt after the first would vanish from the record an
+                // operator reads a stuck impairment out of.
+                self.challenges
+                    .advance_effect_intent(&intent_key, FindingEffectIntentState::Failed, now)
+                    .map_err(|store| {
+                        ChallengeCoordinatorError::ChallengeStore(store.to_string())
+                    })?;
+                return Err(ChallengeCoordinatorError::Publisher(error.to_string()));
+            }
+        };
 
         match &outcome {
             FindingImpairmentOutcome::Confirmed { .. } => {
