@@ -107,9 +107,10 @@ pub(super) fn delivery_commitment_denial(
     let first = digests.next();
     let ambiguous = digests.next().is_some();
     let Some(digest) = first else {
-        let marked = grant.constraints.iter().any(|constraint| {
-            matches!(constraint, Constraint::RequireFindingPurchase(_))
-        });
+        let marked = grant
+            .constraints
+            .iter()
+            .any(|constraint| matches!(constraint, Constraint::RequireFindingPurchase(_)));
         return marked
             .then_some("a purchase-marked grant requires exactly one committed output digest");
     };

@@ -187,7 +187,6 @@ impl ToolServerConnection for PaidMutationServer {
     }
 }
 
-
 struct StreamingPaidMutationServer {
     invocations: Arc<AtomicU64>,
 }
